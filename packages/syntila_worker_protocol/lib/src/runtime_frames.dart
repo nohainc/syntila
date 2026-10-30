@@ -716,9 +716,13 @@ final class ExecuteRequest extends WorkerFrame {
     this.workerSession,
     this.statelessContext,
     this.additionalDirectories = const [],
+    this.compactContext = false,
     this.protocolVersion = localWorkerProtocolVersion,
   }) {
     _validateProtocol(protocolVersion);
+    if (compactContext && sessionPolicy != WorkerSessionPolicy.durableSession) {
+      throw const FormatException('compactContext requires a durable session');
+    }
     if (additionalDirectories.length >
             WorkerProtocolLimits.maxAdditionalDirectories ||
         additionalDirectories.any((path) =>
@@ -813,6 +817,11 @@ final class ExecuteRequest extends WorkerFrame {
   /// working directory. The Profile decides how they become CLI arguments.
   final List<String> additionalDirectories;
 
+  /// Compact the resumed native session with the Profile's compaction
+  /// command before running this prompt (the user's answer to a context
+  /// overflow). Only sent when true, so older Engines keep accepting frames.
+  final bool compactContext;
+
   @override
   String get type => 'execute.request';
 
@@ -837,6 +846,7 @@ final class ExecuteRequest extends WorkerFrame {
           'statelessContext': statelessContext!.toJson(),
         if (additionalDirectories.isNotEmpty)
           'additionalDirectories': additionalDirectories,
+        if (compactContext) 'compactContext': true,
       };
 
   factory ExecuteRequest.fromJson(Map<String, Object?> json) {
@@ -856,8 +866,13 @@ final class ExecuteRequest extends WorkerFrame {
       'workerSession',
       'statelessContext',
       'additionalDirectories',
+      'compactContext',
     });
     _expectType(json, 'execute.request');
+    final compactContext = json['compactContext'] ?? false;
+    if (compactContext is! bool) {
+      throw const FormatException('compactContext must be a boolean');
+    }
     final directories = json['additionalDirectories'] ?? const <Object?>[];
     if (directories is! List || directories.any((path) => path is! String)) {
       throw const FormatException(
@@ -921,6 +936,7 @@ final class ExecuteRequest extends WorkerFrame {
           : WorkerSessionContext.fromJson(
               Map<String, Object?>.from(json['workerSession'] as Map)),
       additionalDirectories: List<String>.unmodifiable(directories),
+      compactContext: compactContext,
     );
   }
 }

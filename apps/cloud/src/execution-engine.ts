@@ -30,6 +30,7 @@ export interface WorkerStepExecutionInput {
     readonly sessionStrategy?: unknown;
     readonly number?: unknown;
     readonly adoptSpaceFolder?: boolean;
+    readonly compactContext?: boolean;
   };
 }
 
@@ -78,6 +79,9 @@ export function prepareWorkerStepExecution(
         : {}),
       ...(input.retry.adoptSpaceFolder === true
         ? { spaceFolderAdoptionConfirmed: true }
+        : {}),
+      ...(input.retry.compactContext === true
+        ? { contextCompaction: true }
         : {}),
       requestedByUserId: scope.requesterUserId,
       threadId: scope.threadId,

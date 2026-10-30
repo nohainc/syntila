@@ -7,6 +7,12 @@ import {
   type ContextWorkflowState,
   type WorkflowExecutionContext,
 } from "@syntila/core";
+/** Transport budget for one bootstrap, not a model context limit: the
+ * Worker's CLI reports a real overflow itself. Older history that does not
+ * fit is left out instead of failing the turn. */
+const MAX_BOOTSTRAP_ENTRIES = 1000;
+const MAX_BOOTSTRAP_BYTES = 256 * 1024;
+
 /** Syntila canonical history only. This contains no provider-native state. */
 export interface ConversationBootstrap {
   readonly schemaVersion: 1;
@@ -53,24 +59,6 @@ export async function loadConversationBootstrap(
     .bind(conversationId)
     .first<{ floor: number }>();
   const floorSequence = floor?.floor ?? 0;
-  const bounds = await db
-    .prepare(
-      `SELECT COUNT(*) AS count,
-    COALESCE(SUM(length(CAST(COALESCE(text,'') AS BLOB)) + length(CAST(metadata_json AS BLOB))),0) AS bytes
-    FROM conversation_history_entries h WHERE conversation_id = ?1 AND sequence <= ?2
-      AND sequence > ?4
-      AND (h.work_request_id IS NULL OR EXISTS (SELECT 1 FROM conversation_work_requests cr
-        WHERE cr.conversation_id = h.conversation_id AND cr.work_request_id = h.work_request_id AND cr.conversation_revision <= ?3 AND EXISTS
-          (SELECT 1 FROM work_requests wr JOIN threads t ON t.id = wr.thread_id
-           WHERE wr.id = cr.work_request_id AND wr.ai_context_generation = t.ai_context_generation)))`,
-    )
-    .bind(conversationId, throughSequence, contextRevision, floorSequence)
-    .first<{ count: number; bytes: number }>();
-  if (!bounds || bounds.count > 1000 || bounds.bytes > 256 * 1024) {
-    throw new ContextLimitError(
-      "Conversation bootstrap exceeds the history or byte limit",
-    );
-  }
   const result = await db
     .prepare(
       `SELECT sequence, kind, event_type AS eventType, actor_type AS actorType,
@@ -81,9 +69,15 @@ export async function loadConversationBootstrap(
       (SELECT 1 FROM conversation_work_requests cr WHERE cr.conversation_id = h.conversation_id AND cr.work_request_id = h.work_request_id AND cr.conversation_revision <= ?3 AND EXISTS
           (SELECT 1 FROM work_requests wr JOIN threads t ON t.id = wr.thread_id
            WHERE wr.id = cr.work_request_id AND wr.ai_context_generation = t.ai_context_generation)))
-    ORDER BY sequence LIMIT 1001`,
+    ORDER BY sequence DESC LIMIT ?5`,
     )
-    .bind(conversationId, throughSequence, contextRevision, floorSequence)
+    .bind(
+      conversationId,
+      throughSequence,
+      contextRevision,
+      floorSequence,
+      MAX_BOOTSTRAP_ENTRIES,
+    )
     .all<{
       sequence: number;
       contextRevision: number;
@@ -94,11 +88,17 @@ export async function loadConversationBootstrap(
       text: string | null;
       metadataJson: string;
     }>();
-  const entries = result.results ?? [];
-  if (entries.length > 1000)
-    throw new ContextLimitError(
-      "Conversation bootstrap exceeds the history limit",
-    );
+  // Newest first: keep the most recent entries that fit the byte budget.
+  const encoder = new TextEncoder();
+  const entries: NonNullable<typeof result.results> = [];
+  let entryBytes = 0;
+  for (const entry of result.results ?? []) {
+    entryBytes +=
+      encoder.encode(entry.text ?? "").byteLength +
+      encoder.encode(entry.metadataJson).byteLength;
+    if (entryBytes > MAX_BOOTSTRAP_BYTES) break;
+    entries.unshift(entry);
+  }
   const history = entries.map(({ metadataJson, ...entry }) => ({
     ...entry,
     metadata: JSON.parse(metadataJson) as Record<string, unknown>,
@@ -251,20 +251,39 @@ export async function loadConversationBootstrap(
           current.workflowId === "chat" ? [] : (artifacts.results ?? []),
       }
     : undefined;
-  const state = projectContextState(history, seed);
   const engine = new ContextEngine();
-  const input = {
-    conversationId,
-    contextRevision,
-    throughSequence,
-    history,
-    state,
-    workflowExecution,
+  // The engine refuses a document over the budget (recent turns repeat the
+  // newest history): null means it did not fit.
+  const render = (facts: ContextHistoryFact[]) => {
+    const input = {
+      conversationId,
+      contextRevision,
+      throughSequence,
+      history: facts,
+      state: projectContextState(facts, seed),
+      workflowExecution,
+      maxBytes: MAX_BOOTSTRAP_BYTES,
+    };
+    try {
+      return JSON.stringify(
+        mode === "stateless"
+          ? engine.stateless(input)
+          : engine.bootstrap(input),
+      );
+    } catch (error) {
+      if (error instanceof ContextLimitError) return null;
+      throw error;
+    }
   };
-  const text = JSON.stringify(
-    mode === "stateless" ? engine.stateless(input) : engine.bootstrap(input),
-  );
-  if (new TextEncoder().encode(text).byteLength > 256 * 1024)
+  // Drop the oldest half of the history until the context fits. Only the
+  // current Workflow's own state can still be too large on its own.
+  let kept = history;
+  let text = render(kept);
+  while (text === null && kept.length > 0) {
+    kept = kept.slice(Math.ceil(kept.length / 2));
+    text = render(kept);
+  }
+  if (text === null)
     throw new ContextLimitError(
       "Conversation bootstrap exceeds the byte limit",
     );

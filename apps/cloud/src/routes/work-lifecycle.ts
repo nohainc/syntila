@@ -43,6 +43,7 @@ import { createOrGetRun } from "./work-creation.js";
 import { MutationIdempotency } from "./mutation-idempotency.js";
 import { advanceThreadQueueSafely } from "./thread-request-queue.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
+import { workerProfileSupportsCompaction } from "../worker-profile-registry.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "../assignment-transitions.js";
 import {
   deriveRequestExecutionPhase,
@@ -201,7 +202,8 @@ export async function handleRetryWorkRequest(
             wa.acknowledged_at AS acknowledgedAt,
             wa.start_permit_issued_at AS startPermitIssuedAt,
             wa.start_permit_required AS startPermitRequired,
-            wa.running_at AS runningAt, wa.startup_stage AS startupStage
+            wa.running_at AS runningAt, wa.startup_stage AS startupStage,
+            wa.worker_type_id AS workerTypeId
        FROM workflow_tasks wt
        LEFT JOIN worker_assignments wa ON wa.id = (
          SELECT wa2.id FROM worker_assignments wa2
@@ -248,15 +250,39 @@ export async function handleRetryWorkRequest(
   const contextLimitExceeded =
     typeof failedTask.error === "string" &&
     canonicalExecutionErrorCode(failedTask.error) === "context_limit_exceeded";
-  if (contextLimitExceeded && body.clearAiHistory !== true)
+  // Over the context limit the user either clears AI History (a new session
+  // that keeps the latest answer) or compacts the Worker's own session.
+  // `clearAiHistory` is the older form of "clear".
+  const contextResolution =
+    body.contextResolution === "compact"
+      ? "compact"
+      : body.contextResolution === "clear" || body.clearAiHistory === true
+        ? "clear"
+        : null;
+  if (contextLimitExceeded && contextResolution === null)
     return json(
       {
         error: "clear_ai_history_required",
-        message: "Clear AI History to retry a request over the context limit.",
+        message:
+          "Clear AI History or compact the Worker session to retry a request over the context limit.",
       },
       { status: 409 },
     );
-  if (contextLimitExceeded) {
+  if (contextLimitExceeded && contextResolution === "compact") {
+    const unavailable = await contextCompactionUnavailable(env, {
+      workRequestId,
+      stepKind,
+      workerTypeId: failedTask.workerTypeId,
+    });
+    if (unavailable)
+      return json(
+        { error: "context_compaction_unavailable", message: unavailable },
+        { status: 409 },
+      );
+  }
+  const compactContext = contextLimitExceeded && contextResolution === "compact";
+  const clearAiHistory = contextLimitExceeded && !compactContext;
+  if (clearAiHistory) {
     const active = await env.SYNTILA_DB.prepare(
       "SELECT COUNT(*) AS count FROM work_requests WHERE thread_id = ?1 AND status IN ('queued', 'running', 'waiting')",
     )
@@ -268,10 +294,13 @@ export async function handleRetryWorkRequest(
         `Cannot clear history with ${active.count} active Work Request(s). Cancel first.`,
       );
   }
-  // Clearing always starts a new Worker session.
-  const retrySessionStrategy = contextLimitExceeded
+  // Clearing always starts a new Worker session; compacting must resume the
+  // session it compacts.
+  const retrySessionStrategy = clearAiHistory
     ? "fresh"
-    : body.sessionStrategy;
+    : compactContext
+      ? "resume"
+      : body.sessionStrategy;
   if (
     stepKind === "implement" &&
     retrySessionStrategy !== "resume" &&
@@ -345,6 +374,7 @@ export async function handleRetryWorkRequest(
       ...(stepKind === "implement" || contextLimitExceeded
         ? { sessionStrategy: retrySessionStrategy }
         : {}),
+      ...(contextLimitExceeded ? { contextResolution } : {}),
     },
   };
   const reservation = await env.SYNTILA_DB.prepare(
@@ -362,7 +392,7 @@ export async function handleRetryWorkRequest(
       // Over the context limit, AI History is cut off just before the latest
       // Worker answer that precedes this request, so the new session keeps
       // that answer and this request as its only context.
-      ...(contextLimitExceeded
+      ...(clearAiHistory
         ? [
             env.SYNTILA_DB.prepare(
               `UPDATE conversations SET context_floor_sequence = COALESCE(
@@ -396,7 +426,7 @@ export async function handleRetryWorkRequest(
         `UPDATE work_requests SET ai_context_generation =
         (SELECT ai_context_generation FROM threads WHERE id = ?1) WHERE id = ?2`,
       ).bind(String(row.threadId), workRequestId),
-      ...(contextLimitExceeded
+      ...(clearAiHistory
         ? [
             threadNotice(
               env,
@@ -477,8 +507,9 @@ export async function handleRetryWorkRequest(
     ...(errorCode === "space_folder_exists" && body.confirmSideEffects === true
       ? { retryAdoptSpaceFolder: true }
       : {}),
+    ...(compactContext ? { retryCompactContext: true } : {}),
   });
-  if (contextLimitExceeded) {
+  if (clearAiHistory) {
     await publishCollaborationEvent(
       env,
       "thread.work_cleared",
@@ -491,6 +522,42 @@ export async function handleRetryWorkRequest(
     { workRequestId, runId, stepKind, retryNumber, status: "queued" },
     { status: 202 },
   );
+}
+
+/**
+ * Why a Step that failed over the context limit cannot be compacted, or null
+ * when it can: the Worker's Profile must declare compaction, and an overflow
+ * that a compacting retry did not resolve can only be cleared.
+ */
+async function contextCompactionUnavailable(
+  env: SecurityEnv,
+  args: {
+    readonly workRequestId: string;
+    readonly stepKind: string;
+    readonly workerTypeId: unknown;
+  },
+): Promise<string | null> {
+  if (
+    typeof args.workerTypeId !== "string" ||
+    !(await workerProfileSupportsCompaction(env.SYNTILA_DB, args.workerTypeId))
+  )
+    return "This Worker cannot compact its session. Clear AI History instead.";
+  const latestRun = await env.SYNTILA_DB.prepare(
+    `SELECT policy_snapshot_json AS policySnapshotJson
+       FROM runs WHERE work_request_id = ?1
+      ORDER BY created_at DESC, id DESC LIMIT 1`,
+  )
+    .bind(args.workRequestId)
+    .first<{ policySnapshotJson: string | null }>();
+  const manualRetry = parseJson<{
+    manualRetry?: { stepKind?: unknown; contextResolution?: unknown };
+  }>(latestRun?.policySnapshotJson, {}).manualRetry;
+  if (
+    manualRetry?.stepKind === args.stepKind &&
+    manualRetry.contextResolution === "compact"
+  )
+    return "Compacting did not free enough context. Clear AI History instead.";
+  return null;
 }
 
 export async function handleGetWorkRequest(
@@ -771,6 +838,18 @@ export async function handleGetWorkRequest(
       ];
     })
     .map((step) => withConversationTurn(step, turns));
+  // Over the context limit, tell the client whether Compact is an option.
+  for (const step of steps) {
+    if (step.errorCode !== "context_limit_exceeded") continue;
+    Object.assign(step, {
+      contextCompactionAvailable:
+        (await contextCompactionUnavailable(env, {
+          workRequestId,
+          stepKind: step.kind,
+          workerTypeId: step.workerTypeId,
+        })) === null,
+    });
+  }
   const errorCode =
     [...steps]
       .reverse()

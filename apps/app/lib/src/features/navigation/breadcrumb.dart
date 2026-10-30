@@ -120,6 +120,7 @@ class AppBreadcrumb extends StatelessWidget {
           _breadcrumbText(compact ? 'Profile' : 'Profile & Security',
               isCurrent: true),
         ],
+      AxRouteKind.settings => [_breadcrumbText('Settings', isCurrent: true)],
       AxRouteKind.search => [
           _breadcrumbText('Search', isCurrent: true),
         ],

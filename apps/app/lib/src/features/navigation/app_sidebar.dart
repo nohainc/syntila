@@ -273,7 +273,10 @@ class AppSidebar extends StatelessWidget {
                     onReorderPinnedThreads: onReorderPinnedThreads,
                     compact: compact,
                     narrow: narrow,
-                    showRecentThreads: true,
+                    showRecentThreads:
+                        shellContext.viewPreferences.showRecentThreads,
+                    recentThreadsCount:
+                        shellContext.viewPreferences.recentThreadsCount,
                   ),
                 ),
               ),

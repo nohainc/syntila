@@ -355,6 +355,20 @@
       }
     ]
   },
+  "context": {
+    "overflow": {
+      "markers": [
+        "prompt is too long",
+        "context_length_exceeded",
+        "exceeds the context window",
+        "maximum context length",
+        "prompt token count"
+      ]
+    },
+    "compaction": {
+      "prompt": "/compact"
+    }
+  },
   "sandbox": {
     "mappings": {
       "restricted": ["--allow-tool", "write", "--deny-tool", "shell"],

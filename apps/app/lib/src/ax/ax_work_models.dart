@@ -437,6 +437,7 @@ class AxWorkRequestStep {
     this.failureCategoryMessage,
     this.retryAllowed = false,
     this.retryRequiresConfirmation = false,
+    this.contextCompactionAvailable = false,
   });
 
   final String kind;
@@ -476,6 +477,10 @@ class AxWorkRequestStep {
   /// Cloud's retry advice for a failed step.
   final bool retryAllowed;
   final bool retryRequiresConfirmation;
+
+  /// Over the context limit: the Worker can compact its session instead of
+  /// clearing AI History. Only the Work Request detail reports it.
+  final bool contextCompactionAvailable;
 
   /// The phase to render: Cloud's, or a status-derived fallback that never
   /// claims Running.
@@ -554,7 +559,8 @@ class AxWorkRequestStep {
           failureCategory: failureCategory,
           failureCategoryMessage: failureCategoryMessage,
           retryAllowed: retryAllowed,
-          retryRequiresConfirmation: retryRequiresConfirmation);
+          retryRequiresConfirmation: retryRequiresConfirmation,
+          contextCompactionAvailable: contextCompactionAvailable);
 
   factory AxWorkRequestStep.fromJson(Map<String, dynamic> json) =>
       AxWorkRequestStep(
@@ -591,6 +597,7 @@ class AxWorkRequestStep {
             (json['retry'] is Map) && (json['retry'] as Map)['allowed'] == true,
         retryRequiresConfirmation: (json['retry'] is Map) &&
             (json['retry'] as Map)['requiresConfirmation'] == true,
+        contextCompactionAvailable: json['contextCompactionAvailable'] == true,
       );
 }
 
@@ -1029,6 +1036,7 @@ abstract interface class AxDataSource {
     required String stepKind,
     String? sessionStrategy,
     bool clearAiHistory = false,
+    bool compactContext = false,
     bool confirmSideEffects = false,
   }) async =>
       throw UnimplementedError('Work Request retry is not available');

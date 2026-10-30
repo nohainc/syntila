@@ -682,28 +682,56 @@ extension _ThreadActions on _ThreadPageState {
     }
     if (!mounted) return;
     String? sessionStrategy;
-    final clearAiHistory = step.errorCode == 'context_limit_exceeded';
-    if (clearAiHistory) {
-      final confirmed = await showDialog<bool>(
+    var clearAiHistory = false;
+    var compactContext = false;
+    if (step.errorCode == 'context_limit_exceeded') {
+      // Only the Work Request detail says whether this Worker can compact
+      // its own session; without it, clearing is the one way forward.
+      var canCompact = false;
+      try {
+        final detail =
+            await dataSource.loadWorkRequest(workRequestId: workRequestId);
+        canCompact = detail.steps.any((candidate) =>
+            candidate.kind == step.kind &&
+            candidate.contextCompactionAvailable);
+      } catch (_) {}
+      if (!mounted) return;
+      final choice = await showDialog<String>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Clear AI History and retry?'),
-          content: const Text(
-            'Start a fresh AI session with the latest AI answer and this request. '
-            'Earlier AI context will be cleared. Your Conversation stays available.',
+          title: const Text('The conversation is too long'),
+          content: Text(
+            canCompact
+                ? 'It no longer fits the AI model\'s context window.\n\n'
+                    'Compact: the Worker summarizes its session and continues. '
+                    'Some earlier detail may be lost.\n\n'
+                    'Clear: start a fresh AI session with the latest AI answer '
+                    'and this request. Your Conversation stays available.'
+                : 'Start a fresh AI session with the latest AI answer and this request. '
+                    'Earlier AI context will be cleared. Your Conversation stays available.',
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Clear and retry')),
+            if (canCompact) ...[
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, 'clear'),
+                  child: const Text('Clear and retry')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, 'compact'),
+                  child: const Text('Compact and retry · Recommended')),
+            ] else
+              FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, 'clear'),
+                  child: const Text('Clear and retry')),
           ],
         ),
       );
-      if (confirmed != true || !mounted) return;
-      sessionStrategy = 'fresh';
+      if (choice == null || !mounted) return;
+      compactContext = choice == 'compact';
+      clearAiHistory = !compactContext;
+      sessionStrategy = compactContext ? 'resume' : 'fresh';
     } else if (step.kind == 'implement') {
       final resumeRecommended = const {
         'provider_unavailable',
@@ -753,6 +781,7 @@ extension _ThreadActions on _ThreadPageState {
         sessionStrategy: sessionStrategy,
         confirmSideEffects: confirmSideEffects,
         clearAiHistory: clearAiHistory,
+        compactContext: compactContext,
       );
       if (!mounted) return;
       if (clearAiHistory) unawaited(_refreshWorkTimeline());

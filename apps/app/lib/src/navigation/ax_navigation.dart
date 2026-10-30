@@ -11,6 +11,7 @@ enum AxRouteKind {
   archivedSpaces,
   workspaces,
   profileSecurity,
+  settings,
   login,
   search,
   desktopAuthApproval,
@@ -77,6 +78,8 @@ class AxNavigation {
           loginError: error,
         );
 
+  const AxNavigation.settings() : this._(kind: AxRouteKind.settings);
+
   const AxNavigation.profileSecurity()
       : this._(kind: AxRouteKind.profileSecurity);
 
@@ -127,6 +130,7 @@ class AxNavigation {
       return const AxNavigation.profileSecurity();
     }
     if (parts case ['spaces'] || ['spaces']) return const AxNavigation.spaces();
+    if (parts case ['settings']) return const AxNavigation.settings();
     if (parts case ['people']) return const AxNavigation.people();
     if (parts case ['notes']) return const AxNavigation.notes();
     if (parts case ['files']) return const AxNavigation.files();
@@ -212,6 +216,7 @@ class AxNavigation {
                 },
         ),
       AxRouteKind.profileSecurity => Uri(path: '/settings/profile'),
+      AxRouteKind.settings => Uri(path: '/settings'),
       AxRouteKind.search => Uri(
           path: '/search',
           queryParameters: (searchQuery != null && searchQuery!.isNotEmpty)

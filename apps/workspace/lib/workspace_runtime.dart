@@ -613,6 +613,10 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
             fullAccessAuthorized: worker.fullLocalAccessAuthorized,
           ),
           additionalDirectories: additionalDirectories,
+          // The user chose to compact the Worker session after a context
+          // overflow; Cloud sends this only for a durable-session retry.
+          compactContext: payload['contextCompaction'] == true &&
+              sessionPolicyValue == 'durable_session',
           onProgress: onProgress,
           onSlotReserved: onSlotReserved,
           authorizeStart: authorizeStart,

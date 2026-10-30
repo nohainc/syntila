@@ -914,6 +914,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     required String stepKind,
     String? sessionStrategy,
     bool clearAiHistory = false,
+    bool compactContext = false,
     bool confirmSideEffects = false,
   }) async {
     final response = await client.post(
@@ -924,6 +925,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
         if (sessionStrategy != null) 'sessionStrategy': sessionStrategy,
         if (confirmSideEffects) 'confirmSideEffects': true,
         if (clearAiHistory) 'clearAiHistory': true,
+        if (compactContext) 'contextResolution': 'compact',
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {

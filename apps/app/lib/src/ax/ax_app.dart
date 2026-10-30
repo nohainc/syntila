@@ -16,6 +16,8 @@ import '../notifications/browser_alerts.dart';
 import '../notifications/notification_models.dart';
 import '../platform/platform_services.dart';
 import '../platform/theme_preference.dart';
+import '../platform/view_preferences.dart';
+import '../features/settings/settings_page.dart';
 import '../realtime/realtime_client.dart';
 import '../brand.dart';
 import '../features/common/toast_overlay.dart';
@@ -58,8 +60,10 @@ class SyntilaAppShell extends StatefulWidget {
       this.initialUri,
       this.browserNavigation,
       this.realtimeClient,
-      this.themePreference});
+      this.themePreference,
+      this.viewPreferencesStore});
   final ThemePreference? themePreference;
+  final ViewPreferencesStore? viewPreferencesStore;
   final PlatformServices services;
   final AxDataSource dataSource;
   final Uri? initialUri;

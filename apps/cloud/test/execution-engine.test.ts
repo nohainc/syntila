@@ -98,3 +98,34 @@ it("execution evidence produces the generic result consumed by workflow planning
     }),
   ).toThrow(/final answer/);
 });
+
+it("a compacting retry resumes the same session and asks the Worker to compact it", () => {
+  const input = {
+    taskId: "task",
+    step: BUILTIN_WORKFLOWS.direct.steps[0]!,
+    bindingId: "direct" as const,
+    binding: { workerId: "worker-a" },
+    prompt: "Implement this",
+    workerInput: {},
+    scope: {
+      spaceId: "P",
+      requesterUserId: "U",
+      threadId: "W",
+      workRequestId: "R",
+    },
+    retry: {},
+  };
+  const original = prepareWorkerStepExecution(input);
+  const compacting = prepareWorkerStepExecution({
+    ...input,
+    retry: {
+      stepKind: "implement",
+      sessionStrategy: "resume",
+      number: 1,
+      compactContext: true,
+    },
+  });
+  expect(original.task).not.toHaveProperty("contextCompaction");
+  expect(compacting.task.contextCompaction).toBe(true);
+  expect(compacting.task.sessionKey).toBe(original.task.sessionKey);
+});

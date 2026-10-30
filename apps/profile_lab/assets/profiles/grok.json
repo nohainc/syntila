@@ -302,6 +302,19 @@
       }
     ]
   },
+  "context": {
+    "overflow": {
+      "markers": [
+        "context_length_exceeded",
+        "model_context_window_exceeded",
+        "exceed_context_size_error",
+        "Context window full"
+      ]
+    },
+    "compaction": {
+      "prompt": "/compact"
+    }
+  },
   "sandbox": {
     "mappings": {
       "restricted": ["--sandbox", "workspace", "--permission-mode", "dontAsk"],

@@ -431,6 +431,15 @@
       }
     ]
   },
+  "context": {
+    "overflow": {
+      "markers": [
+        "ran out of room in the model's context window",
+        "context_window_exceeded",
+        "exceeds the context window"
+      ]
+    }
+  },
   "execution": {
     "arguments": [
       {

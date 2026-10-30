@@ -9,12 +9,27 @@ class RetrySource extends AxFixtureDataSource {
   RetrySource(
       {required this.allowed,
       required this.confirmation,
-      this.contextLimit = false});
+      this.contextLimit = false,
+      this.compactable = false});
   final bool allowed;
   final bool confirmation;
   final bool contextLimit;
+  final bool compactable;
   final resets = <bool>[];
+  final compactions = <bool>[];
   final approvals = <bool>[];
+
+  @override
+  Future<AxWorkRequestStatus> loadWorkRequest(
+          {required String workRequestId}) async =>
+      AxWorkRequestStatus(id: workRequestId, status: 'failed', steps: [
+        AxWorkRequestStep(
+            kind: 'verify',
+            status: 'failed',
+            workerId: 'worker',
+            errorCode: 'context_limit_exceeded',
+            contextCompactionAvailable: compactable)
+      ]);
 
   @override
   Future<List<AxWorkRequest>> workRequestRows(
@@ -50,12 +65,15 @@ class RetrySource extends AxFixtureDataSource {
       required String stepKind,
       String? sessionStrategy,
       bool clearAiHistory = false,
+      bool compactContext = false,
       bool confirmSideEffects = false}) async {
     expect(workRequestId, 'request');
     expect(stepKind, 'verify');
     approvals.add(confirmSideEffects);
     resets.add(clearAiHistory);
+    compactions.add(compactContext);
     if (clearAiHistory) expect(sessionStrategy, 'fresh');
+    if (compactContext) expect(sessionStrategy, 'resume');
   }
 }
 
@@ -89,7 +107,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Retry').last);
     await tester.pumpAndSettle();
-    expect(find.text('Clear AI History and retry?'), findsOneWidget);
+    expect(find.text('The conversation is too long'), findsOneWidget);
+    // This Worker cannot compact, so clearing is the only offer.
+    expect(find.textContaining('Compact'), findsNothing);
     expect(source.resets, isEmpty);
     await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
     await tester.pumpAndSettle();
@@ -99,6 +119,27 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Clear and retry'));
     await tester.pumpAndSettle();
     expect(source.resets, [true]);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('context limit offers compaction when the Worker supports it',
+      (tester) async {
+    final source = RetrySource(
+        allowed: true,
+        confirmation: false,
+        contextLimit: true,
+        compactable: true);
+    await tester.pumpWidget(page(source));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Retry').last);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextButton, 'Clear and retry'), findsOneWidget);
+    await tester.tap(
+        find.widgetWithText(FilledButton, 'Compact and retry · Recommended'));
+    await tester.pumpAndSettle();
+    expect(source.compactions, [true]);
+    expect(source.resets, [false]);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 5));
   });

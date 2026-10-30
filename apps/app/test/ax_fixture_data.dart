@@ -105,6 +105,7 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
     required String stepKind,
     String? sessionStrategy,
     bool clearAiHistory = false,
+    bool compactContext = false,
     bool confirmSideEffects = false,
   }) async {}
 

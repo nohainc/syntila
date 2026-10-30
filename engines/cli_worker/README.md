@@ -77,6 +77,40 @@ immutable. Apply the mappings to the Worker's current Profile through Profile
 Lab and publish a new signed revision, then use the updated Engine for expanded
 text classification. No protocol/schema migration is needed.
 
+### Context overflow and compaction
+
+A Profile's optional `context` block describes how its CLI handles a full
+context window:
+
+- `overflow.markers`: case-insensitive text the CLI reports when the
+  conversation no longer fits. It is matched against stderr, the provider error
+  and the terminal status of a failed run only, never against an answer, and
+  fails the run with `context_limit_exceeded`. The native session is kept.
+- `autoCompaction.arguments`: arguments that keep the CLI's own automatic
+  compaction on, placed by an `autoCompactionArguments` execution argument.
+- `compaction.prompt` (and optional `compaction.arguments`): how to compact the
+  resumed native session on demand. When an execution request carries
+  `compactContext`, the Engine first sends this prompt to the prior session and
+  then runs the step prompt; a failed compaction stops with
+  `context_limit_exceeded` before the prompt runs.
+
+Starter support, checked against the installed CLIs on 2026-10-31:
+
+| Worker | Overflow text | Auto-compaction | On-demand compaction |
+| --- | --- | --- | --- |
+| Claude Code 2.1.308 | `Prompt is too long` | `--autocompact auto` | `/compact` (verified) |
+| Codex 0.160.0 | `ran out of room in the model's context window` | CLI default | not supported: `codex exec` sends `/compact` to the model |
+| Copilot CLI 1.0.105 | generic markers | CLI default (about 80%) | `/compact` (verified) |
+| Grok 1.0.67 | `context_length_exceeded` | CLI default (85%, `config.toml` only) | `/compact` (verified) |
+| agy 1.4.12 | generic Gemini markers | CLI default | `/compact` without `--disable-slash-commands` (accepted; not verified end to end) |
+
+Engines before this change reject a Profile with a `context` block. Publish
+such a Profile only after Workspaces run an Engine that understands it.
+
+Cloud no longer fails a turn because the canonical history exceeds its own
+bootstrap budget (1000 entries, 256 KB): older history is left out instead, and
+only the CLI's own overflow report stops a run.
+
 ### Per-prompt execution
 
 An assignment sends the prompt straight to the provider CLI. The Engine runs no

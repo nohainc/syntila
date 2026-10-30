@@ -33,7 +33,7 @@ const _topLevelKeys = {
   'errors',
   'compatibilityOverrides',
 };
-const _optionalTopLevelKeys = {'activity', 'usage'};
+const _optionalTopLevelKeys = {'activity', 'usage', 'context'};
 
 class EngineProfile {
   EngineProfile._({
@@ -65,6 +65,11 @@ class EngineProfile {
   /// Optional Profile-owned command whose raw output reports provider usage.
   Map<String, Object?>? get usage =>
       json['usage'] == null ? null : _object(json['usage'], 'usage');
+
+  /// Optional description of how the provider CLI reports and manages a full
+  /// context window: overflow markers, automatic and on-demand compaction.
+  Map<String, Object?> get context =>
+      json['context'] == null ? const {} : _object(json['context'], 'context');
 
   /// Materializes the one provider-version override selected by the detected
   /// CLI version. Overlapping overrides are rejected during parsing, so this
@@ -299,6 +304,7 @@ class EngineProfile {
     _validateRules(progress, 'progress', 64, requireActions: false);
     _validateActivityMappings(json['activity']);
     _validateUsageCommand(json['usage']);
+    _validateContextManagement(json['context']);
     _validateErrorRules(errors['mappings']);
     _validateConfigChecks(passive['configChecks']);
     final session = _object(json['session'], 'session');
@@ -466,6 +472,7 @@ bool _validArgument(Object? item) {
     'modelArguments',
     'sessionResumeArguments',
     'providerTimeoutArguments',
+    'autoCompactionArguments',
     'ifPresent',
     'ifAbsent',
     'ifSessionPolicy',
@@ -687,6 +694,58 @@ void _validateCompatibilityOverrides(Object? value) {
       _validateErrorRules(raw['errorMappings']);
     }
     _validateActivityMappings(raw['activity']);
+  }
+}
+
+void _validateContextManagement(Object? value) {
+  if (value == null) return;
+  if (value is! Map) {
+    throw const FormatException('context must be an object');
+  }
+  final context = Map<String, Object?>.from(value);
+  _expectOnly(
+      context, const {'overflow', 'autoCompaction', 'compaction'}, 'context');
+  final overflow = context['overflow'];
+  if (overflow != null) {
+    final section = _object(overflow, 'context.overflow');
+    _expectOnly(section, const {'markers'}, 'context.overflow');
+    final markers = _strings(section['markers'], 'context.overflow.markers');
+    if (markers.isEmpty ||
+        markers.length > 16 ||
+        markers.any((marker) => marker.trim().isEmpty || marker.length > 160)) {
+      throw const FormatException('context.overflow.markers are invalid');
+    }
+  }
+  final autoCompaction = context['autoCompaction'];
+  if (autoCompaction != null) {
+    final section = _object(autoCompaction, 'context.autoCompaction');
+    _expectOnly(section, const {'arguments'}, 'context.autoCompaction');
+    final arguments = section['arguments'];
+    if (arguments is! List || arguments.isEmpty) {
+      throw const FormatException(
+          'context.autoCompaction.arguments are invalid');
+    }
+    _validateArgumentStrings(
+      arguments,
+      'context.autoCompaction.arguments',
+      max: 128,
+    );
+  }
+  final compaction = context['compaction'];
+  if (compaction != null) {
+    final section = _object(compaction, 'context.compaction');
+    _expectOnly(section, const {'prompt', 'arguments'}, 'context.compaction');
+    final prompt = section['prompt'];
+    if (prompt is! String || prompt.trim().isEmpty || prompt.length > 160) {
+      throw const FormatException('context.compaction.prompt is invalid');
+    }
+    final arguments = section['arguments'];
+    if (arguments != null &&
+        (arguments is! List ||
+            arguments.length > 128 ||
+            arguments.any((item) => !_validArgument(item)))) {
+      throw const FormatException('context.compaction.arguments are invalid');
+    }
   }
 }
 

@@ -13,7 +13,7 @@ String _modelDisplayName(String? modelId, {AxWorker? worker}) {
 String _executionFailureMessage(String? code, {String? validationMessage}) =>
     switch (code) {
       'context_limit_exceeded' =>
-        'This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.',
+        'This conversation no longer fits the AI model’s context window. Retry to compact the Worker session or to clear AI History.',
       'session_resume_failed' =>
         'The worker could not continue the previous conversation. Please retry your request.',
       'worker_not_ready' =>
@@ -1213,8 +1213,6 @@ class AxWorkerUsagePanel extends StatelessWidget {
                   constraints:
                       attached ? const BoxConstraints(minHeight: 34) : null,
                   child: Row(children: [
-                    const Icon(Icons.speed, size: 16),
-                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         '${controller.workerName ?? 'Worker'} usage',
@@ -1222,11 +1220,6 @@ class AxWorkerUsagePanel extends StatelessWidget {
                             fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                     ),
-                    if (report?.fetchedAt != null && !controller.loading)
-                      Text(
-                        'as of ${TimeOfDay.fromDateTime(report!.fetchedAt!.toLocal()).format(context)}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
                     if (parsed != null && !controller.loading)
                       Padding(
                         padding: const EdgeInsets.only(left: 10),
@@ -1246,10 +1239,9 @@ class AxWorkerUsagePanel extends StatelessWidget {
                     IconButton(
                       tooltip: 'Refresh usage',
                       padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                      constraints:
-                          const BoxConstraints.tightFor(width: 28, height: 28),
-                      icon: const Icon(Icons.refresh, size: 16),
+                      style: composerIconButtonStyle(),
+                      constraints: composerButtonConstraints,
+                      icon: const Icon(Icons.refresh, size: composerIconSize),
                       onPressed: controller.loading ? null : onRefresh,
                     ),
                     if (!attached)
@@ -1362,7 +1354,7 @@ class _UsageTable extends StatelessWidget {
   /// Width of the label column: the widest label of this report, measured with
   /// the displayed font and text scale, plus a gap. Each Worker reports
   /// different labels, so a fixed width either wastes space or wraps. Capped
-  /// at 40% of the row so the bars keep room on narrow screens.
+  /// at 40% of the row so the other columns retain room on narrow screens.
   double _labelWidth(BuildContext context, double maxWidth) {
     final scaler = MediaQuery.textScalerOf(context);
     final style = DefaultTextStyle.of(context).style.merge(_labelStyle);
@@ -1382,11 +1374,37 @@ class _UsageTable extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-      builder: (context, constraints) =>
-          _build(context, _labelWidth(context, constraints.maxWidth)));
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, constraints) {
+        final labelWidth = _labelWidth(context, constraints.maxWidth);
+        final style = DefaultTextStyle.of(context)
+            .style
+            .merge(Theme.of(context).textTheme.bodySmall);
+        var resetWidth = 0.0;
+        for (final window in usage.windows) {
+          final painter = TextPainter(
+            text: TextSpan(text: usageResetLabel(window, now), style: style),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+            maxLines: 1,
+          )..layout();
+          if (painter.width > resetWidth) resetWidth = painter.width;
+          painter.dispose();
+        }
+        // Reserve room for a useful bar, then give reset text all the room
+        // it needs up to the space available beside that bar.
+        resetWidth = resetWidth.ceilToDouble();
+        final availableResetWidth =
+            (constraints.maxWidth - labelWidth - 84 - 8 - 40)
+                .clamp(0.0, double.infinity);
+        final showBars = availableResetWidth >= resetWidth.clamp(0, 120);
+        resetWidth = resetWidth.clamp(0, availableResetWidth);
+        return _build(context, labelWidth,
+            showBars: showBars, resetWidth: resetWidth);
+      });
 
-  Widget _build(BuildContext context, double labelWidth) {
+  Widget _build(BuildContext context, double labelWidth,
+      {required bool showBars, required double resetWidth}) {
     final small = Theme.of(context).textTheme.bodySmall;
     final dark = Theme.of(context).brightness == Brightness.dark;
     String? group;
@@ -1409,26 +1427,34 @@ class _UsageTable extends StatelessWidget {
               key: const ValueKey('worker-usage-label'),
               width: labelWidth,
               child: Text(window.label, style: _labelStyle)),
-          Expanded(
-            child: LinearProgressIndicator(
-                value: (window.usedPercent / 100).clamp(0.0, 1.0),
-                color: SyntilaColors.primaryForeground(dark),
-                backgroundColor: SyntilaColors.surfaceHover(dark),
-                stopIndicatorColor: Colors.transparent,
-                minHeight: 6,
-                semanticsLabel: '${window.group ?? ''} ${window.label} usage',
-                semanticsValue: '${window.usedPercent.round()}%'),
-          ),
+          if (showBars)
+            Expanded(
+              child: LinearProgressIndicator(
+                  value: (window.usedPercent / 100).clamp(0.0, 1.0),
+                  color: SyntilaColors.primaryForeground(dark),
+                  backgroundColor: SyntilaColors.surfaceHover(dark),
+                  stopIndicatorColor: Colors.transparent,
+                  minHeight: 6,
+                  semanticsLabel: '${window.group ?? ''} ${window.label} usage',
+                  semanticsValue: '${window.usedPercent.round()}%'),
+            ),
           SizedBox(
             width: 84,
             child: Text('${window.usedPercent.round()}% used',
                 textAlign: TextAlign.end, style: const TextStyle(fontSize: 12)),
           ),
           const SizedBox(width: 8),
-          Flexible(
-              flex: 2,
+          if (showBars)
+            SizedBox(
+              width: resetWidth,
               child: Text(usageResetLabel(window, now),
-                  overflow: TextOverflow.ellipsis, style: small)),
+                  overflow: TextOverflow.ellipsis, style: small),
+            )
+          else
+            Flexible(
+              child: Text(usageResetLabel(window, now),
+                  overflow: TextOverflow.ellipsis, style: small),
+            ),
         ]),
       ));
     }
@@ -2216,22 +2242,6 @@ class _WorkTimelineCard extends StatelessWidget {
                                         onPressed: () =>
                                             onCancelRun!(request.id),
                                       ),
-                                    // Cloud accepted it; shown until a
-                                    // Worker starts, then progress takes over.
-                                    if (request.status == 'queued') ...[
-                                      Tooltip(
-                                        message:
-                                            'Received by Syntila, waiting for a Worker',
-                                        child: ActionStatusChip(
-                                          key: ValueKey(
-                                              'work-request-status-${request.id}'),
-                                          status: axWorkRequestStatus(
-                                              request.status),
-                                          kind: AxActionKind.workRequest,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                    ],
                                     if (reportedIssue != null)
                                       Text('Reported',
                                           style: TextStyle(

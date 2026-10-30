@@ -156,6 +156,8 @@ export interface TaskToDispatch {
    * folder for this Space. Only set by an explicit retry after
    * `space_folder_exists`. */
   readonly spaceFolderAdoptionConfirmed?: boolean;
+  /** Compact the resumed Worker session before running this task. */
+  readonly contextCompaction?: boolean;
   readonly requestedByUserId?: string;
   readonly model?: string;
   readonly reasoningEffort?: string;
@@ -525,6 +527,9 @@ async function dispatchWorkspaceWorkerAssignment(
         : {}),
       ...(task.spaceFolderAdoptionConfirmed === true
         ? { spaceFolderAdoptionConfirmed: true }
+        : {}),
+      ...(task.contextCompaction === true && sessionPolicy === "durable_session"
+        ? { contextCompaction: true }
         : {}),
       runId,
       taskId,

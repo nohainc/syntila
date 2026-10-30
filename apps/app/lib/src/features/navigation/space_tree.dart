@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/semantics.dart';
 
 import '../../brand.dart';
+import '../../platform/view_preferences.dart';
 import '../../navigation/ax_navigation.dart';
 import '../../ax/ax_models.dart';
 import 'ax_shell_context.dart';
@@ -48,6 +49,7 @@ class SpaceTree extends StatelessWidget {
     this.onOpenInvitations,
     this.narrow = false,
     this.showRecentThreads = false,
+    this.recentThreadsCount = ViewPreferences.defaultRecentThreadsCount,
   });
 
   final AxShellContext shellContext;
@@ -82,6 +84,7 @@ class SpaceTree extends StatelessWidget {
   final VoidCallback? onOpenInvitations;
   final bool narrow;
   final bool showRecentThreads;
+  final int recentThreadsCount;
 
   @override
   Widget build(BuildContext context) {
@@ -146,6 +149,7 @@ class SpaceTree extends StatelessWidget {
       children: [
         if (showRecentThreads)
           _RecentThreadsSection(
+            limit: recentThreadsCount,
             spaces: shellContext.spaces,
             spaceThreads: shellContext.spaceThreads,
             threadsBySpace: shellContext.threadsBySpace,
@@ -1050,7 +1054,7 @@ Widget _sidebarGroupLabel(BuildContext context, String label) => Text(
       ),
     );
 
-/// The eight most recently active Threads across every visible Space.
+/// The most recently active Threads (up to the user's limit) across every visible Space.
 ///
 /// This projection ensures the lightweight per-Space Thread lists and watches
 /// their shared cache, so activity can reorder shortcuts without requiring a
@@ -1061,8 +1065,10 @@ class _RecentThreadsSection extends StatefulWidget {
     required this.spaceThreads,
     required this.threadsBySpace,
     required this.buildThreadRow,
+    required this.limit,
   });
 
+  final int limit;
   final List<AxSpace> spaces;
   final AxSpaceThreads? spaceThreads;
   final Map<String, List<AxThread>> threadsBySpace;
@@ -1157,7 +1163,7 @@ class _RecentThreadsSectionState extends State<_RecentThreadsSection> {
       final bySpace = left.$1.id.compareTo(right.$1.id);
       return bySpace != 0 ? bySpace : left.$2.id.compareTo(right.$2.id);
     });
-    return items.take(8).toList(growable: false);
+    return items.take(widget.limit).toList(growable: false);
   }
 
   @override

@@ -154,6 +154,17 @@ class GlobalAppMenu extends StatelessWidget {
         divider(),
 
         // 2. Preferences
+        MenuItemButton(
+          key: const ValueKey('menu-settings'),
+          style: itemStyle(),
+          leadingIcon: Icon(Icons.tune_rounded, size: 16, color: menuIconColor),
+          onPressed: () {
+            onNavigateTo(const AxNavigation.settings());
+            if (compact) Scaffold.maybeOf(context)?.closeDrawer();
+          },
+          child: const Text('Settings',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500)),
+        ),
         SubmenuButton(
           style: itemStyle(),
           menuStyle: menuStyle,

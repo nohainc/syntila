@@ -428,7 +428,7 @@ void main() {
             : code == 'quota_exhausted'
                 ? 'The provider’s usage limit has been reached. Wait for the limit to reset or choose another worker, then retry.'
                 : code == 'context_limit_exceeded'
-                    ? 'This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.'
+                    ? 'This conversation no longer fits the AI model’s context window. Retry to compact the Worker session or to clear AI History.'
                     : 'Your request could not be completed. Send a new message to try again.';
         expect(find.text(friendly), findsOneWidget);
         expect(find.textContaining('C123'), findsNothing);

@@ -233,6 +233,40 @@
       }
     ]
   },
+  "context": {
+    "overflow": {
+      "markers": [
+        "prompt is too long",
+        "exceeds the maximum number of tokens",
+        "input token count",
+        "context_length_exceeded"
+      ]
+    },
+    "compaction": {
+      "prompt": "/compact",
+      "arguments": [
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        {
+          "sandboxPolicyMapping": true
+        },
+        {
+          "providerTimeoutArguments": true
+        },
+        {
+          "sessionResumeArguments": true
+        },
+        {
+          "modelArguments": true
+        },
+        {
+          "forEachAdditionalDirectory": ["--add-dir", "{{additionalDirectory}}"]
+        }
+      ]
+    }
+  },
   "execution": {
     "arguments": [
       "--disable-slash-commands",

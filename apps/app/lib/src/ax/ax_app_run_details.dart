@@ -30,6 +30,11 @@ extension _AxAppRunDetails on _AxAppStateMixin {
         return _workspacesView();
       case AxRouteKind.profileSecurity:
         return _profileSecurityView();
+      case AxRouteKind.settings:
+        return SettingsPage(
+          preferences: _viewPreferences,
+          onChanged: _setViewPreferences,
+        );
       case AxRouteKind.spaces:
         return _homeView();
       case AxRouteKind.space:

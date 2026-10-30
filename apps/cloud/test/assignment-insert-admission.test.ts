@@ -103,9 +103,12 @@ async function fixture() {
   };
 }
 
-it.each([140 * 1024, 300 * 1024])(
-  "rejects oversized canonical context (%i bytes) before creating an assignment",
-  async (bytes) => {
+it.each([
+  [60 * 1024, true],
+  [300 * 1024, false],
+])(
+  "keeps a %i byte history entry in context: %s, and dispatches either way",
+  async (bytes, kept) => {
     const f = await fixture();
     try {
       const conversation = f.sqlite
@@ -125,19 +128,16 @@ it.each([140 * 1024, 300 * 1024])(
         workRequestId: "R",
         baseContextRevision: 0,
       });
+      // History over the transport budget is left out, never a failure: the
+      // Worker's CLI reports a real context overflow itself.
       const result = await f.dispatch();
-      expect(result).toMatchObject({
-        accepted: false,
-        status: "failed",
-        assignmentId: "",
-      });
-      expect(result.error).toBe("context_limit_exceeded");
-      expect(
-        f.sqlite
-          .prepare("SELECT COUNT(*) AS count FROM worker_assignments")
-          .get()!.count,
-      ).toBe(0);
-      expect(f.fetch).not.toHaveBeenCalled();
+      expect(result.accepted).toBe(true);
+      const payload = JSON.parse(String(f.fetch.mock.calls[0]?.[1]?.body));
+      const context = JSON.stringify(payload.payload);
+      expect(context.includes("x".repeat(1024))).toBe(kept);
+      expect(new TextEncoder().encode(context).byteLength).toBeLessThanOrEqual(
+        256 * 1024,
+      );
     } finally {
       f.sqlite.close();
     }

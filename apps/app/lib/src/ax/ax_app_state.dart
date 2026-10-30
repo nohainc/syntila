@@ -149,6 +149,8 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   String? accountUnlinkError;
   late final ThemePreference _themePreference;
   ThemeMode _themeMode = ThemeMode.system;
+  late final ViewPreferencesStore _viewPreferencesStore;
+  ViewPreferences _viewPreferences = const ViewPreferences();
   bool _desktopSidebarCollapsed = false;
   double _desktopSidebarWidth = ResizableSidebar.minWidth;
   final _mobileSpacesScroll = ScrollController();
@@ -297,6 +299,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
             (_themeMode == ThemeMode.system &&
                 Theme.of(context).brightness == Brightness.dark),
         themeMode: _themeMode,
+        viewPreferences: _viewPreferences,
         realtimeStale: realtimeStale,
         realtimeListenable: store.realtimeStatus,
         realtimeNotice: realtimeNotice,
@@ -425,6 +428,9 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
     super.initState();
     _themePreference = widget.themePreference ?? createThemePreference();
     _themeMode = _themePreference.load();
+    _viewPreferencesStore =
+        widget.viewPreferencesStore ?? createViewPreferencesStore();
+    _viewPreferences = _viewPreferencesStore.load();
     store = AxStore(widget.dataSource);
     store.spaces.addListener(_restoreSidebarExpansion);
     store.invitations.addListener(_onInvitationsChanged);

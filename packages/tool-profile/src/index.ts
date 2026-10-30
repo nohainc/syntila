@@ -20,6 +20,7 @@ export const TOOL_PROFILE_LIMITS = Object.freeze({
   environmentNames: 64,
   configChecks: 8,
   configFileBytes: 64 * 1024,
+  contextOverflowMarkers: 16,
 });
 
 const boundedString = z.string().min(1).max(TOOL_PROFILE_LIMITS.stringLength);
@@ -48,6 +49,7 @@ const issueCode = z.enum([
   "deadline_exceeded",
   "cancelled",
   "session_resume_failed",
+  "context_limit_exceeded",
   "provider_failure",
 ]);
 const stderrPatternId = z.enum([
@@ -60,6 +62,7 @@ const stderrPatternId = z.enum([
   "permission_denied",
   "quota_exhausted",
   "provider_unavailable",
+  "context_limit_exceeded",
   "provider_failure",
 ]);
 const selector = z
@@ -239,6 +242,8 @@ const argument = z.union([
   z.object({ modelArguments: z.literal(true) }).strict(),
   z.object({ sessionResumeArguments: z.literal(true) }).strict(),
   z.object({ providerTimeoutArguments: z.literal(true) }).strict(),
+  // Expands to `context.autoCompaction.arguments`, or nothing.
+  z.object({ autoCompactionArguments: z.literal(true) }).strict(),
   // Repeats these values once per Workspace-verified additional folder, for
   // example ["--add-dir", "{{additionalDirectory}}"].
   z
@@ -501,6 +506,48 @@ const errorMapping = z
         .strict(),
     ]),
     issueCode,
+  })
+  .strict();
+
+// How a provider CLI reports and manages a full context window.
+const contextManagement = z
+  .object({
+    // Case-insensitive literal text the CLI reports when the conversation no
+    // longer fits the model's context window. Matched against stderr, the
+    // provider error and the terminal status of a failed run only.
+    overflow: z
+      .object({
+        markers: z
+          .array(shortString.max(160))
+          .min(1)
+          .max(TOOL_PROFILE_LIMITS.contextOverflowMarkers),
+      })
+      .strict()
+      .optional(),
+    // Arguments that keep the CLI's own automatic compaction on for every
+    // run, placed by an `autoCompactionArguments` execution argument.
+    autoCompaction: z
+      .object({
+        arguments: z
+          .array(templatedString)
+          .min(1)
+          .max(TOOL_PROFILE_LIMITS.arguments),
+      })
+      .strict()
+      .optional(),
+    // Compacts the resumed native session on demand: the prompt (for example
+    // "/compact") is sent to the session in place of the step prompt, with
+    // `arguments` replacing the execution arguments when set.
+    compaction: z
+      .object({
+        prompt: shortString.max(160),
+        arguments: z
+          .array(argument)
+          .max(TOOL_PROFILE_LIMITS.arguments)
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -815,6 +862,7 @@ const profileSchema = z
         mappings: z.array(errorMapping).max(TOOL_PROFILE_LIMITS.errorMappings),
       })
       .strict(),
+    context: contextManagement.optional(),
     compatibilityOverrides: z
       .array(
         z
@@ -1105,6 +1153,7 @@ export const toolProfileV1Schema = profileSchema.superRefine((profile, ctx) => {
         profile.model.supported && profile.model.arguments.length > 0 ? 1 : 0,
       sessionResumeArguments: profile.session.supported ? 1 : 0,
       providerTimeoutArguments: 1,
+      autoCompactionArguments: profile.context?.autoCompaction ? 1 : 0,
     };
     for (const [key, occurrences] of Object.entries(expected)) {
       if (count(key) !== occurrences)
@@ -1137,6 +1186,18 @@ export const toolProfileV1Schema = profileSchema.superRefine((profile, ctx) => {
     "execution",
     "arguments",
   ]);
+  if (profile.context?.compaction?.arguments)
+    validateArgumentSlots(profile.context.compaction.arguments, [
+      "context",
+      "compaction",
+      "arguments",
+    ]);
+  if (profile.context?.compaction && !profile.session.supported)
+    ctx.addIssue({
+      code: "custom",
+      path: ["context", "compaction"],
+      message: "Compaction requires supported sessions",
+    });
   profile.compatibilityOverrides.forEach((override, index) => {
     if (override.executionArguments)
       validateArgumentSlots(override.executionArguments, [

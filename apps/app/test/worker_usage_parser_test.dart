@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/features/spaces/spaces_pages.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:syntila_design/syntila_design.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -320,14 +321,20 @@ void main() {
         home: Scaffold(
             body: AxWorkerUsagePanel(controller: ok, onRefresh: () {}))));
     expect(find.byKey(const ValueKey('worker-usage-table')), findsOneWidget);
+    expect(find.byIcon(Icons.speed), findsNothing);
+    expect(find.text('Worker usage'), findsOneWidget);
     expect(find.textContaining('Plan:'), findsNothing);
     final original = find.text('Original');
     expect(find.ancestor(of: original, matching: find.byType(TextButton)),
         findsNothing);
     final timestamp = find.textContaining('as of ');
-    expect(timestamp, findsOneWidget);
-    expect(tester.widget<Text>(original).style,
-        tester.widget<Text>(timestamp).style);
+    expect(timestamp, findsNothing);
+    final refresh = tester.widget<IconButton>(find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == 'Refresh usage'));
+    expect(refresh.constraints,
+        const BoxConstraints.tightFor(width: 32, height: 32));
+    expect((refresh.icon as Icon).size, 20);
+    expect(refresh.style!.shape!.resolve({}), isA<RoundedRectangleBorder>());
     expect(tester.widget<Text>(original).style,
         Theme.of(tester.element(original)).textTheme.bodySmall);
 
@@ -337,6 +344,31 @@ void main() {
         .first;
     expect(bar.color, SyntilaColors.primaryForeground(false));
     expect(bar.backgroundColor, SyntilaColors.surfaceHoverLight);
+    expect(find.textContaining('Resets in'), findsWidgets);
+    for (final element in find.textContaining('Resets in').evaluate()) {
+      final paragraph = element.renderObject! as RenderParagraph;
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(paragraph.size.width, greaterThan(120));
+    }
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                    width: 400,
+                    child: AxWorkerUsagePanel(
+                        controller: ok, onRefresh: () {}))))));
+    expect(find.byType(LinearProgressIndicator), findsWidgets);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                    width: 240,
+                    child: AxWorkerUsagePanel(
+                        controller: ok, onRefresh: () {}))))));
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.textContaining('% used'), findsWidgets);
     expect(find.textContaining('Resets in'), findsWidgets);
     await tester.pumpWidget(MaterialApp(
         theme: ThemeData.dark(),

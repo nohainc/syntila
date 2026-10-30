@@ -198,6 +198,23 @@ async function loadCurrentWorkerProfileRow(
     .first<CurrentWorkerProfileRow>();
 }
 
+/** Whether the Worker's current Profile can compact its native session. */
+export async function workerProfileSupportsCompaction(
+  db: D1Database,
+  workerTypeId: string,
+): Promise<boolean> {
+  const row = await loadCurrentWorkerProfileRow(db, workerTypeId);
+  if (!row) return false;
+  try {
+    const profile = JSON.parse(row.profile_json) as {
+      context?: { compaction?: { prompt?: unknown } };
+    };
+    return typeof profile.context?.compaction?.prompt === "string";
+  } catch {
+    return false;
+  }
+}
+
 async function requireWorkerCatalogRow(
   db: D1Database,
   workerTypeId: string,

@@ -21,6 +21,7 @@ abstract final class WorkerIssueCode {
   static const quotaExhausted = 'quota_exhausted';
   static const providerUnavailable = 'provider_unavailable';
   static const sessionResumeFailed = 'session_resume_failed';
+  static const contextLimitExceeded = 'context_limit_exceeded';
   static const permissionDenied = 'permission_denied';
   static const providerFailure = 'provider_failure';
   static const workerInternalFailure = 'worker_internal_failure';
@@ -43,6 +44,7 @@ abstract final class WorkerIssueCode {
     quotaExhausted,
     providerUnavailable,
     sessionResumeFailed,
+    contextLimitExceeded,
     permissionDenied,
     providerFailure,
     workerInternalFailure,

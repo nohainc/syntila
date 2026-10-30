@@ -257,6 +257,9 @@ export interface SyntilaWorkflowParams {
   readonly retryNumber?: number;
   /** Set by a confirmed retry of a `space_folder_exists` failure. */
   readonly retryAdoptSpaceFolder?: boolean;
+  /** Set when the user chose to compact the Worker session after a context
+   * overflow: the retry resumes the session and compacts it first. */
+  readonly retryCompactContext?: boolean;
 }
 
 export interface SyntilaWorkflowCheckpoint {
@@ -1092,6 +1095,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 sessionStrategy: params.retrySessionStrategy,
                 number: params.retryNumber,
                 adoptSpaceFolder: params.retryAdoptSpaceFolder === true,
+                compactContext: params.retryCompactContext === true,
               },
             });
             const dispatched = await dispatchTaskAssignment(

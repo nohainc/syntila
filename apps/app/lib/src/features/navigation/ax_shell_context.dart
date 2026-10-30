@@ -2,6 +2,8 @@ import '../../ax/sync/ax_query_builder.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../platform/view_preferences.dart';
+
 import '../../brand.dart';
 import '../../navigation/ax_navigation.dart';
 import '../../ax/ax_models.dart';
@@ -48,6 +50,7 @@ class AxShellContext {
     this.workspaceInvitationsListenable,
     this.isDarkTheme = true,
     this.themeMode = ThemeMode.system,
+    this.viewPreferences = const ViewPreferences(),
     bool realtimeStale = false,
     String? realtimeNotice,
     this.realtimeListenable,
@@ -125,6 +128,7 @@ class AxShellContext {
 
   final bool isDarkTheme;
   final ThemeMode themeMode;
+  final ViewPreferences viewPreferences;
   final bool _realtimeStale;
   final String? _realtimeNotice;
   final ValueListenable<(bool, String?)>? realtimeListenable;
@@ -294,6 +298,8 @@ class AxShellContext {
         return navigation.kind == AxRouteKind.workspaces;
       case AxRouteKind.profileSecurity:
         return navigation.kind == AxRouteKind.profileSecurity;
+      case AxRouteKind.settings:
+        return navigation.kind == AxRouteKind.settings;
       case AxRouteKind.run:
         return navigation.kind == AxRouteKind.run &&
             target.runId != null &&

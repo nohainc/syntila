@@ -127,7 +127,8 @@ class MessageActivitySource extends AxFixtureDataSource {
 }
 
 void main() {
-  testWidgets('recent Threads load globally, reorder by activity, and cap at 8',
+  testWidgets(
+      'recent Threads load globally, reorder by activity, and cap at the limit',
       (tester) async {
     final source = ControlledSource();
     final cache = AxSpaceThreads(source);
@@ -142,6 +143,7 @@ void main() {
         expandedSpaceIds: const {'atlas'},
       ),
       showRecentThreads: true,
+      recentThreadsCount: 8,
       onNavigateTo: (navigation) => selected = navigation,
     ))));
     await tester.pump();

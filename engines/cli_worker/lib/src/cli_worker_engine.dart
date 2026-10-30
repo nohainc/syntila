@@ -1527,6 +1527,29 @@ class CliWorkerEngine {
     var acceptingProviderEvents = true;
     try {
       final executable = await _resolveTool();
+      if (request.compactContext) {
+        final failure = await _compactNativeSession(
+          request,
+          executable,
+          execution,
+          context,
+          priorSession,
+          remainingMs: request.timeoutMs - executionClock.elapsedMilliseconds,
+        );
+        if (failure != null) {
+          await _write(
+            sink,
+            _executionError(
+              request,
+              code: WorkerIssueCode.contextLimitExceeded,
+              message: failure,
+              stage: 'context_compaction',
+              detail: failure,
+            ),
+          );
+          return;
+        }
+      }
       while (true) {
         acceptingProviderEvents = true;
         final remainingMs =
@@ -1710,6 +1733,8 @@ class CliWorkerEngine {
           final failureMessage = switch (interpreted.issueCode) {
             WorkerIssueCode.quotaExhausted =>
               'The provider\'s usage limit has been reached.',
+            WorkerIssueCode.contextLimitExceeded =>
+              'The conversation no longer fits the model\'s context window.',
             _ =>
               interpreted.emptyResponse
                   ? (toolSeen
@@ -1885,6 +1910,83 @@ class CliWorkerEngine {
     }
   }
 
+  /// Runs the Profile's compaction prompt against the resumed native session,
+  /// so the step prompt that follows fits again. Returns why it failed, or
+  /// null once the provider confirmed the same session without an error.
+  Future<String?> _compactNativeSession(
+    ExecuteRequest request,
+    String executable,
+    Map<String, Object?> execution,
+    Map<String, String> context,
+    String? priorSession, {
+    required int remainingMs,
+  }) async {
+    final compaction = _profile.context['compaction'];
+    if (compaction is! Map) {
+      return 'This Worker cannot compact its context. Clear AI History and retry.';
+    }
+    if (priorSession == null) {
+      return 'There is no Worker session to compact. Clear AI History and retry.';
+    }
+    if (remainingMs <= 0) throw TimeoutException('Execution deadline reached');
+    final compactionContext = {
+      ...context,
+      'prompt': _string(compaction['prompt']),
+    };
+    final arguments = compaction['arguments'] is List
+        ? _list(compaction['arguments'])
+        : _list(execution['arguments']);
+    final stdout = StringBuffer();
+    final result = await _streamingRunner.run(
+      executable,
+      _expandArguments(
+        arguments,
+        compactionContext,
+        additionalDirectories: request.additionalDirectories,
+      ),
+      environment: _environment(compactionContext),
+      workingDirectory: compactionContext['workingDirectory']!,
+      stdinText: _expandStdin(_map(execution['stdin']), compactionContext),
+      timeout: Duration(milliseconds: remainingMs),
+      stallLimit: providerStallLimit,
+      onStdoutLine: (line) {
+        if (stdout.length <= 4 * 1024 * 1024) stdout.writeln(line);
+      },
+    );
+    final interpreted = _interpret(
+      stdout.toString(),
+      result.stderr,
+      result.exitCode,
+      execution,
+      priorSession: priorSession,
+      durable: true,
+    );
+    // A compaction turn has no answer, so an empty result is expected; only
+    // a provider-reported failure or a different session means it failed.
+    final compacted =
+        result.exitCode == 0 &&
+        !interpreted.providerFailed &&
+        interpreted.issueCode != WorkerIssueCode.contextLimitExceeded &&
+        (interpreted.sessionId == null ||
+            interpreted.sessionId == priorSession);
+    _logger.log(
+      compacted ? 'info' : 'warning',
+      compacted
+          ? 'engine.context.compacted'
+          : 'engine.context.compaction_failed',
+      context: _diagnosticContext(
+        requestId: request.requestId,
+        assignmentId: request.assignmentId,
+        errorCode: compacted ? null : WorkerIssueCode.contextLimitExceeded,
+        failureLayer: compacted ? null : 'provider_tool',
+        processExitCode: result.exitCode,
+      ),
+    );
+    return compacted
+        ? null
+        : 'The Worker could not compact the conversation. Clear AI History and retry.';
+  }
+
   Map<String, String> _context(ExecuteRequest request, String? sessionId) => {
     'prompt': request.prompt,
     'workingDirectory': Directory.current.path,
@@ -1957,6 +2059,7 @@ class CliWorkerEngine {
                   'modelArguments',
                   'sessionResumeArguments',
                   'providerTimeoutArguments',
+                  'autoCompactionArguments',
                   'forEachAdditionalDirectory',
                 }.contains(marker.keys.single)) ||
             (marker.length == 2 && keys.containsAll({'ifPresent', 'values'})) ||
@@ -1997,6 +2100,15 @@ class CliWorkerEngine {
               _profile.timeout['providerArguments'],
             ).map((v) => _template(v, context)),
           );
+        } else if (marker['autoCompactionArguments'] == true) {
+          final autoCompaction = _profile.context['autoCompaction'];
+          if (autoCompaction is Map) {
+            output.addAll(
+              _stringList(
+                autoCompaction['arguments'],
+              ).map((v) => _template(v, context)),
+            );
+          }
         } else if (marker['ifPresent'] == 'model' &&
                 context.containsKey('model') ||
             marker['ifPresent'] == 'reasoningEffort' &&
@@ -2602,6 +2714,20 @@ class CliWorkerEngine {
       );
     }
 
+    if (_contextOverflow([stderr, providerErrorText, terminalStatus])) {
+      return _InterpretedOutput(
+        null,
+        null,
+        WorkerIssueCode.contextLimitExceeded,
+        terminalObserved: terminalObserved,
+        providerFailed: true,
+        reason: [
+          'exit=$exitCode',
+          'matched context overflow marker',
+          if (terminalStatus != null) 'status=$terminalStatus',
+        ].join(', '),
+      );
+    }
     final mappings = _list(_map(_profile.json['errors'])['mappings']);
     for (final raw in mappings) {
       final mapping = _map(raw);
@@ -2623,6 +2749,7 @@ class CliWorkerEngine {
           null,
           null,
           _string(mapping['issueCode']),
+          providerFailed: markedFailure || providerError,
           nativeSessionUnavailable:
               kind == 'stderr_pattern' &&
               evidence['patternId'] == 'session_unavailable' &&
@@ -2645,6 +2772,7 @@ class CliWorkerEngine {
       null,
       null,
       WorkerIssueCode.providerFailure,
+      providerFailed: markedFailure || providerError,
       emptyResponse:
           exitCode == 0 &&
           (markedSuccess || implicitTextSuccess) &&
@@ -2717,6 +2845,18 @@ class CliWorkerEngine {
     return names;
   }
 
+  /// True when a failed run's text carries one of the Profile's overflow
+  /// markers. Only stderr, the provider error and the terminal status are
+  /// checked: the answer text may quote such a phrase legitimately.
+  bool _contextOverflow(List<String?> texts) {
+    final overflow = _profile.context['overflow'];
+    if (overflow is! Map) return false;
+    final haystack = texts.whereType<String>().join('\n').toLowerCase();
+    return _stringList(
+      overflow['markers'],
+    ).any((marker) => haystack.contains(marker.toLowerCase()));
+  }
+
   bool _stderrPattern(String patternId, String text) {
     final patterns = <String, RegExp>{
       'session_unavailable': RegExp(
@@ -2753,6 +2893,10 @@ class CliWorkerEngine {
       ),
       'provider_unavailable': RegExp(
         r'provider unavailable|service unavailable|temporarily unavailable',
+        caseSensitive: false,
+      ),
+      'context_limit_exceeded': RegExp(
+        r"prompt is too long|context[_ -]length[_ -]exceeded|context[_ -]window[_ -]exceeded|exceeds the context window|ran out of room in the model's context window|maximum context length",
         caseSensitive: false,
       ),
       'provider_failure': RegExp(r'.+', dotAll: true),
@@ -2964,10 +3108,14 @@ class _InterpretedOutput {
     this.terminalObserved = false,
     this.reason,
     this.emptyResponse = false,
+    this.providerFailed = false,
   });
 
   /// The provider reported success with no answer text and no error.
   final bool emptyResponse;
+
+  /// The provider itself marked the run failed or reported an error.
+  final bool providerFailed;
 
   /// Why the output was not accepted; goes into the failure diagnostic.
   final String? reason;

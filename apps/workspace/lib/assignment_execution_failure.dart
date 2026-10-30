@@ -42,6 +42,7 @@ String canonicalWorkerExecutionErrorCode(Object? value) => switch (value) {
       'quota_exhausted' => 'quota_exhausted',
       'provider_unavailable' => 'provider_unavailable',
       'permission_denied' => 'permission_denied',
+      'context_limit_exceeded' => 'context_limit_exceeded',
       _ => canonicalExecutionErrorCode(value),
     };
 
@@ -52,7 +53,8 @@ bool isWorkerExecutionErrorRetryable(String code) => switch (code) {
       'cli_not_found' ||
       'unsupported_cli_version' ||
       'model_not_supported' ||
-      'quota_exhausted' =>
+      'quota_exhausted' ||
+      'context_limit_exceeded' =>
         false,
       _ => true,
     };

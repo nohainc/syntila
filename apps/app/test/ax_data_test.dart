@@ -101,6 +101,20 @@ void main() {
       'clearAiHistory': true
     });
   });
+  test('context recovery can ask the Worker to compact its session', () async {
+    final client = _JsonClient({});
+    final api = AxApiClient(baseUrl: 'https://cloud.test/api', client: client);
+    await api.retryWorkRequestStep(
+        workRequestId: 'r',
+        stepKind: 'implement',
+        sessionStrategy: 'resume',
+        compactContext: true);
+    expect(jsonDecode(client.lastBody!), {
+      'stepKind': 'implement',
+      'sessionStrategy': 'resume',
+      'contextResolution': 'compact'
+    });
+  });
   test('clear history uses the exact server cutoff', () async {
     const cutoff = '2026-10-21T10:00:00.000Z';
     final api = AxApiClient(

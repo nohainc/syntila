@@ -111,14 +111,18 @@ it("includes late prior replies while excluding the current request", async () =
         "now",
       ),
     );
-    await expect(
-      loadConversationBootstrap(
-        f.db as unknown as D1Database,
-        conversation.id,
-        "R3",
-        2,
-      ),
-    ).rejects.toThrow(/limit/);
+    // History over the transport budget is left out instead of failing the
+    // turn; the Worker's CLI reports a real context overflow itself.
+    const trimmed = await loadConversationBootstrap(
+      f.db as unknown as D1Database,
+      conversation.id,
+      "R3",
+      2,
+    );
+    expect(trimmed.text).not.toContain("huge-source");
+    expect(new TextEncoder().encode(trimmed.text).byteLength).toBeLessThan(
+      256 * 1024,
+    );
   } finally {
     f.sqlite.close();
   }

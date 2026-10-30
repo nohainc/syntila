@@ -585,6 +585,12 @@ export function expandExecutionArguments(
           expandTemplate(value, profile, context),
         ),
       );
+    } else if ("autoCompactionArguments" in part) {
+      output.push(
+        ...(profile.context?.autoCompaction?.arguments ?? []).map((value) =>
+          expandTemplate(value, profile, context),
+        ),
+      );
     } else if ("ifPresent" in part) {
       const present =
         part.ifPresent === "model"
@@ -843,8 +849,24 @@ const stderrMatchers: Record<string, RegExp> = {
     /quota.{0,40}(?:exceeded|exhausted)|(?:exceeded|exhausted).{0,40}quota|insufficient[_ -]quota|usage[_ -]limit[_ -](?:reached|exceeded)|(?:reached|exceeded|exhausted|hit).{0,40}(?:usage|session|weekly|daily|monthly|spending|rate) limit|(?:usage|session|weekly|daily|monthly|spending|rate|free) limit.{0,40}(?:reached|exceeded|exhausted)|rate[_ -]limit(?:ed|[_ -]error|[_ -]exceeded)|you(?:['’]ve| have) (?:hit|reached) (?:all |any |your )?.{0,40}limit|credits? balance is too low|resource_exhausted|resource has been exhausted|free[_ -]usage[_ -]exhausted|you(?:['’]ve| have) used (?:all|up) .{0,40}usage|too many requests/i,
   provider_unavailable:
     /provider unavailable|service unavailable|temporarily unavailable/i,
+  context_limit_exceeded:
+    /prompt is too long|context[_ -]length[_ -]exceeded|context[_ -]window[_ -]exceeded|exceeds the context window|ran out of room in the model's context window|maximum context length/i,
   provider_failure: /.+/s,
 };
+
+/** True when a failed run's text carries one of the Profile's overflow markers. */
+export function contextOverflowMatched(
+  profile: ToolProfileV1,
+  texts: readonly (string | null | undefined)[],
+): boolean {
+  const markers = profile.context?.overflow?.markers ?? [];
+  if (markers.length === 0) return false;
+  const haystack = texts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .toLowerCase();
+  return markers.some((marker) => haystack.includes(marker.toLowerCase()));
+}
 
 function mappedIssue(
   profile: ToolProfileV1,
@@ -857,6 +879,14 @@ function mappedIssue(
 ): ProfileIssueCode {
   if (input.cancelled) return "cancelled";
   if (input.timedOut) return "deadline_exceeded";
+  if (
+    contextOverflowMatched(profile, [
+      input.stderr,
+      providerErrorText,
+      terminalStatus,
+    ])
+  )
+    return "context_limit_exceeded";
   for (const mapping of profile.errors.mappings) {
     const evidence = mapping.evidence;
     let matches = false;

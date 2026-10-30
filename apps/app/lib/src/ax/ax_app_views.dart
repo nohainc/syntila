@@ -13,6 +13,14 @@ extension _AxAppViews on _AxAppStateMixin {
     _themePreference.save(mode);
   }
 
+  void _setViewPreferences(ViewPreferences preferences) {
+    if (preferences == _viewPreferences) return;
+    _updateState(() {
+      _viewPreferences = preferences;
+    });
+    _viewPreferencesStore.save(preferences);
+  }
+
   Widget _homeView() => AxDeferredListenableBuilder(
       listenable:
           Listenable.merge([store.homeChanges, store.workspaceInvitations]),
