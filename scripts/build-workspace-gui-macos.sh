@@ -95,8 +95,26 @@ else
   echo "Sealing the app with an ad-hoc signature."
   SIGN_ARGS+=(--sign -)
 fi
+# Sign inside-out with one identity: the hardened runtime refuses to load
+# frameworks whose Team ID differs from the app's (Xcode leaves the Flutter
+# frameworks ad-hoc signed).
+FRAMEWORK_ARGS=(--force --options runtime --sign "${IDENTITY:--}")
+[[ -n "$IDENTITY" ]] && FRAMEWORK_ARGS+=(--timestamp)
+while IFS= read -r -d '' item; do
+  codesign "${FRAMEWORK_ARGS[@]}" "$item"
+done < <(find "$APP/Contents/Frameworks" -mindepth 1 -maxdepth 1 \
+  \( -name '*.framework' -o -name '*.dylib' \) -print0 2>/dev/null)
 codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --strict --deep "$APP"
+# A signature mismatch only shows at launch; check every framework's Team ID.
+APP_TEAM="$(codesign -dv --verbose=4 "$APP" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2}')"
+while IFS= read -r -d '' item; do
+  team="$(codesign -dv --verbose=4 "$item" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2}')"
+  [[ "$team" == "$APP_TEAM" ]] || {
+    echo "$(basename "$item") Team ID '$team' does not match the app's '$APP_TEAM'." >&2
+    exit 1
+  }
+done < <(find "$APP/Contents/Frameworks" -mindepth 1 -maxdepth 1 -name '*.framework' -print0 2>/dev/null)
 bash "$ROOT/scripts/verify-workspace-service-bundle.sh" "$BUNDLE"
 "$BUNDLE/syntila" --gui-manifest=1 >/dev/null
 
