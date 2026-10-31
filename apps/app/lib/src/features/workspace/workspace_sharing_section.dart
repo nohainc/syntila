@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:syntila_design/syntila_design.dart';
 import 'package:flutter/material.dart';
 
+import '../../ax/ax_data.dart'
+    show AxAccountPlanDataSource, AxApiException, paidPlanRequiredCode;
 import '../../ax/ax_models.dart';
+import '../profile/account_plan.dart';
 import '../../ax/ax_people.dart';
 import '../../ax/ax_workspace_member_access.dart';
 import 'workspace_member_access_section.dart';
@@ -41,7 +44,12 @@ class WorkspaceSharingSection extends StatefulWidget {
     this.people = const [],
     this.refresh,
     this.expandable = false,
+    this.planSource,
   });
+
+  /// When set, inviting people requires the paid plan's `workspace.sharing`.
+  /// Existing access stays visible and revocable on Free.
+  final AxAccountPlanDataSource? planSource;
 
   /// Fires when an invitation is sent, accepted, declined or revoked; the
   /// lists reload quietly so the owner sees the response while waiting here.
@@ -73,12 +81,24 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
   Object? _error;
   List<AxPersonWithAccess> _people = const [];
   List<AxSharedWorkspaceInvitation> _invitations = const [];
+  late final AccountPlanController? _plan = widget.planSource == null
+      ? null
+      : AccountPlanController(widget.planSource!);
+
+  bool get _canInvite =>
+      _plan == null || _plan.plan.has(workspaceSharingFeature);
 
   @override
   void initState() {
     super.initState();
     widget.refresh?.addListener(_onRefresh);
+    _plan?.addListener(_onPlanChanged);
+    unawaited(_plan?.refresh());
     unawaited(_load());
+  }
+
+  void _onPlanChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -94,6 +114,7 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
   @override
   void dispose() {
     widget.refresh?.removeListener(_onRefresh);
+    _plan?.dispose();
     super.dispose();
   }
 
@@ -133,6 +154,10 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
     try {
       await action();
     } catch (error) {
+      // The plan changed since it was loaded; show the upgrade note instead.
+      if (error is AxApiException && error.code == paidPlanRequiredCode) {
+        unawaited(_plan?.refresh());
+      }
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showNotice(SnackBar(content: Text(error.toString())));
@@ -227,11 +252,24 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
     final title = Text('Share workspace',
         style:
             theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700));
-    final invite = IconButton(
-        key: const ValueKey('sharing-invite'),
-        tooltip: 'Add people',
-        onPressed: _busy || _loading ? null : _addPeople,
-        icon: const Icon(Icons.add));
+    final Widget invite = _canInvite
+        ? IconButton(
+            key: const ValueKey('sharing-invite'),
+            tooltip: 'Add people',
+            onPressed: _busy || _loading || !(_plan?.loaded ?? true)
+                ? null
+                : _addPeople,
+            icon: const Icon(Icons.add))
+        : Tooltip(
+            key: const ValueKey('sharing-requires-paid'),
+            message: 'Sharing a Workspace is part of $paidPlanName.',
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.lock_outline,
+                  size: 16, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(paidPlanName, style: muted),
+            ]),
+          );
     final body = <Widget>[
       if (_loading)
         const Padding(

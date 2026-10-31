@@ -1,7 +1,10 @@
 import 'package:syntila_design/syntila_design.dart';
 import '../../ax/ax_people.dart';
 import '../../ax/ax_data.dart'
-    show AxWorkflowWorkspaceDataSource, AxWorkflowWorkspaceSettings;
+    show
+        AxAccountPlanDataSource,
+        AxWorkflowWorkspaceDataSource,
+        AxWorkflowWorkspaceSettings;
 import '../../ax/sync/ax_query_builder.dart';
 import 'package:flutter/material.dart';
 
@@ -35,6 +38,7 @@ class WorkspacesPage extends StatefulWidget {
     this.viewerEmail,
     this.memberAccessSource,
     this.sharingSource,
+    this.accountPlanSource,
     this.people = const [],
     this.personAccessSource,
     this.sharingRefresh,
@@ -69,6 +73,7 @@ class WorkspacesPage extends StatefulWidget {
 
   /// Enables lending: the owner's sharing section and the invited person's banner.
   final AxWorkspaceSharingDataSource? sharingSource;
+  final AxAccountPlanDataSource? accountPlanSource;
 
   /// People the owner can share a Workspace with.
   final List<AxPerson> people;
@@ -271,6 +276,7 @@ class _WorkspacesPageState extends State<WorkspacesPage>
             key: ValueKey('workspace-sharing-${workspace.id}'),
             workspaceId: workspace.id,
             source: widget.sharingSource!,
+            planSource: widget.accountPlanSource,
             people: widget.people,
             memberAccessSource: widget.memberAccessSource,
             personAccessSource: widget.personAccessSource,

@@ -39,10 +39,16 @@ part 'ax_data/read_model_api.dart';
 part 'ax_data/notes_api.dart';
 part 'ax_data/files_api.dart';
 
+/// Cloud rejected the action because it needs the paid plan.
+const paidPlanRequiredCode = 'paid_plan_required';
+
 class AxApiException implements Exception {
-  const AxApiException(this.message, {this.statusCode});
+  const AxApiException(this.message, {this.statusCode, this.code});
   final String message;
   final int? statusCode;
+
+  /// Stable Cloud error code, such as [paidPlanRequiredCode].
+  final String? code;
   @override
   String toString() => message;
 }
@@ -185,6 +191,42 @@ class AxThreadReadState {
   }
 }
 
+/// The caller's account tier as reported by Cloud. Cloud enforces paid
+/// features; the app only uses this to show, hide or label them.
+class AxAccountPlan {
+  const AxAccountPlan({
+    required this.isPaid,
+    this.status,
+    this.currentPeriodEnd,
+    this.features = const {},
+  });
+
+  static const free = AxAccountPlan(isPaid: false);
+
+  factory AxAccountPlan.fromJson(Map<String, dynamic> json) => AxAccountPlan(
+        isPaid: json['tier'] == 'paid',
+        status: json['status'] as String?,
+        currentPeriodEnd:
+            DateTime.tryParse(json['currentPeriodEnd']?.toString() ?? ''),
+        features: {
+          for (final feature in json['features'] as List? ?? const [])
+            if (feature is String) feature,
+        },
+      );
+
+  final bool isPaid;
+  final String? status;
+  final DateTime? currentPeriodEnd;
+  final Set<String> features;
+
+  bool has(String feature) => features.contains(feature);
+}
+
+/// Optional capability: the viewer's account plan.
+abstract interface class AxAccountPlanDataSource {
+  Future<AxAccountPlan> loadAccountPlan();
+}
+
 /// Optional capability: the viewer's reciprocal read-receipt setting.
 abstract interface class AxReadReceiptPrivacyDataSource {
   Future<bool> loadShareReadReceipts();
@@ -240,6 +282,7 @@ class AxApiClient extends _AxApiClientCore
         AxThreadReadDataSource,
         AxThreadReadReceiptsDataSource,
         AxReadReceiptPrivacyDataSource,
+        AxAccountPlanDataSource,
         AxNotificationDataSource,
         AxPinDataSource,
         AxNotesDataSource,

@@ -1,4 +1,5 @@
 import { hashToken } from "@syntila/security";
+import { hasPaidFeature, requirePaidFeature } from "../account-plan.js";
 import { createEventPublisher } from "../event-publisher.js";
 import { MutationIdempotency } from "./mutation-idempotency.js";
 import {
@@ -121,6 +122,9 @@ export async function handleWorkspaceInvitations(
     return json({ invitations: rows.results ?? [] });
   }
   if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
+  // Inviting people is the paid part of sharing; listing and revoking stay
+  // free so a downgraded owner can still see and remove access.
+  await requirePaidFeature(env, context.userId, "workspace.sharing");
   const body = (await request.json().catch(() => null)) as Record<
     string,
     unknown
@@ -272,6 +276,10 @@ export async function handleAcceptWorkspaceInvitation(
     throw new HttpError(403, "The inviter can no longer lend this Workspace");
   if (invitation.ownerId === context.userId)
     throw new HttpError(400, "You already own this Workspace");
+  // Pending invitations lapse with the owner's plan. The invitee cannot fix
+  // this by upgrading, so this is a plain 403, not paid_plan_required.
+  if (!(await hasPaidFeature(env, invitation.ownerId, "workspace.sharing")))
+    throw new HttpError(403, "This Workspace can no longer be shared");
   const now = new Date().toISOString();
   const results = await env.SYNTILA_DB.batch([
     env.SYNTILA_DB.prepare(

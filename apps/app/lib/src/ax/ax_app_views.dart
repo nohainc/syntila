@@ -396,6 +396,10 @@ extension _AxAppViews on _AxAppStateMixin {
                         widget.dataSource is AxWorkspaceSharingDataSource
                             ? widget.dataSource as AxWorkspaceSharingDataSource
                             : null,
+                    accountPlanSource:
+                        widget.dataSource is AxAccountPlanDataSource
+                            ? widget.dataSource as AxAccountPlanDataSource
+                            : null,
                     onLeaveShared:
                         widget.dataSource is AxWorkspaceSharingDataSource
                             ? (workspace) async {
@@ -704,6 +708,12 @@ extension _AxAppViews on _AxAppStateMixin {
                   )),
         ],
         const SizedBox(height: 24),
+        if (widget.dataSource is AxAccountPlanDataSource)
+          _profileSection(
+            title: 'Plan',
+            child: AccountPlanSummary(
+                source: widget.dataSource as AxAccountPlanDataSource),
+          ),
         if (widget.dataSource is AxReadReceiptPrivacyDataSource)
           _profileSection(
             title: 'Privacy',

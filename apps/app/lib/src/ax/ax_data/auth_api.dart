@@ -1,6 +1,9 @@
 part of '../ax_data.dart';
 
 mixin _AuthApi on _AxApiClientCore {
+  Future<AxAccountPlan> loadAccountPlan() async =>
+      AxAccountPlan.fromJson(await _getJson(Uri.parse('$baseUrl/me/plan')));
+
   @override
   Future<AxSession> loadSession() async {
     final response =

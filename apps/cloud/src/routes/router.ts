@@ -1,5 +1,6 @@
 import { handleListPeople } from "./people.js";
 import {
+  handleAccountPlan,
   handleGetAvatar,
   handleReadReceiptPrivacy,
   handleUploadAvatar,
@@ -214,6 +215,8 @@ export async function routeWorkerRequest(
       return await handleUploadAvatar(request, env, ctx);
     if (url.pathname === "/api/me/privacy")
       return await handleReadReceiptPrivacy(request, env, ctx);
+    if (url.pathname === "/api/me/plan")
+      return await handleAccountPlan(request, env, ctx);
     const avatarMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/avatar$/);
     if (request.method === "GET" && avatarMatch?.[1])
       return await handleGetAvatar(
@@ -1229,8 +1232,17 @@ export async function routeWorkerRequest(
         }),
       );
     }
+    // Only HttpErrors expose a stable code; driver error codes stay internal.
+    const code =
+      error instanceof deps.HttpError &&
+      "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : undefined;
     return deps.json(
-      { error: deps.errorMessage(error) },
+      code
+        ? { error: deps.errorMessage(error), code }
+        : { error: deps.errorMessage(error) },
       {
         status:
           error instanceof deps.HttpError ||

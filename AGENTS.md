@@ -23,7 +23,7 @@ Use the smallest validation scope that provides meaningful executable evidence f
 3. **Use 3-Level Testing Hierarchy:**
    - **Level 1 (Focused)**: Run targeted unit/widget test files while implementing (e.g., `flutter test test/spaces_pages_test.dart` or `vitest run apps/cloud/test/auth.test.ts`).
    - **Level 2 (Component)**: Run the dedicated component validation command upon completing a task phase:
-     - AX Web App: `pnpm validate:app`
+     - Syntila Web App: `pnpm validate:app`
      - Workspace: `pnpm validate:workspace`
      - Profile Lab: `pnpm validate:profile-lab`
      - Cloud / API: `pnpm validate:cloud`
@@ -57,7 +57,7 @@ Every implementation task must report:
 
 - The authoritative architecture is
   [docs/architecture/WORKSPACE_ARCHITECTURE.md](docs/architecture/WORKSPACE_ARCHITECTURE.md).
-  It supersedes the historical phase plans in `docs/architecture/`.
+  Use it for current Workspace ownership and runtime decisions.
 - One headless Dart Workspace Service owns Cloud connectivity, assignment
   scheduling, Worker Engine processes, sessions, and runtime state. The
   `syntila` CLI is a management client over authenticated versioned

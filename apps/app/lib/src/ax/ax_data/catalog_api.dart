@@ -192,6 +192,16 @@ mixin _CatalogApi on _AxApiClientCore {
             headers: headers, body: body == null ? null : jsonEncode(body));
     final response = await _retryOnceWithKey(idempotencyKey, send);
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      Object? error;
+      try {
+        error = jsonDecode(response.body);
+      } on FormatException {
+        error = null;
+      }
+      if (error is Map && error['code'] is String && error['error'] is String) {
+        throw AxApiException(error['error'] as String,
+            statusCode: response.statusCode, code: error['code'] as String);
+      }
       throw AxApiException(
           'Sharing request failed (${response.statusCode}): ${response.body}',
           statusCode: response.statusCode);

@@ -1,3 +1,4 @@
+import { getAccountPlan } from "../account-plan.js";
 import { avatarObjectKeys } from "../avatar-storage.js";
 import { securityContext, HttpError, json } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
@@ -219,4 +220,15 @@ export async function handleReadReceiptPrivacy(
     .bind(context.userId)
     .first<{ share: number }>();
   return json({ shareReadReceipts: (row?.share ?? 1) === 1 });
+}
+
+/** The caller's account tier. Read-only: plans change through grants or billing. */
+export async function handleAccountPlan(
+  request: Request,
+  env: SecurityEnv,
+  ctx?: ExecutionContext,
+): Promise<Response> {
+  if (request.method !== "GET") throw new HttpError(405, "Unsupported method");
+  const context = await securityContext(request, env, ctx);
+  return json(await getAccountPlan(env, context.userId));
 }

@@ -1,8 +1,7 @@
 # Workspace architecture
 
 This is the canonical description of the Workspace application and runtime.
-The phase documents in this directory record historical implementation work;
-new code should follow this document.
+New code should follow this document.
 
 ## Ownership
 

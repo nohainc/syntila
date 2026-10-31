@@ -19,7 +19,8 @@ function fixture() {
   const { sqlite, db } = sqliteD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at)
       VALUES('owner','owner@test','Owner','now','now'),('guest','guest@test','Guest','now','now'),('other','other@test','Other','now','now');
-    INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('workspace','owner','Mac','now','now');`);
+    INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('workspace','owner','Mac','now','now');
+    INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('owner','paid','active','manual','now','now');`);
   const env = { SYNTILA_DB: db } as SecurityEnv;
   const manage = (
     method: string,
@@ -173,6 +174,28 @@ it("caps pending invitations per Workspace", async () => {
     await expect(
       manage("POST", "owner", { email: "late@test" }),
     ).rejects.toMatchObject({ status: 429 });
+  } finally {
+    sqlite.close();
+  }
+});
+
+it("requires a paid plan to invite, and lapses pending invitations on downgrade", async () => {
+  const { sqlite, manage, accept } = fixture();
+  try {
+    const id = await idOf(
+      await manage("POST", "owner", { email: "guest@test" }),
+    );
+    sqlite.exec("DELETE FROM account_plans WHERE user_id='owner'");
+    await expect(
+      manage("POST", "owner", { email: "other@test" }),
+    ).rejects.toMatchObject({ status: 402, code: "paid_plan_required" });
+    // A downgraded owner can still see and revoke what they shared.
+    expect((await manage("GET", "owner")).status).toBe(200);
+    await expect(accept("guest", id)).rejects.toMatchObject({ status: 403 });
+    expect(
+      sqlite.prepare("SELECT COUNT(*) AS n FROM workspace_person_grants").get(),
+    ).toEqual({ n: 0 });
+    expect((await manage("POST", "owner", undefined, id)).status).toBe(200);
   } finally {
     sqlite.close();
   }

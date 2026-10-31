@@ -108,6 +108,7 @@ export function sqliteD1(
     "0090_released_workspace_cleanup.sql",
     "0091_thread_request_queue.sql",
     "0092_read_receipt_privacy.sql",
+    "0094_account_plans.sql",
   ]) {
     sqlite.exec(
       readFileSync(

@@ -1,4 +1,7 @@
+import 'package:syntila_app/src/ax/ax_data.dart'
+    show AxAccountPlan, AxAccountPlanDataSource;
 import 'package:syntila_app/src/ax/ax_people.dart';
+import 'package:syntila_app/src/features/profile/account_plan.dart';
 import 'package:syntila_app/src/ax/ax_workspace_member_access.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
 import 'package:syntila_app/src/features/workspace/workspace_sharing_section.dart';
@@ -103,6 +106,13 @@ class PersonAccessSource implements AxWorkspacePersonAccessDataSource {
     custom = false;
     return loadPersonAccess(w, userId);
   }
+}
+
+class PlanSource implements AxAccountPlanDataSource {
+  PlanSource(this.plan);
+  AxAccountPlan plan;
+  @override
+  Future<AxAccountPlan> loadAccountPlan() async => plan;
 }
 
 Future<void> pump(WidgetTester tester, Widget child) async {
@@ -375,5 +385,35 @@ void main() {
     expect(source.calls, ['accept:m1']);
     expect(accepted, 1);
     expect(find.textContaining('invited you'), findsNothing);
+  });
+
+  testWidgets('Free owners see existing access but cannot invite',
+      (tester) async {
+    final source = SharingSource();
+    await pump(
+        tester,
+        WorkspaceSharingSection(
+            workspaceId: 'w',
+            source: source,
+            planSource: PlanSource(AxAccountPlan.free)));
+    expect(find.byKey(const ValueKey('sharing-invite')), findsNothing);
+    expect(find.byKey(const ValueKey('sharing-requires-paid')), findsOneWidget);
+    expect(find.textContaining('Guest'), findsWidgets);
+    await tester
+        .tap(find.byKey(const ValueKey('sharing-revoke-invitation-i1')));
+    await tester.pumpAndSettle();
+    expect(source.calls, ['cancel:i1']);
+  });
+
+  testWidgets('paid owners can invite', (tester) async {
+    await pump(
+        tester,
+        WorkspaceSharingSection(
+            workspaceId: 'w',
+            source: SharingSource(),
+            planSource: PlanSource(const AxAccountPlan(
+                isPaid: true, features: {workspaceSharingFeature}))));
+    expect(find.byKey(const ValueKey('sharing-invite')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sharing-requires-paid')), findsNothing);
   });
 }

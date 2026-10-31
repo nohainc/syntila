@@ -7,12 +7,12 @@ Work remains the execution surface.
 Logout sends an authenticated JSON request and clears the local session token
 after Cloud confirms success. Failed logout retains the session for retry.
 
-Private account avatars load through AX's configured authenticated API origin,
+Private account avatars load through Syntila's configured authenticated API origin,
 including when Cloud returns an absolute URL behind a web proxy. A successful
 upload displays the selected bytes immediately while the stored image is read
 back; read failures are reported without clearing that preview.
 
-AX's shared `SyntilaMarkdownBody` renders authored content as explicit GitHub
+Syntila's shared `SyntilaMarkdownBody` renders authored content as explicit GitHub
 Flavored Markdown with selectable text and soft line breaks. Its theme-derived
 style sheet covers headings, emphasis, code, quotes, lists, read-only task lists,
 tables, links and rules. HTML is not rendered. Source stays an ordinary Markdown
@@ -22,7 +22,7 @@ keeps Chat `body`, Work `originalRequest`, Worker `finalText` and Step
 `resultText` as source strings. Existing plain text remains valid Markdown.
 No generated HTML, AST, renderer data or `contentFormat` field is persisted.
 Links are validated as absolute HTTP/HTTPS URLs without embedded credentials
-and opened outside AX using `url_launcher`. Other schemes and malformed URLs
+and opened outside Syntila using `url_launcher`. Other schemes and malformed URLs
 are rejected. Markdown images display an indicator and alt text without loading
 their source; controlled images belong to the attachment system.
 Chat messages, Work prompts and Worker responses use this renderer, as do
@@ -93,7 +93,7 @@ Run failures include a **Copy Run error** icon that copies the full message.
 Worker replies appear as compact Syntila messages in Work history. Failed
 Step diagnostics and implementation details are available from the **Run
 details** info action, keeping the main timeline focused on the response.
-AX sends commands and reads history over HTTP, with WebSocket notifications
+Syntila sends commands and reads history over HTTP, with WebSocket notifications
 triggering immediate history refresh. It subscribes to the active Thread
 and resynchronizes after reconnecting. While Work is queued, running, or waiting,
 a five-second HTTP refresh also reconciles progress and completion if a live
@@ -142,15 +142,3 @@ and message copying. Cloud contract tests exercise SQLite-backed Chat storage
 and Work history/details with Markdown delimiters and fenced code. Work
 execution regression tests also forward the original Markdown prompt unchanged.
 Chat validates nonblank content without trimming its stored source.
-
-This space is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter space:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.

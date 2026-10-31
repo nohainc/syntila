@@ -3,11 +3,11 @@
 **AI execution and orchestration ecosystem where models and AI tools plan,
 delegate, build, review, test, and iterate toward verified outcomes.**
 
-Primary domain: **conclaveax.com**
+Application: **https://syntila.app** · Public website: **https://conclaveax.com**
 
 ## Architecture
 
-Architecture v8 is the active implementation target.
+Architecture v9 is the current design target; the v8 implementation remains the baseline where v9 work is not yet complete. See the [architecture](ARCHITECTURE.md) and [roadmap](ROADMAP.md) for current contracts and implementation status.
 
 ~~~text
 Syntila
@@ -18,7 +18,7 @@ Syntila
 -> provider CLI
 ~~~
 
-The first v8 logical Workers remain:
+Examples of logical Workers include:
 
 ~~~text
 ChatGPT -> chatgpt-codex Profile -> Codex CLI
@@ -63,19 +63,14 @@ browser login and upgrades. Provider CLIs and their logins are separate.
 
 ## Repository checks
 
-Run `pnpm check` from the repository root to verify architecture and schema
-consistency, generated protocol and Wrangler bindings, TypeScript formatting,
-lint and builds, Cloud tests, Dart formatting and analysis across all Dart
-packages, Workspace Dart tests, AX Flutter tests, and fixture acceptance flows. The
-command requires Node.js, pnpm, Dart, and Flutter (Flutter is needed for AX and
-Profile Lab, not for Workspace).
+Use the focused tests and component validation commands in [AGENTS.md](AGENTS.md) for the area changed. `pnpm check` is a broad repository check reserved for cases that require that scope.
 
-`./scripts/start-local.sh` starts the AX frontend on `http://localhost:3000`
+`./scripts/start-local.sh` starts the Syntila frontend on `http://localhost:3000`
 and a local API gateway on `http://localhost:8787`. By default the gateway
 forwards HTTP and WebSocket requests to production Cloud, using existing
 accounts, remote data and Workspace connections. Actions affect live data.
 Authentication cookies are adapted to localhost while retaining HttpOnly;
-production authentication secrets stay on Cloud. This mode tests local AX UI
+production authentication secrets stay on Cloud. This mode tests local Syntila UI
 changes against deployed Cloud behavior, rather than executing local backend changes.
 Stop previous frontend/backend processes before restarting the launcher.
 
@@ -129,7 +124,7 @@ Workflow graphs or edit Syntila's internal orchestration prompts in v1.
 
 ## Technology stack
 
-- Flutter + Dart for AX; pure Dart (no Flutter) for the Syntila Workspace
+- Flutter + Dart for Syntila; pure Dart (no Flutter) for the Syntila Workspace
   service and CLI.
 - TypeScript for Syntila Cloud.
 - Dart AOT for the generic CLI Worker Engine.
@@ -137,7 +132,7 @@ Workflow graphs or edit Syntila's internal orchestration prompts in v1.
 - Cloudflare D1 for structured state.
 - Cloudflare R2 where release/artifact payload storage is appropriate.
 - Better Auth for human authentication.
-- Local Worker Protocol 4.0 between Workspace and CLI Worker Engine.
+- Local Worker Protocol between Workspace and CLI Worker Engine; see [Protocol Boundaries](docs/architecture/PROTOCOL_BOUNDARIES.md) for supported versions.
 - Signed Tool Profile v1 releases for provider CLI behavior.
 - GitHub Actions for CI/CD.
 - Wrangler for Cloudflare deployment.
@@ -182,7 +177,7 @@ Provider secrets never enter Syntila Cloud.
 - [ADR-018: Generic CLI Worker Engine and Tool Profiles](docs/decisions/ADR-018-generic-cli-worker-engine-and-tool-profiles.md)
 - [ADR-019: Syntila Profile Lab Architecture Contract](docs/decisions/ADR-019-syntila-profile-lab.md)
 - [Tool Profile v1](docs/specifications/TOOL_PROFILE_V1.md)
-- [Architecture v8 implementation plan](docs/roadmaps/ARCHITECTURE_V8_IMPLEMENTATION.md)
+- [Worker Profile v9](docs/specifications/WORKER_PROFILE_V9.md)
 - [Work v1 contract](docs/specifications/WORK_V1_CONTRACT.md)
 - [First-party Worker catalog v1](docs/specifications/FIRST_PARTY_WORKER_CATALOG_V1.md)
 - [Protocol Boundaries](docs/architecture/PROTOCOL_BOUNDARIES.md)
@@ -192,4 +187,4 @@ Provider secrets never enter Syntila Cloud.
 - [AI Development Rules](AGENTS.md)
 
 New CLI integrations use the generic Engine and official signed Tool Profiles.
-See [Architecture](ARCHITECTURE.md) and the [v8 implementation roadmap](docs/roadmaps/ARCHITECTURE_V8_IMPLEMENTATION.md) for current contracts and release gates.
+See [Architecture](ARCHITECTURE.md) and the [roadmap](ROADMAP.md) for current contracts and release gates.
