@@ -233,7 +233,7 @@ class _AttachmentCardState extends State<AttachmentCard> {
   }
 }
 
-/// Round control on a translucent dark backdrop, legible over any image.
+/// Control on a translucent dark backdrop, legible over any image.
 class _OverlayIconButton extends StatelessWidget {
   const _OverlayIconButton(
       {required this.tooltip,
@@ -249,7 +249,7 @@ class _OverlayIconButton extends StatelessWidget {
         message: tooltip,
         child: Material(
           color: Colors.black.withValues(alpha: 0.5),
-          shape: const CircleBorder(),
+          shape: SyntilaRadius.buttonShape,
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onPressed,

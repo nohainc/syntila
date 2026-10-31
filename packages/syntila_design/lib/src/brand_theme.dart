@@ -150,6 +150,11 @@ abstract final class SyntilaBrand {
             const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
       textTheme: _textTheme(SyntilaColors.textPrimaryLight),
+      iconButtonTheme: _iconButtonTheme(),
+      segmentedButtonTheme: const SegmentedButtonThemeData(
+        style: ButtonStyle(
+            shape: WidgetStatePropertyAll(SyntilaRadius.buttonShape)),
+      ),
       filledButtonTheme: _filledButtonTheme(false),
       outlinedButtonTheme: _outlinedButtonTheme(
           SyntilaColors.borderLight, SyntilaColors.primaryForegroundLight),
@@ -246,6 +251,11 @@ abstract final class SyntilaBrand {
             const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
       textTheme: _textTheme(SyntilaColors.textPrimaryDark),
+      iconButtonTheme: _iconButtonTheme(),
+      segmentedButtonTheme: const SegmentedButtonThemeData(
+        style: ButtonStyle(
+            shape: WidgetStatePropertyAll(SyntilaRadius.buttonShape)),
+      ),
       filledButtonTheme: _filledButtonTheme(true),
       outlinedButtonTheme: _outlinedButtonTheme(
           SyntilaColors.borderDark, SyntilaColors.primaryForegroundDark),
@@ -349,14 +359,17 @@ abstract final class SyntilaBrand {
         ),
       );
 
+  static IconButtonThemeData _iconButtonTheme() => IconButtonThemeData(
+        style: IconButton.styleFrom(shape: SyntilaRadius.buttonShape),
+      );
+
   static FilledButtonThemeData _filledButtonTheme(bool isDark) =>
       FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: SyntilaColors.primaryColor(isDark),
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(SyntilaRadius.md)),
+          shape: SyntilaRadius.buttonShape,
         ).copyWith(
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) return null;
@@ -380,8 +393,7 @@ abstract final class SyntilaBrand {
           foregroundColor: foreground ?? SyntilaColors.primary,
           side: BorderSide(color: border),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(SyntilaRadius.md)),
+          shape: SyntilaRadius.buttonShape,
         ),
       );
 
@@ -390,8 +402,7 @@ abstract final class SyntilaBrand {
         style: TextButton.styleFrom(
           foregroundColor: foreground ?? SyntilaColors.primary,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(SyntilaRadius.sm)),
+          shape: SyntilaRadius.buttonShape,
         ),
       );
 

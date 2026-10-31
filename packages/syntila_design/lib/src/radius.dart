@@ -15,4 +15,7 @@ abstract final class SyntilaRadius {
   static const radiusLg = BorderRadius.all(Radius.circular(lg));
   static const radiusXl = BorderRadius.all(Radius.circular(xl));
   static const radiusPill = BorderRadius.all(Radius.circular(pill));
+
+  /// Shared outline for buttons and icon-button interaction states.
+  static const buttonShape = RoundedRectangleBorder(borderRadius: radiusSm);
 }

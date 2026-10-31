@@ -140,15 +140,24 @@ void main() {
     final restore = find.byKey(const ValueKey('execution-restore'));
     final separator = find.byKey(const ValueKey('execution-usage-separator'));
     await open(2);
+    for (final button in [
+      find.byKey(const ValueKey('execution-worker-w0')),
+      usage,
+      restore,
+    ]) {
+      expect(tester.getSize(button), const Size.square(32));
+      final theme = IconButtonTheme.of(tester.element(button));
+      expect(theme.style!.shape!.resolve({}), SyntilaRadius.buttonShape);
+    }
     expect(tester.getCenter(usage).dy, tester.getCenter(restore).dy);
     expect(
         tester.getCenter(separator).dx, lessThan(tester.getCenter(usage).dx));
     expect(tester.getSize(separator).height, 24);
     await tester.tapAt(const Offset(790, 30));
     await tester.pumpAndSettle();
-    await open(6);
+    await open(8);
     expect(
-        tester.getCenter(find.byKey(const ValueKey('execution-worker-w5'))).dy,
+        tester.getCenter(find.byKey(const ValueKey('execution-worker-w7'))).dy,
         greaterThan(tester
             .getCenter(find.byKey(const ValueKey('execution-worker-w0')))
             .dy));
@@ -156,7 +165,7 @@ void main() {
     expect(tester.getCenter(usage).dy, lessThan(tester.getCenter(restore).dy));
     expect(
         tester.getCenter(separator).dx, lessThan(tester.getCenter(usage).dx));
-    expect(tester.getSize(separator).height, 64);
+    expect(tester.getSize(separator).height, 48);
     expect(tester.takeException(), isNull);
   });
 

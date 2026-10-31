@@ -112,6 +112,7 @@ class AppSidebar extends StatelessWidget {
                     ? IconButtonThemeData(
                         style: IconButton.styleFrom(
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: SyntilaRadius.buttonShape,
                       ))
                     : IconButtonTheme.of(context),
                 child: Wrap(

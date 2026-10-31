@@ -97,7 +97,7 @@ class _TimelineScrollOverlayState extends State<TimelineScrollOverlay> {
                   child: Material(
                     elevation: 4,
                     color: Theme.of(context).colorScheme.surface,
-                    shape: const CircleBorder(),
+                    shape: SyntilaRadius.buttonShape,
                     child: IconButton(
                       key: const ValueKey('scroll-to-latest'),
                       // No hover hint; the label keeps it accessible.

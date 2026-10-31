@@ -4,6 +4,7 @@ import 'package:syntila_app/src/features/common/markdown_composer.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:syntila_design/syntila_design.dart';
 
 void main() {
   test('text preview is bounded, plain source and tolerates unknown files', () {
@@ -43,6 +44,11 @@ void main() {
     await mouse.addPointer(location: Offset.zero);
     await mouse.moveTo(card.center);
     await tester.pumpAndSettle();
+    final overlaySurface = find.descendant(
+        of: find.byTooltip('Remove attachment'),
+        matching: find.byType(Material));
+    expect(tester.widget<Material>(overlaySurface.first).shape,
+        SyntilaRadius.buttonShape);
     await tester.tap(find.byTooltip('Remove attachment'));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);

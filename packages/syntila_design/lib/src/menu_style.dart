@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'colors.dart';
+import 'radius.dart';
 
 /// Shared surface and row styling for application and composer menus.
 abstract final class SyntilaMenuStyle {
@@ -40,7 +41,7 @@ abstract final class SyntilaMenuStyle {
         ),
         minimumSize: const WidgetStatePropertyAll(Size(196, 36)),
         shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          SyntilaRadius.buttonShape,
         ),
         textStyle: const WidgetStatePropertyAll(textStyle),
         overlayColor: WidgetStateProperty.resolveWith((states) {

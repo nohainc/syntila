@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:syntila_protocol/syntila_protocol.dart';
 
 import 'menu_style.dart';
+import 'radius.dart';
 import 'colors.dart';
 
 /// Controlled selector: catalog refreshes never modify a saved selection.
@@ -617,8 +618,9 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                   ],
                   if (widget.helperMessage != null)
                     _message(widget.helperMessage!),
+                  if (widget.showWorker) const SizedBox(height: 8),
                   LayoutBuilder(builder: (context, constraints) {
-                    const buttonSize = 48.0;
+                    const buttonSize = 32.0;
                     const workerSpacing = 4.0;
                     const separatorWidth = 12.0;
                     final candidates = widget.showWorker
@@ -670,59 +672,70 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                     );
                     Widget slot(Widget child) => SizedBox(
                         width: buttonSize, height: buttonSize, child: child);
-                    return Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                              child: Wrap(spacing: workerSpacing, children: [
-                            for (final candidate in candidates)
-                              Builder(builder: (context) {
-                                final isSelected =
-                                    candidate.id == effective.worker;
-                                final rawIcon =
-                                    widget.workerIconBuilder?.call(candidate) ??
-                                        const Icon(Icons.smart_toy_outlined);
-                                return slot(Semantics(
-                                  label: candidate.name,
-                                  selected: isSelected,
-                                  child: IconButton(
-                                    key: ValueKey(
-                                        '${widget.scope}-worker-${candidate.id}'),
-                                    isSelected: isSelected,
-                                    onPressed:
-                                        enabled && widget.allowWorkerChange
-                                            ? () => change(ExecutionSelection(
-                                                worker: candidate.id,
-                                                catalogRevision:
-                                                    candidate.catalogRevision))
-                                            : null,
-                                    icon: Opacity(
-                                        opacity: isSelected ? 1.0 : 0.45,
-                                        child: rawIcon),
-                                  ),
-                                ));
-                              }),
-                          ])),
-                          if (showUsage)
-                            SizedBox(
-                              width: separatorWidth,
-                              height:
-                                  stackActions ? 2 * buttonSize : buttonSize,
-                              child: Center(
-                                  child: Container(
-                                key:
-                                    ValueKey('${widget.scope}-usage-separator'),
-                                width: 1,
-                                height: stackActions ? 64 : 24,
-                                color: Theme.of(context).dividerColor,
-                              )),
-                            ),
-                          if (stackActions)
-                            Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [slot(usage), slot(restore)])
-                          else ...[if (showUsage) slot(usage), slot(restore)],
-                        ]);
+                    return IconButtonTheme(
+                      data: IconButtonThemeData(
+                        style: IconButton.styleFrom(
+                          fixedSize: const Size.square(buttonSize),
+                          minimumSize: const Size.square(buttonSize),
+                          padding: EdgeInsets.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: SyntilaRadius.buttonShape,
+                        ),
+                      ),
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                                child: Wrap(spacing: workerSpacing, children: [
+                              for (final candidate in candidates)
+                                Builder(builder: (context) {
+                                  final isSelected =
+                                      candidate.id == effective.worker;
+                                  final rawIcon = widget.workerIconBuilder
+                                          ?.call(candidate) ??
+                                      const Icon(Icons.smart_toy_outlined);
+                                  return slot(Semantics(
+                                    label: candidate.name,
+                                    selected: isSelected,
+                                    child: IconButton(
+                                      key: ValueKey(
+                                          '${widget.scope}-worker-${candidate.id}'),
+                                      isSelected: isSelected,
+                                      onPressed: enabled &&
+                                              widget.allowWorkerChange
+                                          ? () => change(ExecutionSelection(
+                                              worker: candidate.id,
+                                              catalogRevision:
+                                                  candidate.catalogRevision))
+                                          : null,
+                                      icon: Opacity(
+                                          opacity: isSelected ? 1.0 : 0.45,
+                                          child: rawIcon),
+                                    ),
+                                  ));
+                                }),
+                            ])),
+                            if (showUsage)
+                              SizedBox(
+                                width: separatorWidth,
+                                height:
+                                    stackActions ? 2 * buttonSize : buttonSize,
+                                child: Center(
+                                    child: Container(
+                                  key: ValueKey(
+                                      '${widget.scope}-usage-separator'),
+                                  width: 1,
+                                  height: stackActions ? 48 : 24,
+                                  color: Theme.of(context).dividerColor,
+                                )),
+                              ),
+                            if (stackActions)
+                              Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [slot(usage), slot(restore)])
+                            else ...[if (showUsage) slot(usage), slot(restore)],
+                          ]),
+                    );
                   }),
                 ],
               ),

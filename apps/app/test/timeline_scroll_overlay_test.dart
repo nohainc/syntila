@@ -1,6 +1,7 @@
 import 'package:syntila_app/src/features/spaces/timeline_scroll_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:syntila_design/syntila_design.dart';
 
 void main() {
   testWidgets('lazy variable-height history ends with last row above composer',
@@ -73,6 +74,9 @@ void main() {
     await tester.drag(history, const Offset(0, -80));
     await tester.pumpAndSettle();
     expect(arrow, findsOneWidget);
+    final surface = find.ancestor(of: arrow, matching: find.byType(Material));
+    expect(tester.widget<Material>(surface.first).shape,
+        SyntilaRadius.buttonShape);
     expect(tester.getCenter(arrow).dx, tester.getCenter(history).dx);
     expect(
         tester.getRect(arrow).bottom, lessThan(tester.getRect(history).bottom));

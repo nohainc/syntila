@@ -133,6 +133,7 @@ class _AppTopHudState extends State<AppTopHud> {
                     maximumSize: const Size(36, 40),
                     padding: EdgeInsets.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: SyntilaRadius.buttonShape,
                   ))
                 : IconButtonTheme.of(context),
             child: Row(

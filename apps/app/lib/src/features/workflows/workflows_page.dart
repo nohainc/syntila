@@ -435,7 +435,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
                               : colors.surfaceContainerHighest
                                   .withValues(alpha: 0.5),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: SyntilaRadius.radiusSm,
                             side: BorderSide(
                               color: isSelected
                                   ? colors.primary
@@ -446,7 +446,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
                           child: InkWell(
                             key: ValueKey(
                                 'workflow-worker-${definition.id}-${worker.id}'),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: SyntilaRadius.radiusSm,
                             onTap: widget.canEdit && !_changingWorkspace
                                 ? () {
                                     final newWorkerId =

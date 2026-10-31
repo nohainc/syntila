@@ -15,6 +15,30 @@ double _contrastRatio(Color foreground, Color background) {
 }
 
 void main() {
+  test('button shapes use the same rounded rectangle in both themes', () {
+    for (final theme in [SyntilaBrand.lightTheme(), SyntilaBrand.darkTheme()]) {
+      final styles = [
+        theme.iconButtonTheme.style!,
+        theme.segmentedButtonTheme.style!,
+        theme.filledButtonTheme.style!,
+        theme.outlinedButtonTheme.style!,
+        theme.textButtonTheme.style!,
+        SyntilaMenuStyle.item(theme.brightness == Brightness.dark),
+      ];
+      for (final style in styles) {
+        for (final states in [
+          <WidgetState>{},
+          {WidgetState.hovered},
+          {WidgetState.focused},
+          {WidgetState.pressed},
+          {WidgetState.disabled}
+        ]) {
+          expect(style.shape!.resolve(states), SyntilaRadius.buttonShape);
+        }
+      }
+    }
+  });
+
   test('Primary buttons follow theme and pressed state', () {
     for (final isDark in [false, true]) {
       final theme =
