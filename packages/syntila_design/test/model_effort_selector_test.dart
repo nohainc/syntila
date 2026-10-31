@@ -112,6 +112,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('usage and restore follow the wrapped worker layout',
+      (tester) async {
+    Future<void> open(int count) async {
+      final workers = List.generate(
+          count,
+          (i) => WorkerSelectionCapability(
+              id: 'w$i', name: 'Worker $i', state: CapabilityState.ready));
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: Align(
+        alignment: Alignment.bottomLeft,
+        child: ModelEffortSelector(
+          compact: true,
+          immediatePopup: true,
+          catalog: ExecutionSelectionCatalog(workers),
+          value: const ExecutionSelection(worker: 'w0'),
+          onChanged: (_) {},
+          onShowUsage: () {},
+        ),
+      ))));
+      await tester.tap(find.byKey(const ValueKey('execution-open')));
+      await tester.pumpAndSettle();
+    }
+
+    final usage = find.byKey(const ValueKey('execution-usage'));
+    final restore = find.byKey(const ValueKey('execution-restore'));
+    final separator = find.byKey(const ValueKey('execution-usage-separator'));
+    await open(2);
+    expect(tester.getCenter(usage).dy, tester.getCenter(restore).dy);
+    expect(
+        tester.getCenter(separator).dx, lessThan(tester.getCenter(usage).dx));
+    expect(tester.getSize(separator).height, 24);
+    await tester.tapAt(const Offset(790, 30));
+    await tester.pumpAndSettle();
+    await open(6);
+    expect(
+        tester.getCenter(find.byKey(const ValueKey('execution-worker-w5'))).dy,
+        greaterThan(tester
+            .getCenter(find.byKey(const ValueKey('execution-worker-w0')))
+            .dy));
+    expect(tester.getCenter(usage).dx, tester.getCenter(restore).dx);
+    expect(tester.getCenter(usage).dy, lessThan(tester.getCenter(restore).dy));
+    expect(
+        tester.getCenter(separator).dx, lessThan(tester.getCenter(usage).dx));
+    expect(tester.getSize(separator).height, 64);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Work popup applies effort model and worker choices immediately',
       (tester) async {
     const other =

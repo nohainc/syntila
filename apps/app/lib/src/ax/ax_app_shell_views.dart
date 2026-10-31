@@ -10,6 +10,17 @@ extension _AxAppShellViews on _AxAppStateMixin {
       theme: SyntilaBrand.lightTheme(),
       darkTheme: SyntilaBrand.darkTheme(),
       themeMode: _themeMode,
+      builder: (context, child) {
+        // Multiplies the OS text size, capped so layouts stay usable.
+        final media = MediaQuery.of(context);
+        final system = media.textScaler.scale(1);
+        return MediaQuery(
+          data: media.copyWith(
+              textScaler: TextScaler.linear(
+                  (system * _viewPreferences.textSize.scale).clamp(1.0, 1.6))),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: CallbackShortcuts(
         bindings: <ShortcutActivator, VoidCallback>{
           const SingleActivator(LogicalKeyboardKey.keyN, meta: true):

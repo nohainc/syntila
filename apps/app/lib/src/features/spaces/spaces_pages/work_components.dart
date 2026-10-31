@@ -2697,19 +2697,20 @@ class _DiscussionMessageBubble extends StatefulWidget {
     this.grouped = false,
     this.onDelete,
     this.onReply,
-    this.onEditingChanged,
+    this.editing = false,
   });
 
-  /// Reports when the message enters or leaves edit mode, so the page stops
-  /// following the newest content while it is being edited.
-  final ValueChanged<bool>? onEditingChanged;
+  /// True while this message is loaded into the page's composer for editing.
+  final bool editing;
 
   /// Replies to this message; null for removed or unsaved messages.
   final VoidCallback? onReply;
   final _DiscussionItem item;
   final bool grouped;
   final VoidCallback onCopy;
-  final ValueChanged<String> onEdit;
+
+  /// Loads the message into the composer; editing happens there.
+  final VoidCallback onEdit;
   final VoidCallback? onDelete;
 
   @override
@@ -2718,44 +2719,6 @@ class _DiscussionMessageBubble extends StatefulWidget {
 }
 
 class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
-  bool _isEditing = false;
-  late TextEditingController _editController;
-
-  @override
-  void initState() {
-    super.initState();
-    _editController = TextEditingController(text: widget.item.text);
-  }
-
-  @override
-  void didUpdateWidget(covariant _DiscussionMessageBubble oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.text != widget.item.text && !_isEditing) {
-      _editController.text = widget.item.text;
-    }
-  }
-
-  @override
-  void dispose() {
-    if (_isEditing) widget.onEditingChanged?.call(false);
-    _editController.dispose();
-    super.dispose();
-  }
-
-  void _setEditing(bool editing) {
-    if (_isEditing == editing) return;
-    setState(() => _isEditing = editing);
-    widget.onEditingChanged?.call(editing);
-  }
-
-  void _saveEdit() {
-    final text = _editController.text;
-    if (text.trim().isNotEmpty) {
-      widget.onEdit(text);
-    }
-    _setEditing(false);
-  }
-
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -2878,10 +2841,7 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
             tooltip: 'Edit',
             icon: Icons.edit_outlined,
             color: metaColor,
-            onTap: () {
-              _editController.text = widget.item.text;
-              _setEditing(true);
-            },
+            onTap: widget.onEdit,
           ),
         ],
         _TimelineAction(
@@ -2905,7 +2865,7 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                         minWidth: maxBubbleWidth, maxWidth: maxBubbleWidth),
                     child: _withMessageMeta(
                       own: isMe,
-                      visible: showMeta && !_isEditing,
+                      visible: showMeta && !widget.editing,
                       meta: meta,
                       background: isMe
                           ? SyntilaColors.ownMessageBackground(isDark)
@@ -2961,45 +2921,16 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                               _ReplyQuote(reference: widget.item.replyTo!),
                             if (widget.item.attachments.isNotEmpty)
                               AttachmentCards(files: widget.item.attachments),
-                            if (_isEditing) ...[
-                              MarkdownComposer(
-                                controller: _editController,
-                                compact: true,
-                                maxLines: 6,
-                                autofocus: true,
-                                chatStyle: true,
-                                onSubmit: _saveEdit,
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  TextButton(
-                                    onPressed: () {
-                                      _editController.text = widget.item.text;
-                                      _setEditing(false);
-                                    },
-                                    child: const Text('Cancel'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilledButton(
-                                    onPressed: _saveEdit,
-                                    child: const Text('Save'),
-                                  ),
-                                ],
-                              ),
-                            ] else ...[
-                              CollapsibleOwnMessage(
+                            CollapsibleOwnMessage(
+                              data: widget.item.text,
+                              enabled: isMe,
+                              toggleColor: metaColor,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              child: _MemoizedWorkMarkdown(
                                 data: widget.item.text,
-                                enabled: isMe,
-                                toggleColor: metaColor,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                child: _MemoizedWorkMarkdown(
-                                  data: widget.item.text,
-                                  fitContent: true,
-                                ),
+                                fitContent: true,
                               ),
-                            ],
+                            ),
                           ],
                         ),
                       ),
@@ -3669,6 +3600,54 @@ class _ReplyComposerBanner extends StatelessWidget {
             padding: EdgeInsets.zero,
             icon: Icon(Icons.close_rounded, size: 16, color: muted),
             onPressed: onClear,
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// "Editing message" banner above the composer, with a cancel button.
+class _EditComposerBanner extends StatelessWidget {
+  const _EditComposerBanner({required this.excerpt, required this.onCancel});
+
+  final String excerpt;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = SyntilaColors.textSecondary(isDark);
+    return Semantics(
+      container: true,
+      label: 'Editing message',
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(children: [
+          Icon(Icons.edit_outlined, size: 16, color: muted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: [
+                const TextSpan(
+                    text: 'Editing message  ',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                TextSpan(text: excerpt.replaceAll('\n', ' ')),
+              ]),
+              key: const ValueKey('edit-composer-banner'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: muted),
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('edit-cancel'),
+            tooltip: 'Cancel editing',
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            padding: EdgeInsets.zero,
+            icon: Icon(Icons.close_rounded, size: 16, color: muted),
+            onPressed: onCancel,
           ),
         ]),
       ),

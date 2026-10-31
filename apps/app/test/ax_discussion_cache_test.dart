@@ -765,14 +765,38 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Edit'));
     await tester.pumpAndSettle();
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Original Chat'), 'Optimistic edit');
-    await tester.tap(find.text('Save'));
+    // Editing reuses the main composer instead of an in-bubble field.
+    expect(find.byKey(const ValueKey('edit-composer-banner')), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'Optimistic edit');
+    await tester.tap(find.byKey(const ValueKey('composer-send-Save changes')));
     await tester.pump();
+    expect(find.byKey(const ValueKey('edit-composer-banner')), findsNothing);
     expect(find.text('Optimistic edit'), findsOneWidget);
     source.edits.single.completeError(StateError('denied'));
     await tester.pumpAndSettle();
     expect(find.text('Original Chat'), findsOneWidget);
+  });
+  testWidgets('cancelling an edit restores the unsent draft', (tester) async {
+    await size(tester);
+    source.server = [message('1', 'Original Chat')];
+    await tester.pumpWidget(page('w'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'My draft');
+    await tester.tap(find.text('Original Chat'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Edit'));
+    await tester.pumpAndSettle();
+    expect(
+        tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+        'Original Chat');
+    await tester.tap(find.byKey(const ValueKey('edit-cancel')));
+    await tester.pumpAndSettle();
+    expect(
+        tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+        'My draft');
+    expect(source.edits, isEmpty);
+    expect(find.byKey(const ValueKey('composer-send-Send message')),
+        findsOneWidget);
   });
   testWidgets('failed send removes temporary text and shows existing error',
       (tester) async {

@@ -703,6 +703,9 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
         TextEditingController(text: space.description);
     String? errorText;
     var saving = false;
+    String? color = space.settings['color'] is String
+        ? space.settings['color'] as String
+        : null;
     // The controllers are left to the garbage collector: disposing them right
     // after the dialog closes would break its closing animation.
     await showDialog<void>(
@@ -721,7 +724,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
               errorText = null;
             });
             final error = await _saveSpaceEdits(
-                space, name, descriptionController.text.trim());
+                space, name, descriptionController.text.trim(), color);
             if (!dialogContext.mounted) return;
             if (error == null) {
               Navigator.pop(dialogContext);
@@ -765,6 +768,13 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
                           const InputDecoration(labelText: 'Description'),
                       maxLines: 2,
                     ),
+                    const SizedBox(height: 12),
+                    SpaceColorSelector(
+                      value: color,
+                      onChanged: saving
+                          ? null
+                          : (value) => setDialogState(() => color = value),
+                    ),
                   ],
                 ),
               ),
@@ -787,7 +797,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
 
   /// Saves an inline Space edit; returns an error for the form or null.
   Future<String?> _saveSpaceEdits(
-      AxSpace space, String name, String description) async {
+      AxSpace space, String name, String description, String? color) async {
     final taken = store.spaces.items.any((other) =>
         other.id != space.id &&
         other.role == 'owner' &&
@@ -814,6 +824,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
         // Instructions are no longer part of the Space UI; preserve any
         // legacy value until a dedicated data migration removes it.
         instructions: space.instructions,
+        settings: {'color': color},
       );
       if (mounted) _showSnackBar('Space updated.');
       return null;

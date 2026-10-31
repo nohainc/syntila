@@ -9,6 +9,8 @@ import 'package:syntila_app/src/ax/sync/ax_space_threads.dart';
 import 'package:syntila_app/src/ax/sync/ax_sync_engine.dart';
 import 'package:syntila_app/src/features/navigation/ax_shell_context.dart';
 import 'package:syntila_app/src/features/navigation/space_tree.dart';
+import 'package:syntila_app/src/features/common/space_color.dart';
+import 'package:syntila_design/syntila_design.dart';
 import 'package:syntila_app/src/navigation/ax_navigation.dart';
 import 'package:syntila_app/src/platform/platform_services.dart';
 import 'ax_fixture_data.dart';
@@ -17,9 +19,18 @@ import 'ax_space_navigation_test.dart' show HistoryNavigation;
 import 'package:syntila_app/src/ax/sync/ax_realtime_cache_router.dart';
 import 'ax_fixture_snapshot.dart';
 
-const a =
-    AxSpace(id: 'space-auth', name: 'Space A', branch: '', lastActivity: '');
-const b = AxSpace(id: 'atlas', name: 'Space B', branch: '', lastActivity: '');
+const a = AxSpace(
+    id: 'space-auth',
+    name: 'Space A',
+    branch: '',
+    lastActivity: '',
+    settings: {'color': 'Blue'});
+const b = AxSpace(
+    id: 'atlas',
+    name: 'Space B',
+    branch: '',
+    lastActivity: '',
+    settings: {'color': 'Rose'});
 AxThread stream(String space, String name,
         {String updatedAt = '', String? id}) =>
     AxThread(
@@ -198,7 +209,8 @@ void main() {
     final folder = tester.widget<SyntilaFolderIcon>(find.descendant(
         of: find.byKey(ValueKey('sidebar-space-row-${b.id}')),
         matching: find.byType(SyntilaFolderIcon)));
-    expect(folder.color, spaceIdentityColor(b.id, isDark: false));
+    expect(
+        folder.color, spaceIdentityColor(b.settings['color'], isDark: false));
 
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
@@ -235,6 +247,81 @@ void main() {
     await tester.tap(find.text('A newest'));
     expect(selected?.spaceId, a.id);
     expect(selected?.threadId, 'a-newest');
+  });
+
+  testWidgets('uncolored Space has a neutral icon and no recent marker',
+      (tester) async {
+    final neutral = a.copyWith(settings: const {});
+    final thread = stream(a.id, 'Neutral thread', id: 'neutral');
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+          body: SizedBox(
+              width: 260,
+              child: SpaceTree(
+                shellContext: AxShellContext(
+                  navigation: const AxNavigation.home(),
+                  spaces: [neutral],
+                  threadsBySpace: {
+                    a.id: [thread]
+                  },
+                ),
+                showRecentThreads: true,
+                onNavigateTo: (_) {},
+              ))),
+    ));
+    await tester.pump();
+    final folder =
+        tester.widget<SyntilaFolderIcon>(find.byType(SyntilaFolderIcon));
+    expect(folder.color, SyntilaColors.navigationTextMuted(false));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer();
+    await mouse.moveTo(tester.getCenter(
+        find.byKey(const ValueKey('recent-thread-row-space-auth-neutral'))));
+    await tester.pump();
+    expect(
+        find.byKey(
+            const ValueKey('recent-thread-space-marker-space-auth-neutral')),
+        findsNothing);
+  });
+
+  testWidgets('recent Space marker stays at the left without moving activity',
+      (tester) async {
+    final thread =
+        stream(a.id, 'Unread thread', id: 'unread').copyWith(hasUnread: true);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+          body: SizedBox(
+              width: 260,
+              child: SpaceTree(
+                shellContext: AxShellContext(
+                  navigation: const AxNavigation.home(),
+                  spaces: const [a],
+                  threadsBySpace: {
+                    a.id: [thread]
+                  },
+                ),
+                showRecentThreads: true,
+                onNavigateTo: (_) {},
+              ))),
+    ));
+    await tester.pump();
+    final row =
+        find.byKey(const ValueKey('recent-thread-row-space-auth-unread'));
+    final indicator = find.descendant(
+        of: row,
+        matching: find.byKey(const ValueKey('sidebar-unread-indicator')));
+    final originalPosition = tester.getTopLeft(indicator);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer();
+    await mouse.moveTo(tester.getCenter(row));
+    await tester.pump();
+    final marker = find
+        .byKey(const ValueKey('recent-thread-space-marker-space-auth-unread'));
+    expect(tester.getTopLeft(marker).dx, tester.getTopLeft(row).dx);
+    expect(tester.getTopLeft(indicator), originalPosition);
+    expect(tester.getTopRight(marker).dx, lessThan(originalPosition.dx));
   });
 
   testWidgets('active highlight follows the selected Thread row source',

@@ -1,5 +1,6 @@
 import 'dart:async';
 import '../common/quiet_notices.dart';
+import '../common/space_color.dart';
 import '../common/thread_dialogs.dart';
 
 import 'package:flutter/material.dart';
@@ -18,35 +19,6 @@ import '../../ax/sync/ax_space_threads.dart';
 /// indicators keep a fixed position whether or not the row is selected.
 const double _menuSlotWidth = 28;
 const double _sidebarRowHeight = 30;
-
-/// A stable Space identity color, with variants suited to each theme.
-Color spaceIdentityColor(String spaceId, {required bool isDark}) {
-  const light = <Color>[
-    Color(0xFF98513F),
-    Color(0xFF896225),
-    Color(0xFF39734E),
-    Color(0xFF25747B),
-    Color(0xFF4567A0),
-    Color(0xFF805E9A),
-    Color(0xFFA04F72),
-    Color(0xFF606C3C),
-  ];
-  const dark = <Color>[
-    Color(0xFFE9A28E),
-    Color(0xFFDDBB72),
-    Color(0xFF8AC99B),
-    Color(0xFF77C8CC),
-    Color(0xFF9CB8ED),
-    Color(0xFFC7A4E4),
-    Color(0xFFE89CB8),
-    Color(0xFFB3C783),
-  ];
-  var hash = 0;
-  for (final unit in spaceId.codeUnits) {
-    hash = (hash * 31 + unit) & 0x7fffffff;
-  }
-  return (isDark ? dark : light)[hash % light.length];
-}
 
 String _threadSelectionKey(String spaceId, String threadId) =>
     '$spaceId/$threadId';
@@ -363,9 +335,13 @@ class SpaceTree extends StatelessWidget {
                               SyntilaFolderIcon(
                                 isExpanded: isExpanded,
                                 size: 16,
-                                color: spaceIdentityColor(space.id,
-                                    isDark: Theme.of(context).brightness ==
-                                        Brightness.dark),
+                                color: spaceIdentityColor(
+                                        space.settings['color'],
+                                        isDark: Theme.of(context).brightness ==
+                                            Brightness.dark) ??
+                                    SyntilaColors.navigationTextMuted(
+                                        Theme.of(context).brightness ==
+                                            Brightness.dark),
                               ),
                               if (!isExpanded)
                                 Positioned(
@@ -495,7 +471,6 @@ class SpaceTree extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
           child: Container(
             height: pageLayout ? 52 : _sidebarRowHeight,
-            padding: const EdgeInsets.only(left: 8, right: 2),
             decoration: BoxDecoration(
               color: isThreadActive
                   ? SyntilaColors.navigationSelectedColor(
@@ -503,78 +478,89 @@ class SpaceTree extends StatelessWidget {
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Row(
+            child: Stack(
+              alignment: Alignment.centerLeft,
               children: [
-                SizedBox(
-                  width: narrow ? 10 : 26,
-                  child: SidebarActivityIndicators(
-                    running: thread.hasActiveWork,
-                    unread: thread.hasUnread && !isThreadSelected,
-                    gap: narrow ? 0 : 4,
-                  ),
-                ),
-                Expanded(
-                  child: Tooltip(
-                    message: recent ? space.name : '',
-                    child: Text(
-                      thread.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: SyntilaColors.navigationTextMuted(
-                            Theme.of(context).brightness == Brightness.dark),
-                        fontSize: pageLayout ? 15 : 11.5,
-                        fontWeight: FontWeight.w400,
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, right: 2),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: narrow ? 10 : 26,
+                        child: SidebarActivityIndicators(
+                          running: thread.hasActiveWork,
+                          unread: thread.hasUnread && !isThreadSelected,
+                          gap: narrow ? 0 : 4,
+                        ),
                       ),
-                    ),
+                      Expanded(
+                        child: Tooltip(
+                          message: recent ? space.name : '',
+                          child: Text(
+                            thread.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: SyntilaColors.navigationTextMuted(
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark),
+                              fontSize: pageLayout ? 15 : 11.5,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (statusIndicator != null) ...[
+                        const SizedBox(width: 8),
+                        statusIndicator,
+                      ],
+                      if (thread.isPinned && isThreadActive)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Icon(
+                            Icons.push_pin_outlined,
+                            size: 12,
+                            color: SyntilaColors.navigationTextMuted(
+                                Theme.of(context).brightness ==
+                                    Brightness.dark),
+                          ),
+                        ),
+                      isThreadActive
+                          ? _threadMenu(
+                              context,
+                              space,
+                              thread,
+                              menuOpenChanged,
+                              menuController,
+                              visibleThreads.map((item) => item.id).toList(),
+                              visibleThreads
+                                  .where((item) => item.isPinned)
+                                  .map((item) => item.id)
+                                  .toList(),
+                            )
+                          : const SizedBox(width: _menuSlotWidth),
+                    ],
                   ),
                 ),
-                if (statusIndicator != null) ...[
-                  const SizedBox(width: 8),
-                  statusIndicator,
-                ],
-                if (thread.isPinned && isThreadActive)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Icon(
-                      Icons.push_pin_outlined,
-                      size: 12,
-                      color: SyntilaColors.navigationTextMuted(
-                          Theme.of(context).brightness == Brightness.dark),
-                    ),
-                  ),
-                isThreadActive
-                    ? _threadMenu(
-                        context,
-                        space,
-                        thread,
-                        menuOpenChanged,
-                        menuController,
-                        visibleThreads.map((item) => item.id).toList(),
-                        visibleThreads
-                            .where((item) => item.isPinned)
-                            .map((item) => item.id)
-                            .toList(),
-                      )
-                    : const SizedBox(width: _menuSlotWidth),
-                if (recent)
-                  SizedBox(
-                    width: 8,
-                    child: Center(
-                      child: isThreadActive
-                          ? Container(
-                              key: ValueKey(
-                                  'recent-thread-space-marker-${space.id}-${thread.id}'),
-                              width: 3,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                color: spaceIdentityColor(space.id,
-                                    isDark: Theme.of(context).brightness ==
-                                        Brightness.dark),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            )
-                          : null,
+                if (recent &&
+                    isThreadActive &&
+                    spaceIdentityColor(space.settings['color'],
+                            isDark: Theme.of(context).brightness ==
+                                Brightness.dark) !=
+                        null)
+                  Positioned(
+                    left: 0,
+                    child: Container(
+                      key: ValueKey(
+                          'recent-thread-space-marker-${space.id}-${thread.id}'),
+                      width: 3,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: spaceIdentityColor(space.settings['color'],
+                            isDark: Theme.of(context).brightness ==
+                                Brightness.dark),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
               ],

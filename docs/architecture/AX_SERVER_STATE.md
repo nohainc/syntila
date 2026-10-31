@@ -1203,9 +1203,11 @@ through execution paths:
   outrank later choices. The route validates keys and bounds values, and a
   metadata-only write does not change `updatedAt`, so it never reorders the
   sidebar. Writing requires Thread manage access. Drafts stay browser-local.
-- **Space** (`spaces.settings_json`): `threadOrder` (unique Thread ids) and
-  `sidebarExpanded` (boolean). Only the Space owner can write Space settings,
-  so other members keep session-local expansion.
+- **Space** (`spaces.settings_json`): `threadOrder` (unique Thread ids),
+  `sidebarExpanded` (boolean), and optional `color` (a named navigation
+  palette value). A missing color uses neutral icons and no recent-Thread
+  marker; a JSON merge patch with `color: null` clears it. Only the Space owner
+  can write Space settings, so other members keep session-local expansion.
 
 The app applies the stored selection once the workflow and Worker catalogs
 load, and never writes defaults over a stored choice while it is pending. The

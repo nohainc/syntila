@@ -910,6 +910,23 @@ void main() {
     expect(client.lastRequest?.url.path, '/api/spaces');
   });
 
+  test('Space color update and clear are sent as settings patches', () async {
+    final client = _JsonClient({
+      'space': {
+        'id': 'space-1',
+        'name': 'Space',
+        'settings': <String, dynamic>{}
+      },
+    }, statusCode: 200);
+    final api =
+        AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    await api.updateSpace(spaceId: 'space-1', settings: {'color': 'Blue'});
+    expect(
+        (jsonDecode(client.lastBody!) as Map)['settings'], {'color': 'Blue'});
+    await api.updateSpace(spaceId: 'space-1', settings: {'color': null});
+    expect((jsonDecode(client.lastBody!) as Map)['settings'], {'color': null});
+  });
+
   test('persists Space instructions through the explicit update field',
       () async {
     final client = _JsonClient({

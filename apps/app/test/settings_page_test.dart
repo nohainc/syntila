@@ -41,6 +41,26 @@ void main() {
     expect(store.load().recentThreadsCount, 10);
   });
 
+  test('text size persists and falls back to default', () {
+    final saved =
+        const ViewPreferences(textSize: TextSizeOption.large).encode();
+    expect(ViewPreferences.decode(saved).textSize, TextSizeOption.large);
+    expect(ViewPreferences.decode('{"textSize":"huge"}').textSize,
+        TextSizeOption.standard);
+    expect(ViewPreferences.decode(null).textSize, TextSizeOption.standard);
+  });
+
+  testWidgets('settings page changes text size', (tester) async {
+    var prefs = const ViewPreferences();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SettingsPage(
+                preferences: prefs, onChanged: (next) => prefs = next))));
+    await tester.tap(find.text('Extra large'));
+    await tester.pump();
+    expect(prefs.textSize, TextSizeOption.extraLarge);
+  });
+
   testWidgets('settings page edits both options', (tester) async {
     var prefs = const ViewPreferences();
     late StateSetter set;

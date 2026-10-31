@@ -30,7 +30,8 @@ class SpacePage extends StatelessWidget {
 
   /// Saves an inline edit of name and description. Returns an error to show
   /// under the form, or null on success. Without it the page saves directly.
-  final Future<String?> Function(String name, String description)? onSaveEdits;
+  final Future<String?> Function(
+      String name, String description, String? color)? onSaveEdits;
 
   final VoidCallback onArchive;
   final VoidCallback onDelete;
@@ -88,7 +89,8 @@ class _SpaceWorkspace extends StatefulWidget {
 
   /// Saves an inline edit of name and description. Returns an error to show
   /// under the form, or null on success. Without it the page saves directly.
-  final Future<String?> Function(String name, String description)? onSaveEdits;
+  final Future<String?> Function(
+      String name, String description, String? color)? onSaveEdits;
 
   final VoidCallback onArchive;
   final VoidCallback onDelete;
@@ -123,6 +125,7 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
   final _savingMembers = <String>{};
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
+  String? _editColor;
   bool _editing = false;
   bool _showArchivedThreads = false;
   bool _savingEdits = false;

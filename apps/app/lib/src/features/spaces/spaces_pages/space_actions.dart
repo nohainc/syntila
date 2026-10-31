@@ -21,6 +21,9 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
   void _startEditing() => _updateState(() {
         _nameController.text = widget.space.name;
         _descriptionController.text = widget.space.description;
+        _editColor = widget.space.settings['color'] is String
+            ? widget.space.settings['color'] as String
+            : null;
         _editError = null;
         _editing = true;
       });
@@ -44,14 +47,14 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
     String? error;
     try {
       if (widget.onSaveEdits != null) {
-        error = await widget.onSaveEdits!(name, description);
+        error = await widget.onSaveEdits!(name, description, _editColor);
       } else {
         final updated = await _collaboration.editSpace(
           widget.space,
           name: name,
           description: description,
           instructions: widget.space.instructions,
-          settings: widget.space.settings,
+          settings: {'color': _editColor},
         );
         widget.onSpaceUpdated?.call(updated);
       }
@@ -94,6 +97,13 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
               enabled: !_savingEdits,
               decoration: const InputDecoration(labelText: 'Description'),
               maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            SpaceColorSelector(
+              value: _editColor,
+              onChanged: _savingEdits
+                  ? null
+                  : (value) => _updateState(() => _editColor = value),
             ),
             const SizedBox(height: 12),
             Row(

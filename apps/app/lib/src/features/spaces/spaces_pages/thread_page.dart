@@ -219,7 +219,13 @@ class _ThreadPageState extends State<ThreadPage>
 
   /// Chat messages being edited in place. While any is open the page never
   /// scrolls on its own, so the edited text stays where the person put it.
-  int _editingMessages = 0;
+  final _discussionFocus = FocusNode();
+
+  /// The message being edited in the composer, with the draft that was in the
+  /// composer before editing began (restored afterwards).
+  String? _editingMessageId;
+  String _editingOriginalText = '';
+  String _draftBeforeEdit = '';
   // Opening a tab positions it once the Thread view state and history exist:
   // bottom when nothing is new, otherwise the first unread item at the top.
   bool _openChatPending = true;
@@ -525,7 +531,6 @@ class _ThreadPageState extends State<ThreadPage>
   /// rows whose height settles a frame later. A jump queued before an anchor
   /// took hold (such as the first unread message on open) is dropped.
   void _jumpToLatest(ScrollController controller, {int pass = 0}) {
-    if (_editingMessages > 0) return;
     final generation = _interactionGeneration;
     final anchor = controller == _workHistoryController
         ? _workIncomingAnchor
@@ -547,7 +552,6 @@ class _ThreadPageState extends State<ThreadPage>
   }
 
   void _scheduleFollowLatest(ScrollController controller, {int attempt = 0}) {
-    if (_editingMessages > 0) return;
     final isWork = controller == _workHistoryController;
     final follow = isWork ? _followWork : _followChat;
     if (!follow && !(isWork ? _openWorkPending : _openChatPending)) return;
@@ -1041,7 +1045,9 @@ class _ThreadPageState extends State<ThreadPage>
           : _explicitSelectionValue('catalogRevision'),
       selectionUpdatedAt:
           pending != null ? pending.selectionUpdatedAt : _selectionUpdatedAt,
-      chatDraft: _discussionController.text,
+      chatDraft: _editingMessageId != null
+          ? _draftBeforeEdit
+          : _discussionController.text,
       workDraft: _requestController.text,
       chatSeenId: _chatSeenId,
       workSeenId: _workSeenId,
@@ -1585,6 +1591,7 @@ class _ThreadPageState extends State<ThreadPage>
       _discussionAttachments = [];
       _workAttachments = [];
       _replyTarget = null;
+      _editingMessageId = null;
       _navigatingToReply = false;
       _replyHighlightTimer?.cancel();
       _replyHighlightId = null;
@@ -1854,6 +1861,7 @@ class _ThreadPageState extends State<ThreadPage>
     _chatHistoryController.dispose();
     _composerInputHeight.dispose();
     _discussionController.dispose();
+    _discussionFocus.dispose();
     _presentation.dispose();
     super.dispose();
   }
@@ -2469,14 +2477,7 @@ class _ThreadPageState extends State<ThreadPage>
                                   context, message.workRequest!)
                               : _DiscussionMessageBubble(
                                   item: message,
-                                  onEditingChanged: (editing) {
-                                    _editingMessages =
-                                        (_editingMessages + (editing ? 1 : -1))
-                                            .clamp(0, 1 << 20);
-                                    // Editing a message means reading it, not
-                                    // the newest content.
-                                    if (editing) _followChat = false;
-                                  },
+                                  editing: _editingMessageId == message.id,
                                   grouped: _continuesDiscussionGroup(
                                       messages, index,
                                       breakAt: _firstUnreadChatId),
@@ -2498,8 +2499,7 @@ class _ThreadPageState extends State<ThreadPage>
                                                     : message.text),
                                           ))
                                       : null,
-                                  onEdit: (newText) =>
-                                      _editDiscussion(message.id, newText),
+                                  onEdit: () => _startEditMessage(message.id),
                                   onDelete: (message.isMe ||
                                               widget.space.role == 'owner') &&
                                           message.eventType == null
@@ -2643,13 +2643,24 @@ class _ThreadPageState extends State<ThreadPage>
               : _discussionComposer(twoPane: twoPane);
 
   Widget _discussionComposer({bool twoPane = false}) => MarkdownComposer(
-        attachments: _composerExtras(
-            reply: _replyTarget,
-            onClearReply: _clearReply,
-            files: _discussionAttachments,
-            onRemoveFile: (index) =>
-                _updateState(() => _discussionAttachments.removeAt(index))),
-        toolbarLeadingControls: widget.isDraft
+        attachments: _editingMessageId != null
+            ? _EditComposerBanner(
+                excerpt: replyExcerpt(_editingOriginalText),
+                onCancel: _cancelEditMessage)
+            : _composerExtras(
+                reply: _replyTarget,
+                onClearReply: _clearReply,
+                files: _discussionAttachments,
+                onRemoveFile: (index) =>
+                    _updateState(() => _discussionAttachments.removeAt(index))),
+        focusNode: _discussionFocus,
+        onCancel: _editingMessageId != null ? _cancelEditMessage : null,
+        sendIcon: _editingMessageId != null
+            ? Icons.check_rounded
+            : Icons.send_rounded,
+        sendTooltip:
+            _editingMessageId != null ? 'Save changes' : 'Send message',
+        toolbarLeadingControls: widget.isDraft || _editingMessageId != null
             ? null
             : Align(
                 widthFactor: 1,
@@ -2696,7 +2707,9 @@ class _ThreadPageState extends State<ThreadPage>
         inputHeight: _composerInputHeight,
         showControlTooltips: false,
         controller: _discussionController,
-        hintText: 'Write a message...',
+        hintText: _editingMessageId != null
+            ? 'Edit message...'
+            : 'Write a message...',
         chatStyle: true,
         enabled: !widget.draftBusy &&
             widget.space.effectivePermissions.chat &&

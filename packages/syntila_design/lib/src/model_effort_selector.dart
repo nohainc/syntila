@@ -617,80 +617,113 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                   ],
                   if (widget.helperMessage != null)
                     _message(widget.helperMessage!),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                          child: widget.showWorker
-                              ? Wrap(spacing: 4, children: [
-                                  for (final candidate in widget.catalog.workers
-                                      .where((w) =>
-                                          w.state == CapabilityState.ready ||
-                                          w.state == CapabilityState.stale))
-                                    Builder(builder: (context) {
-                                      final isSelected =
-                                          candidate.id == effective.worker;
-                                      final rawIcon = widget.workerIconBuilder
-                                              ?.call(candidate) ??
-                                          const Icon(Icons.smart_toy_outlined);
-                                      return Semantics(
-                                          label: candidate.name,
-                                          selected: isSelected,
-                                          child: IconButton(
-                                            key: ValueKey(
-                                                '${widget.scope}-worker-${candidate.id}'),
-                                            isSelected: isSelected,
-                                            onPressed: enabled &&
-                                                    widget.allowWorkerChange
-                                                ? () => change(ExecutionSelection(
-                                                    worker: candidate.id,
-                                                    catalogRevision: candidate
-                                                        .catalogRevision))
-                                                : null,
-                                            icon: Opacity(
-                                              opacity: isSelected ? 1.0 : 0.45,
-                                              child: rawIcon,
-                                            ),
-                                          ));
-                                    })
-                                ])
-                              : const SizedBox.shrink()),
-                      if (widget.onShowUsage != null)
-                        Semantics(
-                          label: 'Worker usage',
-                          button: true,
-                          child: IconButton(
-                            key: ValueKey('${widget.scope}-usage'),
-                            icon: const Icon(Icons.speed),
-                            onPressed: effective.worker == null
-                                ? null
-                                : () {
-                                    Navigator.of(context).pop();
-                                    widget.onShowUsage!();
-                                  },
-                          ),
-                        ),
-                      Semantics(
-                        label: 'Restore opening selection',
-                        child: IconButton(
-                          key: ValueKey('${widget.scope}-restore'),
-                          icon:
-                              const Icon(Icons.settings_backup_restore_rounded),
-                          onPressed: enabled &&
-                                  (value.worker != openingSelection.worker ||
-                                      value.model != openingSelection.model ||
-                                      value.effort != openingSelection.effort ||
-                                      value.catalogRevision !=
-                                          openingSelection.catalogRevision)
-                              ? () {
-                                  change(openingSelection);
-                                  Navigator.of(context).pop();
-                                }
-                              : null,
-                        ),
+                  LayoutBuilder(builder: (context, constraints) {
+                    const buttonSize = 48.0;
+                    const workerSpacing = 4.0;
+                    const separatorWidth = 12.0;
+                    final candidates = widget.showWorker
+                        ? widget.catalog.workers
+                            .where((w) =>
+                                w.state == CapabilityState.ready ||
+                                w.state == CapabilityState.stale)
+                            .toList()
+                        : <WorkerSelectionCapability>[];
+                    final showUsage = widget.onShowUsage != null;
+                    final workersWidth = candidates.isEmpty
+                        ? 0.0
+                        : candidates.length * buttonSize +
+                            (candidates.length - 1) * workerSpacing;
+                    final stackActions = showUsage &&
+                        workersWidth + separatorWidth + 2 * buttonSize >
+                            constraints.maxWidth;
+                    final usage = Semantics(
+                      label: 'Worker usage',
+                      button: true,
+                      child: IconButton(
+                        key: ValueKey('${widget.scope}-usage'),
+                        icon: const Icon(Icons.speed),
+                        onPressed: effective.worker == null
+                            ? null
+                            : () {
+                                Navigator.of(context).pop();
+                                widget.onShowUsage!();
+                              },
                       ),
-                    ],
-                  ),
+                    );
+                    final restore = Semantics(
+                      label: 'Restore opening selection',
+                      child: IconButton(
+                        key: ValueKey('${widget.scope}-restore'),
+                        icon: const Icon(Icons.settings_backup_restore_rounded),
+                        onPressed: enabled &&
+                                (value.worker != openingSelection.worker ||
+                                    value.model != openingSelection.model ||
+                                    value.effort != openingSelection.effort ||
+                                    value.catalogRevision !=
+                                        openingSelection.catalogRevision)
+                            ? () {
+                                change(openingSelection);
+                                Navigator.of(context).pop();
+                              }
+                            : null,
+                      ),
+                    );
+                    Widget slot(Widget child) => SizedBox(
+                        width: buttonSize, height: buttonSize, child: child);
+                    return Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                              child: Wrap(spacing: workerSpacing, children: [
+                            for (final candidate in candidates)
+                              Builder(builder: (context) {
+                                final isSelected =
+                                    candidate.id == effective.worker;
+                                final rawIcon =
+                                    widget.workerIconBuilder?.call(candidate) ??
+                                        const Icon(Icons.smart_toy_outlined);
+                                return slot(Semantics(
+                                  label: candidate.name,
+                                  selected: isSelected,
+                                  child: IconButton(
+                                    key: ValueKey(
+                                        '${widget.scope}-worker-${candidate.id}'),
+                                    isSelected: isSelected,
+                                    onPressed:
+                                        enabled && widget.allowWorkerChange
+                                            ? () => change(ExecutionSelection(
+                                                worker: candidate.id,
+                                                catalogRevision:
+                                                    candidate.catalogRevision))
+                                            : null,
+                                    icon: Opacity(
+                                        opacity: isSelected ? 1.0 : 0.45,
+                                        child: rawIcon),
+                                  ),
+                                ));
+                              }),
+                          ])),
+                          if (showUsage)
+                            SizedBox(
+                              width: separatorWidth,
+                              height:
+                                  stackActions ? 2 * buttonSize : buttonSize,
+                              child: Center(
+                                  child: Container(
+                                key:
+                                    ValueKey('${widget.scope}-usage-separator'),
+                                width: 1,
+                                height: stackActions ? 64 : 24,
+                                color: Theme.of(context).dividerColor,
+                              )),
+                            ),
+                          if (stackActions)
+                            Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [slot(usage), slot(restore)])
+                          else ...[if (showUsage) slot(usage), slot(restore)],
+                        ]);
+                  }),
                 ],
               ),
             ),

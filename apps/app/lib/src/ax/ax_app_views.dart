@@ -198,8 +198,8 @@ extension _AxAppViews on _AxAppStateMixin {
       dataSource: widget.dataSource,
       viewerEmail: store.auth.viewer?.email,
       onOpenThread: (threadId) => _openThread(space.id, threadId),
-      onSaveEdits: (name, description) =>
-          _saveSpaceEdits(space, name, description),
+      onSaveEdits: (name, description, color) =>
+          _saveSpaceEdits(space, name, description, color),
       onArchive: () => _archiveSpace(space),
       onDelete: () => _deleteSpace(space.id),
     );

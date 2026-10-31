@@ -862,6 +862,10 @@ extension _ThreadActions on _ThreadPageState {
   }
 
   Future<void> _sendDiscussion() async {
+    if (_editingMessageId != null) {
+      _saveEditMessage();
+      return;
+    }
     if (!widget.space.effectivePermissions.chat ||
         (widget.isDraft &&
             !widget.space.effectivePermissions.manageOwnThreads)) {
@@ -920,6 +924,60 @@ extension _ThreadActions on _ThreadPageState {
           content: Text('Failed to save message: $error'),
           backgroundColor: SyntilaColors.error));
     }
+  }
+
+  /// Loads a message into the composer. The draft already there is kept and
+  /// comes back once editing ends.
+  void _startEditMessage(String messageId) {
+    final message = _discussionCache
+        .peek(widget.thread.id)
+        .messages
+        .where((item) => item.id == messageId)
+        .firstOrNull;
+    if (message == null) return;
+    if (_askAiMode) _tabController.index = 0;
+    if (_editingMessageId == null) {
+      _draftBeforeEdit = _discussionController.text;
+    }
+    _updateState(() {
+      _editingMessageId = messageId;
+      _editingOriginalText = message.body;
+    });
+    _discussionController.value = TextEditingValue(
+      text: message.body,
+      selection: TextSelection.collapsed(offset: message.body.length),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _discussionFocus.requestFocus();
+    });
+  }
+
+  void _endEditMessage() {
+    final draft = _draftBeforeEdit;
+    _updateState(() {
+      _editingMessageId = null;
+      _editingOriginalText = '';
+      _draftBeforeEdit = '';
+    });
+    _discussionController.value = TextEditingValue(
+      text: draft,
+      selection: TextSelection.collapsed(offset: draft.length),
+    );
+  }
+
+  void _cancelEditMessage() {
+    if (_editingMessageId != null) _endEditMessage();
+  }
+
+  void _saveEditMessage() {
+    final id = _editingMessageId;
+    if (id == null) return;
+    final text = _discussionController.text;
+    // An emptied message is not saved; deleting is a separate action.
+    if (text.trim().isEmpty) return;
+    final changed = text != _editingOriginalText;
+    _endEditMessage();
+    if (changed) unawaited(_editDiscussion(id, text));
   }
 
   Future<void> _editDiscussion(String messageId, String newText) async {

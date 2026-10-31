@@ -5,6 +5,7 @@ import '../../brand.dart';
 import '../../navigation/ax_navigation.dart';
 import '../../ax/ax_models.dart';
 import 'app_menu.dart';
+import '../common/space_color.dart';
 import 'space_tree.dart';
 import 'ax_shell_context.dart';
 
@@ -654,7 +655,9 @@ class AppIconRail extends StatelessWidget {
                         leadingIcon: SyntilaFolderIcon(
                           isExpanded: true,
                           size: 16,
-                          color: spaceIdentityColor(space.id, isDark: isDark),
+                          color: spaceIdentityColor(space.settings['color'],
+                                  isDark: isDark) ??
+                              SyntilaColors.navigationTextMuted(isDark),
                         ),
                         onPressed: () =>
                             onNavigateTo(AxNavigation.space(space.id)),

@@ -27,6 +27,7 @@ import '../features/home/home_page.dart';
 import '../features/invitations/invitation_card.dart';
 import '../features/navigation/ax_shell_context.dart';
 import '../features/navigation/ax_sidebar.dart';
+import '../features/common/space_color.dart';
 import '../features/navigation/resizable_sidebar.dart';
 import '../features/navigation/ax_top_bar.dart';
 import '../features/spaces/spaces_pages.dart';

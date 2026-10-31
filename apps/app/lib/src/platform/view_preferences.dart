@@ -3,11 +3,27 @@ import 'dart:convert';
 import 'view_preferences_stub.dart'
     if (dart.library.js_interop) 'view_preferences_web.dart' as platform;
 
+/// App-wide text size. Standard is the original size.
+enum TextSizeOption {
+  standard('Default', 1.0),
+  large('Large', 1.15),
+  extraLarge('Extra large', 1.3);
+
+  const TextSizeOption(this.label, this.scale);
+
+  final String label;
+  final double scale;
+
+  static TextSizeOption fromName(Object? name) => values
+      .firstWhere((option) => option.name == name, orElse: () => standard);
+}
+
 /// Sidebar and layout choices that apply to this device only.
 class ViewPreferences {
   const ViewPreferences({
     this.showRecentThreads = true,
     this.recentThreadsCount = defaultRecentThreadsCount,
+    this.textSize = TextSizeOption.standard,
   });
 
   static const defaultRecentThreadsCount = 7;
@@ -17,10 +33,14 @@ class ViewPreferences {
 
   final bool showRecentThreads;
   final int recentThreadsCount;
+  final TextSizeOption textSize;
 
   ViewPreferences copyWith(
-          {bool? showRecentThreads, int? recentThreadsCount}) =>
+          {bool? showRecentThreads,
+          int? recentThreadsCount,
+          TextSizeOption? textSize}) =>
       ViewPreferences(
+        textSize: textSize ?? this.textSize,
         showRecentThreads: showRecentThreads ?? this.showRecentThreads,
         recentThreadsCount:
             _clampCount(recentThreadsCount ?? this.recentThreadsCount),
@@ -33,6 +53,7 @@ class ViewPreferences {
   String encode() => jsonEncode({
         'showRecentThreads': showRecentThreads,
         'recentThreadsCount': recentThreadsCount,
+        'textSize': textSize.name,
       });
 
   static ViewPreferences decode(String? raw) {
@@ -46,6 +67,7 @@ class ViewPreferences {
         showRecentThreads: show is bool ? show : true,
         recentThreadsCount:
             count is int ? _clampCount(count) : defaultRecentThreadsCount,
+        textSize: TextSizeOption.fromName(json['textSize']),
       );
     } catch (_) {
       return const ViewPreferences();
@@ -56,10 +78,12 @@ class ViewPreferences {
   bool operator ==(Object other) =>
       other is ViewPreferences &&
       other.showRecentThreads == showRecentThreads &&
-      other.recentThreadsCount == recentThreadsCount;
+      other.recentThreadsCount == recentThreadsCount &&
+      other.textSize == textSize;
 
   @override
-  int get hashCode => Object.hash(showRecentThreads, recentThreadsCount);
+  int get hashCode =>
+      Object.hash(showRecentThreads, recentThreadsCount, textSize);
 }
 
 /// Device-local storage for [ViewPreferences], independent of account and Cloud.

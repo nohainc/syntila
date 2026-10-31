@@ -31,6 +31,41 @@ class SettingsPage extends StatelessWidget {
         Text('These preferences apply to this device.',
             style: TextStyle(fontSize: 12.5, color: muted)),
         const SizedBox(height: 24),
+        Text('APPEARANCE',
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.7,
+                color: SyntilaColors.neutralText(isDark))),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Text size', style: TextStyle(fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text('Makes text larger across the app.',
+                      style: TextStyle(fontSize: 12, color: muted)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            SegmentedButton<TextSizeOption>(
+              key: const ValueKey('setting-text-size'),
+              showSelectedIcon: false,
+              segments: [
+                for (final option in TextSizeOption.values)
+                  ButtonSegment(value: option, label: Text(option.label)),
+              ],
+              selected: {preferences.textSize},
+              onSelectionChanged: (selection) =>
+                  onChanged(preferences.copyWith(textSize: selection.first)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
         Text('SIDEBAR',
             style: TextStyle(
                 fontSize: 10,

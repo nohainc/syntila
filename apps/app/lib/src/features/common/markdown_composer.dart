@@ -104,6 +104,9 @@ class MarkdownComposer extends StatefulWidget {
       this.sendInToolbar = false,
       this.sendInFormattingToolbar = false,
       this.sendTooltip = 'Send message',
+      this.sendIcon = Icons.send_rounded,
+      this.focusNode,
+      this.onCancel,
       this.showSendTooltip = true,
       this.compact = false,
       this.chatStyle = false,
@@ -150,6 +153,15 @@ class MarkdownComposer extends StatefulWidget {
   final bool sendInFormattingToolbar;
   final String sendTooltip;
 
+  /// Icon of the send button; editing swaps it for a check mark.
+  final IconData sendIcon;
+
+  /// Lets the owner move focus into the input, e.g. when editing starts.
+  final FocusNode? focusNode;
+
+  /// Escape in the input; null leaves Escape alone.
+  final VoidCallback? onCancel;
+
   /// Hide the hover hint while retaining the send action’s semantic label.
   final bool showSendTooltip;
   final bool compact;
@@ -190,7 +202,8 @@ class MarkdownComposer extends StatefulWidget {
 const double _twoRowControlsHeight = 44;
 
 class _MarkdownComposerState extends State<MarkdownComposer> {
-  final _focus = FocusNode();
+  final _ownFocus = FocusNode();
+  FocusNode get _focus => widget.focusNode ?? _ownFocus;
   // The language selector lives only while the mic or the selector is focused.
   final _languageMenu = MenuController();
   final _inputKey = GlobalKey();
@@ -233,6 +246,10 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
       widget.controller.addListener(_sourceChanged);
       _stopDictation();
     }
+    if (oldWidget.focusNode != widget.focusNode) {
+      (oldWidget.focusNode ?? _ownFocus).removeListener(_onFocusChange);
+      _focus.addListener(_onFocusChange);
+    }
     if (!widget.enabled) _stopDictation();
   }
 
@@ -259,7 +276,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
   void dispose() {
     widget.controller.removeListener(_sourceChanged);
     _focus.removeListener(_onFocusChange);
-    _focus.dispose();
+    _ownFocus.dispose();
     if (_dictationListening) _dictation.stop();
     super.dispose();
   }
@@ -395,7 +412,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
           disabledBackgroundColor: Colors.transparent,
         ),
         color: _controlColor,
-        icon: Icon(Icons.send_rounded,
+        icon: Icon(widget.sendIcon,
             size: composerIconSize, semanticLabel: widget.sendTooltip),
       );
 
@@ -584,7 +601,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                   padding: EdgeInsets.zero,
                   constraints: composerButtonConstraints,
                   style: composerIconButtonStyle(),
-                  icon: Icon(Icons.send_rounded,
+                  icon: Icon(widget.sendIcon,
                       size: composerIconSize,
                       semanticLabel: widget.sendTooltip),
                 ),
@@ -675,7 +692,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
             onPressed:
                 widget.enabled && widget.sendEnabled ? widget.onSend : null,
             color: _controlColor,
-            icon: Icon(Icons.send_rounded,
+            icon: Icon(widget.sendIcon,
                 size: 18, semanticLabel: widget.sendTooltip),
           ),
       ]);
@@ -701,6 +718,9 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
               if (!isTouch &&
                   (widget.onSend != null || widget.onSubmit != null))
                 const SingleActivator(LogicalKeyboardKey.enter): _submit,
+              if (widget.onCancel != null)
+                const SingleActivator(LogicalKeyboardKey.escape):
+                    widget.onCancel!,
               for (final modifier in [true, false]) ...{
                 SingleActivator(LogicalKeyboardKey.keyB,
                     meta: modifier,
@@ -807,7 +827,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                                     ? widget.onSend
                                     : null,
                                 color: _controlColor,
-                                icon: Icon(Icons.send_rounded,
+                                icon: Icon(widget.sendIcon,
                                     size: 18,
                                     semanticLabel: widget.sendTooltip),
                               ),
@@ -861,7 +881,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                               ? widget.onSend
                               : null,
                           color: _controlColor,
-                          icon: Icon(Icons.send_rounded,
+                          icon: Icon(widget.sendIcon,
                               size: 18, semanticLabel: widget.sendTooltip),
                         ),
                     ],
@@ -1030,7 +1050,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                                   ? widget.onSend
                                   : null,
                               color: _controlColor,
-                              icon: Icon(Icons.send_rounded,
+                              icon: Icon(widget.sendIcon,
                                   size: 18, semanticLabel: widget.sendTooltip),
                             ),
                         ])
@@ -1063,7 +1083,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                                   ? widget.sendTooltip
                                   : null,
                               onPressed: widget.onSend,
-                              icon: Icon(Icons.send_rounded,
+                              icon: Icon(widget.sendIcon,
                                   semanticLabel: widget.sendTooltip),
                             ),
                         ]),

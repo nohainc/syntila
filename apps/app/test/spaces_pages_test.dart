@@ -2502,7 +2502,7 @@ void main() {
         source);
     const edited = '\n> **edited**\n- [ ] task\n  ';
     await tester.enterText(find.byType(TextField).first, edited);
-    await tester.tap(find.text('Save'));
+    await tester.tap(find.byKey(const ValueKey('composer-send-Save changes')));
     await tester.pumpAndSettle();
     expect(ds.editedSource, edited);
     await _chooseMessageAction(tester, 'Copy');
@@ -2714,6 +2714,7 @@ void main() {
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     var edited = false;
+    String? selectedColor;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
@@ -2728,8 +2729,9 @@ void main() {
             ),
             dataSource: const AxFixtureDataSource(),
             onOpenThread: (_) {},
-            onSaveEdits: (name, description) async {
+            onSaveEdits: (name, description, color) async {
               edited = true;
+              selectedColor = color;
               return null;
             },
             onArchive: () {},
@@ -2765,9 +2767,14 @@ void main() {
     expect(find.text('Space name cannot be empty.'), findsOneWidget);
     expect(edited, isFalse);
     await tester.enterText(find.byType(TextField).first, 'Space Two');
+    await tester.tap(find.byKey(const ValueKey('space-color-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Blue').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
     expect(edited, isTrue);
+    expect(selectedColor, 'Blue');
     expect(find.byKey(const ValueKey('space-edit-form')), findsNothing);
 
     expect(find.byType(TabBar), findsNothing);
@@ -3468,18 +3475,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Message copied to clipboard'), findsNothing);
 
-    // Verify edit message button allows editing in-place
+    // Editing loads the message into the main composer.
     expect(find.byTooltip('Copy'), findsOneWidget);
     await _chooseMessageAction(tester, 'Edit');
     await tester.pumpAndSettle();
-    expect(find.text('Save'), findsOneWidget);
-    expect(find.text('Cancel'), findsOneWidget);
+    expect(find.byKey(const ValueKey('edit-composer-banner')), findsOneWidget);
+    expect(find.byKey(const ValueKey('composer-send-Save changes')),
+        findsOneWidget);
 
-    await tester.enterText(
-        find.widgetWithText(
-            TextField, 'The login failure reproduces on a fresh checkout.'),
+    await tester.enterText(find.byType(TextField).last,
         'The login failure reproduces on a fresh checkout. (Updated)');
-    await tester.tap(find.text('Save'));
+    await tester.tap(find.byKey(const ValueKey('composer-send-Save changes')));
     await tester.pumpAndSettle();
     expect(
         find.text(
