@@ -25,19 +25,21 @@ else
 fi
 PACKAGES=()
 while IFS= read -r -d '' package; do PACKAGES+=("$package"); done < <(find "$CANDIDATES" -type f -name '*.deb' -print0)
-[[ ${#PACKAGES[@]} == 2 ]] || { echo 'Expected tested amd64 and arm64 packages.' >&2; exit 1; }
-# Independently check the exact architecture/version pair before using the key.
+# Independently check the exact package/architecture/version set before using
+# the key: syntila for amd64 and arm64, plus syntila-gui for both or neither.
 python3 - "${SYNTILA_WORKSPACE_VERSION:?}" "${PACKAGES[@]}" <<'PY'
 import subprocess, sys
 version = sys.argv[1]
-seen = set()
+seen = {}
 for package in sys.argv[2:]:
     fields = subprocess.check_output(['dpkg-deb', '--field', package, 'Package', 'Version', 'Architecture'], text=True)
     info = dict(line.split(': ', 1) for line in fields.splitlines())
-    assert info['Package'] == 'syntila' and info['Version'] == version
-    assert info['Architecture'] not in seen
-    seen.add(info['Architecture'])
-assert seen == {'amd64', 'arm64'}
+    assert info['Package'] in ('syntila', 'syntila-gui') and info['Version'] == version, info
+    archs = seen.setdefault(info['Package'], set())
+    assert info['Architecture'] not in archs, info
+    archs.add(info['Architecture'])
+assert seen.get('syntila') == {'amd64', 'arm64'}, seen
+assert seen.get('syntila-gui', {'amd64', 'arm64'}) == {'amd64', 'arm64'}, seen
 PY
 python3 "$ROOT/scripts/release/build-apt-repository.py" --output "$TEMP/repository" \
   --signing-key "$SYNTILA_APT_SIGNING_FINGERPRINT" "${PACKAGES[@]}"
