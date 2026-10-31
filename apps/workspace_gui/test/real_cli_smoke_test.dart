@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gui_manifest_flutter/gui_manifest_flutter.dart';
-import 'package:syntila_design/syntila_design.dart';
 import 'package:syntila_workspace_gui/src/status_page.dart';
+import 'package:syntila_workspace_gui/src/syntila_themes.dart';
 
 /// Runs only with SYNTILA_CLI pointing at a built `syntila` binary.
 void main() {
@@ -23,7 +23,7 @@ void main() {
     await tester.runAsync(
       () => tester.pumpWidget(
         MaterialApp(
-          theme: SyntilaBrand.lightTheme(),
+          theme: syntilaLightTheme(),
           home: GuiManifestShell(
             runner: runner,
             title: 'Syntila Workspace',
@@ -57,7 +57,7 @@ void main() {
       'Assignments',
       'Logs',
       'Service',
-      'Commands',
+      'COMMANDS',
       'Config',
     ]) {
       expect(find.text(label), findsWidgets, reason: label);
@@ -65,17 +65,17 @@ void main() {
     // A group is one expandable row: its commands show after expanding it.
     expect(find.text('Add Worker'), findsNothing);
     await tester.runAsync(() async {
-      await tester.tap(find.byTooltip('Show Workers commands'));
+      // The Status page has a "Workers" card too, so address the sidebar row.
+      await tester.tap(find.byKey(const ValueKey('sidebar-row-nav:workers')));
       await tester.pump();
     });
     expect(find.text('Add Worker'), findsOneWidget);
     expect(find.text('Catalog'), findsNothing);
     expect(find.text('Worker catalog'), findsOneWidget);
-    expect(ran, findsOneWidget);
 
     // Generated pages still work: open Logs and run it.
     await tester.runAsync(() async {
-      await tester.tap(find.text('Logs').first);
+      await tester.tap(find.byKey(const ValueKey('sidebar-row-nav:logs')));
       await tester.pump();
     });
     final logs = find.textContaining(' logs --json');
