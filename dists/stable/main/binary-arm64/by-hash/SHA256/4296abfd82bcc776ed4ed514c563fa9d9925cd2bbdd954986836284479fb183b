@@ -1,0 +1,85 @@
+Package: syntila
+Version: 1.0.10
+Architecture: arm64
+Maintainer: Syntila <support@conclaveax.com>
+Section: devel
+Priority: optional
+Depends: libc6 (>= 2.31), libgcc-s1, libstdc++6, ca-certificates
+Recommends: systemd, dbus-user-session
+Suggests: libsecret-tools
+Homepage: https://conclaveax.com
+Description: Headless Syntila Workspace service and management CLI
+ Includes the generic CLI Worker Engine. Runs as the user who owns provider
+ CLI logins. No desktop environment is required. Provider CLIs are separate.
+Filename: pool/main/c/syntila/syntila_1.0.10_arm64.deb
+Size: 6850998
+SHA256: 43bb46a3729beaa6de82bae9deb4cf284f433ac0505cd168b916ad592b39c435
+
+Package: syntila
+Version: 1.0.11
+Architecture: arm64
+Maintainer: Syntila <support@conclaveax.com>
+Section: devel
+Priority: optional
+Depends: libc6 (>= 2.31), libgcc-s1, libstdc++6, ca-certificates
+Recommends: systemd, dbus-user-session
+Suggests: libsecret-tools
+Homepage: https://conclaveax.com
+Description: Headless Syntila Workspace service and management CLI
+ Includes the generic CLI Worker Engine. Runs as the user who owns provider
+ CLI logins. No desktop environment is required. Provider CLIs are separate.
+Filename: pool/main/c/syntila/syntila_1.0.11_arm64.deb
+Size: 6851036
+SHA256: d888a8bf5d139d473cb62612da1deec5f63d69368e221291b8185fce64a337ea
+
+Package: syntila
+Version: 1.0.12
+Architecture: arm64
+Maintainer: Syntila <support@conclaveax.com>
+Section: devel
+Priority: optional
+Depends: libc6 (>= 2.31), libgcc-s1, libstdc++6, ca-certificates
+Recommends: systemd, dbus-user-session
+Suggests: libsecret-tools
+Homepage: https://conclaveax.com
+Description: Headless Syntila Workspace service and management CLI
+ Includes the generic CLI Worker Engine. Runs as the user who owns provider
+ CLI logins. No desktop environment is required. Provider CLIs are separate.
+Filename: pool/main/c/syntila/syntila_1.0.12_arm64.deb
+Size: 6851018
+SHA256: 936fd70a028bc36841f36f7774bf70eb447de92f04d6d0352cba5532523bb4fe
+
+Package: syntila
+Version: 1.0.13
+Architecture: arm64
+Maintainer: Syntila <support@conclaveax.com>
+Section: devel
+Priority: optional
+Depends: libc6 (>= 2.31), libgcc-s1, libstdc++6, ca-certificates
+Recommends: systemd, dbus-user-session
+Suggests: libsecret-tools
+Homepage: https://conclaveax.com
+Description: Headless Syntila Workspace service and management CLI
+ Includes the generic CLI Worker Engine. Runs as the user who owns provider
+ CLI logins. No desktop environment is required. Provider CLIs are separate.
+Filename: pool/main/c/syntila/syntila_1.0.13_arm64.deb
+Size: 6856518
+SHA256: 31135738b1dee7f0584618de1bd12e7c1f6c6500356fa7f293bc9af87c19a4d5
+
+Package: syntila
+Version: 1.0.9
+Architecture: arm64
+Maintainer: Syntila <support@conclaveax.com>
+Section: devel
+Priority: optional
+Depends: libc6 (>= 2.31), libgcc-s1, libstdc++6, ca-certificates
+Recommends: systemd, dbus-user-session
+Suggests: libsecret-tools
+Homepage: https://conclaveax.com
+Description: Headless Syntila Workspace service and management CLI
+ Includes the generic CLI Worker Engine. Runs as the user who owns provider
+ CLI logins. No desktop environment is required. Provider CLIs are separate.
+Filename: pool/main/c/syntila/syntila_1.0.9_arm64.deb
+Size: 6846094
+SHA256: 8bb2d37dfee0b01d2ca197ed172fc4eb871456a5b9ca6326e8fa83433d4ef6c9
+
