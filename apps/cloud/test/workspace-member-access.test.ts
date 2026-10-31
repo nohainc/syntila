@@ -252,17 +252,26 @@ it("lets a per-person override replace the default and enforces the mode ceiling
     );
   try {
     const all = { models: null, efforts: null };
-    // Default policy: chat only. Direct needs thread_write, so members are refused.
+    // Default policy: chat only. On the owner's own Workspace, Space Work
+    // permission takes precedence, so the default mode does not cap Work.
     await call("PUT", "owner", "workspace", {
       restricted: true,
       mode: "chat",
       workers: { "worker-a": all },
     });
-    await expect(bind("member")).rejects.toMatchObject({ status: 403 });
+    expect((await bind("member")).direct).toMatchObject({
+      workerId: "worker-a",
+    });
     // Only the owner manages overrides.
     await expect(
       person("PUT", "member", "member", { mode: "work", workers: {} }),
     ).rejects.toMatchObject({ status: 404 });
+    // A per-person override enforces the mode ceiling.
+    await person("PUT", "owner", "member", {
+      mode: "chat",
+      workers: { "worker-a": all },
+    });
+    await expect(bind("member")).rejects.toMatchObject({ status: 403 });
     // An override replaces the default (no merge) and lifts the ceiling.
     await person("PUT", "owner", "member", {
       mode: "work",
@@ -280,11 +289,13 @@ it("lets a per-person override replace the default and enforces the mode ceiling
       workers: { "worker-b": all },
     });
     await expect(bind("member")).rejects.toMatchObject({ status: 403 });
-    // Reset returns the person to the default.
+    // Reset returns the person to the default (where default mode does not cap Work).
     expect(
       await (await person("DELETE", "owner", "member")).json(),
     ).toMatchObject({ custom: false, policy: { mode: "chat" } });
-    await expect(bind("member")).rejects.toMatchObject({ status: 403 });
+    expect((await bind("member")).direct).toMatchObject({
+      workerId: "worker-a",
+    });
     // Invalid input and unknown people are rejected; the owner is never restricted.
     await expect(
       person("PUT", "owner", "member", { mode: "root", workers: {} }),

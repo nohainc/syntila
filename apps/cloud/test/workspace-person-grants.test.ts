@@ -122,7 +122,9 @@ it("lets the borrower, not their Space friend, run on the lent Workspace", async
     });
     // Strict: Space members never use it, not even with their own grant.
     await expect(bind("friend")).rejects.toMatchObject({ status: 403 });
-    sqlite.exec(`INSERT INTO workspace_person_grants(workspace_id,user_id,granted_by_user_id,status,created_at,updated_at) VALUES('lent','friend','lender','active','now','now')`);
+    sqlite.exec(
+      `INSERT INTO workspace_person_grants(workspace_id,user_id,granted_by_user_id,status,created_at,updated_at) VALUES('lent','friend','lender','active','now','now')`,
+    );
     await expect(bind("friend")).rejects.toMatchObject({ status: 403 });
     // Nor does the lender through someone else's Space.
     await expect(bind("lender")).rejects.toMatchObject({ status: 403 });
@@ -155,9 +157,7 @@ it("creates the Space grant by the lender and never touches the lender's schedul
           "SELECT granted_by_user_id g, status s, allowed_permissions_json p FROM workspace_space_grants WHERE space_id='G'",
         )
         .all(),
-    ).toEqual([
-      { g: "lender", s: "active", p: '["repository:read"]' },
-    ]);
+    ).toEqual([{ g: "lender", s: "active", p: '["repository:read"]' }]);
     // The lent Workspace is offered to the borrower beside their own.
     const body = (await (await workspaceFor("GET", "guest")).json()) as {
       workspaces: { id: string }[];

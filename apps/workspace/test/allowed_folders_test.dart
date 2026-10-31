@@ -113,6 +113,11 @@ void main() {
 
   test('refuses to add a folder without write access', () async {
     final subject = registry();
+    Future<void> rejects(String path, String code) => expectLater(
+        subject.add(path),
+        throwsA(isA<AllowedFolderViolation>()
+            .having((error) => error.code, 'code', code)));
+
     final readOnly = await folder('Locked');
     await Process.run('chmod', ['555', readOnly.path]);
     final denied = await folder('Hidden');

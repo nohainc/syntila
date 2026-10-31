@@ -25,7 +25,7 @@ generic Engine boundary.
 
 ## v8 architecture contract (historical implementation baseline)
 
-Architecture v8 has one execution path: Syntila → Cloud → Workspace → CLI Worker Engine → current Worker Profile → provider CLI. The explicit exclusions in the
+Architecture v8 has one execution path: AX → Cloud → Workspace → CLI Worker Engine → current Worker Profile → provider CLI. The explicit exclusions in the
 [v8 architecture contract](docs/architecture/ARCHITECTURE_V8.md#architecture-contract)
 are normative and checked by `scripts/verify-v8-architecture.mjs`.
 

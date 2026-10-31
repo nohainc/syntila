@@ -280,7 +280,8 @@ export async function handleRetryWorkRequest(
         { status: 409 },
       );
   }
-  const compactContext = contextLimitExceeded && contextResolution === "compact";
+  const compactContext =
+    contextLimitExceeded && contextResolution === "compact";
   const clearAiHistory = contextLimitExceeded && !compactContext;
   if (clearAiHistory) {
     const active = await env.SYNTILA_DB.prepare(

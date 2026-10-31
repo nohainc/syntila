@@ -146,9 +146,9 @@ export async function resolveWorkflowExecutionBindings(
     .first<{ ownerUserId: string }>();
   const lent = Boolean(
     !ownWorkspaceId &&
-      workspaceOwner &&
-      spaceOwner &&
-      workspaceOwner.ownerUserId !== spaceOwner.ownerUserId,
+    workspaceOwner &&
+    spaceOwner &&
+    workspaceOwner.ownerUserId !== spaceOwner.ownerUserId,
   );
   // A lent Workspace answers only the borrower, who owns the Space, and only
   // their Chat. Space members never use it, for any workflow.
@@ -221,8 +221,7 @@ export async function resolveWorkflowExecutionBindings(
   // policy only limits Workers, models and efforts. A per-person override, or
   // a borrowed Workspace, still caps the mode (ADR-020).
   const modePolicy =
-    memberPolicy &&
-    workspaceOwner!.ownerUserId === spaceOwner?.ownerUserId
+    memberPolicy && workspaceOwner!.ownerUserId === spaceOwner?.ownerUserId
       ? await loadMemberAccessOverride(env, space.workspaceId!, userId)
       : memberPolicy;
   const requested: Record<

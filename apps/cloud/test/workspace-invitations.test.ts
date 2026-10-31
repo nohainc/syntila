@@ -102,9 +102,7 @@ it("accept creates only a grant (no people relationship), once, for the invited 
     ).toEqual([{ status: "active" }]);
     // No override is seeded: Chat on every Worker unless the owner limits it.
     expect(
-      sqlite
-        .prepare("SELECT COUNT(*) n FROM workspace_member_overrides")
-        .get(),
+      sqlite.prepare("SELECT COUNT(*) n FROM workspace_member_overrides").get(),
     ).toEqual({ n: 0 });
     expect(
       sqlite.prepare("SELECT COUNT(*) n FROM people_relationships").get(),

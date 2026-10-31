@@ -50,8 +50,10 @@ const workspaceRuntimePackage = JSON.parse(
   readRequired("packages/workspace-runtime-protocol/package.json") || "{}",
 );
 
-const canonicalExecutionPath =
-  "AX → Cloud → Workspace → CLI Worker Engine → current Worker Profile → provider CLI";
+const canonicalExecutionPaths = [
+  "AX → Cloud → Workspace → CLI Worker Engine → current Worker Profile → provider CLI",
+  "Syntila → Cloud → Workspace → CLI Worker Engine → current Worker Profile → provider CLI",
+];
 const canonicalV8ExecutionPath =
   "AX → Cloud → Workspace → CLI Worker Engine → signed Tool Profile → provider CLI";
 const architectureProhibitions = [
@@ -77,7 +79,7 @@ const architectureProhibitions = [
   ],
 ];
 
-if (!architecture.includes(canonicalExecutionPath)) {
+if (!canonicalExecutionPaths.some((path) => architecture.includes(path))) {
   failures.push("ARCHITECTURE.md must state the canonical v8 execution path.");
 }
 if (
