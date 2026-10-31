@@ -5,6 +5,7 @@ import { handleAccountPlan } from "../src/routes/profile.js";
 import {
   PaidPlanRequiredError,
   effectiveTier,
+  paidOwnerSql,
   getAccountPlan,
   requirePaidFeature,
 } from "../src/account-plan.js";
@@ -97,4 +98,29 @@ it("rejects paid features for free accounts with a stable code", async () => {
     code: "paid_plan_required",
     feature: "workspace.sharing",
   });
+});
+
+it("keeps the SQL owner check in step with effectiveTier", () => {
+  const cases = [
+    ["paid", "active", null],
+    ["paid", "trialing", "2999-01-01T00:00:00Z"],
+    ["paid", "past_due", "2999-01-01T00:00:00.000Z"],
+    ["paid", "active", "2020-01-01T00:00:00Z"],
+    ["paid", "canceled", null],
+    ["free", "active", null],
+  ] as const;
+  for (const [tier, status, end] of cases) {
+    store.sqlite.exec("DELETE FROM account_plans WHERE user_id='free'");
+    store.sqlite
+      .prepare(
+        "INSERT INTO account_plans(user_id,tier,status,source,current_period_end,created_at,updated_at) VALUES('free',?,?,'manual',?,'now','now')",
+      )
+      .run(tier, status, end);
+    const sql = store.sqlite
+      .prepare(`SELECT ${paidOwnerSql("'free'")} AS paid`)
+      .get() as { paid: number };
+    expect(sql.paid === 1).toBe(
+      effectiveTier({ tier, status, current_period_end: end }) === "paid",
+    );
+  }
 });

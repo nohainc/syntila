@@ -1,3 +1,4 @@
+import { paidOwnerSql } from "../account-plan.js";
 import {
   HttpError,
   json,
@@ -58,7 +59,8 @@ export async function handleListWorkspaces(
         AND (owner_user_id = ?1
              OR EXISTS (SELECT 1 FROM workspace_person_grants g
                          WHERE g.workspace_id = execution_workspaces.id
-                           AND g.user_id = ?1 AND g.status = 'active'))
+                           AND g.user_id = ?1 AND g.status = 'active'
+                           AND ${paidOwnerSql("execution_workspaces.owner_user_id")}))
       ORDER BY shared ASC, name ASC`,
   )
     .bind(context.userId)

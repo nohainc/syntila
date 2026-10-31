@@ -146,6 +146,18 @@ export async function loadEffectiveMemberAccess(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceMemberAccessPolicy | null> {
+  return (
+    (await loadMemberAccessOverride(env, workspaceId, userId)) ??
+    loadWorkspaceMemberAccess(env, workspaceId)
+  );
+}
+
+/** The person's own override, or null when the Workspace default applies. */
+export async function loadMemberAccessOverride(
+  env: Pick<SecurityEnv, "SYNTILA_DB">,
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceMemberAccessPolicy | null> {
   const override = await env.SYNTILA_DB.prepare(
     "SELECT policy_json AS policyJson FROM workspace_member_overrides WHERE workspace_id = ?1 AND user_id = ?2",
   )
@@ -153,7 +165,7 @@ export async function loadEffectiveMemberAccess(
     .first<{ policyJson: string }>();
   return override
     ? (JSON.parse(override.policyJson) as WorkspaceMemberAccessPolicy)
-    : loadWorkspaceMemberAccess(env, workspaceId);
+    : null;
 }
 
 /** Why the policy's mode forbids a step needing these capabilities, or null. */

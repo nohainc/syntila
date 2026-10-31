@@ -51,26 +51,28 @@ function fixture() {
       VALUES('m1','G','guest','owner','now','now'),('m2','G','friend','collaborator','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('T','G','Stream','active','guest','now','now');
     INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('lent','lender','Lender Mac','now','now'),('own','guest','Mine','now','now');
+    INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('lender','paid','active','manual','now','now');
     INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at)
       VALUES('worker-a','lent','lender','chatgpt','enabled','ready',1,1,'now','now','now');
     INSERT INTO user_workflow_settings VALUES('guest','own','now');
     INSERT INTO space_workflow_settings VALUES('G','lent','now');
     INSERT INTO space_workflow_configurations(space_id,workflow_id,schema_version,configuration_json,updated_at)
-      VALUES('G','direct',1,'{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now');`);
+      VALUES('G','direct',1,'{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now'),
+        ('G','chat',1,'{"schemaVersion":1,"workflowId":"chat","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now');`);
   const env = { SYNTILA_DB: db } as SecurityEnv;
   const grantGuest = (
     policy = '{"schemaVersion":1,"mode":"work","workers":{"worker-a":{"models":null,"efforts":null}}}',
   ) =>
     sqlite.exec(`INSERT INTO workspace_person_grants(workspace_id,user_id,granted_by_user_id,status,created_at,updated_at) VALUES('lent','guest','lender','active','now','now');
       INSERT INTO workspace_member_overrides VALUES('lent','guest','${policy}','now');`);
-  const bind = (userId: string) =>
+  const bind = (userId: string, workflowId = "chat") =>
     resolveWorkflowExecutionBindings(
       env,
       userId,
       "G",
       "T",
       Object.values(BUILTIN_WORKFLOW_CATALOG)
-        .filter((entry) => entry.id === "direct")
+        .filter((entry) => entry.id === workflowId)
         .sort((a, b) => b.version - a.version)[0]!,
       {},
       [],
@@ -115,28 +117,28 @@ it("lets the borrower, not their Space friend, run on the lent Workspace", async
     // Without a grant even the Space owner is refused.
     await expect(bind("guest")).rejects.toMatchObject({ status: 403 });
     grantGuest();
-    expect((await bind("guest")).direct).toMatchObject({
+    expect((await bind("guest")).chat).toMatchObject({
       workerId: "worker-a",
     });
-    // Strict: a Space member without their own grant gets nothing.
+    // Strict: Space members never use it, not even with their own grant.
     await expect(bind("friend")).rejects.toMatchObject({ status: 403 });
-    // The lender owns the Workspace and is never restricted.
-    expect((await bind("lender")).direct).toMatchObject({
-      workerId: "worker-a",
-    });
+    sqlite.exec(`INSERT INTO workspace_person_grants(workspace_id,user_id,granted_by_user_id,status,created_at,updated_at) VALUES('lent','friend','lender','active','now','now')`);
+    await expect(bind("friend")).rejects.toMatchObject({ status: 403 });
+    // Nor does the lender through someone else's Space.
+    await expect(bind("lender")).rejects.toMatchObject({ status: 403 });
   } finally {
     sqlite.close();
   }
 });
 
-it("applies the borrower's mode ceiling on a lent Workspace", async () => {
+it("runs only Chat on a lent Workspace, whatever the borrower's mode", async () => {
   const { sqlite, bind, grantGuest } = fixture();
   try {
-    grantGuest(
-      '{"schemaVersion":1,"mode":"chat","workers":{"worker-a":{"models":null,"efforts":null}}}',
-    );
-    // Direct writes files, so a chat-only grant is refused.
-    await expect(bind("guest")).rejects.toMatchObject({ status: 403 });
+    grantGuest();
+    await expect(bind("guest", "direct")).rejects.toMatchObject({
+      status: 403,
+    });
+    expect((await bind("guest")).chat).toMatchObject({ workerId: "worker-a" });
   } finally {
     sqlite.close();
   }
@@ -154,7 +156,7 @@ it("creates the Space grant by the lender and never touches the lender's schedul
         )
         .all(),
     ).toEqual([
-      { g: "lender", s: "active", p: '["repository:read","repository:write"]' },
+      { g: "lender", s: "active", p: '["repository:read"]' },
     ]);
     // The lent Workspace is offered to the borrower beside their own.
     const body = (await (await workspaceFor("GET", "guest")).json()) as {
@@ -263,12 +265,12 @@ it("limits the borrower's concurrent requests, set by the owner", async () => {
     const busy = (id: string, status: string) =>
       sqlite.exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,primary_workspace_id,created_at,updated_at)
         VALUES('${id}','T','guest','stateful','direct',1,'{}','${status}','lent','now','now')`);
-    expect((await bind("guest")).direct).toBeDefined();
+    expect((await bind("guest")).chat).toBeDefined();
     busy("r1", "running");
     // Default limit is 1: a second request is refused until the first ends.
     await expect(bind("guest")).rejects.toMatchObject({ status: 429 });
     sqlite.exec("UPDATE work_requests SET status='completed'");
-    expect((await bind("guest")).direct).toBeDefined();
+    expect((await bind("guest")).chat).toBeDefined();
     // Only the Workspace owner sets the limit, within 1-10.
     await expect(
       setQuota("guest", { maxConcurrentRequests: 5 }),
@@ -278,7 +280,7 @@ it("limits the borrower's concurrent requests, set by the owner", async () => {
     ).rejects.toMatchObject({ status: 400 });
     await setQuota("lender", { maxConcurrentRequests: 2 });
     busy("r2", "running");
-    expect((await bind("guest")).direct).toBeDefined();
+    expect((await bind("guest")).chat).toBeDefined();
     busy("r3", "queued");
     await expect(bind("guest")).rejects.toMatchObject({ status: 429 });
   } finally {
@@ -303,17 +305,17 @@ it("limits the borrower's run time per month, set by the owner", async () => {
     // Time used in earlier months does not count.
     row("old", "2020-01-01T00:00:00.000Z", "2020-01-01T05:00:00.000Z");
     await setQuota("lender", { maxRunSecondsPerMonth: 120 });
-    expect((await bind("guest")).direct).toBeDefined();
+    expect((await bind("guest")).chat).toBeDefined();
     row("now1", iso(0), iso(100));
-    expect((await bind("guest")).direct).toBeDefined();
+    expect((await bind("guest")).chat).toBeDefined();
     row("now2", iso(200), iso(260));
     await expect(bind("guest")).rejects.toMatchObject({ status: 429 });
     // The owner can raise or clear the limit; the concurrent limit is untouched.
     await setQuota("lender", { maxRunSecondsPerMonth: 600 });
-    expect((await bind("guest")).direct).toBeDefined();
+    expect((await bind("guest")).chat).toBeDefined();
     await setQuota("lender", { maxRunSecondsPerMonth: null });
     row("now3", iso(300), iso(5000));
-    expect((await bind("guest")).direct).toBeDefined();
+    expect((await bind("guest")).chat).toBeDefined();
     await expect(
       setQuota("lender", { maxRunSecondsPerMonth: 10 }),
     ).rejects.toMatchObject({ status: 400 });
@@ -402,6 +404,57 @@ it("does not pass a lent Workspace on to the borrower's Space members", async ()
         confirmReset: true,
       }),
     ).rejects.toMatchObject({ status: 403 });
+  } finally {
+    sqlite.close();
+  }
+});
+
+it("pauses lent access while the lender is on Free and restores it on renewal", async () => {
+  const { sqlite, env, bind, grantGuest } = fixture();
+  const listed = async () =>
+    (
+      (await (
+        await handleListWorkspaces(
+          new Request("https://cloud.test/api/workspaces", {
+            headers: { authorization: "guest" },
+          }),
+          env,
+        )
+      ).json()) as { workspaces: { id: string }[] }
+    ).workspaces.map((w) => w.id);
+  const sharedWorkers = async () =>
+    (
+      (await (
+        await handleListWorkspaceWorkerInventory(
+          new Request("https://cloud.test/api/workers?includeShared=true", {
+            headers: { authorization: "guest" },
+          }),
+          env,
+        )
+      ).json()) as { workers: { id: string }[] }
+    ).workers.map((worker) => worker.id);
+  try {
+    grantGuest();
+    expect(await listed()).toContain("lent");
+    expect(await sharedWorkers()).toEqual(["worker-a"]);
+    // The period ended without renewal: the lender is Free now.
+    sqlite.exec(
+      "UPDATE account_plans SET current_period_end='2020-01-01T00:00:00Z' WHERE user_id='lender'",
+    );
+    await expect(bind("guest")).rejects.toMatchObject({
+      status: 403,
+      message: expect.stringContaining("no longer shared"),
+    });
+    expect(await listed()).toEqual(["own"]);
+    expect(await sharedWorkers()).toEqual([]);
+    // The grant itself is kept, so renewing restores access.
+    sqlite.exec(
+      "UPDATE account_plans SET status='active', current_period_end='2999-01-01T00:00:00.000Z' WHERE user_id='lender'",
+    );
+    expect((await bind("guest")).chat).toMatchObject({
+      workerId: "worker-a",
+    });
+    expect(await listed()).toContain("lent");
   } finally {
     sqlite.close();
   }

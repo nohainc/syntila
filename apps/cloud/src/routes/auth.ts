@@ -200,7 +200,10 @@ export async function handleDesktopPasswordSignIn(
   > | null;
   if (
     !body ||
-    Object.keys(body).some((key) => !["email", "password"].includes(key)) ||
+    Object.keys(body).some(
+      (key) => !["email", "password", "deviceId"].includes(key),
+    ) ||
+    (body.deviceId !== undefined && !isDeviceId(body.deviceId)) ||
     typeof body.email !== "string" ||
     !body.email.trim() ||
     body.email.length > 320 ||
@@ -288,7 +291,10 @@ export async function handleDesktopPasswordSignIn(
       new Request(request.url, {
         method: "POST",
         headers,
-        body: JSON.stringify({ pollToken: intent.pollToken }),
+        body: JSON.stringify({
+          pollToken: intent.pollToken,
+          deviceId: body.deviceId,
+        }),
       }),
       env,
       intent.intentId,
@@ -560,6 +566,10 @@ export async function handleApproveDesktopAuthIntent(
   });
 }
 
+function isDeviceId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(value);
+}
+
 export async function handleClaimDesktopAuthIntent(
   request: Request,
   env: SecurityEnv,
@@ -567,10 +577,14 @@ export async function handleClaimDesktopAuthIntent(
 ): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as {
     pollToken?: unknown;
+    deviceId?: unknown;
   };
   const pollToken = typeof body.pollToken === "string" ? body.pollToken : "";
   if (!pollToken)
     throw new HttpError(401, "Desktop auth polling credential required");
+  if (body.deviceId !== undefined && !isDeviceId(body.deviceId))
+    throw new HttpError(400, "Desktop device identifier is invalid");
+  const deviceId = body.deviceId ?? null;
   const intent = await env.SYNTILA_DB.prepare(
     `SELECT approved_user_id AS userId, expires_at AS expiresAt, audience
        FROM desktop_auth_intents
@@ -618,8 +632,8 @@ export async function handleClaimDesktopAuthIntent(
       await hashToken(pollToken),
     ),
     env.SYNTILA_DB.prepare(
-      `INSERT INTO desktop_human_sessions (id, user_id, token_hash, audience, created_at, last_used_at, expires_at)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?5, ?6 FROM desktop_auth_intents
+      `INSERT INTO desktop_human_sessions (id, user_id, token_hash, audience, created_at, last_used_at, expires_at, device_id)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?5, ?6, ?8 FROM desktop_auth_intents
         WHERE id = ?7 AND claimed_session_id = ?1`,
     ).bind(
       sessionId,
@@ -628,6 +642,23 @@ export async function handleClaimDesktopAuthIntent(
       intent.audience,
       issuedAt.toISOString(),
       expiresAt.toISOString(),
+      intentId,
+      deviceId,
+    ),
+    // A new sign-in on the same install supersedes that install's earlier
+    // sessions for the same account and audience.
+    env.SYNTILA_DB.prepare(
+      `UPDATE desktop_human_sessions SET revoked_at = ?1
+        WHERE user_id = ?2 AND audience = ?3 AND device_id = ?4 AND id <> ?5
+          AND revoked_at IS NULL
+          AND EXISTS (SELECT 1 FROM desktop_auth_intents
+                       WHERE id = ?6 AND claimed_session_id = ?5)`,
+    ).bind(
+      issuedAt.toISOString(),
+      user.userId,
+      intent.audience,
+      deviceId,
+      sessionId,
       intentId,
     ),
   ]);

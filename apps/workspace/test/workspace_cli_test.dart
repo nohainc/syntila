@@ -28,8 +28,8 @@ class _FakeAuthClient extends DesktopAuthClient {
       : super(cloudUrl: 'https://example.test');
   final bool failPassword;
   @override
-  Future<DesktopHumanSession> signInWithPassword(
-      String email, String password) async {
+  Future<DesktopHumanSession> signInWithPassword(String email, String password,
+      {String? deviceId}) async {
     if (failPassword) {
       throw const DesktopPasswordSignInException(401);
     }

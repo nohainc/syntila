@@ -117,3 +117,17 @@ Acceptance creates the Person Grant and nothing else.
   baseline rather than add a migration chain.
 - Revocation latency depends on lease checks.
 - Implementation follows the phases in `docs/roadmaps/PERSON_GRANTS_PHASES.md`.
+
+## Amendment (2026-10-31): a lent Workspace runs Chat only
+
+- A Space that runs on a lent Workspace may use it only for the borrower, who
+  owns that Space, and only for the Chat workflow. Every other workflow is
+  refused, whatever the policy `mode`, and the Space grant is
+  `["repository:read"]`.
+- Members of the borrower's Spaces never use the lent Workspace, for any
+  workflow, even if they hold their own Person Grant.
+- Accepting an invitation no longer seeds a per-person override. The seeded
+  `{"mode":"chat","workers":{}}` listed no Workers, so it shared nothing and
+  Chat could not run. Without an override, the Workspace default policy
+  applies (all Workers when there is none). Migration 0096 removes untouched
+  seeds and narrows existing lent Space grants.

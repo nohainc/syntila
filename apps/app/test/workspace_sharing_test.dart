@@ -398,6 +398,7 @@ void main() {
             planSource: PlanSource(AxAccountPlan.free)));
     expect(find.byKey(const ValueKey('sharing-invite')), findsNothing);
     expect(find.byKey(const ValueKey('sharing-requires-paid')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sharing-paused')), findsOneWidget);
     expect(find.textContaining('Guest'), findsWidgets);
     await tester
         .tap(find.byKey(const ValueKey('sharing-revoke-invitation-i1')));
@@ -415,5 +416,6 @@ void main() {
                 isPaid: true, features: {workspaceSharingFeature}))));
     expect(find.byKey(const ValueKey('sharing-invite')), findsOneWidget);
     expect(find.byKey(const ValueKey('sharing-requires-paid')), findsNothing);
+    expect(find.byKey(const ValueKey('sharing-paused')), findsNothing);
   });
 }

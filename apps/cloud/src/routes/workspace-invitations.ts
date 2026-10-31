@@ -297,13 +297,6 @@ export async function handleAcceptWorkspaceInvitation(
       invitation.id,
     ),
     env.SYNTILA_DB.prepare(
-      `INSERT INTO workspace_member_overrides(workspace_id,user_id,policy_json,updated_at)
-       SELECT ?1,?2,'{"schemaVersion":1,"mode":"chat","workers":{}}',?3
-       WHERE EXISTS (SELECT 1 FROM workspace_person_grants WHERE workspace_id=?1 AND user_id=?2 AND updated_at=?3)
-         AND NOT EXISTS (SELECT 1 FROM workspace_member_access WHERE workspace_id=?1)
-       ON CONFLICT(workspace_id,user_id) DO NOTHING`,
-    ).bind(invitation.workspaceId, context.userId, now),
-    env.SYNTILA_DB.prepare(
       `INSERT INTO workspace_audit_log(id,workspace_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at)
        SELECT ?1,?2,'user',?3,'workspace.person_grant.created','user',?3,'{}',?4
        WHERE EXISTS (SELECT 1 FROM workspace_person_grants WHERE workspace_id=?2 AND user_id=?3 AND updated_at=?4)`,

@@ -25,10 +25,16 @@ without migrations.
 - **First paid feature, `workspace.sharing`:** inviting a person to use your
   Workspace (`POST /api/workspaces/:id/invitations`) requires the owner's
   plan. Listing, cancelling invitations and revoking access stay free, so a
-  downgraded owner can still remove access. Existing grants keep working.
-  Accepting a pending invitation re-checks the owner's plan and fails with a
-  plain 403 (the invitee cannot fix it by upgrading). Space grants are not
-  gated.
+  downgraded owner can still remove access.
+- **Downgrade pauses sharing.** Every read that honors a Person Grant also
+  requires the owner to be paid (`paidOwnerSql`, kept in step with
+  `effectiveTier` by a test): the borrower stops seeing the Workspace and its
+  Workers, cannot select it, and new Work on it fails with 403. Grants are not
+  deleted, so a plan that lapses only by `current_period_end` passing needs no
+  event, and renewing restores access. Work already admitted finishes.
+  Accepting a pending invitation also fails with a plain 403 (the invitee
+  cannot fix it by upgrading). The owner's own use and Space-member use of the
+  owner's Workspace are not affected.
 - **Read API:** `GET /api/me/plan` returns
   `{ tier, status, currentPeriodEnd, features }`.
 - **App:** `AxAccountPlanDataSource`, `AccountPlanController`, and

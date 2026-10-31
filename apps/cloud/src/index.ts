@@ -53,6 +53,7 @@ import { pruneWorkerActivityHistory } from "./worker-activity-history.js";
 import { recoverStaleAssignments } from "./assignment-dispatcher.js";
 import { pruneExpiredIssueReports } from "./issue-report-retention.js";
 import { pruneOrphanUserFiles } from "./routes/user-files.js";
+import { pruneEndedAuthSessions } from "./auth/session-retention.js";
 import {
   handleCreateIssueReport,
   handleGetIssueReport,
@@ -248,10 +249,17 @@ export default {
     const deletedOrphanFiles = await pruneOrphanUserFiles(
       env as unknown as Parameters<typeof pruneOrphanUserFiles>[0],
     ).catch(() => 0);
+    const deletedAuthSessions = await pruneEndedAuthSessions(
+      env.SYNTILA_DB,
+    ).catch((error) => {
+      console.error("Auth session retention failed", error);
+      return 0;
+    });
     console.log(
       JSON.stringify({
         event: "realtime_event_retention_complete",
         deleted,
+        deletedAuthSessions,
         deletedOrphanFiles,
         deletedWorkerActivity,
         deletedIssueReports,

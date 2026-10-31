@@ -1,5 +1,5 @@
+import { paidOwnerSql } from "../account-plan.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
-import { loadEffectiveMemberAccess } from "./workspace-member-access.js";
 import {
   securityContext,
   HttpError,
@@ -64,24 +64,17 @@ export async function loadBorrowedWorkspaces(
     `SELECT ew.id, ew.name, ew.owner_user_id AS ownerUserId
      FROM workspace_person_grants g
      JOIN execution_workspaces ew ON ew.id = g.workspace_id AND ew.status != 'revoked'
-     WHERE g.user_id = ?1 AND g.status = 'active' ORDER BY ew.name, ew.id`,
+     WHERE g.user_id = ?1 AND g.status = 'active'
+       AND ${paidOwnerSql("ew.owner_user_id")}
+     ORDER BY ew.name, ew.id`,
   )
     .bind(userId)
     .all<{ id: string; name: string; ownerUserId: string }>();
   return rows.results ?? [];
 }
 
-/** Permissions a Space may use on a borrowed Workspace, from the borrower's mode. */
-async function borrowedPermissions(
-  env: SecurityEnv,
-  workspaceId: string,
-  userId: string,
-): Promise<string[]> {
-  const policy = await loadEffectiveMemberAccess(env, workspaceId, userId);
-  if (policy?.mode === "chat") return ["repository:read"];
-  if (policy?.mode === "work") return ["repository:read", "repository:write"];
-  return ["repository:read", "repository:write", "shell:execute"];
-}
+/** A lent Workspace answers only its borrower's Chat, which reads only. */
+const BORROWED_PERMISSIONS = ["repository:read"];
 
 /**
  * Selection is restricted to Workspaces owned by this user, or lent to them by
@@ -134,9 +127,7 @@ export async function prepareWorkflowWorkspaceGrant(
         spaceId,
         workspaceId,
         lent.ownerUserId,
-        JSON.stringify(
-          await borrowedPermissions(env, workspaceId, ownerUserId),
-        ),
+        JSON.stringify(BORROWED_PERMISSIONS),
         now,
       ),
       env.SYNTILA_DB.prepare(

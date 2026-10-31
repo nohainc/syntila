@@ -300,6 +300,15 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
                           .revokeWorkspaceInvitation(
                               widget.workspaceId, invitation.id)),
                   child: const Text('Cancel invitation'))),
+        // Cloud keeps grants but ignores them until the plan includes sharing.
+        if (!_canInvite && (_people.isNotEmpty || _invitations.isNotEmpty))
+          Padding(
+              key: const ValueKey('sharing-paused'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                  'Sharing is paused on Free. People below can\'t use this '
+                  'Workspace until you renew $paidPlanName.',
+                  style: muted)),
         if (_people.isEmpty)
           Text('No one has access yet.', style: muted)
         else

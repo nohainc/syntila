@@ -41,6 +41,20 @@ const ENTITLED_STATUSES = new Set<AccountPlanStatus>([
   "past_due",
 ]);
 
+/**
+ * SQL condition that `ownerColumn` is on the paid tier now; it mirrors
+ * [effectiveTier] for queries that join many owners. Lent Workspaces are
+ * honored only while it holds, so a lapsed plan pauses sharing without
+ * deleting grants, and renewing restores it.
+ */
+export function paidOwnerSql(ownerColumn: string): string {
+  return `EXISTS (SELECT 1 FROM account_plans ap
+    WHERE ap.user_id = ${ownerColumn} AND ap.tier = 'paid'
+      AND ap.status IN ('active', 'trialing', 'past_due')
+      AND (ap.current_period_end IS NULL
+           OR julianday(ap.current_period_end) > julianday('now')))`;
+}
+
 export function effectiveTier(
   row: AccountPlanRow | null,
   now: Date = new Date(),

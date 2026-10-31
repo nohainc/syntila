@@ -100,12 +100,12 @@ it("accept creates only a grant (no people relationship), once, for the invited 
     expect(
       sqlite.prepare("SELECT status FROM workspace_person_grants").all(),
     ).toEqual([{ status: "active" }]);
-    // No default policy: the guest starts chat-only with nothing shared.
+    // No override is seeded: Chat on every Worker unless the owner limits it.
     expect(
       sqlite
-        .prepare("SELECT policy_json p FROM workspace_member_overrides")
+        .prepare("SELECT COUNT(*) n FROM workspace_member_overrides")
         .get(),
-    ).toEqual({ p: '{"schemaVersion":1,"mode":"chat","workers":{}}' });
+    ).toEqual({ n: 0 });
     expect(
       sqlite.prepare("SELECT COUNT(*) n FROM people_relationships").get(),
     ).toEqual({ n: 0 });

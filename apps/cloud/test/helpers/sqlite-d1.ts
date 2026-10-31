@@ -109,6 +109,8 @@ export function sqliteD1(
     "0091_thread_request_queue.sql",
     "0092_read_receipt_privacy.sql",
     "0094_account_plans.sql",
+    "0095_desktop_session_device.sql",
+    "0096_shared_workspace_chat_only.sql",
   ]) {
     sqlite.exec(
       readFileSync(

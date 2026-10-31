@@ -1117,14 +1117,8 @@ class WorkspaceCli {
   /// runtime credential and a running connection are not touched: use
   /// `unregister` or `reset` for those.
   Future<int> _logout(String? dataDir, bool json) async {
-    final root = WorkspaceConfigurationResolver.resolveDataDirectory([
-      if (dataDir != null) ...['--data-dir', dataDir],
-    ]);
-    final store = _credentials(root);
     try {
-      final existing = await store.read(desktopHumanCredentialKey);
-      final hadSession = existing != null && existing.isNotEmpty;
-      if (hadSession) await store.delete(desktopHumanCredentialKey);
+      final hadSession = await (await _authHelper(dataDir)).signOut();
       if (json) {
         _print({'signedOut': hadSession}, true);
       } else {
@@ -1307,11 +1301,8 @@ class WorkspaceCli {
     } catch (_) {}
 
     // 3. Clear credentials
-    final credentialStore = PlatformSecureCredentialStore(
-      credentialDirectory: Directory('${root.path}/Credentials'),
-    );
     try {
-      await credentialStore.delete(desktopHumanCredentialKey);
+      await (await _authHelper(dataDir)).signOut();
     } catch (_) {}
 
     // 4. Delete runtime files and local registration

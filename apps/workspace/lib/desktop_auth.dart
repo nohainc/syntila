@@ -20,6 +20,48 @@ Future<void> persistDesktopHumanSessionAfterPreflight({
   );
 }
 
+/// Stores [session] as this computer's human session and revokes the session
+/// it replaces, so repeated sign-ins do not leave live Cloud sessions behind.
+Future<void> replaceStoredDesktopHumanSession({
+  required SecureCredentialStore credentialStore,
+  required DesktopAuthClient client,
+  required DesktopHumanSession session,
+}) async {
+  final previous = await readStoredDesktopHumanSession(credentialStore);
+  await credentialStore.write(
+    desktopHumanCredentialKey,
+    jsonEncode(session.toSecureJson()),
+  );
+  if (previous != null && previous.sessionId != session.sessionId) {
+    await revokeDesktopHumanSessionQuietly(client, previous);
+  }
+}
+
+/// Returns the stored human session, or null when absent or unreadable.
+Future<DesktopHumanSession?> readStoredDesktopHumanSession(
+    SecureCredentialStore credentialStore) async {
+  try {
+    final raw = await credentialStore.read(desktopHumanCredentialKey);
+    if (raw == null || raw.isEmpty) return null;
+    return DesktopHumanSession.fromSecureJson(
+        jsonDecode(raw) as Map<String, dynamic>);
+  } on Object {
+    return null;
+  }
+}
+
+/// Revokes [session] in Cloud. Best effort: an expired, already revoked or
+/// unreachable session must never block local sign-in or sign-out.
+Future<void> revokeDesktopHumanSessionQuietly(
+    DesktopAuthClient client, DesktopHumanSession session) async {
+  if (!session.expiresAt.isAfter(DateTime.now())) return;
+  try {
+    await client.revokeSession(session).timeout(const Duration(seconds: 10));
+  } on Object {
+    // Cloud expiry still bounds the session.
+  }
+}
+
 class DesktopAuthIntent {
   const DesktopAuthIntent({
     required this.intentId,
@@ -340,10 +382,16 @@ class DesktopAuthClient {
     return intent;
   }
 
-  Future<DesktopHumanSession> signInWithPassword(
-      String email, String password) async {
+  /// [deviceId] identifies this install so Cloud revokes its older sessions.
+  Future<DesktopHumanSession> signInWithPassword(String email, String password,
+      {String? deviceId}) async {
     final result = await _requestJson('POST', _api('/desktop-auth/password'),
-        body: {'email': email, 'password': password}, passwordRequest: true);
+        body: {
+          'email': email,
+          'password': password,
+          if (deviceId != null) 'deviceId': deviceId,
+        },
+        passwordRequest: true);
     return DesktopHumanSession.fromJson(result);
   }
 
@@ -373,6 +421,7 @@ class DesktopAuthClient {
   Future<DesktopHumanSession> waitForApprovalAndClaim(
     DesktopAuthIntent intent, {
     bool Function()? isCancelled,
+    String? deviceId,
   }) async {
     while (DateTime.now().toUtc().isBefore(intent.expiresAt.toUtc())) {
       if (isCancelled?.call() ?? false) {
@@ -389,7 +438,10 @@ class DesktopAuthClient {
             'POST',
             _api(
                 '/desktop-auth/intents/${Uri.encodeComponent(intent.intentId)}/claim'),
-            body: {'pollToken': intent.pollToken},
+            body: {
+              'pollToken': intent.pollToken,
+              if (deviceId != null) 'deviceId': deviceId,
+            },
           );
           return DesktopHumanSession.fromJson(response);
         case 'denied':

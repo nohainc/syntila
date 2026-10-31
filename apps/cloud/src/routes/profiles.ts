@@ -1,3 +1,4 @@
+import { paidOwnerSql } from "../account-plan.js";
 import {
   spaceModelOptions,
   spaceWorkerExecutionOptions,
@@ -81,7 +82,9 @@ export async function handleListWorkspaceWorkerInventory(
                AND i.workspace_id = CASE WHEN sws.space_id IS NOT NULL THEN sws.workspace_id ELSE uws.workspace_id END)
             OR i.workspace_id IN (
             SELECT g.workspace_id FROM workspace_person_grants g
-             WHERE g.user_id = ?1 AND g.status = 'active'))
+              JOIN execution_workspaces gw ON gw.id = g.workspace_id
+             WHERE g.user_id = ?1 AND g.status = 'active'
+               AND ${paidOwnerSql("gw.owner_user_id")}))
         ORDER BY i.workspace_id, i.worker_type_id, i.worker_id`,
     )
       .bind(context.userId, workspaceId)

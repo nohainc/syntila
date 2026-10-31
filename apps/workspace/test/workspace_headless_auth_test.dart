@@ -34,9 +34,15 @@ class _Auth extends DesktopAuthClient {
   bool cancelled = false;
   int intentsCreated = 0;
   int passwordSignIns = 0;
+  final revoked = <String>[];
+  String? deviceId;
   @override
-  Future<DesktopHumanSession> signInWithPassword(
-      String email, String password) {
+  Future<void> revokeSession(DesktopHumanSession session) async =>
+      revoked.add(session.sessionId);
+  @override
+  Future<DesktopHumanSession> signInWithPassword(String email, String password,
+      {String? deviceId}) {
+    this.deviceId = deviceId;
     expect(email, 'u@example.test');
     expect(password, 'private-password');
     passwordSignIns++;
@@ -57,7 +63,7 @@ class _Auth extends DesktopAuthClient {
 
   @override
   Future<DesktopHumanSession> waitForApprovalAndClaim(DesktopAuthIntent intent,
-          {bool Function()? isCancelled}) =>
+          {bool Function()? isCancelled, String? deviceId}) =>
       approval.future;
   @override
   Future<void> validateSession(DesktopHumanSession session) async {}
@@ -74,13 +80,14 @@ class _Auth extends DesktopAuthClient {
   }
 }
 
-DesktopHumanSession session() => DesktopHumanSession(
-    credential: 'private-human-token',
-    sessionId: 'session',
-    userId: 'user',
-    displayName: 'User',
-    email: 'u@example.test',
-    expiresAt: DateTime.now().add(const Duration(hours: 1)));
+DesktopHumanSession session({String sessionId = 'session'}) =>
+    DesktopHumanSession(
+        credential: 'private-human-token',
+        sessionId: sessionId,
+        userId: 'user',
+        displayName: 'User',
+        email: 'u@example.test',
+        expiresAt: DateTime.now().add(const Duration(hours: 1)));
 
 Future<Map<String, Object?>> terminal(WorkspaceHeadlessAuth auth) async {
   for (var i = 0; i < 200; i++) {
@@ -118,6 +125,44 @@ void main() {
     expect(result['phase'], 'complete');
     expect(credentials.values.keys, [desktopHumanCredentialKey]);
     expect(WorkspaceRegistrationStore(root).readSync(), isNull);
+  });
+
+  test('signing in again revokes the replaced session for this device',
+      () async {
+    credentials.values[desktopHumanCredentialKey] =
+        jsonEncode(session(sessionId: 'previous').toSecureJson());
+    client.approval.complete(session(sessionId: 'next'));
+    final auth = WorkspaceHeadlessAuth(
+        dataDirectory: root,
+        cloudUrl: 'https://example.test',
+        credentialStore: credentials,
+        reloadRuntime: () async {},
+        clientFactory: (_) => client);
+    final result = await auth.signIn(
+        email: 'u@example.test', password: 'private-password');
+    expect(result['phase'], 'complete');
+    expect(client.revoked, ['previous']);
+    expect(
+        client.deviceId, await InstallationIdentityStore(root).getOrCreate());
+    final stored = DesktopHumanSession.fromSecureJson(
+        jsonDecode(credentials.values[desktopHumanCredentialKey]!)
+            as Map<String, dynamic>);
+    expect(stored.sessionId, 'next');
+  });
+
+  test('signOut revokes the stored session in Cloud and forgets it', () async {
+    final auth = WorkspaceHeadlessAuth(
+        dataDirectory: root,
+        cloudUrl: 'https://example.test',
+        credentialStore: credentials,
+        reloadRuntime: () async {},
+        clientFactory: (_) => client);
+    expect(await auth.signOut(), isFalse);
+    credentials.values[desktopHumanCredentialKey] =
+        jsonEncode(session().toSecureJson());
+    expect(await auth.signOut(), isTrue);
+    expect(client.revoked, ['session']);
+    expect(credentials.values, isEmpty);
   });
 
   test('register needs a stored sign-in', () async {

@@ -443,6 +443,66 @@ describe("desktop human authentication", () => {
     ).rejects.toThrow(/invalid, expired, or revoked/);
   });
 
+  it("a new sign-in on the same device revokes that device's earlier sessions", async () => {
+    const { env, sqlite } = await setup();
+    async function signIn(deviceId?: string) {
+      const create = await handleCreateDesktopAuthIntent(
+        new Request("https://app.syntila.test/api/desktop-auth/intents", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            clientName: "Syntila Workspace",
+            contractVersion: "1.1",
+          }),
+        }),
+        env,
+      );
+      const intent = (await create.json()) as {
+        intentId: string;
+        pollToken: string;
+      };
+      await handleApproveDesktopAuthIntent(
+        new Request("https://app.syntila.test/api/desktop-auth/approve", {
+          method: "POST",
+          headers: {
+            cookie: "better-auth-session=opaque",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({}),
+        }),
+        env,
+        intent.intentId,
+      );
+      const claim = await handleClaimDesktopAuthIntent(
+        new Request("https://app.syntila.test/api/desktop-auth/claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ pollToken: intent.pollToken, deviceId }),
+        }),
+        env,
+        intent.intentId,
+      );
+      return ((await claim.json()) as { sessionId: string }).sessionId;
+    }
+    const revoked = (id: string) =>
+      (
+        sqlite
+          .prepare("SELECT revoked_at FROM desktop_human_sessions WHERE id = ?")
+          .get(id) as { revoked_at: string | null }
+      ).revoked_at;
+
+    const legacy = await signIn();
+    const first = await signIn("device-aaaaaaaa");
+    const otherDevice = await signIn("device-bbbbbbbb");
+    const second = await signIn("device-aaaaaaaa");
+
+    expect(revoked(first)).not.toBeNull();
+    expect(revoked(second)).toBeNull();
+    expect(revoked(otherDevice)).toBeNull();
+    expect(revoked(legacy)).toBeNull();
+    await expect(signIn("bad id")).rejects.toThrow(/device identifier/);
+  });
+
   it("uses the configured browser application origin for desktop approval", async () => {
     const { env } = await setup();
     (env as Record<string, unknown>).SYNTILA_APP_URL = "http://localhost:3000/";

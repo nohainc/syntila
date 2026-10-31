@@ -186,8 +186,8 @@ class WorkspaceHeadlessAuth {
                   hostname: registration.hostname));
     }
     setStage('session_storage');
-    await credentialStore.write(
-        desktopHumanCredentialKey, jsonEncode(session.toSecureJson()));
+    await replaceStoredDesktopHumanSession(
+        credentialStore: credentialStore, client: client, session: session);
     await preferences.write(previous.copyWith(
         ownerUserId: session.userId, ownerDisplayName: session.displayName));
     setStage('runtime_reload');
@@ -198,10 +198,13 @@ class WorkspaceHeadlessAuth {
       {String? email, String? password}) async {
     var stage = email == null ? 'approval' : 'password_sign_in';
     try {
+      final deviceId =
+          await InstallationIdentityStore(dataDirectory).getOrCreate();
       final session = email == null
           ? await client.waitForApprovalAndClaim(intent!,
-              isCancelled: () => _cancelled)
-          : await client.signInWithPassword(email, password!);
+              isCancelled: () => _cancelled, deviceId: deviceId)
+          : await client.signInWithPassword(email, password!,
+              deviceId: deviceId);
       stage = 'session_validation';
       await client.validateSession(session);
       await _registerWithSession(client, session, (value) => stage = value);
@@ -231,6 +234,24 @@ class WorkspaceHeadlessAuth {
     }
   }
 
+  /// Revokes the stored management session in Cloud (best effort) and removes
+  /// it from this computer. Returns whether a session was stored.
+  Future<bool> signOut() async {
+    final raw = await credentialStore.read(desktopHumanCredentialKey);
+    if (raw == null || raw.isEmpty) return false;
+    final session = await readStoredDesktopHumanSession(credentialStore);
+    if (session != null) {
+      final client = _clientFactory(cloudUrl);
+      try {
+        await revokeDesktopHumanSessionQuietly(client, session);
+      } finally {
+        client.close();
+      }
+    }
+    await credentialStore.delete(desktopHumanCredentialKey);
+    return true;
+  }
+
   /// Signs in with email and password and stores the management session. It
   /// does not register a Workspace; use [register] for that.
   Future<Map<String, Object?>> signIn({
@@ -244,7 +265,9 @@ class WorkspaceHeadlessAuth {
       if (email.trim().isEmpty || password.isEmpty) {
         throw const FormatException('Email and password are required');
       }
-      final session = await client.signInWithPassword(email.trim(), password);
+      final session = await client.signInWithPassword(email.trim(), password,
+          deviceId:
+              await InstallationIdentityStore(dataDirectory).getOrCreate());
       stage = 'session_validation';
       await client.validateSession(session);
       final registration = WorkspaceRegistrationStore(dataDirectory).readSync();
@@ -258,8 +281,8 @@ class WorkspaceHeadlessAuth {
         throw StateError('Existing owner differs.');
       }
       stage = 'session_storage';
-      await credentialStore.write(
-          desktopHumanCredentialKey, jsonEncode(session.toSecureJson()));
+      await replaceStoredDesktopHumanSession(
+          credentialStore: credentialStore, client: client, session: session);
       await preferences.write(previous.copyWith(
           ownerUserId: session.userId, ownerDisplayName: session.displayName));
       return const {'phase': 'complete'};

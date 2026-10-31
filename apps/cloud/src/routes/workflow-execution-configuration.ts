@@ -1,3 +1,4 @@
+import { paidOwnerSql } from "../account-plan.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
   parseUserWorkflowConfiguration,
@@ -14,6 +15,7 @@ import {
 } from "./workspace-invitations.js";
 import {
   loadEffectiveMemberAccess,
+  loadMemberAccessOverride,
   memberModeError,
   memberSelectionError,
 } from "./workspace-member-access.js";
@@ -142,22 +144,49 @@ export async function resolveWorkflowExecutionBindings(
   )
     .bind(spaceId)
     .first<{ ownerUserId: string }>();
-  if (
+  const lent = Boolean(
     !ownWorkspaceId &&
-    workspaceOwner &&
-    spaceOwner &&
-    workspaceOwner.ownerUserId !== spaceOwner.ownerUserId &&
-    workspaceOwner.ownerUserId !== userId
-  ) {
+      workspaceOwner &&
+      spaceOwner &&
+      workspaceOwner.ownerUserId !== spaceOwner.ownerUserId,
+  );
+  // A lent Workspace answers only the borrower, who owns the Space, and only
+  // their Chat. Space members never use it, for any workflow.
+  if (lent && userId !== spaceOwner!.ownerUserId)
+    throw new HttpError(
+      403,
+      "This Space runs on a shared Workspace that only the Space owner may use",
+    );
+  if (lent && definition.id !== "chat")
+    throw new HttpError(
+      403,
+      "A shared Workspace runs Chat only; choose your own Workspace for this Workflow",
+    );
+  if (lent && workspaceOwner!.ownerUserId !== userId) {
     const grant = await env.SYNTILA_DB.prepare(
-      "SELECT max_concurrent_requests AS maxConcurrent, max_run_seconds_per_month AS maxRunSeconds FROM workspace_person_grants WHERE workspace_id = ?1 AND user_id = ?2 AND status = 'active'",
+      `SELECT g.max_concurrent_requests AS maxConcurrent,
+              g.max_run_seconds_per_month AS maxRunSeconds,
+              ${paidOwnerSql("ew.owner_user_id")} AS ownerShares
+       FROM workspace_person_grants g
+       JOIN execution_workspaces ew ON ew.id = g.workspace_id
+       WHERE g.workspace_id = ?1 AND g.user_id = ?2 AND g.status = 'active'`,
     )
       .bind(space.workspaceId, userId)
-      .first<{ maxConcurrent: number; maxRunSeconds: number | null }>();
+      .first<{
+        maxConcurrent: number;
+        maxRunSeconds: number | null;
+        ownerShares: number;
+      }>();
     if (!grant)
       throw new HttpError(
         403,
         "You do not have access to this Workspace; ask its owner to invite you",
+      );
+    // The grant is kept but paused while the owner's plan lacks sharing.
+    if (!grant.ownerShares)
+      throw new HttpError(
+        403,
+        "This Workspace is no longer shared; its owner's plan does not include sharing",
       );
     const inFlight = await env.SYNTILA_DB.prepare(
       "SELECT COUNT(*) AS n FROM work_requests WHERE requested_by_user_id = ?1 AND primary_workspace_id = ?2 AND status IN ('queued','running','waiting')",
@@ -187,6 +216,15 @@ export async function resolveWorkflowExecutionBindings(
     workspaceOwner.ownerUserId !== userId
       ? await loadEffectiveMemberAccess(env, space.workspaceId, userId)
       : null;
+  // On the Space owner's own Workspace, the Space's Chat/Work permissions
+  // (checked before admission) decide the workflow; the Workspace default
+  // policy only limits Workers, models and efforts. A per-person override, or
+  // a borrowed Workspace, still caps the mode (ADR-020).
+  const modePolicy =
+    memberPolicy &&
+    workspaceOwner!.ownerUserId === spaceOwner?.ownerUserId
+      ? await loadMemberAccessOverride(env, space.workspaceId!, userId)
+      : memberPolicy;
   const requested: Record<
     string,
     {
@@ -238,7 +276,7 @@ export async function resolveWorkflowExecutionBindings(
       );
     const notShared =
       memberSelectionError(memberPolicy, selection) ??
-      memberModeError(memberPolicy, step.requiredCapabilities);
+      memberModeError(modePolicy, step.requiredCapabilities);
     if (notShared) throw new HttpError(403, `${step.kind}: ${notShared}`);
     // Preferences and composer choices are intent. Admission validates against
     // current capabilities, then pins that revision for acceptance and dispatch.
