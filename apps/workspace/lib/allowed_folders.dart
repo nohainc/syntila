@@ -164,7 +164,8 @@ class AllowedFolderRegistry {
   }
 
   /// Validates [path] and stores it. Rejects system, home, Work Root, and
-  /// application-state locations, and paths already allowed.
+  /// application-state locations, paths already allowed, and folders the
+  /// service account cannot write to.
   Future<AllowedFolder> add(String path, {String? displayName}) =>
       _serial(() async {
         final folders = await _read();
@@ -187,12 +188,30 @@ class AllowedFolderRegistry {
         }
         final name = _displayName(displayName, canonical);
         _rejectTakenName(folders, name);
+        // Check write access now: a folder Spaces cannot write to is never
+        // registered.
+        final status = await probe(canonical);
+        if (status != AllowedFolderStatus.available) {
+          throw AllowedFolderViolation(
+              status == AllowedFolderStatus.readOnly
+                  ? 'not_writable'
+                  : status == AllowedFolderStatus.denied
+                      ? 'denied'
+                      : 'not_a_directory',
+              status == AllowedFolderStatus.readOnly
+                  ? 'The folder is not writable. Grant write access to the '
+                      'Workspace service account and try again.'
+                  : status == AllowedFolderStatus.denied
+                      ? 'The folder cannot be accessed by the Workspace '
+                          'service account.'
+                      : 'The selected path is not an existing folder.');
+        }
         final now = _clock();
         final folder = AllowedFolder(
           id: _newId(folders),
           displayName: name,
           path: canonical,
-          status: await probe(canonical),
+          status: status,
           addedAt: now,
           checkedAt: now,
         );

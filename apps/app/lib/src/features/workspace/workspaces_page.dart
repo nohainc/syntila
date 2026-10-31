@@ -208,41 +208,45 @@ class _WorkspacesPageState extends State<WorkspacesPage>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (machineName.isNotEmpty && machineName != '—') ...[
-              Text(
-                machineName,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+            Expanded(
+              child: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (machineName.isNotEmpty && machineName != '—')
+                    Text(
+                      machineName,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            if (machineOs != '—') ...[
-              Text(
-                machineOs,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  if (machineOs != '—')
+                    Text(
+                      machineOs,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                     ),
+                  if (workspace.shared)
+                    const Chip(
+                        key: ValueKey('workspace-shared-badge'),
+                        avatar: Icon(Icons.people_outline, size: 16),
+                        label: Text('Shared with you')),
+                ],
               ),
-              const SizedBox(width: 8),
-            ],
-            if (workspace.shared) ...[
-              const Chip(
-                  key: ValueKey('workspace-shared-badge'),
-                  avatar: Icon(Icons.people_outline, size: 16),
-                  label: Text('Shared with you')),
-              const SizedBox(width: 8),
-            ],
+            ),
+            if (configurations != null &&
+                configurations.source is AxWorkflowWorkspaceDataSource)
+              _DefaultWorkspaceControl(
+                key: ValueKey('default-workspace-${workspace.id}'),
+                configurations: configurations,
+                workspace: workspace,
+              ),
           ],
         ),
-        if (configurations != null &&
-            configurations.source is AxWorkflowWorkspaceDataSource)
-          _DefaultWorkspaceControl(
-            key: ValueKey('default-workspace-${workspace.id}'),
-            configurations: configurations,
-            workspace: workspace,
-          ),
         if (widget.onSetParallelSlots != null &&
             !workspace.shared &&
             workspace.parallelSlots != null)
@@ -741,31 +745,26 @@ class _DefaultWorkspaceControlState extends State<_DefaultWorkspaceControl> {
           final eligible =
               settings?.workspaces.any((w) => w.id == widget.workspace.id) ??
                   false;
-          return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (selected)
-                  const Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: Chip(
-                          key: ValueKey('default-workspace-badge'),
-                          avatar: Icon(Icons.check, size: 16),
-                          label: Text('Default Workspace')))
-                else if (eligible)
-                  TextButton(
-                      key: const ValueKey('make-default-workspace'),
-                      onPressed: _busy ? null : _makeDefault,
-                      child: const Text('Make default')),
-                if (state.error != null)
-                  TextButton(
-                      onPressed: () => widget.configurations.engine
-                          .refresh(widget.configurations.workspaceQuery),
-                      child: const Text('Retry default Workspace')),
-                if (_error != null)
-                  Text(_error!,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.error)),
-              ]);
+          return Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            if (selected)
+              const Chip(
+                  key: ValueKey('default-workspace-badge'),
+                  avatar: Icon(Icons.check, size: 16),
+                  label: Text('Default Workspace'))
+            else if (eligible)
+              TextButton(
+                  key: const ValueKey('make-default-workspace'),
+                  onPressed: _busy ? null : _makeDefault,
+                  child: const Text('Make default')),
+            if (state.error != null)
+              TextButton(
+                  onPressed: () => widget.configurations.engine
+                      .refresh(widget.configurations.workspaceQuery),
+                  child: const Text('Retry default Workspace')),
+            if (_error != null)
+              Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ]);
         },
       );
 }
@@ -810,21 +809,64 @@ class _ParallelSlotsControlState extends State<_ParallelSlotsControl> {
           Text('Parallel requests',
               style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(width: 12),
-          DropdownButton<int>(
-            key: const ValueKey('parallel-slots-select'),
-            value: widget.slots,
-            onChanged: _saving ? null : _change,
-            items: [
-              for (var n = _minParallelSlots; n <= _maxParallelSlots; n++)
-                DropdownMenuItem(value: n, child: Text('$n')),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text('Requests beyond this wait in line.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          ),
+          Builder(builder: (context) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(1),
+                child: PopupMenuButton<int>(
+                  key: const ValueKey('parallel-slots-select'),
+                  enabled: !_saving,
+                  tooltip: 'Choose parallel requests',
+                  color: SyntilaColors.composerBackground(isDark),
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 12,
+                  shadowColor: SyntilaMenuStyle.shadow(isDark),
+                  shape: SyntilaMenuStyle.shape(isDark),
+                  menuPadding: SyntilaMenuStyle.padding,
+                  onSelected: _change,
+                  itemBuilder: (context) => [
+                    for (var n = _minParallelSlots; n <= _maxParallelSlots; n++)
+                      SyntilaMenuEntry<int>(
+                        value: n,
+                        child: MenuItemButton(
+                          style: SyntilaMenuStyle.item(isDark),
+                          leadingIcon: Icon(
+                            n == widget.slots
+                                ? Icons.check_circle_rounded
+                                : Icons.circle_outlined,
+                            size: 15,
+                          ),
+                          onPressed: () => Navigator.pop(context, n),
+                          child: Text('$n', style: SyntilaMenuStyle.textStyle),
+                        ),
+                      ),
+                  ],
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${widget.slots}',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    )),
+                        const SizedBox(width: 2),
+                        const Icon(Icons.keyboard_arrow_down, size: 14),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
         ]),
       );
 }

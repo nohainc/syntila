@@ -111,6 +111,17 @@ void main() {
         reason: 'recheck results are persisted');
   }, testOn: 'mac-os || linux');
 
+  test('refuses to add a folder without write access', () async {
+    final subject = registry();
+    final readOnly = await folder('Locked');
+    await Process.run('chmod', ['555', readOnly.path]);
+    final denied = await folder('Hidden');
+    await Process.run('chmod', ['000', denied.path]);
+    await rejects(readOnly.path, 'not_writable');
+    await rejects(denied.path, 'denied');
+    expect(await subject.list(), isEmpty);
+  }, testOn: 'mac-os || linux');
+
   test('remove and rename leave the folder on disk', () async {
     final subject = registry();
     final docs = await folder('Docs');
