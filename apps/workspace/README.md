@@ -32,6 +32,14 @@ Users install only Syntila Workspace. Workspace manages the bundled generic
 Engine and current Tool Profiles; provider CLI software is installed separately
 by its provider.
 
+## GUI manifest
+
+`syntila --gui-manifest[=N]` prints a GUI Manifest v1 Nano Markup document
+describing the management commands (titles, parameters, result views,
+destructive/interactive flags) for GUI front ends. It needs no service, no
+sign-in and no network. Unsupported versions exit `2`. The command list lives
+in `lib/workspace_gui_manifest.dart`; keep it in sync with the CLI dispatch.
+
 ## Configuration: `workspace.nano`
 
 Non-secret behavior is defined in the strict, versioned Nano Markup file

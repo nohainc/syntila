@@ -5,6 +5,7 @@ import 'dart:io';
 import 'desktop_auth.dart';
 import 'secure_credentials.dart';
 import 'workspace_configuration.dart';
+import 'workspace_gui_manifest.dart';
 import 'linux_service_manager.dart';
 import 'macos_service_manager.dart';
 import 'windows_service_manager.dart';
@@ -173,6 +174,15 @@ class WorkspaceCli {
   }
 
   Future<int> run(List<String> args) async {
+    if (isGuiManifestRequest(args)) {
+      final response = guiManifestResponse(args.single);
+      if (response.document == null) {
+        err.writeln('syntila: ${response.error}');
+        return 2;
+      }
+      out.write(response.document);
+      return 0;
+    }
     final rest = <String>[];
     var json = false;
     String? dataDir;
