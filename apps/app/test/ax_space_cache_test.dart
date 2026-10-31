@@ -191,11 +191,24 @@ void main() {
             matching: find.text(b.name)),
         findsNothing);
 
+    final marker =
+        find.byKey(const ValueKey('recent-thread-space-marker-atlas-b-4'));
+    expect(marker, findsNothing);
+    expect(find.byTooltip(b.name), findsWidgets);
+    final folder = tester.widget<SyntilaFolderIcon>(find.descendant(
+        of: find.byKey(ValueKey('sidebar-space-row-${b.id}')),
+        matching: find.byType(SyntilaFolderIcon)));
+    expect(folder.color, spaceIdentityColor(b.id, isDark: false));
+
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
     await mouse.addPointer();
     await mouse.moveTo(tester.getCenter(recentB4));
     await tester.pumpAndSettle();
+    expect(marker, findsOneWidget);
+    final markerDecoration =
+        tester.widget<Container>(marker).decoration! as BoxDecoration;
+    expect(markerDecoration.color, folder.color);
     final recentMenu = find.descendant(
         of: find.byKey(const ValueKey('recent-thread-row-atlas-b-4')),
         matching: find.byTooltip('Thread menu'));
@@ -262,6 +275,10 @@ void main() {
     await tester.tap(find.byKey(recentKey));
     await tester.pumpAndSettle();
     expect(rowDecoration(recentKey).color, isNot(Colors.transparent));
+    expect(
+        find.byKey(
+            const ValueKey('recent-thread-space-marker-space-auth-shared-row')),
+        findsOneWidget);
     expect(rowDecoration(originalKey).color, Colors.transparent);
 
     await tester.tap(find.byKey(originalKey));

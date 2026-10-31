@@ -654,7 +654,7 @@ class AppIconRail extends StatelessWidget {
                         leadingIcon: SyntilaFolderIcon(
                           isExpanded: true,
                           size: 16,
-                          color: SyntilaColors.navigationTextMuted(isDark),
+                          color: spaceIdentityColor(space.id, isDark: isDark),
                         ),
                         onPressed: () =>
                             onNavigateTo(AxNavigation.space(space.id)),

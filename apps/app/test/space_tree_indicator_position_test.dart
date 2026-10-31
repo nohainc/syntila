@@ -294,7 +294,7 @@ void main() {
           tester
               .widget<SyntilaFolderIcon>(find.byType(SyntilaFolderIcon))
               .color,
-          paragraph.text.style?.color);
+          spaceIdentityColor(_space.id, isDark: false));
       return (
         height: tester.getSize(find.text('Space A')).height,
         color: paragraph.text.style?.color,
