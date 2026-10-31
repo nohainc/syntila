@@ -58,6 +58,7 @@ describe("CI acceptance orchestration", () => {
         "dart-packages",
         "app",
         "workspace",
+        "workspace-gui",
         "profile-lab",
         "engine",
         "site",
