@@ -145,6 +145,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.0"
+  gui_manifest:
+    dependency: "direct main"
+    description:
+      path: "sdk/dart"
+      ref: "3046458783c37a56d28462c32ef84d0c83b667e6"
+      resolved-ref: "3046458783c37a56d28462c32ef84d0c83b667e6"
+      url: "https://github.com/nohainc/gui-manifest.git"
+    source: git
+    version: "0.1.0"
   http_multi_server:
     dependency: transitive
     description:

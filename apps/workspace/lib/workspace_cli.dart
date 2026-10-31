@@ -5,7 +5,6 @@ import 'dart:io';
 import 'desktop_auth.dart';
 import 'secure_credentials.dart';
 import 'workspace_configuration.dart';
-import 'workspace_gui_manifest.dart';
 import 'linux_service_manager.dart';
 import 'macos_service_manager.dart';
 import 'windows_service_manager.dart';
@@ -15,6 +14,25 @@ import 'workspace_lifecycle_store.dart';
 import 'workspace_manager_ipc.dart';
 import 'workspace_registration_models.dart';
 import 'workspace_settings.dart';
+import 'package:gui_manifest/gui_manifest.dart'
+    show
+        CliCommand,
+        CliGroup,
+        CliHandler,
+        CliInvocation,
+        CliNode,
+        CliSpec,
+        GuiFormat,
+        GuiOutput,
+        GuiParamKind,
+        GuiParamType,
+        GuiParameter,
+        GuiView,
+        flatUsage,
+        manifestFromSpec,
+        runCli;
+
+part 'workspace_cli_spec.dart';
 
 typedef WorkspaceCliRequest = Future<Object?> Function(
     String command, Map<String, Object?> payload);
@@ -48,207 +66,81 @@ class WorkspaceCli {
   final DesktopAuthClient Function(String cloudUrl)? _authClientFactory;
   final SecureCredentialStore? _credentialStore;
 
-  /// Help entries by command, sorted alphabetically when rendered.
-  /// `always` commands are listed even before `workspace.nano` exists.
-  static const _helpEntries = <_HelpEntry>[
-    _HelpEntry('assignments', [
-      ('assignments', 'Active assignment ids'),
-      ('assignments cancel ID', 'Cancel an active assignment'),
-    ]),
-    _HelpEntry(
-        'config',
-        [
-          (
-            'config init|show|validate|path',
-            'Manage the restart-applied workspace.nano file',
-          ),
-        ],
-        always: true),
-    _HelpEntry('connect', [('connect', 'Connect to Cloud')]),
-    _HelpEntry('disconnect', [('disconnect', 'Disconnect from Cloud')]),
-    _HelpEntry('folders', [
-      ('folders [list]', 'List allowed Space folders'),
-      ('folders add PATH [--name NAME]', 'Add an allowed Space folder'),
-      ('folders remove ID', 'Remove an allowed Space folder'),
-    ]),
-    _HelpEntry('login', [
-      ('login', 'Sign in with Cloud email and password (does not register)'),
-    ]),
-    _HelpEntry('logout', [
-      ('logout', 'Delete the stored sign-in session on this computer'),
-    ]),
-    _HelpEntry('logs', [('logs', 'Recent service logs')]),
-    _HelpEntry('metrics', [('metrics', 'Service metrics')]),
-    _HelpEntry('pause', [('pause', 'Stop accepting new work')]),
-    _HelpEntry('register', [
-      ('register', 'Register this Workspace with Cloud (after login)'),
-    ]),
-    _HelpEntry(
-        'reset',
-        [
-          ('reset', 'Stop service, unregister and erase local runtime state'),
-        ],
-        always: true),
-    _HelpEntry('resume', [('resume', 'Resume accepting new work')]),
-    _HelpEntry('service', [
-      (
-        'service install|uninstall|start|stop|restart|status',
-        'Manage the host background service (macOS/Linux/Windows)',
-      ),
-    ]),
-    _HelpEntry(
-        'setup',
-        [
-          ('setup', 'Start service, sign in and connect (headless)'),
-        ],
-        always: true),
-    _HelpEntry('slots', [('slots', 'Parallel execution slots')]),
-    _HelpEntry('status', [('status', 'Service summary')], always: true),
-    _HelpEntry('unregister', [
-      (
-        'unregister',
-        'Unregister workspace from Cloud and clear local identity'
-      ),
-    ]),
-    _HelpEntry('version', [('version', 'Show the version')], always: true),
-    _HelpEntry('work-dir', [
-      ('work-dir [PATH]', 'View or update the Work Root directory'),
-    ]),
-    _HelpEntry('workers', [
-      ('workers', 'List configured Workers'),
-      ('workers catalog', 'List available catalog Workers'),
-      ('workers add TYPE', 'Add a Worker from the catalog (e.g. gemini)'),
-      ('workers remove TYPE', 'Remove a configured Worker'),
-      ('workers check [TYPE]', 'Check provider CLI readiness'),
-      ('workers test TYPE', 'Run a Worker test'),
-      ('workers enable|disable TYPE', 'Enable or disable a Worker'),
-    ]),
-  ];
+  late final CliSpec _spec = _buildWorkspaceSpec(this);
+
+  /// Set by [run] for the help text: which Workspace state directory to look
+  /// at, and whether `--help --all` was given.
+  String? _helpDataDir;
+  bool _listAll = false;
+  bool? _configExistsOverride;
+
+  /// The GUI manifest as a Nano Markup tree (what `--gui-manifest` prints).
+  Map<String, Object> guiManifestTree() => manifestFromSpec(_spec).toTree();
 
   /// Help text. Which commands are listed depends only on whether
   /// workspace.nano exists (it is not validated here), never on whether the
   /// service is running. [all] lists everything regardless.
   static String usageText({required bool configExists, bool all = false}) {
-    final showAll = all || configExists;
-    final buffer = StringBuffer(
-      'Usage: syntila [--data-dir DIR] [--json] <command>\n\n',
-    );
-    for (final entry in _helpEntries) {
-      if (!showAll && !entry.always) continue;
-      for (final (syntax, description) in entry.lines) {
-        if (syntax.length > 28) {
-          buffer.writeln('  $syntax');
-          buffer.writeln('${' ' * 32}$description');
-        } else {
-          buffer.writeln('  ${syntax.padRight(30)}$description');
-        }
-      }
-    }
-    if (!showAll) {
-      buffer
-        ..writeln()
-        ..writeln('More commands are available once workspace.nano exists '
-            '(run: syntila config init).')
-        ..writeln('Use --help --all to list every command.');
-    }
-    return buffer.toString();
+    final cli = WorkspaceCli(out: StringBuffer(), err: StringBuffer())
+      .._configExistsOverride = configExists
+      .._listAll = all;
+    return cli._usageText();
   }
+
+  String _usageText() {
+    final text = flatUsage(
+      _spec,
+      header: 'Usage: syntila [--data-dir DIR] [--json] <command>',
+    );
+    if (_showAllCommands()) return text;
+    return '$text\n'
+        'More commands are available once workspace.nano exists '
+        '(run: syntila config init).\n'
+        'Use --help --all to list every command.\n';
+  }
+
+  /// First-run help lists only the commands needed to get started.
+  bool _showAllCommands() =>
+      _listAll || (_configExistsOverride ?? _configExists(_helpDataDir));
 
   static String? _dataDirArg(List<String> args) {
     final index = args.indexOf('--data-dir');
     return index >= 0 && index + 1 < args.length ? args[index + 1] : null;
   }
 
-  /// Existence check only: an invalid file still counts as present.
-  String _usage(String? dataDir, {bool all = false}) {
-    var exists = true;
-    try {
-      final root = WorkspaceConfigurationResolver.resolveDataDirectory([
-        if (dataDir != null) ...['--data-dir', dataDir],
-      ]);
-      exists = WorkspaceSettingsStore(root).file.existsSync();
-    } on Object {
-      // An unresolvable data directory should not hide commands.
-    }
-    return usageText(configExists: exists, all: all);
+  Future<int> run(List<String> args) {
+    final helpRequested = args.contains('-h') || args.contains('--help');
+    _listAll = helpRequested && args.contains('--all');
+    _helpDataDir = _dataDirArg(args);
+    return runCli(
+      _spec,
+      _listAll
+          ? [
+              for (final a in args)
+                if (a != '--all') a
+            ]
+          : args,
+      out: out,
+      err: err,
+    );
   }
 
-  Future<int> run(List<String> args) async {
-    if (isGuiManifestRequest(args)) {
-      final response = guiManifestResponse(args.single);
-      if (response.document == null) {
-        err.writeln('syntila: ${response.error}');
-        return 2;
-      }
-      out.write(response.document);
-      return 0;
-    }
-    final rest = <String>[];
-    var json = false;
-    String? dataDir;
-    final helpRequested = args.contains('-h') || args.contains('--help');
-    final listAll = helpRequested && args.contains('--all');
-    for (var i = 0; i < args.length; i++) {
-      final arg = args[i];
-      if (arg == '--all' && listAll) {
-        continue;
-      } else if (arg == '--json') {
-        json = true;
-      } else if (arg == '--data-dir' && i + 1 < args.length) {
-        dataDir = args[++i];
-      } else if (arg == '-h' || arg == '--help') {
-        out.write(_usage(dataDir ?? _dataDirArg(args), all: listAll));
-        return 0;
-      } else {
-        rest.add(arg);
-      }
-    }
-    if (rest.length == 2 && rest.first == 'service') {
-      return _service(dataDir, rest[1], json);
-    }
-    if (rest.length == 2 && rest.first == 'config') {
-      return _config(dataDir, rest[1], json);
-    }
-    if (rest.length == 1 && rest.first == 'setup') {
-      return _setup(dataDir, json);
-    }
-    if ((rest.length == 1 && rest.first == 'login') ||
-        (rest.length == 2 &&
-            rest.first == 'login' &&
-            rest[1] == '--password')) {
-      return _login(dataDir, json);
-    }
-    if (rest.length >= 2 && rest.first == 'folders' && rest[1] != 'list') {
-      return _folders(dataDir, rest.sublist(1), json);
-    }
-    if (rest.isNotEmpty && rest.first == 'work-dir') {
-      return _workDir(dataDir, rest.sublist(1), json);
-    }
-    if (rest.length == 1 && rest.first == 'register') {
-      return _register(dataDir, json);
-    }
-    if (rest.length == 1 && rest.first == 'logout') {
-      return _logout(dataDir, json);
-    }
-    if (rest.length == 1 && rest.first == 'unregister') {
-      return _unregister(dataDir, json);
-    }
-    if (rest.length == 1 && rest.first == 'reset') {
-      return _reset(dataDir, json);
-    }
-    final resolved = _resolve(rest);
-    if (resolved == null) {
-      err.write(_usage(dataDir));
-      return 64;
-    }
-    var call = resolved;
+  /// Sends [command] to the running service and prints the result. With
+  /// [workerType] the Worker of that type (or a raw Worker ID) is looked up
+  /// first and sent as `workerId`.
+  Future<int> _runService(
+    String? dataDir,
+    bool json,
+    String command,
+    Map<String, Object?> payload, {
+    String? workerType,
+  }) async {
+    var call = (command, payload);
     try {
-      if (rest.first == 'workers' &&
-          call.$2['workerId'] is String &&
-          rest.length == 3) {
-        final workerId = await _workerIdForType(dataDir, rest[2]);
+      if (workerType != null) {
+        final workerId = await _workerIdForType(dataDir, workerType);
         if (workerId == null) {
-          err.writeln('No configured Worker of type "${rest[2]}". '
+          err.writeln('No configured Worker of type "$workerType". '
               'See: syntila workers');
           return 66;
         }
@@ -788,63 +680,6 @@ class WorkspaceCli {
     return null;
   }
 
-  (String, Map<String, Object?>)? _resolve(List<String> a) {
-    if (a.isEmpty) return null;
-    if (a.length > 3) {
-      return null;
-    }
-    final id = a.length > 2 ? a[2] : null;
-    if (id != null &&
-        !(a.first == 'workers' ||
-            (a.first == 'assignments' && a[1] == 'cancel'))) {
-      return null;
-    }
-    switch ((a[0], a.length > 1 ? a[1] : null)) {
-      case ('status', null):
-        return ('service.getStatus', {});
-      case ('version', null):
-        return ('service.getVersion', {});
-      case ('connect', null):
-        return ('connection.connect', {});
-      case ('disconnect', null):
-        return ('connection.disconnect', {});
-      case ('pause', null):
-        return ('connection.pause', {});
-      case ('resume', null):
-        return ('connection.resume', {});
-      case ('workers', null):
-        return ('workers.list', {});
-      case ('workers', 'catalog') when a.length == 2:
-        return ('workers.getCatalogSnapshot', {});
-      case ('workers', 'add') when id != null:
-        return ('workers.configureWorker', {'workerTypeId': id});
-      case ('workers', 'remove') when id != null:
-        return ('workers.removeWorker', {'workerId': id});
-      case ('workers', 'check'):
-        return ('workers.checkReadiness', {if (id != null) 'workerTypeId': id});
-      case ('workers', 'test') when id != null:
-        return ('workers.testWorker', {'workerId': id});
-      case ('workers', 'enable') when id != null:
-        return ('workers.enableWorker', {'workerId': id});
-      case ('workers', 'disable') when id != null:
-        return ('workers.disableWorker', {'workerId': id});
-      case ('slots', null):
-        return ('execution.getSlots', {});
-      case ('assignments', null):
-        return ('execution.listActiveAssignments', {});
-      case ('assignments', 'cancel') when id != null:
-        return ('execution.cancelAssignment', {'assignmentId': id});
-      case ('folders', null):
-      case ('folders', 'list'):
-        return ('folders.list', {});
-      case ('metrics', null):
-        return ('diagnostics.getMetrics', {});
-      case ('logs', null):
-        return ('diagnostics.getLogs', {});
-    }
-    return null;
-  }
-
   Future<Object?> _send(
     String? dataDir,
     String command,
@@ -878,17 +713,6 @@ class WorkspaceCli {
 
   Future<int> _service(String? dataDir, String action, bool json,
       {bool quiet = false}) async {
-    if (!const {
-      'install',
-      'uninstall',
-      'start',
-      'stop',
-      'restart',
-      'status',
-    }.contains(action)) {
-      err.write(_usage(dataDir));
-      return 64;
-    }
     final root = WorkspaceConfigurationResolver.resolveDataDirectory([
       if (dataDir != null) ...['--data-dir', dataDir],
     ]);
@@ -951,10 +775,6 @@ class WorkspaceCli {
   }
 
   Future<int> _config(String? dataDir, String action, bool json) async {
-    if (!const {'init', 'show', 'validate', 'path'}.contains(action)) {
-      err.write(_usage(dataDir));
-      return 64;
-    }
     final root = WorkspaceConfigurationResolver.resolveDataDirectory([
       if (dataDir != null) ...['--data-dir', dataDir],
     ]);
@@ -1031,45 +851,34 @@ class WorkspaceCli {
     }
   }
 
-  Future<int> _folders(String? dataDir, List<String> args, bool json) async {
-    if (args.isEmpty) {
-      err.write(_usage(dataDir));
-      return 64;
+  Future<int> _foldersRemove(String? dataDir, bool json, String id) async {
+    try {
+      final result = await _send(dataDir, 'folders.remove', {'folderId': id});
+      _print(result, json);
+      return 0;
+    } on WorkspaceManagerProtocolException catch (error) {
+      err.writeln('syntila: ${error.message} (${error.code})');
+      return 1;
     }
-    final action = args[0];
-    if (action == 'remove' && args.length == 2) {
-      try {
-        final result =
-            await _send(dataDir, 'folders.remove', {'folderId': args[1]});
-        _print(result, json);
-        return 0;
-      } on WorkspaceManagerProtocolException catch (error) {
-        err.writeln('syntila: ${error.message} (${error.code})');
-        return 1;
-      }
+  }
+
+  Future<int> _foldersAdd(
+    String? dataDir,
+    bool json,
+    String path,
+    String? name,
+  ) async {
+    try {
+      final result = await _send(dataDir, 'folders.add', {
+        'path': path,
+        if (name != null) 'displayName': name,
+      });
+      _print(result, json);
+      return 0;
+    } on WorkspaceManagerProtocolException catch (error) {
+      err.writeln('syntila: ${error.message} (${error.code})');
+      return 1;
     }
-    if (action == 'add' && args.length >= 2) {
-      final path = args[1];
-      String? name;
-      for (var i = 2; i < args.length; i++) {
-        if (args[i] == '--name' && i + 1 < args.length) {
-          name = args[++i];
-        }
-      }
-      try {
-        final result = await _send(dataDir, 'folders.add', {
-          'path': path,
-          if (name != null) 'displayName': name,
-        });
-        _print(result, json);
-        return 0;
-      } on WorkspaceManagerProtocolException catch (error) {
-        err.writeln('syntila: ${error.message} (${error.code})');
-        return 1;
-      }
-    }
-    err.write(_usage(dataDir));
-    return 64;
   }
 
   void _printCatalogSummary(Map<String, Object?> snapshot) {
@@ -1119,8 +928,8 @@ class WorkspaceCli {
       }
       return 0;
     }
-    err.write(_usage(dataDir));
-    return 64;
+    // The command takes at most one path; the parser rejects more.
+    throw StateError('work-dir takes at most one argument');
   }
 
   /// Deletes the stored human sign-in session. The Workspace registration, its
@@ -1412,11 +1221,4 @@ class WorkspaceCli {
       );
     }
   }
-}
-
-class _HelpEntry {
-  const _HelpEntry(this.name, this.lines, {this.always = false});
-  final String name;
-  final List<(String, String)> lines;
-  final bool always;
 }

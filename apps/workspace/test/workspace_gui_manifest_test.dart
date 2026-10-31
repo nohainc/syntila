@@ -1,8 +1,8 @@
 import 'dart:io';
 
+import 'package:gui_manifest/gui_manifest.dart' show validateManifest;
 import 'package:nanomarkup/nanomarkup.dart' as nano;
 import 'package:syntila_workspace/workspace_cli.dart';
-import 'package:syntila_workspace/workspace_gui_manifest.dart';
 import 'package:test/test.dart';
 
 /// Expected IPC command for each service-backed manifest command.
@@ -37,8 +37,11 @@ const _local = {
   'config.show', 'config.validate', 'config.path', 'config.init',
 };
 
+Map<String, Object> _manifest() =>
+    WorkspaceCli(out: StringBuffer(), err: StringBuffer()).guiManifestTree();
+
 List<Map<String, Object>> _commands() =>
-    (workspaceGuiManifest()['commands'] as List).cast<Map<String, Object>>();
+    (_manifest()['commands'] as List).cast<Map<String, Object>>();
 
 void main() {
   group('--gui-manifest', () {
@@ -61,7 +64,7 @@ void main() {
         final (code, out, err) = await run([arg]);
         expect(code, 0, reason: arg);
         expect(err, isEmpty);
-        expect(nano.decode(out), workspaceGuiManifest());
+        expect(nano.decode(out), _manifest());
       }
     });
 
@@ -74,16 +77,106 @@ void main() {
       }
     });
 
-    test('is only recognised as the sole argument', () {
-      expect(isGuiManifestRequest(['--gui-manifest', 'status']), isFalse);
-      expect(isGuiManifestRequest(['--gui-manifestx']), isFalse);
+    test('is only recognised as the sole argument', () async {
+      for (final args in [
+        ['--gui-manifest', 'status'],
+        ['--gui-manifestx'],
+      ]) {
+        final (code, out, _) = await run(args);
+        expect(code, 64, reason: args.join(' '));
+        expect(out, isEmpty);
+      }
     });
+  });
+
+  test('the manifest is valid and keeps its order', () {
+    expect(validateManifest(_manifest()), isEmpty);
+    final ids = _commands().map((c) => c['id']).toList();
+    expect(ids.take(3), ['status', 'version', 'setup']);
+    final nav = (_manifest()['navigation'] as List).cast<Map>();
+    expect(
+      nav.map((n) => (n['id'], n['command'])),
+      [
+        ('status', 'status'),
+        ('workers', 'workers.list'),
+        ('folders', 'folders.list'),
+        ('assignments', 'assignments.list'),
+        ('logs', 'logs'),
+        ('service', 'service.status'),
+      ],
+    );
+  });
+
+  test('related commands are grouped', () {
+    final groups = (_manifest()['groups'] as List).cast<Map>();
+    expect(
+      groups.map((g) => g['id']),
+      ['workers', 'folders', 'assignments', 'service', 'config'],
+    );
+    final byGroup = <String, List<Object?>>{};
+    for (final c in _commands()) {
+      final group = c['group'];
+      if (group is String) (byGroup[group] ??= []).add(c['id']);
+    }
+    expect(byGroup['workers'], [
+      'workers.list',
+      'workers.catalog',
+      'workers.add',
+      'workers.remove',
+      'workers.check',
+      'workers.test',
+      'workers.enable',
+      'workers.disable',
+    ]);
+    expect(byGroup['service'], [
+      'service.status',
+      'service.install',
+      'service.uninstall',
+      'service.start',
+      'service.stop',
+      'service.restart',
+    ]);
+    expect(
+      _commands().where((c) => c['group'] == null).map((c) => c['id']),
+      containsAll(['status', 'version', 'login', 'workDir', 'logs', 'reset']),
+    );
+  });
+
+  test('every manifest command exists in the real command tree', () async {
+    // The manifest and the parser come from one declaration; this guards the
+    // wiring by asking each declared command for its own help.
+    for (final command in _commands()) {
+      final path = [
+        for (final word in (command['argv'] as List).cast<String>())
+          if (!word.startsWith('--')) word,
+      ];
+      final out = StringBuffer(), err = StringBuffer();
+      final code =
+          await WorkspaceCli(out: out, err: err).run([...path, '--help']);
+      expect(code, 0, reason: '${command['id']}: $err');
+      expect('$out', contains('syntila ${path.join(' ')}'),
+          reason: '${command['id']}');
+    }
+  });
+
+  test('help hides later commands but they still run and stay in the manifest',
+      () async {
+    final dir = Directory.systemTemp.createTempSync('syntila_gui_manifest');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final out = StringBuffer();
+    expect(
+      await WorkspaceCli(out: out, err: StringBuffer())
+          .run(['--data-dir', dir.path, '--help']),
+      0,
+    );
+    expect('$out', isNot(contains('workers')));
+    expect(_commands().map((c) => c['id']), contains('workers.list'));
   });
 
   test('ids are unique and navigation targets exist', () {
     final ids = _commands().map((c) => c['id']).toList();
     expect(ids.toSet().length, ids.length);
-    final nav = (workspaceGuiManifest()['navigation'] as List).cast<Map>();
+    final nav = (_manifest()['navigation'] as List).cast<Map>();
     for (final entry in nav) {
       expect(ids, contains(entry['command']), reason: '${entry['id']}');
     }

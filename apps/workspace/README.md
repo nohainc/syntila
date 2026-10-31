@@ -32,13 +32,22 @@ Users install only Syntila Workspace. Workspace manages the bundled generic
 Engine and current Tool Profiles; provider CLI software is installed separately
 by its provider.
 
-## GUI manifest
+## Commands and GUI manifest
 
-`syntila --gui-manifest[=N]` prints a GUI Manifest v1 Nano Markup document
-describing the management commands (titles, parameters, result views,
-destructive/interactive flags) for GUI front ends. It needs no service, no
-sign-in and no network. Unsupported versions exit `2`. The command list lives
-in `lib/workspace_gui_manifest.dart`; keep it in sync with the CLI dispatch.
+Every CLI command is declared once, in `lib/workspace_cli_spec.dart`, using
+the [gui-manifest](https://github.com/nohainc/gui-manifest) SDK (`CliSpec`:
+groups such as `workers`/`folders`/`service`/`config`, typed parameters, result
+views and destructive/interactive flags). From that single list the SDK builds
+the argument parser (`package:args`), `--help`, and the manifest. Adding a
+command means adding one entry; there is no separate help text, dispatch or
+manifest to keep in sync.
+
+`syntila --gui-manifest[=N]` prints the GUI Manifest v1 Nano Markup document for
+GUI front ends. It needs no service, no sign-in and no network; unsupported
+versions exit `2`. `syntila --help` lists every command on one line each (only
+the first-run commands until `workspace.nano` exists; `--help --all` lists
+everything); `syntila <group> --help` and `syntila <command> --help` show the
+details. The SDK dependency is pinned to a commit in `pubspec.yaml`.
 
 ## Configuration: `workspace.nano`
 
