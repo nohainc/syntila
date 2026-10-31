@@ -9,7 +9,7 @@ Syntila light/dark themes). New CLI commands appear without changing this app.
 ## Which `syntila` it runs
 
 1. `SYNTILA_CLI` environment variable (development)
-2. `Syntila Workspace.app/Contents/Resources/bin/syntila` (bundled)
+2. `Syntila Workspace.app/Contents/Resources/syntila/syntila` (bundled)
 3. `~/.local/bin/syntila`, `/opt/homebrew/bin/syntila`, `/usr/local/bin/syntila`
 4. `syntila` on PATH
 

@@ -4,7 +4,7 @@ import 'package:syntila_workspace_gui/src/syntila_cli_location.dart';
 const _exe =
     '/Applications/Syntila Workspace.app/Contents/MacOS/Syntila Workspace';
 const _bundled =
-    '/Applications/Syntila Workspace.app/Contents/Resources/bin/syntila';
+    '/Applications/Syntila Workspace.app/Contents/Resources/syntila/syntila';
 
 String _locate(Map<String, String> env, Set<String> files) => locateSyntilaCli(
   environment: env,

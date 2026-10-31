@@ -23,6 +23,7 @@ jobs:
       dart: ${{ steps.detect.outputs.dart }}
       app: ${{ steps.detect.outputs.app }}
       workspace: ${{ steps.detect.outputs.workspace }}
+      workspace_gui: ${{ steps.detect.outputs.workspace_gui }}
       profile_lab: ${{ steps.detect.outputs.profile_lab }}
       engine: ${{ steps.detect.outputs.engine }}
       site: ${{ steps.detect.outputs.site }}
@@ -102,6 +103,18 @@ jobs:
       - name: Validate Workspace
         run: bash scripts/check-flutter-app.sh workspace
 
+  workspace-gui:
+    name: Workspace GUI
+    needs: changes
+    if: needs.changes.outputs.workspace_gui == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-flutter
+      - name: Validate Workspace GUI
+        run: bash scripts/check-flutter-app.sh workspace_gui
+
   profile-lab:
     name: Profile Lab
     needs: changes
@@ -151,6 +164,7 @@ jobs:
         dart-packages,
         app,
         workspace,
+        workspace-gui,
         profile-lab,
         engine,
         site,

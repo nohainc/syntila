@@ -37,5 +37,3 @@ apps/workspace/macos/Flutter/ephemeral/
 
 # Local gui-manifest checkout (see apps/workspace_gui/README.md).
 apps/workspace_gui/pubspec_overrides.yaml
-# Lockfile pins local override paths until gui-manifest is published.
-apps/workspace_gui/pubspec.lock

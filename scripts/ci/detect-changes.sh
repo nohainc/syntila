@@ -7,7 +7,7 @@
 # workflow_dispatch, first pushes and unknown bases run everything.
 set -euo pipefail
 
-domains=(cloud dart app workspace profile_lab engine site)
+domains=(cloud dart app workspace workspace_gui profile_lab engine site)
 
 set_output() {
   echo "$1=$2" >> "$GITHUB_OUTPUT"
@@ -44,6 +44,7 @@ set_output cloud "$(matches '^(apps/cloud/|packages/(core|protocol|security|work
 set_output dart "$(matches '^packages/(syntila_cli_worker_runtime|syntila_design|syntila_worker_protocol|dart/protocol|tool_profile_v1)/' && echo true || echo false)"
 set_output app "$(matches "^apps/app/|${flutter_shared}" && echo true || echo false)"
 set_output workspace "$(matches "^(apps/workspace/|apps/app/|apps/profile_lab/|engines/cli_worker/)|${flutter_shared}" && echo true || echo false)"
+set_output workspace_gui "$(matches "^(apps/workspace_gui/|apps/workspace/)|${flutter_shared}" && echo true || echo false)"
 set_output profile_lab "$(matches "^(apps/profile_lab/|engines/cli_worker/)|${flutter_shared}" && echo true || echo false)"
 set_output engine "$(matches '^(engines/cli_worker/|packages/(syntila_worker_protocol|tool_profile_v1|syntila_cli_worker_runtime)/)' && echo true || echo false)"
 set_output site "$(matches '^(apps/site/|pnpm-lock\.yaml$|package\.json$)' && echo true || echo false)"
