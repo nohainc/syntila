@@ -66,15 +66,12 @@ fi
 VERSION="$(awk '/^version:/ {print $2; exit}' "$ROOT/apps/workspace/pubspec.yaml")"
 cd "$GUI_DIR"
 flutter pub get
-flutter build macos --release \
+# The app's "Embed syntila CLI" build phase copies this bundle in.
+SYNTILA_CLI_BUNDLE="$CLI_BUNDLE" flutter build macos --release \
   --build-name="${SYNTILA_WORKSPACE_VERSION:-${VERSION%%+*}}"
 APP="$GUI_DIR/build/macos/Build/Products/Release/Syntila Workspace.app"
 
-# 3. Embed the CLI bundle.
-rm -rf "$APP/Contents/Resources/syntila"
-ditto "$CLI_BUNDLE" "$APP/Contents/Resources/syntila"
-
-# 4. Re-seal the app (the nested binaries keep their own signatures).
+# 3. Re-seal the app (the nested binaries keep their own signatures).
 IDENTITY="${SYNTILA_MACOS_SIGN_IDENTITY:-Apple Development: vitalii@nohainc.com (7X62W6499P)}"
 if ! security find-identity -v -p codesigning | /usr/bin/grep -F -- "$IDENTITY" >/dev/null; then
   if [[ "$SIGN_EXPLICIT" == "1" ]]; then

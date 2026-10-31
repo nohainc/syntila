@@ -13,6 +13,15 @@ Syntila light/dark themes). New CLI commands appear without changing this app.
 3. `~/.local/bin/syntila`, `/opt/homebrew/bin/syntila`, `/usr/local/bin/syntila`
 4. `syntila` on PATH
 
+Every build embeds the CLI (step 2): the Xcode build phase "Embed syntila
+CLI" (`macos/scripts/embed_syntila_cli.sh`) compiles `apps/workspace` and
+copies it, plus the Worker Engine when `scripts/build-cli-worker-engine.sh`
+has built it, into `Contents/Resources/syntila/`. The compiled CLI is cached
+in `build/syntila_cli` and rebuilt only when Workspace or package sources
+change. `flutter run -d macos` therefore works with no installed CLI.
+Release packaging passes its signed bundle through `SYNTILA_CLI_BUNDLE`
+instead.
+
 The App Sandbox is disabled so the app can start the CLI.
 
 ## Development
