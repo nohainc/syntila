@@ -27,3 +27,10 @@ apps/account_manager/.build/
 
 # Work Request inputs the Workspace copies into a Space folder (user files).
 .syntila/inputs/
+
+# Scratch area for files awaiting deletion; do not add new files here.
+_to_delete/
+
+# Flutter-generated macOS files, recreated on every pub get / build.
+apps/workspace/macos/Flutter/ephemeral/
+**/Flutter/GeneratedPluginRegistrant.swift
