@@ -198,6 +198,7 @@ export const requiredProductionSmokeColumns = Object.freeze({
     "last_used_at",
     "expires_at",
     "revoked_at",
+    "device_id",
   ],
 });
 
@@ -381,6 +382,27 @@ export const requiredProductionSmokeTableDefinitions = Object.freeze(
           sourceDefinition = sourceDefinition.replace(
             "updated_at TEXT NOT NULL,",
             `updated_at TEXT NOT NULL, ${columns.join(", ")},`,
+          );
+        }
+        if (tableName === "desktop_human_sessions") {
+          const evolution = readFileSync(
+            join(
+              repositoryRoot,
+              "apps/cloud/migrations-v8/0095_desktop_session_device.sql",
+            ),
+            "utf8",
+          );
+          const columns = [
+            ...evolution.matchAll(
+              new RegExp(
+                `ALTER TABLE ${tableName}\\s+ADD COLUMN ([^;]+);`,
+                "g",
+              ),
+            ),
+          ].map((match) => match[1]);
+          sourceDefinition = sourceDefinition.replace(
+            "revoked_at TEXT",
+            `revoked_at TEXT, ${columns.join(", ")}`,
           );
         }
         const definition = sourceDefinition.replace(

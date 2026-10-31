@@ -66,6 +66,7 @@ describe("production Workspace Gateway smoke schema gate", () => {
       "0070_workspace_parallel_slots.sql",
       "0079_ai_history_cutoff.sql",
       "0092_read_receipt_privacy.sql",
+      "0095_desktop_session_device.sql",
     ]) {
       database.exec(
         readFileSync(
@@ -266,6 +267,15 @@ describe("production Workspace Gateway smoke schema gate", () => {
       slotsMigration.match(
         /ALTER TABLE execution_workspaces ADD COLUMN[^;]+;/,
       )[0],
+    );
+    database.exec(
+      readFileSync(
+        new URL(
+          "../apps/cloud/migrations-v8/0095_desktop_session_device.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
     );
     const definitions = Object.fromEntries(
       database
