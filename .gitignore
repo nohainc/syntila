@@ -34,3 +34,8 @@ _to_delete/
 # Flutter-generated macOS files, recreated on every pub get / build.
 apps/workspace/macos/Flutter/ephemeral/
 **/Flutter/GeneratedPluginRegistrant.swift
+
+# Local gui-manifest checkout (see apps/workspace_gui/README.md).
+apps/workspace_gui/pubspec_overrides.yaml
+# Lockfile pins local override paths until gui-manifest is published.
+apps/workspace_gui/pubspec.lock
