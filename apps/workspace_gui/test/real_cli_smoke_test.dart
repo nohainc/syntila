@@ -15,7 +15,7 @@ void main() {
     final manifest = await tester.runAsync(runner.loadManifest);
     expect(manifest!.cli.name, 'syntila');
 
-    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.physicalSize = const Size(1400, 2000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     // Start in the real zone so process futures created by the shell
@@ -54,11 +54,23 @@ void main() {
       'Status',
       'Workers',
       'Folders',
+      'Assignments',
       'Logs',
-      'All commands',
+      'Service',
+      'Commands',
+      'Config',
     ]) {
       expect(find.text(label), findsWidgets, reason: label);
     }
+    // A group is one expandable row: its commands show after expanding it.
+    expect(find.text('Add Worker'), findsNothing);
+    await tester.runAsync(() async {
+      await tester.tap(find.byTooltip('Show Workers commands'));
+      await tester.pump();
+    });
+    expect(find.text('Add Worker'), findsOneWidget);
+    expect(find.text('Catalog'), findsNothing);
+    expect(find.text('Worker catalog'), findsOneWidget);
     expect(ran, findsOneWidget);
 
     // Generated pages still work: open Logs and run it.
