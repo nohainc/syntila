@@ -10,5 +10,7 @@ bash "$ROOT/scripts/build-workspace-service.sh"
 BUNDLE="$ROOT/dist/syntila/linux-$ARCH"
 cp "$ROOT/docs/operations/WORKSPACE_LINUX.md" "$BUNDLE/README.md"
 ARCHIVE="$ROOT/dist/syntila/syntila-workspace-headless-linux-$ARCH.tar.gz"
-COPYFILE_DISABLE=1 tar --no-xattrs -C "$BUNDLE" -czf "$ARCHIVE" .
+# The GUI (gui/, from build-workspace-gui-linux.sh) shares this folder but is
+# not part of the headless archive.
+COPYFILE_DISABLE=1 tar --no-xattrs --exclude=./gui -C "$BUNDLE" -czf "$ARCHIVE" .
 echo "Built headless Linux bundle: $ARCHIVE"

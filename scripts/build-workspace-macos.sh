@@ -3,9 +3,13 @@ set -euo pipefail
 
 # Builds the pure-Dart Syntila Workspace for macOS: the unified
 # `syntila` binary (CLI + service)
-# and the generic CLI Worker Engine (`syntila-agent`). There is no .app: the
-# service is a user LaunchAgent that the binary itself registers with
-# `syntila service install` (see macos_service_manager.dart).
+# and the generic CLI Worker Engine (`syntila-agent`). The service is a user
+# LaunchAgent that the binary itself registers with `syntila service install`
+# (see macos_service_manager.dart).
+#
+# The bundle folder is shared with the GUI: build-workspace-gui-macos.sh puts
+# "Syntila Workspace.app" beside `syntila`. Each script replaces only its own
+# files, so they can run in either order and the archive contains both.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE_DIR="$ROOT/apps/workspace"
@@ -152,7 +156,8 @@ if [[ ! -x "$ENGINE" ]]; then
 fi
 
 BUNDLE="$DIST_DIR/$BUNDLE_NAME"
-rm -rf "$DIST_DIR"
+# Keep a GUI app already built into the shared folder.
+rm -rf "$BUNDLE/syntila" "$BUNDLE/workspace" "$BUNDLE/assets" "$DIST_DIR"/*.zip
 mkdir -p "$BUNDLE/assets/engines"
 dart compile exe \
   --define="SYNTILA_WORKSPACE_VERSION=$VERSION" \

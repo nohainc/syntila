@@ -1,37 +1,68 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_workspace_gui/src/syntila_cli_location.dart';
 
-const _exe =
-    '/Applications/Syntila Workspace.app/Contents/MacOS/Syntila Workspace';
-const _bundled =
-    '/Applications/Syntila Workspace.app/Contents/Resources/syntila/syntila';
+const _macExe =
+    '/Applications/syntila/Syntila Workspace.app/Contents/MacOS/Syntila Workspace';
+const _macSibling = '/Applications/syntila/syntila';
+const _macEmbedded =
+    '/Applications/syntila/Syntila Workspace.app/Contents/Resources/syntila/syntila';
+const _linuxExe = '/usr/lib/syntila/gui/syntila-workspace-gui';
 
-String _locate(Map<String, String> env, Set<String> files) => locateSyntilaCli(
+String _mac(Map<String, String> env, Set<String> files) => locateSyntilaCli(
   environment: env,
-  resolvedExecutable: _exe,
+  resolvedExecutable: _macExe,
+  isMacOS: true,
+  exists: files.contains,
+);
+
+String _linux(Map<String, String> env, Set<String> files) => locateSyntilaCli(
+  environment: env,
+  resolvedExecutable: _linuxExe,
+  isMacOS: false,
   exists: files.contains,
 );
 
 void main() {
   test('SYNTILA_CLI wins', () {
     expect(
-      _locate({'SYNTILA_CLI': '/dev/syntila'}, {_bundled}),
+      _mac({'SYNTILA_CLI': '/dev/syntila'}, {_macSibling}),
       '/dev/syntila',
     );
   });
 
-  test('bundled CLI before installed ones', () {
-    expect(
-      _locate({'HOME': '/u'}, {_bundled, '/usr/local/bin/syntila'}),
-      _bundled,
-    );
+  group('macOS', () {
+    test('sibling CLI in the shared folder comes first', () {
+      expect(_mac({}, {_macSibling, _macEmbedded}), _macSibling);
+    });
+
+    test('then the CLI embedded by development builds', () {
+      expect(_mac({}, {_macEmbedded, '/usr/local/bin/syntila'}), _macEmbedded);
+    });
+
+    test('then well-known locations, then PATH', () {
+      expect(
+        _mac({'HOME': '/u'}, {'/u/.local/bin/syntila'}),
+        '/u/.local/bin/syntila',
+      );
+      expect(
+        _mac({}, {'/opt/homebrew/bin/syntila'}),
+        '/opt/homebrew/bin/syntila',
+      );
+      expect(_mac({'HOME': '/u'}, {}), 'syntila');
+    });
   });
 
-  test('falls back to well-known locations, then PATH', () {
-    expect(
-      _locate({'HOME': '/u'}, {'/u/.local/bin/syntila'}),
-      '/u/.local/bin/syntila',
-    );
-    expect(_locate({'HOME': '/u'}, {}), 'syntila');
+  group('Linux', () {
+    test('sibling CLI in /usr/lib/syntila comes first', () {
+      expect(
+        _linux({}, {'/usr/lib/syntila/syntila', '/usr/bin/syntila'}),
+        '/usr/lib/syntila/syntila',
+      );
+    });
+
+    test('falls back to /usr/bin/syntila, then PATH', () {
+      expect(_linux({}, {'/usr/bin/syntila'}), '/usr/bin/syntila');
+      expect(_linux({}, {}), 'syntila');
+    });
   });
 }

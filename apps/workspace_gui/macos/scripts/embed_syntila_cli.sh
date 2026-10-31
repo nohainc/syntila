@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Xcode build phase: puts the syntila CLI (and the Worker Engine when built)
-# into Contents/Resources/syntila so every build of the app is self-contained.
+# Xcode build phase for development: puts the syntila CLI (and the Worker
+# Engine when built) into Contents/Resources/syntila so `flutter run` works
+# without an installed CLI.
 #
-# SYNTILA_CLI_BUNDLE=<dir> embeds a prebuilt bundle (release packaging does
-# this). Otherwise apps/workspace is compiled; the result is cached and only
-# rebuilt when Workspace or shared package sources change.
+# Release builds skip this: releases ship the app beside `syntila` in one
+# folder (scripts/build-workspace-gui-macos.sh). SYNTILA_CLI_BUNDLE=<dir>
+# forces embedding a prebuilt bundle. apps/workspace is compiled otherwise;
+# the result is cached and rebuilt only when Workspace or package sources
+# change.
 
 ROOT="$(cd "$SRCROOT/../../.." && pwd)"
 DEST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/syntila"
+if [[ "${CONFIGURATION:-}" != "Debug" && -z "${SYNTILA_CLI_BUNDLE:-}" ]]; then
+  rm -rf "$DEST"
+  exit 0
+fi
 DART="${FLUTTER_ROOT:+$FLUTTER_ROOT/bin/}dart"
 
 if [[ -n "${SYNTILA_CLI_BUNDLE:-}" ]]; then

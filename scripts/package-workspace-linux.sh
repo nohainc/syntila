@@ -38,7 +38,7 @@ Section: devel
 Priority: optional
 Depends: libc6 (>= 2.31), libgcc-s1, libstdc++6, ca-certificates
 Recommends: systemd, dbus-user-session
-Suggests: libsecret-tools
+Suggests: libsecret-tools, syntila-gui
 Homepage: https://conclaveax.com
 Description: Headless Syntila Workspace service and management CLI
  Includes the generic CLI Worker Engine. Runs as the user who owns provider
@@ -50,3 +50,57 @@ chmod 755 "$STAGE" "$STAGE/DEBIAN"
 OUTPUT="$ROOT/dist/syntila/deb"
 mkdir -p "$OUTPUT"
 dpkg-deb --build --root-owner-group -Zgzip "$STAGE" "$OUTPUT/syntila_${VERSION}_${DEB_ARCH}.deb"
+
+# The desktop GUI ships as syntila-gui from the same build and version. It
+# installs into the same folder (/usr/lib/syntila/gui) and drives
+# /usr/lib/syntila/syntila; headless hosts keep installing only syntila.
+GUI="$BUNDLE/gui"
+if [[ ! -d "$GUI" ]]; then
+  echo "No GUI in $BUNDLE; built syntila only (run build-workspace-gui-linux.sh to add syntila-gui)."
+  exit 0
+fi
+python3 - "$GUI/syntila-workspace-gui" "$ELF_MACHINE" <<'PY'
+import pathlib, struct, sys
+path, machine = pathlib.Path(sys.argv[1]), int(sys.argv[2])
+header = path.read_bytes()[:20]
+if header[:6] != b'\x7fELF\x02\x01' or struct.unpack('<H', header[18:20])[0] != machine:
+    raise SystemExit(f'Not a Linux executable of the requested architecture: {path}')
+PY
+GUI_STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE" "$GUI_STAGE"' EXIT
+mkdir -p "$GUI_STAGE/DEBIAN" "$GUI_STAGE/usr/lib/syntila" "$GUI_STAGE/usr/bin" \
+  "$GUI_STAGE/usr/share/applications" "$GUI_STAGE/usr/share/icons/hicolor/512x512/apps" \
+  "$GUI_STAGE/usr/share/doc/syntila-gui"
+cp -R "$GUI" "$GUI_STAGE/usr/lib/syntila/gui"
+chmod -R u=rwX,go=rX "$GUI_STAGE/usr/lib/syntila/gui"
+chmod 755 "$GUI_STAGE/usr/lib/syntila/gui/syntila-workspace-gui"
+ln -s ../lib/syntila/gui/syntila-workspace-gui "$GUI_STAGE/usr/bin/syntila-gui"
+install -m 644 "$ROOT/assets/branding/syntila_logo_dark_512.png" \
+  "$GUI_STAGE/usr/share/icons/hicolor/512x512/apps/syntila-workspace.png"
+cat > "$GUI_STAGE/usr/share/applications/syntila-workspace.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Syntila Workspace
+Comment=Manage the Syntila Workspace service
+Exec=/usr/lib/syntila/gui/syntila-workspace-gui
+Icon=syntila-workspace
+Categories=Development;Utility;
+Terminal=false
+DESKTOP
+install -m 644 "$ROOT/apps/workspace_gui/README.md" "$GUI_STAGE/usr/share/doc/syntila-gui/README.md"
+cat > "$GUI_STAGE/DEBIAN/control" <<CONTROL
+Package: syntila-gui
+Version: $VERSION
+Architecture: $DEB_ARCH
+Maintainer: Syntila <support@conclaveax.com>
+Section: devel
+Priority: optional
+Depends: syntila (= $VERSION), libgtk-3-0, libc6 (>= 2.31)
+Homepage: https://conclaveax.com
+Description: Desktop GUI for the Syntila Workspace
+ Renders the syntila management CLI (status, Workers, folders, logs and
+ every other command) as a desktop app. Installed beside the syntila CLI in
+ /usr/lib/syntila and requires the matching syntila package.
+CONTROL
+chmod 755 "$GUI_STAGE" "$GUI_STAGE/DEBIAN"
+dpkg-deb --build --root-owner-group -Zgzip "$GUI_STAGE" "$OUTPUT/syntila-gui_${VERSION}_${DEB_ARCH}.deb"

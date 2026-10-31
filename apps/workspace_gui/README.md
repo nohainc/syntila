@@ -1,28 +1,70 @@
 # Syntila Workspace GUI
 
-macOS desktop GUI for the `syntila` management CLI. It contains no command
-logic: at startup it runs `syntila --gui-manifest=1` and renders the result
-with [gui-manifest](https://github.com/nohainc/gui-manifest)'s
+Desktop GUI (macOS and Linux) for the `syntila` management CLI. It contains no
+command logic: at startup it runs `syntila --gui-manifest=1` and renders the
+result with [gui-manifest](https://github.com/nohainc/gui-manifest)'s
 `gui_manifest_flutter`, styled with `syntila_design` (Inter, JetBrains Mono,
 Syntila light/dark themes). New CLI commands appear without changing this app.
+
+## One folder with the CLI
+
+Releases ship the GUI and the CLI side by side, so either runs on its own:
+
+```text
+dist/syntila/macos/syntila/            dist/syntila/linux-<arch>/
+  syntila                                syntila
+  assets/engines/syntila-agent           assets/engines/syntila-agent
+  Syntila Workspace.app                  gui/syntila-workspace-gui
+```
+
+`scripts/build-workspace-macos.sh` and `scripts/build-workspace-gui-macos.sh`
+(Linux: `build-workspace-linux-headless.sh` and `build-workspace-gui-linux.sh`)
+both build into that folder and replace only their own files, so they can run
+in either order. The macOS zip and `.pkg` (`/usr/local/lib/syntila`, app
+linked into `/Applications`) contain everything. On Linux the `syntila-gui`
+Debian package installs into `/usr/lib/syntila/gui` beside the `syntila`
+package and requires the same version.
 
 ## Which `syntila` it runs
 
 1. `SYNTILA_CLI` environment variable (development)
-2. `Syntila Workspace.app/Contents/Resources/syntila/syntila` (bundled)
-3. `~/.local/bin/syntila`, `/opt/homebrew/bin/syntila`, `/usr/local/bin/syntila`
-4. `syntila` on PATH
+2. The sibling `syntila` in the shared folder
+3. A CLI embedded by Debug builds (`Contents/Resources/syntila/syntila`)
+4. `~/.local/bin`, `/opt/homebrew/bin` (macOS), `/usr/local/bin`, `/usr/bin` (Linux)
+5. `syntila` on PATH
 
-Every build embeds the CLI (step 2): the Xcode build phase "Embed syntila
-CLI" (`macos/scripts/embed_syntila_cli.sh`) compiles `apps/workspace` and
-copies it, plus the Worker Engine when `scripts/build-cli-worker-engine.sh`
-has built it, into `Contents/Resources/syntila/`. The compiled CLI is cached
-in `build/syntila_cli` and rebuilt only when Workspace or package sources
-change. `flutter run -d macos` therefore works with no installed CLI.
-Release packaging passes its signed bundle through `SYNTILA_CLI_BUNDLE`
-instead.
+Debug builds embed the CLI through the Xcode build phase "Embed syntila CLI"
+(`macos/scripts/embed_syntila_cli.sh`): it compiles `apps/workspace` (cached in
+`build/syntila_cli`, rebuilt only when sources change) and copies it, plus the
+Worker Engine when built, into the app, so `flutter run -d macos` works with no
+installed CLI. Release builds skip it and use the sibling CLI.
 
 The App Sandbox is disabled so the app can start the CLI.
+
+## Status page
+
+`status` uses a hand-built live dashboard (`lib/src/status_page.dart`,
+registered through `commandPages`): it polls `syntila status --json` every
+5 s and offers Connect/Disconnect, Pause/Resume and Start service. Every other
+command uses the generated page.
+
+## Release build
+
+```console
+scripts/build-workspace-gui-macos.sh              # CLI bundle + GUI into one folder
+scripts/build-workspace-gui-macos.sh --gui-only   # GUI into an existing bundle folder
+scripts/build-workspace-gui-macos.sh --local
+scripts/package-workspace-macos.sh                # .pkg with CLI and GUI
+scripts/build-workspace-gui-linux.sh              # Linux host: headless bundle + GUI
+scripts/package-workspace-linux.sh x64            # syntila and syntila-gui .deb
+```
+
+The macOS app is signed (Apple identity when available, otherwise ad-hoc) and
+verified, the archive is re-created with the GUI, and it is notarized and
+stapled when `SYNTILA_MACOS_NOTARY_PROFILE` is set. Building the CLI bundle
+needs the release trust keys, as for `build-workspace-macos.sh`. The Linux GUI
+needs a native Linux host with clang, cmake, ninja-build, pkg-config and
+libgtk-3-dev (Flutter cannot cross-compile).
 
 ## Development
 
@@ -38,12 +80,8 @@ dependency_overrides:
 ```
 
 ```console
+flutter run -d macos
 flutter test
 dart compile exe ../workspace/bin/syntila_workspace_cli.dart -o /tmp/syntila
 SYNTILA_CLI=/tmp/syntila flutter test test/real_cli_smoke_test.dart
-SYNTILA_CLI=/tmp/syntila flutter run -d macos
 ```
-
-Not yet done: bundling the CLI into `Contents/Resources/bin` during release
-builds, signing/notarization, and a hand-built Status screen (registered via
-`GuiManifestApp.builtins`).

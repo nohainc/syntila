@@ -58,7 +58,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-flutter
       - name: Install package tools
-        run: sudo apt-get update && sudo apt-get install -y dpkg-dev gnupg libglu1-mesa
+        run: >-
+          sudo apt-get update && sudo apt-get install -y dpkg-dev gnupg libglu1-mesa
+          clang cmake ninja-build pkg-config libgtk-3-dev
       - name: Validate CLI, registration and Linux adapters
         working-directory: apps/workspace
         run: |
@@ -70,6 +72,7 @@ jobs:
       - name: Build and package
         run: |
           bash scripts/build-workspace-linux-headless.sh '${{ matrix.arch }}'
+          bash scripts/build-workspace-gui-linux.sh --gui-only
           bash scripts/package-workspace-linux.sh '${{ matrix.arch }}'
       - name: Test actual APT install and upgrade
         run: bash scripts/test-workspace-linux-package.sh '${{ matrix.arch }}'
@@ -81,7 +84,9 @@ jobs:
           name: linux-workspace-${{ matrix.arch }}
           path: |
             dist/syntila/deb/syntila_${{ needs.preflight.outputs.version }}_*.deb
+            dist/syntila/deb/syntila-gui_${{ needs.preflight.outputs.version }}_*.deb
             dist/syntila/syntila-workspace-headless-linux-${{ matrix.arch }}.tar.gz
+            dist/syntila/syntila-workspace-linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
   publish:

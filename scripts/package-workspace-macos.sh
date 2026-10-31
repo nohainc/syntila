@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Packages a built macOS Workspace bundle (syntila, the `workspace`
-# alias and the CLI Worker Engine) into an installer .pkg that installs under
-# /usr/local/lib and links the commands into /usr/local/bin. The installer does
+# alias, the CLI Worker Engine and, when built, "Syntila Workspace.app") into
+# an installer .pkg that installs under /usr/local/lib, links the commands into
+# /usr/local/bin and the GUI into /Applications. The installer does
 # not register or start the service; run `syntila service install`
 # afterwards. Existing Application Support state (installation ID, credentials,
 # Work Root, sessions) is never touched.
@@ -88,6 +89,15 @@ if [[ "$TARGET_ENV" == "local" ]]; then
   ln -s "../lib/$BUNDLE_NAME/syntila" "$BIN/syntila-local"
 else
   ln -s "../lib/$BUNDLE_NAME/syntila" "$BIN/syntila"
+fi
+GUI_APP="Syntila Workspace.app"
+if [[ -d "$LIB/$GUI_APP" ]]; then
+  APP_LINK="$GUI_APP"
+  [[ "$TARGET_ENV" == "local" ]] && APP_LINK="Syntila Workspace (local).app"
+  mkdir -p "$STAGING/root/Applications"
+  ln -s "/usr/local/lib/$BUNDLE_NAME/$GUI_APP" "$STAGING/root/Applications/$APP_LINK"
+else
+  echo "No GUI in the bundle; packaging the CLI only (run build-workspace-gui-macos.sh first to include it)."
 fi
 xattr -crs "$STAGING/root"
 

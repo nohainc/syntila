@@ -91,6 +91,11 @@ jobs:
           SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
         run: bash scripts/build-workspace-macos.sh
 
+      - name: Build, sign, and notarize the GUI into the same bundle
+        env:
+          SYNTILA_WORKSPACE_VERSION: ${{ inputs.version }}
+        run: bash scripts/build-workspace-gui-macos.sh --gui-only
+
       - name: Verify notarized app archive
         env:
           WORKSPACE_VERSION: ${{ inputs.version }}
@@ -104,6 +109,11 @@ jobs:
           # Bare executables are not assessable by spctl; require a Developer ID signature.
           codesign -dv --verbose=4 "$BUNDLE/syntila" 2>&1 | grep -q "Authority=Developer ID Application"
           codesign -dv --verbose=4 "$BUNDLE/assets/engines/syntila-agent" 2>&1 | grep -q "Authority=Developer ID Application"
+          APP="$BUNDLE/Syntila Workspace.app"
+          codesign --verify --strict --deep "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -q "Authority=Developer ID Application"
+          spctl --assess --type execute "$APP"
+          xcrun stapler validate "$APP"
 
       - name: Sign, publish, download, and verify immutable metadata
         env:

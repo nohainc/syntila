@@ -7,12 +7,15 @@ ARCH="${1:-x64}"
 case "$ARCH" in x64) DEB_ARCH=amd64 ;; arm64) DEB_ARCH=arm64 ;; *) exit 2 ;; esac
 VERSION="${SYNTILA_WORKSPACE_VERSION:-$(awk '/^version:/ {print $2; exit}' "$ROOT/apps/workspace/pubspec.yaml")}"
 PACKAGE="$ROOT/dist/syntila/deb/syntila_${VERSION}_${DEB_ARCH}.deb"
+GUI_PACKAGE="$ROOT/dist/syntila/deb/syntila-gui_${VERSION}_${DEB_ARCH}.deb"
+PACKAGES=("$PACKAGE")
+[[ -f "$GUI_PACKAGE" ]] && PACKAGES+=("$GUI_PACKAGE")
 TEST_ROOT="$(mktemp -d)"
 chmod 755 "$TEST_ROOT"
 service_pid=''
 cleanup() {
   if [[ -n "$service_pid" ]]; then kill "$service_pid" 2>/dev/null || true; wait "$service_pid" 2>/dev/null || true; fi
-  sudo apt-get remove -y syntila >/dev/null 2>&1 || true
+  sudo apt-get remove -y syntila-gui syntila >/dev/null 2>&1 || true
   gpgconf --kill gpg-agent || true
   rm -rf "$TEST_ROOT"
 }
@@ -46,7 +49,7 @@ identity="$(cat "$STATE/installation-id")"
 mkdir -p "$STATE/sessions" "$TEST_ROOT/home/Documents/Syntila"
 printf 'keep session\n' > "$STATE/sessions/preserve-test"
 printf 'keep user work\n' > "$TEST_ROOT/home/Documents/Syntila/preserve-test"
-python3 "$ROOT/scripts/release/build-apt-repository.py" --output "$TEST_ROOT/repo" --signing-key "$KEY" "$PACKAGE"
+python3 "$ROOT/scripts/release/build-apt-repository.py" --output "$TEST_ROOT/repo" --signing-key "$KEY" "${PACKAGES[@]}"
 sudo apt-get "${APT_ARGS[@]}" update
 sudo apt-get "${APT_ARGS[@]}" install --only-upgrade -y syntila
 [[ "$(dpkg-query --show --showformat='${Version}' syntila)" == "$VERSION" ]]
@@ -82,8 +85,23 @@ PYENGINE
 kill "$service_pid"
 wait "$service_pid"
 service_pid=''
+if [[ -f "$GUI_PACKAGE" ]]; then
+  # The GUI installs beside the CLI it drives and pins the same version.
+  sudo apt-get "${APT_ARGS[@]}" install -y syntila-gui
+  [[ "$(dpkg-query --show --showformat='${Version}' syntila-gui)" == "$VERSION" ]]
+  [[ -x /usr/lib/syntila/gui/syntila-workspace-gui && -x /usr/lib/syntila/syntila ]]
+  [[ "$(readlink -f /usr/bin/syntila-gui)" == /usr/lib/syntila/gui/syntila-workspace-gui ]]
+  grep -qx 'Exec=/usr/lib/syntila/gui/syntila-workspace-gui' /usr/share/applications/syntila-workspace.desktop
+  if ldd /usr/lib/syntila/gui/syntila-workspace-gui | grep 'not found'; then
+    echo 'syntila-gui has unresolved shared libraries.' >&2
+    exit 1
+  fi
+fi
 sudo apt-get remove -y syntila
+if [[ -f "$GUI_PACKAGE" ]]; then
+  ! dpkg-query --show --showformat='${Status}' syntila-gui 2>/dev/null | grep -q 'install ok installed'
+fi
 [[ "$(cat "$STATE/installation-id")" == "$identity" ]]
 grep -qx 'keep session' "$STATE/sessions/preserve-test"
 grep -qx 'keep user work' "$TEST_ROOT/home/Documents/Syntila/preserve-test"
-echo 'APT install, upgrade, IPC, graceful stop and removal preserved user state.'
+echo 'APT install, upgrade, GUI package, IPC, graceful stop and removal preserved user state.'

@@ -26,6 +26,17 @@ without `sudo`. The package does not install provider CLIs or manage their login
 It installs binaries under `/usr/lib/syntila`, and symlinks under
 `/usr/bin`; GTK and a desktop session are not needed.
 
+On a desktop, also install the GUI from the same repository:
+
+```bash
+sudo apt install syntila-gui
+```
+
+`syntila-gui` installs into the same folder (`/usr/lib/syntila/gui`), drives
+`/usr/lib/syntila/syntila`, requires the exactly matching `syntila` version, and
+adds a "Syntila Workspace" desktop entry and `syntila-gui` command. The CLI keeps
+working on its own; headless hosts never pull in GTK.
+
 ```bash
 syntila setup
 # Enter your existing Syntila Cloud email and password at the prompts.
@@ -112,7 +123,7 @@ Update after active assignments finish:
 ```bash
 syntila service stop
 sudo apt update
-sudo apt install --only-upgrade syntila
+sudo apt install --only-upgrade syntila syntila-gui   # omit syntila-gui if not installed
 syntila service start
 syntila status
 ```
@@ -128,19 +139,24 @@ run `service uninstall` first if you want to remove its systemd unit too.
 
 ## Build
 
-There is no Linux desktop GUI: the install unit is the headless service, the
-`syntila` management CLI and the
-generic CLI Worker Engine (`syntila-agent`). Build on any host with the Dart
-SDK and Node.js; Dart cross-compiles Linux x64/arm64 executables:
+The headless install unit is the service, the `syntila` management CLI and
+the generic CLI Worker Engine (`syntila-agent`). Build it on any host with the
+Dart SDK and Node.js; Dart cross-compiles Linux x64/arm64 executables. The
+desktop GUI is built into the same folder; Flutter cannot cross-compile, so
+that step runs on a Linux host of the target architecture (with clang, cmake,
+ninja-build, pkg-config and libgtk-3-dev):
 
 ```bash
 export SYNTILA_RELEASE_TRUST_KEYS_JSON='{...public application-release trust roots...}'
 bash scripts/build-workspace-linux-headless.sh x64   # or arm64
-bash scripts/package-workspace-linux.sh x64          # Debian package, needs dpkg
+bash scripts/build-workspace-gui-linux.sh --gui-only # optional, native host
+bash scripts/package-workspace-linux.sh x64          # Debian packages, needs dpkg
 ```
 
-This produces `dist/syntila/linux-<arch>/`, a headless `.tar.gz` and
-`dist/syntila/deb/syntila_<version>_<arch>.deb`. See
+This produces `dist/syntila/linux-<arch>/` (with `gui/` when built), a headless
+`.tar.gz`, a full `syntila-workspace-linux-<arch>.tar.gz` when the GUI is built,
+`dist/syntila/deb/syntila_<version>_<arch>.deb` and, with the GUI,
+`syntila-gui_<version>_<arch>.deb`. See
 [Linux release operations](../deployment/WORKSPACE_LINUX_RELEASES.md). The
 **Release Linux Workspace** workflow builds and tests natively on Ubuntu amd64
 and ARM64, including a real APT install/upgrade and a headless setup smoke test.
