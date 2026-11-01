@@ -37,7 +37,6 @@ const ciWorkflow = readRequired(".github/workflows/ci.yml");
 const deployCloud = readRequired(".github/workflows/deploy-cloud.yml");
 const deploySite = readRequired(".github/workflows/deploy-site.yml");
 const releaseMacos = readRequired(".github/workflows/release-macos.yml");
-const nightlyWorkflow = readRequired(".github/workflows/nightly.yml");
 const checkSiteAction = readRequired(".github/actions/check-site/action.yml");
 const cloudPackage = JSON.parse(
   readRequired("apps/cloud/package.json") || "{}",
@@ -341,16 +340,6 @@ for (const [workflowName, workflowContent, command] of [
   ["check-site", checkSiteAction, "./node_modules/.bin/astro check"],
   ["check-site", checkSiteAction, "./node_modules/.bin/astro build"],
   ["check-site", checkSiteAction, "./node_modules/.bin/vitest run test"],
-  [
-    "nightly",
-    nightlyWorkflow,
-    "bash scripts/build-workspace-macos.sh --debug --prepared",
-  ],
-  [
-    "nightly",
-    nightlyWorkflow,
-    "bash scripts/build-profile-lab-macos.sh --release --prepared",
-  ],
 ]) {
   if (!workflowContent.includes(command))
     failures.push(
@@ -380,11 +369,10 @@ if (
 if (
   !releaseMacos.includes("needs: require-ci") ||
   !releaseMacos.includes("run: bash scripts/ci/require-ci-success.sh") ||
-  !releaseMacos.includes("environment: workspace-release") ||
-  !releaseMacos.includes("environment: profile-lab-release")
+  !releaseMacos.includes("environment: workspace-release")
 ) {
   failures.push(
-    "Workspace and Profile Lab releases must require CI gate, environment authorization, and require-ci-success.",
+    "Workspace macOS releases must require the CI gate and environment authorization.",
   );
 }
 if (

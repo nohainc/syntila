@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORKSPACE_DIR="$ROOT/apps/workspace"
 DART=""
 if command -v flutter >/dev/null 2>&1; then

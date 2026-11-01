@@ -27,7 +27,7 @@ including a new case that stages the Profile with an empty registry, displays
 This scope exercises the changed HTTP read boundary and the Service's local
 setup/presentation path without consuming provider quota.
 `pnpm validate:workspace` also passed: analysis, 549 tests (21 skipped), and
-`scripts/check-workspace-service.sh`, which compiled the standalone Service,
+`scripts/internal/check-workspace-service.sh`, which compiled the standalone Service,
 started it headlessly against temporary state, and stopped it cleanly.
 
 `pnpm validate:cloud` completed type checks; its tests reported 835 passed and

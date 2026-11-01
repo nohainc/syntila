@@ -115,5 +115,5 @@ README; a first-party downloadable asset has not been verified.
 - `pnpm validate:cloud`: 147 of 151 files pass; the four failures are
   five-second timeouts in assignment race suites, which pass on a focused
   rerun (53 tests).
-- The bundled Engine was rebuilt with `scripts/build-cli-worker-engine.sh`
+- The bundled Engine was rebuilt with `scripts/internal/build-cli-worker-engine.sh`
   (1.3.1) so Profile Lab runs the new adapter, actions and discovery format.

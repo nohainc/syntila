@@ -33,6 +33,11 @@ function literal(value) {
     throw new Error("Invalid account identifier.");
   return "'" + value.replaceAll("'", "''") + "'";
 }
+// Mirrors paidOwnerSql in apps/cloud/src/account-plan.ts.
+const PAID_SQL = `EXISTS (SELECT 1 FROM account_plans ap
+      WHERE ap.user_id=u.id AND ap.tier='paid'
+        AND ap.status IN ('active','trialing','past_due')
+        AND (ap.current_period_end IS NULL OR julianday(ap.current_period_end)>julianday('now')))`;
 export function listSQL(search = "") {
   if (typeof search !== "string" || search.length > 200)
     throw new Error("Search must be at most 200 characters.");
@@ -44,7 +49,10 @@ export function listSQL(search = "") {
     (SELECT count(*) FROM work_requests r WHERE r.requested_by_user_id=u.id AND r.status='failed') AS failed_requests,
     (SELECT max(created_at) FROM work_requests r WHERE r.requested_by_user_id=u.id) AS last_request_at,
     (SELECT count(*) FROM discussion_messages m WHERE m.author_user_id=u.id) AS messages,
-    (SELECT max(created_at) FROM discussion_messages m WHERE m.author_user_id=u.id) AS last_message_at
+    (SELECT max(created_at) FROM discussion_messages m WHERE m.author_user_id=u.id) AS last_message_at,
+    CASE WHEN ${PAID_SQL} THEN 'paid' ELSE 'free' END AS plan,
+    (SELECT source FROM account_plans ap WHERE ap.user_id=u.id) AS plan_source,
+    (SELECT current_period_end FROM account_plans ap WHERE ap.user_id=u.id) AS plan_period_end
     FROM users u ${search ? `WHERE instr(lower(u.email),lower(${term}))>0 OR instr(lower(u.display_name),lower(${term}))>0 OR u.id=${term}` : ""}
     ORDER BY u.created_at DESC,u.id LIMIT 201;`;
 }
@@ -68,6 +76,25 @@ export function changeSQL(id, action, email, actor = userInfo().username) {
         : ""
     }
     SELECT id,email,status FROM users WHERE id=${target};`;
+}
+// Manual grants are open-ended (no period end) until revoked. Revoking keeps
+// the row as canceled so shared Workspaces pause rather than lose their grants.
+export function planSQL(id, action, email, actor = userInfo().username) {
+  if (!["grant_paid", "revoke_paid"].includes(action))
+    throw new Error("Unsupported plan action.");
+  const target = literal(id);
+  const now = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
+  const details = literal(
+    JSON.stringify({ operator: actor, transport: "wrangler", version: 1 }),
+  );
+  const [tier, status] =
+    action === "grant_paid" ? ["paid", "active"] : ["free", "canceled"];
+  return `INSERT INTO account_plans (user_id,tier,status,source,current_period_end,created_at,updated_at)
+    SELECT id,'${tier}','${status}','manual',NULL,${now},${now} FROM users WHERE id=${target} AND email=${literal(email)}
+    ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier,status=excluded.status,source='manual',current_period_end=NULL,updated_at=excluded.updated_at;
+    INSERT INTO auth_audit_events (id,user_id,action,outcome,details_json,created_at)
+    SELECT 'account-admin-'||lower(hex(randomblob(16))),${target},'account.admin.${action}','success',${details},${now} WHERE changes()=1;
+    SELECT u.id,CASE WHEN ${PAID_SQL} THEN 'paid' ELSE 'free' END AS plan FROM users u WHERE u.id=${target};`;
 }
 export async function executeSQL(config, sql) {
   const { stdout } = await exec(
@@ -99,9 +126,15 @@ export async function handle(input, query = executeSQL, fetcher = fetch) {
   const config = environment(input.environment);
   if (input.action === "list")
     return { users: await query(config, listSQL(input.search ?? "")) };
-  if (!["lock", "unlock", "reset"].includes(input.action))
+  if (
+    !["lock", "unlock", "reset", "grant_paid", "revoke_paid"].includes(
+      input.action,
+    )
+  )
     throw new Error("Unsupported action.");
-  if (input.action !== "lock" && input.confirmEmail !== input.email)
+  if (
+    ["unlock", "reset"].includes(input.action) &&
+    input.confirmEmail !== input.email)
     throw new Error("Retype the account email to confirm.");
   const rows = await query(
     config,
@@ -109,6 +142,21 @@ export async function handle(input, query = executeSQL, fetcher = fetch) {
   );
   if (rows.length !== 1)
     throw new Error("Account changed or was removed. Refresh the list.");
+  if (input.action === "grant_paid" || input.action === "revoke_paid") {
+    const plan = input.action === "grant_paid" ? "paid" : "free";
+    const result = await query(
+      config,
+      planSQL(input.id, input.action, input.email),
+    );
+    if (!result.some((row) => row.id === input.id && row.plan === plan))
+      throw new Error("Plan update was not confirmed. Refresh before retrying.");
+    return {
+      message:
+        plan === "paid"
+          ? "Paid membership enabled. Takes effect on the user's next request."
+          : "Paid membership disabled. Paid features and Workspace sharing are paused.",
+    };
+  }
   if (input.action === "reset") {
     if (rows[0].status !== "active")
       throw new Error(

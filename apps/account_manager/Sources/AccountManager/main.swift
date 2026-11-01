@@ -15,6 +15,10 @@ struct Account: Decodable, Identifiable, Hashable {
     let last_request_at: String?
     let messages: Int
     let last_message_at: String?
+    let plan: String?
+    let plan_source: String?
+    let plan_period_end: String?
+    var isPaid: Bool { plan == "paid" }
 }
 struct Reply: Decodable {
     let users: [Account]?
@@ -81,7 +85,7 @@ struct Bridge {
         busy = true
         do {
             var payload = ["environment": environment, "action": action, "id": account.id, "email": account.email]
-            if action != "lock" { payload["confirmEmail"] = confirmation }
+            if action == "unlock" || action == "reset" { payload["confirmEmail"] = confirmation }
             let reply = try await Bridge.request(payload)
             let success = reply.message ?? "Done."
             busy = false
@@ -99,7 +103,12 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Syntila Accounts").font(.title2.bold())
+                HStack(spacing: 10) {
+                    if let url = Bundle.main.url(forResource: "Logo", withExtension: "png"), let logo = NSImage(contentsOf: url) {
+                        Image(nsImage: logo).resizable().interpolation(.high).frame(width: 28, height: 28).accessibilityHidden(true)
+                    }
+                    Text("Syntila Accounts").font(.title2.bold())
+                }
                 Picker("Database", selection: $model.environment) {
                     Text("Local").tag("local")
                     Text("Production").tag("production")
@@ -114,7 +123,10 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(account.display_name).font(.headline)
                         Text(account.email).font(.caption).foregroundStyle(.secondary)
-                        Text(account.status.capitalized).font(.caption2).foregroundStyle(account.status == "active" ? .green : .orange)
+                        HStack(spacing: 6) {
+                            Text(account.status.capitalized).foregroundStyle(account.status == "active" ? .green : .orange)
+                            if account.isPaid { Text("Paid").foregroundStyle(.blue) }
+                        }.font(.caption2)
                     }.padding(.vertical, 4).tag(account.id)
                 }.listStyle(.inset)
             }.padding().navigationSplitViewColumnWidth(min: 300, ideal: 340)
@@ -137,6 +149,7 @@ struct ContentView: View {
                         row("Created", account.created_at)
                         row("Last work request", account.last_request_at ?? "None")
                         row("Last message (UTC)", account.last_message_at ?? "None")
+                        row("Membership", planText(account))
                     }.textSelection(.enabled)
                     HStack(spacing: 28) {
                         metric("Workspaces", account.workspaces)
@@ -151,6 +164,8 @@ struct ContentView: View {
                             .disabled(model.busy || account.status == "deactivated")
                         Button("Send password reset email") { prepare("reset", account) }
                             .disabled(model.busy || account.status != "active")
+                        Button(account.isPaid ? "Disable paid membership" : "Enable paid membership") { prepare(account.isPaid ? "revoke_paid" : "grant_paid", account) }
+                            .disabled(model.busy)
                     }
                     Spacer()
                 } else {
@@ -170,10 +185,10 @@ struct ContentView: View {
         .onChange(of: model.environment) { Task { await model.load(clear: true) } }
         .sheet(isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })) {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Confirm \(pending ?? "") · \(model.environment.capitalized)").font(.title2.bold())
+                Text("Confirm \(actionTitle(pending)) · \(model.environment.capitalized)").font(.title2.bold())
                 Text(target?.email ?? "").font(.headline)
-                Text(pending == "reset" ? "Request an email containing a time-limited password reset link. Email delivery is not guaranteed by the request response." : "This changes access to Syntila. Locking revokes human sessions; work already running is not cancelled.")
-                if pending != "lock" {
+                Text(actionDetail(pending))
+                if pending == "unlock" || pending == "reset" {
                     TextField("Retype the account email", text: $confirmation)
                 }
                 HStack {
@@ -185,16 +200,46 @@ struct ContentView: View {
                             pending = nil
                             Task { await model.perform(action, account: account, confirmation: typed) }
                         }
-                    }.disabled(pending != "lock" && confirmation != target?.email).keyboardShortcut(.defaultAction)
+                    }.disabled((pending == "unlock" || pending == "reset") && confirmation != target?.email).keyboardShortcut(.defaultAction)
                 }
             }.padding(28).frame(width: 480)
         }
     }
     private func prepare(_ action: String, _ account: Account) { target = account; confirmation = ""; pending = action }
+    private func planText(_ account: Account) -> String {
+        guard account.isPaid else { return account.plan_source == nil ? "Free" : "Free (paid membership ended)" }
+        let source = account.plan_source == "manual" ? "manual grant" : "subscription"
+        return "Paid · \(source)" + (account.plan_period_end.map { " · until \($0)" } ?? "")
+    }
+    private func actionTitle(_ action: String?) -> String {
+        switch action {
+        case "grant_paid": return "enable paid membership"
+        case "revoke_paid": return "disable paid membership"
+        default: return action ?? ""
+        }
+    }
+    private func actionDetail(_ action: String?) -> String {
+        switch action {
+        case "reset": return "Request an email containing a time-limited password reset link. Email delivery is not guaranteed by the request response."
+        case "grant_paid": return "Grants Syntila Plus with no end date until disabled here. This replaces any existing subscription record for this user."
+        case "revoke_paid": return "Moves the user to Free. Paid features stop and Workspaces they share are paused for other people; existing grants return if re-enabled. Running work is not cancelled."
+        default: return "This changes access to Syntila. Locking revokes human sessions; work already running is not cancelled."
+        }
+    }
     private func row(_ title: String, _ value: String) -> some View { GridRow { Text(title).foregroundStyle(.secondary); Text(value) } }
     private func metric(_ title: String, _ count: Int) -> some View { VStack(alignment: .leading) { Text("\(count)").font(.title.bold()); Text(title).font(.caption).foregroundStyle(.secondary) } }
 }
 
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"), let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+        }
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
 @main struct AccountManagerApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     var body: some Scene { WindowGroup("Syntila Accounts") { ContentView() } }
 }

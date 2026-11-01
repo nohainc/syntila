@@ -1,4 +1,4 @@
-name: Release Windows Workspace
+name: Workspace / Windows / Release
 
 on:
   workflow_dispatch:
@@ -121,8 +121,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Pop-Location
       - name: Build Windows release bundle
+        shell: bash
+        run: bash scripts/build-workspace-windows.sh --prod
+      - name: Check Workspace GUI icon
         shell: pwsh
-        run: ./scripts/build-workspace-windows.ps1
+        run: |
+          $gui = Join-Path $env:GITHUB_WORKSPACE 'dist/syntila/windows/release/gui/syntila-workspace-gui.exe'
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($gui)
+          if ($null -eq $icon) { throw 'Workspace GUI executable has no icon.' }
+          $icon.Dispose()
       - name: Sign every bundled executable and library
         shell: pwsh
         env:

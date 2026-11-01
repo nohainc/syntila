@@ -73,6 +73,19 @@ Failed requests. No new migration is introduced.
 Statistics are existing product activity counts, not token/cost billing estimates.
 Account metadata is held in memory, not cached on disk by this application.
 
+## Paid membership
+
+Each account shows its Membership (Free, or Paid with its source and period end)
+and a Paid tag in the list. **Enable paid membership** writes an open-ended
+`manual` row in `account_plans` (tier `paid`, status `active`, no period end);
+**Disable paid membership** sets that row to tier `free`, status `canceled`.
+Both use a confirmation dialog without email retyping, recheck user ID and email,
+and write an `account.admin.grant_paid` / `account.admin.revoke_paid` audit event.
+The displayed plan uses the same rule as Cloud's `paidOwnerSql`. Enabling
+overrides an existing provider subscription row. Disabling pauses Workspace
+sharing for people the user shared with (see ADR-022). Requires migration
+`0094_account_plans.sql` in the selected database.
+
 ## Validation
 
 ```sh

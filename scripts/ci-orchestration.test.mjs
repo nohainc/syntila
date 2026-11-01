@@ -16,14 +16,72 @@ const source = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 describe("CI acceptance orchestration", () => {
-  it("nightly Workspace compilation does not require a release certificate", () => {
-    expect(source(".github/workflows/nightly.yml")).toContain(
-      "bash scripts/build-workspace-macos.sh --debug --prepared",
-    );
-    expect(source(".github/workflows/release-macos.yml")).toContain(
-      "Configure Developer ID and notarization",
-    );
+  it("routes Workspace builds to the supported host builder", () => {
+    const root = mkdtempSync(join(tmpdir(), "syntila-build-dispatch-"));
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    try {
+      writeFileSync(
+        join(bin, "uname"),
+        '#!/bin/sh\nif [ "$1" = "-m" ]; then echo "$FAKE_ARCH"; else echo "$FAKE_OS"; fi\n',
+      );
+      const runner =
+        '#!/bin/sh\nprintf "args=%s\\nenv=%s\\nversion=%s\\n" "$*" "$SYNTILA_WORKSPACE_ENVIRONMENT" "${SYNTILA_WORKSPACE_VERSION-}"\n';
+      for (const name of ["uname", "bash", "powershell.exe"]) {
+        const path = join(bin, name);
+        if (name !== "uname") writeFileSync(path, runner);
+        chmodSync(path, 0o755);
+      }
+      const run = (os, arch, args = []) =>
+        spawnSync("/bin/bash", ["scripts/build-workspace.sh", ...args], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            FAKE_OS: os,
+            FAKE_ARCH: arch,
+            SYNTILA_WORKSPACE_VERSION: "",
+          },
+        });
+      const mac = run("Darwin", "arm64", ["--local", "--version", "1.2.3"]);
+      expect(mac.status, mac.stderr).toBe(0);
+      expect(mac.stdout).toContain(
+        "scripts/build-workspace-macos.sh --release --local --version 1.2.3",
+      );
+      expect(mac.stdout).toContain("env=local\nversion=1.2.3");
+      for (const [arch, expected] of [
+        ["x86_64", "x64"],
+        ["aarch64", "arm64"],
+      ]) {
+        const linux = run("Linux", arch, ["--release"]);
+        expect(linux.status, linux.stderr).toBe(0);
+        expect(linux.stdout).toContain(
+          `scripts/build-workspace-linux.sh --production`,
+        );
+      }
+      const debug = run("Linux", "x86_64", ["--debug"]);
+      expect(debug.status).toBe(2);
+      expect(debug.stderr).toContain("do not support --debug");
+      const windows = run("MINGW64_NT", "x86_64", ["--release"]);
+      expect(windows.status, windows.stderr).toBe(0);
+      expect(windows.stdout).toContain(
+        "scripts/build-workspace-windows.sh --production --release",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
+
+  it("uses the public Workspace platform builders in build and release workflows", () => {
+    for (const [workflow, command] of [
+      ["release-linux.yml", "bash scripts/build-workspace-linux.sh --prod"],
+      ["release-macos.yml", "bash scripts/build-workspace-macos.sh --prod"],
+      ["release-windows.yml", "bash scripts/build-workspace-windows.sh --prod"],
+    ]) {
+      expect(source(`.github/workflows/${workflow}`)).toContain(command);
+    }
+  });
+
   it("gives both explicit Cloud fixture files exactly one test owner", () => {
     const scripts = JSON.parse(source("package.json")).scripts;
     for (const file of [
@@ -96,7 +154,7 @@ describe("CI acceptance orchestration", () => {
       const app = join(root, "apps", appName);
       const bin = join(root, "bin");
       const log = join(root, "commands");
-      mkdirSync(join(root, "scripts"), { recursive: true });
+      mkdirSync(join(root, "scripts", "internal"), { recursive: true });
       mkdirSync(join(app, ".dart_tool"), { recursive: true });
       mkdirSync(join(app, "assets", "engines"), { recursive: true });
       if (name === "workspace") {
@@ -158,7 +216,7 @@ describe("CI acceptance orchestration", () => {
         chmodSync(join(bin, command), 0o755);
       }
       writeFileSync(
-        join(root, "scripts", "build-cli-worker-engine.sh"),
+        join(root, "scripts", "internal", "build-cli-worker-engine.sh"),
         'echo engine >> "$CI_TEST_LOG"\n',
       );
       if (name === "workspace") {
@@ -206,12 +264,12 @@ describe("CI acceptance orchestration", () => {
     },
   );
 
-  it("workspace macOS build is a pure Dart bundle; prepared reuses preparation", () => {
+  it("workspace macOS build includes the GUI; prepared reuses preparation", () => {
     const root = mkdtempSync(join(tmpdir(), "syntila-ci-"));
     const app = join(root, "apps", "workspace");
     const bin = join(root, "bin");
     const log = join(root, "commands");
-    mkdirSync(join(root, "scripts"), { recursive: true });
+    mkdirSync(join(root, "scripts", "internal"), { recursive: true });
     mkdirSync(join(app, ".dart_tool"), { recursive: true });
     mkdirSync(join(app, "assets", "engines"), { recursive: true });
     mkdirSync(bin);
@@ -236,9 +294,10 @@ describe("CI acceptance orchestration", () => {
       chmodSync(join(bin, command), 0o755);
     }
     writeFileSync(
-      join(root, "scripts", "build-cli-worker-engine.sh"),
+      join(root, "scripts", "internal", "build-cli-worker-engine.sh"),
       'echo engine >> "$CI_TEST_LOG"\n',
     );
+    writeFileSync(join(root, "scripts", "internal", "build-workspace-gui-macos.sh"), 'echo gui >> "$CI_TEST_LOG"\n');
     for (const name of [
       "build-workspace-macos.sh",
       "verify-workspace-service-bundle.sh",
@@ -260,7 +319,7 @@ describe("CI acceptance orchestration", () => {
     try {
       const prepared = run(["--prepared"]);
       expect(prepared.status, prepared.stderr.toString()).toBe(0);
-      expect(readFileSync(log, "utf8")).toBe("dart compile exe\n");
+      expect(readFileSync(log, "utf8")).toBe("dart compile exe\ngui\n");
       const bundle = join(root, "dist", "syntila", "macos", "syntila");
       for (const file of ["syntila", "assets/engines/syntila-agent"]) {
         expect(readFileSync(join(bundle, file)) !== undefined).toBe(true);
@@ -268,7 +327,7 @@ describe("CI acceptance orchestration", () => {
       writeFileSync(log, "");
       expect(run([]).status).toBe(0);
       expect(readFileSync(log, "utf8")).toBe(
-        "dart pub get\nengine\ndart compile exe\n",
+        "dart pub get\nengine\ndart compile exe\ngui\n",
       );
       rmSync(engine);
       expect(run(["--prepared"]).status).toBe(1);

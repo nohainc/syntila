@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ENGINE_DIR="$ROOT/engines/cli_worker"
 OUTPUT_DIR="$ROOT/apps/workspace/assets/engines"
 DART_BIN="${SYNTILA_DART_EXECUTABLE:-$(command -v dart || true)}"

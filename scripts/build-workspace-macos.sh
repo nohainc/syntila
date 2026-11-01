@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds the pure-Dart Syntila Workspace for macOS: the unified
-# `syntila` binary (CLI + service)
-# and the generic CLI Worker Engine (`syntila-agent`). The service is a user
-# LaunchAgent that the binary itself registers with `syntila service install`
-# (see macos_service_manager.dart).
-#
-# The bundle folder is shared with the GUI: build-workspace-gui-macos.sh puts
-# "Syntila Workspace.app" beside `syntila`. Each script replaces only its own
-# files, so they can run in either order and the archive contains both.
+# Builds the complete Workspace app for macOS: the CLI, service, GUI and
+# generic CLI Worker Engine. Flutter requires a native macOS host.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE_DIR="$ROOT/apps/workspace"
@@ -70,8 +63,8 @@ while [[ $# -gt 0 ]]; do
     --help|-h)
       echo "Usage: $(basename "$0") [options]"
       echo ""
-      echo "Builds the Syntila Workspace service/CLI and Worker Engine for macOS."
-      echo "Run scripts/test-workspace-macos.sh separately for analysis and tests."
+      echo "Builds the complete Syntila Workspace app for macOS."
+      echo "Run pnpm validate:workspace separately for analysis and tests."
       echo ""
       echo "Options:"
       echo "  --prepared         Reuse dependencies and Engine; skip pub get (CI only)"
@@ -147,7 +140,7 @@ if [[ "$PREPARED" == "1" ]]; then
   }
 else
   dart pub get
-  bash "$ROOT/scripts/build-cli-worker-engine.sh"
+  bash "$ROOT/scripts/internal/build-cli-worker-engine.sh"
 fi
 ENGINE="$WORKSPACE_DIR/assets/engines/syntila-agent"
 if [[ ! -x "$ENGINE" ]]; then
@@ -186,19 +179,11 @@ bash "$ROOT/scripts/verify-workspace-service-bundle.sh" "$BUNDLE"
 SYNTILA_WORKSPACE_ENVIRONMENT="$TARGET_ENV" node "$ROOT/scripts/workspace-build-manifest.mjs" record "$BUNDLE" "$VERSION"
 
 ZIP="$DIST_DIR/Syntila-Workspace-$VERSION-macos$ZIP_SUFFIX.zip"
-ditto -c -k --sequesterRsrc --keepParent "$BUNDLE" "$ZIP"
-
-if [[ -n "${SYNTILA_MACOS_NOTARY_PROFILE:-}" ]]; then
-  if [[ -z "${SYNTILA_MACOS_SIGN_IDENTITY:-}" ]]; then
-    echo "Notarization requires SYNTILA_MACOS_SIGN_IDENTITY." >&2
-    exit 1
-  fi
-  echo "Submitting to Apple notarization"
-  # Bare executables cannot be stapled; Gatekeeper checks the ticket online.
-  xcrun notarytool submit "$ZIP" \
-    --keychain-profile "$SYNTILA_MACOS_NOTARY_PROFILE" \
-    --wait
-fi
+# The public platform builder always includes the GUI. The internal helper
+# reuses this service bundle and re-creates the final, signed archive.
+GUI_ARGS=(--gui-only "--$TARGET_ENV" --version "$VERSION")
+[[ -z "${SYNTILA_MACOS_SIGN_IDENTITY:-}" ]] || GUI_ARGS+=(--sign "$SYNTILA_MACOS_SIGN_IDENTITY")
+bash "$ROOT/scripts/internal/build-workspace-gui-macos.sh" "${GUI_ARGS[@]}"
 
 echo "Built bundle: $BUNDLE"
 echo "Built distribution archive: $ZIP"

@@ -25,6 +25,20 @@ static void my_application_activate(GApplication* application) {
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
+  // Use the bundled logo for the window, including when running the portable
+  // archive without a system icon theme installation.
+  gtk_window_set_icon_name(window, "syntila-workspace");
+  g_autofree gchar* executable = g_file_read_link("/proc/self/exe", nullptr);
+  if (executable != nullptr) {
+    g_autofree gchar* executable_dir = g_path_get_dirname(executable);
+    g_autofree gchar* icon_path =
+        g_build_filename(executable_dir, "data", "syntila-workspace.png", nullptr);
+    g_autoptr(GError) icon_error = nullptr;
+    if (!gtk_window_set_icon_from_file(window, icon_path, &icon_error)) {
+      g_warning("Unable to load Workspace window icon: %s", icon_error->message);
+    }
+  }
+
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu
   // desktop).

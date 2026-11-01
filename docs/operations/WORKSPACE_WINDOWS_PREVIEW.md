@@ -13,7 +13,7 @@ Install the Dart SDK, Node.js and Git for Windows Bash. Supply
 roots, then run from PowerShell at the repository root:
 
 ```powershell
-./scripts/build-workspace-windows.ps1
+./scripts/internal/build-workspace-windows.ps1
 ```
 
 The script uses the canonical Engine/service build scripts and creates
@@ -26,11 +26,7 @@ unregister the old task before registering the new path. Existing data is kept.
 For manual updates, stop the service, replace the complete application directory,
 and start the service again. Do not replace individual Engine or service files.
 
-The **Build Windows Workspace preview** Actions workflow builds on Windows and
-runs native runtime, compiled-service lifecycle, and CLI help tests. It uses
-configured public trust roots or the existing nightly CI-only public root. A
-CI-root build cannot verify production application releases. No private release
-keys or provider credentials are needed by CI.
+The **Workspace / Windows / Release** workflow builds and tests the signed Windows release.
 
 ## Platform behavior
 

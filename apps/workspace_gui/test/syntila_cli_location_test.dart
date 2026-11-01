@@ -65,4 +65,26 @@ void main() {
       expect(_linux({}, {}), 'syntila');
     });
   });
+
+  group('Windows', () {
+    String windows(Map<String, String> env, Set<String> files) =>
+        locateSyntilaCli(
+          environment: env,
+          resolvedExecutable:
+              r'C:\Syntila\Workspace\gui\syntila-workspace-gui.exe',
+          isMacOS: false,
+          isWindows: true,
+          exists: files.contains,
+        );
+
+    test('finds the sibling CLI and standard install before PATH', () {
+      const sibling = r'C:\Syntila\Workspace\syntila.exe';
+      const installed =
+          r'C:\Users\V\AppData\Local\Programs\Syntila\Workspace\syntila.exe';
+      final env = {'LOCALAPPDATA': r'C:\Users\V\AppData\Local'};
+      expect(windows(env, {sibling, installed}), sibling);
+      expect(windows(env, {installed}), installed);
+      expect(windows(env, {}), 'syntila.exe');
+    });
+  });
 }

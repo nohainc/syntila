@@ -41,9 +41,9 @@ public application-release trust roots, then:
 
 ```bash
 export SYNTILA_RELEASE_TRUST_KEYS_JSON="$(gh variable get SYNTILA_RELEASE_TRUST_KEYS_JSON --repo nohainc/syntila)"
-bash scripts/build-workspace-linux-headless.sh x64
+bash scripts/internal/build-workspace-linux-headless.sh x64
 bash scripts/package-workspace-linux.sh x64
-bash scripts/build-workspace-linux-headless.sh arm64
+bash scripts/internal/build-workspace-linux-headless.sh arm64
 bash scripts/package-workspace-linux.sh arm64
 ```
 
@@ -126,7 +126,7 @@ noninteractively only in the main-restricted release environment.
 
 ## Publish and upgrade
 
-Dispatch `Release Linux Workspace` from `main` with an immutable version and
+Dispatch `Workspace / Linux / Release` from `main` with an immutable version and
 `publish=true`. Publication requires successful push-triggered repository CI for
 that exact commit, followed by successful native package tests for both
 architectures. The signing job downloads those tested packages without rebuilding

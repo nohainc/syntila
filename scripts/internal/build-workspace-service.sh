@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORKSPACE_DIR="$ROOT/apps/workspace"
 OUT_DIR="$ROOT/dist/syntila"
 ENVIRONMENT="${SYNTILA_WORKSPACE_ENVIRONMENT:-production}"
@@ -16,7 +16,7 @@ for arg in "$@"; do
       ;;
     --help|-h)
       cat <<'USAGE'
-Usage: scripts/build-workspace-service.sh [--local|--production]
+Usage: scripts/internal/build-workspace-service.sh [--local|--production]
 
 Builds the unified Syntila Workspace service and bundled CLI Worker Engine.
 
@@ -41,6 +41,7 @@ if [[ -n "${SYNTILA_BUILD_TARGET_OS:-}${SYNTILA_BUILD_TARGET_ARCH:-}" ]]; then
   case "${SYNTILA_BUILD_TARGET_ARCH:-}" in x64|arm64) ;; *) echo "Target architecture must be x64 or arm64." >&2; exit 2 ;; esac
   TARGET_FLAGS=(--target-os=linux "--target-arch=$SYNTILA_BUILD_TARGET_ARCH")
   OUT_DIR="$ROOT/dist/syntila/linux-$SYNTILA_BUILD_TARGET_ARCH"
+  [[ "$ENVIRONMENT" != local ]] || OUT_DIR="${OUT_DIR}-local"
 fi
 ENGINE_NAME="syntila-agent"
 OUTPUT_NAME="syntila"
@@ -62,7 +63,7 @@ PUBLIC_RELEASE_ROOTS="$(node "$ROOT/scripts/resolve-build-release-trust.mjs")"
 
 cd "$WORKSPACE_DIR"
 dart pub get
-bash "$ROOT/scripts/build-cli-worker-engine.sh"
+bash "$ROOT/scripts/internal/build-cli-worker-engine.sh"
 mkdir -p "$OUT_DIR/assets/engines"
 ENGINE_SOURCE="$WORKSPACE_DIR/assets/engines/$ENGINE_NAME"
 if [[ -n "${SYNTILA_BUILD_TARGET_OS:-}" ]]; then

@@ -375,7 +375,7 @@ Profiles through the generic CLI Worker Engine.
 
 For local development, start Cloud/AX with the existing local startup workflow,
 then run `bash scripts/run-profile-lab-development.sh` and
-`bash scripts/run-workspace-development.sh`. Both default to
+`bash scripts/internal/run-workspace-development.sh`. Both default to
 `http://localhost:8787`; set `SYNTILA_DEVELOPMENT_CLOUD_URL` to the same loopback
 origin as your local Cloud. Sign in through the browser as the owner,
 save and test a draft in the Lab, sync it, and publish to Testing. Assign the

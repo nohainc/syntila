@@ -407,7 +407,7 @@ There is one Worker Engine source and build:
 
 ```text
 engines/cli_worker
-       ↓ scripts/build-cli-worker-engine.sh
+       ↓ scripts/internal/build-cli-worker-engine.sh
 apps/workspace/assets/engines/syntila-agent
 apps/profile_lab/assets/engines/syntila-agent
 ```
@@ -415,11 +415,11 @@ apps/profile_lab/assets/engines/syntila-agent
 The two app paths are materialized copies for their bundles, not independent
 source artifacts.
 
-`scripts/build-workspace-service.sh` compiles the unified `syntila`
+`scripts/internal/build-workspace-service.sh` compiles the unified `syntila`
 binary (plus the Engine) into `dist/syntila/`,
 or `dist/syntila/linux-<arch>/` when cross-compiling.
-`scripts/run-workspace-service.sh` launches that compiled executable by default
-and reserves `--source` for Dart debugging; `scripts/check-workspace-service.sh`
+`scripts/internal/run-workspace-service.sh` launches that compiled executable by default
+and reserves `--source` for Dart debugging; `scripts/internal/check-workspace-service.sh`
 compiles the service and runs a one-shot lifecycle in temporary directories.
 `scripts/build-workspace-macos.sh` produces the signed macOS bundle directory
 (`syntila`, `assets/engines/syntila-agent`)
@@ -428,7 +428,7 @@ and a zip; `scripts/verify-workspace-service-bundle.sh` validates it and
 no `SMAppService`: the installer does not register or start the service, and
 `syntila service install` writes the per-user LaunchAgent, so upgrades
 keep existing Application Support state. Linux uses
-`scripts/build-workspace-linux-headless.sh` and `scripts/package-workspace-linux.sh`
+`scripts/internal/build-workspace-linux-headless.sh` and `scripts/package-workspace-linux.sh`
 (see [Linux releases](../deployment/WORKSPACE_LINUX_RELEASES.md)). Set
 `SYNTILA_MACOS_INSTALLER_SIGN_IDENTITY` (Developer ID Installer) and
 `SYNTILA_MACOS_NOTARY_PROFILE` for distributable macOS artifacts.

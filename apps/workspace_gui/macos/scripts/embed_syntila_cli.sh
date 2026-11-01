@@ -6,7 +6,7 @@ set -euo pipefail
 # without an installed CLI.
 #
 # Release builds skip this: releases ship the app beside `syntila` in one
-# folder (scripts/build-workspace-gui-macos.sh). SYNTILA_CLI_BUNDLE=<dir>
+# folder (scripts/internal/build-workspace-gui-macos.sh). SYNTILA_CLI_BUNDLE=<dir>
 # forces embedding a prebuilt bundle. apps/workspace is compiled otherwise;
 # the result is cached and rebuilt only when Workspace or package sources
 # change.
@@ -47,7 +47,7 @@ ENGINE="$WORKSPACE/assets/engines/syntila-agent"
 if [[ -x "$ENGINE" ]]; then
   cp "$ENGINE" "$DEST/assets/engines/syntila-agent"
 else
-  echo "warning: Worker Engine not built ($ENGINE); run scripts/build-cli-worker-engine.sh to include it"
+  echo "warning: Worker Engine not built ($ENGINE); run scripts/internal/build-cli-worker-engine.sh to include it"
 fi
 
 # Hardened-runtime helpers need the Workspace entitlements (see

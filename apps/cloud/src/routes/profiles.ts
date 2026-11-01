@@ -51,6 +51,7 @@ export async function handleListWorkspaceWorkerInventory(
   const rows = await env.SYNTILA_DB.prepare(
     `${columns}
       WHERE i.owner_user_id = ?1
+        AND ew.status != 'revoked'
         AND (?2 IS NULL OR i.workspace_id = ?2)
       ORDER BY i.workspace_id, i.worker_type_id, i.worker_id`,
   )

@@ -201,8 +201,8 @@ ninja-build, pkg-config and libgtk-3-dev):
 
 ```bash
 export SYNTILA_RELEASE_TRUST_KEYS_JSON='{...public application-release trust roots...}'
-bash scripts/build-workspace-linux-headless.sh x64   # or arm64
-bash scripts/build-workspace-gui-linux.sh --gui-only # optional, native host
+bash scripts/internal/build-workspace-linux-headless.sh x64   # or arm64
+bash scripts/internal/build-workspace-gui-linux.sh --gui-only # optional, native host
 bash scripts/package-workspace-linux.sh x64          # Debian packages, needs dpkg
 ```
 
@@ -211,7 +211,7 @@ This produces `dist/syntila/linux-<arch>/` (with `gui/` when built), a headless
 `dist/syntila/deb/syntila_<version>_<arch>.deb` and, with the GUI,
 `syntila-gui_<version>_<arch>.deb`. See
 [Linux release operations](../deployment/WORKSPACE_LINUX_RELEASES.md). The
-**Release Linux Workspace** workflow builds and tests natively on Ubuntu amd64
+**Workspace / Linux / Release** workflow builds and tests natively on Ubuntu amd64
 and ARM64, including a real APT install/upgrade and a headless setup smoke test.
 
 ## Service (systemd user unit)

@@ -21,6 +21,15 @@ foreach ($File in @('syntila.exe', $Engine)) {
         throw "Installed file mismatch: $File"
     }
 }
+$Gui = 'gui/syntila-workspace-gui.exe'
+if (Test-Path (Join-Path $Root "dist/syntila/windows/release/$Gui")) {
+    if ((Get-FileHash (Join-Path $Target $Gui)).Hash -ne
+        (Get-FileHash (Join-Path $Root "dist/syntila/windows/release/$Gui")).Hash) {
+        throw 'Installed GUI executable mismatch.'
+    }
+    $Shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Syntila/Syntila Workspace.lnk'
+    if (-not (Test-Path $Shortcut)) { throw 'Workspace GUI Start menu shortcut is missing.' }
+}
 $PreviousService = $env:SYNTILA_TEST_WINDOWS_SERVICE
 Push-Location (Join-Path $Root 'apps/workspace')
 try {

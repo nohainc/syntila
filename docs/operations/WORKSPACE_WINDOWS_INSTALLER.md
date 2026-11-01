@@ -7,7 +7,7 @@ releases are produced by the Windows release workflow described in
 `scripts/package-workspace-windows.ps1 -Sign` signs the installer and
 uninstaller and refuses to package a bundle with unsigned binaries.
 
-Run `scripts/build-workspace-windows.ps1`, then
+Run `scripts/internal/build-workspace-windows.ps1`, then
 `scripts/package-workspace-windows.ps1` on Windows with Inno Setup 6 installed.
 The workflow pins compiler 6.7.3 from the official release with a SHA-256 check. Outputs are under
 `dist/syntila/installer/` and uploaded as

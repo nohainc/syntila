@@ -379,6 +379,30 @@ it("lists a lent Workspace as shared and lets the borrower make it the default",
   }
 });
 
+it("excludes revoked owned Workspace Workers from inventory", async () => {
+  const { sqlite, env } = fixture();
+  try {
+    sqlite.exec(`INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at)
+      VALUES('old','guest','Old Mac','revoked','now','now');
+      INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at)
+      VALUES('current-worker','own','guest','chatgpt','enabled','ready',1,1,'now','now','now'),
+            ('old-worker','old','guest','chatgpt','enabled','ready',1,1,'now','now','now');`);
+    for (const query of ['', '?includeShared=true', '?workspaceId=old']) {
+      const response = await handleListWorkspaceWorkerInventory(
+        new Request(`https://cloud.test/api/workers${query}`, {
+          headers: { authorization: 'guest' },
+        }), env,
+      );
+      const body = await response.json() as { workers: { id: string }[] };
+      expect(body.workers.map((worker) => worker.id)).toEqual(
+        query === '?workspaceId=old' ? [] : ['current-worker'],
+      );
+    }
+  } finally {
+    sqlite.close();
+  }
+});
+
 it("does not pass a lent Workspace on to the borrower's Space members", async () => {
   const { sqlite, env, grantGuest, workspaceFor } = fixture();
   const workers = async (user: string) =>

@@ -1,19 +1,14 @@
-name: Release macOS app
+name: Workspace / macOS / Release
 
 on:
   workflow_dispatch:
     inputs:
-      product:
-        description: Application to release
-        type: choice
-        options: [workspace, profile-lab]
-        required: true
       version:
         description: Immutable release version
         type: string
         required: true
       channel:
-        description: Release channel (Workspace only)
+        description: Release channel
         type: choice
         options: [development, beta, stable]
         default: development
@@ -35,6 +30,13 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require matching Workspace version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          pubspec="$(awk '/^version:/ {print $2; exit}' apps/workspace/pubspec.yaml)"
+          [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "${pubspec%%+*}" == "$REQUESTED_VERSION" ]] || { echo "Version does not match pubspec" >&2; exit 1; }
       - name: Require successful CI for this commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,7 +45,6 @@ jobs:
   workspace:
     name: Syntila Workspace (signed and notarized)
     needs: require-ci
-    if: inputs.product == 'workspace'
     runs-on: macos-15
     environment: workspace-release
     timeout-minutes: 90
@@ -83,18 +84,13 @@ jobs:
           echo 'SYNTILA_MACOS_NOTARY_PROFILE=syntila-notary' >> "$GITHUB_ENV"
 
       - name: Run Workspace analysis and tests
-        run: bash scripts/test-workspace-macos.sh
+        run: bash scripts/check-flutter-app.sh workspace
 
       - name: Build, sign, and notarize Workspace
         env:
           SYNTILA_WORKSPACE_VERSION: ${{ inputs.version }}
           SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
-        run: bash scripts/build-workspace-macos.sh
-
-      - name: Build, sign, and notarize the GUI into the same bundle
-        env:
-          SYNTILA_WORKSPACE_VERSION: ${{ inputs.version }}
-        run: bash scripts/build-workspace-gui-macos.sh --gui-only
+        run: bash scripts/build-workspace-macos.sh --prod
 
       - name: Verify notarized app archive
         env:
@@ -115,6 +111,13 @@ jobs:
           spctl --assess --type execute "$APP"
           xcrun stapler validate "$APP"
 
+      - name: Retain verified Workspace archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: syntila-workspace-macos-release
+          path: dist/syntila/macos/Syntila-Workspace-${{ inputs.version }}-macos.zip
+          if-no-files-found: error
+
       - name: Sign, publish, download, and verify immutable metadata
         env:
           WORKSPACE_ARCHIVE: dist/syntila/macos/Syntila-Workspace-${{ inputs.version }}-macos.zip
@@ -131,44 +134,3 @@ jobs:
       - name: Remove signing keychain
         if: always()
         run: security delete-keychain "${KEYCHAIN_PATH:-}" 2>/dev/null || true
-
-  profile-lab:
-    name: Profile Lab (internal build)
-    needs: require-ci
-    if: inputs.product == 'profile-lab'
-    runs-on: macos-15
-    environment: profile-lab-release
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-      - uses: ./.github/actions/setup-workspace
-      - uses: ./.github/actions/setup-flutter
-
-      - name: Run macOS Profile Lab tests
-        run: bash scripts/test-profile-lab-macos.sh
-
-      - name: Build unsigned development Profile Lab
-        env:
-          PROFILE_LAB_VERSION: ${{ inputs.version }}
-        run: |
-          bash scripts/build-profile-lab-macos.sh --release --unsigned --version "$PROFILE_LAB_VERSION"
-
-      - name: Verify development app archive
-        env:
-          PROFILE_LAB_VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          ARCHIVE="dist/syntila-profile-lab/macos/Syntila-Profile-Lab-$PROFILE_LAB_VERSION-macos.zip"
-          mkdir -p "$RUNNER_TEMP/profile-lab-app-check"
-          ditto -x -k "$ARCHIVE" "$RUNNER_TEMP/profile-lab-app-check"
-          test -d "$RUNNER_TEMP/profile-lab-app-check/Syntila Profile Lab.app"
-
-      - name: Upload internal release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: syntila-profile-lab-${{ inputs.version }}-macos
-          path: dist/syntila-profile-lab/macos/Syntila-Profile-Lab-${{ inputs.version }}-macos.zip
-          retention-days: 90
-          if-no-files-found: error

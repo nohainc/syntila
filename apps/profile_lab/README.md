@@ -26,7 +26,7 @@ cd ../..
 Build the actual CLI Worker Engine binary before launching the app; the app's fixture acceptance tests also use this binary:
 
 ```sh
-bash scripts/build-cli-worker-engine.sh
+bash scripts/internal/build-cli-worker-engine.sh
 ```
 
 For local Cloud development, start the repository's local Cloud environment (the root `pnpm start:local` flow starts Cloud and the AX web app), then run Profile Lab from the repository root:
@@ -118,7 +118,7 @@ hot-reload development against loopback Cloud (default `http://localhost:8787`).
 Browser sign-in remains required; the active `vitalii@nohainc.com` account is
 the explicitly configured internal Lab owner. Development supports the full
 Candidate → Test → Validate → Publish lifecycle. Start
-`bash scripts/run-workspace-development.sh` to consume current Cloud Profiles in
+`bash scripts/internal/run-workspace-development.sh` to consume current Cloud Profiles in
 a separate non-release Workspace.
 
 For the currently provisioned hosted development environment, set

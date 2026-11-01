@@ -90,7 +90,7 @@ fi
 echo "== Environments"
 # production: cloud deploys. No reviewer. Manual dispatch from main, gated by a passing CI run.
 # production-site: public site deploys on push to main. No reviewer, main only.
-# workspace-release and profile-lab-release: macOS releases. Reviewer approval, main only.
+# workspace-release: macOS Workspace releases. Reviewer approval, main only.
 set_environment() {
   local name="$1" with_reviewer="$2" body
   if [[ "$with_reviewer" == "true" ]]; then
@@ -112,7 +112,6 @@ set_environment() {
 set_environment production false
 set_environment production-site false
 set_environment workspace-release true
-set_environment profile-lab-release true
 
 echo
 if $apply; then

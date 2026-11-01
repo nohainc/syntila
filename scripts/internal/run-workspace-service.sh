@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORKSPACE_DIR="$ROOT/apps/workspace"
 SERVICE_DIR="$ROOT/dist/syntila"
 SERVICE_NAME="syntila"
@@ -20,10 +20,10 @@ case "${1:-}" in
     ;;
   --help|-h)
     cat <<'USAGE'
-Usage: scripts/run-workspace-service.sh [--source] [service options]
+Usage: scripts/internal/run-workspace-service.sh [--source] [service options]
 
 Starts the compiled Workspace Service by default. Build it first with:
-  scripts/build-workspace-service.sh
+  scripts/internal/build-workspace-service.sh
 
 Use --source only for Dart source debugging; that mode displays as dart: in
 process tools because it is launched through the Dart VM.
@@ -37,7 +37,7 @@ if [[ "$SOURCE_MODE" == "0" ]]; then
   ENGINE="$SERVICE_DIR/assets/engines/$ENGINE_NAME"
   if [[ ! -x "$SERVICE" || ! -x "$ENGINE" ]]; then
     echo "The compiled Workspace Service is missing." >&2
-    echo "Run scripts/build-workspace-service.sh first, or use --source for source debugging." >&2
+    echo "Run scripts/internal/build-workspace-service.sh first, or use --source for source debugging." >&2
     exit 1
   fi
   # Persisted registration and secure storage remain authoritative. Explicit
@@ -52,7 +52,7 @@ fi
 
 ENGINE="$WORKSPACE_DIR/assets/engines/syntila-agent"
 if [[ ! -x "$ENGINE" ]]; then
-  echo "The bundled CLI Worker Engine is missing. Run scripts/build-cli-worker-engine.sh first." >&2
+  echo "The bundled CLI Worker Engine is missing. Run scripts/internal/build-cli-worker-engine.sh first." >&2
   exit 1
 fi
 

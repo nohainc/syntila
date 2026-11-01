@@ -1,0 +1,77 @@
+name: Workspace / All platforms / GitHub Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published Workspace version (X.Y.Z)
+        required: true
+        type: string
+      linux_run_id:
+        description: Successful published Linux release workflow run ID
+        required: true
+        type: string
+      macos_run_id:
+        description: Successful published macOS Workspace release workflow run ID
+        required: true
+        type: string
+      windows_run_id:
+        description: Successful published Windows release workflow run ID
+        required: true
+        type: string
+      publish:
+        description: Create the GitHub Release (false prepares a review artifact)
+        type: boolean
+        default: false
+      release_notes:
+        description: Release notes
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test promotion safeguards
+        run: python3 scripts/release/test-workspace-promotion.py
+      - name: Require promotion workflow on main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - name: Collect verified published artifacts
+        id: collect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          LINUX_RUN_ID: ${{ inputs.linux_run_id }}
+          MACOS_RUN_ID: ${{ inputs.macos_run_id }}
+          WINDOWS_RUN_ID: ${{ inputs.windows_run_id }}
+        run: python3 scripts/release/prepare-workspace-github-release.py
+      - name: Retain prepared assets for review
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: workspace-github-release-${{ inputs.version }}
+          path: workspace-promotion/release/*
+          if-no-files-found: error
+      - name: Publish immutable GitHub Release
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ steps.collect.outputs.source_sha }}
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          tag="workspace-v$VERSION"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1 || gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag already exists; release tags are immutable." >&2
+            exit 1
+          fi
+          gh release create "$tag" workspace-promotion/release/* --target "$SOURCE_SHA" \
+            --title "Syntila Workspace $VERSION" --notes "${NOTES:-Syntila Workspace $VERSION for Linux, macOS, and Windows.}"

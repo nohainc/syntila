@@ -38,13 +38,6 @@ The Workspace app does not yet perform a complete automatic update transaction w
 
 Use [Release Trust and Rotation](../security/RELEASE_TRUST_AND_ROTATION.md) for key separation, overlap rotation, revocation, and recovery constraints. Never store release signing seeds or publication tokens in the repository, package archives, desktop artifacts, or workflow output.
 
-## Nightly compilation
-
-The nightly macOS workflow builds Workspace in debug mode with ad-hoc signing.
-This checks native compilation and bundle assembly without installing a release
-certificate on the nightly runner. It does not validate launchd activation,
-release signing, or notarization; those require the signed release workflow.
-
 ## Headless Linux packages
 
 The service, management CLI and bundled Engine can be cross-compiled from macOS
@@ -59,3 +52,21 @@ The Windows bundle and Inno Setup installer are Authenticode-signed and
 published as GitHub Releases. See [Windows release operations](WORKSPACE_WINDOWS_RELEASES.md)
 for signing identity setup, required secrets, the release procedure and
 device qualification.
+
+## GitHub Release promotion
+
+After the Linux APT, macOS Workspace and Windows release workflows have each
+published the **same version from the same main commit**, run
+`promote-workspace-release.yml` on `main`. Supply the version and the three
+workflow run IDs. First leave `publish` false and inspect the retained
+`workspace-github-release-<version>` artifact. Run it again with `publish=true`
+to create the `workspace-v<version>` GitHub Release. It includes Linux x64 and
+arm64 packages and archives, the macOS archive, the Windows x64 installer and
+archive, checksums, and source/run provenance. Workflow artifacts must still be
+available; the macOS workflow must have retained its archive using the current
+workflow. The promotion validates the published runs and reuses their bytes.
+
+APT publication is handled by `release-linux.yml`. GitHub Releases alone does
+not publish to Homebrew or WinGet: those require a Homebrew tap/cask and a
+WinGet package manifest submitted to the community repository, respectively.
+No Homebrew or WinGet publishing automation is configured here yet.

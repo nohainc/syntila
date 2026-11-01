@@ -1,6 +1,6 @@
 # Syntila Workspace GUI
 
-Desktop GUI (macOS and Linux) for the `syntila` management CLI. It contains no
+Desktop GUI (macOS, Linux and Windows) for the `syntila` management CLI. It contains no
 command logic: at startup it runs `syntila --gui-manifest=1` and renders the
 result with [gui-manifest](https://github.com/nohainc/gui-manifest)'s
 `gui_manifest_flutter`, styled with `syntila_design` (Inter, JetBrains Mono,
@@ -17,13 +17,9 @@ dist/syntila/macos/syntila/            dist/syntila/linux-<arch>/
   Syntila Workspace.app                  gui/syntila-workspace-gui
 ```
 
-`scripts/build-workspace-macos.sh` and `scripts/build-workspace-gui-macos.sh`
-(Linux: `build-workspace-linux-headless.sh` and `build-workspace-gui-linux.sh`)
-both build into that folder and replace only their own files, so they can run
-in either order. The macOS zip and `.pkg` (`/usr/local/lib/syntila`, app
-linked into `/Applications`) contain everything. On Linux the `syntila-gui`
-Debian package installs into `/usr/lib/syntila/gui` beside the `syntila`
-package and requires the same version.
+The platform build scripts build the CLI, Engine and GUI together. The macOS
+archive contains the app; Linux provides matching `syntila` and `syntila-gui`
+Debian packages. The Windows installer includes the GUI.
 
 ## Which `syntila` it runs
 
@@ -60,20 +56,15 @@ Nano Markup by default; `--json` retains JSON output.
 ## Release build
 
 ```console
-scripts/build-workspace-gui-macos.sh              # CLI bundle + GUI into one folder
-scripts/build-workspace-gui-macos.sh --gui-only   # GUI into an existing bundle folder
-scripts/build-workspace-gui-macos.sh --local
-scripts/package-workspace-macos.sh                # .pkg with CLI and GUI
-scripts/build-workspace-gui-linux.sh              # Linux host: headless bundle + GUI
-scripts/package-workspace-linux.sh x64            # syntila and syntila-gui .deb
+bash scripts/build-workspace.sh --local          # current host
+bash scripts/build-workspace-macos.sh --prod     # macOS host
+bash scripts/build-workspace-linux.sh --prod     # Linux host
+bash scripts/build-workspace-windows.sh --prod   # Windows Git Bash
 ```
 
-The macOS app is signed (Apple identity when available, otherwise ad-hoc) and
-verified, the archive is re-created with the GUI, and it is notarized and
-stapled when `SYNTILA_MACOS_NOTARY_PROFILE` is set. Building the CLI bundle
-needs the release trust keys, as for `build-workspace-macos.sh`. The Linux GUI
-needs a native Linux host with clang, cmake, ninja-build, pkg-config and
-libgtk-3-dev (Flutter cannot cross-compile).
+Use `--local` for an isolated local build and `--prod` for production. Flutter
+desktop builds run on their target operating system. Release signing and package
+publication run through the platform release workflows.
 
 ## Development
 

@@ -15,7 +15,7 @@ set -euo pipefail
 # existing bundle folder. SYNTILA_MACOS_SIGN_IDENTITY and
 # SYNTILA_MACOS_NOTARY_PROFILE work as in build-workspace-macos.sh.
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 GUI_DIR="$ROOT/apps/workspace_gui"
 ENTITLEMENTS="$GUI_DIR/macos/Runner/Release.entitlements"
 APP_NAME="Syntila Workspace.app"
@@ -26,6 +26,10 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 command -v flutter >/dev/null 2>&1 || {
   echo "Flutter is required." >&2
+  exit 1
+}
+[[ -f "$GUI_DIR/macos/Runner.xcodeproj/project.pbxproj" ]] || {
+  echo "Workspace GUI macOS project is missing: $GUI_DIR/macos" >&2
   exit 1
 }
 
@@ -78,6 +82,17 @@ APP="$BUNDLE/$APP_NAME"
 rm -rf "$APP"
 ditto "$BUILT_APP" "$APP"
 
+# Set the app and Dock icon before signing; Flutter's template otherwise uses
+# its default icon asset. CFBundleIconName would take precedence over IconFile.
+install -m 644 "$GUI_DIR/assets/icons/SyntilaWorkspace.icns" \
+  "$APP/Contents/Resources/SyntilaWorkspace.icns"
+/usr/libexec/PlistBuddy -c 'Delete :CFBundleIconName' "$APP/Contents/Info.plist" 2>/dev/null || true
+if /usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+  /usr/libexec/PlistBuddy -c 'Set :CFBundleIconFile SyntilaWorkspace' "$APP/Contents/Info.plist"
+else
+  /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFile string SyntilaWorkspace' "$APP/Contents/Info.plist"
+fi
+
 # 3. Sign (Apple identity when available, otherwise ad-hoc) and verify.
 IDENTITY="${SYNTILA_MACOS_SIGN_IDENTITY:-Apple Development: vitalii@nohainc.com (7X62W6499P)}"
 if ! security find-identity -v -p codesigning | /usr/bin/grep -F -- "$IDENTITY" >/dev/null; then
@@ -106,6 +121,8 @@ done < <(find "$APP/Contents/Frameworks" -mindepth 1 -maxdepth 1 \
   \( -name '*.framework' -o -name '*.dylib' \) -print0 2>/dev/null)
 codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --strict --deep "$APP"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$APP/Contents/Info.plist")" == SyntilaWorkspace ]]
+cmp "$GUI_DIR/assets/icons/SyntilaWorkspace.icns" "$APP/Contents/Resources/SyntilaWorkspace.icns"
 # A signature mismatch only shows at launch; check every framework's Team ID.
 APP_TEAM="$(codesign -dv --verbose=4 "$APP" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2}')"
 while IFS= read -r -d '' item; do

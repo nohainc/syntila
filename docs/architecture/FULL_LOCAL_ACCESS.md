@@ -83,7 +83,7 @@ the development sandbox's network result is not evidence about that host.
 
 The generic provider path remains covered by the opt-in real Profile acceptance
 test (`tool_profile_real_acceptance_test.dart`), while
-`scripts/check-workspace-service.sh` verifies that the headless Workspace
+`scripts/internal/check-workspace-service.sh` verifies that the headless Workspace
 Service can start headlessly. Closing the terminal and
 reconnecting after a macOS restart require a device-level service test because
 they depend on launchd, signing, and the host's login/session state.

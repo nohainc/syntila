@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the Workspace service from Dart source against the local Cloud.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DEV_DRAFT_ROOT="${SYNTILA_DEVELOPMENT_PROFILE_DIRECTORY:-}"
 PUBLIC_ROOTS="${SYNTILA_RELEASE_TRUST_KEYS_JSON:-{}}"
 # Same state directory a --local build (syntila-local) uses, so the
@@ -17,7 +17,7 @@ elif [[ -d "$LEGACY_STATE_ROOT" && ! -d "$LOCAL_STATE_ROOT" ]]; then
 else
   DEV_STATE_ROOT="$LOCAL_STATE_ROOT"
 fi
-bash "$ROOT/scripts/build-cli-worker-engine.sh"
+bash "$ROOT/scripts/internal/build-cli-worker-engine.sh"
 cd "$ROOT/apps/workspace"
 dart pub get
 # Local builds are pinned to the local Cloud URL (http://localhost:8787).

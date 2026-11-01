@@ -151,18 +151,20 @@ inventory.
 
 ## Build and run
 
-Requirements: the Dart SDK (no Flutter SDK), Node.js for the release-trust
-helper, and macOS, Linux or Windows for the matching package.
+Requirements: Flutter and Dart, Node.js and the native build tools for the
+host operating system. Run these commands from the repository root:
 
 | Task | Command |
 | --- | --- |
-| Compile the unified binary and Engine (host OS) | `bash scripts/build-workspace-service.sh` → `dist/syntila/` |
-| Run the compiled service | `scripts/run-workspace-service.sh` (`--source` runs from Dart source) |
-| Run from source against local Cloud | `pnpm workspace:run:local` |
-| One-shot compile + start + stop check | `bash scripts/check-workspace-service.sh` |
-| Analyze and test | `bash scripts/check-flutter-app.sh workspace` (`dart analyze`, `dart test`) |
-| macOS bundle (signed, zipped) | `pnpm workspace:build:macos[:local|:prod|:all]`, then `pnpm workspace:package:macos` for a `.pkg` |
-| Linux headless bundle and `.deb` | `scripts/build-workspace-linux-headless.sh <x64\|arm64>` then `scripts/package-workspace-linux.sh <arch>` |
+| Build the complete app on the current host | `bash scripts/build-workspace.sh --local` |
+| Build for macOS | `bash scripts/build-workspace-macos.sh --local` |
+| Build for Linux | `bash scripts/build-workspace-linux.sh --local` |
+| Build for Windows (Git Bash) | `bash scripts/build-workspace-windows.sh --local` |
+| Analyze and test | `bash scripts/check-flutter-app.sh workspace` |
+
+Use `--prod` in place of `--local` for a production build. Desktop builds must
+run on their target OS; GitHub Actions builds the different platforms on their
+respective runners. Linux supports x64 and arm64; Windows currently targets x64.
 
 `SYNTILA_RELEASE_TRUST_KEYS_JSON` supplies the explicit public Ed25519 roots
 used to verify Workspace application releases; it is not used to admit Worker
@@ -179,7 +181,7 @@ This changes only the local display name.
 (`syntila`, the `workspace` symlink and `assets/engines/syntila-agent`)
 signed with the hardened-runtime entitlements in
 `packaging/macos/workspace-helper.entitlements`, plus
-`Syntila-Workspace-<version>-macos.zip`. There is no `.app` and no `SMAppService`;
+`Syntila-Workspace-<version>-macos.zip`. The bundle includes `Syntila Workspace.app`; there is no `SMAppService`;
 `--install` copies the bundle to `~/.local/lib` and links the commands into
 `~/.local/bin`, and `syntila service install` writes the LaunchAgent.
 An Apple identity is optional for local use (ad-hoc signatures are used when none

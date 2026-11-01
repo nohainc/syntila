@@ -30,9 +30,9 @@ const sources = execFileSync(
     "engines/cli_worker/pubspec.yaml",
     "engines/cli_worker/pubspec.lock",
     "packages",
-    "scripts/build-workspace-service.sh",
+    "scripts/internal/build-workspace-service.sh",
     "scripts/build-workspace-macos.sh",
-    "scripts/build-cli-worker-engine.sh",
+    "scripts/internal/build-cli-worker-engine.sh",
   ],
   { cwd: root },
 )

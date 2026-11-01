@@ -60,6 +60,10 @@ if [[ ! -d "$GUI" ]]; then
   echo "No GUI in $BUNDLE; built syntila only (run build-workspace-gui-linux.sh to add syntila-gui)."
   exit 0
 fi
+cmp "$ROOT/assets/branding/syntila_logo_dark_512.png" "$GUI/data/syntila-workspace.png" || {
+  echo "GUI bundle is missing the current window icon; rebuild the GUI." >&2
+  exit 1
+}
 python3 - "$GUI/syntila-workspace-gui" "$ELF_MACHINE" <<'PY'
 import pathlib, struct, sys
 path, machine = pathlib.Path(sys.argv[1]), int(sys.argv[2])
@@ -78,13 +82,14 @@ chmod 755 "$GUI_STAGE/usr/lib/syntila/gui/syntila-workspace-gui"
 ln -s ../lib/syntila/gui/syntila-workspace-gui "$GUI_STAGE/usr/bin/syntila-gui"
 install -m 644 "$ROOT/assets/branding/syntila_logo_dark_512.png" \
   "$GUI_STAGE/usr/share/icons/hicolor/512x512/apps/syntila-workspace.png"
-cat > "$GUI_STAGE/usr/share/applications/syntila-workspace.desktop" <<DESKTOP
+cat > "$GUI_STAGE/usr/share/applications/com.nohainc.syntila.workspace.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Syntila Workspace
 Comment=Manage the Syntila Workspace service
 Exec=/usr/lib/syntila/gui/syntila-workspace-gui
 Icon=syntila-workspace
+StartupWMClass=com.nohainc.syntila.workspace
 Categories=Development;Utility;
 Terminal=false
 DESKTOP

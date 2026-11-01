@@ -29,7 +29,11 @@ WizardStyle=modern
 DisableProgramGroupPage=yes
 CloseApplications=no
 RestartApplications=no
+#if FileExists(BundleDir + "\gui\syntila-workspace-gui.exe")
+UninstallDisplayIcon={app}\gui\syntila-workspace-gui.exe
+#else
 UninstallDisplayIcon={app}\syntila.exe
+#endif
 SetupLogging=yes
 #ifdef SignInstaller
 ; Signs Setup.exe and the embedded uninstaller with the "syntila" sign tool
@@ -41,6 +45,11 @@ SignedUninstaller=yes
 [Files]
 Source: "{#BundleDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+#if FileExists(BundleDir + "\gui\syntila-workspace-gui.exe")
+[Icons]
+Name: "{group}\Syntila Workspace"; Filename: "{app}\gui\syntila-workspace-gui.exe"; WorkingDir: "{app}"
+#endif
+
 [Code]
 // Never force-close the service or provider processes during an assignment.
 function WorkspaceRunning(): Boolean;
@@ -50,7 +59,7 @@ begin
   try
     Locator := CreateOleObject('WbemScripting.SWbemLocator');
     Services := Locator.ConnectServer('', 'root\CIMV2');
-    Processes := Services.ExecQuery('SELECT ProcessId FROM Win32_Process WHERE Name = ''syntila.exe'' OR Name = ''syntila-service.exe''');
+    Processes := Services.ExecQuery('SELECT ProcessId FROM Win32_Process WHERE Name = ''syntila.exe'' OR Name = ''syntila-service.exe'' OR Name = ''syntila-workspace-gui.exe''');
     Result := Processes.Count > 0;
   except
     // If process inspection fails, preserve the existing installation.

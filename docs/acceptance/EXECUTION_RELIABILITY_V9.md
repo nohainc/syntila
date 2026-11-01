@@ -45,7 +45,7 @@ leave overall release acceptance `incomplete` while live evidence is missing.
 | Queue cancellation, slot transfer, independent Workers, immediate exit | Service `cli_worker_engine_supervisor`; CLI runtime package |
 | Frozen local Profile plan | Service `worker_launch_plan` |
 | Delayed Web events, terminal wins, concurrent request isolation | AX `ax_execution_phase`, `ax_work_realtime_sync` |
-| Actual headless executable startup | `bash scripts/check-workspace-service.sh` in an isolated temporary root |
+| Actual headless executable startup | `bash scripts/internal/check-workspace-service.sh` in an isolated temporary root |
 
 The normal component validations remain required after implementation. This
 runner supplements them with repeated race coverage; it does not replace them.

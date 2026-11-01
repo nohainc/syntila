@@ -13,6 +13,7 @@ import 'package:path/path.dart' as p;
 ///   assets/engines/syntila-agent  Worker Engine
 ///   Syntila Workspace.app         macOS GUI
 ///   gui/syntila-workspace-gui     Linux GUI (Flutter bundle)
+///   gui/syntila-workspace-gui.exe Windows GUI (Flutter bundle)
 /// ```
 ///
 /// Order: `SYNTILA_CLI` (development override), the sibling `syntila` in
@@ -24,6 +25,7 @@ String locateSyntilaCli({
   Map<String, String>? environment,
   String? resolvedExecutable,
   bool? isMacOS,
+  bool? isWindows,
   bool Function(String path)? exists,
 }) {
   final env = environment ?? Platform.environment;
@@ -33,24 +35,36 @@ String locateSyntilaCli({
 
   final executable = resolvedExecutable ?? Platform.resolvedExecutable;
   final macOS = isMacOS ?? Platform.isMacOS;
+  final windows = isWindows ?? Platform.isWindows;
+  final paths = windows ? p.Context(style: p.Style.windows) : p.context;
   final home = env['HOME'] ?? '';
-  final exeDir = p.dirname(executable);
+  final exeDir = paths.dirname(executable);
   final candidates = [
     if (macOS) ...[
       // <folder>/Syntila Workspace.app/Contents/MacOS/<exe> → <folder>/syntila
       p.join(p.dirname(p.dirname(p.dirname(exeDir))), 'syntila'),
       // Development builds embed the CLI in Contents/Resources/syntila.
       p.join(p.dirname(exeDir), 'Resources', 'syntila', 'syntila'),
+    ] else if (windows) ...[
+      paths.join(paths.dirname(exeDir), 'syntila.exe'),
+      if ((env['LOCALAPPDATA'] ?? '').isNotEmpty)
+        paths.join(
+          env['LOCALAPPDATA']!,
+          'Programs',
+          'Syntila',
+          'Workspace',
+          'syntila.exe',
+        ),
     ] else
       // <folder>/gui/syntila-workspace-gui → <folder>/syntila
       p.join(p.dirname(exeDir), 'syntila'),
-    if (home.isNotEmpty) p.join(home, '.local', 'bin', 'syntila'),
+    if (!windows && home.isNotEmpty) p.join(home, '.local', 'bin', 'syntila'),
     if (macOS) '/opt/homebrew/bin/syntila',
-    '/usr/local/bin/syntila',
-    if (!macOS) '/usr/bin/syntila',
+    if (!windows) '/usr/local/bin/syntila',
+    if (!windows && !macOS) '/usr/bin/syntila',
   ];
   for (final candidate in candidates) {
     if (isFile(candidate)) return candidate;
   }
-  return 'syntila';
+  return windows ? 'syntila.exe' : 'syntila';
 }

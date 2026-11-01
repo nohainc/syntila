@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
-import { environment, listSQL, changeSQL, handle } from "./account-manager.mjs";
+import { environment, listSQL, changeSQL, planSQL, handle } from "./account-manager.mjs";
 
 import { readdirSync } from "node:fs";
 function database() {
@@ -20,6 +20,7 @@ function database() {
   for (const name of [
     "0010_conversation_workflows.sql",
     "0011_conversation_turns.sql",
+    "0094_account_plans.sql",
   ]) {
     db.exec(readFileSync(new URL(name, dir), "utf8"));
   }
@@ -235,4 +236,39 @@ test("lock works without email retyping and still rejects stale account status",
     handle({ ...input, action: "reset" }, async () => []),
     /Retype/,
   );
+});
+
+test("plan grant and revoke toggle the effective tier and are audited", () => {
+  const db = database();
+  const plan = () => db.prepare(listSQL("one@")).get().plan;
+  assert.equal(plan(), "free");
+  db.exec(planSQL("one", "grant_paid", "one@example.com", "tester"));
+  assert.equal(plan(), "paid");
+  assert.equal(db.prepare(listSQL("one@")).get().plan_source, "manual");
+  db.exec(planSQL("one", "revoke_paid", "one@example.com", "tester"));
+  assert.equal(plan(), "free");
+  assert.equal(
+    db.prepare("SELECT status FROM account_plans WHERE user_id='one'").get()
+      .status,
+    "canceled",
+  );
+  // An expired provider period is overridden by an open-ended manual grant.
+  db.exec(
+    "UPDATE account_plans SET tier='paid',status='active',source='provider',current_period_end='2000-01-01' WHERE user_id='one'",
+  );
+  assert.equal(plan(), "free");
+  db.exec(planSQL("one", "grant_paid", "one@example.com", "tester"));
+  assert.equal(plan(), "paid");
+  // Wrong email changes nothing.
+  db.exec(planSQL("two", "grant_paid", "wrong@example.com", "tester"));
+  assert.equal(db.prepare(listSQL("two@")).get().plan, "free");
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) AS n FROM auth_audit_events WHERE action LIKE 'account.admin.%_paid'",
+      )
+      .get().n,
+    3,
+  );
+  db.close();
 });

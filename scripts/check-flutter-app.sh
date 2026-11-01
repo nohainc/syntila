@@ -16,7 +16,7 @@ if [[ "$APP" == workspace ]]; then PUB=(dart pub); else PUB=(flutter pub); fi
 if [[ "$PREPARED" == 0 ]]; then
   "${PUB[@]}" get
   if [[ "$APP" != app && "$APP" != workspace_gui ]]; then
-    bash "$ROOT/scripts/build-cli-worker-engine.sh"
+    bash "$ROOT/scripts/internal/build-cli-worker-engine.sh"
   fi
 else
   [[ -f .dart_tool/package_config.json ]] || { echo "Resolve dependencies first." >&2; exit 1; }
@@ -30,7 +30,7 @@ dart format --output=none --set-exit-if-changed "${FORMAT_PATHS[@]}"
 if [[ "$APP" == workspace ]]; then
   dart analyze
   DART_EXECUTABLE="$(command -v dart)" dart test --concurrency=1
-  bash "$ROOT/scripts/check-workspace-service.sh"
+  bash "$ROOT/scripts/internal/check-workspace-service.sh"
 elif [[ "$APP" == workspace_gui ]]; then
   flutter analyze
   # Also drive the real CLI: build it and point the smoke test at it.

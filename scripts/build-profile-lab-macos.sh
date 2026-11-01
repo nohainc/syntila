@@ -68,7 +68,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: $(basename "$0") [options]"
       echo ""
       echo "Builds the Syntila Profile Lab desktop application for macOS."
-      echo "Run scripts/test-profile-lab-macos.sh separately for analysis and tests."
+      echo "Run pnpm validate:profile-lab separately for analysis and tests."
       echo ""
       echo "Options:"
       echo "  --prepared         Reuse dependencies and Engine; skip clean (CI only)"
@@ -121,7 +121,7 @@ if [[ "$PREPARED" == "1" ]]; then
 else
   flutter clean
   flutter pub get
-  bash "$ROOT/scripts/build-cli-worker-engine.sh"
+  bash "$ROOT/scripts/internal/build-cli-worker-engine.sh"
 fi
 
 if [[ "$MODE" == "debug" ]]; then

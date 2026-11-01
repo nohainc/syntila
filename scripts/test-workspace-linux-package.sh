@@ -91,7 +91,12 @@ if [[ -f "$GUI_PACKAGE" ]]; then
   [[ "$(dpkg-query --show --showformat='${Version}' syntila-gui)" == "$VERSION" ]]
   [[ -x /usr/lib/syntila/gui/syntila-workspace-gui && -x /usr/lib/syntila/syntila ]]
   [[ "$(readlink -f /usr/bin/syntila-gui)" == /usr/lib/syntila/gui/syntila-workspace-gui ]]
-  grep -qx 'Exec=/usr/lib/syntila/gui/syntila-workspace-gui' /usr/share/applications/syntila-workspace.desktop
+  DESKTOP=/usr/share/applications/com.nohainc.syntila.workspace.desktop
+  grep -qx 'Exec=/usr/lib/syntila/gui/syntila-workspace-gui' "$DESKTOP"
+  grep -qx 'Icon=syntila-workspace' "$DESKTOP"
+  grep -qx 'StartupWMClass=com.nohainc.syntila.workspace' "$DESKTOP"
+  cmp /usr/lib/syntila/gui/data/syntila-workspace.png \
+    /usr/share/icons/hicolor/512x512/apps/syntila-workspace.png
   if ldd /usr/lib/syntila/gui/syntila-workspace-gui | grep 'not found'; then
     echo 'syntila-gui has unresolved shared libraries.' >&2
     exit 1

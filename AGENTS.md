@@ -81,7 +81,7 @@ Every implementation task must report:
   unit/foreground mode; Windows per-user logon task, not SCM; CLIs run as the
   user who owns their logins).
 - For Workspace Service changes, run focused service/runtime tests and
-  `scripts/check-workspace-service.sh`; run the Workspace and direct Worker
+  `scripts/internal/check-workspace-service.sh`; run the Workspace and direct Worker
   Engine component validations when the environment permits. macOS launchd,
   signing, Keychain, and TCC claims require device or release-build evidence.
 - Keep the canonical build pipeline explicit: `build-cli-worker-engine.sh`
