@@ -103,3 +103,59 @@ class _AccountPlanSummaryState extends State<AccountPlanSummary> {
         },
       );
 }
+
+/// Owned Workspace usage against the Free allowance. Shown on the Workspaces
+/// page; Cloud refuses registrations past the allowance, this only explains it.
+/// Existing Workspaces above the allowance (for example after a downgrade)
+/// stay connected and manageable; only new registrations are blocked.
+class WorkspaceAllowanceNote extends StatefulWidget {
+  const WorkspaceAllowanceNote({super.key, required this.source});
+
+  final AxAccountPlanDataSource source;
+
+  @override
+  State<WorkspaceAllowanceNote> createState() => _WorkspaceAllowanceNoteState();
+}
+
+class _WorkspaceAllowanceNoteState extends State<WorkspaceAllowanceNote> {
+  late final _controller = AccountPlanController(widget.source);
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_controller.refresh());
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: _controller,
+        builder: (context, _) {
+          final plan = _controller.plan;
+          final owned = plan.ownedWorkspaces;
+          if (owned == null) return const SizedBox.shrink();
+          final limit = plan.workspaceLimit;
+          final atLimit = limit != null && owned >= limit;
+          return Padding(
+            key: const ValueKey('workspace-allowance'),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(limit == null
+                    ? '$owned personal Workspaces ($paidPlanName, no limit)'
+                    : '$owned of $limit personal Workspace${limit == 1 ? '' : 's'} used (Free)'),
+                if (atLimit)
+                  const Text(
+                      'Free includes one personal Workspace. Upgrade to $paidPlanName to connect more machines.'),
+              ],
+            ),
+          );
+        },
+      );
+}

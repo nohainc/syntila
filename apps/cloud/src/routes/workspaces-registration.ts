@@ -10,6 +10,10 @@ import {
 import type { SecurityEnv } from "./handlers.js";
 import { hasControlCharacters } from "./workspaces-shared.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "../assignment-transitions.js";
+import {
+  PersonalWorkspaceLimitError,
+  personalWorkspaceAdmissionSql,
+} from "../account-plan.js";
 
 type WorkspaceOwnershipRow = {
   runtimeId: string;
@@ -977,6 +981,13 @@ export async function handleRegisterWorkspaceFromDesktop(
   const credentialHash = await hashToken(credential);
   const auditId = `audit-${crypto.randomUUID()}`;
   const statements = [];
+  // New registrations are admitted by the INSERT itself (see the account plan's
+  // personal Workspace allowance). Every later statement for a new Workspace
+  // only runs when that row exists, so a refused admission writes nothing and
+  // concurrent requests cannot both take the last slot.
+  const admitted = existing
+    ? ""
+    : ` WHERE EXISTS (SELECT 1 FROM execution_workspaces WHERE id = '${workspaceId}')`;
   if (
     existing &&
     name &&
@@ -992,14 +1003,16 @@ export async function handleRegisterWorkspaceFromDesktop(
   if (!existing) {
     statements.push(
       env.SYNTILA_DB.prepare(
-        `INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at) VALUES (?1, ?2, ?3, 'offline', ?4, ?4)`,
+        `INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at)
+         SELECT ?1, ?2, ?3, 'offline', ?4, ?4
+          WHERE ${personalWorkspaceAdmissionSql("?2")}`,
       ).bind(workspaceId, session.userId, workspaceName, now),
     );
     statements.push(
       env.SYNTILA_DB.prepare(
         `INSERT INTO workspace_installations
           (installation_id, owner_user_id, workspace_id, status, created_at, updated_at, released_at)
-         VALUES (?1, ?2, ?3, 'active', ?4, ?4, NULL)
+         SELECT ?1, ?2, ?3, 'active', ?4, ?4, NULL${admitted}
          ON CONFLICT(installation_id) DO UPDATE SET
            owner_user_id = excluded.owner_user_id,
            workspace_id = excluded.workspace_id,
@@ -1020,12 +1033,12 @@ export async function handleRegisterWorkspaceFromDesktop(
   }
   statements.push(
     env.SYNTILA_DB.prepare(
-      `INSERT INTO workspace_runtime_identities (id, workspace_id, credential_token_hash, installation_id, created_at, revoked_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL)`,
+      `INSERT INTO workspace_runtime_identities (id, workspace_id, credential_token_hash, installation_id, created_at, revoked_at) SELECT ?1, ?2, ?3, ?4, ?5, NULL${admitted}`,
     ).bind(runtimeId, workspaceId, credentialHash, installationId, now),
   );
   statements.push(
     env.SYNTILA_DB.prepare(
-      `INSERT INTO workspace_runtime_facts (workspace_id, platform, architecture, hostname, app_version, runtime_capabilities_json, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(workspace_id) DO UPDATE SET platform=excluded.platform, architecture=excluded.architecture, hostname=excluded.hostname, app_version=excluded.app_version, runtime_capabilities_json=excluded.runtime_capabilities_json, updated_at=excluded.updated_at`,
+      `INSERT INTO workspace_runtime_facts (workspace_id, platform, architecture, hostname, app_version, runtime_capabilities_json, updated_at) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7${admitted} ON CONFLICT(workspace_id) DO UPDATE SET platform=excluded.platform, architecture=excluded.architecture, hostname=excluded.hostname, app_version=excluded.app_version, runtime_capabilities_json=excluded.runtime_capabilities_json, updated_at=excluded.updated_at`,
     ).bind(
       workspaceId,
       platform,
@@ -1038,7 +1051,7 @@ export async function handleRegisterWorkspaceFromDesktop(
   );
   statements.push(
     env.SYNTILA_DB.prepare(
-      `INSERT INTO workspace_audit_log (id, workspace_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (?1, ?2, 'user', ?3, ?4, 'workspace_runtime', ?5, ?6, ?7)`,
+      `INSERT INTO workspace_audit_log (id, workspace_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) SELECT ?1, ?2, 'user', ?3, ?4, 'workspace_runtime', ?5, ?6, ?7${admitted}`,
     ).bind(
       auditId,
       workspaceId,
@@ -1056,7 +1069,14 @@ export async function handleRegisterWorkspaceFromDesktop(
     ),
   );
   try {
-    await env.SYNTILA_DB.batch(statements);
+    const results = await env.SYNTILA_DB.batch(statements);
+    if (!existing) {
+      // The Workspace INSERT is always the first statement.
+      if ((results[0]?.meta?.changes ?? 0) !== 1) {
+        const limit = new PersonalWorkspaceLimitError();
+        return json({ error: limit.message, code: limit.code }, { status: limit.status });
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Workspace registration batch failed:", message);

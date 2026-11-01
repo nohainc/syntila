@@ -73,8 +73,13 @@ it("reports the caller's plan and defaults people without a row to free", async 
     status: null,
     currentPeriodEnd: null,
     features: [],
+    workspaces: { owned: 0, limit: 1 },
   });
-  expect(await plan("paid")).toMatchObject({ tier: "paid", status: "active" });
+  expect(await plan("paid")).toMatchObject({
+    tier: "paid",
+    status: "active",
+    workspaces: { owned: 0, limit: null },
+  });
   await expect(
     handleAccountPlan(
       new Request("https://test/api/me/plan", {

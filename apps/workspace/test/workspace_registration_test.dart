@@ -131,6 +131,25 @@ void main() {
     expect(legacyConflict.toString(), isNot(contains('release ownership')));
   });
 
+  test('the Free personal Workspace limit keeps its code and upgrade guidance',
+      () {
+    final limit = WorkspaceRegistrationException.fromError(
+      statusCode: 402,
+      serverCode: 'personal_workspace_limit_reached',
+      serverError: 'ignored server text',
+    );
+    expect(
+      limit.kind,
+      WorkspaceRegistrationErrorKind.personalWorkspaceLimitReached,
+    );
+    expect(limit.serverCode, 'personal_workspace_limit_reached');
+    expect(
+      limit.toString(),
+      'Free includes one personal Workspace. '
+      'Upgrade to Syntila Plus to connect more machines.',
+    );
+  });
+
   test('Cloud API URLs normalize configured /api suffixes exactly once', () {
     const configured = 'https://syntila.app/api/';
 

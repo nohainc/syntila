@@ -81,7 +81,11 @@ another user returns `409 workspace_owned_by_other_account`; only this case
 uses the account ownership conflict message and requires the existing explicit
 disconnect/release workflow. Conflicting records return
 `installation_binding_ambiguous`; a revoked Workspace that still has an
-installation binding returns `release_required`. Hostname and display-name
+installation binding returns `release_required`. A Free account that already owns its one personal Workspace
+(non-revoked, offline included) receives `402 personal_workspace_limit_reached`
+for a *new* installation; the check is atomic with the insert, recovery of an
+existing installation never consumes a slot, and over-limit accounts keep their
+registrations (see ADR-022). Hostname and display-name
 changes never transfer ownership. Runtime credentials remain separate from
 the human credential and are stored by desktop in the OS secure credential
 store.

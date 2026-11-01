@@ -368,6 +368,16 @@ class WorkspaceHeadlessAuth {
         'message': '${error.message} ${error.action}',
       };
     }
+    if (error is WorkspaceRegistrationException &&
+        error.kind ==
+            WorkspaceRegistrationErrorKind.personalWorkspaceLimitReached) {
+      return {
+        'phase': 'failed',
+        'stage': stage,
+        'code': 'personal_workspace_limit_reached',
+        'message': '${error.message} ${error.action}',
+      };
+    }
     return {
       'phase': 'failed',
       'stage': stage,

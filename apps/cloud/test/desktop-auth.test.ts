@@ -865,6 +865,13 @@ describe("desktop human authentication", () => {
   it("matches the Workspace ownership-state acceptance matrix", async () => {
     const { env, sqlite } = await setup();
     const now = new Date().toISOString();
+    sqlite.exec("PRAGMA foreign_keys = OFF");
+    sqlite
+      .prepare(
+        "INSERT INTO account_plans (user_id, tier, status, source, created_at, updated_at) VALUES ('human-a','paid','active','manual',?,?)",
+      )
+      .run(now, now);
+    sqlite.exec("PRAGMA foreign_keys = ON");
     const users = [
       ["human-a", "a@example.test"],
       ["human-b", "b@example.test"],
@@ -2918,6 +2925,225 @@ describe("desktop human authentication", () => {
     ).rejects.toMatchObject({
       status: 403,
       message: "The profiles:admin permission is required",
+    });
+  });
+
+  describe("personal Workspace allowance", () => {
+    const body = (installationId: string, name = "Machine") => ({
+      contractVersion: "1.0",
+      installationId,
+      proposedWorkspaceName: name,
+      hostname: "host",
+      platform: "macos",
+      architecture: "arm64",
+      appVersion: "1.0.0",
+      runtimeCapabilities: {
+        os: "macos",
+        arch: "arm64",
+        appVersion: "1.0.0",
+        supportedRuntimes: ["dart"],
+        maxConcurrentWorkers: 2,
+      },
+    });
+    const install = () => `install_${crypto.randomUUID()}`;
+    async function account() {
+      const ctx = await setup();
+      const now = new Date().toISOString();
+      for (const id of ["owner", "friend"]) {
+        ctx.sqlite
+          .prepare(
+            "INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+          )
+          .run(id, `${id}@example.test`, id, now, now);
+        ctx.sqlite
+          .prepare(
+            "INSERT INTO desktop_human_sessions (id, user_id, token_hash, audience, created_at, last_used_at, expires_at) VALUES (?, ?, ?, 'syntila.desktop.management', ?, ?, ?)",
+          )
+          .run(
+            `session-${id}`,
+            id,
+            "hash-" + id,
+            now,
+            now,
+            new Date(Date.now() + 60_000).toISOString(),
+          );
+      }
+      for (const id of ["owner", "friend"])
+        ctx.sqlite
+          .prepare(
+            "UPDATE desktop_human_sessions SET token_hash = ? WHERE user_id = ?",
+          )
+          .run(await hashToken(`${id}-secret`), id);
+      const register = (user: string, installationId: string) =>
+        handleRegisterWorkspaceFromDesktop(
+          new Request(
+            "https://app.syntila.test/api/workspace-runtime/register",
+            {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${user}-secret`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify(body(installationId)),
+            },
+          ),
+          ctx.env,
+        );
+      const setPlan = (
+        user: string,
+        status = "active",
+        end: string | null = null,
+      ) =>
+        ctx.sqlite
+          .prepare(
+            `INSERT OR REPLACE INTO account_plans (user_id, tier, status, source, current_period_end, created_at, updated_at)
+             VALUES (?, 'paid', ?, 'manual', ?, 'now', 'now')`,
+          )
+          .run(user, status, end);
+      const owned = (user: string) =>
+        (
+          ctx.sqlite
+            .prepare(
+              "SELECT COUNT(*) AS n FROM execution_workspaces WHERE owner_user_id = ? AND status != 'revoked'",
+            )
+            .get(user) as { n: number }
+        ).n;
+      return { ...ctx, register, setPlan, owned };
+    }
+
+    it("admits the first Workspace and refuses a second with a stable code", async () => {
+      const { register, owned, sqlite } = await account();
+      expect((await register("owner", install())).status).toBe(201);
+      const refused = await register("owner", install());
+      expect(refused.status).toBe(402);
+      expect(await refused.json()).toEqual({
+        error:
+          "Free includes one personal Workspace. Upgrade to Syntila Plus to connect more machines.",
+        code: "personal_workspace_limit_reached",
+      });
+      expect(owned("owner")).toBe(1);
+      // A refused registration writes nothing at all.
+      for (const table of [
+        "workspace_installations",
+        "workspace_runtime_identities",
+        "workspace_runtime_facts",
+        "workspace_audit_log",
+      ])
+        expect(
+          (
+            sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as {
+              n: number;
+            }
+          ).n,
+        ).toBe(1);
+    });
+
+    it("counts offline Workspaces toward the allowance", async () => {
+      const { register, owned, sqlite } = await account();
+      const first = (await (await register("friend", install())).json()) as {
+        workspaceId: string;
+      };
+      // Registration leaves the Workspace offline; it still occupies the slot.
+      expect(
+        sqlite
+          .prepare("SELECT status FROM execution_workspaces WHERE id = ?")
+          .get(first.workspaceId),
+      ).toEqual({ status: "offline" });
+      expect(owned("friend")).toBe(1);
+      expect((await register("friend", install())).status).toBe(402);
+    });
+
+    it("lets a user with only shared access register their own first Workspace", async () => {
+      const { register, owned, sqlite } = await account();
+      sqlite
+        .prepare(
+          `INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at)
+           VALUES ('lent', 'owner', 'Lent', 'online', 'now', 'now')`,
+        )
+        .run();
+      expect(owned("friend")).toBe(0);
+      expect((await register("friend", install())).status).toBe(201);
+    });
+
+    it("has no count limit on Plus, and honors expiry and grace period", async () => {
+      const { register, setPlan, owned } = await account();
+      setPlan("owner");
+      for (let i = 0; i < 3; i++)
+        expect((await register("owner", install())).status).toBe(201);
+      expect(owned("owner")).toBe(3);
+      setPlan(
+        "friend",
+        "past_due",
+        new Date(Date.now() + 60_000).toISOString(),
+      );
+      for (let i = 0; i < 2; i++)
+        expect((await register("friend", install())).status).toBe(201);
+      setPlan("friend", "active", new Date(Date.now() - 60_000).toISOString());
+      expect((await register("friend", install())).status).toBe(402);
+      expect(owned("friend")).toBe(2);
+    });
+
+    it("never lets concurrent registrations exceed the allowance", async () => {
+      const { register, owned } = await account();
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () => register("owner", install())),
+      );
+      expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+      expect(results.filter((r) => r.status === 402)).toHaveLength(4);
+      expect(owned("owner")).toBe(1);
+    });
+
+    it("lets an existing installation reconnect without consuming a slot", async () => {
+      const { register, owned } = await account();
+      const installationId = install();
+      const first = (await (
+        await register("owner", installationId)
+      ).json()) as {
+        workspaceId: string;
+      };
+      const again = await register("owner", installationId);
+      expect(again.status).toBe(201);
+      expect(await again.json()).toMatchObject({
+        outcome: "recovered",
+        workspaceId: first.workspaceId,
+      });
+      expect(owned("owner")).toBe(1);
+    });
+
+    it("keeps over-limit accounts intact, and removal frees the slot", async () => {
+      const { register, setPlan, owned, sqlite } = await account();
+      setPlan("owner");
+      const installs = [install(), install(), install()];
+      const ids: string[] = [];
+      for (const i of installs)
+        ids.push(
+          (
+            (await (await register("owner", i)).json()) as {
+              workspaceId: string;
+            }
+          ).workspaceId,
+        );
+      // Downgrade: all three registrations stay and can reconnect, no new ones.
+      sqlite.prepare("DELETE FROM account_plans WHERE user_id = 'owner'").run();
+      expect(owned("owner")).toBe(3);
+      expect((await register("owner", install())).status).toBe(402);
+      expect((await register("owner", installs[1]!)).status).toBe(201);
+      expect(owned("owner")).toBe(3);
+      // Removing registrations (revoked) frees slots only below the allowance.
+      for (const id of ids.slice(0, 2))
+        sqlite
+          .prepare(
+            "UPDATE execution_workspaces SET status = 'revoked' WHERE id = ?",
+          )
+          .run(id);
+      expect(owned("owner")).toBe(1);
+      expect((await register("owner", install())).status).toBe(402);
+      sqlite
+        .prepare(
+          "UPDATE execution_workspaces SET status = 'revoked' WHERE id = ?",
+        )
+        .run(ids[2]!);
+      expect((await register("owner", install())).status).toBe(201);
     });
   });
 });

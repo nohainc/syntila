@@ -35,8 +35,40 @@ without migrations.
   Accepting a pending invitation also fails with a plain 403 (the invitee
   cannot fix it by upgrading). The owner's own use and Space-member use of the
   owner's Workspace are not affected.
+- **Personal Workspace allowance.** Free accounts may own
+  `FREE_PERSONAL_WORKSPACE_LIMIT` (1) registered Workspace; Plus has no
+  subscription-based count limit. The limit and its SQL
+  (`personalWorkspaceAdmissionSql`) live in `account-plan.ts` next to the plan
+  rules, so expiry and `past_due` grace behave exactly as for other paid checks.
+  - *Counted:* Workspaces the user owns whose status is not `revoked`
+    (removal/release sets `revoked`), offline ones included. Workspaces shared
+    with the user, Workers, models, Spaces and Threads are not counted.
+  - *Enforced* in `POST /api/workspace-runtime/register`, the only path that
+    inserts `execution_workspaces`. Admission is the `WHERE` of that `INSERT`
+    inside the registration batch, and every other new-registration statement
+    runs only if the row exists, so concurrent requests cannot exceed the
+    allowance and a refused request writes nothing. Failure is HTTP 402
+    `{ code: "personal_workspace_limit_reached", error: "Free includes one
+    personal Workspace. Upgrade to Syntila Plus to connect more machines." }`.
+  - *Not consumed:* recovering or reconnecting an existing installation
+    (same owner, same Workspace), reauthentication and upgrades. Retrying a
+    registration whose Workspace already exists is a recovery.
+  - *Removal* (release/revoke) frees the slot. Local files, provider
+    credentials and user work are untouched; only the Cloud registration ends.
+  - **Grandfathering:** nothing is deleted, disconnected or arbitrarily
+    chosen. A Free account that already owns several Workspaces (including
+    after a Plus downgrade) keeps all of them, can reconnect and manage them,
+    and is only blocked from registering more until it owns fewer than the
+    allowance (i.e. none) or returns to Plus. Removing one of three leaves it
+    still blocked.
+  - The Workspace service/CLI maps the code to a
+    `personalWorkspaceLimitReached` registration error and headless-login
+    failure with the same message; the web Workspaces page shows usage
+    ("1 of 1 personal Workspace used (Free)") and the upgrade explanation. There
+    is no checkout flow yet, so no upgrade button.
 - **Read API:** `GET /api/me/plan` returns
-  `{ tier, status, currentPeriodEnd, features }`.
+  `{ tier, status, currentPeriodEnd, features, workspaces: { owned, limit } }`
+  where `limit` is `null` for Plus.
 - **App:** `AxAccountPlanDataSource`, `AccountPlanController`, and
   `PaidFeatureGate` show, hide or label features; Profile shows the plan.
   Failed loads count as Free. The app never authorizes paid actions.

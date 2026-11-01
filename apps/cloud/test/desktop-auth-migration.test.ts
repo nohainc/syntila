@@ -247,6 +247,7 @@ describe("desktop auth multi-audience migration", () => {
         )
         .run(),
     ).toThrow();
+    database.exec(migrationSql("0094_account_plans.sql"));
     database.exec(migrationSql("0095_desktop_session_device.sql"));
 
     const env = {

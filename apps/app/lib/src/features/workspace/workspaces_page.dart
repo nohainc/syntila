@@ -1,3 +1,4 @@
+import '../profile/account_plan.dart' show WorkspaceAllowanceNote;
 import 'package:syntila_design/syntila_design.dart';
 import '../../ax/ax_people.dart';
 import '../../ax/ax_data.dart'
@@ -155,6 +156,8 @@ class _WorkspacesPageState extends State<WorkspacesPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (widget.accountPlanSource != null)
+          WorkspaceAllowanceNote(source: widget.accountPlanSource!),
         if (tabs == null)
           const _EmptyWorkspaces()
         else ...[

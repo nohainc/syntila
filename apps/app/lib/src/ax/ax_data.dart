@@ -199,6 +199,8 @@ class AxAccountPlan {
     this.status,
     this.currentPeriodEnd,
     this.features = const {},
+    this.ownedWorkspaces,
+    this.workspaceLimit,
   });
 
   static const free = AxAccountPlan(isPaid: false);
@@ -212,12 +214,19 @@ class AxAccountPlan {
           for (final feature in json['features'] as List? ?? const [])
             if (feature is String) feature,
         },
+        ownedWorkspaces: (json['workspaces'] as Map?)?['owned'] as int?,
+        workspaceLimit: (json['workspaces'] as Map?)?['limit'] as int?,
       );
 
   final bool isPaid;
   final String? status;
   final DateTime? currentPeriodEnd;
   final Set<String> features;
+
+  /// Registered Workspaces the viewer owns (null when Cloud did not say), and
+  /// the Free allowance; a null limit means no subscription-based limit.
+  final int? ownedWorkspaces;
+  final int? workspaceLimit;
 
   bool has(String feature) => features.contains(feature);
 }

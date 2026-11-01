@@ -71,4 +71,52 @@ void main() {
     expect(find.text(paidPlanName), findsOneWidget);
     expect(find.textContaining('Renews'), findsOneWidget);
   });
+
+  test('parses the Workspace allowance, with null meaning unlimited', () {
+    final free = AxAccountPlan.fromJson({
+      'tier': 'free',
+      'workspaces': {'owned': 3, 'limit': 1},
+    });
+    expect(free.ownedWorkspaces, 3);
+    expect(free.workspaceLimit, 1);
+    final plus = AxAccountPlan.fromJson({
+      'tier': 'paid',
+      'workspaces': {'owned': 4, 'limit': null},
+    });
+    expect(plus.workspaceLimit, isNull);
+    expect(AxAccountPlan.fromJson({'tier': 'free'}).ownedWorkspaces, isNull);
+  });
+
+  testWidgets('allowance note explains the Free limit, and Plus is unlimited',
+      (tester) async {
+    Future<void> pump(AxAccountPlan plan) async {
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: WorkspaceAllowanceNote(
+                  key: UniqueKey(), source: _Plans(plan)))));
+      await tester.pumpAndSettle();
+    }
+
+    await pump(const AxAccountPlan(
+        isPaid: false, ownedWorkspaces: 0, workspaceLimit: 1));
+    expect(find.text('0 of 1 personal Workspace used (Free)'), findsOneWidget);
+    expect(find.textContaining('Upgrade to Syntila Plus'), findsNothing);
+
+    await pump(const AxAccountPlan(
+        isPaid: false, ownedWorkspaces: 1, workspaceLimit: 1));
+    expect(
+        find.text(
+            'Free includes one personal Workspace. Upgrade to Syntila Plus to connect more machines.'),
+        findsOneWidget);
+
+    // Grandfathered over-limit accounts see their real count.
+    await pump(const AxAccountPlan(
+        isPaid: false, ownedWorkspaces: 3, workspaceLimit: 1));
+    expect(find.text('3 of 1 personal Workspace used (Free)'), findsOneWidget);
+
+    await pump(const AxAccountPlan(isPaid: true, ownedWorkspaces: 4));
+    expect(find.text('4 personal Workspaces (Syntila Plus, no limit)'),
+        findsOneWidget);
+    expect(find.textContaining('Upgrade'), findsNothing);
+  });
 }

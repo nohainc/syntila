@@ -18,6 +18,54 @@ const FEATURE_LABELS: Record<PaidFeature, string> = {
   "workspace.sharing": "Sharing a Workspace",
 };
 
+/**
+ * Registered Workspaces a Free account may own. Plus has no subscription-based
+ * count limit. Existing registrations are never removed when this is exceeded
+ * (for example after a downgrade); only new registrations are refused.
+ */
+export const FREE_PERSONAL_WORKSPACE_LIMIT = 1;
+
+export function personalWorkspaceLimit(tier: AccountTier): number | null {
+  return tier === "paid" ? null : FREE_PERSONAL_WORKSPACE_LIMIT;
+}
+
+/**
+ * SQL condition, for the WHERE of an INSERT ... SELECT, that `userParam` may
+ * register one more Workspace: the owner is on Plus now, or owns fewer than the
+ * Free allowance of non-removed registrations (offline ones included; Workspaces
+ * shared with the owner are not owned and never counted). Evaluating it inside
+ * the INSERT makes admission atomic with the write.
+ */
+export function personalWorkspaceAdmissionSql(userParam: string): string {
+  return `(${paidOwnerSql(userParam)}
+    OR (SELECT COUNT(*) FROM execution_workspaces ow
+         WHERE ow.owner_user_id = ${userParam} AND ow.status != 'revoked')
+       < ${FREE_PERSONAL_WORKSPACE_LIMIT})`;
+}
+
+export async function countOwnedWorkspaces(
+  env: Env,
+  userId: string,
+): Promise<number> {
+  const row = await env.SYNTILA_DB.prepare(
+    "SELECT COUNT(*) AS count FROM execution_workspaces WHERE owner_user_id = ?1 AND status != 'revoked'",
+  )
+    .bind(userId)
+    .first<{ count: number }>();
+  return row?.count ?? 0;
+}
+
+/** Rejected because a Free account already owns its personal Workspace. */
+export class PersonalWorkspaceLimitError extends HttpError {
+  readonly code = "personal_workspace_limit_reached";
+  constructor() {
+    super(
+      402,
+      "Free includes one personal Workspace. Upgrade to Syntila Plus to connect more machines.",
+    );
+  }
+}
+
 export interface AccountPlan {
   /** The tier the person is entitled to right now. */
   readonly tier: AccountTier;
@@ -25,6 +73,8 @@ export interface AccountPlan {
   readonly status: AccountPlanStatus | null;
   readonly currentPeriodEnd: string | null;
   readonly features: readonly PaidFeature[];
+  /** Owned registrations against the allowance; `limit` null means unlimited. */
+  readonly workspaces: { readonly owned: number; readonly limit: number | null };
 }
 
 interface AccountPlanRow {
@@ -83,6 +133,10 @@ export async function getAccountPlan(
     status: row?.status ?? null,
     currentPeriodEnd: row?.current_period_end ?? null,
     features: tier === "paid" ? PAID_FEATURES : [],
+    workspaces: {
+      owned: await countOwnedWorkspaces(env, userId),
+      limit: personalWorkspaceLimit(tier),
+    },
   };
 }
 

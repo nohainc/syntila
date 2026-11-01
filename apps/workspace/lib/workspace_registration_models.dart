@@ -230,6 +230,7 @@ enum WorkspaceRegistrationErrorKind {
   workspaceIdentityMismatch,
   releaseRequired,
   workspaceNameTaken,
+  personalWorkspaceLimitReached,
   registrationConflict,
   accessDenied,
   serverValidationFailure,
@@ -355,6 +356,16 @@ class WorkspaceRegistrationException implements Exception {
         action: 'Change workspace.name in workspace.nano '
             '(see: syntila config path), then run: '
             'syntila register',
+        statusCode: statusCode,
+        serverError: serverError,
+        serverCode: serverCode,
+      );
+    }
+    if (lowerCode == 'personal_workspace_limit_reached') {
+      return WorkspaceRegistrationException(
+        kind: WorkspaceRegistrationErrorKind.personalWorkspaceLimitReached,
+        message: 'Free includes one personal Workspace.',
+        action: 'Upgrade to Syntila Plus to connect more machines.',
         statusCode: statusCode,
         serverError: serverError,
         serverCode: serverCode,
