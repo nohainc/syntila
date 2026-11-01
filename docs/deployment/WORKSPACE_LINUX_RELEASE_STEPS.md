@@ -38,7 +38,7 @@ Publishing requires a green CI run on this exact commit.
 ## 4. Dry run (builds and tests, publishes nothing)
 
 ```bash
-gh workflow run release-linux.yml --ref main -f version=1.0.17
+gh workflow run release-linux.yml --ref main
 gh run watch
 ```
 
@@ -47,7 +47,7 @@ Fix failures and bump the version again if code changed.
 ## 5. Publish
 
 ```bash
-gh workflow run release-linux.yml --ref main -f version=1.0.17 -f publish=true
+gh workflow run release-linux.yml --ref main -f publish=true
 gh run watch
 ```
 

@@ -57,8 +57,9 @@ device qualification.
 
 After the Linux APT, macOS Workspace and Windows release workflows have each
 published the **same version from the same main commit**, run
-`promote-workspace-release.yml` on `main`. Supply the version and the three
-workflow run IDs. First leave `publish` false and inspect the retained
+`promote-workspace-release.yml` on that commit. Supply the three workflow run
+IDs; the workflow reads the version from `apps/workspace/pubspec.yaml`. First
+leave `publish` false and inspect the retained
 `workspace-github-release-<version>` artifact. Run it again with `publish=true`
 to create the `workspace-v<version>` GitHub Release. It includes Linux x64 and
 arm64 packages and archives, the macOS archive, the Windows x64 installer and

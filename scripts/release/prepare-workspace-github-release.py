@@ -51,12 +51,12 @@ def main():
     status = gh_json(f'repos/{repo}/compare/{sha}...main')['status']
     if status not in ('identical', 'ahead'):
         raise ValueError('Source commit is not on main')
-    # Each release workflow now requires the requested version to match pubspec.
-    # Verify it directly at the source commit as well, including older runs.
+    # The promotion workflow obtains the version from its checked-out pubspec.
+    # Verify it directly at the source commit of the published artifacts too.
     pubspec = command('gh', 'api', f'repos/{repo}/contents/apps/workspace/pubspec.yaml?ref={sha}', '-H', 'Accept: application/vnd.github.raw+json')
     match = re.search(r'^version:\s*([^\s+]+)', pubspec, re.MULTILINE)
     if not match or match.group(1) != version:
-        raise ValueError('Requested version does not match the release source commit')
+        raise ValueError('Source version does not match the published release commit')
     root = Path('workspace-promotion')
     if root.exists():
         shutil.rmtree(root)

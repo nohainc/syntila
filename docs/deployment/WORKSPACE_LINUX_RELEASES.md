@@ -126,9 +126,10 @@ noninteractively only in the main-restricted release environment.
 
 ## Publish and upgrade
 
-Dispatch `Workspace / Linux / Release` from `main` with an immutable version and
-`publish=true`. Publication requires successful push-triggered repository CI for
-that exact commit, followed by successful native package tests for both
+Dispatch `Workspace / Linux / Release` from `main` with `publish=true`. The
+workflow reads its immutable version from `apps/workspace/pubspec.yaml` on that
+commit. Publication requires successful push-triggered repository CI for that
+exact commit, followed by successful native package tests for both
 architectures. The signing job downloads those tested packages without rebuilding
 them, validates their exact version/architecture pair, adds them to the existing
 package-data branch, generates signed indexes, and pushes a fast-forward commit.
@@ -139,7 +140,7 @@ Concurrent releases are serialized. Missing keys or roots fail closed.
 For example:
 
 ```bash
-gh workflow run release-linux.yml --repo nohainc/syntila --ref main -f version=1.0.4 -f publish=true
+gh workflow run release-linux.yml --repo nohainc/syntila --ref main -f publish=true
 ```
 
 A non-publish run retains candidates as workflow artifacts. It uses configured

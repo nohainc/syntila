@@ -3,10 +3,6 @@ name: Workspace / Windows / Release
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: Immutable release version (must match apps/workspace/pubspec.yaml)
-        type: string
-        required: true
       publish:
         description: Publish the signed installer as a GitHub Release (main and passing CI required)
         type: boolean
@@ -31,16 +27,17 @@ jobs:
     permissions:
       contents: read
       actions: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Require matching pubspec version
-        env:
-          REQUESTED_VERSION: ${{ inputs.version }}
+      - name: Read Workspace version
+        id: version
         run: |
           set -euo pipefail
-          pubspec="$(awk '/^version:/ {print $2; exit}' apps/workspace/pubspec.yaml)"
-          [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "${pubspec%%+*}" == "$REQUESTED_VERSION" ]] || { echo "pubspec version $pubspec does not match $REQUESTED_VERSION" >&2; exit 1; }
+          version="$(awk '/^version:/ {print $2; exit}' apps/workspace/pubspec.yaml)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Require successful CI for this commit
         if: inputs.publish
         env:
@@ -54,7 +51,7 @@ jobs:
     environment: workspace-windows-release
     timeout-minutes: 75
     env:
-      SYNTILA_WORKSPACE_VERSION: ${{ inputs.version }}
+      SYNTILA_WORKSPACE_VERSION: ${{ needs.require-ci.outputs.version }}
       # Releases never fall back to the compile-only CI trust root.
       SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
       SYNTILA_WINDOWS_SIGNING: ${{ vars.SYNTILA_WINDOWS_SIGNING }}
@@ -208,7 +205,7 @@ jobs:
       - name: Verify checksums and create immutable release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.require-ci.outputs.version }}
           NOTES: ${{ inputs.release_notes }}
         run: |
           set -euo pipefail

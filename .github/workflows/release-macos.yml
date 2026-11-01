@@ -3,10 +3,6 @@ name: Workspace / macOS / Release
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: Immutable release version
-        type: string
-        required: true
       channel:
         description: Release channel
         type: choice
@@ -28,15 +24,16 @@ jobs:
     permissions:
       contents: read
       actions: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Require matching Workspace version
-        env:
-          REQUESTED_VERSION: ${{ inputs.version }}
+      - name: Read Workspace version
+        id: version
         run: |
-          pubspec="$(awk '/^version:/ {print $2; exit}' apps/workspace/pubspec.yaml)"
-          [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "${pubspec%%+*}" == "$REQUESTED_VERSION" ]] || { echo "Version does not match pubspec" >&2; exit 1; }
+          version="$(awk '/^version:/ {print $2; exit}' apps/workspace/pubspec.yaml)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Require successful CI for this commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,13 +85,13 @@ jobs:
 
       - name: Build, sign, and notarize Workspace
         env:
-          SYNTILA_WORKSPACE_VERSION: ${{ inputs.version }}
+          SYNTILA_WORKSPACE_VERSION: ${{ needs.require-ci.outputs.version }}
           SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
         run: bash scripts/build-workspace-macos.sh --prod
 
       - name: Verify notarized app archive
         env:
-          WORKSPACE_VERSION: ${{ inputs.version }}
+          WORKSPACE_VERSION: ${{ needs.require-ci.outputs.version }}
         run: |
           set -euo pipefail
           ARCHIVE="dist/syntila/macos/Syntila-Workspace-$WORKSPACE_VERSION-macos.zip"
@@ -115,13 +112,13 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: syntila-workspace-macos-release
-          path: dist/syntila/macos/Syntila-Workspace-${{ inputs.version }}-macos.zip
+          path: dist/syntila/macos/Syntila-Workspace-${{ needs.require-ci.outputs.version }}-macos.zip
           if-no-files-found: error
 
       - name: Sign, publish, download, and verify immutable metadata
         env:
-          WORKSPACE_ARCHIVE: dist/syntila/macos/Syntila-Workspace-${{ inputs.version }}-macos.zip
-          WORKSPACE_VERSION: ${{ inputs.version }}
+          WORKSPACE_ARCHIVE: dist/syntila/macos/Syntila-Workspace-${{ needs.require-ci.outputs.version }}-macos.zip
+          WORKSPACE_VERSION: ${{ needs.require-ci.outputs.version }}
           RELEASE_CHANNEL: ${{ inputs.channel }}
           RELEASE_NOTES: ${{ inputs.release_notes }}
           CLOUD_API_URL: ${{ vars.CLOUD_API_URL }}

@@ -79,6 +79,21 @@ describe("CI acceptance orchestration", () => {
     }
   });
 
+  it("derives every Workspace release version from the checked-out pubspec", () => {
+    for (const workflow of [
+      "release-linux.yml",
+      "release-macos.yml",
+      "release-windows.yml",
+      "promote-workspace-release.yml",
+    ]) {
+      const content = source(`.github/workflows/${workflow}`);
+      expect(content).toContain(
+        "awk '/^version:/ {print $2; exit}' apps/workspace/pubspec.yaml",
+      );
+      expect(content).not.toContain("inputs.version");
+    }
+  });
+
   it("gives both explicit Cloud fixture files exactly one test owner", () => {
     const scripts = JSON.parse(source("package.json")).scripts;
     for (const file of [

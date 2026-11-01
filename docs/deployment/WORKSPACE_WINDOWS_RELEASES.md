@@ -113,8 +113,9 @@ and [Basic pricing](https://learn.microsoft.com/en-us/azure/artifact-signing/how
 1. Set `version:` in `apps/workspace/pubspec.yaml` to the release version
    (`X.Y.Z`; prerelease versions are not packaged) and push to `main`.
 2. Wait for CI on that commit to succeed.
-3. Dry run: dispatch **Workspace / Windows / Release** from `main` with the version
-   and `publish` unchecked. Download the `syntila-workspace-windows-x64-release`
+3. Dry run: dispatch **Workspace / Windows / Release** from `main` with
+   `publish` unchecked. The workflow reads the version from `apps/workspace/pubspec.yaml`.
+   Download the `syntila-workspace-windows-x64-release`
    artifact and qualify it on a real Windows 10/11 x64 device (see below).
 4. Publish: dispatch again with `publish` checked. The workflow requires the
    CI gate, rebuilds and re-signs, and creates the GitHub Release. Existing tags
