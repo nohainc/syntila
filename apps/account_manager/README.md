@@ -15,9 +15,8 @@ pnpm accounts:build
 open 'apps/account_manager/build/Syntila Accounts.app'
 ```
 
-You can also run `./scripts/build-account-manager.sh` directly from any working
-directory. It checks macOS build prerequisites and delegates to the canonical
-`scripts/build-account-manager-macos.sh` packager. The output is
+You can also run `./scripts/build-account-manager-macos.sh` directly from any
+working directory. It checks macOS build prerequisites and creates the app. The output is
 `apps/account_manager/build/Syntila Accounts.app`; building does not launch the
 app or access either database.
 

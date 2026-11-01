@@ -3,6 +3,10 @@ name: Workspace / macOS / Release
 on:
   workflow_dispatch:
     inputs:
+      publish:
+        description: Publish signed metadata, a GitHub release, and the Homebrew Cask (main and passing CI required)
+        type: boolean
+        default: false
       channel:
         description: Release channel
         type: choice
@@ -34,7 +38,8 @@ jobs:
           version="$(awk '/^version:/ {print $2; exit}' apps/workspace/pubspec.yaml)"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Require successful CI for this commit
+      - name: Require successful CI for publishing
+        if: inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci/require-ci-success.sh
@@ -115,9 +120,34 @@ jobs:
           path: dist/syntila/macos/Syntila-Workspace-${{ needs.require-ci.outputs.version }}-macos.zip
           if-no-files-found: error
 
-      - name: Sign, publish, download, and verify immutable metadata
+      - name: Remove signing keychain
+        if: always()
+        run: security delete-keychain "${KEYCHAIN_PATH:-}" 2>/dev/null || true
+
+  publish:
+    name: Publish Workspace and Homebrew Cask
+    if: inputs.publish
+    needs: [require-ci, workspace]
+    runs-on: macos-15
+    environment: workspace-release
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Download verified Workspace archive
         env:
-          WORKSPACE_ARCHIVE: dist/syntila/macos/Syntila-Workspace-${{ needs.require-ci.outputs.version }}-macos.zip
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name syntila-workspace-macos-release --dir release
+      - name: Publish and verify immutable Workspace metadata
+        env:
+          WORKSPACE_ARCHIVE: release/Syntila-Workspace-${{ needs.require-ci.outputs.version }}-macos.zip
           WORKSPACE_VERSION: ${{ needs.require-ci.outputs.version }}
           RELEASE_CHANNEL: ${{ inputs.channel }}
           RELEASE_NOTES: ${{ inputs.release_notes }}
@@ -127,7 +157,55 @@ jobs:
           SYNTILA_WORKSPACE_SIGNING_KEY_ID: ${{ vars.SYNTILA_WORKSPACE_SIGNING_KEY_ID }}
           SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
         run: node scripts/release/publish-workspace-release.mjs
-
-      - name: Remove signing keychain
-        if: always()
-        run: security delete-keychain "${KEYCHAIN_PATH:-}" 2>/dev/null || true
+      - name: Create or verify the immutable GitHub release archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.require-ci.outputs.version }}
+        run: |
+          set -euo pipefail
+          archive="release/Syntila-Workspace-$VERSION-macos.zip"
+          tag="workspace-macos-v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            mkdir existing
+            gh release download "$tag" --pattern "$(basename "$archive")" --dir existing
+            test "$(shasum -a 256 "$archive" | awk '{print $1}')" = "$(shasum -a 256 "existing/$(basename "$archive")" | awk '{print $1}')"
+          else
+            gh release create "$tag" "$archive" --target "$GITHUB_SHA" \
+              --title "Syntila Workspace $VERSION for macOS" \
+              --notes "Signed and notarized Syntila Workspace $VERSION for macOS."
+          fi
+      - name: Check Homebrew tap access
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.SYNTILA_HOMEBREW_TAP_TOKEN }}
+        run: test -n "$HOMEBREW_TAP_TOKEN"
+      - name: Check out the Homebrew tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nohainc/homebrew-tap
+          ref: main
+          token: ${{ secrets.SYNTILA_HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+      - name: Write and validate the Homebrew Cask
+        env:
+          VERSION: ${{ needs.require-ci.outputs.version }}
+          OUTPUT: homebrew-tap/Casks/syntila-workspace.rb
+        run: |
+          set -euo pipefail
+          # hashFiles is unavailable to shell scripts; compute the archive digest here.
+          archive_sha256="$(shasum -a 256 "release/Syntila-Workspace-$VERSION-macos.zip" | awk '{print $1}')"
+          export SHA256="$archive_sha256"
+          node scripts/release/write-homebrew-workspace-cask.mjs
+          ruby -c homebrew-tap/Casks/syntila-workspace.rb
+      - name: Publish the Homebrew Cask
+        env:
+          VERSION: ${{ needs.require-ci.outputs.version }}
+        run: |
+          set -euo pipefail
+          git -C homebrew-tap config user.name "Syntila Releases"
+          git -C homebrew-tap config user.email "releases@syntila.app"
+          git -C homebrew-tap add Casks/syntila-workspace.rb
+          if git -C homebrew-tap diff --cached --quiet; then
+            exit 0
+          fi
+          git -C homebrew-tap commit -m "Publish Syntila Workspace $VERSION"
+          git -C homebrew-tap push origin main

@@ -25,12 +25,33 @@ Real acceptance evidence is produced by [the Profile acceptance suite](../../app
 
 Each Workspace release contains one platform-specific CLI Worker Engine build. Workspace verifies the bundled executable and checks its identity during Local Worker Protocol initialization. Updating or rolling back the Engine means updating or restoring the complete signed Workspace release.
 
-Use the manually dispatched [Workspace macOS release workflow](../../.github/workflows/release-macos.yml) to build, sign, notarize, publish, download, and verify a macOS release. The workflow uses Workspace signing credentials and public trust roots.
+Use the manually dispatched [Workspace macOS release workflow](../../.github/workflows/release-macos.yml) to build, sign, notarize, and verify a macOS release. The workflow reads the version from `apps/workspace/pubspec.yaml` and uses Workspace signing credentials and public trust roots.
 
 Dispatch it from `main`. Before accessing release credentials or building, the
 workflow requires a successful push-triggered repository CI run for the exact
-selected commit. A passing run for another revision or a pull request does not
-authorize the release.
+selected commit when **Publish** is selected. A passing run for another
+revision or a pull request does not authorize publication.
+
+Leave **Publish** unselected to make a dry run. It retains the signed and
+notarized archive as a workflow artifact without changing Cloud metadata,
+GitHub Releases, or Homebrew. Select **Publish** only after the dry run
+passes. Publication creates (or verifies on a retry) the immutable GitHub
+Release tag `workspace-macos-v<version>` and updates
+[`nohainc/homebrew-tap`](https://github.com/nohainc/homebrew-tap) with
+`Casks/syntila-workspace.rb`. Users can then install the production app with:
+
+```bash
+brew install --cask nohainc/tap/syntila-workspace
+```
+
+The existing `syntila-workspace-preview` Cask remains a separate,
+non-notarized preview channel. It is not changed by this workflow.
+
+Before the first production publication, add
+`SYNTILA_HOMEBREW_TAP_TOKEN` to the `workspace-release` GitHub environment.
+It must be a fine-grained personal access token with **Contents: Read and
+write** permission for `nohainc/homebrew-tap`. The repository `GITHUB_TOKEN`
+cannot push to a different repository.
 
 The Workspace app does not yet perform a complete automatic update transaction with active-work drain, staging, restart, health check, and rollback. Until that passes end-to-end acceptance, install a downloaded and verified notarized archive manually while Workspace is stopped.
 
@@ -67,7 +88,6 @@ archive, checksums, and source/run provenance. Workflow artifacts must still be
 available; the macOS workflow must have retained its archive using the current
 workflow. The promotion validates the published runs and reuses their bytes.
 
-APT publication is handled by `release-linux.yml`. GitHub Releases alone does
-not publish to Homebrew or WinGet: those require a Homebrew tap/cask and a
-WinGet package manifest submitted to the community repository, respectively.
-No Homebrew or WinGet publishing automation is configured here yet.
+APT publication is handled by `release-linux.yml`. The macOS release workflow
+updates the first-party Homebrew tap when Publish is selected. WinGet still
+requires a package manifest submitted to the community repository.

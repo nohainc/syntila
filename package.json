@@ -13,7 +13,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run --exclude apps/cloud/test/v8-schema-clean-room-acceptance.test.ts --exclude apps/cloud/test/work-v1-v8-regression.acceptance.test.ts packages/protocol/test packages/workspace-runtime-protocol/test packages/security/test packages/core/test packages/tool-profile/test apps/cloud/test scripts/verify-v8-architecture.test.mjs scripts/verify-branding.test.mjs scripts/verify-email-config.test.mjs scripts/production-workspace-gateway-smoke.test.mjs scripts/setup-development-auth.test.mjs scripts/provision-profile-starter-templates.test.mjs scripts/provision-profile-qualification-evidence.test.mjs scripts/resolve-build-release-trust.test.mjs scripts/align-workspace-grant-schema.test.mjs scripts/local-cloud-proxy.test.mjs scripts/prepare-chat-workflow-migration.test.mjs scripts/ci-orchestration.test.mjs scripts/space-thread-rename-review.test.mjs scripts/prepare-space-thread-cutover.test.mjs scripts/convert-workspace-thread-markers.test.mjs scripts/execution-acceptance.test.mjs scripts/execution-latency-acceptance.test.mjs scripts/latency-baseline.test.mjs",
-    "accounts:build": "bash scripts/build-account-manager.sh",
+    "accounts:build": "bash scripts/build-account-manager-macos.sh",
     "workspace:build": "bash scripts/build-workspace.sh",
     "workspace:build:macos": "bash scripts/build-workspace-macos.sh",
     "workspace:build:macos:local": "bash scripts/build-workspace-macos.sh --local",

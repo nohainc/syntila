@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
+# Build the native Syntila Accounts app from any working directory.
 set -euo pipefail
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "Syntila Accounts requires macOS to build." >&2
+  exit 1
+fi
+
+for build_tool in swift codesign plutil sips iconutil; do
+  if ! command -v "$build_tool" >/dev/null 2>&1; then
+    echo "Missing required build tool: $build_tool. Install Xcode command-line tools." >&2
+    exit 1
+  fi
+done
+
 swift build --package-path "$repo_root/apps/account_manager" -c release
 app="$repo_root/apps/account_manager/build/Syntila Accounts.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"

@@ -7,7 +7,7 @@ Syntila uses the workflows below. Everything that gates a merge, a deploy, or a 
 | `ci.yml` | Pull requests, pushes to `main`, manual runs | Static guard, then only the domains a change touches. `CI passed` is the required check. |
 | `deploy-cloud.yml` | Manual, from `main` only | Deploys the Cloud Worker to syntila.app. Requires passing CI for the commit. Environment `production`. |
 | `deploy-site.yml` | Site pull requests, site pushes to `main`, manual | Preview Worker per pull request, deleted when it closes. Production site on `main`. |
-| `release-macos.yml` | Manual, from `main` only | Signed and notarized Workspace release. Requires passing CI. |
+| `release-macos.yml` | Manual | Builds, signs, notarizes, and retains the macOS Workspace archive. With Publish selected, requires passing CI, publishes signed metadata and a GitHub Release archive, then updates the first-party Homebrew Cask. |
 | `release-linux.yml` | Manual | Build and optionally publish Linux Workspace packages to APT. |
 | `release-windows.yml` | Manual | Build and optionally publish the signed Windows Workspace release. |
 | `promote-workspace-release.yml` | Manual | Collect published platform artifacts for a combined GitHub Release. |
