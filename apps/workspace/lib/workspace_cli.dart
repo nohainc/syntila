@@ -170,6 +170,12 @@ class WorkspaceCli {
           _printConnectionSummary(call.$1, result);
           return 0;
         }
+        if (call.$1 == 'execution.getSlots') {
+          for (final key in ['active', 'queued', 'limit']) {
+            out.writeln('$key\t${result[key] ?? '-'}');
+          }
+          return 0;
+        }
         if (call.$1 == 'workers.getCatalogSnapshot') {
           _printCatalogSummary(result);
           return 0;

@@ -23,13 +23,13 @@ cd apps/workspace && dart pub get && dart analyze && cd ../..
 
 ## 2. Bump the version
 
-Edit `version:` in `apps/workspace/pubspec.yaml` (e.g. `1.0.15`). It must be a
+Edit `version:` in `apps/workspace/pubspec.yaml` (e.g. `1.0.16`). It must be a
 new, never-published version; APT rejects different bytes under an old one.
 
 ## 3. Commit and push to `main`
 
 ```bash
-git add -A && git commit -m "Release Workspace 1.0.15" && git push origin main
+git add -A && git commit -m "Release Workspace 1.0.16" && git push origin main
 gh run list --workflow ci.yml --branch main --limit 1   # wait until it succeeds
 ```
 
@@ -38,7 +38,7 @@ Publishing requires a green CI run on this exact commit.
 ## 4. Dry run (builds and tests, publishes nothing)
 
 ```bash
-gh workflow run release-linux.yml --ref main -f version=1.0.15
+gh workflow run release-linux.yml --ref main -f version=1.0.16
 gh run watch
 ```
 
@@ -47,7 +47,7 @@ Fix failures and bump the version again if code changed.
 ## 5. Publish
 
 ```bash
-gh workflow run release-linux.yml --ref main -f version=1.0.15 -f publish=true
+gh workflow run release-linux.yml --ref main -f version=1.0.16 -f publish=true
 gh run watch
 ```
 
@@ -59,7 +59,7 @@ a public install on amd64 and arm64. The release is done when `verify-public` pa
 
 ```bash
 sudo apt update && sudo apt install --only-upgrade syntila
-syntila --version      # expect 1.0.15; also check the output looks new
+syntila --version      # expect 1.0.16; also check the output looks new
 ```
 
 First-time install and key fingerprint check: see the operator guide.
@@ -67,14 +67,14 @@ First-time install and key fingerprint check: see the operator guide.
 ## 7. Tag (optional)
 
 ```bash
-git tag workspace-linux-v1.0.15 && git push origin workspace-linux-v1.0.15
+git tag workspace-linux-v1.0.16 && git push origin workspace-linux-v1.0.16
 ```
 
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
-| Version is new but CLI/GUI output is old | The `gui-manifest` pin was not updated (step 1). |
+| Version is new but CLI/GUI output is old | Check the executable path and restart the user service; see [output diagnostics](../operations/WORKSPACE_LINUX.md#diagnose-old-output-after-an-upgrade). Also check dependency pins (step 1). |
 | "version already exists" | Bump to a new version. |
 | Publish refused | CI is not green on that `main` commit. |
 | Deploy or `verify-public` failed | Re-run failed jobs; never rebuild bytes under a published version. |

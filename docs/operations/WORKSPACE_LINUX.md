@@ -137,6 +137,39 @@ configuring the host's unattended-upgrades origin and an appropriate maintenance
 window. Removing the package leaves user service registration and state in place;
 run `service uninstall` first if you want to remove its systemd unit too.
 
+`syntila slots` displays tab-separated `active`, `queued`, and `limit` rows.
+Use `syntila --json slots` for the complete snapshot, including Workers, busy
+sessions, and active assignment IDs. Release 1.0.15 prints JSON in both modes;
+the compact text formatter is included starting with 1.0.16.
+
+## Diagnose old output after an upgrade
+
+The CLI version identifies the executable you invoked. A service started before
+an upgrade can still be running the previous executable. Another `syntila` on
+`PATH` can also hide the APT executable. Check both before deleting caches:
+
+```bash
+type -a syntila
+readlink -f "$(command -v syntila)"
+dpkg-query -W syntila
+dpkg -V syntila
+/usr/lib/syntila/syntila --version
+/usr/lib/syntila/syntila --help
+systemctl --user list-units --all 'workspace-*.service'
+```
+
+APT installs `/usr/bin/syntila` as a symlink to `/usr/lib/syntila/syntila`.
+`dpkg -V syntila` should produce no output. If the explicit binary behaves
+differently from `syntila`, inspect aliases and earlier PATH entries, then run
+`hash -r`. After active assignments finish, stop and start the service with the
+commands in the update section above (and the same `--data-dir`, if customized).
+
+If output still differs, record the exact command, actual and expected output,
+and executable path. Help and command metadata come from the CLI/SDK; runtime
+responses also depend on the running service and local configuration. A new
+version number alone does not distinguish these causes. Do not use `reset` or
+delete Workspace state to troubleshoot a build mismatch.
+
 ## Build
 
 The headless install unit is the service, the `syntila` management CLI and

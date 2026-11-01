@@ -36,6 +36,10 @@ APT_ARGS=(-o "Dir::Etc::sourcelist=$TEMP/syntila.sources" -o 'Dir::Etc::sourcepa
 sudo apt-get "${APT_ARGS[@]}" update
 sudo apt-get "${APT_ARGS[@]}" install --no-install-recommends -y "syntila=$SYNTILA_WORKSPACE_VERSION"
 installed=1
+# Check CLI behavior as well as the version: a version define alone cannot
+# prove the newer command specification was included in the public package.
+/usr/lib/syntila/syntila --data-dir "$TEMP/help-state" --help > "$TEMP/help.txt"
+grep -F 'Create workspace.nano with defaults if it is missing' "$TEMP/help.txt"
 mkdir -p "$TEMP/home"
 HOME="$TEMP/home" SYNTILA_WORKSPACE_SECRET_STORE='file' syntila run --data-dir "$TEMP/state" > "$TEMP/service.log" 2>&1 &
 service_pid=$!
@@ -56,6 +60,18 @@ engine_path = '/usr/lib/syntila/assets/engines/syntila-agent'
 engine = subprocess.run([engine_path], capture_output=True, text=True, timeout=10)
 assert engine.returncode == 64 and 'Engine options are incomplete or invalid' in engine.stderr
 PY
+# Verify a runtime command's text rendering, not only help/version metadata.
+syntila --data-dir "$TEMP/state" slots > "$TEMP/slots.txt"
+syntila --data-dir "$TEMP/state" --json slots > "$TEMP/slots.json"
+python3 - "$TEMP" <<'PYTEST'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+slots = json.loads((root / 'slots.json').read_text())
+expected = ''.join(f"{key}\t{slots[key] if slots[key] is not None else '-'}\n"
+                   for key in ('active', 'queued', 'limit'))
+assert (root / 'slots.txt').read_text() == expected
+assert 'workers' in slots and 'activeAssignmentIds' in slots
+PYTEST
 kill "$service_pid"
 wait "$service_pid"
 service_pid=''

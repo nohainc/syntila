@@ -96,6 +96,37 @@ void main() {
     expect(await cli.run(['workers', 'test', 'codex']), 66);
   });
 
+  for (final json in [false, true]) {
+    test('slots renders ${json ? 'full JSON' : 'compact text'}', () async {
+      final snapshot = <String, Object?>{
+        'active': 2,
+        'queued': 1,
+        'limit': 5,
+        'workers': [
+          {'workerId': 'w-1'},
+        ],
+        'busySessions': 2,
+        'activeAssignmentIds': ['a-1', 'a-2'],
+      };
+      final out = StringBuffer();
+      final cli = WorkspaceCli(
+        out: out,
+        err: StringBuffer(),
+        request: (command, payload) async {
+          expect(command, 'execution.getSlots');
+          expect(payload, isEmpty);
+          return snapshot;
+        },
+      );
+      expect(await cli.run([if (json) '--json', 'slots']), 0);
+      if (json) {
+        expect(jsonDecode(out.toString()), snapshot);
+      } else {
+        expect(out.toString(), 'active\t2\nqueued\t1\nlimit\t5\n');
+      }
+    });
+  }
+
   test('maps commands to IPC requests', () async {
     expect((await run(['--json', 'status'])).$4, ['service.getStatus {}']);
     expect((await run(['workers', 'test', 'w1'])).$4, [
