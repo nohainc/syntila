@@ -41,7 +41,7 @@ it("spaces authorized Home read model with attention, running, recentWork, produ
       INSERT INTO spaces VALUES ('proj-revoked', 'Revoked Space', 'Revoked', '{"archived":false}', '2026-10-01T00:00:00Z', '2026-10-08T00:00:00Z');
 
       -- Pending Invitation for user
-      INSERT INTO space_invitations VALUES ('inv-1', 'proj-auth', 'vitalii@nohainc.com', 'editor', 'pending', 'user-inviter', '2026-11-01T00:00:00Z', '2026-10-08T00:00:00Z', '2026-10-08T00:00:00Z');
+      INSERT INTO space_invitations VALUES ('inv-1', 'proj-auth', 'vitalii@nohainc.com', 'editor', 'pending', 'user-inviter', '2099-01-01T00:00:00Z', '2026-10-08T00:00:00Z', '2026-10-08T00:00:00Z');
 
       -- Thread in authorized space
       INSERT INTO threads VALUES ('ws-auth', 'proj-auth', 'Core Architecture', 'active', '{}', 'user-123', '2026-10-02T00:00:00Z', '2026-10-08T05:00:00Z');
