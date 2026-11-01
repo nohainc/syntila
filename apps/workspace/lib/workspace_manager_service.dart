@@ -18,6 +18,7 @@ import 'local_worker_setup.dart';
 import 'workspace_registration.dart';
 import 'workspace_registration_models.dart';
 import 'workspace_service_state.dart';
+import 'workspace_settings.dart';
 import 'worker_readiness.dart';
 import 'worker_check_progress.dart';
 import 'worker_diagnostic_store.dart';
@@ -166,6 +167,10 @@ class WorkspaceManagerService {
         'serviceHealthy': lifecycle.serviceHealthy,
       },
       'cloud': {
+        'effectiveUrl': workspace.config.cloudUri == null
+            ? null
+            : WorkspaceConfigurationResolver.cloudHttpOrigin(
+                workspace.config.cloudUri!),
         'state': WorkspaceServiceState.cloudStateFor(
           configured: workspace.config.cloudUri != null &&
               workspace.config.workspaceId != null,
@@ -429,6 +434,19 @@ class WorkspaceManagerService {
     final workerSubsystem = workspace.workerSubsystem;
     switch (command) {
       case 'auth.register':
+        final desired =
+            WorkspaceSettingsStore(workspace.config.dataDirectory).readSync();
+        if (desired == null ||
+            WorkspaceConfigurationResolver.cloudHttpOrigin(
+                    Uri.parse(desired.cloudUrl)) !=
+                (workspace.config.cloudUri == null
+                    ? null
+                    : WorkspaceConfigurationResolver.cloudHttpOrigin(
+                        workspace.config.cloudUri!))) {
+          throw const WorkspaceManagerProtocolException(
+              'configuration_restart_required',
+              'Cloud configuration changed. Run: syntila service restart');
+        }
         return _headlessAuthForRegistration().register();
       case 'auth.start':
         _headlessAuthForRegistration();

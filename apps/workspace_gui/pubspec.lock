@@ -76,22 +76,18 @@ packages:
     source: sdk
     version: "0.0.0"
   gui_manifest:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      path: "sdk/dart"
-      ref: "576b7ab95fb12950c0911984cb44f36cf9d7bf8e"
-      resolved-ref: "576b7ab95fb12950c0911984cb44f36cf9d7bf8e"
-      url: "https://github.com/nohainc/gui-manifest.git"
-    source: git
+      path: "/Users/vitaliinoha/Documents/Syntila/zSNYCrL8/Syntila/gui-manifest/sdk/dart"
+      relative: false
+    source: path
     version: "0.1.0"
   gui_manifest_flutter:
     dependency: "direct main"
     description:
-      path: "gui/flutter"
-      ref: HEAD
-      resolved-ref: "576b7ab95fb12950c0911984cb44f36cf9d7bf8e"
-      url: "https://github.com/nohainc/gui-manifest.git"
-    source: git
+      path: "/Users/vitaliinoha/Documents/Syntila/zSNYCrL8/Syntila/gui-manifest/gui/flutter"
+      relative: false
+    source: path
     version: "0.1.0"
   leak_tracker:
     dependency: transitive

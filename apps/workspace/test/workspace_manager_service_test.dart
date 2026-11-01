@@ -111,7 +111,11 @@ void main() {
       );
       addTearDown(connection.close);
       final workspace = Workspace(
-        config: WorkspaceConfig(dataDirectory: root, connectOnStart: true),
+        config: WorkspaceConfig(
+          dataDirectory: root,
+          connectOnStart: true,
+          cloudUri: Uri.parse('wss://cloud.example.test/gateway?token=hidden'),
+        ),
         cloudConnection: connection,
       );
       final manager = WorkspaceManagerService(workspace);
@@ -121,6 +125,7 @@ void main() {
       expect(service['serviceHealthy'], isFalse);
       expect(cloud['desiredConnectionState'], 'connected');
       expect(cloud['connected'], isFalse);
+      expect(cloud['effectiveUrl'], 'https://cloud.example.test');
       expect(cloud['acceptingNewWork'], isFalse);
     },
   );

@@ -22,7 +22,9 @@ import 'package:gui_manifest/gui_manifest.dart'
         CliInvocation,
         CliNode,
         CliSpec,
+        GuiCommandKind,
         GuiFormat,
+        GuiIcons,
         GuiOutput,
         GuiParamKind,
         GuiParamType,
@@ -50,6 +52,8 @@ class WorkspaceCli {
     String? Function(String question)? readLine,
     DesktopAuthClient Function(String cloudUrl)? authClientFactory,
     SecureCredentialStore? credentialStore,
+    this.connectTimeout = const Duration(seconds: 20),
+    this.connectPollInterval = const Duration(milliseconds: 250),
   })  : _request = request,
         _hostManager = hostManager,
         _readCredentials = readCredentials,
@@ -65,6 +69,8 @@ class WorkspaceCli {
   final String? Function(String question)? _readLine;
   final DesktopAuthClient Function(String cloudUrl)? _authClientFactory;
   final SecureCredentialStore? _credentialStore;
+  final Duration connectTimeout;
+  final Duration connectPollInterval;
 
   late final CliSpec _spec = _buildWorkspaceSpec(this);
 
@@ -146,12 +152,33 @@ class WorkspaceCli {
         }
         call = (call.$1, {...call.$2, 'workerId': workerId});
       }
-      final result = await _send(dataDir, call.$1, call.$2);
+      var result = await _send(dataDir, call.$1, call.$2);
+      if (call.$1 == 'connection.connect') {
+        result = await _waitForConnection(dataDir, result);
+      }
       if (call.$1 == 'connection.connect') {
         await _updateConnectionSetting(dataDir, true);
       } else if (call.$1 == 'connection.disconnect') {
         await _updateConnectionSetting(dataDir, false);
       }
+      if (call.$1 == 'connection.connect' &&
+          (result is! Map ||
+              result['cloud'] is! Map ||
+              (result['cloud'] as Map)['connected'] != true ||
+              ((result['cloud'] as Map)['connectionStage'] != null &&
+                  (result['cloud'] as Map)['connectionStage'] != 'ready'))) {
+        if (json) {
+          _print(result, true);
+        } else {
+          final cloud = result is Map && result['cloud'] is Map
+              ? result['cloud'] as Map
+              : const {};
+          err.writeln(
+              'Cloud: not connected${cloud['lastError'] == null ? '' : ' (${cloud['lastError']})'}.');
+        }
+        return 1;
+      }
+      if (!json && _printServiceResult(call.$1, result, call.$2)) return 0;
       if (!json && result is Map<String, Object?>) {
         if (call.$1 == 'service.getVersion' && result['version'] is String) {
           out.writeln(result['version']);
@@ -160,6 +187,9 @@ class WorkspaceCli {
         if (call.$1 == 'service.getStatus') {
           _printStatusSummary(result);
           _writeConfigLine(_configState(dataDir));
+          if (_cloudConfigurationChanged(dataDir, result) == true) {
+            out.writeln('Cloud config:  Changed; run syntila service restart');
+          }
           return 0;
         }
         if (call.$1 == 'connection.connect' ||
@@ -174,20 +204,33 @@ class WorkspaceCli {
           _printCatalogSummary(result);
           return 0;
         }
-        if (call.$1 == 'workers.configureWorker') {
+        final workerAction = switch (call.$1) {
+          'workers.configureWorker' => 'added',
+          'workers.removeWorker' => 'removed',
+          'workers.enableWorker' => 'enabled',
+          'workers.disableWorker' => 'disabled',
+          _ => null,
+        };
+        if (workerAction != null) {
           final type = result['productWorkerTypeId'] ??
               result['workerTypeId'] ??
+              workerType ??
               call.$2['workerTypeId'] ??
               'worker';
-          final id = result['workerId'] ?? result['id'];
-          out.writeln(
-              id == null ? 'Worker added: $type' : 'Worker added: $type ($id)');
-          return 0;
-        }
-        if (call.$1 == 'workers.removeWorker') {
-          final id = result['workerId'] ?? 'worker';
-          final state = result['state'] ?? 'removed';
-          out.writeln('Worker $state: $id');
+          final deferred = call.$1 == 'workers.removeWorker' &&
+              result['state'] == 'removing';
+          out.writeln(deferred
+              ? '$type removing after current work finishes'
+              : '$type $workerAction');
+          if ((call.$1 == 'workers.configureWorker' ||
+                  call.$1 == 'workers.enableWorker') &&
+              result['readinessState'] != null &&
+              result['readinessState'] != 'ready') {
+            out.writeln('Readiness: ${result['readinessState']}');
+            if (result['readinessIssueCode'] != null) {
+              out.writeln('Issue: ${result['readinessIssueCode']}');
+            }
+          }
           return 0;
         }
       }
@@ -198,6 +241,7 @@ class WorkspaceCli {
           'config': {
             'state': config.state,
             if (config.error != null) 'error': config.error,
+            'cloudRestartRequired': _cloudConfigurationChanged(dataDir, result),
           },
         }, true);
         return 0;
@@ -216,6 +260,188 @@ class WorkspaceCli {
     } on FileSystemException {
       return await _withoutService(dataDir, call.$1, json) ??
           _serviceUnreachable(dataDir);
+    }
+  }
+
+  Future<Object?> _waitForConnection(String? dataDir, Object? initial) async {
+    var result = initial;
+    final watch = Stopwatch()..start();
+    while (result is Map && result['cloud'] is Map) {
+      final cloud = result['cloud'] as Map;
+      if (cloud['connected'] == true &&
+          (cloud['connectionStage'] == null ||
+              cloud['connectionStage'] == 'ready')) {
+        return result;
+      }
+      if (watch.elapsed >= connectTimeout) return result;
+      await Future<void>.delayed(connectPollInterval);
+      result = await _send(dataDir, 'service.getStatus', {});
+    }
+    return result;
+  }
+
+  bool _printServiceResult(
+      String command, Object? result, Map<String, Object?> payload) {
+    if (command == 'diagnostics.getLogs' &&
+        result is Map &&
+        result['text'] is String) {
+      final value = result['text'] as String;
+      out.write(value);
+      if (value.isNotEmpty && !value.endsWith('\n')) out.writeln();
+      return true;
+    }
+    if (command == 'workers.list' && result is List) {
+      _printWorkers(result);
+      return true;
+    }
+    if (command == 'workers.checkReadiness' && result is Map) {
+      final workers = (result['workers'] as List?) ?? const [];
+      final requested = payload['workerTypeId'];
+      _printWorkers(workers
+          .where((worker) =>
+              requested == null ||
+              (worker is Map && worker['productWorkerTypeId'] == requested))
+          .toList());
+      return true;
+    }
+    if (command == 'workers.testWorker' && result is Map) {
+      final type = result['productWorkerTypeId'] ?? 'Worker';
+      final passed = result['lastLiveTestPassed'];
+      out.writeln(
+          '$type: ${passed == true ? 'Passed' : passed == false ? 'Failed' : 'Test result unavailable'}');
+      if (result['providerToolVersion'] != null) {
+        out.writeln('Version: ${result['providerToolVersion']}');
+      }
+      if (passed == false && result['lastLiveTestIssueCode'] != null) {
+        out.writeln('Issue: ${result['lastLiveTestIssueCode']}');
+      }
+      if (passed == false && result['lastLiveTestDetails'] is String) {
+        out.writeln(result['lastLiveTestDetails']);
+      }
+      return true;
+    }
+    if (command == 'folders.list' &&
+        result is Map &&
+        result['folders'] is List) {
+      final folders = result['folders'] as List;
+      if (folders.isEmpty) out.writeln('No folders configured.');
+      for (final folder in folders.whereType<Map>()) {
+        _printFolder(folder);
+        out.writeln();
+      }
+      return true;
+    }
+    if (command == 'execution.listActiveAssignments' && result is Map) {
+      final ids = (result['activeAssignmentIds'] as List?) ?? const [];
+      if (ids.isEmpty) out.writeln('No active assignments.');
+      for (final id in ids) {
+        out.writeln(id);
+      }
+      return true;
+    }
+    if (command == 'execution.cancelAssignment' && result is Map) {
+      final id = payload['assignmentId'];
+      out.writeln(result['cancelled'] == true
+          ? 'Cancellation requested for $id.'
+          : 'Cancellation was not requested for $id; it may no longer be active.');
+      return true;
+    }
+    if (command == 'execution.getSlots' && result is Map) {
+      _printFields({
+        'active': result['active'] ?? 0,
+        'queued': result['queued'] ?? 0,
+        'limit': result['limit'] ?? 'unknown'
+      });
+      for (final worker
+          in ((result['workers'] as List?) ?? const []).whereType<Map>()) {
+        out.writeln();
+        _printFields({
+          'worker': worker['workerTypeId'] ?? 'unknown',
+          'active': worker['active'] ?? 0,
+          'queued': worker['queued'] ?? 0,
+          if (worker['limit'] != null) 'limit': worker['limit']
+        });
+      }
+      return true;
+    }
+    if (command == 'diagnostics.getMetrics' && result is Map) {
+      final bytes = result['residentMemoryBytes'];
+      _printFields({
+        'Process ID': result['processId'] ?? 'unknown',
+        'Resident memory': bytes is num
+            ? '${(bytes / 1048576).toStringAsFixed(1)} MiB'
+            : 'unknown',
+        'CPU percent': result['cpuPercent'] ?? 'unknown',
+        'Sampled at': result['sampledAt'] ?? 'unknown',
+        'Active assignments': result['activeAssignments'] ?? 0,
+        'Workers': result['workerCount'] ?? 0,
+        'Cloud connected': result['cloudConnected'] ?? false,
+        'Reconnects': result['reconnectCount'] ?? 0
+      });
+      return true;
+    }
+    return false;
+  }
+
+  void _printWorkers(List workers) {
+    if (workers.isEmpty) {
+      out.writeln('No workers configured.');
+      return;
+    }
+    for (final worker in workers.whereType<Map>()) {
+      final type = worker['productWorkerTypeId'] ?? 'Unknown worker';
+      final state = worker['activationState'] ?? 'unknown';
+      final readiness = worker['readinessState'] ?? 'unknown';
+      out.writeln('$type\t$state\t$readiness');
+      if (worker['readinessIssueCode'] != null) {
+        out.writeln('  Issue: ${worker['readinessIssueCode']}');
+      }
+    }
+  }
+
+  void _printFolder(Map folder) {
+    _printFields({
+      'Name': folder['displayName'] ?? '',
+      'Path': folder['path'] ?? '',
+      'Status': folder['status'] ?? 'unknown',
+      'ID': folder['id'] ?? ''
+    });
+  }
+
+  void _printFields(Object? value) {
+    final fields = <(String, String)>[];
+    void collect(Object? value, String name) {
+      if (value is Map && value.isNotEmpty) {
+        for (final entry in value.entries) {
+          collect(entry.value,
+              name.isEmpty ? '${entry.key}' : '$name.${entry.key}');
+        }
+      } else if (value is List && value.isNotEmpty) {
+        for (var i = 0; i < value.length; i++) {
+          collect(value[i], '$name[$i]');
+        }
+      } else {
+        fields.add((
+          name,
+          value == null
+              ? ''
+              : value is Map
+                  ? '{}'
+                  : value is List
+                      ? '[]'
+                      : '$value'
+        ));
+      }
+    }
+
+    collect(value, '');
+    const tabWidth = 8;
+    final maxLength = fields.fold<int>(
+        0, (max, field) => field.$1.length > max ? field.$1.length : max);
+    final target = (maxLength ~/ tabWidth + 1) * tabWidth;
+    for (final (name, text) in fields) {
+      final tabs = target ~/ tabWidth - name.length ~/ tabWidth;
+      out.writeln('$name${'\t' * tabs}$text');
     }
   }
 
@@ -379,6 +605,40 @@ class WorkspaceCli {
     }
   }
 
+  bool? _cloudConfigurationChanged(String? dataDir, Map snapshot) {
+    final cloud = snapshot['cloud'];
+    final active = cloud is Map ? cloud['effectiveUrl'] : null;
+    if (active is! String) return null;
+    final root = WorkspaceConfigurationResolver.resolveDataDirectory([
+      if (dataDir != null) ...['--data-dir', dataDir],
+    ]);
+    final desired = WorkspaceSettingsStore(root).readSync();
+    if (desired == null) return null;
+    return WorkspaceConfigurationResolver.cloudHttpOrigin(Uri.parse(active)) !=
+        WorkspaceConfigurationResolver.cloudHttpOrigin(
+            Uri.parse(desired.cloudUrl));
+  }
+
+  Future<void> _checkCloudConfiguration(String? dataDir) async {
+    final snapshot = await _send(dataDir, 'service.getStatus', {});
+    final changed =
+        snapshot is Map ? _cloudConfigurationChanged(dataDir, snapshot) : null;
+    if (changed == null) {
+      throw const WorkspaceManagerProtocolException(
+        'configuration_unverified',
+        'Cannot verify the running service Cloud configuration. '
+            'Update and restart the service, then retry.',
+      );
+    }
+    if (changed) {
+      throw const WorkspaceManagerProtocolException(
+        'configuration_restart_required',
+        'Cloud configuration changed since the service started. '
+            'Run: syntila service restart',
+      );
+    }
+  }
+
   String? _ask(String question) {
     final reader = _readLine;
     if (reader != null) return reader(question);
@@ -386,12 +646,12 @@ class WorkspaceCli {
     return stdin.readLineSync();
   }
 
-  ({String email, String password}) _promptCredentials() {
+  ({String email, String password}) _promptCredentials({String? email}) {
     final provided = _readCredentials;
     if (provided != null) return provided();
     final terminal = stdin.hasTerminal;
-    if (terminal) err.write('Cloud email: ');
-    final email = stdin.readLineSync() ?? '';
+    if (email == null && terminal) err.write('Cloud email: ');
+    final enteredEmail = email ?? stdin.readLineSync() ?? '';
     final oldEcho = terminal ? stdin.echoMode : true;
     String password;
     try {
@@ -406,7 +666,7 @@ class WorkspaceCli {
         err.writeln();
       }
     }
-    return (email: email, password: password);
+    return (email: enteredEmail, password: password);
   }
 
   SecureCredentialStore _credentials(Directory root) =>
@@ -434,9 +694,18 @@ class WorkspaceCli {
 
   /// Email/password sign-in. It only stores the management session on this
   /// computer; it does not register a Workspace (see [_register]).
-  Future<int> _login(String? dataDir, bool json) async {
+  Future<int> _login(String? dataDir, bool json,
+      {String? email, bool passwordStdin = false}) async {
     try {
-      final credentials = _promptCredentials();
+      if (await _serviceReachable(dataDir)) {
+        await _checkCloudConfiguration(dataDir);
+      }
+      final credentials = passwordStdin
+          ? (
+              email: email ?? '',
+              password: _readLine?.call('') ?? stdin.readLineSync() ?? ''
+            )
+          : _promptCredentials(email: email);
       if (credentials.email.trim().isEmpty || credentials.password.isEmpty) {
         err.writeln('Cloud email and password are required.');
         return 64;
@@ -474,6 +743,8 @@ class WorkspaceCli {
   /// service performs it itself (and reloads); otherwise the CLI does.
   Future<int> _register(String? dataDir, bool json) async {
     try {
+      final serviceRunning = await _serviceReachable(dataDir);
+      if (serviceRunning) await _checkCloudConfiguration(dataDir);
       // workspace.nano names the Workspace; registration reads the name from
       // the lifecycle preferences.
       final root = WorkspaceConfigurationResolver.resolveDataDirectory([
@@ -487,7 +758,6 @@ class WorkspaceCli {
         );
       }
       final Map<String, Object?> status;
-      final serviceRunning = await _serviceReachable(dataDir);
       if (serviceRunning) {
         // Registration needs Cloud disconnected (unregister leaves it so).
         await _send(dataDir, 'connection.disconnect', {});
@@ -538,7 +808,10 @@ class WorkspaceCli {
   /// First-run setup, in order: stop if a service is already running, make sure
   /// workspace.nano exists, ask for the Workspace name, sign in, register the
   /// Workspace, then offer to start the service.
-  Future<int> _setup(String? dataDir, bool json) async {
+  Future<int> _setup(String? dataDir, bool json,
+      {String? workspaceName,
+      String? email,
+      bool passwordStdin = false}) async {
     final root = WorkspaceConfigurationResolver.resolveDataDirectory([
       if (dataDir != null) ...['--data-dir', dataDir],
     ]);
@@ -567,8 +840,10 @@ class WorkspaceCli {
     // 3. Workspace name (an already registered Workspace keeps its name).
     final registration = WorkspaceRegistrationStore(root).readSync();
     if (registration == null) {
-      final answer =
-          _ask('Workspace name [${settings.workspaceName}]: ')?.trim();
+      final answer = (passwordStdin
+              ? workspaceName
+              : _ask('Workspace name [${settings.workspaceName}]: '))
+          ?.trim();
       final name =
           (answer == null || answer.isEmpty) ? settings.workspaceName : answer;
       if (name.length > 120) {
@@ -586,7 +861,8 @@ class WorkspaceCli {
     }
     // 4. Sign in (skipped when this installation is already registered).
     if (registration == null) {
-      var code = await _login(dataDir, json);
+      var code = await _login(dataDir, json,
+          email: email, passwordStdin: passwordStdin);
       if (code != 0) return code;
       code = await _register(dataDir, json);
       if (code != 0) return code;
@@ -594,8 +870,11 @@ class WorkspaceCli {
       out.writeln('Workspace is already registered: ${registration.name}');
     }
     // 5. Offer to start the service.
-    final reply =
-        _ask('Start the Workspace service now? [Y/n]: ')?.trim().toLowerCase();
+    final reply = passwordStdin
+        ? null
+        : _ask('Start the Workspace service now? [Y/n]: ')
+            ?.trim()
+            .toLowerCase();
     if (reply != null && reply.isNotEmpty && reply != 'y' && reply != 'yes') {
       out.writeln(
         'Setup complete. Start the service when you are ready: '
@@ -736,11 +1015,18 @@ class WorkspaceCli {
         'restart' => manager.restart(),
         _ => manager.getInfo(),
       };
-      if (action == 'stop' && info.process == ServiceRuntimeState.running) {
+      if (action == 'stop' && info.process != ServiceRuntimeState.stopped) {
         err.writeln(
-          'syntila: the service did not stop in time. '
+          'syntila: the service could not be confirmed stopped. '
           'Check again with: syntila service status',
         );
+        return 1;
+      }
+      if (action == 'uninstall' &&
+          info.registration != ServiceInstallationState.notRegistered &&
+          info.registration != ServiceInstallationState.serviceMissing) {
+        err.writeln(
+            'syntila: service removal could not be confirmed (${info.registration.name}).');
         return 1;
       }
       if (quiet) {
@@ -754,18 +1040,31 @@ class WorkspaceCli {
       } else {
         final registered =
             info.registration == ServiceInstallationState.registered;
+        final unregistered =
+            info.registration == ServiceInstallationState.notRegistered ||
+                info.registration == ServiceInstallationState.serviceMissing;
         final running = info.process == ServiceRuntimeState.running;
-        final registrationText = registered ? 'Installed' : 'Not installed';
-        final processText = running ? 'Running (pid: ${info.pid})' : 'Stopped';
-        out.writeln('Service:       $registrationText');
-        out.writeln('Status:        $processText');
-        if (action != 'status') {
-          if (!registered) {
-            out.writeln('Hint:          Run syntila service install');
-          } else if (!running) {
-            out.writeln('Hint:          Run syntila service start');
-          }
+        if (action == 'status') {
+          out.writeln('Service: ${info.registration.name}');
+          out.writeln(
+              'Status: ${info.process.name}${info.pid == null ? '' : ' (pid: ${info.pid})'}');
+          return 0;
         }
+        final message = switch (action) {
+          'install' => registered
+              ? 'Service installed.'
+              : 'Service installation state: ${info.registration.name}.',
+          'uninstall' => unregistered
+              ? 'Service uninstalled.'
+              : 'Service installation state: ${info.registration.name}.',
+          'start' || 'restart' => running
+              ? 'Service running.'
+              : 'Service is not running (${info.process.name}).',
+          'stop' => !running ? 'Service stopped.' : 'Service is still running.',
+          _ =>
+            'Service: ${info.registration.name}; process: ${info.process.name}.',
+        };
+        out.writeln(message);
       }
       return 0;
     } on Object catch (error) {
@@ -810,12 +1109,19 @@ class WorkspaceCli {
           out.write(store.file.readAsStringSync());
         }
       } else {
-        _print({
+        final result = {
           'valid': true,
           'path': store.file.absolute.path,
           'version': WorkspaceSettings.schemaVersion,
           'restartRequiredToApply': true,
-        }, json);
+        };
+        if (json) {
+          _print(result, true);
+        } else {
+          out.writeln('Config is valid.');
+          out.writeln('Path: ${result['path']}');
+          out.writeln('Restart the service to apply changes.');
+        }
       }
       return 0;
     } on Object catch (error) {
@@ -854,7 +1160,13 @@ class WorkspaceCli {
   Future<int> _foldersRemove(String? dataDir, bool json, String id) async {
     try {
       final result = await _send(dataDir, 'folders.remove', {'folderId': id});
-      _print(result, json);
+      if (json) {
+        _print(result, true);
+      } else {
+        out.writeln(result is Map && result['removed'] == true
+            ? 'Folder allowance $id removed. Files remain on disk.'
+            : 'Folder $id was not found.');
+      }
       return 0;
     } on WorkspaceManagerProtocolException catch (error) {
       err.writeln('syntila: ${error.message} (${error.code})');
@@ -873,7 +1185,16 @@ class WorkspaceCli {
         'path': path,
         if (name != null) 'displayName': name,
       });
-      _print(result, json);
+      if (json) {
+        _print(result, true);
+      } else {
+        if (result is Map) {
+          out.writeln('Folder added:');
+          _printFolder(result);
+        } else {
+          out.writeln('Folder added.');
+        }
+      }
       return 0;
     } on WorkspaceManagerProtocolException catch (error) {
       err.writeln('syntila: ${error.message} (${error.code})');
@@ -1036,12 +1357,14 @@ class WorkspaceCli {
       try {
         await _send(dataDir, 'connection.disconnect', {});
       } on WorkspaceManagerProtocolException catch (error) {
-        if (!quiet) {
-          err.writeln('syntila: ${error.message} (${error.code})');
+        err.writeln('syntila: ${error.message} (${error.code})');
+        return 1;
+      } on Object catch (error) {
+        if (quiet) {
+          err.writeln('Could not disconnect before unregistering: $error');
           return 1;
         }
-      } on Object {
-        // reset continues even when the service cannot be told.
+        rethrow;
       }
     }
 
@@ -1073,20 +1396,20 @@ class WorkspaceCli {
     String? failure;
     if (session != null) {
       failure = await _releaseFromCloud(registration, session);
-    } else if (!quiet) {
+    } else {
       failure = 'No Cloud sign-in is available.';
     }
-    if (failure != null && !quiet) {
+    if (failure != null) {
       err.writeln('Cloud did not release this Workspace: $failure');
-      err.writeln('Nothing was changed on this computer. '
-          'Fix the problem and run: syntila unregister');
+      err.writeln(
+          'Local registration was retained. Fix the problem and run: syntila unregister');
       return 1;
     }
 
     // 4. Only the registration is forgotten. Workers and folders are this
     //    computer's setup; the next register publishes them to Cloud again.
-    await registrationStore.clear();
     await store.delete(registration.workspaceRuntimeId);
+    await registrationStore.clear();
 
     if (quiet) {
       return 0;
@@ -1099,7 +1422,6 @@ class WorkspaceCli {
       }, true);
     } else {
       out.writeln('Workspace ${registration.name} unregistered.');
-      out.writeln('Hint: Run syntila register to register again.');
     }
     return 0;
   }
@@ -1108,21 +1430,38 @@ class WorkspaceCli {
     final root = WorkspaceConfigurationResolver.resolveDataDirectory([
       if (dataDir != null) ...['--data-dir', dataDir],
     ]);
-    // 1. Unregister from Cloud first if registered
-    await _unregister(dataDir, true, quiet: true);
-
-    // 2. Stop and uninstall host service
+    // Preserve the local registration if Cloud cannot release it.
     try {
-      await _service(dataDir, 'stop', true, quiet: true);
-    } catch (_) {}
-    try {
-      await _service(dataDir, 'uninstall', true, quiet: true);
-    } catch (_) {}
-
-    // 3. Clear credentials
+      if (await _unregister(dataDir, true, quiet: true) != 0) {
+        err.writeln('Reset incomplete: Workspace could not be unregistered.');
+        return 1;
+      }
+    } on Object catch (error) {
+      err.writeln(
+          'Reset incomplete: Workspace could not be unregistered: $error');
+      return 1;
+    }
+    final failures = <String>[];
+    for (final action in ['stop', 'uninstall']) {
+      try {
+        if (await _service(dataDir, action, true, quiet: true) != 0) {
+          failures.add('service $action');
+        }
+      } on Object catch (error) {
+        failures.add('service $action: $error');
+      }
+      if (failures.isNotEmpty) break;
+    }
+    // Do not remove runtime state while the service may still own it.
+    if (failures.isNotEmpty) {
+      err.writeln('Reset incomplete: ${failures.join('; ')}.');
+      return 1;
+    }
     try {
       await (await _authHelper(dataDir)).signOut();
-    } catch (_) {}
+    } on Object catch (error) {
+      failures.add('sign out: $error');
+    }
 
     // 4. Delete runtime files and local registration
     final filesToDelete = [
@@ -1138,7 +1477,9 @@ class WorkspaceCli {
       if (f.existsSync()) {
         try {
           f.deleteSync();
-        } catch (_) {}
+        } on Object catch (error) {
+          failures.add('$filename: $error');
+        }
       }
     }
     final dirsToDelete = ['runtime', 'logs', 'Credentials'];
@@ -1147,11 +1488,21 @@ class WorkspaceCli {
       if (d.existsSync()) {
         try {
           d.deleteSync(recursive: true);
-        } catch (_) {}
+        } on Object catch (error) {
+          failures.add('$dirname: $error');
+        }
       }
     }
 
-    // Success is silent; errors are reported on stderr.
+    if (failures.isNotEmpty) {
+      err.writeln('Reset incomplete: ${failures.join('; ')}.');
+      return 1;
+    }
+    if (json) {
+      _print({'reset': true}, true);
+    } else {
+      out.writeln('Workspace reset.');
+    }
     return 0;
   }
 
@@ -1162,7 +1513,13 @@ class WorkspaceCli {
     final service = snapshot['service'] as Map<String, Object?>? ?? const {};
     final assignments =
         snapshot['assignments'] as Map<String, Object?>? ?? const {};
-    final workers = (snapshot['workers'] as List?)?.length ?? 0;
+    final workers = (snapshot['workers'] as List?) ?? const [];
+    final workerTypes = workers
+        .whereType<Map>()
+        .map((w) => w['productWorkerTypeId'])
+        .whereType<String>()
+        .where((s) => s.isNotEmpty)
+        .toSet();
 
     final name = workspace['name'] ?? 'Workspace';
     final cloudState = cloud['state'] ?? 'offline';
@@ -1184,7 +1541,8 @@ class WorkspaceCli {
     out.writeln('Cloud:         ${connected ? 'Connected' : 'Disconnected'}'
         '${cloudUrl.isEmpty ? '' : ' ($cloudUrl)'}');
     out.writeln('Work Root:     $workRoot');
-    out.writeln('Workers:       $workers configured');
+    out.writeln(
+        'Workers:       ${workerTypes.isEmpty ? (workers.isEmpty ? 'None configured' : 'Types unavailable') : workerTypes.join(', ')}');
     out.writeln('Active Work:   $activeCount running');
   }
 
@@ -1196,17 +1554,16 @@ class WorkspaceCli {
 
     switch (command) {
       case 'connection.connect' || 'connection.reconnect':
-        out.writeln(connected
-            ? 'Cloud:         Connected ($state)'
-            : 'Cloud:         Connecting ($state)...');
+        out.writeln(
+            connected ? 'Connected' : 'Cloud:         Connecting ($state)...');
       case 'connection.disconnect':
-        out.writeln('Cloud:         Disconnected');
+        out.writeln('Disconnected');
       case 'connection.pause':
-        out.writeln('Cloud:         Paused (not accepting new work)');
+        out.writeln('Paused (not accepting new work)');
       case 'connection.resume':
         out.writeln(accepting
-            ? 'Cloud:         Resumed (accepting work)'
-            : 'Cloud:         Resumed');
+            ? 'Resumed (accepting work)'
+            : 'Not accepting work. Connect to Cloud first.');
       default:
         out.writeln('Cloud:         $state');
     }

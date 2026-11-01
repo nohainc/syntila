@@ -24,7 +24,7 @@ dependencies:
     git:
       url: https://github.com/nohainc/gui-manifest.git
       path: sdk/dart
-      ref: 3046458783c37a56d28462c32ef84d0c83b667e6
+      ref: c8f350d44b1c87d45ad01a8b4dbe952aa3130795
 
 dev_dependencies:
   lints: ^5.0.0

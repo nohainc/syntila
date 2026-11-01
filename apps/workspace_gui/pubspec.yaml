@@ -19,6 +19,7 @@ dependencies:
     git:
       url: https://github.com/nohainc/gui-manifest.git
       path: gui/flutter
+      ref: c8f350d44b1c87d45ad01a8b4dbe952aa3130795
 
 dev_dependencies:
   flutter_test:
@@ -27,6 +28,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/syntila_logo.png
+    - assets/branding/syntila_logo_dark.png
   fonts:
     - family: Inter
       fonts:

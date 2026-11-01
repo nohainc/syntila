@@ -339,6 +339,13 @@ start. The CLI and desktop app edit it atomically and use the host manager to
 restart the process. The service exposes active values read-only; it accepts no
 settings mutation or live reload command.
 
+The status snapshot exposes the service's effective Cloud URL. The CLI compares
+it with the current file before login and registration and reports when a
+restart is required; registration also checks at the service boundary. Status
+reports a pending Cloud URL change. This prevents issuing a management session
+against one Cloud and attempting to use it against another. Other settings
+remain restart-applied as before.
+
 ```text
 ..
     version 1

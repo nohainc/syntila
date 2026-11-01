@@ -46,7 +46,16 @@ The App Sandbox is disabled so the app can start the CLI.
 `status` uses a hand-built live dashboard (`lib/src/status_page.dart`,
 registered through `commandPages`): it polls `syntila status --json` every
 5 s and offers Connect/Disconnect, Pause/Resume and Start service. Every other
-command uses the generated page.
+command uses a generated page that runs the CLI without `--json` and shows its original output.
+The Workspace command metadata assigns sidebar section labels (`WORKSPACE`, `ACCOUNT & CLOUD`, and
+`DIAGNOSTICS`); the GUI renders labels supplied by the CLI dynamically.
+Sign in accepts an email and password in the form. The password is sent to the
+CLI through standard input, never as a process argument. The CLI retains
+interactive `syntila login`; scripts can pass `--email` and `--password-stdin`.
+Set up also accepts a Workspace name and Cloud credentials in its form; it
+starts the service after registration. Terminal setup retains its prompts.
+Connect waits up to 20 seconds for a ready connection. Metrics and Slots use
+Nano Markup by default; `--json` retains JSON output.
 
 ## Release build
 

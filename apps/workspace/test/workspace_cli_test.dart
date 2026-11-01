@@ -63,6 +63,38 @@ class _FakeAuthClient extends DesktopAuthClient {
 }
 
 void main() {
+  test('changed Cloud URL blocks login and registration before side effects',
+      () async {
+    final root = await Directory.systemTemp.createTemp('cli-cloud-config');
+    addTearDown(() => root.delete(recursive: true));
+    final settings = WorkspaceSettingsStore(root);
+    await settings.ensureDefaults();
+    final current = settings.readSync()!;
+    await settings.write(current.copyWith(cloudUrl: 'http://localhost:8787'));
+    final calls = <String>[];
+    final err = StringBuffer();
+    final out = StringBuffer();
+    final cli = WorkspaceCli(
+        out: out,
+        err: err,
+        request: (command, payload) async {
+          calls.add(command);
+          if (command == 'service.getStatus') {
+            return {
+              'cloud': {'effectiveUrl': 'https://old.example'}
+            };
+          }
+          return {'ok': true};
+        });
+    expect(await cli.run(['--data-dir', root.path, 'login']), 1);
+    expect(await cli.run(['--data-dir', root.path, 'register']), 1);
+    expect(err.toString(), contains('syntila service restart'));
+    expect(calls, isNot(contains('connection.disconnect')));
+    expect(calls, isNot(contains('auth.register')));
+    expect(await cli.run(['--data-dir', root.path, 'status']), 0);
+    expect(out.toString(), contains('Cloud config:  Changed'));
+  });
+
   Future<(int, String, String, List<String>)> run(List<String> args) async {
     final out = StringBuffer(), err = StringBuffer(), calls = <String>[];
     final code = await WorkspaceCli(
@@ -94,6 +126,184 @@ void main() {
     expect(await cli.run(['workers', 'disable', 'gemini']), 0);
     expect(calls, ['workers.list {}', 'workers.disableWorker {workerId: w-1}']);
     expect(await cli.run(['workers', 'test', 'codex']), 66);
+  });
+
+  test('action summaries preserve JSON and hide worker IDs', () async {
+    Future<String> output(List<String> args) async {
+      final out = StringBuffer();
+      final code = await WorkspaceCli(
+        out: out,
+        err: StringBuffer(),
+        request: (command, payload) async {
+          if (command == 'workers.list') {
+            return [
+              {'workerId': 'secret-id', 'productWorkerTypeId': 'gemini'}
+            ];
+          }
+          if (command.startsWith('workers.')) {
+            return {'workerId': 'secret-id', 'state': 'removed'};
+          }
+          return {'short': 1, 'longFieldName': 2};
+        },
+      ).run(args);
+      expect(code, 0);
+      return out.toString();
+    }
+
+    for (final entry in <(List<String>, String)>[
+      (['assignments'], 'No active assignments.'),
+      (
+        ['assignments', 'cancel', 'a1'],
+        'Cancellation was not requested for a1'
+      ),
+      (['folders', 'add', '/tmp/project'], 'Folder added:'),
+      (['folders', 'remove', 'f1'], 'Folder f1 was not found.'),
+    ]) {
+      expect(await output(entry.$1), contains(entry.$2));
+      expect(await output(['--json', ...entry.$1]),
+          contains('"longFieldName": 2'));
+    }
+    for (final action in ['add', 'remove', 'enable', 'disable']) {
+      final text = await output(['workers', action, 'gemini']);
+      expect(
+          text,
+          'gemini ${switch (action) {
+            'add' => 'added',
+            'remove' => 'removed',
+            'enable' => 'enabled',
+            _ => 'disabled'
+          }}\n');
+      expect(text, isNot(contains('secret-id')));
+    }
+  });
+
+  test('summaries show actionable results and preserve detailed JSON',
+      () async {
+    final responses = <String, Object?>{
+      'workers.list': [
+        {
+          'workerId': 'id-1',
+          'productWorkerTypeId': 'gemini',
+          'activationState': 'enabled',
+          'readinessState': 'needsAttention',
+          'readinessIssueCode': 'not_installed'
+        }
+      ],
+      'workers.checkReadiness': {
+        'workers': [
+          {
+            'productWorkerTypeId': 'gemini',
+            'activationState': 'enabled',
+            'readinessState': 'needsAttention',
+            'readinessIssueCode': 'not_installed'
+          }
+        ]
+      },
+      'workers.testWorker': {
+        'productWorkerTypeId': 'gemini',
+        'lastLiveTestPassed': false,
+        'lastLiveTestIssueCode': 'test_failed'
+      },
+      'workers.removeWorker': {'state': 'removing', 'workerId': 'id-1'},
+      'folders.list': {
+        'folders': [
+          {
+            'id': 'f1',
+            'displayName': 'Project',
+            'path': '/project',
+            'status': 'ready',
+            'checkedAt': 'internal'
+          }
+        ]
+      },
+      'folders.remove': {'removed': true},
+      'execution.listActiveAssignments': {
+        'activeAssignmentIds': ['a1', 'a2']
+      },
+      'execution.cancelAssignment': {'cancelled': true},
+      'execution.getSlots': {
+        'active': 1,
+        'queued': 2,
+        'limit': 3,
+        'workers': [
+          {
+            'workerId': 'id-1',
+            'workerTypeId': 'gemini',
+            'active': 1,
+            'queued': 2
+          }
+        ],
+        'activeAssignmentIds': ['a1']
+      },
+      'diagnostics.getMetrics': {
+        'processId': 9,
+        'residentMemoryBytes': 1048576,
+        'cpuPercent': 2.0,
+        'sampledAt': 'today',
+        'activeAssignments': 1,
+        'workerCount': 1,
+        'cloudConnected': true,
+        'reconnectCount': 0
+      },
+      'connection.resume': {
+        'cloud': {'connected': false, 'acceptingNewWork': false}
+      },
+    };
+    Future<String> runOutput(List<String> args) async {
+      final out = StringBuffer();
+      expect(
+          await WorkspaceCli(
+              out: out,
+              err: StringBuffer(),
+              request: (command, _) async => responses[command]).run(args),
+          0);
+      return out.toString();
+    }
+
+    final workers = await runOutput(['workers']);
+    expect(workers, contains('gemini\tenabled\tneedsAttention'));
+    expect(workers, contains('not_installed'));
+    expect(workers, isNot(contains('id-1')));
+    expect(await runOutput(['workers', 'check']), contains('not_installed'));
+    expect(await runOutput(['workers', 'test', 'gemini']),
+        contains('gemini: Failed'));
+    expect(await runOutput(['workers', 'remove', 'gemini']),
+        contains('removing after current work'));
+    final folders = await runOutput(['folders']);
+    expect(
+        folders,
+        allOf(contains('Project'), contains('/project'), contains('f1'),
+            isNot(contains('internal'))));
+    expect(await runOutput(['folders', 'remove', 'f1']),
+        contains('Files remain on disk'));
+    expect(await runOutput(['assignments']), 'a1\na2\n');
+    expect(await runOutput(['assignments', 'cancel', 'a1']),
+        contains('Cancellation requested for a1'));
+    final slots = await runOutput(['slots']);
+    expect(
+        slots,
+        allOf(contains('gemini'), isNot(contains('id-1')),
+            isNot(contains('a1'))));
+    expect(await runOutput(['metrics']), contains('1.0 MiB'));
+    expect(await runOutput(['resume']), contains('Connect to Cloud first'));
+    expect(jsonDecode(await runOutput(['--json', 'slots'])),
+        responses['execution.getSlots']);
+  });
+
+  test('reset retains runtime files when service stop fails', () async {
+    final root = await Directory.systemTemp.createTemp('reset-stop-failure');
+    addTearDown(() => root.delete(recursive: true));
+    final config = File('${root.path}/workspace.nano')
+      ..writeAsStringSync('preserve');
+    final err = StringBuffer();
+    final result = await WorkspaceCli(
+      out: StringBuffer(),
+      err: err,
+      hostManager: (_) => const UnsupportedWorkspaceServiceManager(),
+    ).run(['--data-dir', root.path, 'reset']);
+    expect(result, 1);
+    expect(err.toString(), contains('Reset incomplete'));
+    expect(config.readAsStringSync(), 'preserve');
   });
 
   test('maps commands to IPC requests', () async {
@@ -142,7 +352,7 @@ void main() {
         authClientFactory: (_) => _FakeAuthClient(),
         credentialStore: store,
         request: (command, payload) async =>
-            fail('login must not need the service: $command'),
+            throw const SocketException('down'),
       ).run(['--data-dir', root.path, 'login']);
       expect(code, 0);
       expect(out.toString().trim(), 'Signed in.');
@@ -174,6 +384,153 @@ void main() {
     expect(json['stage'], 'password_sign_in');
   });
 
+  test('login accepts an email and reads the password from stdin', () async {
+    final root = Directory.systemTemp.createTempSync('cli-login-stdin');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final out = StringBuffer(), err = StringBuffer();
+    final code = await WorkspaceCli(
+      out: out,
+      err: err,
+      readLine: (_) => 'private-password',
+      authClientFactory: (_) => _FakeAuthClient(),
+      credentialStore: _MemoryCredentials(),
+    ).run([
+      '--data-dir',
+      root.path,
+      'login',
+      '--email',
+      'user@example.test',
+      '--password-stdin'
+    ]);
+    expect(code, 0);
+    expect(out.toString(), contains('Signed in.'));
+    expect('$out$err', isNot(contains('private-password')));
+  });
+
+  test('connect waits for readiness and reports failure on timeout', () async {
+    final root = Directory.systemTemp.createTempSync('cli-connect');
+    addTearDown(() => root.deleteSync(recursive: true));
+    var polls = 0;
+    final out = StringBuffer(), err = StringBuffer();
+    final code = await WorkspaceCli(
+      out: out,
+      err: err,
+      connectPollInterval: Duration.zero,
+      request: (command, _) async {
+        if (command == 'service.getStatus') polls++;
+        return {
+          'cloud': {
+            'connected': polls >= 2,
+            'connectionStage': polls >= 2 ? 'ready' : 'synchronizing'
+          }
+        };
+      },
+    ).run(['--data-dir', root.path, 'connect']);
+    expect(code, 0);
+    expect(polls, 2);
+    expect(out.toString(), 'Connected\n');
+    final failureErr = StringBuffer();
+    final failure = await WorkspaceCli(
+      out: StringBuffer(),
+      err: failureErr,
+      connectTimeout: Duration.zero,
+      request: (_, __) async => {
+        'cloud': {
+          'connected': false,
+          'connectionStage': 'offline',
+          'lastError': 'unavailable'
+        }
+      },
+    ).run(['--data-dir', root.path, 'connect']);
+    expect(failure, 1);
+    expect(failureErr.toString(), contains('not connected'));
+  });
+
+  test('connection actions print concise success messages', () async {
+    for (final entry in {
+      'disconnect': 'Disconnected',
+      'pause': 'Paused (not accepting new work)',
+      'resume': 'Resumed (accepting work)',
+    }.entries) {
+      final out = StringBuffer();
+      final root = Directory.systemTemp.createTempSync('cli-action');
+      try {
+        expect(
+            await WorkspaceCli(
+                out: out,
+                err: StringBuffer(),
+                request: (_, __) async => {
+                      'cloud': {'acceptingNewWork': true}
+                    }).run(['--data-dir', root.path, entry.key]),
+            0);
+        expect(out.toString(), '${entry.value}\n');
+      } finally {
+        root.deleteSync(recursive: true);
+      }
+    }
+  });
+
+  test('metrics and slots use tab-separated fields while --json remains JSON',
+      () async {
+    for (final command in ['metrics', 'slots']) {
+      final out = StringBuffer();
+      final code = await WorkspaceCli(
+        out: out,
+        err: StringBuffer(),
+        request: (_, __) async => {'count': 3, 'ready': true},
+      ).run([command]);
+      expect(code, 0);
+      expect(out.toString(),
+          contains(command == 'metrics' ? 'Process ID' : 'active'));
+      final jsonOut = StringBuffer();
+      expect(
+          await WorkspaceCli(
+            out: jsonOut,
+            err: StringBuffer(),
+            request: (_, __) async => {'count': 3},
+          ).run(['--json', command]),
+          0);
+      expect(jsonDecode(jsonOut.toString()), {'count': 3});
+    }
+  });
+
+  test('slots summarizes capacity and worker use', () async {
+    final out = StringBuffer();
+    final result = {
+      'limit': null,
+      'workers': [
+        {'workerId': 'w1', 'active': 2},
+      ],
+      'activeAssignmentIds': <String>[]
+    };
+    expect(
+        await WorkspaceCli(
+            out: out,
+            err: StringBuffer(),
+            request: (_, __) async => result).run(['slots']),
+        0);
+    expect(out.toString(),
+        'active\t0\nqueued\t0\nlimit\tunknown\n\nworker\tunknown\nactive\t2\nqueued\t0\n');
+  });
+
+  test('logs preserve lines and retain JSON output', () async {
+    Future<Object?> request(String _, Map<String, Object?> __) async =>
+        {'text': 'first entry\nsecond entry\n'};
+    final out = StringBuffer();
+    expect(
+        await WorkspaceCli(out: out, err: StringBuffer(), request: request)
+            .run(['logs']),
+        0);
+    expect(out.toString(), 'first entry\nsecond entry\n');
+    final jsonOut = StringBuffer();
+    expect(
+        await WorkspaceCli(out: jsonOut, err: StringBuffer(), request: request)
+            .run(['--json', 'logs']),
+        0);
+    expect(jsonDecode(jsonOut.toString()),
+        {'text': 'first entry\nsecond entry\n'});
+  });
+
   test('register without a stored sign-in asks to run login', () async {
     final root = Directory.systemTemp.createTempSync('cli-register');
     addTearDown(() => root.deleteSync(recursive: true));
@@ -197,8 +554,9 @@ void main() {
       final executable = File('${root.path}/workspace')
         ..writeAsStringSync('fixture');
       final systemctl = <List<String>>[];
+      final output = StringBuffer();
       final code = await WorkspaceCli(
-        out: StringBuffer(),
+        out: output,
         err: StringBuffer(),
         request: (_, __) async => fail('install must not call IPC'),
         hostManager: (state) => LinuxWorkspaceServiceManager(
@@ -217,6 +575,7 @@ void main() {
         ),
       ).run(['--data-dir', '${root.path}/state', 'service', 'install']);
       expect(code, 0);
+      expect(output.toString(), isNot(contains('Hint:')));
       expect(systemctl[0], ['daemon-reload']);
       expect(systemctl[1].first, 'enable');
       expect(Directory('${root.path}/units').listSync(), hasLength(1));
@@ -291,6 +650,39 @@ void main() {
             .customWorkspaceName,
         'Build Server',
       );
+    });
+
+    test('setup with stdin credentials does not prompt for the workspace name',
+        () async {
+      final questions = <String>[];
+      final err = StringBuffer();
+      final code = await WorkspaceCli(
+        out: StringBuffer(),
+        err: err,
+        readLine: (question) {
+          questions.add(question);
+          return '';
+        },
+        hostManager: hostManager(active: false),
+        request: (_, __) async => throw const SocketException('down'),
+      ).run([
+        '--data-dir',
+        '${root.path}/state',
+        'setup',
+        '--name',
+        'Build Server',
+        '--email',
+        'test@example.com',
+        '--password-stdin'
+      ]);
+      expect(code, 64);
+      expect(questions, ['']);
+      expect(err.toString(), contains('Cloud email and password are required'));
+      expect(
+          WorkspaceSettingsStore(Directory('${root.path}/state'))
+              .readSync()!
+              .workspaceName,
+          'Build Server');
     });
   });
 
@@ -559,7 +951,8 @@ void main() {
       expect(shown.$2, isNot(contains('parallel_slots')));
       final validated = await config(['validate']);
       expect(validated.$1, 0);
-      expect(validated.$2, contains('restartRequiredToApply'));
+      expect(validated.$2, contains('Restart the service to apply changes'));
+      expect(validated.$2, isNot(contains('{')));
       final path = await config(['path']);
       expect(path.$2.trim(), endsWith('workspace.nano'));
     });
@@ -583,7 +976,11 @@ void main() {
         final code = await WorkspaceCli(
           out: StringBuffer(),
           err: StringBuffer(),
-          request: (c, p) async => {'ok': true},
+          request: (c, p) async => c == 'connection.connect'
+              ? {
+                  'cloud': {'connected': true, 'connectionStage': 'ready'}
+                }
+              : {'ok': true},
         ).run(['--data-dir', root.path, command]);
         expect(code, 0);
       }
@@ -662,6 +1059,20 @@ void main() {
       expect(regStore.readSync(), isNotNull);
       expect(workersFile.existsSync(), isTrue);
 
+      // Reset must retain local registration when Cloud refuses release.
+      final resetFailure = StringBuffer();
+      final failedReset = await WorkspaceCli(
+        out: StringBuffer(),
+        err: resetFailure,
+        authClientFactory: (_) => client,
+        credentialStore: store,
+        request: (c, p) async => {'ok': true},
+      ).run(['--data-dir', root.path, 'reset']);
+      expect(failedReset, 1);
+      expect(resetFailure.toString(), contains('Reset incomplete'));
+      expect(regStore.readSync(), isNotNull);
+      expect(workersFile.existsSync(), isTrue);
+
       // Cloud accepts: local state is cleared.
       client.releaseError = null;
       final outUnreg = StringBuffer(), errUnreg = StringBuffer();
@@ -674,6 +1085,7 @@ void main() {
       ).run(['--data-dir', root.path, 'unregister']);
       expect(code, 0);
       expect(outUnreg.toString(), contains('unregistered'));
+      expect(outUnreg.toString(), isNot(contains('Hint:')));
       expect(outUnreg.toString(), isNot(contains('ws-1')));
       expect(regStore.readSync(), isNull);
       // Local setup is kept for the next registration.
@@ -686,7 +1098,7 @@ void main() {
         request: (c, p) async => {'ok': true},
       ).run(['--data-dir', root.path, 'reset']);
       expect(resetCode, 0);
-      expect(outReset.toString(), isEmpty);
+      expect(outReset.toString(), 'Workspace reset.\n');
       expect(errReset.toString(), isEmpty);
     });
   });

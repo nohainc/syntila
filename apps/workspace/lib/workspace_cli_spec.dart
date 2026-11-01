@@ -34,6 +34,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
     CliHandler handler, {
     List<GuiParameter> parameters = const [],
     GuiView view = GuiView.keyValue,
+    GuiFormat format = GuiFormat.text,
     bool destructive = false,
     bool interactive = false,
     bool longRunning = false,
@@ -41,6 +42,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
     bool inGroup = false,
     String? icon,
     bool navigation = false,
+    bool info = false,
   }) =>
       CliCommand(
         name: name,
@@ -48,12 +50,27 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         description: description,
         handler: handler,
         parameters: parameters,
-        output: GuiOutput(format: GuiFormat.json, view: view),
+        output: GuiOutput(format: format, view: GuiView.raw),
         destructive: destructive,
         interactive: interactive,
         longRunning: longRunning,
         icon: icon,
         navigation: navigation,
+        kind: info ? GuiCommandKind.info : GuiCommandKind.action,
+        section: switch (name) {
+          'setup' || 'work-dir' || 'reset' => 'WORKSPACE',
+          'login' ||
+          'logout' ||
+          'register' ||
+          'unregister' ||
+          'connect' ||
+          'disconnect' ||
+          'pause' ||
+          'resume' =>
+            'ACCOUNT & CLOUD',
+          'metrics' || 'version' || 'logs' || 'slots' => 'DIAGNOSTICS',
+          _ => null,
+        },
         // Group members follow their group's visibility.
         visible: firstRun || inGroup ? null : showMore,
       );
@@ -65,6 +82,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
     List<CliNode> children, {
     String? defaultCommand,
     String? navigationCommand,
+    String? section,
     String? icon,
     bool navigation = false,
     bool firstRun = false,
@@ -76,6 +94,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         children: children,
         defaultCommand: defaultCommand,
         navigationCommand: navigationCommand,
+        section: section,
         icon: icon,
         navigation: navigation,
         visible: firstRun ? null : showMore,
@@ -100,6 +119,8 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
     String title,
     String description,
     String ipc, {
+    String? icon,
+    bool info = false,
     bool destructive = false,
     bool longRunning = false,
   }) =>
@@ -113,6 +134,8 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
           byWorkerType: true,
         ),
         parameters: const [workerType],
+        icon: icon,
+        info: info,
         destructive: destructive,
         longRunning: longRunning,
         inGroup: true,
@@ -122,6 +145,8 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
     String action,
     String title,
     String description, {
+    String? icon,
+    bool info = false,
     bool destructive = false,
     bool longRunning = true,
   }) =>
@@ -130,17 +155,27 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         title,
         description,
         (run) => cli._service(dataDir(run), action, json(run)),
+        icon: icon,
+        info: info,
         destructive: destructive,
         longRunning: longRunning,
         inGroup: true,
       );
 
-  CliCommand configAction(String action, String title, String description) =>
+  CliCommand configAction(
+    String action,
+    String title,
+    String description, {
+    required String icon,
+    bool info = false,
+  }) =>
       command(
         action,
         title,
         description,
         (run) => cli._config(dataDir(run), action, json(run)),
+        icon: icon,
+        info: info,
         firstRun: true,
         inGroup: true,
       );
@@ -168,38 +203,79 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
     ],
     nodes: [
       command(
+        icon: GuiIcons.pulse,
+        info: true,
         'status',
         'Status',
         'Service summary',
         service('service.getStatus'),
         firstRun: true,
-        icon: 'pulse',
         navigation: true,
       ),
       command(
-        'version',
-        'Version',
-        'Show the version',
-        service('service.getVersion'),
-        firstRun: true,
-      ),
-      command(
+        icon: GuiIcons.rocket,
         'setup',
         'Set up',
         'Start service, sign in and connect (headless)',
-        (run) => cli._setup(dataDir(run), json(run)),
+        (run) => cli._setup(dataDir(run), json(run),
+            workspaceName: run.option('name'),
+            email: run.option('email'),
+            passwordStdin: run.flag('password-stdin')),
+        parameters: const [
+          GuiParameter(
+              name: 'name',
+              kind: GuiParamKind.option,
+              type: GuiParamType.string,
+              label: 'Workspace name'),
+          GuiParameter(
+              name: 'email',
+              kind: GuiParamKind.option,
+              type: GuiParamType.string,
+              label: 'Email'),
+          GuiParameter(
+              name: 'password-input',
+              kind: GuiParamKind.option,
+              type: GuiParamType.secret,
+              label: 'Password',
+              required: true,
+              stdinFlag: 'password-stdin'),
+          GuiParameter(
+              name: 'password-stdin',
+              kind: GuiParamKind.flag,
+              type: GuiParamType.boolean,
+              hidden: true),
+        ],
         view: GuiView.raw,
-        interactive: true,
         longRunning: true,
         firstRun: true,
       ),
       command(
+        icon: GuiIcons.login,
         'login',
         'Sign in',
         'Sign in with Cloud email and password (does not register)',
-        (run) => cli._login(dataDir(run), json(run)),
+        (run) => cli._login(dataDir(run), json(run),
+            email: run.option('email'),
+            passwordStdin: run.flag('password-stdin')),
         // Older scripts pass `login --password`; the password is always asked.
         parameters: const [
+          GuiParameter(
+              name: 'email',
+              kind: GuiParamKind.option,
+              type: GuiParamType.string,
+              label: 'Email'),
+          GuiParameter(
+              name: 'password-input',
+              kind: GuiParamKind.option,
+              type: GuiParamType.secret,
+              label: 'Password',
+              required: true,
+              stdinFlag: 'password-stdin'),
+          GuiParameter(
+              name: 'password-stdin',
+              kind: GuiParamKind.flag,
+              type: GuiParamType.boolean,
+              hidden: true),
           GuiParameter(
             name: 'password',
             kind: GuiParamKind.flag,
@@ -208,9 +284,9 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
           ),
         ],
         view: GuiView.raw,
-        interactive: true,
       ),
       command(
+        icon: GuiIcons.logout,
         'logout',
         'Sign out',
         'Delete the stored sign-in session on this computer',
@@ -219,12 +295,14 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         destructive: true,
       ),
       command(
+        icon: GuiIcons.id,
         'register',
         'Register',
         'Register this Workspace with Cloud (after login)',
         (run) => cli._register(dataDir(run), json(run)),
       ),
       command(
+        icon: GuiIcons.unlink,
         'unregister',
         'Unregister',
         'Unregister workspace from Cloud and clear local identity',
@@ -232,24 +310,29 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         destructive: true,
       ),
       command(
+        icon: GuiIcons.cloud,
         'connect',
         'Connect',
         'Connect to Cloud',
         service('connection.connect'),
+        longRunning: true,
       ),
       command(
+        icon: GuiIcons.cloudOff,
         'disconnect',
         'Disconnect',
         'Disconnect from Cloud',
         service('connection.disconnect'),
       ),
       command(
+        icon: GuiIcons.pause,
         'pause',
         'Pause',
         'Stop accepting new work',
         service('connection.pause'),
       ),
       command(
+        icon: GuiIcons.play,
         'resume',
         'Resume',
         'Resume accepting new work',
@@ -260,10 +343,12 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         'Workers',
         'Manage the Workers that run assignments',
         defaultCommand: 'list',
-        icon: 'cpu',
+        icon: GuiIcons.cpu,
         navigation: true,
         [
           command(
+            icon: GuiIcons.list,
+            info: true,
             'list',
             'Workers',
             'List configured Workers',
@@ -272,6 +357,8 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           command(
+            icon: GuiIcons.package,
+            info: true,
             'catalog',
             'Worker catalog',
             'List available catalog Workers',
@@ -280,6 +367,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           command(
+            icon: GuiIcons.plus,
             'add',
             'Add Worker',
             'Add a Worker from the catalog (e.g. gemini)',
@@ -291,6 +379,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           workerAction(
+            icon: GuiIcons.trash,
             'remove',
             'Remove Worker',
             'Remove a configured Worker',
@@ -298,6 +387,8 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             destructive: true,
           ),
           command(
+            icon: GuiIcons.check,
+            info: true,
             'check',
             'Check Workers',
             'Check provider CLI readiness',
@@ -314,6 +405,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           workerAction(
+            icon: GuiIcons.test,
             'test',
             'Test Worker',
             'Run a Worker test',
@@ -321,12 +413,14 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             longRunning: true,
           ),
           workerAction(
+            icon: GuiIcons.power,
             'enable',
             'Enable Worker',
             'Enable a Worker',
             'workers.enableWorker',
           ),
           workerAction(
+            icon: GuiIcons.stop,
             'disable',
             'Disable Worker',
             'Disable a Worker',
@@ -339,10 +433,12 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         'Folders',
         'Manage the folders Spaces may use',
         defaultCommand: 'list',
-        icon: 'folder',
+        icon: GuiIcons.folder,
         navigation: true,
         [
           command(
+            icon: GuiIcons.list,
+            info: true,
             'list',
             'Folders',
             'List allowed Space folders',
@@ -351,6 +447,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           command(
+            icon: GuiIcons.plus,
             'add',
             'Add folder',
             'Add an allowed Space folder',
@@ -378,6 +475,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           command(
+            icon: GuiIcons.trash,
             'remove',
             'Remove folder',
             'Remove an allowed Space folder',
@@ -401,6 +499,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         ],
       ),
       command(
+        icon: GuiIcons.home,
         'work-dir',
         'Work Root',
         'View or update the Work Root directory',
@@ -421,20 +520,25 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         ],
       ),
       command(
+        icon: GuiIcons.gauge,
+        info: true,
         'slots',
         'Slots',
         'Parallel execution slots',
         service('execution.getSlots'),
+        format: GuiFormat.nano,
       ),
       group(
         'assignments',
         'Assignments',
         'Inspect and cancel running assignments',
         defaultCommand: 'list',
-        icon: 'tasks',
+        icon: GuiIcons.tasks,
         navigation: true,
         [
           command(
+            icon: GuiIcons.tasks,
+            info: true,
             'list',
             'Assignments',
             'Active assignment ids',
@@ -443,6 +547,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           command(
+            icon: GuiIcons.stop,
             'cancel',
             'Cancel assignment',
             'Cancel an active assignment',
@@ -465,78 +570,121 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         ],
       ),
       command(
+        icon: GuiIcons.log,
+        info: true,
         'logs',
         'Logs',
         'Recent service logs',
         service('diagnostics.getLogs'),
         view: GuiView.log,
-        icon: 'log',
-        navigation: true,
       ),
       command(
+        icon: GuiIcons.chart,
+        info: true,
         'metrics',
         'Metrics',
         'Service metrics',
         service('diagnostics.getMetrics'),
+        format: GuiFormat.nano,
       ),
       group(
         'service',
         'Service',
         'Manage the host background service (macOS/Linux/Windows)',
         navigationCommand: 'status',
-        icon: 'server',
+        icon: GuiIcons.server,
         navigation: true,
         [
           serviceAction(
+            icon: GuiIcons.info,
+            info: true,
             'status',
             'Service status',
             'Show whether the service is installed and running',
             longRunning: false,
           ),
           serviceAction(
+            icon: GuiIcons.download,
             'install',
             'Install service',
             'Install the host background service',
           ),
           serviceAction(
+            icon: GuiIcons.trash,
             'uninstall',
             'Uninstall service',
             'Remove the host background service',
             destructive: true,
             longRunning: false,
           ),
-          serviceAction('start', 'Start service', 'Start the service'),
-          serviceAction('stop', 'Stop service', 'Stop the service'),
-          serviceAction('restart', 'Restart service', 'Restart the service'),
+          serviceAction(
+              icon: GuiIcons.play,
+              'start',
+              'Start service',
+              'Start the service'),
+          serviceAction(
+              icon: GuiIcons.stop, 'stop', 'Stop service', 'Stop the service'),
+          serviceAction(
+              icon: GuiIcons.refresh,
+              'restart',
+              'Restart service',
+              'Restart the service'),
         ],
       ),
       group(
         'config',
         'Config',
         'Manage the restart-applied workspace.nano file',
+        section: 'WORKSPACE',
+        defaultCommand: 'show',
+        navigation: true,
+        icon: GuiIcons.sliders,
         firstRun: true,
         [
           configAction(
+            icon: GuiIcons.plus,
             'init',
             'Create config',
             'Create workspace.nano with defaults if it is missing',
           ),
-          configAction('show', 'Show config', 'Show workspace.nano'),
           configAction(
+              icon: GuiIcons.eye,
+              info: true,
+              'show',
+              'Show config',
+              'Show workspace.nano'),
+          configAction(
+            icon: GuiIcons.check,
+            info: true,
             'validate',
             'Validate config',
             'Check that workspace.nano is valid',
           ),
-          configAction('path', 'Config path', 'Print the workspace.nano path'),
+          configAction(
+              icon: GuiIcons.file,
+              info: true,
+              'path',
+              'Config path',
+              'Print the workspace.nano path'),
         ],
       ),
       command(
+        icon: GuiIcons.wrench,
         'reset',
         'Reset',
         'Stop service, unregister and erase local runtime state',
         (run) => cli._reset(dataDir(run), json(run)),
         destructive: true,
         longRunning: true,
+        firstRun: true,
+      ),
+      command(
+        icon: GuiIcons.tag,
+        info: true,
+        'version',
+        'Version',
+        'Show the version',
+        service('service.getVersion'),
         firstRun: true,
       ),
     ],
