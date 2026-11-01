@@ -19,6 +19,7 @@ dependencies:
     git:
       url: https://github.com/nohainc/gui-manifest.git
       path: gui/flutter
+      ref: 242b71c88cc11c90a0fad0886467ae2db4a366ef
 
 dev_dependencies:
   flutter_test:

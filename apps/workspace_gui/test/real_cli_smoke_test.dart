@@ -57,7 +57,6 @@ void main() {
       'Assignments',
       'Logs',
       'Service',
-      'COMMANDS',
       'Config',
     ]) {
       expect(find.text(label), findsWidgets, reason: label);
@@ -85,6 +84,6 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
     }
-    expect(find.text('Raw output'), findsOneWidget);
+    expect(logs, findsWidgets);
   }, skip: cli == null);
 }

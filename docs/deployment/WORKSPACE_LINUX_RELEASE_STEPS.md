@@ -1,179 +1,81 @@
-# Step-by-step: bump the Workspace version and publish a Linux APT release
+# Release the Linux Workspace to APT (quick steps)
 
-This is the operator checklist for shipping a new Linux Workspace version to the
-public APT repository. Background, key custody and design rationale are in
-[Linux release operations](WORKSPACE_LINUX_RELEASES.md); installation is in the
-[Linux operator guide](../operations/WORKSPACE_LINUX.md).
+Short checklist. Background, keys and design: [Linux release operations](WORKSPACE_LINUX_RELEASES.md).
+Install instructions: [Linux operator guide](../operations/WORKSPACE_LINUX.md).
 
-## 0. Prerequisites (one-time)
+Requirements: write access to `nohainc/syntila`, `gh` logged in, and approval
+rights for the `workspace-linux-release` environment.
 
-- Write access to `nohainc/syntila`, and the `gh` CLI authenticated (`gh auth status`).
-- Permission to approve the `workspace-linux-release` environment (it restricts
-  deployments to `main`).
-- Release configuration already present (see "Release configuration" in the
-  release operations doc): `SYNTILA_RELEASE_TRUST_KEYS_JSON` repository variable,
-  and `SYNTILA_APT_SIGNING_FINGERPRINT` / `SYNTILA_APT_PRIVATE_KEY` in the
-  `workspace-linux-release` environment. Missing keys make the run fail closed.
-- Optional, for local dry-run builds: Dart 3.8+, Node.js, Python 3, `dpkg`
-  (`brew install dpkg` on macOS), GnuPG.
+## 1. Push dependencies first
 
-## 1. Choose the new version
+The CLI (`apps/workspace`) and the GUI (`apps/workspace_gui`) take the
+`gui-manifest` SDK from GitHub at the commit pinned in their `pubspec.yaml` /
+`pubspec.lock`. A release only contains what those pins point to.
 
-The Workspace version is a single value: `version:` in `apps/workspace/pubspec.yaml`
-(currently `1.0.14`). The release workflow reads it when no version input is given.
+If `gui-manifest` changed:
 
-- Use semantic versioning `MAJOR.MINOR.PATCH` (e.g. `1.0.15`). The workflow rejects
-  anything not matching `^[0-9]+\.[0-9]+\.[0-9]+([+~.-][A-Za-z0-9.+~-]+)?$`.
-- **Every release needs a new, never-published version.** APT history is
-  immutable: publishing different bytes under an existing version/architecture is
-  rejected. If a release must be rebuilt, bump the version again.
-- Check what is already published:
-
-  ```bash
-  git fetch --tags origin
-  git tag --list 'workspace-linux-v*'
-  curl -s https://nohainc.github.io/syntila/dists/stable/main/binary-amd64/Packages | grep -A1 '^Package: syntila$'
-  ```
+```bash
+git -C gui-manifest push origin main
+# set the new commit as `ref:` in apps/workspace/pubspec.yaml, then:
+cd apps/workspace && dart pub get && dart analyze && cd ../..
+# update the commit in apps/workspace_gui/pubspec.lock (flutter pub upgrade gui_manifest_flutter)
+```
 
 ## 2. Bump the version
 
-```bash
-git switch main && git pull --ff-only
-git switch -c release/workspace-1.0.15
+Edit `version:` in `apps/workspace/pubspec.yaml` (e.g. `1.0.15`). It must be a
+new, never-published version; APT rejects different bytes under an old one.
 
-# edit apps/workspace/pubspec.yaml -> version: 1.0.15
-sed -i.bak 's/^version: .*/version: 1.0.15/' apps/workspace/pubspec.yaml && rm apps/workspace/pubspec.yaml.bak
-
-git diff apps/workspace/pubspec.yaml   # confirm only the version line changed
-```
-
-Other apps (`apps/app`, `apps/workspace_gui`, `apps/profile_lab`) carry their
-own independent versions and are **not** part of the Linux package version.
-`SYNTILA_WORKSPACE_VERSION` can override the pubspec value at build time, but
-prefer committing the bump so source and release agree.
-
-## 3. Validate locally (optional but recommended)
+## 3. Commit and push to `main`
 
 ```bash
-cd apps/workspace
-dart pub get --enforce-lockfile
-dart analyze
-dart test test/workspace_cli_test.dart test/workspace_headless_auth_test.dart \
-  test/workspace_manager_service_test.dart test/linux_runtime_test.dart
-cd ../..
-python3 scripts/release/test-apt-repository.py    # needs dpkg + GnuPG
-pnpm exec vitest run scripts/workspace-build-manifest.test.mjs
+git add -A && git commit -m "Release Workspace 1.0.15" && git push origin main
+gh run list --workflow ci.yml --branch main --limit 1   # wait until it succeeds
 ```
 
-Optional local package build (cross-compile; proves compilation only):
+Publishing requires a green CI run on this exact commit.
+
+## 4. Dry run (builds and tests, publishes nothing)
 
 ```bash
-export SYNTILA_RELEASE_TRUST_KEYS_JSON="$(gh variable get SYNTILA_RELEASE_TRUST_KEYS_JSON --repo nohainc/syntila)"
-bash scripts/build-workspace-linux-headless.sh x64
-bash scripts/package-workspace-linux.sh x64
-# repeat with arm64; outputs in dist/syntila/deb/syntila_<version>_<amd64|arm64>.deb
+gh workflow run release-linux.yml --ref main -f version=1.0.15
+gh run watch
 ```
 
-Never promote locally built packages that contain CI fixture trust anchors; the
-public release is always built by the workflow.
+Fix failures and bump the version again if code changed.
 
-## 4. Merge the bump to `main`
+## 5. Publish
 
 ```bash
-git add apps/workspace/pubspec.yaml
-git commit -m "Release Workspace 1.0.15"
-git push -u origin release/workspace-1.0.15
-gh pr create --repo nohainc/syntila --fill
+gh workflow run release-linux.yml --ref main -f version=1.0.15 -f publish=true
+gh run watch
 ```
 
-Get review, wait for CI to pass, merge. Then confirm CI succeeded on the **exact
-merge commit** on `main` — publishing requires a successful push-triggered CI run
-for that commit (a PR run does not count):
+Approve the `workspace-linux-release` environment if asked. The run signs the
+repository, deploys it to `https://nohainc.github.io/syntila/`, and then checks
+a public install on amd64 and arm64. The release is done when `verify-public` passes.
+
+## 6. Check on Linux
 
 ```bash
-git switch main && git pull --ff-only
-gh run list --repo nohainc/syntila --workflow ci.yml --branch main --limit 3
+sudo apt update && sudo apt install --only-upgrade syntila
+syntila --version      # expect 1.0.15; also check the output looks new
 ```
 
-Also, if this release advertises a new CLI feature that needs a Cloud endpoint
-(e.g. headless `setup` needing `/api/desktop-auth/password`), deploy Cloud first.
+First-time install and key fingerprint check: see the operator guide.
 
-## 5. Dry run: build and test without publishing
-
-Dispatch the workflow from `main` with `publish=false` (the default):
+## 7. Tag (optional)
 
 ```bash
-gh workflow run release-linux.yml --repo nohainc/syntila --ref main -f version=1.0.15
-gh run watch --repo nohainc/syntila   # pick the run
+git tag workspace-linux-v1.0.15 && git push origin workspace-linux-v1.0.15
 ```
 
-This runs on native Ubuntu x64 and ARM64: analyze + tests, APT repository
-contract tests, build and package, a real APT install/upgrade test, and the
-headless setup test. Candidates (`.deb` and `.tar.gz`) are kept as artifacts.
-Nothing is published. Fix any failure, bump the version if code changed, and repeat.
+## Troubleshooting
 
-## 6. Publish
-
-```bash
-gh workflow run release-linux.yml --repo nohainc/syntila --ref main \
-  -f version=1.0.15 -f publish=true
-```
-
-Then:
-
-1. Watch the run: `gh run watch --repo nohainc/syntila`.
-2. When the `publish` job pauses for the `workspace-linux-release` environment,
-   approve it in the GitHub Actions UI (if reviewers are required).
-3. The pipeline then, without rebuilding: downloads the tested packages, imports the
-   signing key into an ephemeral GnuPG dir, adds the packages to the
-   `apt-repository` branch (fast-forward push), generates signed `InRelease`
-   indexes, uploads the Pages artifact, and deploys to
-   `https://nohainc.github.io/syntila/`.
-4. `verify-public` jobs on fresh amd64 and ARM64 runners install from the public
-   HTTPS repository, check the key fingerprint and signed metadata, start the
-   service and check the version. **The release is not complete until both pass.**
-
-If only the deploy step failed, re-run the failed jobs with the existing artifact.
-Never rebuild different bytes under an already published version.
-
-## 7. Verify as a user
-
-On a clean Ubuntu/Debian machine (key fingerprint must be
-`6EA013D12EF79CBDC34D66058182CCCFCF4175F2`):
-
-```bash
-APT_URL=https://nohainc.github.io/syntila
-curl --fail --location "$APT_URL/syntila-archive-keyring.gpg" -o /tmp/syntila-archive-keyring.gpg
-gpg --show-keys --with-fingerprint /tmp/syntila-archive-keyring.gpg
-sudo install -D -m 644 /tmp/syntila-archive-keyring.gpg /etc/apt/keyrings/syntila-archive-keyring.gpg
-printf 'Types: deb\nURIs: %s\nSuites: stable\nComponents: main\nSigned-By: /etc/apt/keyrings/syntila-archive-keyring.gpg\n' "$APT_URL" | sudo tee /etc/apt/sources.list.d/syntila.sources
-sudo apt update
-apt-cache policy syntila          # candidate should be 1.0.15
-sudo apt install syntila          # or: sudo apt install --only-upgrade syntila
-syntila --version
-```
-
-Existing installs upgrade with `sudo apt update && sudo apt upgrade`. The user
-service is stopped/started around replacement; installation ID, registration,
-Work Root, Profiles and sessions are preserved.
-
-## 8. Tag and record
-
-```bash
-git tag workspace-linux-v1.0.15 <merge-commit-sha>
-git push origin workspace-linux-v1.0.15
-```
-
-Add release notes or acceptance evidence as needed (see
-[Linux package acceptance](../acceptance/WORKSPACE_LINUX_PACKAGES.md)).
-
-## Rollback and troubleshooting
-
-| Situation | Action |
+| Problem | Fix |
 | --- | --- |
-| Bad release published | Old versions stay in the repository. Publish a **new higher** version containing the fix (APT picks the highest version). Users can pin the previous one: `sudo apt install syntila=1.0.14`. |
-| "version already exists" / different bytes rejected | The version was published before. Bump to a new version. |
-| Publish refused: CI not green | Wait for or fix push CI on the exact `main` commit; do not dispatch from a branch. |
-| Missing keys/trust roots | Set the variables/secrets in "Release configuration"; the run fails closed by design. |
-| Pages deploy or `verify-public` failed | Re-run failed jobs for the same run; do not rebuild under the same version. |
-| Signing key rotation or loss | Follow [Release Trust and Rotation](../security/RELEASE_TRUST_AND_ROTATION.md). Never commit private keys. |
+| Version is new but CLI/GUI output is old | The `gui-manifest` pin was not updated (step 1). |
+| "version already exists" | Bump to a new version. |
+| Publish refused | CI is not green on that `main` commit. |
+| Deploy or `verify-public` failed | Re-run failed jobs; never rebuild bytes under a published version. |
+| Bad release | Publish a higher fixed version, or pin: `sudo apt install syntila=1.0.14`. |

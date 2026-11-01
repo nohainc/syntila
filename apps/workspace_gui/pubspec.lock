@@ -88,7 +88,7 @@ packages:
     dependency: "direct main"
     description:
       path: "gui/flutter"
-      ref: HEAD
+      ref: "242b71c88cc11c90a0fad0886467ae2db4a366ef"
       resolved-ref: "242b71c88cc11c90a0fad0886467ae2db4a366ef"
       url: "https://github.com/nohainc/gui-manifest.git"
     source: git
