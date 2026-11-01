@@ -5,20 +5,20 @@ Origin: Syntila
 Label: Syntila Workspace
 Suite: stable
 Codename: stable
-Date: Sun, 01 Nov 2026 18:36:19 GMT
+Date: Sun, 01 Nov 2026 18:57:51 GMT
 Architectures: amd64 arm64
 Components: main
 Acquire-By-Hash: yes
 Description: Syntila Workspace packages
 SHA256:
- d60033ee57c184a84940dc19ed95b2de2f5761b926d9495d187ad83adfce8f83 7203 main/binary-amd64/Packages
- eaa7de0a07068b802fd3843bca9c9f2bb4f17ca7ff67ebfaa7e06a739157b578 1229 main/binary-amd64/Packages.gz
- 92324683125a22d0143605e73ab36666079c026842ac6f2ed3116be8e1845544 7203 main/binary-arm64/Packages
- f12ad77a9a4d90b10a8632a1293f5f467482e748a9f5309130ef65c6416c3a4f 1224 main/binary-arm64/Packages.gz
+ be915a69350df682cc850e452343669bb83d9dcabadec829a52e9d837e303f1e 8508 main/binary-amd64/Packages
+ bd111edfa23dab84b3743abac5951c6a86fbccb11c10a7bc52e1d54ce4266bb4 1344 main/binary-amd64/Packages.gz
+ 188bc5c86a056312dfa97b5f4351257cba037f2393c9fa336399b709afa929bb 8508 main/binary-arm64/Packages
+ 77ec4d00c883de9c19c071bbefea4aba5c518558d80e64d99f8e6492391e1ac0 1342 main/binary-arm64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYIAB0WIQRuoBPRLvecvcNNZgWBgszPz0F18gUCaueGowAKCRCBgszPz0F1
-8vbdAPsE3IL5aPwj5tp33dJ39TxpJuSsnFfcjRKiaoVbovIbGgEA/mCS0IDaTrhF
-RbF4xvAhmNa8JN3wZg88kNzy9IKRAwg=
-=Pae1
+iHUEARYIAB0WIQRuoBPRLvecvcNNZgWBgszPz0F18gUCaueLrwAKCRCBgszPz0F1
+8pIpAQCdOkl7zrpgBLrG+GBhox0c5efRxkDCOwX5n5vVLgoNqgEAy6cu6NLu3ouT
+81OxS/fXxmgLH647DmJoUiBtAwOGhAc=
+=ume4
 -----END PGP SIGNATURE-----
