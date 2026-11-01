@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gui_manifest_flutter/gui_manifest_flutter.dart';
 import 'package:syntila_workspace_gui/src/status_page.dart';
+import 'package:syntila_workspace_gui/main.dart' show WorkspaceHeader;
 
 class _Runner implements CliRunner {
   _Runner(this.respond);
@@ -49,8 +50,35 @@ Future<void> _pump(WidgetTester tester, CliRunner runner) async {
 }
 
 void main() {
+  testWidgets('header shows the themed logo before the app name', (
+    tester,
+  ) async {
+    for (final brightness in [Brightness.light, Brightness.dark]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(brightness: brightness),
+          home: const Scaffold(body: WorkspaceHeader()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final image = tester.widget<Image>(find.byType(Image));
+      final asset = image.image as AssetImage;
+      expect(
+        asset.assetName,
+        brightness == Brightness.dark
+            ? 'assets/branding/syntila_logo_dark.png'
+            : 'assets/branding/syntila_logo.png',
+      );
+      expect(
+        tester.getTopLeft(find.byType(Image)).dx,
+        lessThan(tester.getTopLeft(find.text('Syntila Workspace')).dx),
+      );
+    }
+  });
+
   testWidgets('shows cards and connects', (tester) async {
     var connected = false;
+    var accepting = true;
     final runner = _Runner(
       (args) => _result(
         args,
@@ -62,11 +90,15 @@ void main() {
                   'connected': connected,
                   'lifecycleState': 'offline',
                   'transport': 'websocket',
-                  'acceptingNewWork': true,
+                  'acceptingNewWork': accepting,
                 },
                 'service': {'serviceHealthy': true},
                 'assignments': {'activeCount': 2},
-                'workers': [{}, {}, {}],
+                'workers': [
+                  {'productWorkerTypeId': 'chatgpt'},
+                  {'productWorkerTypeId': 'gemini'},
+                  {'productWorkerTypeId': 'chatgpt'},
+                ],
                 'config': {'state': 'valid'},
               })
             : '{}',
@@ -76,21 +108,98 @@ void main() {
 
     expect(find.text('Mac'), findsOneWidget);
     expect(find.text('Disconnected'), findsOneWidget);
-    expect(find.text('3 configured'), findsOneWidget);
+    expect(find.text('chatgpt, gemini'), findsOneWidget);
     expect(find.text('2 running'), findsOneWidget);
-    expect(find.text('Config: valid'), findsOneWidget);
+    expect(find.text('Config: valid\nWork Root: /w'), findsOneWidget);
+    expect(find.byType(Card), findsNWidgets(4));
 
+    final cloudCard = find.ancestor(
+      of: find.text('Cloud'),
+      matching: find.byType(Card),
+    );
+    final workCard = find.ancestor(
+      of: find.text('Active work'),
+      matching: find.byType(Card),
+    );
+    expect(
+      find.descendant(of: cloudCard, matching: find.text('Connect')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: workCard, matching: find.text('Pause new work')),
+      findsOneWidget,
+    );
+    accepting = false;
+    await tester.tap(find.text('Pause new work'));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.descendant(of: workCard, matching: find.text('Resume new work')),
+      findsOneWidget,
+    );
+    expect(runner.calls, [
+      ['status', '--json'],
+      ['pause', '--json'],
+      ['status', '--json'],
+    ]);
+    runner.calls.clear();
     connected = true;
     await tester.tap(find.text('Connect'));
     await tester.pump();
     await tester.pump();
     expect(runner.calls, [
-      ['status', '--json'],
       ['connect', '--json'],
       ['status', '--json'],
     ]);
     expect(find.text('Connected'), findsOneWidget);
-    expect(find.text('Disconnect'), findsOneWidget);
+    expect(
+      find.descendant(of: cloudCard, matching: find.text('Disconnect')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Resume new work'));
+    await tester.pump();
+    await tester.pump();
+    expect(runner.calls[2], ['resume', '--json']);
+  });
+
+  testWidgets('cards use one or two columns within the content width', (
+    tester,
+  ) async {
+    final runner = _Runner(
+      (args) => _result(
+        args,
+        0,
+        jsonEncode({
+          'workspace': {'name': 'Mac'},
+          'cloud': {},
+          'service': {},
+          'assignments': {},
+          'workers': [],
+          'config': {},
+        }),
+      ),
+    );
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    for (final width in [400.0, 1000.0]) {
+      tester.view.physicalSize = Size(width, 1200);
+      await _pump(tester, runner);
+      expect(find.text('No workers configured'), findsOneWidget);
+      final cards = find.byType(Card);
+      final first = tester.getRect(cards.at(0));
+      final second = tester.getRect(cards.at(1));
+      if (width == 400) {
+        expect(second.top, greaterThan(first.top));
+        expect(first.left, closeTo(second.left, 1));
+      } else {
+        expect(second.top, first.top);
+        expect(second.size, first.size);
+        expect(tester.getSize(cards.at(2)), first.size);
+        expect(tester.getSize(cards.at(3)), first.size);
+        expect(second.left, greaterThan(first.left));
+        expect(second.right - first.left, lessThanOrEqualTo(800));
+      }
+    }
   });
 
   testWidgets('offers to start the service when status fails', (tester) async {

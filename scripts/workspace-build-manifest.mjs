@@ -31,6 +31,7 @@ const sources = execFileSync(
     "engines/cli_worker/pubspec.lock",
     "packages",
     "scripts/build-workspace-service.sh",
+    "scripts/build-workspace-macos.sh",
     "scripts/build-cli-worker-engine.sh",
   ],
   { cwd: root },
@@ -54,9 +55,35 @@ const files = Object.fromEntries(
 );
 const expected = { schemaVersion: 1, version, sourceDigest, files };
 const manifest = join(bundle, "build-manifest.json");
-if (mode === "record")
+if (mode === "record") {
   writeFileSync(manifest, `${JSON.stringify(expected, null, 2)}\n`);
-else if (
+  const gitCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root })
+    .toString()
+    .trim();
+  const changedFiles = execFileSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=normal"],
+    { cwd: root },
+  )
+    .toString()
+    .trim();
+  writeFileSync(
+    join(bundle, "build-provenance.json"),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        version,
+        gitCommit,
+        sourceDigest,
+        includesUncommittedChanges: changedFiles.length > 0,
+        changedFiles: changedFiles.split("\n").filter(Boolean),
+        environment: process.env.SYNTILA_WORKSPACE_ENVIRONMENT || "production",
+      },
+      null,
+      2,
+    )}\n`,
+  );
+} else if (
   JSON.stringify(JSON.parse(readFileSync(manifest, "utf8"))) !==
   JSON.stringify(expected)
 ) {

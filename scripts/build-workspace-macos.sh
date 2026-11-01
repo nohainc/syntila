@@ -183,6 +183,7 @@ codesign "${SIGN_ARGS[@]}" --identifier "syntila-agent" "$BUNDLE/assets/engines/
 codesign "${SIGN_ARGS[@]}" --identifier "syntila" "$BUNDLE/syntila"
 
 bash "$ROOT/scripts/verify-workspace-service-bundle.sh" "$BUNDLE"
+SYNTILA_WORKSPACE_ENVIRONMENT="$TARGET_ENV" node "$ROOT/scripts/workspace-build-manifest.mjs" record "$BUNDLE" "$VERSION"
 
 ZIP="$DIST_DIR/Syntila-Workspace-$VERSION-macos$ZIP_SUFFIX.zip"
 ditto -c -k --sequesterRsrc --keepParent "$BUNDLE" "$ZIP"

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:gui_manifest/gui_manifest.dart' show validateManifest;
+import 'package:gui_manifest/gui_manifest.dart' show GuiIcons, validateManifest;
 import 'package:nanomarkup/nanomarkup.dart' as nano;
 import 'package:syntila_workspace/workspace_cli.dart';
 import 'package:test/test.dart';
@@ -92,7 +92,7 @@ void main() {
   test('the manifest is valid and keeps its order', () {
     expect(validateManifest(_manifest()), isEmpty);
     final ids = _commands().map((c) => c['id']).toList();
-    expect(ids.take(3), ['status', 'version', 'setup']);
+    expect(ids.take(3), ['status', 'setup', 'login']);
     final nav = (_manifest()['navigation'] as List).cast<Map>();
     expect(
       nav.map((n) => (n['id'], n['command'])),
@@ -101,10 +101,128 @@ void main() {
         ('workers', 'workers.list'),
         ('folders', 'folders.list'),
         ('assignments', 'assignments.list'),
-        ('logs', 'logs'),
         ('service', 'service.status'),
+        ('config', 'config.show'),
       ],
     );
+  });
+
+  test('commands that only read are info, the rest are actions', () {
+    final byKind = <String, Set<Object?>>{};
+    for (final c in _commands()) {
+      (byKind[c['kind'] as String] ??= {}).add(c['id']);
+    }
+    expect(byKind.keys, {'info', 'action'});
+    expect(byKind['info'], {
+      'status',
+      'version',
+      'workers.list',
+      'workers.catalog',
+      'workers.check',
+      'folders.list',
+      'slots',
+      'assignments.list',
+      'logs',
+      'metrics',
+      'service.status',
+      'config.show',
+      'config.validate',
+      'config.path',
+    });
+    // Anything that changes state, signs in or out, or starts and stops.
+    expect(
+      byKind['action'],
+      containsAll([
+        'setup',
+        'login',
+        'logout',
+        'register',
+        'unregister',
+        'connect',
+        'disconnect',
+        'pause',
+        'resume',
+        'workers.add',
+        'workers.remove',
+        'workers.test',
+        'workers.enable',
+        'workers.disable',
+        'folders.add',
+        'folders.remove',
+        'workDir',
+        'assignments.cancel',
+        'service.install',
+        'service.uninstall',
+        'service.start',
+        'service.stop',
+        'service.restart',
+        'config.init',
+        'reset',
+      ]),
+    );
+    for (final c in _commands()) {
+      if (c['destructive'] == 'true') {
+        expect(c['kind'], 'action', reason: '${c['id']} is destructive');
+      }
+    }
+  });
+
+  test('every command has its own, known icon', () {
+    final icons = {for (final c in _commands()) c['id']: c['icon']};
+    for (final entry in icons.entries) {
+      expect(entry.value, isNotNull, reason: '${entry.key} has no icon');
+      expect(
+        GuiIcons.all,
+        contains(entry.value),
+        reason: '${entry.key}: ${entry.value} is not in the vocabulary',
+      );
+      expect(
+        entry.value,
+        isNot(GuiIcons.command),
+        reason: '${entry.key} should not fall back to the default',
+      );
+    }
+    // A varied set, not one icon repeated.
+    expect(icons.values.toSet().length, greaterThanOrEqualTo(28));
+    // Groups carry an icon as well.
+    for (final g in (_manifest()['groups'] as List).cast<Map>()) {
+      expect(GuiIcons.all, contains(g['icon']), reason: '${g['id']}');
+    }
+  });
+
+  test('sidebar sections reflect what each command manages', () {
+    final expected = <String, String>{
+      for (final id in ['setup', 'workDir', 'reset']) id: 'WORKSPACE',
+      for (final id in [
+        'login',
+        'logout',
+        'register',
+        'unregister',
+        'connect',
+        'disconnect',
+        'pause',
+        'resume'
+      ])
+        id: 'ACCOUNT & CLOUD',
+      for (final id in ['version', 'metrics', 'logs', 'slots'])
+        id: 'DIAGNOSTICS',
+    };
+    for (final c in _commands().where((c) => c['group'] == null)) {
+      expect(c['section'], expected[c['id']], reason: '${c['id']}');
+    }
+    final groups = (_manifest()['groups'] as List).cast<Map>();
+    expect(
+        groups.singleWhere((g) => g['id'] == 'config')['section'], 'WORKSPACE');
+  });
+
+  test('generated pages request the normal CLI text output', () {
+    for (final command in _commands()) {
+      expect(command['argv'], isNot(contains('--json')),
+          reason: '${command['id']}');
+      expect((command['output'] as Map)['format'],
+          ['slots', 'metrics'].contains(command['id']) ? 'nano' : 'text',
+          reason: '${command['id']}');
+    }
   });
 
   test('related commands are grouped', () {
@@ -210,6 +328,11 @@ void main() {
         request: (name, _) async {
           calls.add(name);
           // Worker type lookups resolve "sample" to a configured Worker.
+          if (name == 'connection.connect') {
+            return {
+              'cloud': {'connected': true, 'connectionStage': 'ready'}
+            };
+          }
           return name == 'workers.list'
               ? {
                   'workers': [

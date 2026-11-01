@@ -1,4 +1,10 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  readFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -24,6 +30,14 @@ it("packaging rejects missing, mismatched and altered build output", () => {
     );
   expect(() => run("verify")).toThrow();
   run("record");
+  const provenance = JSON.parse(
+    readFileSync(join(root, "build-provenance.json"), "utf8"),
+  );
+  expect(provenance.gitCommit).toMatch(/^[a-f0-9]{40}$/);
+  expect(provenance.sourceDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(provenance.version).toBe("1.0.4");
+  expect(typeof provenance.includesUncommittedChanges).toBe("boolean");
+  expect(Array.isArray(provenance.changedFiles)).toBe(true);
   expect(() => run("verify")).not.toThrow();
   expect(() => run("verify", "1.0.5")).toThrow();
   writeFileSync(join(root, "syntila"), "stale");

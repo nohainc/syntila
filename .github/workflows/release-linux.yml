@@ -74,6 +74,11 @@ jobs:
           bash scripts/build-workspace-linux-headless.sh '${{ matrix.arch }}'
           bash scripts/build-workspace-gui-linux.sh --gui-only
           bash scripts/package-workspace-linux.sh '${{ matrix.arch }}'
+      - name: Compare compiled CLI output with source
+        working-directory: apps/workspace
+        env:
+          SYNTILA_CLI: ${{ github.workspace }}/dist/syntila/linux-${{ matrix.arch }}/syntila
+        run: dart test test/workspace_cli_output_parity_test.dart
       - name: Test actual APT install and upgrade
         run: bash scripts/test-workspace-linux-package.sh '${{ matrix.arch }}'
       - name: Test headless setup without a keyring or Workers

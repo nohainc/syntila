@@ -140,7 +140,27 @@ run `service uninstall` first if you want to remove its systemd unit too.
 `syntila slots` displays tab-separated `active`, `queued`, and `limit` rows.
 Use `syntila --json slots` for the complete snapshot, including Workers, busy
 sessions, and active assignment IDs. Release 1.0.15 prints JSON in both modes;
-the compact text formatter is included starting with 1.0.16.
+1.0.16 adds the three summary rows, and 1.0.17 restores per-worker rows and the
+remaining command summaries.
+
+## Build provenance and the missing CLI changes
+
+The November 1 releases through 1.0.16 omitted local work preserved in a
+subsequently discarded stash (`12e990a2`, based on `6d40735f`, saved at 16:41
++0100). The local macOS executable had been built at 15:58 with that work.
+The missing source covered command summaries, command metadata, configuration
+restart guards, and GUI behavior. Release 1.0.16 restored only the top-level
+slot rows. Release 1.0.17 restores the recovered source and tests; it preserves
+the newer SDK pins. The recovery snapshot is retained on
+`recovery/workspace-missing-release-changes`.
+
+Builds now record `build-provenance.json` beside the executable, including the
+Git commit, source digest, and whether uncommitted changes were included. APT
+installs it at `/usr/lib/syntila/build-provenance.json`. Compare that file with
+the local bundle before treating equal version numbers as equal source.
+Linux release CI compares the compiled candidate with source handlers across
+17 service commands in both text and JSON mode, using isolated IPC fixtures.
+It also checks the installed public package's help and slot rendering.
 
 ## Diagnose old output after an upgrade
 

@@ -67,7 +67,7 @@ python3 - "$TEMP" <<'PYTEST'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
 slots = json.loads((root / 'slots.json').read_text())
-expected = ''.join(f"{key}\t{slots[key] if slots[key] is not None else '-'}\n"
+expected = ''.join(f"{key}\t{slots[key] if slots[key] is not None else 'unknown'}\n"
                    for key in ('active', 'queued', 'limit'))
 assert (root / 'slots.txt').read_text() == expected
 assert 'workers' in slots and 'activeAssignmentIds' in slots

@@ -25,6 +25,7 @@ trap 'rm -rf "$STAGE"' EXIT
 PAYLOAD="$STAGE/usr/lib/syntila"
 mkdir -p "$STAGE/DEBIAN" "$PAYLOAD/assets/engines" "$STAGE/usr/bin" "$STAGE/usr/share/doc/syntila"
 install -m 755 "$BUNDLE/syntila" "$PAYLOAD/"
+install -m 644 "$BUNDLE/build-manifest.json" "$BUNDLE/build-provenance.json" "$PAYLOAD/"
 install -m 755 "$BUNDLE/assets/engines/syntila-agent" "$PAYLOAD/assets/engines/"
 # Symlinks keep Platform.resolvedExecutable beside the service and Engine.
 ln -s ../lib/syntila/syntila "$STAGE/usr/bin/syntila"

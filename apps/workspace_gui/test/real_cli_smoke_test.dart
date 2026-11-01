@@ -57,10 +57,31 @@ void main() {
       'Assignments',
       'Logs',
       'Service',
+      'WORKSPACE',
+      'ACCOUNT & CLOUD',
+      'DIAGNOSTICS',
       'Config',
     ]) {
       expect(find.text(label), findsWidgets, reason: label);
     }
+    final workspaceY = tester.getTopLeft(find.text('WORKSPACE')).dy;
+    final accountY = tester.getTopLeft(find.text('ACCOUNT & CLOUD')).dy;
+    final diagnosticsY = tester.getTopLeft(find.text('DIAGNOSTICS')).dy;
+    expect(workspaceY, lessThan(accountY));
+    expect(accountY, lessThan(diagnosticsY));
+    expect(diagnosticsY, lessThan(tester.getTopLeft(find.text('Logs')).dy));
+    expect(find.text('Config'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('Config')).dy, greaterThan(workspaceY));
+    expect(tester.getTopLeft(find.text('Config')).dy, lessThan(accountY));
+    expect(tester.getTopLeft(find.text('Slots')).dy, greaterThan(diagnosticsY));
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Config'));
+      await tester.pump();
+    });
+    for (final label in ['Create config', 'Validate config', 'Config path']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+
     // A group is one expandable row: its commands show after expanding it.
     expect(find.text('Add Worker'), findsNothing);
     await tester.runAsync(() async {
@@ -71,19 +92,39 @@ void main() {
     expect(find.text('Add Worker'), findsOneWidget);
     expect(find.text('Catalog'), findsNothing);
     expect(find.text('Worker catalog'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('sidebar-row-cmd:workers.remove')),
+        matching: find.byType(Icon),
+      ),
+      findsNothing,
+    );
 
     // Generated pages still work: open Logs and run it.
     await tester.runAsync(() async {
-      await tester.tap(find.byKey(const ValueKey('sidebar-row-nav:logs')));
+      await tester.tap(find.byKey(const ValueKey('sidebar-row-cmd:logs')));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Run'));
       await tester.pump();
     });
-    final logs = find.textContaining(' logs --json');
+    final logs = find.textContaining(' syntila logs');
     for (var i = 0; i < 100 && logs.evaluate().length < 2; i++) {
       await tester.runAsync(() async {
         await tester.pump();
         await Future<void>.delayed(const Duration(milliseconds: 100));
       });
     }
-    expect(logs, findsWidgets);
+    expect(find.textContaining('Failed (exit'), findsOneWidget);
+    expect(find.textContaining(r'$ syntila logs'), findsWidgets);
+
+    // Login presents a password field without invoking the CLI or a network call.
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const ValueKey('sidebar-row-cmd:login')));
+      await tester.pump();
+    });
+    expect(find.widgetWithText(TextField, 'Email'), findsOneWidget);
+    final password = find.widgetWithText(TextField, 'Password *');
+    expect(password, findsOneWidget);
+    expect(tester.widget<TextField>(password).obscureText, isTrue);
   }, skip: cli == null);
 }
