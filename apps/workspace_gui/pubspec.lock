@@ -79,8 +79,8 @@ packages:
     dependency: transitive
     description:
       path: "sdk/dart"
-      ref: c8f350d44b1c87d45ad01a8b4dbe952aa3130795
-      resolved-ref: c8f350d44b1c87d45ad01a8b4dbe952aa3130795
+      ref: "3046458783c37a56d28462c32ef84d0c83b667e6"
+      resolved-ref: "3046458783c37a56d28462c32ef84d0c83b667e6"
       url: "https://github.com/nohainc/gui-manifest.git"
     source: git
     version: "0.1.0"
@@ -89,7 +89,7 @@ packages:
     description:
       path: "gui/flutter"
       ref: HEAD
-      resolved-ref: c8f350d44b1c87d45ad01a8b4dbe952aa3130795
+      resolved-ref: "3046458783c37a56d28462c32ef84d0c83b667e6"
       url: "https://github.com/nohainc/gui-manifest.git"
     source: git
     version: "0.1.0"
