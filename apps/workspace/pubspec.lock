@@ -149,8 +149,8 @@ packages:
     dependency: "direct main"
     description:
       path: "sdk/dart"
-      ref: "3046458783c37a56d28462c32ef84d0c83b667e6"
-      resolved-ref: "3046458783c37a56d28462c32ef84d0c83b667e6"
+      ref: "242b71c88cc11c90a0fad0886467ae2db4a366ef"
+      resolved-ref: "242b71c88cc11c90a0fad0886467ae2db4a366ef"
       url: "https://github.com/nohainc/gui-manifest.git"
     source: git
     version: "0.1.0"
