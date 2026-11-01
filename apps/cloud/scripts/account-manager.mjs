@@ -134,7 +134,8 @@ export async function handle(input, query = executeSQL, fetcher = fetch) {
     throw new Error("Unsupported action.");
   if (
     ["unlock", "reset"].includes(input.action) &&
-    input.confirmEmail !== input.email)
+    input.confirmEmail !== input.email
+  )
     throw new Error("Retype the account email to confirm.");
   const rows = await query(
     config,
@@ -149,7 +150,9 @@ export async function handle(input, query = executeSQL, fetcher = fetch) {
       planSQL(input.id, input.action, input.email),
     );
     if (!result.some((row) => row.id === input.id && row.plan === plan))
-      throw new Error("Plan update was not confirmed. Refresh before retrying.");
+      throw new Error(
+        "Plan update was not confirmed. Refresh before retrying.",
+      );
     return {
       message:
         plan === "paid"

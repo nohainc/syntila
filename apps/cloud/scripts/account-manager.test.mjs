@@ -2,7 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
-import { environment, listSQL, changeSQL, planSQL, handle } from "./account-manager.mjs";
+import {
+  environment,
+  listSQL,
+  changeSQL,
+  planSQL,
+  handle,
+} from "./account-manager.mjs";
 
 import { readdirSync } from "node:fs";
 function database() {

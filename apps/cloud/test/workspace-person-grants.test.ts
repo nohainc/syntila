@@ -387,15 +387,16 @@ it("excludes revoked owned Workspace Workers from inventory", async () => {
       INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at)
       VALUES('current-worker','own','guest','chatgpt','enabled','ready',1,1,'now','now','now'),
             ('old-worker','old','guest','chatgpt','enabled','ready',1,1,'now','now','now');`);
-    for (const query of ['', '?includeShared=true', '?workspaceId=old']) {
+    for (const query of ["", "?includeShared=true", "?workspaceId=old"]) {
       const response = await handleListWorkspaceWorkerInventory(
         new Request(`https://cloud.test/api/workers${query}`, {
-          headers: { authorization: 'guest' },
-        }), env,
+          headers: { authorization: "guest" },
+        }),
+        env,
       );
-      const body = await response.json() as { workers: { id: string }[] };
+      const body = (await response.json()) as { workers: { id: string }[] };
       expect(body.workers.map((worker) => worker.id)).toEqual(
-        query === '?workspaceId=old' ? [] : ['current-worker'],
+        query === "?workspaceId=old" ? [] : ["current-worker"],
       );
     }
   } finally {

@@ -49,10 +49,7 @@ describe("CI acceptance orchestration", () => {
         "scripts/build-workspace-macos.sh --release --local --version 1.2.3",
       );
       expect(mac.stdout).toContain("env=local\nversion=1.2.3");
-      for (const [arch, expected] of [
-        ["x86_64", "x64"],
-        ["aarch64", "arm64"],
-      ]) {
+      for (const arch of ["x86_64", "aarch64"]) {
         const linux = run("Linux", arch, ["--release"]);
         expect(linux.status, linux.stderr).toBe(0);
         expect(linux.stdout).toContain(
@@ -297,7 +294,10 @@ describe("CI acceptance orchestration", () => {
       join(root, "scripts", "internal", "build-cli-worker-engine.sh"),
       'echo engine >> "$CI_TEST_LOG"\n',
     );
-    writeFileSync(join(root, "scripts", "internal", "build-workspace-gui-macos.sh"), 'echo gui >> "$CI_TEST_LOG"\n');
+    writeFileSync(
+      join(root, "scripts", "internal", "build-workspace-gui-macos.sh"),
+      'echo gui >> "$CI_TEST_LOG"\n',
+    );
     for (const name of [
       "build-workspace-macos.sh",
       "verify-workspace-service-bundle.sh",
