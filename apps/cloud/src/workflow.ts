@@ -49,7 +49,7 @@ import {
   revokeAssignment,
   type RevocationEnv,
 } from "./assignment-revocation.js";
-import type { AssignmentLifecycleStatus, ThreadBindingId } from "@syntila/core";
+import type { AssignmentLifecycleStatus } from "@syntila/core";
 import {
   prepareWorkerStepExecution,
   completeWorkerStepExecution,
@@ -58,6 +58,7 @@ import {
   assignmentDeadlineViolation,
   classifyStepAssignmentOutcome,
   currentAssignmentDeadline,
+  isResearchCapacityQueue,
   DEFAULT_QUEUE_WAIT_TIMEOUT_MS,
   type AssignmentDeadlinePhase,
 } from "./assignment-delivery.js";
@@ -94,6 +95,10 @@ interface WakeupRow {
   readonly permitRequired?: number | null;
   readonly runningAt?: string | null;
   readonly queueWaitTimeoutMs?: number | null;
+  readonly cloudQueueReason?: string | null;
+  readonly cloudQueueSince?: string | null;
+  readonly workflowId?: string;
+  readonly workflowVersion?: number;
 }
 
 function phaseDeadline(row: WakeupRow, timeoutMs: number) {
@@ -108,6 +113,10 @@ function phaseDeadline(row: WakeupRow, timeoutMs: number) {
     runningAt: row.runningAt,
     queueWaitTimeoutMs: row.queueWaitTimeoutMs ?? DEFAULT_QUEUE_WAIT_TIMEOUT_MS,
     timeoutMs,
+    cloudQueueReason: row.cloudQueueReason,
+    cloudQueueSince: row.cloudQueueSince,
+    workflowId: row.workflowId,
+    workflowVersion: row.workflowVersion,
   });
 }
 
@@ -122,6 +131,9 @@ export function nextWakeupMs(
   now = Date.now(),
 ): number {
   let wait = ASSIGNMENT_RECONCILIATION_INTERVAL_MS;
+  if (row && isResearchCapacityQueue(row)) {
+    wait = LONG_RUN_RECONCILIATION_INTERVAL_MS;
+  }
   const runningSince = row?.runningAt ? Date.parse(row.runningAt) : NaN;
   if (
     row?.status === "running" &&
@@ -306,6 +318,8 @@ interface AssignmentRow {
   createdAt: string;
   updatedAt: string;
   queueWaitTimeoutMs: number | null;
+  cloudQueueReason?: string | null;
+  cloudQueueSince?: string | null;
   /** Set once a start permit was granted: a process may have been launched. */
   permitIssuedAt: string | null;
   permitRequired: number | null;
@@ -878,70 +892,66 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       )
         ? [ready.find((task) => task.step.executionMode === "stateful_thread")!]
         : ready;
-      const results = await Promise.all(
-        batch.map((task) =>
-          this.runWorkflowTask(
+      // Each branch settles durably as soon as it finishes; a slower sibling
+      // must not delay report persistence or its completed status in the UI.
+      const settled = await Promise.all(
+        batch.map(async (task) => {
+          const result = await this.runWorkflowTask(
             params,
             definition,
             task,
             promptInput,
             step,
             stepResults,
-          ),
-        ),
-      );
-      // Persist every branch outcome before acting on any failure, so a
-      // successful sibling's report survives another branch failing.
-      const settled: Array<{
-        result: (typeof results)[number];
-        resultStatus: "completed" | "failed" | "cancelled";
-      }> = [];
-      for (const result of results) {
-        const cancellationRequested = await (
-          this.env as ExecutionEnv
-        ).SYNTILA_DB.prepare(
-          "SELECT cancel_requested_at AS cancelRequestedAt FROM work_requests WHERE id = ?1",
-        )
-          .bind(params.workRequestId)
-          .first<{ cancelRequestedAt: string | null }>();
-        const resultStatus = cancellationRequested?.cancelRequestedAt
-          ? "cancelled"
-          : result.status;
-        if (resultStatus === "completed" && result.stepResult) {
-          stepResults[stepInstanceId(result.task.step)] = result.stepResult;
-        }
-        tasks = [
-          ...markWorkflowTaskResult(tasks, result.task.id, resultStatus),
-        ];
-        const persistedTask = tasks.find((task) => task.id === result.task.id)!;
-        workflowDiagnostic(this.env, "task_state_start", {
-          runId: params.runId,
-          status: resultStatus,
-        });
-        await this.persistWorkflowTaskState(
-          persistedTask,
-          result.output,
-          result.error,
-        );
-        workflowDiagnostic(this.env, "task_state_done", {
-          runId: params.runId,
-        });
-        if (resultStatus === "completed" || resultStatus === "failed") {
-          await this.publishWorkEvent(
-            params,
-            resultStatus === "completed" ? "step.completed" : "step.failed",
-            {
-              stepKind: result.task.step.kind,
-              stepId: stepInstanceId(result.task.step),
-              status: resultStatus,
-            },
           );
-          workflowDiagnostic(this.env, "step_event_published", {
+          const cancellationRequested = await (
+            this.env as ExecutionEnv
+          ).SYNTILA_DB.prepare(
+            "SELECT cancel_requested_at AS cancelRequestedAt FROM work_requests WHERE id = ?1",
+          )
+            .bind(params.workRequestId)
+            .first<{ cancelRequestedAt: string | null }>();
+          const resultStatus = cancellationRequested?.cancelRequestedAt
+            ? "cancelled"
+            : result.status;
+          if (resultStatus === "completed" && result.stepResult) {
+            stepResults[stepInstanceId(result.task.step)] = result.stepResult;
+          }
+          tasks = [
+            ...markWorkflowTaskResult(tasks, result.task.id, resultStatus),
+          ];
+          const persistedTask = tasks.find(
+            (task) => task.id === result.task.id,
+          )!;
+          workflowDiagnostic(this.env, "task_state_start", {
+            runId: params.runId,
+            status: resultStatus,
+          });
+          await this.persistWorkflowTaskState(
+            persistedTask,
+            result.output,
+            result.error,
+          );
+          workflowDiagnostic(this.env, "task_state_done", {
             runId: params.runId,
           });
-        }
-        settled.push({ result, resultStatus });
-      }
+          if (resultStatus === "completed" || resultStatus === "failed") {
+            await this.publishWorkEvent(
+              params,
+              resultStatus === "completed" ? "step.completed" : "step.failed",
+              {
+                stepKind: result.task.step.kind,
+                stepId: stepInstanceId(result.task.step),
+                status: resultStatus,
+              },
+            );
+            workflowDiagnostic(this.env, "step_event_published", {
+              runId: params.runId,
+            });
+          }
+          return { result, resultStatus };
+        }),
+      );
       const stopped = settled.find(
         (entry) =>
           entry.resultStatus === "failed" || entry.resultStatus === "cancelled",
@@ -1139,7 +1149,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
               ) {
                 return { status: "cancelled", assignmentId: "", startedAt };
               }
-              const bindingId = workBindingId as ThreadBindingId;
+              const bindingId = workBindingId;
               const {
                 workConfig: _workConfig,
                 workRequestSnapshot: _snapshot,
@@ -1232,7 +1242,11 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 : undefined,
             });
           }
-          if (slotRound >= MAX_EXECUTION_WAIT_ROUNDS) {
+          const researchCapacityWait =
+            definition.id === "research" &&
+            definition.version === 2 &&
+            assignment.waitReason === "account_concurrency_limit";
+          if (slotRound >= MAX_EXECUTION_WAIT_ROUNDS && !researchCapacityWait) {
             await workflowStep.do(
               `workflow:${stepInstanceId(task.step)}:slot-wait-expired:${attempt}`,
               stepConfig,
@@ -1273,6 +1287,8 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                       wa.execution_workspace_id AS workspaceId,
                       wa.created_at AS createdAt, wa.updated_at AS updatedAt,
                       wa.queue_wait_timeout_ms AS queueWaitTimeoutMs,
+                      wa.cloud_queue_reason AS cloudQueueReason,
+                      wa.cloud_queue_since AS cloudQueueSince,
                       wa.start_permit_issued_at AS permitIssuedAt,
                       wa.start_permit_required AS permitRequired,
                       wa.dispatched_at AS dispatchedAt,
@@ -1302,7 +1318,8 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
               2 * DEFAULT_QUEUE_WAIT_TIMEOUT_MS) /
               ASSIGNMENT_RECONCILIATION_INTERVAL_MS,
           ) + WAKEUP_SLACK;
-        for (let wakeup = 0; wakeup < maxWakeups; wakeup += 1) {
+        let boundedWakeups = 0;
+        for (let wakeup = 0; boundedWakeups < maxWakeups; wakeup += 1) {
           terminal = await workflowStep.do(
             `workflow:${stepInstanceId(task.step)}:assignment-status:${attempt}:${wakeup}`,
             { ...stepConfig, timeout: "30 seconds" },
@@ -1325,6 +1342,17 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
               return row;
             },
           );
+          const deadlineInput = terminal
+            ? {
+                ...terminal,
+                workflowId: definition.id,
+                workflowVersion: definition.version,
+              }
+            : null;
+          // Capacity waiting is durable and holds no Workspace execution slot.
+          // It must not spend the provider's timeout or the recovery wake budget.
+          if (!deadlineInput || !isResearchCapacityQueue(deadlineInput))
+            boundedWakeups += 1;
           if (
             terminal &&
             ["completed", "failed", "cancelled", "timed_out"].includes(
@@ -1368,6 +1396,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 runningAt: terminal.runningAt,
                 queueWaitTimeoutMs:
                   terminal.queueWaitTimeoutMs ?? DEFAULT_QUEUE_WAIT_TIMEOUT_MS,
+                cloudQueueReason: terminal.cloudQueueReason,
+                cloudQueueSince: terminal.cloudQueueSince,
+                workflowId: definition.id,
+                workflowVersion: definition.version,
               })
             : null;
           if (
@@ -1421,7 +1453,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           await waitForTerminalEvent(
             workflowStep,
             `workflow:${stepInstanceId(task.step)}:assignment-wait:${attempt}:${wakeup}`,
-            nextWakeupMs(terminal, effectiveStepTimeoutMs(task.step.timeoutMs)),
+            nextWakeupMs(
+              deadlineInput,
+              effectiveStepTimeoutMs(task.step.timeoutMs),
+            ),
           );
         }
         if (!isTerminalRow(terminal)) {

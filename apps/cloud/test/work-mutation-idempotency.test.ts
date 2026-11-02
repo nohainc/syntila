@@ -23,7 +23,19 @@ vi.mock("../src/routes/handlers.js", async (original) => ({
     workerProfiles: {
       direct: { profileId: "chatgpt-codex", profileReleaseVersion: 1 },
       chat: { profileId: "chatgpt-codex", profileReleaseVersion: 1 },
+      ...Object.fromEntries(
+        Object.keys(bindings).map((id) => [
+          id,
+          { profileId: "chatgpt-codex", profileReleaseVersion: 1 },
+        ]),
+      ),
     },
+    workerModelCatalogs: Object.fromEntries(
+      Object.keys(bindings).map((id) => [
+        id,
+        { models: ["model-a", "model-b"] },
+      ]),
+    ),
   }),
 }));
 vi.mock("../src/routes/thread-policy.js", async (original) => ({
@@ -478,6 +490,53 @@ it("disabled user workflow cannot create execution even with a composer selectio
     expect(
       f.sqlite.prepare("SELECT count(*) n FROM work_requests").get()!.n,
     ).toBe(0);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+it("accepts Research v2 through request creation with every role frozen in the snapshot", async () => {
+  const f = fixture();
+  try {
+    f.sqlite.exec(
+      "INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('owner','paid','active','manual','now','now')",
+    );
+    f.sqlite
+      .prepare(
+        "INSERT INTO user_workflow_configurations(user_id,workspace_id,workflow_id,schema_version,configuration_json,updated_at) VALUES('owner','workspace','research',1,?,'now')",
+      )
+      .run(
+        JSON.stringify({
+          schemaVersion: 2,
+          workflowId: "research",
+          enabled: true,
+          researcherCount: 2,
+          defaults: { worker: "worker-a", model: "model-a" },
+          stepOverrides: { "research-2": { model: "model-b" } },
+        }),
+      );
+    const response = await f.submit(
+      "Investigate",
+      "research-request-create-0001",
+      "research",
+    );
+    expect(response.status).toBe(202);
+    const row = f.sqlite
+      .prepare("SELECT snapshot_json AS snapshot FROM work_requests")
+      .get()!;
+    const snapshot = JSON.parse(String(row.snapshot));
+    expect(Object.keys(snapshot.resolvedBindings)).toEqual([
+      "research-1",
+      "research-2",
+      "synthesis",
+    ]);
+    expect(snapshot.resolvedBindings["research-2"].model).toBe("model-b");
+    expect(Object.keys(snapshot.stepExecutionConfigs)).toEqual([
+      "research-1",
+      "research-2",
+      "synthesis",
+    ]);
+    expect(snapshot.workflowSnapshot.steps).toHaveLength(3);
   } finally {
     f.sqlite.close();
   }

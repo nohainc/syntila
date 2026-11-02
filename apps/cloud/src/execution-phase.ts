@@ -115,6 +115,7 @@ export interface ExecutionAssignmentEvidence {
   readonly startPermitRequired?: boolean | null;
   readonly runningAt?: string | null;
   readonly startupStage?: string | null;
+  readonly cloudQueueReason?: string | null;
   /** Raw `worker_assignments.error_json`. */
   readonly errorJson?: string | null;
   /** Canonical public error code, when the step failed. */
@@ -218,7 +219,10 @@ export function deriveExecutionPhase(
     return "uncertain";
   }
   if (status === "running") return "running";
-  if (status === "created") return "waiting_for_service";
+  if (status === "created")
+    return evidence.cloudQueueReason === "workspace_capacity"
+      ? "queued"
+      : "waiting_for_service";
   if (status === "dispatched") return "delivering";
   if (status === "acknowledged") {
     if (

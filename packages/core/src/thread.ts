@@ -689,7 +689,12 @@ export function validateWorkRequest(
     }
     validateBuiltinWorkflowDefinition(request.snapshot.workflowSnapshot);
     for (const step of request.snapshot.workflowSnapshot.steps) {
-      const bindingId = request.workflowId === "direct" ? "direct" : step.kind;
+      const bindingId =
+        request.workflowId === "direct"
+          ? "direct"
+          : request.workflowId === "research" && request.workflowVersion === 2
+            ? stepInstanceId(step)
+            : step.kind;
       if (
         request.snapshot.promptProfileVersions[step.kind] !==
           step.promptProfileVersion ||

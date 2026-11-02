@@ -26,6 +26,24 @@ describe("executionPhase", () => {
   it("is submitted when no assignment exists", () => {
     expect(base({ taskStatus: "queued" }).executionPhase).toBe("submitted");
   });
+  it("distinguishes Cloud capacity waiting from Service readiness", () => {
+    expect(
+      base({
+        assignmentStatus: "created",
+        cloudQueueReason: "workspace_capacity",
+      }),
+    ).toMatchObject({
+      executionPhase: "queued",
+      executionPhaseDetail:
+        "All Worker slots are busy; starting when one is free",
+    });
+    expect(
+      base({
+        assignmentStatus: "created",
+        cloudQueueReason: "service_not_ready",
+      }),
+    ).toMatchObject({ executionPhase: "waiting_for_service" });
+  });
   it.each([
     [{ assignmentStatus: "created" }, "waiting_for_service"],
     [{ assignmentStatus: "dispatched", dispatchedAt: T }, "delivering"],

@@ -164,6 +164,8 @@ describe("Research v2 prompts", () => {
     expect(one).toContain("Budget is small.");
     expect(one).toContain("Prefer managed services.");
     expect(one).not.toContain("sibling answer");
+    expect(one).toContain("unverified historical conclusions");
+    expect(one).toContain("Check historyCoverage");
     expect(one).toMatch(/Never claim web access/);
   });
 

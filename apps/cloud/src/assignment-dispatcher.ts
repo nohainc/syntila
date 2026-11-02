@@ -11,7 +11,6 @@ import {
   isRevocationAssignmentStatus,
   isTerminalAssignmentStatus,
   type AssignmentLifecycleStatus,
-  type ThreadBindingId,
 } from "@syntila/core";
 import {
   canonicalExecutionErrorCode,
@@ -173,7 +172,7 @@ export interface TaskToDispatch {
   readonly requiresIndependentVerification?: boolean;
   readonly threadId?: string;
   readonly workRequestId?: string;
-  readonly workBindingId?: ThreadBindingId;
+  readonly workBindingId?: string;
   readonly leaseId?: string;
   readonly fencingToken?: number;
   readonly executionClass?: "stateless_read" | "stateful_thread";
@@ -1247,6 +1246,8 @@ export async function recoverStaleAssignments(
               wa.created_at AS createdAt,
               wa.updated_at AS updatedAt, wa.timeout_ms AS timeoutMs,
               wa.queue_wait_timeout_ms AS queueWaitTimeoutMs,
+              wa.cloud_queue_reason AS cloudQueueReason,
+              wa.cloud_queue_since AS cloudQueueSince,
               wa.dispatched_at AS dispatchedAt,
               wa.acknowledged_at AS acknowledgedAt,
               wa.running_at AS runningAt,
@@ -1254,7 +1255,8 @@ export async function recoverStaleAssignments(
               wa.start_permit_required AS permitRequired,
               ew.status AS workspaceStatus, ew.updated_at AS workspaceUpdatedAt,
               g.expires_at AS grantExpiresAt, g.status AS grantStatus,
-              wr.status AS workRequestStatus
+              wr.status AS workRequestStatus, wr.workflow_id AS workflowId,
+              wr.workflow_version AS workflowVersion
          FROM worker_assignments wa
          JOIN execution_workspaces ew ON ew.id = wa.execution_workspace_id
          LEFT JOIN workspace_space_grants g ON g.id = wa.workspace_space_grant_id
@@ -1270,6 +1272,10 @@ export async function recoverStaleAssignments(
       updatedAt: string;
       timeoutMs: number | null;
       queueWaitTimeoutMs: number | null;
+      cloudQueueReason: string | null;
+      cloudQueueSince: string | null;
+      workflowId: string;
+      workflowVersion: number;
       dispatchedAt: string | null;
       acknowledgedAt: string | null;
       runningAt: string | null;
@@ -1362,6 +1368,10 @@ export async function recoverStaleAssignments(
         startPermitRequired: row.permitRequired === 1,
         runningAt: row.runningAt,
         queueWaitTimeoutMs: row.queueWaitTimeoutMs,
+        cloudQueueReason: row.cloudQueueReason,
+        cloudQueueSince: row.cloudQueueSince,
+        workflowId: row.workflowId,
+        workflowVersion: row.workflowVersion,
         timeoutMs: row.timeoutMs,
       },
       nowMs,

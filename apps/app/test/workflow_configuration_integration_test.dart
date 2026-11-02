@@ -87,7 +87,134 @@ class _SlowWorkersSource extends IntegrationSource {
   }
 }
 
+class _ResearchSource extends IntegrationSource {
+  @override
+  Future<List<AxBuiltinWorkflow>> loadBuiltinWorkflowCatalog() async => [
+        ...await super.loadBuiltinWorkflowCatalog(),
+        AxBuiltinWorkflow.fromJson({
+          'id': 'research',
+          'version': 2,
+          'name': 'Research',
+          'description': 'Independent investigations and synthesis',
+          'steps': [
+            {'id': 'research-1', 'kind': 'research', 'order': 0},
+            {'id': 'research-2', 'kind': 'research', 'order': 1},
+            {'id': 'synthesis', 'kind': 'synthesis', 'order': 2},
+          ],
+          'executionPolicy': {'multiStep': true, 'multiWorker': true},
+          'composerBindingId': 'research',
+        }),
+      ];
+}
+
 void main() {
+  testWidgets(
+      'Research keeps workflow controls and exposes every configured execution',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final oldPlan = AxAccountPlanCache.instance.plan;
+    AxAccountPlanCache.instance.plan =
+        const AxAccountPlan(isPaid: true, features: {'workflow.research'});
+    addTearDown(() => AxAccountPlanCache.instance.plan = oldPlan);
+    final source = _ResearchSource()
+      ..defaultWorkflow = 'research'
+      ..workers = [worker('a')]
+      ..values = [
+        AxUserWorkflowConfiguration(
+          workflowId: 'research',
+          researcherCount: 3,
+          defaults: const AxWorkflowSelection(
+              worker: 'a', model: 'model-a', effort: 'careful'),
+          stepOverrides: const {
+            'research-2': AxWorkflowSelection(model: 'model-b'),
+            'research-3': AxWorkflowSelection(model: 'model-c'),
+            'synthesis': AxWorkflowSelection(model: 'synthesis-model'),
+          },
+        )
+      ];
+    final engine = AxSyncEngine();
+    final store = MemoryAxThreadViewStateStore();
+    await store.save(
+        userId: 'user',
+        threadId: 'research-thread',
+        state: const AxThreadViewState(
+          tabIndex: 1,
+          workflowReference: 'research:v2',
+          workerId: 'a',
+          model: 'saved-one-step-model',
+        ));
+    Map<String, dynamic>? submitted;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      initialTab: 1,
+      space: const AxSpace(
+          id: 's', name: 'Space', branch: '', lastActivity: '', role: 'owner'),
+      thread: const AxThread(
+          id: 'research-thread',
+          spaceId: 's',
+          name: 'Thread',
+          lead: '',
+          status: 'active',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: '',
+          canExecuteWork: true),
+      currentUserId: 'user',
+      viewerEmail: 'vitalii@nohainc.com',
+      dataSource: source,
+      catalogs: AxSessionCatalogs(source, engine: engine),
+      workflowConfigurations: AxWorkflowConfigurations(source, engine: engine),
+      workHistoryCache: AxWorkHistoryCache(source, engine: engine),
+      threadViewStateStore: store,
+      onBackToSpace: () {},
+      onArchive: () {},
+      onRunWorkWithSelection:
+          (prompt, workflow, attachments, key, selection) async {
+        expect(workflow, 'research');
+        submitted = selection;
+        return 'research-accepted';
+      },
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('work-workflow-track')), findsOneWidget);
+    expect(find.byKey(const ValueKey('work-toggle-chat')), findsOneWidget);
+    await tester
+        .tap(find.byKey(const ValueKey('research-execution-selection')));
+    await tester.pumpAndSettle();
+    expect(
+        find.textContaining(
+            'Every message sent with Research starts a new investigation'),
+        findsOneWidget);
+    for (final title in [
+      'Researcher 1',
+      'Researcher 2',
+      'Researcher 3',
+      'Synthesis'
+    ]) {
+      expect(find.text(title), findsOneWidget);
+    }
+    for (final model in ['model-a', 'model-b', 'model-c', 'synthesis-model']) {
+      expect(find.textContaining(model), findsOneWidget);
+    }
+    expect(find.textContaining('saved-one-step-model'), findsNothing);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Investigate this');
+    await tester.tap(find.byKey(const ValueKey('composer-send-Send request')));
+    await tester.pumpAndSettle();
+    expect(submitted, isEmpty);
+    await tester.tap(find.byKey(const ValueKey('work-toggle-chat')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('research-execution-selection')),
+        findsNothing);
+    expect(
+        find.byKey(const ValueKey('work-composer-selection')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets(
       'a choice made before the saved selection resolves is not overwritten',
       (tester) async {

@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import type { ThreadBindingId } from "@syntila/core";
 
 export function workStepSessionKey(params: {
-  readonly workBindingId?: ThreadBindingId;
+  readonly workBindingId?: string;
   readonly threadId: string;
   readonly workRequestId: string;
   readonly stepKind: string;

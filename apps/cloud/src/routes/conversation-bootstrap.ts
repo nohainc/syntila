@@ -61,7 +61,7 @@ export async function loadConversationBootstrap(
   const floorSequence = floor?.floor ?? 0;
   const result = await db
     .prepare(
-      `SELECT sequence, kind, event_type AS eventType, actor_type AS actorType,
+      `SELECT COUNT(*) OVER() AS eligibleEntryCount, sequence, kind, event_type AS eventType, actor_type AS actorType,
     actor_id AS actorId, text, source_id AS sourceId, artifact_id AS artifactId, metadata_json AS metadataJson,
     COALESCE((SELECT cr.conversation_revision FROM conversation_work_requests cr WHERE cr.work_request_id = h.work_request_id AND cr.conversation_id = h.conversation_id),0) AS contextRevision
     FROM conversation_history_entries h
@@ -79,6 +79,7 @@ export async function loadConversationBootstrap(
       MAX_BOOTSTRAP_ENTRIES,
     )
     .all<{
+      eligibleEntryCount: number;
       sequence: number;
       contextRevision: number;
       kind: string;
@@ -99,10 +100,12 @@ export async function loadConversationBootstrap(
     if (entryBytes > MAX_BOOTSTRAP_BYTES) break;
     entries.unshift(entry);
   }
-  const history = entries.map(({ metadataJson, ...entry }) => ({
-    ...entry,
-    metadata: JSON.parse(metadataJson) as Record<string, unknown>,
-  })) as ContextHistoryFact[];
+  const history = entries.map(
+    ({ metadataJson, eligibleEntryCount: _count, ...entry }) => ({
+      ...entry,
+      metadata: JSON.parse(metadataJson) as Record<string, unknown>,
+    }),
+  ) as ContextHistoryFact[];
   const current = await db
     .prepare(
       `SELECT wr.workflow_id AS workflowId, wr.workflow_version AS workflowVersion,
@@ -265,11 +268,25 @@ export async function loadConversationBootstrap(
       maxBytes: MAX_BOOTSTRAP_BYTES,
     };
     try {
-      return JSON.stringify(
-        mode === "stateless"
+      const rendered = JSON.stringify({
+        ...(mode === "stateless"
           ? engine.stateless(input)
-          : engine.bootstrap(input),
-      );
+          : engine.bootstrap(input)),
+        historyCoverage: {
+          schemaVersion: 1,
+          eligibleEntries: result.results?.[0]?.eligibleEntryCount ?? 0,
+          includedEntries: facts.length,
+          omittedEntries:
+            (result.results?.[0]?.eligibleEntryCount ?? 0) - facts.length,
+          clearedEarlierHistory: floorSequence > 0,
+          firstIncludedSequence: facts[0]?.sequence ?? null,
+          notice:
+            "Only the included history is available in this context. Omitted or cleared exchanges are not summarized here. Do not infer their contents or claim complete conversation recall; request missing details when needed.",
+        },
+      });
+      return encoder.encode(rendered).byteLength <= MAX_BOOTSTRAP_BYTES
+        ? rendered
+        : null;
     } catch (error) {
       if (error instanceof ContextLimitError) return null;
       throw error;

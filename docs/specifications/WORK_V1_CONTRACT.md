@@ -192,6 +192,7 @@ tests.
 | --- | --- |
 | `chat` | Respond conversationally using authorized Thread context. Inspect files and use provider-supported read-only commands; do not modify files, dependencies, or repository state. Return natural Markdown. |
 | `research` | Gather and summarize relevant evidence from the request and authorized context, including findings, available sources/references, constraints, uncertainties, and recommended next actions. Do not make requested changes. |
+| `synthesis` | Compare all required independent Research reports and return one attributed outcome. Treat reports as evidence, preserve disagreements and uncertainties, and remain read-only. |
 | `plan` | Turn the request and available evidence into an ordered implementation plan and clear completion criteria. Do not make requested changes. |
 | `implement` | Make the requested changes in the Thread execution context. |
 | `test` | Run relevant tests or validation against the implementation and report commands/results. Do not intentionally change product source as part of the test step. |
@@ -226,10 +227,19 @@ and validate their original Workflow snapshot and version; they are not rewritte
 AX offers the latest version of each ID for new requests while using the full
 catalog to display historical versions. The API catalog includes both versions.
 
+Research v2 (ADR-026) runs independent researchers within the Workspace's
+shared parallel-slot budget, then synthesis after every researcher succeeds.
+Excess branches remain durably queued; Research capacity waits do not consume
+the provider execution deadline. A single free slot is sufficient to run the
+graph sequentially. The Thread shows completed reports immediately and queued
+branches accurately. Readiness failures, permissions, cancellation and provider
+execution deadlines remain enforced. Historical Research v1 and Full Cycle
+keep their accepted definitions.
+
 The core domain uses `BuiltinWorkflowDefinition` and `BuiltinWorkflowStep`:
 
 ```ts
-type StepKind = "chat" | "research" | "plan" | "implement" | "test" | "verify";
+type StepKind = "chat" | "research" | "synthesis" | "plan" | "implement" | "test" | "verify";
 type WorkflowId =
   | "chat"
   | "direct"
@@ -247,6 +257,7 @@ interface BuiltinWorkflowDefinition {
 }
 
 interface BuiltinWorkflowStep {
+  id?: string; // stable instance ID; omitted historical steps use their kind
   kind: StepKind;
   order: number;
   executionMode: "stateless_read" | "stateful_thread";
@@ -257,6 +268,8 @@ interface BuiltinWorkflowStep {
   promptProfileVersion: string;
   dependsOn: StepKind[]; // fixed by the built-in definition
   inputsFrom: StepKind[]; // fixed upstream step results
+  dependsOnSteps?: string[]; // instance dependencies for repeated kinds
+  inputsFromSteps?: string[]; // instance report inputs for synthesis
   resultSemantics: WorkflowResultSemantics;
 }
 ```
@@ -502,9 +515,10 @@ fall back to available Step output or assignment timestamps.
 | `verify` | Original request, relevant Research and Plan results, Implementation result, Test result if present, Space and Thread instructions, Verify-specific instructions, and the current Thread filesystem. Verify holds the active Thread lease for filesystem identity, but its effective permissions and provider execution are read-only; it uses a fresh Work Request-scoped Verify session. |
 
 These result selections are recorded in each built-in step's `inputsFrom`.
-Research v1 is the current Research definition. Research v2 (independent
-researchers on different models plus a synthesis step, ADR-026) is in the
-catalog but not yet executable or selectable. Research requires the
+Research v2 is the current Research definition (independent researchers on
+different models plus synthesis, ADR-026), behind the development preview
+gate until release acceptance is complete. Research v1 remains historical.
+Research requires the
 requester's Syntila Plus (`workflow.research`).
 
 Research receives attachment contents; Plan receives attachment metadata only;
@@ -564,8 +578,8 @@ the same Worker performed Implement.
 
 ## Built-in catalog
 
-This table is the authoritative built-in Workflow set for the Work v1 contract. Steps run in the
-listed order; each step depends on the immediately preceding step. `direct`
+This table is the authoritative built-in Workflow set for the Work v1 contract.
+Except Research v2, steps run in the listed order and depend on the preceding step. `direct`
 means one direct implementation step, not a separate `StepKind`.
 
 | Workflow reference | Display name | Fixed steps |
@@ -573,7 +587,8 @@ means one direct implementation step, not a separate `StepKind`.
 | `chat:v1` | Chat | `chat` |
 | `direct:v1` | Direct (historical) | `implement` |
 | `direct:v2` | Work (current) | `implement` |
-| `research:v1` | Research | `research` |
+| `research:v1` | Research (historical) | `research` |
+| `research:v2` | Research (current, preview) | 2–4 independent `research` instances → `synthesis` after all succeed |
 | `plan_implement:v1` | Plan & Implement | `plan` → `implement` |
 | `implement_verify:v1` | Implement & Verify | `implement` → `verify` |
 | `full_cycle:v1` | Full Cycle | `research` → `plan` → `implement` → `test` → `verify` |

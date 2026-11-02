@@ -12,6 +12,8 @@ import {
   stepInstanceId,
   validateBuiltinWorkflowDefinition,
   validateResearchModelDiversity,
+  validateWorkRequest,
+  type WorkRequest,
   configuredWorkflowDefinition,
   parseUserWorkflowConfiguration,
   resolveUserWorkflowConfiguration,
@@ -21,6 +23,66 @@ import {
 } from "../src/index.js";
 
 describe("Research v2 definition", () => {
+  it.each([2, 3, 4])(
+    "accepts a complete %i-researcher request snapshot and requires every role",
+    (count) => {
+      const definition = researchWorkflowV2(count);
+      const request: WorkRequest = {
+        id: "request",
+        threadId: "thread",
+        requestedByUserId: "user",
+        mode: "stateless",
+        workflowId: "research",
+        workflowVersion: 2,
+        workflowSnapshot: definition,
+        status: "queued",
+        primaryWorkspaceId: "workspace",
+        input: {},
+        createdAt: "now",
+        updatedAt: "now",
+        snapshot: {
+          schemaVersion: 1,
+          originalRequest: "Investigate",
+          attachmentReferences: [],
+          workflowId: "research",
+          workflowVersion: 2,
+          workflowSnapshot: definition,
+          resolvedBindings: Object.fromEntries(
+            definition.steps.map((step) => [
+              stepInstanceId(step),
+              { workerId: "worker", model: stepInstanceId(step) },
+            ]),
+          ),
+          promptProfileVersions: Object.fromEntries(
+            definition.steps.map((step) => [
+              step.kind,
+              step.promptProfileVersion,
+            ]),
+          ),
+          spaceInstructions: "",
+          threadInstructions: "",
+          stepAdditionalInstructions: {},
+        },
+      };
+      const policy = { mode: "stateless" as const, primaryWorkspaceId: null };
+      expect(() => validateWorkRequest(request, policy)).not.toThrow();
+      for (const step of definition.steps) {
+        const bindings = { ...request.snapshot!.resolvedBindings };
+        delete bindings[stepInstanceId(step)];
+        // A kind-level fallback must not mask a missing individual researcher.
+        bindings.research = { workerId: "worker" };
+        expect(() =>
+          validateWorkRequest(
+            {
+              ...request,
+              snapshot: { ...request.snapshot!, resolvedBindings: bindings },
+            },
+            policy,
+          ),
+        ).toThrow("missing a resolved Step input");
+      }
+    },
+  );
   it("repeats the research kind under distinct, stable step-instance IDs", () => {
     const definition = researchWorkflowV2(3);
     expect(
@@ -111,6 +173,57 @@ describe("Research v2 definition", () => {
           JSON.parse(JSON.stringify(definition)),
         ),
       ).not.toThrow();
+  });
+
+  it("preserves accepted binding IDs for historical workflows", () => {
+    for (const definition of Object.values(BUILTIN_WORKFLOW_CATALOG).filter(
+      (definition) =>
+        !(definition.id === "research" && definition.version === 2),
+    )) {
+      const request: WorkRequest = {
+        id: "historical",
+        threadId: "thread",
+        requestedByUserId: "user",
+        mode: "stateless",
+        workflowId: definition.id,
+        workflowVersion: definition.version,
+        workflowSnapshot: definition,
+        status: "completed",
+        primaryWorkspaceId: null,
+        input: {},
+        createdAt: "then",
+        updatedAt: "then",
+        snapshot: {
+          schemaVersion: 1,
+          originalRequest: "Investigate",
+          attachmentReferences: [],
+          workflowId: definition.id,
+          workflowVersion: definition.version,
+          workflowSnapshot: definition,
+          resolvedBindings: Object.fromEntries(
+            definition.steps.map((step) => [
+              definition.id === "direct" ? "direct" : step.kind,
+              { workerId: "worker" },
+            ]),
+          ),
+          promptProfileVersions: Object.fromEntries(
+            definition.steps.map((step) => [
+              step.kind,
+              step.promptProfileVersion,
+            ]),
+          ),
+          spaceInstructions: "",
+          threadInstructions: "",
+          stepAdditionalInstructions: {},
+        },
+      };
+      expect(() =>
+        validateWorkRequest(request, {
+          mode: "stateless",
+          primaryWorkspaceId: null,
+        }),
+      ).not.toThrow();
+    }
   });
 
   it("accepts any allowed researcher count in a snapshot and rejects tampering", () => {

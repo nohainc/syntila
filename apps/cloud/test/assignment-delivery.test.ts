@@ -26,6 +26,58 @@ it("classifies redispatch without reopening terminal state", () => {
     accepted: true,
   });
 });
+
+it("keeps Research capacity waiting separate from readiness and execution deadlines", () => {
+  const start = Date.parse("2026-11-01T00:00:00Z");
+  const now = start + 24 * 60 * 60_000;
+  const waiting = {
+    status: "created",
+    createdAt: new Date(start).toISOString(),
+    cloudQueueReason: "workspace_capacity",
+    cloudQueueSince: new Date(start).toISOString(),
+    workflowId: "research",
+    workflowVersion: 2,
+    queueWaitTimeoutMs: 120_000,
+  };
+  expect(assignmentDeadlineViolation(waiting, now)).toBeNull();
+  expect(
+    assignmentDeadlineViolation({ ...waiting, workflowId: "direct" }, now),
+  ).toMatchObject({ phase: "readiness_wait" });
+  expect(
+    assignmentDeadlineViolation({ ...waiting, workflowVersion: 1 }, now),
+  ).toMatchObject({ phase: "readiness_wait" });
+  // Switching to readiness starts that budget once, after the capacity wait.
+  const offline = {
+    ...waiting,
+    cloudQueueReason: "service_not_ready",
+    cloudQueueSince: new Date(now).toISOString(),
+  };
+  expect(assignmentDeadlineViolation(offline, now + 119_999)).toBeNull();
+  expect(assignmentDeadlineViolation(offline, now + 120_000)).toMatchObject({
+    phase: "readiness_wait",
+  });
+  expect(
+    assignmentDeadlineViolation(
+      {
+        ...waiting,
+        status: "running",
+        runningAt: new Date(now).toISOString(),
+        timeoutMs: 1000,
+      },
+      now + 1000,
+    ),
+  ).toMatchObject({ phase: "provider_execution" });
+  expect(
+    assignmentDeadlineViolation(
+      {
+        ...waiting,
+        status: "dispatched",
+        dispatchedAt: new Date(now).toISOString(),
+      },
+      now + 30_000,
+    ),
+  ).toMatchObject({ phase: "command_delivery" });
+});
 it("measures each deadline from its own event, not from creation", () => {
   const t0 = Date.parse("2026-10-05T14:00:00.000Z");
   const iso = (ms: number) => new Date(t0 + ms).toISOString();

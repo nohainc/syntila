@@ -144,6 +144,13 @@ class AxWorkflowCapabilities {
       );
 }
 
+/// A multi-step workflow resolves its Worker and model separately per role.
+Map<String, dynamic> submissionExecutionSelection(
+        AxBuiltinWorkflow? workflow, Map<String, dynamic> selection) =>
+    workflow?.executionPolicy.multiStep == true
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(selection);
+
 class AxBuiltinWorkflow {
   const AxBuiltinWorkflow({
     required this.id,

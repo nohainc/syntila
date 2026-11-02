@@ -29,8 +29,9 @@ export async function publishAssignmentPhase(
               wa.start_permit_issued_at AS startPermitIssuedAt,
               wa.start_permit_required AS startPermitRequired,
               wa.running_at AS runningAt, wa.startup_stage AS startupStage,
+              wa.cloud_queue_reason AS cloudQueueReason,
               wa.error_json AS errorJson, wa.run_id AS runId,
-              wt.status AS taskStatus, wt.step_kind AS stepKind,
+              wt.status AS taskStatus, wt.step_kind AS stepKind, wt.step_id AS stepId,
               wt.work_request_id AS workRequestId, wt.error AS taskError,
               wr.thread_id AS threadId, wr.primary_workspace_id AS workspaceId,
               th.space_id AS spaceId
@@ -57,6 +58,7 @@ export async function publishAssignmentPhase(
       startPermitRequired: Number(row.startPermitRequired ?? 0) === 1,
       runningAt: text(row.runningAt),
       startupStage: text(row.startupStage),
+      cloudQueueReason: text(row.cloudQueueReason),
       errorJson: text(row.errorJson),
       errorCode,
     });
@@ -70,7 +72,7 @@ export async function publishAssignmentPhase(
       // `status` carries the phase; the payload schema is strict, and the
       // client re-reads the Work Request for failureCategory and retry.
       payload: {
-        entityId: String(row.stepKind),
+        entityId: String(row.stepId ?? row.stepKind),
         workRequestId: String(row.workRequestId),
         threadId: String(row.threadId),
         stepKind: String(row.stepKind),

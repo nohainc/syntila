@@ -3,7 +3,6 @@ import {
   effectiveStepTimeoutMs,
   type StepResult,
   type BuiltinWorkflowStep,
-  type ThreadBindingId,
 } from "@syntila/core";
 import type { TaskToDispatch } from "./assignment-dispatcher.js";
 import { workStepSessionKey } from "./work-session-key.js";
@@ -13,7 +12,7 @@ import { workStepSessionKey } from "./work-session-key.js";
 export interface WorkerStepExecutionInput {
   readonly taskId: string;
   readonly step: BuiltinWorkflowStep;
-  readonly bindingId: ThreadBindingId;
+  readonly bindingId: string;
   readonly binding: Readonly<Record<string, unknown>>;
   readonly prompt: string;
   readonly workerInput: Readonly<Record<string, unknown>>;

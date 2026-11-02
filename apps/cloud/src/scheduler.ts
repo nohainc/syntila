@@ -13,7 +13,6 @@ import {
   validateWorkspaceGrantPermissions,
   validateWorkspaceGrantWorkerIds,
   validateWorkspaceNetworkPolicy,
-  type ThreadBindingId,
 } from "@syntila/core";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "./assignment-transitions.js";
 
@@ -33,7 +32,8 @@ export interface SpaceExecutionSelectionRequest {
   readonly readOnly?: boolean;
   readonly threadId?: string;
   readonly workRequestId?: string;
-  readonly workBindingId?: ThreadBindingId;
+  /** Accepted binding key: a legacy binding or a Research step-instance ID. */
+  readonly workBindingId?: string;
   /** Dispatchers may admit a durable local queue; the Service still enforces
    * the returned effective limit before starting a process. */
   readonly allowQueue?: boolean;
@@ -395,12 +395,18 @@ export async function selectSpaceExecutionTarget(
       const acceptedSnapshot = object(row.work_request_snapshot_json);
       const stepConfigs = acceptedSnapshot.stepExecutionConfigs as
         Record<string, unknown> | undefined;
+      // Work's binding is `direct`, but its executable step is `implement`.
+      // Research binds and freezes each repeated step under its instance ID.
+      const stepConfigId =
+        request.workBindingId === "direct"
+          ? request.role
+          : (request.workBindingId ?? request.role);
       const turnConfig = request.workRequestId
-        ? ((stepConfigs?.[request.role] ??
+        ? ((stepConfigs?.[stepConfigId] ??
             acceptedSnapshot.turnExecutionConfig) as
             Record<string, unknown> | undefined)
         : undefined;
-      if (stepConfigs && !stepConfigs[request.role]) {
+      if (stepConfigs && !stepConfigs[stepConfigId]) {
         rejected.push({
           workspaceId,
           workerId,

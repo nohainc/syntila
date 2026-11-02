@@ -148,6 +148,7 @@ class _WorkComposer extends StatelessWidget {
     required this.workflow,
     required this.workflowCatalog,
     this.workConfig = const <String, dynamic>{},
+    this.researchConfiguration,
     this.spaceWorkers = const <AxWorker>[],
     this.eligibleWorkers = const <AxWorker>[],
     required this.loadingWorkflows,
@@ -215,6 +216,7 @@ class _WorkComposer extends StatelessWidget {
   final String workflow;
   final List<AxBuiltinWorkflow> workflowCatalog;
   final Map<String, dynamic> workConfig;
+  final AxUserWorkflowConfiguration? researchConfiguration;
   final List<AxWorker> spaceWorkers;
   final List<AxWorker> eligibleWorkers;
   final bool loadingWorkflows;
@@ -491,6 +493,7 @@ class _WorkComposer extends StatelessWidget {
   /// then a model when the Worker offers models, then an effort when the
   /// chosen model offers efforts. Empty when the selection is complete.
   List<String> _missingSelection() {
+    if (_selectedWorkflow()?.executionPolicy.multiStep == true) return const [];
     final workerId = _selectedWorkerId() ?? '';
     // With no Worker to choose from, sending reports the Space setup problem
     // from Cloud instead of asking for an impossible choice.
@@ -804,94 +807,101 @@ class _WorkComposer extends StatelessWidget {
               ]),
             ),
           ),
-          DecoratedBox(
-            key: const ValueKey('work-composer-selection'),
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.all(Radius.circular(6)),
-              border: Border.all(
-                  color: selectionMissing && _missingSelection().isNotEmpty
-                      ? colors.error
-                      : Colors.transparent),
+          if (_selectedWorkflow()?.id == 'research' &&
+              _selectedWorkflow()?.version == 2)
+            ResearchExecutionSelection(
+              configuration: researchConfiguration,
+              workers: spaceWorkers,
+            )
+          else
+            DecoratedBox(
+              key: const ValueKey('work-composer-selection'),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.all(Radius.circular(6)),
+                border: Border.all(
+                    color: selectionMissing && _missingSelection().isNotEmpty
+                        ? colors.error
+                        : Colors.transparent),
+              ),
+              child: ModelEffortSelector(
+                scope: 'work-composer',
+                immediatePopup: true,
+                workerIconBuilder: (capability) {
+                  final worker = eligibleWorkers
+                      .where((w) => w.id == capability.id)
+                      .firstOrNull;
+                  final asset = WorkerPresentation.resolve(
+                          worker?.workerTypeId, capability.name)
+                      .iconAssetForBrightness(Theme.of(context).brightness);
+                  return asset == null
+                      ? const Icon(Icons.smart_toy_outlined, size: 22)
+                      : Image.asset(asset, width: 22, height: 22);
+                },
+                modelIconBuilder: (capability, modelId, modelName) {
+                  final worker = eligibleWorkers
+                      .where((w) => w.id == capability?.id)
+                      .firstOrNull;
+                  final presentation = ModelPresentation.resolve(
+                    modelId: modelId,
+                    modelDisplayName: modelName,
+                    fallbackWorkerTypeId: worker?.workerTypeId,
+                    fallbackWorkerDisplayName: capability?.name,
+                  );
+                  final asset = presentation
+                      .iconAssetForBrightness(Theme.of(context).brightness);
+                  return asset == null
+                      ? const Icon(Icons.smart_toy_outlined, size: 22)
+                      : Image.asset(asset, width: 22, height: 22);
+                },
+                compactModelLabelBuilder: (modelId, modelName) {
+                  return ModelPresentation.stripIdentity(modelName ?? modelId);
+                },
+                helperMessage: eligibleWorkers
+                            .where((worker) => worker.id == selectedWorkerId)
+                            .firstOrNull
+                            ?.executionOptions
+                            ?.modelSwitchSupported ==
+                        false
+                    ? 'Changing the model starts a new session with the conversation context. Effort changes that select another model follow the same rule.'
+                    : null,
+                onShowUsage: usageController?.supported ?? false
+                    ? () => _runComposerCommand(_usageCommand)
+                    : null,
+                compact: true,
+                compactHeight: composerButtonSize,
+                compactIconSize: composerIconSize,
+                showWorkerInCompactSummary: false,
+                showWorker: true,
+                showModel: true,
+                showEffort: true,
+                showCatalog: false,
+                allowWorkerChange: policy.userSelectsWorker,
+                allowModelChange: policy.userSelectsModel,
+                allowEffortChange: policy.userSelectsEffort,
+                catalog:
+                    AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog,
+                value: ExecutionSelection(
+                    worker: selectedWorkerId,
+                    catalogRevision: (executionSelection['catalogRevision'] ??
+                        binding['catalogRevision']) as String?,
+                    model: selectedModel.isEmpty ? null : selectedModel,
+                    effort: selectedReasoningEffort.isEmpty
+                        ? null
+                        : selectedReasoningEffort),
+                readOnly: !canExecute ||
+                    submitting ||
+                    !(policy.userSelectsWorker ||
+                        policy.userSelectsModel ||
+                        policy.userSelectsEffort),
+                onChanged: (value) => onExecutionSelectionChanged({
+                  'workerId': value.worker,
+                  'model': value.model,
+                  'reasoningEffort': value.effort,
+                  if (value.catalogRevision != null)
+                    'catalogRevision': value.catalogRevision,
+                }),
+              ),
             ),
-            child: ModelEffortSelector(
-              scope: 'work-composer',
-              immediatePopup: true,
-              workerIconBuilder: (capability) {
-                final worker = eligibleWorkers
-                    .where((w) => w.id == capability.id)
-                    .firstOrNull;
-                final asset = WorkerPresentation.resolve(
-                        worker?.workerTypeId, capability.name)
-                    .iconAssetForBrightness(Theme.of(context).brightness);
-                return asset == null
-                    ? const Icon(Icons.smart_toy_outlined, size: 22)
-                    : Image.asset(asset, width: 22, height: 22);
-              },
-              modelIconBuilder: (capability, modelId, modelName) {
-                final worker = eligibleWorkers
-                    .where((w) => w.id == capability?.id)
-                    .firstOrNull;
-                final presentation = ModelPresentation.resolve(
-                  modelId: modelId,
-                  modelDisplayName: modelName,
-                  fallbackWorkerTypeId: worker?.workerTypeId,
-                  fallbackWorkerDisplayName: capability?.name,
-                );
-                final asset = presentation
-                    .iconAssetForBrightness(Theme.of(context).brightness);
-                return asset == null
-                    ? const Icon(Icons.smart_toy_outlined, size: 22)
-                    : Image.asset(asset, width: 22, height: 22);
-              },
-              compactModelLabelBuilder: (modelId, modelName) {
-                return ModelPresentation.stripIdentity(modelName ?? modelId);
-              },
-              helperMessage: eligibleWorkers
-                          .where((worker) => worker.id == selectedWorkerId)
-                          .firstOrNull
-                          ?.executionOptions
-                          ?.modelSwitchSupported ==
-                      false
-                  ? 'Changing the model starts a new session with the conversation context. Effort changes that select another model follow the same rule.'
-                  : null,
-              onShowUsage: usageController?.supported ?? false
-                  ? () => _runComposerCommand(_usageCommand)
-                  : null,
-              compact: true,
-              compactHeight: composerButtonSize,
-              compactIconSize: composerIconSize,
-              showWorkerInCompactSummary: false,
-              showWorker: true,
-              showModel: true,
-              showEffort: true,
-              showCatalog: false,
-              allowWorkerChange: policy.userSelectsWorker,
-              allowModelChange: policy.userSelectsModel,
-              allowEffortChange: policy.userSelectsEffort,
-              catalog:
-                  AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog,
-              value: ExecutionSelection(
-                  worker: selectedWorkerId,
-                  catalogRevision: (executionSelection['catalogRevision'] ??
-                      binding['catalogRevision']) as String?,
-                  model: selectedModel.isEmpty ? null : selectedModel,
-                  effort: selectedReasoningEffort.isEmpty
-                      ? null
-                      : selectedReasoningEffort),
-              readOnly: !canExecute ||
-                  submitting ||
-                  !(policy.userSelectsWorker ||
-                      policy.userSelectsModel ||
-                      policy.userSelectsEffort),
-              onChanged: (value) => onExecutionSelectionChanged({
-                'workerId': value.worker,
-                'model': value.model,
-                'reasoningEffort': value.effort,
-                if (value.catalogRevision != null)
-                  'catalogRevision': value.catalogRevision,
-              }),
-            ),
-          ),
         ],
       ),
     );

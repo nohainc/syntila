@@ -100,6 +100,11 @@ a researcher's model, never its session. All executions are read-only.
   capacity reports its own queued reason. Every branch outcome is persisted
   before a failure ends the run, so a successful researcher's report survives
   a sibling failing; synthesis is then blocked, never run on a partial set.
+  At dispatch, the scheduler resolves frozen `stepExecutionConfigs` by the
+  accepted instance binding (`research-1`, `research-2`, `synthesis`), not the
+  semantic `research` kind. Work retains its `direct` binding and `implement`
+  configuration key. Missing instance configurations fail closed; they never
+  inherit a sibling's or kind-level execution configuration.
 - **Sessions**: the session key uses the instance ID, so each researcher and
   the synthesis get separate request-scoped sessions (synthesis may reuse a
   researcher's model, never its session). v1 keys are unchanged.
@@ -153,6 +158,15 @@ a researcher's model, never its session. All executions are read-only.
 - Workflow run presentation keys Step Runs by instance ID and labels
   "Researcher N" (with its model and queued/running/completed/failed state)
   and a separate "Synthesis" stage.
+- The composer does not offer a single Worker/model override for Research v2:
+  each role uses its Workflow configuration. Saved single-step Thread choices
+  are omitted from multi-step submissions and eligibility checks.
+  The workflow switcher remains visible. A **Research executions** control
+  opens the effective selections for every configured researcher and synthesis
+  (Worker, model and effort), with directions to edit Workspace workflows.
+  Request snapshot validation requires a binding for each Research v2 step ID;
+  a single kind-level `research` binding cannot satisfy missing role inputs.
+  Historical one-per-kind workflows retain their original binding IDs.
 - Retry sends `stepId`, so a failed researcher or the synthesis is retried
   alone.
 - The Workflows editor shows Researcher 1..n and Synthesis, a researcher-count
@@ -169,9 +183,75 @@ a researcher's model, never its session. All executions are read-only.
    overlapping execution, separate sessions, successful synthesis and unchanged
    project files.
 
+## Capacity and graph execution
+
+- The Workflow owns the dependency graph, not machine slots. Researchers are
+  independently runnable; synthesis is ready only after every configured
+  researcher report has completed successfully. Each branch persists and
+  publishes its result immediately, even while another branch is queued.
+- The existing Workspace Gateway is the single Cloud owner of the shared
+  Workspace parallel-slot budget. It serializes slot claims, leaves excess
+  assignments `created` in its persisted queue, and releases capacity only on
+  authoritative terminal/confirmed-stop evidence. The Service's shared Engine
+  pool and start-permit fence remain the final launch guard. No separate
+  Research pool or subscription concurrency cap is introduced.
+- With one slot, researchers run in turn. With more free slots they overlap.
+  Completion flushes the queue; raising `parallelSlots` also flushes it. Lowering
+  the setting never kills a running execution; further starts wait for room.
+  Synthesis competes for a slot only after all reports are ready. Research does
+  not hold a machine slot between executions or reserve all required slots
+  before it can begin. With no initial slot it remains queued and cancellable.
+- Migration `0100_assignment_cloud_queue.sql` records the Gateway-owned
+  `cloud_queue_reason` and `cloud_queue_since`, separately from Service startup
+  reports. Research v2 waiting for `workspace_capacity` has no application-level
+  capacity deadline and does not consume its provider execution timeout or the
+  Workflow's bounded execution-reconciliation wake budget. Ordinary workflows
+  retain their existing queue deadline. An accepted Research run waiting for
+  the requester's account slot after expiration likewise waits rather than
+  losing successful branch results to a capacity deadline.
+- Readiness loss changes the reason to `service_not_ready` and begins a fresh,
+  bounded readiness clock once; polls never reset it. Command delivery,
+  startup, provider execution, invalid configuration, grant revocation and
+  cancellation retain their existing safeguards. This is continued scheduling
+  under capacity pressure, not a guarantee that providers or permissions can
+  never fail. Durable Workflows still have infrastructure history/storage
+  limits; indefinitely parked requests remain subject to those platform limits.
+- Queued rows are re-read and nudged after restart or missed notifications.
+  Events shorten waits but never grant capacity or satisfy dependencies.
+  Apply migration 0100 before rolling out this Cloud build. It was applied to
+  the local development database after taking a SQLite backup; production has
+  not been migrated or deployed by this work.
+
 ## Release gates (open)
 - Runtime-level replay, targeted retry, cancellation and result-persistence
   evidence for parallel branches; end-to-end read-only enforcement.
 - Real-provider acceptance evidence (not collected).
 - Model alias identity must be verifiable from authoritative metadata; current
   Worker catalogs do not provide alias metadata for all models.
+
+## Follow-up continuity and context coverage
+
+Each new Research message starts a complete new graph with fresh sessions for
+all roles. The execution-selection dialog explains the slot queue, the synthesis
+barrier and this follow-up behavior. Native provider sessions from earlier
+Research requests are not resumed.
+
+Canonical bootstrap documents include additive `historyCoverage` version 1
+metadata: eligible, included and omitted entry counts, the first included
+sequence, and whether earlier history was explicitly cleared. Counts apply only
+to authorized prior exchanges in the current context generation and after the
+clear-history boundary; cleared entries are not counted or restored. Coverage is
+recomputed after every transport-budget reduction, including the final rendered
+document size check. Retained history remains intact in storage.
+
+No generated summary is substituted for omitted evidence. Research and synthesis
+prompts explicitly treat previous assistant conclusions as unverified history,
+require reassessment and disclosure of missing relevant context, and prohibit
+inventing continuity. This is prompt guidance, not a guarantee of model behavior.
+A durable, provenance-preserving semantic summary remains future work; adding an
+unverified generated summary would risk turning earlier errors into facts.
+
+The preview gate remains closed pending real-provider lifecycle acceptance.
+Automated slot, restart, cancellation and synthesis-barrier tests are distinct
+from that release evidence. No migration is needed for these additive context
+fields or explanatory UI changes.

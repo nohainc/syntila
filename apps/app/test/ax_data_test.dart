@@ -52,6 +52,18 @@ class _ApiResponseClient extends http.BaseClient {
 }
 
 void main() {
+  test('multi-step submission discards restored one-step selections', () {
+    final selection = {'workerId': 'old-worker', 'model': 'old-model'};
+    AxBuiltinWorkflow workflow(bool multiStep) => AxBuiltinWorkflow.fromJson({
+          'id': 'research',
+          'version': multiStep ? 2 : 1,
+          'steps': [],
+          'executionPolicy': {'multiStep': multiStep},
+        });
+    expect(submissionExecutionSelection(workflow(true), selection), isEmpty);
+    expect(submissionExecutionSelection(workflow(false), selection), selection);
+    expect(selection['workerId'], 'old-worker');
+  });
   test('overlapping request details share a read and later reads refresh',
       () async {
     var calls = 0;

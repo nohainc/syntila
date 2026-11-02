@@ -1,6 +1,15 @@
 part of '../spaces_pages.dart';
 
 extension _ThreadActions on _ThreadPageState {
+  // Graph workflows resolve their selections per role in Workflow settings.
+  // A Thread's single-step selection may have been restored from saved state.
+  Map<String, dynamic> get _submissionExecutionSelection {
+    final workflow = _availableWorkflows
+        .where((item) => item.reference == _effectiveWorkflow)
+        .firstOrNull;
+    return submissionExecutionSelection(workflow, _workExecutionSelection);
+  }
+
   /// Starts a reply to [reference]; the next sent message or request quotes it.
   void _startReply(AxReplyReference reference) {
     if (widget.isDraft) return;
@@ -25,7 +34,7 @@ extension _ThreadActions on _ThreadPageState {
           ? 'Please use the attached inputs to complete the request.'
           : text;
       final inputs = List<Map<String, dynamic>>.from(_workAttachments);
-      final selection = Map<String, dynamic>.from(_workExecutionSelection);
+      final selection = _submissionExecutionSelection;
       _updateState(() {
         _draftSubmitting = true;
         _workSubmitError = null;
@@ -43,7 +52,7 @@ extension _ThreadActions on _ThreadPageState {
     final message = _QueuedWorkMessage(
       text: text,
       attachments: List<Map<String, dynamic>>.from(_workAttachments),
-      executionSelection: Map<String, dynamic>.from(_workExecutionSelection),
+      executionSelection: _submissionExecutionSelection,
       workflow: _effectiveWorkflow,
       replyTo: _replyTarget,
     );
@@ -320,8 +329,7 @@ extension _ThreadActions on _ThreadPageState {
         _workQueue[index] = _QueuedWorkMessage(
           text: draft,
           attachments: draftAttachments,
-          executionSelection:
-              Map<String, dynamic>.from(_workExecutionSelection),
+          executionSelection: _submissionExecutionSelection,
           workflow: _effectiveWorkflow,
           replyTo: _replyTarget,
         );
@@ -356,8 +364,7 @@ extension _ThreadActions on _ThreadPageState {
                     int.tryParse(_effectiveWorkflow.split(':v').last) ?? 1,
                 prompt: draft,
                 attachments: draftAttachments,
-                executionSelection:
-                    Map<String, dynamic>.from(_workExecutionSelection),
+                executionSelection: _submissionExecutionSelection,
                 replyTo: _replyTarget,
               )
             : source.removeThreadQueueItem(threadId, id)));

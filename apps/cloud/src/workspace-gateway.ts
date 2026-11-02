@@ -40,6 +40,8 @@ import {
   ASSIGNMENT_REVOCATION_CONFIRMATION_MS,
   DEFAULT_WORKSPACE_PARALLEL_SLOTS,
   assignmentCommandDisposition,
+  recordCloudQueueReason,
+  recordCloudQueueNotReady,
 } from "./assignment-delivery.js";
 import { grantStartPermit } from "./assignment-start-permit.js";
 import {
@@ -2555,7 +2557,14 @@ export class WorkspaceGateway implements DurableObject {
       this.flushRequested = true;
       return 0;
     }
-    if (!(await this.serviceIsReady())) return 0;
+    if (!(await this.serviceIsReady())) {
+      await recordCloudQueueNotReady(
+        this.env.SYNTILA_DB,
+        workspaceId,
+        runtimeId,
+      );
+      return 0;
+    }
     this.flushingQueue = true;
     this.flushRequested = false;
     let flushed = 0;
@@ -2785,6 +2794,12 @@ export class WorkspaceGateway implements DurableObject {
     // persisted: that is a durable Cloud-side queue, never a delivery. It is
     // flushed when the Service reports ready.
     if (!(await this.serviceIsReady())) {
+      await recordCloudQueueReason(
+        this.env.SYNTILA_DB,
+        body.assignmentId,
+        body.attemptId,
+        "service_not_ready",
+      );
       await this.logNotReadyDelivery("service_not_ready", body);
       return Response.json(
         {
@@ -2822,6 +2837,13 @@ export class WorkspaceGateway implements DurableObject {
       });
     });
     if (!claim) {
+      await recordCloudQueueReason(
+        this.env.SYNTILA_DB,
+        body.assignmentId,
+        body.attemptId,
+        "workspace_capacity",
+      );
+      await publishAssignmentPhase(this.env, body.assignmentId);
       return Response.json(
         {
           delivered: false,

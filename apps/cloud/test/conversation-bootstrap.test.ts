@@ -55,6 +55,12 @@ it("includes late prior replies while excluding the current request", async () =
     expect(bootstrap.turnRevision).toBe(2);
     const document = JSON.parse(bootstrap.text);
     expect(document.kind).toBe("BootstrapContext");
+    expect(document.historyCoverage).toMatchObject({
+      schemaVersion: 1,
+      omittedEntries: 0,
+      clearedEarlierHistory: false,
+      includedEntries: history.history.length,
+    });
     expect(document.context.workflowState.value).toMatchObject({
       workflowId: "chat",
       workflowVersion: 1,
@@ -120,6 +126,35 @@ it("includes late prior replies while excluding the current request", async () =
       2,
     );
     expect(trimmed.text).not.toContain("huge-source");
+    const coverage = JSON.parse(trimmed.text).historyCoverage;
+    expect(coverage.omittedEntries).toBeGreaterThan(0);
+    expect(coverage.eligibleEntries).toBe(
+      coverage.includedEntries + coverage.omittedEntries,
+    );
+    expect(coverage.notice).toContain("not summarized");
+    const insert = f.sqlite.prepare(`INSERT INTO conversation_history_entries
+      (conversation_id, sequence, kind, event_type, actor_type, source_id, text, metadata_json, occurred_at)
+      SELECT ?1, MAX(sequence)+1, 'user_message', 'user_message', 'user', ?2, 'prior detail', '{}', 'now'
+      FROM conversation_history_entries WHERE conversation_id = ?1`);
+    for (let index = 0; index < 1005; index++)
+      insert.run(conversation.id, `prior-${index}`);
+    const capped = JSON.parse(
+      (
+        await loadConversationBootstrap(
+          f.db as unknown as D1Database,
+          conversation.id,
+          "R3",
+          2,
+        )
+      ).text,
+    );
+    expect(capped.historyCoverage.eligibleEntries).toBeGreaterThan(1000);
+    expect(capped.historyCoverage.omittedEntries).toBeGreaterThanOrEqual(5);
+    expect(capped.historyCoverage.eligibleEntries).toBe(
+      capped.historyCoverage.includedEntries +
+        capped.historyCoverage.omittedEntries,
+    );
+    expect(JSON.stringify(capped)).not.toContain("Next request");
     expect(new TextEncoder().encode(trimmed.text).byteLength).toBeLessThan(
       256 * 1024,
     );
@@ -366,6 +401,10 @@ it("leaves exchanges before an AI History clear out of later context", async () 
     );
     expect(bootstrap.text).not.toContain("Exact user text");
     expect(bootstrap.text).not.toContain("Previous answer");
+    expect(JSON.parse(bootstrap.text).historyCoverage).toMatchObject({
+      clearedEarlierHistory: true,
+      omittedEntries: 0,
+    });
     // Context-limit recovery retains the latest answer as the only prior text.
     f.sqlite.exec(`UPDATE conversations SET context_floor_sequence =
       (SELECT MAX(sequence) - 1 FROM conversation_history_entries WHERE kind='worker_response')`);

@@ -90,6 +90,67 @@ export interface AssignmentDeadlineInput {
   readonly queueWaitTimeoutMs?: number | null;
   /** Provider execution timeout. */
   readonly timeoutMs?: number | null;
+  /** Cloud queue evidence; never supplied by the Workspace Service. */
+  readonly cloudQueueReason?: string | null;
+  readonly cloudQueueSince?: string | null;
+  /** Trusted, accepted Workflow identity. */
+  readonly workflowId?: string;
+  readonly workflowVersion?: number;
+}
+
+/** Capacity is a wait, not an execution/readiness failure, for Research v2. */
+export function isResearchCapacityQueue(
+  input: Pick<
+    AssignmentDeadlineInput,
+    "status" | "cloudQueueReason" | "workflowId" | "workflowVersion"
+  >,
+): boolean {
+  return (
+    input.status === "created" &&
+    input.cloudQueueReason === "workspace_capacity" &&
+    input.workflowId === "research" &&
+    input.workflowVersion === 2
+  );
+}
+
+/** Gateway-only compare-and-set. Repeated polls do not reset the wait clock. */
+export async function recordCloudQueueReason(
+  db: D1Database,
+  assignmentId: string,
+  attemptId: string,
+  reason: "workspace_capacity" | "service_not_ready",
+  now = new Date().toISOString(),
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE worker_assignments
+    SET cloud_queue_since = CASE WHEN cloud_queue_reason = ?1
+          THEN COALESCE(cloud_queue_since, ?2) ELSE ?2 END,
+        cloud_queue_reason = ?1
+    WHERE id = ?3 AND attempt_id = ?4 AND status = 'created'`,
+    )
+    .bind(reason, now, assignmentId, attemptId)
+    .run();
+}
+
+/** Readiness loss applies to the entire persisted queue, including after a restart. */
+export async function recordCloudQueueNotReady(
+  db: D1Database,
+  workspaceId: string,
+  runtimeId: string,
+  now = new Date().toISOString(),
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE worker_assignments
+    SET cloud_queue_since = CASE WHEN cloud_queue_reason = 'service_not_ready'
+          THEN COALESCE(cloud_queue_since, ?1) ELSE ?1 END,
+        cloud_queue_reason = 'service_not_ready'
+    WHERE execution_workspace_id = ?2 AND runtime_identity_id = ?3
+      AND status = 'created'`,
+    )
+    .bind(now, workspaceId, runtimeId)
+    .run();
 }
 
 export interface AssignmentDeadlineViolation {
@@ -128,13 +189,14 @@ export function currentAssignmentDeadline(input: AssignmentDeadlineInput): {
   const queueWait = input.queueWaitTimeoutMs ?? DEFAULT_QUEUE_WAIT_TIMEOUT_MS;
   switch (input.status) {
     case "created":
+      if (isResearchCapacityQueue(input)) return null;
       // Persisted but not handed to the transport: either the Service is not
       // ready yet (the durable queue) or dispatch never completed. Bounded by
       // the queue wait limit; nothing was ever sent, so expiry is a direct,
       // safe finalization.
       return {
         phase: "readiness_wait",
-        startedAt: input.createdAt,
+        startedAt: input.cloudQueueSince ?? input.createdAt,
         limitMs: queueWait,
       };
     case "dispatched":

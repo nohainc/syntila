@@ -2764,6 +2764,9 @@ class _ThreadPageState extends State<ThreadPage>
         workflow: _effectiveWorkflow,
         workflowCatalog: _availableWorkflows,
         workConfig: _composerWorkConfig,
+        researchConfiguration: _userWorkflowConfigurations
+            .where((configuration) => configuration.workflowId == 'research')
+            .firstOrNull,
         spaceWorkers: _composerWorkers,
         eligibleWorkers: _composerEligibleWorkers,
         loadingWorkflows: _loadingWorkflows,

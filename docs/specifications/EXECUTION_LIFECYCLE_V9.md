@@ -158,6 +158,7 @@ does not infer success.
 | Phase | Deadline | Owner and action |
 | --- | --- | --- |
 | Readiness wait (`created`) | Queue-wait limit from `created_at` | Assignment waits durably for the Service to report `readyForAssignments`; nothing is sent. On expiry it is finalized directly (see [Service readiness](SERVICE_READINESS_V9.md)) |
+| Research v2 Cloud capacity wait (`created`, `cloud_queue_reason = workspace_capacity`) | No application capacity deadline | Gateway leaves the branch queued without a Workspace execution slot and retries it when capacity is free. Synthesis waits for all reports. If readiness is lost, the bounded readiness clock starts at `cloud_queue_since`; repeated polls do not reset it. Other workflows keep their queue deadline. |
 | Command delivery / admission | 30 seconds from the Gateway queueing the command (`dispatched_at`) | Workflow/Cloud revokes the assignment (see [command delivery and revocation](COMMAND_DELIVERY_AND_REVOCATION_V9.md)); the retryable failure is written only when the Service confirms |
 | Queue wait, then startup | Queue wait from admission (`acknowledged_at`); 30 seconds startup from the start permit | Workflow/Cloud revokes the assignment if `assignment.start.ack` is absent; outcome written on Service confirmation |
 | Provider execution | Assignment/task configured timeout | Workspace stops the process tree; Cloud revokes the assignment and records `timed_out` once the Service confirms the stop |

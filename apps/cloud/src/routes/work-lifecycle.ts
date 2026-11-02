@@ -226,6 +226,7 @@ export async function handleRetryWorkRequest(
             (SELECT aw.reason FROM account_execution_waiters aw
               WHERE aw.task_id = wt.id) AS waitReason,
             wa.running_at AS runningAt, wa.startup_stage AS startupStage,
+            wa.cloud_queue_reason AS cloudQueueReason,
             wa.worker_type_id AS workerTypeId
        FROM workflow_tasks wt
        LEFT JOIN worker_assignments wa ON wa.id = (
@@ -680,6 +681,7 @@ export async function handleGetWorkRequest(
               WHERE aw.task_id = wt.id) AS waitReason,
             wa.running_at AS runningAt, wa.startup_stage AS startupStage,
             wi.worker_type_id AS inventoryWorkerTypeId,
+            wa.cloud_queue_reason AS cloudQueueReason,
             wi.provider_tool_name AS configuredProviderToolName,
             wi.provider_tool_version AS configuredProviderToolVersion,
             COALESCE(json_extract(wa.permission_snapshot_json, '$.executionSelection.workerDisplayName'), json_extract(wa.permission_snapshot_json, '$.workerDisplayName'), worker_catalog.display_name) AS workerDisplayName
@@ -970,6 +972,7 @@ function stepExecutionFields(
     startPermitRequired: Number(task?.startPermitRequired ?? 0) === 1,
     runningAt: text(task?.runningAt),
     startupStage: text(task?.startupStage),
+    cloudQueueReason: text(task?.cloudQueueReason),
     errorJson: text(task?.assignmentErrorJson),
     errorCode,
   });
@@ -1124,6 +1127,7 @@ export async function handleListWorkRequests(
               WHERE aw.task_id = wt.id) AS waitReason,
             wa.running_at AS runningAt, wa.startup_stage AS startupStage,
             wa.id AS assignmentId, wa.workspace_worker_id AS workerId,
+            wa.cloud_queue_reason AS cloudQueueReason,
             wa.worker_type_id AS logicalWorkerTypeId,
             wa.model AS assignedModel,
             wa.engine_version AS engineVersion,

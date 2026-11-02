@@ -872,6 +872,98 @@ it.each(["turn", "step"])(
   },
 );
 
+it.each([
+  ["research-1", "research", "worker-a", "gpt-5.5"],
+  ["research-2", "research", "worker-b", "gpt-5.6-codex"],
+  ["synthesis", "synthesis", "worker-a", "gpt-5.5"],
+])(
+  "schedules %s using its frozen instance configuration",
+  async (bindingId, role, workerId, model) => {
+    const bindings = {
+      "research-1": { workerId: "worker-a", model: "gpt-5.5" },
+      "research-2": { workerId: "worker-b", model: "gpt-5.6-codex" },
+      synthesis: { workerId: "worker-a", model: "gpt-5.5" },
+    };
+    const configs = Object.fromEntries(
+      Object.entries(bindings).map(([id, binding]) => [
+        id,
+        {
+          schemaVersion: 1,
+          workerId: binding.workerId,
+          profileId: "chatgpt-codex",
+          profileReleaseVersion: 3,
+          modelId: binding.model,
+          effort: null,
+        },
+      ]),
+    );
+    const request = {
+      spaceId: "space-a",
+      requesterUserId: "user-a",
+      role,
+      capabilities: ["repository"],
+      workRequestId: "request-a",
+      workBindingId: bindingId,
+      threadId: "thread-a",
+      executionClass: "stateless_read" as const,
+    };
+    const rows = (stepExecutionConfigs: object) =>
+      ["worker-a", "worker-b"].map((worker_id) =>
+        candidate({
+          worker_id,
+          work_request_snapshot_json: JSON.stringify({
+            resolvedBindings: bindings,
+            stepExecutionConfigs,
+          }),
+        }),
+      );
+    const target = await selectSpaceExecutionTarget(db(rows(configs)), request);
+    expect(target).toMatchObject({ workerId, model, readOnly: true });
+    expect(target?.effectivePermissions).not.toContain("repository:write");
+    // A kind-level config must not substitute for a missing researcher instance.
+    const missing: Record<string, unknown> = {
+      ...configs,
+      research: configs[bindingId],
+    };
+    delete missing[bindingId];
+    expect(
+      await selectSpaceExecutionTarget(db(rows(missing)), request),
+    ).toBeNull();
+  },
+);
+
+it("keeps Work's direct binding separate from its implement step configuration", async () => {
+  const target = await selectSpaceExecutionTarget(
+    db([
+      candidate({
+        work_request_snapshot_json: JSON.stringify({
+          resolvedBindings: { direct: { workerId: "worker-a" } },
+          stepExecutionConfigs: {
+            implement: {
+              schemaVersion: 1,
+              workerId: "worker-a",
+              profileId: "chatgpt-codex",
+              profileReleaseVersion: 3,
+              modelId: "gpt-5.5",
+              effort: null,
+            },
+          },
+        }),
+      }),
+    ]),
+    {
+      spaceId: "space-a",
+      requesterUserId: "user-a",
+      role: "implement",
+      capabilities: ["repository"],
+      workRequestId: "request-a",
+      workBindingId: "direct",
+      threadId: "thread-a",
+    },
+  );
+  expect(target).toMatchObject({ workerId: "worker-a", model: "gpt-5.5" });
+});
+
 it.each(["turn", "step"])(
   "dispatches accepted %s Default model and effort even when later defaults differ",
   async (kind) => {

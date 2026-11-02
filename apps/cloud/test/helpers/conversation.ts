@@ -6,7 +6,7 @@ import {
 } from "../../src/routes/conversations.js";
 import { loadConversationTurns } from "../../src/routes/conversation-turns.js";
 export async function conversationFixture(
-  options: { beforeTurnLifecycleRepair?: boolean } = {},
+  options: { beforeTurnLifecycleRepair?: boolean; research?: boolean } = {},
 ) {
   const { sqlite, db } = sqliteD1(options);
   sqlite.exec(`
@@ -16,7 +16,7 @@ export async function conversationFixture(
  INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('WS','U','Workspace','now','now');
  INSERT INTO workspace_runtime_identities(id,workspace_id,credential_token_hash,installation_id,created_at) VALUES('RT','WS','test-hash','installation','now');
  INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
- VALUES('R','W','U','stateless','chat',1,'{}','running','{"originalRequest":"**Exact user text**"}','2026-10-07T10:00:00Z','now');
+ VALUES('R','W','U','stateless','${options.research ? "research" : "chat"}',${options.research ? 2 : 1},'{}','running','{"originalRequest":"**Exact user text**"}','2026-10-07T10:00:00Z','now');
  INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
  VALUES('T','R','chat','stateless_read',1000,'chat:v1','running','now','now');`);
   await db.batch(

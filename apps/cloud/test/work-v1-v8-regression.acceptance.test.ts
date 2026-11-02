@@ -39,7 +39,10 @@ vi.mock("../src/scheduler.js", () => ({
   ),
 }));
 
-import { recordAssignmentError, recordAssignmentResult } from "../src/assignment-dispatcher.js";
+import {
+  recordAssignmentError,
+  recordAssignmentResult,
+} from "../src/assignment-dispatcher.js";
 import { SyntilaRunWorkflow } from "../src/workflow.js";
 
 const requestText =
@@ -84,10 +87,18 @@ function createAcceptanceRun(
     completion?: "during_dispatch" | "event" | "lost_event";
     /** Tasks whose provider run fails (by task-ID suffix). */
     failTaskSuffix?: string;
+    parallelSlots?: number;
+    manualCompletion?: boolean;
   } = {},
 ) {
   const completion = options.completion ?? "during_dispatch";
   const pendingCompletions: Array<() => Promise<void>> = [];
+  const pendingStarts: Array<() => void> = [];
+  const wakeWaiters: Array<() => void> = [];
+  const startedTasks: string[] = [];
+  const completedTasks: string[] = [];
+  let active = 0;
+  let peakActive = 0;
   const waits: { name: string; options: unknown }[] = [];
   const sleeps: string[] = [];
   selectionCalls.length = 0;
@@ -221,6 +232,7 @@ function createAcceptanceRun(
   const gatewayStub = {
     async fetch(input: RequestInfo | URL, init?: RequestInit) {
       const url = String(input);
+      if (url.endsWith("/flush-queued")) return Response.json({});
       if (url.endsWith("/status")) {
         return Response.json({
           online: true,
@@ -241,8 +253,7 @@ function createAcceptanceRun(
       // before the provider result arrives. Cloud must not infer Running from
       // a dispatch alone.
       const row = assignments.get(assignmentId);
-      if (row) row.status = "running";
-      const finish = () =>
+      const complete = () =>
         options.failTaskSuffix &&
         String(snapshot.taskId).endsWith(options.failTaskSuffix)
           ? recordAssignmentError(database, assignmentId, {
@@ -256,8 +267,24 @@ function createAcceptanceRun(
           : recordAssignmentResult(database, assignmentId, {
               text: `completed ${String(snapshot.role)}`,
             } as never).then(() => undefined);
-      if (completion === "during_dispatch") await finish();
-      else pendingCompletions.push(finish);
+      const finish = async () => {
+        await complete();
+        active -= 1;
+        completedTasks.push(String(snapshot.taskId));
+        pendingStarts.shift()?.();
+        for (const wake of wakeWaiters.splice(0)) wake();
+      };
+      const start = () => {
+        if (row) row.status = "running";
+        active += 1;
+        peakActive = Math.max(peakActive, active);
+        startedTasks.push(String(snapshot.taskId));
+        pendingCompletions.push(finish);
+      };
+      if (active < (options.parallelSlots ?? Infinity)) start();
+      else pendingStarts.push(start);
+      if (completion === "during_dispatch" && !options.manualCompletion)
+        await pendingCompletions.shift()?.();
       return Response.json({ accepted: true });
     },
   };
@@ -280,7 +307,9 @@ function createAcceptanceRun(
     },
     waitForEvent: async (name: string, config: unknown) => {
       waits.push({ name, options: config });
-      await pendingCompletions.shift()?.();
+      if (options.manualCompletion)
+        await new Promise<void>((resolve) => wakeWaiters.push(resolve));
+      else await pendingCompletions.shift()?.();
       // A lost event: the result is durable in D1 but the wake-up never
       // arrives, so the wait ends by timeout, which Workflows throws.
       if (completion === "lost_event") throw new Error("Execution timed out");
@@ -291,13 +320,72 @@ function createAcceptanceRun(
       };
     },
   } as unknown as import("cloudflare:workers").WorkflowStep;
-  return { instance, step, taskWrites, gatewayCalls, waits, sleeps };
+  return {
+    instance,
+    step,
+    taskWrites,
+    gatewayCalls,
+    waits,
+    sleeps,
+    startedTasks,
+    completedTasks,
+    peakActive: () => peakActive,
+    finishNext: async () => {
+      const finish = pendingCompletions.shift();
+      if (!finish) throw new Error("No running provider execution");
+      await finish();
+    },
+  };
 }
 
 // Every catalog definition, including Research v2 with repeated step instances.
 const workflowCases = Object.values(BUILTIN_WORKFLOW_CATALOG);
 
 describe("Work v1 acceptance through the shared assignment dispatcher", () => {
+  it.each([1, 2])(
+    "runs researchers within %i slots and synthesizes only after all reports",
+    async (parallelSlots) => {
+      const f = createAcceptanceRun(BUILTIN_WORKFLOW_CATALOG["research:v2"]!, {
+        parallelSlots,
+        manualCompletion: true,
+      });
+      const running = f.instance.run(
+        {
+          payload: {
+            runId: "run-v8-acceptance",
+            goalId: "goal-v8-acceptance",
+            idempotencyKey: "research-capacity",
+            workRequestId: "request-v8-acceptance",
+            organizationId: "workspace-fixture",
+            builtinWorkflow: BUILTIN_WORKFLOW_CATALOG["research:v2"]!,
+          },
+        } as never,
+        f.step,
+      );
+      await vi.waitFor(() => expect(f.gatewayCalls).toHaveLength(2));
+      expect(f.startedTasks).toHaveLength(parallelSlots);
+      await f.finishNext();
+      await vi.waitFor(() =>
+        expect(
+          f.taskWrites.some(
+            (write) =>
+              write.sql.includes("UPDATE workflow_tasks SET") &&
+              write.values[0] === "completed" &&
+              write.values[5] === f.completedTasks[0],
+          ),
+        ).toBe(true),
+      );
+      // Its report is durable while the other researcher is still executing.
+      expect(f.gatewayCalls).toHaveLength(2);
+      await f.finishNext();
+      await vi.waitFor(() => expect(f.gatewayCalls).toHaveLength(3));
+      expect(f.completedTasks).toHaveLength(2);
+      expect(f.startedTasks.at(-1)).toMatch(/-synthesis$/);
+      await f.finishNext();
+      expect((await running).status).toBe("completed");
+      expect(f.peakActive()).toBe(parallelSlots);
+    },
+  );
   it.each(workflowCases)(
     "executes the real $name Workflow snapshot through Workspace Gateway fixtures",
     async (definition) => {

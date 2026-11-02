@@ -57,7 +57,12 @@ export const WORKFLOW_CONTROL_POLICIES: Readonly<
   // Graph policy: several researcher executions and a synthesis execution.
   // Each role still selects its own Worker, model and effort.
   "research:v2": {
-    executionPolicy: GRAPH_WORKFLOW_POLICY,
+    executionPolicy: {
+      ...GRAPH_WORKFLOW_POLICY,
+      userSelectsWorker: false,
+      userSelectsModel: false,
+      userSelectsEffort: false,
+    },
     composerBindingId: "research",
   },
   "plan_implement:v1": {

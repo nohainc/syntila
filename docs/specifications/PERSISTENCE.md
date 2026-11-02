@@ -151,6 +151,14 @@ Worker type IDs. It has no external-execution side table or provider allowlist.
 Apply this baseline only to a fresh development database; it is not an upgrade
 migration for an existing database.
 
+Migration `0100_assignment_cloud_queue.sql` adds Gateway-owned
+`worker_assignments.cloud_queue_reason` and `cloud_queue_since`. They record
+capacity versus Service readiness waiting before delivery, independently of
+Service-reported startup evidence. The first observation of a reason sets its
+clock; repeated polls retain it. Only accepted Research v2 capacity waits are
+exempt from the ordinary pre-delivery queue deadline. Assignment lifecycle and
+confirmed-termination rules continue to own capacity release.
+
 ## Durable realtime event retention
 
 Durable realtime events are change notifications, not the authoritative
