@@ -173,6 +173,17 @@ mixin _SpaceApi on _AxApiClientCore {
         .toList();
   }
 
+  Future<AxSpaceMemberUsage> loadSpaceMemberUsage({
+    required String spaceId,
+  }) async {
+    final body =
+        await _spaceJson(Uri.parse('$baseUrl/spaces/$spaceId/members'));
+    final usage = body['usage'];
+    return usage is Map
+        ? AxSpaceMemberUsage.fromJson(Map<String, dynamic>.from(usage))
+        : const AxSpaceMemberUsage(members: 0, pendingInvitations: 0);
+  }
+
   @override
   Future<List<AxSpaceInvitation>> loadSpaceInvitations({
     required String spaceId,

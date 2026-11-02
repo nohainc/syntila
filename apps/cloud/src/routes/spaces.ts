@@ -1,4 +1,10 @@
 import {
+  SpaceMemberLimitError,
+  getSpaceMemberUsage,
+  spaceMemberAdmissionSql,
+  spaceMemberCapacityRefused,
+} from "../account-plan.js";
+import {
   loadWorkflowWorkspace,
   prepareWorkflowWorkspaceGrant,
 } from "./workflow-workspace.js";
@@ -557,6 +563,8 @@ export async function handleListSpaceMembers(
     .bind(spaceId)
     .first<{ settingsJson: string }>();
   return json({
+    // Usage against the owner's plan; pending invitations reserve a slot.
+    usage: await getSpaceMemberUsage(env as unknown as Env, spaceId),
     members: (rows.results ?? []).map((row) => ({
       ...row,
       permissions: spaceMemberPermissions(
@@ -729,6 +737,9 @@ export async function handleCreateSpaceInvitation(
       "A pending invitation already exists for this user",
     );
   }
+  // Friendly early refusal; the INSERT below enforces the same rule atomically.
+  if (await spaceMemberCapacityRefused(env as unknown as Env, spaceId))
+    throw new SpaceMemberLimitError("owner");
   const now = new Date();
   const id = `pinv-${crypto.randomUUID()}`;
   const token = `space_invite_${crypto.randomUUID()}_${crypto.randomUUID()}`;
@@ -747,8 +758,12 @@ export async function handleCreateSpaceInvitation(
       env.SYNTILA_DB.batch([
         ...receipts,
         env.SYNTILA_DB.prepare(
+          // A refused reservation writes a NULL into the NOT NULL token_hash,
+          // which rolls back this whole batch (and any idempotency receipt).
           `INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at, invitee_user_id)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?8, ?8, ?9)`,
+     SELECT ?1, ?2, ?3, ?4,
+            CASE WHEN ${spaceMemberAdmissionSql("?2")} THEN ?5 ELSE NULL END,
+            ?6, 'pending', ?7, ?8, ?8, ?9`,
         ).bind(
           id,
           spaceId,
@@ -774,6 +789,13 @@ export async function handleCreateSpaceInvitation(
       : (await write([]), null);
     if (concurrentReplay) return concurrentReplay;
   } catch (error) {
+    if (
+      error instanceof Error &&
+      /NOT NULL constraint failed: space_invitations\.token_hash/i.test(
+        error.message,
+      )
+    )
+      throw new SpaceMemberLimitError("owner");
     if (
       error instanceof Error &&
       /UNIQUE constraint failed.*(idx_space_invitations_pending_email|space_invitations.space_id, space_invitations.invitee_user_id)/i.test(
@@ -1141,44 +1163,66 @@ export async function handleAcceptSpaceInvitation(
     .first();
   if (existingMember)
     throw new HttpError(409, "You are already a member of this Space");
+  // The invitation's own reservation becomes the membership, so it is not
+  // counted against itself; an over-limit Free Space blocks acceptance.
+  if (
+    await spaceMemberCapacityRefused(
+      env as unknown as Env,
+      invitation.spaceId,
+      invitation.id,
+    )
+  )
+    throw new SpaceMemberLimitError("member");
   const membershipId = `pm-${crypto.randomUUID()}`;
   const now = new Date().toISOString();
-  const acceptance = await env.SYNTILA_DB.batch([
-    env.SYNTILA_DB.prepare(
-      `UPDATE space_invitations SET status = 'accepted', invitee_user_id = COALESCE(invitee_user_id, ?1), accepted_by_user_id = ?1, accepted_at = ?2, updated_at = ?2 WHERE id = ?3 AND status = 'pending' AND expires_at > ?2`,
-    ).bind(context.userId, now, invitation.id),
+  let acceptance;
+  try {
+    acceptance = await env.SYNTILA_DB.batch([
+      env.SYNTILA_DB.prepare(
+        `UPDATE space_invitations SET status = CASE WHEN ${spaceMemberAdmissionSql("?4", "?3")} THEN 'accepted' ELSE NULL END, invitee_user_id = COALESCE(invitee_user_id, ?1), accepted_by_user_id = ?1, accepted_at = ?2, updated_at = ?2 WHERE id = ?3 AND status = 'pending' AND expires_at > ?2`,
+      ).bind(context.userId, now, invitation.id, invitation.spaceId),
 
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) SELECT ?1, ?2, ?3, ?4, ?5, ?5 WHERE EXISTS (SELECT 1 FROM space_invitations WHERE id=?6 AND status='accepted' AND accepted_by_user_id=?3 AND accepted_at=?5) ON CONFLICT(space_id, user_id) DO NOTHING`,
-    ).bind(
-      membershipId,
-      invitation.spaceId,
-      context.userId,
-      invitation.role,
-      now,
-      invitation.id,
-    ),
-    env.SYNTILA_DB.prepare(
-      "UPDATE spaces SET settings_json = json_remove(json_set(settings_json, ?1, json(?2)), ?3), updated_at = ?4 WHERE id = ?5 AND EXISTS (SELECT 1 FROM space_memberships WHERE id = ?6)",
-    ).bind(
-      permissionJsonPath("memberPermissions", context.userId),
-      JSON.stringify(permissions),
-      permissionJsonPath("invitationPermissions", invitation.id),
-      now,
-      invitation.spaceId,
-      membershipId,
-    ),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) SELECT ?1, ?2, 'user', ?3, 'space.invitation.accepted', 'invitation', ?4, '{}', ?5 WHERE EXISTS(SELECT 1 FROM space_memberships WHERE id=?6)`,
-    ).bind(
-      `pa-${crypto.randomUUID()}`,
-      invitation.spaceId,
-      context.userId,
-      invitation.id,
-      now,
-      membershipId,
-    ),
-  ]);
+      env.SYNTILA_DB.prepare(
+        `INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) SELECT ?1, ?2, ?3, ?4, ?5, ?5 WHERE EXISTS (SELECT 1 FROM space_invitations WHERE id=?6 AND status='accepted' AND accepted_by_user_id=?3 AND accepted_at=?5) ON CONFLICT(space_id, user_id) DO NOTHING`,
+      ).bind(
+        membershipId,
+        invitation.spaceId,
+        context.userId,
+        invitation.role,
+        now,
+        invitation.id,
+      ),
+      env.SYNTILA_DB.prepare(
+        "UPDATE spaces SET settings_json = json_remove(json_set(settings_json, ?1, json(?2)), ?3), updated_at = ?4 WHERE id = ?5 AND EXISTS (SELECT 1 FROM space_memberships WHERE id = ?6)",
+      ).bind(
+        permissionJsonPath("memberPermissions", context.userId),
+        JSON.stringify(permissions),
+        permissionJsonPath("invitationPermissions", invitation.id),
+        now,
+        invitation.spaceId,
+        membershipId,
+      ),
+      env.SYNTILA_DB.prepare(
+        `INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) SELECT ?1, ?2, 'user', ?3, 'space.invitation.accepted', 'invitation', ?4, '{}', ?5 WHERE EXISTS(SELECT 1 FROM space_memberships WHERE id=?6)`,
+      ).bind(
+        `pa-${crypto.randomUUID()}`,
+        invitation.spaceId,
+        context.userId,
+        invitation.id,
+        now,
+        membershipId,
+      ),
+    ]);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /NOT NULL constraint failed: space_invitations\.status/i.test(
+        error.message,
+      )
+    )
+      throw new SpaceMemberLimitError("member");
+    throw error;
+  }
   if (acceptance[0]?.meta?.changes === 0)
     throw new HttpError(409, "Invitation changed before acceptance");
   await publishCollaborationEvent(

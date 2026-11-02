@@ -118,6 +118,124 @@ export function executionSlotAdmissionSql(
                       AND w.task_id < ${taskParam})))))`;
 }
 
+/**
+ * People a Free-owned Space allows, the owner included. The Space *owner's*
+ * effective plan decides: Plus-owned Spaces have no subscription-based cap, and
+ * a Free person may join a larger Plus-owned Space. Each Space is counted on
+ * its own. Existing members and invitations are never removed when a Space
+ * exceeds the allowance (for example after a downgrade); only additions stop.
+ */
+export const FREE_SPACE_MEMBER_LIMIT = 4;
+
+export function spaceMemberLimit(tier: AccountTier): number | null {
+  return tier === "paid" ? null : FREE_SPACE_MEMBER_LIMIT;
+}
+
+/** Accepted human members plus valid pending invitations, which reserve a slot. */
+export function spaceMemberUsageSql(
+  spaceParam: string,
+  excludeInvitationParam: string | null = null,
+): string {
+  const exclude = excludeInvitationParam
+    ? ` AND pi.id != ${excludeInvitationParam}`
+    : "";
+  return `((SELECT COUNT(*) FROM space_memberships sm WHERE sm.space_id = ${spaceParam})
+    + (SELECT COUNT(*) FROM space_invitations pi
+        WHERE pi.space_id = ${spaceParam} AND pi.status = 'pending'
+          AND julianday(pi.expires_at) > julianday('now')${exclude}))`;
+}
+
+/**
+ * SQL condition that one more person (a new invitation, or the acceptance of
+ * `excludeInvitationParam`, whose own reservation is not counted twice) fits in
+ * the Space: its owner is on Plus now, or members plus reservations are below
+ * the Free allowance.
+ */
+export function spaceMemberAdmissionSql(
+  spaceParam: string,
+  excludeInvitationParam: string | null = null,
+): string {
+  return `(${paidOwnerSql(`(SELECT so.owner_user_id FROM spaces so WHERE so.id = ${spaceParam})`)}
+    OR ${spaceMemberUsageSql(spaceParam, excludeInvitationParam)} < ${FREE_SPACE_MEMBER_LIMIT})`;
+}
+
+/** Rejected because a Free-owned Space has no free person slot. */
+export class SpaceMemberLimitError extends HttpError {
+  readonly code = "space_member_limit_reached";
+  constructor(audience: "owner" | "member" = "owner") {
+    super(
+      402,
+      `Free includes up to ${FREE_SPACE_MEMBER_LIMIT} people in each Space, including the owner. ${
+        audience === "owner"
+          ? "Upgrade to Syntila Plus to allow larger Spaces, or remove a member or invitation."
+          : "The Space owner needs to upgrade or free a slot."
+      }`,
+    );
+  }
+}
+
+/** True when the admission rule would currently refuse one more person. */
+export async function spaceMemberCapacityRefused(
+  env: Env,
+  spaceId: string,
+  excludeInvitationId: string | null = null,
+): Promise<boolean> {
+  const row = await env.SYNTILA_DB.prepare(
+    `SELECT CASE WHEN ${spaceMemberAdmissionSql("?1", excludeInvitationId ? "?2" : null)}
+                 THEN 0 ELSE 1 END AS refused`,
+  )
+    .bind(...(excludeInvitationId ? [spaceId, excludeInvitationId] : [spaceId]))
+    .first<{ refused: number }>();
+  return row?.refused === 1;
+}
+
+export interface SpaceMemberUsage {
+  readonly members: number;
+  readonly pendingInvitations: number;
+  /** People allowed including the owner; null means no subscription-based cap. */
+  readonly limit: number | null;
+}
+
+export async function getSpaceMemberUsage(
+  env: Env,
+  spaceId: string,
+  now: Date = new Date(),
+): Promise<SpaceMemberUsage> {
+  const row = await env.SYNTILA_DB.prepare(
+    `SELECT (SELECT COUNT(*) FROM space_memberships WHERE space_id = ?1) AS members,
+            (SELECT COUNT(*) FROM space_invitations
+              WHERE space_id = ?1 AND status = 'pending'
+                AND julianday(expires_at) > julianday(?2)) AS pending,
+            ap.tier AS tier, ap.status AS status,
+            ap.current_period_end AS current_period_end
+       FROM spaces s LEFT JOIN account_plans ap ON ap.user_id = s.owner_user_id
+      WHERE s.id = ?1`,
+  )
+    .bind(spaceId, now.toISOString())
+    .first<{
+      members: number;
+      pending: number;
+      tier: AccountTier | null;
+      status: AccountPlanStatus | null;
+      current_period_end: string | null;
+    }>();
+  const tier = effectiveTier(
+    row?.tier && row.status
+      ? {
+          tier: row.tier,
+          status: row.status,
+          current_period_end: row.current_period_end,
+        }
+      : null,
+    now,
+  );
+  return {
+    members: row?.members ?? 0,
+    pendingInvitations: row?.pending ?? 0,
+    limit: spaceMemberLimit(tier),
+  };
+}
+
 export interface AccountPlan {
   /** The tier the person is entitled to right now. */
   readonly tier: AccountTier;

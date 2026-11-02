@@ -227,6 +227,16 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
             ],
           ),
           const SizedBox(height: 8),
+          if (widget.dataSource is AxSpaceMemberUsageDataSource &&
+              !membersLoading)
+            SpaceMemberUsageNote(
+              source: widget.dataSource as AxSpaceMemberUsageDataSource,
+              spaceId: widget.space.id,
+              isOwner: canInvite,
+              members: members.length,
+              pendingInvitations:
+                  invitations.where((i) => i.status == 'pending').length,
+            ),
           if (membersError != null)
             const Text(
                 'Members could not be loaded. Reopen this Space to try again.'),

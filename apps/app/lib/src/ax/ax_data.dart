@@ -231,6 +231,34 @@ class AxAccountPlan {
   bool has(String feature) => features.contains(feature);
 }
 
+/// A Space's people against its owner's allowance. Pending invitations reserve
+/// a slot; a null limit means the owner's plan sets no member cap.
+class AxSpaceMemberUsage {
+  const AxSpaceMemberUsage({
+    required this.members,
+    required this.pendingInvitations,
+    this.limit,
+  });
+
+  factory AxSpaceMemberUsage.fromJson(Map<String, dynamic> json) =>
+      AxSpaceMemberUsage(
+        members: (json['members'] as num?)?.toInt() ?? 0,
+        pendingInvitations: (json['pendingInvitations'] as num?)?.toInt() ?? 0,
+        limit: (json['limit'] as num?)?.toInt(),
+      );
+
+  final int members;
+  final int pendingInvitations;
+  final int? limit;
+
+  bool get atLimit => limit != null && members + pendingInvitations >= limit!;
+}
+
+/// Optional capability: a Space's member usage (Cloud decides the allowance).
+abstract interface class AxSpaceMemberUsageDataSource {
+  Future<AxSpaceMemberUsage> loadSpaceMemberUsage({required String spaceId});
+}
+
 /// Optional capability: the viewer's account plan.
 abstract interface class AxAccountPlanDataSource {
   Future<AxAccountPlan> loadAccountPlan();
@@ -292,6 +320,7 @@ class AxApiClient extends _AxApiClientCore
         AxThreadReadReceiptsDataSource,
         AxReadReceiptPrivacyDataSource,
         AxAccountPlanDataSource,
+        AxSpaceMemberUsageDataSource,
         AxNotificationDataSource,
         AxPinDataSource,
         AxNotesDataSource,

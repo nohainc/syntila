@@ -84,3 +84,6 @@ without migrations.
 
 - **Concurrent AI executions:** Free accounts run one at a time; see
   [ADR-023](ADR-023-free-execution-concurrency.md).
+
+- **Space members:** Free-owned Spaces hold four people; see
+  [ADR-024](ADR-024-free-space-member-limit.md).
