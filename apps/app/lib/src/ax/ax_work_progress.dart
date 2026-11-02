@@ -91,6 +91,7 @@ class AxWorkProgress {
     Duration clockOffset = Duration.zero,
     Duration staleAfter = defaultStaleAfter,
     String? executionPhase,
+    String? executionPhaseDetail,
   }) {
     final terminal = terminalStatuses.contains(requestStatus);
     // Cloud's phase decides whether the provider has actually started. The
@@ -154,7 +155,9 @@ class AxWorkProgress {
     String? action;
     if (!terminal) {
       if (beforeProviderStart) {
-        action = AxExecutionPhase.detail(executionPhase!) ?? 'Starting worker…';
+        action = executionPhaseDetail ??
+            AxExecutionPhase.detail(executionPhase!) ??
+            'Starting worker…';
       } else if (wrappingUp) {
         action = 'Wrapping up…';
       } else if (unfinished != null) {

@@ -32,6 +32,10 @@ import {
 import { createEventPublisher } from "./event-publisher.js";
 import { tryLogTraceEvent } from "./observability.js";
 import {
+  EXECUTION_WAIT_MESSAGES,
+  clearExecutionWaiter,
+} from "./account-execution-slots.js";
+import {
   dispatchTaskAssignment,
   nudgeQueuedAssignments,
   type AssignmentDispatcherEnv,
@@ -172,6 +176,13 @@ function workflowDiagnostic(
  * the assignment from D1, which is the only authority. An event sent before
  * this wait started is buffered by Workflows and returns immediately.
  */
+/**
+ * Bound on re-dispatch rounds for a task waiting for an execution slot:
+ * 8 x 15s, then 1 min each, about six hours. Each round is two Workflow
+ * steps, which keeps a waiting request inside the per-instance step limit.
+ */
+const MAX_EXECUTION_WAIT_ROUNDS = 8 + 360;
+
 async function waitForTerminalEvent(
   step: WorkflowStep,
   name: string,
@@ -545,7 +556,14 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       | "step.completed"
       | "step.failed"
       | "step.cancelled",
-    options: { status: string; stepKind?: StepKind; attempt?: number },
+    options: {
+      status: string;
+      stepKind?: StepKind;
+      attempt?: number;
+      /** Why a queued step has no assignment yet (see account-execution-slots). */
+      reason?: string;
+      message?: string;
+    },
   ): Promise<void> {
     const workRequestId = params.workRequestId;
     const threadId = params.threadId;
@@ -581,7 +599,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         workspaceId,
         spaceId,
         runId: params.runId,
-        idempotencyKey: `work-request:${workRequestId}:${type}${stepSuffix}${attemptSuffix}`,
+        idempotencyKey: `work-request:${workRequestId}:${type}${stepSuffix}${attemptSuffix}${options.reason ? `:reason:${options.reason}` : ""}`,
         payload: {
           entityId: options.stepKind ?? workRequestId,
           workRequestId,
@@ -589,6 +607,8 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           ...(requestedByUserId ? { requestedByUserId } : {}),
           ...(options.stepKind ? { stepKind: options.stepKind } : {}),
           status: options.status,
+          ...(options.reason ? { reason: options.reason } : {}),
+          ...(options.message ? { message: options.message } : {}),
         },
       });
       if (
@@ -991,51 +1011,55 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         attempt,
       );
       try {
-        const assignment = await workflowStep.do(
-          `workflow:${task.step.kind}:dispatch:${attempt}`,
-          {
-            ...stepConfig,
-            timeout: "1 minute",
-          },
-          async () => {
-            // T3: the Workflow step that hands the task to the dispatcher.
-            tryLogTraceEvent({
-              traceStage: "workflow_dispatch_started",
-              requestId: params.workRequestId,
-              workspaceId: params.organizationId,
-              runId: params.runId,
-              taskId: task.id,
-              context: { status: `attempt_${attempt}` },
-            });
-            const promptInputs = workStepPromptInputs(
-              { ...promptInput, workRequestId: params.workRequestId },
-              stepResults,
-            );
-            const configuredInstructions =
-              typeof stepBinding.additionalInstructions === "string"
-                ? stepBinding.additionalInstructions
-                : "";
-            const requestInstructions =
-              promptInputs.stepInstructions?.[task.step.kind] ?? "";
-            const mergedInstructions = [
-              requestInstructions,
-              configuredInstructions,
-            ]
-              .filter((value) => value.trim().length > 0)
-              .join("\n\n");
-            const prompt = renderWorkStepPrompt(definition, task.step, {
-              ...promptInputs,
-              stepInstructions: {
-                ...promptInputs.stepInstructions,
-                ...(mergedInstructions
-                  ? { [task.step.kind]: mergedInstructions }
-                  : {}),
-              },
-            });
-            if (!prompt.trim()) throw new Error("Work Step prompt is empty");
-            const context = await db
-              .prepare(
-                `SELECT wr.thread_id AS threadId,
+        const dispatchOnce = (slotRound: number) =>
+          workflowStep.do(
+            // Round 0 keeps the original name so in-flight Workflows replay.
+            slotRound === 0
+              ? `workflow:${task.step.kind}:dispatch:${attempt}`
+              : `workflow:${task.step.kind}:dispatch:${attempt}:slot${slotRound}`,
+            {
+              ...stepConfig,
+              timeout: "1 minute",
+            },
+            async () => {
+              // T3: the Workflow step that hands the task to the dispatcher.
+              tryLogTraceEvent({
+                traceStage: "workflow_dispatch_started",
+                requestId: params.workRequestId,
+                workspaceId: params.organizationId,
+                runId: params.runId,
+                taskId: task.id,
+                context: { status: `attempt_${attempt}` },
+              });
+              const promptInputs = workStepPromptInputs(
+                { ...promptInput, workRequestId: params.workRequestId },
+                stepResults,
+              );
+              const configuredInstructions =
+                typeof stepBinding.additionalInstructions === "string"
+                  ? stepBinding.additionalInstructions
+                  : "";
+              const requestInstructions =
+                promptInputs.stepInstructions?.[task.step.kind] ?? "";
+              const mergedInstructions = [
+                requestInstructions,
+                configuredInstructions,
+              ]
+                .filter((value) => value.trim().length > 0)
+                .join("\n\n");
+              const prompt = renderWorkStepPrompt(definition, task.step, {
+                ...promptInputs,
+                stepInstructions: {
+                  ...promptInputs.stepInstructions,
+                  ...(mergedInstructions
+                    ? { [task.step.kind]: mergedInstructions }
+                    : {}),
+                },
+              });
+              if (!prompt.trim()) throw new Error("Work Step prompt is empty");
+              const context = await db
+                .prepare(
+                  `SELECT wr.thread_id AS threadId,
                       wr.requested_by_user_id AS requesterUserId,
                       wr.status AS workRequestStatus,
                       wr.cancel_requested_at AS cancelRequestedAt,
@@ -1047,89 +1071,140 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                  FROM work_requests wr JOIN threads ws ON ws.id = wr.thread_id
                  JOIN spaces s ON s.id = ws.space_id
                 WHERE wr.id = ?1`,
-              )
-              .bind(params.workRequestId)
-              .first<{
-                threadId: string;
-                requesterUserId: string;
-                workRequestStatus: string;
-                cancelRequestedAt: string | null;
-                spaceId: string;
-                spaceName: string;
-                spaceOwnerUserId: string | null;
-                workSessionGeneration: number;
-              }>();
-            if (!context) throw new Error("Work Request was not found");
-            if (
-              context.workRequestStatus === "cancelled" ||
-              context.cancelRequestedAt
-            ) {
-              return { status: "cancelled", assignmentId: "", startedAt };
-            }
-            const bindingId = workBindingId as ThreadBindingId;
-            const {
-              workConfig: _workConfig,
-              workRequestSnapshot: _snapshot,
-              ...workerInput
-            } = promptInput;
-            const execution = prepareWorkerStepExecution({
-              taskId: task.id,
-              step: task.step,
-              bindingId,
-              binding: stepBinding,
-              prompt,
-              workerInput,
-              scope: {
-                spaceId: context.spaceId,
-                spaceName: context.spaceName,
-                ...(context.spaceOwnerUserId
-                  ? { spaceOwnerUserId: context.spaceOwnerUserId }
-                  : {}),
-                requesterUserId: context.requesterUserId,
-                threadId: context.threadId,
-                workRequestId: params.workRequestId!,
-                workSessionGeneration: context.workSessionGeneration,
-              },
-              retry: {
-                stepKind: params.retryStepKind,
-                sessionStrategy: params.retrySessionStrategy,
-                number: params.retryNumber,
-                adoptSpaceFolder: params.retryAdoptSpaceFolder === true,
-                compactContext: params.retryCompactContext === true,
-              },
-            });
-            const dispatched = await dispatchTaskAssignment(
-              this.env as unknown as AssignmentDispatcherEnv,
-              {
-                workspaceId: params.organizationId ?? "",
-                runId: params.runId,
+                )
+                .bind(params.workRequestId)
+                .first<{
+                  threadId: string;
+                  requesterUserId: string;
+                  workRequestStatus: string;
+                  cancelRequestedAt: string | null;
+                  spaceId: string;
+                  spaceName: string;
+                  spaceOwnerUserId: string | null;
+                  workSessionGeneration: number;
+                }>();
+              if (!context) throw new Error("Work Request was not found");
+              if (
+                context.workRequestStatus === "cancelled" ||
+                context.cancelRequestedAt
+              ) {
+                return { status: "cancelled", assignmentId: "", startedAt };
+              }
+              const bindingId = workBindingId as ThreadBindingId;
+              const {
+                workConfig: _workConfig,
+                workRequestSnapshot: _snapshot,
+                ...workerInput
+              } = promptInput;
+              const execution = prepareWorkerStepExecution({
                 taskId: task.id,
-                explicitWorkerId: execution.workerId,
-                explicitAttemptNumber: attempt,
-                task: execution.task,
-              },
-            );
-            if (dispatched.status === "cancelled") {
+                step: task.step,
+                bindingId,
+                binding: stepBinding,
+                prompt,
+                workerInput,
+                scope: {
+                  spaceId: context.spaceId,
+                  spaceName: context.spaceName,
+                  ...(context.spaceOwnerUserId
+                    ? { spaceOwnerUserId: context.spaceOwnerUserId }
+                    : {}),
+                  requesterUserId: context.requesterUserId,
+                  threadId: context.threadId,
+                  workRequestId: params.workRequestId!,
+                  workSessionGeneration: context.workSessionGeneration,
+                },
+                retry: {
+                  stepKind: params.retryStepKind,
+                  sessionStrategy: params.retrySessionStrategy,
+                  number: params.retryNumber,
+                  adoptSpaceFolder: params.retryAdoptSpaceFolder === true,
+                  compactContext: params.retryCompactContext === true,
+                },
+              });
+              const dispatched = await dispatchTaskAssignment(
+                this.env as unknown as AssignmentDispatcherEnv,
+                {
+                  workspaceId: params.organizationId ?? "",
+                  runId: params.runId,
+                  taskId: task.id,
+                  explicitWorkerId: execution.workerId,
+                  explicitAttemptNumber: attempt,
+                  task: execution.task,
+                },
+              );
+              if (dispatched.status === "cancelled") {
+                return {
+                  status: "cancelled",
+                  assignmentId: dispatched.assignmentId,
+                  attemptId: dispatched.attemptId,
+                  startedAt,
+                };
+              }
+              if (dispatched.status === "deferred") {
+                // No assignment exists and no slot is held: the requester's
+                // Free allowance (or Service readiness) is the only thing
+                // missing. The Workflow waits durably and dispatches again.
+                return {
+                  status: "deferred",
+                  assignmentId: "",
+                  attemptId: "",
+                  startedAt,
+                  waitReason: dispatched.waitReason,
+                };
+              }
+              if (!dispatched.accepted || !dispatched.assignmentId) {
+                throw new Error(
+                  dispatched.error ??
+                    `${task.step.kind} Worker dispatch failed`,
+                );
+              }
               return {
-                status: "cancelled",
+                status: "dispatched",
                 assignmentId: dispatched.assignmentId,
                 attemptId: dispatched.attemptId,
                 startedAt,
               };
-            }
-            if (!dispatched.accepted || !dispatched.assignmentId) {
-              throw new Error(
-                dispatched.error ?? `${task.step.kind} Worker dispatch failed`,
-              );
-            }
+            },
+          );
+        let assignment = await dispatchOnce(0);
+        let slotRound = 0;
+        let announcedReason: string | undefined;
+        while (assignment.status === "deferred") {
+          if (assignment.waitReason !== announcedReason) {
+            announcedReason = assignment.waitReason;
+            await this.publishWorkEvent(params, "step.queued", {
+              stepKind: task.step.kind,
+              status: "queued",
+              reason: assignment.waitReason,
+              message: assignment.waitReason
+                ? EXECUTION_WAIT_MESSAGES[assignment.waitReason]
+                : undefined,
+            });
+          }
+          if (slotRound >= MAX_EXECUTION_WAIT_ROUNDS) {
+            await workflowStep.do(
+              `workflow:${task.step.kind}:slot-wait-expired:${attempt}`,
+              stepConfig,
+              () => clearExecutionWaiter(db, task.id),
+            );
             return {
-              status: "dispatched",
-              assignmentId: dispatched.assignmentId,
-              attemptId: dispatched.attemptId,
-              startedAt,
+              task,
+              status: "failed",
+              error:
+                "This request waited too long for an available execution slot. Retry when your current task finishes.",
             };
-          },
-        );
+          }
+          // A terminal event wakes the oldest waiter early; the timeout is
+          // the durable re-evaluation path (it also sees upgrades).
+          await waitForTerminalEvent(
+            workflowStep,
+            `workflow:${task.step.kind}:slot-wait:${attempt}:${slotRound}`,
+            slotRound < 8 ? 15_000 : 60_000,
+          );
+          slotRound += 1;
+          assignment = await dispatchOnce(slotRound);
+        }
         if (assignment.status === "cancelled") {
           return {
             task,

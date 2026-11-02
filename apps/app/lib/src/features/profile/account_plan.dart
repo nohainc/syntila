@@ -98,7 +98,10 @@ class _AccountPlanSummaryState extends State<AccountPlanSummary> {
                 ? Text(plan.status == 'past_due'
                     ? 'Access until ${MaterialLocalizations.of(context).formatMediumDate(end.toLocal())}'
                     : 'Renews ${MaterialLocalizations.of(context).formatMediumDate(end.toLocal())}')
-                : null,
+                : _controller.loaded && !plan.isPaid
+                    // Free runs one AI task at a time; Plus runs them in parallel.
+                    ? const Text('$paidPlanName: Run AI tasks in parallel.')
+                    : null,
           );
         },
       );

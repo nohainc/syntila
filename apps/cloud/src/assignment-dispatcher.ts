@@ -42,6 +42,15 @@ import {
   ACTIVE_ASSIGNMENT_STATUS_SQL,
   assignmentSourceStatusList,
 } from "./assignment-transitions.js";
+import { executionSlotAdmissionSql } from "./account-plan.js";
+import {
+  clearExecutionWaiter,
+  executionSlotRefused,
+  isPaidRequester,
+  recordExecutionWaiter,
+  waiterCutoff,
+  type ExecutionWaitReason,
+} from "./account-execution-slots.js";
 
 const MAX_FAILURE_DIAGNOSTIC_LENGTH = 2048;
 
@@ -192,9 +201,32 @@ export interface DispatchAssignmentResult {
    * `queued`: persisted, but the Service is connected and not ready, so no
    * command has been sent. The Gateway flushes it when the Service is ready.
    */
-  readonly status: "dispatched" | "queued" | "failed" | "cancelled";
+  readonly status:
+    | "dispatched"
+    | "queued"
+    | "failed"
+    | "cancelled"
+    /** No assignment was created; the task must wait and dispatch again. */
+    | "deferred";
   readonly accepted: boolean;
   readonly error?: string;
+  /** Set with `status: "deferred"`: what the task is waiting for. */
+  readonly waitReason?: ExecutionWaitReason;
+}
+
+function deferredDispatch(
+  reason: ExecutionWaitReason,
+): DispatchAssignmentResult {
+  return {
+    assignmentId: "",
+    attemptId: "",
+    workerId: "",
+    workspaceRuntimeId: "",
+    workerCatalogId: "",
+    status: "deferred",
+    accepted: false,
+    waitReason: reason,
+  };
 }
 
 export interface AssignmentDispatcherEnv {
@@ -286,6 +318,24 @@ async function dispatchWorkspaceWorkerAssignment(
       error:
         "No Workspace-owned Worker satisfied the active Workspace Grant, execution policy, readiness, capacity, and permission filters",
     };
+  }
+  // A Free requester's slot is not held while the Service is only connected
+  // (synchronizing, paused or draining): wait for readiness without a slot.
+  // Plus has no slot to protect, so its work still queues behind the Service.
+  const workspaceState = target.selectionExplanation.workspace as
+    { readiness?: unknown } | undefined;
+  if (
+    workspaceState?.readiness === "connected" &&
+    !(await isPaidRequester(env.SYNTILA_DB, task.requestedByUserId!))
+  ) {
+    await recordExecutionWaiter(env.SYNTILA_DB, {
+      taskId,
+      requesterUserId: task.requestedByUserId!,
+      runId,
+      workRequestId: task.workRequestId,
+      reason: "workspace_not_ready",
+    });
+    return deferredDispatch("workspace_not_ready");
   }
   const now = new Date().toISOString();
   const attemptNumber = params.explicitAttemptNumber ?? 1;
@@ -402,6 +452,7 @@ async function dispatchWorkspaceWorkerAssignment(
         input_json, created_at, updated_at)
      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
             ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, 'created', ?21, ?22, ?22
+      WHERE ${executionSlotAdmissionSql("?8", "?6", "?23")}
      RETURNING id`,
   )
     .bind(
@@ -427,10 +478,43 @@ async function dispatchWorkspaceWorkerAssignment(
       idempotencyKey,
       JSON.stringify(assignmentInput),
       now,
+      waiterCutoff(),
     )
     .first<{ id: string }>();
   // D1 meta.changes includes writes made by triggers. Only the row returned
   // by this INSERT proves admission; an ignored/rejected insert returns none.
+  if (
+    insertion?.id !== assignmentId &&
+    (await executionSlotRefused(
+      env.SYNTILA_DB,
+      task.requestedByUserId!,
+      taskId,
+    ))
+  ) {
+    // The requester's Free allowance (or an earlier waiting request) refused
+    // the reservation. Nothing was written; the task waits durably in order.
+    await recordExecutionWaiter(env.SYNTILA_DB, {
+      taskId,
+      requesterUserId: task.requestedByUserId!,
+      runId,
+      workRequestId: task.workRequestId,
+      reason: "account_concurrency_limit",
+    });
+    tryLogDiagnosticEvent({
+      requestId: task.workRequestId,
+      workspaceId: target.workspaceId,
+      runId,
+      taskId,
+      component: "cloud",
+      operation: "assignment",
+      stage: "admission",
+      severity: "info",
+      errorCode: "account_concurrency_limit",
+      retryable: true,
+      context: { status: "waiting_for_account_slot" },
+    });
+    return deferredDispatch("account_concurrency_limit");
+  }
   if (insertion?.id !== assignmentId) {
     tryLogDiagnosticEvent({
       requestId: task.workRequestId,
@@ -461,6 +545,7 @@ async function dispatchWorkspaceWorkerAssignment(
       error: "Worker capacity was claimed by another assignment",
     };
   }
+  await clearExecutionWaiter(env.SYNTILA_DB, taskId);
   const workRequestId = target.workRequestId ?? task.workRequestId;
   if (workRequestId) {
     const cancellation = await env.SYNTILA_DB.prepare(

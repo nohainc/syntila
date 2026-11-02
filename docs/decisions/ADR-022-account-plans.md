@@ -81,3 +81,6 @@ without migrations.
   upserts `source = 'provider'` rows, upgrade prompts, and downgrade handling.
 - Plans are per user. Moving to per-Workspace billing would need a new owner
   column and a different lookup.
+
+- **Concurrent AI executions:** Free accounts run one at a time; see
+  [ADR-023](ADR-023-free-execution-concurrency.md).

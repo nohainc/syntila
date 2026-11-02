@@ -111,6 +111,7 @@ export function sqliteD1(
     "0094_account_plans.sql",
     "0095_desktop_session_device.sql",
     "0096_shared_workspace_chat_only.sql",
+    "0097_account_execution_slots.sql",
   ]) {
     sqlite.exec(
       readFileSync(

@@ -67,6 +67,7 @@ it.each(
     CREATE TABLE conversation_workflow_step_runs(id TEXT, workflow_run_id TEXT, task_id TEXT, step_id TEXT, role TEXT, created_at TEXT);
     CREATE TABLE conversation_history_entries(id TEXT, turn_id TEXT, work_request_id TEXT, kind TEXT, text TEXT);
     CREATE TABLE users(id TEXT, display_name TEXT);
+    CREATE TABLE account_execution_waiters(task_id TEXT, reason TEXT);
     CREATE TABLE threads(id TEXT, ai_history_cleared_at TEXT);
     CREATE TABLE conversation_work_requests(conversation_id TEXT, work_request_id TEXT, conversation_revision INTEGER);
     CREATE TABLE work_requests(id TEXT, requested_by_user_id TEXT, thread_id TEXT,

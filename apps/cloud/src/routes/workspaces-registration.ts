@@ -1074,7 +1074,10 @@ export async function handleRegisterWorkspaceFromDesktop(
       // The Workspace INSERT is always the first statement.
       if ((results[0]?.meta?.changes ?? 0) !== 1) {
         const limit = new PersonalWorkspaceLimitError();
-        return json({ error: limit.message, code: limit.code }, { status: limit.status });
+        return json(
+          { error: limit.message, code: limit.code },
+          { status: limit.status },
+        );
       }
     }
   } catch (error) {

@@ -1,4 +1,8 @@
 import {
+  EXECUTION_WAIT_MESSAGES,
+  type ExecutionWaitReason,
+} from "../account-execution-slots.js";
+import {
   inputProgress,
   loadInputsForRequests,
   loadWorkRequestInputs,
@@ -202,6 +206,8 @@ export async function handleRetryWorkRequest(
             wa.acknowledged_at AS acknowledgedAt,
             wa.start_permit_issued_at AS startPermitIssuedAt,
             wa.start_permit_required AS startPermitRequired,
+            (SELECT aw.reason FROM account_execution_waiters aw
+              WHERE aw.task_id = wt.id) AS waitReason,
             wa.running_at AS runningAt, wa.startup_stage AS startupStage,
             wa.worker_type_id AS workerTypeId
        FROM workflow_tasks wt
@@ -652,6 +658,8 @@ export async function handleGetWorkRequest(
             wa.acknowledged_at AS acknowledgedAt,
             wa.start_permit_issued_at AS startPermitIssuedAt,
             wa.start_permit_required AS startPermitRequired,
+            (SELECT aw.reason FROM account_execution_waiters aw
+              WHERE aw.task_id = wt.id) AS waitReason,
             wa.running_at AS runningAt, wa.startup_stage AS startupStage,
             wi.worker_type_id AS inventoryWorkerTypeId,
             wi.provider_tool_name AS configuredProviderToolName,
@@ -908,7 +916,12 @@ function stepExecutionFields(
   errorCode: string | null,
 ) {
   const text = (value: unknown) => (typeof value === "string" ? value : null);
-  return presentExecution({
+  // A task refused an execution slot has no assignment yet; say why it waits
+  // (the account's allowance versus the Workspace) instead of a generic state.
+  const waitReason = task?.assignmentStatus
+    ? null
+    : (text(task?.waitReason) as ExecutionWaitReason | null);
+  const presented = presentExecution({
     assignmentStatus: text(task?.assignmentStatus),
     taskStatus: text(task?.status),
     dispatchedAt: text(task?.dispatchedAt),
@@ -920,6 +933,13 @@ function stepExecutionFields(
     errorJson: text(task?.assignmentErrorJson),
     errorCode,
   });
+  return waitReason && waitReason in EXECUTION_WAIT_MESSAGES
+    ? {
+        ...presented,
+        executionPhaseDetail: EXECUTION_WAIT_MESSAGES[waitReason],
+        waitReason,
+      }
+    : presented;
 }
 
 function requestExecutionFields(
@@ -1060,6 +1080,8 @@ export async function handleListWorkRequests(
             wa.acknowledged_at AS acknowledgedAt,
             wa.start_permit_issued_at AS startPermitIssuedAt,
             wa.start_permit_required AS startPermitRequired,
+            (SELECT aw.reason FROM account_execution_waiters aw
+              WHERE aw.task_id = wt.id) AS waitReason,
             wa.running_at AS runningAt, wa.startup_stage AS startupStage,
             wa.id AS assignmentId, wa.workspace_worker_id AS workerId,
             wa.worker_type_id AS logicalWorkerTypeId,

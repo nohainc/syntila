@@ -33,6 +33,7 @@ type StaticAssetEnvironment = {
   };
 };
 
+import { sweepStaleExecutionWaiters } from "./account-execution-slots.js";
 import { sweepUnsignaledTerminals } from "./assignment-workflow-signal.js";
 import * as handlers from "./routes/handlers.js";
 import { handleBetterAuthRequest, identityService } from "./auth/index.js";
@@ -224,6 +225,11 @@ export default {
       attempted: 0,
       signaled: 0,
     }));
+    // Waiting-list rows of Workflows that stopped heartbeating. Waiters never
+    // hold execution capacity, so this only tidies bookkeeping.
+    await sweepStaleExecutionWaiters(env.SYNTILA_DB).catch((error) =>
+      console.error("Execution waiter sweep failed", error),
+    );
     // Queued Thread requests whose turn came without a Workflow event.
     await sweepThreadRequestQueues(env as SecurityEnv).catch((error) =>
       console.error("Thread request queue sweep failed", error),

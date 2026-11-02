@@ -522,6 +522,14 @@ class AxWorkRequestStep {
             AxExecutionPhase.isTerminal(value) ? null : executionPhaseDetail,
       );
 
+  /// Why a queued Step has no assignment yet, when Cloud says so (for example
+  /// waiting for the account's Free allowance).
+  AxWorkRequestStep withWaitDetail(String? detail) => _copy(
+        status: status,
+        executionPhase: executionPhase,
+        executionPhaseDetail: detail ?? executionPhaseDetail,
+      );
+
   AxWorkRequestStep _copy({
     required String status,
     required String? executionPhase,

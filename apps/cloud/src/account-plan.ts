@@ -1,4 +1,5 @@
 import { HttpError } from "./routes/http-security.js";
+import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "./assignment-transitions.js";
 
 /**
  * Syntila has two account tiers. `paid` is the stable identifier; the product
@@ -66,6 +67,57 @@ export class PersonalWorkspaceLimitError extends HttpError {
   }
 }
 
+/**
+ * Concurrent AI executions a Free requester may have. Plus has no
+ * subscription-based cap. An execution is one non-terminal Worker Assignment
+ * attributed to the authenticated requester (never the Workspace owner): the
+ * slot is taken by the assignment INSERT and freed only by a terminal status,
+ * so a revocation that is not yet confirmed keeps holding it.
+ */
+export const FREE_CONCURRENT_EXECUTION_LIMIT = 1;
+
+/** A waiter whose Workflow has not heartbeated in this long stops blocking others. */
+export const EXECUTION_WAITER_STALE_MS = 2 * 60 * 1000;
+
+export function concurrentExecutionLimit(tier: AccountTier): number | null {
+  return tier === "paid" ? null : FREE_CONCURRENT_EXECUTION_LIMIT;
+}
+
+/**
+ * SQL condition, for the WHERE of the assignment INSERT ... SELECT, that
+ * `userParam` may start one more execution for `taskParam`: the requester is
+ * on Plus now, or holds fewer than the Free limit of live assignments and no
+ * earlier eligible request is waiting for the slot (`cutoffParam` is the
+ * oldest heartbeat that still counts). Evaluated inside the INSERT, it makes
+ * the check and the reservation one atomic write.
+ */
+export function executionSlotAdmissionSql(
+  userParam: string,
+  taskParam: string,
+  cutoffParam: string,
+): string {
+  return `(${paidOwnerSql(userParam)}
+    OR ((SELECT COUNT(*) FROM worker_assignments sa
+          WHERE sa.requested_by_user_id = ${userParam}
+            AND sa.status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL}))
+        < ${FREE_CONCURRENT_EXECUTION_LIMIT}
+        AND NOT EXISTS (
+          SELECT 1 FROM account_execution_waiters w
+           WHERE w.requester_user_id = ${userParam}
+             AND w.task_id != ${taskParam}
+             AND w.reason = 'account_concurrency_limit'
+             AND w.heartbeat_at >= ${cutoffParam}
+             AND (NOT EXISTS (SELECT 1 FROM account_execution_waiters me
+                               WHERE me.task_id = ${taskParam})
+                  OR w.enqueued_at < (SELECT me.enqueued_at
+                                        FROM account_execution_waiters me
+                                       WHERE me.task_id = ${taskParam})
+                  OR (w.enqueued_at = (SELECT me.enqueued_at
+                                         FROM account_execution_waiters me
+                                        WHERE me.task_id = ${taskParam})
+                      AND w.task_id < ${taskParam})))))`;
+}
+
 export interface AccountPlan {
   /** The tier the person is entitled to right now. */
   readonly tier: AccountTier;
@@ -74,7 +126,10 @@ export interface AccountPlan {
   readonly currentPeriodEnd: string | null;
   readonly features: readonly PaidFeature[];
   /** Owned registrations against the allowance; `limit` null means unlimited. */
-  readonly workspaces: { readonly owned: number; readonly limit: number | null };
+  readonly workspaces: {
+    readonly owned: number;
+    readonly limit: number | null;
+  };
 }
 
 interface AccountPlanRow {

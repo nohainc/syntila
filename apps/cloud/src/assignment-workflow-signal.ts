@@ -1,4 +1,5 @@
 import { tryLogDiagnosticEvent } from "./observability.js";
+import { wakeNextExecutionWaiter } from "./account-execution-slots.js";
 import { scheduleLostWorkflowCheck } from "./thread-coordinator.js";
 
 /**
@@ -65,6 +66,7 @@ interface SignalRow {
   run_id: string;
   workflow_signaled_at: string | null;
   workflow_instance_id: string | null;
+  requested_by_user_id: string | null;
 }
 
 /**
@@ -81,7 +83,8 @@ export async function signalAssignmentTerminal(
   try {
     const row = await env.SYNTILA_DB.prepare(
       `SELECT wa.id, wa.status, wa.attempt_id, wa.task_id, wa.run_id,
-              wa.workflow_signaled_at, r.workflow_instance_id
+              wa.workflow_signaled_at, r.workflow_instance_id,
+              wa.requested_by_user_id
          FROM worker_assignments wa
          LEFT JOIN runs r ON r.id = wa.run_id
         WHERE wa.id = ?1`,
@@ -90,6 +93,15 @@ export async function signalAssignmentTerminal(
       .first<SignalRow>();
     if (!row || !TERMINAL_STATUSES.includes(row.status)) return "not_terminal";
     if (row.workflow_signaled_at) return "already_signaled";
+    // The requester's execution slot is free once this status is durable:
+    // let their oldest queued request try without waiting for its poll.
+    if (row.requested_by_user_id)
+      await wakeNextExecutionWaiter(
+        env,
+        row.requested_by_user_id,
+        ASSIGNMENT_TERMINAL_EVENT_TYPE,
+        now(),
+      );
     // A Workflow may be gone (for example after a restart) and never finish
     // the request; the Thread coordinator checks after a grace period.
     await scheduleLostWorkflowCheck(env, assignmentId);

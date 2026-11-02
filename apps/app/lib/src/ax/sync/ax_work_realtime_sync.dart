@@ -477,7 +477,12 @@ class AxWorkRealtimeSync extends ChangeNotifier {
             threadId,
             current.copyWith(steps: [
               for (final step in current.steps)
-                step.kind == kind ? step.withStatus(status) : step
+                step.kind == kind
+                    ? step.withStatus(status).withWaitDetail(
+                        payload['message'] is String
+                            ? payload['message'] as String
+                            : null)
+                    : step
             ]));
         return;
       }

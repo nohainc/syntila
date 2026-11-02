@@ -1779,6 +1779,7 @@ class _WorkTimelineCard extends StatelessWidget {
           serverElapsedMs: _totalElapsedMs == 0 ? null : _totalElapsedMs,
           clockOffset: clockOffset,
           executionPhase: executionPhase,
+          executionPhaseDetail: phaseStep?.executionPhaseDetail,
         );
     final progress = resolveProgress(DateTime.now());
     final senderTurn = request.turns

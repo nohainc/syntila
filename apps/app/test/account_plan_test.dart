@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
+import 'package:syntila_app/src/ax/ax_work_progress.dart';
 import 'package:syntila_app/src/features/profile/account_plan.dart';
 
 class _Plans implements AxAccountPlanDataSource {
@@ -118,5 +119,29 @@ void main() {
     expect(find.text('4 personal Workspaces (Syntila Plus, no limit)'),
         findsOneWidget);
     expect(find.textContaining('Upgrade'), findsNothing);
+  });
+
+  testWidgets('Free profile explains the Plus parallel-run benefit',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: AccountPlanSummary(source: _Plans(AxAccountPlan.free)))));
+    await tester.pumpAndSettle();
+    expect(
+        find.text('Syntila Plus: Run AI tasks in parallel.'), findsOneWidget);
+    expect(find.textContaining('unlimited'), findsNothing);
+  });
+
+  test('a step waiting for the Free allowance shows its own reason', () {
+    const message =
+        'Free runs one AI task at a time. This request will start when your current task finishes.';
+    final progress = AxWorkProgress.resolve(
+      requestStatus: 'running',
+      activities: const [],
+      now: DateTime.utc(2026, 11, 2),
+      executionPhase: 'submitted',
+      executionPhaseDetail: message,
+    );
+    expect(progress.currentAction, message);
   });
 }
