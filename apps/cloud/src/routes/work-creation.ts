@@ -246,7 +246,11 @@ export async function createWorkRequestForUser(
   ) as WorkflowId;
   const canonicalWorkflow = BUILTIN_WORKFLOWS[workflowId];
   if (!canonicalWorkflow) throw new HttpError(400, "Unsupported workflowId");
-  await requireWorkflowPermission(env, context.userId, spaceId, workflowId);
+  // A replay returns the request already accepted under the plan at that
+  // time; it creates no execution, so it is not re-gated on the plan.
+  await requireWorkflowPermission(env, context.userId, spaceId, workflowId, {
+    entitlement: !replay,
+  });
   if (replay) return resumeSubmission(env, replay);
   // Mutation coordination follows the authoritative Steps, independently of
   // durable provider conversation/session state.

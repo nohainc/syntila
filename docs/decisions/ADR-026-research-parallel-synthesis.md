@@ -46,12 +46,42 @@ a researcher's model, never its session. All executions are read-only.
   effort-only, Worker-only and alias-only differences are duplicates. A custom
   ID that is secretly an alias of a catalog model cannot be detected; this is a
   known limitation. Nothing is substituted or deduplicated.
-- **Entitlement.** New paid feature `workflow.research`. `requireWorkflowPermission`
-  (used by direct submission and by queued sends) requires it of the
-  **requesting** account, whatever plan owns the Space or Workspace. Chat and
-  Work stay available on Free. It is plan admission only: no runtime cap is
-  added, and accepted requests are never stopped by a later plan change. This
-  is enforced for Research v1 too, so Free accounts lose v1 Research now.
+- **Entitlement** (`workflow.research`, a Syntila Plus feature). See the
+  Entitlement section below.
+
+## Entitlement
+- Held by the **requesting** account only. A Space owner's, Workspace
+  owner's or another member's plan never grants it, and it never grants access
+  to otherwise unauthorized Spaces, Workspaces or Workers (all existing
+  permission, grant and readiness checks still run).
+- Uses the effective plan (`past_due` grace, expiry) from ADR-022.
+- Gates the standalone `research` workflow, every version. Workflows that only
+  contain a research step (Full Cycle) are not gated. Chat and Work stay Free.
+- Server enforcement (`requireWorkflowEntitlement`): checked in
+  `requireWorkflowPermission`, before any request, run, task, capacity
+  reservation or dispatch exists, for direct submission, validation, adding to
+  and sending from the Thread request queue, and in `handleRetryWorkRequest`
+  for user-triggered request and step retries. Workflow IDs are resolved only
+  from the built-in catalog; client-supplied definitions and step invocation
+  are not accepted, so there is no alternate path. Errors use the existing
+  `402 paid_plan_required` format with `feature: "workflow.research"`.
+- An idempotent replay of an accepted submission returns the original result
+  without re-checking the plan and creates no execution.
+- Automatic recovery and continuation of an accepted run (researcher
+  branches, synthesis, reconciliation) never re-check the plan, so a run
+  accepted under Plus finishes after the plan lapses. Reports, history and
+  cancellation stay available after a downgrade.
+- No numeric concurrency cap is added; plan admission is separate from runtime
+  capacity.
+- App: `workflowAccess` shows a workflow as hidden (unreleased, no preview),
+  locked (Plus required) or available. `releasedPlusWorkflowIds` is empty
+  until Research passes release acceptance, so a Plus plan never exposes it
+  early, and the preview account sees it locked unless it holds Plus. The
+  composer offers only available workflows; the locked text is "Research
+  compares independent investigations from different models and combines them
+  into one outcome. Available with Syntila Plus." Saved configuration is kept
+  on downgrade. The plan cache refreshes on sign-in and whenever the plan is
+  reloaded (Profile, sharing); there is no upgrade action to link yet.
 
 ## Remaining phases
 2. **Persistence and Cloud execution.** Migration: `workflow_tasks` uniqueness

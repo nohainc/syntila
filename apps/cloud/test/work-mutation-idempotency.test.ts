@@ -26,6 +26,13 @@ vi.mock("../src/routes/handlers.js", async (original) => ({
     },
   }),
 }));
+vi.mock("../src/routes/thread-policy.js", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  authorizeThreadAccess: async () => ({
+    context: { userId: "owner" },
+    spaceId: "P",
+  }),
+}));
 // Applies the domain writes the route commits together with its signal.
 const publish = vi.hoisted(() =>
   vi.fn(async (input?: { mutations?: { run(): Promise<unknown> }[] }) => {
@@ -555,4 +562,86 @@ it("Workspace changes use the new Workspace for every Thread request while prese
   } finally {
     f.sqlite.close();
   }
+});
+
+describe("Research plan admission", () => {
+  it("denies a Free requester before any request, run or execution exists", async () => {
+    const f = fixture();
+    try {
+      publish.mockClear();
+      await expect(
+        f.submit("Investigate", "research-free-000000001", "research"),
+      ).rejects.toMatchObject({
+        status: 402,
+        code: "paid_plan_required",
+        feature: "workflow.research",
+      });
+      for (const table of [
+        "work_requests",
+        "runs",
+        "workflow_tasks",
+        "worker_assignments",
+      ])
+        expect(
+          f.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get(),
+        ).toEqual({ n: 0 });
+      expect(f.create).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
+    } finally {
+      f.sqlite.close();
+    }
+  });
+
+  it("does not gate Chat, Work or workflows that only contain a research step", async () => {
+    const f = fixture();
+    try {
+      expect(
+        (await f.submit("Hi", "research-chat-00000001", "chat")).status,
+      ).toBe(202);
+      expect(
+        (await f.submit("Do", "research-work-00000001", "direct")).status,
+      ).toBe(202);
+      const fullCycle = await f
+        .submit("All", "research-full-00000001", "full_cycle")
+        .then((r) => r.status)
+        .catch((e: { status?: number; code?: string }) => e.code ?? e.status);
+      expect(fullCycle).not.toBe("paid_plan_required");
+    } finally {
+      f.sqlite.close();
+    }
+  });
+
+  it("requires the current plan for a user-triggered retry of a Research request", async () => {
+    const f = fixture();
+    try {
+      f.sqlite
+        .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
+        VALUES('R','W','owner','stateless','research',1,'{}','failed','{"originalRequest":"x"}','now','now')`);
+      const { handleRetryWorkRequest } =
+        await import("../src/routes/work-lifecycle.js");
+      const retry = () =>
+        handleRetryWorkRequest(
+          new Request("https://cloud.test/work-requests/R/retry", {
+            method: "POST",
+            body: JSON.stringify({ stepKind: "research" }),
+          }),
+          f.env,
+          "R",
+        );
+      await expect(retry()).rejects.toMatchObject({
+        status: 402,
+        feature: "workflow.research",
+      });
+      // Upgrading enables it again with no other change; the retry then
+      // proceeds to the existing retry rules (here: no failed Step row).
+      f.sqlite.exec(
+        "INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('owner','paid','active','manual','now','now')",
+      );
+      await expect(retry()).rejects.not.toMatchObject({
+        code: "paid_plan_required",
+      });
+    } finally {
+      f.sqlite.close();
+    }
+  });
 });

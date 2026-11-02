@@ -121,8 +121,9 @@ extension _AxAppController on _AxAppStateMixin {
     final Object source = store.dataSource;
     if (source is! AxAccountPlanDataSource) return;
     try {
-      AxAttachmentPolicy.instance
-          .updateFromPlan(await source.loadAccountPlan());
+      final plan = await source.loadAccountPlan();
+      AxAccountPlanCache.instance.plan = plan;
+      AxAttachmentPolicy.instance.updateFromPlan(plan);
     } on Object {
       // Free limits stay in force until the next successful load.
     }
@@ -131,6 +132,7 @@ extension _AxAppController on _AxAppStateMixin {
   Future<void> _logout() async {
     try {
       AxAttachmentPolicy.instance.reset();
+      AxAccountPlanCache.instance.plan = AxAccountPlan.free;
       await store.logout();
       expandedSpaceIds.clear();
       _sidebarRestoredSpaceIds.clear();

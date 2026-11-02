@@ -1,3 +1,4 @@
+import { requireWorkflowEntitlement } from "./space-permissions.js";
 import {
   EXECUTION_WAIT_MESSAGES,
   type ExecutionWaitReason,
@@ -183,6 +184,14 @@ export async function handleRetryWorkRequest(
   )
     .bind(workRequestId)
     .first<Record<string, unknown>>();
+  // A user-triggered retry starts new execution, so it needs the requester's
+  // current plan (automatic recovery of the accepted run does not).
+  if (row)
+    await requireWorkflowEntitlement(
+      env,
+      context.userId,
+      String(row.workflowId),
+    );
   if (!row) throw new HttpError(404, "Work Request not found");
   if (row.status !== "failed")
     throw new HttpError(409, "Only a failed Work Request can be retried");

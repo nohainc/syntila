@@ -73,11 +73,34 @@ export async function requireSpaceOwner(
   return policy;
 }
 
+/**
+ * Plan admission for a workflow, for the *requesting* account only: a Space
+ * owner's, Workspace owner's or another member's plan never grants it. Only
+ * the standalone Research workflow (every version) is gated; workflows that
+ * merely contain a research step, such as Full Cycle, are not. Called before
+ * any request, execution record, capacity reservation or dispatch exists, and
+ * again for user-triggered retries. Automatic recovery of accepted work never
+ * calls it, so an accepted run finishes after a plan lapses.
+ */
+export async function requireWorkflowEntitlement(
+  env: Pick<SecurityEnv, "SYNTILA_DB">,
+  userId: string,
+  workflowId: string,
+): Promise<void> {
+  if (workflowId === "research")
+    await requirePaidFeature(
+      env as unknown as Env,
+      userId,
+      "workflow.research",
+    );
+}
+
 export async function requireWorkflowPermission(
   env: Pick<SecurityEnv, "SYNTILA_DB">,
   userId: string,
   spaceId: string,
   workflowId: string,
+  options: { entitlement?: boolean } = {},
 ) {
   const policy = await loadSpacePermissions(env, userId, spaceId);
   const chat = workflowId === "chat";
@@ -96,16 +119,8 @@ export async function requireWorkflowPermission(
   );
   if (configuration.configurations[0]?.enabled === false)
     throw new HttpError(403, "Workflow is disabled in this Space");
-  // Research is a Syntila Plus feature of the *requesting* account, whatever
-  // plan owns the Space or the Workspace that runs it. Every submission path
-  // (direct and queued) passes here; accepted requests are never stopped by a
-  // later plan change.
-  if (workflowId === "research")
-    await requirePaidFeature(
-      env as unknown as Env,
-      userId,
-      "workflow.research",
-    );
+  if (options.entitlement !== false)
+    await requireWorkflowEntitlement(env, userId, workflowId);
   return policy;
 }
 

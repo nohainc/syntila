@@ -25,6 +25,9 @@ class AccountPlanController extends ChangeNotifier {
   Future<void> refresh() async {
     try {
       _plan = await _source.loadAccountPlan();
+      // Any successful load (Profile, sharing, a refresh after an upgrade or
+      // a server denial) updates what the composers offer.
+      AxAccountPlanCache.instance.plan = _plan;
     } catch (_) {
       _plan = AxAccountPlan.free;
     }

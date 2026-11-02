@@ -87,3 +87,6 @@ without migrations.
 
 - **Space members:** Free-owned Spaces hold four people; see
   [ADR-024](ADR-024-free-space-member-limit.md).
+
+- **Research:** `workflow.research` gates the standalone Research workflow for
+  the requesting account; see [ADR-026](ADR-026-research-parallel-synthesis.md).

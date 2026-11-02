@@ -270,6 +270,17 @@ abstract interface class AxSpaceMemberUsageDataSource {
   Future<AxSpaceMemberUsage> loadSpaceMemberUsage({required String spaceId});
 }
 
+/// The signed-in account's plan as Cloud last reported it (Free until known).
+/// Used only for display; Cloud authorizes every paid action.
+class AxAccountPlanCache {
+  AxAccountPlanCache._();
+  static final AxAccountPlanCache instance = AxAccountPlanCache._();
+
+  AxAccountPlan plan = AxAccountPlan.free;
+
+  bool has(String feature) => plan.has(feature);
+}
+
 /// Optional capability: the viewer's account plan.
 abstract interface class AxAccountPlanDataSource {
   Future<AxAccountPlan> loadAccountPlan();

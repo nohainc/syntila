@@ -841,9 +841,13 @@ class _ThreadPageState extends State<ThreadPage>
   List<AxBuiltinWorkflow> get _currentWorkflows =>
       _currentWorkflowVersions(_availableWorkflows);
   List<AxBuiltinWorkflow> get _availableWorkflows => _workflowCatalog
+      // Only runnable workflows are offered: hidden (unreleased) and locked
+      // (Plus required) ones are not. Cloud still enforces both.
       .where((workflow) =>
-          canPreviewUnimplementedWorkflows(widget.viewerEmail) ||
-          implementedWorkflowIds.contains(workflow.id))
+          workflowAccess(workflow.id,
+              viewerEmail: widget.viewerEmail,
+              hasPlus: AxAccountPlanCache.instance.has('workflow.research')) ==
+          WorkflowAccess.available)
       // Workflows disabled in the configuration are not offered; Chat can
       // never be disabled.
       .where((workflow) =>
