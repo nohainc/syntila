@@ -3,6 +3,7 @@ export 'ax_people.dart';
 import 'ax_notes.dart';
 export 'ax_notes.dart';
 import 'ax_files.dart';
+import 'attachment_limits.dart' show AxAttachmentPolicy;
 export 'ax_files.dart';
 import 'ax_workflow_configuration.dart';
 export 'ax_workflow_configuration.dart';
@@ -201,6 +202,8 @@ class AxAccountPlan {
     this.features = const {},
     this.ownedWorkspaces,
     this.workspaceLimit,
+    this.attachmentMaxFileBytes,
+    this.attachmentStorageBytes,
   });
 
   static const free = AxAccountPlan(isPaid: false);
@@ -216,6 +219,10 @@ class AxAccountPlan {
         },
         ownedWorkspaces: (json['workspaces'] as Map?)?['owned'] as int?,
         workspaceLimit: (json['workspaces'] as Map?)?['limit'] as int?,
+        attachmentMaxFileBytes:
+            (json['attachments'] as Map?)?['maxFileBytes'] as int?,
+        attachmentStorageBytes:
+            (json['attachments'] as Map?)?['storageBytes'] as int?,
       );
 
   final bool isPaid;
@@ -227,6 +234,10 @@ class AxAccountPlan {
   /// the Free allowance; a null limit means no subscription-based limit.
   final int? ownedWorkspaces;
   final int? workspaceLimit;
+
+  /// Upload limits Cloud reports for this account (decimal bytes).
+  final int? attachmentMaxFileBytes;
+  final int? attachmentStorageBytes;
 
   bool has(String feature) => features.contains(feature);
 }

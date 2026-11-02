@@ -33,6 +33,7 @@ type StaticAssetEnvironment = {
   };
 };
 
+import { sweepExpiredUploadReservations } from "./attachment-storage.js";
 import { sweepStaleExecutionWaiters } from "./account-execution-slots.js";
 import { sweepUnsignaledTerminals } from "./assignment-workflow-signal.js";
 import * as handlers from "./routes/handlers.js";
@@ -229,6 +230,10 @@ export default {
     // hold execution capacity, so this only tidies bookkeeping.
     await sweepStaleExecutionWaiters(env.SYNTILA_DB).catch((error) =>
       console.error("Execution waiter sweep failed", error),
+    );
+    // Expired upload reservations already count for nothing; this tidies rows.
+    await sweepExpiredUploadReservations(env.SYNTILA_DB).catch((error) =>
+      console.error("Upload reservation sweep failed", error),
     );
     // Queued Thread requests whose turn came without a Workflow event.
     await sweepThreadRequestQueues(env as SecurityEnv).catch((error) =>

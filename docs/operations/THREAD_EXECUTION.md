@@ -29,7 +29,8 @@ Selected file attachments appear above the Work composer with their name and
 size. They are held in browser memory until Send and can be removed before
 submission. Selection alone
 does not mean the Worker has processed the file. The web picker accepts up to
-10 files of at most 10 MiB (10,485,760 bytes) each; native AX file picking is
+10 files, each within the uploader's plan limit (Free 25 MB, Plus 100 MB;
+decimal bytes, loaded from Cloud); native AX file picking is
 not implemented. Deploy the matching Cloud, AX, and Workspace updates together:
 a Workspace without Input Delivery v1 never downloads inputs, so requests
 with files fail after the 10-minute delivery limit.

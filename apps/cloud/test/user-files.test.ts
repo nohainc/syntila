@@ -16,7 +16,6 @@ vi.mock("../src/routes/http-security.js", async (original) => ({
 }));
 
 import {
-  USER_STORAGE_QUOTA_BYTES,
   handleUploadWorkRequestFile,
   workRequestFileKey,
 } from "../src/routes/work-request-files.js";
@@ -45,7 +44,22 @@ function fixture() {
       "utf8",
     ),
   );
+  for (const migration of [
+    "0094_account_plans.sql",
+    "0098_user_file_reservations.sql",
+  ])
+    sqlite.exec(
+      readFileSync(
+        new URL(`../migrations-v8/${migration}`, import.meta.url),
+        "utf8",
+      ),
+    );
   const db = {
+    async batch(statements: { run(): Promise<unknown> }[]) {
+      const results = [];
+      for (const statement of statements) results.push(await statement.run());
+      return results;
+    },
     prepare(sql: string) {
       let values: unknown[] = [];
       return {
@@ -123,7 +137,10 @@ function fixture() {
         "https://test/api/threads/thread/work-request-files?name=a.bin",
         {
           method: "POST",
-          headers: { "content-type": "application/octet-stream" },
+          headers: {
+            "content-type": "application/octet-stream",
+            "content-length": String(new TextEncoder().encode(text).byteLength),
+          },
           body: text,
         },
       ),
@@ -255,7 +272,9 @@ describe("My Files", () => {
     expect(mine.usage).toEqual({
       usedBytes: 8,
       fileCount: 2,
-      quotaBytes: USER_STORAGE_QUOTA_BYTES,
+      reservedBytes: 0,
+      quotaBytes: 1_000_000_000,
+      maxFileBytes: 25_000_000,
     });
     expect(mine.files.map((file) => file.sizeBytes).sort()).toEqual([3, 5]);
     expect(mine.files[0]!.threadName).toBe("Plan");
@@ -269,8 +288,11 @@ describe("My Files", () => {
       .prepare(
         `INSERT INTO user_files VALUES ('wrf-x', 'owner', 'thread', 'space', 'big', 'x', ?, '2026-01-01')`,
       )
-      .run(USER_STORAGE_QUOTA_BYTES - 4);
-    await expect(upload("hello")).rejects.toMatchObject({ status: 413 });
+      .run(1_000_000_000 - 4);
+    await expect(upload("hello")).rejects.toMatchObject({
+      status: 413,
+      code: "storage_quota_exceeded",
+    });
     expect(objects.size).toBe(0);
     expect((await upload("abcd")).status).toBe(201);
   });

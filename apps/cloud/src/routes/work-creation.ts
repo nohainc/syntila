@@ -1,4 +1,9 @@
 import {
+  FileTooLargeError,
+  StorageQuotaExceededError,
+  getAttachmentLimits,
+} from "../account-plan.js";
+import {
   parseWorkflowExecutionSelection,
   resolveWorkflowExecutionBindings,
 } from "./workflow-execution-configuration.js";
@@ -24,7 +29,6 @@ import {
 
 import {
   MAX_WORK_REQUEST_FILES,
-  MAX_WORK_REQUEST_FILE_BYTES,
   isWorkRequestFileId,
   userStorageUsage,
   verifyWorkRequestFile,
@@ -316,6 +320,11 @@ export async function createWorkRequestForUser(
     : [];
   if (rawAttachments.length > MAX_WORK_REQUEST_FILES)
     throw new HttpError(400, "At most 10 attachments are allowed");
+  // The requester is the uploader: their plan sets the file and storage limits.
+  const attachmentLimits = await getAttachmentLimits(
+    env as unknown as Env,
+    context.userId,
+  );
   const normalizedAttachments = await Promise.all(
     rawAttachments.map(async (attachment, index) => {
       if (
@@ -366,13 +375,16 @@ export async function createWorkRequestForUser(
       if (
         typeof value.sizeBytes !== "number" ||
         !Number.isSafeInteger(value.sizeBytes) ||
-        value.sizeBytes < 0 ||
-        value.sizeBytes > MAX_WORK_REQUEST_FILE_BYTES
+        value.sizeBytes < 0
       )
-        throw new HttpError(
-          400,
-          `File ${index + 1} exceeds the 10 MB limit or has an invalid size`,
-        );
+        throw new HttpError(400, `File ${index + 1} has an invalid size`);
+      // A file already stored may be referenced whatever the current plan;
+      // only a file still to be uploaded is held to the uploader's limit.
+      if (
+        value.fileId === undefined &&
+        value.sizeBytes > attachmentLimits.fileBytes
+      )
+        throw new FileTooLargeError(attachmentLimits);
       // Input Delivery v1: the file is uploaded after acceptance. Cloud
       // assigns its identity; the manifest row tracks upload and delivery.
       if (value.fileId === undefined && value.delivery === "upload") {
@@ -422,12 +434,11 @@ export async function createWorkRequestForUser(
     0,
   );
   if (pendingBytes > 0) {
+    // Early, non-binding check against the uploader's own allowance; the
+    // upload itself reserves storage atomically.
     const usage = await userStorageUsage(env, context.userId);
-    if (usage.usedBytes + pendingBytes > usage.quotaBytes)
-      throw new HttpError(
-        413,
-        "Storage quota exceeded. Delete files in My Files to free space",
-      );
+    if (usage.usedBytes + usage.reservedBytes + pendingBytes > usage.quotaBytes)
+      throw new StorageQuotaExceededError(attachmentLimits);
   }
   const attachmentReferences = normalizedAttachments;
   const configuredBindings =

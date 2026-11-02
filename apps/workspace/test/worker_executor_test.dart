@@ -16,12 +16,12 @@ import 'package:test/test.dart';
 import 'support/assignment_worker_fixture.dart';
 
 void main() {
-  test('materializes a 10 MiB input and rejects one byte over', () async {
+  test('materializes a 100 MB input and rejects one byte over', () async {
     final root = await Directory.systemTemp.createTemp('attachment-limit-');
     addTearDown(() => root.delete(recursive: true));
     final staging = WorkRequestInputStaging(Directory('${root.path}/staged'));
     const fileId = 'wrf-11111111-2222-3333-4444-555555555555';
-    const size = 10 * 1024 * 1024;
+    const size = 100000000;
     final bytes = Uint8List(size);
     final digest = 'sha256:${sha256.convert(bytes)}';
     await staging.stageStream(

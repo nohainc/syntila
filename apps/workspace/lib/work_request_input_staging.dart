@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 
-/// Per-file limit; Cloud enforces the same 10 MB.
-const maxWorkRequestInputBytes = 10 * 1024 * 1024;
+/// Per-file limit, the largest any Syntila plan uploads (decimal: 100 MB).
+/// Cloud enforces each account's own, smaller-or-equal limit at upload time;
+/// this bound only protects the Workspace from an oversized manifest.
+const maxWorkRequestInputBytes = 100000000;
 
 final _fileIdPattern = RegExp(
     r'^wrf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
@@ -136,6 +138,72 @@ class WorkRequestInputStaging {
           'A file for this request changed on the Workspace.');
     }
     return bytes;
+  }
+
+  /// Streams the verified staged copy of [fileId] to [target] without holding
+  /// the file in memory. Size and digest are checked while copying and the
+  /// result is published atomically, so a failed copy leaves nothing behind.
+  Future<void> copyTo({
+    required String fileId,
+    required int sizeBytes,
+    required String contentDigest,
+    required File target,
+  }) async {
+    _checkIdentity(fileId, contentDigest);
+    final source = _fileFor(fileId);
+    if (await FileSystemEntity.type(source.path, followLinks: false) !=
+        FileSystemEntityType.file) {
+      throw const WorkRequestInputStagingException('staged_input_missing',
+          'A file for this request is not on the Workspace.');
+    }
+    final temporary = File('${target.path}.partial');
+    final digestSink = _DigestSink();
+    final hasher = sha256.startChunkedConversion(digestSink);
+    var copied = 0;
+    IOSink? sink;
+    try {
+      sink = temporary.openWrite();
+      await for (final chunk in source.openRead()) {
+        copied += chunk.length;
+        hasher.add(chunk);
+        sink.add(chunk);
+      }
+      await sink.flush();
+      await sink.close();
+      sink = null;
+      hasher.close();
+      if (copied != sizeBytes ||
+          'sha256:${digestSink.value}' != contentDigest) {
+        throw const WorkRequestInputStagingException('staged_input_changed',
+            'A file for this request changed on the Workspace.');
+      }
+      await temporary.rename(target.path);
+    } catch (_) {
+      try {
+        await sink?.close();
+      } on Object {
+        // Already failing.
+      }
+      try {
+        await temporary.delete();
+      } on FileSystemException {
+        // Nothing to clean up.
+      }
+      rethrow;
+    }
+  }
+
+  /// The digest and length of [file], streamed.
+  static Future<({int length, String digest})> describe(File file) async {
+    final digestSink = _DigestSink();
+    final hasher = sha256.startChunkedConversion(digestSink);
+    var length = 0;
+    await for (final chunk in file.openRead()) {
+      length += chunk.length;
+      hasher.add(chunk);
+    }
+    hasher.close();
+    return (length: length, digest: 'sha256:${digestSink.value}');
   }
 
   void _checkIdentity(String fileId, String contentDigest) {

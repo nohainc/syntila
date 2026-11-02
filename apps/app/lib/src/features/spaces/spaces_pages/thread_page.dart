@@ -2692,8 +2692,10 @@ class _ThreadPageState extends State<ThreadPage>
                                       !_draftSubmitting
                                   ? () => Navigator.pop(buttonContext, 'files')
                                   : null,
-                              child: const Text('Add files',
-                                  style: SyntilaMenuStyle.textStyle),
+                              child: Tooltip(
+                                  message: AxAttachmentPolicy.instance.hint,
+                                  child: const Text('Add files',
+                                      style: SyntilaMenuStyle.textStyle)),
                             ),
                           ),
                         ],

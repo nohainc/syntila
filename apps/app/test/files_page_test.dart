@@ -21,9 +21,14 @@ class _FakeFiles implements AxUserFilesDataSource {
     files.clear();
   }
 
-  static const quota = 1024 * 1024 * 1024;
+  static const quota = 1000000000;
 
-  AxStorageUsage get _usage => AxStorageUsage(
+  /// Overrides the computed usage (for allowance and warning states).
+  AxStorageUsage? usage;
+
+  AxStorageUsage get _usage =>
+      usage ??
+      AxStorageUsage(
         usedBytes: files.fold(0, (sum, file) => sum + file.sizeBytes),
         fileCount: files.length,
         quotaBytes: quota,
@@ -79,8 +84,9 @@ void main() {
 
   test('formats sizes', () {
     expect(formatFileSize(512), '512 B');
-    expect(formatFileSize(1536), '1.5 KB');
-    expect(formatFileSize(10 * 1024 * 1024), '10 MB');
+    expect(formatFileSize(1500), '1.5 kB');
+    expect(formatFileSize(10000000), '10 MB');
+    expect(formatFileSize(25000000000), '25 GB');
   });
 
   testWidgets(
@@ -153,5 +159,43 @@ void main() {
     expect(source.deleted, ['wrf-a']);
     expect(find.text('plan.pdf'), findsNothing);
     expect(find.textContaining('1 file'), findsOneWidget);
+  });
+
+  testWidgets('warns at 80% and explains blocked uploads when storage is full',
+      (tester) async {
+    Future<void> pumpUsage(AxStorageUsage usage) async {
+      final source = _FakeFiles([])..usage = usage;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(body: FilesPage(key: UniqueKey(), source: source))));
+      await tester.pumpAndSettle();
+    }
+
+    await pumpUsage(const AxStorageUsage(
+        usedBytes: 500000000,
+        fileCount: 1,
+        quotaBytes: 1000000000,
+        maxFileBytes: 25000000));
+    expect(find.byKey(const ValueKey('files-near-limit')), findsNothing);
+    expect(find.text('Each file can be up to 25 MB.'), findsOneWidget);
+
+    await pumpUsage(const AxStorageUsage(
+        usedBytes: 800000000,
+        fileCount: 1,
+        quotaBytes: 1000000000,
+        maxFileBytes: 25000000));
+    expect(find.textContaining('used 80% of your storage'), findsOneWidget);
+    expect(find.byKey(const ValueKey('files-full')), findsNothing);
+
+    await pumpUsage(const AxStorageUsage(
+        usedBytes: 1200000000,
+        fileCount: 3,
+        quotaBytes: 1000000000,
+        maxFileBytes: 25000000));
+    // Already above quota (for example after a downgrade): blocked, but kept.
+    expect(find.textContaining('Storage is full. New uploads are blocked'),
+        findsOneWidget);
+    expect(
+        find.textContaining('existing files stay available'), findsOneWidget);
+    expect(find.textContaining('unlimited'), findsNothing);
   });
 }

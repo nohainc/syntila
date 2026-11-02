@@ -6,9 +6,11 @@ import type { SecurityEnv } from "./handlers.js";
 import {
   isWorkRequestFileId,
   readWorkRequestFileUpload,
+  storedFileDigest,
   storeWorkRequestFile,
   workRequestFileKey,
 } from "./work-request-files.js";
+import { getAttachmentLimits } from "../account-plan.js";
 
 /**
  * Input Delivery v1 (see docs/specifications/INPUT_DELIVERY_V1.md).
@@ -276,8 +278,10 @@ export async function handleUploadWorkRequestInput(
     return json({ fileId, state: row.state });
   if (!(await requestIsOpen(env.SYNTILA_DB, workRequestId)))
     throw new HttpError(409, "The request is no longer waiting for files");
-  const upload = await readWorkRequestFileUpload(request);
-  if (upload.body.byteLength !== row.sizeBytes)
+  // Charged to the requester (the uploader), whatever plan owns the Space.
+  const limits = await getAttachmentLimits(env as unknown as Env, row.userId);
+  const upload = await readWorkRequestFileUpload(request, limits);
+  if (upload.sizeBytes !== row.sizeBytes)
     throw new HttpError(400, "File size does not match the request");
   const stored = await storeWorkRequestFile(env, {
     fileId,
@@ -425,7 +429,8 @@ export async function handleDownloadRuntimeInput(
   if (
     !object ||
     object.size !== row.sizeBytes ||
-    object.customMetadata?.digest !== row.contentDigest
+    (await storedFileDigest(env, fileId, object.customMetadata)) !==
+      row.contentDigest
   )
     throw new HttpError(409, "Input content is unavailable");
   return new Response(object.body, {

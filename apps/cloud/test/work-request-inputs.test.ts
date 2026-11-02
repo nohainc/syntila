@@ -113,6 +113,13 @@ async function fixture() {
           customMetadata: options.customMetadata,
         });
       },
+      async head(key: string) {
+        const object = objects.get(key);
+        return object ? { ...object, size: object.bytes.length } : null;
+      },
+      async delete(keys: string | string[]) {
+        for (const key of [keys].flat()) objects.delete(key);
+      },
       async get(key: string) {
         const object = objects.get(key);
         return object
@@ -120,6 +127,8 @@ async function fixture() {
               ...object,
               size: object.bytes.length,
               body: object.bytes,
+              json: async () =>
+                JSON.parse(new TextDecoder().decode(object.bytes)),
             }
           : null;
       },
@@ -129,7 +138,10 @@ async function fixture() {
     handleUploadWorkRequestInput(
       new Request(`https://t/api/work-requests/wr/inputs/${fileId}`, {
         method: "PUT",
-        headers: { "content-type": "text/plain" },
+        headers: {
+          "content-type": "text/plain",
+          "content-length": String(new TextEncoder().encode(text).byteLength),
+        },
         body: text,
       }),
       env,

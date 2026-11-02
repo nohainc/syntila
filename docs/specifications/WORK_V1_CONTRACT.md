@@ -698,11 +698,13 @@ authorization tokens. AX downloads through its authenticated API client.
 
 Attachments are inputs to a Work Request, not Workflow definitions. A request
 may include local files and `http`/`https` references. The v1 composer accepts
-up to 10 attachments; each file is limited to 10 MiB and there is no total
-limit. The file dialog allows multi-selection in both Ask AI and Message
-modes. Each selected file is admitted in order: files over 10 MiB, and files
-beyond the remaining slots, are skipped individually and reported in one
-notice, while the rest are attached. Links are limited to 2,048 characters and may
+up to 10 attachments. The per-file and total-storage limits depend on the
+**uploader's** plan, in decimal bytes (see ADR-025): Free 25 MB per file and
+1 GB total; Syntila Plus 100 MB per file and 25 GB total. The file dialog
+allows multi-selection in both Ask AI and Message modes. Each selected file is
+admitted in order: files over the plan's file limit, files that no longer fit
+the remaining storage, and files beyond the remaining slots are skipped
+individually and reported in one notice, while the rest are attached. Links are limited to 2,048 characters and may
 not embed URL credentials. The client uploads each file to
 `POST /api/threads/{threadId}/work-request-files`, which stores the bytes in R2
 bound to the uploading user and Thread and returns a server-generated `fileId`.
@@ -712,15 +714,21 @@ Cloud reads the bytes from R2 when it sends `assignment.start`, so they are
 transient on the wire and never persisted in D1.
 
 Each upload also records a `user_files` row (migration `0086_user_files.sql`:
-owner, Thread, Space, name, media type, size). The sum of a user's rows is
-capped at 1 GiB (`USER_STORAGE_QUOTA_BYTES`); an upload that would exceed it
-gets 413 before anything is written. The check is not reserved, so parallel
-uploads can overshoot by at most one batch. `GET /api/files` lists the
+owner, Thread, Space, name, media type, size). The sum of a user's rows
+(archived Spaces and Threads included) is capped by the uploader's plan; an
+upload that does not fit gets 413 before anything is stored, with
+`code: "file_too_large"` (over the per-file limit) or
+`code: "storage_quota_exceeded"` (total allowance full). Each upload first
+reserves its bytes atomically (`user_file_reservations`, migration `0098`), so
+parallel uploads cannot overshoot, and the reservation is released on failure
+or expiry. `GET /api/files` lists the
 caller's files newest first (100 per page, `?before=<createdAt>` for more) with
-`usage { usedBytes, fileCount, quotaBytes }`, the Thread/Space names while the
+`usage { usedBytes, fileCount, reservedBytes, quotaBytes, maxFileBytes }`, the Thread/Space names while the
 caller can still open the Thread, and `inUse` when a discussion message or
 Work Request cites the file. `DELETE /api/files/{fileId}` is owner-only: it
-removes the R2 object and its preview and frees the quota. History that cited
+removes the R2 object and its preview and frees the quota only once storage
+confirms (references never own bytes, so citing a file twice or removing one
+citation cannot change usage). History that cited
 the file keeps its name and size, and downloads return 404. The daily cron
 deletes uploads older than a day that nothing cites, at most 100 per run. The
 AX app shows all of this in My Files (`/files`). Its **Synchronize storage**

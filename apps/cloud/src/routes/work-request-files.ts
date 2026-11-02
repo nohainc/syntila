@@ -1,37 +1,75 @@
 import { computePackageDigest } from "@syntila/security";
-import {
-  HttpError,
-  artifactName,
-  authorizeThreadAccess,
-  json,
-} from "./handlers.js";
+import { HttpError } from "./http-security.js";
+import { artifactName, authorizeThreadAccess, json } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
+import {
+  ATTACHMENT_LIMITS,
+  FileTooLargeError,
+  MAX_ATTACHMENTS_PER_SUBMISSION,
+  getAttachmentLimits,
+  type AttachmentLimits,
+} from "../account-plan.js";
+import { UploadStreamError, putStream } from "../upload-stream.js";
+import {
+  loadStorageUsage,
+  releaseUpload,
+  reserveUpload,
+} from "../attachment-storage.js";
 
 /** Base64 JPEG thumbnail budget; AX enforces the same value. */
 const MAX_PREVIEW_IMAGE_CHARS = 32000;
 
-/** Per-file and per-request limits; `USER_STORAGE_QUOTA_BYTES` caps the total. */
-export const MAX_WORK_REQUEST_FILE_BYTES = 10 * 1024 * 1024;
-export const MAX_WORK_REQUEST_FILES = 10;
-/** Total bytes one user may keep in uploaded files (see `user_files`). */
-export const USER_STORAGE_QUOTA_BYTES = 1024 * 1024 * 1024;
+/**
+ * Attachments per submission (not plan based). Per-file and total-storage
+ * limits depend on the uploader's plan; see `ATTACHMENT_LIMITS` in
+ * `account-plan.ts` (decimal bytes).
+ */
+export const MAX_WORK_REQUEST_FILES = MAX_ATTACHMENTS_PER_SUBMISSION;
+/**
+ * Largest file any plan accepts. Only a sanity bound when an existing file is
+ * referenced again: a file stored under a larger earlier allowance stays usable
+ * after a downgrade.
+ */
+export const MAX_STORED_FILE_BYTES = ATTACHMENT_LIMITS.paid.fileBytes;
+/** Multipart bodies are buffered, so they stay within the Free file size. */
+const MULTIPART_BUFFER_LIMIT_BYTES =
+  ATTACHMENT_LIMITS.free.fileBytes + 24 * 1024;
 
-/** Bytes and count of the user's uploaded files that still exist. */
+export interface UserStorageUsage {
+  readonly usedBytes: number;
+  readonly fileCount: number;
+  /** Bytes held by uploads still in flight. */
+  readonly reservedBytes: number;
+  /** The uploader's total allowance on their current plan. */
+  readonly quotaBytes: number;
+  /** The uploader's individual-file allowance on their current plan. */
+  readonly maxFileBytes: number;
+}
+
+/** Retained uploaded bytes and the uploader's current allowances. */
 export async function userStorageUsage(
   env: SecurityEnv,
   userId: string,
-): Promise<{ usedBytes: number; fileCount: number; quotaBytes: number }> {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT COALESCE(SUM(size_bytes), 0) AS usedBytes, COUNT(*) AS fileCount
-      FROM user_files WHERE user_id = ?1`,
-  )
-    .bind(userId)
-    .first<{ usedBytes: number; fileCount: number }>();
+): Promise<UserStorageUsage> {
+  const [usage, limits] = await Promise.all([
+    loadStorageUsage(env.SYNTILA_DB, userId),
+    getAttachmentLimits(env as unknown as Env, userId),
+  ]);
   return {
-    usedBytes: Number(row?.usedBytes ?? 0),
-    fileCount: Number(row?.fileCount ?? 0),
-    quotaBytes: USER_STORAGE_QUOTA_BYTES,
+    ...usage,
+    quotaBytes: limits.storageBytes,
+    maxFileBytes: limits.fileBytes,
   };
+}
+
+class UploadRequirementError extends HttpError {
+  constructor(
+    status: number,
+    message: string,
+    readonly code: string,
+  ) {
+    super(status, message);
+  }
 }
 
 const FILE_ID_PATTERN =
@@ -78,31 +116,32 @@ export async function handleUploadWorkRequestFile(
       : "execute",
     accessContext,
   );
-  const upload = await readWorkRequestFileUpload(request);
+  const limits = await getAttachmentLimits(
+    env as unknown as Env,
+    context.userId,
+  );
+  const upload = await readWorkRequestFileUpload(request, limits);
   const url = new URL(request.url);
   const name = artifactName(
     url.searchParams.get("name") ?? request.headers.get("x-file-name"),
   );
   const fileId = `wrf-${crypto.randomUUID()}`;
-  const { digest, mediaType, body } = {
-    ...upload,
-    ...(await storeWorkRequestFile(env, {
-      fileId,
-      threadId,
-      spaceId: spaceId ?? null,
-      userId: context.userId,
-      name,
-      upload,
-    })),
-  };
+  const stored = await storeWorkRequestFile(env, {
+    fileId,
+    threadId,
+    spaceId: spaceId ?? null,
+    userId: context.userId,
+    name,
+    upload,
+  });
   return json(
     {
       file: {
         fileId,
         name,
-        mediaType,
-        sizeBytes: body.byteLength,
-        contentDigest: digest,
+        mediaType: upload.mediaType,
+        sizeBytes: stored.sizeBytes,
+        contentDigest: stored.digest,
       },
     },
     { status: 201 },
@@ -110,36 +149,56 @@ export async function handleUploadWorkRequestFile(
 }
 
 export interface WorkRequestFileUpload {
-  readonly body: ArrayBuffer;
   readonly mediaType: string;
+  /**
+   * Exact byte length. Actual for a buffered body; for a stream it is the
+   * declared Content-Length, which the store enforces byte for byte.
+   */
+  readonly sizeBytes: number;
+  readonly body?: ArrayBuffer;
+  readonly stream?: ReadableStream<Uint8Array>;
   readonly previewImage?: string;
 }
 
-/** Reads one bounded upload body (raw bytes or multipart with a preview). */
+/**
+ * Reads one upload. A raw body is never buffered: it stays a stream bounded by
+ * its Content-Length. A multipart body (used to carry a JPEG preview) is
+ * buffered, so it is only accepted up to the Free file size; larger files must
+ * be sent raw.
+ */
 export async function readWorkRequestFileUpload(
   request: Request,
+  limits: AttachmentLimits,
 ): Promise<WorkRequestFileUpload> {
-  const declared = request.headers.get("content-length");
-  if (declared !== null) {
-    const length = Number(declared);
-    if (
-      !Number.isSafeInteger(length) ||
-      length > MAX_WORK_REQUEST_FILE_BYTES + 24 * 1024
-    )
-      throw new HttpError(413, "File exceeds the 10 MB limit");
-  }
-  let body: ArrayBuffer;
-  let submittedType: string | null = null;
-  let previewImage: string | undefined;
-  if (request.headers.get("content-type")?.startsWith("multipart/form-data")) {
+  const multipart = !!request.headers
+    .get("content-type")
+    ?.startsWith("multipart/form-data");
+  const header = request.headers.get("content-length");
+  const declared = header === null ? null : Number(header);
+  if (declared !== null && (!Number.isSafeInteger(declared) || declared < 0))
+    throw new HttpError(400, "Invalid Content-Length");
+  if (
+    declared !== null &&
+    declared > limits.fileBytes + (multipart ? 24 * 1024 : 0)
+  )
+    throw new FileTooLargeError(limits);
+  const rawType = request.headers.get("content-type");
+  if (multipart) {
+    if (declared === null || declared > MULTIPART_BUFFER_LIMIT_BYTES)
+      throw new UploadRequirementError(
+        413,
+        "Files this large must be uploaded as a raw request body, without a preview",
+        "upload_requires_raw_body",
+      );
     const form = await request.formData();
     const file = form.get("file");
     if (!file || typeof file === "string")
       throw new HttpError(400, "File content is required");
-    body = await file.arrayBuffer();
+    const body = await file.arrayBuffer();
+    if (body.byteLength > limits.fileBytes) throw new FileTooLargeError(limits);
     const type = form.get("mediaType");
-    submittedType = typeof type === "string" ? type : null;
     const preview = form.get("previewImage");
+    let previewImage: string | undefined;
     if (typeof preview === "string") {
       if (
         preview.length > MAX_PREVIEW_IMAGE_CHARS ||
@@ -149,23 +208,55 @@ export async function readWorkRequestFileUpload(
         throw new HttpError(400, "Invalid image preview");
       previewImage = preview;
     }
-  } else {
-    body = await request.arrayBuffer();
+    return {
+      body,
+      sizeBytes: body.byteLength,
+      mediaType: mediaTypeOf(typeof type === "string" ? type : rawType),
+      ...(previewImage ? { previewImage } : {}),
+    };
   }
-  if (body.byteLength > MAX_WORK_REQUEST_FILE_BYTES)
-    throw new HttpError(413, "File exceeds the 10 MB limit");
-  const mediaType =
-    (submittedType ?? request.headers.get("content-type"))
-      ?.split(";", 1)[0]
-      ?.trim()
-      .slice(0, 128) || "application/octet-stream";
-  return { body, mediaType, ...(previewImage ? { previewImage } : {}) };
+  if (declared === null)
+    throw new UploadRequirementError(
+      411,
+      "Content-Length is required",
+      "content_length_required",
+    );
+  return declared === 0 || !request.body
+    ? {
+        body: new ArrayBuffer(0),
+        sizeBytes: 0,
+        mediaType: mediaTypeOf(rawType),
+      }
+    : {
+        stream: request.body,
+        sizeBytes: declared,
+        mediaType: mediaTypeOf(rawType),
+      };
+}
+
+function mediaTypeOf(value: string | null): string {
+  return (
+    value?.split(";", 1)[0]?.trim().slice(0, 128) || "application/octet-stream"
+  );
+}
+
+class UploadSizeMismatchError extends HttpError {
+  readonly code = "upload_size_mismatch";
+  constructor() {
+    super(400, "The uploaded file size did not match the declared size");
+  }
 }
 
 /**
  * Writes uploaded bytes to R2 under [fileId], bound to the uploading user and
- * Thread, and records them for My Files and the storage quota. Rewriting the
- * same [fileId] (a restarted upload) replaces the object and its accounting.
+ * Thread, and records them for My Files and the storage quota.
+ *
+ * The uploader's storage is reserved first (atomically, see `reserveUpload`),
+ * the stored object's real size is verified, entitlement and quota are
+ * rechecked at finalization without counting the upload twice, and the
+ * `user_files` row and reservation release are one batch. Any failure deletes
+ * the partial object and releases the reservation. Rewriting the same [fileId]
+ * (a retried or restarted upload) replaces the object and its accounting.
  */
 export async function storeWorkRequestFile(
   env: SecurityEnv,
@@ -178,63 +269,155 @@ export async function storeWorkRequestFile(
     upload: WorkRequestFileUpload;
     workRequestId?: string;
   },
-): Promise<{ digest: string; previewText?: string; previewImage?: string }> {
+): Promise<{
+  digest: string;
+  sizeBytes: number;
+  previewText?: string;
+  previewImage?: string;
+}> {
   const bucket = env.SYNTILA_ARTIFACTS;
   if (!bucket) throw new HttpError(503, "File storage is not configured");
-  const { body, mediaType, previewImage } = input.upload;
-  // Best effort under concurrency: parallel uploads may each pass this check
-  // and overshoot the quota by at most one batch.
-  const usage = await userStorageUsage(env, input.userId);
-  if (usage.usedBytes + body.byteLength > usage.quotaBytes)
-    throw new HttpError(
-      413,
-      "Storage quota exceeded. Delete files in My Files to free space",
-    );
-  const previewText = fileTextPreview(input.name, mediaType, body);
-  const digest = await computePackageDigest(body);
-  await bucket.put(workRequestFileKey(input.fileId), body, {
-    httpMetadata: { contentType: mediaType },
-    customMetadata: {
+  const { upload } = input;
+  const { mediaType, previewImage, sizeBytes } = upload;
+  const key = workRequestFileKey(input.fileId);
+  await reserveUpload(env as unknown as Env, {
+    fileId: input.fileId,
+    userId: input.userId,
+    sizeBytes,
+  });
+  let written = false;
+  try {
+    const metadata = {
       threadId: input.threadId,
       userId: input.userId,
       name: input.name,
-      digest,
       ...(input.workRequestId ? { workRequestId: input.workRequestId } : {}),
-      ...(previewText || previewImage ? { hasPreview: "1" } : {}),
-    },
-  });
-  if (previewText || previewImage)
-    await bucket.put(
-      `${workRequestFileKey(input.fileId)}/preview`,
-      JSON.stringify({ previewText, previewImage }),
-      {
-        httpMetadata: { contentType: "application/json" },
-      },
-    );
-  await env.SYNTILA_DB.prepare(
-    `INSERT OR REPLACE INTO user_files
-      (id, user_id, thread_id, space_id, name, media_type, size_bytes, created_at)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
-  )
-    .bind(
-      input.fileId,
-      input.userId,
-      input.threadId,
-      input.spaceId,
+    };
+    let digest: string;
+    let head: Uint8Array;
+    const putOptions = (extra: Record<string, string>): R2PutOptions => ({
+      httpMetadata: { contentType: mediaType },
+      customMetadata: { ...metadata, ...extra },
+    });
+    if (upload.body) {
+      digest = await computePackageDigest(upload.body);
+      head = new Uint8Array(upload.body.slice(0, 1200));
+      const preview = fileTextPreview(input.name, mediaType, upload.body);
+      await bucket.put(
+        key,
+        upload.body,
+        putOptions({
+          digest,
+          ...(preview || previewImage ? { hasPreview: "1" } : {}),
+        }),
+      );
+    } else {
+      // The digest is only known after the stream ends, so it is stamped on
+      // the object by a metadata-free put followed by `head`-verified reads.
+      const result = await putStream(
+        bucket,
+        key,
+        upload.stream!,
+        sizeBytes,
+        putOptions({}),
+      ).catch((error: unknown) => {
+        throw error instanceof UploadStreamError
+          ? new UploadSizeMismatchError()
+          : error;
+      });
+      digest = result.digest;
+      head = result.head;
+    }
+    written = true;
+    const stored = await bucket.head(key);
+    if (!stored || stored.size !== sizeBytes)
+      throw new UploadSizeMismatchError();
+    const previewText = fileTextPreview(
       input.name,
       mediaType,
-      body.byteLength,
-      new Date().toISOString(),
-    )
-    .run();
-  return {
-    digest,
-    ...(previewText ? { previewText } : {}),
-    ...(previewImage ? { previewImage } : {}),
-  };
+      head.buffer.slice(
+        head.byteOffset,
+        head.byteOffset + head.byteLength,
+      ) as ArrayBuffer,
+    );
+    if (!upload.body)
+      // R2 metadata is fixed at write time, so the streamed object's digest
+      // and preview flag are carried by a small sidecar object.
+      await bucket.put(
+        `${key}/meta`,
+        JSON.stringify({ digest, hasPreview: !!(previewText || previewImage) }),
+        { httpMetadata: { contentType: "application/json" } },
+      );
+    if (previewText || previewImage)
+      await bucket.put(
+        `${key}/preview`,
+        JSON.stringify({ previewText, previewImage }),
+        { httpMetadata: { contentType: "application/json" } },
+      );
+    // Finalization recheck: entitlement and quota again, excluding this
+    // upload's own reservation, so a downgrade mid-upload is honored.
+    await reserveUpload(env as unknown as Env, {
+      fileId: input.fileId,
+      userId: input.userId,
+      sizeBytes: stored.size,
+    });
+    await env.SYNTILA_DB.batch([
+      env.SYNTILA_DB.prepare(
+        `INSERT OR REPLACE INTO user_files
+          (id, user_id, thread_id, space_id, name, media_type, size_bytes, created_at)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+      ).bind(
+        input.fileId,
+        input.userId,
+        input.threadId,
+        input.spaceId,
+        input.name,
+        mediaType,
+        stored.size,
+        new Date().toISOString(),
+      ),
+      env.SYNTILA_DB.prepare(
+        "DELETE FROM user_file_reservations WHERE id = ?1 AND user_id = ?2",
+      ).bind(input.fileId, input.userId),
+    ]);
+    return {
+      digest,
+      sizeBytes: stored.size,
+      ...(previewText ? { previewText } : {}),
+      ...(previewImage ? { previewImage } : {}),
+    };
+  } catch (error) {
+    // Rejected, failed or abandoned: nothing may keep the quota.
+    if (written)
+      await bucket
+        .delete([key, `${key}/meta`, `${key}/preview`])
+        .catch(() => undefined);
+    await releaseUpload(env.SYNTILA_DB, input.fileId, input.userId).catch(
+      () => undefined,
+    );
+    throw error;
+  }
 }
 
 /** Confirms an uploaded file belongs to this user and Thread and matches the claim. */
+/**
+ * The stored file's content digest: object metadata for buffered uploads, the
+ * sidecar for streamed ones (their digest is known only after the bytes land).
+ */
+export async function storedFileDigest(
+  env: SecurityEnv,
+  fileId: string,
+  metadata: Record<string, string> | undefined,
+): Promise<string | null> {
+  if (metadata?.digest !== undefined) return metadata.digest;
+  const sidecar = await env.SYNTILA_ARTIFACTS?.get(
+    `${workRequestFileKey(fileId)}/meta`,
+  );
+  return sidecar
+    ? ((await sidecar.json<{ digest?: string }>()).digest ?? null)
+    : null;
+}
+
 export async function verifyWorkRequestFile(
   env: SecurityEnv,
   fileId: string,
@@ -242,28 +425,39 @@ export async function verifyWorkRequestFile(
   userId: string,
   sizeBytes: unknown,
 ): Promise<{ digest: string; previewText?: string; previewImage?: string }> {
-  const object = await env.SYNTILA_ARTIFACTS?.head(workRequestFileKey(fileId));
+  const key = workRequestFileKey(fileId);
+  const object = await env.SYNTILA_ARTIFACTS?.head(key);
   const meta = object?.customMetadata;
+  // An already stored file stays referenceable whatever the uploader's
+  // current plan or quota (a downgrade or an over-quota account must not lose
+  // access); only an absolute sanity bound applies.
   if (
     !object ||
     meta?.threadId !== threadId ||
     meta?.userId !== userId ||
-    object.size > MAX_WORK_REQUEST_FILE_BYTES ||
+    object.size > MAX_STORED_FILE_BYTES ||
     object.size !== sizeBytes
   )
     throw new HttpError(400, "Attached file was not found or does not match");
-  const preview =
-    meta.hasPreview === "1"
-      ? await env.SYNTILA_ARTIFACTS?.get(
-          `${workRequestFileKey(fileId)}/preview`,
-        )
+  // Streamed uploads learn their digest only after the bytes are stored, so
+  // it lives in a sidecar; older objects carry it in their metadata.
+  const sidecar =
+    meta.digest === undefined
+      ? await env.SYNTILA_ARTIFACTS?.get(`${key}/meta`)
       : null;
+  const stored = sidecar
+    ? await sidecar.json<{ digest?: string; hasPreview?: boolean }>()
+    : null;
+  const hasPreview = meta.hasPreview === "1" || stored?.hasPreview === true;
+  const preview = hasPreview
+    ? await env.SYNTILA_ARTIFACTS?.get(`${key}/preview`)
+    : null;
   const display = preview
     ? await preview.json<{ previewText?: string; previewImage?: string }>()
     : {};
   return {
     ...display,
-    digest: meta.digest ?? "",
+    digest: meta.digest ?? stored?.digest ?? "",
   };
 }
 

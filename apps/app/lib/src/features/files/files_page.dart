@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../ax/attachment_limits.dart';
 import '../../ax/ax_data.dart';
 
 /// My Files: every file the signed-in user uploaded, with storage usage
@@ -38,6 +39,7 @@ class _FilesPageState extends State<FilesPage> {
       setState(() {
         _files = page.files;
         _usage = page.usage;
+        AxAttachmentPolicy.instance.updateFromUsage(page.usage);
         _nextCursor = page.nextCursor;
         _error = null;
       });
@@ -79,6 +81,7 @@ class _FilesPageState extends State<FilesPage> {
       setState(() {
         _files = [...?_files, ...page.files];
         _usage = page.usage;
+        AxAttachmentPolicy.instance.updateFromUsage(page.usage);
         _nextCursor = page.nextCursor;
       });
     } on Object {
@@ -115,6 +118,7 @@ class _FilesPageState extends State<FilesPage> {
       if (!mounted) return;
       setState(() {
         _usage = usage;
+        AxAttachmentPolicy.instance.updateFromUsage(usage);
         _files = [
           for (final item in _files ?? const <AxUserFile>[])
             if (item.fileId != file.fileId) item,
@@ -166,6 +170,31 @@ class _FilesPageState extends State<FilesPage> {
             value: usage.fraction,
             color: usage.fraction >= 0.9 ? theme.colorScheme.error : null,
           ),
+          const SizedBox(height: 8),
+          Text(
+            'Each file can be up to ${formatFileSize(usage.maxFileBytes)}.',
+            key: const ValueKey('files-file-limit'),
+            style: TextStyle(color: muted),
+          ),
+          if (usage.isFull) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Storage is full. New uploads are blocked until you delete files '
+              'or upgrade to Syntila Plus for more storage. Your existing '
+              'files stay available to download.',
+              key: const ValueKey('files-full'),
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          ] else if (usage.nearLimit) ...[
+            const SizedBox(height: 8),
+            Text(
+              'You have used ${(usage.fraction * 100).floor()}% of your '
+              'storage. Delete files you no longer need, or upgrade to Syntila '
+              'Plus for more.',
+              key: const ValueKey('files-near-limit'),
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          ],
           const SizedBox(height: 16),
         ],
         if (_syncStatus != null) ...[

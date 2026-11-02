@@ -6,6 +6,7 @@ import 'dart:html' as html;
 import 'dart:typed_data';
 
 import 'attachment_limits.dart';
+import 'ax_files.dart' show formatFileSize;
 
 /// Opens a multi-select file dialog. Files that would break the count or
 /// size limit are skipped individually and reported in `notice`.
@@ -44,10 +45,11 @@ Future<({List<Map<String, dynamic>> files, String? notice})>
 /// Reads browser files into the bounded request attachment payload.
 Future<List<Map<String, dynamic>>> readWorkRequestFiles(
     List<html.File> files) async {
+  final limit = AxAttachmentPolicy.instance.maxFileBytes;
   if (files.length > maxAttachmentCount ||
-      files.any((file) => file.size > maxAttachmentBytes)) {
-    throw const FormatException(
-      'Choose up to 10 files, each at most 10 MB.',
+      files.any((file) => file.size > limit)) {
+    throw FormatException(
+      'Choose up to $maxAttachmentCount files, each at most ${formatFileSize(limit)}.',
     );
   }
   final result = <Map<String, dynamic>>[];

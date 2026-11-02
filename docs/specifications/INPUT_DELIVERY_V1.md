@@ -23,8 +23,11 @@ request's files by the WebSocket frame limit (32 MiB).
 - A failed transfer restarts the whole file (no resume).
 - One download serves every Workflow step and retry of the request.
 
-Limits are unchanged: 10 files per request, 10 MiB per file, the per-user
-storage quota.
+Limits: 10 files per request; per-file and total-storage limits follow the
+uploader's plan (Free 25 MB / 1 GB, Plus 100 MB / 25 GB, decimal bytes;
+ADR-025). Uploads stream: Cloud never buffers a raw body, and the Workspace
+streams the staged file into the execution directory, so a 100 MB file does
+not sit in memory.
 
 ## Data model
 

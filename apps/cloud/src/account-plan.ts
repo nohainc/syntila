@@ -236,6 +236,91 @@ export async function getSpaceMemberUsage(
   };
 }
 
+/**
+ * Uploaded-file allowances, in decimal bytes (1 GB = 1,000,000,000; 1 MB =
+ * 1,000,000). They replace the earlier binary 1 GiB total and 10 MiB per file.
+ * Storage is charged to the *uploader's* plan, whatever plan owns the Space,
+ * and the 10-attachments-per-submission cap is a separate, plan-free limit.
+ */
+export const ATTACHMENT_LIMITS = {
+  free: { storageBytes: 1_000_000_000, fileBytes: 25_000_000 },
+  paid: { storageBytes: 25_000_000_000, fileBytes: 100_000_000 },
+} as const satisfies Record<
+  AccountTier,
+  { storageBytes: number; fileBytes: number }
+>;
+
+/** Attachments one message or request may carry (not plan based). */
+export const MAX_ATTACHMENTS_PER_SUBMISSION = 10;
+
+export interface AttachmentLimits {
+  readonly tier: AccountTier;
+  readonly storageBytes: number;
+  readonly fileBytes: number;
+}
+
+export function attachmentLimits(tier: AccountTier): AttachmentLimits {
+  return { tier, ...ATTACHMENT_LIMITS[tier] };
+}
+
+/** "25 MB", "1 GB": decimal, matching the byte limits above. */
+export function formatDecimalBytes(bytes: number): string {
+  if (bytes >= 1_000_000_000)
+    return `${+(bytes / 1_000_000_000).toFixed(1)} GB`;
+  if (bytes >= 1_000_000) return `${+(bytes / 1_000_000).toFixed(1)} MB`;
+  if (bytes >= 1_000) return `${+(bytes / 1_000).toFixed(1)} kB`;
+  return `${bytes} bytes`;
+}
+
+/** SQL for the uploader's total-storage allowance (decimal bytes). */
+export function attachmentStorageQuotaSql(userParam: string): string {
+  return `(CASE WHEN ${paidOwnerSql(userParam)}
+    THEN ${ATTACHMENT_LIMITS.paid.storageBytes}
+    ELSE ${ATTACHMENT_LIMITS.free.storageBytes} END)`;
+}
+
+/** SQL for the uploader's individual-file allowance (decimal bytes). */
+export function attachmentFileLimitSql(userParam: string): string {
+  return `(CASE WHEN ${paidOwnerSql(userParam)}
+    THEN ${ATTACHMENT_LIMITS.paid.fileBytes}
+    ELSE ${ATTACHMENT_LIMITS.free.fileBytes} END)`;
+}
+
+export async function getAttachmentLimits(
+  env: Env,
+  userId: string,
+  now: Date = new Date(),
+): Promise<AttachmentLimits> {
+  const row = await env.SYNTILA_DB.prepare(
+    "SELECT tier, status, current_period_end FROM account_plans WHERE user_id = ?1",
+  )
+    .bind(userId)
+    .first<AccountPlanRow>();
+  return attachmentLimits(effectiveTier(row, now));
+}
+
+/** The file itself is over the uploader's plan limit (not a full account). */
+export class FileTooLargeError extends HttpError {
+  readonly code = "file_too_large";
+  constructor(limits: AttachmentLimits) {
+    super(
+      413,
+      `This file is larger than the ${formatDecimalBytes(limits.fileBytes)} limit for your plan.`,
+    );
+  }
+}
+
+/** The uploader's total storage allowance has no room for this file. */
+export class StorageQuotaExceededError extends HttpError {
+  readonly code = "storage_quota_exceeded";
+  constructor(limits: AttachmentLimits) {
+    super(
+      413,
+      `Storage is full (${formatDecimalBytes(limits.storageBytes)} on your plan). Delete files in My Files to free space.`,
+    );
+  }
+}
+
 export interface AccountPlan {
   /** The tier the person is entitled to right now. */
   readonly tier: AccountTier;
@@ -247,6 +332,12 @@ export interface AccountPlan {
   readonly workspaces: {
     readonly owned: number;
     readonly limit: number | null;
+  };
+  /** Authoritative upload limits for this account (decimal bytes). */
+  readonly attachments: {
+    readonly maxFiles: number;
+    readonly maxFileBytes: number;
+    readonly storageBytes: number;
   };
 }
 
@@ -309,6 +400,11 @@ export async function getAccountPlan(
     workspaces: {
       owned: await countOwnedWorkspaces(env, userId),
       limit: personalWorkspaceLimit(tier),
+    },
+    attachments: {
+      maxFiles: MAX_ATTACHMENTS_PER_SUBMISSION,
+      maxFileBytes: ATTACHMENT_LIMITS[tier].fileBytes,
+      storageBytes: ATTACHMENT_LIMITS[tier].storageBytes,
     },
   };
 }

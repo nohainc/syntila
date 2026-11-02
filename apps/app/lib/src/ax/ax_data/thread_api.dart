@@ -274,7 +274,12 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     final preview = attachment['previewImage'];
     final mediaType =
         attachment['mediaType']?.toString() ?? 'application/octet-stream';
-    if (preview is String) {
+    // A multipart body (the only way to carry a preview) is buffered by Cloud,
+    // so only files within the Free size use it. Larger files go as a raw
+    // streamed body, without a preview.
+    if (preview is String &&
+        (attachment['sizeBytes'] as int? ?? 0) <=
+            AxAttachmentPolicy.freeFileBytes) {
       final request = http.MultipartRequest(method, url)
         ..headers.addAll(_headers())
         ..fields['mediaType'] = mediaType
@@ -338,7 +343,17 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
       {bool discussion = false}) async {
     return Future.wait(attachments.map((attachment) async {
       if (attachment['kind'] != 'file') return attachment;
-      final uploadKey = jsonEncode([threadId, attachment]);
+      // A cheap identity for the picked file: never serialize its bytes.
+      final content = attachment['contentBase64']?.toString() ?? '';
+      final uploadKey = jsonEncode([
+        threadId,
+        attachment['name'],
+        attachment['mediaType'],
+        attachment['sizeBytes'],
+        content.length,
+        content.hashCode,
+        attachment['fileId'],
+      ]);
       var fileId = attachment['fileId'] is String
           ? attachment['fileId'] as String
           : _uploadedWorkFiles[uploadKey];

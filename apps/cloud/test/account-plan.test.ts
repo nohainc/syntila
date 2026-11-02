@@ -74,11 +74,21 @@ it("reports the caller's plan and defaults people without a row to free", async 
     currentPeriodEnd: null,
     features: [],
     workspaces: { owned: 0, limit: 1 },
+    attachments: {
+      maxFiles: 10,
+      maxFileBytes: 25_000_000,
+      storageBytes: 1_000_000_000,
+    },
   });
   expect(await plan("paid")).toMatchObject({
     tier: "paid",
     status: "active",
     workspaces: { owned: 0, limit: null },
+    attachments: {
+      maxFiles: 10,
+      maxFileBytes: 100_000_000,
+      storageBytes: 25_000_000_000,
+    },
   });
   await expect(
     handleAccountPlan(

@@ -97,6 +97,7 @@ extension _AxAppController on _AxAppStateMixin {
           : null;
       // Bootstrap already reads the Workspace list; reuse it instead of a
       // separate list request, and fetch only if bootstrap did not complete.
+      unawaited(_loadAttachmentPolicy());
       final bootstrapped = await _loadBootstrapState(showSpinner: !hydrated);
       if (mounted && store.auth.session?.authenticated == true) {
         if (mounted && store.auth.session?.authenticated == true) {
@@ -114,8 +115,22 @@ extension _AxAppController on _AxAppStateMixin {
     }
   }
 
+  /// The account's upload limits come from Cloud; the composers use them for
+  /// early per-file feedback. Cloud still enforces every limit on upload.
+  Future<void> _loadAttachmentPolicy() async {
+    final Object source = store.dataSource;
+    if (source is! AxAccountPlanDataSource) return;
+    try {
+      AxAttachmentPolicy.instance
+          .updateFromPlan(await source.loadAccountPlan());
+    } on Object {
+      // Free limits stay in force until the next successful load.
+    }
+  }
+
   Future<void> _logout() async {
     try {
+      AxAttachmentPolicy.instance.reset();
       await store.logout();
       expandedSpaceIds.clear();
       _sidebarRestoredSpaceIds.clear();

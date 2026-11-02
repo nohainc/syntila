@@ -63,7 +63,8 @@ WorkerExecutionPolicy assignmentExecutionPolicy(
       : WorkerExecutionPolicy.restricted;
 }
 
-/// Per-file limit only; Cloud enforces the same 10 MB and sets no total limit.
+/// Per-file sanity bound (the largest plan limit); Cloud enforces each
+/// account's own limit at upload time.
 const _maxWorkRequestFileBytes = maxWorkRequestInputBytes;
 
 /// Re-downloads an input the local store no longer has.
@@ -124,16 +125,11 @@ Future<void> _materializeWorkRequestInputs({
         digest is! String) {
       throw StateError('invalid Work Request file input');
     }
-    late final List<int> bytes;
     try {
       if (fetch != null && !await staging.contains(fileId as String)) {
         await fetch(
             fileId: fileId, sizeBytes: sizeBytes, contentDigest: digest);
       }
-      bytes = await staging.read(
-          fileId: fileId as String,
-          sizeBytes: sizeBytes,
-          contentDigest: digest);
     } on WorkRequestInputStagingException catch (error) {
       throw AssignmentExecutionFailure(
           code: 'execution_failed', message: error.message);
@@ -141,10 +137,6 @@ Future<void> _materializeWorkRequestInputs({
       throw const AssignmentExecutionFailure(
           code: 'execution_failed',
           message: 'A file for this request could not be downloaded.');
-    }
-    if (bytes.length > _maxWorkRequestFileBytes ||
-        value['sizeBytes'] != bytes.length) {
-      throw StateError('Work Request file input exceeds size limits');
     }
     final target = File(
         '${requestDirectory.path}${Platform.pathSeparator}file-${(index + 1).toString().padLeft(3, '0')}');
@@ -154,15 +146,29 @@ Future<void> _materializeWorkRequestInputs({
             type != FileSystemEntityType.file)) {
       throw StateError('unsafe Work Request input file');
     }
-    if (type == FileSystemEntityType.file) {
-      final existing = await target.readAsBytes();
-      if (existing.length != bytes.length ||
-          !List<int>.generate(bytes.length, (i) => existing[i] ^ bytes[i])
-              .every((value) => value == 0)) {
-        throw StateError('Work Request input changed across assignment retry');
+    try {
+      if (type == FileSystemEntityType.file) {
+        // A retry reuses the copy already in the execution directory; compare
+        // by streamed digest so a large file is never held in memory.
+        final existing = await WorkRequestInputStaging.describe(target);
+        if (existing.length != sizeBytes || existing.digest != digest) {
+          throw StateError(
+              'Work Request input changed across assignment retry');
+        }
+      } else {
+        await staging.copyTo(
+            fileId: fileId as String,
+            sizeBytes: sizeBytes,
+            contentDigest: digest,
+            target: target);
       }
-    } else {
-      await target.writeAsBytes(bytes, flush: true);
+    } on WorkRequestInputStagingException catch (error) {
+      throw AssignmentExecutionFailure(
+          code: 'execution_failed', message: error.message);
+    } on IOException {
+      throw const AssignmentExecutionFailure(
+          code: 'execution_failed',
+          message: 'A file for this request could not be downloaded.');
     }
   }
 }

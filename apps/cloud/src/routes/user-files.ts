@@ -72,8 +72,11 @@ export async function handleListUserFiles(
 }
 
 /**
- * DELETE /api/files/:fileId — owner only. Removes the bytes and frees quota;
- * history that cited the file keeps its name and size, but downloads 404.
+ * DELETE /api/files/:fileId — owner only, and allowed at any quota. Removes the
+ * stored bytes first and the accounting row only after storage confirms, so
+ * usage drops only once the file is really gone. Messages and Work Requests
+ * that cited the file keep its name and size (a reference owns no bytes, so
+ * dropping one cannot change usage), but downloads 404.
  */
 export async function handleDeleteUserFile(
   request: Request,
@@ -228,6 +231,7 @@ async function deleteFileObjects(env: SecurityEnv, ids: string[]) {
   await bucket.delete(
     ids.flatMap((id) => [
       workRequestFileKey(id),
+      `${workRequestFileKey(id)}/meta`,
       `${workRequestFileKey(id)}/preview`,
     ]),
   );

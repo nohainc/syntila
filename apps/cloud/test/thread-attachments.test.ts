@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const authorize = vi.fn(async (..._args: unknown[]) => ({
@@ -42,7 +43,23 @@ function fixture() {
     CREATE TABLE work_requests(thread_id TEXT, input_json TEXT);
     CREATE TABLE user_files(id TEXT PRIMARY KEY, user_id TEXT, thread_id TEXT, space_id TEXT, name TEXT, media_type TEXT, size_bytes INTEGER, created_at TEXT);
     CREATE TABLE space_audit_log(id TEXT, space_id TEXT, actor_type TEXT, actor_id TEXT, action TEXT, target_type TEXT, target_id TEXT, details_json TEXT, created_at TEXT);`);
+  sqlite.exec("PRAGMA foreign_keys = OFF");
+  for (const migration of [
+    "0094_account_plans.sql",
+    "0098_user_file_reservations.sql",
+  ])
+    sqlite.exec(
+      readFileSync(
+        new URL(`../migrations-v8/${migration}`, import.meta.url),
+        "utf8",
+      ),
+    );
   const db = {
+    async batch(statements: { run(): Promise<unknown> }[]) {
+      const results = [];
+      for (const statement of statements) results.push(await statement.run());
+      return results;
+    },
     prepare(sql: string) {
       let values: unknown[] = [];
       return {
@@ -91,6 +108,9 @@ function fixture() {
       const object = objects.get(key);
       return object ? { ...object, size: object.bytes.length } : null;
     },
+    async delete(keys: string | string[]) {
+      for (const key of [keys].flat()) objects.delete(key);
+    },
     async get(key: string) {
       const object = objects.get(key);
       return object
@@ -111,7 +131,10 @@ function fixture() {
         "https://test/api/threads/thread/work-request-files?name=note.txt&purpose=discussion",
         {
           method: "POST",
-          headers: { "content-type": "text/plain" },
+          headers: {
+            "content-type": "text/plain",
+            "content-length": String(new TextEncoder().encode(text).byteLength),
+          },
           body: text,
         },
       ),
@@ -133,35 +156,81 @@ const request = (body: unknown, method = "POST") =>
 beforeEach(() => authorize.mockClear());
 
 describe("Thread attachments", () => {
-  it("accepts exactly 10 MiB per file and rejects larger declared uploads", async () => {
+  it.each([
+    ["Free", null, 25_000_000],
+    ["Plus", "paid", 100_000_000],
+  ])(
+    "%s accepts exactly its file limit and rejects one byte more with file_too_large",
+    async (_plan, tier, limit) => {
+      const f = fixture();
+      try {
+        if (tier)
+          f.sqlite.exec(
+            "INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('owner','paid','active','manual','now','now')",
+          );
+        const send = (size: number, body: BodyInit) =>
+          handleUploadWorkRequestFile(
+            new Request("https://test?name=boundary.bin", {
+              method: "POST",
+              headers: { "content-length": String(size) },
+              body,
+            }),
+            f.env,
+            "thread",
+          );
+        const response = await send(limit, new Uint8Array(limit));
+        expect(response.status).toBe(201);
+        const { file } = (await response.json()) as {
+          file: { sizeBytes: number };
+        };
+        expect(file.sizeBytes).toBe(limit);
+        // One byte over is refused from the declared length, before any bytes
+        // are read, with a code distinct from a full account.
+        await expect(send(limit + 1, "small")).rejects.toMatchObject({
+          status: 413,
+          code: "file_too_large",
+        });
+        // The refusal reserved and stored nothing.
+        expect(
+          f.sqlite
+            .prepare("SELECT COUNT(*) AS n FROM user_file_reservations")
+            .get(),
+        ).toEqual({ n: 0 });
+      } finally {
+        f.sqlite.close();
+      }
+    },
+  );
+
+  it("never trusts a declared size: short, long and truncated bodies store nothing", async () => {
     const f = fixture();
     try {
-      const size = 10 * 1024 * 1024;
-      const response = await handleUploadWorkRequestFile(
-        new Request("https://test?name=boundary.bin", {
-          method: "POST",
-          headers: { "content-length": String(size) },
-          body: new Uint8Array(size),
-        }),
-        f.env,
-        "thread",
-      );
-      expect(response.status).toBe(201);
-      const { file } = (await response.json()) as {
-        file: { sizeBytes: number };
-      };
-      expect(file.sizeBytes).toBe(size);
-      await expect(
+      const send = (declared: number, body: string) =>
         handleUploadWorkRequestFile(
-          new Request("https://test", {
+          new Request("https://test?name=lie.bin", {
             method: "POST",
-            headers: { "content-length": String(size + 24 * 1024 + 1) },
-            body: "small",
+            headers: { "content-length": String(declared) },
+            body,
           }),
           f.env,
           "thread",
-        ),
-      ).rejects.toThrow("10 MB");
+        );
+      await expect(send(10, "short")).rejects.toMatchObject({
+        code: "upload_size_mismatch",
+      });
+      await expect(send(3, "longer than declared")).rejects.toMatchObject({
+        code: "upload_size_mismatch",
+      });
+      expect(f.objects.size).toBe(0);
+      expect(
+        f.sqlite.prepare("SELECT COUNT(*) AS n FROM user_files").get(),
+      ).toEqual({ n: 0 });
+      expect(
+        f.sqlite
+          .prepare("SELECT COUNT(*) AS n FROM user_file_reservations")
+          .get(),
+      ).toEqual({ n: 0 });
+      expect((await send(5, "hello")).status).toBe(201);
     } finally {
       f.sqlite.close();
     }
@@ -261,10 +330,16 @@ describe("Thread attachments", () => {
       form.set("file", new Blob(["original"]), "photo.png");
       form.set("mediaType", "image/png");
       form.set("previewImage", "/9j/AAAA");
+      const encoded = new Response(form);
+      const payload = await encoded.arrayBuffer();
       const response = await handleUploadWorkRequestFile(
         new Request("https://test?name=photo.png&purpose=discussion", {
           method: "POST",
-          body: form,
+          headers: {
+            "content-type": encoded.headers.get("content-type")!,
+            "content-length": String(payload.byteLength),
+          },
+          body: payload,
         }),
         f.env,
         "thread",
@@ -282,9 +357,18 @@ describe("Thread attachments", () => {
       expect(f.objects.size).toBe(2);
       for (const preview of ["<svg>unsafe</svg>", "/9j/" + "A".repeat(32000)]) {
         form.set("previewImage", preview);
+        const bad = new Response(form);
+        const badBody = await bad.arrayBuffer();
         await expect(
           handleUploadWorkRequestFile(
-            new Request("https://test", { method: "POST", body: form }),
+            new Request("https://test", {
+              method: "POST",
+              headers: {
+                "content-type": bad.headers.get("content-type")!,
+                "content-length": String(badBody.byteLength),
+              },
+              body: badBody,
+            }),
             f.env,
             "thread",
           ),
@@ -331,12 +415,13 @@ describe("Thread attachments", () => {
         handleUploadWorkRequestFile(
           new Request("https://test", {
             method: "POST",
-            body: new Uint8Array(10 * 1024 * 1024 + 1),
+            headers: { "content-length": "25000001" },
+            body: new Uint8Array(1),
           }),
           f.env,
           "thread",
         ),
-      ).rejects.toThrow("10 MB");
+      ).rejects.toMatchObject({ code: "file_too_large" });
     } finally {
       f.sqlite.close();
     }

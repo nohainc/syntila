@@ -680,8 +680,10 @@ class _WorkComposer extends StatelessWidget {
                             onPressed: canExecute && !submitting
                                 ? () => Navigator.pop(buttonContext, 'files')
                                 : null,
-                            child: const Text('Add files',
-                                style: SyntilaMenuStyle.textStyle),
+                            child: Tooltip(
+                                message: AxAttachmentPolicy.instance.hint,
+                                child: const Text('Add files',
+                                    style: SyntilaMenuStyle.textStyle)),
                           ),
                         ),
                         if (onHistoryNavigate != null)
