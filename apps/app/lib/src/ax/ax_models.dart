@@ -193,15 +193,21 @@ class AxBuiltinWorkflowStep {
   const AxBuiltinWorkflowStep({
     required this.kind,
     required this.order,
+    this.id,
   });
 
   final String kind;
   final int order;
 
+  /// Step-instance ID; present when a definition repeats a kind.
+  final String? id;
+  String get instanceId => id ?? kind;
+
   factory AxBuiltinWorkflowStep.fromJson(Map<String, dynamic> json) =>
       AxBuiltinWorkflowStep(
         kind: _string(json, 'kind', ''),
         order: json['order'] as int? ?? 0,
+        id: json['id'] is String ? json['id'] as String : null,
       );
 }
 

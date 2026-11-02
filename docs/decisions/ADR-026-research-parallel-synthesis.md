@@ -1,6 +1,6 @@
 # ADR-026: Research as independent parallel researchers plus synthesis
 
-Status: **in progress** (Phase 1 of 5 implemented). Research stays behind the
+Status: **in progress** (Phases 1-4 implemented; Phase 5, real-provider acceptance, open). Research v2 is the current Research version and stays behind the preview gate. Research stays behind the
 existing preview visibility (`workflow_visibility.dart`) until every release
 gate below is closed.
 
@@ -27,8 +27,7 @@ a researcher's model, never its session. All executions are read-only.
   every researcher. Snapshot validation accepts any allowed researcher count
   and rejects altered dependencies, duplicate instance IDs or write access.
   `research:v1` and Full Cycle (`full_cycle:v1`, whose Research step is v1) are
-  unchanged, and **`research:v1` stays the current version** until Cloud can
-  execute v2, so no request can be accepted on v2 yet.
+  unchanged. Phase 3 subsequently made `research:v2` current.
 - **Control policy.** `research:v2` uses the graph policy (multi-step,
   multi-Worker) with the Research composer binding.
 - **Prompts.** The researcher profile (`RESEARCH_V2_RESEARCHER_PROFILE`) asks for
@@ -83,31 +82,96 @@ a researcher's model, never its session. All executions are read-only.
   on downgrade. The plan cache refreshes on sign-in and whenever the plan is
   reloaded (Profile, sharing); there is no upgrade action to link yet.
 
+## Phase 2 (implemented): persistence and Cloud execution
+- **Migration `0099_workflow_step_instances.sql`** rebuilds `workflow_tasks`:
+  `step_instance_id` (written only for repeated kinds) and a stored generated
+  `step_id = COALESCE(step_instance_id, step_kind)`, which replaces
+  `step_kind` in the per-request uniqueness; `synthesis` joins the allowed
+  kinds. Existing rows get `step_id = step_kind`, so task IDs, history and Step
+  Runs are unchanged; dependencies and Step Runs are restored from copies and
+  the migration asserts counts and foreign keys before finishing. Step Runs
+  record the instance ID as `step_id` and the kind as `role`; history events
+  carry `stepId`.
+- **Engine** (`workflow.ts`): durable operation names, preloaded results,
+  retry selection and binding lookup use the step-instance ID (equal to the
+  kind for every older definition, so in-flight v1 Workflows replay
+  unchanged). Independent researchers form one batch and dispatch concurrently;
+  per-account and Workspace capacity still apply, and a branch waiting for
+  capacity reports its own queued reason. Every branch outcome is persisted
+  before a failure ends the run, so a successful researcher's report survives
+  a sibling failing; synthesis is then blocked, never run on a partial set.
+- **Sessions**: the session key uses the instance ID, so each researcher and
+  the synthesis get separate request-scoped sessions (synthesis may reuse a
+  researcher's model, never its session). v1 keys are unchanged.
+- **Read-only**: every v2 step is `stateless_read` + `read_only`, which the
+  dispatcher turns into a read-only assignment and the scheduler into
+  read-only effective permissions (the existing mechanism, not prompt text).
+- **Prompts** (`renderResearchV2Prompt`): researchers get the identical
+  request and accepted context (instructions, attachment contents) and no
+  sibling output. Synthesis gets the same plus every report, delimited and
+  attributed (`step`, `model`, `effort`) as untrusted evidence. Reports are not
+  truncated: a synthesis prompt over `MAX_RESEARCH_SYNTHESIS_PROMPT_CHARS`
+  fails with `context_limit_exceeded`, and the reports stay on their tasks.
+  Research also rejects oversized common prompt fields instead of applying the
+  shared renderer's truncation. Synthesis receives the same inline attachment
+  text and references as the researchers. Research results bypass the generic
+  96,000-character result truncation; larger reports can therefore trigger
+  explicit synthesis overflow while remaining available on their tasks.
+- **Retry**: `POST /work-requests/:id/retry` accepts `stepId` (defaults to the
+  kind for older clients) and re-queues only that instance; completed sibling
+  results are preloaded and not rerun, and a synthesis retry reuses the
+  accepted researcher reports.
+- Research v2 runs end to end in the Workspace Gateway acceptance harness
+  (two researchers dispatched together on different models, then synthesis).
+- Phase 3 made `research:v2` the current Research version.
+
+## Phase 3 (implemented): configuration and admission
+- **Contract.** Research configuration schema version 2 (`researcherCount`
+  2-4, overrides keyed by step instance: `research-1..n`, `synthesis`). Other
+  workflows, and old Research configuration, stay version 1 (overrides keyed by
+  kind). Defaults -> per-role override inheritance and global -> Space
+  resolution are the existing rules. The storage envelope column stays 1; the
+  JSON carries its own version.
+- **Acceptance.** The Research definition is built from the Space
+  configuration (`configuredWorkflowDefinition`) and frozen in the snapshot.
+  Worker, model and effort are resolved and frozen per role
+  (`resolvedBindings`/`stepExecutionConfigs` keyed by step instance).
+  `validateResearchModelDiversity` then rejects Auto, duplicate, alias-only,
+  effort-only or Worker-only differences and unavailable Workers/models with
+  `422 research_configuration_invalid`; nothing is substituted. Model identity
+  comes from each Worker's catalog (`workerModelCatalogs` from eligibility):
+  catalogs carry no alias metadata today, so identity is the listed ID
+  (case-insensitive) and pass-through Workers' custom IDs are their own
+  identity.
+- An old (version 1) Research configuration yields two researchers on one
+  inherited model, so acceptance rejects it until roles are configured.
+
+## Phase 4 (implemented): app
+- The Work read model returns `stepId` per step (both detail and list) and
+  binds Worker/model per instance; the final answer is the last step
+  (synthesis); researcher reports remain inspectable on their steps.
+- Workflow run presentation keys Step Runs by instance ID and labels
+  "Researcher N" (with its model and queued/running/completed/failed state)
+  and a separate "Synthesis" stage.
+- Retry sends `stepId`, so a failed researcher or the synthesis is retried
+  alone.
+- The Workflows editor shows Researcher 1..n and Synthesis, a researcher-count
+  control (2-4), and blocks saving with the same diversity rule before
+  submission (Auto or a repeated model).
+
 ## Remaining phases
-2. **Persistence and Cloud execution.** Migration: `workflow_tasks` uniqueness
-   from `(work_request_id, step_kind)` to step-instance ID, add `synthesis` to
-   step-kind CHECKs; key durable Workflow operation names, step results,
-   bindings, events, retry selectors, session keys and history projections by
-   instance ID (124 kind-keyed references in 12 Cloud files were found); run
-   researchers as one concurrent batch (existing per-account and Workspace
-   capacity still apply, queued branches show as queued); separate
-   request-scoped sessions per researcher and a fresh synthesis session;
-   synthesis prompt input with attributed, untruncated reports and an explicit
-   context-overflow failure; targeted branch retry and synthesis retry that
-   reuse accepted results; idempotent synthesis scheduling under replay;
-   cancellation through confirmed termination. Then make `research:v2` current.
-3. **Configuration.** Researcher list and synthesis selection in global and
-   Space Research configuration (existing inheritance), Worker/model/effort per
-   role, frozen at acceptance with `validateResearchModelDiversity` against
-   catalog metadata; clear rejection of Auto, duplicates, unavailable Workers.
-4. **App.** Per-researcher model and state, a separate synthesis stage,
-   inspectable individual reports, cancel/retry controls, pre-submit validation.
+2. ~~Persistence and Cloud execution~~ (done, above). Follow-ups: verify
+   end-to-end result persistence and AI History attribution for repeated steps.
+3. ~~Configuration~~ (done, above).
+4. ~~App~~ (done, above). The composer does not yet surface the acceptance
+   error before Send beyond the editor's validation.
 5. **Acceptance.** Real-provider run with two distinct models proving
    overlapping execution, separate sessions, successful synthesis and unchanged
    project files.
 
 ## Release gates (open)
-- Phases 2-5 above.
+- Runtime-level replay, targeted retry, cancellation and result-persistence
+  evidence for parallel branches; end-to-end read-only enforcement.
 - Real-provider acceptance evidence (not collected).
-- Read-only enforcement is inherited from `stateless_read` + `read_only`
-  steps; it must be re-verified end to end for v2 executions in Phase 2.
+- Model alias identity must be verifiable from authoritative metadata; current
+  Worker catalogs do not provide alias metadata for all models.

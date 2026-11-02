@@ -230,4 +230,57 @@ void main() {
     expect(presentation.steps.first.modelId, 'most-recent-model');
     expect(presentation.steps.first.workerTypeId, isNull);
   });
+
+  test('Research v2 shows each researcher with its model and a synthesis stage',
+      () {
+    final research = AxBuiltinWorkflow.fromJson({
+      'id': 'research',
+      'version': 2,
+      'name': 'Research',
+      'executionPolicy': {'multiStep': true},
+      'steps': [
+        {'id': 'research-1', 'kind': 'research', 'order': 0},
+        {'id': 'research-2', 'kind': 'research', 'order': 1},
+        {'id': 'synthesis', 'kind': 'synthesis', 'order': 2},
+      ],
+    });
+    final run = AxWorkflowRun.fromJson({
+      ...runJson(),
+      'workflowId': 'research',
+      'workflowVersion': 2,
+      'workerTurnIds': <String>[],
+      'stepRuns': [
+        step('research-1', 'research', 'completed', 'chatgpt', 'model-a',
+            'medium', []),
+        step('research-2', 'research', 'queued', 'chatgpt', 'model-b', 'high',
+            []),
+        step('synthesis', 'synthesis', 'queued', 'claude', 'model-a', 'medium',
+            []),
+      ],
+    });
+    final presentation = prepareWorkflowRunPresentation(
+      workflow: research,
+      run: run,
+      turns: const [],
+      enabled: true,
+    )!;
+    expect(presentation.steps.map((s) => s.label),
+        ['Researcher 1', 'Researcher 2', 'Synthesis']);
+    expect(presentation.steps.map((s) => s.modelId),
+        ['model-a', 'model-b', 'model-a']);
+    // A branch waiting for capacity is shown as pending, not running.
+    expect(presentation.steps.map((s) => s.state), [
+      AxWorkflowStepPresentationState.completed,
+      AxWorkflowStepPresentationState.pending,
+      AxWorkflowStepPresentationState.pending,
+    ]);
+  });
+
+  test('a Research v2 step keeps its instance ID for targeted retry', () {
+    final step = AxWorkRequestStep.fromJson(
+        {'kind': 'research', 'stepId': 'research-2', 'status': 'failed'});
+    expect(step.kind, 'research');
+    expect(step.id, 'research-2');
+    expect(AxWorkRequestStep.fromJson({'kind': 'verify'}).id, 'verify');
+  });
 }

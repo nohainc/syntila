@@ -1,3 +1,4 @@
+import { stepInstanceId, type ModelIdentityCatalog } from "@syntila/core";
 import { loadSpacePermissions } from "./space-permissions.js";
 import { spaceWorkerExecutionOptions } from "../worker-execution-options.js";
 import {
@@ -483,12 +484,15 @@ export async function validateWorkflowWorkerEligibility(
   issues: WorkEligibilityIssue[];
   primaryWorkspaceId: string | null;
   workerCatalogRevisions: Record<string, string>;
+  /** Model identity metadata per binding, for Research model diversity. */
+  workerModelCatalogs: Record<string, ModelIdentityCatalog>;
   workerProfiles: Record<
     string,
     { profileId: string; profileReleaseVersion: number }
   >;
 }> {
   const workerCatalogRevisions: Record<string, string> = {};
+  const workerModelCatalogs: Record<string, ModelIdentityCatalog> = {};
   const issues: WorkEligibilityIssue[] = [];
   const workerProfiles: Record<
     string,
@@ -497,7 +501,13 @@ export async function validateWorkflowWorkerEligibility(
   let primaryWorkspaceId: string | null = null;
   const now = new Date().toISOString();
   for (const step of workflow.steps) {
-    const bindingId = workflow.id === "direct" ? "direct" : step.kind;
+    // A step-instance binding (Research v2 role) wins over the kind binding.
+    const bindingId =
+      workflow.id === "direct"
+        ? "direct"
+        : bindings[stepInstanceId(step)]
+          ? stepInstanceId(step)
+          : step.kind;
     const binding = bindings[bindingId];
     if (!binding?.workerId) {
       issues.push({
@@ -678,8 +688,18 @@ export async function validateWorkflowWorkerEligibility(
       });
     }
     if (executionOptions) {
-      if (executionOptions.schemaVersion === 2)
+      if (executionOptions.schemaVersion === 2) {
         workerCatalogRevisions[bindingId] = executionOptions.catalogRevision;
+        // Catalogs carry no alias metadata yet, so identity is the listed ID
+        // (case-insensitive); pass-through Workers accept custom IDs.
+        workerModelCatalogs[bindingId] = {
+          models: [
+            ...executionOptions.models.allowedModelIds,
+            ...executionOptions.models.options.map((option) => option.id),
+          ],
+          allowsCustomModels: executionOptions.models.allowsCustomModel,
+        };
+      }
       const error = validateWorkerExecutionSelection(
         executionOptions,
         binding.model ?? null,
@@ -725,7 +745,13 @@ export async function validateWorkflowWorkerEligibility(
     )
       push("workspace_not_primary");
   }
-  return { issues, primaryWorkspaceId, workerProfiles, workerCatalogRevisions };
+  return {
+    issues,
+    primaryWorkspaceId,
+    workerProfiles,
+    workerCatalogRevisions,
+    workerModelCatalogs,
+  };
 }
 
 export function summarizeTestCounts(text: string): string | null {

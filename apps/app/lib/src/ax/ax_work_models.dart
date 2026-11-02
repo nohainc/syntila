@@ -407,6 +407,7 @@ class AxWorkRequestStatus {
 class AxWorkRequestStep {
   const AxWorkRequestStep({
     required this.kind,
+    this.stepId,
     required this.status,
     required this.workerId,
     this.workerTypeId,
@@ -441,6 +442,11 @@ class AxWorkRequestStep {
   });
 
   final String kind;
+
+  /// Step-instance ID from Cloud. Research v2 repeats the `research` kind
+  /// (`research-1`, `research-2`, ...); older steps send none and use [kind].
+  final String? stepId;
+  String get id => stepId ?? kind;
   final String status;
   final String? workerId;
   final String? workerTypeId;
@@ -538,6 +544,7 @@ class AxWorkRequestStep {
   }) =>
       AxWorkRequestStep(
           kind: kind,
+          stepId: stepId,
           status: status,
           workerId: workerId,
           workerTypeId: workerTypeId,
@@ -573,6 +580,7 @@ class AxWorkRequestStep {
   factory AxWorkRequestStep.fromJson(Map<String, dynamic> json) =>
       AxWorkRequestStep(
         kind: json['kind']?.toString() ?? 'implement',
+        stepId: json['stepId']?.toString(),
         status: json['status']?.toString() ?? 'queued',
         workerId: json['workerId']?.toString(),
         workerTypeId: json['workerTypeId']?.toString(),
@@ -1042,6 +1050,7 @@ abstract interface class AxDataSource {
   Future<void> retryWorkRequestStep({
     required String workRequestId,
     required String stepKind,
+    String? stepId,
     String? sessionStrategy,
     bool clearAiHistory = false,
     bool compactContext = false,

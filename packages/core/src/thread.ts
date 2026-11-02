@@ -83,8 +83,9 @@ export interface WorkRequest {
 }
 
 export interface WorkRequestSnapshot {
+  /** Keyed by step-instance ID (the kind for one-per-kind definitions). */
   readonly stepExecutionConfigs?: Readonly<
-    Partial<Record<StepKind, TurnExecutionConfig>>
+    Partial<Record<string, TurnExecutionConfig>>
   >;
   readonly turnExecutionConfig?: TurnExecutionConfig;
   readonly schemaVersion: 1;
@@ -93,8 +94,9 @@ export interface WorkRequestSnapshot {
   readonly workflowId: WorkflowId;
   readonly workflowVersion: number;
   readonly workflowSnapshot: BuiltinWorkflowDefinition;
+  /** Keyed by binding ID: the kind, `direct`, or a Research v2 step instance. */
   readonly resolvedBindings: Readonly<
-    Partial<Record<ThreadBindingId, WorkflowExecutionBinding>>
+    Partial<Record<string, WorkflowExecutionBinding>>
   >;
   readonly spaceInstructions: string;
   readonly threadInstructions: string;
@@ -420,6 +422,13 @@ export function researchWorkflowV2(
   };
 }
 
+const RESEARCH_V1 = builtin(
+  "research",
+  "Research",
+  "Gather evidence relevant to the request.",
+  ["research"],
+);
+
 const DIRECT_V1 = builtin("direct", "Direct", "Implement the requested work.", [
   "implement",
 ]);
@@ -441,12 +450,10 @@ export const BUILTIN_WORKFLOWS: Readonly<
     ["implement"],
     2,
   ),
-  research: builtin(
-    "research",
-    "Research",
-    "Gather evidence relevant to the request.",
-    ["research"],
-  ),
+  // Current Research: independent researchers plus synthesis (ADR-026). The
+  // researcher count comes from configuration at acceptance; v1 stays in the
+  // catalog for accepted snapshots.
+  research: researchWorkflowV2(),
   plan_implement: builtin(
     "plan_implement",
     "Plan & Implement",
@@ -478,11 +485,9 @@ export const BUILTIN_WORKFLOW_CATALOG: Readonly<
   "chat:v1": BUILTIN_WORKFLOWS.chat,
   "direct:v1": DIRECT_V1,
   "direct:v2": BUILTIN_WORKFLOWS.direct,
-  "research:v1": BUILTIN_WORKFLOWS.research,
-  // Not yet the current `research` version: Cloud execution of repeated
-  // step instances lands in a later phase (see ADR-026). Full Cycle keeps its
-  // single v1 research step.
-  "research:v2": researchWorkflowV2(),
+  "research:v1": RESEARCH_V1,
+  // Full Cycle keeps its own single v1 research step.
+  "research:v2": BUILTIN_WORKFLOWS.research,
   "plan_implement:v1": BUILTIN_WORKFLOWS.plan_implement,
   "implement_verify:v1": BUILTIN_WORKFLOWS.implement_verify,
   "full_cycle:v1": BUILTIN_WORKFLOWS.full_cycle,

@@ -1,8 +1,10 @@
 import { DomainInvariantError } from "./domain-error.js";
-import type {
-  BuiltinWorkflowDefinition,
-  WorkflowId,
-  StepKind,
+import {
+  RESEARCH_RESEARCHER_LIMITS,
+  researchWorkflowV2,
+  stepInstanceId,
+  type BuiltinWorkflowDefinition,
+  type WorkflowId,
 } from "./thread.js";
 
 /** Worker is explicit when present; model and effort may be Auto/omitted. */
@@ -12,19 +14,47 @@ export interface WorkflowSelection {
   readonly effort?: string;
   readonly catalogRevision?: string;
 }
+/**
+ * Overrides are keyed by step-instance ID: the kind for definitions that
+ * never repeat a kind, `research-1..n` and `synthesis` for Research v2.
+ * Schema version 2 exists only for Research and adds `researcherCount`.
+ */
 export interface UserWorkflowConfiguration {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 1 | 2;
   readonly workflowId: WorkflowId;
   readonly enabled: boolean;
+  /** Research v2 only (schema version 2): independent researchers to run. */
+  readonly researcherCount?: number;
   readonly defaults: WorkflowSelection;
-  readonly stepOverrides: Readonly<
-    Partial<Record<StepKind, WorkflowSelection>>
-  >;
+  readonly stepOverrides: Readonly<Partial<Record<string, WorkflowSelection>>>;
 }
 export interface EffectiveWorkflowConfiguration {
   readonly definition: BuiltinWorkflowDefinition;
   readonly enabled: boolean;
-  readonly steps: Readonly<Partial<Record<StepKind, WorkflowSelection>>>;
+  /** Effective selection per step-instance ID. */
+  readonly steps: Readonly<Partial<Record<string, WorkflowSelection>>>;
+}
+
+/**
+ * The Research definition a stored configuration asks for: Research v2 with
+ * its configured researcher count (default two). Any other workflow keeps the
+ * definition it is given.
+ */
+export function configuredWorkflowDefinition(
+  definition: BuiltinWorkflowDefinition,
+  stored: unknown,
+): BuiltinWorkflowDefinition {
+  if (definition.id !== "research" || definition.version !== 2)
+    return definition;
+  const count =
+    stored &&
+    typeof stored === "object" &&
+    (stored as { schemaVersion?: unknown }).schemaVersion === 2
+      ? (stored as { researcherCount?: unknown }).researcherCount
+      : RESEARCH_RESEARCHER_LIMITS.default;
+  return researchWorkflowV2(
+    typeof count === "number" ? count : RESEARCH_RESEARCHER_LIMITS.default,
+  );
 }
 
 /** A pure overlay boundary; execution authorization/readiness remains separate. */
@@ -38,19 +68,22 @@ export function resolveUserWorkflowConfiguration(
     definition,
     enabled: configuration?.enabled ?? true,
     steps: Object.fromEntries(
-      definition.steps.map((step) => [
-        step.kind,
-        {
-          ...configuration?.defaults,
-          ...configuration?.stepOverrides[step.kind],
-          ...(configuration?.stepOverrides[step.kind]?.worker !== undefined &&
-          configuration.stepOverrides[step.kind]!.worker !==
-            configuration.defaults.worker &&
-          configuration.stepOverrides[step.kind]!.catalogRevision === undefined
-            ? { catalogRevision: undefined }
-            : {}),
-        },
-      ]),
+      definition.steps.map((step) => {
+        const id = stepInstanceId(step);
+        const override = configuration?.stepOverrides[id];
+        return [
+          id,
+          {
+            ...configuration?.defaults,
+            ...override,
+            ...(override?.worker !== undefined &&
+            override.worker !== configuration!.defaults.worker &&
+            override.catalogRevision === undefined
+              ? { catalogRevision: undefined }
+              : {}),
+          },
+        ];
+      }),
     ),
   };
 }
@@ -99,30 +132,56 @@ export function parseUserWorkflowConfiguration(
     return result;
   };
   const value = object(input);
+  const researchV2 = value.schemaVersion === 2;
   keys(value, [
     "schemaVersion",
     "workflowId",
     "enabled",
     "defaults",
     "stepOverrides",
+    ...(researchV2 ? ["researcherCount"] : []),
   ]);
   if (
-    value.schemaVersion !== 1 ||
+    (value.schemaVersion !== 1 && !researchV2) ||
+    (researchV2 && definition.id !== "research") ||
     value.workflowId !== definition.id ||
     typeof value.enabled !== "boolean"
   )
     throw new DomainInvariantError(
       "Invalid configuration version, identity or enabled flag",
     );
+  const researcherCount = researchV2
+    ? (value.researcherCount ?? RESEARCH_RESEARCHER_LIMITS.default)
+    : undefined;
+  if (
+    researcherCount !== undefined &&
+    (typeof researcherCount !== "number" ||
+      !Number.isInteger(researcherCount) ||
+      researcherCount < RESEARCH_RESEARCHER_LIMITS.min ||
+      researcherCount > RESEARCH_RESEARCHER_LIMITS.max)
+  )
+    throw new DomainInvariantError(
+      `Research needs ${RESEARCH_RESEARCHER_LIMITS.min} to ${RESEARCH_RESEARCHER_LIMITS.max} researchers`,
+    );
+  // Version 2 configures Research v2 roles; older Research configuration keeps
+  // its single `research` step.
+  const shape =
+    researcherCount !== undefined
+      ? researchWorkflowV2(researcherCount)
+      : definition;
   const overrides = object(value.stepOverrides ?? {});
+  // Version 1 keys overrides by kind (its historical meaning).
   keys(
     overrides,
-    definition.steps.map((step) => step.kind),
+    researchV2
+      ? shape.steps.map(stepInstanceId)
+      : [...new Set(shape.steps.map((step) => step.kind))],
   );
   return {
-    schemaVersion: 1,
+    schemaVersion: researchV2 ? 2 : 1,
     workflowId: definition.id,
     enabled: value.enabled,
+    ...(researcherCount !== undefined ? { researcherCount } : {}),
     defaults: selection(value.defaults ?? {}),
     stepOverrides: Object.fromEntries(
       Object.entries(overrides)

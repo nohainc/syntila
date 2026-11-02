@@ -88,7 +88,7 @@ Iterable<String?> choices(
         .map((item) => item.value);
 Future<WorkflowSource> mount(
     WidgetTester tester, AxUserWorkflowConfiguration saved,
-    {List<AxWorker>? workers}) async {
+    {List<AxWorker>? workers, AxBuiltinWorkflow? definition}) async {
   tester.view.physicalSize = const Size(1000, 1200);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -108,8 +108,9 @@ Future<WorkflowSource> mount(
                   onPressed: () => WorkflowEditor.open(
                       context,
                       WorkflowEditor(
-                        definition: workflow('full_cycle', 'Full Cycle',
-                            steps: ['plan', 'implement', 'verify']),
+                        definition: definition ??
+                            workflow('full_cycle', 'Full Cycle',
+                                steps: ['plan', 'implement', 'verify']),
                         configuration: saved,
                         catalogs: catalogs,
                         cache: cache,
@@ -474,5 +475,66 @@ void main() {
     await tester.pumpAndSettle();
     expect(source.writes, 0);
     expect(source.values.single.defaults.toJson(), defaultSelection.toJson());
+  });
+
+  group('Research roles', () {
+    const research = AxBuiltinWorkflow(
+      id: 'research',
+      version: 2,
+      name: 'Research',
+      description: 'Research',
+      steps: [
+        AxBuiltinWorkflowStep(kind: 'research', order: 0, id: 'research-1'),
+        AxBuiltinWorkflowStep(kind: 'research', order: 1, id: 'research-2'),
+        AxBuiltinWorkflowStep(kind: 'synthesis', order: 2, id: 'synthesis'),
+      ],
+      snapshot: {},
+    );
+
+    test('configuration schema 2 round-trips the researcher count and roles',
+        () {
+      final config = AxUserWorkflowConfiguration.fromJson({
+        'schemaVersion': 2,
+        'workflowId': 'research',
+        'enabled': true,
+        'researcherCount': 3,
+        'defaults': {'worker': 'a'},
+        'stepOverrides': {
+          'research-1': {'model': 'analysis'},
+          'synthesis': {'model': 'review'},
+        },
+      });
+      expect(config.researcherCount, 3);
+      expect(config.selectionFor('research-1').model, 'analysis');
+      expect(config.toJson()['schemaVersion'], 2);
+      expect(config.toJson()['researcherCount'], 3);
+      expect(
+          AxUserWorkflowConfiguration(workflowId: 'chat')
+              .toJson()['schemaVersion'],
+          1);
+    });
+
+    testWidgets('blocks saving until researchers use different explicit models',
+        (tester) async {
+      final source = await mount(
+          tester,
+          AxUserWorkflowConfiguration(
+              workflowId: 'research',
+              researcherCount: 2,
+              defaults: defaultSelection),
+          definition: research);
+      await tester.tap(find.byKey(const ValueKey('workflow-advanced')));
+      await tester.pumpAndSettle();
+      expect(find.text('1. Researcher 1'), findsOneWidget);
+      expect(find.text('3. Synthesis'), findsOneWidget);
+      expect(
+          find.textContaining(
+              'Researcher 2: Uses the same model as Researcher 1'),
+          findsOneWidget);
+      final save = tester
+          .widget<FilledButton>(find.byKey(const ValueKey('save-workflow')));
+      expect(save.onPressed, isNull);
+      expect(source.scopedValues, isEmpty);
+    });
   });
 }

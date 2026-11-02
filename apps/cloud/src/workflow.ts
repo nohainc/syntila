@@ -10,6 +10,8 @@ import {
   markWorkflowTaskResult,
   planWorkflowTasks,
   readyWorkflowTasks,
+  stepInputIds,
+  stepInstanceId,
   validateBuiltinWorkflowDefinition,
   type PlannedWorkflowTask,
   type BuiltinWorkflowDefinition,
@@ -19,6 +21,8 @@ import {
 } from "@syntila/core";
 import {
   renderWorkStepPrompt,
+  renderResearchV2Prompt,
+  ResearchContextOverflowError,
   workStepPromptInputs,
 } from "./workflow-prompts.js";
 import { ASSIGNMENT_TERMINAL_EVENT_TYPE } from "./assignment-workflow-signal.js";
@@ -519,9 +523,9 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           `INSERT INTO workflow_tasks
          (id, work_request_id, step_kind, execution_mode,
           timeout_ms, prompt_profile_version,
-          status, attempt, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', 0, ?7, ?7)
-         ON CONFLICT(work_request_id, step_kind) DO NOTHING`,
+          status, attempt, created_at, updated_at, step_instance_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', 0, ?7, ?7, ?8)
+         ON CONFLICT(work_request_id, step_id) DO NOTHING`,
         )
         .bind(
           task.id,
@@ -531,6 +535,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           task.step.timeoutMs,
           task.step.promptProfileVersion,
           now,
+          task.step.id ?? null,
         ),
       ...task.dependencyTaskIds.map((dependencyId) =>
         db
@@ -559,6 +564,8 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     options: {
       status: string;
       stepKind?: StepKind;
+      /** Step-instance ID; distinguishes repeated kinds (Research v2). */
+      stepId?: string;
       attempt?: number;
       /** Why a queued step has no assignment yet (see account-execution-slots). */
       reason?: string;
@@ -590,7 +597,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
               .first<{ userId: string }>()
           )?.userId ?? null)
         : null;
-      const stepSuffix = options.stepKind ? `:step:${options.stepKind}` : "";
+      const stepSuffix =
+        (options.stepId ?? options.stepKind)
+          ? `:step:${options.stepId ?? options.stepKind}`
+          : "";
       const attemptSuffix = options.attempt
         ? `:attempt:${options.attempt}`
         : "";
@@ -606,6 +616,9 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           threadId,
           ...(requestedByUserId ? { requestedByUserId } : {}),
           ...(options.stepKind ? { stepKind: options.stepKind } : {}),
+          ...(options.stepId && options.stepId !== options.stepKind
+            ? { stepId: options.stepId }
+            : {}),
           status: options.status,
           ...(options.reason ? { reason: options.reason } : {}),
           ...(options.message ? { message: options.message } : {}),
@@ -707,7 +720,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     const workRequestId = params.workRequestId ?? `run-${params.runId}`;
     let promptInput = await this.loadWorkRequestPromptInput(params);
     let tasks = [...planWorkflowTasks(definition, workRequestId)];
-    const stepResults: Partial<Record<StepKind, StepResult>> = {};
+    const stepResults: Partial<Record<string, StepResult>> = {};
     const db = (this.env as ExecutionEnv).SYNTILA_DB;
     if (db && params.workRequestId) {
       const requestMode = await db
@@ -734,7 +747,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     if (params.retryStepKind && db && params.workRequestId) {
       const persistedRows = await db
         .prepare(
-          `SELECT step_kind AS kind, status, attempt, output_json AS outputJson
+          `SELECT step_id AS kind, status, attempt, output_json AS outputJson
            FROM workflow_tasks WHERE work_request_id = ?1`,
         )
         .bind(params.workRequestId)
@@ -748,8 +761,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         // own task row may already be completed by the terminal-result handler
         // (its output is the assignment output, not a step result), so it must
         // never be preloaded here.
-        if (task.step.kind === params.retryStepKind) return task;
-        const persisted = persistedByKind.get(task.step.kind);
+        // Retries and preloaded results are selected by step-instance ID,
+        // so retrying one researcher reuses its successful siblings.
+        if (stepInstanceId(task.step) === params.retryStepKind) return task;
+        const persisted = persistedByKind.get(stepInstanceId(task.step));
         if (persisted?.status !== "completed") return task;
         const output = parseWorkflowStepResult(persisted.outputJson);
         if (!output) {
@@ -757,7 +772,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             `Completed ${task.step.kind} result is unavailable for retry`,
           );
         }
-        stepResults[task.step.kind] = output;
+        stepResults[stepInstanceId(task.step)] = output;
         return {
           ...task,
           status: "completed",
@@ -775,6 +790,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         .map((task) =>
           this.publishWorkEvent(params, "step.queued", {
             stepKind: task.step.kind,
+            stepId: stepInstanceId(task.step),
             status: "queued",
           }),
         ),
@@ -807,6 +823,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         if (first)
           await this.publishWorkEvent(params, "step.failed", {
             stepKind: first.step.kind,
+            stepId: stepInstanceId(first.step),
             status: "failed",
           });
         await this.publishWorkEvent(params, "work_request.failed", {
@@ -873,6 +890,12 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           ),
         ),
       );
+      // Persist every branch outcome before acting on any failure, so a
+      // successful sibling's report survives another branch failing.
+      const settled: Array<{
+        result: (typeof results)[number];
+        resultStatus: "completed" | "failed" | "cancelled";
+      }> = [];
       for (const result of results) {
         const cancellationRequested = await (
           this.env as ExecutionEnv
@@ -885,7 +908,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           ? "cancelled"
           : result.status;
         if (resultStatus === "completed" && result.stepResult) {
-          stepResults[result.task.step.kind] = result.stepResult;
+          stepResults[stepInstanceId(result.task.step)] = result.stepResult;
         }
         tasks = [
           ...markWorkflowTaskResult(tasks, result.task.id, resultStatus),
@@ -907,42 +930,53 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           await this.publishWorkEvent(
             params,
             resultStatus === "completed" ? "step.completed" : "step.failed",
-            { stepKind: result.task.step.kind, status: resultStatus },
+            {
+              stepKind: result.task.step.kind,
+              stepId: stepInstanceId(result.task.step),
+              status: resultStatus,
+            },
           );
           workflowDiagnostic(this.env, "step_event_published", {
             runId: params.runId,
           });
         }
-        if (resultStatus === "failed" || resultStatus === "cancelled") {
-          const failed = tasks.find(
-            (candidate) => candidate.id === result.task.id,
-          )!;
-          await this.persistTerminalRun(params.runId, resultStatus);
-          await this.finishWorkRequest(params, resultStatus, step);
-          if (resultStatus === "failed") {
-            await this.publishWorkEvent(params, "work_request.failed", {
-              status: "failed",
-            });
-          } else {
-            await this.publishWorkEvent(params, "step.cancelled", {
-              stepKind: result.task.step.kind,
-              status: "cancelled",
-            });
-            await this.publishWorkEvent(params, "work_request.cancelled", {
-              stepKind: result.task.step.kind,
-              status: "cancelled",
-            });
-          }
-          return {
-            ...started,
-            stage: resultStatus,
-            status: resultStatus,
-            workflowStepId: failed.step.kind,
-            failureReason:
-              result.error ??
-              `Workflow step ${failed.step.kind} ${resultStatus}`,
-          };
+        settled.push({ result, resultStatus });
+      }
+      const stopped = settled.find(
+        (entry) =>
+          entry.resultStatus === "failed" || entry.resultStatus === "cancelled",
+      );
+      if (stopped) {
+        const { result, resultStatus } = stopped;
+        const failed = tasks.find(
+          (candidate) => candidate.id === result.task.id,
+        )!;
+        await this.persistTerminalRun(params.runId, resultStatus);
+        await this.finishWorkRequest(params, resultStatus, step);
+        if (resultStatus === "failed") {
+          await this.publishWorkEvent(params, "work_request.failed", {
+            status: "failed",
+          });
+        } else {
+          await this.publishWorkEvent(params, "step.cancelled", {
+            stepKind: result.task.step.kind,
+            stepId: stepInstanceId(result.task.step),
+            status: "cancelled",
+          });
+          await this.publishWorkEvent(params, "work_request.cancelled", {
+            stepKind: result.task.step.kind,
+            status: "cancelled",
+          });
         }
+        return {
+          ...started,
+          stage: resultStatus,
+          status: resultStatus,
+          workflowStepId: stepInstanceId(failed.step),
+          failureReason:
+            result.error ??
+            `Workflow step ${stepInstanceId(failed.step)} ${resultStatus}`,
+        };
       }
     }
     workflowDiagnostic(this.env, "terminal_run_start", { runId: params.runId });
@@ -967,7 +1001,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     task: PlannedWorkflowTask,
     promptInput: Record<string, unknown>,
     workflowStep: WorkflowStep,
-    stepResults: Partial<Record<StepKind, StepResult>>,
+    stepResults: Partial<Record<string, StepResult>>,
   ): Promise<{
     task: PlannedWorkflowTask;
     status: "completed" | "failed" | "cancelled";
@@ -985,8 +1019,15 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     }
     let attempt = 0;
     const startedAt = new Date().toISOString();
+    // A step-instance binding (a Research v2 role) wins over the kind binding.
     const workBindingId =
-      definition.id === "direct" ? "direct" : task.step.kind;
+      definition.id === "direct"
+        ? "direct"
+        : stepInstanceId(task.step) in
+            ((promptInput.workConfig as { bindings?: object } | undefined)
+              ?.bindings ?? {})
+          ? stepInstanceId(task.step)
+          : task.step.kind;
     const workConfig =
       typeof promptInput.workConfig === "object" &&
       promptInput.workConfig !== null
@@ -1015,8 +1056,8 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           workflowStep.do(
             // Round 0 keeps the original name so in-flight Workflows replay.
             slotRound === 0
-              ? `workflow:${task.step.kind}:dispatch:${attempt}`
-              : `workflow:${task.step.kind}:dispatch:${attempt}:slot${slotRound}`,
+              ? `workflow:${stepInstanceId(task.step)}:dispatch:${attempt}`
+              : `workflow:${stepInstanceId(task.step)}:dispatch:${attempt}:slot${slotRound}`,
             {
               ...stepConfig,
               timeout: "1 minute",
@@ -1047,7 +1088,15 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
               ]
                 .filter((value) => value.trim().length > 0)
                 .join("\n\n");
-              const prompt = renderWorkStepPrompt(definition, task.step, {
+              const render =
+                definition.id === "research" && definition.version === 2
+                  ? (
+                      _definition: typeof definition,
+                      step: typeof task.step,
+                      inputs: Parameters<typeof renderResearchV2Prompt>[2],
+                    ) => renderResearchV2Prompt(definition, step, inputs)
+                  : renderWorkStepPrompt;
+              const prompt = render(definition, task.step, {
                 ...promptInputs,
                 stepInstructions: {
                   ...promptInputs.stepInstructions,
@@ -1175,6 +1224,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             announcedReason = assignment.waitReason;
             await this.publishWorkEvent(params, "step.queued", {
               stepKind: task.step.kind,
+              stepId: stepInstanceId(task.step),
               status: "queued",
               reason: assignment.waitReason,
               message: assignment.waitReason
@@ -1184,7 +1234,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           }
           if (slotRound >= MAX_EXECUTION_WAIT_ROUNDS) {
             await workflowStep.do(
-              `workflow:${task.step.kind}:slot-wait-expired:${attempt}`,
+              `workflow:${stepInstanceId(task.step)}:slot-wait-expired:${attempt}`,
               stepConfig,
               () => clearExecutionWaiter(db, task.id),
             );
@@ -1199,7 +1249,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           // the durable re-evaluation path (it also sees upgrades).
           await waitForTerminalEvent(
             workflowStep,
-            `workflow:${task.step.kind}:slot-wait:${attempt}:${slotRound}`,
+            `workflow:${stepInstanceId(task.step)}:slot-wait:${attempt}:${slotRound}`,
             slotRound < 8 ? 15_000 : 60_000,
           );
           slotRound += 1;
@@ -1254,7 +1304,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           ) + WAKEUP_SLACK;
         for (let wakeup = 0; wakeup < maxWakeups; wakeup += 1) {
           terminal = await workflowStep.do(
-            `workflow:${task.step.kind}:assignment-status:${attempt}:${wakeup}`,
+            `workflow:${stepInstanceId(task.step)}:assignment-status:${attempt}:${wakeup}`,
             { ...stepConfig, timeout: "30 seconds" },
             async () => {
               const row = await readAssignment();
@@ -1331,7 +1381,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             // below leaves it alone and the next wake-up observes the new state.
             const observedStatus = terminal.status as AssignmentLifecycleStatus;
             await workflowStep.do(
-              `workflow:${task.step.kind}:delivery-timeout:${attempt}`,
+              `workflow:${stepInstanceId(task.step)}:delivery-timeout:${attempt}`,
               stepConfig,
               async () => {
                 // Cloud may not call the work stopped: the command can sit in
@@ -1370,7 +1420,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           if (providerOverrun) break;
           await waitForTerminalEvent(
             workflowStep,
-            `workflow:${task.step.kind}:assignment-wait:${attempt}:${wakeup}`,
+            `workflow:${stepInstanceId(task.step)}:assignment-wait:${attempt}:${wakeup}`,
             nextWakeupMs(terminal, effectiveStepTimeoutMs(task.step.timeoutMs)),
           );
         }
@@ -1381,7 +1431,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           const observed = (terminal?.status ??
             "running") as AssignmentLifecycleStatus;
           await workflowStep.do(
-            `workflow:${task.step.kind}:timeout-revoke:${attempt}`,
+            `workflow:${stepInstanceId(task.step)}:timeout-revoke:${attempt}`,
             stepConfig,
             async () => {
               await revokeAssignment(this.env as unknown as RevocationEnv, {
@@ -1410,7 +1460,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             round += 1
           ) {
             terminal = await workflowStep.do(
-              `workflow:${task.step.kind}:revocation-status:${attempt}:${round}`,
+              `workflow:${stepInstanceId(task.step)}:revocation-status:${attempt}:${round}`,
               { ...stepConfig, timeout: "30 seconds" },
               async () => {
                 const row = await readAssignment();
@@ -1428,7 +1478,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             if (isTerminalRow(terminal)) break;
             await waitForTerminalEvent(
               workflowStep,
-              `workflow:${task.step.kind}:revocation-wait:${attempt}:${round}`,
+              `workflow:${stepInstanceId(task.step)}:revocation-wait:${attempt}:${round}`,
               REVOCATION_CONFIRMATION_ROUND_MS,
             );
           }
@@ -1436,7 +1486,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             // Final look after the last wait, so a confirmation that arrived
             // during it is not reported as unconfirmed.
             terminal = await workflowStep.do(
-              `workflow:${task.step.kind}:revocation-status:${attempt}:final`,
+              `workflow:${stepInstanceId(task.step)}:revocation-status:${attempt}:final`,
               { ...stepConfig, timeout: "30 seconds" },
               async () => readAssignment(),
             );
@@ -1478,10 +1528,16 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           },
           startedAt: terminal.createdAt || startedAt,
           completedAt: new Date().toISOString(),
+          fullText:
+            task.step.resultSemantics === "research_report" ||
+            task.step.resultSemantics === "research_synthesis",
           configuredEffort: stepBinding.reasoningEffort,
         });
         return { task, status: "completed", output: stepResult, stepResult };
       } catch (error) {
+        if (error instanceof ResearchContextOverflowError) {
+          return { task, status: "failed", error: error.code };
+        }
         if (
           error instanceof Error &&
           error.name === "WorkAssignmentCancelledError"

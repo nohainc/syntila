@@ -32,18 +32,26 @@ class AxUserWorkflowConfiguration {
     this.enabled = true,
     this.defaults = const AxWorkflowSelection(),
     Map<String, AxWorkflowSelection> stepOverrides = const {},
+    this.researcherCount,
   }) : stepOverrides = Map.unmodifiable(stepOverrides);
   final String workflowId;
+
+  /// Research only (configuration schema 2): independent researchers to run.
+  /// Overrides are then keyed by step instance (`research-1`, `synthesis`).
+  final int? researcherCount;
   final bool enabled;
   final AxWorkflowSelection defaults;
   final Map<String, AxWorkflowSelection> stepOverrides;
   factory AxUserWorkflowConfiguration.fromJson(Map<String, dynamic> json) {
-    if (json['schemaVersion'] != 1) {
+    final version = json['schemaVersion'];
+    if (version != 1 && !(version == 2 && json['workflowId'] == 'research')) {
       throw const FormatException('Unsupported workflow configuration version');
     }
     return AxUserWorkflowConfiguration(
       workflowId: json['workflowId'] as String,
       enabled: json['enabled'] as bool,
+      researcherCount:
+          version == 2 ? (json['researcherCount'] as num?)?.toInt() ?? 2 : null,
       defaults: AxWorkflowSelection.fromJson(
           Map<String, dynamic>.from(json['defaults'] as Map)),
       stepOverrides: (json['stepOverrides'] as Map).map((key, value) =>
@@ -56,9 +64,10 @@ class AxUserWorkflowConfiguration {
   AxWorkflowSelection selectionFor(String stepId) =>
       defaults.overlay(stepOverrides[stepId] ?? const AxWorkflowSelection());
   Map<String, dynamic> toJson() => {
-        'schemaVersion': 1,
+        'schemaVersion': researcherCount != null ? 2 : 1,
         'workflowId': workflowId,
         'enabled': enabled,
+        if (researcherCount != null) 'researcherCount': researcherCount,
         'defaults': defaults.toJson(),
         'stepOverrides': {
           for (final entry in stepOverrides.entries)

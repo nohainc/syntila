@@ -1,3 +1,4 @@
+import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
   FileTooLargeError,
   StorageQuotaExceededError,
@@ -19,6 +20,8 @@ import {
   validateWorkRequest,
   validateBuiltinWorkflowDefinition,
   BUILTIN_WORKFLOWS,
+  configuredWorkflowDefinition,
+  stepInstanceId,
   conversationWorkflowForExecution,
   type WorkRequest,
   type WorkRequestSnapshot,
@@ -244,8 +247,18 @@ export async function createWorkRequestForUser(
     body.workflowId ?? workConfig.defaultWorkflowId,
     "workflowId",
   ) as WorkflowId;
-  const canonicalWorkflow = BUILTIN_WORKFLOWS[workflowId];
-  if (!canonicalWorkflow) throw new HttpError(400, "Unsupported workflowId");
+  if (!BUILTIN_WORKFLOWS[workflowId])
+    throw new HttpError(400, "Unsupported workflowId");
+  // Research takes its researcher count from the Space configuration; the
+  // accepted snapshot freezes it.
+  const canonicalWorkflow =
+    workflowId === "research"
+      ? configuredWorkflowDefinition(
+          BUILTIN_WORKFLOWS.research,
+          (await loadSpaceWorkflowConfigurations(env, spaceId, "research"))
+            .configurations[0],
+        )
+      : BUILTIN_WORKFLOWS[workflowId];
   // A replay returns the request already accepted under the plan at that
   // time; it creates no execution, so it is not re-gated on the plan.
   await requireWorkflowPermission(env, context.userId, spaceId, workflowId, {
@@ -544,15 +557,23 @@ export async function createWorkRequestForUser(
     import("@syntila/core").TurnExecutionConfig
   > = {};
   for (const step of workflowSnapshot.steps) {
-    const bindingId = workflowId === "direct" ? "direct" : step.kind;
-    const binding = resolvedBindings[bindingId]!;
-    stepExecutionConfigs[step.kind] = resolveWorkflowStepExecutionConfig(
-      workflowSnapshot,
-      binding.workerId ?? "",
-      eligibility.workerProfiles[bindingId],
-      binding.model ?? null,
-      binding.reasoningEffort ?? null,
-    );
+    // Research v2 roles are bound and frozen per step instance.
+    const bindingId =
+      workflowId === "direct"
+        ? "direct"
+        : stepInstanceId(step) in resolvedBindings
+          ? stepInstanceId(step)
+          : step.kind;
+    const binding =
+      resolvedBindings[bindingId as keyof typeof resolvedBindings]!;
+    stepExecutionConfigs[stepInstanceId(step)] =
+      resolveWorkflowStepExecutionConfig(
+        workflowSnapshot,
+        binding.workerId ?? "",
+        eligibility.workerProfiles[bindingId],
+        binding.model ?? null,
+        binding.reasoningEffort ?? null,
+      );
   }
   const snapshot: WorkRequestSnapshot = {
     ...(executionConfig ? { turnExecutionConfig: executionConfig } : {}),

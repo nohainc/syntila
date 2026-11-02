@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_WORKFLOWS,
+  stepDependencyIds,
   markWorkflowTaskResult,
   planWorkflowTasks,
   readyWorkflowTasks,
@@ -18,9 +19,11 @@ describe("Work v1 workflow runner", () => {
           .map((task) => task.step.kind),
       ).toEqual(definition.steps.map((step) => step.kind));
       for (const task of tasks) {
+        // Dependencies are step-instance IDs (the kind for one-per-kind
+        // definitions; research-1..n for Research v2).
         expect(task.dependencyTaskIds).toEqual(
-          task.step.dependsOn.map(
-            (kind) => `task-request-${definition.id}-${kind}`,
+          stepDependencyIds(task.step).map(
+            (id) => `task-request-${definition.id}-${id}`,
           ),
         );
       }

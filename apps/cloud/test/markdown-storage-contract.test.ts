@@ -73,7 +73,7 @@ it.each(
     CREATE TABLE work_requests(id TEXT, requested_by_user_id TEXT, thread_id TEXT,
       workflow_id TEXT, workflow_version INTEGER, workflow_snapshot_json TEXT, snapshot_json TEXT,
       input_json TEXT, status TEXT, created_at TEXT, updated_at TEXT);
-    CREATE TABLE workflow_tasks(id TEXT, work_request_id TEXT, step_kind TEXT, status TEXT,
+    CREATE TABLE workflow_tasks(id TEXT, work_request_id TEXT, step_kind TEXT, step_id TEXT GENERATED ALWAYS AS (step_kind) VIRTUAL, status TEXT,
       output_json TEXT, error TEXT, started_at TEXT, created_at TEXT, finished_at TEXT, updated_at TEXT);
     CREATE TABLE worker_assignments(run_id TEXT, id TEXT, task_id TEXT, work_request_id TEXT, created_at TEXT, error_json TEXT,
       workspace_worker_id TEXT, worker_type_id TEXT, model TEXT, engine_version TEXT, permission_snapshot_json TEXT,

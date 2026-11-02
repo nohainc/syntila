@@ -39,7 +39,7 @@ vi.mock("../src/scheduler.js", () => ({
   ),
 }));
 
-import { recordAssignmentResult } from "../src/assignment-dispatcher.js";
+import { recordAssignmentError, recordAssignmentResult } from "../src/assignment-dispatcher.js";
 import { SyntilaRunWorkflow } from "../src/workflow.js";
 
 const requestText =
@@ -52,6 +52,10 @@ const workerBindings = {
   implement: { workerId: "worker-implement" },
   test: { workerId: "worker-test" },
   verify: { workerId: "worker-verify" },
+  // Research v2 roles: researchers on different models, separate synthesis.
+  "research-1": { workerId: "worker-research", model: "model-a" },
+  "research-2": { workerId: "worker-research", model: "model-b" },
+  synthesis: { workerId: "worker-synthesis", model: "model-a" },
 };
 
 type FixtureAssignment = {
@@ -78,6 +82,8 @@ function createAcceptanceRun(
      * timeout finds the durable state).
      */
     completion?: "during_dispatch" | "event" | "lost_event";
+    /** Tasks whose provider run fails (by task-ID suffix). */
+    failTaskSuffix?: string;
   } = {},
 ) {
   const completion = options.completion ?? "during_dispatch";
@@ -237,9 +243,19 @@ function createAcceptanceRun(
       const row = assignments.get(assignmentId);
       if (row) row.status = "running";
       const finish = () =>
-        recordAssignmentResult(database, assignmentId, {
-          text: `completed ${String(snapshot.role)}`,
-        } as never).then(() => undefined);
+        options.failTaskSuffix &&
+        String(snapshot.taskId).endsWith(options.failTaskSuffix)
+          ? recordAssignmentError(database, assignmentId, {
+              error: {
+                code: "execution_failed",
+                message: "provider failed",
+                retryable: true,
+              },
+              failedAt: new Date().toISOString(),
+            } as never).then(() => undefined)
+          : recordAssignmentResult(database, assignmentId, {
+              text: `completed ${String(snapshot.role)}`,
+            } as never).then(() => undefined);
       if (completion === "during_dispatch") await finish();
       else pendingCompletions.push(finish);
       return Response.json({ accepted: true });
@@ -278,11 +294,8 @@ function createAcceptanceRun(
   return { instance, step, taskWrites, gatewayCalls, waits, sleeps };
 }
 
-// Research v2 (repeated step instances) is a catalog contract only until its
-// Cloud execution phase lands; it is not a selectable current version yet.
-const workflowCases = Object.entries(BUILTIN_WORKFLOW_CATALOG)
-  .filter(([reference]) => reference !== "research:v2")
-  .map(([, definition]) => definition);
+// Every catalog definition, including Research v2 with repeated step instances.
+const workflowCases = Object.values(BUILTIN_WORKFLOW_CATALOG);
 
 describe("Work v1 acceptance through the shared assignment dispatcher", () => {
   it.each(workflowCases)(
@@ -313,19 +326,16 @@ describe("Work v1 acceptance through the shared assignment dispatcher", () => {
       expect(selectionCalls.map((call) => call.executionClass)).toEqual(
         definition.steps.map((step) => step.executionMode),
       );
+      const bindingIdOf = (item: (typeof definition.steps)[number]) =>
+        definition.id === "direct"
+          ? "direct"
+          : ((item.id ?? item.kind) as keyof typeof workerBindings);
       expect(selectionCalls.map((call) => call.workBindingId)).toEqual(
-        definition.steps.map((item) =>
-          definition.id === "direct" ? "direct" : item.kind,
-        ),
+        definition.steps.map(bindingIdOf),
       );
       expect(selectionCalls.map((call) => call.workerId)).toEqual(
         definition.steps.map(
-          (item) =>
-            workerBindings[
-              definition.id === "direct"
-                ? "direct"
-                : (item.kind as keyof typeof workerBindings)
-            ].workerId,
+          (item) => workerBindings[bindingIdOf(item)].workerId,
         ),
       );
       if (definition.id === "chat" || definition.id === "direct") {
@@ -351,7 +361,26 @@ describe("Work v1 acceptance through the shared assignment dispatcher", () => {
           executionClass: definition.steps[index]!.executionMode,
         });
         const prompt = String(assignment.objective);
-        for (const inputKind of definition.steps[index]!.inputsFrom) {
+        const current = definition.steps[index]!;
+        if (definition.id === "research" && definition.version === 2) {
+          // Researchers see no sibling output; synthesis gets every report,
+          // separately delimited and attributed to its model.
+          if (current.kind === "research") {
+            expect(prompt).not.toContain("RESEARCH REPORT");
+            expect(prompt).toContain("Sources and tools used");
+          } else {
+            expect(prompt).toContain(
+              "<<<RESEARCH REPORT 1 | step: research-1 | model: model-a>>>",
+            );
+            expect(prompt).toContain(
+              "<<<RESEARCH REPORT 2 | step: research-2 | model: model-b>>>",
+            );
+            expect(prompt).toContain("untrusted evidence");
+          }
+          expect(assignment.readOnly).toBe(true);
+          continue;
+        }
+        for (const inputKind of current.inputsFrom) {
           const label =
             inputKind === "implement"
               ? "Implementation"
@@ -370,6 +399,47 @@ describe("Work v1 acceptance through the shared assignment dispatcher", () => {
       ).toHaveLength(definition.steps.length * 3);
     },
   );
+
+  it("keeps a successful researcher's report and never synthesizes when a sibling fails", async () => {
+    const definition = BUILTIN_WORKFLOW_CATALOG["research:v2"]!;
+    const { instance, step, gatewayCalls, taskWrites } = createAcceptanceRun(
+      definition,
+      { failTaskSuffix: "-research-2" },
+    );
+    const result = await instance.run(
+      {
+        payload: {
+          runId: "run-v8-acceptance",
+          goalId: "goal-v8-acceptance",
+          idempotencyKey: "key-research-branch-failure",
+          workRequestId: "request-v8-acceptance",
+          organizationId: "workspace-fixture",
+          builtinWorkflow: definition,
+        },
+      } as never,
+      step,
+    );
+    expect(result.status).toBe("failed");
+    // Both researchers ran; synthesis was never dispatched.
+    expect(
+      gatewayCalls.map(
+        (call) =>
+          (call.payload as { snapshot: { taskId: string } }).snapshot.taskId,
+      ),
+    ).toEqual([
+      "task-request-v8-acceptance-research-1",
+      "task-request-v8-acceptance-research-2",
+    ]);
+    // Researcher 1's completed report is persisted despite the failure.
+    expect(
+      taskWrites.some(
+        ({ sql, values }) =>
+          sql.includes("UPDATE workflow_tasks SET status") &&
+          values.includes("completed") &&
+          values.includes("task-request-v8-acceptance-research-1"),
+      ),
+    ).toBe(true);
+  });
 
   it("stops downstream steps when cancellation is recorded after an assignment completes", async () => {
     const { instance, step, gatewayCalls } = createAcceptanceRun(

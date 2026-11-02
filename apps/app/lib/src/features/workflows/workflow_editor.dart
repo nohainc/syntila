@@ -47,12 +47,28 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
   bool busy = false;
   String? error;
 
-  List<AxBuiltinWorkflowStep> get steps =>
-      [...widget.definition.steps]..sort((a, b) => a.order.compareTo(b.order));
+  bool get _research =>
+      widget.definition.id == 'research' &&
+      widget.definition.steps.any((step) => step.id != null);
+
+  /// Researchers to run (Research v2), 2 to 4; Cloud enforces the same bounds.
+  late int researcherCount = widget.configuration.researcherCount ?? 2;
+
+  List<AxBuiltinWorkflowStep> get steps => _research
+      ? [
+          for (var i = 1; i <= researcherCount; i++)
+            AxBuiltinWorkflowStep(
+                kind: 'research', order: i - 1, id: 'research-$i'),
+          AxBuiltinWorkflowStep(
+              kind: 'synthesis', order: researcherCount, id: 'synthesis'),
+        ]
+      : ([...widget.definition.steps]
+        ..sort((a, b) => a.order.compareTo(b.order)));
   AxUserWorkflowConfiguration get draft => AxUserWorkflowConfiguration(
         workflowId: widget.definition.id,
         enabled: enabled,
         defaults: defaults,
+        researcherCount: _research ? researcherCount : null,
         stepOverrides: {
           for (final id in overriding)
             if (overrides[id]?.toJson().isNotEmpty == true) id: overrides[id]!
@@ -65,11 +81,31 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
         options.validate(defaults, saved: widget.configuration.defaults);
     if (defaultError != null) result['defaults'] = defaultError;
     for (final step in steps) {
-      final issue = options.validate(draft.selectionFor(step.kind),
-          saved: draft.stepOverrides[step.kind] == null
+      final issue = options.validate(draft.selectionFor(step.instanceId),
+          saved: draft.stepOverrides[step.instanceId] == null
               ? widget.configuration.defaults
-              : widget.configuration.selectionFor(step.kind));
-      if (issue != null) result[step.kind] = issue;
+              : widget.configuration.selectionFor(step.instanceId));
+      if (issue != null) result[step.instanceId] = issue;
+    }
+    if (_research) {
+      // Same rule Cloud applies at acceptance: explicit, different models.
+      final seen = <String, String>{};
+      for (final step in steps.where((step) => step.kind == 'research')) {
+        if (result[step.instanceId] != null) continue;
+        final model = draft.selectionFor(step.instanceId).model?.trim();
+        if (model == null || model.isEmpty) {
+          result[step.instanceId] =
+              'Choose a specific model; Auto cannot prove the researchers use different models.';
+          continue;
+        }
+        final earlier = seen[model.toLowerCase()];
+        if (earlier != null) {
+          result[step.instanceId] =
+              'Uses the same model as ${_title(earlier)}; each researcher needs a different model.';
+        } else {
+          seen[model.toLowerCase()] = step.instanceId;
+        }
+      }
     }
     return result;
   }
@@ -176,9 +212,10 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
                             Text('Workflow steps',
                                 style: Theme.of(context).textTheme.titleSmall),
                             const SizedBox(height: 8),
+                            if (_research) _researcherCountControl(),
                             for (var index = 0; index < steps.length; index++)
                               _step(index, steps[index], options,
-                                  issues[steps[index].kind]),
+                                  issues[steps[index].instanceId]),
                           ] else
                             ExpansionTile(
                               key: const ValueKey('workflow-advanced'),
@@ -192,11 +229,12 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
                                         style: TextStyle(
                                             fontWeight: FontWeight.w600))),
                                 const SizedBox(height: 8),
+                                if (_research) _researcherCountControl(),
                                 for (var index = 0;
                                     index < steps.length;
                                     index++)
                                   _step(index, steps[index], options,
-                                      issues[steps[index].kind]),
+                                      issues[steps[index].instanceId]),
                               ],
                             ),
                           if (visibleIssues.isNotEmpty)
@@ -250,14 +288,38 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
         ),
       );
 
+  Widget _researcherCountControl() => Row(children: [
+        const Text('Researchers'),
+        const SizedBox(width: 12),
+        DropdownButton<int>(
+          key: const ValueKey('research-researcher-count'),
+          value: researcherCount,
+          items: [
+            for (final count in const [2, 3, 4])
+              DropdownMenuItem(value: count, child: Text('$count')),
+          ],
+          onChanged: busy
+              ? null
+              : (value) => setState(() {
+                    researcherCount = value ?? researcherCount;
+                    // Overrides of removed researchers are dropped.
+                    overriding.removeWhere((id) {
+                      final n = RegExp(r'^research-(\d+)$').firstMatch(id);
+                      return n != null &&
+                          int.parse(n.group(1)!) > researcherCount;
+                    });
+                  }),
+        ),
+      ]);
+
   Widget _step(int index, AxBuiltinWorkflowStep step,
       AxWorkflowSelectionOptions options, String? issue) {
-    final custom = overriding.contains(step.kind);
-    final selection = overrides[step.kind] ?? const AxWorkflowSelection();
+    final custom = overriding.contains(step.instanceId);
+    final selection = overrides[step.instanceId] ?? const AxWorkflowSelection();
     return ExpansionTile(
-      key: ValueKey('workflow-step-${step.kind}'),
+      key: ValueKey('workflow-step-${step.instanceId}'),
       tilePadding: EdgeInsets.zero,
-      title: Text('${index + 1}. ${_title(step.kind)}'),
+      title: Text('${index + 1}. ${_title(step.instanceId)}'),
       subtitle: Text(custom && selection.toJson().isNotEmpty
           ? _summary(selection, options)
           : 'Inherit defaults'),
@@ -274,22 +336,22 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
               setState(() {
                 error = null;
                 if (value) {
-                  overriding.add(step.kind);
+                  overriding.add(step.instanceId);
                 } else {
-                  overriding.remove(step.kind);
-                  overrides.remove(step.kind);
+                  overriding.remove(step.instanceId);
+                  overrides.remove(step.instanceId);
                 }
               });
             },
             child: Column(children: [
               RadioListTile<bool>(
-                  key: ValueKey('inherit-${step.kind}'),
+                  key: ValueKey('inherit-${step.instanceId}'),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Use workflow defaults'),
                   value: false,
                   enabled: !busy),
               RadioListTile<bool>(
-                  key: ValueKey('override-${step.kind}'),
+                  key: ValueKey('override-${step.instanceId}'),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Override'),
                   value: true,
@@ -299,17 +361,17 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
           const Text(
               'Auto model and effort values inherit the workflow defaults.'),
           const SizedBox(height: 12),
-          _selection(step.kind, selection, defaults, options,
-              (value) => overrides[step.kind] = value),
+          _selection(step.instanceId, selection, defaults, options,
+              (value) => overrides[step.instanceId] = value),
           Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
-                  key: ValueKey('reset-step-${step.kind}'),
+                  key: ValueKey('reset-step-${step.instanceId}'),
                   onPressed: busy
                       ? null
                       : () => setState(() {
-                            overriding.remove(step.kind);
-                            overrides.remove(step.kind);
+                            overriding.remove(step.instanceId);
+                            overrides.remove(step.instanceId);
                             error = null;
                           }),
                   child: const Text('Reset step to inherited values'))),
@@ -385,5 +447,11 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
       ].join(' · ');
 }
 
-String _title(String value) =>
-    value.isEmpty ? value : '${value[0].toUpperCase()}${value.substring(1)}';
+String _title(String value) {
+  final researcher = RegExp(r'^research-(\d+)$').firstMatch(value);
+  if (researcher != null) return 'Researcher ${researcher.group(1)}';
+  if (value == 'synthesis') return 'Synthesis';
+  return value.isEmpty
+      ? value
+      : '${value[0].toUpperCase()}${value.substring(1)}';
+}

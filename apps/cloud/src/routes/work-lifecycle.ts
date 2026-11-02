@@ -1,3 +1,4 @@
+import { stepInstanceId } from "@syntila/core";
 import { requireWorkflowEntitlement } from "./space-permissions.js";
 import {
   EXECUTION_WAIT_MESSAGES,
@@ -207,7 +208,14 @@ export async function handleRetryWorkRequest(
     String(row.workflowSnapshotJson),
     {} as BuiltinWorkflowDefinition,
   );
-  const step = workflow.steps?.find((candidate) => candidate.kind === stepKind);
+  // `stepId` selects one step instance (a Research v2 researcher or the
+  // synthesis); older clients send only the kind, which is its own ID.
+  const stepId =
+    typeof body.stepId === "string" && body.stepId ? body.stepId : stepKind;
+  const step = workflow.steps?.find(
+    (candidate) =>
+      stepInstanceId(candidate) === stepId && candidate.kind === stepKind,
+  );
   if (!step) throw new HttpError(400, "Step is not part of this Workflow");
   const failedTask = await env.SYNTILA_DB.prepare(
     `SELECT wt.status, wt.error, wa.error_json AS assignmentErrorJson,
@@ -225,9 +233,9 @@ export async function handleRetryWorkRequest(
           WHERE wa2.task_id = wt.id
           ORDER BY wa2.created_at DESC, wa2.id DESC LIMIT 1
        )
-      WHERE wt.work_request_id = ?1 AND wt.step_kind = ?2`,
+      WHERE wt.work_request_id = ?1 AND wt.step_id = ?2`,
   )
-    .bind(workRequestId, stepKind)
+    .bind(workRequestId, stepId)
     .first<
       Record<string, unknown> & {
         status: string;
@@ -458,8 +466,8 @@ export async function handleRetryWorkRequest(
       env.SYNTILA_DB.prepare(
         `UPDATE workflow_tasks SET status = 'queued', output_json = NULL,
               error = NULL, started_at = NULL, finished_at = NULL, updated_at = ?1
-        WHERE work_request_id = ?2 AND step_kind = ?3 AND status = 'failed'`,
-      ).bind(now, workRequestId, stepKind),
+        WHERE work_request_id = ?2 AND step_id = ?3 AND status = 'failed'`,
+      ).bind(now, workRequestId, stepId),
       env.SYNTILA_DB.prepare(
         `INSERT INTO runs
        (id, space_id, thread_id, work_request_id,
@@ -513,7 +521,8 @@ export async function handleRetryWorkRequest(
     spaceId,
     builtinWorkflow: workflow,
     input: attachmentInput,
-    retryStepKind: stepKind as StepKind,
+    // Carries the step-instance ID; it equals the kind for older workflows.
+    retryStepKind: stepId as StepKind,
     ...(stepKind === "implement" || contextLimitExceeded
       ? { retrySessionStrategy: retrySessionStrategy as "resume" | "fresh" }
       : {}),
@@ -650,7 +659,7 @@ export async function handleGetWorkRequest(
       ? (snapshot.resolvedBindings as Record<string, unknown>)
       : {};
   const taskRows = await env.SYNTILA_DB.prepare(
-    `SELECT wt.id AS taskId, wt.step_kind AS kind, wt.status,
+    `SELECT wt.id AS taskId, wt.step_kind AS kind, wt.step_id AS stepId, wt.status,
             wt.output_json AS outputJson, wt.error, wt.attempt,
             wt.started_at AS startedAt, wt.finished_at AS finishedAt,
             wa.id AS assignmentId, wa.workspace_worker_id AS workerId,
@@ -683,8 +692,9 @@ export async function handleGetWorkRequest(
        )
        LEFT JOIN workspace_worker_inventory wi ON wi.worker_id = COALESCE(
          wa.workspace_worker_id,
-         json_extract(wr.snapshot_json, '$.resolvedBindings.' ||
-           CASE WHEN wr.workflow_id = 'direct' THEN 'direct' ELSE wt.step_kind END || '.workerId')
+         COALESCE(json_extract(wr.snapshot_json, '$.resolvedBindings.' || wt.step_id || '.workerId'),
+           json_extract(wr.snapshot_json, '$.resolvedBindings.' ||
+           CASE WHEN wr.workflow_id = 'direct' THEN 'direct' ELSE wt.step_kind END || '.workerId'))
        )
        LEFT JOIN worker_catalog
          ON worker_catalog.worker_type_id = COALESCE(
@@ -695,8 +705,12 @@ export async function handleGetWorkRequest(
   )
     .bind(workRequestId)
     .all<Record<string, unknown>>();
+  // Keyed by step-instance ID: Research v2 repeats the research kind.
   const taskByKind = new Map(
-    (taskRows.results ?? []).map((value) => [String(value.kind), value]),
+    (taskRows.results ?? []).map((value) => [
+      String(value.stepId ?? value.kind),
+      value,
+    ]),
   );
   const turns =
     (await loadConversationTurns(env.SYNTILA_DB, [workRequestId])).get(
@@ -708,17 +722,28 @@ export async function handleGetWorkRequest(
       if (!value || typeof value !== "object") return [];
       const definition = value as Record<string, unknown>;
       const kind = String(definition.kind ?? "implement");
-      const task = taskByKind.get(kind);
-      const bindingId = row.workflowId === "direct" ? "direct" : kind;
+      const stepId = String(definition.id ?? kind);
+      const task = taskByKind.get(stepId);
+      const bindingId =
+        row.workflowId === "direct"
+          ? "direct"
+          : stepId in bindings
+            ? stepId
+            : kind;
       const bindingValue = bindings[bindingId];
       const binding =
         typeof bindingValue === "object" && bindingValue !== null
           ? (bindingValue as Record<string, unknown>)
           : {};
-      const executionConfig = (
-        snapshot.stepExecutionConfigs as
-          Record<string, Record<string, unknown>> | undefined
-      )?.[kind];
+      const executionConfig =
+        (
+          snapshot.stepExecutionConfigs as
+            Record<string, Record<string, unknown>> | undefined
+        )?.[stepId] ??
+        (
+          snapshot.stepExecutionConfigs as
+            Record<string, Record<string, unknown>> | undefined
+        )?.[kind];
       const output = parseJson<Record<string, unknown>>(
         typeof task?.outputJson === "string" ? task.outputJson : null,
         {},
@@ -774,6 +799,7 @@ export async function handleGetWorkRequest(
       return [
         {
           kind,
+          stepId,
           status: String(
             task?.status ?? (row.status === "queued" ? "queued" : "waiting"),
           ),
@@ -836,9 +862,14 @@ export async function handleGetWorkRequest(
           startedAt,
           completedAt: finishedAt,
           elapsedMs,
+          // Research v2 reports and synthesis stay complete and inspectable.
           resultText:
             typeof output.text === "string"
-              ? output.text.slice(0, 24_000)
+              ? kind === "research" && stepId !== kind
+                ? output.text
+                : kind === "synthesis"
+                  ? output.text
+                  : output.text.slice(0, 24_000)
               : null,
           assignmentId:
             typeof task?.assignmentId === "string" ? task.assignmentId : null,
@@ -1080,7 +1111,7 @@ export async function handleListWorkRequests(
     }
   }
   const taskRows = await env.SYNTILA_DB.prepare(
-    `SELECT wt.work_request_id AS workRequestId, wt.step_kind AS kind,
+    `SELECT wt.work_request_id AS workRequestId, wt.step_kind AS kind, wt.step_id AS stepId,
             wt.status, wt.output_json AS outputJson, wt.error,
             COALESCE(wt.started_at, wt.created_at) AS startedAt,
             COALESCE(wt.finished_at, wt.updated_at) AS updatedAt,
@@ -1111,8 +1142,9 @@ export async function handleListWorkRequests(
        )
        LEFT JOIN workspace_worker_inventory wi ON wi.worker_id = COALESCE(
          wa.workspace_worker_id,
-         json_extract(wr.snapshot_json, '$.resolvedBindings.' ||
-           CASE WHEN wr.workflow_id = 'direct' THEN 'direct' ELSE wt.step_kind END || '.workerId')
+         COALESCE(json_extract(wr.snapshot_json, '$.resolvedBindings.' || wt.step_id || '.workerId'),
+           json_extract(wr.snapshot_json, '$.resolvedBindings.' ||
+           CASE WHEN wr.workflow_id = 'direct' THEN 'direct' ELSE wt.step_kind END || '.workerId'))
        )
       WHERE wt.work_request_id IN (${placeholders})
       ORDER BY wt.created_at, wt.id`,
@@ -1145,7 +1177,7 @@ export async function handleListWorkRequests(
         : {};
     const persistedTasks = tasksByRequest.get(id) ?? [];
     const taskByKind = new Map(
-      persistedTasks.map((task) => [String(task.kind), task]),
+      persistedTasks.map((task) => [String(task.stepId ?? task.kind), task]),
     );
     const workflowSteps = Array.isArray(workflow.steps) ? workflow.steps : [];
     const steps = workflowSteps
@@ -1153,17 +1185,28 @@ export async function handleListWorkRequests(
         if (!value || typeof value !== "object") return [];
         const definition = value as Record<string, unknown>;
         const kind = String(definition.kind ?? "implement");
-        const task = taskByKind.get(kind);
-        const bindingId = row.workflowId === "direct" ? "direct" : kind;
+        const stepId = String(definition.id ?? kind);
+        const task = taskByKind.get(stepId);
+        const bindingId =
+          row.workflowId === "direct"
+            ? "direct"
+            : stepId in bindings
+              ? stepId
+              : kind;
         const bindingValue = bindings[bindingId];
         const binding =
           typeof bindingValue === "object" && bindingValue !== null
             ? (bindingValue as Record<string, unknown>)
             : {};
-        const executionConfig = (
-          snapshot.stepExecutionConfigs as
-            Record<string, Record<string, unknown>> | undefined
-        )?.[kind];
+        const executionConfig =
+          (
+            snapshot.stepExecutionConfigs as
+              Record<string, Record<string, unknown>> | undefined
+          )?.[stepId] ??
+          (
+            snapshot.stepExecutionConfigs as
+              Record<string, Record<string, unknown>> | undefined
+          )?.[kind];
         const desiredWorker =
           typeof binding.workerId === "string"
             ? desiredWorkers.get(binding.workerId)
@@ -1213,6 +1256,7 @@ export async function handleListWorkRequests(
         return [
           {
             kind,
+            stepId,
             assignmentId:
               typeof task?.assignmentId === "string" ? task.assignmentId : null,
             status: String(

@@ -129,3 +129,24 @@ it("a compacting retry resumes the same session and asks the Worker to compact i
   expect(compacting.task.contextCompaction).toBe(true);
   expect(compacting.task.sessionKey).toBe(original.task.sessionKey);
 });
+
+it("keeps a complete Research v2 report instead of cutting it at 96,000 characters", () => {
+  const text = "r".repeat(150_000);
+  const base = {
+    output: { text },
+    evidence: {},
+    attribution: {
+      workerId: "w",
+      workerTypeId: "t",
+      engineVersion: null,
+      model: "m",
+    },
+    startedAt: "s",
+    completedAt: "c",
+    configuredEffort: null,
+  };
+  expect(completeWorkerStepExecution(base).text).toHaveLength(96_000);
+  expect(
+    completeWorkerStepExecution({ ...base, fullText: true }).text,
+  ).toHaveLength(150_000);
+});

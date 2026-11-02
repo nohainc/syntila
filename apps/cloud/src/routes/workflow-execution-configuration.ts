@@ -1,3 +1,8 @@
+import {
+  stepInstanceId,
+  validateResearchModelDiversity,
+  type ModelIdentityCatalog,
+} from "@syntila/core";
 import { paidOwnerSql } from "../account-plan.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
@@ -235,9 +240,17 @@ export async function resolveWorkflowExecutionBindings(
     }
   > = {};
   let pinnedWorkspace: string | null = null;
+  const roleCatalogs: Record<string, ModelIdentityCatalog | undefined> = {};
+  const researchV2 = definition.id === "research" && definition.version === 2;
   for (const step of definition.steps) {
-    const id = definition.id === "direct" ? "direct" : step.kind;
-    const configuredSelection = effective.steps[step.kind] ?? {};
+    // Research v2 roles bind per step instance; every other step by kind.
+    const id =
+      definition.id === "direct"
+        ? "direct"
+        : researchV2
+          ? stepInstanceId(step)
+          : step.kind;
+    const configuredSelection = effective.steps[stepInstanceId(step)] ?? {};
     const selection: WorkflowSelection = {
       ...configuredSelection,
       ...(override &&
@@ -258,7 +271,8 @@ export async function resolveWorkflowExecutionBindings(
         ? { effort: override.reasoningEffort ?? undefined }
         : {}),
     };
-    const instructions = stepInstructions[id]?.additionalInstructions;
+    const instructions = (stepInstructions[id] ?? stepInstructions[step.kind])
+      ?.additionalInstructions;
     if (!selection.worker)
       throw new HttpError(
         422,
@@ -299,6 +313,7 @@ export async function resolveWorkflowExecutionBindings(
           422,
           admission.issues.map((issue) => issue.message).join(" "),
         );
+      roleCatalogs[id] = admission.workerModelCatalogs?.[id];
       const currentRevision = admission.workerCatalogRevisions?.[id];
       if (currentRevision) value.catalogRevision = currentRevision;
       if (pinnedWorkspace && admission.primaryWorkspaceId !== pinnedWorkspace)
@@ -308,6 +323,30 @@ export async function resolveWorkflowExecutionBindings(
         );
       pinnedWorkspace = admission.primaryWorkspaceId;
     }
+  }
+  if (researchV2) {
+    // Frozen here, at acceptance: researchers must use provably different
+    // models. Nothing is substituted or deduplicated.
+    const researchers = definition.steps
+      .filter((step) => step.kind === "research")
+      .map((step, index) => {
+        const id = stepInstanceId(step);
+        return {
+          role: `Researcher ${index + 1}`,
+          id,
+          workerId: requested[id]?.workerId,
+          model: requested[id]?.model,
+          reasoningEffort: requested[id]?.reasoningEffort,
+        };
+      });
+    const issues = validateResearchModelDiversity(researchers, (workerId) => {
+      const match = researchers.find((entry) => entry.workerId === workerId);
+      return match ? roleCatalogs[match.id] : undefined;
+    });
+    if (issues.length)
+      throw new ResearchConfigurationError(
+        issues.map((issue) => issue.message).join(" "),
+      );
   }
   return requested;
 }
@@ -389,4 +428,12 @@ async function ensureOwnChatWorkspaceGrant(
       now,
     ),
   ]);
+}
+
+/** Research roles are invalid for acceptance (see ADR-026). */
+export class ResearchConfigurationError extends HttpError {
+  readonly code = "research_configuration_invalid";
+  constructor(message: string) {
+    super(422, message);
+  }
 }

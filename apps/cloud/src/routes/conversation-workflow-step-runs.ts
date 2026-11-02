@@ -1,5 +1,6 @@
 import {
   planWorkflowTasks,
+  stepInstanceId,
   type BuiltinWorkflowDefinition,
   type WorkflowStepRun,
 } from "@syntila/core";
@@ -14,9 +15,9 @@ export async function loadConversationWorkflowStepRuns(
     .prepare(
       `SELECT json_extract(wr.snapshot_json, '$.stepExecutionConfigs.' || s.step_id) AS executionConfigJson, s.id, s.workflow_run_id AS workflowRunId, s.task_id AS taskId,
     s.step_id AS stepId, s.role, t.status,
-    CASE WHEN ct.id IS NOT NULL THEN ct.worker_id ELSE json_extract(wr.snapshot_json,'$.resolvedBindings.' || CASE WHEN wr.workflow_id='direct' THEN 'direct' ELSE t.step_kind END || '.workerId') END AS workerId,
-    CASE WHEN ct.id IS NOT NULL THEN ct.model_id ELSE json_extract(wr.snapshot_json,'$.resolvedBindings.' || CASE WHEN wr.workflow_id='direct' THEN 'direct' ELSE t.step_kind END || '.model') END AS modelId,
-    CASE WHEN ct.id IS NOT NULL THEN ct.effort ELSE json_extract(wr.snapshot_json,'$.resolvedBindings.' || CASE WHEN wr.workflow_id='direct' THEN 'direct' ELSE t.step_kind END || '.reasoningEffort') END AS effort,
+    CASE WHEN ct.id IS NOT NULL THEN ct.worker_id ELSE COALESCE(json_extract(wr.snapshot_json,'$.resolvedBindings.' || s.step_id || '.workerId'),json_extract(wr.snapshot_json,'$.resolvedBindings.' || CASE WHEN wr.workflow_id='direct' THEN 'direct' ELSE t.step_kind END || '.workerId')) END AS workerId,
+    CASE WHEN ct.id IS NOT NULL THEN ct.model_id ELSE COALESCE(json_extract(wr.snapshot_json,'$.resolvedBindings.' || s.step_id || '.model'),json_extract(wr.snapshot_json,'$.resolvedBindings.' || CASE WHEN wr.workflow_id='direct' THEN 'direct' ELSE t.step_kind END || '.model')) END AS modelId,
+    CASE WHEN ct.id IS NOT NULL THEN ct.effort ELSE COALESCE(json_extract(wr.snapshot_json,'$.resolvedBindings.' || s.step_id || '.reasoningEffort'),json_extract(wr.snapshot_json,'$.resolvedBindings.' || CASE WHEN wr.workflow_id='direct' THEN 'direct' ELSE t.step_kind END || '.reasoningEffort')) END AS effort,
     ct.worker_session_id AS workerSessionId, COALESCE(ct.base_context_revision,cr.conversation_revision-1) AS baseContextRevision,
     CASE WHEN t.status='completed' THEN substr(COALESCE(h.text,ct.result_text,json_extract(t.output_json,'$.text'),json_extract(t.output_json,'$.output.text')),1,24000) ELSE NULL END AS result,
     t.started_at AS startedAt, CASE WHEN t.status IN ('completed','failed','cancelled') THEN t.finished_at ELSE NULL END AS completedAt,
@@ -76,8 +77,8 @@ export function initialConversationTaskStatements(
       db
         .prepare(
           `INSERT INTO workflow_tasks
-      (id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,attempt,created_at,updated_at)
-      VALUES (?1,?2,?3,?4,?5,?6,'queued',0,?7,?7) ON CONFLICT(work_request_id,step_kind) DO NOTHING`,
+      (id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,attempt,created_at,updated_at,step_instance_id)
+      VALUES (?1,?2,?3,?4,?5,?6,'queued',0,?7,?7,?8) ON CONFLICT(work_request_id,step_id) DO NOTHING`,
         )
         .bind(
           task.id,
@@ -87,6 +88,7 @@ export function initialConversationTaskStatements(
           task.step.timeoutMs,
           task.step.promptProfileVersion,
           now,
+          task.step.id ?? null,
         ),
     ),
     ...tasks.flatMap((task) =>

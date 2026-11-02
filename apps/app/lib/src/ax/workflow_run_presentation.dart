@@ -58,7 +58,8 @@ AxWorkflowRunPresentation? prepareWorkflowRunPresentation({
   final steps = {for (final step in run.stepRuns) step.stepId: step};
   final definitionSteps = [...workflow.steps]
     ..sort((a, b) => a.order.compareTo(b.order));
-  final definitionIds = definitionSteps.map((step) => step.kind).toList();
+  // Step Runs are keyed by step-instance ID (the kind unless repeated).
+  final definitionIds = definitionSteps.map((step) => step.instanceId).toList();
   if (definitionSteps.length < 2 ||
       definitionSteps.any((step) => step.kind.isEmpty || step.order < 0) ||
       definitionSteps.map((step) => step.order).toSet().length !=
@@ -97,7 +98,7 @@ AxWorkflowRunPresentation? prepareWorkflowRunPresentation({
           : turnsById[step.workerTurnIds.last];
       return AxWorkflowStepPresentation(
         id: step.id,
-        label: stepLabels[id] ?? _roleLabel(step.role),
+        label: stepLabels[id] ?? _instanceLabel(id, step.role),
         state: switch (step.status) {
           'completed' => AxWorkflowStepPresentationState.completed,
           'running' => AxWorkflowStepPresentationState.active,
@@ -120,7 +121,17 @@ AxWorkflowRunPresentation? prepareWorkflowRunPresentation({
   );
 }
 
+/// "Researcher 2" for Research v2 instances; the role label otherwise.
+String _instanceLabel(String id, String role) {
+  final researcher = RegExp(r'^research-(\d+)$').firstMatch(id);
+  if (role == 'research' && researcher != null) {
+    return 'Researcher ${researcher.group(1)}';
+  }
+  return _roleLabel(role);
+}
+
 String _roleLabel(String role) => switch (role) {
+      'synthesis' => 'Synthesis',
       'chat' => 'Chat',
       'research' => 'Research',
       'plan' => 'Plan',

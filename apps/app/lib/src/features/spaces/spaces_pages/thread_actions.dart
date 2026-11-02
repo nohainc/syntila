@@ -778,6 +778,7 @@ extension _ThreadActions on _ThreadPageState {
       await dataSource.retryWorkRequestStep(
         workRequestId: workRequestId,
         stepKind: step.kind,
+        stepId: step.id,
         sessionStrategy: sessionStrategy,
         confirmSideEffects: confirmSideEffects,
         clearAiHistory: clearAiHistory,

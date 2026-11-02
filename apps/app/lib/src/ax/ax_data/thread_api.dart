@@ -927,6 +927,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   Future<void> retryWorkRequestStep({
     required String workRequestId,
     required String stepKind,
+    String? stepId,
     String? sessionStrategy,
     bool clearAiHistory = false,
     bool compactContext = false,
@@ -937,6 +938,8 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
       headers: _headers(contentType: 'application/json'),
       body: jsonEncode({
         'stepKind': stepKind,
+        // Selects one Research v2 researcher or the synthesis.
+        if (stepId != null && stepId != stepKind) 'stepId': stepId,
         if (sessionStrategy != null) 'sessionStrategy': sessionStrategy,
         if (confirmSideEffects) 'confirmSideEffects': true,
         if (clearAiHistory) 'clearAiHistory': true,

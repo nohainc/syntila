@@ -113,6 +113,7 @@ export function sqliteD1(
     "0096_shared_workspace_chat_only.sql",
     "0097_account_execution_slots.sql",
     "0098_user_file_reservations.sql",
+    "0099_workflow_step_instances.sql",
   ]) {
     sqlite.exec(
       readFileSync(

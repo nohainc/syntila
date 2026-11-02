@@ -1,5 +1,5 @@
-import { expect, it, vi } from "vitest";
-import { BUILTIN_WORKFLOWS } from "@syntila/core";
+import { describe, expect, it, vi } from "vitest";
+import { BUILTIN_WORKFLOWS, configuredWorkflowDefinition } from "@syntila/core";
 import type { SecurityEnv } from "../src/routes/http-security.js";
 const admission = vi.hoisted(() => vi.fn());
 vi.mock("../src/routes/handlers.js", () => ({
@@ -284,4 +284,117 @@ it("revalidates restored composer choices against current capabilities", async (
       catalogRevision: "b".repeat(64),
     },
   });
+});
+
+describe("Research v2 role configuration at acceptance", () => {
+  function researchFixture(
+    defaults: object,
+    stepOverrides: object,
+    researcherCount = 2,
+  ) {
+    const f = fixture(defaults, stepOverrides);
+    Object.assign(f.configuration, {
+      schemaVersion: 2,
+      workflowId: "research",
+      researcherCount,
+    });
+    // Each Worker reports its catalog; "b" offers two models.
+    admission.mockImplementation(
+      async (_env, _space, _thread, _definition, bindings) => {
+        const [id, binding] = Object.entries(bindings)[0] as [
+          string,
+          { workerId: string },
+        ];
+        return {
+          issues: [],
+          primaryWorkspaceId: "second",
+          workerProfiles: {},
+          workerCatalogRevisions: {},
+          workerModelCatalogs:
+            binding.workerId === "b"
+              ? { [id]: { models: ["model-a", "model-b", "model-c"] } }
+              : {},
+        };
+      },
+    );
+    const definition = configuredWorkflowDefinition(
+      BUILTIN_WORKFLOWS.research,
+      f.configuration,
+    );
+    return { ...f, definition };
+  }
+
+  it("freezes a Worker, model and effort per role, inheriting Space defaults", async () => {
+    const f = researchFixture(
+      { worker: "b", effort: "medium" },
+      {
+        "research-1": { model: "model-a" },
+        "research-2": { model: "model-b", effort: "high" },
+        synthesis: { model: "model-a" },
+      },
+    );
+    expect(f.definition.steps.map((s) => s.id)).toEqual([
+      "research-1",
+      "research-2",
+      "synthesis",
+    ]);
+    expect(await f.resolve("user", "thread", f.definition)).toEqual({
+      "research-1": {
+        workerId: "b",
+        model: "model-a",
+        reasoningEffort: "medium",
+      },
+      "research-2": {
+        workerId: "b",
+        model: "model-b",
+        reasoningEffort: "high",
+      },
+      // Synthesis may reuse a researcher's model (it runs in its own session).
+      synthesis: { workerId: "b", model: "model-a", reasoningEffort: "medium" },
+    });
+  });
+
+  it("uses the configured researcher count", async () => {
+    const f = researchFixture(
+      { worker: "b" },
+      {
+        "research-1": { model: "model-a" },
+        "research-2": { model: "model-b" },
+        "research-3": { model: "model-c" },
+      },
+      3,
+    );
+    expect(
+      Object.keys(await f.resolve("user", "thread", f.definition)),
+    ).toEqual(["research-1", "research-2", "research-3", "synthesis"]);
+  });
+
+  it.each([
+    [
+      "the same model",
+      {
+        "research-1": { model: "model-a" },
+        "research-2": { model: "MODEL-A", effort: "high" },
+      },
+      /same model as Researcher 1/,
+    ],
+    ["Auto", { "research-1": { model: "model-a" } }, /Auto cannot prove/],
+    [
+      "an unavailable model",
+      { "research-1": { model: "model-a" }, "research-2": { model: "gone" } },
+      /not offered by the selected Worker/,
+    ],
+  ])(
+    "rejects %s before acceptance, without substituting",
+    async (_case, overrides, message) => {
+      const f = researchFixture({ worker: "b" }, overrides);
+      await expect(
+        f.resolve("user", "thread", f.definition),
+      ).rejects.toMatchObject({
+        status: 422,
+        code: "research_configuration_invalid",
+        message: expect.stringMatching(message),
+      });
+    },
+  );
 });

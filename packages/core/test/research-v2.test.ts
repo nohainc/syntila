@@ -12,6 +12,9 @@ import {
   stepInstanceId,
   validateBuiltinWorkflowDefinition,
   validateResearchModelDiversity,
+  configuredWorkflowDefinition,
+  parseUserWorkflowConfiguration,
+  resolveUserWorkflowConfiguration,
   workflowCatalogEntry,
   workflowExecutionBatches,
   type ModelIdentityCatalog,
@@ -84,7 +87,9 @@ describe("Research v2 definition", () => {
 
   it("keeps historical task IDs and snapshots of v1 definitions unchanged", () => {
     expect(
-      planWorkflowTasks(BUILTIN_WORKFLOWS.research, "wr").map((t) => t.id),
+      planWorkflowTasks(BUILTIN_WORKFLOW_CATALOG["research:v1"]!, "wr").map(
+        (t) => t.id,
+      ),
     ).toEqual(["task-wr-research"]);
     expect(
       planWorkflowTasks(BUILTIN_WORKFLOWS.full_cycle, "wr").map((t) => t.id),
@@ -95,8 +100,8 @@ describe("Research v2 definition", () => {
       "task-wr-test",
       "task-wr-verify",
     ]);
-    // Research and Full Cycle current versions are untouched by this phase.
-    expect(BUILTIN_WORKFLOWS.research.version).toBe(1);
+    // Research is v2 now; Full Cycle keeps its v1 research step.
+    expect(BUILTIN_WORKFLOWS.research.version).toBe(2);
     expect(BUILTIN_WORKFLOWS.full_cycle.steps[0]!.promptProfileVersion).toBe(
       "research:v1",
     );
@@ -226,5 +231,79 @@ describe("Research model diversity", () => {
     );
     expect(normalizeModelIdentity("", catalogs.claude)).toBeNull();
     expect(normalizeModelIdentity("gpt-5.5", undefined)).toBeNull();
+  });
+});
+
+describe("Research configuration contract", () => {
+  const v2 = (extra: object = {}) => ({
+    schemaVersion: 2,
+    workflowId: "research",
+    enabled: true,
+    researcherCount: 3,
+    defaults: { worker: "w" },
+    stepOverrides: {
+      "research-1": { model: "a" },
+      "research-2": { model: "b" },
+      "research-3": { model: "c" },
+      synthesis: { model: "a", effort: "high" },
+    },
+    ...extra,
+  });
+
+  it("parses per-role selections and resolves them by step instance", () => {
+    const parsed = parseUserWorkflowConfiguration(
+      BUILTIN_WORKFLOWS.research,
+      v2(),
+    );
+    expect(parsed.researcherCount).toBe(3);
+    const definition = configuredWorkflowDefinition(
+      BUILTIN_WORKFLOWS.research,
+      parsed,
+    );
+    expect(definition.steps).toHaveLength(4);
+    const effective = resolveUserWorkflowConfiguration(definition, parsed);
+    expect(effective.steps["research-2"]).toEqual({ worker: "w", model: "b" });
+    expect(effective.steps.synthesis).toEqual({
+      worker: "w",
+      model: "a",
+      effort: "high",
+    });
+  });
+
+  it("rejects bad counts, unknown roles and version 2 outside Research", () => {
+    expect(() =>
+      parseUserWorkflowConfiguration(
+        BUILTIN_WORKFLOWS.research,
+        v2({ researcherCount: 1 }),
+      ),
+    ).toThrow(/2 to 4/);
+    expect(() =>
+      parseUserWorkflowConfiguration(
+        BUILTIN_WORKFLOWS.research,
+        v2({ researcherCount: 2 }), // research-3 no longer exists
+      ),
+    ).toThrow(/Unknown configuration field/);
+    expect(() =>
+      parseUserWorkflowConfiguration(BUILTIN_WORKFLOWS.chat, {
+        ...v2(),
+        workflowId: "chat",
+      }),
+    ).toThrow(/Invalid configuration version/);
+  });
+
+  it("keeps version 1 Research configuration readable (defaults only)", () => {
+    const parsed = parseUserWorkflowConfiguration(BUILTIN_WORKFLOWS.research, {
+      schemaVersion: 1,
+      workflowId: "research",
+      enabled: true,
+      defaults: { worker: "w", model: "a" },
+      stepOverrides: { research: { effort: "low" } },
+    });
+    expect(parsed.schemaVersion).toBe(1);
+    // A v1 configuration yields the default two researchers on one model, so
+    // acceptance rejects it until roles are configured (no silent duplicate).
+    expect(
+      configuredWorkflowDefinition(BUILTIN_WORKFLOWS.research, parsed).steps,
+    ).toHaveLength(3);
   });
 });

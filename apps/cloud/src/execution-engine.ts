@@ -1,3 +1,4 @@
+import { stepInstanceId } from "@syntila/core";
 import {
   effectiveStepTimeoutMs,
   type StepResult,
@@ -66,7 +67,9 @@ export function prepareWorkerStepExecution(
         workBindingId: input.bindingId,
         threadId: scope.threadId,
         workRequestId: scope.workRequestId,
-        stepKind: step.kind,
+        // Instance ID: every Research v2 researcher (same kind) gets its own
+        // request-scoped session; v1 steps keep their kind-based key.
+        stepKind: stepInstanceId(step),
         retryStepKind: input.retry.stepKind,
         retrySessionStrategy: input.retry.sessionStrategy,
         retryNumber: input.retry.number,
@@ -106,6 +109,12 @@ export function completeWorkerStepExecution(input: {
   readonly startedAt: string;
   readonly completedAt: string;
   readonly configuredEffort: unknown;
+  /**
+   * Keep the whole answer. Research v2 reports and synthesis are never cut:
+   * synthesis needs complete reports and fails explicitly when they do not
+   * fit (see renderResearchV2Prompt).
+   */
+  readonly fullText?: boolean;
 }): StepResult {
   const { output, evidence } = input;
   const nested =
@@ -124,7 +133,7 @@ export function completeWorkerStepExecution(input: {
     throw new Error("Work Step completed without final answer text");
   return {
     ...input.attribution,
-    text: text.slice(0, 96_000),
+    text: input.fullText ? text : text.slice(0, 96_000),
     status: "completed",
     startedAt: input.startedAt,
     completedAt: input.completedAt,

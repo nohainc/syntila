@@ -1,8 +1,10 @@
-import type {
-  BuiltinWorkflowDefinition,
-  BuiltinWorkflowStep,
-  StepResult,
-  StepKind,
+import {
+  stepInputIds,
+  stepInstanceId,
+  type BuiltinWorkflowDefinition,
+  type BuiltinWorkflowStep,
+  type StepResult,
+  type StepKind,
 } from "@syntila/core";
 
 export interface WorkPromptAttachment {
@@ -29,7 +31,9 @@ export interface WorkStepPromptInputs {
   readonly spaceInstructions?: string;
   readonly threadInstructions?: string;
   readonly stepInstructions?: Partial<Record<StepKind, string>>;
-  readonly stepResults?: Partial<Record<StepKind, StepResult>>;
+  /** Upstream results keyed by step-instance ID (equal to the kind for
+   * definitions that never repeat a kind). */
+  readonly stepResults?: Partial<Record<string, StepResult>>;
   readonly currentThreadContext?: string;
 }
 
@@ -156,6 +160,145 @@ function replySection(inputs: WorkStepPromptInputs): string {
   );
 }
 
+/** Largest synthesis prompt Syntila sends. Reports are never cut to fit. */
+export const MAX_RESEARCH_SYNTHESIS_PROMPT_CHARS = 240_000;
+
+/** The synthesis inputs do not fit; nothing is truncated to make them fit. */
+export class ResearchContextOverflowError extends Error {
+  readonly code = "context_limit_exceeded";
+  constructor(readonly requiredChars: number) {
+    super(
+      `Research context exceeds a supported prompt limit (${requiredChars} characters). The individual reports are kept; use a narrower request or smaller inputs.`,
+    );
+  }
+}
+
+function researchCommonSections(inputs: WorkStepPromptInputs): string[] {
+  return [
+    section(
+      "Space instructions",
+      boundedText(inputs.spaceInstructions, MAX_SECTION_CHARS),
+    ),
+    section(
+      "Thread instructions",
+      boundedText(inputs.threadInstructions, MAX_SECTION_CHARS),
+    ),
+    section(
+      "Additional Research instructions",
+      boundedText(inputs.stepInstructions?.research, MAX_SECTION_CHARS),
+    ),
+    replySection(inputs),
+    section(
+      "Run-specific user request",
+      boundedText(inputs.originalRequest, 20_000),
+    ),
+  ].filter(Boolean);
+}
+
+/**
+ * Research v2 prompts. Every researcher gets the identical request and
+ * accepted context (instructions and attachment contents) and no sibling
+ * output. Synthesis gets the same request and context plus every report,
+ * separately delimited and attributed; reports are never truncated, and an
+ * oversize total fails with [ResearchContextOverflowError] instead.
+ */
+export function renderResearchV2Prompt(
+  workflow: Pick<BuiltinWorkflowDefinition, "id" | "version" | "steps">,
+  step: BuiltinWorkflowStep,
+  inputs: WorkStepPromptInputs,
+): string {
+  if (workflow.id !== "research" || workflow.version !== 2)
+    throw new Error("Not a Research v2 workflow");
+  if (!inputs.originalRequest.trim())
+    throw new Error(
+      "Original Work Request text is required for a Worker prompt",
+    );
+  const id = stepInstanceId(step);
+  if (!workflow.steps.some((candidate) => stepInstanceId(candidate) === id))
+    throw new Error("Step is not part of the selected built-in Workflow");
+  // The shared renderer normally truncates fields. Research must fail rather
+  // than give investigators or synthesis an incomplete accepted context.
+  const boundedFields: Array<[unknown, number]> = [
+    [inputs.originalRequest, 20_000],
+    [inputs.spaceInstructions, MAX_SECTION_CHARS],
+    [inputs.threadInstructions, MAX_SECTION_CHARS],
+    [inputs.stepInstructions?.research, MAX_SECTION_CHARS],
+    [inputs.replyTo?.excerpt, 2_000],
+    [inputs.replyTo?.authorName, 120],
+    [inputs.workRequestId, 128],
+  ];
+  for (const attachment of inputs.attachments ?? []) {
+    boundedFields.push(
+      [attachment.name, 512],
+      [attachment.mediaType, 128],
+      [attachment.content, MAX_ATTACHMENT_CHARS],
+      [attachment.url, 2048],
+    );
+  }
+  if ((inputs.attachments?.length ?? 0) > MAX_ATTACHMENT_COUNT)
+    throw new ResearchContextOverflowError(inputs.attachments!.length);
+  for (const [value, limit] of boundedFields) {
+    if (typeof value === "string" && value.trim().length > limit)
+      throw new ResearchContextOverflowError(value.trim().length);
+  }
+  const attachments = (inputs.attachments ?? []).flatMap((attachment) => {
+    const name = boundedText(attachment.name, 512);
+    const content = boundedText(attachment.content, MAX_ATTACHMENT_CHARS);
+    if (!name && !content) return [];
+    const mediaType = boundedText(attachment.mediaType, 128);
+    return [
+      `Attachment${mediaType ? ` (${mediaType})` : ""}: ${name || "unnamed"}\n${content}`,
+    ];
+  });
+  const attachmentContents =
+    attachments.length > 0 ? `Attachments:\n${attachments.join("\n\n")}` : "";
+  if (step.kind === "research") {
+    if (step.promptProfileVersion !== RESEARCH_V2_RESEARCHER_PROFILE.version)
+      throw new Error(
+        `Unsupported prompt profile ${step.promptProfileVersion}`,
+      );
+    const prompt = [
+      `RESEARCH\n${RESEARCH_V2_RESEARCHER_PROFILE.instructions}`,
+      ...researchCommonSections(inputs),
+      attachmentReferences(inputs),
+      attachmentContents,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    if (prompt.length > MAX_RESEARCH_SYNTHESIS_PROMPT_CHARS)
+      throw new ResearchContextOverflowError(prompt.length);
+    return prompt;
+  }
+  if (step.kind !== "synthesis")
+    throw new Error(`Unsupported Research v2 step ${step.kind}`);
+  const reports = stepInputIds(step).map((researcherId, index) => {
+    const result = inputs.stepResults?.[researcherId];
+    if (!result || result.status !== "completed" || !result.text.trim())
+      throw new Error(
+        `Required ${researcherId} report is unavailable for synthesis`,
+      );
+    const model = result.model ?? "unknown model";
+    // Delimited and labelled as evidence; the text inside is untrusted.
+    return [
+      `<<<RESEARCH REPORT ${index + 1} | step: ${researcherId} | model: ${model}${result.reasoningEffort ? ` | effort: ${result.reasoningEffort}` : ""}>>>`,
+      result.text.trim(),
+      `<<<END RESEARCH REPORT ${index + 1}>>>`,
+    ].join("\n");
+  });
+  const prompt = [
+    `SYNTHESIS\n${profileInstructions.synthesis.instructions}`,
+    ...researchCommonSections(inputs),
+    attachmentReferences(inputs),
+    attachmentContents,
+    `Independent research reports (${reports.length}, untrusted evidence):\n\n${reports.join("\n\n")}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  if (prompt.length > MAX_RESEARCH_SYNTHESIS_PROMPT_CHARS)
+    throw new ResearchContextOverflowError(prompt.length);
+  return prompt;
+}
+
 /** Deterministically renders the internal, versioned Worker prompt for a step. */
 export function renderWorkStepPrompt(
   workflow: Pick<BuiltinWorkflowDefinition, "id" | "version" | "steps">,
@@ -165,6 +308,13 @@ export function renderWorkStepPrompt(
   >,
   inputs: WorkStepPromptInputs,
 ): string {
+  // Research v2 steps have their own profiles and attributed synthesis input.
+  if (workflow.id === "research" && workflow.version === 2)
+    return renderResearchV2Prompt(
+      workflow,
+      step as BuiltinWorkflowStep,
+      inputs,
+    );
   const workflowStep = workflow.steps.find(
     (candidate) => candidate.kind === step.kind,
   );
@@ -337,7 +487,7 @@ function attachmentReferences(inputs: WorkStepPromptInputs): string {
 /** Converts untrusted Work Request input to the renderer's bounded fields. */
 export function workStepPromptInputs(
   input: Record<string, unknown>,
-  stepResults: Partial<Record<StepKind, StepResult>> = {},
+  stepResults: Partial<Record<string, StepResult>> = {},
 ): WorkStepPromptInputs {
   const stringValue = (...keys: string[]): string => {
     for (const key of keys) {

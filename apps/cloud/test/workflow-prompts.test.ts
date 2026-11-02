@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  stepInputIds,
   BUILTIN_WORKFLOWS,
   BUILTIN_WORKFLOW_CATALOG,
   type StepKind,
@@ -296,7 +297,8 @@ describe("Work v1 prompt profiles", () => {
   it("uses the catalog profile for each StepKind", () => {
     const profileByKind: Record<StepKind, string> = {
       chat: "chat:v1",
-      research: "research:v1",
+      // The current Research is v2; Full Cycle keeps research:v1.
+      research: "research:v2",
       plan: "plan:v1",
       implement: "implement:v1",
       test: "test:v1",
@@ -304,8 +306,6 @@ describe("Work v1 prompt profiles", () => {
       synthesis: "synthesis:v1",
     };
     for (const [kind, profile] of Object.entries(profileByKind)) {
-      // Synthesis exists only in Research v2, not yet a current version.
-      if (kind === "synthesis") continue;
       const workflow = Object.values(BUILTIN_WORKFLOWS).find((definition) =>
         definition.steps.some((candidate) => candidate.kind === kind),
       )!;
@@ -315,9 +315,9 @@ describe("Work v1 prompt profiles", () => {
         renderWorkStepPrompt(workflow, step, {
           originalRequest: "Do the work.",
           stepResults: Object.fromEntries(
-            step.inputsFrom.map((inputKind) => [
-              inputKind,
-              stepResult(`${inputKind} evidence`),
+            stepInputIds(step).map((inputId) => [
+              inputId,
+              stepResult(`${inputId} evidence`),
             ]),
           ),
           currentThreadContext: "Current Thread files.",

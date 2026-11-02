@@ -63,6 +63,7 @@ class RetrySource extends AxFixtureDataSource {
   Future<void> retryWorkRequestStep(
       {required String workRequestId,
       required String stepKind,
+      String? stepId,
       String? sessionStrategy,
       bool clearAiHistory = false,
       bool compactContext = false,
