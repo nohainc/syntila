@@ -1,3 +1,4 @@
+import { requirePaidFeature } from "../account-plan.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
   SPACE_MEMBER_PERMISSION_KEYS,
@@ -95,6 +96,16 @@ export async function requireWorkflowPermission(
   );
   if (configuration.configurations[0]?.enabled === false)
     throw new HttpError(403, "Workflow is disabled in this Space");
+  // Research is a Syntila Plus feature of the *requesting* account, whatever
+  // plan owns the Space or the Workspace that runs it. Every submission path
+  // (direct and queued) passes here; accepted requests are never stopped by a
+  // later plan change.
+  if (workflowId === "research")
+    await requirePaidFeature(
+      env as unknown as Env,
+      userId,
+      "workflow.research",
+    );
   return policy;
 }
 

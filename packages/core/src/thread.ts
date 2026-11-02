@@ -125,6 +125,7 @@ export const STEP_KINDS = [
   "implement",
   "test",
   "verify",
+  "synthesis",
 ] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
@@ -198,9 +199,20 @@ export type WorkflowResultSemantics =
   | "implementation_plan"
   | "thread_changes"
   | "test_report"
-  | "verification_report";
+  | "verification_report"
+  /** One independent researcher's report (Research v2). */
+  | "research_report"
+  /** The synthesized Research outcome built from all researcher reports. */
+  | "research_synthesis";
 
 export interface BuiltinWorkflowStep {
+  /**
+   * Stable step-instance ID, unique within a definition. Present when a
+   * definition repeats a semantic kind (Research v2 runs several `research`
+   * steps). Older definitions omit it and use their kind; see
+   * [stepInstanceId].
+   */
+  readonly id?: string;
   readonly kind: StepKind;
   readonly order: number;
   readonly executionMode: WorkflowExecutionMode;
@@ -213,7 +225,30 @@ export interface BuiltinWorkflowStep {
   readonly dependsOn: readonly StepKind[];
   /** Results from these fixed upstream steps are included as inputs. */
   readonly inputsFrom: readonly StepKind[];
+  /** Step-instance dependencies; overrides [dependsOn] when present. */
+  readonly dependsOnSteps?: readonly string[];
+  /** Step-instance inputs; overrides [inputsFrom] when present. */
+  readonly inputsFromSteps?: readonly string[];
   readonly resultSemantics: WorkflowResultSemantics;
+}
+
+/** The step's identity in its definition: its `id`, or its kind. */
+export function stepInstanceId(
+  step: Pick<BuiltinWorkflowStep, "id" | "kind">,
+): string {
+  return step.id ?? step.kind;
+}
+
+/** Instance IDs this step waits for. */
+export function stepDependencyIds(
+  step: BuiltinWorkflowStep,
+): readonly string[] {
+  return step.dependsOnSteps ?? step.dependsOn;
+}
+
+/** Instance IDs whose results this step receives as input. */
+export function stepInputIds(step: BuiltinWorkflowStep): readonly string[] {
+  return step.inputsFromSteps ?? step.inputsFrom;
 }
 
 export interface BuiltinWorkflowDefinition {
@@ -263,6 +298,7 @@ const builtinStep = (
       implement: "thread_changes",
       test: "test_report",
       verify: "verification_report",
+      synthesis: "research_synthesis",
     } satisfies Record<StepKind, WorkflowResultSemantics>
   )[kind],
 });
@@ -293,6 +329,8 @@ const builtin = (
           return prior === "plan" || prior === "implement";
         case "verify":
           return true;
+        case "synthesis":
+          return prior === "research";
       }
     });
     return builtinStep(
@@ -303,6 +341,84 @@ const builtin = (
     );
   }),
 });
+
+/**
+ * Research v2 researcher count. Operational bounds live here only: at least
+ * two independent researchers (model diversity is the point), at most four
+ * (each one is a full provider execution and its report must fit synthesis).
+ */
+export const RESEARCH_RESEARCHER_LIMITS = {
+  min: 2,
+  max: 4,
+  default: 2,
+} as const;
+
+/** Step-instance ID of researcher `index` (1-based) in Research v2. */
+export function researcherStepId(index: number): string {
+  return `research-${index}`;
+}
+export const RESEARCH_SYNTHESIS_STEP_ID = "synthesis";
+
+/**
+ * Research v2: independent researchers that share no session or output,
+ * followed by one synthesis step that receives every report. All steps are
+ * read-only analysis. The researcher count is part of the accepted snapshot.
+ */
+export function researchWorkflowV2(
+  researcherCount: number = RESEARCH_RESEARCHER_LIMITS.default,
+): BuiltinWorkflowDefinition {
+  if (
+    !Number.isInteger(researcherCount) ||
+    researcherCount < RESEARCH_RESEARCHER_LIMITS.min ||
+    researcherCount > RESEARCH_RESEARCHER_LIMITS.max
+  ) {
+    throw new DomainInvariantError(
+      `Research needs ${RESEARCH_RESEARCHER_LIMITS.min} to ${RESEARCH_RESEARCHER_LIMITS.max} researchers`,
+    );
+  }
+  const analysis = {
+    executionMode: "stateless_read",
+    executionClass: "analysis",
+    requiredCapabilities: ["authorized_context_read"],
+    readWritePolicy: "read_only",
+    timeoutMs: 15 * 60 * 1000,
+  } as const;
+  const researchers = Array.from({ length: researcherCount }, (_, index) => ({
+    id: researcherStepId(index + 1),
+    kind: "research" as const,
+    order: index,
+    ...analysis,
+    promptProfileVersion: "research:v2",
+    dependsOn: [],
+    inputsFrom: [],
+    dependsOnSteps: [],
+    inputsFromSteps: [],
+    resultSemantics: "research_report" as const,
+  }));
+  const ids = researchers.map((step) => step.id);
+  return {
+    id: "research",
+    version: 2,
+    name: "Research",
+    description:
+      "Independent researchers on different models investigate the request; a synthesis compares their reports.",
+    steps: [
+      ...researchers,
+      {
+        id: RESEARCH_SYNTHESIS_STEP_ID,
+        kind: "synthesis",
+        order: researcherCount,
+        ...analysis,
+        promptProfileVersion: "synthesis:v1",
+        dependsOn: ["research"],
+        inputsFrom: ["research"],
+        dependsOnSteps: ids,
+        inputsFromSteps: ids,
+        resultSemantics: "research_synthesis",
+      },
+    ],
+  };
+}
 
 const DIRECT_V1 = builtin("direct", "Direct", "Implement the requested work.", [
   "implement",
@@ -363,6 +479,10 @@ export const BUILTIN_WORKFLOW_CATALOG: Readonly<
   "direct:v1": DIRECT_V1,
   "direct:v2": BUILTIN_WORKFLOWS.direct,
   "research:v1": BUILTIN_WORKFLOWS.research,
+  // Not yet the current `research` version: Cloud execution of repeated
+  // step instances lands in a later phase (see ADR-026). Full Cycle keeps its
+  // single v1 research step.
+  "research:v2": researchWorkflowV2(),
   "plan_implement:v1": BUILTIN_WORKFLOWS.plan_implement,
   "implement_verify:v1": BUILTIN_WORKFLOWS.implement_verify,
   "full_cycle:v1": BUILTIN_WORKFLOWS.full_cycle,
@@ -625,8 +745,24 @@ export function validateBuiltinWorkflowDefinition(
   if (!WORKFLOW_IDS.includes(definition.id)) {
     throw new DomainInvariantError("Unsupported built-in Workflow ID");
   }
-  const canonical =
-    BUILTIN_WORKFLOW_CATALOG[builtinWorkflowReference(definition)];
+  const reference = builtinWorkflowReference(definition);
+  let canonical: BuiltinWorkflowDefinition | undefined =
+    BUILTIN_WORKFLOW_CATALOG[reference];
+  if (
+    canonical &&
+    reference === "research:v2" &&
+    Array.isArray(definition.steps)
+  ) {
+    // The researcher count is chosen at acceptance; validate that shape.
+    const researchers = definition.steps.filter(
+      (step) => step && (step as BuiltinWorkflowStep).kind === "research",
+    ).length;
+    try {
+      canonical = researchWorkflowV2(researchers);
+    } catch {
+      canonical = undefined;
+    }
+  }
   if (!canonical) {
     throw new DomainInvariantError("Unsupported built-in Workflow version");
   }
@@ -644,25 +780,32 @@ export function validateBuiltinWorkflowDefinition(
     if (
       !step ||
       typeof step !== "object" ||
-      !exactKeys(step, [
-        "kind",
-        "order",
-        "executionMode",
-        "executionClass",
-        "requiredCapabilities",
-        "readWritePolicy",
-        "timeoutMs",
-        "promptProfileVersion",
-        "dependsOn",
-        "inputsFrom",
-        "resultSemantics",
-      ])
+      // The canonical step decides which optional instance fields exist.
+      !exactKeys(step, Object.keys(canonical.steps[index] ?? {}))
     ) {
       throw new DomainInvariantError(
         "Built-in Workflow step has unsupported fields",
       );
     }
     const expected = canonical.steps[index]!;
+    const sameList = (
+      actual: unknown,
+      wanted: readonly string[] | undefined,
+    ): boolean =>
+      wanted === undefined
+        ? actual === undefined
+        : Array.isArray(actual) &&
+          actual.length === wanted.length &&
+          actual.every((value, i) => value === wanted[i]);
+    if (
+      step.id !== expected.id ||
+      !sameList(step.dependsOnSteps, expected.dependsOnSteps) ||
+      !sameList(step.inputsFromSteps, expected.inputsFromSteps)
+    ) {
+      throw new DomainInvariantError(
+        "Built-in Workflow definition must match its canonical version",
+      );
+    }
     if (
       step.kind !== expected.kind ||
       step.order !== index ||

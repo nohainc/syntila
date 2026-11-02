@@ -278,7 +278,11 @@ function createAcceptanceRun(
   return { instance, step, taskWrites, gatewayCalls, waits, sleeps };
 }
 
-const workflowCases = Object.values(BUILTIN_WORKFLOW_CATALOG);
+// Research v2 (repeated step instances) is a catalog contract only until its
+// Cloud execution phase lands; it is not a selectable current version yet.
+const workflowCases = Object.entries(BUILTIN_WORKFLOW_CATALOG)
+  .filter(([reference]) => reference !== "research:v2")
+  .map(([, definition]) => definition);
 
 describe("Work v1 acceptance through the shared assignment dispatcher", () => {
   it.each(workflowCases)(

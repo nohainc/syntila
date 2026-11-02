@@ -12,11 +12,15 @@ export type AccountPlanStatus = "active" | "trialing" | "past_due" | "canceled";
  * Features available only on the paid tier. Gate features by name, never by
  * tier, so a feature can move between tiers without touching its call sites.
  */
-export const PAID_FEATURES = ["workspace.sharing"] as const;
+export const PAID_FEATURES = [
+  "workspace.sharing",
+  "workflow.research",
+] as const;
 export type PaidFeature = (typeof PAID_FEATURES)[number];
 
 const FEATURE_LABELS: Record<PaidFeature, string> = {
   "workspace.sharing": "Sharing a Workspace",
+  "workflow.research": "Research",
 };
 
 /**

@@ -301,8 +301,11 @@ describe("Work v1 prompt profiles", () => {
       implement: "implement:v1",
       test: "test:v1",
       verify: "verify:v1",
+      synthesis: "synthesis:v1",
     };
     for (const [kind, profile] of Object.entries(profileByKind)) {
+      // Synthesis exists only in Research v2, not yet a current version.
+      if (kind === "synthesis") continue;
       const workflow = Object.values(BUILTIN_WORKFLOWS).find((definition) =>
         definition.steps.some((candidate) => candidate.kind === kind),
       )!;

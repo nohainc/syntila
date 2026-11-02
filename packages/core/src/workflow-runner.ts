@@ -1,4 +1,6 @@
 import {
+  stepDependencyIds,
+  stepInstanceId,
   validateBuiltinWorkflowDefinition,
   type BuiltinWorkflowDefinition,
   type BuiltinWorkflowStep,
@@ -22,19 +24,21 @@ export function planWorkflowTasks(
 ): readonly PlannedWorkflowTask[] {
   validateBuiltinWorkflowDefinition(version);
   if (!workRequestId) throw new Error("workRequestId is required");
+  // Keyed by step-instance ID, which equals the kind for definitions that
+  // never repeat a kind, so existing task IDs are unchanged.
   const ids = new Map(
     version.steps.map((step) => [
-      step.kind,
-      `task-${workRequestId}-${step.kind}`,
+      stepInstanceId(step),
+      `task-${workRequestId}-${stepInstanceId(step)}`,
     ]),
   );
   return [...version.steps]
     .sort((left, right) => left.order - right.order)
     .map((step) => ({
-      id: ids.get(step.kind)!,
+      id: ids.get(stepInstanceId(step))!,
       workRequestId,
       step,
-      dependencyTaskIds: step.dependsOn.map((dependency) =>
+      dependencyTaskIds: stepDependencyIds(step).map((dependency) =>
         ids.get(dependency)!,
       ),
       status: "queued" as const,

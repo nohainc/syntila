@@ -502,6 +502,11 @@ fall back to available Step output or assignment timestamps.
 | `verify` | Original request, relevant Research and Plan results, Implementation result, Test result if present, Space and Thread instructions, Verify-specific instructions, and the current Thread filesystem. Verify holds the active Thread lease for filesystem identity, but its effective permissions and provider execution are read-only; it uses a fresh Work Request-scoped Verify session. |
 
 These result selections are recorded in each built-in step's `inputsFrom`.
+Research v1 is the current Research definition. Research v2 (independent
+researchers on different models plus a synthesis step, ADR-026) is in the
+catalog but not yet executable or selectable. Research requires the
+requester's Syntila Plus (`workflow.research`).
+
 Research receives attachment contents; Plan receives attachment metadata only;
 later steps receive neither. Current filesystem context is supplied only to
 Test and Verify. Missing optional results are omitted. Selection is controlled

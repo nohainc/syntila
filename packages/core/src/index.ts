@@ -6,6 +6,7 @@ export * from "./worker-inventory.js";
 export * from "./workflow-runner.js";
 export * from "./conversation.js";
 export * from "./workflow-policy.js";
+export * from "./research-models.js";
 export * from "./invitation.js";
 export * from "./worker-execution-options.js";
 export * from "./conversation-router.js";
