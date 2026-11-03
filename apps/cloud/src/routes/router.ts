@@ -6,6 +6,7 @@ import {
   handleUploadAvatar,
 } from "./profile.js";
 import { handleWorkflowWorkspace } from "./workflow-workspace.js";
+import { handlePluginEntitlementLease } from "./plugin-entitlement.js";
 import { handleSpaceAdditionalFolders } from "./space-additional-folders.js";
 import { handleWorkflowConfigurations } from "./workflow-configurations.js";
 import { handleWorkflowDefault } from "./workflow-default.js";
@@ -468,6 +469,9 @@ export async function routeWorkerRequest(
     }
     if (request.method === "GET" && url.pathname === "/api/workers/catalog") {
       return await handlers.handleListWorkerCatalog!(request, env, ctx);
+    }
+    if (url.pathname === "/api/workspace-runtime/worker-plugins/entitlement") {
+      return await handlePluginEntitlementLease(request, env);
     }
     if (
       request.method === "GET" &&

@@ -154,9 +154,12 @@ builds run only when the phase touches them.
   cancel and handshake deadlines), strict manifest validator and protocol
   negotiation, plus tests that replay the golden vectors. **Not started:**
   Engine plugin host and Local Worker Protocol 4.2, Service plugin store and
-  registry, `plugins.*` IPC and CLI, Cloud lease endpoint and Service lease
-  verifier, `EngineHostLauncher`, `echo_dart`/`misbehaving` fixtures. P2 is not
-  complete and its exit criteria are not met.
+  registry, `plugins.*` IPC and CLI, Service lease verifier,
+  `EngineHostLauncher`, `echo_dart`/`misbehaving` fixtures. Also done, untested:
+  the Cloud lease endpoint `POST /api/workspace-runtime/worker-plugins/entitlement`
+  (`apps/cloud/src/routes/plugin-entitlement.ts`, optional secrets
+  `SYNTILA_ENTITLEMENT_SIGNING_KEY` and `SYNTILA_ENTITLEMENT_KEY_ID`; 503 until
+  configured). P2 is not complete and its exit criteria are not met.
 - **Tests:** Engine host: each limit and every misbehaving fault ends with the
   process tree gone and the right code; digest-mismatch refuses before spawn;
   Service: lease absent/expired/tampered/rolled-back/other-machine all block
