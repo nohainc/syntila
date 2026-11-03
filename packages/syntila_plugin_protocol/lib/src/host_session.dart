@@ -183,8 +183,7 @@ class PluginHostSession {
   }
 
   FrameVerdict _onHandshakeFrame(PluginFrame frame) {
-    if (frame.type == 'error' &&
-        frame.json['code'] == 'unsupported_protocol') {
+    if (frame.type == 'error' && frame.json['code'] == 'unsupported_protocol') {
       return const FrameVerdict.violation(
         PluginHostFailure.protocolUnsupported,
         'plugin supports none of the offered protocol versions',
@@ -218,7 +217,8 @@ class PluginHostSession {
       );
     }
     _negotiatedProtocol = protocol;
-    _capabilities = Map<String, Object?>.from(frame.json['capabilities'] as Map);
+    _capabilities =
+        Map<String, Object?>.from(frame.json['capabilities'] as Map);
     _phase = PluginSessionPhase.ready;
     return const FrameVerdict.accept();
   }

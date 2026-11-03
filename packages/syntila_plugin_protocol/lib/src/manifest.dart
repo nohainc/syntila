@@ -13,7 +13,8 @@ const _platforms = <String>{
 const maxPluginArtifactBytes = 256 * 1024 * 1024;
 
 final _pluginIdPattern = RegExp(r'^[a-z][a-z0-9]*(-[a-z0-9]+)*$');
-final _versionPattern = RegExp(r'^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$');
+final _versionPattern =
+    RegExp(r'^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$');
 final _sha256Pattern = RegExp(r'^[0-9a-f]{64}$');
 final _envNamePattern = RegExp(r'^[A-Z][A-Z0-9_]{0,63}$');
 final _protocolRangePattern = RegExp(r'^1\.(0|[1-9][0-9]*)$');
@@ -97,9 +98,20 @@ PluginManifestValidation validatePluginManifest(Object? input) {
   }
 
   strictKeys('', m, {
-    'schemaVersion', 'pluginId', 'version', 'displayName', 'description',
-    'author', 'protocol', 'artifacts', 'capabilities', 'access', 'limits',
-    'requires', 'license', 'homepage',
+    'schemaVersion',
+    'pluginId',
+    'version',
+    'displayName',
+    'description',
+    'author',
+    'protocol',
+    'artifacts',
+    'capabilities',
+    'access',
+    'limits',
+    'requires',
+    'license',
+    'homepage',
   });
 
   if (m['schemaVersion'] != 1) issue('schemaVersion', 'must be 1');

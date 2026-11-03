@@ -145,7 +145,10 @@ export const PluginManifestSchema = z
       .max(8)
       .optional(),
     license: z.string().max(64).optional(),
-    homepage: z.url({ protocol: /^https$/ }).max(512).optional(),
+    homepage: z
+      .url({ protocol: /^https$/ })
+      .max(512)
+      .optional(),
   })
   .strict();
 export type PluginManifest = z.infer<typeof PluginManifestSchema>;

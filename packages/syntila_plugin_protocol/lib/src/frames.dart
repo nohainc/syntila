@@ -226,8 +226,7 @@ void _validate(String type, Map<String, Object?> json) {
       final capabilities = _map(json, 'capabilities');
       final models = capabilities['models'];
       if (models != null) {
-        if (models is! List ||
-            models.length > PluginProtocolLimits.maxModels) {
+        if (models is! List || models.length > PluginProtocolLimits.maxModels) {
           throw const PluginFrameException('models must be a short list');
         }
         for (final model in models) {
@@ -267,7 +266,8 @@ void _validate(String type, Map<String, Object?> json) {
           final message = entry['message'];
           if (message != null &&
               (message is! String ||
-                  message.length > PluginProtocolLimits.maxCheckMessageLength)) {
+                  message.length >
+                      PluginProtocolLimits.maxCheckMessageLength)) {
             throw const PluginFrameException('check.message is too long');
           }
         }
@@ -305,14 +305,17 @@ void _validate(String type, Map<String, Object?> json) {
         _enum(entry, 'mode', const {'new', 'resume'});
       }
       final attachments = json['attachments'];
-      if (attachments != null && (attachments is! List || attachments.isNotEmpty)) {
+      if (attachments != null &&
+          (attachments is! List || attachments.isNotEmpty)) {
         throw const PluginFrameException('attachments are reserved');
       }
     case 'progress':
       _id(json);
-      _string(json, 'message', max: PluginProtocolLimits.maxProgressMessageLength);
+      _string(json, 'message',
+          max: PluginProtocolLimits.maxProgressMessageLength);
       final percent = json['percent'];
-      if (percent != null && (percent is! int || percent < 0 || percent > 100)) {
+      if (percent != null &&
+          (percent is! int || percent < 0 || percent > 100)) {
         throw const PluginFrameException('percent must be 0..100');
       }
     case 'activity':
@@ -408,7 +411,9 @@ String _string(
   bool allowEmpty = false,
 }) {
   final value = json[key];
-  if (value is! String || (!allowEmpty && value.isEmpty) || value.length > max) {
+  if (value is! String ||
+      (!allowEmpty && value.isEmpty) ||
+      value.length > max) {
     throw PluginFrameException('"$key" must be a bounded string');
   }
   return value;

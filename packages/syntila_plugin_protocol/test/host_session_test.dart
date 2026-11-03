@@ -58,8 +58,8 @@ void main() {
       final session = PluginHostSession(
           expectedPluginId: 'acme-reviewer', expectedVersion: '1.4.2');
       session.startHandshake(id: 'h1', hostVersion: '1', dataDir: '/d');
-      final verdict = session.onPluginFrame(
-          plugin('{"type":"progress","id":"e1","message":"x"}'));
+      final verdict = session
+          .onPluginFrame(plugin('{"type":"progress","id":"e1","message":"x"}'));
       expect(verdict.code, PluginHostFailure.protocolViolation);
     });
 
@@ -90,7 +90,9 @@ void main() {
     test('times out after ten seconds', () {
       final clock = Clock();
       final session = PluginHostSession(
-          expectedPluginId: 'a', expectedVersion: '1.0.0', now: () => clock.now);
+          expectedPluginId: 'a',
+          expectedVersion: '1.0.0',
+          now: () => clock.now);
       session.startHandshake(id: 'h1', hostVersion: '1', dataDir: '/d');
       clock.advance(const Duration(seconds: 9));
       expect(session.handshakeOverdue, isFalse);
@@ -104,19 +106,22 @@ void main() {
       final session = executing(Clock());
       expect(
           session
-              .onPluginFrame(plugin('{"type":"progress","id":"e1","message":"x"}'))
+              .onPluginFrame(
+                  plugin('{"type":"progress","id":"e1","message":"x"}'))
               .kind,
           FrameVerdictKind.accept);
       expect(
           session
-              .onPluginFrame(plugin('{"type":"result","id":"e1","output":"ok"}'))
+              .onPluginFrame(
+                  plugin('{"type":"result","id":"e1","output":"ok"}'))
               .kind,
           FrameVerdictKind.accept);
       expect(session.phase, PluginSessionPhase.ready);
       expect(session.lastTerminal?.type, 'result');
     });
 
-    test('a second terminal frame is a violation; late progress is dropped', () {
+    test('a second terminal frame is a violation; late progress is dropped',
+        () {
       final session = executing(Clock());
       session.onPluginFrame(plugin('{"type":"result","id":"e1","output":"a"}'));
       final late = session
@@ -149,7 +154,8 @@ void main() {
       clock.advance(const Duration(seconds: 1));
       expect(
           session
-              .onPluginFrame(plugin('{"type":"progress","id":"e1","message":"x"}'))
+              .onPluginFrame(
+                  plugin('{"type":"progress","id":"e1","message":"x"}'))
               .kind,
           FrameVerdictKind.accept);
       expect(
@@ -186,7 +192,8 @@ void main() {
       expect(session.takeReplies(), isEmpty);
     });
 
-    test('cancel is idempotent, has a five second grace, and clears on terminal',
+    test(
+        'cancel is idempotent, has a five second grace, and clears on terminal',
         () {
       final clock = Clock();
       final session = executing(clock);
@@ -207,21 +214,23 @@ void main() {
       session.beginProbe(id: 'p1', mode: 'passive');
       expect(
           session
-              .onPluginFrame(plugin('{"type":"probe.result","id":"p2","state":"ready"}'))
+              .onPluginFrame(
+                  plugin('{"type":"probe.result","id":"p2","state":"ready"}'))
               .code,
           PluginHostFailure.protocolViolation);
       final session2 = ready(Clock());
       session2.beginProbe(id: 'p1', mode: 'passive');
       expect(
           session2
-              .onPluginFrame(plugin('{"type":"probe.result","id":"p1","state":"ready"}'))
+              .onPluginFrame(
+                  plugin('{"type":"probe.result","id":"p1","state":"ready"}'))
               .kind,
           FrameVerdictKind.accept);
     });
 
     test('refuses to execute before the handshake completes', () {
-      final session = PluginHostSession(
-          expectedPluginId: 'a', expectedVersion: '1.0.0');
+      final session =
+          PluginHostSession(expectedPluginId: 'a', expectedVersion: '1.0.0');
       expect(
           () => session.beginExecute(PluginFrame.execute(
               id: 'e1',

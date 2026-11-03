@@ -73,7 +73,8 @@ void main() {
   });
 
   test('invalid-two-terminals is a protocol violation', () {
-    expect(replay('invalid-two-terminals'), PluginHostFailure.protocolViolation);
+    expect(
+        replay('invalid-two-terminals'), PluginHostFailure.protocolViolation);
   });
 
   test('invalid-stdout-noise is a protocol violation', () {

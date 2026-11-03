@@ -39,8 +39,7 @@ describe("worker plugin manifest", () => {
 
   it("rejects unknown keys so typos cannot hide an access declaration", () => {
     expect(
-      PluginManifestSchema.safeParse({ ...manifest(), accesss: {} })
-        .success,
+      PluginManifestSchema.safeParse({ ...manifest(), accesss: {} }).success,
     ).toBe(false);
     const m = manifest();
     expect(
@@ -115,9 +114,7 @@ describe("worker plugin manifest", () => {
     expect(PluginIdSchema.safeParse("acme-reviewer").success).toBe(true);
     expect(PluginIdSchema.safeParse("Acme").success).toBe(false);
     expect(PluginIdSchema.safeParse("a".repeat(49)).success).toBe(false);
-    expect(PluginRefSchema.safeParse("plugin-3fa91c04b2d7").success).toBe(
-      true,
-    );
+    expect(PluginRefSchema.safeParse("plugin-3fa91c04b2d7").success).toBe(true);
     expect(PluginRefSchema.safeParse("chatgpt").success).toBe(false);
     expect(PluginRefSchema.safeParse("plugin-xyz").success).toBe(false);
   });

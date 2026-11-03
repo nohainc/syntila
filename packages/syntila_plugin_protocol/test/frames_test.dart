@@ -84,7 +84,8 @@ void main() {
       throwsA(isA<PluginFrameException>()),
     );
     expect(
-      () => decodeFromPlugin({'type': 'progress', 'id': 'bad id', 'message': 'x'}),
+      () => decodeFromPlugin(
+          {'type': 'progress', 'id': 'bad id', 'message': 'x'}),
       throwsA(isA<PluginFrameException>()),
     );
   });
@@ -92,23 +93,33 @@ void main() {
   test('limits result output by bytes, not characters', () {
     final atLimit = 'a' * PluginProtocolLimits.maxOutputBytes;
     expect(
-      decodeFromPlugin(
-              {'type': 'result', 'id': 'e1', 'output': atLimit, 'artifacts': []})
-          .type,
+      decodeFromPlugin({
+        'type': 'result',
+        'id': 'e1',
+        'output': atLimit,
+        'artifacts': []
+      }).type,
       'result',
     );
     // Three-byte characters: fewer characters than the limit, more bytes, and
     // the whole frame still fits under the frame limit.
     final multibyte = '€' * 270000;
     expect(
-      () => decodeFromPlugin(
-          {'type': 'result', 'id': 'e1', 'output': multibyte}),
+      () =>
+          decodeFromPlugin({'type': 'result', 'id': 'e1', 'output': multibyte}),
       throwsA(isA<PluginFrameException>()),
     );
   });
 
   test('rejects unsafe artifact paths', () {
-    for (final path in ['../x', '/etc/passwd', r'C:\x', 'a//b', r'a\..\b', '']) {
+    for (final path in [
+      '../x',
+      '/etc/passwd',
+      r'C:\x',
+      'a//b',
+      r'a\..\b',
+      ''
+    ]) {
       expect(
         () => decodeFromPlugin({
           'type': 'result',
@@ -127,7 +138,8 @@ void main() {
 
   test('validates probe states, hello.result protocol and error shape', () {
     expect(
-      () => decodeFromPlugin({'type': 'probe.result', 'id': 'p1', 'state': 'weird'}),
+      () => decodeFromPlugin(
+          {'type': 'probe.result', 'id': 'p1', 'state': 'weird'}),
       throwsA(isA<PluginFrameException>()),
     );
     expect(
@@ -142,7 +154,8 @@ void main() {
     );
     // An error before any execute may omit the id.
     expect(
-      decodeFromPlugin({'type': 'error', 'code': 'unsupported_protocol', 'message': ''})
+      decodeFromPlugin(
+              {'type': 'error', 'code': 'unsupported_protocol', 'message': ''})
           .type,
       'error',
     );
