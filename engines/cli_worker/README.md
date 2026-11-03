@@ -11,7 +11,7 @@ For local development, launch with absolute paths:
 ~~~sh
 dart run bin/syntila_cli_worker.dart \
   --profile /absolute/path/to/profile.v1.json \
-  --engine-version 1.3.1 \
+  --engine-version 1.4.0 \
   --state-directory /absolute/path/to/worker-state
 ~~~
 

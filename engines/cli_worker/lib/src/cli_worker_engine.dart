@@ -188,6 +188,17 @@ class CliWorkerEngine {
   }
 
   Future<void> _initialize(InitializeRequest request, IOSink sink) async {
+    if (request.executor != null) {
+      await _write(
+        sink,
+        WorkerErrorFrame(
+          requestId: request.requestId,
+          code: WorkerIssueCode.profileIdentityMismatch,
+          message: 'This Engine runs a Tool Profile, not a plugin',
+        ),
+      );
+      return;
+    }
     if (request.workerTypeId != _admittedProfile.workerTypeId) {
       await _write(
         sink,
@@ -1188,6 +1199,17 @@ class CliWorkerEngine {
       message == staleSessionAheadOfCloudMessage;
 
   Future<void> _execute(ExecuteRequest request, IOSink sink) async {
+    if (request.executor != null) {
+      return _write(
+        sink,
+        WorkerErrorFrame(
+          requestId: request.requestId,
+          assignmentId: request.assignmentId,
+          code: WorkerIssueCode.profileIdentityMismatch,
+          message: 'This Engine runs a Tool Profile, not a plugin',
+        ),
+      );
+    }
     if (!_initialized ||
         request.sessionPolicy != WorkerSessionPolicy.durableSession) {
       return _executeSession(request, sink);

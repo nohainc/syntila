@@ -1,6 +1,7 @@
 import 'discovered_models.dart';
 import 'dart:convert';
 
+import 'executor_frames.dart';
 import 'initialize_frames.dart';
 import 'limits.dart';
 import 'protocol_version.dart';
@@ -717,9 +718,13 @@ final class ExecuteRequest extends WorkerFrame {
     this.statelessContext,
     this.additionalDirectories = const [],
     this.compactContext = false,
+    this.executor,
     this.protocolVersion = localWorkerProtocolVersion,
   }) {
     _validateProtocol(protocolVersion);
+    if (executor != null && protocolVersion != pluginExecutorProtocolVersion) {
+      throw const FormatException('executor requires protocol 4.2');
+    }
     if (compactContext && sessionPolicy != WorkerSessionPolicy.durableSession) {
       throw const FormatException('compactContext requires a durable session');
     }
@@ -822,6 +827,10 @@ final class ExecuteRequest extends WorkerFrame {
   /// overflow). Only sent when true, so older Engines keep accepting frames.
   final bool compactContext;
 
+  /// Set only for a plugin execution (protocol 4.2); null means the admitted
+  /// Tool Profile runs a provider CLI as before.
+  final WorkerExecutor? executor;
+
   @override
   String get type => 'execute.request';
 
@@ -847,6 +856,7 @@ final class ExecuteRequest extends WorkerFrame {
         if (additionalDirectories.isNotEmpty)
           'additionalDirectories': additionalDirectories,
         if (compactContext) 'compactContext': true,
+        if (executor != null) 'executor': executor!.toJson(),
       };
 
   factory ExecuteRequest.fromJson(Map<String, Object?> json) {
@@ -867,8 +877,12 @@ final class ExecuteRequest extends WorkerFrame {
       'statelessContext',
       'additionalDirectories',
       'compactContext',
+      'executor',
     });
     _expectType(json, 'execute.request');
+    if (json['executor'] != null && json['executor'] is! Map) {
+      throw const FormatException('executor must be an object');
+    }
     final compactContext = json['compactContext'] ?? false;
     if (compactContext is! bool) {
       throw const FormatException('compactContext must be a boolean');
@@ -937,6 +951,10 @@ final class ExecuteRequest extends WorkerFrame {
               Map<String, Object?>.from(json['workerSession'] as Map)),
       additionalDirectories: List<String>.unmodifiable(directories),
       compactContext: compactContext,
+      executor: json['executor'] == null
+          ? null
+          : WorkerExecutor.fromJson(
+              Map<String, Object?>.from(json['executor'] as Map)),
     );
   }
 }

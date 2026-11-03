@@ -1,7 +1,13 @@
 const localWorkerProtocolVersion = '4.1';
+
+/// Protocol 4.2 adds the optional `executor` object on `execute.request`
+/// (ADR-027 plugin executor). Frames default to 4.1; a plugin execute names
+/// 4.2 explicitly, and 4.0/4.1 peers are unchanged.
+const pluginExecutorProtocolVersion = '4.2';
 const supportedLocalWorkerProtocolVersions = {
   '4.0',
-  localWorkerProtocolVersion
+  localWorkerProtocolVersion,
+  pluginExecutorProtocolVersion,
 };
 
 /// Selects the newest protocol version supported by both sides.

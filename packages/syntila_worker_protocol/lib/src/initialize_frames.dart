@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'executor_frames.dart';
 import 'limits.dart';
 import 'protocol_version.dart';
 
@@ -27,6 +28,7 @@ final class InitializeRequest extends WorkerFrame {
     required this.profileDefinitionId,
     required this.profileReleaseVersion,
     required this.profileDigest,
+    this.executor,
     this.protocolVersion = localWorkerProtocolVersion,
   }) : super(requestId: requestId) {
     _validateToken(
@@ -44,9 +46,23 @@ final class InitializeRequest extends WorkerFrame {
           'profileDigest must be a lowercase SHA-256 hex digest');
     }
     _validateProtocol(protocolVersion);
+    if (executor != null) {
+      if (protocolVersion != pluginExecutorProtocolVersion) {
+        throw const FormatException('executor requires protocol 4.2');
+      }
+      if (executor!.manifestDigest != profileDigest) {
+        throw const FormatException(
+            'plugin initialization digest must equal the manifest digest');
+      }
+    }
   }
 
   final String protocolVersion;
+
+  /// Plugin identity for a plugin-mode Engine (protocol 4.2). The wire fields
+  /// `profileDefinitionId`/`profileReleaseVersion`/`profileDigest` then carry
+  /// the plugin id, version and manifest digest.
+  final WorkerExecutor? executor;
   final String workerTypeId;
   final String expectedEngineVersion;
   final String profileDefinitionId;
@@ -71,6 +87,7 @@ final class InitializeRequest extends WorkerFrame {
         'profileDefinitionId': profileDefinitionId,
         'profileReleaseVersion': profileReleaseVersion,
         'profileDigest': profileDigest,
+        if (executor != null) 'executor': executor!.toJson(),
       };
 
   factory InitializeRequest.fromJson(Map<String, Object?> json) {
@@ -83,8 +100,12 @@ final class InitializeRequest extends WorkerFrame {
       'profileDefinitionId',
       'profileReleaseVersion',
       'profileDigest',
+      'executor',
     });
     _checkType(json, 'initialize.request');
+    if (json['executor'] != null && json['executor'] is! Map) {
+      throw const FormatException('executor must be an object');
+    }
     final protocol = _requiredString(json, 'protocolVersion');
     if (!supportedLocalWorkerProtocolVersions.contains(protocol)) {
       throw FormatException('unsupported protocol version: $protocol');
@@ -103,6 +124,10 @@ final class InitializeRequest extends WorkerFrame {
           WorkerProtocolLimits.maxProfileReleaseVersionLength),
       profileDigest: _boundedString(
           json, 'profileDigest', WorkerProtocolLimits.maxProfileDigestLength),
+      executor: json['executor'] == null
+          ? null
+          : WorkerExecutor.fromJson(
+              Map<String, Object?>.from(json['executor'] as Map)),
     );
   }
 }

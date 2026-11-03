@@ -47,7 +47,21 @@ class PluginRunRequest {
     this.model,
     this.sessionKey,
     this.sessionMode = 'new',
-  });
+  }) : probeMode = null;
+
+  /// A readiness probe (`passive` or `live`) instead of an execute.
+  const PluginRunRequest.probe({
+    required this.executeId,
+    required String mode,
+    required this.deadline,
+  }) : prompt = '',
+       access = 'read_only',
+       model = null,
+       sessionKey = null,
+       sessionMode = 'new',
+       probeMode = mode;
+
+  final String? probeMode;
 
   final String executeId;
   final String prompt;
@@ -76,6 +90,19 @@ final class PluginRunSuccess extends PluginRunOutcome {
   final List<String> artifacts;
   final String? sessionState;
   final int droppedFrames;
+}
+
+final class PluginProbeSuccess extends PluginRunOutcome {
+  const PluginProbeSuccess({
+    required this.state,
+    required this.issueCode,
+    required this.checks,
+  });
+
+  /// `ready`, `setup_required`, `sign_in_required`, `unavailable` or `failed`.
+  final String state;
+  final String? issueCode;
+  final List<Map<String, Object?>> checks;
 }
 
 final class PluginRunFailure extends PluginRunOutcome {
@@ -155,6 +182,7 @@ class PluginHost {
     PluginLaunch launch,
     PluginRunRequest request, {
     void Function(PluginFrame frame)? onFrame,
+    void Function()? onWorkStarted,
     Future<void>? cancel,
   }) async {
     final redactor = PluginRedactor(secrets: launch.environment.values);
@@ -271,8 +299,17 @@ class PluginHost {
                 stderrTail: stderrTail(),
               ),
             );
+          } else if (!sentExecute && request.probeMode != null) {
+            sentExecute = true;
+            write(
+              session.beginProbe(
+                id: request.executeId,
+                mode: request.probeMode!,
+              ),
+            );
           } else if (!sentExecute) {
             sentExecute = true;
+            onWorkStarted?.call();
             write(
               session.beginExecute(
                 PluginFrame.execute(
@@ -291,6 +328,21 @@ class PluginHost {
               ),
             );
           }
+        case 'probe.result':
+          final rawChecks = (frame.json['checks'] as List?) ?? const [];
+          finish(
+            PluginProbeSuccess(
+              state: frame.json['state'] as String,
+              issueCode: frame.json['issueCode'] as String?,
+              checks: [
+                for (final raw in rawChecks)
+                  _redactedCheck(
+                    Map<String, Object?>.from(raw as Map),
+                    redactor,
+                  ),
+              ],
+            ),
+          );
         case 'progress' || 'activity':
           onFrame?.call(_redactedFrame(frame, redactor));
         case 'result':
@@ -385,6 +437,10 @@ class PluginHost {
     });
     deadlineTimer = Timer(request.deadline, () {
       timedOut = true;
+      if (request.probeMode != null) {
+        fail('timeout', 'The plugin did not answer the probe in time.');
+        return;
+      }
       sendCancel('timeout');
     });
 
@@ -446,6 +502,15 @@ class PluginHost {
       }
     }
     return null;
+  }
+
+  static Map<String, Object?> _redactedCheck(
+    Map<String, Object?> check,
+    PluginRedactor redactor,
+  ) {
+    final message = check['message'];
+    if (message is String) check['message'] = redactor.redact(message);
+    return check;
   }
 
   static PluginFrame _redactedFrame(PluginFrame frame, PluginRedactor r) {

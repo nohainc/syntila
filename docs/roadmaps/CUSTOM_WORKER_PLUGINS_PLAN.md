@@ -160,8 +160,13 @@ builds run only when the phase touches them.
     5 s cancel grace then tree kill, stderr and message redaction, artifact path
     containment; proven against a fault-injecting fixture plugin
     (`test/fixtures/plugin_fixture.dart`) as real child processes.
-  - **Not done:** wiring `PluginHost` into the Engine's `execute` path with
-    Local Worker Protocol 4.2 (`executor`) and Engine 1.4.0; Service plugin store,
+  - Also done: Local Worker Protocol 4.2 (`WorkerExecutor` on `initialize.request`
+    and `execute.request`; 4.0/4.1 frames unchanged); plugin-mode Engine
+    (`syntila-agent --plugin`, `plugin_engine.dart`) with probe, execute,
+    progress, result and error mapping onto existing stable issue codes (no new
+    wire codes); profile-mode Engine rejects an executor; Engine 1.4.0. Proven
+    end to end against the compiled Engine binary and the fixture plugin.
+  - **Not done:** Service plugin store,
     registry and lease verifier; `plugins.*` IPC and CLI; `EngineHostLauncher`
     and the conformance runner; OS resource limits and isolation tiers (memory,
     CPU, open files, processes are not yet enforced). P2 is not complete and its

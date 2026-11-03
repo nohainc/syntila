@@ -1,5 +1,6 @@
 library;
 
+export 'src/executor_frames.dart';
 export 'src/initialize_frames.dart';
 export 'src/limits.dart';
 export 'src/frame_codec.dart';

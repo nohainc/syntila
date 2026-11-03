@@ -9,7 +9,7 @@ import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'platform_process_supervisor.dart';
 import 'worker_process_cleanup.dart';
 
-const cliWorkerEngineVersion = '1.3.1';
+const cliWorkerEngineVersion = '1.4.0';
 
 /// Runs one isolated generic Engine process for one passive or live probe,
 /// or for normal / sandbox assignment execution.
