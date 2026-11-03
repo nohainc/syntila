@@ -20,6 +20,7 @@ export const requiredProductionSmokeColumns = Object.freeze({
     "updated_at",
     "started_at",
     "finished_at",
+    "step_instance_id",
   ],
   conversation_workflow_step_runs: [
     "id",
@@ -204,7 +205,7 @@ export const requiredProductionSmokeColumns = Object.freeze({
 
 const tableDefinitionSources = Object.freeze({
   workflow_tasks: [
-    "apps/cloud/migrations-v8/0006_chat_workflow_admission.sql",
+    "apps/cloud/migrations-v8/0099_workflow_step_instances.sql",
     "workflow_tasks",
   ],
   conversation_workflow_step_runs: [
