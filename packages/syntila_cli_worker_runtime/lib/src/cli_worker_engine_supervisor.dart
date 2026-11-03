@@ -176,12 +176,20 @@ final class CliWorkerEngineSupervisor {
   }
 
   Future<ProbeResult> probe(
-    ToolProfileCandidate release, {
-    required File profileFile,
+    ToolProfileCandidate? release, {
+    File? profileFile,
     required Directory stateDirectory,
     required WorkerProbeMode mode,
     Duration timeout = const Duration(seconds: 30),
+    WorkerExecutor? pluginExecutor,
+    String? pluginWorkerTypeId,
   }) async {
+    final identity = _EngineIdentity.resolve(
+      release: release,
+      profileFile: profileFile,
+      pluginExecutor: pluginExecutor,
+      pluginWorkerTypeId: pluginWorkerTypeId,
+    );
     final boundedTimeout =
         timeout >
             const Duration(milliseconds: WorkerProtocolLimits.maxProbeTimeoutMs)
@@ -203,15 +211,7 @@ final class CliWorkerEngineSupervisor {
     try {
       process = await _platformRuntime.startIsolatedProcess(
         engineExecutable,
-        [
-          ...engineArgumentsPrefix,
-          '--profile',
-          profileFile.path,
-          '--engine-version',
-          cliWorkerEngineVersion,
-          '--state-directory',
-          stateDirectory.path,
-        ],
+        [...engineArgumentsPrefix, ...identity.launchFlags(stateDirectory)],
         workingDirectory: stateDirectory.path,
         environment: _engineEnvironment(),
         includeParentEnvironment: false,
@@ -229,21 +229,22 @@ final class CliWorkerEngineSupervisor {
       final initialized = await channel.exchange(
         InitializeRequest(
           requestId: 'engine-init-${DateTime.now().microsecondsSinceEpoch}',
-          workerTypeId: release.logicalWorkerTypeId,
+          workerTypeId: identity.workerTypeId,
           expectedEngineVersion: cliWorkerEngineVersion,
-          profileDefinitionId: release.profileDefinitionId,
-          profileReleaseVersion: release.revision.toString(),
-          profileDigest: release.payloadDigest,
+          profileDefinitionId: identity.definitionId,
+          profileReleaseVersion: identity.releaseVersion,
+          profileDigest: identity.digest,
+          executor: identity.executor,
+          protocolVersion: identity.protocolVersion,
         ),
         _remaining(boundedTimeout, timer),
       );
       if (initialized is! InitializeResult ||
-          initialized.workerTypeId != release.logicalWorkerTypeId ||
+          initialized.workerTypeId != identity.workerTypeId ||
           initialized.engineVersion != cliWorkerEngineVersion ||
-          initialized.profileDefinitionId != release.profileDefinitionId ||
-          initialized.profileReleaseVersion != release.revision.toString() ||
-          initialized.profileSchemaVersion !=
-              release.profile['schemaVersion']) {
+          initialized.profileDefinitionId != identity.definitionId ||
+          initialized.profileReleaseVersion != identity.releaseVersion ||
+          initialized.profileSchemaVersion != identity.schemaVersion) {
         throw const FormatException('CLI Worker Engine initialize mismatch');
       }
       final result = await channel.exchange(
@@ -259,8 +260,9 @@ final class CliWorkerEngineSupervisor {
           'CLI Worker Engine probe response mismatch',
         );
       }
-      if (result.providerToolName != null &&
-          result.providerToolName != release.providerToolName) {
+      if (identity.providerToolName != null &&
+          result.providerToolName != null &&
+          result.providerToolName != identity.providerToolName) {
         throw const FormatException(
           'CLI Worker Engine provider identity mismatch',
         );
@@ -434,8 +436,10 @@ final class CliWorkerEngineSupervisor {
 
   /// Executes one assignment through a Tool Profile candidate.
   Future<WorkerResult> execute(
-    ToolProfileCandidate release, {
-    required File profileFile,
+    ToolProfileCandidate? release, {
+    File? profileFile,
+    WorkerExecutor? pluginExecutor,
+    String? pluginWorkerTypeId,
     required Directory stateDirectory,
     required Directory workingDirectory,
     required String workerId,
@@ -480,6 +484,12 @@ final class CliWorkerEngineSupervisor {
     void Function(WorkerProgress progress)? onProgress,
     FutureOr<void> Function(WorkerActivity activity)? onActivity,
   }) async {
+    final identity = _EngineIdentity.resolve(
+      release: release,
+      profileFile: profileFile,
+      pluginExecutor: pluginExecutor,
+      pluginWorkerTypeId: pluginWorkerTypeId,
+    );
     if (workerSession != null && workerSession.workerId != workerId) {
       throw const FormatException(
         'Worker Session does not belong to this Worker',
@@ -584,15 +594,7 @@ final class CliWorkerEngineSupervisor {
       launchStage = 'engine_spawn';
       process = await _platformRuntime.startIsolatedProcess(
         engineExecutable,
-        [
-          ...engineArgumentsPrefix,
-          '--profile',
-          profileFile.path,
-          '--engine-version',
-          cliWorkerEngineVersion,
-          '--state-directory',
-          stateDirectory.path,
-        ],
+        [...engineArgumentsPrefix, ...identity.launchFlags(stateDirectory)],
         workingDirectory: workingDirectory.path,
         environment: _engineEnvironment(),
         includeParentEnvironment: false,
@@ -640,21 +642,22 @@ final class CliWorkerEngineSupervisor {
       final initialized = await channel.exchange(
         InitializeRequest(
           requestId: 'engine-init-${DateTime.now().microsecondsSinceEpoch}',
-          workerTypeId: release.logicalWorkerTypeId,
+          workerTypeId: identity.workerTypeId,
           expectedEngineVersion: cliWorkerEngineVersion,
-          profileDefinitionId: release.profileDefinitionId,
-          profileReleaseVersion: release.revision.toString(),
-          profileDigest: release.payloadDigest,
+          profileDefinitionId: identity.definitionId,
+          profileReleaseVersion: identity.releaseVersion,
+          profileDigest: identity.digest,
+          executor: identity.executor,
+          protocolVersion: identity.protocolVersion,
         ),
         _remaining(boundedTimeout, timer),
       );
       if (initialized is! InitializeResult ||
-          initialized.workerTypeId != release.logicalWorkerTypeId ||
+          initialized.workerTypeId != identity.workerTypeId ||
           initialized.engineVersion != cliWorkerEngineVersion ||
-          initialized.profileDefinitionId != release.profileDefinitionId ||
-          initialized.profileReleaseVersion != release.revision.toString() ||
-          initialized.profileSchemaVersion !=
-              release.profile['schemaVersion']) {
+          initialized.profileDefinitionId != identity.definitionId ||
+          initialized.profileReleaseVersion != identity.releaseVersion ||
+          initialized.profileSchemaVersion != identity.schemaVersion) {
         throw const FormatException('CLI Worker Engine initialize mismatch');
       }
       _observe(onInitialized);
@@ -677,6 +680,8 @@ final class CliWorkerEngineSupervisor {
           executionPolicy: executionPolicy,
           additionalDirectories: additionalDirectories,
           compactContext: compactContext,
+          executor: identity.executor,
+          protocolVersion: identity.protocolVersion,
         ),
 
         _remaining(boundedTimeout, timer),
@@ -1436,4 +1441,90 @@ final class CliEngineChannel {
       }),
     );
   }
+}
+
+/// What the Engine is told it is: an admitted Tool Profile or a plugin
+/// (protocol 4.2). Plugins reuse the Initialize identity fields: the plugin id,
+/// version and manifest digest travel as definition, release and digest.
+final class _EngineIdentity {
+  const _EngineIdentity._({
+    required this.workerTypeId,
+    required this.definitionId,
+    required this.releaseVersion,
+    required this.digest,
+    required this.schemaVersion,
+    required this.providerToolName,
+    required this.executor,
+    required this.protocolVersion,
+    required this.profileFile,
+  });
+
+  final String workerTypeId;
+  final String definitionId;
+  final String releaseVersion;
+  final String digest;
+  final Object? schemaVersion;
+  final String? providerToolName;
+  final WorkerExecutor? executor;
+  final String protocolVersion;
+  final File? profileFile;
+
+  factory _EngineIdentity.resolve({
+    required ToolProfileCandidate? release,
+    required File? profileFile,
+    required WorkerExecutor? pluginExecutor,
+    required String? pluginWorkerTypeId,
+  }) {
+    if (pluginExecutor != null) {
+      if (release != null ||
+          profileFile != null ||
+          pluginWorkerTypeId == null) {
+        throw ArgumentError(
+          'A plugin target takes an executor and Worker Type, not a Profile',
+        );
+      }
+      return _EngineIdentity._(
+        workerTypeId: pluginWorkerTypeId,
+        definitionId: 'plugin-${pluginExecutor.pluginId}',
+        releaseVersion: pluginExecutor.version,
+        digest: pluginExecutor.manifestDigest,
+        schemaVersion: 1,
+        providerToolName: null,
+        executor: pluginExecutor,
+        protocolVersion: pluginExecutorProtocolVersion,
+        profileFile: null,
+      );
+    }
+    if (release == null || profileFile == null || pluginWorkerTypeId != null) {
+      throw ArgumentError('A Profile target requires a release and file');
+    }
+    return _EngineIdentity._(
+      workerTypeId: release.logicalWorkerTypeId,
+      definitionId: release.profileDefinitionId,
+      releaseVersion: release.revision.toString(),
+      digest: release.payloadDigest,
+      schemaVersion: release.profile['schemaVersion'],
+      providerToolName: release.providerToolName,
+      executor: null,
+      protocolVersion: localWorkerProtocolVersion,
+      profileFile: profileFile,
+    );
+  }
+
+  List<String> launchFlags(Directory stateDirectory) => profileFile == null
+      ? [
+          '--plugin',
+          '--engine-version',
+          cliWorkerEngineVersion,
+          '--state-directory',
+          stateDirectory.path,
+        ]
+      : [
+          '--profile',
+          profileFile!.path,
+          '--engine-version',
+          cliWorkerEngineVersion,
+          '--state-directory',
+          stateDirectory.path,
+        ];
 }
