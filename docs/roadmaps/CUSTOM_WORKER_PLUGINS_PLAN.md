@@ -147,6 +147,16 @@ builds run only when the phase touches them.
   `EngineHostLauncher`; `echo_dart` and `misbehaving` fixtures. Plugin Workers
   are **not yet routable from Cloud** (P3), so P2 exercises execution through
   `plugins test --live` and Service-internal execute.
+- **Status (2026-11-03, partial; written without a Dart or Node toolchain, not
+  compiled or run):** done in `packages/syntila_plugin_protocol`: limits, frame
+  codec with per-direction validation, `PluginHostSession` (handshake order,
+  identity check, id correlation, one terminal frame, rate limit, heartbeat,
+  cancel and handshake deadlines), strict manifest validator and protocol
+  negotiation, plus tests that replay the golden vectors. **Not started:**
+  Engine plugin host and Local Worker Protocol 4.2, Service plugin store and
+  registry, `plugins.*` IPC and CLI, Cloud lease endpoint and Service lease
+  verifier, `EngineHostLauncher`, `echo_dart`/`misbehaving` fixtures. P2 is not
+  complete and its exit criteria are not met.
 - **Tests:** Engine host: each limit and every misbehaving fault ends with the
   process tree gone and the right code; digest-mismatch refuses before spawn;
   Service: lease absent/expired/tampered/rolled-back/other-machine all block
