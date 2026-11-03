@@ -42,3 +42,4 @@ export interface AssignmentCancelPayload {
   readonly commandId?: string;
   readonly deadlineMs?: number;
 }
+export * from "./worker-plugin.js";
