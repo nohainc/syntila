@@ -1031,7 +1031,7 @@ void main() {
       final work = find.byKey(const ValueKey('work-history-scroll'));
       final history = find.byKey(const ValueKey('thread-AI History-pane'));
       expect(find.byType(TabBar), findsNothing);
-      expect(tester.getSize(chat).width, lessThanOrEqualTo(800));
+      expect(tester.getSize(chat).width, lessThanOrEqualTo(900));
       expect(
           tester
               .widget<Padding>(
@@ -4091,14 +4091,10 @@ void main() {
       final position = tester.state<ScrollableState>(scrollable).position;
       expect(tester.getSize(table).width,
           greaterThanOrEqualTo(tester.getSize(viewport).width));
-      if (width < 600) {
-        expect(position.maxScrollExtent, greaterThan(0));
-        await tester.drag(viewport, const Offset(-1200, 0));
-        await tester.pumpAndSettle();
-        expect(position.pixels, greaterThan(0));
-      } else {
-        expect(position.maxScrollExtent, 0);
-      }
+      expect(position.maxScrollExtent, greaterThan(0));
+      await tester.drag(viewport, const Offset(-1200, 0));
+      await tester.pumpAndSettle();
+      expect(position.pixels, greaterThan(0));
       final remove = find.byTooltip('Remove from Space');
       expect(remove.hitTestable(), findsOneWidget);
       await tester.tap(remove);

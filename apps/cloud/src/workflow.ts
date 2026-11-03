@@ -10,7 +10,6 @@ import {
   markWorkflowTaskResult,
   planWorkflowTasks,
   readyWorkflowTasks,
-  stepInputIds,
   stepInstanceId,
   validateBuiltinWorkflowDefinition,
   type PlannedWorkflowTask,

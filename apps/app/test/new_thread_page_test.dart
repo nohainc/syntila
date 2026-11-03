@@ -22,6 +22,27 @@ class Source extends AxFixtureDataSource {
   @override
   Future<List<AxThread>> loadSpaceThreads({required String spaceId}) async =>
       [thread];
+
+  @override
+  Future<List<AxSpaceMember>> loadSpaceMembers({
+    required String spaceId,
+  }) async =>
+      const [
+        AxSpaceMember(
+          userId: 'user-owner',
+          displayName: 'Vitalii',
+          email: 'owner@example.com',
+          role: 'owner',
+          createdAt: 'today',
+        ),
+        AxSpaceMember(
+          userId: 'user-member',
+          displayName: 'Member',
+          email: 'member@example.com',
+          role: 'member',
+          createdAt: 'today',
+        ),
+      ];
 }
 
 Future<void> pump(WidgetTester tester,

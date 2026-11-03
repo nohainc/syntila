@@ -77,8 +77,11 @@ it("returns the latest failure per thread before applying the feed limit", async
   const { list, sqlite } = fixture();
   const now = new Date().toISOString();
   for (let i = 0; i < 55; i++) {
-    sqlite.prepare(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
-      VALUES(?,'T','alice','stateless','direct',1,'{}','failed',?,?)`)
+    sqlite
+      .prepare(
+        `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
+      VALUES(?,'T','alice','stateless','direct',1,'{}','failed',?,?)`,
+      )
       .run(`z-${String(i).padStart(2, "0")}`, now, now);
   }
   expect((await list("alice")).map((n) => n.id)).toEqual(["z-54"]);

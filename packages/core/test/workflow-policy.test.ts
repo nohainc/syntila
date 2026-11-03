@@ -47,10 +47,19 @@ it("spaces graph policy and per-Step selection without altering execution snapsh
 });
 
 it("uses configured role selections for Research v2 rather than composer overrides", () => {
-  expect(workflowCatalogEntry(BUILTIN_WORKFLOW_CATALOG["research:v2"]!).executionPolicy)
-    .toMatchObject({ multiStep: true, userSelectsWorker: false, userSelectsModel: false, userSelectsEffort: false });
-  expect(workflowCatalogEntry(BUILTIN_WORKFLOW_CATALOG["research:v1"]!).executionPolicy)
-    .toEqual(MANUAL_WORKFLOW_POLICY);
+  expect(
+    workflowCatalogEntry(BUILTIN_WORKFLOW_CATALOG["research:v2"]!)
+      .executionPolicy,
+  ).toMatchObject({
+    multiStep: true,
+    userSelectsWorker: false,
+    userSelectsModel: false,
+    userSelectsEffort: false,
+  });
+  expect(
+    workflowCatalogEntry(BUILTIN_WORKFLOW_CATALOG["research:v1"]!)
+      .executionPolicy,
+  ).toEqual(MANUAL_WORKFLOW_POLICY);
 });
 
 it("requires explicit policy for every catalog version and future graph", () => {

@@ -1,6 +1,5 @@
 import {
   planWorkflowTasks,
-  stepInstanceId,
   type BuiltinWorkflowDefinition,
   type WorkflowStepRun,
 } from "@syntila/core";
