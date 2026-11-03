@@ -202,6 +202,7 @@ The repository has converged on the v8 assignment path and clean v8 schema. The 
 - [Worker Profile V9](docs/specifications/WORKER_PROFILE_V9.md)
 - [Architecture v8](docs/architecture/ARCHITECTURE_V8.md)
 - [ADR-018: Generic CLI Worker Engine and Tool Profiles](docs/decisions/ADR-018-generic-cli-worker-engine-and-tool-profiles.md)
+- [ADR-027: Custom Worker plugins (proposed, Syntila Plus)](docs/decisions/ADR-027-custom-worker-plugins.md) and its [architecture](docs/architecture/CUSTOM_WORKER_PLUGINS.md); not yet part of the normative contract
 - [ADR-019: Syntila Profile Lab Architecture Contract](docs/decisions/ADR-019-syntila-profile-lab.md)
 - [Conversation Continuity Phase 0 audit](docs/architecture/CONVERSATION_CONTINUITY_PHASE_0_AUDIT.md)
 - [Work v1 Contract](docs/specifications/WORK_V1_CONTRACT.md)
