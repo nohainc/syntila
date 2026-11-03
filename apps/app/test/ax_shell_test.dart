@@ -1779,6 +1779,7 @@ void main() {
                 onOpenAbout: () {},
                 onOpenExternal: (_) {},
                 onToggleCollapse: () => collapseToggled = true,
+                sidebarWidth: 260,
               ),
             ),
           ),
@@ -1833,6 +1834,7 @@ void main() {
       expect(find.byType(SyntilaFolderIcon), findsAtLeastNWidgets(1));
       expect(find.text(testSpace.name), findsOneWidget);
       expect(find.text(testSpace.threads.first.name), findsOneWidget);
+      expect(tester.getSize(find.byType(MenuItemButton).first).width, 260);
       expect(find.text('Create Space'), findsNothing); // Removed from menu
       await tester.tap(find.text(testSpace.threads.first.name));
       await tester.pumpAndSettle();

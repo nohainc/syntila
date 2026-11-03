@@ -1,4 +1,3 @@
-import '../profile/account_plan.dart' show WorkspaceAllowanceNote;
 import 'package:syntila_design/syntila_design.dart';
 import '../../ax/ax_people.dart';
 import '../../ax/ax_data.dart'
@@ -46,6 +45,7 @@ class WorkspacesPage extends StatefulWidget {
     this.onSetParallelSlots,
     this.onRevoke,
     this.onLeaveShared,
+    this.onSpaceAiSharingChanged,
     // Retained as optional compatibility inputs while callers are audited.
     VoidCallback? onAdd,
     ValueChanged<AxWorkspace>? onRename,
@@ -90,6 +90,10 @@ class WorkspacesPage extends StatefulWidget {
   final Future<void> Function(AxWorkspace workspace, int slots)?
       onSetParallelSlots;
 
+  /// Owner-only: notifies when Space AI availability is toggled for a Workspace.
+  final void Function(String workspaceId, {bool? allowChat, bool? allowWork})?
+      onSpaceAiSharingChanged;
+
   @override
   State<WorkspacesPage> createState() => _WorkspacesPageState();
 }
@@ -98,6 +102,8 @@ class _WorkspacesPageState extends State<WorkspacesPage>
     with TickerProviderStateMixin {
   TabController? _tabs;
   String? _selectedId;
+  final Map<String, bool> _workspaceChatSharing = {};
+  final Map<String, bool> _workspaceWorkSharing = {};
 
   @override
   void initState() {
@@ -156,8 +162,6 @@ class _WorkspacesPageState extends State<WorkspacesPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.accountPlanSource != null)
-          WorkspaceAllowanceNote(source: widget.accountPlanSource!),
         if (tabs == null)
           const _EmptyWorkspaces()
         else ...[
@@ -258,7 +262,27 @@ class _WorkspacesPageState extends State<WorkspacesPage>
             slots: workspace.parallelSlots!,
             onChanged: (slots) => widget.onSetParallelSlots!(workspace, slots),
           ),
-        const SizedBox(height: 16),
+        if (!workspace.shared) ...[
+          const SizedBox(height: 24),
+          _WorkspaceSpaceAiOptions(
+            key: ValueKey('workspace-space-ai-options-${workspace.id}'),
+            workspaceId: workspace.id,
+            initialChat: _workspaceChatSharing[workspace.id] ?? false,
+            initialWork: _workspaceWorkSharing[workspace.id] ?? false,
+            onChanged: (chat, work) {
+              setState(() {
+                _workspaceChatSharing[workspace.id] = chat;
+                _workspaceWorkSharing[workspace.id] = work;
+              });
+              widget.onSpaceAiSharingChanged?.call(
+                workspace.id,
+                allowChat: chat,
+                allowWork: work,
+              );
+            },
+          ),
+        ],
+        const SizedBox(height: 24),
         _WorkspaceCardBody(
           workers: workers,
           usageSource:
@@ -811,7 +835,7 @@ class _ParallelSlotsControlState extends State<_ParallelSlotsControl> {
         child: Row(children: [
           Text('Parallel requests',
               style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(width: 12),
+          const Spacer(),
           Builder(builder: (context) {
             final isDark = Theme.of(context).brightness == Brightness.dark;
             return DecoratedBox(
@@ -872,4 +896,126 @@ class _ParallelSlotsControlState extends State<_ParallelSlotsControl> {
           }),
         ]),
       );
+}
+
+class _WorkspaceSpaceAiOptions extends StatefulWidget {
+  const _WorkspaceSpaceAiOptions({
+    super.key,
+    required this.workspaceId,
+    this.initialChat = false,
+    this.initialWork = false,
+    this.onChanged,
+  });
+
+  final String workspaceId;
+  final bool initialChat;
+  final bool initialWork;
+  final void Function(bool allowChat, bool allowWork)? onChanged;
+
+  @override
+  State<_WorkspaceSpaceAiOptions> createState() =>
+      _WorkspaceSpaceAiOptionsState();
+}
+
+class _WorkspaceSpaceAiOptionsState extends State<_WorkspaceSpaceAiOptions> {
+  late bool _allowChat = widget.initialChat;
+  late bool _allowWork = widget.initialWork;
+
+  @override
+  void didUpdateWidget(_WorkspaceSpaceAiOptions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.workspaceId != widget.workspaceId ||
+        oldWidget.initialChat != widget.initialChat ||
+        oldWidget.initialWork != widget.initialWork) {
+      _allowChat = widget.initialChat;
+      _allowWork = widget.initialWork;
+    }
+  }
+
+  Future<bool> _showAgreementDialog(String optionTitle) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        constraints: SyntilaDialogStyle.small,
+        title: const Text('Worker License & Subscription Agreement'),
+        content: Text(
+          'Enabling "$optionTitle" makes this Workspace available to other members of your Spaces so they can send prompts and execute tasks.\n\n'
+          'Please ensure that your worker model licenses and subscriptions permit third-party or team access. While standard API billing allows multi-user access, personal user subscriptions may prohibit sharing your workspace or prompts with other individuals.',
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey('agreement-cancel-button'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('agreement-confirm-button'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('I agree'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _toggleChat(bool value) async {
+    if (value) {
+      final agreed = await _showAgreementDialog('Use Space AI for chat');
+      if (!agreed || !mounted) return;
+    }
+    setState(() => _allowChat = value);
+    widget.onChanged?.call(_allowChat, _allowWork);
+  }
+
+  Future<void> _toggleWork(bool value) async {
+    if (value) {
+      final agreed = await _showAgreementDialog('Use Space AI for work');
+      if (!agreed || !mounted) return;
+    }
+    setState(() => _allowWork = value);
+    widget.onChanged?.call(_allowChat, _allowWork);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Space AI availability',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Make this Workspace available to other members of your Spaces.',
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        CheckboxListTile(
+          key: ValueKey('workspace-space-ai-chat-${widget.workspaceId}'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Use Space AI for chat'),
+          subtitle: const Text(
+              'Allow other Space members to use this Workspace in Chat'),
+          value: _allowChat,
+          onChanged: (value) => _toggleChat(value == true),
+        ),
+        CheckboxListTile(
+          key: ValueKey('workspace-space-ai-work-${widget.workspaceId}'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Use Space AI for work'),
+          subtitle: const Text(
+              'Allow other Space members to use this Workspace in Work'),
+          value: _allowWork,
+          onChanged: (value) => _toggleWork(value == true),
+        ),
+      ],
+    );
+  }
 }

@@ -129,4 +129,63 @@ void main() {
       );
     },
   );
+
+  test('a resumed session receives a synthesis from a different session', () {
+    final researchHistory = ConversationBootstrap(
+      conversationId: 'C',
+      contextRevision: 2,
+      turnRevision: 3,
+      throughSequence: 4,
+      text: jsonEncode({
+        'conversationId': 'C',
+        'throughSequence': 4,
+        'history': [
+          {
+            'sequence': 3,
+            'contextRevision': 2,
+            'kind': 'user_message',
+            'text': 'Research question',
+          },
+          {
+            'sequence': 4,
+            'contextRevision': 2,
+            'kind': 'worker_response',
+            'text': 'Synthesis outcome',
+            'metadata': {'workerSessionId': 'research-synthesis-session'},
+          },
+        ],
+      }),
+    );
+    final next = ExecuteRequest(
+      requestId: 'next',
+      assignmentId: 'next-assignment',
+      prompt: 'Follow up',
+      timeoutMs: 10000,
+      sessionPolicy: WorkerSessionPolicy.durableSession,
+      sessionKey: 'key',
+      workerSession: WorkerSessionContext(
+        id: 'S',
+        conversationId: 'C',
+        workerId: 'W',
+        baseContextRevision: 2,
+        bootstrap: researchHistory,
+      ),
+    );
+    expect(router.prepare(next).prompt, contains('Synthesis outcome'));
+    final resumed = router.prepare(
+      next,
+      nativeSessionId: 'native',
+      storedSession: stored(1, 2),
+    );
+    expect(resumed.action, ConversationExecutionAction.syncAndContinue);
+    expect(resumed.prompt, contains('Synthesis outcome'));
+    // A result can arrive after this session already consumed that revision.
+    final late = router.prepare(
+      next,
+      nativeSessionId: 'native',
+      storedSession: stored(2, 3),
+    );
+    expect(late.action, ConversationExecutionAction.syncAndContinue);
+    expect(late.prompt, contains('Synthesis outcome'));
+  });
 }

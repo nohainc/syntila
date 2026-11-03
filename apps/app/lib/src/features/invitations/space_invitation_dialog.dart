@@ -42,6 +42,8 @@ class _SpaceInvitationDialogState extends State<SpaceInvitationDialog> {
     final allowed = space.permissions.toJson();
     _permissions = AxSpacePermissions.forRole('collaborator').toJson()
       ..updateAll((key, value) => value && allowed[key] == true);
+    _permissions['chat'] = false;
+    _permissions['work'] = false;
     _error = null;
   }
 
@@ -294,29 +296,19 @@ class _SpaceInvitationDialogState extends State<SpaceInvitationDialog> {
                   Text('Permissions',
                       style: Theme.of(context).textTheme.titleMedium),
                   for (final entry in const {
-                    'chat': 'Use Chat',
-                    'useOwnWorkers': 'Use own Workers in Chat',
-                    'work': 'Use Work',
-                    'manageOwnThreads': 'Manage own threads'
+                    'chat': 'Use Space AI for chat',
+                    'work': 'Use Space AI for work',
+                    'manageOwnThreads': 'Create threads'
                   }.entries)
                     CheckboxListTile(
                         key: ValueKey('invite-permission-${entry.key}'),
                         contentPadding: EdgeInsets.zero,
                         title: Text(entry.value),
                         value: (_permissions[entry.key] ?? false) &&
-                            allowed[entry.key] == true &&
-                            (entry.key != 'useOwnWorkers' ||
-                                _permissions['chat'] == true),
-                        // Own Workers refine Chat; denying Chat denies them.
-                        onChanged: !_sending &&
-                                allowed[entry.key] == true &&
-                                (entry.key != 'useOwnWorkers' ||
-                                    _permissions['chat'] == true)
+                            allowed[entry.key] == true,
+                        onChanged: !_sending && allowed[entry.key] == true
                             ? (value) => setState(() {
                                   _permissions[entry.key] = value == true;
-                                  if (entry.key == 'chat' && value != true) {
-                                    _permissions['useOwnWorkers'] = false;
-                                  }
                                 })
                             : null),
                 ],

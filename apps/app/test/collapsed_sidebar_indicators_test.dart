@@ -92,7 +92,7 @@ void main() {
   });
 
   testWidgets(
-      'collapsed own and shared Spaces get separate icons with pins first',
+      'collapsed spaces on rail list pins first without separate shared icon',
       (tester) async {
     AxSpace item(String id, String role, {int? pin}) => AxSpace.fromJson({
           'id': id,
@@ -116,29 +116,20 @@ void main() {
             spaceListenable: spaces),
         navigate: (value) => destination = value));
     expect(find.byTooltip('Your spaces'), findsOneWidget);
+    expect(find.byTooltip('Shared with you'), findsNothing);
     expect(find.byIcon(Icons.push_pin_outlined), findsNothing);
     await tester.tap(find.byTooltip('Your spaces'));
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(find.text('My Space')).dy,
         greaterThan(tester.getTopLeft(find.text('Owned pin')).dy));
-    expect(find.text('Shared pin'), findsNothing);
-    await tester.tapAt(Offset.zero);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Shared with you'));
-    await tester.pumpAndSettle();
-    expect(find.text('Owned pin'), findsNothing);
-    expect(tester.getTopLeft(find.text('Shared Space')).dy,
-        greaterThan(tester.getTopLeft(find.text('Shared pin')).dy));
+    expect(find.text('Shared pin'), findsOneWidget);
     await tester.tap(find.text('Shared pin'));
     await tester.pumpAndSettle();
     expect(destination?.spaceId, 'Shared pin');
     spaces.value = [item('Owned pin', 'owner'), owned, shared];
     await tester.pumpAndSettle();
     expect(find.byTooltip('Your spaces'), findsOneWidget);
-    await tester.tap(find.byTooltip('Your spaces'));
-    await tester.pumpAndSettle();
-    expect(find.text('Owned pin'), findsOneWidget);
-    expect(find.text('Shared Space'), findsNothing);
+    expect(find.byTooltip('Shared with you'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

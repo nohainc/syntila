@@ -139,7 +139,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Members'), findsOneWidget);
     expect(find.text('Name / email'), findsNothing);
-    expect(find.byTooltip('Share Space'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Invite'), findsOneWidget);
     expect(
         tester.getRect(find.text('Members')).bottom,
         lessThan(tester
@@ -149,7 +149,7 @@ void main() {
     expect(
         find.descendant(
             of: find.byWidget(table.columns.first.label),
-            matching: find.byTooltip('Share Space')),
+            matching: find.widgetWithText(TextButton, 'Invite')),
         findsOneWidget);
     expect(find.text('Created by member@example.test'), findsNothing);
     expect(find.text('Owner'), findsOneWidget);
@@ -177,36 +177,56 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
   testWidgets(
-      'own Workers sit next to Chat and are disabled when Chat is denied',
+      'members tab shows renamed permission columns and legend; own Workers in Chat is removed from grid',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final source = PermissionSource();
     await tester.pumpWidget(page(source));
     await tester.pumpAndSettle();
+
+    expect(find.text('Use Space AI for chat'), findsWidgets);
+    expect(find.text('Use Space AI for work'), findsWidgets);
+    expect(find.text('Create threads'), findsWidgets);
+    expect(find.text('Chat workflow'), findsNothing);
+    expect(find.text('Work workflow'), findsNothing);
+    expect(find.text('Own threads'), findsNothing);
+    expect(find.text('Own Workers in Chat'), findsNothing);
+
     final table = tester.widget<DataTable>(find.byType(DataTable));
+    expect(table.columns.length, 5);
+    expect(
+        find.descendant(
+            of: find.byWidget(table.columns[1].label),
+            matching: find.byTooltip('Use Space AI for chat')),
+        findsOneWidget);
     expect(
         find.descendant(
             of: find.byWidget(table.columns[2].label),
-            matching: find.byTooltip('Own Workers in Chat')),
+            matching: find.byTooltip('Use Space AI for work')),
         findsOneWidget);
-    Checkbox own() => tester.widget<Checkbox>(
-        find.byKey(const ValueKey('permission-member-useOwnWorkers')));
-    expect(own().value, isTrue);
-    expect(own().onChanged, isNotNull);
-    await tester.tap(find.byKey(const ValueKey('permission-member-chat')));
-    await tester.pumpAndSettle();
-    expect(source.memberRights.chat, isFalse);
-    expect(source.memberRights.useOwnWorkers, isFalse);
-    expect(own().value, isFalse);
-    expect(own().onChanged, isNull);
-    await tester.pump(const Duration(seconds: 5));
-  });
-  test('own Workers require Chat in the permission model', () {
     expect(
-        AxSpacePermissions.fromJson({'chat': false, 'useOwnWorkers': true})
-            .useOwnWorkers,
-        isFalse);
+        find.descendant(
+            of: find.byWidget(table.columns[3].label),
+            matching: find.byTooltip('Create threads')),
+        findsOneWidget);
+    expect(find.byTooltip('Own Workers in Chat'), findsNothing);
+
+    expect(find.byKey(const ValueKey('permission-member-useOwnWorkers')),
+        findsNothing);
+    expect(
+        find.byKey(const ValueKey('permission-member-chat')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('permission-member-work')), findsOneWidget);
+    expect(find.byKey(const ValueKey('permission-member-manageOwnThreads')),
+        findsOneWidget);
+  });
+  test('own Workers is available by default and for all members', () {
+    expect(const AxSpacePermissions().useOwnWorkers, isTrue);
+    expect(AxSpacePermissions.forRole('viewer').useOwnWorkers, isTrue);
+    expect(AxSpacePermissions.forRole('collaborator').useOwnWorkers, isTrue);
+    expect(AxSpacePermissions.fromJson({}).useOwnWorkers, isTrue);
+    expect(AxSpacePermissions.fromJson({'chat': false}).useOwnWorkers, isTrue);
     expect(
         AxSpacePermissions.fromJson({'chat': true, 'useOwnWorkers': true})
             .toJson()
@@ -230,6 +250,7 @@ void main() {
     expect(find.text('Workspaces'), findsNothing);
     expect(find.byType(Switch), findsNothing);
     expect(find.byTooltip('Share Space'), findsNothing);
+    expect(find.widgetWithText(TextButton, 'Invite'), findsNothing);
     expect(
         tester
             .widget<Checkbox>(

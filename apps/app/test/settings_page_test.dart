@@ -32,13 +32,26 @@ void main() {
     expect(
         ViewPreferences.decode('{"recentThreadsCount":8}').recentThreadsCount,
         7);
+    expect(ViewPreferences.decode('{"sidebarWidth":150}').sidebarWidth, 200);
+    expect(ViewPreferences.decode('{"sidebarWidth":350}').sidebarWidth, 300);
+    expect(
+        ViewPreferences.decode('{"sidebarCollapsed":true,"sidebarWidth":245.5}')
+            .sidebarCollapsed,
+        isTrue);
+    expect(
+        ViewPreferences.decode('{"sidebarCollapsed":true,"sidebarWidth":245.5}')
+            .sidebarWidth,
+        245.5);
   });
 
   test('store persists preferences', () {
     String? raw;
     final store = ViewPreferencesStore(read: () => raw, write: (v) => raw = v);
-    store.save(const ViewPreferences(recentThreadsCount: 10));
+    store.save(const ViewPreferences(
+        recentThreadsCount: 10, sidebarCollapsed: true, sidebarWidth: 240));
     expect(store.load().recentThreadsCount, 10);
+    expect(store.load().sidebarCollapsed, isTrue);
+    expect(store.load().sidebarWidth, 240);
   });
 
   test('text size persists and falls back to default', () {
@@ -48,6 +61,13 @@ void main() {
     expect(ViewPreferences.decode('{"textSize":"huge"}').textSize,
         TextSizeOption.standard);
     expect(ViewPreferences.decode(null).textSize, TextSizeOption.standard);
+  });
+
+  test('text size determines regular and wide page limits', () {
+    expect(
+        TextSizeOption.values.map((size) => size.pageWidth), [500, 600, 700]);
+    expect(TextSizeOption.values.map((size) => size.widePageWidth),
+        [900, 900, 1000]);
   });
 
   testWidgets('settings page changes text size', (tester) async {

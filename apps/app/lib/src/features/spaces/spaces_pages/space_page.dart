@@ -253,155 +253,161 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
   Widget _page() => LayoutBuilder(
         builder: (context, constraints) => Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 840),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (_editing)
-                              Expanded(child: _spaceEditForm())
-                            else
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      widget.space.name.isNotEmpty
-                                          ? widget.space.name
-                                          : 'Untitled Space',
-                                      textAlign: TextAlign.start,
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: -0.3,
-                                      ),
-                                    ),
-                                    if (widget.space.description
-                                        .trim()
-                                        .isNotEmpty) ...[
-                                      const SizedBox(height: 6),
+            constraints:
+                BoxConstraints(maxWidth: PageWidth.of(context).pageWidth),
+            child: SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_editing)
+                                Expanded(child: _spaceEditForm())
+                              else
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
                                       Text(
-                                        widget.space.description.trim(),
+                                        widget.space.name.isNotEmpty
+                                            ? widget.space.name
+                                            : 'Untitled Space',
                                         textAlign: TextAlign.start,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: -0.3,
                                         ),
                                       ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            SizedBox(
-                              key: const ValueKey('space-header-actions'),
-                              child: isOwner && !_editing
-                                  ? PopupMenuButton<String>(
-                                      color:
-                                          SyntilaMenuStyle.background(_isDark),
-                                      surfaceTintColor: Colors.transparent,
-                                      elevation: 12,
-                                      shadowColor:
-                                          SyntilaMenuStyle.shadow(_isDark),
-                                      shape: SyntilaMenuStyle.shape(_isDark),
-                                      menuPadding: SyntilaMenuStyle.padding,
-                                      icon: const Icon(Icons.more_vert),
-                                      tooltip: 'Space actions',
-                                      splashRadius: 18,
-                                      onSelected: (action) {
-                                        if (action == 'edit') {
-                                          _startEditing();
-                                        } else if (action == 'archive') {
-                                          widget.onArchive();
-                                        } else if (action == 'delete') {
-                                          widget.onDelete();
-                                        }
-                                      },
-                                      itemBuilder: (context) => [
-                                        PopupMenuItem(
-                                          height: 36,
-                                          textStyle:
-                                              SyntilaMenuStyle.popupTextStyle(
-                                                  _isDark),
-                                          value: 'edit',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.edit_outlined,
-                                                  color: SyntilaColors
-                                                      .textSecondary(_isDark),
-                                                  size: 18),
-                                              const SizedBox(width: 8),
-                                              const Text('Edit'),
-                                            ],
-                                          ),
-                                        ),
-                                        PopupMenuItem(
-                                          height: 36,
-                                          textStyle:
-                                              SyntilaMenuStyle.popupTextStyle(
-                                                  _isDark),
-                                          value: 'archive',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.archive_outlined,
-                                                  color: SyntilaColors
-                                                      .textSecondary(_isDark),
-                                                  size: 18),
-                                              const SizedBox(width: 8),
-                                              const Text('Archive'),
-                                            ],
-                                          ),
-                                        ),
-                                        PopupMenuItem(
-                                          height: 36,
-                                          textStyle:
-                                              SyntilaMenuStyle.popupTextStyle(
-                                                  _isDark),
-                                          value: 'delete',
-                                          child: const Row(
-                                            children: [
-                                              Icon(Icons.delete_outline,
-                                                  size: 18,
-                                                  color: SyntilaColors.error),
-                                              SizedBox(width: 8),
-                                              Text('Delete',
-                                                  style: TextStyle(
-                                                      color:
-                                                          SyntilaColors.error)),
-                                            ],
+                                      if (widget.space.description
+                                          .trim()
+                                          .isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          widget.space.description.trim(),
+                                          textAlign: TextAlign.start,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
                                           ),
                                         ),
                                       ],
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                          ],
-                        ),
-                        if (_workflows != null && !_editing)
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: _SpaceWorkspaceSelector(
-                                configurations: _workflows!, isOwner: isOwner),
+                                    ],
+                                  ),
+                                ),
+                              SizedBox(
+                                key: const ValueKey('space-header-actions'),
+                                child: isOwner && !_editing
+                                    ? PopupMenuButton<String>(
+                                        color: SyntilaMenuStyle.background(
+                                            _isDark),
+                                        surfaceTintColor: Colors.transparent,
+                                        elevation: 12,
+                                        shadowColor:
+                                            SyntilaMenuStyle.shadow(_isDark),
+                                        shape: SyntilaMenuStyle.shape(_isDark),
+                                        menuPadding: SyntilaMenuStyle.padding,
+                                        icon: const Icon(Icons.more_vert),
+                                        tooltip: 'Space actions',
+                                        splashRadius: 18,
+                                        onSelected: (action) {
+                                          if (action == 'edit') {
+                                            _startEditing();
+                                          } else if (action == 'archive') {
+                                            widget.onArchive();
+                                          } else if (action == 'delete') {
+                                            widget.onDelete();
+                                          }
+                                        },
+                                        itemBuilder: (context) => [
+                                          PopupMenuItem(
+                                            height: 36,
+                                            textStyle:
+                                                SyntilaMenuStyle.popupTextStyle(
+                                                    _isDark),
+                                            value: 'edit',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.edit_outlined,
+                                                    color: SyntilaColors
+                                                        .textSecondary(_isDark),
+                                                    size: 18),
+                                                const SizedBox(width: 8),
+                                                const Text('Edit'),
+                                              ],
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            height: 36,
+                                            textStyle:
+                                                SyntilaMenuStyle.popupTextStyle(
+                                                    _isDark),
+                                            value: 'archive',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.archive_outlined,
+                                                    color: SyntilaColors
+                                                        .textSecondary(_isDark),
+                                                    size: 18),
+                                                const SizedBox(width: 8),
+                                                const Text('Archive'),
+                                              ],
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            height: 36,
+                                            textStyle:
+                                                SyntilaMenuStyle.popupTextStyle(
+                                                    _isDark),
+                                            value: 'delete',
+                                            child: const Row(
+                                              children: [
+                                                Icon(Icons.delete_outline,
+                                                    size: 18,
+                                                    color: SyntilaColors.error),
+                                                SizedBox(width: 8),
+                                                Text('Delete',
+                                                    style: TextStyle(
+                                                        color: SyntilaColors
+                                                            .error)),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                            ],
                           ),
-                      ],
+                          if (_workflows != null && !_editing)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: _SpaceWorkspaceSelector(
+                                  configurations: _workflows!,
+                                  isOwner: isOwner),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (widget.section == SpacePageSection.members)
-                    _membersTab()
-                  else
-                    _threadsTab(),
-                ],
+                    if (widget.section == SpacePageSection.members)
+                      _membersTab()
+                    else
+                      _threadsTab(),
+                  ],
+                ),
               ),
             ),
           ),

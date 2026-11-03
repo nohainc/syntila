@@ -226,7 +226,7 @@ void main() {
     ))));
     await tester.pumpAndSettle();
     final loads = source.loads;
-    await tester.tap(find.byTooltip('Share Space'));
+    await tester.tap(find.widgetWithText(TextButton, 'Invite'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('invite-person-b')));
     await tester.pumpAndSettle();
@@ -236,8 +236,7 @@ void main() {
     expect(source.invitedUserId, 'b');
     expect(source.loads, loads + 1);
   });
-  testWidgets('People cards show email and use a responsive two-column layout',
-      (tester) async {
+  testWidgets('People cards show email and use one column', (tester) async {
     tester.view.physicalSize = const Size(1200, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -261,6 +260,11 @@ void main() {
     expect(find.text('Julia'), findsOneWidget);
     expect(find.byKey(const ValueKey('people-search')), findsNothing);
     expect(find.byType(Card), findsNWidgets(2));
+    final firstCard = tester.getRect(find.byKey(const ValueKey('person-b')));
+    final secondCard = tester.getRect(find.byKey(const ValueKey('person-x')));
+    expect(secondCard.left, firstCard.left);
+    expect(secondCard.width, firstCard.width);
+    expect(secondCard.top - firstCard.bottom, 12);
     expect(source.loads, 1);
   });
   testWidgets(
@@ -312,7 +316,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(source.invitedUserId, 'b');
     expect(source.invitedSpaceId, 'C');
-    expect(source.invitedPermissions!.chat, isTrue);
+    expect(source.invitedPermissions!.chat, isFalse);
     expect(source.invitedPermissions!.work, isFalse);
     expect(find.text('Renamed'), findsOneWidget);
     expect(
@@ -594,7 +598,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(source.sentUserIds, ['alex']);
     expect(source.invitedEmail, isNull);
-    expect(source.invitedPermissions!.chat, isTrue);
+    expect(source.invitedPermissions!.chat, isFalse);
     expect(source.invitedPermissions!.work, isFalse);
   });
   testWidgets(
@@ -604,9 +608,9 @@ void main() {
     final people = AxPeople(source, engine: AxSyncEngine());
     await openInvite(tester, people);
     expect(find.text('Read Space'), findsNothing);
-    expect(find.text('Use Work'), findsOneWidget);
+    expect(find.text('Use Space AI for work'), findsOneWidget);
     expect(find.text('Use Work workflows'), findsNothing);
-    expect(find.text('Manage own threads'), findsOneWidget);
+    expect(find.text('Create threads'), findsOneWidget);
     expect(find.text('Create and manage own threads'), findsNothing);
     await tester.enterText(
         find.byKey(const ValueKey('invite-new-email')), 'john@test');
@@ -616,7 +620,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(source.invitedEmail, 'john@test');
     expect(source.invitedUserId, isNull);
-    expect(source.invitedPermissions!.chat, isFalse);
+    expect(source.invitedPermissions!.chat, isTrue);
   });
   testWidgets(
       'multiple People create separate invitations and partial failures retain only unsent selections',

@@ -810,6 +810,33 @@ extension _ThreadActions on _ThreadPageState {
     }
   }
 
+  /// Research v2: the user chose to synthesize the reports that succeeded
+  /// instead of retrying the failed researcher. Cloud enforces the minimum.
+  Future<void> _synthesizePartialResearch(String workRequestId) async {
+    final dataSource = widget.dataSource;
+    if (dataSource == null) return;
+    try {
+      await dataSource.retryWorkRequestStep(
+        workRequestId: workRequestId,
+        stepKind: 'synthesis',
+        stepId: 'synthesis',
+        partial: true,
+      );
+      if (!mounted) return;
+      unawaited(_workHistoryCache
+          .refreshRequest(widget.thread.id, workRequestId, supersede: true)
+          .catchError((Object _) {}));
+      ScaffoldMessenger.of(context).showNotice(
+        const SnackBar(content: Text('Synthesizing the available reports.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showNotice(
+        const SnackBar(content: Text('Could not start the synthesis.')),
+      );
+    }
+  }
+
   Future<bool> _cancelWorkRequest(
     String workRequestId, {
     bool showFeedback = true,

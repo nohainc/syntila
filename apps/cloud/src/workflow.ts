@@ -282,6 +282,12 @@ export interface SyntilaWorkflowParams {
   readonly retryStepKind?: StepKind;
   readonly retrySessionStrategy?: "resume" | "fresh";
   readonly retryNumber?: number;
+  /**
+   * Research v2: the user asked for a synthesis of the reports that succeeded.
+   * Failed researchers are excluded (and named to the synthesis prompt) instead
+   * of being re-run; the request then completes with gaps.
+   */
+  readonly partialSynthesis?: boolean;
   /** Set by a confirmed retry of a `space_folder_exists` failure. */
   readonly retryAdoptSpaceFolder?: boolean;
   /** Set when the user chose to compact the Worker session after a context
@@ -769,6 +775,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       const persistedByKind = new Map(
         (persistedRows.results ?? []).map((row) => [String(row.kind), row]),
       );
+      const missingStepIds: string[] = [];
       tasks = tasks.map((task) => {
         // The retried step is re-executed by this run. The workflow function
         // body is replayed on every wake-up, and by then the retried step's
@@ -779,6 +786,16 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         // so retrying one researcher reuses its successful siblings.
         if (stepInstanceId(task.step) === params.retryStepKind) return task;
         const persisted = persistedByKind.get(stepInstanceId(task.step));
+        if (
+          params.partialSynthesis &&
+          task.step.kind === "research" &&
+          persisted?.status !== "completed"
+        ) {
+          // Excluded on purpose: counts as settled so synthesis can start,
+          // and is named in the synthesis prompt as a missing perspective.
+          missingStepIds.push(stepInstanceId(task.step));
+          return { ...task, status: "completed" as const };
+        }
         if (persisted?.status !== "completed") return task;
         const output = parseWorkflowStepResult(persisted.outputJson);
         if (!output) {
@@ -794,6 +811,8 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             typeof persisted.attempt === "number" ? persisted.attempt : 0,
         };
       });
+      if (missingStepIds.length > 0)
+        promptInput = { ...promptInput, missingStepIds };
     }
     await this.publishWorkEvent(params, "work_request.started", {
       status: "running",

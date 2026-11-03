@@ -214,7 +214,15 @@ class AxBuiltinWorkflowStep {
       AxBuiltinWorkflowStep(
         kind: _string(json, 'kind', ''),
         order: json['order'] as int? ?? 0,
-        id: json['id'] is String ? json['id'] as String : null,
+        id: json['id'] is String
+            ? json['id'] as String
+            : (json['stepId'] is String
+                ? json['stepId'] as String
+                : (json['step_id'] is String
+                    ? json['step_id'] as String
+                    : (json['stepInstanceId'] is String
+                        ? json['stepInstanceId'] as String
+                        : null))),
       );
 }
 
@@ -275,28 +283,24 @@ class AxPhaseItem {
 class AxSpacePermissions {
   const AxSpacePermissions(
       {this.chat = false,
-      bool useOwnWorkers = false,
+      this.useOwnWorkers = true,
       this.work = false,
-      this.manageOwnThreads = false})
-      : _useOwnWorkers = useOwnWorkers;
-  final bool chat, work, manageOwnThreads;
-  final bool _useOwnWorkers;
+      this.manageOwnThreads = false});
+  final bool chat, work, manageOwnThreads, useOwnWorkers;
 
-  /// Chat only: the member may answer with Workers from Workspaces they own.
-  /// Denying Chat also denies it.
-  bool get useOwnWorkers => chat && _useOwnWorkers;
   factory AxSpacePermissions.forRole(String role) => AxSpacePermissions(
       chat: role == 'owner' || role == 'collaborator',
-      useOwnWorkers: role == 'owner' || role == 'collaborator',
+      useOwnWorkers: true,
       work: role == 'owner' || role == 'collaborator',
       manageOwnThreads: role == 'owner' || role == 'collaborator');
   factory AxSpacePermissions.fromJson(Map json) => AxSpacePermissions(
       chat: json['chat'] == true,
-      useOwnWorkers: json['useOwnWorkers'] == true,
+      useOwnWorkers: json['useOwnWorkers'] != false,
       work: json['work'] == true,
       manageOwnThreads: json['manageOwnThreads'] == true);
 
-  /// Key order is the members table column order.
+  /// Key order is the members table column order; serialization preserves
+  /// useOwnWorkers for Cloud compatibility.
   Map<String, bool> toJson() => {
         'chat': chat,
         'useOwnWorkers': useOwnWorkers,

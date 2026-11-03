@@ -17,6 +17,9 @@ extension _AxAppViews on _AxAppStateMixin {
     if (preferences == _viewPreferences) return;
     _updateState(() {
       _viewPreferences = preferences;
+      if (!preferences.sidebarCollapsed) {
+        _sidebarPeeking = false;
+      }
     });
     _viewPreferencesStore.save(preferences);
   }

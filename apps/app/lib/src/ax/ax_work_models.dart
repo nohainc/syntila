@@ -599,7 +599,8 @@ class AxWorkRequestStep {
         updatedAt: json['updatedAt']?.toString(),
         elapsedMs: json['elapsedMs'] as int?,
         completedAt: json['completedAt']?.toString(),
-        resultText: json['resultText']?.toString(),
+        // The detail read model sends `resultText`, the list `finalText`.
+        resultText: (json['resultText'] ?? json['finalText'])?.toString(),
         assignmentId: json['assignmentId']?.toString(),
         sessionPolicy: json['sessionPolicy']?.toString(),
         errorCode: json['errorCode']?.toString(),
@@ -639,7 +640,16 @@ class AxWorkRequest {
     this.activityHistory = const [],
     this.executionPhase,
     this.replyTo,
+    this.completedWithGaps = false,
+    this.partialSynthesisAvailable = false,
   });
+
+  /// Research v2 only: the synthesis completed although a researcher failed.
+  final bool completedWithGaps;
+
+  /// Research v2 only: the request failed after enough researchers succeeded
+  /// that the user may ask for a synthesis of the available reports.
+  final bool partialSynthesisAvailable;
 
   final String id;
   final String? conversationId;
@@ -692,11 +702,39 @@ class AxWorkRequest {
           error: error,
           activityHistory: activityHistory ?? this.activityHistory,
           replyTo: replyTo,
+          completedWithGaps: completedWithGaps,
+          partialSynthesisAvailable: partialSynthesisAvailable,
           // A terminal status forces the terminal phase so a request that
           // finished can never render as still executing.
           executionPhase: status != null && AxExecutionPhase.isTerminal(status)
               ? status
               : executionPhase);
+
+  /// Research reports remain inspectable on their steps, never as the outcome.
+  String? get primaryResponseText {
+    if (workflowId == 'research' && workflowVersion == 2) {
+      if (status != 'completed') return null;
+      final synthesis =
+          steps.where((step) => step.id == 'synthesis').firstOrNull;
+      if (synthesis?.status != 'completed') return null;
+      return finalText?.trim().isNotEmpty == true
+          ? finalText
+          : synthesis?.resultText;
+    }
+    return finalText?.trim().isNotEmpty == true
+        ? finalText
+        : turns
+                .where((turn) =>
+                    turn.status == 'completed' &&
+                    turn.resultText?.trim().isNotEmpty == true)
+                .lastOrNull
+                ?.resultText ??
+            steps
+                .map((step) => step.resultText)
+                .whereType<String>()
+                .where((text) => text.trim().isNotEmpty)
+                .firstOrNull;
+  }
 
   String? get testSummary {
     for (final step in steps) {
@@ -766,6 +804,8 @@ class AxWorkRequest {
       activityHistory: activityHistory,
       executionPhase: json['executionPhase']?.toString(),
       replyTo: AxReplyReference.fromJson(json['replyTo']),
+      completedWithGaps: json['completedWithGaps'] == true,
+      partialSynthesisAvailable: json['partialSynthesisAvailable'] == true,
     );
   }
 }
@@ -1055,6 +1095,7 @@ abstract interface class AxDataSource {
     bool clearAiHistory = false,
     bool compactContext = false,
     bool confirmSideEffects = false,
+    bool partial = false,
   }) async =>
       throw UnimplementedError('Work Request retry is not available');
   Future<void> cancelWorkRequest({

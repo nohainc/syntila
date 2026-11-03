@@ -253,16 +253,25 @@ class _WorkspaceMemberAccessSectionState
       return Card(
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
-        child: ExpansionTile(
-          key: const ValueKey('member-access-expansion'),
-          leading: const Icon(Icons.tune),
-          title: Text(title,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          expandedAlignment: Alignment.centerLeft,
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          children: body,
+        child: Theme(
+          data: theme.copyWith(
+            hoverColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            splashColor: Colors.transparent,
+            splashFactory: NoSplash.splashFactory,
+          ),
+          child: ExpansionTile(
+            key: const ValueKey('member-access-expansion'),
+            expansionAnimationStyle: AnimationStyle.noAnimation,
+            leading: const Icon(Icons.tune),
+            title: Text(title,
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            expandedCrossAxisAlignment: CrossAxisAlignment.start,
+            expandedAlignment: Alignment.centerLeft,
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: body,
+          ),
         ),
       );
     }

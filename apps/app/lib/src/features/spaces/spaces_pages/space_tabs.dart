@@ -198,6 +198,9 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
 
   Widget _membersTab() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hasOtherMembers = members.any((m) => m.role != 'owner') ||
+        members.length > 1 ||
+        invitations.isNotEmpty;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
@@ -207,200 +210,209 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
             Text('Members', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
           ],
-          Text(
-            'Choose what each member can do in this Space.',
-            style: TextStyle(
-              fontSize: 13,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 16,
-            runSpacing: 6,
-            children: [
-              _permissionLegendItem(Icons.chat_bubble_outline, 'Chat workflow'),
-              _permissionLegendItem(
-                  Icons.smart_toy_outlined, 'Own Workers in Chat'),
-              _permissionLegendItem(Icons.work_outline, 'Work workflow'),
-              _permissionLegendItem(Icons.forum_outlined, 'Own threads'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (widget.dataSource is AxSpaceMemberUsageDataSource &&
-              !membersLoading)
-            SpaceMemberUsageNote(
-              source: widget.dataSource as AxSpaceMemberUsageDataSource,
-              spaceId: widget.space.id,
-              isOwner: canInvite,
-              members: members.length,
-              pendingInvitations:
-                  invitations.where((i) => i.status == 'pending').length,
-            ),
           if (membersError != null)
             const Text(
                 'Members could not be loaded. Reopen this Space to try again.'),
           if (membersLoading)
             const LinearProgressIndicator()
-          else ...[
-            if (members.isNotEmpty || canInvite) ...[
-              LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  key: const ValueKey('space-members-scroll'),
-                  scrollDirection: Axis.horizontal,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                    child: DataTable(
-                      horizontalMargin: 0,
-                      columnSpacing: 20,
-                      dataRowMinHeight: 56,
-                      dataRowMaxHeight: 64,
-                      columns: [
-                        DataColumn(
-                            label: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (canInvite)
-                              IconButton(
-                                icon: const Icon(Icons.add),
-                                tooltip: 'Share Space',
-                                splashRadius: 20,
-                                onPressed: _share,
-                              ),
-                          ],
-                        )),
-                        _permissionColumn(Icons.chat_bubble_outline, 'Chat'),
-                        _permissionColumn(
-                            Icons.smart_toy_outlined, 'Own Workers in Chat'),
-                        _permissionColumn(Icons.work_outline, 'Work'),
-                        _permissionColumn(Icons.forum_outlined, 'Own threads'),
-                        const DataColumn(
-                          numeric: true,
-                          label: Tooltip(
-                            message: 'Remove member',
-                            child: SizedBox(
-                              width: 20,
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Icon(Icons.person_remove_outlined,
-                                    size: 18),
-                              ),
+          else if (!hasOtherMembers) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'No other members yet. Only you are here.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (canInvite) ...[
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: _share,
+                        child: const Text('Invite'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ] else ...[
+            Text(
+              'Choose what each member can do in this Space.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 16,
+              runSpacing: 6,
+              children: [
+                _permissionLegendItem(
+                    Icons.chat_bubble_outline, 'Use Space AI for chat'),
+                _permissionLegendItem(
+                    Icons.work_outline, 'Use Space AI for work'),
+                _permissionLegendItem(Icons.forum_outlined, 'Create threads'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (widget.dataSource is AxSpaceMemberUsageDataSource)
+              SpaceMemberUsageNote(
+                source: widget.dataSource as AxSpaceMemberUsageDataSource,
+                spaceId: widget.space.id,
+                isOwner: canInvite,
+                members: members.length,
+                pendingInvitations:
+                    invitations.where((i) => i.status == 'pending').length,
+              ),
+            LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                key: const ValueKey('space-members-scroll'),
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                  child: DataTable(
+                    horizontalMargin: 0,
+                    columnSpacing: 20,
+                    dataRowMinHeight: 56,
+                    dataRowMaxHeight: 64,
+                    columns: [
+                      DataColumn(
+                          label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (canInvite)
+                            TextButton(
+                              onPressed: _share,
+                              child: const Text('Invite'),
+                            ),
+                        ],
+                      )),
+                      _permissionColumn(
+                          Icons.chat_bubble_outline, 'Use Space AI for chat'),
+                      _permissionColumn(
+                          Icons.work_outline, 'Use Space AI for work'),
+                      _permissionColumn(Icons.forum_outlined, 'Create threads'),
+                      const DataColumn(
+                        numeric: true,
+                        label: Tooltip(
+                          message: 'Remove member',
+                          child: SizedBox(
+                            width: 20,
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child:
+                                  Icon(Icons.person_remove_outlined, size: 18),
                             ),
                           ),
                         ),
-                      ],
-                      rows: members
-                          .map((member) => DataRow(cells: [
-                                DataCell(Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(member.displayName.isNotEmpty
-                                                ? member.displayName
-                                                : member.email),
-                                            if (member.role == 'owner') ...[
-                                              const SizedBox(width: 8),
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        horizontal: 6,
-                                                        vertical: 2),
-                                                decoration: BoxDecoration(
+                      ),
+                    ],
+                    rows: members
+                        .map((member) => DataRow(cells: [
+                              DataCell(Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(member.displayName.isNotEmpty
+                                              ? member.displayName
+                                              : member.email),
+                                          if (member.role == 'owner') ...[
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: SyntilaColors
+                                                    .primarySoftColor(isDark),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'Owner',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
                                                   color: SyntilaColors
-                                                      .primarySoftColor(isDark),
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                ),
-                                                child: Text(
-                                                  'Owner',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: SyntilaColors
-                                                        .primaryForeground(
-                                                            isDark),
-                                                  ),
+                                                      .primaryForeground(
+                                                          isDark),
                                                 ),
                                               ),
-                                            ],
-                                          ]),
-                                      if (member.displayName != member.email)
-                                        Text(member.email,
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurfaceVariant)),
-                                    ])),
-                                for (final entry in member.effectivePermissions
-                                    .toJson()
-                                    .entries)
-                                  DataCell(Align(
-                                    alignment: Alignment.centerRight,
-                                    child: SizedBox(
-                                      width: 20,
-                                      child: Align(
-                                        alignment: Alignment.centerRight,
-                                        child: Checkbox(
-                                          key: ValueKey(
-                                              'permission-${member.userId}-${entry.key}'),
-                                          value: entry.value,
-                                          materialTapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                          visualDensity: VisualDensity.compact,
-                                          // Own Workers refine Chat; they
-                                          // stay off while Chat is denied.
-                                          onChanged: isOwner &&
-                                                  member.role != 'owner' &&
-                                                  !_savingMembers.contains(
-                                                      member.userId) &&
-                                                  (entry.key !=
-                                                          'useOwnWorkers' ||
-                                                      member
-                                                          .effectivePermissions
-                                                          .chat)
-                                              ? (value) => _setMemberPermission(
-                                                  member,
-                                                  entry.key,
-                                                  value == true)
-                                              : null,
-                                        ),
-                                      ),
-                                    ),
-                                  )),
+                                            ),
+                                          ],
+                                        ]),
+                                    if (member.displayName != member.email)
+                                      Text(member.email,
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant)),
+                                  ])),
+                              for (final entry in member.effectivePermissions
+                                  .toJson()
+                                  .entries
+                                  .where((e) => e.key != 'useOwnWorkers'))
                                 DataCell(Align(
                                   alignment: Alignment.centerRight,
                                   child: SizedBox(
                                     width: 20,
-                                    child: isOwner && member.role != 'owner'
-                                        ? IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(),
-                                            splashRadius: 16,
-                                            icon: const Icon(
-                                                Icons.person_remove_outlined,
-                                                size: 18),
-                                            tooltip: 'Remove from Space',
-                                            onPressed: () =>
-                                                _removeMember(member))
-                                        : const SizedBox.shrink(),
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Checkbox(
+                                        key: ValueKey(
+                                            'permission-${member.userId}-${entry.key}'),
+                                        value: entry.value,
+                                        materialTapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        visualDensity: VisualDensity.compact,
+                                        onChanged: isOwner &&
+                                                member.role != 'owner' &&
+                                                !_savingMembers
+                                                    .contains(member.userId)
+                                            ? (value) => _setMemberPermission(
+                                                member,
+                                                entry.key,
+                                                value == true)
+                                            : null,
+                                      ),
+                                    ),
                                   ),
                                 )),
-                              ]))
-                          .toList(),
-                    ),
+                              DataCell(Align(
+                                alignment: Alignment.centerRight,
+                                child: SizedBox(
+                                  width: 20,
+                                  child: isOwner && member.role != 'owner'
+                                      ? IconButton(
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          splashRadius: 16,
+                                          icon: const Icon(
+                                              Icons.person_remove_outlined,
+                                              size: 18),
+                                          tooltip: 'Remove from Space',
+                                          onPressed: () =>
+                                              _removeMember(member))
+                                      : const SizedBox.shrink(),
+                                ),
+                              )),
+                            ]))
+                        .toList(),
                   ),
                 ),
               ),
-            ] else
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('No members found.'),
-              ),
+            ),
             if (invitations.isNotEmpty) ...[
               const SizedBox(height: 16),
               Padding(

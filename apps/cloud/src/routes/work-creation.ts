@@ -20,6 +20,7 @@ import {
   validateWorkRequest,
   validateBuiltinWorkflowDefinition,
   BUILTIN_WORKFLOWS,
+  CONVERSATION_WORKFLOWS,
   configuredWorkflowDefinition,
   stepInstanceId,
   conversationWorkflowForExecution,
@@ -612,10 +613,14 @@ export async function createWorkRequestForUser(
               : null,
         });
   const now = new Date().toISOString();
-  const conversationWorkflow = conversationWorkflowForExecution(
-    workflowId,
-    workflowVersion,
-  );
+  const conversationWorkflow =
+    conversationWorkflowForExecution(workflowId, workflowVersion) ??
+    (workflowId === "research" && workflowVersion === 2
+      ? // Conversation identity predates graph workflows and its persisted
+        // anchor accepts only chat/work. The request and Workflow Run retain
+        // their actual Research identity and version.
+        CONVERSATION_WORKFLOWS.chat!
+      : null);
   const selectedConversationId = conversationWorkflow
     ? await resolveThreadConversationId(env.SYNTILA_DB, threadId)
     : undefined;

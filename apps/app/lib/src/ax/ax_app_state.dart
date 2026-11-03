@@ -25,6 +25,10 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   List<AxNotification> get notifications => store.notifications;
   void _updateNotifications(VoidCallback callback) {
     callback();
+    final normalized = latestThreadFailures(notifications).take(50).toList();
+    notifications
+      ..clear()
+      ..addAll(normalized);
     AxRenderDiagnostics.instance.notifierDispatch(
       component: 'SyntilaAppShell',
       operation: 'notifications.changed',
@@ -151,8 +155,9 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   ThemeMode _themeMode = ThemeMode.system;
   late final ViewPreferencesStore _viewPreferencesStore;
   ViewPreferences _viewPreferences = const ViewPreferences();
-  bool _desktopSidebarCollapsed = false;
-  double _desktopSidebarWidth = ResizableSidebar.minWidth;
+  bool _sidebarPeeking = false;
+  bool get _desktopSidebarCollapsed => _viewPreferences.sidebarCollapsed;
+  double get _desktopSidebarWidth => _viewPreferences.sidebarWidth;
   final _mobileSpacesScroll = ScrollController();
   String? _mobileSpaceFilter;
   bool get showRunDetails => switch (navigation.kind) {

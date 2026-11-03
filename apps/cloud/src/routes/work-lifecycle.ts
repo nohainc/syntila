@@ -1,4 +1,8 @@
-import { stepInstanceId } from "@syntila/core";
+import {
+  RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS,
+  RESEARCH_SYNTHESIS_STEP_ID,
+  stepInstanceId,
+} from "@syntila/core";
 import { requireWorkflowEntitlement } from "./space-permissions.js";
 import {
   EXECUTION_WAIT_MESSAGES,
@@ -194,7 +198,12 @@ export async function handleRetryWorkRequest(
       String(row.workflowId),
     );
   if (!row) throw new HttpError(404, "Work Request not found");
-  if (row.status !== "failed")
+  // Research v2 completed with gaps may re-run a failed researcher (and then
+  // the synthesis) to replace the partial answer with a full comparison.
+  const isResearchV2 =
+    row.workflowId === "research" && Number(row.workflowVersion) === 2;
+  const gapRerun = isResearchV2 && row.status === "completed";
+  if (row.status !== "failed" && !gapRerun)
     throw new HttpError(409, "Only a failed Work Request can be retried");
 
   const body = parseJson<Record<string, unknown>>(await request.text(), {});
@@ -244,18 +253,55 @@ export async function handleRetryWorkRequest(
         assignmentErrorJson: string | null;
       }
     >();
-  if (failedTask?.status !== "failed")
+  // A user-requested partial synthesis is not the retry of a failed Step: it
+  // runs the not-yet-run synthesis over the reports that succeeded.
+  const partialSynthesis = body.partial === true;
+  if (partialSynthesis) {
+    if (!isResearchV2 || stepId !== RESEARCH_SYNTHESIS_STEP_ID)
+      throw new HttpError(400, "Only a Research synthesis can be partial");
+    if (row.status !== "failed")
+      throw new HttpError(409, "Only a failed Research request can be partial");
+    const counts = await env.SYNTILA_DB.prepare(
+      `SELECT SUM(step_kind = 'research' AND status = 'completed') AS ok,
+              SUM(step_kind = 'research' AND status <> 'completed') AS missing,
+              SUM(step_id = 'synthesis' AND status IN ('queued', 'failed')) AS open
+         FROM workflow_tasks WHERE work_request_id = ?1`,
+    )
+      .bind(workRequestId)
+      .first<{
+        ok: number | null;
+        missing: number | null;
+        open: number | null;
+      }>();
+    if (
+      Number(counts?.open ?? 0) !== 1 ||
+      Number(counts?.missing ?? 0) < 1 ||
+      Number(counts?.ok ?? 0) < RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS
+    )
+      throw new HttpError(
+        409,
+        `A partial synthesis needs at least ${RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS} successful researcher reports and a failed researcher.`,
+      );
+  } else if (failedTask?.status !== "failed")
     throw new HttpError(409, "Only a failed Step can be retried");
+  if (!failedTask) throw new HttpError(404, "Step not found");
+  if (gapRerun && step.kind !== "research")
+    throw new HttpError(
+      409,
+      "Retry the failed researcher to replace a partial synthesis",
+    );
 
   // Retry safety is decided by Cloud from assignment evidence, not by the
   // client: an unconfirmed stop can never be retried, and a step whose
   // provider may already have acted needs an explicit confirmation.
-  const retryAdvice = stepExecutionFields(
-    failedTask,
-    typeof failedTask.error === "string"
-      ? canonicalExecutionErrorCode(failedTask.error)
-      : null,
-  ).retry;
+  const retryAdvice = partialSynthesis
+    ? null
+    : stepExecutionFields(
+        failedTask,
+        typeof failedTask.error === "string"
+          ? canonicalExecutionErrorCode(failedTask.error)
+          : null,
+      ).retry;
   if (retryAdvice && !retryAdvice.allowed)
     throw new HttpError(
       409,
@@ -400,12 +446,13 @@ export async function handleRetryWorkRequest(
         ? { sessionStrategy: retrySessionStrategy }
         : {}),
       ...(contextLimitExceeded ? { contextResolution } : {}),
+      ...(partialSynthesis ? { partialSynthesis: true } : {}),
     },
   };
   const reservation = await env.SYNTILA_DB.prepare(
-    "UPDATE work_requests SET status = 'queued', updated_at = ?1 WHERE id = ?2 AND status = 'failed' RETURNING id",
+    "UPDATE work_requests SET status = 'queued', updated_at = ?1 WHERE id = ?2 AND status = ?3 RETURNING id",
   )
-    .bind(now, workRequestId)
+    .bind(now, workRequestId, String(row.status))
     .first<{ id: string }>();
   // Updating a Work Request also fires history and Workflow projection
   // triggers. D1's meta.changes includes those writes, so only the returned
@@ -469,6 +516,17 @@ export async function handleRetryWorkRequest(
               error = NULL, started_at = NULL, finished_at = NULL, updated_at = ?1
         WHERE work_request_id = ?2 AND step_id = ?3 AND status = 'failed'`,
       ).bind(now, workRequestId, stepId),
+      // Replacing a partial answer: its synthesis runs again after the
+      // researcher, over the full set of reports.
+      ...(gapRerun
+        ? [
+            env.SYNTILA_DB.prepare(
+              `UPDATE workflow_tasks SET status = 'queued', output_json = NULL,
+                    error = NULL, started_at = NULL, finished_at = NULL, updated_at = ?1
+              WHERE work_request_id = ?2 AND step_id = 'synthesis' AND status = 'completed'`,
+            ).bind(now, workRequestId),
+          ]
+        : []),
       env.SYNTILA_DB.prepare(
         `INSERT INTO runs
        (id, space_id, thread_id, work_request_id,
@@ -485,9 +543,9 @@ export async function handleRetryWorkRequest(
     ]);
   } catch (error) {
     await env.SYNTILA_DB.prepare(
-      "UPDATE work_requests SET status = 'failed', updated_at = ?1 WHERE id = ?2 AND status = 'queued'",
+      "UPDATE work_requests SET status = ?3, updated_at = ?1 WHERE id = ?2 AND status = 'queued'",
     )
-      .bind(new Date().toISOString(), workRequestId)
+      .bind(new Date().toISOString(), workRequestId, String(row.status))
       .run();
     throw error;
   }
@@ -524,6 +582,7 @@ export async function handleRetryWorkRequest(
     input: attachmentInput,
     // Carries the step-instance ID; it equals the kind for older workflows.
     retryStepKind: stepId as StepKind,
+    ...(partialSynthesis ? { partialSynthesis: true } : {}),
     ...(stepKind === "implement" || contextLimitExceeded
       ? { retrySessionStrategy: retrySessionStrategy as "resume" | "fresh" }
       : {}),
@@ -943,6 +1002,7 @@ export async function handleGetWorkRequest(
       updatedAt: String(row.updatedAt),
       activities,
       ...requestExecutionFields(String(row.status), steps),
+      ...researchGapFields(row, steps),
     },
     workflowSnapshot: workflow,
     steps,
@@ -983,6 +1043,39 @@ function stepExecutionFields(
         waitReason,
       }
     : presented;
+}
+
+/**
+ * Research v2 gaps (ADR-026): `completedWithGaps` marks a completed request
+ * whose synthesis ran over fewer reports than researchers; the answer must
+ * never read as a full comparison. `partialSynthesisAvailable` offers the
+ * user's explicit choice after a researcher failed: synthesize what succeeded
+ * (at least the minimum) instead of retrying the researcher.
+ */
+export function researchGapFields(
+  row: Record<string, unknown>,
+  steps: ReadonlyArray<{ kind?: unknown; stepId?: unknown; status?: unknown }>,
+) {
+  if (row.workflowId !== "research" || Number(row.workflowVersion) !== 2)
+    return {};
+  const researchers = steps.filter((step) => step.kind === "research");
+  const failed = researchers.filter((step) => step.status === "failed").length;
+  const succeeded = researchers.filter(
+    (step) => step.status === "completed",
+  ).length;
+  const synthesis = steps.find((step) => step.stepId === "synthesis");
+  return {
+    completedWithGaps:
+      row.status === "completed" &&
+      failed > 0 &&
+      synthesis?.status === "completed",
+    partialSynthesisAvailable:
+      row.status === "failed" &&
+      failed > 0 &&
+      succeeded >= RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS &&
+      synthesis?.status !== "completed",
+    researchReports: { succeeded, failed, total: researchers.length },
+  };
 }
 
 function requestExecutionFields(
@@ -1332,6 +1425,14 @@ export async function handleListWorkRequests(
               ? Math.max(0, (finished ? updated : Date.now()) - created)
               : null,
             finalText: typeof output.text === "string" ? output.text : null,
+            resultText:
+              typeof output.text === "string"
+                ? kind === "research" && stepId !== kind
+                  ? output.text
+                  : kind === "synthesis"
+                    ? output.text
+                    : output.text.slice(0, 24_000)
+                : null,
             ...(testSummary ? { testSummary } : {}),
             errorCode: stableErrorCode,
             errorMessage: stableErrorCode
@@ -1378,7 +1479,11 @@ export async function handleListWorkRequests(
       createdAt: String(row.createdAt),
       updatedAt: String(row.updatedAt),
       ...requestExecutionFields(String(row.status), steps),
-      steps: steps.map(({ finalText: _text, error: _error, ...step }) => step),
+      ...researchGapFields(row, steps),
+      steps: steps.map(({ finalText: _text, error: _error, ...step }) => ({
+        ...step,
+        ...(step.resultText ? { finalText: step.resultText } : {}),
+      })),
       ...(finalText ? { finalText } : {}),
       // A user-cancelled request is not a failure; its stopped Step may still
       // carry an error code, which stays available in Run details.

@@ -50,7 +50,6 @@ class _ArchivedSpacesPageState extends State<ArchivedSpacesPage> {
         ensure: false,
         builder: (context, state) {
           final spaces = state.data ?? const <AxSpace>[];
-          final isTwoColumn = MediaQuery.sizeOf(context).width >= 760;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -64,20 +63,14 @@ class _ArchivedSpacesPageState extends State<ArchivedSpacesPage> {
                 const Text(
                     'Archived Spaces will appear here when you archive a Space.'),
               if (spaces.isNotEmpty)
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final width = isTwoColumn
-                        ? (constraints.maxWidth - 12) / 2
-                        : constraints.maxWidth;
-                    return Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        for (final space in spaces)
-                          SizedBox(width: width, child: _card(space)),
-                      ],
-                    );
-                  },
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < spaces.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 12),
+                      _card(spaces[i]),
+                    ],
+                  ],
                 ),
             ],
           );

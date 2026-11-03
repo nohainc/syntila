@@ -319,21 +319,30 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
       return Card(
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
-        child: ExpansionTile(
-          key: const ValueKey('sharing-expansion'),
-          leading: const Icon(Icons.group_add_outlined),
-          title: title,
-          subtitle: _loading || _error != null
-              ? null
-              : Text('${_people.where((p) => p.active).length} with access',
-                  style: muted),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          expandedAlignment: Alignment.centerLeft,
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          children: [
-            Align(alignment: Alignment.centerRight, child: invite),
-            ...body,
-          ],
+        child: Theme(
+          data: theme.copyWith(
+            hoverColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            splashColor: Colors.transparent,
+            splashFactory: NoSplash.splashFactory,
+          ),
+          child: ExpansionTile(
+            key: const ValueKey('sharing-expansion'),
+            expansionAnimationStyle: AnimationStyle.noAnimation,
+            leading: const Icon(Icons.group_add_outlined),
+            title: title,
+            subtitle: _loading || _error != null
+                ? null
+                : Text('${_people.where((p) => p.active).length} with access',
+                    style: muted),
+            expandedCrossAxisAlignment: CrossAxisAlignment.start,
+            expandedAlignment: Alignment.centerLeft,
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              Align(alignment: Alignment.centerRight, child: invite),
+              ...body,
+            ],
+          ),
         ),
       );
     }

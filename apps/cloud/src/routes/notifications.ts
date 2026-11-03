@@ -34,6 +34,12 @@ export async function handleListNotifications(
       WHERE (w.status = 'failed'
              OR (w.status = 'completed' AND w.requested_by_user_id <> ?1))
         AND w.updated_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '${FEED_WINDOW}')
+        AND (w.status <> 'failed' OR NOT EXISTS (
+          SELECT 1 FROM work_requests newer
+           WHERE newer.thread_id = w.thread_id AND newer.status = 'failed'
+             AND (newer.updated_at > w.updated_at OR
+                  (newer.updated_at = w.updated_at AND newer.id > w.id))
+        ))
       ORDER BY w.updated_at DESC, w.id DESC
       LIMIT ${FEED_LIMIT}`,
   )

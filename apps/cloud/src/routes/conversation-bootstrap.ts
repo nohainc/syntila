@@ -69,6 +69,10 @@ export async function loadConversationBootstrap(
       (SELECT 1 FROM conversation_work_requests cr WHERE cr.conversation_id = h.conversation_id AND cr.work_request_id = h.work_request_id AND cr.conversation_revision <= ?3 AND EXISTS
           (SELECT 1 FROM work_requests wr JOIN threads t ON t.id = wr.thread_id
            WHERE wr.id = cr.work_request_id AND wr.ai_context_generation = t.ai_context_generation)))
+    AND NOT (h.kind = 'worker_response'
+      AND COALESCE(json_extract(h.metadata_json, '$.workflowId'), '') = 'research'
+      AND COALESCE(json_extract(h.metadata_json, '$.workflowVersion'), 0) = 2
+      AND COALESCE(json_extract(h.metadata_json, '$.stepKind'), '') != 'synthesis')
     ORDER BY sequence DESC LIMIT ?5`,
     )
     .bind(

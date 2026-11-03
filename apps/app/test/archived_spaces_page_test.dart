@@ -75,8 +75,7 @@ void main() {
     expect(engine.peek(archivedSpaces.query).data?.single.name, first.name);
   });
 
-  testWidgets('shows archived Spaces in a responsive two-column page',
-      (tester) async {
+  testWidgets('shows archived Spaces in one column', (tester) async {
     final source = _ArchivedSource([first, second]);
     final engine = AxSyncEngine();
     final archivedSpaces = AxArchivedSpaces(source, engine: engine);
@@ -106,16 +105,13 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const ValueKey('archived-space-archived-2')),
         findsOneWidget);
-    expect(
-      tester
-          .getTopLeft(find.byKey(const ValueKey('archived-space-archived-2')))
-          .dx,
-      greaterThan(
-        tester
-            .getTopLeft(find.byKey(const ValueKey('archived-space-archived-1')))
-            .dx,
-      ),
-    );
+    final firstCard =
+        tester.getRect(find.byKey(const ValueKey('archived-space-archived-1')));
+    final secondCard =
+        tester.getRect(find.byKey(const ValueKey('archived-space-archived-2')));
+    expect(secondCard.left, firstCard.left);
+    expect(secondCard.width, firstCard.width);
+    expect(secondCard.top - firstCard.bottom, 12);
     expect(find.text('Restore'), findsNothing);
     expect(find.text('Delete'), findsNothing);
     expect(find.byTooltip('Archived Space actions'), findsNWidgets(2));

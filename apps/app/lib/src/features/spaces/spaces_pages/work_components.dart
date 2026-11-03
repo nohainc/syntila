@@ -31,7 +31,7 @@ String _executionFailureMessage(String? code, {String? validationMessage}) =>
       'model_not_supported' =>
         'The selected model is not available for this worker. Choose another model and retry.',
       'permission_denied' =>
-        'The worker does not have the access needed to complete your request.',
+        'The worker’s local provider denied a tool action. Review its permissions on the Workspace, then retry the failed step.',
       'quota_exhausted' =>
         'The provider’s usage limit has been reached. Wait for the limit to reset or choose another worker, then retry.',
       'provider_unavailable' =>
@@ -178,6 +178,7 @@ class _WorkComposer extends StatelessWidget {
     required this.issueReportErrors,
     required this.onRetryStep,
     required this.onCancelRun,
+    this.onSynthesizePartial,
     required this.onWorkflowChanged,
     required this.onRun,
     this.selectionMissing = false,
@@ -249,6 +250,9 @@ class _WorkComposer extends StatelessWidget {
   final Map<String, String> issueReportErrors;
   final Future<void> Function(String, AxWorkRequestStep)? onRetryStep;
   final Future<void> Function(String)? onCancelRun;
+
+  /// Research v2: synthesize the reports that succeeded after a failure.
+  final Future<void> Function(String)? onSynthesizePartial;
   final ValueChanged<String> onWorkflowChanged;
 
   final Future<void> Function() onRun;
@@ -446,6 +450,9 @@ class _WorkComposer extends StatelessWidget {
           issueReportError: issueReportErrors[request.id],
           onRetryStep:
               localWorkProgress.containsKey(request.id) ? null : onRetryStep,
+          onSynthesizePartial: localWorkProgress.containsKey(request.id)
+              ? null
+              : onSynthesizePartial,
           // Members cancel only their own requests.
           onCancelRun: localWorkProgress.containsKey(request.id) ||
                   (currentUserId != null &&
@@ -1559,23 +1566,14 @@ String? _workFailureText(AxWorkRequest request, {required bool canRetry}) {
       validationMessage: failedStep == null ? rawError : null,
     ),
   );
-  return canRetry ? message : _withoutRetryPromise(message);
+  final researchFailure = request.workflowId == 'research' &&
+          request.workflowVersion == 2
+      ? '$message Successful researcher reports are retained. Synthesis requires every researcher to finish successfully.'
+      : message;
+  return canRetry ? researchFailure : _withoutRetryPromise(researchFailure);
 }
 
-String? _workResponseText(AxWorkRequest request) =>
-    request.finalText?.trim().isNotEmpty == true
-        ? request.finalText!
-        : request.turns
-                .where((turn) =>
-                    turn.status == 'completed' &&
-                    turn.resultText?.trim().isNotEmpty == true)
-                .lastOrNull
-                ?.resultText ??
-            request.steps
-                .map((step) => step.resultText)
-                .whereType<String>()
-                .where((text) => text.trim().isNotEmpty)
-                .firstOrNull;
+String? _workResponseText(AxWorkRequest request) => request.primaryResponseText;
 
 /// A tap on selectable request text. The text's selection gestures win the
 /// gesture arena, so a raw pointer press and release that barely moves counts
@@ -1636,6 +1634,7 @@ class _WorkTimelineCard extends StatelessWidget {
     required this.issueReportError,
     required this.onRetryStep,
     required this.onCancelRun,
+    this.onSynthesizePartial,
     this.onReply,
   });
 
@@ -1661,6 +1660,9 @@ class _WorkTimelineCard extends StatelessWidget {
   final String? issueReportError;
   final Future<void> Function(String, AxWorkRequestStep)? onRetryStep;
   final Future<void> Function(String)? onCancelRun;
+
+  /// Research v2: synthesize the reports that succeeded after a failure.
+  final Future<void> Function(String)? onSynthesizePartial;
 
   String get _workflowName =>
       request.workflowName ??
@@ -1777,15 +1779,45 @@ class _WorkTimelineCard extends StatelessWidget {
 
     // Waiting/queued messages belong to Syntila. A running Step is the
     // product's worker execution signal; no final text is required to attribute it.
-    final senderStep = activeStep?.status == 'running'
-        ? activeStep
-        : lastCompletedStep ?? stepForContext;
+    final isResearchV2 =
+        request.workflowId == 'research' && request.workflowVersion == 2;
+    final synthesisStep =
+        request.steps.where((step) => step.id == 'synthesis').firstOrNull;
+    // Research v2: the synthesis produces the answer, so it is the sender once
+    // it has started. Before that no single researcher speaks for the run.
+    final senderStep = isResearchV2
+        ? (const {'running', 'completed', 'failed'}
+                .contains(synthesisStep?.status)
+            ? synthesisStep
+            : null)
+        : activeStep?.status == 'running'
+            ? activeStep
+            : lastCompletedStep ?? stepForContext;
+    final researchers =
+        request.steps.where((step) => step.kind == 'research').toList();
+    final researchersRunning =
+        researchers.where((step) => step.status == 'running').length;
+    final researchRunState = !isResearchV2 ||
+            AxWorkProgress.terminalStatuses.contains(request.status)
+        ? null
+        : synthesisStep?.status == 'running'
+            ? 'Synthesizing'
+            : researchersRunning > 0 && researchers.length > 1
+                ? '$researchersRunning of ${researchers.length} running'
+                : null;
+    final mainActivities = isResearchV2
+        ? activities
+            .where((activity) =>
+                synthesisStep?.assignmentId != null &&
+                activity.assignmentId == synthesisStep!.assignmentId)
+            .toList()
+        : activities;
     final stepStartedAt =
         DateTime.tryParse((activeStep ?? senderStep)?.startedAt ?? '')
             ?.toLocal();
     AxWorkProgress resolveProgress(DateTime now) => AxWorkProgress.resolve(
           requestStatus: request.status,
-          activities: activities,
+          activities: mainActivities,
           now: now,
           stepStartedAt: stepStartedAt,
           serverElapsedMs: _totalElapsedMs == 0 ? null : _totalElapsedMs,
@@ -1863,6 +1895,8 @@ class _WorkTimelineCard extends StatelessWidget {
               : _totalElapsed();
       final segments = [
         if (_workflowName.isNotEmpty) _workflowName,
+        if (researchRunState != null) researchRunState,
+        if (request.completedWithGaps) 'Completed with gaps',
         if (elapsed.isNotEmpty) elapsed,
       ];
       return segments.isEmpty ? '' : '· ${segments.join(' · ')}';
@@ -2123,11 +2157,13 @@ class _WorkTimelineCard extends StatelessWidget {
                           if (!progress.isTerminal &&
                               response?.isNotEmpty != true &&
                               error?.isNotEmpty != true &&
-                              (activities.isNotEmpty ||
-                                  progress.currentAction != null)) ...[
+                              (mainActivities.isNotEmpty ||
+                                  (!isResearchV2 ||
+                                          synthesisStep?.status == 'running') &&
+                                      progress.currentAction != null)) ...[
                             const SizedBox(height: 8),
                             _WorkActivityTrail(
-                              activities: activities,
+                              activities: mainActivities,
                               fallbackAction: progress.currentAction,
                               color: metaColor,
                               accentColor: colors.primary,
@@ -2307,6 +2343,16 @@ class _WorkTimelineCard extends StatelessWidget {
                                           data: message,
                                         ),
                                 ],
+                                if (request.workflowId == 'research' &&
+                                    request.workflowVersion == 2 &&
+                                    request.steps.length > 1)
+                                  AxResearchStepCards(
+                                    request: request,
+                                    activities: activities,
+                                    onRetryStep: onRetryStep,
+                                    onSynthesizePartial: onSynthesizePartial,
+                                    color: metaColor,
+                                  ),
                                 if (!overlayFooter) footer,
                                 if (reportedIssue != null) ...[
                                   const SizedBox(height: 4),
@@ -2347,6 +2393,165 @@ class _WorkTimelineCard extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Research v2 sub-cards: each researcher as a compact collapsible card
+/// with its own state, model and original report. The main card's answer
+/// and header represent the synthesis; finished researcher cards are
+/// collapsed by default, while a running or failed one is open so its
+/// progress or error is visible.
+class AxResearchStepCards extends StatelessWidget {
+  const AxResearchStepCards({
+    super.key,
+    required this.request,
+    required this.color,
+    this.activities = const [],
+    this.onRetryStep,
+    this.onSynthesizePartial,
+  });
+
+  final AxWorkRequest request;
+  final Color color;
+  final List<AxWorkActivity> activities;
+  final Future<void> Function(String, AxWorkRequestStep)? onRetryStep;
+  final Future<void> Function(String)? onSynthesizePartial;
+
+  static String _label(AxWorkRequestStep step) {
+    final match = RegExp(r'^research-(\d+)$').firstMatch(step.id);
+    if (match != null) return 'Researcher ${match.group(1)}';
+    return step.kind == 'synthesis' ? 'Synthesis' : 'Research';
+  }
+
+  static String _state(AxWorkRequestStep step) => switch (step.status) {
+        'completed' => 'Completed',
+        'running' => 'Running',
+        'failed' => 'Failed',
+        'cancelled' => 'Cancelled',
+        'waiting' => 'Waiting for a free slot',
+        _ => 'Queued',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = request.steps
+        .where((s) => s.kind != 'synthesis' && s.id != 'synthesis')
+        .toList();
+    if (steps.isEmpty) return const SizedBox.shrink();
+    final succeeded = steps.where((s) => s.status == 'completed').length;
+    final running = steps.where((s) => s.status == 'running').length;
+    final scheme = Theme.of(context).colorScheme;
+    final canRetry = onRetryStep != null;
+    return Padding(
+      key: const ValueKey('research-step-cards'),
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!const {'completed', 'failed', 'cancelled'}
+                  .contains(request.status) &&
+              steps.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                running > 0
+                    ? '$running of ${steps.length} researchers running'
+                    : '$succeeded of ${steps.length} researchers finished',
+                key: const ValueKey('research-run-summary'),
+                style: TextStyle(fontSize: 12, color: color),
+              ),
+            ),
+          for (final step in steps)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Material(
+                color: color.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+                clipBehavior: Clip.antiAlias,
+                child: Theme(
+                  data: Theme.of(context)
+                      .copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    key: ValueKey('research-step-${step.id}-${step.status}'),
+                    dense: true,
+                    initiallyExpanded:
+                        step.status == 'running' || step.status == 'failed',
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    title: Text(
+                      '${_label(step)} · ${_state(step)}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color:
+                              step.status == 'failed' ? scheme.error : color),
+                    ),
+                    subtitle: Text(
+                      [
+                        if ((step.modelName ?? step.model)?.isNotEmpty == true)
+                          step.modelName ?? step.model!,
+                        if (step.elapsedMs != null)
+                          '${step.elapsedMs! ~/ 1000}s',
+                      ].join(' · '),
+                      style: TextStyle(fontSize: 11, color: color),
+                    ),
+                    childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                    expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (step.status == 'running' &&
+                          step.assignmentId != null &&
+                          activities.any((activity) =>
+                              activity.assignmentId == step.assignmentId))
+                        _WorkActivityTrail(
+                          activities: activities
+                              .where((activity) =>
+                                  activity.assignmentId == step.assignmentId)
+                              .toList(),
+                          color: color,
+                          accentColor: scheme.primary,
+                        ),
+                      if (step.resultText?.trim().isNotEmpty == true)
+                        _MemoizedWorkMarkdown(
+                          key: ValueKey((request.id, step.id)),
+                          data: step.resultText!,
+                        )
+                      else if (step.status == 'completed')
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Text(
+                            'No report text was recorded for this step.',
+                            style: TextStyle(fontSize: 12, color: color),
+                          ),
+                        ),
+                      if (step.status == 'failed' &&
+                          canRetry &&
+                          step.retryAllowed)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            key: ValueKey('research-retry-${step.id}'),
+                            onPressed: () => onRetryStep!(request.id, step),
+                            icon: const Icon(Icons.refresh_rounded, size: 16),
+                            label: Text('Retry ${_label(step)}'),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (request.partialSynthesisAvailable && onSynthesizePartial != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                key: const ValueKey('research-partial-synthesis'),
+                onPressed: () => onSynthesizePartial!(request.id),
+                icon: const Icon(Icons.auto_awesome_outlined, size: 16),
+                label: Text('Synthesize with $succeeded reports'),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

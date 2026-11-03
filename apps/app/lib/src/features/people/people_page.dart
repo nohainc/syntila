@@ -41,7 +41,6 @@ class _PeoplePageState extends State<PeoplePage> {
       ensure: false,
       builder: (context, state) {
         final people = state.data ?? const <AxPerson>[];
-        final isTwoColumn = MediaQuery.sizeOf(context).width >= 760;
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('People', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 8),
@@ -50,19 +49,15 @@ class _PeoplePageState extends State<PeoplePage> {
           const SizedBox(height: 20),
           _PeopleReadStatus(people: widget.people, state: state),
           if (people.isNotEmpty)
-            LayoutBuilder(builder: (context, constraints) {
-              final width = isTwoColumn
-                  ? (constraints.maxWidth - 12) / 2
-                  : constraints.maxWidth;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  for (final person in people)
-                    SizedBox(width: width, child: _personCard(person)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < people.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 12),
+                  _personCard(people[i]),
                 ],
-              );
-            }),
+              ],
+            ),
         ]);
       });
 

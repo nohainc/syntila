@@ -108,6 +108,7 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
     bool clearAiHistory = false,
     bool compactContext = false,
     bool confirmSideEffects = false,
+    bool partial = false,
   }) async {}
 
   @override

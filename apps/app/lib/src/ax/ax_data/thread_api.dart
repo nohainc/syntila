@@ -932,6 +932,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     bool clearAiHistory = false,
     bool compactContext = false,
     bool confirmSideEffects = false,
+    bool partial = false,
   }) async {
     final response = await client.post(
       Uri.parse('$baseUrl/work-requests/$workRequestId/retry'),
@@ -942,6 +943,8 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
         if (stepId != null && stepId != stepKind) 'stepId': stepId,
         if (sessionStrategy != null) 'sessionStrategy': sessionStrategy,
         if (confirmSideEffects) 'confirmSideEffects': true,
+        // Research v2: synthesize the reports that succeeded.
+        if (partial) 'partial': true,
         if (clearAiHistory) 'clearAiHistory': true,
         if (compactContext) 'contextResolution': 'compact',
       }),

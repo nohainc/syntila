@@ -1,6 +1,7 @@
 part of '../spaces_pages.dart';
 
 const double _settingLabelWidth = 128;
+const double _settingRowSpacing = 8;
 
 TextStyle? _settingLabelStyle(ThemeData theme) => theme.textTheme.bodySmall
     ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
@@ -114,53 +115,60 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(mainAxisSize: MainAxisSize.min, children: [
+                Row(children: [
                   SizedBox(
                       width: _settingLabelWidth,
                       child:
                           Text('Workspace', style: _settingLabelStyle(theme))),
                   // Same compact list selector as the Work composer and
                   // workflow model pickers.
-                  PopupMenuButton<String>(
-                    key: const ValueKey('space-workspace'),
-                    enabled: !_busy,
-                    tooltip: 'Choose Workspace',
-                    color: SyntilaColors.composerBackground(isDark),
-                    surfaceTintColor: Colors.transparent,
-                    elevation: 12,
-                    shadowColor: SyntilaMenuStyle.shadow(isDark),
-                    shape: SyntilaMenuStyle.shape(isDark),
-                    menuPadding: SyntilaMenuStyle.padding,
-                    itemBuilder: (menuContext) => [
-                      for (final choice in choices.entries)
-                        SyntilaMenuEntry<String>(
-                          value: choice.key,
-                          child: MenuItemButton(
-                            style: SyntilaMenuStyle.item(isDark),
-                            leadingIcon: Icon(
-                              choice.key == current
-                                  ? Icons.check_circle_rounded
-                                  : Icons.circle_outlined,
-                              size: 15,
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: PopupMenuButton<String>(
+                        key: const ValueKey('space-workspace'),
+                        enabled: !_busy,
+                        tooltip: 'Choose Workspace',
+                        color: SyntilaColors.composerBackground(isDark),
+                        surfaceTintColor: Colors.transparent,
+                        elevation: 12,
+                        shadowColor: SyntilaMenuStyle.shadow(isDark),
+                        shape: SyntilaMenuStyle.shape(isDark),
+                        menuPadding: SyntilaMenuStyle.padding,
+                        itemBuilder: (menuContext) => [
+                          for (final choice in choices.entries)
+                            SyntilaMenuEntry<String>(
+                              value: choice.key,
+                              child: MenuItemButton(
+                                style: SyntilaMenuStyle.item(isDark),
+                                leadingIcon: Icon(
+                                  choice.key == current
+                                      ? Icons.check_circle_rounded
+                                      : Icons.circle_outlined,
+                                  size: 15,
+                                ),
+                                onPressed: () =>
+                                    Navigator.pop(menuContext, choice.key),
+                                child: Text(choice.value,
+                                    style: SyntilaMenuStyle.textStyle),
+                              ),
                             ),
-                            onPressed: () =>
-                                Navigator.pop(menuContext, choice.key),
-                            child: Text(choice.value,
-                                style: SyntilaMenuStyle.textStyle),
-                          ),
+                        ],
+                        onSelected: (id) => _select(id, current, settings),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 5),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Flexible(
+                                child: Text(
+                                    choices[current] ?? 'Default Workspace',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: _settingValueStyle(theme))),
+                            const SizedBox(width: 2),
+                            const Icon(Icons.keyboard_arrow_down, size: 14),
+                          ]),
                         ),
-                    ],
-                    onSelected: (id) => _select(id, current, settings),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 5),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Text(choices[current] ?? 'Default Workspace',
-                            overflow: TextOverflow.ellipsis,
-                            style: _settingValueStyle(theme)),
-                        const SizedBox(width: 2),
-                        const Icon(Icons.keyboard_arrow_down, size: 14),
-                      ]),
+                      ),
                     ),
                   ),
                 ]),
@@ -359,28 +367,37 @@ class _SpaceAdditionalFoldersState extends State<_SpaceAdditionalFolders> {
     final theme = Theme.of(context);
     final attached = folders.attached.toList();
     final unavailable = attached.where((folder) => !folder.accessible).length;
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      SizedBox(
-          width: _settingLabelWidth,
-          child: Text('Additional folders', style: _settingLabelStyle(theme))),
-      TextButton.icon(
-        key: const ValueKey('space-additional-folders'),
-        style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.compact),
-        onPressed: () => _edit(folders),
-        icon: Icon(Icons.folder_outlined,
-            size: 14, color: unavailable > 0 ? theme.colorScheme.error : null),
-        label: Text(
-          attached.isEmpty
-              ? 'None'
-              : attached.map((f) => f.displayName).join(', '),
-          overflow: TextOverflow.ellipsis,
-          style: _settingValueStyle(theme),
-        ),
-      ),
-    ]);
+    return Padding(
+      padding: const EdgeInsets.only(top: _settingRowSpacing),
+      child: Row(children: [
+        SizedBox(
+            width: _settingLabelWidth,
+            child:
+                Text('Additional folders', style: _settingLabelStyle(theme))),
+        Expanded(
+            child: Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            key: const ValueKey('space-additional-folders'),
+            style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact),
+            onPressed: () => _edit(folders),
+            icon: Icon(Icons.folder_outlined,
+                size: 14,
+                color: unavailable > 0 ? theme.colorScheme.error : null),
+            label: Text(
+              attached.isEmpty
+                  ? 'None'
+                  : attached.map((f) => f.displayName).join(', '),
+              overflow: TextOverflow.ellipsis,
+              style: _settingValueStyle(theme),
+            ),
+          ),
+        )),
+      ]),
+    );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:syntila_design/syntila_design.dart';
 import 'package:syntila_protocol/syntila_protocol.dart';
 import 'package:flutter/material.dart';
+import '../common/page_width.dart';
 import '../../ax/ax_models.dart';
 import '../../ax/ax_workflow_configuration.dart';
 import '../../ax/workflow_configuration_options.dart';
@@ -49,21 +50,46 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
 
   bool get _research =>
       widget.definition.id == 'research' &&
-      widget.definition.steps.any((step) => step.id != null);
+      (widget.definition.version >= 2 ||
+          widget.definition.steps.length > 1 ||
+          widget.definition.steps.any((step) => step.id != null));
 
   /// Researchers to run (Research v2), 2 to 4; Cloud enforces the same bounds.
   late int researcherCount = widget.configuration.researcherCount ?? 2;
 
-  List<AxBuiltinWorkflowStep> get steps => _research
-      ? [
-          for (var i = 1; i <= researcherCount; i++)
-            AxBuiltinWorkflowStep(
-                kind: 'research', order: i - 1, id: 'research-$i'),
+  List<AxBuiltinWorkflowStep> get steps {
+    if (_research) {
+      return [
+        for (var i = 1; i <= researcherCount; i++)
           AxBuiltinWorkflowStep(
-              kind: 'synthesis', order: researcherCount, id: 'synthesis'),
-        ]
-      : ([...widget.definition.steps]
-        ..sort((a, b) => a.order.compareTo(b.order)));
+              kind: 'research', order: i - 1, id: 'research-$i'),
+        AxBuiltinWorkflowStep(
+            kind: 'synthesis', order: researcherCount, id: 'synthesis'),
+      ];
+    }
+    final sorted = [...widget.definition.steps]
+      ..sort((a, b) => a.order.compareTo(b.order));
+    final seen = <String, int>{};
+    for (final step in sorted) {
+      seen[step.instanceId] = (seen[step.instanceId] ?? 0) + 1;
+    }
+    if (seen.values.any((count) => count > 1)) {
+      final occurrences = <String, int>{};
+      return [
+        for (final step in sorted)
+          if ((seen[step.instanceId] ?? 0) > 1)
+            AxBuiltinWorkflowStep(
+              kind: step.kind,
+              order: step.order,
+              id: '${step.instanceId}-${occurrences[step.instanceId] = (occurrences[step.instanceId] ?? 0) + 1}',
+            )
+          else
+            step
+      ];
+    }
+    return sorted;
+  }
+
   AxUserWorkflowConfiguration get draft => AxUserWorkflowConfiguration(
         workflowId: widget.definition.id,
         enabled: enabled,
@@ -176,7 +202,8 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
                   padding: const EdgeInsets.all(24),
                   child: Center(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 720),
+                      constraints: BoxConstraints(
+                          maxWidth: PageWidth.of(context).pageWidth),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,

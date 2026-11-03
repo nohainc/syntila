@@ -54,6 +54,11 @@ void main() {
     await tester.tap(title);
     await tester.pumpAndSettle();
     expect(find.text('Existing'), findsOneWidget);
+    expect(
+        tester
+            .getSize(find.byKey(const ValueKey('space-landing-threads')))
+            .width,
+        500);
     expect(find.widgetWithText(TextButton, 'Restore'), findsNothing);
     await tester.tap(find.byIcon(Icons.more_vert).last);
     await tester.pumpAndSettle();
@@ -81,7 +86,7 @@ void main() {
           'Create a new thread');
       expect(tester.widget<TextField>(field).decoration!.hintText,
           'Enter a unique name');
-      expect(tester.getRect(field).width, 360);
+      expect(tester.getRect(field).width, 500);
       expect(tester.getRect(find.text('Description')).bottom,
           lessThan(tester.getRect(field).top));
       expect(tester.getRect(field).bottom,
@@ -90,9 +95,19 @@ void main() {
       final arrow = find.byKey(const ValueKey('space-members-arrow'));
       expect(
           tester.getRect(arrow).left - tester.getRect(membersTitle).right, 4);
-      final rotation =
-          find.ancestor(of: arrow, matching: find.byType(AnimatedRotation));
-      expect(tester.widget<AnimatedRotation>(rotation).turns, 0);
+      expect(find.byType(AnimatedRotation), findsNothing);
+      expect(tester.widget<Icon>(arrow).icon, Icons.expand_more);
+      final tile =
+          find.ancestor(of: membersTitle, matching: find.byType(ExpansionTile));
+      expect(tester.widget<ExpansionTile>(tile).expansionAnimationStyle,
+          AnimationStyle.noAnimation);
+      final sectionTheme =
+          find.ancestor(of: tile, matching: find.byType(Theme));
+      final sectionThemeData = tester.widget<Theme>(sectionTheme.first).data;
+      expect(sectionThemeData.hoverColor, Colors.transparent);
+      expect(sectionThemeData.highlightColor, Colors.transparent);
+      expect(sectionThemeData.splashColor, Colors.transparent);
+      expect(sectionThemeData.splashFactory, NoSplash.splashFactory);
 
       for (final content in [
         find.byKey(const ValueKey('space-landing-name')),
@@ -107,12 +122,12 @@ void main() {
       await tester.tap(membersTitle);
       await tester.pumpAndSettle();
       expect(memberDescription, findsOneWidget);
-      expect(tester.widget<AnimatedRotation>(rotation).turns, 0.5);
+      expect(tester.widget<Icon>(arrow).icon, Icons.expand_less);
       expect(find.byType(DataTable), findsOneWidget);
       await tester.tap(membersTitle);
       await tester.pumpAndSettle();
       expect(memberDescription, findsNothing);
-      expect(tester.widget<AnimatedRotation>(rotation).turns, 0);
+      expect(tester.widget<Icon>(arrow).icon, Icons.expand_more);
       await tester.enterText(field, '  New name  ');
       await tester.pump();
       await tester.tap(find.widgetWithText(TextButton, 'Create Thread'));

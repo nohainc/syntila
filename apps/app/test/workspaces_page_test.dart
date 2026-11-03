@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/features/workspace/workspaces_page.dart';
 import 'package:syntila_app/src/features/common/workspace_release.dart';
+import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
 
 import 'ax_fixture_snapshot.dart';
@@ -659,5 +660,156 @@ void main() {
 
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+        'manages Space AI chat and work availability per workspace with license agreement',
+        (tester) async {
+      final ws1 = AxWorkspace.fromJson({
+        'id': 'ws1',
+        'name': 'Primary Workspace',
+        'role': 'owner',
+      });
+      final ws2 = AxWorkspace.fromJson({
+        'id': 'ws2',
+        'name': 'Secondary Workspace',
+        'role': 'owner',
+      });
+      String? updatedWsId;
+      bool? updatedChat;
+      bool? updatedWork;
+
+      await tester.pumpWidget(buildTestScaffold(WorkspacesPage(
+        workspaces: [ws1, ws2],
+        onSpaceAiSharingChanged: (id, {allowChat, allowWork}) {
+          updatedWsId = id;
+          if (allowChat != null) updatedChat = allowChat;
+          if (allowWork != null) updatedWork = allowWork;
+        },
+      )));
+      await tester.pumpAndSettle();
+
+      final chatBox1 =
+          find.byKey(const ValueKey('workspace-space-ai-chat-ws1'));
+      final workBox1 =
+          find.byKey(const ValueKey('workspace-space-ai-work-ws1'));
+      expect(chatBox1, findsOneWidget);
+      expect(workBox1, findsOneWidget);
+      expect(tester.widget<CheckboxListTile>(chatBox1).value, isFalse);
+      expect(tester.widget<CheckboxListTile>(workBox1).value, isFalse);
+
+      // Check chat option -> shows agreement dialog
+      await tester.tap(chatBox1);
+      await tester.pumpAndSettle();
+      expect(
+          find.text('Worker License & Subscription Agreement'), findsOneWidget);
+      expect(find.textContaining('worker model licenses and subscriptions'),
+          findsOneWidget);
+
+      // Cancel agreement
+      await tester.tap(find.byKey(const ValueKey('agreement-cancel-button')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<CheckboxListTile>(chatBox1).value, isFalse);
+      expect(updatedChat, isNull);
+
+      // Tap again and agree
+      await tester.tap(chatBox1);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('agreement-confirm-button')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<CheckboxListTile>(chatBox1).value, isTrue);
+      expect(updatedWsId, 'ws1');
+      expect(updatedChat, isTrue);
+
+      // Check work option -> shows agreement dialog
+      await tester.tap(workBox1);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('agreement-confirm-button')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<CheckboxListTile>(workBox1).value, isTrue);
+      expect(updatedWork, isTrue);
+
+      // Uncheck chat option -> directly unchecks without dialog
+      await tester.tap(chatBox1);
+      await tester.pumpAndSettle();
+      expect(
+          find.text('Worker License & Subscription Agreement'), findsNothing);
+      expect(tester.widget<CheckboxListTile>(chatBox1).value, isFalse);
+      expect(updatedChat, isFalse);
+
+      // Switch to ws2 tab: should have its own unchecked options
+      await tester.tap(find.byKey(const Key('workspace-tab-ws2')));
+      await tester.pumpAndSettle();
+      final chatBox2 =
+          find.byKey(const ValueKey('workspace-space-ai-chat-ws2'));
+      final workBox2 =
+          find.byKey(const ValueKey('workspace-space-ai-work-ws2'));
+      expect(tester.widget<CheckboxListTile>(chatBox2).value, isFalse);
+      expect(tester.widget<CheckboxListTile>(workBox2).value, isFalse);
+    });
+
+    testWidgets(
+        'does not display workspace allowance count, places available workers below Space AI options, and aligns parallel requests to the right',
+        (tester) async {
+      final ws = AxWorkspace.fromJson({
+        'id': 'ws1',
+        'name': 'Primary Workspace',
+        'role': 'owner',
+        'parallelSlots': 4,
+      });
+      final worker = AxWorker.fromJson({
+        'id': 'worker-1',
+        'displayName': 'Claude Code',
+        'workspaceId': 'ws1',
+        'workspaceName': 'Primary Workspace',
+        'workerTypeId': 'claude-code',
+        'status': 'ready',
+      });
+
+      tester.view.physicalSize = const Size(800, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(buildTestScaffold(WorkspacesPage(
+        workspaces: [ws],
+        workspaceWorkers: [worker],
+        accountPlanSource: _AccountPlanSource(),
+        onSetParallelSlots: (_, __) async {},
+      )));
+      await tester.pumpAndSettle();
+
+      // 1. No first line about number of workspaces / workspace allowance
+      expect(find.byKey(const ValueKey('workspace-allowance')), findsNothing);
+      expect(find.textContaining('personal Workspace'), findsNothing);
+
+      // 2. Parallel requests control is right-aligned
+      final labelFinder = find.text('Parallel requests');
+      final selectFinder = find.byKey(const ValueKey('parallel-slots-select'));
+      expect(labelFinder, findsOneWidget);
+      expect(selectFinder, findsOneWidget);
+      final labelTopLeft = tester.getTopLeft(labelFinder);
+      final selectTopRight = tester.getTopRight(selectFinder);
+      expect(labelTopLeft.dx, 0.0);
+      expect(selectTopRight.dx, greaterThan(700.0));
+
+      // 3. Available workers are rendered below "Use Space AI for work"
+      final workAiOptionFinder =
+          find.byKey(const ValueKey('workspace-space-ai-work-ws1'));
+      final workerCardFinder =
+          find.byKey(const Key('workspace-worker-row-worker-1'));
+      expect(workAiOptionFinder, findsOneWidget);
+      expect(workerCardFinder, findsOneWidget);
+      final workAiBottom = tester.getBottomLeft(workAiOptionFinder);
+      final workerCardTop = tester.getTopLeft(workerCardFinder);
+      expect(workerCardTop.dy, greaterThan(workAiBottom.dy));
+    });
   });
+}
+
+class _AccountPlanSource implements AxAccountPlanDataSource {
+  @override
+  Future<AxAccountPlan> loadAccountPlan() async => const AxAccountPlan(
+        isPaid: false,
+        ownedWorkspaces: 1,
+        workspaceLimit: 1,
+      );
 }

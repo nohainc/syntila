@@ -106,8 +106,9 @@ void main() {
     expect(find.text('Show execution history in this Space\'s Threads.'),
         findsNothing);
     expect(tester.getSize(setting).height, lessThanOrEqualTo(48));
+    expect(tester.getSize(setting).width, 500);
     // Every Settings row shares one label column and type scale: labels
-    // start at the same x, values (selector, switch) start at the same x.
+    // start at the same x, and values align at the right edge.
     final workspaceLabel = find.text('Workspace');
     final historyLabel = find.text('AI History tab');
     expect(tester.getTopLeft(historyLabel).dx,
@@ -115,10 +116,10 @@ void main() {
     expect(tester.widget<Text>(historyLabel).style?.fontSize,
         tester.widget<Text>(workspaceLabel).style?.fontSize);
     expect(
-        (tester.getTopLeft(toggle).dx -
+        (tester.getRect(toggle).right -
                 tester
-                    .getTopLeft(find.byKey(const ValueKey('space-workspace')))
-                    .dx)
+                    .getRect(find.byKey(const ValueKey('space-workspace')))
+                    .right)
             .abs(),
         lessThanOrEqualTo(8));
 
@@ -126,6 +127,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(source.savedSettings, {'showAiHistory': true});
+  });
+
+  testWidgets('settings rows have consistent spacing', (tester) async {
+    final source = FolderSource();
+    await pumpSpace(tester, source, ownerSpace);
+    final workspace = tester.getCenter(find.text('Workspace')).dy;
+    final folders = tester.getCenter(find.text('Additional folders')).dy;
+    final history = tester.getCenter(find.text('AI History tab')).dy;
+    // The inherited Workspace explanation occupies its own line.
+    expect(folders, greaterThan(workspace));
+    expect(history - folders, closeTo(40, 2));
   });
 
   testWidgets('owner follows the default Workspace until choosing one',
@@ -230,6 +242,9 @@ void main() {
     await pumpSpace(tester, source, ownerSpace);
     final button = find.byKey(const ValueKey('space-additional-folders'));
     expect(button, findsOneWidget);
+    final history = find.byKey(const ValueKey('space-show-ai-history-setting'));
+    expect(tester.getRect(button).right,
+        closeTo(tester.getRect(history).right, 8));
 
     await tester.tap(button);
     await tester.pumpAndSettle();

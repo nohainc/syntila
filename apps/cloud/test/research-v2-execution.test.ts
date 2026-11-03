@@ -165,7 +165,10 @@ describe("Research v2 prompts", () => {
     expect(one).toContain("Prefer managed services.");
     expect(one).not.toContain("sibling answer");
     expect(one).toContain("unverified historical conclusions");
-    expect(one).toContain("Check historyCoverage");
+    expect(one).toContain("historyCoverage");
+    expect(one).toContain(
+      "Do not request permission escalation or repeat a denied action",
+    );
     expect(one).toMatch(/Never claim web access/);
   });
 

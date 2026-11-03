@@ -88,7 +88,9 @@ Iterable<String?> choices(
         .map((item) => item.value);
 Future<WorkflowSource> mount(
     WidgetTester tester, AxUserWorkflowConfiguration saved,
-    {List<AxWorker>? workers, AxBuiltinWorkflow? definition}) async {
+    {List<AxWorker>? workers,
+    AxBuiltinWorkflow? definition,
+    bool stepsOnly = false}) async {
   tester.view.physicalSize = const Size(1000, 1200);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -108,6 +110,7 @@ Future<WorkflowSource> mount(
                   onPressed: () => WorkflowEditor.open(
                       context,
                       WorkflowEditor(
+                        stepsOnly: stepsOnly,
                         definition: definition ??
                             workflow('full_cycle', 'Full Cycle',
                                 steps: ['plan', 'implement', 'verify']),
@@ -535,6 +538,80 @@ void main() {
           .widget<FilledButton>(find.byKey(const ValueKey('save-workflow')));
       expect(save.onPressed, isNull);
       expect(source.scopedValues, isEmpty);
+    });
+
+    testWidgets(
+        'renders stepsOnly editor without duplicate key assertion when definition steps omit id',
+        (tester) async {
+      // Research v2 definition where steps were loaded without explicit step id
+      const untypedResearch = AxBuiltinWorkflow(
+        id: 'research',
+        version: 2,
+        name: 'Research',
+        description: 'Research',
+        steps: [
+          AxBuiltinWorkflowStep(kind: 'research', order: 0),
+          AxBuiltinWorkflowStep(kind: 'research', order: 1),
+          AxBuiltinWorkflowStep(kind: 'synthesis', order: 2),
+        ],
+        snapshot: {},
+      );
+
+      await mount(
+        tester,
+        AxUserWorkflowConfiguration(
+          workflowId: 'research',
+          researcherCount: 2,
+          defaults: defaultSelection,
+        ),
+        definition: untypedResearch,
+        stepsOnly: true,
+      );
+
+      await tester.pumpAndSettle();
+
+      // Verify no duplicate key exception was thrown in the Column
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('workflow-step-research-1')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('workflow-step-research-2')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('workflow-step-synthesis')),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'disambiguates repeated step kinds when non-research workflow omits id',
+        (tester) async {
+      const repeatedKindWorkflow = AxBuiltinWorkflow(
+        id: 'custom_pipeline',
+        version: 1,
+        name: 'Custom Pipeline',
+        description: 'Pipeline',
+        steps: [
+          AxBuiltinWorkflowStep(kind: 'implement', order: 0),
+          AxBuiltinWorkflowStep(kind: 'implement', order: 1),
+        ],
+        snapshot: {},
+      );
+
+      await mount(
+        tester,
+        AxUserWorkflowConfiguration(
+          workflowId: 'custom_pipeline',
+          defaults: defaultSelection,
+        ),
+        definition: repeatedKindWorkflow,
+        stepsOnly: true,
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('workflow-step-implement-1')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('workflow-step-implement-2')),
+          findsOneWidget);
     });
   });
 }

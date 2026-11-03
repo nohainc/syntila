@@ -472,3 +472,69 @@ it("excludes late pre-reset replies from fresh context while retaining visible h
     f.sqlite.close();
   }
 });
+
+it.each(["chat", "direct", "research"])(
+  "supplies a prior Research synthesis to a following %s without exposing researcher reports",
+  async (workflowId) => {
+    const f = await conversationFixture({ research: true });
+    try {
+      f.assign("researcher");
+      f.start("researcher");
+      await recordAssignmentResult(
+        f.db as unknown as D1Database,
+        "researcher",
+        {
+          assignmentId: "researcher",
+          status: "completed",
+          output: { text: "Private individual report" },
+          artifactIds: [],
+          completedAt: "2026-10-07T10:02:00Z",
+        },
+      );
+      f.sqlite
+        .exec(`INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at,step_instance_id)
+      VALUES('S','R','synthesis','stateless_read',1000,'synthesis:v1','running','now','now','synthesis');
+      INSERT INTO worker_assignments(id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,status,model,permission_snapshot_json,session_policy,created_at,updated_at)
+      VALUES('synth','P','WS','RT','chatgpt','worker-a','S','created','model-x','{"profileDefinitionId":"chatgpt-codex","profileReleaseVersion":3,"workerSessionId":"research-synthesis-session"}','durable_session','now','now');
+      UPDATE worker_assignments SET status='running',updated_at='now' WHERE id='synth';`);
+      await recordAssignmentResult(f.db as unknown as D1Database, "synth", {
+        assignmentId: "synth",
+        status: "completed",
+        output: { text: "Research synthesis outcome" },
+        artifactIds: [],
+        completedAt: "2026-10-07T10:03:00Z",
+      });
+      f.sqlite
+        .prepare(
+          `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
+      VALUES('next','W','U','stateless',?,?,'{}','running','{"originalRequest":"Follow up"}','now','now')`,
+        )
+        .run(workflowId, workflowId === "chat" ? 1 : 2);
+      const conversationId = threadConversationId("W");
+      await f.db.batch(
+        conversationSubmissionStatements(
+          f.db as unknown as D1Database,
+          conversationId,
+          "W",
+          workflowId === "direct"
+            ? CONVERSATION_WORKFLOWS.work!
+            : CONVERSATION_WORKFLOWS.chat!,
+          "next",
+          "now",
+        ),
+      );
+      const bootstrap = await loadConversationBootstrap(
+        f.db as unknown as D1Database,
+        conversationId,
+        "next",
+        1,
+      );
+      expect(bootstrap.text).toContain("Research synthesis outcome");
+      expect(bootstrap.text).not.toContain("Private individual report");
+      expect(bootstrap.text).toContain("Exact user text");
+      expect(bootstrap.text).not.toContain("Follow up");
+    } finally {
+      f.sqlite.close();
+    }
+  },
+);

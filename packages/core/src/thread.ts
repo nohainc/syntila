@@ -362,6 +362,14 @@ export function researcherStepId(index: number): string {
 export const RESEARCH_SYNTHESIS_STEP_ID = "synthesis";
 
 /**
+ * A failed researcher need not end the request: after the failure the user may
+ * explicitly ask for a synthesis of the reports that succeeded. One report is
+ * not a comparison, so at least this many must have succeeded. The result is
+ * always labelled as completed with gaps.
+ */
+export const RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS = 2;
+
+/**
  * Research v2: independent researchers that share no session or output,
  * followed by one synthesis step that receives every report. All steps are
  * read-only analysis. The researcher count is part of the accepted snapshot.

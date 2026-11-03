@@ -168,6 +168,23 @@ void main() {
     // Both owner sections start collapsed behind expandable headers.
     expect(find.text('Share workspace'), findsOneWidget);
     expect(find.text('Member access'), findsOneWidget);
+    for (final key in const [
+      ValueKey('sharing-expansion'),
+      ValueKey('member-access-expansion'),
+    ]) {
+      final tileFinder = find.byKey(key);
+      final tile = tester.widget<ExpansionTile>(tileFinder);
+      expect(tile.expansionAnimationStyle, AnimationStyle.noAnimation);
+      final themeFinder = find.ancestor(
+        of: tileFinder,
+        matching: find.byType(Theme),
+      );
+      final sectionTheme = tester.widget<Theme>(themeFinder.first).data;
+      expect(sectionTheme.hoverColor, Colors.transparent);
+      expect(sectionTheme.highlightColor, Colors.transparent);
+      expect(sectionTheme.splashColor, Colors.transparent);
+      expect(sectionTheme.splashFactory, NoSplash.splashFactory);
+    }
     expect(find.byKey(const ValueKey('sharing-invite')), findsNothing);
     await tester.tap(find.text('Share workspace'));
     await tester.pumpAndSettle();

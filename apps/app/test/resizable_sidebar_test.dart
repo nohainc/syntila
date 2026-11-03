@@ -2,6 +2,7 @@ import 'package:syntila_app/src/app_shell.dart';
 import 'package:syntila_app/src/features/navigation/ax_sidebar.dart';
 import 'package:syntila_app/src/features/navigation/resizable_sidebar.dart';
 import 'package:syntila_app/src/platform/platform_services.dart';
+import 'package:syntila_app/src/platform/view_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -113,5 +114,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AxSidebar), findsOneWidget);
     expect(tester.getSize(sidebar).width, 300);
+  });
+
+  testWidgets('sidebar collapsed state and width survive shell recreation',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    String? stored;
+    final preferences = ViewPreferencesStore(
+      read: () => stored,
+      write: (value) => stored = value,
+    );
+
+    Future<void> pumpShell(Key key) => tester.pumpWidget(SyntilaAppShell(
+          key: key,
+          services: const DefaultPlatformServices(),
+          dataSource: const AxFixtureDataSource(),
+          initialUri: Uri.parse('/'),
+          viewPreferencesStore: preferences,
+        ));
+
+    await pumpShell(const ValueKey('first-shell'));
+    await tester.pumpAndSettle();
+    final handle = find.byKey(const ValueKey('sidebar-resize-handle'));
+    await tester.drag(handle, const Offset(40, 0));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(ResizableSidebar)).width, 240);
+    await tester.tap(find.byTooltip('Hide sidebar'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ResizableSidebar), findsNothing);
+    expect(preferences.load().sidebarCollapsed, isTrue);
+    expect(preferences.load().sidebarWidth, 240);
+    await tester.tap(find.byTooltip('Your spaces'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AxSidebar), findsOneWidget);
+    final peekHandle = find.byKey(const ValueKey('sidebar-resize-handle'));
+    expect(peekHandle, findsOneWidget);
+    await tester.drag(peekHandle, const Offset(30, 0));
+    await tester.pumpAndSettle();
+    expect(preferences.load().sidebarWidth, 270);
+    // Tapping outside dismisses peeking sidebar
+    await tester.tap(find.byKey(const ValueKey('sidebar-peek-barrier')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AxSidebar), findsNothing);
+
+    await pumpShell(const ValueKey('second-shell'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ResizableSidebar), findsNothing);
+    await tester.tap(find.byTooltip('Expand sidebar'));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(ResizableSidebar)).width, 270);
+    expect(preferences.load().sidebarCollapsed, isFalse);
   });
 }

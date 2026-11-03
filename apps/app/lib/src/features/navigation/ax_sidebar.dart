@@ -64,5 +64,8 @@ class AxIconRail extends AppIconRail {
     required super.onOpenExternal,
     super.onOpenArchivedSpaces,
     super.onToggleCollapse,
+    super.sidebarWidth,
+    super.onSidebarWidthChanged,
+    super.onOpenSpaces,
   });
 }

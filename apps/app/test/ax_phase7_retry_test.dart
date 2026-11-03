@@ -67,7 +67,8 @@ class RetrySource extends AxFixtureDataSource {
       String? sessionStrategy,
       bool clearAiHistory = false,
       bool compactContext = false,
-      bool confirmSideEffects = false}) async {
+      bool confirmSideEffects = false,
+      bool partial = false}) async {
     expect(workRequestId, 'request');
     expect(stepKind, 'verify');
     approvals.add(confirmSideEffects);

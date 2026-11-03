@@ -2096,7 +2096,8 @@ class _ThreadPageState extends State<ThreadPage>
             _discuss(context, twoPane: constraints.maxWidth >= 1000));
         final Widget content = Center(
             child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 840),
+          constraints:
+              BoxConstraints(maxWidth: PageWidth.of(context).widePageWidth),
           child: widget.isDraft
               ? conversation
               : IndexedStack(
@@ -2815,6 +2816,8 @@ class _ThreadPageState extends State<ThreadPage>
         issueReportErrors: _issueReportErrors,
         onRetryStep: widget.dataSource == null ? null : _retryWorkRequestStep,
         onCancelRun: widget.dataSource == null ? null : _cancelWorkRequest,
+        onSynthesizePartial:
+            widget.dataSource == null ? null : _synthesizePartialResearch,
         onHistoryNavigate: _openRequestHistory,
         historyPrompts: _requestHistoryOpen ? _requestHistoryPrompts : null,
         historyOpenDirection: _requestHistoryDirection,

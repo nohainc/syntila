@@ -6,6 +6,7 @@ import '../../navigation/ax_navigation.dart';
 import '../../ax/ax_models.dart';
 import 'app_menu.dart';
 import '../common/space_color.dart';
+import 'resizable_sidebar.dart';
 import 'space_tree.dart';
 import 'ax_shell_context.dart';
 
@@ -422,6 +423,9 @@ class AppIconRail extends StatelessWidget {
     required this.onOpenExternal,
     this.onOpenArchivedSpaces,
     this.onToggleCollapse,
+    this.sidebarWidth = 200,
+    this.onSidebarWidthChanged,
+    this.onOpenSpaces,
   });
 
   final AxShellContext shellContext;
@@ -442,6 +446,9 @@ class AppIconRail extends StatelessWidget {
   final ValueChanged<Uri> onOpenExternal;
   final VoidCallback? onOpenArchivedSpaces;
   final VoidCallback? onToggleCollapse;
+  final double sidebarWidth;
+  final ValueChanged<double>? onSidebarWidthChanged;
+  final VoidCallback? onOpenSpaces;
 
   Widget _railIconButton({
     required bool isDark,
@@ -500,7 +507,7 @@ class AppIconRail extends StatelessWidget {
     ButtonStyle itemStyle() => SyntilaMenuStyle.item(isDark).copyWith(
           foregroundColor:
               WidgetStatePropertyAll(SyntilaColors.navigationText(isDark)),
-          minimumSize: const WidgetStatePropertyAll(Size(200, 36)),
+          fixedSize: WidgetStatePropertyAll(Size(sidebarWidth, 36)),
         );
 
     return Container(
@@ -595,131 +602,188 @@ class AppIconRail extends StatelessWidget {
           }),
           const SizedBox(height: 6),
 
-          // Space & Thread Switcher MenuAnchor using matching popup style
+          // Space & Thread Switcher on Rail
           shellContext.watchSpacesAndThreads(() {
-            // Own and shared Spaces get separate rail icons, each listing its
-            // pinned Spaces first, mirroring the expanded sidebar's groups.
             List<AxSpace> group(List<AxSpace> spaces) => [
                   ...spaces.where((space) => space.isPinned).toList()
                     ..sort(compareAxPins),
                   ...spaces.where((space) => !space.isPinned),
                 ];
-            final owned = group(shellContext.ownedSpaces);
-            final shared = group(shellContext.sharedSpaces);
+            final spaces = group(shellContext.spaces);
+            if (spaces.isEmpty) return const SizedBox.shrink();
             Widget spaceMenu(List<AxSpace> spaces,
-                    {required IconData icon,
-                    required String tooltip,
-                    required String key}) =>
-                MenuAnchor(
-                  style: menuStyle,
-                  builder: (context, controller, child) {
-                    return _railIconButton(
-                      isDark: isDark,
-                      icon: icon,
-                      iconWidget: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Icon(icon,
-                              size: 20,
-                              color: SyntilaColors.navigationTextMuted(isDark)),
-                          Positioned(
-                            right: -5,
-                            top: -5,
-                            child: SidebarActivityIndicators(
-                              key: ValueKey(key),
-                              running: spaces.any(_running),
-                              unread: spaces.any(_unread),
-                              gap: 2,
-                            ),
-                          ),
-                        ],
+                {required IconData icon,
+                required String tooltip,
+                required String key}) {
+              if (onOpenSpaces != null) {
+                return _railIconButton(
+                  isDark: isDark,
+                  icon: icon,
+                  iconWidget: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(icon,
+                          size: 20,
+                          color: SyntilaColors.navigationTextMuted(isDark)),
+                      Positioned(
+                        right: -5,
+                        top: -5,
+                        child: SidebarActivityIndicators(
+                          key: ValueKey(key),
+                          running: spaces.any(_running),
+                          unread: spaces.any(_unread),
+                          gap: 2,
+                        ),
                       ),
-                      tooltip: tooltip,
-                      onPressed: () {
-                        if (controller.isOpen) {
-                          controller.close();
-                        } else {
-                          controller.open();
-                        }
-                      },
-                    );
-                  },
-                  menuChildren: [
-                    for (final space in spaces) ...[
+                    ],
+                  ),
+                  tooltip: tooltip,
+                  onPressed: onOpenSpaces,
+                );
+              }
+              var dragStartX = 0.0;
+              var dragStartWidth = sidebarWidth;
+              return MenuAnchor(
+                style: menuStyle,
+                builder: (context, controller, child) {
+                  return _railIconButton(
+                    isDark: isDark,
+                    icon: icon,
+                    iconWidget: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(icon,
+                            size: 20,
+                            color: SyntilaColors.navigationTextMuted(isDark)),
+                        Positioned(
+                          right: -5,
+                          top: -5,
+                          child: SidebarActivityIndicators(
+                            key: ValueKey(key),
+                            running: spaces.any(_running),
+                            unread: spaces.any(_unread),
+                            gap: 2,
+                          ),
+                        ),
+                      ],
+                    ),
+                    tooltip: tooltip,
+                    onPressed: () {
+                      if (controller.isOpen) {
+                        controller.close();
+                      } else {
+                        controller.open();
+                      }
+                    },
+                  );
+                },
+                menuChildren: [
+                  for (final space in spaces) ...[
+                    MenuItemButton(
+                      style: itemStyle(),
+                      trailingIcon: SidebarActivityIndicators(
+                        key: ValueKey('rail-space-activity-${space.id}'),
+                        running: _running(space),
+                        unread: _unread(space),
+                      ),
+                      leadingIcon: SyntilaFolderIcon(
+                        isExpanded: true,
+                        size: 16,
+                        color: spaceIdentityColor(space.settings['color'],
+                                isDark: isDark) ??
+                            SyntilaColors.navigationTextMuted(isDark),
+                      ),
+                      onPressed: () =>
+                          onNavigateTo(AxNavigation.space(space.id)),
+                      child: Text(
+                        space.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: shellContext
+                                  .isNavActive(AxNavigation.space(space.id))
+                              ? FontWeight.bold
+                              : FontWeight.w600,
+                          color: SyntilaColors.navigationTextMuted(isDark),
+                        ),
+                      ),
+                    ),
+                    for (final thread in applyAxThreadPins(
+                            sortAxThreadsByLastUpdate(_threads(space)))
+                        .where((thread) =>
+                            !thread.archived &&
+                            thread.status.toLowerCase() != 'archived'))
                       MenuItemButton(
                         style: itemStyle(),
                         trailingIcon: SidebarActivityIndicators(
-                          key: ValueKey('rail-space-activity-${space.id}'),
-                          running: _running(space),
-                          unread: _unread(space),
+                          key: ValueKey('rail-thread-activity-${thread.id}'),
+                          running: thread.hasActiveWork,
+                          unread: thread.hasUnread,
                         ),
-                        leadingIcon: SyntilaFolderIcon(
-                          isExpanded: true,
-                          size: 16,
-                          color: spaceIdentityColor(space.settings['color'],
-                                  isDark: isDark) ??
-                              SyntilaColors.navigationTextMuted(isDark),
-                        ),
-                        onPressed: () =>
-                            onNavigateTo(AxNavigation.space(space.id)),
-                        child: Text(
-                          space.name,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: shellContext
-                                    .isNavActive(AxNavigation.space(space.id))
-                                ? FontWeight.bold
-                                : FontWeight.w600,
-                            color: SyntilaColors.navigationTextMuted(isDark),
+                        onPressed: () => onNavigateTo(
+                            AxNavigation.thread(space.id, thread.id)),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 24),
+                          child: Text(
+                            thread.title,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: shellContext.isNavActive(
+                                      AxNavigation.thread(space.id, thread.id))
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: SyntilaColors.navigationTextMuted(isDark),
+                            ),
                           ),
                         ),
                       ),
-                      for (final thread in applyAxThreadPins(
-                              sortAxThreadsByLastUpdate(_threads(space)))
-                          .where((thread) =>
-                              !thread.archived &&
-                              thread.status.toLowerCase() != 'archived'))
-                        MenuItemButton(
-                          style: itemStyle(),
-                          trailingIcon: SidebarActivityIndicators(
-                            key: ValueKey('rail-thread-activity-${thread.id}'),
-                            running: thread.hasActiveWork,
-                            unread: thread.hasUnread,
-                          ),
-                          onPressed: () => onNavigateTo(
-                              AxNavigation.thread(space.id, thread.id)),
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 24),
-                            child: Text(
-                              thread.title,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: shellContext.isNavActive(
-                                        AxNavigation.thread(
-                                            space.id, thread.id))
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color:
-                                    SyntilaColors.navigationTextMuted(isDark),
+                  ],
+                  if (onSidebarWidthChanged != null)
+                    SizedBox(
+                      width: sidebarWidth,
+                      height: 18,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.resizeColumn,
+                          child: GestureDetector(
+                            key: ValueKey('rail-space-resize-$key'),
+                            behavior: HitTestBehavior.opaque,
+                            onHorizontalDragStart: (details) {
+                              dragStartX = details.globalPosition.dx;
+                              dragStartWidth = sidebarWidth;
+                            },
+                            onHorizontalDragUpdate: (details) =>
+                                onSidebarWidthChanged!(
+                              (dragStartWidth +
+                                      details.globalPosition.dx -
+                                      dragStartX)
+                                  .clamp(ResizableSidebar.minWidth,
+                                      ResizableSidebar.maxWidth)
+                                  .toDouble(),
+                            ),
+                            child: const SizedBox(
+                              width: 14,
+                              height: 18,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 1,
+                                  height: 12,
+                                  child: ColoredBox(color: Colors.white24),
+                                ),
                               ),
                             ),
                           ),
                         ),
-                    ],
-                  ],
-                );
-            return Column(mainAxisSize: MainAxisSize.min, children: [
-              if (owned.isNotEmpty)
-                spaceMenu(owned,
-                    icon: Icons.folder_outlined,
-                    tooltip: 'Your spaces',
-                    key: 'rail-activity-spaces'),
-              if (shared.isNotEmpty)
-                spaceMenu(shared,
-                    icon: Icons.folder_shared_outlined,
-                    tooltip: 'Shared with you',
-                    key: 'rail-activity-shared-spaces'),
-            ]);
+                      ),
+                    ),
+                ],
+              );
+            }
+
+            return spaceMenu(spaces,
+                icon: Icons.folder_outlined,
+                tooltip: 'Your spaces',
+                key: 'rail-activity-spaces');
           }),
 
           const Spacer(),

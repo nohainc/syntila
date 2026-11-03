@@ -507,15 +507,23 @@ export async function handleDeleteThread(
       409,
       "Cancel active requests before deleting this Thread",
     );
-  const mutation = env.SYNTILA_DB.prepare(
-    "DELETE FROM threads WHERE id = ?1",
-  ).bind(threadId);
+  const workflowTaskFilter = `SELECT id FROM workflow_tasks WHERE work_request_id IN (SELECT id FROM work_requests WHERE thread_id = ?1)`;
+  const mutations = [
+    destructiveThreadGuard(env, threadId, context.userId),
+    env.SYNTILA_DB.prepare(
+      `DELETE FROM workflow_task_dependencies
+       WHERE task_id IN (${workflowTaskFilter})
+          OR depends_on_task_id IN (${workflowTaskFilter})`,
+    ).bind(threadId),
+    env.SYNTILA_DB.prepare(
+      `DELETE FROM workflow_tasks
+       WHERE work_request_id IN (SELECT id FROM work_requests WHERE thread_id = ?1)`,
+    ).bind(threadId),
+    env.SYNTILA_DB.prepare("DELETE FROM threads WHERE id = ?1").bind(threadId),
+  ];
   await publishCollaborationEvent(env, "thread.deleted", spaceId, threadId, {
     threadId,
-    mutations: [
-      destructiveThreadGuard(env, threadId, context.userId),
-      mutation,
-    ],
+    mutations,
   });
   return json({ ok: true, threadId });
 }
@@ -909,12 +917,26 @@ export async function handleClearChatHistory(
   // Request with its answers and diagnostics, and Worker session continuity.
   // Deleting the owning Conversations lets canonical history cascade legally.
   const now = new Date().toISOString();
+  const workflowTaskFilter = `SELECT id FROM workflow_tasks WHERE work_request_id IN (SELECT id FROM work_requests WHERE thread_id = ?1)`;
   const mutations = [
     destructiveThreadGuard(env, threadId, context.userId),
     db
       .prepare("DELETE FROM discussion_messages WHERE thread_id = ?1")
       .bind(threadId),
     db.prepare("DELETE FROM conversations WHERE thread_id = ?1").bind(threadId),
+    db
+      .prepare(
+        `DELETE FROM workflow_task_dependencies
+         WHERE task_id IN (${workflowTaskFilter})
+            OR depends_on_task_id IN (${workflowTaskFilter})`,
+      )
+      .bind(threadId),
+    db
+      .prepare(
+        `DELETE FROM workflow_tasks
+         WHERE work_request_id IN (SELECT id FROM work_requests WHERE thread_id = ?1)`,
+      )
+      .bind(threadId),
     db.prepare("DELETE FROM work_requests WHERE thread_id = ?1").bind(threadId),
     db
       .prepare(

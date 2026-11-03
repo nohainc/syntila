@@ -140,6 +140,9 @@ it("emits a clear event that the protocol's realtime envelope accepts", async ()
       ),
     );
     f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
+    f.sqlite.exec(
+      "INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at) VALUES('T2','R','plan','stateless_read',1000,'plan:v1','completed','now','now'); INSERT INTO workflow_task_dependencies(task_id, depends_on_task_id) VALUES('T2', 'T');",
+    );
     vi.mocked(publishCollaborationEvent).mockClear();
 
     await handleClearWorkHistory(
@@ -188,6 +191,9 @@ it("clears the whole Conversation remotely, including Work history", async () =>
       ),
     );
     f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
+    f.sqlite.exec(
+      "INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at) VALUES('T2','R','plan','stateless_read',1000,'plan:v1','completed','now','now'); INSERT INTO workflow_task_dependencies(task_id, depends_on_task_id) VALUES('T2', 'T');",
+    );
     vi.mocked(publishCollaborationEvent).mockClear();
     const response = await handleClearChatHistory(
       new Request("https://test/api/threads/W/chat/clear", { method: "POST" }),
@@ -210,6 +216,8 @@ it("clears the whole Conversation remotely, including Work history", async () =>
     ).toBe(1);
     for (const table of [
       "work_requests",
+      "workflow_tasks",
+      "workflow_task_dependencies",
       "conversations",
       "conversation_history_entries",
     ]) {

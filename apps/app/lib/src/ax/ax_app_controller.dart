@@ -628,10 +628,6 @@ extension _AxAppController on _AxAppStateMixin {
             notifications[index] = notifications[index].markRead();
           }
         }
-        notifications.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        if (notifications.length > 50) {
-          notifications.removeRange(50, notifications.length);
-        }
       });
     } catch (_) {}
   }
@@ -765,7 +761,6 @@ extension _AxAppController on _AxAppStateMixin {
             ? notification.markRead()
             : notification,
       );
-      if (notifications.length > 50) notifications.removeLast();
     });
   }
 

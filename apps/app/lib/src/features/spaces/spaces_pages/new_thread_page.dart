@@ -133,7 +133,8 @@ class _NewThreadPageState extends State<NewThreadPage> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Center(
                   child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 840),
+                constraints:
+                    BoxConstraints(maxWidth: PageWidth.of(context).pageWidth),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(0, 20, 0, 12),
                   child: Column(
@@ -155,8 +156,9 @@ class _NewThreadPageState extends State<NewThreadPage> {
                         ],
                         Align(
                           alignment: Alignment.centerLeft,
-                          child:
-                              SizedBox(width: 360, child: _threadNameField()),
+                          child: SizedBox(
+                              width: double.infinity,
+                              child: _threadNameField()),
                         ),
                       ]),
                 ),
@@ -165,7 +167,8 @@ class _NewThreadPageState extends State<NewThreadPage> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Center(
                 child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 840),
+              constraints:
+                  BoxConstraints(maxWidth: PageWidth.of(context).pageWidth),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -173,51 +176,69 @@ class _NewThreadPageState extends State<NewThreadPage> {
                     _SpaceLandingSection(
                       title: 'Settings',
                       arrowKey: const ValueKey('space-settings-arrow'),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (_workflows != null)
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: _SpaceWorkspaceSelector(
-                                    configurations: _workflows!,
-                                    isOwner: widget.space.role == 'owner'),
-                              ),
-                            // Same label column and type scale as the
-                            // Workspace and Additional folders rows.
-                            Row(
-                              key: const ValueKey(
-                                  'space-show-ai-history-setting'),
-                              mainAxisSize: MainAxisSize.min,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                SizedBox(
-                                    width: _settingLabelWidth,
-                                    child: Text('AI History tab',
-                                        style: _settingLabelStyle(
-                                            Theme.of(context)))),
-                                Transform.scale(
-                                  alignment: Alignment.centerLeft,
-                                  scale: 0.8,
-                                  child: Switch(
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    value: widget.space.showAiHistory,
-                                    onChanged: widget.space.role == 'owner' &&
-                                            !_savingAiHistoryVisibility
-                                        ? _setAiHistoryVisibility
-                                        : null,
+                                if (_workflows != null)
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                        bottom: widget.space.role == 'owner'
+                                            ? _settingRowSpacing
+                                            : 0),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: _SpaceWorkspaceSelector(
+                                          configurations: _workflows!,
+                                          isOwner:
+                                              widget.space.role == 'owner'),
+                                    ),
                                   ),
+                                // Same label column and type scale as the
+                                // Workspace and Additional folders rows.
+                                Row(
+                                  key: const ValueKey(
+                                      'space-show-ai-history-setting'),
+                                  mainAxisSize: MainAxisSize.max,
+                                  children: [
+                                    SizedBox(
+                                        width: _settingLabelWidth,
+                                        child: Text('AI History tab',
+                                            style: _settingLabelStyle(
+                                                Theme.of(context)))),
+                                    const Spacer(),
+                                    SizedBox(
+                                      height: 28,
+                                      child: FittedBox(
+                                        fit: BoxFit.contain,
+                                        child: Switch(
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          value: widget.space.showAiHistory,
+                                          onChanged: widget.space.role ==
+                                                      'owner' &&
+                                                  !_savingAiHistoryVisibility
+                                              ? _setAiHistoryVisibility
+                                              : null,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                                if (_aiHistoryVisibilityError != null)
+                                  Text(_aiHistoryVisibilityError!,
+                                      style: TextStyle(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .error)),
                               ],
                             ),
-                            if (_aiHistoryVisibilityError != null)
-                              Text(_aiHistoryVisibilityError!,
-                                  style: TextStyle(
-                                      color:
-                                          Theme.of(context).colorScheme.error)),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -239,19 +260,25 @@ class _NewThreadPageState extends State<NewThreadPage> {
                   _SpaceLandingSection(
                     title: 'Archived Threads',
                     arrowKey: const ValueKey('space-archived-arrow'),
-                    child: SpacePage(
-                      key: const ValueKey('space-landing-threads'),
-                      embedded: true,
-                      section: SpacePageSection.threads,
-                      space: widget.space,
-                      dataSource: widget.dataSource,
-                      spaceThreads: widget.spaceThreads,
-                      tabQueries: widget.tabQueries,
-                      mutations: widget.mutations,
-                      viewerEmail: widget.viewerEmail,
-                      onOpenThread: (id) => widget.onOpenThreadId?.call(id),
-                      onArchive: () {},
-                      onDelete: () {},
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: SpacePage(
+                          key: const ValueKey('space-landing-threads'),
+                          embedded: true,
+                          section: SpacePageSection.threads,
+                          space: widget.space,
+                          dataSource: widget.dataSource,
+                          spaceThreads: widget.spaceThreads,
+                          tabQueries: widget.tabQueries,
+                          mutations: widget.mutations,
+                          viewerEmail: widget.viewerEmail,
+                          onOpenThread: (id) => widget.onOpenThreadId?.call(id),
+                          onArchive: () {},
+                          onDelete: () {},
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -271,7 +298,6 @@ class _NewThreadPageState extends State<NewThreadPage> {
             controller: _nameController,
             enabled:
                 !_busy && widget.space.effectivePermissions.manageOwnThreads,
-            maxLength: 22,
             onChanged: (_) => setState(() => _creationError = null),
             decoration: InputDecoration(
               labelText: 'Create a new thread',
@@ -298,8 +324,8 @@ class _NewThreadPageState extends State<NewThreadPage> {
       );
 }
 
-/// Collapsed-by-default area on the Space landing: a title with a rotating
-/// arrow that reveals its content.
+/// Collapsed-by-default area on the Space landing. State changes are immediate
+/// and do not add hover or expansion animation to these utility controls.
 class _SpaceLandingSection extends StatefulWidget {
   const _SpaceLandingSection(
       {required this.title, required this.arrowKey, required this.child});
@@ -315,25 +341,38 @@ class _SpaceLandingSectionState extends State<_SpaceLandingSection> {
   bool _expanded = false;
 
   @override
-  Widget build(BuildContext context) => ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: EdgeInsets.zero,
-        shape: const Border(),
-        collapsedShape: const Border(),
-        showTrailingIcon: false,
-        onExpansionChanged: (expanded) => setState(() => _expanded = expanded),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(width: 4),
-            AnimatedRotation(
-              turns: _expanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: Icon(Icons.expand_more, key: widget.arrowKey, size: 20),
-            ),
-          ],
+  Widget build(BuildContext context) => Theme(
+        data: Theme.of(context).copyWith(
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
         ),
-        children: [widget.child],
+        child: ExpansionTile(
+          expansionAnimationStyle: AnimationStyle.noAnimation,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          expandedAlignment: Alignment.topLeft,
+          shape: const Border(),
+          collapsedShape: const Border(),
+          showTrailingIcon: false,
+          onExpansionChanged: (expanded) =>
+              setState(() => _expanded = expanded),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(widget.title,
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(width: 4),
+              Icon(
+                _expanded ? Icons.expand_less : Icons.expand_more,
+                key: widget.arrowKey,
+                size: 20,
+              ),
+            ],
+          ),
+          children: [widget.child],
+        ),
       );
 }

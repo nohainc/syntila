@@ -18,7 +18,10 @@ extension _AxAppShellViews on _AxAppStateMixin {
           data: media.copyWith(
               textScaler: TextScaler.linear(
                   (system * _viewPreferences.textSize.scale).clamp(1.0, 1.6))),
-          child: child ?? const SizedBox.shrink(),
+          child: PageWidth(
+            textSize: _viewPreferences.textSize,
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
       home: CallbackShortcuts(
@@ -27,6 +30,13 @@ extension _AxAppShellViews on _AxAppStateMixin {
               _handleContextualCreate,
           const SingleActivator(LogicalKeyboardKey.keyN, control: true):
               _handleContextualCreate,
+          const SingleActivator(LogicalKeyboardKey.escape): () {
+            if (_sidebarPeeking) {
+              _updateState(() {
+                _sidebarPeeking = false;
+              });
+            }
+          },
         },
         child: Focus(
           autofocus: true,
@@ -45,90 +55,270 @@ extension _AxAppShellViews on _AxAppStateMixin {
                   }
                   final isDesktop =
                       SyntilaBrand.isDesktop(constraints.maxWidth);
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
                   final shell = _shellContext;
                   return Scaffold(
-                    body: Row(
+                    body: Stack(
                       children: [
-                        if (isDesktop)
-                          _desktopSidebarCollapsed
-                              ? AxIconRail(
-                                  shellContext: shell,
-                                  onNavigateTo: _navigateTo,
-                                  onOpenDrawer: () {},
-                                  onCreateSpace: _createSpace,
-                                  onCreateThread: _createThread,
-                                  searchController: _searchQueryController,
-                                  searchFocusNode: _searchFocusNode,
-                                  onSearchChanged: (_) =>
-                                      _onSearchQueryChanged(),
-                                  onClearSearch: _clearSearch,
-                                  onOpenCommandPalette: _openCommandPalette,
-                                  onOpenNotifications: _showNotifications,
-                                  onToggleTheme: _toggleTheme,
-                                  onSetThemeMode: _setThemeMode,
-                                  onLogout: () => unawaited(_logout()),
-                                  onOpenAbout: () =>
-                                      unawaited(_showAboutSyntila()),
-                                  onOpenExternal: (uri) =>
-                                      browserNavigation.openExternal(uri),
-                                  onOpenArchivedSpaces: _openArchivedSpaces,
-                                  onToggleCollapse: () => _updateState(
-                                      () => _desktopSidebarCollapsed = false),
-                                )
-                              : ResizableSidebar(
-                                  width: _desktopSidebarWidth,
-                                  onWidthChanged: (width) => _updateState(
-                                      () => _desktopSidebarWidth = width),
-                                  child: AxSidebar(
-                                    shellContext: shell,
-                                    onNavigateTo: _navigateTo,
-                                    onNavigateToRecentThread: (next) =>
+                        Row(
+                          children: [
+                            if (isDesktop)
+                              _desktopSidebarCollapsed
+                                  ? AxIconRail(
+                                      shellContext: shell,
+                                      onNavigateTo: _navigateTo,
+                                      onOpenDrawer: () {},
+                                      onCreateSpace: _createSpace,
+                                      onCreateThread: _createThread,
+                                      searchController: _searchQueryController,
+                                      searchFocusNode: _searchFocusNode,
+                                      onSearchChanged: (_) =>
+                                          _onSearchQueryChanged(),
+                                      onClearSearch: _clearSearch,
+                                      onOpenCommandPalette: _openCommandPalette,
+                                      onOpenNotifications: _showNotifications,
+                                      onToggleTheme: _toggleTheme,
+                                      onSetThemeMode: _setThemeMode,
+                                      onLogout: () => unawaited(_logout()),
+                                      onOpenAbout: () =>
+                                          unawaited(_showAboutSyntila()),
+                                      onOpenExternal: (uri) =>
+                                          browserNavigation.openExternal(uri),
+                                      onOpenArchivedSpaces: _openArchivedSpaces,
+                                      sidebarWidth: _desktopSidebarWidth,
+                                      onSidebarWidthChanged: (width) =>
+                                          _setViewPreferences(_viewPreferences
+                                              .copyWith(sidebarWidth: width)),
+                                      onToggleCollapse: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        _setViewPreferences(_viewPreferences
+                                            .copyWith(sidebarCollapsed: false));
+                                      },
+                                      onOpenSpaces: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = !_sidebarPeeking;
+                                        });
+                                      },
+                                    )
+                                  : ResizableSidebar(
+                                      width: _desktopSidebarWidth,
+                                      onWidthChanged: (width) =>
+                                          _setViewPreferences(_viewPreferences
+                                              .copyWith(sidebarWidth: width)),
+                                      child: AxSidebar(
+                                        shellContext: shell,
+                                        onNavigateTo: _navigateTo,
+                                        onNavigateToRecentThread: (next) =>
+                                            _navigateTo(next,
+                                                expandThreadSpace: false),
+                                        onToggleSpaceExpanded:
+                                            _toggleSpaceExpanded,
+                                        onCreateSpace: _createSpace,
+                                        onCreateThread: _createThread,
+                                        onEditSpace: _editSpace,
+                                        onArchiveSpace: _archiveSpace,
+                                        onDeleteSpace: (space) =>
+                                            _deleteSpace(space.id),
+                                        onRenameThread:
+                                            _renameThreadFromSidebar,
+                                        onSetThreadArchived:
+                                            _setThreadArchivedFromSidebar,
+                                        onDeleteThread:
+                                            _deleteThreadFromSidebar,
+                                        onReorderThreads:
+                                            _reorderThreadsFromSidebar,
+                                        onSetSpacePinned:
+                                            _setSpacePinnedFromSidebar,
+                                        onSetThreadPinned:
+                                            _setThreadPinnedFromSidebar,
+                                        onReorderPinnedSpaces:
+                                            _setSpacePinOrderFromSidebar,
+                                        onReorderPinnedThreads:
+                                            _setThreadPinOrderFromSidebar,
+                                        searchController:
+                                            _searchQueryController,
+                                        searchFocusNode: _searchFocusNode,
+                                        onClearSearch: _clearSearch,
+                                        onOpenCommandPalette:
+                                            _openCommandPalette,
+                                        onOpenNotifications: _showNotifications,
+                                        onToggleTheme: _toggleTheme,
+                                        onSetThemeMode: _setThemeMode,
+                                        onLogout: () => unawaited(_logout()),
+                                        onOpenAbout: () =>
+                                            unawaited(_showAboutSyntila()),
+                                        onOpenExternal: (uri) =>
+                                            browserNavigation.openExternal(uri),
+                                        onOpenArchivedSpaces:
+                                            _openArchivedSpaces,
+                                        onToggleCollapse: () =>
+                                            _setViewPreferences(
+                                                _viewPreferences.copyWith(
+                                                    sidebarCollapsed: true)),
+                                      ),
+                                    ),
+                            Expanded(
+                              child: _content(
+                                compact: !isDesktop,
+                                showTopHud: !isDesktop,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (isDesktop &&
+                            _desktopSidebarCollapsed &&
+                            _sidebarPeeking) ...[
+                          Positioned.fill(
+                            child: GestureDetector(
+                              key: const ValueKey('sidebar-peek-barrier'),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                _updateState(() {
+                                  _sidebarPeeking = false;
+                                });
+                              },
+                              child: Container(
+                                color: Colors.black.withValues(alpha: 0.12),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            child: CallbackShortcuts(
+                              bindings: {
+                                const SingleActivator(
+                                    LogicalKeyboardKey.escape): () {
+                                  _updateState(() {
+                                    _sidebarPeeking = false;
+                                  });
+                                },
+                              },
+                              child: Focus(
+                                autofocus: true,
+                                child: Material(
+                                  elevation: 16,
+                                  color: SyntilaColors.navigationBackground(
+                                      isDark),
+                                  child: ResizableSidebar(
+                                    width: _desktopSidebarWidth,
+                                    onWidthChanged: (width) =>
+                                        _setViewPreferences(_viewPreferences
+                                            .copyWith(sidebarWidth: width)),
+                                    child: AxSidebar(
+                                      shellContext: shell,
+                                      onNavigateTo: (next) {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        _navigateTo(next);
+                                      },
+                                      onNavigateToRecentThread: (next) {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
                                         _navigateTo(next,
-                                            expandThreadSpace: false),
-                                    onToggleSpaceExpanded: _toggleSpaceExpanded,
-                                    onCreateSpace: _createSpace,
-                                    onCreateThread: _createThread,
-                                    onEditSpace: _editSpace,
-                                    onArchiveSpace: _archiveSpace,
-                                    onDeleteSpace: (space) =>
-                                        _deleteSpace(space.id),
-                                    onRenameThread: _renameThreadFromSidebar,
-                                    onSetThreadArchived:
-                                        _setThreadArchivedFromSidebar,
-                                    onDeleteThread: _deleteThreadFromSidebar,
-                                    onReorderThreads:
-                                        _reorderThreadsFromSidebar,
-                                    onSetSpacePinned:
-                                        _setSpacePinnedFromSidebar,
-                                    onSetThreadPinned:
-                                        _setThreadPinnedFromSidebar,
-                                    onReorderPinnedSpaces:
-                                        _setSpacePinOrderFromSidebar,
-                                    onReorderPinnedThreads:
-                                        _setThreadPinOrderFromSidebar,
-                                    searchController: _searchQueryController,
-                                    searchFocusNode: _searchFocusNode,
-                                    onClearSearch: _clearSearch,
-                                    onOpenCommandPalette: _openCommandPalette,
-                                    onOpenNotifications: _showNotifications,
-                                    onToggleTheme: _toggleTheme,
-                                    onSetThemeMode: _setThemeMode,
-                                    onLogout: () => unawaited(_logout()),
-                                    onOpenAbout: () =>
-                                        unawaited(_showAboutSyntila()),
-                                    onOpenExternal: (uri) =>
-                                        browserNavigation.openExternal(uri),
-                                    onOpenArchivedSpaces: _openArchivedSpaces,
-                                    onToggleCollapse: () => _updateState(
-                                        () => _desktopSidebarCollapsed = true),
+                                            expandThreadSpace: false);
+                                      },
+                                      onToggleSpaceExpanded:
+                                          _toggleSpaceExpanded,
+                                      onCreateSpace: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        _createSpace();
+                                      },
+                                      onCreateThread: (space) {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        _createThread(space);
+                                      },
+                                      onEditSpace: (space) {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        return _editSpace(space);
+                                      },
+                                      onArchiveSpace: (space) {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        return _archiveSpace(space);
+                                      },
+                                      onDeleteSpace: (space) {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        return _deleteSpace(space.id);
+                                      },
+                                      onRenameThread: _renameThreadFromSidebar,
+                                      onSetThreadArchived:
+                                          _setThreadArchivedFromSidebar,
+                                      onDeleteThread: _deleteThreadFromSidebar,
+                                      onReorderThreads:
+                                          _reorderThreadsFromSidebar,
+                                      onSetSpacePinned:
+                                          _setSpacePinnedFromSidebar,
+                                      onSetThreadPinned:
+                                          _setThreadPinnedFromSidebar,
+                                      onReorderPinnedSpaces:
+                                          _setSpacePinOrderFromSidebar,
+                                      onReorderPinnedThreads:
+                                          _setThreadPinOrderFromSidebar,
+                                      searchController: _searchQueryController,
+                                      searchFocusNode: _searchFocusNode,
+                                      onClearSearch: _clearSearch,
+                                      onOpenCommandPalette: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        _openCommandPalette();
+                                      },
+                                      onOpenNotifications: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        _showNotifications();
+                                      },
+                                      onToggleTheme: _toggleTheme,
+                                      onSetThemeMode: _setThemeMode,
+                                      onLogout: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        unawaited(_logout());
+                                      },
+                                      onOpenAbout: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        unawaited(_showAboutSyntila());
+                                      },
+                                      onOpenExternal: (uri) =>
+                                          browserNavigation.openExternal(uri),
+                                      onOpenArchivedSpaces: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        _openArchivedSpaces();
+                                      },
+                                      onToggleCollapse: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                      },
+                                    ),
                                   ),
                                 ),
-                        Expanded(
-                          child: _content(
-                            compact: !isDesktop,
-                            showTopHud: !isDesktop,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   );
@@ -710,10 +900,13 @@ extension _AxAppShellViews on _AxAppStateMixin {
         ),
       );
 
-  Widget _contentWidth(Widget child) => Align(
+  Widget _contentWidth(Widget child, {bool wide = false}) => Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 840),
+          constraints: BoxConstraints(
+              maxWidth: wide
+                  ? _viewPreferences.textSize.widePageWidth
+                  : _viewPreferences.textSize.pageWidth),
           child: SizedBox(width: double.infinity, child: child),
         ),
       );
@@ -824,9 +1017,13 @@ extension _AxAppShellViews on _AxAppStateMixin {
                                               compact ? 18 : 34,
                                               40,
                                             ),
-                                            child: _contentWidth(showRunDetails
-                                                ? _runDetailsView(compact)
-                                                : _homeView()),
+                                            child: _contentWidth(
+                                              showRunDetails
+                                                  ? _runDetailsView(compact)
+                                                  : _homeView(),
+                                              wide: navigation.kind ==
+                                                  AxRouteKind.workspaces,
+                                            ),
                                           ),
                   ],
                 ),

@@ -3,6 +3,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/notifications/notification_models.dart';
 
 void main() {
+  test('only the latest failure per Thread survives out of order events', () {
+    AxNotification event(String id, String? thread, String time,
+            {String type = 'thread.failed'}) =>
+        notificationFromRealtimeEvent({
+          'eventId': id,
+          'type': type,
+          'threadId': thread,
+          'timestamp': time,
+        })!;
+    final result = latestThreadFailures([
+      event('new', 't1', '2026-10-03T00:00:00Z'),
+      event('old', 't1', '2026-10-01T00:00:00Z'),
+      event('other', 't2', '2026-10-02T00:00:00Z'),
+      event('input', 't1', '2026-10-01T00:00:00Z', type: 'thread.needs_input'),
+      event('unknown1', null, '2026-10-01T00:00:00Z'),
+      event('unknown2', null, '2026-10-02T00:00:00Z'),
+    ]);
+    expect(result.map((n) => n.id),
+        containsAll(['new', 'other', 'input', 'unknown1', 'unknown2']));
+    expect(result.map((n) => n.id), isNot(contains('old')));
+  });
+
   test('only meaningful realtime states create notifications', () {
     expect(isMeaningfulRealtimeNotification('thread.needs_input'), isTrue);
     expect(isMeaningfulRealtimeNotification('thread.completed'), isTrue);

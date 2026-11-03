@@ -537,6 +537,20 @@ it("accepts Research v2 through request creation with every role frozen in the s
       "synthesis",
     ]);
     expect(snapshot.workflowSnapshot.steps).toHaveLength(3);
+    const conversation = f.sqlite
+      .prepare(
+        `SELECT cr.conversation_id AS conversationId, cr.conversation_revision AS revision,
+        r.workflow_id AS workflowId, COUNT(s.id) AS stepCount
+        FROM conversation_work_requests cr JOIN conversation_workflow_runs r ON r.work_request_id=cr.work_request_id
+        JOIN conversation_workflow_step_runs s ON s.workflow_run_id=r.id
+        WHERE cr.work_request_id=(SELECT id FROM work_requests LIMIT 1) GROUP BY cr.work_request_id`,
+      )
+      .get();
+    expect(conversation).toMatchObject({
+      revision: 1,
+      workflowId: "research",
+      stepCount: 3,
+    });
   } finally {
     f.sqlite.close();
   }
@@ -702,5 +716,133 @@ describe("Research plan admission", () => {
     } finally {
       f.sqlite.close();
     }
+  });
+
+  it("offers and validates a user-requested partial synthesis of a failed Research request", async () => {
+    const f = fixture();
+    try {
+      f.sqlite.exec(
+        "INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('owner','paid','active','manual','now','now')",
+      );
+      const workflowSnapshot = JSON.stringify({
+        steps: [
+          { kind: "research", id: "research-1" },
+          { kind: "research", id: "research-2" },
+          { kind: "synthesis", id: "synthesis" },
+        ],
+      });
+      f.sqlite
+        .prepare(
+          `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
+        VALUES('R','W','owner','stateless','research',2,?,'failed','{"originalRequest":"x"}','now','now')`,
+        )
+        .run(workflowSnapshot);
+      const task = (id: string, kind: string, status: string) =>
+        f.sqlite
+          .prepare(
+            `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,attempt,created_at,updated_at,step_instance_id)
+             VALUES(?, 'R', ?, 'stateless_read', 1000, 'v', ?, 1, 'now', 'now', ?)`,
+          )
+          .run(`t-${id}`, kind, status, id);
+      task("research-1", "research", "completed");
+      task("research-2", "research", "failed");
+      task("synthesis", "synthesis", "queued");
+      const { handleRetryWorkRequest } =
+        await import("../src/routes/work-lifecycle.js");
+      const retry = (body: object) =>
+        handleRetryWorkRequest(
+          new Request("https://cloud.test/work-requests/R/retry", {
+            method: "POST",
+            body: JSON.stringify(body),
+          }),
+          f.env,
+          "R",
+        );
+      // One successful report is not a comparison.
+      await expect(
+        retry({ stepKind: "synthesis", stepId: "synthesis", partial: true }),
+      ).rejects.toMatchObject({ status: 409 });
+      // Only the synthesis can be partial.
+      await expect(
+        retry({ stepKind: "research", stepId: "research-2", partial: true }),
+      ).rejects.toMatchObject({ status: 400 });
+    } finally {
+      f.sqlite.close();
+    }
+  });
+});
+
+describe("Research gap read model", () => {
+  const steps = (
+    first: string,
+    second: string,
+    third: string,
+    synthesis: string,
+  ) => [
+    { kind: "research", stepId: "research-1", status: first },
+    { kind: "research", stepId: "research-2", status: second },
+    { kind: "research", stepId: "research-3", status: third },
+    { kind: "synthesis", stepId: "synthesis", status: synthesis },
+  ];
+  const row = (status: string) => ({
+    workflowId: "research",
+    workflowVersion: 2,
+    status,
+  });
+
+  it("offers a partial synthesis only with enough reports and a failure", async () => {
+    const { researchGapFields } =
+      await import("../src/routes/work-lifecycle.js");
+    expect(
+      researchGapFields(
+        row("failed"),
+        steps("completed", "completed", "failed", "queued"),
+      ),
+    ).toMatchObject({
+      partialSynthesisAvailable: true,
+      completedWithGaps: false,
+      researchReports: { succeeded: 2, failed: 1, total: 3 },
+    });
+    // One report left: nothing to compare.
+    expect(
+      researchGapFields(
+        row("failed"),
+        steps("completed", "failed", "failed", "queued"),
+      ),
+    ).toMatchObject({ partialSynthesisAvailable: false });
+    // Cancelled or running requests never offer it.
+    expect(
+      researchGapFields(
+        row("cancelled"),
+        steps("completed", "completed", "failed", "queued"),
+      ),
+    ).toMatchObject({ partialSynthesisAvailable: false });
+  });
+
+  it("marks a synthesis that ran over fewer reports as completed with gaps", async () => {
+    const { researchGapFields } =
+      await import("../src/routes/work-lifecycle.js");
+    expect(
+      researchGapFields(
+        row("completed"),
+        steps("completed", "completed", "failed", "completed"),
+      ),
+    ).toMatchObject({
+      completedWithGaps: true,
+      partialSynthesisAvailable: false,
+    });
+    expect(
+      researchGapFields(
+        row("completed"),
+        steps("completed", "completed", "completed", "completed"),
+      ),
+    ).toMatchObject({ completedWithGaps: false });
+    // Other workflows carry no Research fields.
+    expect(
+      researchGapFields(
+        { workflowId: "direct", workflowVersion: 2, status: "completed" },
+        [],
+      ),
+    ).toEqual({});
   });
 });

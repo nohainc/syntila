@@ -87,6 +87,8 @@ function createAcceptanceRun(
     completion?: "during_dispatch" | "event" | "lost_event";
     /** Tasks whose provider run fails (by task-ID suffix). */
     failTaskSuffix?: string;
+    /** Persisted task rows a retry run reads (step_id AS kind, ...). */
+    persistedTasks?: Array<Record<string, unknown>>;
     parallelSlots?: number;
     manualCompletion?: boolean;
   } = {},
@@ -179,7 +181,11 @@ function createAcceptanceRun(
           return null;
         },
         async all<T>() {
-          return { results: [] as T[] };
+          return {
+            results: (sql.includes("FROM workflow_tasks WHERE work_request_id")
+              ? (options.persistedTasks ?? [])
+              : []) as T[],
+          };
         },
         async run() {
           taskWrites.push({ sql, values });
@@ -527,6 +533,58 @@ describe("Work v1 acceptance through the shared assignment dispatcher", () => {
           values.includes("task-request-v8-acceptance-research-1"),
       ),
     ).toBe(true);
+  });
+
+  it("synthesizes only the successful reports on a user-requested partial synthesis, and names what is missing", async () => {
+    const definition = BUILTIN_WORKFLOW_CATALOG["research:v2"]!;
+    const report = JSON.stringify({
+      text: "Use SQS.",
+      status: "completed",
+      model: "model-a",
+      startedAt: "s",
+      completedAt: "c",
+    });
+    const { instance, step, gatewayCalls } = createAcceptanceRun(definition, {
+      persistedTasks: [
+        {
+          kind: "research-1",
+          status: "completed",
+          attempt: 1,
+          outputJson: report,
+        },
+        { kind: "research-2", status: "failed", attempt: 1, outputJson: null },
+        { kind: "synthesis", status: "queued", attempt: 0, outputJson: null },
+      ],
+    });
+    const result = await instance.run(
+      {
+        payload: {
+          runId: "run-partial",
+          goalId: "goal-v8-acceptance",
+          idempotencyKey: "key-partial",
+          workRequestId: "request-v8-acceptance",
+          organizationId: "workspace-fixture",
+          builtinWorkflow: definition,
+          retryStepKind: "synthesis",
+          partialSynthesis: true,
+        },
+      } as never,
+      step,
+    );
+    expect(result.status).toBe("completed");
+    // The failed researcher is not re-run; only synthesis is dispatched.
+    expect(gatewayCalls).toHaveLength(1);
+    const snapshot = (
+      gatewayCalls[0]!.payload as { snapshot: Record<string, unknown> }
+    ).snapshot;
+    expect(String(snapshot.taskId)).toMatch(/-synthesis$/);
+    const prompt = String(snapshot.objective);
+    expect(prompt).toContain("INCOMPLETE INVESTIGATION");
+    expect(prompt).toContain("1 of 2 researchers failed (research-2)");
+    expect(prompt).toContain("Use SQS.");
+    expect(prompt).toContain("RESEARCH REPORT 1");
+    expect(prompt).not.toContain("RESEARCH REPORT 2");
+    expect(snapshot.readOnly).toBe(true);
   });
 
   it("stops downstream steps when cancellation is recorded after an assignment completes", async () => {

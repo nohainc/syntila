@@ -3974,8 +3974,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // Tap Share Space button
-    await tester.tap(find.byTooltip('Share Space'));
+    // The visible label is sufficient; this button should not show a hint.
+    expect(find.byTooltip('Share Space'), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, 'Invite'));
     await tester.pumpAndSettle();
 
     expect(find.text('Invite people'), findsOneWidget); // Dialog title
@@ -3997,6 +3998,56 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('Members tab shows only the empty state and Invite action',
+      (tester) async {
+    for (final membersList in [
+      const <AxSpaceMember>[],
+      const [
+        AxSpaceMember(
+          userId: 'u-owner',
+          email: 'owner@example.com',
+          displayName: 'Owner',
+          role: 'owner',
+          createdAt: '2026-01-01',
+        ),
+      ],
+    ]) {
+      final source = _MembersTabTestDataSource(
+        members: membersList,
+        invitations: const [],
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SpacePage(
+            section: SpacePageSection.members,
+            space: const AxSpace(
+              id: 'p-1',
+              name: 'Test Space',
+              branch: 'main',
+              lastActivity: 'today',
+            ),
+            dataSource: source,
+            onOpenThread: (_) {},
+            onArchive: () {},
+            onDelete: () {},
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No other members yet. Only you are here.'),
+          findsOneWidget);
+      expect(find.byType(DataTable), findsNothing);
+      expect(find.byType(Checkbox), findsNothing);
+      expect(find.text('Choose what each member can do in this Space.'),
+          findsNothing);
+      expect(find.byTooltip('Share Space'), findsNothing);
+      final invite = find.widgetWithText(TextButton, 'Invite');
+      expect(invite, findsOneWidget);
+      expect(tester.widget<TextButton>(invite).style, isNull);
+    }
   });
 
   for (final width in [320.0, 390.0, 1200.0]) {

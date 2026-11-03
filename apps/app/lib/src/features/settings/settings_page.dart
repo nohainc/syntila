@@ -38,30 +38,32 @@ class SettingsPage extends StatelessWidget {
                 letterSpacing: 0.7,
                 color: SyntilaColors.neutralText(isDark))),
         const SizedBox(height: 8),
-        Row(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Text size', style: TextStyle(fontSize: 14)),
-                  const SizedBox(height: 2),
-                  Text('Makes text larger across the app.',
-                      style: TextStyle(fontSize: 12, color: muted)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            SegmentedButton<TextSizeOption>(
-              key: const ValueKey('setting-text-size'),
-              showSelectedIcon: false,
-              segments: [
-                for (final option in TextSizeOption.values)
-                  ButtonSegment(value: option, label: Text(option.label)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Text size', style: TextStyle(fontSize: 14)),
+                const SizedBox(height: 2),
+                Text('Makes text larger across the app.',
+                    style: TextStyle(fontSize: 12, color: muted)),
               ],
-              selected: {preferences.textSize},
-              onSelectionChanged: (selection) =>
-                  onChanged(preferences.copyWith(textSize: selection.first)),
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<TextSizeOption>(
+                key: const ValueKey('setting-text-size'),
+                showSelectedIcon: false,
+                segments: [
+                  for (final option in TextSizeOption.values)
+                    ButtonSegment(value: option, label: Text(option.label)),
+                ],
+                selected: {preferences.textSize},
+                onSelectionChanged: (selection) =>
+                    onChanged(preferences.copyWith(textSize: selection.first)),
+              ),
             ),
           ],
         ),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'view_preferences_stub.dart'
+    if (dart.library.io) 'view_preferences_io.dart'
     if (dart.library.js_interop) 'view_preferences_web.dart' as platform;
 
 /// App-wide text size. Standard is the original size.
@@ -14,6 +15,14 @@ enum TextSizeOption {
   final String label;
   final double scale;
 
+  double get pageWidth => switch (this) {
+        standard => 500,
+        large => 600,
+        extraLarge => 700,
+      };
+
+  double get widePageWidth => this == extraLarge ? 1000 : 900;
+
   static TextSizeOption fromName(Object? name) => values
       .firstWhere((option) => option.name == name, orElse: () => standard);
 }
@@ -24,9 +33,14 @@ class ViewPreferences {
     this.showRecentThreads = true,
     this.recentThreadsCount = defaultRecentThreadsCount,
     this.textSize = TextSizeOption.standard,
+    this.sidebarCollapsed = false,
+    this.sidebarWidth = defaultSidebarWidth,
   });
 
   static const defaultRecentThreadsCount = 7;
+  static const defaultSidebarWidth = 200.0;
+  static const minSidebarWidth = 200.0;
+  static const maxSidebarWidth = 300.0;
 
   /// Fixed choices offered in Settings; stored values snap to the nearest one.
   static const recentThreadsCountOptions = [4, 7, 10];
@@ -34,26 +48,38 @@ class ViewPreferences {
   final bool showRecentThreads;
   final int recentThreadsCount;
   final TextSizeOption textSize;
+  final bool sidebarCollapsed;
+  final double sidebarWidth;
 
   ViewPreferences copyWith(
           {bool? showRecentThreads,
           int? recentThreadsCount,
-          TextSizeOption? textSize}) =>
+          TextSizeOption? textSize,
+          bool? sidebarCollapsed,
+          double? sidebarWidth}) =>
       ViewPreferences(
         textSize: textSize ?? this.textSize,
         showRecentThreads: showRecentThreads ?? this.showRecentThreads,
         recentThreadsCount:
             _clampCount(recentThreadsCount ?? this.recentThreadsCount),
+        sidebarCollapsed: sidebarCollapsed ?? this.sidebarCollapsed,
+        sidebarWidth: _clampSidebarWidth(sidebarWidth ?? this.sidebarWidth),
       );
 
   static int _clampCount(int value) =>
       recentThreadsCountOptions.reduce((best, option) =>
           (option - value).abs() < (best - value).abs() ? option : best);
 
+  static double _clampSidebarWidth(double value) => value.isFinite
+      ? value.clamp(minSidebarWidth, maxSidebarWidth).toDouble()
+      : defaultSidebarWidth;
+
   String encode() => jsonEncode({
         'showRecentThreads': showRecentThreads,
         'recentThreadsCount': recentThreadsCount,
         'textSize': textSize.name,
+        'sidebarCollapsed': sidebarCollapsed,
+        'sidebarWidth': sidebarWidth,
       });
 
   static ViewPreferences decode(String? raw) {
@@ -63,11 +89,17 @@ class ViewPreferences {
       if (json is! Map) return const ViewPreferences();
       final show = json['showRecentThreads'];
       final count = json['recentThreadsCount'];
+      final collapsed = json['sidebarCollapsed'];
+      final width = json['sidebarWidth'];
       return ViewPreferences(
         showRecentThreads: show is bool ? show : true,
         recentThreadsCount:
             count is int ? _clampCount(count) : defaultRecentThreadsCount,
         textSize: TextSizeOption.fromName(json['textSize']),
+        sidebarCollapsed: collapsed is bool ? collapsed : false,
+        sidebarWidth: width is num
+            ? _clampSidebarWidth(width.toDouble())
+            : defaultSidebarWidth,
       );
     } catch (_) {
       return const ViewPreferences();
@@ -79,11 +111,13 @@ class ViewPreferences {
       other is ViewPreferences &&
       other.showRecentThreads == showRecentThreads &&
       other.recentThreadsCount == recentThreadsCount &&
-      other.textSize == textSize;
+      other.textSize == textSize &&
+      other.sidebarCollapsed == sidebarCollapsed &&
+      other.sidebarWidth == sidebarWidth;
 
   @override
-  int get hashCode =>
-      Object.hash(showRecentThreads, recentThreadsCount, textSize);
+  int get hashCode => Object.hash(showRecentThreads, recentThreadsCount,
+      textSize, sidebarCollapsed, sidebarWidth);
 }
 
 /// Device-local storage for [ViewPreferences], independent of account and Cloud.

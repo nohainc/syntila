@@ -320,6 +320,24 @@ AxNotification? notificationFromRealtimeEvent(
 String? _optionalString(Object? value) =>
     value is String && value.trim().isNotEmpty ? value : null;
 
+/// Keep the newest failure for each identifiable Thread, including when live
+/// events and the durable feed arrive out of order.
+List<AxNotification> latestThreadFailures(Iterable<AxNotification> items) {
+  final sorted = items.toList()
+    ..sort((a, b) {
+      final time = b.createdAt.compareTo(a.createdAt);
+      return time != 0 ? time : b.id.compareTo(a.id);
+    });
+  final seen = <String>{};
+  return [
+    for (final item in sorted)
+      if (item.kind != AxNotificationKind.threadFailed ||
+          item.threadId == null ||
+          seen.add(item.threadId!))
+        item,
+  ];
+}
+
 /// Builds notifications from the Cloud feed; items already read stay read.
 List<AxNotification> notificationsFromFeed(
     Iterable<Map<String, dynamic>> feed) {

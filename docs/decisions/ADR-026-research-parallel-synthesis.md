@@ -255,3 +255,22 @@ The preview gate remains closed pending real-provider lifecycle acceptance.
 Automated slot, restart, cancellation and synthesis-barrier tests are distinct
 from that release evidence. No migration is needed for these additive context
 fields or explanatory UI changes.
+
+## Cross-workflow conversation context
+
+Research v2 requests accepted after this change join the Thread's canonical
+Conversation alongside Chat and Work. The Conversation row retains its legacy
+Chat/Work anchor identity; the accepted request and workflow run retain their
+actual Research identity and version. Each role keeps its request-scoped session.
+For future requests, the canonical context includes the user's Research request
+and the synthesis response; individual researcher reports remain accessible on
+their steps and are excluded from conversation bootstrap. The existing accepted
+revision boundary excludes sibling output from the current investigation.
+Chat and Work receive the synthesis in a new bootstrap or a delta to an existing
+session, subject to the normal history limits and AI History reset boundary.
+
+Older Research requests accepted without a Conversation association are not
+backfilled automatically: a later Conversation clear cannot be distinguished
+safely from missing associations. Their stored reports remain available where
+existing history and authorization permit, but are not automatically supplied
+to later sessions. This change does not require a schema migration.

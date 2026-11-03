@@ -94,16 +94,17 @@ Provider credentials stay in the local provider CLI configuration. Runtime crede
 
 Space membership remains the boundary for reading. Owners retain all member
 rights and control Space settings and every Thread. For other members, the
-owner can set four explicit booleans: `chat`, `useOwnWorkers`, `work`, and
-`manageOwnThreads`. The Members tab shows these in a checkbox grid, with
-"Own Workers in Chat" next to Chat; only the owner can edit it, and the Owner badge appears beside the owner's name. Thread
+owner can set explicit permissions: Use Space AI for chat (`chat`), Use Space AI for work (`work`), and
+Create threads (`manageOwnThreads`). The Members tab shows these in a checkbox grid;
+only the owner can edit permissions, and the Owner badge appears beside the owner's name. Thread
 lists show the creator's email below the title when that person is not the
 Space owner. The current Thread creation identity is its immutable
 creation-time `lead_user_id`; the API does not reassign this field.
 
 The v1 rights map lives at `spaces.settings_json.memberPermissions[userId]`.
-Missing maps preserve role defaults: collaborators have Chat, own Workers in
-Chat, Work and own Thread management; viewers can read; owners have all rights. Workspace
+Missing maps preserve role defaults: collaborators have Chat, Work and Thread creation;
+viewers can read; owners have all rights. Own Workers in Chat is available by default
+and always available for all members rather than configurable in the Members grid. Workspace
 attachment requires an explicit grant for non-owners; member invitations remain
 owner-only.
 Malformed stored overrides fail closed. Removing a member removes their override
