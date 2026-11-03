@@ -148,8 +148,13 @@ void main() {
       expect(tester.getSize(button), const Size.square(32));
       final theme = IconButtonTheme.of(tester.element(button));
       expect(theme.style!.shape!.resolve({}), SyntilaRadius.buttonShape);
+      final icon = find.descendant(of: button, matching: find.byType(Icon));
+      expect(tester.getSize(icon), const Size.square(22));
+      expect(tester.getTopLeft(icon) - tester.getTopLeft(button),
+          const Offset(5, 5));
     }
     expect(tester.getCenter(usage).dy, tester.getCenter(restore).dy);
+    expect(tester.getTopLeft(restore).dx - tester.getTopRight(usage).dx, 4.0);
     expect(
         tester.getCenter(separator).dx, lessThan(tester.getCenter(usage).dx));
     expect(tester.getSize(separator).height, 24);
@@ -163,6 +168,7 @@ void main() {
             .dy));
     expect(tester.getCenter(usage).dx, tester.getCenter(restore).dx);
     expect(tester.getCenter(usage).dy, lessThan(tester.getCenter(restore).dy));
+    expect(tester.getTopLeft(restore).dy - tester.getBottomLeft(usage).dy, 4.0);
     expect(
         tester.getCenter(separator).dx, lessThan(tester.getCenter(usage).dx));
     expect(tester.getSize(separator).height, 48);

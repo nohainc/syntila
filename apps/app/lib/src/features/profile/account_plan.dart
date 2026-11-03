@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../ax/ax_data.dart';
+import 'subscription_page.dart';
 
 /// Product name of the paid tier. Cloud and the API only say `paid`.
 const paidPlanName = 'Syntila Plus';
@@ -18,18 +19,22 @@ class AccountPlanController extends ChangeNotifier {
   final AxAccountPlanDataSource _source;
   AxAccountPlan _plan = AxAccountPlan.free;
   bool _loaded = false;
+  bool _loadFailed = false;
 
   AxAccountPlan get plan => _plan;
   bool get loaded => _loaded;
+  bool get loadFailed => _loadFailed;
 
   Future<void> refresh() async {
     try {
       _plan = await _source.loadAccountPlan();
+      _loadFailed = false;
       // Any successful load (Profile, sharing, a refresh after an upgrade or
       // a server denial) updates what the composers offer.
       AxAccountPlanCache.instance.plan = _plan;
     } catch (_) {
       _plan = AxAccountPlan.free;
+      _loadFailed = true;
     }
     _loaded = true;
     notifyListeners();
@@ -92,19 +97,34 @@ class _AccountPlanSummaryState extends State<AccountPlanSummary> {
           return ListTile(
             key: const ValueKey('profile-account-plan'),
             contentPadding: EdgeInsets.zero,
+            trailing: TextButton(
+              onPressed: !_controller.loaded || _controller.loadFailed
+                  ? null
+                  : () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                            builder: (_) =>
+                                SubscriptionPage(plan: _controller.plan)),
+                      ),
+              child: const Text('View plans'),
+            ),
             title: Text(!_controller.loaded
                 ? 'Loading…'
-                : plan.isPaid
-                    ? paidPlanName
-                    : 'Free'),
-            subtitle: plan.isPaid && end != null
-                ? Text(plan.status == 'past_due'
-                    ? 'Access until ${MaterialLocalizations.of(context).formatMediumDate(end.toLocal())}'
-                    : 'Renews ${MaterialLocalizations.of(context).formatMediumDate(end.toLocal())}')
-                : _controller.loaded && !plan.isPaid
-                    // Free runs one AI task at a time; Plus runs them in parallel.
-                    ? const Text('$paidPlanName: Run AI tasks in parallel.')
-                    : null,
+                : _controller.loadFailed
+                    ? 'Plan unavailable'
+                    : plan.isPaid
+                        ? paidPlanName
+                        : 'Free'),
+            subtitle: _controller.loadFailed
+                ? const Text(
+                    'Could not load your plan. Please try again later.')
+                : plan.isPaid && end != null
+                    ? Text(plan.status == 'past_due'
+                        ? 'Access until ${MaterialLocalizations.of(context).formatMediumDate(end.toLocal())}'
+                        : 'Renews ${MaterialLocalizations.of(context).formatMediumDate(end.toLocal())}')
+                    : _controller.loaded && !plan.isPaid
+                        // Free runs one AI task at a time; Plus runs them in parallel.
+                        ? const Text('$paidPlanName: Run AI tasks in parallel.')
+                        : null,
           );
         },
       );

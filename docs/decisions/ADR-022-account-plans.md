@@ -90,3 +90,11 @@ without migrations.
 
 - **Research:** `workflow.research` gates the standalone Research workflow for
   the requesting account; see [ADR-026](ADR-026-research-parallel-synthesis.md).
+
+### Plan overview
+
+The Profile plan summary links to a Free and Syntila Plus comparison. It shows
+weekly, monthly and yearly purchase periods as unavailable while Syntila has no
+configured checkout or approved prices; Aliolo's prices are not Syntila prices.
+The current account tier comes from the existing account-plan endpoint. The
+comparison describes the existing limits and does not expose unreleased Research.

@@ -636,14 +636,17 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                         : candidates.length * buttonSize +
                             (candidates.length - 1) * workerSpacing;
                     final stackActions = showUsage &&
-                        workersWidth + separatorWidth + 2 * buttonSize >
+                        workersWidth +
+                                separatorWidth +
+                                2 * buttonSize +
+                                workerSpacing >
                             constraints.maxWidth;
                     final usage = Semantics(
                       label: 'Worker usage',
                       button: true,
                       child: IconButton(
                         key: ValueKey('${widget.scope}-usage'),
-                        icon: const Icon(Icons.speed),
+                        icon: const Icon(Icons.speed, size: 22),
                         onPressed: effective.worker == null
                             ? null
                             : () {
@@ -656,7 +659,8 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                       label: 'Restore opening selection',
                       child: IconButton(
                         key: ValueKey('${widget.scope}-restore'),
-                        icon: const Icon(Icons.settings_backup_restore_rounded),
+                        icon: const Icon(Icons.settings_backup_restore_rounded,
+                            size: 22),
                         onPressed: enabled &&
                                 (value.worker != openingSelection.worker ||
                                     value.model != openingSelection.model ||
@@ -675,6 +679,7 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                     return IconButtonTheme(
                       data: IconButtonThemeData(
                         style: IconButton.styleFrom(
+                          iconSize: 22.0,
                           fixedSize: const Size.square(buttonSize),
                           minimumSize: const Size.square(buttonSize),
                           padding: EdgeInsets.zero,
@@ -693,7 +698,8 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                                       candidate.id == effective.worker;
                                   final rawIcon = widget.workerIconBuilder
                                           ?.call(candidate) ??
-                                      const Icon(Icons.smart_toy_outlined);
+                                      const Icon(Icons.smart_toy_outlined,
+                                          size: 22);
                                   return slot(Semantics(
                                     label: candidate.name,
                                     selected: isSelected,
@@ -718,8 +724,9 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                             if (showUsage)
                               SizedBox(
                                 width: separatorWidth,
-                                height:
-                                    stackActions ? 2 * buttonSize : buttonSize,
+                                height: stackActions
+                                    ? 2 * buttonSize + workerSpacing
+                                    : buttonSize,
                                 child: Center(
                                     child: Container(
                                   key: ValueKey(
@@ -730,10 +737,18 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                                 )),
                               ),
                             if (stackActions)
-                              Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [slot(usage), slot(restore)])
-                            else ...[if (showUsage) slot(usage), slot(restore)],
+                              Column(mainAxisSize: MainAxisSize.min, children: [
+                                slot(usage),
+                                const SizedBox(height: workerSpacing),
+                                slot(restore),
+                              ])
+                            else ...[
+                              if (showUsage) ...[
+                                slot(usage),
+                                const SizedBox(width: workerSpacing),
+                              ],
+                              slot(restore),
+                            ],
                           ]),
                     );
                   }),
