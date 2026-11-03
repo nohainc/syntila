@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
+import 'package:syntila_plugin_conformance/syntila_plugin_conformance.dart'
+    show ConformanceLauncher, LineQueue, PluginConnection;
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 
 import 'plugin_redactor.dart';
@@ -478,6 +480,44 @@ class PluginHost {
     return outcome;
   }
 
+  /// Opens a raw line-oriented connection for the conformance suite with the
+  /// same guarantees as [run]: digest re-check before spawn, built
+  /// environment, no shell, and process-tree cleanup. The caller drives the
+  /// protocol itself.
+  Future<PluginConnection> connect(PluginLaunch launch) async {
+    final String digest;
+    try {
+      digest = await sha256OfFile(launch.executable);
+    } on Object {
+      throw const PluginLaunchException(
+        PluginHostFailure.digestMismatch,
+        'The plugin artifact could not be read.',
+      );
+    }
+    if (digest != launch.artifactSha256) {
+      throw const PluginLaunchException(
+        PluginHostFailure.digestMismatch,
+        'The plugin artifact does not match its pinned digest.',
+      );
+    }
+    final Process process;
+    try {
+      process = await _supervisor.startIsolatedProcess(
+        launch.executable,
+        launch.arguments,
+        workingDirectory: launch.workingDirectory,
+        environment: launch.environment,
+        includeParentEnvironment: false,
+      );
+    } on Object {
+      throw const PluginLaunchException(
+        PluginHostFailure.crashed,
+        'The plugin process could not be started.',
+      );
+    }
+    return _HostConnection(process, _supervisor);
+  }
+
   /// Declared artifacts must exist inside the working directory after symlink
   /// resolution.
   static String? _artifactProblem(String workingDirectory, List<String> paths) {
@@ -570,5 +610,79 @@ class _LineFramer {
     }
     if (bytes.isEmpty) return;
     onLine(utf8.decode(bytes, allowMalformed: true));
+  }
+}
+
+class PluginLaunchException implements Exception {
+  const PluginLaunchException(this.code, this.message);
+  final String code;
+  final String message;
+
+  @override
+  String toString() => '$code: $message';
+}
+
+/// Starts a fresh supervised plugin process per conformance case.
+class PluginHostLauncher implements ConformanceLauncher {
+  PluginHostLauncher(this.host, this.target);
+
+  final PluginHost host;
+  final PluginLaunch target;
+
+  @override
+  Future<PluginConnection> launch() => host.connect(target);
+}
+
+class _HostConnection implements PluginConnection {
+  _HostConnection(this._process, this._supervisor) {
+    _subscription = _process.stdout.listen(
+      _queue.add,
+      onDone: _queue.close,
+      onError: (_) => _queue.close(),
+    );
+    _process.stderr.drain<void>().catchError((_) {});
+    unawaited(_process.stdin.done.catchError((_) {}));
+  }
+
+  final Process _process;
+  final PlatformProcessSupervisor _supervisor;
+  final LineQueue _queue = LineQueue();
+  late final StreamSubscription<List<int>> _subscription;
+
+  @override
+  Future<void> send(String line) async {
+    try {
+      _process.stdin.writeln(line);
+      await _process.stdin.flush();
+    } on Object {
+      // A closed pipe is observed through the exit.
+    }
+  }
+
+  @override
+  Future<String?> readLine(Duration timeout) => _queue.next(timeout);
+
+  @override
+  Future<void> closeInput() async {
+    try {
+      await _process.stdin.close();
+    } on Object {
+      // Already closed.
+    }
+  }
+
+  @override
+  Future<int?> waitForExit(Duration timeout) async {
+    try {
+      return await _process.exitCode.timeout(timeout);
+    } on TimeoutException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> kill() async {
+    await _supervisor.terminateProcessTree(_process, force: true);
+    await _subscription.cancel();
   }
 }

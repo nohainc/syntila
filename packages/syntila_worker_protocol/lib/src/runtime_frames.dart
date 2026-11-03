@@ -1466,6 +1466,216 @@ final class WorkerErrorFrame extends WorkerFrame {
   }
 }
 
+/// Asks a plugin-mode Engine to run the protocol conformance suite against the
+/// admitted plugin (protocol 4.2). Proves protocol behavior only.
+final class ConformanceRequest extends WorkerFrame {
+  ConformanceRequest({
+    required super.requestId,
+    this.declaresResume = false,
+    this.declaredCapabilities,
+    this.timeoutMs = 600000,
+    this.protocolVersion = pluginExecutorProtocolVersion,
+  }) {
+    _validateToken(
+      requestId,
+      'requestId',
+      WorkerProtocolLimits.maxRequestIdLength,
+    );
+    if (protocolVersion != pluginExecutorProtocolVersion) {
+      throw const FormatException('conformance requires protocol 4.2');
+    }
+    if (timeoutMs < 1000 || timeoutMs > WorkerProtocolLimits.maxTimeoutMs) {
+      throw const FormatException('conformance timeout is out of range');
+    }
+    if (declaredCapabilities != null && declaredCapabilities!.length > 32) {
+      throw const FormatException('too many declared capabilities');
+    }
+  }
+
+  final String protocolVersion;
+  final bool declaresResume;
+
+  /// Capability keys the manifest declared, or null to skip the subset check.
+  final Map<String, Object?>? declaredCapabilities;
+  final int timeoutMs;
+
+  @override
+  String get type => 'conformance.request';
+
+  @override
+  Map<String, Object?> toJson() => {
+        'type': type,
+        'protocolVersion': protocolVersion,
+        'requestId': requestId,
+        'declaresResume': declaresResume,
+        if (declaredCapabilities != null)
+          'declaredCapabilities': declaredCapabilities,
+        'timeoutMs': timeoutMs,
+      };
+
+  factory ConformanceRequest.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'type',
+      'protocolVersion',
+      'requestId',
+      'declaresResume',
+      'declaredCapabilities',
+      'timeoutMs',
+    });
+    _expectType(json, 'conformance.request');
+    final resume = json['declaresResume'];
+    final timeout = json['timeoutMs'];
+    final capabilities = json['declaredCapabilities'];
+    if (resume is! bool || timeout is! int) {
+      throw const FormatException('conformance request fields are malformed');
+    }
+    if (capabilities != null && capabilities is! Map) {
+      throw const FormatException('declaredCapabilities must be an object');
+    }
+    return ConformanceRequest(
+      requestId: _boundedString(
+        json,
+        'requestId',
+        WorkerProtocolLimits.maxRequestIdLength,
+      ),
+      protocolVersion: _requiredString(json, 'protocolVersion'),
+      declaresResume: resume,
+      declaredCapabilities: capabilities == null
+          ? null
+          : Map<String, Object?>.from(capabilities as Map),
+      timeoutMs: timeout,
+    );
+  }
+}
+
+/// One conformance case outcome.
+final class ConformanceCaseResult {
+  ConformanceCaseResult({
+    required this.id,
+    required this.status,
+    required this.milliseconds,
+    this.detail,
+  }) {
+    if (!RegExp(r'^[a-z][a-z0-9_.]{0,63}$').hasMatch(id)) {
+      throw const FormatException('conformance case id is malformed');
+    }
+    if (!const {'passed', 'failed', 'skipped'}.contains(status)) {
+      throw const FormatException('conformance status is invalid');
+    }
+    if (milliseconds < 0) {
+      throw const FormatException('conformance duration is negative');
+    }
+    if (detail != null && detail!.length > 512) {
+      throw const FormatException('conformance detail is too long');
+    }
+  }
+
+  final String id;
+  final String status;
+  final int milliseconds;
+  final String? detail;
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'status': status,
+        'ms': milliseconds,
+        if (detail != null) 'detail': detail,
+      };
+
+  factory ConformanceCaseResult.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'id', 'status', 'ms', 'detail'});
+    final ms = json['ms'];
+    if (ms is! int) throw const FormatException('ms must be an integer');
+    final detail = json['detail'];
+    if (detail != null && detail is! String) {
+      throw const FormatException('detail must be a string');
+    }
+    return ConformanceCaseResult(
+      id: _requiredString(json, 'id'),
+      status: _requiredString(json, 'status'),
+      milliseconds: ms,
+      detail: detail as String?,
+    );
+  }
+}
+
+final class ConformanceResult extends WorkerFrame {
+  ConformanceResult({
+    required super.requestId,
+    required this.suiteVersion,
+    required this.protocol,
+    required this.passed,
+    required Iterable<ConformanceCaseResult> cases,
+    this.protocolVersion = pluginExecutorProtocolVersion,
+  }) : cases = List.unmodifiable(cases) {
+    _validateToken(
+      requestId,
+      'requestId',
+      WorkerProtocolLimits.maxRequestIdLength,
+    );
+    if (this.cases.length > 64) {
+      throw const FormatException('too many conformance cases');
+    }
+    if (!RegExp(r'^\d+\.\d+\.\d+$').hasMatch(suiteVersion) ||
+        !RegExp(r'^1\.\d+$').hasMatch(protocol)) {
+      throw const FormatException('conformance versions are malformed');
+    }
+  }
+
+  final String protocolVersion;
+  final String suiteVersion;
+  final String protocol;
+  final bool passed;
+  final List<ConformanceCaseResult> cases;
+
+  @override
+  String get type => 'conformance.result';
+
+  @override
+  Map<String, Object?> toJson() => {
+        'type': type,
+        'protocolVersion': protocolVersion,
+        'requestId': requestId,
+        'suiteVersion': suiteVersion,
+        'protocol': protocol,
+        'passed': passed,
+        'cases': [for (final c in cases) c.toJson()],
+      };
+
+  factory ConformanceResult.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'type',
+      'protocolVersion',
+      'requestId',
+      'suiteVersion',
+      'protocol',
+      'passed',
+      'cases',
+    });
+    _expectType(json, 'conformance.result');
+    final passed = json['passed'];
+    final cases = json['cases'];
+    if (passed is! bool || cases is! List) {
+      throw const FormatException('conformance result fields are malformed');
+    }
+    return ConformanceResult(
+      requestId: _boundedString(
+        json,
+        'requestId',
+        WorkerProtocolLimits.maxRequestIdLength,
+      ),
+      protocolVersion: _requiredString(json, 'protocolVersion'),
+      suiteVersion: _requiredString(json, 'suiteVersion'),
+      protocol: _requiredString(json, 'protocol'),
+      passed: passed,
+      cases: [
+        for (final c in cases)
+          ConformanceCaseResult.fromJson(Map<String, Object?>.from(c as Map)),
+      ],
+    );
+  }
+}
+
 void validateInitializeAdmission(
   InitializeResult result, {
   required String expectedWorkerTypeId,

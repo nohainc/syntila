@@ -9,6 +9,8 @@ import 'package:syntila_cli_worker_engine/src/plugin_redactor.dart';
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 import 'package:test/test.dart';
 
+import 'support/plugin_test_binaries.dart';
+
 late Directory root;
 late String fixture;
 late String fixtureDigest;
@@ -44,15 +46,7 @@ bool alive(int pid) => Process.runSync('kill', ['-0', '$pid']).exitCode == 0;
 void main() {
   setUpAll(() async {
     root = Directory.systemTemp.createTempSync('plugin-host');
-    fixture = '${root.path}/fixture';
-    final result = await Process.run(Platform.resolvedExecutable, [
-      'compile',
-      'exe',
-      'test/fixtures/plugin_fixture.dart',
-      '-o',
-      fixture,
-    ]);
-    expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+    fixture = (await PluginTestBinaries.ensure()).fixture;
     fixtureDigest = await host.sha256OfFile(fixture);
   });
 

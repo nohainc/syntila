@@ -21,6 +21,8 @@ WorkerFrame decodeWorkerFrame(String line) {
     'usage.request' => UsageRequest.fromJson(json),
     'usage.result' => UsageResult.fromJson(json),
     'execute.request' => ExecuteRequest.fromJson(json),
+    'conformance.request' => ConformanceRequest.fromJson(json),
+    'conformance.result' => ConformanceResult.fromJson(json),
     'progress' => WorkerProgress.fromJson(json),
     'activity' => WorkerActivity.fromJson(json),
     'result' => WorkerResult.fromJson(json),

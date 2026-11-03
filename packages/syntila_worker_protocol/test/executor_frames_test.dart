@@ -30,6 +30,7 @@ ExecuteRequest request({
     );
 
 void main() {
+  conformanceFrameTests();
   test('round-trips a plugin execute request on protocol 4.2', () {
     final frame = request(withExecutor: executor());
     final decoded = decodeWorkerFrame(frame.encode()) as ExecuteRequest;
@@ -127,5 +128,53 @@ void main() {
       ),
       throwsFormatException,
     );
+  });
+}
+
+void conformanceFrameTests() {
+  test('round-trips conformance frames on protocol 4.2', () {
+    final request = ConformanceRequest(
+      requestId: 'c1',
+      declaresResume: true,
+      declaredCapabilities: const {'progress': true},
+    );
+    final decoded = decodeWorkerFrame(request.encode()) as ConformanceRequest;
+    expect(decoded.declaresResume, isTrue);
+    expect(decoded.declaredCapabilities, {'progress': true});
+    final result = ConformanceResult(
+      requestId: 'c1',
+      suiteVersion: '1.0.0',
+      protocol: '1.0',
+      passed: false,
+      cases: [
+        ConformanceCaseResult(
+            id: 'handshake.identity', status: 'passed', milliseconds: 41),
+        ConformanceCaseResult(
+          id: 'cancel.within_grace',
+          status: 'failed',
+          milliseconds: 5300,
+          detail: 'No terminal frame',
+        ),
+      ],
+    );
+    final back = decodeWorkerFrame(result.encode()) as ConformanceResult;
+    expect(back.passed, isFalse);
+    expect(back.cases.last.detail, 'No terminal frame');
+  });
+
+  test('rejects malformed conformance frames', () {
+    expect(() => ConformanceRequest(requestId: 'c1', protocolVersion: '4.1'),
+        throwsFormatException);
+    expect(
+        () => ConformanceCaseResult(
+            id: 'Bad Id', status: 'passed', milliseconds: 1),
+        throwsFormatException);
+    expect(
+        () => ConformanceCaseResult(id: 'a', status: 'maybe', milliseconds: 1),
+        throwsFormatException);
+    expect(
+        () => decodeWorkerFrame(
+            '{"type":"conformance.request","protocolVersion":"4.2","requestId":"c1","declaresResume":"yes","timeoutMs":1000}'),
+        throwsFormatException);
   });
 }

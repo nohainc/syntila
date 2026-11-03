@@ -9,6 +9,7 @@ dart_packages=(
   packages/dart/protocol
   packages/syntila_worker_protocol
   packages/syntila_plugin_protocol
+  packages/syntila_plugin_conformance
   packages/syntila_cli_worker_runtime
   packages/tool_profile_v1
   engines/cli_worker

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:syntila_plugin_conformance/syntila_plugin_conformance.dart';
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
@@ -115,6 +116,8 @@ class PluginEngine {
             await _probe(frame, sink);
           case ExecuteRequest():
             await _execute(frame, sink);
+          case ConformanceRequest():
+            await _conformance(frame, sink);
           default:
             throw FormatException('unsupported request frame: ${frame.type}');
         }
@@ -255,6 +258,88 @@ class PluginEngine {
       case PluginRunSuccess():
         await _write(sink, _notInitialized(request.requestId));
     }
+  }
+
+  /// Runs the protocol conformance suite against the admitted plugin. The
+  /// plugin processes are supervised exactly like production runs. A result
+  /// proves protocol behavior only, never safety.
+  Future<void> _conformance(ConformanceRequest request, IOSink sink) async {
+    final admitted = _admitted;
+    if (admitted == null) {
+      return _write(sink, _notInitialized(request.requestId));
+    }
+    final executor = admitted.executor!;
+    final runner = ConformanceRunner(
+      launcher: PluginHostLauncher(_host, _launch(executor)),
+      expectedPluginId: executor.pluginId,
+      expectedVersion: executor.version,
+      declaresResume: request.declaresResume,
+      declaredCapabilities: request.declaredCapabilities,
+    );
+    var finished = 0;
+    final total = runner.caseIds.length;
+    final ConformanceReport report;
+    try {
+      report = await runner
+          .run(
+            onCase: (result) {
+              finished += 1;
+              unawaited(
+                _write(
+                  sink,
+                  WorkerProgress(
+                    requestId: request.requestId,
+                    assignmentId: request.requestId,
+                    percentage: finished * 100 / total,
+                    message: 'conformance:${result.id}:${result.status.name}',
+                  ),
+                ),
+              );
+            },
+          )
+          .timeout(Duration(milliseconds: request.timeoutMs));
+    } on TimeoutException {
+      return _write(
+        sink,
+        WorkerErrorFrame(
+          requestId: request.requestId,
+          code: WorkerIssueCode.deadlineExceeded,
+          message: 'The conformance suite exceeded its deadline',
+          retryable: true,
+        ),
+      );
+    } on PluginLaunchException catch (error) {
+      final (code, _) = mapFailure(
+        PluginRunFailure(code: error.code, message: error.message),
+      );
+      return _write(
+        sink,
+        WorkerErrorFrame(
+          requestId: request.requestId,
+          code: code,
+          message: _safeText(error.message, 2048),
+          diagnostics: 'plugin_code=${error.code}',
+        ),
+      );
+    }
+    await _write(
+      sink,
+      ConformanceResult(
+        requestId: request.requestId,
+        suiteVersion: conformanceSuiteVersion,
+        protocol: report.protocol,
+        passed: report.passed,
+        cases: [
+          for (final c in report.cases)
+            ConformanceCaseResult(
+              id: c.id,
+              status: c.status.name,
+              milliseconds: c.milliseconds,
+              detail: c.detail == null ? null : _safeText(c.detail, 512),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _execute(ExecuteRequest request, IOSink sink) async {
@@ -425,8 +510,17 @@ class PluginEngine {
     return match?.group(1) ?? 'unknown';
   }
 
-  Future<void> _write(IOSink sink, WorkerFrame frame) async {
-    sink.writeln(frame.encode());
-    await sink.flush();
+  /// Every frame goes through one queue: progress is emitted without awaiting,
+  /// and an IOSink forbids a write while a flush is pending. Order is kept.
+  Future<void> _writes = Future<void>.value();
+
+  Future<void> _write(IOSink sink, WorkerFrame frame) {
+    final line = frame.encode();
+    final next = _writes.then((_) async {
+      sink.writeln(line);
+      await sink.flush();
+    });
+    _writes = next.catchError((Object _) {});
+    return next;
   }
 }

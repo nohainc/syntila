@@ -1,3 +1,5 @@
+import 'dart:ffi' show Abi;
+
 import 'frames.dart';
 import 'limits.dart';
 
@@ -358,3 +360,13 @@ String? negotiatePluginProtocol(PluginManifest manifest) {
   }
   return best;
 }
+
+/// The manifest platform key for this machine, or null when unsupported.
+String? currentPluginPlatform({Abi? abi}) => switch ((abi ?? Abi.current())) {
+      Abi.macosArm64 => 'darwin-arm64',
+      Abi.macosX64 => 'darwin-x64',
+      Abi.linuxX64 => 'linux-x64',
+      Abi.linuxArm64 => 'linux-arm64',
+      Abi.windowsX64 => 'windows-x64',
+      _ => null,
+    };

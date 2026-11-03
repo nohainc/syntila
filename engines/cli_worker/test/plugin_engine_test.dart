@@ -11,21 +11,12 @@ import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:test/test.dart';
 
+import 'support/plugin_test_binaries.dart';
+
 late Directory root;
 late String engineBinary;
 late String fixture;
 late String fixtureDigest;
-
-Future<void> compile(String source, String output) async {
-  final result = await Process.run(Platform.resolvedExecutable, [
-    'compile',
-    'exe',
-    source,
-    '-o',
-    output,
-  ]);
-  expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
-}
 
 WorkerExecutor executor({List<String> arguments = const [], String? digest}) =>
     WorkerExecutor(
@@ -116,10 +107,9 @@ ExecuteRequest execute(
 void main() {
   setUpAll(() async {
     root = Directory.systemTemp.createTempSync('plugin-engine');
-    fixture = '${root.path}/fixture';
-    engineBinary = '${root.path}/engine';
-    await compile('test/fixtures/plugin_fixture.dart', fixture);
-    await compile('bin/syntila_cli_worker.dart', engineBinary);
+    final binaries = await PluginTestBinaries.ensure();
+    fixture = binaries.fixture;
+    engineBinary = binaries.engine;
     fixtureDigest = await PluginHost().sha256OfFile(fixture);
   });
   tearDownAll(() => root.deleteSync(recursive: true));
