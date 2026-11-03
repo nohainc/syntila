@@ -14,7 +14,9 @@ import { generateEd25519ReleaseKeyPair } from "../src/release-trust.js";
 const keys = generateEd25519ReleaseKeyPair();
 const other = generateEd25519ReleaseKeyPair();
 const trust = (publicKeyBase64: string) =>
-  JSON.stringify({ [ENTITLEMENT_TRUST_PUBLISHER]: { "ent-1": publicKeyBase64 } });
+  JSON.stringify({
+    [ENTITLEMENT_TRUST_PUBLISHER]: { "ent-1": publicKeyBase64 },
+  });
 const expected = { ownerUserId: "u1", workspaceId: "w1", installationId: "i1" };
 const now = new Date("2026-11-03T10:00:00.000Z");
 const hours = (n: number) => new Date(+now + n * 3_600_000);
@@ -91,7 +93,9 @@ describe("plugin entitlement lease", () => {
   it("is bound to owner, Workspace and installation", async () => {
     for (const field of Object.keys(expected)) {
       const result = await verifyPluginEntitlementLease({
-        envelope: issue({ [field]: "someone-else" } as Partial<PluginEntitlementLease>),
+        envelope: issue({
+          [field]: "someone-else",
+        } as Partial<PluginEntitlementLease>),
         trustKeysJson: trust(keys.publicKeyBase64),
         expected,
         now: hours(1),

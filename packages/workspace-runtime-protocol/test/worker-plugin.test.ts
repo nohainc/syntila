@@ -138,8 +138,10 @@ describe("worker plugin manifest", () => {
     };
     expect(PluginEntitlementLeaseSchema.safeParse(lease).success).toBe(true);
     expect(
-      PluginEntitlementLeaseSchema.safeParse({ ...lease, planStatus: "canceled" })
-        .success,
+      PluginEntitlementLeaseSchema.safeParse({
+        ...lease,
+        planStatus: "canceled",
+      }).success,
     ).toBe(false);
     expect(
       PluginEntitlementLeaseSchema.safeParse({ ...lease, feature: "x" })
