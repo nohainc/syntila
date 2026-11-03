@@ -115,6 +115,25 @@ it("rejects paid features for free accounts with a stable code", async () => {
   });
 });
 
+it("gates custom Worker plugins on the paid tier only (ADR-027)", async () => {
+  expect((await getAccountPlan(env, "paid")).features).toContain(
+    "workers.custom_plugins",
+  );
+  expect((await getAccountPlan(env, "free")).features).not.toContain(
+    "workers.custom_plugins",
+  );
+  await expect(
+    requirePaidFeature(env, "paid", "workers.custom_plugins"),
+  ).resolves.toBeUndefined();
+  await expect(
+    requirePaidFeature(env, "free", "workers.custom_plugins"),
+  ).rejects.toMatchObject({
+    status: 402,
+    code: "paid_plan_required",
+    feature: "workers.custom_plugins",
+  });
+});
+
 it("keeps the SQL owner check in step with effectiveTier", () => {
   const cases = [
     ["paid", "active", null],

@@ -15,12 +15,14 @@ export type AccountPlanStatus = "active" | "trialing" | "past_due" | "canceled";
 export const PAID_FEATURES = [
   "workspace.sharing",
   "workflow.research",
+  "workers.custom_plugins",
 ] as const;
 export type PaidFeature = (typeof PAID_FEATURES)[number];
 
 const FEATURE_LABELS: Record<PaidFeature, string> = {
   "workspace.sharing": "Sharing a Workspace",
   "workflow.research": "Research",
+  "workers.custom_plugins": "Custom Worker plugins",
 };
 
 /**
