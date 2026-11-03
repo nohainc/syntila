@@ -7,7 +7,7 @@ These rules are canonical for AI-assisted development in this repository.
 2. Work in small, independently reviewable phases. Do not combine unrelated refactors with feature work.
 3. Prefer explicit domain types and interfaces over provider-specific logic.
 4. Treat Syntila Core as provider-independent. Provider, local-model, coding-agent, and CI integrations execute through the CLI Worker Engine and signed Tool Profiles; humans contribute through product workflows.
-5. Follow the v8 contract in `docs/architecture/ARCHITECTURE_V8.md`: logical Workers resolve through signed Tool Profiles to provider CLIs under the generic CLI Worker Engine. Do not introduce provider-specific Worker executables, browser-based provider access, managed provider credentials, legacy runtime entities, or compatibility APIs for unreleased architectures.
+5. Follow the v8 contract in `docs/architecture/ARCHITECTURE_V8.md`: logical Workers resolve through signed Tool Profiles to provider CLIs under the generic CLI Worker Engine. Do not introduce provider-specific Worker executables (user-imported Syntila Plus plugins run only through the Engine's plugin host per ADR-027), browser-based provider access, managed provider credentials, legacy runtime entities, or compatibility APIs for unreleased architectures.
 6. AI models may propose state changes; Syntila owns persistent state and validates transitions.
 7. Do not trust natural-language claims such as "tests pass". Where possible, collect executable evidence.
 8. Never store API keys or credentials in plaintext application tables.

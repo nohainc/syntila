@@ -1,6 +1,6 @@
 # ADR-027: Custom Worker plugins (Syntila Plus)
 
-**Status:** Proposed (Phase 0 design; no runtime code)
+**Status:** Accepted for implementation (2026-11-03, owner approval in-thread: decisions D1-D4 and D13 follow the recommendations in the plan; no runtime code yet)
 **Date:** 2026-11-03
 **Amends:** [Architecture v8](../architecture/ARCHITECTURE_V8.md#architecture-contract) execution path and the `provider_specific_worker_executable` exclusion
 **Builds on:** [ADR-018](ADR-018-generic-cli-worker-engine-and-tool-profiles.md), [ADR-021](ADR-021-workspace-service-linux-windows.md), [ADR-022](ADR-022-account-plans.md)

@@ -43,7 +43,7 @@ points or compatibility targets:
 
 ~~~yaml
 prohibitions:
-  provider_specific_worker_executable: true
+  provider_specific_worker_executable: true # Syntila-authored only; user plugins: ADR-027
   browser_or_web_ai_worker: true
   interactive_connector: true
   syntila_managed_provider_credentials: true
@@ -59,6 +59,13 @@ local installation. Workspace is the machine-side runtime; there is no separate 
 runtime product. Work v1 owns its bounded Workflow and Step orchestration.
 Unreleased architecture versions receive no API aliases or compatibility
 surface.
+
+**Plugin clarification ([ADR-027](../decisions/ADR-027-custom-worker-plugins.md)).**
+`provider_specific_worker_executable` excludes Syntila-authored provider
+executables. A Syntila Plus user may import a Worker plugin that the generic CLI
+Worker Engine's plugin host supervises: `AX → Cloud → Workspace → CLI Worker
+Engine → pinned plugin digest → plugin process`. Official Workers keep the path
+above unchanged, and no Syntila code names a plugin or provider.
 
 The v8 architecture guard checks that this contract remains present alongside
 the assignment path and schema invariants.
