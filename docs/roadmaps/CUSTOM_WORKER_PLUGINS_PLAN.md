@@ -147,19 +147,25 @@ builds run only when the phase touches them.
   `EngineHostLauncher`; `echo_dart` and `misbehaving` fixtures. Plugin Workers
   are **not yet routable from Cloud** (P3), so P2 exercises execution through
   `plugins test --live` and Service-internal execute.
-- **Status (2026-11-03, partial; written without a Dart or Node toolchain, not
-  compiled or run):** done in `packages/syntila_plugin_protocol`: limits, frame
-  codec with per-direction validation, `PluginHostSession` (handshake order,
-  identity check, id correlation, one terminal frame, rate limit, heartbeat,
-  cancel and handshake deadlines), strict manifest validator and protocol
-  negotiation, plus tests that replay the golden vectors. **Not started:**
-  Engine plugin host and Local Worker Protocol 4.2, Service plugin store and
-  registry, `plugins.*` IPC and CLI, Service lease verifier,
-  `EngineHostLauncher`, `echo_dart`/`misbehaving` fixtures. Also done, untested:
-  the Cloud lease endpoint `POST /api/workspace-runtime/worker-plugins/entitlement`
-  (`apps/cloud/src/routes/plugin-entitlement.ts`, optional secrets
-  `SYNTILA_ENTITLEMENT_SIGNING_KEY` and `SYNTILA_ENTITLEMENT_KEY_ID`; 503 until
-  configured). P2 is not complete and its exit criteria are not met.
+- **Status (2026-11-03, partial; verified with `dart analyze`/`dart test`,
+  `pnpm validate:engine` and `pnpm validate:cloud`):**
+  - Done: `packages/syntila_plugin_protocol` (limits, frame codec,
+    `PluginHostSession`, strict manifest validator, golden-vector replay);
+    Cloud lease endpoint `POST /api/workspace-runtime/worker-plugins/entitlement`
+    (optional secrets `SYNTILA_ENTITLEMENT_SIGNING_KEY` and
+    `SYNTILA_ENTITLEMENT_KEY_ID`; 503 until configured);
+    `engines/cli_worker/lib/src/plugin_host.dart` and `plugin_redactor.dart`:
+    digest re-check before spawn, built environment (no `SYNTILA_*`), handshake,
+    heartbeat, cancel (including a cancel requested before `execute`), deadline,
+    5 s cancel grace then tree kill, stderr and message redaction, artifact path
+    containment; proven against a fault-injecting fixture plugin
+    (`test/fixtures/plugin_fixture.dart`) as real child processes.
+  - **Not done:** wiring `PluginHost` into the Engine's `execute` path with
+    Local Worker Protocol 4.2 (`executor`) and Engine 1.4.0; Service plugin store,
+    registry and lease verifier; `plugins.*` IPC and CLI; `EngineHostLauncher`
+    and the conformance runner; OS resource limits and isolation tiers (memory,
+    CPU, open files, processes are not yet enforced). P2 is not complete and its
+    exit criteria are not met.
 - **Tests:** Engine host: each limit and every misbehaving fault ends with the
   process tree gone and the right code; digest-mismatch refuses before spawn;
   Service: lease absent/expired/tampered/rolled-back/other-machine all block
