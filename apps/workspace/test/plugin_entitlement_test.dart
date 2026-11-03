@@ -27,7 +27,8 @@ final _envelope = jsonDecode(r'''{
 final _issued = DateTime.utc(2026, 11, 3, 10);
 DateTime hours(num n) => _issued.add(Duration(minutes: (n * 60).round()));
 
-PluginLeaseVerifier verifier([String key = _publicKey]) => PluginLeaseVerifier({
+PluginLeaseVerifier _verifier([String key = _publicKey]) =>
+    PluginLeaseVerifier({
       pluginEntitlementPublisher: {'ent-1': key},
     });
 
@@ -38,7 +39,7 @@ Future<PluginLeaseVerification> verify(
   PluginLeaseVerifier? using,
   String owner = 'user-plus',
 }) =>
-    (using ?? verifier()).verify(
+    (using ?? _verifier()).verify(
       envelope,
       ownerUserId: owner,
       workspaceId: 'ws-1',
@@ -80,7 +81,7 @@ void main() {
     );
     final other = base64Encode(List<int>.filled(32, 7));
     expect(
-      (await verify(_envelope, using: verifier(other))).rejection,
+      (await verify(_envelope, using: _verifier(other))).rejection,
       PluginLeaseRejection.signatureInvalid,
     );
     expect(
@@ -92,6 +93,24 @@ void main() {
   test('is bound to owner, Workspace and installation', () async {
     expect((await verify(_envelope, owner: 'someone-else')).rejection,
         PluginLeaseRejection.bindingMismatch);
+  });
+
+  test('the owner is optional and the Workspace binding still applies',
+      () async {
+    final unpinned = await _verifier().verify(
+      _envelope,
+      workspaceId: 'ws-1',
+      installationId: 'inst-1',
+      now: hours(1),
+    );
+    expect(unpinned.isValid, isTrue);
+    final other = await _verifier().verify(
+      _envelope,
+      workspaceId: 'ws-2',
+      installationId: 'inst-1',
+      now: hours(1),
+    );
+    expect(other.rejection, PluginLeaseRejection.bindingMismatch);
   });
 
   test('expires exactly at expiresAt with no extra grace', () async {
@@ -134,7 +153,7 @@ void main() {
     PluginEntitlementStore store({PluginLeaseVerifier? using}) =>
         PluginEntitlementStore(
           file: File('${dir.path}/entitlement.json'),
-          verifier: using ?? verifier(),
+          verifier: using ?? _verifier(),
           ownerUserId: 'user-plus',
           workspaceId: 'ws-1',
           installationId: 'inst-1',

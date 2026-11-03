@@ -102,10 +102,10 @@ class PluginLeaseVerifier {
 
   Future<PluginLeaseVerification> verify(
     Object? envelope, {
-    required String ownerUserId,
     required String workspaceId,
     required String installationId,
     required DateTime now,
+    String? ownerUserId,
     DateTime? highWaterMark,
   }) async {
     PluginLeaseVerification reject(PluginLeaseRejection r) =>
@@ -161,7 +161,10 @@ class PluginLeaseVerifier {
     if (ttl <= Duration.zero || ttl > pluginLeaseMaxTtl) {
       return reject(PluginLeaseRejection.ttlInvalid);
     }
-    if (lease.ownerUserId != ownerUserId ||
+    // The Workspace owner is fixed by Cloud and signed into the lease; a
+    // caller that knows it may pin it, others rely on the Workspace and
+    // installation binding.
+    if ((ownerUserId != null && lease.ownerUserId != ownerUserId) ||
         lease.workspaceId != workspaceId ||
         lease.installationId != installationId) {
       return reject(PluginLeaseRejection.bindingMismatch);
@@ -234,15 +237,15 @@ class PluginEntitlementStore {
   PluginEntitlementStore({
     required this.file,
     required this.verifier,
-    required this.ownerUserId,
     required this.workspaceId,
     required this.installationId,
+    this.ownerUserId,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
   final File file;
   final PluginLeaseVerifier verifier;
-  final String ownerUserId;
+  final String? ownerUserId;
   final String workspaceId;
   final String installationId;
   final DateTime Function() _clock;
