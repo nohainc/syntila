@@ -1,0 +1,4 @@
+→ {"type":"execute","id":"e1","deadlineMs":600000,"prompt":"long","workingDirectory":"/space","access":"read_write","attachments":[]}
+← {"type":"progress","id":"e1","message":"step 1"}
+→ {"type":"cancel","id":"e1","reason":"user"}
+← {"type":"error","id":"e1","code":"cancelled","message":"cancelled","retryable":false}

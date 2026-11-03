@@ -1,0 +1,8 @@
+→ {"type":"hello","id":"h1","protocol":{"supported":["1.0"],"preferred":"1.0"},"host":{"name":"syntila-engine","version":"1.4.0"},"dataDir":"/data","limits":{"maxFrameBytes":1048576,"maxPromptBytes":524288,"maxOutputBytes":786432}}
+← {"type":"hello.result","id":"h1","protocol":"1.0","plugin":{"id":"acme-reviewer","version":"1.4.2","name":"Acme Reviewer"},"capabilities":{"progress":true,"readOnly":"never"}}
+→ {"type":"probe","id":"p1","mode":"passive"}
+← {"type":"probe.result","id":"p1","state":"ready","checks":[]}
+→ {"type":"execute","id":"e1","deadlineMs":600000,"prompt":"hi","workingDirectory":"/space","access":"read_write","attachments":[]}
+← {"type":"progress","id":"e1","message":"working"}
+← {"type":"result","id":"e1","output":"done","artifacts":[]}
+→ {"type":"shutdown"}

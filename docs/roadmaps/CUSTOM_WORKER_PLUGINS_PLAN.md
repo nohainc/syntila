@@ -123,6 +123,14 @@ builds run only when the phase touches them.
   the v8 architecture guard still finds its literal exclusion.
 - **Validation:** `pnpm validate:cloud`, `pnpm v8:architecture-check`,
   `pnpm docs:check`, `pnpm format:check`, `pnpm protocol:boundaries-check`.
+- **Status (2026-11-03):** ADR accepted; text edits applied; `workers.custom_plugins`
+  added; manifest and lease schemas in
+  `packages/workspace-runtime-protocol/src/worker-plugin.ts`; lease issue/verify
+  reference implementation and manifest digest in
+  `apps/cloud/src/plugin-entitlement-lease.ts`; golden vectors in
+  `docs/specifications/worker-plugin-vectors/`. **The new tests were written
+  without a Node toolchain and have not been run.** Frame schemas stay
+  Dart-owned (P2, `syntila_plugin_protocol`); the vectors are their contract.
 - **Exit:** ADR accepted by the owners; open decisions D1-D4 and D13 resolved;
   guards green; no code path can execute a plugin.
 
