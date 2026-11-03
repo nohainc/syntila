@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   PluginEntitlementLease,
-  WorkerPluginManifest,
+  PluginManifest,
 } from "@syntila/workspace-runtime-protocol";
 import {
   ENTITLEMENT_TRUST_PUBLISHER,
@@ -156,12 +156,12 @@ describe("plugin manifest digest", () => {
       subprocess: false,
       env: [],
     },
-  } as unknown as WorkerPluginManifest;
+  } as unknown as PluginManifest;
 
   it("is stable under key order and changes with any executable byte hash", async () => {
     const reordered = Object.fromEntries(
       Object.entries(manifest).reverse(),
-    ) as unknown as WorkerPluginManifest;
+    ) as unknown as PluginManifest;
     expect(await pluginManifestDigest(reordered)).toBe(
       await pluginManifestDigest(manifest),
     );

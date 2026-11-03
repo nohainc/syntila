@@ -5,7 +5,7 @@ import {
   PluginEntitlementLeaseSchema,
   type PluginEntitlementLease,
   type PluginEntitlementLeaseEnvelope,
-  type WorkerPluginManifest,
+  type PluginManifest,
 } from "@syntila/workspace-runtime-protocol";
 import { canonicalJson } from "./canonical-json.js";
 import {
@@ -18,7 +18,7 @@ export const ENTITLEMENT_TRUST_PUBLISHER = "entitlement";
 
 /** Digest that pins a plugin: sha256 of the canonical manifest JSON. */
 export async function pluginManifestDigest(
-  manifest: WorkerPluginManifest,
+  manifest: PluginManifest,
 ): Promise<string> {
   const bytes = new TextEncoder().encode(canonicalJson(manifest));
   const digest = await crypto.subtle.digest("SHA-256", bytes);

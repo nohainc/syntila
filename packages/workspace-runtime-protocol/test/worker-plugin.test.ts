@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   PluginEntitlementLeaseSchema,
-  WorkerPluginIdSchema,
-  WorkerPluginManifestSchema,
-  WorkerPluginRefSchema,
+  PluginIdSchema,
+  PluginManifestSchema,
+  PluginRefSchema,
 } from "../src/index.js";
 
 const sha = "a".repeat(64);
@@ -34,17 +34,17 @@ const manifest = () => ({
 
 describe("worker plugin manifest", () => {
   it("accepts the documented example shape", () => {
-    expect(WorkerPluginManifestSchema.safeParse(manifest()).success).toBe(true);
+    expect(PluginManifestSchema.safeParse(manifest()).success).toBe(true);
   });
 
   it("rejects unknown keys so typos cannot hide an access declaration", () => {
     expect(
-      WorkerPluginManifestSchema.safeParse({ ...manifest(), accesss: {} })
+      PluginManifestSchema.safeParse({ ...manifest(), accesss: {} })
         .success,
     ).toBe(false);
     const m = manifest();
     expect(
-      WorkerPluginManifestSchema.safeParse({
+      PluginManifestSchema.safeParse({
         ...m,
         access: { ...m.access, filesystem: "all" },
       }).success,
@@ -63,13 +63,13 @@ describe("worker plugin manifest", () => {
       ...m,
       artifacts: { "linux-x64": { ...m.artifacts["linux-x64"], command } },
     };
-    expect(WorkerPluginManifestSchema.safeParse(bad).success).toBe(false);
+    expect(PluginManifestSchema.safeParse(bad).success).toBe(false);
   });
 
   it("requires a platform artifact, a valid digest and a bounded size", () => {
     const m = manifest();
     expect(
-      WorkerPluginManifestSchema.safeParse({ ...m, artifacts: {} }).success,
+      PluginManifestSchema.safeParse({ ...m, artifacts: {} }).success,
     ).toBe(false);
     const art = m.artifacts["linux-x64"];
     for (const patch of [
@@ -79,7 +79,7 @@ describe("worker plugin manifest", () => {
       { size: 256 * 1024 * 1024 + 1 },
     ])
       expect(
-        WorkerPluginManifestSchema.safeParse({
+        PluginManifestSchema.safeParse({
           ...m,
           artifacts: { "linux-x64": { ...art, ...patch } },
         }).success,
@@ -89,22 +89,22 @@ describe("worker plugin manifest", () => {
   it("rejects reserved env names, bad versions and inverted protocol ranges", () => {
     const m = manifest();
     expect(
-      WorkerPluginManifestSchema.safeParse({
+      PluginManifestSchema.safeParse({
         ...m,
         access: { ...m.access, env: ["SYNTILA_TOKEN"] },
       }).success,
     ).toBe(false);
     expect(
-      WorkerPluginManifestSchema.safeParse({ ...m, version: "1.4" }).success,
+      PluginManifestSchema.safeParse({ ...m, version: "1.4" }).success,
     ).toBe(false);
     expect(
-      WorkerPluginManifestSchema.safeParse({
+      PluginManifestSchema.safeParse({
         ...m,
         protocol: { min: "1.2", max: "1.1" },
       }).success,
     ).toBe(false);
     expect(
-      WorkerPluginManifestSchema.safeParse({
+      PluginManifestSchema.safeParse({
         ...m,
         protocol: { min: "2.0", max: "2.0" },
       }).success,
@@ -112,14 +112,14 @@ describe("worker plugin manifest", () => {
   });
 
   it("keeps plugin identities distinct from official Worker type IDs", () => {
-    expect(WorkerPluginIdSchema.safeParse("acme-reviewer").success).toBe(true);
-    expect(WorkerPluginIdSchema.safeParse("Acme").success).toBe(false);
-    expect(WorkerPluginIdSchema.safeParse("a".repeat(49)).success).toBe(false);
-    expect(WorkerPluginRefSchema.safeParse("plugin-3fa91c04b2d7").success).toBe(
+    expect(PluginIdSchema.safeParse("acme-reviewer").success).toBe(true);
+    expect(PluginIdSchema.safeParse("Acme").success).toBe(false);
+    expect(PluginIdSchema.safeParse("a".repeat(49)).success).toBe(false);
+    expect(PluginRefSchema.safeParse("plugin-3fa91c04b2d7").success).toBe(
       true,
     );
-    expect(WorkerPluginRefSchema.safeParse("chatgpt").success).toBe(false);
-    expect(WorkerPluginRefSchema.safeParse("plugin-xyz").success).toBe(false);
+    expect(PluginRefSchema.safeParse("chatgpt").success).toBe(false);
+    expect(PluginRefSchema.safeParse("plugin-xyz").success).toBe(false);
   });
 
   it("only allows a paid-tier lease for the plugin feature", () => {

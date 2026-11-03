@@ -17,7 +17,7 @@ conformance suite.
 | Package | Location | Depends on | Purpose |
 | --- | --- | --- | --- |
 | `syntila_plugin_protocol` | `packages/syntila_plugin_protocol` | `dart:core` only | Frame types, NDJSON codec, limits, manifest model and validator, error codes, canonical manifest digest. **No Syntila, Cloud, Space or Thread imports.** This is the single source for manifest validation: the Service's `plugins.validate` and the SDK call the same code, so a plugin that validates for the author validates in the Service. Mirrors the shape of `syntila_worker_protocol`. |
-| `syntila_plugin_sdk` | `packages/syntila_plugin_sdk` | `syntila_plugin_protocol` | `abstract class WorkerPlugin { Future<Readiness> probe(ProbeMode); Future<WorkResult> execute(WorkRequest, WorkContext); }`, `runPlugin(plugin)` (stdin/stdout loop, handshake, ping/pong on its own timer, one-terminal-frame guarantee, frame-size guard, stdout purity: `print` is rerouted to stderr), `WorkContext.progress()/activity()`, `CancellationToken`, session store helper rooted at `dataDir`. |
+| `syntila_plugin_sdk` | `packages/syntila_plugin_sdk` | `syntila_plugin_protocol` | `abstract class PluginWorker { Future<Readiness> probe(ProbeMode); Future<WorkResult> execute(WorkRequest, WorkContext); }`, `runPlugin(plugin)` (stdin/stdout loop, handshake, ping/pong on its own timer, one-terminal-frame guarantee, frame-size guard, stdout purity: `print` is rerouted to stderr), `WorkContext.progress()/activity()`, `CancellationToken`, session store helper rooted at `dataDir`. |
 | `syntila_plugin_conformance` | `packages/syntila_plugin_conformance` | `syntila_plugin_protocol` | The case set and a `PluginLauncher` interface. Two launchers (§3). |
 
 The Engine's plugin host reuses `syntila_plugin_protocol` for frames, so the
@@ -260,4 +260,5 @@ builds run only when the phase touches them.
 | Dart single-isolate heartbeat starvation | SDK heartbeat isolate; `heartbeat.during_work` case. |
 | Engine bump to 1.4.0 and Protocol 4.2 across mixed fleets | Capability-gated; scheduler requires Engine ≥ 1.4.0 for plugin rows only; 4.0/4.1 decode unchanged. |
 | Lease key compromise | `kid` rotation; short TTL; public key set rolls with Workspace release. |
+| `scripts/v8-architecture-rules.mjs` forbids `/workerPlugin/i` (a retired pre-v8 concept) in every source root, so identifiers such as `WorkerPluginManifest` fail `pnpm v8:architecture-check` | Found in P1 and fixed by naming (`PluginManifest`, `PluginWorker`, `plugin_*`). P2 code under `apps/workspace/lib` and `engines/cli_worker/lib` must follow the same naming. Do not weaken the rule; if it ever must change, amend it explicitly with an ADR-027 reference. |
 | Entitlement UX before billing exists (ADR-022) | Inherits manual grants; no upgrade button, same as other paid features. |

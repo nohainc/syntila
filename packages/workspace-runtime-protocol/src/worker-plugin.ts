@@ -21,20 +21,20 @@ export const WORKER_PLUGIN_MAX_ARTIFACT_BYTES = 256 * 1024 * 1024;
 
 const sha256Hex = z.string().regex(/^[0-9a-f]{64}$/);
 
-export const WorkerPluginIdSchema = z
+export const PluginIdSchema = z
   .string()
   .max(48)
   .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
 
 /** Cloud-allocated Worker Type ID: `plugin-` plus 12 lowercase hex. */
-export const WorkerPluginRefSchema = z.string().regex(/^plugin-[0-9a-f]{12}$/);
+export const PluginRefSchema = z.string().regex(/^plugin-[0-9a-f]{12}$/);
 
-export const WorkerPluginVersionSchema = z
+export const PluginVersionSchema = z
   .string()
   .max(64)
   .regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
 
-export const WorkerPluginPlatformSchema = z.enum([
+export const PluginPlatformSchema = z.enum([
   "darwin-arm64",
   "darwin-x64",
   "linux-x64",
@@ -58,7 +58,7 @@ const packagePath = z
     { message: "must be a relative path inside the package" },
   );
 
-const WorkerPluginArtifactSchema = z
+const PluginArtifactSchema = z
   .object({
     command: packagePath,
     args: z.array(z.string().max(256)).max(32),
@@ -76,11 +76,11 @@ const envName = z
     message: "SYNTILA_* variables are reserved",
   });
 
-export const WorkerPluginManifestSchema = z
+export const PluginManifestSchema = z
   .object({
     schemaVersion: z.literal(WORKER_PLUGIN_MANIFEST_SCHEMA_VERSION),
-    pluginId: WorkerPluginIdSchema,
-    version: WorkerPluginVersionSchema,
+    pluginId: PluginIdSchema,
+    version: PluginVersionSchema,
     displayName: z.string().min(1).max(128),
     description: z.string().max(512),
     author: z
@@ -98,7 +98,7 @@ export const WorkerPluginManifestSchema = z
         { message: "protocol.min must not exceed protocol.max" },
       ),
     artifacts: z
-      .partialRecord(WorkerPluginPlatformSchema, WorkerPluginArtifactSchema)
+      .partialRecord(PluginPlatformSchema, PluginArtifactSchema)
       .refine((artifacts) => Object.keys(artifacts).length > 0, {
         message: "at least one platform artifact is required",
       }),
@@ -148,7 +148,7 @@ export const WorkerPluginManifestSchema = z
     homepage: z.url({ protocol: /^https$/ }).max(512).optional(),
   })
   .strict();
-export type WorkerPluginManifest = z.infer<typeof WorkerPluginManifestSchema>;
+export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 
 const timestamp = z.iso.datetime();
 
