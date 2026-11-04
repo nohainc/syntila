@@ -141,6 +141,16 @@ jobs:
       - uses: ./.github/actions/setup-flutter
       - name: Validate Worker engine
         run: bash scripts/validate-engine.sh
+      - name: Validate plugin author tools and CI filters
+        run: node --test scripts/plugin-author-kit.test.mjs scripts/sign-plugin.test.mjs scripts/ci/detect-changes.test.mjs
+      - name: Build plugin author kit
+        run: node scripts/build-plugin-author-kit.mjs
+      - name: Retain plugin author kit
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plugin-author-kit
+          path: dist/plugin-author-kit/*
+          if-no-files-found: error
 
   plugin-limits-windows:
     name: Plugin resource limits on Windows

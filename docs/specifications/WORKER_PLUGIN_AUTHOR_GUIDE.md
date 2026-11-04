@@ -7,6 +7,22 @@ conformance suite. A plugin runs as the user who installs it, with that user's
 files and logins; read the **security notes** before shipping one. Users should
 review the [installation security guide](../security/CUSTOM_WORKER_PLUGINS.md).
 
+## Get the author kit
+
+From a source checkout, `node scripts/build-plugin-author-kit.mjs` writes
+`dist/plugin-author-kit/syntila-plugin-author-kit.tar.gz` and its SHA-256 sidecar.
+Engine CI builds and retains the same bundle as the `plugin-author-kit` artifact.
+The extracted README walks through creating, compiling, packing and conformance
+checking a plugin without a Syntila checkout or account. It contains the protocol,
+SDK, conformance runner, source examples, signing tool and transcript vectors;
+internal package dependencies remain relative within the kit.
+
+The builder uses an explicit source allow-list and rejects source symlinks. It
+excludes build caches, tests, local trust state, entitlement keys and credentials.
+`MANIFEST.sha256` records file contents. This is a local/CI distribution artifact;
+no packages have been published to a package registry and it is not a signed
+Syntila release. Install Dart and use the extracted README's commands.
+
 ## 1. The package
 
 A package is a directory (or a `.zip`) containing `plugin.json` and the files it
@@ -196,7 +212,10 @@ It never prints the private key, and refuses to overwrite an existing signature.
 After changing or repacking a release, explicitly remove the stale `plugin.sig`
 and sign again. The signer does not replace static manifest validation or
 conformance testing. Users still consent to the digest and signer fingerprint;
-there is no `trust-signer` management command today.
+`syntila plugins trust-signer <id>` recognizes a verified key locally after
+consent by hash. `plugins signers` lists fingerprints and `plugins untrust-signer
+<fingerprint>` forgets one. Recognized keys still need explicit consent for every
+registration, update and enablement; they do not verify the claimed author name.
 
 The [Python example](../../examples/plugins/echo_python/README.md) demonstrates
 implementing the same protocol without the Dart SDK. Its interpreter comes from

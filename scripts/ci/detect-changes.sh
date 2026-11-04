@@ -33,6 +33,8 @@ matches() {
 }
 
 shared='^(\.github/|scripts/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|tsconfig\.base\.json$|vitest\.config\.ts$|eslint\.config\.mjs$)'
+plugin_shared='^packages/syntila_plugin_(protocol|conformance|sdk)/'
+
 flutter_shared='^packages/(syntila_design|dart/protocol|protocol|syntila_worker_protocol|tool_profile_v1|syntila_cli_worker_runtime)/'
 
 if matches "$shared"; then
@@ -41,10 +43,10 @@ if matches "$shared"; then
 fi
 
 set_output cloud "$(matches '^(apps/cloud/|packages/(core|protocol|security|workspace-runtime-protocol|tool-profile)/)' && echo true || echo false)"
-set_output dart "$(matches '^packages/(syntila_cli_worker_runtime|syntila_design|syntila_worker_protocol|dart/protocol|tool_profile_v1)/' && echo true || echo false)"
+set_output dart "$(matches '^(packages/(syntila_cli_worker_runtime|syntila_design|syntila_worker_protocol|dart/protocol|tool_profile_v1|syntila_plugin_(protocol|conformance|sdk))/|examples/plugins/)' && echo true || echo false)"
 set_output app "$(matches "^apps/app/|${flutter_shared}" && echo true || echo false)"
-set_output workspace "$(matches "^(apps/workspace/|apps/app/|apps/profile_lab/|engines/cli_worker/)|${flutter_shared}" && echo true || echo false)"
-set_output workspace_gui "$(matches "^(apps/workspace_gui/|apps/workspace/)|${flutter_shared}" && echo true || echo false)"
-set_output profile_lab "$(matches "^(apps/profile_lab/|engines/cli_worker/)|${flutter_shared}" && echo true || echo false)"
-set_output engine "$(matches '^(engines/cli_worker/|packages/(syntila_worker_protocol|tool_profile_v1|syntila_cli_worker_runtime)/)' && echo true || echo false)"
+set_output workspace "$(matches "^(apps/workspace/|apps/app/|apps/profile_lab/|engines/cli_worker/)|${flutter_shared}|${plugin_shared}" && echo true || echo false)"
+set_output workspace_gui "$(matches "^(apps/workspace_gui/|apps/workspace/)|${flutter_shared}|${plugin_shared}" && echo true || echo false)"
+set_output profile_lab "$(matches "^(apps/profile_lab/|engines/cli_worker/)|${flutter_shared}|${plugin_shared}" && echo true || echo false)"
+set_output engine "$(matches '^(engines/cli_worker/|examples/plugins/|packages/(syntila_worker_protocol|tool_profile_v1|syntila_cli_worker_runtime|syntila_plugin_(protocol|conformance|sdk))/)' && echo true || echo false)"
 set_output site "$(matches '^(apps/site/|pnpm-lock\.yaml$|package\.json$)' && echo true || echo false)"
