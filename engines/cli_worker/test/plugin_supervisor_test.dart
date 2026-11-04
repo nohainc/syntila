@@ -14,6 +14,8 @@ late Directory root;
 late String engineBinary;
 late String fixture;
 late String fixtureDigest;
+late String referencePlugin;
+late String referenceDigest;
 const workerTypeId = 'plugin-3fa91c04b2d7';
 
 WorkerExecutor executor({List<String> arguments = const []}) => WorkerExecutor(
@@ -35,6 +37,8 @@ void main() {
     fixture = binaries.fixture;
     engineBinary = binaries.engine;
     fixtureDigest = await PluginHost().sha256OfFile(fixture);
+    referencePlugin = binaries.reference;
+    referenceDigest = await PluginHost().sha256OfFile(referencePlugin);
   });
   tearDownAll(() => root.deleteSync(recursive: true));
 
@@ -100,6 +104,28 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('runs the conformance suite through the supervised Engine', () async {
+    final progress = <String?>[];
+    final result = await supervisor().conformance(
+      pluginExecutor: WorkerExecutor(
+        pluginId: 'ref-plugin',
+        version: '1.0.0',
+        manifestDigest: 'a' * 64,
+        artifactSha256: referenceDigest,
+        executable: referencePlugin,
+        dataDirectory: root.path,
+      ),
+      pluginWorkerTypeId: workerTypeId,
+      stateDirectory: temp('state'),
+      declaresResume: false,
+      declaredCapabilities: const {'progress': true},
+      onProgress: (p) => progress.add(p.message),
+    );
+    expect(result.passed, isTrue);
+    expect(result.cases.map((c) => c.id), contains('handshake.identity'));
+    expect(progress, contains('conformance:handshake.identity:passed'));
   });
 
   test(

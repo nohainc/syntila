@@ -9,6 +9,10 @@ export 'local_management_transport.dart' show workspaceManagerEndpoint;
 
 const workspaceManagerProtocolName = 'syntila.workspace-manager-ipc';
 const workspaceManagerProtocolVersion = 1;
+
+/// Optional command groups this build serves (see
+/// `docs/specifications/WORKER_PLUGIN_MANAGEMENT_IPC_V1.md`).
+const workspaceManagerCapabilities = <String>['plugins.v1'];
 const _maxFrameBytes = 1024 * 1024;
 const _handshakeTimeout = Duration(seconds: 5);
 
@@ -169,6 +173,10 @@ class WorkspaceManagerIpcServer {
           'protocol': workspaceManagerProtocolName,
           'version': workspaceManagerProtocolVersion,
           'serviceVersion': serviceVersion,
+          // Additive feature discovery; the integer version stays 1 so older
+          // clients keep working. A client missing a capability reports an
+          // outdated service instead of sending unsupported commands.
+          'capabilities': workspaceManagerCapabilities,
           'snapshot': snapshot,
         });
         while (await iterator.moveNext()) {

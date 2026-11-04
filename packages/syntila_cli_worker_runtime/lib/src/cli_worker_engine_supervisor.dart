@@ -307,6 +307,126 @@ final class CliWorkerEngineSupervisor {
     }
   }
 
+  /// Runs the protocol conformance suite for a plugin inside the plugin-mode
+  /// Engine (ADR-027). The plugin processes are started and cleaned up by the
+  /// Engine; this method only supervises the Engine itself.
+  Future<ConformanceResult> conformance({
+    required WorkerExecutor pluginExecutor,
+    required String pluginWorkerTypeId,
+    required Directory stateDirectory,
+    required bool declaresResume,
+    Map<String, Object?>? declaredCapabilities,
+    Duration timeout = const Duration(minutes: 10),
+    void Function(WorkerProgress progress)? onProgress,
+  }) async {
+    final identity = _EngineIdentity.resolve(
+      release: null,
+      profileFile: null,
+      pluginExecutor: pluginExecutor,
+      pluginWorkerTypeId: pluginWorkerTypeId,
+    );
+    await stateDirectory.create(recursive: true);
+    final timer = Stopwatch()..start();
+    Process? process;
+    File? processRecord;
+    CliEngineChannel? channel;
+    var stopped = false;
+    try {
+      process = await _platformRuntime.startIsolatedProcess(
+        engineExecutable,
+        [...engineArgumentsPrefix, ...identity.launchFlags(stateDirectory)],
+        workingDirectory: stateDirectory.path,
+        environment: _engineEnvironment(),
+        includeParentEnvironment: false,
+      );
+      processRecord = await _writeProcessRecord(
+        process,
+        assignmentId: 'conformance-${DateTime.now().microsecondsSinceEpoch}',
+        stateDirectory: stateDirectory,
+      );
+      channel = CliEngineChannel(
+        process,
+        maxFrameBytes: maxFrameBytes,
+        maxStderrBytes: maxStderrBytes,
+      );
+      final initialized = await channel.exchange(
+        InitializeRequest(
+          requestId: 'engine-init-${DateTime.now().microsecondsSinceEpoch}',
+          workerTypeId: identity.workerTypeId,
+          expectedEngineVersion: cliWorkerEngineVersion,
+          profileDefinitionId: identity.definitionId,
+          profileReleaseVersion: identity.releaseVersion,
+          profileDigest: identity.digest,
+          executor: identity.executor,
+          protocolVersion: identity.protocolVersion,
+        ),
+        _remaining(timeout, timer),
+      );
+      if (initialized is! InitializeResult ||
+          initialized.workerTypeId != identity.workerTypeId ||
+          initialized.profileDefinitionId != identity.definitionId) {
+        throw const FormatException('CLI Worker Engine initialize mismatch');
+      }
+      final result = await channel.exchangeConformance(
+        ConformanceRequest(
+          requestId: 'engine-conf-${DateTime.now().microsecondsSinceEpoch}',
+          declaresResume: declaresResume,
+          declaredCapabilities: declaredCapabilities,
+          timeoutMs: _remaining(
+            timeout,
+            timer,
+          ).inMilliseconds.clamp(1000, WorkerProtocolLimits.maxTimeoutMs),
+        ),
+        _remaining(timeout, timer),
+        onProgress: onProgress,
+      );
+      if (result is WorkerErrorFrame) {
+        throw CliWorkerEngineProbeException(
+          result.code,
+          result.message,
+          localDiagnostics: result.diagnostics,
+        );
+      }
+      if (result is! ConformanceResult) {
+        throw const FormatException(
+          'CLI Worker Engine conformance response mismatch',
+        );
+      }
+      await process.stdin.close();
+      await process.exitCode.timeout(const Duration(seconds: 5));
+      stopped = true;
+      return result;
+    } on TimeoutException {
+      throw const CliWorkerEngineProbeException(
+        WorkerIssueCode.deadlineExceeded,
+        'The conformance suite exceeded its deadline.',
+      );
+    } on ProcessException catch (error) {
+      throw CliWorkerEngineProbeException(
+        WorkerIssueCode.providerToolUnavailable,
+        'CLI Worker Engine could not be started.',
+        localDiagnostics: jsonEncode({
+          'stage': 'engine_process_start',
+          'errorCode': error.errorCode,
+          'message': error.message,
+        }),
+      );
+    } finally {
+      if (process != null && !stopped) {
+        await _platformRuntime.terminateProcessTree(process, force: true);
+      }
+      if (processRecord != null) {
+        await _updateProcessRecord(
+          processRecord,
+          engineState: 'terminated',
+          providerState: 'terminated',
+        );
+      }
+      await _deleteProcessRecord(processRecord);
+      await channel?.dispose();
+    }
+  }
+
   /// Runs the Profile-owned usage command in an isolated Engine process and
   /// returns the provider's report verbatim.
   Future<UsageResult> usage(
@@ -1323,6 +1443,39 @@ final class CliEngineChannel {
       throw const FormatException('CLI Worker Engine request ID mismatch');
     }
     return frame;
+  }
+
+  /// Sends a conformance request and relays case progress until the result (or
+  /// a terminal error) arrives.
+  Future<WorkerFrame> exchangeConformance(
+    ConformanceRequest request,
+    Duration timeout, {
+    void Function(WorkerProgress progress)? onProgress,
+  }) async {
+    process.stdin.writeln(request.encode());
+    await process.stdin.flush();
+    final timer = Stopwatch()..start();
+    while (true) {
+      final remaining = timeout - timer.elapsed;
+      if (remaining <= Duration.zero) {
+        throw TimeoutException('deadline elapsed');
+      }
+      final line = await _nextProtocolLine(remaining, 'engine_conformance');
+      if (utf8.encode(line).length > maxFrameBytes) {
+        throw const FormatException(
+          'CLI Worker Engine frame exceeds the limit',
+        );
+      }
+      final frame = decodeWorkerFrame(line);
+      if (frame.requestId != request.requestId) {
+        throw const FormatException('CLI Worker Engine request ID mismatch');
+      }
+      if (frame is WorkerProgress) {
+        onProgress?.call(frame);
+        continue;
+      }
+      return frame;
+    }
   }
 
   Future<WorkerFrame> exchangeUntilTerminal(

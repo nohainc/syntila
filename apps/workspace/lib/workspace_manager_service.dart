@@ -1,3 +1,4 @@
+import 'workspace_manager_plugins.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -49,6 +50,7 @@ class WorkspaceManagerService {
   WorkerCatalogCoordinator? _observedCatalog;
   WorkerReadinessMonitor? _observedReadiness;
   AllowedFolderRegistry? _allowedFolderRegistry;
+  WorkspacePluginCommands? _pluginCommands;
 
   Future<void> start() async {
     final paths = WorkspacePaths(workspace.config.dataDirectory);
@@ -432,6 +434,9 @@ class WorkspaceManagerService {
     final connection = workspace.cloudConnection;
     final registry = workspace.localWorkerRegistry;
     final workerSubsystem = workspace.workerSubsystem;
+    if (WorkspacePluginCommands.handles(command)) {
+      return _plugins().handle(command, payload);
+    }
     switch (command) {
       case 'auth.register':
         final desired =
@@ -937,6 +942,19 @@ class WorkspaceManagerService {
         );
     }
   }
+
+  /// Plugin management (ADR-027). Built on first use from the running
+  /// Workspace; the CLI only sends requests and prints results.
+  WorkspacePluginCommands _plugins() =>
+      _pluginCommands ??= WorkspacePluginCommands(
+        buildWorkspacePluginService(
+          config: workspace.config,
+          credentialStore: workspace.credentialStore,
+          engineSupervisor: workspace.workerSubsystem?.engineSupervisor,
+          localWorkers: workspace.localWorkerRegistry,
+        ),
+        publish: _events.add,
+      );
 
   /// Owner-managed folders that Spaces on this Workspace may attach. The
   /// Manager IPC endpoint is restricted to the owner OS account and its

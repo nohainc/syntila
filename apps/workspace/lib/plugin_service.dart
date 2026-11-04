@@ -77,7 +77,7 @@ class WorkspacePluginService {
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
-  static int _none(String pluginRef) => 0;
+  static Future<int> _none(String pluginRef) async => 0;
 
   final PluginStore store;
   final PluginRegistry registry;
@@ -86,7 +86,7 @@ class WorkspacePluginService {
   final PluginConformancePort conformance;
 
   /// Running or queued assignments for a plugin Worker (by `pluginRef`).
-  final int Function(String pluginRef) activeAssignments;
+  final Future<int> Function(String pluginRef) activeAssignments;
   final DateTime Function() _clock;
 
   // ---- entitlement -----------------------------------------------------------
@@ -436,8 +436,9 @@ class WorkspacePluginService {
       'schemaVersion': 1,
       'disabled': true,
       'cloudSynced': cloudSynced,
-      'draining':
-          record.pluginRef == null ? 0 : activeAssignments(record.pluginRef!),
+      'draining': record.pluginRef == null
+          ? 0
+          : await activeAssignments(record.pluginRef!),
     };
   }
 
@@ -450,7 +451,7 @@ class WorkspacePluginService {
       );
     }
     final ref = record.pluginRef;
-    if (ref != null && activeAssignments(ref) > 0) {
+    if (ref != null && await activeAssignments(ref) > 0) {
       throw const PluginServiceException(
         'plugin_in_use',
         'This plugin still has running work. Remove it when that finishes.',

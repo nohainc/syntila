@@ -114,6 +114,28 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
     label: 'Worker type',
   );
 
+  const pluginId = <GuiParameter>[
+    GuiParameter(
+      name: 'id',
+      kind: GuiParamKind.positional,
+      type: GuiParamType.string,
+      required: true,
+      label: 'Plugin ID',
+    ),
+  ];
+  const pluginVersion = GuiParameter(
+    name: 'version',
+    kind: GuiParamKind.option,
+    type: GuiParamType.string,
+    label: 'Version',
+  );
+  const pluginAccept = GuiParameter(
+    name: 'accept',
+    kind: GuiParamKind.option,
+    type: GuiParamType.string,
+    label: 'Accept the consent document with this hash',
+  );
+
   CliCommand workerAction(
     String name,
     String title,
@@ -494,6 +516,206 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
               ),
             ],
             destructive: true,
+            inGroup: true,
+          ),
+        ],
+      ),
+      group(
+        'plugins',
+        'Plugins',
+        'Manage custom Worker plugins (Syntila Plus)',
+        defaultCommand: 'list',
+        icon: GuiIcons.package,
+        navigation: true,
+        [
+          command(
+            icon: GuiIcons.list,
+            info: true,
+            'list',
+            'Plugins',
+            'List imported plugins and their state',
+            service('plugins.list'),
+            view: GuiView.table,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.list,
+            info: true,
+            'show',
+            'Plugin details',
+            'Show one plugin: digest, origin and conformance',
+            service(
+              'plugins.show',
+              payload: (run) => {
+                'pluginId': run.positional('id'),
+                if (run.option('version') != null)
+                  'version': run.option('version'),
+              },
+            ),
+            parameters: pluginId + [pluginVersion],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.plus,
+            'import',
+            'Import plugin',
+            'Copy a plugin package (directory or .zip) into the Workspace',
+            service(
+              'plugins.import',
+              payload: (run) => {
+                'path': File(run.positional('path')!).absolute.path,
+              },
+            ),
+            parameters: const [
+              GuiParameter(
+                name: 'path',
+                kind: GuiParamKind.positional,
+                type: GuiParamType.path,
+                required: true,
+                label: 'Package',
+              ),
+            ],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.check,
+            'validate',
+            'Validate plugin',
+            'Check the manifest and files without running anything',
+            service(
+              'plugins.validate',
+              payload: (run) => {
+                'pluginId': run.positional('id'),
+                if (run.option('version') != null)
+                  'version': run.option('version'),
+              },
+            ),
+            parameters: pluginId + [pluginVersion],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.test,
+            'test',
+            'Test plugin',
+            'Run the protocol conformance suite in the Service',
+            service(
+              'plugins.test',
+              payload: (run) => {
+                'pluginId': run.positional('id'),
+                if (run.option('version') != null)
+                  'version': run.option('version'),
+              },
+            ),
+            parameters: pluginId + [pluginVersion],
+            longRunning: true,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.plus,
+            'register',
+            'Register plugin',
+            'Add a tested version to your account library (shows consent first)',
+            service(
+              'plugins.register',
+              payload: (run) => {
+                'pluginId': run.positional('id'),
+                if (run.option('version') != null)
+                  'version': run.option('version'),
+                if (run.option('accept') != null)
+                  'acceptHash': run.option('accept'),
+              },
+            ),
+            parameters: pluginId + [pluginVersion, pluginAccept],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.power,
+            'enable',
+            'Enable plugin',
+            'Enable a registered version on this Workspace (shows consent first)',
+            service(
+              'plugins.enable',
+              payload: (run) => {
+                'pluginId': run.positional('id'),
+                if (run.option('version') != null)
+                  'version': run.option('version'),
+                if (run.option('accept') != null)
+                  'acceptHash': run.option('accept'),
+                'shareable': run.flag('shareable'),
+              },
+            ),
+            parameters: pluginId +
+                [
+                  pluginVersion,
+                  pluginAccept,
+                  const GuiParameter(
+                    name: 'shareable',
+                    kind: GuiParamKind.flag,
+                    type: GuiParamType.boolean,
+                    label: 'Let people with access to this Workspace use it',
+                  ),
+                ],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.stop,
+            'disable',
+            'Disable plugin',
+            'Stop scheduling this plugin on this Workspace',
+            service(
+              'plugins.disable',
+              payload: (run) => {'pluginId': run.positional('id')},
+            ),
+            parameters: pluginId,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.list,
+            'export',
+            'Export plugin',
+            'Write a credential-free bundle to move it to another machine',
+            service(
+              'plugins.export',
+              payload: (run) => {
+                'pluginId': run.positional('id'),
+                'outputPath': File(run.positional('out')!).absolute.path,
+                if (run.option('version') != null)
+                  'version': run.option('version'),
+              },
+            ),
+            parameters: pluginId +
+                [
+                  const GuiParameter(
+                    name: 'out',
+                    kind: GuiParamKind.positional,
+                    type: GuiParamType.path,
+                    required: true,
+                    label: 'Output file',
+                  ),
+                  pluginVersion,
+                ],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.trash,
+            'remove',
+            'Remove plugin',
+            'Remove a plugin from your library and this Workspace',
+            service(
+              'plugins.remove',
+              payload: (run) => {'pluginId': run.positional('id')},
+            ),
+            parameters: pluginId,
+            destructive: true,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.check,
+            info: true,
+            'entitlement',
+            'Plus status',
+            'Show whether custom plugins are currently available',
+            service('plugins.entitlement'),
             inGroup: true,
           ),
         ],

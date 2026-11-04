@@ -130,6 +130,10 @@ class WorkspacePaths {
   /// The Workspace application's private subtree within the family root.
   Directory get workspaceDirectory => applicationSupportDirectory;
 
+  /// Immutable plugin store, registry, plugin data and entitlement lease.
+  Directory get pluginsDirectory =>
+      Directory('${applicationSupportDirectory.path}/Plugins');
+
   /// The application-family root shared by Workspace and future desktop apps.
   Directory get applicationDataRoot =>
       (_usesManagedMacLayout || _usesManagedWindowsLayout)
