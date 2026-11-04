@@ -104,9 +104,15 @@ void main() {
       throwsA(isA<AssignmentExecutionFailure>()
           .having((error) => error.code, 'code', 'cancelled')),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    expect(
-        stages, contains(('second', AssignmentStartupStage.waitingForSpace)));
+    // Wait for observable readiness rather than assuming filesystem/lock
+    // setup completes within 50 ms under a component-suite load.
+    final waitingStage = ('second', AssignmentStartupStage.waitingForSpace);
+    final deadline = Stopwatch()..start();
+    while (!stages.contains(waitingStage) &&
+        deadline.elapsed < const Duration(seconds: 5)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(stages, contains(waitingStage));
 
     final stopwatch = Stopwatch()..start();
     expect(await handler.cancel('second', 'user cancelled'), isTrue);
