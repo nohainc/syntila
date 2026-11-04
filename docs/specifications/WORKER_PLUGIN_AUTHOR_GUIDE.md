@@ -54,6 +54,41 @@ Platform keys: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`,
 typo cannot hide an access declaration. The `access` block is shown to the user
 at consent; it is a request, not a sandbox.
 
+## 1a. Dart: use the SDK
+
+`packages/syntila_plugin_sdk` implements the protocol for you. Subclass
+`PluginWorker`, implement `execute`, and call `runPlugin`:
+
+```dart
+class MyPlugin extends PluginWorker {
+  @override
+  String get id => 'my-plugin';
+  @override
+  String get version => '1.0.0';
+  @override
+  Future<WorkResult> execute(WorkRequest request, WorkContext context) async {
+    context.progress('Working');
+    return WorkResult('answer for: ${request.prompt}');
+  }
+}
+
+Future<void> main() => runPlugin(MyPlugin());
+```
+
+`examples/plugins/echo_dart` is a complete plugin that also supports session
+resume (`SessionStore`) and cancel; it passes all 21 conformance cases. After
+`dart compile exe`, fill the hashes with:
+
+```sh
+dart run syntila_plugin_sdk:pack ./my-plugin     # writes sha256/size, prints the manifest digest
+```
+
+Dart is single-threaded per isolate. A long synchronous loop stops heartbeats
+and cancel handling, so `await` between steps (or compute in an isolate) and
+check `context.isCancelled`. The SDK sends exactly one terminal frame per
+request, turns thrown errors into a safe `internal` error (never a stack trace or
+path), and redirects `print` to stderr.
+
 ## 2. The protocol in ten lines
 
 - Read one JSON object per line from stdin; write one per line to stdout. stdout

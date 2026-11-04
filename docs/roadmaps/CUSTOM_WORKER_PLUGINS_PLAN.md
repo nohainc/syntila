@@ -13,11 +13,11 @@
 | P2 Local execution, entitlement-gated | Done | `pnpm validate:engine` (plugin host, 4.2, plugin-mode Engine, conformance), `pnpm validate:workspace` (store, registry, IPC, CLI, runtime, end-to-end test) |
 | P3 Cloud library, catalog, eligibility | Done | `pnpm validate:cloud` (library, pins, scheduler and eligibility against real SQL, atomic admission, list isolation) |
 | P4 Export and multi-Workspace distribution | Done for the product path: `export` writes a credential-free bundle, `import` accepts it, each Workspace pins independently, updates show a consent diff. **Open:** per-platform isolation evidence | store and service tests |
-| P5 SDK and docs | Docs done ([author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md), [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md), key tool). **Open:** `syntila_plugin_sdk`, `pack`, the `echo_dart` example | conformance package and fixtures exist |
+| P5 SDK and docs | Implemented locally: `packages/syntila_plugin_sdk` (`runPlugin`, `PluginWorker`, `SessionStore`, `pack`), `examples/plugins/echo_dart` (passes all 21 conformance cases), [author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md), [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md), key tool. **Open:** publication, `init`, an `echo_python` example, SDK signing helper, and SDK example conformance through the Engine launcher | SDK tests incl. conformance of the example |
 
 Still open, in priority order: (1) OS isolation tiers and memory/CPU/file limits
-with device evidence on macOS, Linux and Windows; (2) the Dart SDK and `pack`
-tool; (3) `plugins trust-signer`; (4) acceptance on a deployed Cloud and real
+with device evidence on macOS, Linux and Windows; (2) a non-Dart example and
+signing helper; (3) `plugins trust-signer`; (4) acceptance on a deployed Cloud and real
 Windows/Linux hosts. The "Phased implementation plan" below is the original
 plan; this table is the current state.
 
