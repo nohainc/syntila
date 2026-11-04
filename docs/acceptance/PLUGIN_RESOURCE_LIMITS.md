@@ -112,7 +112,9 @@ also continue requiring a successful push-triggered CI run on main.
   not raise the host ceiling; per-plugin lower-limit configuration is not wired.
 - Windows handles and aggregate POSIX CPU are observed budgets, not hard kernel
   quotas. Processes born/reaped or detached between samples can evade accounting.
-  Filesystem/network isolation remains absent.
+  Production filesystem/network isolation remains absent. A separate
+  [macOS facility experiment](PLUGIN_ISOLATION.md) checks specific write and
+  network denials without changing readiness.
 - Retain installed/signed Workspace release evidence, including stop/crash and
   detached descendants. Hosted resource tests do not establish launchd/TCC,
   notarization, Linux user-service or Windows logon-task integration claims.

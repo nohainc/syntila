@@ -15,6 +15,10 @@
 | P4 Export and multi-Workspace distribution | Done for the product path: `export` writes a credential-free bundle, `import` accepts it, each Workspace pins independently, updates show a consent diff. **Open:** per-platform isolation evidence | store and service tests |
 | P5 SDK and docs | Implemented locally: `packages/syntila_plugin_sdk` (`runPlugin`, `PluginWorker`, `SessionStore`, `pack`, `init`), `examples/plugins/echo_dart` (passes all 21 conformance cases), [author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md), [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md), [user security guide](../security/CUSTOM_WORKER_PLUGINS.md), key tool. Python reference example and offline `scripts/sign-plugin.mjs` available. Standalone author-kit archive and checksum built by `scripts/build-plugin-author-kit.mjs`, retained by Engine CI. **Open:** package-registry publication | SDK tests incl. standalone conformance of both examples; Engine conformance test for the Dart example; Node signing verification test |
 
+A [macOS isolation facility check](../acceptance/PLUGIN_ISOLATION.md) now verifies
+specific write and loopback denials on the development host; it is not integrated
+into production launches and does not enable read-only scheduling.
+
 Still open, in priority order: (1) filesystem/network isolation, hard aggregate
 CPU/handle guarantees, and installed/signed Linux/Windows release acceptance. Sampled aggregate
 POSIX CPU accounting and Windows job-handle budgets are implemented. POSIX CPU/open-file limits, observed RSS/process/data quotas and
