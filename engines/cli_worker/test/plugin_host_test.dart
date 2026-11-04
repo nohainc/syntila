@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
 import 'package:syntila_cli_worker_engine/src/plugin_redactor.dart';
+import 'package:syntila_cli_worker_engine/src/plugin_resource_monitor.dart';
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 import 'package:test/test.dart';
 
@@ -63,6 +64,26 @@ void main() {
     expect((outcome as PluginRunSuccess).output, 'echo: hello');
     expect(frames.map((f) => f.type), contains('progress'));
   });
+
+  test('observed memory breach fails work and kills the plugin', () async {
+    final work = Directory.systemTemp.createTempSync('plugin-memory');
+    addTearDown(() => work.deleteSync(recursive: true));
+    final constrained = PluginHost(
+      resourceLimits: const PluginResourceLimits(
+        memoryBytes: 1,
+        interval: Duration(milliseconds: 50),
+      ),
+    );
+    final outcome = await constrained.run(
+      launch('ignore-cancel', work: work),
+      request(),
+    );
+    expect((outcome as PluginRunFailure).code, 'plugin_resource_limit');
+    final marker = File('${work.path}/plugin.pid');
+    if (marker.existsSync()) {
+      expect(alive(int.parse(marker.readAsStringSync().trim())), isFalse);
+    }
+  }, skip: Platform.isWindows);
 
   test('refuses an artifact that does not match the pinned digest', () async {
     final work = Directory.systemTemp.createTempSync('plugin-work');

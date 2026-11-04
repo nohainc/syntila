@@ -142,6 +142,24 @@ jobs:
       - name: Validate Worker engine
         run: bash scripts/validate-engine.sh
 
+  plugin-limits-windows:
+    name: Plugin resource limits on Windows
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-flutter
+      - name: Verify inherited Windows job limits
+        shell: pwsh
+        working-directory: engines/cli_worker
+        run: |
+          dart pub get
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dart test test/plugin_process_limits_test.dart
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   site:
     name: Public site
     needs: changes
@@ -167,6 +185,7 @@ jobs:
         workspace-gui,
         profile-lab,
         engine,
+        plugin-limits-windows,
         site,
       ]
     runs-on: ubuntu-24.04

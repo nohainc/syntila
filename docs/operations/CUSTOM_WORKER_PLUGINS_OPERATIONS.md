@@ -105,3 +105,19 @@ machines; it is bound to one Workspace and installation.
   acceptance before a Windows or Linux release.
 - **`plugins trust-signer`** (signer pinning) and URL/registry import are not
   implemented; signatures are verified and shown at consent.
+
+
+## Resource-limit failures
+
+The plugin Engine applies hard POSIX CPU/open-file limits and Windows job limits
+before running plugin code. Memory/process counts on POSIX and plugin data size
+are observed; inspection failure also stops work. `plugin_resource_limit` appears
+in Engine diagnostics through the existing non-retryable provider-failure issue.
+A hard native limit may instead appear as a process exit/provider failure.
+
+Check plugin diagnostics and the [resource-limit acceptance record](../acceptance/PLUGIN_RESOURCE_LIMITS.md)
+for exact defaults and platform gaps. Export and removal remain management
+operations even when an oversized data directory prevents execution. Do not
+raise limits or delete user work automatically. Manifest memory requests do not
+raise the fixed host ceiling. These limits do not enforce filesystem/network
+isolation or make a plugin safe.

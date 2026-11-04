@@ -156,9 +156,15 @@ no shell, handshake/heartbeat/cancel/shutdown deadlines, frame-size and
 progress-rate limits, redaction of paths and tokens in diagnostics, process-tree
 cleanup, and artifact paths that must stay inside the working directory.
 
-**Not enforced:** filesystem, network, memory and CPU limits. A process boundary
-is not a sandbox. Today read-only Steps are never routed to plugins because
-nothing proves read-only; plugins run Work Steps only.
+The plugin-mode Engine now applies POSIX hard CPU/open-file limits before exec,
+Windows job memory/process-count/CPU limits, and observed data-directory limits.
+On POSIX, memory and process count are sampled; CPU is per process. Windows
+handle quotas remain unimplemented. See [resource-limit evidence](../acceptance/PLUGIN_RESOURCE_LIMITS.md)
+for defaults and platform verification gaps.
+
+**Not enforced:** filesystem and network isolation. A process boundary is not a
+sandbox. Read-only Steps are never routed to plugins because nothing proves
+read-only; plugins run Work Steps only.
 
 ## 5. Security notes for authors
 

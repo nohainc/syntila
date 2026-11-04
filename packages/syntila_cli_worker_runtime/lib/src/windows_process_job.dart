@@ -6,7 +6,11 @@ int? _lifetimeJob;
 /// Called only by standalone service/Engine entry points before any children.
 /// The retained, non-inheritable handle closes on process exit and Windows kills
 /// every descendant in this job, including descendants whose parent exited.
-void initializeWindowsProcessJob() {
+void initializeWindowsProcessJob({
+  int? maxMemoryBytes,
+  int? maxProcesses,
+  int? cpuSeconds,
+}) {
   if (!Platform.isWindows || _lifetimeJob != null) return;
   if (sizeOf<IntPtr>() != 8) throw UnsupportedError('Windows x64 is required');
   final kernel = DynamicLibrary.open('kernel32.dll');
@@ -46,6 +50,18 @@ void initializeWindowsProcessJob() {
       throw StateError('Could not create exclusive Windows process job');
     (limits + 16).cast<Uint32>().value =
         0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if (maxMemoryBytes != null) {
+      (limits + 16).cast<Uint32>().value |= 0x200;
+      (limits + 120).cast<Uint64>().value = maxMemoryBytes;
+    }
+    if (maxProcesses != null) {
+      (limits + 16).cast<Uint32>().value |= 0x8;
+      (limits + 40).cast<Uint32>().value = maxProcesses;
+    }
+    if (cpuSeconds != null) {
+      (limits + 16).cast<Uint32>().value |= 0x4;
+      (limits + 8).cast<Int64>().value = cpuSeconds * 10000000;
+    }
     final configure = kernel
         .lookupFunction<
           Int32 Function(IntPtr, Int32, Pointer<Void>, Uint32),

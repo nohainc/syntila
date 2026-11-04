@@ -10,13 +10,15 @@
 | Phase | State | Evidence |
 | --- | --- | --- |
 | P1 Protocol, ADR, entitlement contract | Done | ADR accepted; manifest/lease schemas; `workers.custom_plugins`; golden vectors |
-| P2 Local execution, entitlement-gated | Execution path implemented; resource-limit exit criteria remain open | `pnpm validate:engine` (plugin host, 4.2, plugin-mode Engine, conformance), `pnpm validate:workspace` (store, registry, IPC, CLI, runtime, end-to-end test) |
+| P2 Local execution, entitlement-gated | Execution path and resource limits implemented; platform acceptance remains open | `pnpm validate:engine` (plugin host, 4.2, plugin-mode Engine, conformance), `pnpm validate:workspace` (store, registry, IPC, CLI, runtime, end-to-end test) |
 | P3 Cloud library, catalog, eligibility | Done | `pnpm validate:cloud` (library, pins, scheduler and eligibility against real SQL, atomic admission, list isolation) |
 | P4 Export and multi-Workspace distribution | Done for the product path: `export` writes a credential-free bundle, `import` accepts it, each Workspace pins independently, updates show a consent diff. **Open:** per-platform isolation evidence | store and service tests |
 | P5 SDK and docs | Implemented locally: `packages/syntila_plugin_sdk` (`runPlugin`, `PluginWorker`, `SessionStore`, `pack`, `init`), `examples/plugins/echo_dart` (passes all 21 conformance cases), [author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md), [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md), [user security guide](../security/CUSTOM_WORKER_PLUGINS.md), key tool. Python reference example and offline `scripts/sign-plugin.mjs` available. **Open:** package publication | SDK tests incl. standalone conformance of both examples; Engine conformance test for the Dart example; Node signing verification test |
 
-Still open, in priority order: (1) OS isolation tiers and memory/CPU/file limits
-with device evidence on macOS, Linux and Windows; (2) package publication;
+Still open, in priority order: (1) filesystem/network isolation, Windows handle
+quotas, an aggregate POSIX CPU budget, and Linux/Windows resource-limit device
+acceptance. POSIX CPU/open-file limits, observed RSS/process/data quotas and
+Windows job limits now exist; see [resource-limit evidence](../acceptance/PLUGIN_RESOURCE_LIMITS.md); (2) package publication;
 (3) `plugins trust-signer`; (4) acceptance on a deployed Cloud and real
 Windows/Linux hosts. Author tooling is local to this checkout; no packages have
 been published. The "Phased implementation plan" below is the original

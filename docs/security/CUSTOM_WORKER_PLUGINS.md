@@ -19,7 +19,11 @@ confidentiality, output quality or compliance with access declarations.
 The current host checks the pinned executable digest before launch, builds an
 allow-listed environment, redacts diagnostics, bounds protocol frames and work
 time, and supervises cancellation and process cleanup. Filesystem/network
-isolation and memory/CPU/file-handle limits are not implemented. The reported
+isolation is not implemented. POSIX has hard CPU/open-file limits plus observed
+memory and process-count checks; Windows uses job memory, process-count and CPU
+limits (device validation pending). Data size is observed on all platforms.
+Sampling can miss short spikes; Windows handle quotas remain unimplemented.
+See [resource-limit evidence](../acceptance/PLUGIN_RESOURCE_LIMITS.md). The reported
 isolation tier is `none`; read-only Steps are ineligible for plugins.
 
 ## Install, test and consent

@@ -8,6 +8,7 @@ import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 import 'conversation_execution_router.dart';
 import 'plugin_host.dart';
+import 'plugin_process_limits.dart';
 
 /// Options for the plugin-mode Engine (`syntila-agent --plugin ...`). It has
 /// no Tool Profile: the Workspace Service passes the verified plugin identity
@@ -61,7 +62,7 @@ class PluginEngine {
     required this.options,
     PluginHost? host,
     ConversationExecutionRouter router = const ConversationExecutionRouter(),
-  }) : _host = host ?? PluginHost(),
+  }) : _host = host ?? PluginHost(supervisor: LimitedPluginSupervisor()),
        _router = router;
 
   final PluginEngineOptions options;

@@ -3,10 +3,15 @@ import 'dart:io';
 import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
 import '../lib/src/cli_worker_engine.dart';
 import '../lib/src/plugin_engine.dart';
+import '../lib/src/plugin_process_limits.dart';
 
 Future<void> main(List<String> arguments) async {
   setCurrentProcessName('syntila-agent');
   try {
+    if (arguments.isNotEmpty && arguments.first == '--plugin-child') {
+      await runLimitedPluginChild(arguments);
+      return;
+    }
     initializeWindowsProcessJob();
     if (PluginEngineOptions.isPluginMode(arguments)) {
       await PluginEngine(options: PluginEngineOptions.parse(arguments)).run();

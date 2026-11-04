@@ -385,13 +385,19 @@ same `pluginId`. A digest the Service finds on disk that differs from the pin is
 
 ### 4.3 Enforced limits (Engine plugin host)
 
-The table below retains the Phase 0 target defaults. Current enforcement covers
-protocol/frame bounds, deadlines, heartbeat, cancellation, redaction and process
-cleanup. **Memory, CPU, file-handle and descendant-count limits and the data-dir
-quota are not implemented.** No isolation tier above `none` is claimed and
-read-only Steps remain ineligible. Resource-limit rows are outstanding acceptance
-requirements, not current guarantees. Planned per-Workspace overrides may only
-lower these defaults.
+Plugin-mode Engines launch the same Engine artifact in a private child mode
+before untrusted code starts. POSIX applies hard CPU/open-file limits and disables
+core dumps, then replaces the child with the plugin using `execv`. Windows puts
+the child and its descendants in a bounded, kill-on-close Job Object. Official
+Profile execution retains its existing process path.
+
+POSIX RSS and descendant count are sampled, and the data directory is checked
+before launch and sampled on every platform. These are **observed limits**:
+short-lived spikes and reparented descendants can escape a sample. Inspection
+failure stops the run. Limits do not grant filesystem/network isolation; the
+reported tier remains `none` and read-only Steps remain ineligible.
+
+The table includes remaining target requirements explicitly:
 
 | Limit | Default | Enforcement |
 | --- | --- | --- |
@@ -404,11 +410,14 @@ lower these defaults.
 | Progress rate | 20 frames/s, 4 KiB each, burst 100 | Excess dropped, counted, reported |
 | Stderr capture | 64 KiB ring, redacted | Diagnostics only |
 | Concurrency | `manifest.limits.maxConcurrent` clipped by `min(Workspace parallel_slots, 4)`; default 1 per plugin | Scheduler uses inventory `localConcurrencyLimit`; Engine enforces |
-| Processes | 1 plugin process per active assignment; at most 64 descendants | Job Object / cgroup / pgid accounting |
-| Memory | default 1 GiB per plugin | See §4.4 for what each OS can actually enforce |
-| CPU time | 1 h per assignment | `RLIMIT_CPU` / Job Object where available; otherwise service-observed |
-| Open files | 256 | `RLIMIT_NOFILE` / Windows handle quota where available |
-| Plugin data dir | 512 MiB | Service-observed (not a filesystem quota); breach cancels the assignment |
+| Processes | 1 plugin process per active assignment; at most 64 descendants | POSIX: observed tree count every second. Windows: hard job count 66 including launcher and plugin; no breakaway flag |
+| Memory | 1 GiB | POSIX: observed sum of tree RSS every second (shared pages may be counted twice). Windows: hard aggregate job committed-memory limit including launcher |
+| CPU time | 1 h | POSIX: inherited hard `RLIMIT_CPU` per process, not an aggregate tree budget. Windows: job user-time limit |
+| Open files | 256 per process | POSIX: inherited hard `RLIMIT_NOFILE`. Windows: handle quota is still unimplemented |
+| Plugin data dir | 512 MiB and 100,000 entries | Engine preflight and observed scan, no symlink traversal; breach or unreadable usage stops the process tree. No filesystem quota |
+
+Device evidence and verification limits are recorded in
+[plugin resource-limit acceptance](../acceptance/PLUGIN_RESOURCE_LIMITS.md).
 
 ### 4.4 Isolation actually available (and what is not claimed)
 

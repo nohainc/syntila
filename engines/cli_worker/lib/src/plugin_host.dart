@@ -10,6 +10,7 @@ import 'package:syntila_plugin_conformance/syntila_plugin_conformance.dart'
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 
 import 'plugin_redactor.dart';
+import 'plugin_resource_monitor.dart';
 
 /// Everything the Service has verified and resolved about one plugin launch.
 /// The Engine trusts none of it blindly: it re-hashes the artifact itself.
@@ -131,9 +132,11 @@ final class PluginRunFailure extends PluginRunOutcome {
 class PluginHost {
   PluginHost({
     PlatformProcessSupervisor supervisor = const StandardProcessSupervisor(),
+    this.resourceLimits = const PluginResourceLimits(),
   }) : _supervisor = supervisor;
 
   final PlatformProcessSupervisor _supervisor;
+  final PluginResourceLimits resourceLimits;
 
   static const _stderrLimit = 64 * 1024;
   static const _tick = Duration(milliseconds: 250);
@@ -201,6 +204,16 @@ class PluginHost {
       return const PluginRunFailure(
         code: PluginHostFailure.digestMismatch,
         message: 'The plugin artifact does not match its pinned digest.',
+      );
+    }
+
+    final quotaProblem = await resourceLimits.checkDataDirectory(
+      launch.dataDirectory,
+    );
+    if (quotaProblem != null) {
+      return PluginRunFailure(
+        code: 'plugin_resource_limit',
+        message: quotaProblem,
       );
     }
 
@@ -446,6 +459,13 @@ class PluginHost {
       sendCancel('timeout');
     });
 
+    final resources = PluginResourceMonitor(
+      process: process,
+      dataDirectory: launch.dataDirectory,
+      limits: resourceLimits,
+      onViolation: (reason) => fail('plugin_resource_limit', reason),
+    )..start();
+
     write(
       session.startHandshake(
         id: 'hello-${request.executeId}',
@@ -455,6 +475,7 @@ class PluginHost {
     );
 
     final outcome = await done.future;
+    resources.stop();
     ticker.cancel();
     deadlineTimer.cancel();
 
@@ -500,6 +521,12 @@ class PluginHost {
         'The plugin artifact does not match its pinned digest.',
       );
     }
+    final quotaProblem = await resourceLimits.checkDataDirectory(
+      launch.dataDirectory,
+    );
+    if (quotaProblem != null) {
+      throw PluginLaunchException('plugin_resource_limit', quotaProblem);
+    }
     final Process process;
     try {
       process = await _supervisor.startIsolatedProcess(
@@ -515,7 +542,12 @@ class PluginHost {
         'The plugin process could not be started.',
       );
     }
-    return _HostConnection(process, _supervisor);
+    return _HostConnection(
+      process,
+      _supervisor,
+      launch.dataDirectory,
+      resourceLimits,
+    );
   }
 
   /// Declared artifacts must exist inside the working directory after symlink
@@ -634,7 +666,18 @@ class PluginHostLauncher implements ConformanceLauncher {
 }
 
 class _HostConnection implements PluginConnection {
-  _HostConnection(this._process, this._supervisor) {
+  _HostConnection(
+    this._process,
+    this._supervisor,
+    String dataDirectory,
+    PluginResourceLimits limits,
+  ) {
+    _resources = PluginResourceMonitor(
+      process: _process,
+      dataDirectory: dataDirectory,
+      limits: limits,
+      onViolation: (_) => unawaited(kill()),
+    )..start();
     _subscription = _process.stdout.listen(
       _queue.add,
       onDone: _queue.close,
@@ -647,6 +690,7 @@ class _HostConnection implements PluginConnection {
   final Process _process;
   final PlatformProcessSupervisor _supervisor;
   final LineQueue _queue = LineQueue();
+  late final PluginResourceMonitor _resources;
   late final StreamSubscription<List<int>> _subscription;
 
   @override
@@ -682,6 +726,7 @@ class _HostConnection implements PluginConnection {
 
   @override
   Future<void> kill() async {
+    _resources.stop();
     await _supervisor.terminateProcessTree(_process, force: true);
     await _subscription.cancel();
   }
