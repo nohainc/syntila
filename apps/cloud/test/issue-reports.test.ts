@@ -55,10 +55,10 @@ function seedExecution(sqlite: ReturnType<typeof sqliteD1>["sqlite"]) {
     );
     INSERT INTO workspace_worker_inventory(
       worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,
-      readiness_state,capabilities_json,local_concurrency_limit,revision,
+      readiness_state,local_concurrency_limit,revision,
       created_at,updated_at,last_seen_at,provider_tool_version
     ) VALUES (
-      'worker-1','workspace-1','owner','gemini','enabled','ready','[]',1,1,
+      'worker-1','workspace-1','owner','gemini','enabled','ready',1,1,
       'now','now','now','1.3.3'
     );
   `);

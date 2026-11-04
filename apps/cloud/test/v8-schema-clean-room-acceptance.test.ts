@@ -221,12 +221,11 @@ describe("v8 clean D1 schema acceptance", () => {
       apply(`
         INSERT INTO worker_catalog (
           worker_type_id, display_name, description, created_at, updated_at,
-          engine_family, visibility_state, release_stage, capabilities_json,
-          sort_order
+          engine_family, visibility_state, release_stage, sort_order
         ) VALUES (
           'dynamic-test-worker', 'Dynamic Test Worker',
           'Catalog-created acceptance Worker.', 'now', 'now', 'cli',
-          'visible', 'stable', '["text"]', 100
+          'visible', 'stable', 100
         );
         INSERT INTO tool_profile_definitions (
           profile_definition_id, worker_type_id, display_name,
