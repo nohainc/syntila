@@ -1,3 +1,4 @@
+import 'plugin_executor.dart' show isPluginWorkerType;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -487,7 +488,8 @@ class WorkerAssignmentHandler {
     // Pin the prepared Profile now, at admission: the assignment keeps this
     // exact identity through any Space-lock or Worker-slot wait.
     final planResolver = resolveLaunchPlan;
-    if (planResolver != null) {
+    // Plugin Workers have no Tool Profile; their identity is verified at launch.
+    if (planResolver != null && !isPluginWorkerType(worker.workerTypeId)) {
       final plan = await planResolver(worker);
       _pinnedLaunchPlans[context.assignmentId] = plan;
       _startup(context, AssignmentStartupStage.profileReady, {

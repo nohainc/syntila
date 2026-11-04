@@ -23,3 +23,7 @@ WorkerExecutor workerExecutorFor(
     environmentNames: List<String>.from(access['env'] as List),
   );
 }
+
+/// True for a Cloud-allocated plugin Worker Type ID (`plugin-` + 12 hex).
+bool isPluginWorkerType(String workerTypeId) =>
+    RegExp(r'^plugin-[0-9a-f]{12}$').hasMatch(workerTypeId);

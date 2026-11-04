@@ -108,10 +108,28 @@ class FakePluginConformance implements PluginConformancePort {
   }
 }
 
+/// Does nothing; the default when a test does not model local Workers.
+class NoopPluginWorkerHost implements PluginWorkerHost {
+  const NoopPluginWorkerHost();
+  @override
+  Future<void> activate({
+    required String pluginRef,
+    required String pluginId,
+    required String displayName,
+  }) async {}
+  @override
+  Future<void> deactivate(String pluginRef) async {}
+  @override
+  Future<void> remove(String pluginRef) async {}
+}
+
 /// A real service over temp directories with fake Cloud and Engine ports.
 class TestPluginService {
-  TestPluginService(Directory temp, {DateTime? start})
-      : now = start ?? testStart {
+  TestPluginService(
+    Directory temp, {
+    DateTime? start,
+    PluginWorkerHost? workerHost,
+  }) : now = start ?? testStart {
     final state = Directory('${temp.path}/state/Plugins');
     service = WorkspacePluginService(
       store: PluginStore(
@@ -133,6 +151,7 @@ class TestPluginService {
       cloud: cloud,
       conformance: conformance,
       clock: () => now,
+      workerHost: workerHost ?? const NoopPluginWorkerHost(),
     );
   }
 

@@ -217,6 +217,12 @@ class PluginRegistry {
 
   Future<PluginRecord?> find(String pluginId) async => (await all())[pluginId];
 
+  /// The record registered under a Cloud-allocated `pluginRef`.
+  Future<PluginRecord?> findByRef(String pluginRef) async => (await all())
+      .values
+      .where((record) => record.pluginRef == pluginRef)
+      .firstOrNull;
+
   /// Serialized read-modify-write; the callback may change the records.
   Future<T> mutate<T>(T Function(Map<String, PluginRecord> records) change) =>
       _run(change, write: true);

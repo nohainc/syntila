@@ -1,3 +1,4 @@
+import 'plugin_executor.dart' show isPluginWorkerType;
 import 'workspace_manager_plugins.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -616,6 +617,12 @@ class WorkspaceManagerService {
             'workerTypeId is required.',
           );
         }
+        if (isPluginWorkerType(workerTypeId)) {
+          throw const WorkspaceManagerProtocolException(
+            'plugin_use_plugins_enable',
+            'Custom plugins are enabled with: syntila plugins enable <id>',
+          );
+        }
         final coordinator = workspace.workerCatalogCoordinator;
         if (coordinator == null) {
           throw const WorkspaceManagerProtocolException(
@@ -673,6 +680,14 @@ class WorkspaceManagerService {
           throw const WorkspaceManagerProtocolException(
             'not_configured',
             'Local Worker registry is not available.',
+          );
+        }
+        final removeTarget = await registry?.find(removeId);
+        if (removeTarget != null &&
+            isPluginWorkerType(removeTarget.workerTypeId)) {
+          throw const WorkspaceManagerProtocolException(
+            'plugin_use_plugins_remove',
+            'Custom plugins are removed with: syntila plugins remove <id>',
           );
         }
         var removed = false;
@@ -943,18 +958,21 @@ class WorkspaceManagerService {
     }
   }
 
-  /// Plugin management (ADR-027). Built on first use from the running
-  /// Workspace; the CLI only sends requests and prints results.
-  WorkspacePluginCommands _plugins() =>
-      _pluginCommands ??= WorkspacePluginCommands(
-        buildWorkspacePluginService(
-          config: workspace.config,
-          credentialStore: workspace.credentialStore,
-          engineSupervisor: workspace.workerSubsystem?.engineSupervisor,
-          localWorkers: workspace.localWorkerRegistry,
-        ),
-        publish: _events.add,
+  /// Plugin management (ADR-027) over the Workspace's shared plugin
+  /// subsystem; the CLI only sends requests and prints results.
+  WorkspacePluginCommands _plugins() {
+    final subsystem = workspace.pluginSubsystem;
+    if (subsystem == null) {
+      throw const WorkspaceManagerProtocolException(
+        'unsupported_command',
+        'Plugins are not available on this Workspace.',
       );
+    }
+    return _pluginCommands ??= WorkspacePluginCommands(
+      subsystem.service,
+      publish: _events.add,
+    );
+  }
 
   /// Owner-managed folders that Spaces on this Workspace may attach. The
   /// Manager IPC endpoint is restricted to the owner OS account and its

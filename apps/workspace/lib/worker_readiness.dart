@@ -9,6 +9,7 @@ import 'package:syntila_tool_profile_v1/tool_profile_v1.dart'
     show ToolProfileResolution;
 
 import 'local_worker_registry.dart';
+import 'plugin_executor.dart' show isPluginWorkerType;
 import 'cli_worker_engine_supervisor.dart';
 import 'worker_profile_store.dart';
 import 'tool_profile_release_verifier.dart';
@@ -59,6 +60,7 @@ class WorkerReadinessMonitor extends WorkspaceNotifier {
     this.workerStateDirectory,
     this.profileDiagnosticStoreForWorker,
     this.assessWorker,
+    this.pluginAssessor,
     this.refreshInterval = const Duration(minutes: 1),
   });
 
@@ -71,8 +73,18 @@ class WorkerReadinessMonitor extends WorkspaceNotifier {
       profileDiagnosticStoreForWorker;
   final Future<WorkerReadinessAssessment> Function(LocalWorker worker)?
       assessWorker;
+
+  /// Assesses plugin Workers (ADR-027). They have no Tool Profile, so the
+  /// Profile path below never sees them.
+  final Future<WorkerReadinessAssessment> Function(
+    LocalWorker worker,
+    LocalWorkerProbeMode mode,
+  )? pluginAssessor;
   final Duration refreshInterval;
   Timer? _refreshTimer;
+
+  bool _isPlugin(LocalWorker worker) =>
+      pluginAssessor != null && isPluginWorkerType(worker.workerTypeId);
   bool _disposed = false;
   bool _started = false;
   ({LocalWorkerProbeMode mode, String? type, bool disabled})? _activeScope;
@@ -317,7 +329,8 @@ class WorkerReadinessMonitor extends WorkspaceNotifier {
           worker.status == LocalWorkerStatus.removed) {
         continue;
       }
-      if (workerCatalogCoordinator != null &&
+      if (!_isPlugin(worker) &&
+          workerCatalogCoordinator != null &&
           _profileDefinitionFor(worker.workerTypeId) == null) {
         continue;
       }
@@ -360,9 +373,11 @@ class WorkerReadinessMonitor extends WorkspaceNotifier {
       if (assessWorker != null) {
         _progress(worker.workerTypeId, mode, WorkerCheckPhase.probe);
       }
-      assessment = assessWorker != null
-          ? await assessWorker!(worker)
-          : await _assess(worker, mode: mode);
+      assessment = _isPlugin(worker)
+          ? await pluginAssessor!(worker, mode)
+          : assessWorker != null
+              ? await assessWorker!(worker)
+              : await _assess(worker, mode: mode);
     } on Object {
       assessment = const WorkerReadinessAssessment(
           WorkerReadinessState.testFailed,

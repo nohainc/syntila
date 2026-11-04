@@ -1,3 +1,4 @@
+import 'plugin_subsystem.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -166,6 +167,7 @@ class WorkspaceRuntime {
     this.toolProfileCatalog,
     this.workerCatalogCoordinator,
     this.workerSubsystem,
+    this.pluginSubsystem,
     LocalWorkerRegistry? localWorkerRegistry,
     this.workerReadinessMonitor,
     this.workerShutdownHandler,
@@ -207,6 +209,9 @@ class WorkspaceRuntime {
 
   /// Service-owned facade for registry, Profiles, readiness and execution.
   final WorkspaceWorkerSubsystem? workerSubsystem;
+
+  /// Custom Worker plugins (ADR-027): store, registry, lease and runtime.
+  final PluginSubsystem? pluginSubsystem;
   final LocalWorkerRegistry? localWorkerRegistry;
   final WorkerReadinessMonitor? workerReadinessMonitor;
   final Future<void> Function()? workerShutdownHandler;

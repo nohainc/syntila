@@ -21,6 +21,11 @@ import 'package:syntila_workspace/secure_credentials.dart';
 import 'package:syntila_workspace/workspace_registration.dart';
 import 'package:syntila_workspace/workspace_transport.dart';
 import 'package:syntila_workspace/worker_readiness.dart';
+import 'package:syntila_workspace/plugin_executor.dart';
+import 'package:syntila_workspace/plugin_store.dart'
+    show PluginServiceException;
+import 'package:syntila_workspace/plugin_subsystem.dart';
+import 'package:syntila_workspace/plugin_worker_runtime.dart';
 import 'package:syntila_workspace/bundled_cli_worker_engine_loader.dart';
 import 'package:syntila_workspace/cli_worker_engine_supervisor.dart';
 import 'package:syntila_workspace/worker_diagnostic_store.dart';
@@ -144,6 +149,22 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           processRegistryDirectory: workspacePaths.runtimeDirectory,
         );
   late final WorkerReadinessMonitor readinessMonitor;
+  // Custom Worker plugins (ADR-027). Shared by the management IPC and the
+  // Worker runtime so both see one store, registry and entitlement lease.
+  final pluginSubsystem = PluginSubsystem.build(
+    config: effectiveConfig,
+    credentialStore: secureCredentialStore,
+    engineSupervisor: () => cliWorkerEngineSupervisor,
+    workers: localWorkerRegistry,
+    afterWorkerChange: (pluginRef) async {
+      await readinessMonitor.checkNow(
+        mode: LocalWorkerProbeMode.passive,
+        workerTypeId: pluginRef,
+        includeDisabled: true,
+      );
+      await connection?.refreshWorkerInventory();
+    },
+  );
   final toolProfileCatalog = config.cloudUri == null
       ? null
       : ToolProfileCatalogClient(
@@ -304,8 +325,9 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       final catalogEntry = catalogCoordinator?.entryForWorker(
         worker.workerTypeId,
       );
+      final isPlugin = isPluginWorkerType(worker.workerTypeId);
       final catalogAvailable =
-          catalogCoordinator == null || catalogEntry != null;
+          isPlugin || catalogCoordinator == null || catalogEntry != null;
       final catalogConfirmed =
           catalogCoordinator?.snapshot.catalogConfirmed ?? true;
       if (!catalogAvailable && !catalogConfirmed) {
@@ -315,7 +337,11 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
         id: worker.id,
         workerTypeId: worker.workerTypeId,
         enabled: catalogAvailable &&
-            worker.activationState == LocalWorkerActivationState.enabled,
+            worker.activationState == LocalWorkerActivationState.enabled &&
+            (!isPlugin ||
+                await pluginSubsystem.runtime.isEffectivelyEnabled(
+                  worker.workerTypeId,
+                )),
         ready: catalogAvailable && worker.status == LocalWorkerStatus.ready,
         permissions: worker.localPermissions.toSet(),
         localConcurrencyLimit: worker.localConcurrencyLimit,
@@ -450,9 +476,49 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
         );
       }
 
-      final plan = workerHandler.pinnedLaunchPlan(context.assignmentId) ??
-          await unpinnedPlan();
-      final release = plan.release;
+      final isPluginWorker = isPluginWorkerType(worker.workerTypeId);
+      PluginExecution? pluginExecution;
+      if (isPluginWorker) {
+        // Entitlement, enablement and every byte of the pinned artifact are
+        // verified now, before a process can exist (ADR-027).
+        try {
+          pluginExecution = await pluginSubsystem.runtime.prepareExecution(
+            worker.workerTypeId,
+          );
+        } on PluginServiceException catch (error) {
+          throw AssignmentExecutionFailure(
+            code: 'worker_not_ready',
+            message: executionErrorMessage('worker_not_ready'),
+            localDiagnostic: _runtimeFailureDiagnostic(
+              'plugin_preparation',
+              'worker_not_ready',
+              detail: error.code,
+            ),
+          );
+        }
+        // Cloud froze the digest it admitted; a different local pin means the
+        // plugin changed after admission and must not run.
+        final selection = payload['executionSelection'];
+        final frozen = selection is Map ? selection['executor'] : null;
+        if (frozen is Map &&
+            frozen['manifestDigest'] !=
+                pluginExecution.executor.manifestDigest) {
+          throw AssignmentExecutionFailure(
+            code: 'worker_not_ready',
+            message: executionErrorMessage('worker_not_ready'),
+            localDiagnostic: _runtimeFailureDiagnostic(
+              'plugin_preparation',
+              'worker_not_ready',
+              detail: 'plugin_digest_mismatch',
+            ),
+          );
+        }
+      }
+      final plan = isPluginWorker
+          ? null
+          : (workerHandler.pinnedLaunchPlan(context.assignmentId) ??
+              await unpinnedPlan());
+      final release = plan?.release;
       final workerSessionValue = payload['workerSession'];
       final workerSession = workerSessionValue == null
           ? null
@@ -537,7 +603,14 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       try {
         final folderIds = assignmentAdditionalFolderIds(payload);
         if (folderIds.isNotEmpty) {
-          if (!profileSupportsAdditionalDirectories(release.profile)) {
+          if (isPluginWorker) {
+            throw const AllowedFolderViolation(
+              'plugin_unsupported',
+              'Plugins cannot use additional folders yet. Detach the '
+                  "Space's additional folders or choose another Worker.",
+            );
+          }
+          if (!profileSupportsAdditionalDirectories(release!.profile)) {
             throw const AllowedFolderViolation(
               'profile_unsupported',
               'This Worker cannot use additional folders yet. Detach the '
@@ -559,7 +632,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           ),
         );
       }
-      final profileFile = plan.profileFile;
+      final profileFile = plan?.profileFile;
       // T7: Profile resolved and its execution file located.
       connection?.traceAssignmentStage(context, 'profile_resolved');
       try {
@@ -569,9 +642,31 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
             message: 'The assignment was cancelled before Engine launch.',
           );
         }
+        // Plugins cannot be made read-only by Syntila today (no isolation
+        // tier proves it), so a read-only request is refused rather than
+        // silently run with write access.
+        final executionPolicy = assignmentExecutionPolicy(
+          context.payload,
+          fullAccessAuthorized: worker.fullLocalAccessAuthorized,
+        );
+        if (isPluginWorker &&
+            executionPolicy == WorkerExecutionPolicy.restricted &&
+            !pluginExecution!.readOnlyEnforced) {
+          throw AssignmentExecutionFailure(
+            code: 'permission_denied',
+            message: executionErrorMessage('permission_denied'),
+            localDiagnostic: _runtimeFailureDiagnostic(
+              'plugin_preparation',
+              'permission_denied',
+              detail: 'plugin_read_only_unenforceable',
+            ),
+          );
+        }
         return await supervisor.execute(
           release,
           profileFile: profileFile,
+          pluginExecutor: pluginExecution?.executor,
+          pluginWorkerTypeId: isPluginWorker ? worker.workerTypeId : null,
           stateDirectory: workspacePaths.workerStateDirectory(worker.id),
           workingDirectory: workingDirectory,
           workerId: worker.id,
@@ -603,11 +698,11 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
               : null,
           // Static capability identity is bound by the admitted Worker Profile;
           // only Service-owned provider catalogs have an Engine catalog pin.
-          catalogRevision:
-              (release.profile['model'] as Map?)?['discovery'] == null
-                  ? null
-                  : (payload['executionSelection'] as Map?)?['catalogRevision']
-                      as String?,
+          catalogRevision: release == null ||
+                  (release.profile['model'] as Map?)?['discovery'] == null
+              ? null
+              : (payload['executionSelection'] as Map?)?['catalogRevision']
+                  as String?,
           executionPolicy: assignmentExecutionPolicy(
             context.payload,
             fullAccessAuthorized: worker.fullLocalAccessAuthorized,
@@ -641,7 +736,8 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       } finally {
         // The service republishes bounded Engine metadata after execution;
         // no additional readiness/model request is necessary.
-        if ((release.profile['model'] as Map?)?['discovery'] != null) {
+        if (release != null &&
+            (release.profile['model'] as Map?)?['discovery'] != null) {
           try {
             final file = File(
               '${workspacePaths.workerStateDirectory(worker.id).path}/model-catalog.json',
@@ -747,6 +843,11 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
                   localWorkers,
                   engineVersion: cliWorkerEngineVersion,
                   engineAvailable: cliWorkerEngineSupervisor != null,
+                  // Plugin Workers are reported only to a Cloud that announced
+                  // `workspace.worker_plugins.v1`.
+                  pluginInventory: connection?.cloudAcceptsWorkerPlugins == true
+                      ? pluginSubsystem.runtime.inventoryFor
+                      : null,
                 ) ??
                 const <Map<String, Object?>>[];
           },
@@ -856,6 +957,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
     cliWorkerEngineSupervisor: cliWorkerEngineSupervisor,
     workerStateDirectory: workspacePaths.workerStateDirectory,
     profileDiagnosticStoreForWorker: diagnosticStoreForWorkerType,
+    pluginAssessor: pluginSubsystem.runtime.assess,
   );
   workerSubsystem = WorkspaceWorkerSubsystem(
     registry: localWorkerRegistry,
@@ -869,13 +971,38 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       workerCatalogCoordinator?.refreshLocalWorkers() ?? Future.value(),
     ),
   );
+  // Running plugin work may finish after a lapse, but only for the drain cap.
+  final pluginLapseEnforcer = PluginLapseEnforcer(
+    entitlement: pluginSubsystem.entitlement,
+    cancelPluginWork: () async {
+      final supervisor = cliWorkerEngineSupervisor;
+      if (supervisor == null) return 0;
+      var cancelled = 0;
+      for (final worker in await localWorkerRegistry.list()) {
+        if (!isPluginWorkerType(worker.workerTypeId)) continue;
+        if (supervisor.activeAssignmentCountFor(worker.id) +
+                supervisor.queuedAssignmentCountFor(worker.id) >
+            0) {
+          await supervisor.cancelWorker(worker.id);
+          cancelled += 1;
+        }
+      }
+      return cancelled;
+    },
+  );
+  final pluginLapseTimer = Timer.periodic(
+    const Duration(minutes: 1),
+    (_) => unawaited(pluginLapseEnforcer.tick().catchError((_) => 0)),
+  );
   final engine = WorkspaceRuntime(
     config: effectiveConfig,
     credentialStore: secureCredentialStore,
     localWorkerRegistry: localWorkerRegistry,
     workerReadinessMonitor: readinessMonitor,
     workerSubsystem: workerSubsystem,
+    pluginSubsystem: pluginSubsystem,
     workerShutdownHandler: () async {
+      pluginLapseTimer.cancel();
       await workerSubsystem.shutdown();
     },
     workerRecoveryHandler: () async =>

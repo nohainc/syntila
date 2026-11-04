@@ -128,6 +128,11 @@ const serviceReadinessCapability = 'workspace.readiness.v1';
 const assignmentStartupCapability = 'assignment.startup.v1';
 
 /// Capability Cloud announces in `hello.ack` when its inventory schema accepts
+/// the optional plugin `executor` object (ADR-027). Plugin Workers are only
+/// reported after the announcement; an older Cloud would reject the field.
+const workerPluginsCapability = 'workspace.worker_plugins.v1';
+
+/// Capability Cloud announces in `hello.ack` when its inventory schema accepts
 /// `allowedFolders`. Older Cloud rejects unknown inventory fields, so the
 /// Service omits the list until this is announced.
 const allowedFoldersCapability = 'workspace.allowed_folders.v1';
@@ -406,6 +411,10 @@ class WorkspaceCloudConnection {
   /// only sent after the announcement; an older Cloud would reject it.
   bool _cloudAcceptsStartup = false;
   bool _cloudAcceptsAllowedFolders = false;
+  bool _cloudAcceptsWorkerPlugins = false;
+
+  /// Whether this Cloud announced [workerPluginsCapability].
+  bool get cloudAcceptsWorkerPlugins => _cloudAcceptsWorkerPlugins;
 
   /// The Service-level state Cloud should schedule against. `ready` is the
   /// only state that accepts assignments, and it requires the current
@@ -1428,6 +1437,7 @@ class WorkspaceCloudConnection {
     _cloudAcceptsReadiness = false;
     _cloudAcceptsStartup = false;
     _cloudAcceptsAllowedFolders = false;
+    _cloudAcceptsWorkerPlugins = false;
     _readyCallbackSessionId = null;
     late final WorkspaceTransport socket;
     var selectedWebSocket = false;
@@ -1715,6 +1725,8 @@ class WorkspaceCloudConnection {
             cloudCapabilities.contains(assignmentStartupCapability);
         _cloudAcceptsAllowedFolders = cloudCapabilities is List &&
             cloudCapabilities.contains(allowedFoldersCapability);
+        _cloudAcceptsWorkerPlugins = cloudCapabilities is List &&
+            cloudCapabilities.contains(workerPluginsCapability);
         connectionStage = WorkspaceConnectionStage.synchronizing;
         sessionId = payload['sessionId'] as String;
         unawaited(_drainActivityEvents());

@@ -60,6 +60,37 @@ abstract interface class PluginConformancePort {
   });
 }
 
+/// Makes an enabled plugin an ordinary local Worker so it flows through the
+/// existing registry, readiness, inventory and scheduling paths.
+abstract interface class PluginWorkerHost {
+  /// Creates or re-enables the local Worker for [pluginRef].
+  Future<void> activate({
+    required String pluginRef,
+    required String pluginId,
+    required String displayName,
+  });
+
+  /// Stops scheduling the Worker; running work finishes.
+  Future<void> deactivate(String pluginRef);
+
+  /// Deletes the local Worker record.
+  Future<void> remove(String pluginRef);
+}
+
+class _NoPluginWorkerHost implements PluginWorkerHost {
+  const _NoPluginWorkerHost();
+  @override
+  Future<void> activate({
+    required String pluginRef,
+    required String pluginId,
+    required String displayName,
+  }) async {}
+  @override
+  Future<void> deactivate(String pluginRef) async {}
+  @override
+  Future<void> remove(String pluginRef) async {}
+}
+
 const pluginConsentStatement =
     'This program runs as you and can do anything you can do. The access list '
     'above is what it says it needs, not a restriction.';
@@ -74,6 +105,7 @@ class WorkspacePluginService {
     required this.cloud,
     required this.conformance,
     this.activeAssignments = _none,
+    this.workerHost = const _NoPluginWorkerHost(),
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -84,6 +116,8 @@ class WorkspacePluginService {
   final PluginEntitlementStore entitlement;
   final PluginCloudPort cloud;
   final PluginConformancePort conformance;
+
+  final PluginWorkerHost workerHost;
 
   /// Running or queued assignments for a plugin Worker (by `pluginRef`).
   final Future<int> Function(String pluginRef) activeAssignments;
@@ -396,6 +430,11 @@ class WorkspacePluginService {
         shareable: shareable,
       );
     });
+    await workerHost.activate(
+      pluginRef: record.pluginRef!,
+      pluginId: pluginId,
+      displayName: installed.manifest.displayName,
+    );
     return {
       'schemaVersion': 1,
       'enabled': true,
@@ -432,6 +471,9 @@ class WorkspacePluginService {
         cloudSynced = false;
       }
     }
+    if (record.pluginRef != null) {
+      await workerHost.deactivate(record.pluginRef!);
+    }
     return {
       'schemaVersion': 1,
       'disabled': true,
@@ -464,6 +506,7 @@ class WorkspacePluginService {
         throw PluginServiceException(error.code, error.message);
       }
     }
+    if (ref != null) await workerHost.remove(ref);
     await store.removePlugin(pluginId);
     await registry.mutate((records) => records.remove(pluginId));
     return {'schemaVersion': 1, 'removed': true, 'state': 'removed'};
