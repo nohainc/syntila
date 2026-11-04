@@ -55,6 +55,7 @@ jobs:
       SYNTILA_WORKSPACE_VERSION: ${{ needs.preflight.outputs.version }}
       # Public releases may never fall back to a fixture trust anchor.
       SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON || (!inputs.publish && '{"syntila-ci":{"local-profile-ci":"dkQtoBOraPG9a/yfGPHEHw0F7TFC+nIbeYzbdPYnXPA="}}') || '' }}
+      SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON: ${{ vars.SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-flutter

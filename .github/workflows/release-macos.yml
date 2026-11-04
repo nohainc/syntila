@@ -92,6 +92,7 @@ jobs:
         env:
           SYNTILA_WORKSPACE_VERSION: ${{ needs.require-ci.outputs.version }}
           SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
+          SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON: ${{ vars.SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON }}
         run: bash scripts/build-workspace-macos.sh --prod
 
       - name: Verify notarized app archive
@@ -156,6 +157,7 @@ jobs:
           SYNTILA_WORKSPACE_SIGNING_SEED: ${{ secrets.SYNTILA_WORKSPACE_ED25519_SEED }}
           SYNTILA_WORKSPACE_SIGNING_KEY_ID: ${{ vars.SYNTILA_WORKSPACE_SIGNING_KEY_ID }}
           SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
+          SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON: ${{ vars.SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON }}
         run: node scripts/release/publish-workspace-release.mjs
       - name: Create or verify the immutable GitHub release archive
         env:

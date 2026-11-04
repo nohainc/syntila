@@ -54,6 +54,7 @@ jobs:
       SYNTILA_WORKSPACE_VERSION: ${{ needs.require-ci.outputs.version }}
       # Releases never fall back to the compile-only CI trust root.
       SYNTILA_RELEASE_TRUST_KEYS_JSON: ${{ vars.SYNTILA_RELEASE_TRUST_KEYS_JSON }}
+      SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON: ${{ vars.SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON }}
       SYNTILA_WINDOWS_SIGNING: ${{ vars.SYNTILA_WINDOWS_SIGNING }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

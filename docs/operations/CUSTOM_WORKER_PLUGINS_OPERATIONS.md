@@ -96,15 +96,15 @@ machines; it is bound to one Workspace and installation.
 
 ## 5. Not yet covered (known gaps)
 
-- **OS isolation and resource limits.** Memory, CPU, file-handle and process
-  limits are not enforced and every plugin reports isolation tier `none`.
-  Time, frame-size and progress-rate limits are enforced. Tiers need device
-  evidence per platform (ADR-027 §4) before any claim is made.
-- **Windows and Linux device evidence.** Unit and integration tests ran on
-  macOS. Process-tree cleanup and the per-user logon task need target-device
-  acceptance before a Windows or Linux release.
-- **`plugins trust-signer`** (signer pinning) and URL/registry import are not
-  implemented; signatures are verified and shown at consent.
+- **Filesystem/network isolation.** Production isolation remains `none` and
+  read-only Steps remain ineligible. Resource limits are implemented; see the
+  [acceptance record](../acceptance/PLUGIN_RESOURCE_LIMITS.md) for native versus
+  sampled limits and hosted Linux/Windows evidence.
+- **Installed release acceptance.** Hosted tests do not establish signed release,
+  per-user service lifecycle or deployed Cloud end-to-end behavior.
+- **Distribution.** Local signer recognition and revocation are implemented;
+  URL/registry import and package-registry publication remain unavailable.
+
 
 
 ## Resource-limit failures

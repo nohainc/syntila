@@ -16,6 +16,17 @@ const source = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 describe("CI acceptance orchestration", () => {
+  it("passes plugin entitlement public trust to every release build", () => {
+    for (const platform of ["linux", "windows", "macos"]) {
+      expect(source(`.github/workflows/release-${platform}.yml`)).toContain(
+        "SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON: ${{ vars.SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON }}",
+      );
+    }
+    expect(source("scripts/internal/build-workspace-service.sh")).toContain(
+      '--define="SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON=',
+    );
+  });
+
   it("routes Workspace builds to the supported host builder", () => {
     const root = mkdtempSync(join(tmpdir(), "syntila-build-dispatch-"));
     const bin = join(root, "bin");
