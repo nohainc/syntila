@@ -4,6 +4,14 @@ Repository-local Dart author tooling for Worker Plugin Protocol 1.0. This
 package is not published yet. Add a path dependency to this directory and
 import `package:syntila_plugin_sdk/syntila_plugin_sdk.dart`.
 
+Create a project with an absolute local dependency on this SDK:
+
+```sh
+dart run syntila_plugin_sdk:init /path/to/new-plugin new-plugin
+```
+
+The target must be empty; follow its README to compile and pack.
+
 Subclass `PluginWorker`, implement `id`, `version` and `execute`, then call
 `runPlugin`. See [the echo example](../../examples/plugins/echo_dart/README.md)
 and [author guide](../../docs/specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md).

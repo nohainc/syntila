@@ -320,6 +320,54 @@ void main() {
     });
   });
 
+  test('init generates a buildable plugin and refuses overwrite', () async {
+    final root = Directory.systemTemp.createTempSync('plugin-init');
+    addTearDown(() => root.deleteSync(recursive: true));
+    initializePluginDirectory(root.path, 'new-plugin',
+        sdkPath: Directory.current.path);
+    expect(
+        () => initializePluginDirectory(root.path, 'new-plugin',
+            sdkPath: Directory.current.path),
+        throwsFormatException);
+    for (final args in [
+      ['pub', 'get'],
+      ['analyze'],
+      [
+        'compile',
+        'exe',
+        'bin/main.dart',
+        '-o',
+        Platform.isWindows ? 'bin/plugin.exe' : 'bin/plugin'
+      ],
+    ]) {
+      final run = await Process.run(Platform.resolvedExecutable, args,
+          workingDirectory: root.path);
+      expect(run.exitCode, 0, reason: '${run.stdout}${run.stderr}');
+    }
+    expect(packPluginDirectory(root.path).manifest.pluginId, 'new-plugin');
+  });
+
+  test('Python echo passes standalone conformance', () async {
+    final script = File('../../examples/plugins/echo_python/echo.py').absolute;
+    final report = await ConformanceRunner(
+      launcher: DirectProcessLauncher(
+          executable: 'python3', arguments: [script.path]),
+      expectedPluginId: 'echo-python',
+      expectedVersion: '1.0.0',
+      declaresResume: true,
+      declaredCapabilities: const {'progress': true, 'sessionResume': true},
+    ).run();
+    expect(
+        report.cases
+            .where((c) => c.status == ConformanceStatus.failed)
+            .map((c) => '${c.id}: ${c.detail}'),
+        isEmpty);
+    expect(report.cases.where((c) => c.status == ConformanceStatus.skipped),
+        isEmpty);
+    expect(report.cases, hasLength(21));
+    expect(report.passed, isTrue);
+  });
+
   test('the echo example, packed, passes every conformance case', () async {
     final root = Directory.systemTemp.createTempSync('echo-example');
     addTearDown(() => root.deleteSync(recursive: true));

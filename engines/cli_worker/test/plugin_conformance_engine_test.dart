@@ -27,8 +27,10 @@ WorkerExecutor executor(List<String> arguments) => WorkerExecutor(
 );
 
 Future<(List<WorkerProgress>, ConformanceResult)> runConformance(
-  List<String> pluginArguments,
-) async {
+  List<String> pluginArguments, {
+  WorkerExecutor? admittedExecutor,
+  Map<String, Object?> capabilities = const {'progress': true},
+}) async {
   final work = Directory.systemTemp.createTempSync('conf-engine-work');
   final state = Directory.systemTemp.createTempSync('conf-engine-state');
   final process = await Process.start(engineBinary, [
@@ -44,7 +46,14 @@ Future<(List<WorkerProgress>, ConformanceResult)> runConformance(
         .transform(const LineSplitter())
         .map(decodeWorkerFrame),
   );
-  final e = executor(pluginArguments);
+  addTearDown(() async {
+    process.kill();
+    await process.exitCode.timeout(const Duration(seconds: 10));
+    await frames.cancel();
+    work.deleteSync(recursive: true);
+    state.deleteSync(recursive: true);
+  });
+  final e = admittedExecutor ?? executor(pluginArguments);
   process.stdin.writeln(
     InitializeRequest(
       requestId: 'init-1',
@@ -62,7 +71,8 @@ Future<(List<WorkerProgress>, ConformanceResult)> runConformance(
   process.stdin.writeln(
     ConformanceRequest(
       requestId: 'conf-1',
-      declaredCapabilities: const {'progress': true},
+      declaredCapabilities: capabilities,
+      declaresResume: capabilities['sessionResume'] == true,
     ).encode(),
   );
   final progress = <WorkerProgress>[];
@@ -103,6 +113,48 @@ void main() {
       );
     },
   );
+
+  test('SDK echo passes every case through the Engine host', () async {
+    final example = Directory('../../examples/plugins/echo_dart').absolute;
+    final dependencies = await Process.run(Platform.resolvedExecutable, [
+      'pub',
+      'get',
+    ], workingDirectory: example.path);
+    expect(dependencies.exitCode, 0, reason: '${dependencies.stderr}');
+    final binary = '${root.path}/sdk-echo${Platform.isWindows ? '.exe' : ''}';
+    final compiled = await Process.run(Platform.resolvedExecutable, [
+      'compile',
+      'exe',
+      'bin/echo_dart.dart',
+      '-o',
+      binary,
+    ], workingDirectory: example.path);
+    expect(
+      compiled.exitCode,
+      0,
+      reason: '${compiled.stdout}${compiled.stderr}',
+    );
+    final (_, result) = await runConformance(
+      const [],
+      admittedExecutor: WorkerExecutor(
+        pluginId: 'echo-dart',
+        version: '1.0.0',
+        manifestDigest: 'b' * 64,
+        artifactSha256: await PluginHost().sha256OfFile(binary),
+        executable: binary,
+        dataDirectory: root.path,
+      ),
+      capabilities: const {'progress': true, 'sessionResume': true},
+    );
+    expect(result.cases, hasLength(21));
+    expect(
+      result.cases
+          .where((c) => c.status != 'passed')
+          .map((c) => '${c.id}: ${c.status}: ${c.detail}'),
+      isEmpty,
+    );
+    expect(result.passed, isTrue);
+  });
 
   test(
     'reports a protocol fault as a failed case, not an Engine error',
