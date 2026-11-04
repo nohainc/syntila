@@ -15,6 +15,7 @@ describe("inventory scheduling for Workers configured after Workspace selection"
       "0020_space_workflow_configurations.sql",
       "0022_workflow_workspace_selection.sql",
       "0029_worker_model_discovery.sql",
+      "0101_worker_plugins.sql",
     ]) {
       sqlite.exec(
         readFileSync(

@@ -845,9 +845,10 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
                   engineAvailable: cliWorkerEngineSupervisor != null,
                   // Plugin Workers are reported only to a Cloud that announced
                   // `workspace.worker_plugins.v1`.
-                  pluginInventory: connection?.cloudAcceptsWorkerPlugins == true
-                      ? pluginSubsystem.runtime.inventoryFor
-                      : null,
+                  pluginInventory:
+                      connection?.cloudAcceptsPluginExecutors == true
+                          ? pluginSubsystem.runtime.inventoryFor
+                          : null,
                 ) ??
                 const <Map<String, Object?>>[];
           },

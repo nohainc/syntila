@@ -1,4 +1,5 @@
 import {
+  PluginInventoryExecutorSchema,
   WorkspaceAllowedFolderSchema,
   WorkspaceWorkerInventoryEntrySchema,
 } from "@syntila/workspace-runtime-protocol";
@@ -76,6 +77,26 @@ export async function recordWorkspaceWorkerInventory(
       !Number.isInteger(concurrency) ||
       (concurrency as number) < 1
     ) {
+      continue;
+    }
+    // Plugin Workers (ADR-027) carry an `executor` and use a plugin-shaped type
+    // ID. The two must agree, and the plugin must be in the Workspace owner's
+    // own library: a Workspace can neither claim another account's plugin nor
+    // give an official Worker an executor.
+    const pluginShaped = /^plugin-[0-9a-f]{12}$/.test(workerTypeId);
+    let executorJson: string | null = null;
+    if (item.executor !== undefined) {
+      const executor = PluginInventoryExecutorSchema.safeParse(item.executor);
+      if (!executor.success || !pluginShaped) continue;
+      const owned = await env.SYNTILA_DB.prepare(
+        `SELECT 1 AS ok FROM worker_catalog
+          WHERE worker_type_id = ?1 AND origin = 'plugin' AND owner_user_id = ?2`,
+      )
+        .bind(workerTypeId, owner.owner_user_id)
+        .first();
+      if (!owned) continue;
+      executorJson = JSON.stringify(executor.data);
+    } else if (pluginShaped) {
       continue;
     }
     const previous = await env.SYNTILA_DB.prepare(
@@ -175,8 +196,9 @@ export async function recordWorkspaceWorkerInventory(
            engine_version, profile_definition_id, profile_release_version,
            provider_tool_name, provider_tool_version,
            local_concurrency_limit, revision,
-           created_at, updated_at, last_seen_at, model_catalog_json)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+           created_at, updated_at, last_seen_at, model_catalog_json,
+           executor_json)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
          ON CONFLICT(worker_id) DO UPDATE SET
            worker_type_id = excluded.worker_type_id,
            activation_state = excluded.activation_state,
@@ -188,6 +210,7 @@ export async function recordWorkspaceWorkerInventory(
            provider_tool_name = excluded.provider_tool_name,
            provider_tool_version = excluded.provider_tool_version,
            model_catalog_json = excluded.model_catalog_json,
+           executor_json = excluded.executor_json,
            local_concurrency_limit = excluded.local_concurrency_limit,
            revision = excluded.revision,
            updated_at = excluded.updated_at,
@@ -230,6 +253,7 @@ export async function recordWorkspaceWorkerInventory(
         now,
         nullableText(item.lastSeenAt, 40) ?? now,
         acceptedCatalog ? JSON.stringify(acceptedCatalog) : null,
+        executorJson,
       )
       .run();
     await env.SYNTILA_DB.prepare(

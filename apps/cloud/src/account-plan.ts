@@ -375,6 +375,16 @@ export function paidOwnerSql(ownerColumn: string): string {
            OR julianday(ap.current_period_end) > julianday('now')))`;
 }
 
+/**
+ * SQL condition that the Workspace owner column currently holds the custom
+ * plugin entitlement (ADR-027). It is `paidOwnerSql`, named for its purpose so
+ * every plugin call site reads the same and a feature split later changes one
+ * place. Evaluated live, so a lapse by `current_period_end` needs no event.
+ */
+export function pluginOwnerEntitledSql(ownerColumn: string): string {
+  return paidOwnerSql(ownerColumn);
+}
+
 export function effectiveTier(
   row: AccountPlanRow | null,
   now: Date = new Date(),

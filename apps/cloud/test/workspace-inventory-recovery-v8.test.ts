@@ -79,6 +79,13 @@ describe("v8 Workspace inventory recovery", () => {
         "utf8",
       ),
     );
+    // Inventory ingestion now also writes the plugin executor column.
+    database.exec(
+      readFileSync(
+        new URL("../migrations-v8/0101_worker_plugins.sql", import.meta.url),
+        "utf8",
+      ),
+    );
     database.exec(`
       INSERT INTO users (id, email, display_name, created_at, updated_at)
         VALUES ('owner-a', 'a@example.test', 'Owner A', '2026-01-01', '2026-01-01');
@@ -244,6 +251,7 @@ describe("v8 Workspace inventory recovery", () => {
       "0029_worker_model_discovery.sql",
       "0070_workspace_parallel_slots.sql",
       "0071_assignment_engine_liveness.sql",
+      "0101_worker_plugins.sql",
     ]) {
       database.exec(
         readFileSync(

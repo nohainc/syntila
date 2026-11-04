@@ -130,7 +130,7 @@ const assignmentStartupCapability = 'assignment.startup.v1';
 /// Capability Cloud announces in `hello.ack` when its inventory schema accepts
 /// the optional plugin `executor` object (ADR-027). Plugin Workers are only
 /// reported after the announcement; an older Cloud would reject the field.
-const workerPluginsCapability = 'workspace.worker_plugins.v1';
+const pluginExecutorsCapability = 'workspace.worker_plugins.v1';
 
 /// Capability Cloud announces in `hello.ack` when its inventory schema accepts
 /// `allowedFolders`. Older Cloud rejects unknown inventory fields, so the
@@ -411,10 +411,10 @@ class WorkspaceCloudConnection {
   /// only sent after the announcement; an older Cloud would reject it.
   bool _cloudAcceptsStartup = false;
   bool _cloudAcceptsAllowedFolders = false;
-  bool _cloudAcceptsWorkerPlugins = false;
+  bool _cloudAcceptsPluginExecutors = false;
 
-  /// Whether this Cloud announced [workerPluginsCapability].
-  bool get cloudAcceptsWorkerPlugins => _cloudAcceptsWorkerPlugins;
+  /// Whether this Cloud announced [pluginExecutorsCapability].
+  bool get cloudAcceptsPluginExecutors => _cloudAcceptsPluginExecutors;
 
   /// The Service-level state Cloud should schedule against. `ready` is the
   /// only state that accepts assignments, and it requires the current
@@ -1437,7 +1437,7 @@ class WorkspaceCloudConnection {
     _cloudAcceptsReadiness = false;
     _cloudAcceptsStartup = false;
     _cloudAcceptsAllowedFolders = false;
-    _cloudAcceptsWorkerPlugins = false;
+    _cloudAcceptsPluginExecutors = false;
     _readyCallbackSessionId = null;
     late final WorkspaceTransport socket;
     var selectedWebSocket = false;
@@ -1725,8 +1725,8 @@ class WorkspaceCloudConnection {
             cloudCapabilities.contains(assignmentStartupCapability);
         _cloudAcceptsAllowedFolders = cloudCapabilities is List &&
             cloudCapabilities.contains(allowedFoldersCapability);
-        _cloudAcceptsWorkerPlugins = cloudCapabilities is List &&
-            cloudCapabilities.contains(workerPluginsCapability);
+        _cloudAcceptsPluginExecutors = cloudCapabilities is List &&
+            cloudCapabilities.contains(pluginExecutorsCapability);
         connectionStage = WorkspaceConnectionStage.synchronizing;
         sessionId = payload['sessionId'] as String;
         unawaited(_drainActivityEvents());

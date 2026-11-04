@@ -115,6 +115,7 @@ export function sqliteD1(
     "0098_user_file_reservations.sql",
     "0099_workflow_step_instances.sql",
     "0100_assignment_cloud_queue.sql",
+    "0101_worker_plugins.sql",
   ]) {
     sqlite.exec(
       readFileSync(

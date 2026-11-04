@@ -84,6 +84,46 @@ export const SERVICE_READINESS_CAPABILITY = "workspace.readiness.v1";
 export const ALLOWED_FOLDERS_CAPABILITY = "workspace.allowed_folders.v1";
 
 /**
+ * Capability Cloud announces in `hello.ack` when `worker.inventory` entries may
+ * carry the plugin `executor` object (ADR-027). Older Cloud rejects the field,
+ * so Services wait for the announcement before reporting plugin Workers.
+ */
+export const WORKER_PLUGINS_CAPABILITY = "workspace.worker_plugins.v1";
+
+/**
+ * What a Service reports about a plugin Worker. Cloud freezes the digests into
+ * the assignment snapshot and requires them to equal the Workspace pin.
+ */
+export const PluginInventoryExecutorSchema = z
+  .object({
+    kind: z.literal("plugin"),
+    pluginId: z
+      .string()
+      .max(48)
+      .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+    version: z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/),
+    manifestDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    /** Null when the artifact could not be verified on this host. */
+    artifactDigest: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .nullable(),
+    pluginProtocol: z.string().regex(/^1\.\d+$/),
+    isolation: z
+      .object({
+        tier: z.enum(["none", "best_effort", "enforced"]),
+        readOnlyEnforced: z.boolean(),
+      })
+      .strict(),
+    sessionResume: z.enum(["none", "declared_untested", "tested"]),
+    shareable: z.boolean(),
+  })
+  .strict();
+export type PluginInventoryExecutor = z.infer<
+  typeof PluginInventoryExecutorSchema
+>;
+
+/**
  * Readiness published by the Service. `syncGeneration` increases every time
  * the Service completes a (re)synchronization with Cloud, so Cloud can ignore
  * a late readiness report from before the latest sync.
@@ -360,6 +400,8 @@ export const WorkspaceWorkerInventoryEntrySchema = z
       .regex(/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/)
       .nullable(),
     modelCatalog: DiscoveredModelCatalogSchema.optional(),
+    /** Present only for a plugin Worker (ADR-027). */
+    executor: PluginInventoryExecutorSchema.optional(),
     localConcurrencyLimit: z.number().int().min(1).max(1024),
     revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
     createdAt: timestamp,

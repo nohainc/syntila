@@ -7,6 +7,10 @@ import {
 } from "./profile.js";
 import { handleWorkflowWorkspace } from "./workflow-workspace.js";
 import { handlePluginEntitlementLease } from "./plugin-entitlement.js";
+import {
+  handlePluginLibrary,
+  handleWorkspacePluginPin,
+} from "./worker-plugins.js";
 import { handleSpaceAdditionalFolders } from "./space-additional-folders.js";
 import { handleWorkflowConfigurations } from "./workflow-configurations.js";
 import { handleWorkflowDefault } from "./workflow-default.js";
@@ -469,6 +473,32 @@ export async function routeWorkerRequest(
     }
     if (request.method === "GET" && url.pathname === "/api/workers/catalog") {
       return await handlers.handleListWorkerCatalog!(request, env, ctx);
+    }
+    if (url.pathname === "/api/me/worker-plugins") {
+      return await handlePluginLibrary(request, env, undefined, ctx);
+    }
+    const libraryPluginMatch = url.pathname.match(
+      /^\/api\/me\/worker-plugins\/([^/]+)$/,
+    );
+    if (libraryPluginMatch?.[1]) {
+      return await handlePluginLibrary(
+        request,
+        env,
+        decodeURIComponent(libraryPluginMatch[1]),
+        ctx,
+      );
+    }
+    const workspacePluginMatch = url.pathname.match(
+      /^\/api\/workspaces\/([^/]+)\/worker-plugins\/([^/]+)$/,
+    );
+    if (workspacePluginMatch?.[1] && workspacePluginMatch[2]) {
+      return await handleWorkspacePluginPin(
+        request,
+        env,
+        decodeURIComponent(workspacePluginMatch[1]),
+        decodeURIComponent(workspacePluginMatch[2]),
+        ctx,
+      );
     }
     if (url.pathname === "/api/workspace-runtime/worker-plugins/entitlement") {
       return await handlePluginEntitlementLease(request, env);
