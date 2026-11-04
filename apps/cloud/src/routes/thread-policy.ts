@@ -1,6 +1,12 @@
 import { stepInstanceId, type ModelIdentityCatalog } from "@syntila/core";
 import { loadSpacePermissions } from "./space-permissions.js";
-import { spaceWorkerExecutionOptions } from "../worker-execution-options.js";
+import {
+  pluginExecutionOptions,
+  spaceWorkerExecutionOptions,
+} from "../worker-execution-options.js";
+import { supportsPluginExecutor } from "../execution-selection-snapshot.js";
+import { pluginOwnerEntitledSql } from "../account-plan.js";
+import { PluginInventoryExecutorSchema } from "@syntila/workspace-runtime-protocol";
 import {
   AuthorizationError,
   authorizeSpaceMembership,
@@ -441,6 +447,14 @@ export function eligibilityMessage(
   }
   if (code === "worker_catalog_unavailable")
     return `${step}: this Worker is no longer available in the Workspace catalog.`;
+  if (code === "plugin_entitlement_required")
+    return `${step}: ${worker} is a custom plugin and needs an active Syntila Plus plan.`;
+  if (code === "plugin_not_enabled")
+    return `${step}: ${worker} is not enabled on this Workspace.`;
+  if (code === "plugin_digest_not_pinned")
+    return `${step}: ${worker} changed since it was enabled; enable the current version again.`;
+  if (code === "worker_engine_update_required")
+    return `${step}: ${worker} needs a newer Syntila Workspace (Engine 1.4.0 or newer).`;
   if (code === "worker_scheduling_disabled")
     return `${step}: ${worker} is not enabled for scheduling.`;
   if (code === "permission_not_granted")
@@ -523,9 +537,21 @@ export async function validateWorkflowWorkerEligibility(
               i.activation_state AS activationState, i.readiness_state AS readinessState,
               i.readiness_issue_code AS readinessIssueCode,
               i.engine_version AS engineVersion,
-              i.profile_definition_id AS profileDefinitionId,
-              i.profile_release_version AS profileReleaseVersion,
+              COALESCE(i.profile_definition_id,
+                       CASE WHEN catalog.origin = 'plugin' THEN i.worker_type_id END)
+                AS profileDefinitionId,
+              COALESCE(i.profile_release_version,
+                       CASE WHEN catalog.origin = 'plugin' THEN 1 END)
+                AS profileReleaseVersion,
               i.provider_tool_version AS providerToolVersion,
+              catalog.origin AS workerCatalogOrigin,
+              catalog.owner_user_id AS workerCatalogOwnerUserId,
+              ew.owner_user_id AS workspaceOwnerUserId,
+              i.executor_json AS executorJson,
+              pe.version AS pluginPinVersion,
+              pe.manifest_digest AS pluginPinDigest,
+              pe.intent AS pluginPinIntent,
+              ${pluginOwnerEntitledSql("ew.owner_user_id")} AS pluginOwnerEntitled,
               COALESCE(currentProfile.profile_json, history.profile_json) AS executionProfileJson,
               COALESCE(currentProfile.digest, history.digest) AS executionProfileDigest,
               i.model_catalog_json AS modelCatalogJson,
@@ -551,6 +577,8 @@ export async function validateWorkflowWorkerEligibility(
            ON history.worker_type_id = i.worker_type_id
           AND history.revision = i.profile_release_version
          LEFT JOIN worker_scheduling vs ON vs.worker_id = i.worker_id
+         LEFT JOIN workspace_worker_plugin_enablements pe
+           ON pe.workspace_id = i.workspace_id AND pe.plugin_ref = i.worker_type_id
          -- Revoked and expired grants stay as history; only a live grant
          -- (active or suspended) may answer, never an older revoked row.
          LEFT JOIN workspace_space_grants g
@@ -589,13 +617,41 @@ export async function validateWorkflowWorkerEligibility(
           row.workerDisplayName == null ? null : String(row.workerDisplayName),
         ),
       });
+    const isPlugin = row.workerCatalogOrigin === "plugin";
+    let pluginDigest: string | null = null;
     if (
       row.workerCatalogLifecycleState !== "active" ||
-      row.workerCatalogVisibilityState !== "visible"
+      row.workerCatalogVisibilityState !== "visible" ||
+      (isPlugin && row.workerCatalogOwnerUserId !== row.workspaceOwnerUserId)
     ) {
       push("worker_catalog_unavailable");
     }
-    if (
+    if (isPlugin) {
+      // Plugins have no Tool Profile: Cloud checks the owner's plan, the pin
+      // and the digest the Service reported (ADR-027).
+      const reported = (() => {
+        try {
+          const parsed = PluginInventoryExecutorSchema.safeParse(
+            JSON.parse(String(row.executorJson)),
+          );
+          return parsed.success ? parsed.data : null;
+        } catch {
+          return null;
+        }
+      })();
+      if (!Number(row.pluginOwnerEntitled)) push("plugin_entitlement_required");
+      if (row.pluginPinIntent !== "enabled") push("plugin_not_enabled");
+      if (
+        !reported ||
+        !reported.artifactDigest ||
+        reported.manifestDigest !== row.pluginPinDigest ||
+        reported.version !== row.pluginPinVersion
+      )
+        push("plugin_digest_not_pinned");
+      else pluginDigest = reported.manifestDigest;
+      if (!supportsPluginExecutor(row.engineVersion))
+        push("worker_engine_update_required");
+    } else if (
       row.executionProfileJson == null ||
       typeof row.executionProfileDigest !== "string"
     )
@@ -673,12 +729,16 @@ export async function validateWorkflowWorkerEligibility(
       !allowedThreadTypes.includes(workerTypeId)
     )
       push("worker_type_not_allowed_by_thread");
-    const executionOptions = spaceWorkerExecutionOptions(
-      row.executionProfileJson,
-      row.providerToolVersion,
-      row.modelCatalogJson,
-      row.executionProfileDigest,
-    );
+    const executionOptions = isPlugin
+      ? pluginDigest
+        ? pluginExecutionOptions(pluginDigest)
+        : null
+      : spaceWorkerExecutionOptions(
+          row.executionProfileJson,
+          row.providerToolVersion,
+          row.modelCatalogJson,
+          row.executionProfileDigest,
+        );
     if (!executionOptions) {
       issues.push({
         stepKind: step.kind,

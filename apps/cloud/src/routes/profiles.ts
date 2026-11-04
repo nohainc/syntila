@@ -1,5 +1,6 @@
 import { paidOwnerSql } from "../account-plan.js";
 import {
+  pluginExecutionOptions,
   spaceModelOptions,
   spaceWorkerExecutionOptions,
 } from "../worker-execution-options.js";
@@ -38,10 +39,15 @@ export async function handleListWorkspaceWorkerInventory(
             catalog.visibility_state AS catalog_visibility_state,
             COALESCE(current_profile.profile_json, history.profile_json) AS model_profile_json,
             COALESCE(current_profile.digest, history.digest) AS model_profile_digest,
-            i.model_catalog_json
+            i.model_catalog_json,
+            COALESCE(catalog.origin, 'official') AS catalog_origin,
+            pe.manifest_digest AS plugin_pin_digest,
+            pe.shareable AS plugin_pin_shareable
        FROM workspace_worker_inventory i
        JOIN execution_workspaces ew ON ew.id = i.workspace_id
        LEFT JOIN worker_catalog catalog ON catalog.worker_type_id = i.worker_type_id
+       LEFT JOIN workspace_worker_plugin_enablements pe
+         ON pe.workspace_id = i.workspace_id AND pe.plugin_ref = i.worker_type_id
        LEFT JOIN worker_profiles current_profile
          ON current_profile.worker_type_id = i.worker_type_id
         AND current_profile.revision = i.profile_release_version
@@ -69,6 +75,9 @@ export async function handleListWorkspaceWorkerInventory(
       `${columns}
         WHERE ew.status != 'revoked'
           AND i.owner_user_id <> ?1
+          -- A custom plugin is shared only when its owner opted in (ADR-027).
+          AND (COALESCE(catalog.origin, 'official') <> 'plugin'
+               OR pe.shareable = 1)
           AND (?2 IS NULL OR i.workspace_id = ?2)
           AND (EXISTS (
             SELECT 1
@@ -113,13 +122,20 @@ function projectInventoryRow(
   shared: WorkspaceMemberAccessPolicy["workers"][string] | null,
   masked = false,
 ) {
-  const executionOptions = spaceWorkerExecutionOptions(
-    row.model_profile_json,
-    row.provider_tool_version,
-    row.model_catalog_json,
-    row.model_profile_digest,
-  );
+  const isPlugin = row.catalog_origin === "plugin";
+  const executionOptions = isPlugin
+    ? typeof row.plugin_pin_digest === "string"
+      ? pluginExecutionOptions(row.plugin_pin_digest)
+      : null
+    : spaceWorkerExecutionOptions(
+        row.model_profile_json,
+        row.provider_tool_version,
+        row.model_catalog_json,
+        row.model_profile_digest,
+      );
   return {
+    /** `plugin` for a user-imported custom Worker, otherwise `official`. */
+    origin: isPlugin ? "plugin" : "official",
     executionOptions: shared
       ? restrictExecutionOptions(executionOptions, shared)
       : executionOptions,

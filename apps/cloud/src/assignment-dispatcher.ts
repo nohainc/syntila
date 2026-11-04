@@ -41,7 +41,10 @@ import {
   ACTIVE_ASSIGNMENT_STATUS_SQL,
   assignmentSourceStatusList,
 } from "./assignment-transitions.js";
-import { executionSlotAdmissionSql } from "./account-plan.js";
+import {
+  executionSlotAdmissionSql,
+  pluginAssignmentAdmissionSql,
+} from "./account-plan.js";
 import {
   clearExecutionWaiter,
   executionSlotRefused,
@@ -452,6 +455,7 @@ async function dispatchWorkspaceWorkerAssignment(
      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
             ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, 'created', ?21, ?22, ?22
       WHERE ${executionSlotAdmissionSql("?8", "?6", "?23")}
+        AND ${pluginAssignmentAdmissionSql("?10", "?3")}
      RETURNING id`,
   )
     .bind(
@@ -513,6 +517,42 @@ async function dispatchWorkspaceWorkerAssignment(
       context: { status: "waiting_for_account_slot" },
     });
     return deferredDispatch("account_concurrency_limit");
+  }
+  if (
+    insertion?.id !== assignmentId &&
+    (await pluginEntitlementRefused(
+      env.SYNTILA_DB,
+      target.workspaceId,
+      target.workerTypeId,
+    ))
+  ) {
+    // The plan lapsed between scheduling and admission. Nothing was written.
+    tryLogDiagnosticEvent({
+      requestId: task.workRequestId,
+      assignmentId,
+      workspaceId: target.workspaceId,
+      workerId: target.workerId,
+      workerTypeId: target.workerTypeId,
+      runId,
+      taskId,
+      attemptId,
+      component: "cloud",
+      operation: "assignment",
+      stage: "admission",
+      severity: "info",
+      errorCode: "plugin_entitlement_required",
+      retryable: false,
+    });
+    return {
+      assignmentId: "",
+      attemptId: "",
+      workerId: "",
+      workspaceRuntimeId: "",
+      workerCatalogId: "",
+      status: "failed",
+      accepted: false,
+      error: "Custom Worker plugins require an active Syntila Plus plan",
+    };
   }
   if (insertion?.id !== assignmentId) {
     tryLogDiagnosticEvent({
@@ -1490,4 +1530,19 @@ export async function loadAssignmentAdditionalFolderIds(
     .bind(spaceId, workspaceId)
     .all<{ folderId: string }>();
   return (rows.results ?? []).map((row) => row.folderId);
+}
+
+/** True when the Worker is a plugin whose Workspace owner is not entitled. */
+async function pluginEntitlementRefused(
+  db: D1Database,
+  workspaceId: string,
+  workerTypeId: string,
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT CASE WHEN ${pluginAssignmentAdmissionSql("?1", "?2")} THEN 0 ELSE 1 END AS refused`,
+    )
+    .bind(workerTypeId, workspaceId)
+    .first<{ refused: number }>();
+  return row?.refused === 1;
 }

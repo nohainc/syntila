@@ -67,3 +67,14 @@ export function supportsExecutionCatalogPin(engineVersion: unknown): boolean {
       (Number(version[1]) === 1 && Number(version[2]) >= 3))
   );
 }
+
+/** Plugin execution needs Engine 1.4.0 or newer (Local Worker Protocol 4.2). */
+export function supportsPluginExecutor(engineVersion: unknown): boolean {
+  if (typeof engineVersion !== "string") return false;
+  const version = /^(\d+)\.(\d+)\.(\d+)$/.exec(engineVersion);
+  return (
+    !!version &&
+    (Number(version[1]) > 1 ||
+      (Number(version[1]) === 1 && Number(version[2]) >= 4))
+  );
+}

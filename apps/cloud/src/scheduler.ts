@@ -1,8 +1,17 @@
 import {
   resolveExecutionSelectionSnapshot,
   supportsExecutionCatalogPin,
+  supportsPluginExecutor,
 } from "./execution-selection-snapshot.js";
-import { spaceWorkerExecutionOptions } from "./worker-execution-options.js";
+import {
+  pluginExecutionOptions,
+  spaceWorkerExecutionOptions,
+} from "./worker-execution-options.js";
+import { pluginOwnerEntitledSql } from "./account-plan.js";
+import {
+  PluginInventoryExecutorSchema,
+  type PluginSnapshotExecutor,
+} from "@syntila/workspace-runtime-protocol";
 import { validateWorkerExecutionSelection } from "@syntila/core";
 import { spaceMemberPermissions } from "@syntila/security";
 import {
@@ -285,8 +294,22 @@ export async function selectSpaceExecutionTarget(
             catalog.display_name AS worker_display_name,
             catalog.lifecycle_state AS worker_catalog_lifecycle_state,
             catalog.visibility_state AS worker_catalog_visibility_state,
+            catalog.origin AS worker_catalog_origin,
+            catalog.owner_user_id AS worker_catalog_owner_user_id,
             i.engine_version AS engine_version,
-            i.profile_definition_id, i.profile_release_version,
+            -- A plugin has no Tool Profile; its stable identity is its ref.
+            COALESCE(i.profile_definition_id,
+                     CASE WHEN catalog.origin = 'plugin' THEN i.worker_type_id END)
+              AS profile_definition_id,
+            COALESCE(i.profile_release_version,
+                     CASE WHEN catalog.origin = 'plugin' THEN 1 END)
+              AS profile_release_version,
+            i.executor_json AS executor_json,
+            pe.version AS plugin_pin_version,
+            pe.manifest_digest AS plugin_pin_digest,
+            pe.intent AS plugin_pin_intent,
+            pe.shareable AS plugin_pin_shareable,
+            ${pluginOwnerEntitledSql("ew.owner_user_id")} AS plugin_owner_entitled,
             i.provider_tool_name,
             i.provider_tool_version,
             i.model_catalog_json,
@@ -320,6 +343,10 @@ export async function selectSpaceExecutionTarget(
        ON catalog.worker_type_id = i.worker_type_id
       AND catalog.lifecycle_state = 'active'
       AND catalog.visibility_state = 'visible'
+      -- A plugin is only ever schedulable on its owner's own Workspace.
+      AND (catalog.origin = 'official' OR catalog.owner_user_id = ew.owner_user_id)
+     LEFT JOIN workspace_worker_plugin_enablements pe
+       ON pe.workspace_id = i.workspace_id AND pe.plugin_ref = i.worker_type_id
      LEFT JOIN worker_profiles current_profile
        ON current_profile.worker_type_id = i.worker_type_id
       AND current_profile.revision = i.profile_release_version
@@ -330,7 +357,8 @@ export async function selectSpaceExecutionTarget(
      WHERE g.space_id = ?1 AND g.status = 'active'
        AND (g.expires_at IS NULL OR g.expires_at > ?3)
        AND ew.status <> 'revoked'
-       AND (current_profile.worker_type_id IS NOT NULL
+       AND (catalog.origin = 'plugin'
+            OR current_profile.worker_type_id IS NOT NULL
             OR history.worker_type_id IS NOT NULL)
        ${isWorkspaceLive ? "" : "AND ew.status = 'online'"}
      ORDER BY CASE WHEN i.owner_user_id = ?2 THEN 0 ELSE 1 END,
@@ -548,6 +576,68 @@ export async function selectSpaceExecutionTarget(
         reject("local_worker_not_ready");
         continue;
       }
+      // Custom plugin Workers (ADR-027): Cloud, not the Service, decides.
+      const isPlugin = row.worker_catalog_origin === "plugin";
+      let pluginExecutor: PluginSnapshotExecutor | null = null;
+      if (isPlugin) {
+        const reported = (() => {
+          try {
+            const parsed = PluginInventoryExecutorSchema.safeParse(
+              JSON.parse(String(row.executor_json)),
+            );
+            return parsed.success ? parsed.data : null;
+          } catch {
+            return null;
+          }
+        })();
+        const pluginRejection = ((): string | null => {
+          if (row.worker_catalog_owner_user_id !== row.owner_user_id)
+            return "worker_catalog_unavailable";
+          // Live plan check; also repeated inside the assignment INSERT.
+          if (!number(row.plugin_owner_entitled))
+            return "plugin_entitlement_required";
+          if (row.plugin_pin_intent !== "enabled") return "plugin_not_enabled";
+          if (
+            !reported ||
+            !reported.artifactDigest ||
+            reported.manifestDigest !== row.plugin_pin_digest ||
+            reported.version !== row.plugin_pin_version
+          )
+            return "plugin_digest_not_pinned";
+          if (!supportsPluginExecutor(row.engine_version))
+            return "worker_engine_update_required";
+          // Someone else's request on the owner's Workspace needs an opt-in.
+          if (
+            String(row.owner_user_id) !== request.requesterUserId &&
+            number(row.plugin_pin_shareable) !== 1
+          )
+            return "plugin_not_shareable";
+          // Read-only is honored only where a tier proved it; otherwise the
+          // plugin is skipped for read-only Steps, never run with write access.
+          if (
+            (executionClass === "stateless_read" ||
+              request.readOnly === true) &&
+            !reported.isolation.readOnlyEnforced
+          )
+            return "plugin_read_only_unenforceable";
+          return null;
+        })();
+        if (pluginRejection || !reported) {
+          reject(pluginRejection ?? "plugin_digest_not_pinned");
+          continue;
+        }
+        pluginExecutor = {
+          schemaVersion: 1,
+          kind: "plugin",
+          pluginRef: workerTypeId,
+          pluginId: reported.pluginId,
+          version: reported.version,
+          manifestDigest: reported.manifestDigest,
+          artifactDigest: reported.artifactDigest!,
+          pluginProtocol: reported.pluginProtocol,
+          isolation: reported.isolation,
+        };
+      }
       if (
         typeof row.engine_version !== "string" ||
         !row.engine_version ||
@@ -559,12 +649,14 @@ export async function selectSpaceExecutionTarget(
         reject("engine_profile_unavailable");
         continue;
       }
-      const executionOptions = spaceWorkerExecutionOptions(
-        row.execution_profile_json,
-        row.provider_tool_version,
-        row.model_catalog_json,
-        row.execution_profile_digest,
-      );
+      const executionOptions = pluginExecutor
+        ? pluginExecutionOptions(pluginExecutor.manifestDigest)
+        : spaceWorkerExecutionOptions(
+            row.execution_profile_json,
+            row.provider_tool_version,
+            row.model_catalog_json,
+            row.execution_profile_digest,
+          );
       const expectedRevision =
         typeof binding.catalogRevision === "string"
           ? binding.catalogRevision
@@ -606,6 +698,13 @@ export async function selectSpaceExecutionTarget(
             profileReleaseVersion: Number(row.profile_release_version),
           },
         );
+        // The admitted plugin identity is frozen with the selection, so a
+        // later update, retry or queue wait cannot change what runs.
+        if (pluginExecutor)
+          executionSelection = {
+            ...executionSelection,
+            executor: pluginExecutor,
+          };
         selectedModel = executionSelection.modelId;
         selectedReasoningEffort = executionSelection.effort;
       } catch (error) {

@@ -372,3 +372,27 @@ export function spaceWorkerExecutionOptions(
     ),
   };
 }
+
+/**
+ * Execution options for a plugin Worker (ADR-027, decision D10): no model
+ * choice and no effort. The catalog revision is the pinned manifest digest, so
+ * a frozen selection can only ever refer to that exact plugin.
+ */
+export function pluginExecutionOptions(
+  manifestDigest: string,
+): Extract<WorkerExecutionOptions, { schemaVersion: 2 }> {
+  return {
+    schemaVersion: 2,
+    catalogRevision: manifestDigest,
+    modelSwitch: { supported: false },
+    effort: { supported: false, values: [], defaultValue: null },
+    models: {
+      supported: false,
+      discovery: "profile_catalog",
+      allowsCustomModel: false,
+      allowedModelIds: [],
+      defaultModelId: null,
+      options: [],
+    },
+  };
+}

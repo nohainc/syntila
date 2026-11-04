@@ -385,6 +385,24 @@ export function pluginOwnerEntitledSql(ownerColumn: string): string {
   return paidOwnerSql(ownerColumn);
 }
 
+/**
+ * Admission condition for an assignment INSERT: the Worker is not a plugin, or
+ * its Workspace owner holds the plugin entitlement right now. Evaluated in the
+ * same statement as the write, so a plan that expires between scheduling and
+ * admission admits nothing.
+ */
+export function pluginAssignmentAdmissionSql(
+  workerTypeParam: string,
+  workspaceParam: string,
+): string {
+  return `(NOT EXISTS (SELECT 1 FROM worker_catalog wc
+                        WHERE wc.worker_type_id = ${workerTypeParam}
+                          AND wc.origin = 'plugin')
+    OR ${pluginOwnerEntitledSql(
+      `(SELECT pw.owner_user_id FROM execution_workspaces pw WHERE pw.id = ${workspaceParam})`,
+    )})`;
+}
+
 export function effectiveTier(
   row: AccountPlanRow | null,
   now: Date = new Date(),

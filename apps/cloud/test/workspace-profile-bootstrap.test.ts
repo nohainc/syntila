@@ -22,14 +22,14 @@ describe("Workspace Profile download before Worker configuration", () => {
         credential_token_hash TEXT, revoked_at TEXT
       );
       CREATE TABLE workspace_worker_inventory (workspace_id TEXT, worker_type_id TEXT, worker_id TEXT);
-      CREATE TABLE worker_catalog (worker_type_id TEXT PRIMARY KEY);
+      CREATE TABLE worker_catalog (worker_type_id TEXT PRIMARY KEY, origin TEXT NOT NULL DEFAULT 'official');
       CREATE TABLE worker_profiles (
         worker_type_id TEXT PRIMARY KEY, schema_version INTEGER,
         profile_json TEXT, revision INTEGER, digest TEXT,
         updated_by_user_id TEXT, updated_at TEXT
       );
       INSERT INTO execution_workspaces VALUES ('workspace', 'online');
-      INSERT INTO worker_catalog VALUES ('fixture-worker');
+      INSERT INTO worker_catalog (worker_type_id) VALUES ('fixture-worker');
     `);
     sqlite
       .prepare(

@@ -144,6 +144,9 @@ export async function listWorkerProfiles(
          FROM worker_catalog worker
          LEFT JOIN worker_profiles current_profile
            ON current_profile.worker_type_id = worker.worker_type_id
+        -- Custom plugin rows belong to one account and have no Profile; they
+        -- never appear in the shared catalog or in Profile administration.
+        WHERE worker.origin = 'official'
         ORDER BY worker.sort_order, worker.worker_type_id
         LIMIT 256`,
     )
@@ -221,7 +224,7 @@ async function requireWorkerCatalogRow(
 ): Promise<void> {
   const row = await db
     .prepare(
-      "SELECT worker_type_id FROM worker_catalog WHERE worker_type_id = ?1",
+      "SELECT worker_type_id FROM worker_catalog WHERE worker_type_id = ?1 AND origin = 'official'",
     )
     .bind(workerTypeId)
     .first<{ worker_type_id: string }>();

@@ -124,6 +124,35 @@ export type PluginInventoryExecutor = z.infer<
 >;
 
 /**
+ * The executor identity Cloud froze into an assignment (ADR-027). The Service
+ * runs the plugin only if its local pin has exactly this `manifestDigest`.
+ */
+export const PluginSnapshotExecutorSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: z.literal("plugin"),
+    pluginRef: z.string().regex(/^plugin-[0-9a-f]{12}$/),
+    pluginId: z
+      .string()
+      .max(48)
+      .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+    version: z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/),
+    manifestDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    artifactDigest: z.string().regex(/^[0-9a-f]{64}$/),
+    pluginProtocol: z.string().regex(/^1\.\d+$/),
+    isolation: z
+      .object({
+        tier: z.enum(["none", "best_effort", "enforced"]),
+        readOnlyEnforced: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export type PluginSnapshotExecutor = z.infer<
+  typeof PluginSnapshotExecutorSchema
+>;
+
+/**
  * Readiness published by the Service. `syncGeneration` increases every time
  * the Service completes a (re)synchronization with Cloud, so Cloud can ignore
  * a late readiness report from before the latest sync.
@@ -524,6 +553,8 @@ export const workspaceRuntimeEnvelopeSchema = z
                     "catalog_default",
                     "provider_default",
                   ]),
+                  /** Present only for a plugin Worker: the admitted identity. */
+                  executor: PluginSnapshotExecutorSchema.optional(),
                 })
                 .strict()
                 .optional(),
