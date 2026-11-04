@@ -155,6 +155,7 @@ void main() {
   test('maps Cloud statuses to stable error codes', () async {
     await signIn();
     for (final (status, body, code) in [
+      (400, '{"code":"plugin_digest_mismatch"}', 'plugin_digest_mismatch'),
       (401, '{}', 'login_required'),
       (402, '{"code":"paid_plan_required"}', 'paid_plan_required'),
       (404, '{}', 'plugin_not_found'),
@@ -171,6 +172,28 @@ void main() {
         code,
       );
     }
+  });
+
+  test('preserves the safe Cloud message for a bad plugin request', () async {
+    await signIn();
+    respond = (r) async {
+      r.response.statusCode = 400;
+      r.response.write(
+        '{"code":"plugin_manifest_invalid","message":"Manifest is invalid at access.network"}',
+      );
+    };
+    await expectLater(
+      cloud().removeFromLibrary('plugin-3fa91c04b2d7'),
+      throwsA(
+        isA<PluginCloudException>()
+            .having((e) => e.code, 'code', 'plugin_manifest_invalid')
+            .having(
+              (e) => e.message,
+              'message',
+              'Manifest is invalid at access.network',
+            ),
+      ),
+    );
   });
 
   test('an unreachable Cloud is cloud_unavailable', () async {

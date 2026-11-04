@@ -30,8 +30,8 @@ async function fixture() {
   f.sqlite.exec(`
     INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
     INSERT INTO account_plans(user_id,tier,status,source,current_period_end,created_at,updated_at) VALUES('U','paid','active','manual',NULL,'now','now');
-    INSERT INTO worker_catalog(worker_type_id,display_name,description,lifecycle_state,created_at,updated_at,engine_family,visibility_state,release_stage,capabilities_json,sort_order,origin,owner_user_id)
-      VALUES ('${REF}','Acme Reviewer','','active','now','now','cli','visible','stable','["text"]',1000,'plugin','U');`);
+    INSERT INTO worker_catalog(worker_type_id,display_name,description,lifecycle_state,created_at,updated_at,engine_family,visibility_state,release_stage,sort_order,origin,owner_user_id)
+      VALUES ('${REF}','Acme Reviewer','','active','now','now','cli','visible','stable',1000,'plugin','U');`);
   scheduler.selectSpaceExecutionTarget.mockResolvedValue({
     spaceId: "P",
     workspaceId: "WS",

@@ -70,7 +70,14 @@ class HttpPluginCloud implements PluginCloudPort {
       final status = response.statusCode;
       if (status >= 200 && status < 300) return parsed;
       final code = parsed['code'] as String?;
+      final message = parsed['message'];
       throw switch (status) {
+        400 => PluginCloudException(
+            code ?? 'invalid_request',
+            message is String && message.isNotEmpty
+                ? message
+                : 'Cloud refused the request.',
+          ),
         401 => const PluginCloudException(
             'login_required',
             'Sign in again: syntila login',

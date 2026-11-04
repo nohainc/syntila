@@ -61,8 +61,8 @@ beforeEach(() => {
     INSERT INTO account_plans(user_id,tier,status,source,current_period_end,created_at,updated_at) VALUES ('U','paid','active','manual',NULL,'now','now');
     INSERT INTO account_worker_plugins(plugin_ref,owner_user_id,plugin_id,display_name,created_at,updated_at) VALUES ('${REF}','U','acme-reviewer','Acme Reviewer','now','now');
     INSERT INTO account_worker_plugin_versions(plugin_ref,version,manifest_digest,manifest_json,origin_json,created_at) VALUES ('${REF}','1.4.2','${DIGEST}','{}','{}','now');
-    INSERT INTO worker_catalog(worker_type_id,display_name,description,lifecycle_state,created_at,updated_at,engine_family,visibility_state,release_stage,capabilities_json,sort_order,origin,owner_user_id)
-      VALUES ('${REF}','Acme Reviewer','','active','now','now','cli','visible','stable','["text"]',1000,'plugin','U');
+    INSERT INTO worker_catalog(worker_type_id,display_name,description,lifecycle_state,created_at,updated_at,engine_family,visibility_state,release_stage,sort_order,origin,owner_user_id)
+      VALUES ('${REF}','Acme Reviewer','','active','now','now','cli','visible','stable',1000,'plugin','U');
     INSERT INTO workspace_worker_plugin_enablements(workspace_id,plugin_ref,version,manifest_digest,consent_hash,intent,shareable,updated_at)
       VALUES ('WS','${REF}','1.4.2','${DIGEST}','${"c".repeat(64)}','enabled',0,'now');
     INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,provider_tool_name,provider_tool_version,local_concurrency_limit,revision,created_at,updated_at,last_seen_at,engine_version,executor_json)

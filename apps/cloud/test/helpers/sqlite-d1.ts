@@ -63,6 +63,7 @@ export function sqliteD1(
     "0026_remove_attach_workspace_permission.sql",
     "0027_enable_workflow_workspace_workers.sql",
     "0028_workflow_default_selection.sql",
+    "0032_drop_worker_capability_columns.sql",
     "0037_immutable_execution_selection.sql",
     "0039_issue_reports.sql",
     "0040_issue_report_investigation.sql",

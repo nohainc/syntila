@@ -260,8 +260,8 @@ describe("catalog invariants", () => {
   const insert = (id: string, origin: string, owner: string | null) =>
     store.sqlite
       .prepare(
-        `INSERT INTO worker_catalog (worker_type_id, display_name, description, lifecycle_state, created_at, updated_at, engine_family, visibility_state, release_stage, capabilities_json, sort_order, origin, owner_user_id)
-         VALUES (?, 'X', '', 'active', 'now', 'now', 'cli', 'visible', 'stable', '["text"]', 1, ?, ?)`,
+        `INSERT INTO worker_catalog (worker_type_id, display_name, description, lifecycle_state, created_at, updated_at, engine_family, visibility_state, release_stage, sort_order, origin, owner_user_id)
+         VALUES (?, 'X', '', 'active', 'now', 'now', 'cli', 'visible', 'stable', 1, ?, ?)`,
       )
       .run(id, origin, owner);
 

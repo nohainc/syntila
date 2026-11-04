@@ -223,9 +223,9 @@ export async function handlePluginLibrary(
           `INSERT INTO worker_catalog
              (worker_type_id, display_name, description, lifecycle_state,
               created_at, updated_at, engine_family, visibility_state,
-              release_stage, capabilities_json, sort_order, origin, owner_user_id)
+              release_stage, sort_order, origin, owner_user_id)
            VALUES (?1, ?2, ?3, 'active', ?4, ?4, 'cli', 'visible', 'stable',
-                   '["text"]', 1000, 'plugin', ?5)`,
+                   1000, 'plugin', ?5)`,
         )
         .bind(
           ref,
