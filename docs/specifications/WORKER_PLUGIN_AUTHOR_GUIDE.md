@@ -174,8 +174,9 @@ cleanup, and artifact paths that must stay inside the working directory.
 
 The plugin-mode Engine now applies POSIX hard CPU/open-file limits before exec,
 Windows job memory/process-count/CPU limits, and observed data-directory limits.
-On POSIX, memory and process count are sampled; CPU is per process. Windows
-handle quotas remain unimplemented. See [resource-limit evidence](../acceptance/PLUGIN_RESOURCE_LIMITS.md)
+On POSIX, memory/process count and aggregate CPU are sampled in addition to
+the hard per-process CPU limit. Windows samples aggregate job handles. These
+sampled budgets can miss short-lived activity and are not hard kernel quotas. See [resource-limit evidence](../acceptance/PLUGIN_RESOURCE_LIMITS.md)
 for defaults and platform verification gaps.
 
 **Not enforced:** filesystem and network isolation. A process boundary is not a

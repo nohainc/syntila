@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      plugin_acceptance_only:
+        description: Run only plugin resource acceptance on Linux and Windows
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,6 +20,7 @@ concurrency:
 
 jobs:
   changes:
+    if: ${{ !inputs.plugin_acceptance_only }}
     name: Detect changes
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -39,6 +45,7 @@ jobs:
         run: bash scripts/ci/detect-changes.sh
 
   static:
+    if: ${{ !inputs.plugin_acceptance_only }}
     name: Repository static guard
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -152,6 +159,39 @@ jobs:
           path: dist/plugin-author-kit/*
           if-no-files-found: error
 
+  plugin-resource-acceptance:
+    name: Plugin resources (${{ matrix.runner }})
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.plugin_acceptance_only }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, windows-2022]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-flutter
+      - name: Resolve focused test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package in packages/syntila_plugin_protocol packages/syntila_plugin_conformance engines/cli_worker; do
+            (cd "$package" && dart pub get)
+          done
+      - name: Verify native and observed resource limits
+        shell: bash
+        working-directory: engines/cli_worker
+        run: |
+          set -euo pipefail
+          dart test --reporter expanded test/plugin_process_limits_test.dart test/plugin_resource_monitor_test.dart test/plugin_windows_handles_test.dart | tee "$RUNNER_TEMP/plugin-resource-tests.log"
+      - name: Retain resource acceptance log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plugin-resources-${{ matrix.runner }}
+          path: ${{ runner.temp }}/plugin-resource-tests.log
+          if-no-files-found: warn
+
   plugin-limits-windows:
     name: Plugin resource limits on Windows
     needs: changes
@@ -196,6 +236,7 @@ jobs:
         profile-lab,
         engine,
         plugin-limits-windows,
+        plugin-resource-acceptance,
         site,
       ]
     runs-on: ubuntu-24.04

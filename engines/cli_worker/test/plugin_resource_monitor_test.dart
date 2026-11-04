@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
+import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
 import 'package:syntila_cli_worker_engine/src/plugin_resource_monitor.dart';
 import 'package:test/test.dart';
 
@@ -107,6 +108,159 @@ void main() {
       ),
     );
   });
+
+  test('parses BSD and Linux CPU times without losing precision', () {
+    expect(parseProcessCpuTime('0:01.25'), const Duration(milliseconds: 1250));
+    expect(
+      parseProcessCpuTime('337:08.76'),
+      const Duration(seconds: 20228, milliseconds: 760),
+    );
+    expect(parseProcessCpuTime('01:02:03'), const Duration(seconds: 3723));
+    expect(parseProcessCpuTime('2-03:04:05'), const Duration(seconds: 183845));
+    for (final value in [
+      'garbage',
+      '-0:00',
+      '0:60',
+      '01:60:00',
+      '1-24:00:00',
+      '1:2:3.1234567',
+    ]) {
+      expect(
+        () => parseProcessCpuTime(value),
+        throwsFormatException,
+        reason: value,
+      );
+    }
+  });
+
+  test('aggregate CPU exceeds the budget while each member stays below it', () {
+    final tracker = PluginProcessUsageTracker();
+    const limits = PluginResourceLimits(cpuTime: Duration(seconds: 5));
+    expect(
+      tracker.inspect(
+        '10 1 100 0:01.00 root-start\n'
+        '11 10 100 0:02.00 child-a\n12 10 100 0:03.00 child-b\n'
+        '99 1 100 999:00.00 unrelated\n',
+        10,
+        limits,
+      ),
+      contains('aggregate CPU'),
+    );
+    expect(tracker.observedCpuTime, const Duration(seconds: 6));
+  });
+
+  test('CPU is monotonic across snapshots and retained after child exit', () {
+    final tracker = PluginProcessUsageTracker();
+    const limits = PluginResourceLimits(cpuTime: Duration(seconds: 4));
+    const first = '10 1 10 0:00.10 root\n11 10 10 0:02.00 child-a\n';
+    expect(tracker.inspect(first, 10, limits), isNull);
+    expect(tracker.inspect(first, 10, limits), isNull);
+    expect(tracker.observedCpuTime, const Duration(milliseconds: 2100));
+    expect(
+      tracker.inspect(
+        '10 1 10 0:00.10 root\n11 10 10 0:01.00 child-a\n',
+        10,
+        limits,
+      ),
+      isNull,
+    );
+    expect(tracker.observedCpuTime, const Duration(milliseconds: 2100));
+    expect(
+      tracker.inspect(
+        '10 1 10 0:00.20 root\n12 10 10 0:02.00 child-b\n',
+        10,
+        limits,
+      ),
+      contains('aggregate CPU'),
+    );
+    expect(tracker.observedCpuTime, const Duration(milliseconds: 4200));
+  });
+
+  test('PID reuse with a new start identity is counted as a new process', () {
+    final tracker = PluginProcessUsageTracker();
+    const limits = PluginResourceLimits();
+    tracker.inspect(
+      '10 1 10 0:00.00 root\n11 10 10 0:02.00 old-start\n',
+      10,
+      limits,
+    );
+    tracker.inspect(
+      '10 1 10 0:00.00 root\n11 10 10 0:01.00 new-start\n',
+      10,
+      limits,
+    );
+    expect(tracker.observedCpuTime, const Duration(seconds: 3));
+  });
+
+  test('bounded history and missing CPU metadata fail closed', () {
+    final tracker = PluginProcessUsageTracker();
+    expect(
+      tracker.inspect(
+        '10 1 10 0:00.00 root\n11 10 10 0:00.00 child\n',
+        10,
+        const PluginResourceLimits(observedProcessLimit: 1),
+      ),
+      contains('history'),
+    );
+    expect(
+      () => PluginProcessUsageTracker().inspect(
+        '10 1 10\n',
+        10,
+        const PluginResourceLimits(),
+      ),
+      throwsFormatException,
+    );
+    expect(
+      () => PluginProcessUsageTracker().inspect(
+        '10 1 10 invalid root\n',
+        10,
+        const PluginResourceLimits(),
+      ),
+      throwsFormatException,
+    );
+  });
+
+  test(
+    'aggregate CPU breach terminates a real multi-process plugin tree',
+    () async {
+      final root = Directory.systemTemp.createTempSync('plugin-cpu');
+      const supervisor = StandardProcessSupervisor();
+      final process = await supervisor.startIsolatedProcess('/usr/bin/python3', [
+        '-c',
+        "import subprocess, sys, time\n"
+            "worker = 'import time; end=time.process_time()+1.2\\nwhile time.process_time()<end: pass\\ntime.sleep(30)'\n"
+            "children=[subprocess.Popen([sys.executable, '-c', worker]) for _ in range(2)]\n"
+            "time.sleep(30)\n",
+      ]);
+      final violation = Completer<String>();
+      final monitor = PluginResourceMonitor(
+        process: process,
+        dataDirectory: root.path,
+        limits: const PluginResourceLimits(
+          cpuTime: Duration(milliseconds: 1500),
+          interval: Duration(milliseconds: 50),
+        ),
+        onViolation: (reason) => unawaited(
+          supervisor
+              .terminateProcessTree(process, force: true)
+              .then((_) => violation.complete(reason)),
+        ),
+      )..start();
+      addTearDown(() async {
+        monitor.stop();
+        await supervisor.terminateProcessTree(process, force: true);
+        await process.exitCode;
+        root.deleteSync(recursive: true);
+      });
+      expect(
+        await violation.future.timeout(const Duration(seconds: 45)),
+        contains('aggregate CPU'),
+      );
+      expect(await process.exitCode, isNot(0));
+    },
+    skip: Platform.isWindows,
+    timeout: const Timeout(Duration(minutes: 1)),
+  );
 
   test('observed memory breach terminates a real process', () async {
     final root = Directory.systemTemp.createTempSync('plugin-monitor');

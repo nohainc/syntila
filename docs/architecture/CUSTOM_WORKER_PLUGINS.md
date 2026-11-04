@@ -417,8 +417,8 @@ The table includes remaining target requirements explicitly:
 | Concurrency | `manifest.limits.maxConcurrent` clipped by `min(Workspace parallel_slots, 4)`; default 1 per plugin | Scheduler uses inventory `localConcurrencyLimit`; Engine enforces |
 | Processes | 1 plugin process per active assignment; at most 64 descendants | POSIX: observed tree count every second. Windows: hard job count 66 including launcher and plugin; no breakaway flag |
 | Memory | 1 GiB | POSIX: observed sum of tree RSS every second (shared pages may be counted twice). Windows: hard aggregate job committed-memory limit including launcher |
-| CPU time | 1 h | POSIX: inherited hard `RLIMIT_CPU` per process, not an aggregate tree budget. Windows: job user-time limit |
-| Open files | 256 per process | POSIX: inherited hard `RLIMIT_NOFILE`. Windows: handle quota is still unimplemented |
+| CPU time | 1 h | POSIX: inherited hard `RLIMIT_CPU` per process plus a monotonic sampled aggregate tree budget; children unseen between samples escape accounting. Windows: hard job user-time limit |
+| Open files / handles | POSIX: 256 per process; Windows: 4,096 executive handles per job | POSIX: inherited hard `RLIMIT_NOFILE`. Windows: observed aggregate handle count including launcher, not a hard descriptor quota |
 | Plugin data dir | 512 MiB and 100,000 entries | Engine preflight and observed scan, no symlink traversal; breach or unreadable usage stops the process tree. No filesystem quota |
 
 Device evidence and verification limits are recorded in

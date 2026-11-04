@@ -15,9 +15,9 @@
 | P4 Export and multi-Workspace distribution | Done for the product path: `export` writes a credential-free bundle, `import` accepts it, each Workspace pins independently, updates show a consent diff. **Open:** per-platform isolation evidence | store and service tests |
 | P5 SDK and docs | Implemented locally: `packages/syntila_plugin_sdk` (`runPlugin`, `PluginWorker`, `SessionStore`, `pack`, `init`), `examples/plugins/echo_dart` (passes all 21 conformance cases), [author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md), [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md), [user security guide](../security/CUSTOM_WORKER_PLUGINS.md), key tool. Python reference example and offline `scripts/sign-plugin.mjs` available. Standalone author-kit archive and checksum built by `scripts/build-plugin-author-kit.mjs`, retained by Engine CI. **Open:** package-registry publication | SDK tests incl. standalone conformance of both examples; Engine conformance test for the Dart example; Node signing verification test |
 
-Still open, in priority order: (1) filesystem/network isolation, Windows handle
-quotas, an aggregate POSIX CPU budget, and Linux/Windows resource-limit device
-acceptance. POSIX CPU/open-file limits, observed RSS/process/data quotas and
+Still open, in priority order: (1) filesystem/network isolation, hard aggregate
+CPU/handle guarantees, and Linux/Windows release acceptance. Sampled aggregate
+POSIX CPU accounting and Windows job-handle budgets are implemented. POSIX CPU/open-file limits, observed RSS/process/data quotas and
 Windows job limits now exist; see [resource-limit evidence](../acceptance/PLUGIN_RESOURCE_LIMITS.md); (2) package publication;
 (3) acceptance on a deployed Cloud and real
 Windows/Linux hosts. Signer recognition, listing and revocation are implemented locally; no consent

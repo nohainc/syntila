@@ -22,7 +22,9 @@ time, and supervises cancellation and process cleanup. Filesystem/network
 isolation is not implemented. POSIX has hard CPU/open-file limits plus observed
 memory and process-count checks; Windows uses job memory, process-count and CPU
 limits (device validation pending). Data size is observed on all platforms.
-Sampling can miss short spikes; Windows handle quotas remain unimplemented.
+Sampling can miss short spikes and children that finish between samples. POSIX
+has an observed aggregate CPU budget; Windows has an observed job handle budget.
+Neither is a hard aggregate kernel quota.
 See [resource-limit evidence](../acceptance/PLUGIN_RESOURCE_LIMITS.md). The reported
 isolation tier is `none`; read-only Steps are ineligible for plugins.
 

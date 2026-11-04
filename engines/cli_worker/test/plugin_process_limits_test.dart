@@ -112,6 +112,36 @@ except OSError:
     expect((limits['flags'] as int) & 0x220c, 0x220c);
   }, skip: !Platform.isWindows);
 
+  test('Windows handle exhaustion terminates the private plugin job', () async {
+    final temp = Directory.systemTemp.createTempSync('windows-handles');
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final binary = '${temp.path}/leak.exe';
+    final compiled = await Process.run(Platform.resolvedExecutable, [
+      'compile',
+      'exe',
+      'test/fixtures/windows_handle_leak.dart',
+      '-o',
+      binary,
+    ]);
+    expect(
+      compiled.exitCode,
+      0,
+      reason: '${compiled.stdout}${compiled.stderr}',
+    );
+    final result = await Process.run(engine, [
+      '--plugin-child',
+      '--cpu-seconds',
+      '3600',
+      '--open-files',
+      '256',
+      '--',
+      binary,
+    ]).timeout(const Duration(seconds: 20));
+    expect(result.exitCode, 70);
+    expect(result.stdout, contains('handles-created'));
+    expect(result.stderr, contains('plugin handle count limit exceeded'));
+  }, skip: !Platform.isWindows);
+
   test('invalid limits fail before executing the target', () async {
     final result = await Process.run(engine, [
       '--plugin-child',

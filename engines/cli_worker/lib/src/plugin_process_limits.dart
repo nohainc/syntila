@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
 
+import 'plugin_windows_handles.dart';
+
 /// Private child mode. Limits are applied before executing untrusted code.
 Future<void> runLimitedPluginChild(List<String> args) async {
   if (args.length < 7 ||
@@ -40,7 +42,19 @@ Future<void> runLimitedPluginChild(List<String> args) async {
       mode: ProcessStartMode.inheritStdio,
       runInShell: false,
     );
-    exitCode = await child.exitCode;
+    final handles = PluginHandleMonitor(
+      readCount: () => readWindowsPluginJobHandles(pid),
+      onViolation: (reason) {
+        stderr.writeln(reason);
+        // Exiting closes the retained job handle and kills every job member.
+        exit(70);
+      },
+    )..start();
+    try {
+      exitCode = await child.exitCode;
+    } finally {
+      handles.stop();
+    }
     return;
   }
   if (!Platform.isMacOS && !Platform.isLinux) {
