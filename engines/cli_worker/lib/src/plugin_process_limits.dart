@@ -96,7 +96,9 @@ class _Posix {
     try {
       if (_get(resource, limits) != 0) throw StateError('getrlimit failed');
       final hard = limits[1];
-      limits[0] = hard < value ? hard : value;
+      // Linux RLIM_INFINITY is UINT64_MAX, represented as -1 by Dart's
+      // 64-bit integer FFI read. Do not mistake that sentinel for a lower cap.
+      limits[0] = hard < 0 || hard > value ? value : hard;
       limits[1] = limits[0];
       if (_set(resource, limits) != 0) throw StateError('setrlimit failed');
     } finally {

@@ -2,6 +2,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -72,21 +73,35 @@ except OSError:
   }, skip: Platform.isWindows);
 
   test('CPU hard limit kills a busy plugin', () async {
-    final result = await run(
+    final process = await Process.start(engine, [
+      '--plugin-child',
+      '--cpu-seconds',
+      '1',
+      '--open-files',
+      '64',
+      '--',
+      '/usr/bin/python3',
+      '-c',
       'while True: pass',
-      cpu: 1,
-    ).timeout(const Duration(seconds: 15));
-    expect(result.exitCode, isNot(0));
+    ]);
+    unawaited(process.stdout.drain<void>());
+    unawaited(process.stderr.drain<void>());
+    addTearDown(() async {
+      process.kill(ProcessSignal.sigkill);
+      await process.exitCode;
+    });
+    final code = await process.exitCode.timeout(const Duration(seconds: 15));
+    expect(code, isNot(0));
   }, skip: Platform.isWindows);
 
-  test('Windows plugin inherits the bounded nested Job Object', () async {
-    final temp = Directory.systemTemp.createTempSync('windows-limit-probe');
+  Future<ProcessResult> windowsFixture(String name, {int cpu = 3600}) async {
+    final temp = Directory.systemTemp.createTempSync('windows-resource');
     addTearDown(() => temp.deleteSync(recursive: true));
-    final binary = '${temp.path}/probe.exe';
+    final binary = '${temp.path}/fixture.exe';
     final compiled = await Process.run(Platform.resolvedExecutable, [
       'compile',
       'exe',
-      'test/fixtures/windows_limit_probe.dart',
+      'test/fixtures/$name.dart',
       '-o',
       binary,
     ]);
@@ -95,15 +110,27 @@ except OSError:
       0,
       reason: '${compiled.stdout}${compiled.stderr}',
     );
-    final result = await Process.run(engine, [
+    final process = await Process.start(engine, [
       '--plugin-child',
       '--cpu-seconds',
-      '3600',
+      '$cpu',
       '--open-files',
       '256',
       '--',
       binary,
     ]);
+    final output = process.stdout.transform(utf8.decoder).join();
+    final errors = process.stderr.transform(utf8.decoder).join();
+    addTearDown(() async {
+      process.kill(); // Closing the wrapper's job kills its remaining children.
+      await process.exitCode;
+    });
+    final code = await process.exitCode.timeout(const Duration(seconds: 20));
+    return ProcessResult(process.pid, code, await output, await errors);
+  }
+
+  test('Windows plugin inherits the bounded nested Job Object', () async {
+    final result = await windowsFixture('windows_limit_probe');
     expect(result.exitCode, 0, reason: '${result.stderr}');
     final limits = jsonDecode(result.stdout as String) as Map;
     expect(limits['memory'], 1024 * 1024 * 1024);
@@ -113,33 +140,32 @@ except OSError:
   }, skip: !Platform.isWindows);
 
   test('Windows handle exhaustion terminates the private plugin job', () async {
-    final temp = Directory.systemTemp.createTempSync('windows-handles');
-    addTearDown(() => temp.deleteSync(recursive: true));
-    final binary = '${temp.path}/leak.exe';
-    final compiled = await Process.run(Platform.resolvedExecutable, [
-      'compile',
-      'exe',
-      'test/fixtures/windows_handle_leak.dart',
-      '-o',
-      binary,
-    ]);
-    expect(
-      compiled.exitCode,
-      0,
-      reason: '${compiled.stdout}${compiled.stderr}',
-    );
-    final result = await Process.run(engine, [
-      '--plugin-child',
-      '--cpu-seconds',
-      '3600',
-      '--open-files',
-      '256',
-      '--',
-      binary,
-    ]).timeout(const Duration(seconds: 20));
+    final result = await windowsFixture('windows_handle_leak');
     expect(result.exitCode, 70);
     expect(result.stdout, contains('handles-created'));
     expect(result.stderr, contains('plugin handle count limit exceeded'));
+  }, skip: !Platform.isWindows);
+
+  test('Windows job refuses excess committed memory', () async {
+    final result = await windowsFixture('windows_memory_limit');
+    expect(result.exitCode, 0, reason: '${result.stderr}');
+    final committed = int.parse(result.stdout.toString().trim());
+    expect(committed, greaterThan(0));
+    expect(committed, lessThan(1024 * 1024 * 1024));
+  }, skip: !Platform.isWindows);
+
+  test('Windows job CPU limit terminates a running target', () async {
+    final result = await windowsFixture('windows_cpu_limit', cpu: 1);
+    expect(result.stdout, contains('cpu-started'));
+    expect(result.exitCode, isNot(0));
+  }, skip: !Platform.isWindows);
+
+  test('Windows job refuses excess simultaneous processes', () async {
+    final result = await windowsFixture('windows_process_limit');
+    expect(result.exitCode, 0, reason: '${result.stderr}');
+    final started = int.parse(result.stdout.toString().trim());
+    expect(started, greaterThan(0));
+    expect(started, lessThanOrEqualTo(64));
   }, skip: !Platform.isWindows);
 
   test('invalid limits fail before executing the target', () async {
