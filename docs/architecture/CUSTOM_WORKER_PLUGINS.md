@@ -6,6 +6,17 @@
 **Plan, SDK and open decisions:** [Custom Worker plugins plan](../roadmaps/CUSTOM_WORKER_PLUGINS_PLAN.md)
 
 Code references below were checked against the repository on 2026-11-03.
+
+> **Status (implemented).** Sections 1-4 were the Phase 0 design and have been
+> built. Where the build differs, ADR-027 §7 lists the difference and the reason.
+> Notable corrections to the text below: consent is accepted by passing the
+> consent-document **hash** (`--accept <hash>`), not a one-time token;
+> `plugins trust-signer` is not implemented; the lease endpoint, library routes
+> and Workspace pins live in `apps/cloud/src/routes/plugin-entitlement.ts` and
+> `worker-plugins.ts`; migration `0101_worker_plugins.sql` adds the tables and
+> the `worker_catalog.origin/owner_user_id` and
+> `workspace_worker_inventory.executor_json` columns; plugin Workers use
+> `pluginRef` with revision `1` as their stable "profile" identity.
 Where this document says a contract "changes", the file named is the one that
 owns it today.
 

@@ -45,16 +45,15 @@ All state transitions are Service-owned.
 | CLI | IPC command | Entitlement (Cloud-checked) | Long-running | Summary |
 | --- | --- | --- | --- | --- |
 | `syntila plugins list` | `plugins.list` | free | no | Library, local installs, per-Workspace enablement, readiness, entitlement hint. |
-| `syntila plugins show ID[@VER]` | `plugins.show` | free | no | Manifest, digests, origin, consent, last conformance, isolation tier. |
+| `syntila plugins show ID [--version V]` | `plugins.show` | free | no | Manifest, digests, origin, consent, last conformance, isolation tier. |
 | `syntila plugins import PATH` | `plugins.import` | **Plus** | yes | Service copies the package into `quarantine/`, hashes it, parses the manifest. No code runs. |
-| `syntila plugins validate ID[@VER]` | `plugins.validate` | free | no | Static: manifest schema, platform artifact present and hash matches, protocol range, path rules, access vs. capability consistency, signature if present. Never spawns. |
-| `syntila plugins test ID[@VER] [--live]` | `plugins.test` | **Plus** | yes | Conformance suite in the Service → Engine host. Streams `plugin.testProgress`; the CLI only renders. |
-| `syntila plugins register ID[@VER]` | `plugins.registerPrepare` + `plugins.registerCommit` | **Plus** | no | Consent, then publish metadata to the account library. Requires `validate` and `test` passed for this digest. |
-| `syntila plugins enable ID[@VER]` | `plugins.enablePrepare` + `plugins.enableCommit` | **Plus** | no | Per-Workspace: consent diff if the pin moves, pin the digest, create the inventory row. |
+| `syntila plugins validate ID [--version V]` | `plugins.validate` | free | no | Static: manifest schema, platform artifact present and hash matches, protocol range, path rules, access vs. capability consistency, signature if present. Never spawns. |
+| `syntila plugins test ID [--version V]` | `plugins.test` | **Plus** | yes | Conformance suite in the Service → Engine host. Streams `plugin.testProgress`; the CLI only renders. |
+| `syntila plugins register ID [--version V] [--accept HASH]` | `plugins.register` | **Plus** | no | Consent, then publish metadata to the account library. Requires `validate` and `test` passed for this digest. |
+| `syntila plugins enable ID [--version V] [--accept HASH] [--shareable]` | `plugins.enable` | **Plus** | no | Per-Workspace: consent diff if the pin moves, pin the digest, create the inventory row. |
 | `syntila plugins disable ID` | `plugins.disable` | free | no | Per-Workspace: stop scheduling; running work drains. Intent recorded; files kept. |
-| `syntila plugins export ID[@VER] --out PATH` | `plugins.export` | free | no | Write a credential-free bundle (architecture §4.5). Works offline and after downgrade. |
+| `syntila plugins export ID FILE [--version V]` | `plugins.export` | free | no | Write a credential-free bundle (architecture §4.5). Works offline and after downgrade. |
 | `syntila plugins remove ID` | `plugins.remove` | free | no | Remove from the account library and local store. Refuses while enabled anywhere or in use. |
-| `syntila plugins trust-signer ID FINGERPRINT` | `plugins.trustSigner` | **Plus** | no | Optional signer pin. |
 | `syntila plugins entitlement` | `plugins.entitlement` | free | no | Shows lease state: entitled, expiry, offline remaining. A **hint**; Cloud decides. |
 
 `--workspace` is not needed: the Service is the one installation's Workspace,
@@ -62,15 +61,17 @@ so `enable`/`disable` are per-Workspace by construction. A multi-Workspace
 account repeats `enable` on each machine (P4 adds the shared distribution
 path).
 
-### 3.1 Two-step consent commands
+### 3.1 Consent by hash (as built)
 
-`registerPrepare`/`enablePrepare` return a **consent document** (architecture
-§4.1) and a one-time `consentToken` valid for 10 minutes and bound to the
-document hash and `manifestDigest`. The CLI prints the document and asks for the
-user to type the plugin ID. `…Commit` requires `{consentToken,
-acceptedDocumentHash}`. Scripts pass `--accept <documentHash>`; there is no
-`--yes`. A changed digest between prepare and commit invalidates the token
-(`plugin_consent_stale`).
+`plugins.register` and `plugins.enable` are one IPC command each. Called without
+`acceptHash` (or with a hash that does not match), the result carries
+`{consentRequired: true, document, documentHash}` and **nothing is changed**; the
+CLI prints the document and exits **3**. Called with the matching
+`acceptHash`, the action happens. `documentHash` is the SHA-256 of the canonical
+consent document, which includes the manifest and artifact digests, the access
+request, origin and signature status, so a changed package can never reuse an
+earlier acceptance. There is no token, no expiry and no server-side consent
+state. Scripts pass `--accept <hash>`; there is no `--yes`.
 
 ### 3.2 Result shapes (abridged)
 
@@ -125,13 +126,13 @@ All errors use the existing envelope `{ok:false, error:{code, message}}` where
 | `plugin_conformance_required` | `register`/`enable` before a passing test for this digest | register, enable |
 | `plugin_conformance_failed` | Suite failed (summary in result) | test |
 | `plugin_signature_invalid` | Signature present and does not verify | validate, import |
-| `plugin_consent_required` | Commit without a valid token | register, enable |
-| `plugin_consent_stale` | Digest/document changed | register, enable |
-| `plugin_already_enabled` / `plugin_not_enabled` | State errors | enable, disable |
-| `plugin_in_use` | Active assignments reference it; removal is queued (reply `state:"removing"`, like Worker removal) | disable, remove |
-| `plugin_removing` | Plugin is being removed; actions rejected | most |
+| `plugin_not_enabled` | Disable of a plugin that is not enabled | disable |
+| `plugin_entitlement_lapsed` | Readiness/launch code while Plus is not active (plugins paused) | readiness, launch |
+| `plugin_quota_exceeded` | Cloud library limit (20 plugins, 50 versions each) | register |
+| `plugin_in_use` | Still enabled, or running/queued work references it | remove |
 | `plugin_quota_exceeded` | Library/install/data size limits | import |
 | `plugin_use_plugins_enable` | `workers add` was given a `pluginRef` | `workers.configureWorker` |
+| `plugin_use_plugins_remove` | `workers remove` targeted a plugin Worker | `workers.removeWorker` |
 | `command_failed` | Unexpected (existing; no details leaked) | any |
 
 Errors never include absolute paths, plugin stderr, or any secret.

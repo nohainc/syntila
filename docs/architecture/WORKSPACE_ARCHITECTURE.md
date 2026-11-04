@@ -320,6 +320,31 @@ Grok Build). For Codex the slot precedes the `resume` subcommand because
 `codex exec resume` does not accept `--add-dir`. A Worker only uses folders
 after its updated Profile is published through Profile Lab.
 
+## Custom Worker plugins
+
+Syntila Plus users can import their own Workers as separate executables
+([ADR-027](../decisions/ADR-027-custom-worker-plugins.md)). The ownership rules
+above are unchanged:
+
+- The Service owns the plugin store (`<Application Support>/Plugins/`), the
+  registry, the signed entitlement lease and every `plugins.*` IPC command. The
+  `syntila` CLI only sends requests and prints results; it never reads or runs a
+  plugin.
+- The Service never starts a plugin. It starts the Engine in plugin mode
+  (`syntila-agent --plugin`, Local Worker Protocol 4.2), and the Engine, which
+  stays separately supervised, starts and cleans up the plugin process. Official
+  Workers still run through Tool Profiles, untouched.
+- An enabled plugin is an ordinary local Worker (type `plugin-<12 hex>`) with no
+  Profile. It flows through the same registry, readiness monitor, inventory and
+  scheduling paths; Cloud receives its `executor` identity only after announcing
+  `workspace.worker_plugins.v1`.
+- Cloud decides eligibility (the Workspace owner's live plan, the enabled pin and
+  the reported digest); the Service re-verifies entitlement, pin and every byte of
+  the artifact before each start. `service stop`, Disconnect Cloud and the
+  installation lock behave as before.
+
+Operations: [plugins runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md).
+
 ## Authentication and security
 
 The service reads the existing Workspace registration and secure runtime

@@ -24,6 +24,7 @@ dart pub get
 exec dart run \
   "-DSYNTILA_WORKSPACE_ENVIRONMENT=local" \
   "-DSYNTILA_RELEASE_TRUST_KEYS_JSON=$PUBLIC_ROOTS" \
+  "-DSYNTILA_ENTITLEMENT_TRUST_KEYS_JSON=${SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON:-{\}}" \
   "-DSYNTILA_DEVELOPMENT_PROFILE_DIRECTORY=$DEV_DRAFT_ROOT" \
   bin/syntila_workspace_service.dart --background-service \
   --data-dir "$DEV_STATE_ROOT" "$@"

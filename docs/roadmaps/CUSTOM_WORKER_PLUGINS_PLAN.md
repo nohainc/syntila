@@ -5,6 +5,22 @@
 **Architecture, entitlement, trust:** [Custom Worker plugins](../architecture/CUSTOM_WORKER_PLUGINS.md)
 **Contracts:** [Plugin protocol](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md), [Management IPC](../specifications/WORKER_PLUGIN_MANAGEMENT_IPC_V1.md)
 
+## Delivery status (branch `feat/custom-plugins-p2`)
+
+| Phase | State | Evidence |
+| --- | --- | --- |
+| P1 Protocol, ADR, entitlement contract | Done | ADR accepted; manifest/lease schemas; `workers.custom_plugins`; golden vectors |
+| P2 Local execution, entitlement-gated | Done | `pnpm validate:engine` (plugin host, 4.2, plugin-mode Engine, conformance), `pnpm validate:workspace` (store, registry, IPC, CLI, runtime, end-to-end test) |
+| P3 Cloud library, catalog, eligibility | Done | `pnpm validate:cloud` (library, pins, scheduler and eligibility against real SQL, atomic admission, list isolation) |
+| P4 Export and multi-Workspace distribution | Done for the product path: `export` writes a credential-free bundle, `import` accepts it, each Workspace pins independently, updates show a consent diff. **Open:** per-platform isolation evidence | store and service tests |
+| P5 SDK and docs | Docs done ([author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md), [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md), key tool). **Open:** `syntila_plugin_sdk`, `pack`, the `echo_dart` example | conformance package and fixtures exist |
+
+Still open, in priority order: (1) OS isolation tiers and memory/CPU/file limits
+with device evidence on macOS, Linux and Windows; (2) the Dart SDK and `pack`
+tool; (3) `plugins trust-signer`; (4) acceptance on a deployed Cloud and real
+Windows/Linux hosts. The "Phased implementation plan" below is the original
+plan; this table is the current state.
+
 ## 1. Dart SDK plan
 
 Goal: a Dart author writes a Worker in one file and gets handshake, framing,
@@ -61,6 +77,21 @@ nothing about it is sent anywhere.
    the conformance suite itself.
 
 ## 2. Conformance suite cases (`suiteVersion 1.0.0`)
+
+> **As implemented (21 cases):** `handshake.identity`, `handshake.version_negotiation`,
+> `handshake.unsupported_protocol`, `probe.passive`, `execute.single_terminal_frame`,
+> `execute.id_correlation`, `execute.progress_ordering`, `execute.large_prompt`,
+> `frame.unknown_type_tolerated`, `frame.unknown_field_tolerated`,
+> `frame.malformed_input_survives`, `frame.crlf_tolerated`, `heartbeat.pong`,
+> `cancel.within_grace`, `cancel.idempotent`, `cancel.after_terminal_ignored`,
+> `shutdown.within_grace`, `stdin.eof_exits`, `manifest.capabilities_subset`,
+> `resume.roundtrip`, `resume.unknown_key_session_not_found`. Stdout purity is
+> checked on every frame read, which replaces a separate case. Not implemented
+> because they need the host or plugin cooperation: `handshake.within_timeout`
+> (covered by the host's deadline tests), `probe.state_values`,
+> `execute.output_limit`, `execute.artifact_paths` and `heartbeat.during_work`
+> (all enforced and tested in the Engine host), `execute.read_only_request`.
+
 
 Each case is a function of observed frames and timing against the protocol
 document. Cases tagged *optional* run only when the manifest declares the

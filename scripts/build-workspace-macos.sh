@@ -156,6 +156,7 @@ dart compile exe \
   --define="SYNTILA_WORKSPACE_VERSION=$VERSION" \
   --define="SYNTILA_WORKSPACE_ENVIRONMENT=$TARGET_ENV" \
   --define="SYNTILA_RELEASE_TRUST_KEYS_JSON=$PUBLIC_RELEASE_ROOTS" \
+  --define="SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON=${SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON:-{\}}" \
   --packages="$WORKSPACE_DIR/.dart_tool/package_config.json" \
   "$WORKSPACE_DIR/bin/syntila_workspace.dart" \
   -o "$BUNDLE/syntila"

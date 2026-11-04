@@ -148,3 +148,29 @@ automatically, and the design says so rather than papering over it:
 Plugin marketplace or public registry; Cloud-hosted execution; plugin access to
 Cloud APIs; managed credentials of any kind; a Workspace GUI; a Profile editor;
 changes to the per-installation lock, `service stop` or Disconnect Cloud.
+
+## 7. Implementation status and deviations from the Phase 0 design
+
+Implemented and verified (Engine, Workspace and Cloud validations plus a full
+path acceptance test): the plugin executor path, Local Worker Protocol 4.2, the
+plugin-mode Engine, the conformance suite, the Service store/registry/IPC/CLI,
+the entitlement lease, and Cloud library, pins, scheduling and admission. See
+the [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md) and
+the [author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md).
+
+Deliberate differences from the draft, each simpler or safer than what was
+specified:
+
+| Draft | As built | Why |
+| --- | --- | --- |
+| One-time consent tokens | Consent is the **hash of the consent document**; `--accept <hash>` proceeds | The hash covers the digest, so stale or reused consent is impossible; no server-side state to expire |
+| `plugins export <id> --out FILE` | `plugins export <id> <file>` | Positional arguments are what the CLI manifest tests can route |
+| `plugins trust-signer` | Not implemented; signatures are verified and shown at consent | Deferred (D2); no behaviour depends on it |
+| New wire error codes | Plugin failures map onto the existing stable issue codes (for example `provider_authentication_required`, `profile_identity_mismatch`) with the plugin code in diagnostics | Avoids changing Cloud's execution-error enums |
+| `readonly`-class scheduling via isolation tier | Same rule, but no tier exists yet, so plugins run **Work only** | Honest default until device evidence exists |
+| Plugin `profileDefinitionId` | Cloud treats the opaque `pluginRef` and revision `1` as the stable identity for frozen step configs and session references | Reuses every Profile-keyed path without a Profile |
+| 24 conformance cases | 21 implemented; see the plan | The rest need host cooperation and are host tests |
+| `quarantine/` directory | Copy goes to an atomic staging directory, then a read-only digest-addressed store entry; entries are inert until enabled | Same guarantee, fewer states |
+
+Known gaps: OS isolation and resource limits (every plugin reports tier `none`),
+Windows/Linux device evidence, and the Dart SDK/`pack` tool.
