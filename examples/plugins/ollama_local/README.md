@@ -31,7 +31,8 @@ syntila plugins enable ollama-local
 # Repeat enable with its displayed --accept hash.
 ```
 
-The plugin returns generated text. It does not edit files, execute model-proposed
+Prompts above 24 KiB are refused before inference rather than stalling on
+very large context ingestion. The plugin returns generated text. It does not edit files, execute model-proposed
 tools, or retain conversation sessions. Syntila currently schedules custom
 plugins for Work only. The manifest declares loopback network and subprocess
 access; these declarations do not create a sandbox.
@@ -50,3 +51,18 @@ Validation: `dart analyze` and `dart test` in this directory. Tests use a fake
 CLI to check missing setup, literal stdin, local endpoint, cancellation, deadline
 and safe diagnostics. A real inference/conformance pass additionally requires
 an installed model; readiness failure is not a successful generation test.
+
+## Suggested configuration for a 64 GB Apple Silicon Mac
+
+The supplied Modelfile uses Llama 3.1 8B with an 8,192-token context and at most
+2,048 generated tokens. The smaller context leaves more memory for other apps.
+Create a local alias (it reuses the downloaded weights), then pin the plugin to it:
+
+```sh
+ollama pull llama3.1:8b
+ollama create syntila-llama:8b -f examples/plugins/ollama_local/Modelfile
+bash examples/plugins/ollama_local/build.sh syntila-llama:8b
+```
+
+The source model remains installed. `ollama ps` shows actual runtime memory and
+GPU usage. This is a practical starting configuration, not a quality benchmark.

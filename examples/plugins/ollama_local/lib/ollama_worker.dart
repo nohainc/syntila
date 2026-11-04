@@ -102,6 +102,10 @@ class OllamaLocalWorker extends PluginWorker {
 
   @override
   Future<WorkResult> execute(WorkRequest request, WorkContext context) async {
+    if (utf8.encode(request.prompt).length > 24 * 1024) {
+      throw const PluginFailure(
+          'invalid_request', 'Prompt exceeds the local worker limit of 24 KiB');
+    }
     if (request.model != null && request.model != model) {
       throw const PluginFailure('invalid_request', 'Unsupported model');
     }

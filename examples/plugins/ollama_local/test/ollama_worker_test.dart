@@ -79,6 +79,19 @@ $body
         throwsA(
             isA<PluginFailure>().having((e) => e.code, 'code', 'cancelled')));
   });
+  test('large prompts fail before launching inference', () async {
+    final worker = OllamaLocalWorker(executable: binary);
+    final large = WorkRequest(
+        id: 'large',
+        prompt: 'x' * (24 * 1024 + 1),
+        workingDirectory: temp.path,
+        readOnly: false,
+        deadline: const Duration(seconds: 1));
+    await expectLater(
+        worker.execute(large, Context()),
+        throwsA(isA<PluginFailure>()
+            .having((e) => e.code, 'code', 'invalid_request')));
+  });
   test('oversized output is refused', () async {
     final worker = await fixture('exec /usr/bin/head -c 800000 /dev/zero');
     await expectLater(
