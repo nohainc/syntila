@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 
-import 'plugin_entitlement.dart' show canonicalJson;
+import 'worker_trust_policy.dart' show canonicalJson;
 
 /// A failure with a stable management-IPC error code (see
 /// `WORKER_PLUGIN_MANAGEMENT_IPC_V1.md`). Messages are safe to show and never
@@ -116,7 +116,7 @@ String pluginManifestDigest(Map<String, Object?> manifestJson) =>
 
 /// The Service-owned, immutable plugin store. Nothing here runs code: files
 /// are copied, hashed and made read-only. Execution happens only in the
-/// Engine, from these paths, after an entitlement-gated enablement.
+/// Engine, from these paths, after enablement.
 class PluginStore {
   PluginStore({
     required this.root,
@@ -578,7 +578,7 @@ class PluginStore {
 
   /// Writes a credential-free bundle: the verified package files, the optional
   /// signature and `bundle.json`. The data directory, sessions, logs,
-  /// environment, entitlement lease and runtime credentials are never read.
+  /// environment and runtime credentials are never read.
   Future<void> export(InstalledPlugin plugin, String outputPath) async {
     final target = File(outputPath);
     final canonicalParent = target.parent.existsSync()

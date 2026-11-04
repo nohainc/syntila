@@ -3,8 +3,6 @@ import 'dart:io';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:syntila_workspace/local_worker_registry.dart';
 import 'package:syntila_workspace/plugin_executor.dart';
-import 'package:syntila_workspace/plugin_store.dart'
-    show PluginServiceException;
 import 'package:syntila_workspace/plugin_worker_runtime.dart';
 import 'package:syntila_workspace/worker_readiness.dart';
 import 'package:test/test.dart';
@@ -74,7 +72,6 @@ void main() {
     runtime = PluginWorkerRuntime(
       store: harness.service.store,
       registry: harness.service.registry,
-      entitlement: harness.service.entitlement,
       probe: ({
         required executor,
         required workerTypeId,
@@ -168,18 +165,12 @@ void main() {
     }
   });
 
-  test('a lapsed entitlement stops new probes and spawns', () async {
+  test('no local lease does not block an enabled plugin; Cloud gates use',
+      () async {
     await enabled();
     harness.now = testStart.add(const Duration(hours: 25));
-    final result = await runtime.assess(worker(), LocalWorkerProbeMode.passive);
-    expect(result.issueCode, 'plugin_entitlement_lapsed');
-    expect(probes, isEmpty);
-    expect(await runtime.isEffectivelyEnabled(ref), isFalse);
-    await expectLater(
-      runtime.prepareExecution(ref),
-      throwsA(isA<PluginServiceException>()
-          .having((e) => e.code, 'code', 'plugin_entitlement_lapsed')),
-    );
+    expect(await runtime.isEffectivelyEnabled(ref), isTrue);
+    await runtime.prepareExecution(ref);
   });
 
   test('changed bytes on disk are refused before anything runs', () async {
@@ -228,20 +219,6 @@ void main() {
         lastSeenAt: 'x',
       ))!;
       expect((item['executor'] as Map)['sessionResume'], 'tested');
-    });
-
-    test('a lapsed plugin reports disabled with the reason, not removed',
-        () async {
-      await enabled();
-      harness.now = testStart.add(const Duration(hours: 25));
-      final item = (await runtime.inventoryFor(
-        worker(),
-        engineVersion: '1.4.0',
-        lastSeenAt: 'x',
-      ))!;
-      expect(item['activationState'], 'disabled');
-      expect(item['readinessState'], 'worker_runtime_unavailable');
-      expect(item['readinessIssueCode'], 'plugin_entitlement_lapsed');
     });
 
     test('an unknown plugin has no inventory entry', () async {
@@ -293,49 +270,6 @@ void main() {
     });
   });
 
-  group('lapse drain cap', () {
-    test('running work gets 30 minutes after a lapse, then is cancelled',
-        () async {
-      await enabled();
-      var cancelled = 0;
-      final enforcer = PluginLapseEnforcer(
-        entitlement: harness.service.entitlement,
-        cancelPluginWork: () async => ++cancelled,
-        clock: () => harness.now,
-      );
-      expect(await enforcer.tick(), 0);
-      expect(enforcer.lapsedAt, isNull);
-
-      harness.now = testStart.add(const Duration(hours: 25));
-      expect(await enforcer.tick(), 0); // lapse noticed, drain starts
-      expect(enforcer.lapsedAt, harness.now);
-      harness.now = harness.now.add(const Duration(minutes: 29));
-      expect(await enforcer.tick(), 0);
-      expect(cancelled, 0);
-      harness.now = harness.now.add(const Duration(minutes: 1));
-      expect(await enforcer.tick(), 1);
-      expect(cancelled, 1);
-    });
-
-    test('renewal resets the clock so a later lapse gets a fresh drain',
-        () async {
-      await enabled();
-      var cancelled = 0;
-      final enforcer = PluginLapseEnforcer(
-        entitlement: harness.service.entitlement,
-        cancelPluginWork: () async => ++cancelled,
-        clock: () => harness.now,
-      );
-      harness.now = testStart.add(const Duration(hours: 25));
-      await enforcer.tick();
-      harness.now = testStart.add(const Duration(hours: 2));
-      await harness.service.entitlement.accept(testLease);
-      await enforcer.tick();
-      expect(enforcer.lapsedAt, isNull);
-      expect(cancelled, 0);
-    });
-  });
-
   group('with the real registry and readiness monitor', () {
     late LocalWorkerRegistry workers;
     late WorkerReadinessMonitor monitor;
@@ -360,8 +294,7 @@ void main() {
       wired = PluginWorkerRuntime(
         store: harness.service.store,
         registry: harness.service.registry,
-        entitlement: harness.service.entitlement,
-        probe: ({
+          probe: ({
           required executor,
           required workerTypeId,
           required stateDirectory,
@@ -390,22 +323,6 @@ void main() {
       expect(plugin.toolName, 'acme-reviewer');
       expect(plugin.toolVersion, '1.4.2');
       expect(probes, isNotEmpty);
-    });
-
-    test('a lapse makes the Worker not ready without deleting it', () async {
-      await enabled();
-      harness.now = testStart.add(const Duration(hours: 25));
-      await monitor.checkNow(
-        mode: LocalWorkerProbeMode.passive,
-        workerTypeId: ref,
-        includeDisabled: true,
-      );
-      final plugin = (await workers.list()).single;
-      expect(plugin.status, LocalWorkerStatus.needsAttention);
-      expect(plugin.readinessIssueCode, 'plugin_entitlement_lapsed');
-      // Intent is preserved: the pin is still enabled.
-      final record = await harness.service.registry.find('acme-reviewer');
-      expect(record!.pin!.enabled, isTrue);
     });
 
     test('disabling stops scheduling and the Worker stays listed', () async {

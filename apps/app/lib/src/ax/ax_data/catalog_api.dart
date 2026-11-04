@@ -82,12 +82,11 @@ mixin _CatalogApi on _AxApiClientCore {
       AxWorkflowWorkspaceSettings.fromJson(
           await _getJson(Uri.parse(_workflowWorkspaceUrl(spaceId))));
   Future<AxWorkflowWorkspaceSettings> selectWorkflowWorkspace(
-      {String? spaceId, String? workspaceId, bool inherit = false}) async {
+      {String? spaceId, String? workspaceId}) async {
     final response = await client.put(Uri.parse(_workflowWorkspaceUrl(spaceId)),
         headers: _headers(contentType: 'application/json'),
         body: jsonEncode({
           'workspaceId': workspaceId,
-          'inherit': inherit,
           'confirmReset': true
         }));
     if (response.statusCode < 200 || response.statusCode >= 300) {

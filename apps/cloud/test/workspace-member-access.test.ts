@@ -34,6 +34,7 @@ function fixture() {
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','Stream','active','owner','now','now');
     INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('workspace','owner','Workspace','now','now'),('other','member','Other','now','now');
     INSERT INTO user_workflow_settings VALUES('owner','workspace','now');
+    INSERT INTO space_workflow_settings VALUES('P','workspace','now');
     INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at)
       VALUES('worker-a','workspace','owner','chatgpt','enabled','ready',1,1,'now','now','now'),('worker-b','workspace','owner','gemini','enabled','ready',1,1,'now','now','now');
     INSERT INTO user_workflow_configurations(user_id,workspace_id,workflow_id,schema_version,configuration_json,updated_at)
@@ -382,9 +383,9 @@ describe("shared Worker inventory", () => {
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('stranger','s@test','S','now','now')",
       );
       expect(ids(await inventory(f, "stranger"))).toEqual([]);
-      // A Space with its own Workspace shares that one instead.
+      // Switching the Space to another Workspace shares that one instead.
       f.sqlite.exec(
-        "INSERT INTO space_workflow_settings VALUES('P','other','now')",
+        "UPDATE space_workflow_settings SET workspace_id='other' WHERE space_id='P'",
       );
       expect(ids(await inventory(f, "member"))).toEqual([]);
     } finally {

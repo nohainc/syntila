@@ -11,12 +11,6 @@ export const WORKER_PLUGIN_PAID_FEATURE = "workers.custom_plugins" as const;
 export const WORKER_PLUGIN_MANIFEST_SCHEMA_VERSION = 1 as const;
 export const WORKER_PLUGIN_PROTOCOL_MAJOR = 1 as const;
 export const WORKER_PLUGIN_ID_PREFIX = "plugin-" as const;
-/** Longest lease Cloud may issue; also the offline grace ceiling. */
-export const PLUGIN_LEASE_MAX_TTL_MS = 24 * 60 * 60 * 1000;
-/** Running work may finish this long after an entitlement lapse. */
-export const PLUGIN_LAPSE_DRAIN_MAX_MS = 30 * 60 * 1000;
-/** Local clock may trail the highest Cloud time seen by at most this much. */
-export const PLUGIN_LEASE_CLOCK_SKEW_MS = 5 * 60 * 1000;
 export const WORKER_PLUGIN_MAX_ARTIFACT_BYTES = 256 * 1024 * 1024;
 
 const sha256Hex = z.string().regex(/^[0-9a-f]{64}$/);
@@ -152,36 +146,3 @@ export const PluginManifestSchema = z
   })
   .strict();
 export type PluginManifest = z.infer<typeof PluginManifestSchema>;
-
-const timestamp = z.iso.datetime();
-
-/** Claims signed by Cloud. The signature covers canonical JSON of these. */
-export const PluginEntitlementLeaseSchema = z
-  .object({
-    v: z.literal(1),
-    kid: z.string().min(1).max(64),
-    feature: z.literal(WORKER_PLUGIN_PAID_FEATURE),
-    ownerUserId: z.string().min(1).max(128),
-    workspaceId: z.string().min(1).max(128),
-    installationId: z.string().min(1).max(128),
-    leaseId: z.string().min(1).max(128),
-    issuedAt: timestamp,
-    expiresAt: timestamp,
-    planStatus: z.enum(["active", "trialing", "past_due"]),
-    planPeriodEnd: timestamp.nullable(),
-  })
-  .strict();
-export type PluginEntitlementLease = z.infer<
-  typeof PluginEntitlementLeaseSchema
->;
-
-export const PluginEntitlementLeaseEnvelopeSchema = z
-  .object({
-    lease: PluginEntitlementLeaseSchema,
-    /** Base64 Ed25519 signature over canonical JSON of `lease`. */
-    signature: z.string().min(1).max(256),
-  })
-  .strict();
-export type PluginEntitlementLeaseEnvelope = z.infer<
-  typeof PluginEntitlementLeaseEnvelopeSchema
->;

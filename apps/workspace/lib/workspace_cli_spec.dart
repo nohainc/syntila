@@ -753,15 +753,6 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             destructive: true,
             inGroup: true,
           ),
-          command(
-            icon: GuiIcons.check,
-            info: true,
-            'entitlement',
-            'Plus status',
-            'Show whether custom plugins are currently available',
-            service('plugins.entitlement'),
-            inGroup: true,
-          ),
         ],
       ),
       command(

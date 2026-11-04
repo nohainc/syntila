@@ -143,8 +143,6 @@ class WorkspacePluginCommands {
               'invalid_request', 'fingerprint must be a SHA-256 hex digest.');
         }
         return service.untrustSigner(fingerprint as String);
-      case 'plugins.entitlement':
-        return service.entitlementStatus();
       default:
         throw WorkspaceManagerProtocolException(
           'unsupported_command',

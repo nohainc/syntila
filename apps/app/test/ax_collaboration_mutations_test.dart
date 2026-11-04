@@ -34,7 +34,10 @@ class CollaborationSource extends AxFixtureDataSource {
 
   @override
   Future<AxSpace> createSpace(
-      {required String name, String? description, String? instructions}) {
+      {required String name,
+      String? description,
+      String? instructions,
+      String? workspaceId}) {
     final response = Completer<AxSpace>();
     creates.add(response);
     return response.future;

@@ -24,7 +24,7 @@ class _SpaceWorkspaceSelector extends StatefulWidget {
 }
 
 class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
-  static const _followDefault = '';
+  static const _noWorkspace = '';
   bool _busy = false;
   int _folderRevision = 0;
 
@@ -92,22 +92,17 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
                       child: const Text('Retry')),
                 ]);
           }
-          final name = settings.workspaces
-              .where((workspace) => workspace.id == settings.workspaceId)
-              .firstOrNull
-              ?.name;
           final theme = Theme.of(context);
           if (!widget.isOwner) return const SizedBox.shrink();
           final known = settings.workspaces
               .any((workspace) => workspace.id == settings.workspaceId);
-          final current = settings.inherited
-              ? _followDefault
-              : (settings.workspaceId ?? _followDefault);
+          // Every Space names its own Workspace or none; there is no default.
+          final current = settings.workspaceId ?? _noWorkspace;
           final choices = <String, String>{
-            _followDefault: 'Default Workspace',
+            _noWorkspace: 'No Workspace',
             for (final workspace in settings.workspaces)
               workspace.id: workspace.name,
-            if (!settings.inherited && settings.workspaceId != null && !known)
+            if (settings.workspaceId != null && !known)
               settings.workspaceId!: 'Unavailable Workspace',
           };
           final isDark = theme.brightness == Brightness.dark;
@@ -161,7 +156,7 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             Flexible(
                                 child: Text(
-                                    choices[current] ?? 'Default Workspace',
+                                    choices[current] ?? 'No Workspace',
                                     overflow: TextOverflow.ellipsis,
                                     style: _settingValueStyle(theme))),
                             const SizedBox(width: 2),
@@ -172,12 +167,14 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
                     ),
                   ),
                 ]),
-                if (settings.inherited) ...[
+                if (settings.workspaceId == null || !known) ...[
                   Padding(
                     padding: const EdgeInsets.only(
                         left: _settingLabelWidth + 8, bottom: 4),
                     child: Text(
-                        'Following the default Workspace${name == null ? '' : ': $name'}',
+                        settings.workspaceId == null
+                            ? 'Choose a Workspace to run Work in this Space.'
+                            : 'This Workspace is unavailable. Choose another to run Work.',
                         style: _settingLabelStyle(theme)),
                   ),
                 ],
@@ -196,16 +193,9 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
   Future<void> _select(
       String id, String current, AxWorkflowWorkspaceSettings settings) async {
     if (id == current) return;
-    final inherit = id == _followDefault;
+    final targetWorkspace = id == _noWorkspace ? null : id;
     setState(() => _busy = true);
     try {
-      final targetWorkspace = inherit
-          ? (await widget.configurations.engine.refresh(
-                  AxWorkflowConfigurations(widget.configurations.source,
-                          engine: widget.configurations.engine)
-                      .workspaceQuery))
-              .workspaceId
-          : id;
       final sameWorkspace = targetWorkspace == settings.workspaceId;
       final attachedFolders = sameWorkspace ? 0 : await _attachedFolderCount();
       if (!mounted) return;
@@ -218,8 +208,8 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
                   builder: (context) => AlertDialog(
                           constraints: SyntilaDialogStyle.small,
                           title: const Text('Change Workspace?'),
-                          content: Text((inherit
-                                  ? 'This Space will follow your default Workspace. Its own workflow overrides are reset, and existing runs keep their recorded settings.'
+                          content: Text((targetWorkspace == null
+                                  ? 'This Space will have no Workspace, so no Work can run in it until you choose one. Its workflow overrides are reset, and existing runs keep their recorded settings.'
                                   : 'Threads in this Space will use the Workers and workflows of the selected Workspace. This Space’s workflow overrides are reset, the Workspace is authorized to run Work here, and existing runs keep their recorded settings.') +
                               folderNotice),
                           actions: [
@@ -233,8 +223,7 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
                           ]))) ==
               true;
       if (confirmed != true || !mounted) return;
-      await widget.configurations
-          .selectWorkspace(inherit ? null : id, inherit: inherit);
+      await widget.configurations.selectWorkspace(targetWorkspace);
       if (mounted) setState(() => _folderRevision++);
     } catch (error) {
       if (mounted) {

@@ -5,7 +5,6 @@ import 'package:syntila_protocol/worker_descriptor.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 import 'local_worker_registry.dart';
-import 'plugin_entitlement.dart';
 import 'plugin_executor.dart';
 import 'plugin_registry.dart';
 import 'plugin_service.dart';
@@ -44,7 +43,6 @@ class PluginWorkerRuntime {
   PluginWorkerRuntime({
     required this.store,
     required this.registry,
-    required this.entitlement,
     required this.probe,
     required this.engineStateDirectory,
     this.engineProtocol = '1.0',
@@ -52,7 +50,6 @@ class PluginWorkerRuntime {
 
   final PluginStore store;
   final PluginRegistry registry;
-  final PluginEntitlementStore entitlement;
   final PluginProbeRunner probe;
   final Directory Function(String pluginId) engineStateDirectory;
   final String engineProtocol;
@@ -67,11 +64,12 @@ class PluginWorkerRuntime {
     return (record: record, pin: pin);
   }
 
-  /// Intent AND entitled. Used before any new plugin process may start.
+  /// Enabled intent. Used before any new plugin process may start; Syntila
+  /// Plus is enforced by Cloud when it admits the assignment.
   Future<bool> isEffectivelyEnabled(String pluginRef) async =>
-      await _pinned(pluginRef) != null && (await entitlement.status()).entitled;
+      await _pinned(pluginRef) != null;
 
-  /// Verifies enablement, entitlement and every byte of the pinned artifact,
+  /// Verifies enablement and every byte of the pinned artifact,
   /// then returns the executor to launch. Throws a [PluginServiceException]
   /// with a stable code when anything is off. Nothing is spawned here.
   Future<PluginExecution> prepareExecution(String pluginRef) async {
@@ -80,12 +78,6 @@ class PluginWorkerRuntime {
       throw const PluginServiceException(
         'plugin_not_enabled',
         'This plugin is not enabled on this Workspace.',
-      );
-    }
-    if (!(await entitlement.status()).entitled) {
-      throw const PluginServiceException(
-        'plugin_entitlement_lapsed',
-        'Custom Worker plugins are paused: Syntila Plus is not active.',
       );
     }
     final version = pinned.record.versions[pinned.pin.version];
@@ -181,8 +173,7 @@ class PluginWorkerRuntime {
     final record = await registry.findByRef(worker.workerTypeId);
     final pin = record?.pin;
     if (record == null || pin == null) return null;
-    final entitled = (await entitlement.status()).entitled;
-    final effective = pin.enabled && entitled;
+    final effective = pin.enabled;
     String? issue = worker.readinessIssueCode;
     var readiness = worker.readinessState.wireValue;
     InstalledPlugin? installed;
@@ -202,7 +193,7 @@ class PluginWorkerRuntime {
       }
     } else {
       readiness = WorkerReadinessState.runtimeUnavailable.wireValue;
-      issue = pin.enabled ? 'plugin_entitlement_lapsed' : 'plugin_not_enabled';
+      issue = 'plugin_not_enabled';
     }
     final version = record.versions[pin.version];
     final capabilities = installed == null
@@ -316,43 +307,5 @@ class LocalPluginWorkerHost implements PluginWorkerHost {
   Future<void> remove(String pluginRef) async {
     final existing = await _find(pluginRef);
     if (existing != null) await workers.remove(existing.id);
-  }
-}
-
-/// Bounds how long plugin work may run after Syntila Plus lapses. New spawns
-/// stop immediately (see [PluginWorkerRuntime.prepareExecution]); work that
-/// was already running finishes, like admitted Work after any other downgrade
-/// (ADR-022), but only for [drain] (30 minutes by default), because a plugin
-/// is user-supplied code. Call [tick] periodically.
-class PluginLapseEnforcer {
-  PluginLapseEnforcer({
-    required this.entitlement,
-    required this.cancelPluginWork,
-    DateTime Function()? clock,
-    this.drain = pluginLapseDrainMax,
-  }) : _clock = clock ?? DateTime.now;
-
-  final PluginEntitlementStore entitlement;
-
-  /// Cancels all running plugin assignments and returns how many Workers had
-  /// work to cancel.
-  final Future<int> Function() cancelPluginWork;
-  final Duration drain;
-  final DateTime Function() _clock;
-  DateTime? _lapsedAt;
-
-  /// When the current lapse was first noticed, or null while entitled.
-  DateTime? get lapsedAt => _lapsedAt;
-
-  Future<int> tick() async {
-    final status = await entitlement.status();
-    if (status.entitled) {
-      _lapsedAt = null;
-      return 0;
-    }
-    final now = _clock();
-    _lapsedAt ??= now;
-    if (now.difference(_lapsedAt!) < drain) return 0;
-    return cancelPluginWork();
   }
 }

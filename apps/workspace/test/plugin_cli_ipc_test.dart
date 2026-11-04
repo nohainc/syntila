@@ -94,14 +94,11 @@ void main() {
       );
     });
 
-    test('a Free account gets paid_plan_required over IPC', () async {
-      harness.cloud.paid = false;
-      await expectIpcCode(
-        commands.handle('plugins.import', {
-          'path': writePluginPackage(temp),
-        }),
-        'paid_plan_required',
-      );
+    test('a Free account can import over IPC', () async {
+      final result = await commands.handle('plugins.import', {
+        'path': writePluginPackage(temp),
+      });
+      expect(result, isA<Map>());
     });
 
     test('plugins.test streams progress as events and returns the report',
@@ -320,7 +317,7 @@ void main() {
       expect('$out', contains('protocol behavior only'));
     });
 
-    test('shows when Plus is not verified and that enabled plugins pause',
+    test('lists plugins without a local Plus warning',
         () async {
       await run(
           ['plugins', 'list'],
@@ -345,7 +342,7 @@ void main() {
                   },
                 ],
               });
-      expect('$out', contains('Syntila Plus is not verified'));
+      expect('$out', isNot(contains('Syntila Plus')));
       expect('$out', contains('plus_required'));
     });
 

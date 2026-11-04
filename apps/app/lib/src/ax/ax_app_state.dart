@@ -536,62 +536,21 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   }
 
   Future<void> _createSpace() async {
-    var name = '';
-    var description = '';
-    final values = await showDialog<(String, String?)>(
-      context: navigatorKey.currentContext ?? context,
-      builder: (dialogContext) {
-        void submit() {
-          Navigator.pop(
-            dialogContext,
-            (
-              name.isEmpty ? 'My first space' : name,
-              description.trim().isEmpty ? null : description.trim(),
-            ),
-          );
-        }
-
-        return AlertDialog(
-          title: const Text('Create Space'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  autofocus: true,
-                  onChanged: (value) => name = value,
-                  onSubmitted: (_) => submit(),
-                  decoration: const InputDecoration(labelText: 'Space name'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  onChanged: (value) => description = value,
-                  decoration: const InputDecoration(
-                    labelText: 'Description (optional)',
-                  ),
-                  maxLines: 2,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: submit,
-              child: const Text('Create'),
-            ),
-          ],
-        );
-      },
+    final source = widget.dataSource;
+    final values = await showCreateSpaceDialog(
+      navigatorKey.currentContext ?? context,
+      loadWorkspaces: () async => source is AxWorkflowWorkspaceDataSource
+          ? (await (source as AxWorkflowWorkspaceDataSource)
+                  .loadWorkflowWorkspace())
+              .workspaces
+          : const <AxWorkflowWorkspace>[],
     );
     if (values == null) return;
     try {
-      final space = await store.collaboration
-          .createSpace(name: values.$1, description: values.$2);
+      final space = await store.collaboration.createSpace(
+          name: values.name,
+          description: values.description,
+          workspaceId: values.workspaceId);
       if (!mounted) return;
       _navigateTo(AxNavigation.space(space.id), replace: true);
       _showSnackBar('Space created. Create a Thread to get started.');

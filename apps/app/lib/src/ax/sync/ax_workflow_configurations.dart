@@ -110,8 +110,7 @@ class AxWorkflowConfigurations {
           .loadWorkflowWorkspace(spaceId: spaceId));
   Future<AxWorkflowWorkspaceSettings> ensureWorkspace() =>
       engine.ensure(workspaceQuery, policy: AxCachePolicy.cacheFirst);
-  Future<void> selectWorkspace(String? workspaceId,
-      {bool inherit = false}) async {
+  Future<void> selectWorkspace(String? workspaceId) async {
     if (_writeLease != null) {
       throw StateError('A workflow update is already pending');
     }
@@ -123,9 +122,7 @@ class AxWorkflowConfigurations {
           query: workspaceQuery,
           execute: () => (source as AxWorkflowWorkspaceDataSource)
               .selectWorkflowWorkspace(
-                  spaceId: spaceId,
-                  workspaceId: workspaceId,
-                  inherit: inherit)));
+                  spaceId: spaceId, workspaceId: workspaceId)));
       if (epoch != _sessionEpoch) throw const AxMutationSuperseded();
       // Space overrides of inheriting Spaces are reset on Cloud. Drop the old
       // values before reloading so a successful reset cannot leave a stale

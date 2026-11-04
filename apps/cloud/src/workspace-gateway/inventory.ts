@@ -294,12 +294,8 @@ export async function recordWorkspaceWorkerInventory(
            WHERE i.workspace_id = ?1
              AND i.activation_state = 'enabled'
              AND i.readiness_state = 'ready'
-             AND (
-               EXISTS (SELECT 1 FROM user_workflow_settings u
-                        WHERE u.workspace_id = i.workspace_id)
-               OR EXISTS (SELECT 1 FROM space_workflow_settings s
-                           WHERE s.workspace_id = i.workspace_id)
-             )
+             AND EXISTS (SELECT 1 FROM space_workflow_settings s
+                          WHERE s.workspace_id = i.workspace_id)
         )`,
   )
     .bind(workspaceId, now)

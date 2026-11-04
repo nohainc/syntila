@@ -6,7 +6,6 @@ import {
   handleUploadAvatar,
 } from "./profile.js";
 import { handleWorkflowWorkspace } from "./workflow-workspace.js";
-import { handlePluginEntitlementLease } from "./plugin-entitlement.js";
 import {
   handlePluginLibrary,
   handleWorkspacePluginPin,
@@ -499,9 +498,6 @@ export async function routeWorkerRequest(
         decodeURIComponent(workspacePluginMatch[2]),
         ctx,
       );
-    }
-    if (url.pathname === "/api/workspace-runtime/worker-plugins/entitlement") {
-      return await handlePluginEntitlementLease(request, env);
     }
     if (
       request.method === "GET" &&

@@ -18,13 +18,13 @@ class IntegrationSource extends WorkflowSource
     implements AxSpaceWorkflowConfigurationDataSource {
   @override
   Future<AxWorkflowWorkspaceSettings> selectWorkflowWorkspace(
-      {String? spaceId, String? workspaceId, bool inherit = false}) async {
+      {String? spaceId, String? workspaceId}) async {
     if (spaceId != null) {
       spaceValues.remove(spaceId);
       spaceDefaults.remove(spaceId);
     }
     return super.selectWorkflowWorkspace(
-        spaceId: spaceId, workspaceId: workspaceId, inherit: inherit);
+        spaceId: spaceId, workspaceId: workspaceId);
   }
 
   final spaceValues = <String, Map<String, AxUserWorkflowConfiguration>>{};

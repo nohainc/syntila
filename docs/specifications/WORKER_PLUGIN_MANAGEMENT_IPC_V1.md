@@ -40,24 +40,24 @@ command, ≤ 1 MiB frames). They add a command group; they add no second channel
 ## 3. Commands
 
 Lifecycle order a user follows: `import → validate → test → register → enable`.
-All state transitions are Service-owned.
+All state transitions are Service-owned. Every command works on any plan; Syntila
+Plus is enforced only by Cloud when it schedules plugin work.
 
-| CLI | IPC command | Entitlement (Cloud-checked) | Long-running | Summary |
-| --- | --- | --- | --- | --- |
-| `syntila plugins list` | `plugins.list` | free | no | Library, local installs, per-Workspace enablement, readiness, entitlement hint. |
-| `syntila plugins show ID [--version V]` | `plugins.show` | free | no | Manifest, digests, origin, consent, last conformance, isolation tier. |
-| `syntila plugins import PATH` | `plugins.import` | **Plus** | yes | Service copies the package into `quarantine/`, hashes it, parses the manifest. No code runs. |
-| `syntila plugins validate ID [--version V]` | `plugins.validate` | free | no | Static: manifest schema, platform artifact present and hash matches, protocol range, path rules, access vs. capability consistency, signature if present. Never spawns. |
-| `syntila plugins test ID [--version V]` | `plugins.test` | **Plus** | yes | Conformance suite in the Service → Engine host. Streams `plugin.testProgress`; the CLI only renders. |
-| `syntila plugins register ID [--version V] [--accept HASH]` | `plugins.register` | **Plus** | no | Consent, then publish metadata to the account library. Requires `validate` and `test` passed for this digest. |
-| `syntila plugins enable ID [--version V] [--accept HASH] [--shareable]` | `plugins.enable` | **Plus** | no | Per-Workspace: consent diff if the pin moves, pin the digest, create the inventory row. |
-| `syntila plugins disable ID` | `plugins.disable` | free | no | Per-Workspace: stop scheduling; running work drains. Intent recorded; files kept. |
-| `syntila plugins export ID FILE [--version V]` | `plugins.export` | free | no | Write a credential-free bundle (architecture §4.5). Works offline and after downgrade. |
-| `syntila plugins remove ID` | `plugins.remove` | free | no | Remove from the account library and local store. Refuses while enabled anywhere or in use. |
-| `syntila plugins signers` | `plugins.signers` | free | no | List installation-local recognized key fingerprints. |
-| `syntila plugins trust-signer ID [--version V] [--accept HASH]` | `plugins.trustSigner` | **Plus** (valid lease) | no | Re-verify the installed signature, show a fingerprint consent document, then save local key recognition. |
-| `syntila plugins untrust-signer FINGERPRINT` | `plugins.untrustSigner` | free | no | Forget local key recognition, including offline or after lapse. Does not disable existing plugins. |
-| `syntila plugins entitlement` | `plugins.entitlement` | free | no | Shows lease state: entitled, expiry, offline remaining. A **hint**; Cloud decides. |
+| CLI | IPC command | Long-running | Summary |
+| --- | --- | --- | --- |
+| `syntila plugins list` | `plugins.list` | no | Library, local installs, per-Workspace enablement, readiness. |
+| `syntila plugins show ID [--version V]` | `plugins.show` | no | Manifest, digests, origin, consent, last conformance, isolation tier. |
+| `syntila plugins import PATH` | `plugins.import` | yes | Service copies the package into `quarantine/`, hashes it, parses the manifest. No code runs. |
+| `syntila plugins validate ID [--version V]` | `plugins.validate` | no | Static: manifest schema, platform artifact present and hash matches, protocol range, path rules, access vs. capability consistency, signature if present. Never spawns. |
+| `syntila plugins test ID [--version V]` | `plugins.test` | yes | Conformance suite in the Service → Engine host. Streams `plugin.testProgress`; the CLI only renders. |
+| `syntila plugins register ID [--version V] [--accept HASH]` | `plugins.register` | no | Consent, then publish metadata to the account library. Requires `validate` and `test` passed for this digest. |
+| `syntila plugins enable ID [--version V] [--accept HASH] [--shareable]` | `plugins.enable` | no | Per-Workspace: consent diff if the pin moves, pin the digest, create the inventory row. |
+| `syntila plugins disable ID` | `plugins.disable` | no | Per-Workspace: stop scheduling; running work drains. Intent recorded; files kept. |
+| `syntila plugins export ID FILE [--version V]` | `plugins.export` | no | Write a credential-free bundle (architecture §4.5). Works offline on any plan. |
+| `syntila plugins remove ID` | `plugins.remove` | no | Remove from the account library and local store. Refuses while enabled anywhere or in use. |
+| `syntila plugins signers` | `plugins.signers` | no | List installation-local recognized key fingerprints. |
+| `syntila plugins trust-signer ID [--version V] [--accept HASH]` | `plugins.trustSigner` | no | Re-verify the installed signature, show a fingerprint consent document, then save local key recognition. |
+| `syntila plugins untrust-signer FINGERPRINT` | `plugins.untrustSigner` | no | Forget local key recognition, including offline or after lapse. Does not disable existing plugins. |
 
 `--workspace` is not needed: the Service is the one installation's Workspace,
 so `enable`/`disable` are per-Workspace by construction. A multi-Workspace
@@ -115,7 +115,6 @@ The IPC envelope remains v1 with additive commands; older Services return
 ```json
 // plugins.list → result
 {"schemaVersion":1,
- "entitlement":{"entitled":true,"source":"lease","expiresAt":"2026-11-04T10:00:00Z"},
  "plugins":[{
    "pluginRef":"plugin-3fa91c04b2d7","pluginId":"acme-reviewer",
    "versions":[{"version":"1.4.2","manifestDigest":"…","installed":true,
@@ -147,9 +146,6 @@ All errors use the existing envelope `{ok:false, error:{code, message}}` where
 | `version_mismatch` | IPC integer differs (existing) | any |
 | `unauthorized` | Capability key rejected (existing) | any |
 | `invalid_request` | Malformed payload (existing) | any |
-| `paid_plan_required` | Cloud returned 402 for `workers.custom_plugins` (mirrors Cloud code) | import, test, register, enable, trust-signer |
-| `entitlement_unverifiable` | Cloud unreachable and no valid lease | same |
-| `entitlement_clock_invalid` | Clock earlier than the stored Cloud time mark | same |
 | `cloud_unavailable` | Library/enablement call needs Cloud | register, enable, remove |
 | `login_required` | No human session for an account action (`syntila login`) | register, enable, remove, library reads |
 | `plugin_not_found` | Unknown ID/version | most |
@@ -166,7 +162,6 @@ All errors use the existing envelope `{ok:false, error:{code, message}}` where
 | `plugin_signer_trust_invalid` | Local signer store is unreadable/corrupt; preserve it for recovery | signer reads/mutations and signed consent |
 | `plugin_signature_invalid` | Signature present and does not verify | validate, import |
 | `plugin_not_enabled` | Disable of a plugin that is not enabled | disable |
-| `plugin_entitlement_lapsed` | Readiness/launch code while Plus is not active (plugins paused) | readiness, launch |
 | `plugin_quota_exceeded` | Cloud library limit (20 plugins, 50 versions each) | register |
 | `plugin_in_use` | Still enabled, or running/queued work references it | remove |
 | `plugin_quota_exceeded` | Library/install/data size limits | import |
@@ -179,17 +174,14 @@ Errors never include absolute paths, plugin stderr, or any secret.
 ## 5. Cloud calls the Service makes on the CLI's behalf
 
 The Service, not the CLI, calls Cloud; account-scoped calls use the stored
-human session (`DesktopHumanSession`), runtime calls use the Workspace runtime
-credential. A lost human session yields `login_required` and does not affect
+human session (`DesktopHumanSession`). A lost human session yields `login_required` and does not affect
 running plugin Workers (same principle as `syntila logout` today).
 
 | IPC command | Cloud call |
 | --- | --- |
-| `plugins.import` (entitlement pre-check) | `GET /api/me/plan` (hint) **and** the lease; authoritative check is at `register` |
 | `plugins.registerCommit` | `POST /api/me/worker-plugins` (library create/version) |
 | `plugins.enableCommit` / `disable` | `PUT/DELETE /api/workspaces/:id/worker-plugins/:pluginRef` |
 | `plugins.remove` | `DELETE /api/me/worker-plugins/:pluginRef[/versions/:v]` |
-| lease refresh | `POST /api/workspace-runtime/worker-plugins/entitlement` |
 
 Payloads contain manifest metadata, digests, origin display strings and consent
 hashes. They never contain executable bytes, local paths, environment values,

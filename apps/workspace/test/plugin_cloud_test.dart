@@ -32,8 +32,6 @@ HttpPluginCloud cloud({int? port, String? workspaceId = 'ws-1'}) =>
       cloudUrl: 'http://127.0.0.1:${port ?? server.port}',
       credentialStore: credentials,
       workspaceId: workspaceId,
-      workspaceRuntimeId: 'rt-1',
-      runtimeToken: 'runtime-token',
       timeout: const Duration(seconds: 2),
     );
 
@@ -128,17 +126,6 @@ void main() {
     expect((requests.single.body as Map)['consentHash'], 'c' * 64);
   });
 
-  test('the lease uses the runtime credential, not the human session',
-      () async {
-    respond = (r) async {
-      r.response.write('{"lease":{},"signature":"s"}');
-    };
-    final lease = await cloud().fetchLease();
-    expect(lease.containsKey('lease'), isTrue);
-    expect(requests.single.auth, 'Bearer runtime-token');
-    expect(requests.single.path, contains('workspaceRuntimeId=rt-1'));
-  });
-
   test('requires a live human session for account actions', () async {
     await expectCloudCode(
       cloud().removeFromLibrary('plugin-3fa91c04b2d7'),
@@ -202,7 +189,7 @@ void main() {
     final port = closed.port;
     await closed.close(force: true);
     await expectCloudCode(
-      cloud(port: port).fetchLease(),
+      cloud(port: port).removeFromLibrary('plugin-3fa91c04b2d7'),
       'cloud_unavailable',
     );
   });

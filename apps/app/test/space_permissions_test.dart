@@ -112,7 +112,7 @@ class OwnWorkersSource extends PermissionSource
       const AxWorkflowWorkspaceSettings(workspaceId: 'space-ws');
   @override
   Future<AxWorkflowWorkspaceSettings> selectWorkflowWorkspace(
-          {String? spaceId, String? workspaceId, bool inherit = false}) =>
+          {String? spaceId, String? workspaceId}) =>
       loadWorkflowWorkspace(spaceId: spaceId);
 }
 

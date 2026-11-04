@@ -4,10 +4,7 @@ import {
   spaceMemberAdmissionSql,
   spaceMemberCapacityRefused,
 } from "../account-plan.js";
-import {
-  loadWorkflowWorkspace,
-  prepareWorkflowWorkspaceGrant,
-} from "./workflow-workspace.js";
+import { prepareWorkflowWorkspaceGrant } from "./workflow-workspace.js";
 import {
   defaultSpaceMemberPermissions,
   spaceMemberPermissions,
@@ -183,6 +180,18 @@ export async function handleCreateSpace(
     typeof settings.showAiHistory !== "boolean"
   )
     throw new HttpError(400, "showAiHistory must be a boolean");
+  // The Workspace is an explicit choice per Space (or none); Spaces never
+  // receive a Workspace implicitly.
+  if (
+    body.workspaceId !== undefined &&
+    body.workspaceId !== null &&
+    typeof body.workspaceId !== "string"
+  )
+    throw new HttpError(400, "workspaceId must be a string or null");
+  const workspaceId =
+    typeof body.workspaceId === "string" && body.workspaceId
+      ? body.workspaceId
+      : null;
   const now = new Date().toISOString();
   const id = `space-${crypto.randomUUID()}`;
 
@@ -197,13 +206,14 @@ export async function handleCreateSpace(
     if (duplicate) {
       throw new HttpError(409, "You already have a Space with this name");
     }
-    const workflowWorkspace = await loadWorkflowWorkspace(env, context.userId);
-    const inheritedGrants = workflowWorkspace.workspaceId
+    // Refused (403) when the chosen Workspace is not owned or lent to the
+    // creator; nothing is created then.
+    const workspaceGrants = workspaceId
       ? await prepareWorkflowWorkspaceGrant(
           env,
           context.userId,
           id,
-          workflowWorkspace.workspaceId,
+          workspaceId,
           now,
         )
       : [];
@@ -225,7 +235,10 @@ export async function handleCreateSpace(
          VALUES (?1, ?2, ?3, 'owner', ?4, ?4)
          ON CONFLICT(space_id, user_id) DO NOTHING`,
         ).bind(`pm-${crypto.randomUUID()}`, id, context.userId, now),
-        ...inheritedGrants,
+        env.SYNTILA_DB.prepare(
+          "INSERT INTO space_workflow_settings(space_id, workspace_id, updated_at) VALUES (?1, ?2, ?3)",
+        ).bind(id, workspaceId, now),
+        ...workspaceGrants,
       ],
     });
     return json(

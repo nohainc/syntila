@@ -11,9 +11,8 @@ Code references below were checked against the repository on 2026-11-03.
 > built. Where the build differs, ADR-027 §7 lists the difference and the reason.
 > Notable corrections to the text below: consent is accepted by passing the
 > consent-document **hash** (`--accept <hash>`), not a one-time token;
-> signer recognition is installation-local and never bypasses consent; the lease endpoint, library routes
-> and Workspace pins live in `apps/cloud/src/routes/plugin-entitlement.ts` and
-> `worker-plugins.ts`; migration `0101_worker_plugins.sql` adds the tables and
+> signer recognition is installation-local and never bypasses consent; library routes
+> and Workspace pins live in `apps/cloud/src/routes/worker-plugins.ts`; migration `0101_worker_plugins.sql` adds the tables and
 > the `worker_catalog.origin/owner_user_id` and
 > `workspace_worker_inventory.executor_json` columns; plugin Workers use
 > `pluginRef` with revision `1` as their stable "profile" identity.
@@ -227,15 +226,21 @@ requester's plan is irrelevant for plugin gating (a borrower can only reach an
 owner's Workspace while the owner is Plus anyway, because sharing is itself a
 paid feature).
 
-The one genuinely new piece is the **entitlement lease** (§3.4), needed because
-the Service must make decisions while Cloud is unreachable.
+> **Superseded (2026-11-04).** The entitlement lease (§3.4), the local Plus
+> checks (§3.3) and the 30-minute lapse drain (§3.5) were removed. Plus is
+> enforced only by Cloud, only when plugin work is used: scheduler eligibility,
+> thread policy and the atomic assignment INSERT. Importing, testing,
+> registering, enabling and every other management action is free on any plan,
+> and the Workspace does no local plan check. Running work finishes after a
+> lapse; only new assignments are refused. The remaining text in §3 is kept for
+> history.
 
 ### 3.2 Where Cloud checks (source of truth)
 
 | Moment | Check | On failure |
 | --- | --- | --- |
-| **Library import / register** (`POST /api/me/worker-plugins`) | `requirePaidFeature(env, userId, "workers.custom_plugins")` | 402 `paid_plan_required` |
-| **Enablement** (`PUT /api/workspaces/:id/worker-plugins/:ref`, intent `enabled`) | Same, for the Workspace owner; also checks the version exists in the owner's library | 402; disabling is always allowed |
+| **Library register** (`POST /api/me/worker-plugins`) | None (free on any plan) | — |
+| **Enablement** (`PUT /api/workspaces/:id/worker-plugins/:ref`) | None (free); checks the version exists in the owner's library | — |
 | **Assignment eligibility** (scheduler) | Plugin branch rejects with `plugin_entitlement_required` unless `paidOwnerSql(ew.owner_user_id)` | Candidate skipped; other Workers still considered |
 | **Assignment INSERT** | Same predicate inside the `WHERE`, atomic with the write | Nothing written; scheduler re-evaluates |
 | **Workspace start-up / reconnect** | On `hello` Cloud evaluates the owner's entitlement, announces it in `hello.ack`, and issues a lease. If not entitled, Cloud marks plugin inventory rows `plugin_entitlement_lapsed` and the Service does not probe or spawn plugins | Official Workers unaffected |

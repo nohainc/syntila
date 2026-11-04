@@ -33,6 +33,7 @@ import '../features/common/space_color.dart';
 import '../features/navigation/resizable_sidebar.dart';
 import '../features/navigation/ax_top_bar.dart';
 import '../features/spaces/spaces_pages.dart';
+import '../features/spaces/create_space_dialog.dart';
 import '../features/spaces/archived_spaces_page.dart';
 import '../features/search/search_page.dart';
 import '../features/workspace/workspaces_page.dart';

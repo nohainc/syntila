@@ -367,6 +367,7 @@ void main() {
       'session_resume_failed',
       'quota_exhausted',
       'context_limit_exceeded',
+      'additional_folders_unsupported',
       'execution_failed',
       'unknown_code'
     ]) {
@@ -381,7 +382,8 @@ void main() {
             workerId: 'worker-a',
             workerDisplayName: 'ChatGPT',
             errorCode: code,
-            failureCategoryMessage: code == 'quota_exhausted'
+            failureCategoryMessage: code == 'quota_exhausted' ||
+                    code == 'additional_folders_unsupported'
                 ? 'The provider could not start'
                 : null,
             errorMessage: raw,
@@ -429,7 +431,9 @@ void main() {
                 ? 'The provider’s usage limit has been reached. Wait for the limit to reset or choose another worker, then retry.'
                 : code == 'context_limit_exceeded'
                     ? 'This conversation no longer fits the AI model’s context window. Retry to compact the Worker session or to clear AI History.'
-                    : 'Your request could not be completed. Send a new message to try again.';
+                    : code == 'additional_folders_unsupported'
+                        ? 'This worker cannot use the Space’s additional folders yet. Detach them from the Space or choose another worker, then retry.'
+                        : 'Your request could not be completed. Send a new message to try again.';
         expect(find.text(friendly), findsOneWidget);
         expect(find.textContaining('C123'), findsNothing);
         for (final hidden in [

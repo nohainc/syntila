@@ -10,7 +10,6 @@ import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:syntila_workspace/local_worker_registry.dart';
 import 'package:syntila_workspace/plugin_engine_conformance.dart';
-import 'package:syntila_workspace/plugin_entitlement.dart';
 import 'package:syntila_workspace/plugin_registry.dart';
 import 'package:syntila_workspace/plugin_service.dart';
 import 'package:syntila_workspace/plugin_store.dart';
@@ -101,15 +100,6 @@ void main() {
         clock: () => testStart,
       );
       final registry = PluginRegistry(File('${state.path}/registry.json'));
-      final entitlement = PluginEntitlementStore(
-        file: File('${state.path}/entitlement.json'),
-        verifier: PluginLeaseVerifier({
-          pluginEntitlementPublisher: {'ent-1': testLeasePublicKey},
-        }),
-        workspaceId: 'ws-1',
-        installationId: 'inst-1',
-        clock: () => testStart,
-      );
       final supervisor = CliWorkerEngineSupervisor(
         engineExecutable: engine.path,
       );
@@ -120,7 +110,6 @@ void main() {
       final runtime = PluginWorkerRuntime(
         store: store,
         registry: registry,
-        entitlement: entitlement,
         engineStateDirectory: (id) =>
             Directory('${state.path}/engine-state/$id'),
         probe: ({
@@ -141,7 +130,6 @@ void main() {
       final service = WorkspacePluginService(
         store: store,
         registry: registry,
-        entitlement: entitlement,
         cloud: FakePluginCloud(),
         conformance: EnginePluginConformance(
           supervisor: supervisor,

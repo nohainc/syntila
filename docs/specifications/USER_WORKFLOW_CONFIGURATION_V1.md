@@ -461,18 +461,24 @@ Not implemented: a total run-time quota and a per-grant Work Root (the Work Root
 is local to the Workspace Service). AX screens for per-person overrides,
 invitations and the access list are pending; the API above is complete.
 
-### Default Workspace action in AX
+### Space Workspace selection in AX
 
-Each eligible Workspace tab exposes a Make default text button; the selected
-Workspace displays a Default Workspace badge. This uses the existing global
-user workflow-Workspace setting, with confirmation of resets to overrides in
-inheriting Spaces. Spaces using Default Workspace (including new Spaces) and
-their Threads resolve that same selection. Explicit Space assignments and
-accepted runs remain unchanged. Per-Workspace workflow preferences are retained.
-The sharing action uses a + icon with an Add people tooltip.
+There is no account-wide default Workspace for Spaces. A Space uses only the
+Workspace explicitly chosen for it, or none (it cannot run Work until one is
+chosen). Attaching a Workspace is a permission decision, so it is never
+inherited or selected silently.
 
-On the Space page, toggling between inherited and explicit selection of the
-same effective Workspace saves without a confirmation dialog. Returning to
-Default Workspace reads the current global selection before comparing IDs;
-selecting a different effective Workspace retains the reset warning. The
-existing selection API and inheritance/reset semantics remain unchanged.
+- The Create Space dialog has a Workspace field that starts at "No Workspace".
+  If the user owns exactly one Workspace, a one-click "Use <name>" button picks
+  it; nothing is preselected. Cloud refuses a Workspace the user does not own
+  or that is not shared with them.
+- Changing a Space's Workspace is an owner-only action with confirmation.
+- A revoked or unavailable Workspace shows "unavailable"; there is no automatic
+  fallback to another machine.
+- The account-level Workspace selection only decides whose account workflow
+  templates are displayed. It grants no Space access.
+- Migration `0103` gave every existing Space an explicit Workspace (the one it
+  effectively used if still usable, otherwise none).
+
+Not yet built: a "Mac was set up again - reconnect these Spaces?" prompt after
+a Workspace reinstall. Until then the owner re-selects the Workspace per Space.

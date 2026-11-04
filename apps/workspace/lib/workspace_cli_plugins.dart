@@ -112,17 +112,6 @@ extension _PluginOutput on WorkspaceCli {
         out.writeln(
             'Existing plugin enablement is unchanged; use plugins disable to stop scheduling.');
         return true;
-      case 'plugins.entitlement':
-        if (result['entitled'] == true) {
-          out.writeln('Syntila Plus: active (verified lease).');
-          out.writeln(
-              'Offline grace remaining: ${result['offlineRemainingSeconds']} s.');
-        } else {
-          out.writeln('Syntila Plus: not verified (${result['reason']}).');
-          out.writeln('Custom plugins need an active Plus plan.');
-        }
-        out.writeln('This is a local hint; Cloud decides what runs.');
-        return true;
     }
     return false;
   }
@@ -132,10 +121,6 @@ extension _PluginOutput on WorkspaceCli {
       : '$digest';
 
   void _printPluginList(Map result) {
-    final entitlement = result['entitlement'];
-    if (entitlement is Map && entitlement['entitled'] != true) {
-      out.writeln('Syntila Plus is not verified; enabled plugins are paused.');
-    }
     final plugins = (result['plugins'] as List? ?? const []).whereType<Map>();
     if (plugins.isEmpty) out.writeln('No plugins imported.');
     for (final plugin in plugins) {

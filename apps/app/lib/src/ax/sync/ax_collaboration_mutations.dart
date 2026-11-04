@@ -38,7 +38,10 @@ class AxCollaborationMutations {
           : [...values, value]);
 
   Future<AxSpace> createSpace(
-      {required String name, String? description, String? instructions}) {
+      {required String name,
+      String? description,
+      String? instructions,
+      String? workspaceId}) {
     final local = AxSpace(
         id: _temporary('space'),
         name: name,
@@ -53,7 +56,10 @@ class AxCollaborationMutations {
       isCurrent: (change) => change.isCurrent(),
       execute: (_) async {
         final value = await source.createSpace(
-            name: name, description: description, instructions: instructions);
+            name: name,
+            description: description,
+            instructions: instructions,
+            workspaceId: workspaceId);
         if (value.id.isEmpty || value.id.startsWith('local-')) {
           throw const AxApiException('Space response identity does not match');
         }

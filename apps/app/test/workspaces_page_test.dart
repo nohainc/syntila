@@ -4,7 +4,6 @@ import 'workflows_page_test.dart' show WorkflowSource;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/features/workspace/workspaces_page.dart';
-import 'package:syntila_app/src/features/common/workspace_release.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
 
@@ -20,89 +19,22 @@ void main() {
   }
 
   group('Workspaces page', () {
-    testWidgets(
-        'Make default persists the selection inherited by Spaces and shows a badge',
-        (tester) async {
+    testWidgets('offers no default Workspace control', (tester) async {
       final source = WorkflowSource();
-      final engine = AxSyncEngine();
-      final configurations = AxWorkflowConfigurations(source, engine: engine);
-      final inherited =
-          AxWorkflowConfigurations(source, engine: engine, spaceId: 'S');
-      final explicit =
-          AxWorkflowConfigurations(source, engine: engine, spaceId: 'E');
-      source.selectedSpaceWorkspaces['E'] = 'ws';
-      await inherited.ensureWorkspace();
-      await explicit.ensureWorkspace();
+      final configurations =
+          AxWorkflowConfigurations(source, engine: AxSyncEngine());
       await tester.pumpWidget(buildTestScaffold(WorkspacesPage(
         workspaces: [
           AxWorkspace.fromJson(
               {'id': 'ws', 'name': 'First Workspace', 'role': 'owner'}),
-          AxWorkspace.fromJson(
-              {'id': 'other', 'name': 'Second Workspace', 'role': 'owner'}),
         ],
         workflowConfigurations: configurations,
       )));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('default-workspace-badge')),
-          findsOneWidget);
-      await tester.tap(find.byKey(const Key('workspace-tab-other')));
-      await tester.pumpAndSettle();
-      expect(
-          find.byKey(const ValueKey('default-workspace-badge')), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('make-default-workspace')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
+      // Each Space chooses its own Workspace; nothing is a default.
+      expect(find.text('Default Workspace'), findsNothing);
+      expect(find.text('Make default'), findsNothing);
       expect(source.workspaceWrites, 0);
-      await tester.tap(find.byKey(const ValueKey('make-default-workspace')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('confirm-default-workspace')));
-      await tester.pumpAndSettle();
-      expect(source.selectedWorkspace, 'other');
-      expect(source.workspaceWrites, 1);
-      expect(find.byKey(const ValueKey('default-workspace-badge')),
-          findsOneWidget);
-      expect((await inherited.ensureWorkspace()).workspaceId, 'other');
-      expect((await explicit.ensureWorkspace()).workspaceId, 'ws');
-      await tester.tap(find.byKey(const Key('workspace-tab-ws')));
-      await tester.pumpAndSettle();
-      expect(
-          find.byKey(const ValueKey('default-workspace-badge')), findsNothing);
-      expect(
-          find.byKey(const ValueKey('make-default-workspace')), findsOneWidget);
-    });
-
-    test('detects an available Workspace update', () {
-      expect(workspaceUpdateAvailable('1.0.2'), isTrue);
-      expect(workspaceUpdateAvailable('1.0.3'), isFalse);
-      expect(workspaceUpdateAvailable('not-installed'), isFalse);
-    });
-
-    test('parses runtime-reported machine facts', () {
-      final workspace = AxWorkspace.fromJson({
-        'id': 'workspace-1',
-        'name': 'MacBook Pro',
-        'slug': 'macbook-pro',
-        'status': 'online',
-        'hasRuntimeIdentity': false,
-        'role': 'owner',
-        'platform': 'macos',
-        'architecture': 'arm64',
-        'hostname': 'Vitalii-MacBook-Pro',
-        'appVersion': '1.0.3',
-        'activeTransport': 'http_long_poll',
-        'connectionMode': 'Connected · HTTPS fallback',
-        'runtimeCapabilitiesJson': '["dart", "shell"]',
-      });
-
-      expect(workspace.platform, 'macos');
-      expect(workspace.status, 'online');
-      expect(workspace.architecture, 'arm64');
-      expect(workspace.hostname, 'Vitalii-MacBook-Pro');
-      expect(workspace.appVersion, '1.0.3');
-      expect(workspace.activeTransport, 'http_long_poll');
-      expect(workspace.connectionMode, 'Connected · HTTPS fallback');
-      expect(workspace.runtimeCapabilities, ['dart', 'shell']);
     });
 
     testWidgets('shows registered machine facts and live Workspace summary',

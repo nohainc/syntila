@@ -7,7 +7,7 @@ import {
   handlePluginLibrary,
   handleWorkspacePluginPin,
 } from "../src/routes/worker-plugins.js";
-import { pluginManifestDigest } from "../src/plugin-entitlement-lease.js";
+import { pluginManifestDigest } from "../src/plugin-manifest-digest.js";
 import { recordWorkspaceWorkerInventory } from "../src/workspace-gateway/inventory.js";
 import {
   PluginInventoryExecutorSchema,
@@ -201,11 +201,9 @@ describe("library", () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it("requires the paid feature, checked by Cloud", async () => {
-    await expect(register("free")).rejects.toMatchObject({
-      status: 402,
-      code: "paid_plan_required",
-    });
+  it("lets a Free account register; Plus is enforced only when used", async () => {
+    const response = await register("free");
+    expect(response.status).toBe(201);
   });
 
   it("keeps accounts apart: same plugin ID, different refs, no cross visibility", async () => {
@@ -332,15 +330,13 @@ describe("enablement", () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it("enabling is paid but disabling is always allowed", async () => {
+  it("enabling and disabling work on any plan; Plus gates use", async () => {
     await enable("plus", "ws-plus", ref, body());
     store.sqlite.exec(
       "UPDATE account_plans SET status='canceled' WHERE user_id='plus'",
     );
-    await expect(enable("plus", "ws-plus", ref, body())).rejects.toMatchObject({
-      status: 402,
-      code: "paid_plan_required",
-    });
+    const on = await enable("plus", "ws-plus", ref, body());
+    expect(on.status).toBe(200);
     const off = await enable("plus", "ws-plus", ref, body({ enabled: false }));
     expect(off.status).toBe(200);
     const row = store.sqlite

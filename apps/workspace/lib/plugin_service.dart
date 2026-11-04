@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 
-import 'plugin_entitlement.dart';
+import 'worker_trust_policy.dart' show canonicalJson;
 import 'plugin_registry.dart';
 import 'plugin_store.dart';
 import 'plugin_signer_trust.dart';
@@ -34,9 +34,6 @@ abstract interface class PluginCloudPort {
   });
 
   Future<void> removeFromLibrary(String pluginRef);
-
-  /// A fresh signed entitlement lease for this installation.
-  Future<Map<String, Object?>> fetchLease();
 }
 
 /// A Cloud failure with a management-IPC error code, for example
@@ -103,7 +100,6 @@ class WorkspacePluginService {
   WorkspacePluginService({
     required this.store,
     required this.registry,
-    required this.entitlement,
     required this.cloud,
     required this.conformance,
     this.activeAssignments = _none,
@@ -120,7 +116,6 @@ class WorkspacePluginService {
   final PluginStore store;
   final PluginRegistry registry;
   final PluginSignerTrust signerTrust;
-  final PluginEntitlementStore entitlement;
   final PluginCloudPort cloud;
   final PluginConformancePort conformance;
 
@@ -130,66 +125,24 @@ class WorkspacePluginService {
   final Future<int> Function(String pluginRef) activeAssignments;
   final DateTime Function() _clock;
 
-  // ---- entitlement -----------------------------------------------------------
-
-  /// A UX hint plus a lease refresh. Cloud re-checks every account action; a
-  /// Free account is told so by Cloud (402), never decided here.
-  Future<void> _requireEntitlement() async {
-    var status = await entitlement.status();
-    if (status.entitled) return;
-    try {
-      final result = await entitlement.accept(await cloud.fetchLease());
-      if (result.isValid) return;
-    } on PluginCloudException catch (error) {
-      if (error.code == 'paid_plan_required') {
-        throw const PluginServiceException(
-          'paid_plan_required',
-          'Custom Worker plugins require Syntila Plus.',
-        );
-      }
-      if (error.code == 'cloud_unavailable') {
-        status = await entitlement.status();
-        throw PluginServiceException(
-          status.reason == 'entitlementClockInvalid'
-              ? 'entitlement_clock_invalid'
-              : 'entitlement_unverifiable',
-          'Syntila Plus could not be verified. Connect to Cloud and retry.',
-        );
-      }
-      throw PluginServiceException(error.code, error.message);
-    }
-    throw const PluginServiceException(
-      'entitlement_unverifiable',
-      'Syntila Plus could not be verified. Connect to Cloud and retry.',
-    );
-  }
-
-  Future<Map<String, Object?>> entitlementStatus() async => {
-        'schemaVersion': 1,
-        ...(await entitlement.status()).toJson(_clock().toUtc()),
-      };
-
   // ---- reads -------------------------------------------------------------------
 
   Future<Map<String, Object?>> list() async {
-    final status = await entitlement.status();
     final records = await registry.all();
     return {
       'schemaVersion': 1,
-      'entitlement': status.toJson(_clock().toUtc()),
       'plugins': [
-        for (final record in records.values) _summary(record, status.entitled),
+        for (final record in records.values) _summary(record),
       ],
     };
   }
 
   Future<Map<String, Object?>> show(String pluginId, [String? version]) async {
     final record = await _record(pluginId);
-    final status = await entitlement.status();
     final selected = _version(record, version);
     return {
       'schemaVersion': 1,
-      ..._summary(record, status.entitled),
+      ..._summary(record),
       'selected': {
         ..._versionJson(selected),
         'signerTrustedLocally': selected.signer != null &&
@@ -198,7 +151,7 @@ class WorkspacePluginService {
     };
   }
 
-  Map<String, Object?> _summary(PluginRecord record, bool entitled) {
+  Map<String, Object?> _summary(PluginRecord record) {
     final pin = record.pin;
     final intent = pin?.intent;
     return {
@@ -213,9 +166,8 @@ class WorkspacePluginService {
           'pinnedVersion': pin.version,
           'manifestDigest': pin.manifestDigest,
           'intent': intent,
-          // Effective state is intent AND entitled; the intent is preserved.
-          'effective': pin.enabled && entitled ? 'enabled' : 'disabled',
-          if (pin.enabled && !entitled) 'reason': 'plus_required',
+          // Plan limits apply when Cloud schedules work, not here.
+          'effective': pin.enabled ? 'enabled' : 'disabled',
           'shareable': pin.shareable,
         },
     };
@@ -231,7 +183,7 @@ class WorkspacePluginService {
         if (v.conformance != null) 'conformance': v.conformance!.toJson(),
       };
 
-  // Signer recognition does not bypass digest, consent, conformance or Plus.
+  // Signer recognition does not bypass digest, consent or conformance.
   Future<Map<String, Object?>> signers() async => {
         'schemaVersion': 1,
         'signers': await signerTrust.all(),
@@ -242,7 +194,6 @@ class WorkspacePluginService {
 
   Future<Map<String, Object?>> trustSigner(String pluginId,
       {String? version, String? acceptHash}) async {
-    await _requireEntitlement();
     final record = await _record(pluginId);
     final selected = _version(record, version);
     // Re-read the signature and artifact; never trust the registry's claim.
@@ -291,7 +242,6 @@ class WorkspacePluginService {
   // ---- lifecycle -----------------------------------------------------------------
 
   Future<Map<String, Object?>> import(String path) async {
-    await _requireEntitlement();
     final installed = await store.import(path);
     await registry.mutate((records) {
       final record = records.putIfAbsent(
@@ -351,7 +301,6 @@ class WorkspacePluginService {
     String? version,
     void Function(String progress)? onProgress,
   }) async {
-    await _requireEntitlement();
     final record = await _record(pluginId);
     final selected = _version(record, version);
     final installed = await _load(selected, pluginId);
@@ -400,7 +349,6 @@ class WorkspacePluginService {
     String? version,
     String? acceptHash,
   }) async {
-    await _requireEntitlement();
     final record = await _record(pluginId);
     final selected = _version(record, version);
     final installed = await _load(selected, pluginId);
@@ -450,7 +398,6 @@ class WorkspacePluginService {
     String? acceptHash,
     bool shareable = false,
   }) async {
-    await _requireEntitlement();
     final record = await _record(pluginId);
     final selected = _version(record, version ?? _latestRegistered(record));
     if (selected.registeredAt == null || record.pluginRef == null) {

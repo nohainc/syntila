@@ -8,8 +8,7 @@ import 'secure_credentials.dart';
 import 'workspace_registration_models.dart';
 
 /// Account-library and enablement calls to Cloud. Account actions use the
-/// desktop human session (`syntila login`); the entitlement lease uses the
-/// Workspace runtime credential. Only manifest metadata, digests, origin
+/// desktop human session (`syntila login`). Only manifest metadata, digests, origin
 /// display strings and consent hashes are sent: never executable bytes, local
 /// paths, environment values or credentials.
 class HttpPluginCloud implements PluginCloudPort {
@@ -17,8 +16,6 @@ class HttpPluginCloud implements PluginCloudPort {
     required this.cloudUrl,
     required this.credentialStore,
     required this.workspaceId,
-    required this.workspaceRuntimeId,
-    required this.runtimeToken,
     HttpClient? client,
     this.timeout = const Duration(seconds: 20),
   }) : _client = client ?? HttpClient();
@@ -26,8 +23,6 @@ class HttpPluginCloud implements PluginCloudPort {
   final String cloudUrl;
   final SecureCredentialStore credentialStore;
   final String? workspaceId;
-  final String? workspaceRuntimeId;
-  final String? runtimeToken;
   final Duration timeout;
   final HttpClient _client;
 
@@ -177,24 +172,6 @@ class HttpPluginCloud implements PluginCloudPort {
       'DELETE',
       '/api/me/worker-plugins/$pluginRef',
       await _humanCredential(),
-    );
-  }
-
-  @override
-  Future<Map<String, Object?>> fetchLease() async {
-    final runtimeId = workspaceRuntimeId;
-    final token = runtimeToken;
-    if (runtimeId == null || token == null || token.isEmpty) {
-      throw const PluginCloudException(
-        'cloud_unavailable',
-        'This Workspace is not connected to Cloud.',
-      );
-    }
-    return _send(
-      'POST',
-      '/api/workspace-runtime/worker-plugins/entitlement',
-      token,
-      query: {'workspaceRuntimeId': runtimeId},
     );
   }
 }

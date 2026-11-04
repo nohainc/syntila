@@ -21,6 +21,7 @@ mixin _SpaceApi on _AxApiClientCore {
     required String name,
     String? description,
     String? instructions,
+    String? workspaceId,
   }) async {
     final response = await client.post(
       Uri.parse('$baseUrl/spaces'),
@@ -31,6 +32,7 @@ mixin _SpaceApi on _AxApiClientCore {
           'description': description.trim(),
         if (instructions != null && instructions.trim().isNotEmpty)
           'settings': {'instructions': instructions.trim()},
+        if (workspaceId != null) 'workspaceId': workspaceId,
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {

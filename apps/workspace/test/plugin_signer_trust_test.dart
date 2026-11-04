@@ -192,12 +192,4 @@ void main() {
     final listed = await commands.handle('plugins.signers', {}) as Map;
     expect(listed['signers'], hasLength(2));
   });
-
-  test('Free users cannot add signer recognition', () async {
-    harness.cloud.paid = false;
-    await expectLater(
-        harness.service.trustSigner('acme-reviewer'),
-        throwsA(isA<PluginServiceException>()
-            .having((e) => e.code, 'code', 'paid_plan_required')));
-  });
 }

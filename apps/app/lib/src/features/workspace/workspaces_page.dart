@@ -1,11 +1,6 @@
 import 'package:syntila_design/syntila_design.dart';
 import '../../ax/ax_people.dart';
-import '../../ax/ax_data.dart'
-    show
-        AxAccountPlanDataSource,
-        AxWorkflowWorkspaceDataSource,
-        AxWorkflowWorkspaceSettings;
-import '../../ax/sync/ax_query_builder.dart';
+import '../../ax/ax_data.dart' show AxAccountPlanDataSource;
 import 'package:flutter/material.dart';
 
 import '../../ax/ax_models.dart';
@@ -245,13 +240,6 @@ class _WorkspacesPageState extends State<WorkspacesPage>
                 ],
               ),
             ),
-            if (configurations != null &&
-                configurations.source is AxWorkflowWorkspaceDataSource)
-              _DefaultWorkspaceControl(
-                key: ValueKey('default-workspace-${workspace.id}'),
-                configurations: configurations,
-                workspace: workspace,
-              ),
           ],
         ),
         if (widget.onSetParallelSlots != null &&
@@ -547,7 +535,13 @@ class _WorkerCard extends StatelessWidget {
             color: worker.isReady ? null : SyntilaColors.warningText(isDark),
           );
 
-    final modelsText = models.isEmpty ? 'Unavailable' : models.join(' · ');
+    // Plugin Workers have no model catalog; the plugin chooses its own model.
+    final isPlugin = worker.workerTypeId.startsWith('plugin-');
+    final modelsText = models.isNotEmpty
+        ? models.join(' · ')
+        : isPlugin
+            ? 'Custom plugin · model set by the plugin'
+            : 'Unavailable';
 
     return Card(
       key: Key('workspace-worker-row-${worker.id}'),
@@ -713,88 +707,6 @@ String _statusLabel(AxWorkspace workspace) =>
             'revoked' => 'Revoked',
             _ => workspace.status,
           };
-
-/// The same user selection inherited by Spaces and their Threads.
-class _DefaultWorkspaceControl extends StatefulWidget {
-  const _DefaultWorkspaceControl(
-      {super.key, required this.configurations, required this.workspace});
-  final AxWorkflowConfigurations configurations;
-  final AxWorkspace workspace;
-  @override
-  State<_DefaultWorkspaceControl> createState() =>
-      _DefaultWorkspaceControlState();
-}
-
-class _DefaultWorkspaceControlState extends State<_DefaultWorkspaceControl> {
-  bool _busy = false;
-  String? _error;
-
-  Future<void> _makeDefault() async {
-    final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-              constraints: SyntilaDialogStyle.small,
-              title: const Text('Change default Workspace?'),
-              content: Text(
-                  'Spaces using the default Workspace, including new Spaces, will use ${widget.workspace.name}. Workflow overrides in inheriting Spaces are reset. Saved per-Workspace workflows and existing runs keep their settings.'),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel')),
-                FilledButton(
-                    key: const ValueKey('confirm-default-workspace'),
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Make default')),
-              ],
-            ));
-    if (confirmed != true || !mounted) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await widget.configurations.selectWorkspace(widget.workspace.id);
-    } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) =>
-      AxQueryBuilder<AxWorkflowWorkspaceSettings>(
-        engine: widget.configurations.engine,
-        query: widget.configurations.workspaceQuery,
-        builder: (context, state) {
-          final settings = state.data;
-          final selected = settings?.workspaceId == widget.workspace.id;
-          final eligible =
-              settings?.workspaces.any((w) => w.id == widget.workspace.id) ??
-                  false;
-          return Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            if (selected)
-              const Chip(
-                  key: ValueKey('default-workspace-badge'),
-                  avatar: Icon(Icons.check, size: 16),
-                  label: Text('Default Workspace'))
-            else if (eligible)
-              TextButton(
-                  key: const ValueKey('make-default-workspace'),
-                  onPressed: _busy ? null : _makeDefault,
-                  child: const Text('Make default')),
-            if (state.error != null)
-              TextButton(
-                  onPressed: () => widget.configurations.engine
-                      .refresh(widget.configurations.workspaceQuery),
-                  child: const Text('Retry default Workspace')),
-            if (_error != null)
-              Text(_error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ]);
-        },
-      );
-}
 
 /// Bounds match Cloud's accepted range for a Workspace's slot total.
 const _minParallelSlots = 1;

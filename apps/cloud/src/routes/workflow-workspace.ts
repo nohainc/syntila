@@ -24,9 +24,11 @@ export async function loadWorkflowWorkspace(
         .bind(spaceId)
         .first<{ workspaceId: string | null }>()
     : null;
+  // A Space uses only its own choice; it never inherits the account's
+  // Workspace (attaching a Workspace lets Work run on that machine).
   return {
-    workspaceId: space ? space.workspaceId : (global?.workspaceId ?? null),
-    inherited: Boolean(spaceId && !space),
+    workspaceId: spaceId ? (space?.workspaceId ?? null) : (global?.workspaceId ?? null),
+    inherited: false,
   };
 }
 /**
@@ -266,40 +268,17 @@ export async function handleWorkflowWorkspace(
     (body.inherit !== undefined && typeof body.inherit !== "boolean")
   )
     throw new HttpError(400, "Invalid Workspace selection");
-  if (body.inherit && !spaceId)
-    throw new HttpError(
-      400,
-      "Only a Space may inherit global Workspace selection",
-    );
-  if (
-    !body.inherit &&
-    body.workspaceId !== null &&
-    typeof body.workspaceId !== "string"
-  )
+  // Spaces no longer inherit an account-level Workspace.
+  if (body.inherit)
+    throw new HttpError(400, "Choose a Workspace for this Space");
+  if (body.workspaceId !== null && typeof body.workspaceId !== "string")
     throw new HttpError(400, "Choose a Workspace");
-  const selected = body.inherit
-    ? (await loadWorkflowWorkspace(env, ownerUserId)).workspaceId
-    : (body.workspaceId as string | null);
+  const selected = body.workspaceId as string | null;
   if (selected && !choices.results.some((w) => w.id === selected))
     throw new HttpError(403, "Workspace is not owned by the settings owner");
-  const changed =
-    selected !== current.workspaceId ||
-    Boolean(body.inherit) !== current.inherited;
-  const resetToGlobal = Boolean(body.inherit && spaceId && current.inherited);
-  if (!changed && !resetToGlobal)
+  if (selected === current.workspaceId)
     return json({ ...current, workspaces: choices.results });
-  // User configuration is stored per Workspace, so a global switch only
-  // discards overrides of Spaces that inherit the global Workspace.
-  const inheritingOverrides = spaceId
-    ? 0
-    : ((
-        await env.SYNTILA_DB.prepare(
-          "SELECT COUNT(*) AS n FROM space_workflow_configurations WHERE space_id IN (SELECT s.id FROM spaces s WHERE s.owner_user_id=?1 AND NOT EXISTS (SELECT 1 FROM space_workflow_settings ws WHERE ws.space_id=s.id))",
-        )
-          .bind(ownerUserId)
-          .first<{ n: number }>()
-      )?.n ?? 0);
-  if ((spaceId || inheritingOverrides > 0) && body.confirmReset !== true)
+  if (spaceId && body.confirmReset !== true)
     throw new HttpError(
       409,
       "Changing Workspace resets Space workflow overrides; confirmReset is required",
@@ -308,14 +287,7 @@ export async function handleWorkflowWorkspace(
   const now = new Date().toISOString();
   const statements: D1PreparedStatement[] = [];
   if (spaceId) {
-    if (body.inherit)
-      statements.push(
-        db
-          .prepare("DELETE FROM space_workflow_settings WHERE space_id = ?1")
-          .bind(spaceId),
-      );
-    else
-      statements.push(
+    statements.push(
         db
           .prepare(
             "INSERT INTO space_workflow_settings(space_id,workspace_id,updated_at) VALUES(?1,?2,?3) ON CONFLICT(space_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at",
@@ -354,6 +326,8 @@ export async function handleWorkflowWorkspace(
         )),
       );
   } else {
+    // The account-level selection only chooses which Workspace's account
+    // workflow templates are shown. It never attaches a Workspace to a Space.
     statements.push(
       db
         .prepare(
@@ -361,53 +335,10 @@ export async function handleWorkflowWorkspace(
         )
         .bind(ownerUserId, selected, now),
     );
-    statements.push(
-      db
-        .prepare(
-          "DELETE FROM space_workflow_configurations WHERE space_id IN (SELECT s.id FROM spaces s WHERE s.owner_user_id=?1 AND NOT EXISTS (SELECT 1 FROM space_workflow_settings ws WHERE ws.space_id=s.id))",
-        )
-        .bind(ownerUserId),
-    );
-    statements.push(
-      db
-        .prepare(
-          "DELETE FROM space_workflow_defaults WHERE space_id IN (SELECT s.id FROM spaces s WHERE s.owner_user_id=?1 AND NOT EXISTS (SELECT 1 FROM space_workflow_settings ws WHERE ws.space_id=s.id))",
-        )
-        .bind(ownerUserId),
-    );
-    statements.push(
-      db
-        .prepare(
-          "DELETE FROM space_additional_folders WHERE workspace_id IS NOT ?2 AND space_id IN (SELECT s.id FROM spaces s WHERE s.owner_user_id=?1 AND NOT EXISTS (SELECT 1 FROM space_workflow_settings ws WHERE ws.space_id=s.id))",
-        )
-        .bind(ownerUserId, selected),
-    );
-  }
-  const affectedSpaces = spaceId
-    ? [spaceId]
-    : (
-        await db
-          .prepare(
-            "SELECT s.id FROM spaces s WHERE s.owner_user_id=?1 AND NOT EXISTS (SELECT 1 FROM space_workflow_settings ws WHERE ws.space_id=s.id)",
-          )
-          .bind(ownerUserId)
-          .all<{ id: string }>()
-      ).results.map((space) => space.id);
-  if (!spaceId && selected) {
-    for (const id of affectedSpaces)
-      statements.push(
-        ...(await prepareWorkflowWorkspaceGrant(
-          env,
-          ownerUserId,
-          id,
-          selected,
-          now,
-        )),
-      );
   }
   await db.batch(statements);
-  for (const id of affectedSpaces)
-    await publishCollaborationEvent(env, "space.updated", id, id);
+  if (spaceId)
+    await publishCollaborationEvent(env, "space.updated", spaceId, spaceId);
   return json({
     ...(await loadWorkflowWorkspace(env, ownerUserId, spaceId)),
     workspaces: choices.results,

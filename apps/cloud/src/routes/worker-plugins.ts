@@ -1,9 +1,5 @@
-import {
-  PluginManifestSchema,
-  WORKER_PLUGIN_PAID_FEATURE,
-} from "@syntila/workspace-runtime-protocol";
-import { requirePaidFeature } from "../account-plan.js";
-import { pluginManifestDigest } from "../plugin-entitlement-lease.js";
+import { PluginManifestSchema } from "@syntila/workspace-runtime-protocol";
+import { pluginManifestDigest } from "../plugin-manifest-digest.js";
 import { HttpError, json, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
 
@@ -13,8 +9,10 @@ import type { SecurityEnv } from "./http-security.js";
  * origin display strings, a signer fingerprint and a per-Workspace pin. It never
  * stores or runs an executable and never sees a secret or a local path.
  *
- * Paid actions (register, enable) call `requirePaidFeature`; reading, disabling
- * and removing stay free so a downgraded owner can always stop and clean up.
+ * Managing plugins (register, enable, disable, remove) is free on every plan.
+ * Syntila Plus is enforced only when plugin work is used: the scheduler,
+ * thread policy and assignment dispatcher admit plugin Workers only for an
+ * entitled owner (`pluginOwnerEntitledSql`, `pluginAssignmentAdmissionSql`).
  */
 
 /** Plugins an account may keep in its library (open decision D11). */
@@ -128,12 +126,6 @@ export async function handlePluginLibrary(
   }
   if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
 
-  // Registering grows the paid footprint, so Cloud checks the plan itself.
-  await requirePaidFeature(
-    env as unknown as Env,
-    userId,
-    WORKER_PLUGIN_PAID_FEATURE,
-  );
   const body = await readBody(request);
   onlyKeys(body, ["manifest", "manifestDigest", "origin", "signer"]);
 
@@ -428,13 +420,6 @@ export async function handleWorkspacePluginPin(
     typeof body.shareable !== "boolean"
   )
     throw new PluginRouteError(400, "invalid_request", "Invalid enablement");
-  // Enabling is paid. Disabling never is, so a lapsed owner can always stop it.
-  if (body.enabled)
-    await requirePaidFeature(
-      env as unknown as Env,
-      userId,
-      WORKER_PLUGIN_PAID_FEATURE,
-    );
   const version = await db
     .prepare(
       "SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ?1 AND version = ?2",

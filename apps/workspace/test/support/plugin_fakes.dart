@@ -1,21 +1,12 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:syntila_workspace/plugin_entitlement.dart';
 import 'package:syntila_workspace/plugin_registry.dart';
 import 'package:syntila_workspace/plugin_service.dart';
 import 'package:syntila_workspace/plugin_store.dart';
 
-// A lease produced by the TypeScript issuer for ws-1 / inst-1, valid 24 h
-// from 2026-11-03T10:00Z.
-const testLeasePublicKey = "lkioBdUQgez7WQJ+GDKA2aeV28mrD8IVbOvj9DCEP90=";
-final testLease = jsonDecode(
-        r'''{"lease": {"v": 1, "kid": "ent-1", "feature": "workers.custom_plugins", "ownerUserId": "user-plus", "workspaceId": "ws-1", "installationId": "inst-1", "leaseId": "lease-interop-1", "issuedAt": "2026-11-03T10:00:00.000Z", "expiresAt": "2026-11-04T10:00:00.000Z", "planStatus": "active", "planPeriodEnd": null}, "signature": "XysqTeDvrr4M77Nu77Q0afhPBFL5mKQN6cpW1NX0ukv3QnQAOEd0N+eZd6yvMlnV1g0YVe2SkxKuDuNIigGlCw=="}''')
-    as Map<String, Object?>;
 final testStart = DateTime.utc(2026, 11, 3, 11);
 
 class FakePluginCloud implements PluginCloudPort {
-  bool paid = true;
   bool online = true;
   final calls = <String>[];
   var nextRef = 'plugin-3fa91c04b2d7';
@@ -26,20 +17,6 @@ class FakePluginCloud implements PluginCloudPort {
     }
   }
 
-  void _requirePaid() {
-    _check();
-    if (!paid) {
-      throw const PluginCloudException('paid_plan_required', 'Plus required');
-    }
-  }
-
-  @override
-  Future<Map<String, Object?>> fetchLease() async {
-    calls.add('fetchLease');
-    _requirePaid();
-    return testLease;
-  }
-
   @override
   Future<String> registerVersion({
     required Map<String, Object?> manifest,
@@ -48,7 +25,7 @@ class FakePluginCloud implements PluginCloudPort {
     required Map<String, Object?>? signer,
   }) async {
     calls.add('register:${manifest['version']}');
-    _requirePaid();
+    _check(); // Registration is free on every plan.
     return nextRef;
   }
 
@@ -62,11 +39,7 @@ class FakePluginCloud implements PluginCloudPort {
     required bool shareable,
   }) async {
     calls.add('${enabled ? 'enable' : 'disable'}:$version');
-    if (enabled) {
-      _requirePaid();
-    } else {
-      _check();
-    }
+    _check(); // Enablement is free; Cloud gates plugin use.
   }
 
   @override
@@ -139,15 +112,6 @@ class TestPluginService {
         clock: () => now,
       ),
       registry: PluginRegistry(File('${state.path}/registry.json')),
-      entitlement: PluginEntitlementStore(
-        file: File('${state.path}/entitlement.json'),
-        verifier: PluginLeaseVerifier({
-          pluginEntitlementPublisher: {'ent-1': testLeasePublicKey},
-        }),
-        workspaceId: 'ws-1',
-        installationId: 'inst-1',
-        clock: () => now,
-      ),
       cloud: cloud,
       conformance: conformance,
       clock: () => now,

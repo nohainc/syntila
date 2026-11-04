@@ -61,7 +61,7 @@ function fixture() {
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','owner','Space','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('member','P','owner','owner','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','Stream','active','owner','now','now');
-    INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('workspace','owner','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('owner','workspace','now');`);
+    INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('workspace','owner','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('owner','workspace','now'); INSERT INTO space_workflow_settings VALUES('P','workspace','now');`);
   sqlite.exec(`INSERT INTO user_workflow_configurations(user_id,workspace_id,workflow_id,schema_version,configuration_json,updated_at)
     VALUES('owner','workspace','chat',1,'{"schemaVersion":1,"workflowId":"chat","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now'),
     ('owner','workspace','direct',1,'{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now');`);
@@ -606,7 +606,7 @@ it("Workspace changes use the new Workspace for every Thread request while prese
       .exec(`INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('new-workspace','owner','New Workspace','now','now');
       INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at) VALUES('new-worker','new-workspace','owner','chatgpt','enabled','ready',1,1,'now','now','now');
       INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,created_at,updated_at) VALUES('new-grant','P','new-workspace','owner','active','now','now');
-      INSERT INTO space_workflow_settings VALUES('P','new-workspace','now');`);
+      INSERT OR REPLACE INTO space_workflow_settings VALUES('P','new-workspace','now');`);
     const second = await f.submit(
       "After switch",
       "workspace-after-000001",

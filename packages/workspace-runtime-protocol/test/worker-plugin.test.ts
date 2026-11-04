@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  PluginEntitlementLeaseSchema,
   PluginIdSchema,
   PluginManifestSchema,
   PluginRefSchema,
@@ -119,30 +118,4 @@ describe("worker plugin manifest", () => {
     expect(PluginRefSchema.safeParse("plugin-xyz").success).toBe(false);
   });
 
-  it("only allows a paid-tier lease for the plugin feature", () => {
-    const lease = {
-      v: 1,
-      kid: "ent-1",
-      feature: "workers.custom_plugins",
-      ownerUserId: "u",
-      workspaceId: "w",
-      installationId: "i",
-      leaseId: "l",
-      issuedAt: "2026-11-03T10:00:00.000Z",
-      expiresAt: "2026-11-04T10:00:00.000Z",
-      planStatus: "active",
-      planPeriodEnd: null,
-    };
-    expect(PluginEntitlementLeaseSchema.safeParse(lease).success).toBe(true);
-    expect(
-      PluginEntitlementLeaseSchema.safeParse({
-        ...lease,
-        planStatus: "canceled",
-      }).success,
-    ).toBe(false);
-    expect(
-      PluginEntitlementLeaseSchema.safeParse({ ...lease, feature: "x" })
-        .success,
-    ).toBe(false);
-  });
 });

@@ -121,90 +121,38 @@ void main() {
   });
 
   test(
-      'a Free account is refused by Cloud for import, test, register and enable',
-      () async {
-    cloud.paid = false;
-    await expectCode(
-        service.import(writePluginPackage(temp)), 'paid_plan_required');
-    expect(cloud.calls, ['fetchLease']);
-  });
-
-  test(
-      'downgrade: plugins pause but nothing is deleted, and free operations still work',
+      'a Free account can import, test, register and enable; Cloud gates use',
       () async {
     await prepare();
     await accept((h) => service.register('acme-reviewer', acceptHash: h));
     await accept((h) => service.enable('acme-reviewer', acceptHash: h));
+    expect(cloud.calls, isNot(contains('fetchLease')));
+    final workspace =
+        (((await service.list())['plugins'] as List).single as Map)['workspace']
+            as Map;
+    expect(workspace['effective'], 'enabled');
+    expect(workspace.containsKey('reason'), isFalse);
+  });
 
-    // The lease runs out and Cloud now answers 402.
+  test('a lapsed plan changes nothing locally; free operations still work',
+      () async {
+    await prepare();
+    await accept((h) => service.register('acme-reviewer', acceptHash: h));
+    await accept((h) => service.enable('acme-reviewer', acceptHash: h));
     harness.now = testStart.add(const Duration(hours: 25));
-    cloud.paid = false;
 
-    final plugin = ((await service.list())['plugins'] as List).single as Map;
-    final workspace = plugin['workspace'] as Map;
-    expect(workspace['intent'], 'enabled'); // preserved
-    expect(workspace['effective'], 'disabled');
-    expect(workspace['reason'], 'plus_required');
-
-    await expectCode(service.test('acme-reviewer'), 'paid_plan_required');
-    await expectCode(service.register('acme-reviewer'), 'paid_plan_required');
-    await expectCode(service.enable('acme-reviewer'), 'paid_plan_required');
-    await expectCode(
-        service.import(writePluginPackage(temp, version: '9.0.0', name: 'n')),
-        'paid_plan_required');
-
+    expect((await service.test('acme-reviewer'))['passed'], isTrue);
     expect((await service.validate('acme-reviewer'))['valid'], isTrue);
     final out = '${temp.path}/export.zip';
     expect((await service.export('acme-reviewer', out))['exported'], isTrue);
-    expect(File(out).existsSync(), isTrue);
     expect((await service.disable('acme-reviewer'))['disabled'], isTrue);
     expect((await service.remove('acme-reviewer'))['removed'], isTrue);
   });
 
-  test('renewal restores the plugin without a new consent', () async {
-    await prepare();
-    await accept((h) => service.register('acme-reviewer', acceptHash: h));
-    await accept((h) => service.enable('acme-reviewer', acceptHash: h));
-    harness.now = testStart.add(const Duration(hours: 25));
-    cloud.paid = false;
-    expect(
-      (((await service.list())['plugins'] as List).single as Map)['workspace'],
-      containsPair('effective', 'disabled'),
-    );
-    // Cloud issues a fresh lease again (here the same vector, back in time).
-    cloud.paid = true;
-    harness.now = testStart.add(const Duration(hours: 2));
-    await service.entitlement.accept(testLease);
-    expect(
-      (((await service.list())['plugins'] as List).single as Map)['workspace'],
-      containsPair('effective', 'enabled'),
-    );
-  });
-
-  test('offline without a valid lease is unverifiable, not a silent allow',
-      () async {
+  test('local import and test need no Cloud connection', () async {
     cloud.online = false;
-    await expectCode(
-        service.import(writePluginPackage(temp)), 'entitlement_unverifiable');
-  });
-
-  test('offline with a valid lease still allows paid actions until it expires',
-      () async {
     await prepare();
-    cloud.online = false;
-    harness.now = testStart.add(const Duration(hours: 5));
-    expect((await service.test('acme-reviewer'))['passed'], isTrue);
-    harness.now = testStart.add(const Duration(hours: 25));
-    await expectCode(service.test('acme-reviewer'), 'entitlement_unverifiable');
-  });
-
-  test('a rolled-back clock is reported as such', () async {
-    await prepare();
-    await service.entitlement
-        .observeCloudTime(testStart.add(const Duration(hours: 10)));
-    cloud.online = false;
-    await expectCode(
-        service.test('acme-reviewer'), 'entitlement_clock_invalid');
+    expect(cloud.calls, isEmpty);
   });
 
   test('disabling works offline and is reported as not yet synced', () async {
@@ -247,7 +195,6 @@ void main() {
     final busy = WorkspacePluginService(
       store: service.store,
       registry: service.registry,
-      entitlement: service.entitlement,
       cloud: cloud,
       conformance: conformance,
       activeAssignments: (_) async => active,

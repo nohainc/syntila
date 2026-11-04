@@ -140,9 +140,9 @@ void main() {
     expect(history - folders, closeTo(40, 2));
   });
 
-  testWidgets('owner follows the default Workspace until choosing one',
+  testWidgets('a Space without a Workspace asks the owner to choose one',
       (tester) async {
-    final source = WorkflowSource();
+    final source = WorkflowSource()..selectedSpaceWorkspaces['S'] = null;
     await pumpSpace(tester, source, ownerSpace);
     expect(find.byKey(const ValueKey('space-workspace')), findsOneWidget);
     final selector = find.byKey(const ValueKey('space-workspace'));
@@ -153,7 +153,8 @@ void main() {
     expect(tester.getRect(find.text('Members')).bottom,
         lessThan(tester.getRect(find.text('Archived Threads')).top));
 
-    expect(find.textContaining('Following the default Workspace: First'),
+    expect(find.text('No Workspace'), findsOneWidget);
+    expect(find.text('Choose a Workspace to run Work in this Space.'),
         findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('space-workspace')));
@@ -165,28 +166,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(source.selectedSpaceWorkspaces['S'], 'other');
-    expect(find.textContaining('Following the default'), findsNothing);
+    expect(find.textContaining('Choose a Workspace to run Work'), findsNothing);
     expect(find.textContaining('Threads use this Workspace'), findsNothing);
   });
 
-  testWidgets('equivalent explicit and default choices save without a warning',
+  testWidgets('choosing the current Workspace again saves nothing',
       (tester) async {
-    final source = WorkflowSource();
+    final source = WorkflowSource()..selectedSpaceWorkspaces['S'] = 'ws';
     await pumpSpace(tester, source, ownerSpace);
     await tester.tap(find.byKey(const ValueKey('space-workspace')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('First Workspace').last);
     await tester.pumpAndSettle();
     expect(find.text('Change Workspace?'), findsNothing);
-    expect(source.selectedSpaceWorkspaces['S'], 'ws');
-    expect(source.workspaceWrites, 1);
-    await tester.tap(find.byKey(const ValueKey('space-workspace')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Default Workspace').last);
-    await tester.pumpAndSettle();
-    expect(find.text('Change Workspace?'), findsNothing);
-    expect(source.selectedSpaceWorkspaces, isEmpty);
-    expect(source.workspaceWrites, 2);
+    expect(source.workspaceWrites, 0);
   });
 
   testWidgets('narrow Space shows Workspace under Settings', (tester) async {
@@ -216,17 +209,20 @@ void main() {
     expect(source.workspaceWrites, 0);
   });
 
-  testWidgets('returning to the default Workspace inherits again',
+  testWidgets('the owner can detach the Workspace after confirming',
       (tester) async {
     final source = WorkflowSource()..selectedSpaceWorkspaces['S'] = 'other';
     await pumpSpace(tester, source, ownerSpace);
     await tester.tap(find.byKey(const ValueKey('space-workspace')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Default Workspace').last);
+    await tester.tap(find.text('No Workspace').last);
     await tester.pumpAndSettle();
+    expect(find.textContaining('no Workspace, so no Work can run'),
+        findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('confirm-space-workspace')));
     await tester.pumpAndSettle();
-    expect(source.selectedSpaceWorkspaces, isEmpty);
+    expect(source.selectedSpaceWorkspaces['S'], isNull);
+    expect(source.workspaceWrites, 1);
   });
 
   testWidgets('other members see no Workspace settings', (tester) async {

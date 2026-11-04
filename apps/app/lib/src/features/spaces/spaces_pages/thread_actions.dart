@@ -750,6 +750,7 @@ extension _ThreadActions on _ThreadPageState {
         'model_not_supported',
         'permission_denied',
         'space_folder_exists',
+        'additional_folders_unsupported',
       }.contains(step.errorCode);
       final recommendation = resumeRecommended
           ? 'The failure looks like it happened before the Worker completed a turn. Resuming is recommended.'

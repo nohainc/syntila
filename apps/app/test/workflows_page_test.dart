@@ -48,13 +48,13 @@ class WorkflowSource extends AxFixtureDataSource
       {String? spaceId}) async {
     workspaceReads++;
     return AxWorkflowWorkspaceSettings(
+        // Test Spaces start with their own Workspace (as after migration
+        // 0103); an explicit null entry means the Space has none.
         workspaceId: spaceId == null
             ? selectedWorkspace
             : selectedSpaceWorkspaces.containsKey(spaceId)
                 ? selectedSpaceWorkspaces[spaceId]
                 : selectedWorkspace,
-        inherited:
-            spaceId != null && !selectedSpaceWorkspaces.containsKey(spaceId),
         workspaces: const [
           AxWorkflowWorkspace(id: 'ws', name: 'First Workspace'),
           AxWorkflowWorkspace(id: 'other', name: 'Second Workspace')
@@ -63,13 +63,11 @@ class WorkflowSource extends AxFixtureDataSource
 
   @override
   Future<AxWorkflowWorkspaceSettings> selectWorkflowWorkspace(
-      {String? spaceId, String? workspaceId, bool inherit = false}) async {
+      {String? spaceId, String? workspaceId}) async {
     workspaceWrites++;
     if (spaceId == null) {
       selectedWorkspace = workspaceId;
       values = [];
-    } else if (inherit) {
-      selectedSpaceWorkspaces.remove(spaceId);
     } else {
       selectedSpaceWorkspaces[spaceId] = workspaceId;
     }

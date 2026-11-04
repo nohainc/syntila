@@ -32,7 +32,7 @@ it("shares owner defaults across members, isolates Spaces, restricts writes, and
       INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('s','owner','Space','now','now'),('other','outsider','Other','now','now');
       INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('o','s','owner','owner','now','now'),('m','s','member','collaborator','now','now');`);
     sqlite.exec(
-      "INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws','owner','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('owner','ws','now'); INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws-member','member','Member Workspace','now','now');",
+      "INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws','owner','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('owner','ws','now'); INSERT INTO space_workflow_settings VALUES('s','ws','now'); INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws-member','member','Member Workspace','now','now');",
     );
     const config = (enabled: boolean) => ({
       schemaVersion: 1,

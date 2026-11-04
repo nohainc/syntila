@@ -22,6 +22,62 @@ vi.mock("../src/collaboration-events.js", () => ({
   },
 }));
 describe("Space creation", () => {
+  it("refuses a Workspace the creator does not own and creates nothing", async () => {
+    const db = {
+      prepare() {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            return null;
+          },
+          async all() {
+            return { results: [] };
+          },
+          async run() {
+            return { success: true };
+          },
+        };
+      },
+      async batch() {
+        batches += 1;
+        return [];
+      },
+    };
+    let batches = 0;
+    await expect(
+      handleCreateSpace(
+      new Request("https://syntila.test/api/spaces", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Not mine",
+          workspaceId: "ws-revoked",
+        }),
+      }),
+      {
+        SYNTILA_ENVIRONMENT: "development",
+        SYNTILA_DB: db,
+        TEST_AUTHENTICATION: async () => ({
+          userId: "user-1",
+          user: {
+            id: "user-1",
+            email: "owner@example.test",
+            displayName: "Owner",
+            status: "active",
+          },
+          workspaceId: "",
+          spaceRoles: {},
+          sessionId: "session-1",
+          clientType: "web",
+        }),
+      } as never,
+    ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(batches).toBe(0);
+  });
+
   it("creates a Space without requiring an execution Workspace", async () => {
     const prepared: string[] = [];
     let batchSize = 0;
@@ -81,7 +137,12 @@ describe("Space creation", () => {
     expect(prepared).toContainEqual(
       expect.stringContaining("INSERT INTO space_memberships"),
     );
-    expect(batchSize).toBe(2);
+    // The Space records "no Workspace" explicitly; nothing is inherited.
+    expect(prepared).toContainEqual(
+      expect.stringContaining("INSERT INTO space_workflow_settings"),
+    );
+    expect(prepared.join("\n")).not.toContain("user_workflow_settings");
+    expect(batchSize).toBe(3);
   });
 
   it("creates a persisted Thread with its Space lead", async () => {

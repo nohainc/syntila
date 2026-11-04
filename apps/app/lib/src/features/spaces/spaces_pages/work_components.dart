@@ -18,6 +18,8 @@ String _executionFailureMessage(String? code, {String? validationMessage}) =>
         'The worker could not continue the previous conversation. Please retry your request.',
       'worker_not_ready' =>
         'The selected worker is not ready on its workspace.',
+      'additional_folders_unsupported' =>
+        'This worker cannot use the Space’s additional folders yet. Detach them from the Space or choose another worker, then retry.',
       'space_folder_exists' => 'Retry to choose whether to use it.',
       'cli_not_found' ||
       'provider_tool_unavailable' =>
@@ -49,7 +51,8 @@ String _executionFailureMessage(String? code, {String? validationMessage}) =>
 /// appended only when the code says more than the category already does.
 String _publicFailureMessage(AxWorkRequestStep? step, String guidance) {
   if (step?.errorCode == 'context_limit_exceeded' ||
-      step?.errorCode == 'quota_exhausted') {
+      step?.errorCode == 'quota_exhausted' ||
+      step?.errorCode == 'additional_folders_unsupported') {
     return guidance;
   }
   final headline = step?.failureCategoryMessage?.trim();

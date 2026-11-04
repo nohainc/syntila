@@ -69,16 +69,19 @@ describe("inventory scheduling for Workers configured after Workspace selection"
       .run(workspace);
   }
 
-  it.each(["user", "space"] as const)(
-    "enables a newly ready Worker in the already selected %s Workspace",
-    async (scope) => {
-      select(scope);
-      await report();
-      expect(state()).toBe("enabled");
-    },
-  );
-  it("enables a Worker that becomes ready after setup", async () => {
+  it("enables a newly ready Worker in the Workspace a Space selected", async () => {
+    select("space");
+    await report();
+    expect(state()).toBe("enabled");
+  });
+  it("does not enable Workers from the account-level selection alone", async () => {
+    // Only a Space's explicit choice attaches a Workspace.
     select("user");
+    await report();
+    expect(state()).toBe("disabled");
+  });
+  it("enables a Worker that becomes ready after setup", async () => {
+    select("space");
     await report({ ...worker, readinessState: "setup_required" });
     expect(state()).toBe("disabled");
     await report({ ...worker, revision: 2 });
@@ -87,12 +90,12 @@ describe("inventory scheduling for Workers configured after Workspace selection"
   it("repairs an existing disabled Worker on an unchanged inventory report", async () => {
     await report();
     expect(state()).toBe("disabled");
-    select("user");
+    select("space");
     await report();
     expect(state()).toBe("enabled");
   });
   it("does not enable Workers when a different Workspace is selected", async () => {
-    select("user", "other");
+    select("space", "other");
     await report();
     expect(state()).toBe("disabled");
   });
@@ -101,7 +104,7 @@ describe("inventory scheduling for Workers configured after Workspace selection"
     expect(state()).toBe("disabled");
   });
   it("does not enable a locally disabled Worker", async () => {
-    select("user");
+    select("space");
     await report({ ...worker, activationState: "disabled" });
     expect(state()).toBe("disabled");
   });
@@ -119,7 +122,7 @@ describe("inventory scheduling for Workers configured after Workspace selection"
     ).toEqual({ state: "draining", cloud_concurrency_limit: 2 });
   });
   it("does not trust an older report claiming the Worker is ready", async () => {
-    select("user");
+    select("space");
     await report({ ...worker, readinessState: "setup_required", revision: 2 });
     await report();
     expect(state()).toBe("disabled");

@@ -622,12 +622,18 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           );
         }
       } on AllowedFolderViolation catch (error) {
+        // A Worker that cannot take the folders gets its own stable code so
+        // the user sees the reason; other folder failures stay "not ready".
+        final unsupported = error.code == 'plugin_unsupported' ||
+            error.code == 'profile_unsupported';
+        final code =
+            unsupported ? 'additional_folders_unsupported' : 'worker_not_ready';
         throw AssignmentExecutionFailure(
-          code: 'worker_not_ready',
-          message: error.message,
+          code: code,
+          message: unsupported ? executionErrorMessage(code) : error.message,
           localDiagnostic: _runtimeFailureDiagnostic(
             'additional_folders',
-            'worker_not_ready',
+            code,
             detail: error.code,
           ),
         );
@@ -972,29 +978,6 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       workerCatalogCoordinator?.refreshLocalWorkers() ?? Future.value(),
     ),
   );
-  // Running plugin work may finish after a lapse, but only for the drain cap.
-  final pluginLapseEnforcer = PluginLapseEnforcer(
-    entitlement: pluginSubsystem.entitlement,
-    cancelPluginWork: () async {
-      final supervisor = cliWorkerEngineSupervisor;
-      if (supervisor == null) return 0;
-      var cancelled = 0;
-      for (final worker in await localWorkerRegistry.list()) {
-        if (!isPluginWorkerType(worker.workerTypeId)) continue;
-        if (supervisor.activeAssignmentCountFor(worker.id) +
-                supervisor.queuedAssignmentCountFor(worker.id) >
-            0) {
-          await supervisor.cancelWorker(worker.id);
-          cancelled += 1;
-        }
-      }
-      return cancelled;
-    },
-  );
-  final pluginLapseTimer = Timer.periodic(
-    const Duration(minutes: 1),
-    (_) => unawaited(pluginLapseEnforcer.tick().catchError((_) => 0)),
-  );
   final engine = WorkspaceRuntime(
     config: effectiveConfig,
     credentialStore: secureCredentialStore,
@@ -1003,7 +986,6 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
     workerSubsystem: workerSubsystem,
     pluginSubsystem: pluginSubsystem,
     workerShutdownHandler: () async {
-      pluginLapseTimer.cancel();
       await workerSubsystem.shutdown();
     },
     workerRecoveryHandler: () async =>

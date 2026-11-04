@@ -77,8 +77,7 @@ function fixture(
               sql.includes("workspace_member_overrides")
             )
               return null;
-            if (sql.includes("space_workflow_settings")) return null;
-            if (sql.includes("user_workflow_settings")) return { workspaceId };
+            if (sql.includes("space_workflow_settings")) return { workspaceId };
             return { ownerUserId: "user" };
           },
           async all() {

@@ -83,13 +83,12 @@ export async function handleListWorkspaceWorkerInventory(
             SELECT 1
               FROM space_memberships m
               JOIN spaces s ON s.id = m.space_id
-              LEFT JOIN space_workflow_settings sws ON sws.space_id = s.id
-              LEFT JOIN user_workflow_settings uws ON uws.user_id = s.owner_user_id
+              JOIN space_workflow_settings sws ON sws.space_id = s.id
              WHERE m.user_id = ?1 AND s.owner_user_id <> ?1
                -- A Workspace lent to the Space owner is not passed on to
                -- their Space members (ADR-020: grants are non-transferable).
                AND s.owner_user_id = i.owner_user_id
-               AND i.workspace_id = CASE WHEN sws.space_id IS NOT NULL THEN sws.workspace_id ELSE uws.workspace_id END)
+               AND i.workspace_id = sws.workspace_id)
             OR i.workspace_id IN (
             SELECT g.workspace_id FROM workspace_person_grants g
               JOIN execution_workspaces gw ON gw.id = g.workspace_id

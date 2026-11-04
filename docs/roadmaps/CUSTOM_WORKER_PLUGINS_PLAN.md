@@ -1,5 +1,10 @@
 # Custom Worker plugins: SDK, conformance, phases and open decisions
 
+> **Update (2026-11-04).** The entitlement lease, local Plus checks and lapse
+> drain described below were removed. Plus is enforced only by Cloud when plugin
+> work is scheduled; all plugin management is free on every plan. Lease
+> references below are historical.
+
 **Status:** Implementation in progress. The delivery table is current; detailed phase scopes below retain the original plan.
 **Decision:** [ADR-027](../decisions/ADR-027-custom-worker-plugins.md)
 **Architecture, entitlement, trust:** [Custom Worker plugins](../architecture/CUSTOM_WORKER_PLUGINS.md)

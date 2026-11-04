@@ -283,12 +283,8 @@ export async function selectSpaceExecutionTarget(
             (SELECT cr.conversation_revision - 1 FROM conversation_work_requests cr WHERE cr.work_request_id = wr.id) AS base_context_revision,
             ew.name AS workspace_name, ew.owner_user_id, ew.status AS workspace_status,
             owner_user.display_name AS workspace_owner_name,
-            (SELECT CASE WHEN sws.space_id IS NOT NULL THEN sws.workspace_id
-                         ELSE uws.workspace_id END
-               FROM spaces s
-               LEFT JOIN space_workflow_settings sws ON sws.space_id = s.id
-               LEFT JOIN user_workflow_settings uws ON uws.user_id = s.owner_user_id
-              WHERE s.id = g.space_id) AS space_workflow_workspace_id,
+            (SELECT sws.workspace_id FROM space_workflow_settings sws
+              WHERE sws.space_id = g.space_id) AS space_workflow_workspace_id,
             wri.id AS runtime_identity_id,
             i.worker_id, i.worker_type_id,
             catalog.display_name AS worker_display_name,

@@ -6,12 +6,10 @@ import 'local_worker_registry.dart';
 import 'platform_runtime.dart';
 import 'plugin_cloud.dart';
 import 'plugin_engine_conformance.dart';
-import 'plugin_entitlement.dart';
 import 'plugin_registry.dart';
 import 'plugin_service.dart';
 import 'plugin_store.dart';
 import 'plugin_worker_runtime.dart';
-import 'release_trust_roots.dart';
 import 'secure_credentials.dart';
 import 'workspace.dart' show WorkspaceConfig;
 import 'workspace_configuration.dart';
@@ -19,19 +17,17 @@ import 'workspace_paths.dart';
 
 /// The Service's whole plugin feature (ADR-027), built once from the running
 /// Workspace and shared by the management IPC and the Worker runtime so both
-/// see the same store, registry and entitlement lease.
+/// see the same store and registry.
 class PluginSubsystem {
   const PluginSubsystem({
     required this.store,
     required this.registry,
-    required this.entitlement,
     required this.service,
     required this.runtime,
   });
 
   final PluginStore store;
   final PluginRegistry registry;
-  final PluginEntitlementStore entitlement;
 
   /// Management commands (import, register, enable, ...).
   final WorkspacePluginService service;
@@ -71,19 +67,12 @@ class PluginSubsystem {
       ],
     );
     final registry = PluginRegistry(File('${plugins.path}/registry.json'));
-    final entitlement = PluginEntitlementStore(
-      file: File('${plugins.path}/entitlement.json'),
-      verifier: PluginLeaseVerifier(workspaceEntitlementTrustKeys()),
-      workspaceId: config.workspaceId ?? '',
-      installationId: config.installationId ?? '',
-    );
     Directory engineState(String pluginId) =>
         Directory('${plugins.path}/engine-state/$pluginId');
     final cloudUri = config.cloudUri;
     final runtime = PluginWorkerRuntime(
       store: store,
       registry: registry,
-      entitlement: entitlement,
       engineStateDirectory: engineState,
       probe: ({
         required executor,
@@ -108,15 +97,12 @@ class PluginSubsystem {
     final service = WorkspacePluginService(
       store: store,
       registry: registry,
-      entitlement: entitlement,
       cloud: HttpPluginCloud(
         cloudUrl: cloudUri == null
             ? ''
             : WorkspaceConfigurationResolver.cloudHttpOrigin(cloudUri),
         credentialStore: credentialStore,
         workspaceId: config.workspaceId,
-        workspaceRuntimeId: config.workspaceRuntimeId,
-        runtimeToken: config.authToken,
       ),
       conformance: _LazyConformance(
         () => engineSupervisor(),
@@ -144,7 +130,6 @@ class PluginSubsystem {
     return PluginSubsystem(
       store: store,
       registry: registry,
-      entitlement: entitlement,
       service: service,
       runtime: runtime,
     );

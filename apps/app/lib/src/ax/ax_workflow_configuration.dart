@@ -130,7 +130,7 @@ class AxWorkflowWorkspaceSettings {
 abstract interface class AxWorkflowWorkspaceDataSource {
   Future<AxWorkflowWorkspaceSettings> loadWorkflowWorkspace({String? spaceId});
   Future<AxWorkflowWorkspaceSettings> selectWorkflowWorkspace(
-      {String? spaceId, String? workspaceId, bool inherit = false});
+      {String? spaceId, String? workspaceId});
 }
 
 /// An owner-managed folder outside Work Root, published by the Space's

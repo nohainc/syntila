@@ -5,7 +5,7 @@ import { identityService } from "../src/auth/identity-service.js";
 import { handleWorkflowWorkspace } from "../src/routes/workflow-workspace.js";
 import { loadSpaceWorkflowConfigurations } from "../src/routes/space-workflow-configurations.js";
 import type { SecurityEnv } from "../src/routes/http-security.js";
-it("requires ownership and confirmation, scopes Workspace selection, resets workflows atomically, and preserves independent Spaces", async () => {
+it("attaches Workspaces only by explicit per-Space choice, never by inheritance", async () => {
   const { sqlite, db } = sqliteD1();
   const identity = vi
     .spyOn(identityService, "resolve")
@@ -33,20 +33,77 @@ it("requires ownership and confirmation, scopes Workspace selection, resets work
         env,
         spaceId,
       );
-    // Configuration is per Workspace, so a global switch needs no reset
-    // confirmation while no inheriting Space has overrides.
+    // The account-level selection only picks which account templates are
+    // shown; it attaches no Workspace to any Space.
     await handle({ workspaceId: "a" });
-    await expect(
-      handle({ workspaceId: "foreign", confirmReset: true }),
-    ).rejects.toMatchObject({ status: 403 });
-    await handle({ workspaceId: "a", confirmReset: true });
+    await expect(handle({ workspaceId: "foreign" })).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(
+      sqlite.prepare("SELECT COUNT(*) AS n FROM workspace_space_grants").get(),
+    ).toEqual({ n: 0 });
     expect(
       sqlite
         .prepare(
-          "SELECT workspace_id FROM workspace_space_grants WHERE space_id='s'",
+          "SELECT state FROM worker_scheduling WHERE worker_id='worker-a'",
         )
         .get(),
-    ).toEqual({ workspace_id: "a" });
+    ).toEqual({ state: "disabled" });
+    expect(await (await handle(undefined, "s")).json()).toMatchObject({
+      workspaceId: null,
+      inherited: false,
+    });
+
+    // A new Space gets no Workspace unless one is chosen explicitly.
+    const create = (body: object) =>
+      handleCreateSpace(
+        new Request("https://test/api/spaces", {
+          method: "POST",
+          headers: { authorization: "owner" },
+          body: JSON.stringify(body),
+        }),
+        env,
+      );
+    const plain = (await (await create({ name: "Plain" })).json()) as {
+      space: { id: string };
+    };
+    expect(
+      sqlite
+        .prepare(
+          "SELECT workspace_id FROM space_workflow_settings WHERE space_id=?",
+        )
+        .get(plain.space.id),
+    ).toEqual({ workspace_id: null });
+    expect(
+      sqlite
+        .prepare("SELECT COUNT(*) AS n FROM workspace_space_grants WHERE space_id=?")
+        .get(plain.space.id),
+    ).toEqual({ n: 0 });
+    const chosen = (await (
+      await create({ name: "Chosen", workspaceId: "a" })
+    ).json()) as { space: { id: string } };
+    expect(
+      sqlite
+        .prepare(
+          "SELECT workspace_id,status FROM workspace_space_grants WHERE space_id=?",
+        )
+        .get(chosen.space.id),
+    ).toEqual({ workspace_id: "a", status: "active" });
+    await expect(
+      create({ name: "Foreign", workspaceId: "foreign" }),
+    ).rejects.toMatchObject({ status: 403 });
+
+    // Only the owner chooses a Space's Workspace, with reset confirmation.
+    await expect(
+      handle({ workspaceId: "a", confirmReset: true }, "s", "member"),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(handle({ workspaceId: "a" }, "s")).rejects.toMatchObject({
+      status: 409,
+    });
+    await handle({ workspaceId: "a", confirmReset: true }, "s");
+    expect(await (await handle(undefined, "s", "member")).json()).toMatchObject(
+      { workspaceId: "a", workspaces: [{ id: "a", name: "First" }] },
+    );
     expect(
       sqlite
         .prepare(
@@ -54,160 +111,38 @@ it("requires ownership and confirmation, scopes Workspace selection, resets work
         )
         .get(),
     ).toEqual({ state: "enabled" });
-    sqlite
-      .prepare(
-        "DELETE FROM workspace_space_grants WHERE space_id='s' AND workspace_id='a'",
-      )
-      .run();
-    await handle(undefined, "s");
-    expect(
-      sqlite
-        .prepare(
-          "SELECT workspace_id,status FROM workspace_space_grants WHERE space_id='s' AND workspace_id='a'",
-        )
-        .get(),
-    ).toEqual({ workspace_id: "a", status: "active" });
+    // There is no inheritance any more.
     await expect(
-      handle({ workspaceId: "a", confirmReset: true }, undefined, "member"),
-    ).rejects.toMatchObject({ status: 403 });
-    const created = await handleCreateSpace(
-      new Request("https://test/api/spaces", {
-        method: "POST",
-        headers: { authorization: "owner" },
-        body: JSON.stringify({ name: "New Space" }),
-      }),
-      env,
-    );
-    expect(created.status).toBe(201);
-    const createdSpace = (await created.json()) as { space: { id: string } };
-    expect(
-      sqlite
-        .prepare(
-          "SELECT workspace_id FROM workspace_space_grants WHERE space_id=?",
-        )
-        .get(createdSpace.space.id),
-    ).toEqual({ workspace_id: "a" });
+      handle({ inherit: true, confirmReset: true }, "s"),
+    ).rejects.toMatchObject({ status: 400 });
+
+    // Switching a Space resets only that Space's overrides.
     const config = JSON.stringify({
       schemaVersion: 1,
       workflowId: "chat",
       enabled: false,
-      defaults: { worker: "first", model: "first-model", effort: "high" },
-      stepOverrides: { chat: { effort: "high" } },
+      defaults: {},
+      stepOverrides: {},
     });
-    sqlite
-      .prepare(
-        "INSERT INTO user_workflow_configurations VALUES('owner','a','chat',1,?,'now')",
-      )
-      .run(config);
-    expect(
-      (await loadSpaceWorkflowConfigurations(env, "s")).configurations[0]
-        .enabled,
-    ).toBe(false);
-    await expect(
-      handle({ workspaceId: "b", confirmReset: true }, "s", "member"),
-    ).rejects.toMatchObject({ status: 403 });
-    await handle({ workspaceId: "b", confirmReset: true }, "s");
-    expect(await (await handle(undefined, "s", "member")).json()).toMatchObject(
-      {
-        workspaceId: "b",
-        inherited: false,
-        workspaces: [{ id: "b", name: "Second" }],
-      },
-    );
-    expect(
-      (await loadSpaceWorkflowConfigurations(env, "s")).configurations,
-    ).toEqual([]);
-    expect(
-      sqlite
-        .prepare("SELECT COUNT(*) AS n FROM user_workflow_configurations")
-        .get(),
-    ).toEqual({ n: 1 });
-    expect(
-      sqlite
-        .prepare(
-          "SELECT workspace_id,status FROM workspace_space_grants WHERE space_id='s' AND workspace_id='b'",
-        )
-        .get(),
-    ).toEqual({ workspace_id: "b", status: "active" });
     sqlite.exec(
       "INSERT INTO space_workflow_settings VALUES('independent','b','now')",
     );
     sqlite
       .prepare(
-        "INSERT INTO space_workflow_configurations VALUES('independent','chat',1,?,'now')",
+        "INSERT INTO space_workflow_configurations VALUES('independent','chat',1,?,'now'),('s','chat',1,?,'now')",
       )
-      .run(config);
-    await handle({ workspaceId: "b", confirmReset: true });
-    // Switching the global Workspace keeps every Workspace's configuration.
-    expect(
-      sqlite
-        .prepare("SELECT workspace_id FROM user_workflow_configurations")
-        .all(),
-    ).toEqual([{ workspace_id: "a" }]);
+      .run(config, config);
+    await handle({ workspaceId: "b", confirmReset: true }, "s");
     expect(
       sqlite
         .prepare(
-          "SELECT COUNT(*) AS n FROM space_workflow_configurations WHERE space_id='independent'",
+          "SELECT space_id FROM space_workflow_configurations ORDER BY space_id",
         )
-        .get(),
-    ).toEqual({ n: 1 });
-    const enabledDirect = JSON.stringify({
-      schemaVersion: 1,
-      workflowId: "direct",
-      enabled: true,
-      defaults: {},
-      stepOverrides: {},
-    });
-    sqlite
-      .prepare(
-        "INSERT INTO user_workflow_configurations VALUES('owner','b','direct',1,?,'now')",
-      )
-      .run(enabledDirect);
-    sqlite.exec(
-      "INSERT INTO user_workflow_defaults VALUES('owner','b','direct','now'); INSERT INTO space_workflow_configurations VALUES('s','direct',1,'{\"schemaVersion\":1,\"workflowId\":\"direct\",\"enabled\":false,\"defaults\":{},\"stepOverrides\":{}}','now'); INSERT INTO space_workflow_defaults VALUES('s','direct','now');",
-    );
-    expect(
-      (await loadSpaceWorkflowConfigurations(env, "s")).configurations.find(
-        (value) => value.workflowId === "direct",
-      )?.enabled,
-    ).toBe(false);
-    expect(
-      (await loadSpaceWorkflowConfigurations(env, "s")).defaultWorkflowId,
-    ).toBe("direct");
-    sqlite.exec(
-      "UPDATE workspace_space_grants SET status='suspended' WHERE space_id='s' AND workspace_id='a'",
-    );
-    await expect(
-      handle({ workspaceId: "a", confirmReset: true }, "s"),
-    ).rejects.toMatchObject({ status: 409 });
+        .all(),
+    ).toEqual([{ space_id: "independent" }]);
     expect((await loadSpaceWorkflowConfigurations(env, "s")).workspaceId).toBe(
       "b",
     );
-    await handle({ inherit: true, confirmReset: true }, "s");
-    expect(await (await handle(undefined, "s")).json()).toMatchObject({
-      workspaceId: "b",
-      inherited: true,
-    });
-    const reset = await loadSpaceWorkflowConfigurations(env, "s");
-    expect(
-      reset.configurations.find((value) => value.workflowId === "direct")
-        ?.enabled,
-    ).toBe(true);
-    expect(reset.defaultWorkflowId).toBe("direct");
-    expect(
-      sqlite
-        .prepare(
-          "SELECT COUNT(*) AS n FROM space_workflow_defaults WHERE space_id='s'",
-        )
-        .get(),
-    ).toEqual({ n: 0 });
-    expect(
-      sqlite
-        .prepare(
-          "SELECT COUNT(*) AS n FROM space_workflow_configurations WHERE space_id='s'",
-        )
-        .get(),
-    ).toEqual({ n: 0 });
   } finally {
     identity.mockRestore();
     sqlite.close();

@@ -177,3 +177,18 @@ Installed/signed Windows/Linux release evidence and hard aggregate CPU/handle qu
 package publication and deployed Cloud acceptance. The Dart SDK, pack/init tools,
 signing tool and signer recognition are implemented. Resource-limit evidence is
 tracked in [the acceptance record](../acceptance/PLUGIN_RESOURCE_LIMITS.md).
+
+## Amendment (2026-11-04): Cloud-only, usage-time entitlement
+
+The signed entitlement lease, the Workspace-side Plus checks and the 30-minute
+lapse drain are removed. Syntila Plus is enforced only by Cloud and only when
+plugin work is used: scheduler eligibility, thread policy and the atomic
+assignment INSERT (`pluginOwnerEntitledSql`, `pluginAssignmentAdmissionSql`).
+Import, test, register, enable, signer recognition and all other management
+actions are free on every plan. A lapse stops new plugin assignments; running
+work finishes.
+
+**Why:** Cloud already refuses unentitled plugin work, and an offline Workspace
+receives no assignments, so the lease added a second trust root, key
+provisioning and failure modes (`no_lease`) without protecting anything Cloud
+did not already protect.

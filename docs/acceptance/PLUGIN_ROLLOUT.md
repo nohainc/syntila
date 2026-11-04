@@ -2,6 +2,14 @@
 
 Recorded 2026-11-04. This is a rollout record, not end-to-end acceptance.
 
+> **Update (2026-11-04).** The entitlement lease was removed: plugin management
+> is free on every plan and Cloud enforces Plus only when scheduling plugin
+> work. The lease endpoint, the `SYNTILA_ENTITLEMENT_*` Cloud secrets and the
+> `SYNTILA_ENTITLEMENT_TRUST_KEYS_JSON` variable are no longer used and can be
+> deleted. Migration `0102_worker_catalog_plugin_id_check.sql` is required
+> (D1 rejects 0101's long GLOB, which broke every registration). Evidence below
+> that mentions leases is historical.
+
 ## Verified
 
 - User reported applying migration `0101_worker_plugins.sql` remotely.
@@ -49,12 +57,13 @@ credentials into scripts or evidence. With the candidate CLI and Service:
    installation identity and Work Root are preserved when upgrading.
 2. Import the harmless SDK echo plugin; run static validation and Engine-hosted
    conformance, then register and enable with each displayed consent hash.
-3. Verify Cloud lease issuance and local signature acceptance, readiness and a
-   complete Work assignment. Record safe IDs and outcomes, never lease tokens.
+3. Verify readiness and a complete Work assignment for an entitled owner, and
+   that a Free owner can register and enable but receives no plugin work.
+   Record safe IDs and outcomes.
 4. Check digest tampering refusal, disabled-worker scheduling refusal, service
    stop cleanup, restart recovery and credential-free export.
-5. Verify lapsed entitlement blocks new starts and running work drains within
-   the documented cap. Keep read-only Steps ineligible.
+5. Verify a lapsed owner receives no new plugin assignments while running work
+   finishes. Keep read-only Steps ineligible.
 
 This record does not establish filesystem/network isolation, signed installation,
 provider authentication, user-service lifecycle or successful paid execution.
