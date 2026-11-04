@@ -131,6 +131,8 @@ describe("CI acceptance orchestration", () => {
         "workspace-gui",
         "profile-lab",
         "engine",
+        "plugin-limits-windows",
+        "plugin-resource-acceptance",
         "site",
       ].sort(),
     );
@@ -156,6 +158,16 @@ describe("CI acceptance orchestration", () => {
     );
     expect(workflow).not.toContain("windows-latest");
     expect(workflow).not.toContain("pnpm check\n");
+  });
+
+  it("focused resource acceptance cannot satisfy the full CI check context", () => {
+    const workflow = source(".github/workflows/ci.yml");
+    expect(workflow).toContain(
+      "name: ${{ inputs.plugin_acceptance_only && 'Plugin resource acceptance passed' || 'CI passed' }}",
+    );
+    expect(source("scripts/ci/require-ci-success.sh")).toContain(
+      '.event == "push" and .head_branch == "main"',
+    );
   });
 
   it.each(["profile-lab"])(

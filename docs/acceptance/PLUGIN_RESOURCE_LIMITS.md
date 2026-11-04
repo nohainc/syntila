@@ -101,7 +101,10 @@ gh workflow run ci.yml --ref feat/custom-plugins-p2 -f plugin_acceptance_only=tr
 ```
 
 The dispatch skips unrelated component builds and deployments. The normal CI
-workflow remains unchanged unless this explicit boolean input is set.
+workflow remains unchanged unless this explicit boolean input is set. Focused
+runs use the separate `Plugin resource acceptance passed` check context, leaving
+the required full `CI passed` merge check unsatisfied. Production release gates
+also continue requiring a successful push-triggered CI run on main.
 
 ## Outstanding acceptance
 

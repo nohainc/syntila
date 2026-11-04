@@ -222,7 +222,7 @@ jobs:
       - uses: ./.github/actions/check-site
 
   ci-passed:
-    name: CI passed
+    name: ${{ inputs.plugin_acceptance_only && 'Plugin resource acceptance passed' || 'CI passed' }}
     if: always()
     needs:
       [
