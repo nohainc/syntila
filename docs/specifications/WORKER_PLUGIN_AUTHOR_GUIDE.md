@@ -221,3 +221,8 @@ registration, update and enablement; they do not verify the claimed author name.
 The [Python example](../../examples/plugins/echo_python/README.md) demonstrates
 implementing the same protocol without the Dart SDK. Its interpreter comes from
 the local environment; prefer standalone executables for distribution.
+
+The [Ollama local plugin](../../examples/plugins/ollama_local/README.md) wraps
+the installed Ollama CLI with a build-pinned model, cancellation and bounded
+output. It requires an already-downloaded model and does not edit files or
+execute model-proposed tools.
