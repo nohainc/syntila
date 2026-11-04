@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'plugin_service.dart';
 import 'plugin_store.dart';
+import 'plugin_signer_trust.dart';
 import 'workspace_manager_ipc.dart';
 
 /// Translates `plugins.*` IPC commands into [WorkspacePluginService] calls and
@@ -130,6 +131,18 @@ class WorkspacePluginCommands {
           _absolutePath(payload, 'outputPath'),
           version: _version(payload),
         );
+      case 'plugins.signers':
+        return service.signers();
+      case 'plugins.trustSigner':
+        return service.trustSigner(_id(payload),
+            version: _version(payload), acceptHash: _hash(payload));
+      case 'plugins.untrustSigner':
+        final fingerprint = payload['fingerprint'];
+        if (!PluginSignerTrust.validFingerprint(fingerprint)) {
+          throw const WorkspaceManagerProtocolException(
+              'invalid_request', 'fingerprint must be a SHA-256 hex digest.');
+        }
+        return service.untrustSigner(fingerprint as String);
       case 'plugins.entitlement':
         return service.entitlementStatus();
       default:

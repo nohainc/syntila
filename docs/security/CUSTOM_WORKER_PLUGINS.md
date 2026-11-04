@@ -47,6 +47,20 @@ manifest, prompt, package, log or plugin data directory. Syntila does not supply
 managed provider credentials. Redaction cannot guarantee a plugin will keep
 secrets confidential.
 
+## Recognize or forget a signing key
+
+Run `syntila plugins trust-signer my-plugin` to review a verified package's full
+signer fingerprint and manifest digest. Verify the fingerprint through a trusted
+source before repeating with the displayed `--accept <hash>`. Creating recognition
+requires Plus; listing (`plugins signers`) and forgetting a fingerprint
+(`plugins untrust-signer <fingerprint>`) work offline and after lapse.
+
+Recognition is local to this installation. It is not a safety endorsement and
+does not skip consent, conformance or entitlement checks. A changed signing key
+is unrecognized. Forgetting a key leaves existing enablement unchanged; use
+`plugins disable` if you also want scheduling stopped. Exports carry package
+signatures but do not carry your local trust decisions.
+
 ## Disable, export or remove
 
 Use `syntila plugins disable my-plugin` to stop future scheduling on this

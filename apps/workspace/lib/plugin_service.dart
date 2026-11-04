@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
@@ -7,6 +8,7 @@ import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 import 'plugin_entitlement.dart';
 import 'plugin_registry.dart';
 import 'plugin_store.dart';
+import 'plugin_signer_trust.dart';
 
 /// Cloud operations the plugin service needs. The HTTP implementation talks to
 /// the account library and enablement routes; tests substitute a fake.
@@ -107,12 +109,17 @@ class WorkspacePluginService {
     this.activeAssignments = _none,
     this.workerHost = const _NoPluginWorkerHost(),
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+    PluginSignerTrust? signerTrust,
+  })  : _clock = clock ?? DateTime.now,
+        signerTrust = signerTrust ??
+            PluginSignerTrust(
+                File('${registry.file.parent.path}/trusted-signers.json'));
 
   static Future<int> _none(String pluginRef) async => 0;
 
   final PluginStore store;
   final PluginRegistry registry;
+  final PluginSignerTrust signerTrust;
   final PluginEntitlementStore entitlement;
   final PluginCloudPort cloud;
   final PluginConformancePort conformance;
@@ -183,7 +190,11 @@ class WorkspacePluginService {
     return {
       'schemaVersion': 1,
       ..._summary(record, status.entitled),
-      'selected': _versionJson(selected),
+      'selected': {
+        ..._versionJson(selected),
+        'signerTrustedLocally': selected.signer != null &&
+            await signerTrust.contains(selected.signer!.fingerprint),
+      },
     };
   }
 
@@ -218,6 +229,63 @@ class WorkspacePluginService {
         if (v.signer != null) 'signer': v.signer!.toJson(),
         'registered': v.registeredAt != null,
         if (v.conformance != null) 'conformance': v.conformance!.toJson(),
+      };
+
+  // Signer recognition does not bypass digest, consent, conformance or Plus.
+  Future<Map<String, Object?>> signers() async => {
+        'schemaVersion': 1,
+        'signers': await signerTrust.all(),
+        'scope': 'installation',
+        'statement':
+            'A recognized key is not a safety assessment or execution permission.',
+      };
+
+  Future<Map<String, Object?>> trustSigner(String pluginId,
+      {String? version, String? acceptHash}) async {
+    await _requireEntitlement();
+    final record = await _record(pluginId);
+    final selected = _version(record, version);
+    // Re-read the signature and artifact; never trust the registry's claim.
+    final installed = await _load(selected, pluginId);
+    final signer = installed.signer;
+    if (signer == null || !signer.verified) {
+      throw const PluginServiceException('plugin_signature_required',
+          'A verified package signature is required to recognize a signer.');
+    }
+    final document = <String, Object?>{
+      'operation': 'trustSigner',
+      'scope': 'installation',
+      'pluginId': installed.pluginId,
+      'version': installed.version,
+      'manifestDigest': installed.manifestDigest,
+      'fingerprint': signer.fingerprint,
+      'statement': 'Verify this fingerprint through a trusted source. '
+          'Recognizing a key does not verify an author name, establish safety, '
+          'or approve any plugin execution or update.',
+    };
+    final hash = consentHash(document);
+    if (acceptHash != hash) {
+      return {
+        'schemaVersion': 1,
+        'consentRequired': true,
+        'document': document,
+        'documentHash': hash
+      };
+    }
+    await signerTrust.pin(signer.fingerprint, _clock());
+    return {
+      'schemaVersion': 1,
+      'trustedLocally': true,
+      'fingerprint': signer.fingerprint,
+      'scope': 'installation'
+    };
+  }
+
+  Future<Map<String, Object?>> untrustSigner(String fingerprint) async => {
+        'schemaVersion': 1,
+        'fingerprint': fingerprint,
+        'removed': await signerTrust.remove(fingerprint),
+        'scope': 'installation',
       };
 
   // ---- lifecycle -----------------------------------------------------------------
@@ -629,9 +697,10 @@ class WorkspacePluginService {
         'id': installed.pluginId,
         'version': installed.version,
         'displayName': installed.manifest.displayName,
-        // Claimed by the manifest; verified only when a signature checks out.
+        // The key signature does not verify a claimed human/organization name.
         'author': author['name'],
-        'authorVerified': installed.signer?.verified == true,
+        'authorVerified': false,
+        'signatureVerified': installed.signer?.verified == true,
       },
       'origin': installed.origin.toJson()..remove('importedAt'),
       'digest': {
@@ -655,6 +724,8 @@ class WorkspacePluginService {
           : {
               'status': installed.signer!.verified ? 'verified' : 'invalid',
               'fingerprint': installed.signer!.fingerprint,
+              'trustedLocally':
+                  await signerTrust.contains(installed.signer!.fingerprint),
             },
       if (operation == 'enable') 'shareable': shareable,
       if (operation == 'enable' &&

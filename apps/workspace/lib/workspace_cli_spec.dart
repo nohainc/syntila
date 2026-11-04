@@ -611,6 +611,50 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           command(
+            icon: GuiIcons.list,
+            info: true,
+            'signers',
+            'Recognized signers',
+            'List locally recognized signing-key fingerprints',
+            service('plugins.signers'),
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.plus,
+            'trust-signer',
+            'Recognize signer',
+            'Recognize the verified signing key of an installed plugin (shows consent)',
+            service('plugins.trustSigner',
+                payload: (run) => {
+                      'pluginId': run.positional('id'),
+                      if (run.option('version') != null)
+                        'version': run.option('version'),
+                      if (run.option('accept') != null)
+                        'acceptHash': run.option('accept'),
+                    }),
+            parameters: pluginId + [pluginVersion, pluginAccept],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.trash,
+            'untrust-signer',
+            'Forget signer',
+            'Forget a local signer fingerprint; plugin pins are unchanged',
+            service('plugins.untrustSigner',
+                payload: (run) => {
+                      'fingerprint': run.positional('fingerprint'),
+                    }),
+            parameters: const [
+              GuiParameter(
+                  name: 'fingerprint',
+                  kind: GuiParamKind.positional,
+                  type: GuiParamType.string,
+                  required: true,
+                  label: 'SHA-256 signer fingerprint')
+            ],
+            inGroup: true,
+          ),
+          command(
             icon: GuiIcons.plus,
             'register',
             'Register plugin',

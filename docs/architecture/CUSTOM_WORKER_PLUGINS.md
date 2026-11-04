@@ -1,6 +1,6 @@
 # Custom Worker plugins: architecture, entitlement and trust
 
-**Status:** Phase 0 proposal (docs and contracts only; nothing here is implemented)
+**Status:** Implemented in phases; platform and deployed acceptance remain gated
 **Decision record:** [ADR-027](../decisions/ADR-027-custom-worker-plugins.md)
 **Companion contracts:** [Plugin protocol v1](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md), [Management IPC v1](../specifications/WORKER_PLUGIN_MANAGEMENT_IPC_V1.md)
 **Plan, SDK and open decisions:** [Custom Worker plugins plan](../roadmaps/CUSTOM_WORKER_PLUGINS_PLAN.md)
@@ -11,7 +11,7 @@ Code references below were checked against the repository on 2026-11-03.
 > built. Where the build differs, ADR-027 §7 lists the difference and the reason.
 > Notable corrections to the text below: consent is accepted by passing the
 > consent-document **hash** (`--accept <hash>`), not a one-time token;
-> `plugins trust-signer` is not implemented; the lease endpoint, library routes
+> signer recognition is installation-local and never bypasses consent; the lease endpoint, library routes
 > and Workspace pins live in `apps/cloud/src/routes/plugin-entitlement.ts` and
 > `worker-plugins.ts`; migration `0101_worker_plugins.sql` adds the tables and
 > the `worker_catalog.origin/owner_user_id` and
@@ -368,15 +368,20 @@ same `pluginId`. A digest the Service finds on disk that differs from the pin is
 
 ### 4.2 Optional signing
 
-- A plugin may ship a detached Ed25519 signature over `manifestDigest`
-  (`plugin.sig`: `{ alg, keyId, signature }`) and the author's public key
-  fingerprint in the manifest.
-- Verification only proves the bytes match what the key holder signed. It does
-  not prove the key holder is trustworthy. The consent document therefore shows
-  the **fingerprint**, and the user can pin a signer (`plugins trust-signer`,
-  stored locally and recorded in Cloud as a fingerprint only). A pinned signer
-  lets updates signed by the same key skip the *signer-change* consent, but never
-  the *access-increase* consent.
+- A plugin may ship `plugin.sig` with `{alg:"ed25519", keyId, publicKey,
+  signature}`. The raw public key is 32 bytes (base64); the signature is over
+  the UTF-8 manifest digest (64 lowercase hex characters).
+- Verification proves possession of the signing key, not a claimed author name
+  or program safety. Consent shows the public-key SHA-256 fingerprint.
+- `plugins trust-signer` pins a verified fingerprint locally after explicit
+  consent by hash. `plugins signers` lists pins; `plugins untrust-signer` forgets
+  a pin offline or after lapse. This is installation-local recognition, not a
+  Cloud account trust policy. Cloud already receives the package's verified
+  signer fingerprint at registration.
+- Every new/updated digest and access request still needs explicit registration
+  and enablement consent, even when the signer is recognized. Recognition never
+  grants entitlement, bypasses conformance or moves a pin. Forgetting a signer
+  does not disable existing plugin versions; that requires `plugins disable`.
 - Default policy: **signing optional** (decision D2). A Cloud-level organisation
   policy "require signed plugins" is a future per-Workspace setting; the data
   model reserves `consent_json.signer`.

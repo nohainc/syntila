@@ -80,6 +80,38 @@ extension _PluginOutput on WorkspaceCli {
           'The bundle contains no credentials, data or logs.',
         );
         return true;
+      case 'plugins.signers':
+        final signers = (result['signers'] as List).whereType<Map>();
+        if (signers.isEmpty) out.writeln('No locally recognized signers.');
+        for (final signer in signers) {
+          out.writeln(
+              '${signer['fingerprint']}  accepted ${signer['acceptedAt']}');
+        }
+        out.writeln(result['statement']);
+        return true;
+      case 'plugins.trustSigner':
+        if (result['consentRequired'] == true) {
+          final doc = result['document'] as Map;
+          out.writeln(
+              'Review before recognizing this signer on this installation');
+          out.writeln('  Plugin: ${doc['pluginId']} ${doc['version']}');
+          out.writeln('  Manifest: ${doc['manifestDigest']}');
+          out.writeln('  Fingerprint: ${doc['fingerprint']}');
+          out.writeln(doc['statement']);
+          out.writeln('To accept exactly this, rerun with:');
+          out.writeln('  --accept ${result['documentHash']}');
+        } else {
+          out.writeln('Recognized locally: ${result['fingerprint']}');
+          out.writeln(
+              'Plugin execution and updates still need explicit consent.');
+        }
+        return true;
+      case 'plugins.untrustSigner':
+        out.writeln(
+            'Forgot local signer recognition: ${result['fingerprint']}');
+        out.writeln(
+            'Existing plugin enablement is unchanged; use plugins disable to stop scheduling.');
+        return true;
       case 'plugins.entitlement':
         if (result['entitled'] == true) {
           out.writeln('Syntila Plus: active (verified lease).');
@@ -140,7 +172,8 @@ extension _PluginOutput on WorkspaceCli {
       final signer = selected['signer'];
       out.writeln(
         signer is Map
-            ? 'Signer:   ${signer['fingerprint']} (verified)'
+            ? 'Signer:   ${signer['fingerprint']} (signature verified; '
+                '${selected['signerTrustedLocally'] == true ? 'recognized locally' : 'not recognized locally'})'
             : 'Signer:   unsigned',
       );
     }
@@ -175,7 +208,7 @@ extension _PluginOutput on WorkspaceCli {
         '  Plugin:    ${plugin['id']} ${plugin['version']} - ${plugin['displayName']}');
     out.writeln(
       '  Author:    ${plugin['author']} '
-      '(${plugin['authorVerified'] == true ? 'verified' : 'unverified, as claimed'})',
+      '(unverified, as claimed)',
     );
     out.writeln('  Origin:    ${origin['kind']} (${origin['locator']})');
     out.writeln('  Digest:    ${digest['manifest']}');
@@ -192,6 +225,10 @@ extension _PluginOutput on WorkspaceCli {
       '  Signature: ${signature['status']}'
       '${signature['fingerprint'] == null ? '' : ' ${signature['fingerprint']}'}',
     );
+    if (signature['status'] == 'verified') {
+      out.writeln(
+          '  Key recognition: ${signature['trustedLocally'] == true ? 'recognized locally' : 'not recognized locally'}');
+    }
     out.writeln(
       '  Isolation: ${isolation['tier']} (read-only enforced: '
       '${isolation['readOnlyEnforced']})',

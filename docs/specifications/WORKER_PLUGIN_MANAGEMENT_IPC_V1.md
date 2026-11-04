@@ -1,6 +1,6 @@
-# Worker plugin management: CLI and IPC contract v1 (draft)
+# Worker plugin management: CLI and IPC contract v1
 
-**Status:** Phase 0 draft
+**Status:** Implemented; platform and deployment acceptance remain gated
 **Decision:** [ADR-027](../decisions/ADR-027-custom-worker-plugins.md)
 **Architecture:** [Custom Worker plugins](../architecture/CUSTOM_WORKER_PLUGINS.md)
 **Plugin protocol:** [Worker Plugin Protocol v1](WORKER_PLUGIN_PROTOCOL_V1.md)
@@ -54,6 +54,9 @@ All state transitions are Service-owned.
 | `syntila plugins disable ID` | `plugins.disable` | free | no | Per-Workspace: stop scheduling; running work drains. Intent recorded; files kept. |
 | `syntila plugins export ID FILE [--version V]` | `plugins.export` | free | no | Write a credential-free bundle (architecture §4.5). Works offline and after downgrade. |
 | `syntila plugins remove ID` | `plugins.remove` | free | no | Remove from the account library and local store. Refuses while enabled anywhere or in use. |
+| `syntila plugins signers` | `plugins.signers` | free | no | List installation-local recognized key fingerprints. |
+| `syntila plugins trust-signer ID [--version V] [--accept HASH]` | `plugins.trustSigner` | **Plus** (valid lease) | no | Re-verify the installed signature, show a fingerprint consent document, then save local key recognition. |
+| `syntila plugins untrust-signer FINGERPRINT` | `plugins.untrustSigner` | free | no | Forget local key recognition, including offline or after lapse. Does not disable existing plugins. |
 | `syntila plugins entitlement` | `plugins.entitlement` | free | no | Shows lease state: entitled, expiry, offline remaining. A **hint**; Cloud decides. |
 
 `--workspace` is not needed: the Service is the one installation's Workspace,
@@ -73,7 +76,41 @@ request, origin and signature status, so a changed package can never reuse an
 earlier acceptance. There is no token, no expiry and no server-side consent
 state. Scripts pass `--accept <hash>`; there is no `--yes`.
 
-### 3.2 Result shapes (abridged)
+### 3.2 Signer recognition
+
+`plugins.trustSigner` accepts `{pluginId, version?, acceptHash?}` and follows the
+same consent-by-hash response convention. Its document binds the installed
+manifest digest, plugin identity/version, verified public-key fingerprint and
+installation-local scope. It re-verifies package bytes and `plugin.sig`; registry
+claims alone cannot establish a signer. Unsigned packages return
+`plugin_signature_required`.
+
+`plugins.signers` returns `{schemaVersion:1, scope:"installation", signers:[
+{fingerprint, acceptedAt}], statement}`. `plugins.untrustSigner` accepts
+`{fingerprint}` (64 lowercase hex) and returns `{schemaVersion:1, fingerprint,
+removed, scope:"installation"}`. Forgetting an absent fingerprint is idempotent.
+
+Recognition is an informational pin, not execution authorization. It never skips
+registration, conformance, entitlement, update/access consent or digest checks.
+Pins are stored in `Plugins/trusted-signers.json`, serialized and atomically
+written by the Service, and excluded from export bundles. They do not propagate
+to other installations or become account-level trust policy in Cloud. Existing
+Cloud library metadata still records the verified package's signer fingerprint.
+Corrupt local trust state is preserved and returns `plugin_signer_trust_invalid`
+rather than being overwritten. The local store is bounded to 1 MiB and 1024
+fingerprints; adding beyond that count returns `plugin_quota_exceeded`.
+
+`plugins.show.selected.signerTrustedLocally` and the consent document's
+`signature.trustedLocally` expose recognition. The manifest's author name remains
+unverified (`authorVerified:false`); `signatureVerified` separately reports a
+valid signature. A change in recognition invalidates an outstanding signed
+plugin consent hash, but forgetting recognition does not revoke an already
+accepted execution pin. Use `plugins.disable` to stop scheduling.
+
+The IPC envelope remains v1 with additive commands; older Services return
+`unsupported_command` for signer management.
+
+### 3.3 Result shapes (abridged)
 
 ```json
 // plugins.list → result
@@ -125,6 +162,8 @@ All errors use the existing envelope `{ok:false, error:{code, message}}` where
 | `plugin_protocol_unsupported` | No common protocol version | test, enable |
 | `plugin_conformance_required` | `register`/`enable` before a passing test for this digest | register, enable |
 | `plugin_conformance_failed` | Suite failed (summary in result) | test |
+| `plugin_signature_required` | No verified package signature available | trust-signer |
+| `plugin_signer_trust_invalid` | Local signer store is unreadable/corrupt; preserve it for recovery | signer reads/mutations and signed consent |
 | `plugin_signature_invalid` | Signature present and does not verify | validate, import |
 | `plugin_not_enabled` | Disable of a plugin that is not enabled | disable |
 | `plugin_entitlement_lapsed` | Readiness/launch code while Plus is not active (plugins paused) | readiness, launch |

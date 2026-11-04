@@ -244,6 +244,50 @@ void main() {
       expect('$out', contains('plugin-3fa91c04b2d7'));
     });
 
+    test('signer commands remain IPC-only and consent exits 3', () async {
+      final fingerprint = 'a' * 64;
+      var code = await run(
+          ['plugins', 'trust-signer', 'acme', '--version', '1.0.0'],
+          (_, __) => {
+                'consentRequired': true,
+                'documentHash': 'b' * 64,
+                'document': {
+                  'pluginId': 'acme',
+                  'version': '1.0.0',
+                  'manifestDigest': 'c' * 64,
+                  'fingerprint': fingerprint,
+                  'statement': 'Recognition does not approve execution.'
+                },
+              });
+      expect(code, 3);
+      expect(sent.single.$1, 'plugins.trustSigner');
+      expect(sent.single.$2['version'], '1.0.0');
+      expect('$out', contains(fingerprint));
+      expect('$out', contains('--accept ${'b' * 64}'));
+      sent.clear();
+      code = await run(
+          ['plugins', 'trust-signer', 'acme', '--accept', 'b' * 64],
+          (_, __) => {'trustedLocally': true, 'fingerprint': fingerprint});
+      expect(code, 0);
+      expect(sent.single.$2['acceptHash'], 'b' * 64);
+      sent.clear();
+      await run(['plugins', 'untrust-signer', fingerprint],
+          (_, __) => {'removed': true, 'fingerprint': fingerprint});
+      expect(sent.single.$1, 'plugins.untrustSigner');
+      expect(sent.single.$2['fingerprint'], fingerprint);
+      sent.clear();
+      await run(
+          ['plugins', 'signers'],
+          (_, __) => {
+                'signers': [
+                  {'fingerprint': fingerprint, 'acceptedAt': 'now'}
+                ],
+                'statement': 'Local recognition only.',
+              });
+      expect(sent.single.$1, 'plugins.signers');
+      expect('$out', contains('Local recognition only.'));
+    });
+
     test('--json prints the raw reply and still exits 3 for pending consent',
         () async {
       final code = await run(

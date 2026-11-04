@@ -1,6 +1,6 @@
 # ADR-027: Custom Worker plugins (Syntila Plus)
 
-**Status:** Accepted for implementation (2026-11-03, owner approval in-thread: decisions D1-D4 and D13 follow the recommendations in the plan; no runtime code yet)
+**Status:** Accepted for implementation (2026-11-03, owner approval in-thread: decisions D1-D4 and D13 follow the recommendations in the plan; implementation and acceptance evidence tracked in the plan)
 **Date:** 2026-11-03
 **Amends:** [Architecture v8](../architecture/ARCHITECTURE_V8.md#architecture-contract) execution path and the `provider_specific_worker_executable` exclusion
 **Builds on:** [ADR-018](ADR-018-generic-cli-worker-engine-and-tool-profiles.md), [ADR-021](ADR-021-workspace-service-linux-windows.md), [ADR-022](ADR-022-account-plans.md)
@@ -165,12 +165,15 @@ specified:
 | --- | --- | --- |
 | One-time consent tokens | Consent is the **hash of the consent document**; `--accept <hash>` proceeds | The hash covers the digest, so stale or reused consent is impossible; no server-side state to expire |
 | `plugins export <id> --out FILE` | `plugins export <id> <file>` | Positional arguments are what the CLI manifest tests can route |
-| `plugins trust-signer` | Not implemented; signatures are verified and shown at consent | Deferred (D2); no behaviour depends on it |
+| `plugins trust-signer` | Installation-local fingerprint recognition with consent by hash; list and revoke available | No automatic trust propagation or consent bypass; signed updates still require acceptance |
 | New wire error codes | Plugin failures map onto the existing stable issue codes (for example `provider_authentication_required`, `profile_identity_mismatch`) with the plugin code in diagnostics | Avoids changing Cloud's execution-error enums |
 | `readonly`-class scheduling via isolation tier | Same rule, but no tier exists yet, so plugins run **Work only** | Honest default until device evidence exists |
 | Plugin `profileDefinitionId` | Cloud treats the opaque `pluginRef` and revision `1` as the stable identity for frozen step configs and session references | Reuses every Profile-keyed path without a Profile |
 | 24 conformance cases | 21 implemented; see the plan | The rest need host cooperation and are host tests |
 | `quarantine/` directory | Copy goes to an atomic staging directory, then a read-only digest-addressed store entry; entries are inert until enabled | Same guarantee, fewer states |
 
-Known gaps: OS isolation and resource limits (every plugin reports tier `none`),
-Windows/Linux device evidence, and the Dart SDK/`pack` tool.
+Known gaps: filesystem/network isolation (every plugin reports tier `none`),
+Windows/Linux device evidence, Windows handle quotas, aggregate POSIX CPU budget,
+package publication and deployed Cloud acceptance. The Dart SDK, pack/init tools,
+signing tool and signer recognition are implemented. Resource-limit evidence is
+tracked in [the acceptance record](../acceptance/PLUGIN_RESOURCE_LIMITS.md).
