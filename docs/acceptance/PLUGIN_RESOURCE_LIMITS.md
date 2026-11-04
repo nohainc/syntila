@@ -34,9 +34,11 @@ Read-only Steps remain ineligible.
   stops work above 512 MiB or 100,000 entries. Symlinks are not traversed. This is
   an observed logical-size quota, not a disk reservation or filesystem quota.
 - Failed limit setup never starts plugin code. Failed resource inspection stops
-  work. Runtime breaches use local `plugin_resource_limit`, mapped to the
-  existing non-retryable provider-failure wire issue. Conformance uses the same
-  launch path and monitoring; the standalone author launcher remains unrestricted.
+  work. POSIX/data monitor breaches use local `plugin_resource_limit`, mapped to
+  the existing non-retryable provider-failure issue. Windows launcher observation
+  failures exit with a safe stderr diagnostic; the parent reports process failure,
+  as it does for a native hard-limit termination. Conformance uses the same launch
+  path and monitoring; the standalone author launcher remains unrestricted.
 
 ## Executable evidence on macOS arm64
 
@@ -61,26 +63,56 @@ not a notarized Workspace release:
 - `plugin_conformance_engine_test.dart`: the compiled SDK example passes all
   21 cases through the limited Engine child path, including session resume.
 
+The default Engine component validator runs the Engine's process-heavy test
+files serially, retaining all existing deadlines. This avoids simultaneous JIT
+startups starving each other on busy development hosts. Shared protocol/runtime
+package tests retain their normal execution configuration. On the final runtime
+source, the local Engine regression suite passed 162 tests with seven skips in
+serial mode; Workspace validation passed 646 tests with 22 skips and the headless
+Service compile/start/stop smoke check. The prior parallel Engine run hit process
+startup timeouts; test deadlines were not relaxed.
+
+## Hosted platform evidence
+
+[Focused acceptance run 41819141616](https://github.com/nohainc/syntila/actions/runs/41819141616)
+passed on source commit `87dfc5727a6a645e812be222169781648cd4be1c`:
+
+| Runner | Result | Native checks exercised |
+| --- | --- | --- |
+| [Ubuntu 24.04 x64](https://github.com/nohainc/syntila/actions/runs/41819141616/job/126537572841) | 17 passed, 5 platform skips | Actual inherited CPU/file/core limits, file exhaustion, hard CPU termination, sampled memory/aggregate CPU termination |
+| [Ubuntu 24.04 arm64](https://github.com/nohainc/syntila/actions/runs/41819141616/job/126537570825) | 17 passed, 5 platform skips | Same POSIX native and sampled checks on arm64 |
+| [Windows Server 2022 x64](https://github.com/nohainc/syntila/actions/runs/41819141616/job/126537571746) | 17 passed, 5 platform skips | Actual inherited private-job limits; executive-handle exhaustion; committed memory refusal; CPU termination; simultaneous process refusal |
+
+The matrix also runs accounting, data-quota and monitor-policy tests. It builds
+AOT Engine/fixture executables on each hosted OS. Each test log is retained as a
+`plugin-resources-<runner>` artifact on that run. This does not establish signed
+Workspace release, user-service lifecycle or deployed Cloud acceptance.
+
+The native Linux check caught a cross-platform FFI bug: `RLIM_INFINITY` is
+`UINT64_MAX` on Linux and reads as `-1` in Dart's 64-bit integer representation.
+The launcher now clamps that sentinel to the requested finite limit rather than
+preserving unlimited CPU/core settings. Reading actual target limits and killing
+a busy target cover this regression on both Linux architectures.
+
+Reproduce only the focused checks with:
+
+```sh
+gh workflow run ci.yml --ref feat/custom-plugins-p2 -f plugin_acceptance_only=true
+```
+
+The dispatch skips unrelated component builds and deployments. The normal CI
+workflow remains unchanged unless this explicit boolean input is set.
+
 ## Outstanding acceptance
 
-- Run the POSIX tests on Linux x64/arm64. No Linux execution evidence is claimed.
-- Run the Windows job-inheritance test (`windows_limit_probe.dart`) on Windows
-  x64. The new `plugin-limits-windows` CI job runs it on engine changes;
-  it queries the target's actual inherited job flags and limits. Add and
-  retain Windows memory/CPU/process-exhaustion and cleanup evidence before
-  release; these native calls are not exercised by macOS tests.
 - Defaults are fixed in this implementation. Manifest `limits.memoryMiB` does
   not raise the host ceiling; per-plugin lower-limit configuration is not wired.
 - Windows handles and aggregate POSIX CPU are observed budgets, not hard kernel
-  quotas. Filesystem/network isolation is absent.
-- Retain signed/release Workspace evidence, including stop/crash and detached
-  descendants; this development run does not establish launchd/TCC/notarization
-  or Linux/Windows host integration claims.
-
-The CI workflow accepts `plugin_acceptance_only=true` to run only the focused
-resource tests on Ubuntu x64, Ubuntu arm64 and Windows x64, retaining each test
-log. This runs no application build or deployment. Hosted execution results are
-recorded below after the run completes.
+  quotas. Processes born/reaped or detached between samples can evade accounting.
+  Filesystem/network isolation remains absent.
+- Retain installed/signed Workspace release evidence, including stop/crash and
+  detached descendants. Hosted resource tests do not establish launchd/TCC,
+  notarization, Linux user-service or Windows logon-task integration claims.
 
 ## Native contracts
 

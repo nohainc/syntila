@@ -31,7 +31,13 @@ for pkg in "${engine_packages[@]}"; do
       dart run tool/prepare_plugin_test_binaries.dart
     fi
     if [[ -d test ]]; then
-      dart test
+      if [[ "$pkg" == engines/cli_worker ]]; then
+        # These tests start real Engine/provider processes with bounded startup
+        # deadlines. Parallel JIT startups can starve each other on busy hosts.
+        dart test --concurrency=1
+      else
+        dart test
+      fi
     fi
   )
 done

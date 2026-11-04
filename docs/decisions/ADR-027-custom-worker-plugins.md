@@ -173,7 +173,7 @@ specified:
 | `quarantine/` directory | Copy goes to an atomic staging directory, then a read-only digest-addressed store entry; entries are inert until enabled | Same guarantee, fewer states |
 
 Known gaps: filesystem/network isolation (every plugin reports tier `none`),
-Windows/Linux release evidence and hard aggregate POSIX CPU/Windows handle quotas,
+Installed/signed Windows/Linux release evidence and hard aggregate CPU/handle quotas,
 package publication and deployed Cloud acceptance. The Dart SDK, pack/init tools,
 signing tool and signer recognition are implemented. Resource-limit evidence is
 tracked in [the acceptance record](../acceptance/PLUGIN_RESOURCE_LIMITS.md).
