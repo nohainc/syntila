@@ -385,8 +385,13 @@ same `pluginId`. A digest the Service finds on disk that differs from the pin is
 
 ### 4.3 Enforced limits (Engine plugin host)
 
-Defaults below are the Phase 0 proposal; they are enforced by the Engine, not
-requested of the plugin. Per-Workspace overrides are limited to lowering them.
+The table below retains the Phase 0 target defaults. Current enforcement covers
+protocol/frame bounds, deadlines, heartbeat, cancellation, redaction and process
+cleanup. **Memory, CPU, file-handle and descendant-count limits and the data-dir
+quota are not implemented.** No isolation tier above `none` is claimed and
+read-only Steps remain ineligible. Resource-limit rows are outstanding acceptance
+requirements, not current guarantees. Planned per-Workspace overrides may only
+lower these defaults.
 
 | Limit | Default | Enforcement |
 | --- | --- | --- |

@@ -4,7 +4,8 @@ A plugin is any executable that speaks the
 [Worker Plugin Protocol v1](WORKER_PLUGIN_PROTOCOL_V1.md) over stdin and stdout.
 This guide is the shortest path from nothing to a plugin that passes the
 conformance suite. A plugin runs as the user who installs it, with that user's
-files and logins; read the **security notes** before shipping one.
+files and logins; read the **security notes** before shipping one. Users should
+review the [installation security guide](../security/CUSTOM_WORKER_PLUGINS.md).
 
 ## 1. The package
 
@@ -56,6 +57,17 @@ at consent; it is a request, not a sandbox.
 
 ## 1a. Dart: use the SDK
 
+The SDK is currently repository-local, not published. Create a local project
+from a checkout:
+
+```sh
+cd packages/syntila_plugin_sdk
+dart run syntila_plugin_sdk:init /path/to/my-plugin my-plugin
+```
+
+The destination must be empty. The generated README contains build and pack
+commands; the SDK dependency points to this checkout.
+
 `packages/syntila_plugin_sdk` implements the protocol for you. Subclass
 `PluginWorker`, implement `execute`, and call `runPlugin`:
 
@@ -76,7 +88,8 @@ Future<void> main() => runPlugin(MyPlugin());
 ```
 
 `examples/plugins/echo_dart` is a complete plugin that also supports session
-resume (`SessionStore`) and cancel; it passes all 21 conformance cases. After
+resume (`SessionStore`) and cancel; tests exercise all 21 conformance cases
+standalone and through the Engine host. After
 `dart compile exe`, fill the hashes with:
 
 ```sh
@@ -158,3 +171,27 @@ nothing proves read-only; plugins run Work Steps only.
   `{"alg":"ed25519","keyId":"...","publicKey":"<base64 raw 32 bytes>","signature":"<base64 64 bytes>"}`
   where the signature is over the UTF-8 bytes of the manifest digest (64 hex
   characters). A valid signature proves who built it, not that it is trustworthy.
+
+
+## 6. Sign a packed release
+
+Signing is optional. Keep the author key outside your package directory, and
+use a different key from the Cloud entitlement lease key. For example:
+
+```sh
+umask 077
+openssl genpkey -algorithm ED25519 -out /private/path/author.pem
+node scripts/sign-plugin.mjs /path/to/packed-plugin /private/path/author.pem author-1
+```
+
+Run the signing command from the repository root after `pack`. It reads a
+PKCS#8 PEM Ed25519 key and writes `plugin.sig` in the Service's signature format.
+It never prints the private key, and refuses to overwrite an existing signature.
+After changing or repacking a release, explicitly remove the stale `plugin.sig`
+and sign again. The signer does not replace static manifest validation or
+conformance testing. Users still consent to the digest and signer fingerprint;
+there is no `trust-signer` management command today.
+
+The [Python example](../../examples/plugins/echo_python/README.md) demonstrates
+implementing the same protocol without the Dart SDK. Its interpreter comes from
+the local environment; prefer standalone executables for distribution.
