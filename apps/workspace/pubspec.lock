@@ -361,6 +361,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  syntila_mcp_protocol:
+    dependency: "direct main"
+    description:
+      path: "../../packages/syntila_mcp_protocol"
+      relative: true
+    source: path
+    version: "0.1.0"
   syntila_plugin_protocol:
     dependency: "direct main"
     description:

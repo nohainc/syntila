@@ -19,6 +19,8 @@ dependencies:
     path: ../../packages/syntila_cli_worker_runtime
   syntila_plugin_protocol:
     path: ../../packages/syntila_plugin_protocol
+  syntila_mcp_protocol:
+    path: ../../packages/syntila_mcp_protocol
   cryptography: ^2.9.0
   nanomarkup: ^1.0.0
   # CLI command metadata, help and --gui-manifest; pinned to a commit.
