@@ -55,7 +55,7 @@ void main() {
     addTearDown(c.close);
     await c.initialize();
     final tools = await c.listTools();
-    expect(tools.map((t) => t['name']), ['echo', 'slow']);
+    expect(tools.map((t) => t['name']), ['echo', 'slow', 'mutate']);
     final seen = <String?>[];
     final res = await c
         .callTool('echo', {'text': 'hi'}, onProgress: (p, t, m) => seen.add(m))

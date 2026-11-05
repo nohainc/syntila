@@ -44,6 +44,8 @@ class McpClient {
   var _nextId = 1;
   var _closed = false;
 
+  bool get isClosed => _closed;
+
   String? negotiatedVersion;
   Map<String, Object?> serverCapabilities = const {};
   Map<String, Object?> serverInfo = const {};

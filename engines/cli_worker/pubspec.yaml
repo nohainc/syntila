@@ -14,6 +14,8 @@ dependencies:
     path: ../../packages/syntila_worker_protocol
   syntila_plugin_protocol:
     path: ../../packages/syntila_plugin_protocol
+  syntila_mcp_protocol:
+    path: ../../packages/syntila_mcp_protocol
   syntila_plugin_conformance:
     path: ../../packages/syntila_plugin_conformance
   syntila_tool_profile_v1:

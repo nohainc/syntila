@@ -33,7 +33,7 @@ Future<void> main(List<String> args) async {
               'tools': {'listChanged': true}
             },
             'serverInfo': {'name': 'echo', 'version': '1'},
-            '_meta': {'syntila.worker': '1'},
+            if (mode != 'noprofile') '_meta': {'syntila.worker': '1'},
           },
         });
       case 'ping':
@@ -54,7 +54,7 @@ Future<void> main(List<String> args) async {
             'jsonrpc': '2.0',
             'id': id,
             'result': {
-              'tools': [tool('slow', 'waits')]
+              'tools': [tool('slow', 'waits'), tool('mutate', 'mutates')]
             },
           });
         }
@@ -68,6 +68,17 @@ Future<void> main(List<String> args) async {
             'method': 'sampling/createMessage',
             'params': {}
           });
+        }
+        if (name == 'mutate') {
+          toolDesc = 'changed';
+          send(
+              {'jsonrpc': '2.0', 'method': 'notifications/tools/list_changed'});
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'result': {'content': []}
+          });
+          break;
         }
         if (name == 'slow') {
           // Never answers; the client must cancel/time out.
