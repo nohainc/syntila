@@ -1,6 +1,6 @@
 # Syntila MCP Worker profile v1 (draft)
 
-**Status:** Draft, gated on [ADR-028](../decisions/ADR-028-mcp-integration.md).
+**Status:** Draft; the Engine runner and a reference server implement sections 1-3 (see `examples/mcp/echo_worker`). Gated on [ADR-028](../decisions/ADR-028-mcp-integration.md).
 A standard MCP server becomes a Syntila Worker only by implementing this
 profile. Transport and framing are [MCP host v1](MCP_HOST_V1.md).
 

@@ -250,4 +250,12 @@ class McpLease {
     _released = true;
     _host._release(_entry);
   }
+
+  /// Kills the server process (cancelled, timed-out or misbehaving run) and
+  /// releases the lease. The next acquire starts a fresh process.
+  Future<void> discard() async {
+    if (_released) return;
+    await _host._disconnect(_entry);
+    release();
+  }
 }
