@@ -19,6 +19,9 @@ extension _McpOutput on WorkspaceCli {
       case 'mcp.list':
         final servers = (result['servers'] as List).whereType<Map>();
         if (servers.isEmpty) out.writeln('No MCP servers.');
+        final bindings = result['bindings'] is Map
+            ? Map<String, Object?>.from(result['bindings'] as Map)
+            : const <String, Object?>{};
         for (final server in servers) {
           final state = server['enabled'] == true
               ? 'enabled'
@@ -30,6 +33,22 @@ extension _McpOutput on WorkspaceCli {
             'tools: ${(server['tools'] as List).join(', ')}',
           );
         }
+        for (final entry in bindings.entries) {
+          out.writeln(
+            'Worker ${entry.key} may use: ${(entry.value as List).join(', ')}',
+          );
+        }
+        return true;
+      case 'mcp.bind':
+        out.writeln(
+          '${result['workerTypeId']} may now receive ${result['serverId']} '
+          'when it is consented and enabled.',
+        );
+        return true;
+      case 'mcp.unbind':
+        out.writeln(
+          '${result['workerTypeId']} no longer receives ${result['serverId']}.',
+        );
         return true;
       case 'mcp.add':
         out.writeln('Added ${result['serverId']}.');

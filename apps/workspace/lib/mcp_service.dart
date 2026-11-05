@@ -188,6 +188,45 @@ class McpService {
     return {'serverId': serverId, 'removed': true};
   }
 
+  static final _workerTypePattern = RegExp(r'^[a-z][a-z0-9_-]{0,63}$');
+
+  /// Lets [workerTypeId] receive [serverId] in its executions. Binding does not
+  /// bypass consent: launch resolution still requires consent and enablement.
+  Map<String, Object?> bind(String workerTypeId, String serverId) {
+    if (!_workerTypePattern.hasMatch(workerTypeId)) {
+      throw const McpPolicyException('invalid_request', 'Invalid Worker type.');
+    }
+    _require(serverId);
+    final current = _registry.bindings()[workerTypeId] ?? const <String>[];
+    if (!current.contains(serverId)) {
+      _registry.setBinding(workerTypeId, [...current, serverId]..sort());
+    }
+    return {'workerTypeId': workerTypeId, 'serverId': serverId, 'bound': true};
+  }
+
+  Map<String, Object?> unbind(String workerTypeId, String serverId) {
+    final current = _registry.bindings()[workerTypeId] ?? const <String>[];
+    _registry.setBinding(workerTypeId, [
+      for (final id in current)
+        if (id != serverId) id,
+    ]);
+    return {
+      'workerTypeId': workerTypeId,
+      'serverId': serverId,
+      'bound': false,
+    };
+  }
+
+  Map<String, List<String>> bindings() => _registry.bindings();
+
+  /// Launches for one execution of [workerTypeId]: the bound servers, or an
+  /// empty list when none are bound. A bound server that is not consented,
+  /// enabled and unchanged refuses the whole request (never a silent subset).
+  Future<List<McpServerLaunch>> launchesForWorker(String workerTypeId) async {
+    final ids = _registry.bindings()[workerTypeId] ?? const <String>[];
+    return ids.isEmpty ? const [] : resolveLaunches(ids);
+  }
+
   /// Tool pins the Engine host must enforce for this server.
   ToolPins pinsFor(String serverId) =>
       ToolPins(Map.of(_require(serverId).toolPins));
@@ -246,4 +285,26 @@ class McpService {
       );
     }
   }
+}
+
+/// True when every argument vector that may be selected (base and each
+/// compatibility override) contains the `mcpConfigArguments` slot (ADR-028).
+bool profileSupportsMcpServers(Map<String, Object?> profile) {
+  bool hasSlot(Object? arguments) =>
+      arguments is List &&
+      arguments
+          .any((part) => part is Map && part.containsKey('mcpConfigArguments'));
+  final execution = profile['execution'];
+  if (execution is! Map || !hasSlot(execution['arguments'])) return false;
+  final overrides = profile['compatibilityOverrides'];
+  if (overrides is List) {
+    for (final override in overrides) {
+      if (override is Map &&
+          override.containsKey('executionArguments') &&
+          !hasSlot(override['executionArguments'])) {
+        return false;
+      }
+    }
+  }
+  return true;
 }

@@ -132,6 +132,15 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
       label: 'Server ID',
     ),
   ];
+  const mcpWorkerType = <GuiParameter>[
+    GuiParameter(
+      name: 'worker',
+      kind: GuiParamKind.positional,
+      type: GuiParamType.string,
+      required: true,
+      label: 'Worker type',
+    ),
+  ];
   const pluginVersion = GuiParameter(
     name: 'version',
     kind: GuiParamKind.option,
@@ -892,6 +901,36 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
               payload: (run) => {'serverId': run.positional('id')},
             ),
             parameters: mcpServerId,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.link,
+            'bind',
+            'Bind MCP server',
+            'Let a Worker type receive this server in its executions',
+            service(
+              'mcp.bind',
+              payload: (run) => {
+                'serverId': run.positional('id'),
+                'workerTypeId': run.positional('worker'),
+              },
+            ),
+            parameters: mcpServerId + mcpWorkerType,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.stop,
+            'unbind',
+            'Unbind MCP server',
+            'Stop giving this server to a Worker type',
+            service(
+              'mcp.unbind',
+              payload: (run) => {
+                'serverId': run.positional('id'),
+                'workerTypeId': run.positional('worker'),
+              },
+            ),
+            parameters: mcpServerId + mcpWorkerType,
             inGroup: true,
           ),
           command(

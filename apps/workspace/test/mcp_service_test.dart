@@ -171,6 +171,75 @@ void main() {
       await expectLater(bad(), throwsA(_code('invalid_request')));
     }
   });
+
+  group('Worker bindings', () {
+    test('nothing is bound by default, so executions get no servers', () async {
+      await addServer();
+      await consentFully();
+      service.enable('files');
+      expect(await service.launchesForWorker('chatgpt'), isEmpty);
+    });
+
+    test('a bound, consented, enabled server is resolved for that Worker only',
+        () async {
+      await addServer();
+      await consentFully();
+      service.enable('files');
+      service.bind('chatgpt', 'files');
+      expect((await service.launchesForWorker('chatgpt')).single.name, 'files');
+      expect(await service.launchesForWorker('claude'), isEmpty);
+    });
+
+    test('binding does not bypass consent or enablement', () async {
+      await addServer();
+      service.bind('chatgpt', 'files');
+      await expectLater(
+        service.launchesForWorker('chatgpt'),
+        throwsA(_code('mcp_not_enabled')),
+      );
+    });
+
+    test('unbind and remove drop bindings', () async {
+      await addServer();
+      service.bind('chatgpt', 'files');
+      service.bind('claude', 'files');
+      service.unbind('chatgpt', 'files');
+      expect(service.bindings(), {
+        'claude': ['files'],
+      });
+      service.remove('files');
+      expect(service.bindings(), isEmpty);
+    });
+
+    test('binding an unknown server or bad Worker type is rejected', () async {
+      expect(() => service.bind('chatgpt', 'ghost'),
+          throwsA(_code('mcp_not_found')));
+      await addServer();
+      expect(() => service.bind('Bad Type', 'files'),
+          throwsA(_code('invalid_request')));
+    });
+  });
+
+  test('Profile support requires the slot in every selectable vector', () {
+    Map<String, Object?> profile(List<Object?> base,
+            [List<Object?>? override]) =>
+        {
+          'execution': {'arguments': base},
+          if (override != null)
+            'compatibilityOverrides': [
+              {'executionArguments': override},
+            ],
+        };
+    const slot = {
+      'mcpConfigArguments': ['--mcp-config', '{{mcpConfigPath}}'],
+    };
+    expect(profileSupportsMcpServers(profile(['a', slot])), isTrue);
+    expect(profileSupportsMcpServers(profile(['a'])), isFalse);
+    expect(profileSupportsMcpServers(profile(['a', slot], ['b'])), isFalse);
+    expect(
+        profileSupportsMcpServers(profile(['a', slot], ['b', slot])), isTrue);
+    expect(profileSupportsMcpServers({}), isFalse);
+  });
 }
 
 Matcher _code(String code) =>

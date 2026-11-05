@@ -24,6 +24,7 @@ import 'package:syntila_workspace/worker_readiness.dart';
 import 'package:syntila_workspace/plugin_executor.dart';
 import 'package:syntila_workspace/plugin_store.dart'
     show PluginServiceException;
+import 'package:syntila_workspace/mcp_service.dart';
 import 'package:syntila_workspace/mcp_subsystem.dart';
 import 'package:syntila_workspace/plugin_subsystem.dart';
 import 'package:syntila_workspace/plugin_worker_runtime.dart';
@@ -643,6 +644,35 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           ),
         );
       }
+      // MCP servers (ADR-028): only servers bound to this Worker type, and
+      // only if consented, enabled and unchanged. A Profile that cannot pass
+      // them fails clearly instead of running without them.
+      var mcpServers = const <McpServerLaunch>[];
+      if (!isPluginWorker) {
+        try {
+          mcpServers = await mcpSubsystem.service.launchesForWorker(
+            worker.workerTypeId,
+          );
+          if (mcpServers.isNotEmpty &&
+              !profileSupportsMcpServers(release!.profile)) {
+            throw const McpPolicyException(
+              'mcp_unsupported',
+              'This Worker cannot use MCP servers yet. Unbind them with '
+                  '"syntila mcp unbind" or choose another Worker.',
+            );
+          }
+        } on McpPolicyException catch (error) {
+          throw AssignmentExecutionFailure(
+            code: 'worker_not_ready',
+            message: error.message,
+            localDiagnostic: _runtimeFailureDiagnostic(
+              'mcp_servers',
+              'worker_not_ready',
+              detail: error.code,
+            ),
+          );
+        }
+      }
       final profileFile = plan?.profileFile;
       // T7: Profile resolved and its execution file located.
       connection?.traceAssignmentStage(context, 'profile_resolved');
@@ -719,6 +749,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
             fullAccessAuthorized: worker.fullLocalAccessAuthorized,
           ),
           additionalDirectories: additionalDirectories,
+          mcpServers: mcpServers,
           // The user chose to compact the Worker session after a context
           // overflow; Cloud sends this only for a durable-session retry.
           compactContext: payload['contextCompaction'] == true &&

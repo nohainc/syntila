@@ -123,4 +123,29 @@ void main() {
       );
     }
   });
+
+  test('bind and unbind change what mcp.list reports', () async {
+    await add();
+    await commands.handle('mcp.bind', {
+      'serverId': 'files',
+      'workerTypeId': 'chatgpt',
+    });
+    var listed = await commands.handle('mcp.list', {}) as Map;
+    expect(listed['bindings'], {
+      'chatgpt': ['files'],
+    });
+    await commands.handle('mcp.unbind', {
+      'serverId': 'files',
+      'workerTypeId': 'chatgpt',
+    });
+    listed = await commands.handle('mcp.list', {}) as Map;
+    expect(listed['bindings'], isEmpty);
+    await expectLater(
+      commands.handle('mcp.bind', {
+        'serverId': 'files',
+        'workerTypeId': 'Bad Type',
+      }),
+      throwsA(isA<WorkspaceManagerProtocolException>()),
+    );
+  });
 }
