@@ -650,17 +650,15 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       var mcpServers = const <McpServerLaunch>[];
       if (!isPluginWorker) {
         try {
-          mcpServers = await mcpSubsystem.service.launchesForWorker(
+          mcpServers = await mcpLaunchesForExecution(
+            mcpSubsystem.service,
             worker.workerTypeId,
+            release?.profile ?? const <String, Object?>{},
+            onRegistryUnreadable: (message) => stderr.writeln(
+              'MCP: $message Running ${worker.workerTypeId} without MCP '
+              'servers.',
+            ),
           );
-          if (mcpServers.isNotEmpty &&
-              !profileSupportsMcpServers(release!.profile)) {
-            throw const McpPolicyException(
-              'mcp_unsupported',
-              'This Worker cannot use MCP servers yet. Unbind them with '
-                  '"syntila mcp unbind" or choose another Worker.',
-            );
-          }
         } on McpPolicyException catch (error) {
           throw AssignmentExecutionFailure(
             code: 'worker_not_ready',

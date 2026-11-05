@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'mcp_registry.dart';
 import 'mcp_service.dart';
 import 'workspace_manager_ipc.dart';
 
@@ -20,6 +21,11 @@ class WorkspaceMcpCommands {
       return await _handle(command, payload);
     } on McpPolicyException catch (error) {
       throw WorkspaceManagerProtocolException(error.code, error.message);
+    } on McpRegistryUnreadable {
+      throw const WorkspaceManagerProtocolException(
+        'mcp_registry_unreadable',
+        'The MCP server registry could not be read. Move or delete Mcp/servers.json to start over.',
+      );
     }
   }
 

@@ -148,4 +148,18 @@ void main() {
       throwsA(isA<WorkspaceManagerProtocolException>()),
     );
   });
+
+  test('a corrupt registry gives a stable, actionable error', () async {
+    File('${root.path}/mcp.json').writeAsStringSync('garbage');
+    await expectLater(
+      commands.handle('mcp.list', {}),
+      throwsA(
+        isA<WorkspaceManagerProtocolException>().having(
+          (e) => e.code,
+          'code',
+          'mcp_registry_unreadable',
+        ),
+      ),
+    );
+  });
 }

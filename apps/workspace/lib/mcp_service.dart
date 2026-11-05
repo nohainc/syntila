@@ -223,7 +223,15 @@ class McpService {
   /// empty list when none are bound. A bound server that is not consented,
   /// enabled and unchanged refuses the whole request (never a silent subset).
   Future<List<McpServerLaunch>> launchesForWorker(String workerTypeId) async {
-    final ids = _registry.bindings()[workerTypeId] ?? const <String>[];
+    final List<String> ids;
+    try {
+      ids = _registry.bindings()[workerTypeId] ?? const <String>[];
+    } on McpRegistryUnreadable {
+      throw const McpPolicyException(
+        'mcp_registry_unreadable',
+        'The MCP server registry could not be read.',
+      );
+    }
     return ids.isEmpty ? const [] : resolveLaunches(ids);
   }
 
@@ -307,4 +315,37 @@ bool profileSupportsMcpServers(Map<String, Object?> profile) {
     }
   }
   return true;
+}
+
+/// What an execution of an official Worker gets, decided in one place.
+///
+/// An unreadable registry must never affect Workers that do not use MCP, so it
+/// yields no servers and calls [onRegistryUnreadable] (a less capable run, never
+/// a more privileged one). A bound server that is not consented, enabled and
+/// unchanged, or a Profile without the slot, throws [McpPolicyException]: the
+/// execution fails rather than running with a silent subset.
+Future<List<McpServerLaunch>> mcpLaunchesForExecution(
+  McpService service,
+  String workerTypeId,
+  Map<String, Object?> profile, {
+  void Function(String message)? onRegistryUnreadable,
+}) async {
+  final List<McpServerLaunch> launches;
+  try {
+    launches = await service.launchesForWorker(workerTypeId);
+  } on McpPolicyException catch (error) {
+    if (error.code == 'mcp_registry_unreadable') {
+      onRegistryUnreadable?.call(error.message);
+      return const [];
+    }
+    rethrow;
+  }
+  if (launches.isNotEmpty && !profileSupportsMcpServers(profile)) {
+    throw const McpPolicyException(
+      'mcp_unsupported',
+      'This Worker cannot use MCP servers yet. Unbind them with '
+          '"syntila mcp unbind" or choose another Worker.',
+    );
+  }
+  return launches;
 }

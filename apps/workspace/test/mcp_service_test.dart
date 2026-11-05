@@ -240,6 +240,82 @@ void main() {
         profileSupportsMcpServers(profile(['a', slot], ['b', slot])), isTrue);
     expect(profileSupportsMcpServers({}), isFalse);
   });
+
+  group('mcpLaunchesForExecution', () {
+    const slot = {
+      'mcpConfigArguments': ['--mcp-config', '{{mcpConfigPath}}'],
+    };
+    final withSlot = <String, Object?>{
+      'execution': {
+        'arguments': ['a', slot],
+      },
+    };
+    final withoutSlot = <String, Object?>{
+      'execution': {
+        'arguments': ['a'],
+      },
+    };
+
+    test('official Workers with nothing bound get no servers and no error',
+        () async {
+      expect(await mcpLaunchesForExecution(service, 'chatgpt', withoutSlot),
+          isEmpty);
+      expect(
+          await mcpLaunchesForExecution(service, 'chatgpt', const {}), isEmpty);
+    });
+
+    test('a corrupt registry never breaks Workers: no servers, warning',
+        () async {
+      File('${root.path}/mcp.json').writeAsStringSync('{ not json');
+      String? warning;
+      final launches = await mcpLaunchesForExecution(
+        service,
+        'chatgpt',
+        withSlot,
+        onRegistryUnreadable: (m) => warning = m,
+      );
+      expect(launches, isEmpty);
+      expect(warning, contains('could not be read'));
+    });
+
+    test('structurally wrong registry content is also treated as unreadable',
+        () async {
+      File('${root.path}/mcp.json')
+          .writeAsStringSync('{"servers": 5, "bindings": {"x": 1}}');
+      expect(await mcpLaunchesForExecution(service, 'x', withSlot), isEmpty);
+    });
+
+    test('bound servers on a Profile without the slot fail the execution',
+        () async {
+      await addServer();
+      await consentFully();
+      service.enable('files');
+      service.bind('chatgpt', 'files');
+      await expectLater(
+        mcpLaunchesForExecution(service, 'chatgpt', withoutSlot),
+        throwsA(_code('mcp_unsupported')),
+      );
+      await expectLater(
+        mcpLaunchesForExecution(service, 'chatgpt', const {}),
+        throwsA(_code('mcp_unsupported')),
+      );
+      expect(
+        (await mcpLaunchesForExecution(service, 'chatgpt', withSlot))
+            .single
+            .name,
+        'files',
+      );
+    });
+
+    test('a bound but unusable server still fails closed', () async {
+      await addServer();
+      service.bind('chatgpt', 'files');
+      await expectLater(
+        mcpLaunchesForExecution(service, 'chatgpt', withSlot),
+        throwsA(_code('mcp_not_enabled')),
+      );
+    });
+  });
 }
 
 Matcher _code(String code) =>

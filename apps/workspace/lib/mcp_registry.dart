@@ -73,6 +73,14 @@ class McpServerRecord {
       );
 }
 
+/// The registry file exists but cannot be read or parsed.
+class McpRegistryUnreadable implements Exception {
+  const McpRegistryUnreadable();
+
+  @override
+  String toString() => 'McpRegistryUnreadable';
+}
+
 /// File-backed list of MCP servers and per-Worker bindings, written
 /// atomically (temp + rename).
 class McpRegistry {
@@ -82,28 +90,40 @@ class McpRegistry {
 
   Map<String, Object?> _readRaw() {
     if (!_file.existsSync()) return const {};
-    return jsonDecode(_file.readAsStringSync()) as Map<String, Object?>;
+    try {
+      return jsonDecode(_file.readAsStringSync()) as Map<String, Object?>;
+    } on Object {
+      throw const McpRegistryUnreadable();
+    }
   }
 
   Map<String, McpServerRecord> _read() {
     final raw = _readRaw();
     if (raw['servers'] == null) return {};
-    return {
-      for (final entry in (raw['servers'] as Map).entries)
-        entry.key as String: McpServerRecord.fromJson(
-          Map<String, Object?>.from(entry.value as Map),
-        ),
-    };
+    try {
+      return {
+        for (final entry in (raw['servers'] as Map).entries)
+          entry.key as String: McpServerRecord.fromJson(
+            Map<String, Object?>.from(entry.value as Map),
+          ),
+      };
+    } on Object {
+      throw const McpRegistryUnreadable();
+    }
   }
 
   /// Worker type id -> server ids that Worker type may receive. Default none.
   Map<String, List<String>> bindings() {
     final raw = _readRaw()['bindings'];
-    if (raw is! Map) return {};
-    return {
-      for (final entry in raw.entries)
-        entry.key as String: List<String>.from(entry.value as List),
-    };
+    if (raw == null) return {};
+    try {
+      return {
+        for (final entry in (raw as Map).entries)
+          entry.key as String: List<String>.from(entry.value as List),
+      };
+    } on Object {
+      throw const McpRegistryUnreadable();
+    }
   }
 
   void _write(
