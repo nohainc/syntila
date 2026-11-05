@@ -413,6 +413,41 @@ Allowed v1 conditions are limited to:
 - session policy equality;
 - bounded Engine-defined execution policy.
 
+### 11.1 MCP configuration slot (ADR-028)
+
+An execution argument list may contain at most one
+`{"mcpConfigArguments": ["--mcp-config", "{{mcpConfigPath}}"]}` slot (1-8
+values, at least one containing `{{mcpConfigPath}}`). `{{mcpConfigPath}}` is
+invalid anywhere else. Per [section 3.1](#31-schema-evolution-gate):
+
+1. **Provider behaviour / missing primitive.** Official CLIs can load MCP
+   servers from a config file given on the command line (for example
+   `claude --mcp-config <file> --strict-mcp-config`). v1 has no way to pass a
+   per-execution, Engine-generated file path. This is generic across CLIs that
+   take a file-path flag; CLIs that only read a global settings file or use a
+   different file format are **not** covered and need a later, separately
+   justified primitive.
+2. **Generic.** The slot names no provider; the Engine knows only the
+   `{"mcpServers": {name: {command, args, env}}}` file shape.
+3. **Authority.** The Engine writes the file only from `mcpServers` in
+   `execute.request`, which the Workspace Service populates solely from servers
+   the user consented to and enabled for that Step. See the
+   [authorization model](AUTHORIZATION_MODEL.md#mcp-server-configuration).
+4. **Semantics.** When the request carries no `mcpServers`, the slot emits
+   nothing. When it does and the Profile has no slot, the execution fails
+   with "Worker Profile does not support MCP servers"; servers are never
+   dropped silently. The file lives in a fresh owner-only directory (mode 700,
+   file 600 on POSIX) and is deleted when the execution ends; the user's own
+   CLI configuration is never read or modified.
+5. **Bounds.** At most 8 servers; names `[a-z0-9][a-z0-9_-]{0,63}`; command an
+   absolute path; at most 32 arguments and 16 environment entries; no
+   `SYNTILA_*` environment names.
+
+No schema version change: the slot is an additive fixed construct like
+`forEachAdditionalDirectory`, and existing signed releases are unaffected.
+Official Profile releases adopt the slot only through a normal new release
+with acceptance evidence.
+
 ## 12. JSON stdin template
 
 For tools requiring structured stdin:

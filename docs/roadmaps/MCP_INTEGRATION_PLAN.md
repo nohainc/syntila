@@ -1,6 +1,6 @@
 # MCP integration: one protocol for tools and custom Workers
 
-**Status:** M0 specifications drafted (2026-11-05); ADR-028 awaits owner acceptance. M1+ not started.
+**Status:** M0 specifications drafted (2026-11-05); ADR-028 awaits owner acceptance. M1 done; M2 partly done (see delivery status).
 **Builds on:** [ADR-018](../decisions/ADR-018-generic-cli-worker-engine-and-tool-profiles.md) (anticipates "MCP Engine → MCP Profiles"), [ADR-027](../decisions/ADR-027-custom-worker-plugins.md), [Custom Worker plugins](../architecture/CUSTOM_WORKER_PLUGINS.md), [Plugin plan](CUSTOM_WORKER_PLUGINS_PLAN.md)
 **Would supersede (at M6):** [Worker Plugin Protocol v1](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md) as the wire protocol for custom Workers
 
@@ -58,6 +58,15 @@ Invariants carried forward from ADR-027 / Architecture v8:
 - Cloud never sees secrets, tokens or local paths beyond what it sees today.
 - The `syntila` CLI never executes a server; all management is Service IPC.
 - A process boundary is not a sandbox; isolation is reported honestly.
+
+## Delivery status
+
+| Phase | State |
+| --- | --- |
+| M0 specs | Done (ADR-028 still Proposed) |
+| M1 protocol package + Engine host | Done; tests pass (`syntila_mcp_protocol`, `mcp_host_test`) |
+| M2 MCP tools for official Workers | **Partly done.** Done: Profile slot `mcpConfigArguments` (Dart validator, Engine, TS validator/interpreter), `execute.request.mcpServers`, private per-execution config file, spec and authorization text. TS changes are untested (no Node on the authoring host). **Open:** Workspace server registry/consent/IPC, per-Step `mcpTools` selection and Cloud policy, activity normalisation, adopting the slot in official Profile releases (Claude `--mcp-config` is the only verified mechanism; Codex and Gemini unverified), Profile Lab evidence, real-provider acceptance |
+| M3-M6 | Not started |
 
 ## 3. Phases
 

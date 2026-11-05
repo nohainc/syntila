@@ -467,6 +467,15 @@ bool _validArgument(Object? item) {
         values.every((v) => v is String && v.length <= 4096) &&
         values.any((v) => (v as String).contains('{{additionalDirectory}}'));
   }
+  if (item.containsKey('mcpConfigArguments')) {
+    final values = item['mcpConfigArguments'];
+    return item.length == 1 &&
+        values is List &&
+        values.isNotEmpty &&
+        values.length <= 8 &&
+        values.every((v) => v is String && v.length <= 4096) &&
+        values.any((v) => (v as String).contains('{{mcpConfigPath}}'));
+  }
   const allowed = {
     'sandboxPolicyMapping',
     'modelArguments',

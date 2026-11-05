@@ -23,6 +23,19 @@ Future<void> main(List<String> arguments) async {
     stdout.writeln('fixture echo: ${arguments[1]}');
     return;
   }
+  // `echo <prompt> --mcp-config <file>` reports the MCP servers it was given
+  // and the file's permissions, then proves the file is readable.
+  if (arguments.length == 4 &&
+      arguments.first == 'echo' &&
+      arguments[2] == '--mcp-config') {
+    final text = File(arguments[3]).readAsStringSync();
+    final mode = File(arguments[3]).statSync().mode & 0x1ff;
+    stdout.writeln(
+      'fixture echo: ${arguments[1]} | mcp: $text'
+      ' | file: ${arguments[3]} | mode: ${mode.toRadixString(8)}',
+    );
+    return;
+  }
   // `echo <prompt> --add-dir <path>...` reports the folders it was given.
   if (arguments.length > 2 &&
       arguments.first == 'echo' &&
@@ -34,7 +47,8 @@ Future<void> main(List<String> arguments) async {
     }
     if (directories.length == (arguments.length - 2) ~/ 2) {
       stdout.writeln(
-          'fixture echo: ${arguments[1]} | dirs: ${directories.join(',')}');
+        'fixture echo: ${arguments[1]} | dirs: ${directories.join(',')}',
+      );
       return;
     }
   }

@@ -1,3 +1,4 @@
+import 'mcp_config.dart';
 import 'execution_selection_snapshot.dart';
 import 'worker_session.dart';
 import 'model_discovery.dart';
@@ -1198,7 +1199,24 @@ class CliWorkerEngine {
       message == 'Engine session state exceeds its limit' ||
       message == staleSessionAheadOfCloudMessage;
 
+  /// Per-execution MCP config paths, keyed by request id.
+  final _mcpConfigPaths = <String, String>{};
+
   Future<void> _execute(ExecuteRequest request, IOSink sink) async {
+    McpConfigFile? mcpConfig;
+    if (request.mcpServers.isNotEmpty && request.executor == null) {
+      mcpConfig = await McpConfigFile.write(request.mcpServers);
+      _mcpConfigPaths[request.requestId] = mcpConfig.path;
+    }
+    try {
+      await _executeCore(request, sink);
+    } finally {
+      _mcpConfigPaths.remove(request.requestId);
+      await mcpConfig?.delete();
+    }
+  }
+
+  Future<void> _executeCore(ExecuteRequest request, IOSink sink) async {
     if (request.executor != null) {
       return _write(
         sink,
@@ -1582,6 +1600,7 @@ class CliWorkerEngine {
           _list(execution['arguments']),
           context,
           additionalDirectories: request.additionalDirectories,
+          mcpConfigPath: _mcpConfigPaths[request.requestId],
         );
         final stdinText = _expandStdin(_map(execution['stdin']), context);
         final eventProgress = <String>{};
@@ -1965,6 +1984,7 @@ class CliWorkerEngine {
         arguments,
         compactionContext,
         additionalDirectories: request.additionalDirectories,
+        mcpConfigPath: _mcpConfigPaths[request.requestId],
       ),
       environment: _environment(compactionContext),
       workingDirectory: compactionContext['workingDirectory']!,
@@ -2054,6 +2074,7 @@ class CliWorkerEngine {
     List<Object?> source,
     Map<String, String> context, {
     List<String> additionalDirectories = const [],
+    String? mcpConfigPath,
   }) {
     final output = <String>[];
     // Folders are never dropped silently: a Profile that cannot pass them to
@@ -2065,6 +2086,14 @@ class CliWorkerEngine {
         )) {
       throw const FormatException(
         'Worker Profile does not support additional folders',
+      );
+    }
+    if (mcpConfigPath != null &&
+        !source.any(
+          (part) => part is Map && part.containsKey('mcpConfigArguments'),
+        )) {
+      throw const FormatException(
+        'Worker Profile does not support MCP servers',
       );
     }
     final policy = context['executionPolicy']!;
@@ -2083,6 +2112,7 @@ class CliWorkerEngine {
                   'providerTimeoutArguments',
                   'autoCompactionArguments',
                   'forEachAdditionalDirectory',
+                  'mcpConfigArguments',
                 }.contains(marker.keys.single)) ||
             (marker.length == 2 && keys.containsAll({'ifPresent', 'values'})) ||
             (marker.length == 3 &&
@@ -2090,7 +2120,16 @@ class CliWorkerEngine {
         if (!knownMarker) {
           throw const FormatException('unknown structured argument form');
         }
-        if (marker.containsKey('forEachAdditionalDirectory')) {
+        if (marker.containsKey('mcpConfigArguments')) {
+          if (mcpConfigPath != null) {
+            final scoped = {...context, 'mcpConfigPath': mcpConfigPath};
+            output.addAll(
+              _stringList(
+                marker['mcpConfigArguments'],
+              ).map((v) => _template(v, scoped)),
+            );
+          }
+        } else if (marker.containsKey('forEachAdditionalDirectory')) {
           final values = _stringList(marker['forEachAdditionalDirectory']);
           for (final directory in additionalDirectories) {
             final scoped = {...context, 'additionalDirectory': directory};

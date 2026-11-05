@@ -107,6 +107,8 @@ const placeholderNames = [
   "workerStateDirectory",
   // Only defined inside a forEachAdditionalDirectory argument slot.
   "additionalDirectory",
+  // Only defined inside a mcpConfigArguments argument slot.
+  "mcpConfigPath",
 ] as const;
 const templatedString = boundedString.superRefine((value, ctx) => {
   const placeholders = [...value.matchAll(/\{\{([^{}]+)\}\}/g)];
@@ -256,6 +258,22 @@ const argument = z.union([
           (values) =>
             values.some((value) => value.includes("{{additionalDirectory}}")),
           "Additional folder arguments must include {{additionalDirectory}}",
+        ),
+    })
+    .strict(),
+  // Passes the Engine-written, per-execution MCP configuration file to the
+  // provider CLI, for example ["--mcp-config", "{{mcpConfigPath}}"]. Emits
+  // nothing when the assignment selects no MCP servers.
+  z
+    .object({
+      mcpConfigArguments: z
+        .array(templatedString)
+        .min(1)
+        .max(8)
+        .refine(
+          (values) =>
+            values.some((value) => value.includes("{{mcpConfigPath}}")),
+          "MCP configuration arguments must include {{mcpConfigPath}}",
         ),
     })
     .strict(),
@@ -1170,9 +1188,22 @@ export const toolProfileV1Schema = profileSchema.superRefine((profile, ctx) => {
         message:
           "Execution arguments allow one forEachAdditionalDirectory slot",
       });
+    if (count("mcpConfigArguments") > 1)
+      ctx.addIssue({
+        code: "custom",
+        path,
+        message: "Execution arguments allow one mcpConfigArguments slot",
+      });
     args.forEach((part, index) => {
       const values =
         typeof part === "string" ? [part] : "values" in part ? part.values : [];
+      if (values.some((value) => value.includes("{{mcpConfigPath}}")))
+        ctx.addIssue({
+          code: "custom",
+          path: [...path, index],
+          message:
+            "{{mcpConfigPath}} is only available in mcpConfigArguments",
+        });
       if (values.some((value) => value.includes("{{additionalDirectory}}")))
         ctx.addIssue({
           code: "custom",

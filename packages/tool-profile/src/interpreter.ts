@@ -39,6 +39,8 @@ export interface ProfileExecutionContext {
   providerVersion?: string;
   /** Workspace-verified folders the CLI may use besides workingDirectory. */
   additionalDirectories?: readonly string[];
+  /** Absolute path of the Engine-written MCP config; absent = no MCP servers. */
+  mcpConfigPath?: string;
 }
 
 export interface ProfileExecutionInput {
@@ -481,6 +483,7 @@ function expandTemplate(
   profile: ToolProfileV1,
   context: ProfileExecutionContext,
   additionalDirectory?: string,
+  mcpConfigPath?: string,
 ): string {
   const timeout = timeoutValues(profile, context);
   const substitutions: Record<string, string | undefined> = {
@@ -499,6 +502,7 @@ function expandTemplate(
     home: context.home,
     workerStateDirectory: context.workerStateDirectory,
     additionalDirectory,
+    mcpConfigPath,
   };
   return value.replace(/\{\{([^{}]+)\}\}/g, (_whole, name: string) => {
     const replacement = substitutions[name];
@@ -546,13 +550,30 @@ export function expandExecutionArguments(
     throw new ProfileInterpreterError(
       "Worker Profile does not support additional folders",
     );
+  // MCP servers are never dropped silently, like additional folders.
+  if (
+    context.mcpConfigPath !== undefined &&
+    !sourceArguments.some(
+      (part) => typeof part === "object" && "mcpConfigArguments" in part,
+    )
+  )
+    throw new ProfileInterpreterError(
+      "Worker Profile does not support MCP servers",
+    );
   const output: string[] = [];
   for (const part of sourceArguments) {
     if (typeof part === "string") {
       output.push(expandTemplate(part, profile, context));
       continue;
     }
-    if ("forEachAdditionalDirectory" in part) {
+    if ("mcpConfigArguments" in part) {
+      if (context.mcpConfigPath !== undefined)
+        output.push(
+          ...part.mcpConfigArguments.map((value) =>
+            expandTemplate(value, profile, context, undefined, context.mcpConfigPath),
+          ),
+        );
+    } else if ("forEachAdditionalDirectory" in part) {
       for (const directory of directories)
         output.push(
           ...part.forEachAdditionalDirectory.map((value) =>

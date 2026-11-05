@@ -356,6 +356,62 @@ describe("Tool Profile v1 pure interpreter", () => {
     ).toThrow("does not support additional folders");
   });
 
+  it("passes the MCP config path only when MCP servers are selected", () => {
+    const profile = loadProfile("gemini-antigravity.v1");
+    const slots: NonNullable<Parameters<typeof expandExecutionArguments>[2]> = [
+      { sandboxPolicyMapping: true },
+      { modelArguments: true },
+      { sessionResumeArguments: true },
+      { providerTimeoutArguments: true },
+      { mcpConfigArguments: ["--mcp-config", "{{mcpConfigPath}}"] },
+    ];
+    const withMcp = expandExecutionArguments(
+      profile,
+      context({ mcpConfigPath: "/tmp/run 1/mcp.json" }),
+      [...slots],
+    );
+    expect(withMcp.slice(-2)).toEqual(["--mcp-config", "/tmp/run 1/mcp.json"]);
+    expect(
+      expandExecutionArguments(profile, context(), [...slots]),
+    ).not.toContain("--mcp-config");
+    expect(() =>
+      expandExecutionArguments(
+        profile,
+        context({ mcpConfigPath: "/tmp/mcp.json" }),
+        [...slots.slice(0, 4)],
+      ),
+    ).toThrow("does not support MCP servers");
+  });
+
+  it("rejects {{mcpConfigPath}} outside its slot and malformed slots", () => {
+    const profile = loadProfile("gemini-antigravity.v1");
+    const base = [
+      { sandboxPolicyMapping: true },
+      { modelArguments: true },
+      { sessionResumeArguments: true },
+      { providerTimeoutArguments: true },
+    ] as const;
+    expect(() =>
+      expandExecutionArguments(profile, context(), [
+        ...base,
+        "{{mcpConfigPath}}",
+      ]),
+    ).toThrow();
+    expect(() =>
+      expandExecutionArguments(profile, context(), [
+        ...base,
+        { mcpConfigArguments: ["--mcp-config"] },
+      ]),
+    ).toThrow();
+    expect(() =>
+      expandExecutionArguments(profile, context(), [
+        ...base,
+        { mcpConfigArguments: ["--a", "{{mcpConfigPath}}"] },
+        { mcpConfigArguments: ["--b", "{{mcpConfigPath}}"] },
+      ]),
+    ).toThrow();
+  });
+
   it("rejects {{additionalDirectory}} outside its argument slot", () => {
     const profile = loadProfile("gemini-antigravity.v1");
     expect(() =>

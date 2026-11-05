@@ -702,6 +702,77 @@ final class WorkerSessionContext {
   }
 }
 
+/// One Workspace-verified, consented MCP server an official Worker may use
+/// during this execution. The Engine writes it into a private, per-execution
+/// config file; the user's own CLI configuration is never modified.
+final class McpServerLaunch {
+  McpServerLaunch({
+    required this.name,
+    required this.command,
+    this.arguments = const [],
+    this.environment = const {},
+  }) {
+    if (!RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(name)) {
+      throw const FormatException('mcp server name is invalid');
+    }
+    if (command.isEmpty ||
+        command.length > 4096 ||
+        command.contains('\x00') ||
+        !(command.startsWith('/') ||
+            RegExp(r'^[A-Za-z]:[\\/]').hasMatch(command))) {
+      throw const FormatException('mcp server command must be absolute');
+    }
+    if (arguments.length > WorkerProtocolLimits.maxMcpServerArguments ||
+        arguments.any((a) => a.length > 4096 || a.contains('\x00'))) {
+      throw const FormatException('mcp server arguments exceed limits');
+    }
+    if (environment.length > WorkerProtocolLimits.maxMcpServerEnvironment ||
+        environment.entries.any((e) =>
+            !RegExp(r'^[A-Za-z_][A-Za-z0-9_]{0,127}$').hasMatch(e.key) ||
+            e.key.startsWith('SYNTILA_') ||
+            e.value.length > 4096 ||
+            e.value.contains('\x00'))) {
+      throw const FormatException('mcp server environment exceeds limits');
+    }
+  }
+
+  final String name;
+  final String command;
+  final List<String> arguments;
+  final Map<String, String> environment;
+
+  Map<String, Object?> toJson() => {
+        'name': name,
+        'command': command,
+        if (arguments.isNotEmpty) 'arguments': arguments,
+        if (environment.isNotEmpty) 'environment': environment,
+      };
+
+  factory McpServerLaunch.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'name', 'command', 'arguments', 'environment'});
+    final name = json['name'];
+    final command = json['command'];
+    final arguments = json['arguments'] ?? const <Object?>[];
+    final environment = json['environment'] ?? const <String, Object?>{};
+    if (name is! String ||
+        command is! String ||
+        arguments is! List ||
+        arguments.any((a) => a is! String) ||
+        environment is! Map ||
+        environment.values.any((v) => v is! String) ||
+        environment.keys.any((k) => k is! String)) {
+      throw const FormatException('invalid mcp server');
+    }
+    return McpServerLaunch(
+      name: name,
+      command: command,
+      arguments: List<String>.unmodifiable(arguments),
+      environment: Map<String, String>.unmodifiable(
+          environment.map((k, v) => MapEntry(k as String, v as String))),
+    );
+  }
+}
+
 final class ExecuteRequest extends WorkerFrame {
   ExecuteRequest({
     required super.requestId,
@@ -717,6 +788,7 @@ final class ExecuteRequest extends WorkerFrame {
     this.workerSession,
     this.statelessContext,
     this.additionalDirectories = const [],
+    this.mcpServers = const [],
     this.compactContext = false,
     this.executor,
     this.protocolVersion = localWorkerProtocolVersion,
@@ -739,6 +811,10 @@ final class ExecuteRequest extends WorkerFrame {
         additionalDirectories.toSet().length != additionalDirectories.length) {
       throw const FormatException(
           'additionalDirectories must be distinct absolute paths');
+    }
+    if (mcpServers.length > WorkerProtocolLimits.maxMcpServers ||
+        mcpServers.map((s) => s.name).toSet().length != mcpServers.length) {
+      throw const FormatException('mcpServers must have distinct names');
     }
     _validateToken(
       requestId,
@@ -822,6 +898,11 @@ final class ExecuteRequest extends WorkerFrame {
   /// working directory. The Profile decides how they become CLI arguments.
   final List<String> additionalDirectories;
 
+  /// Consented MCP servers for an official Worker (Profile slot
+  /// `mcpConfigArguments`). Only sent when non-empty, so older Engines keep
+  /// accepting frames that do not use MCP.
+  final List<McpServerLaunch> mcpServers;
+
   /// Compact the resumed native session with the Profile's compaction
   /// command before running this prompt (the user's answer to a context
   /// overflow). Only sent when true, so older Engines keep accepting frames.
@@ -855,6 +936,8 @@ final class ExecuteRequest extends WorkerFrame {
           'statelessContext': statelessContext!.toJson(),
         if (additionalDirectories.isNotEmpty)
           'additionalDirectories': additionalDirectories,
+        if (mcpServers.isNotEmpty)
+          'mcpServers': [for (final s in mcpServers) s.toJson()],
         if (compactContext) 'compactContext': true,
         if (executor != null) 'executor': executor!.toJson(),
       };
@@ -876,6 +959,7 @@ final class ExecuteRequest extends WorkerFrame {
       'workerSession',
       'statelessContext',
       'additionalDirectories',
+      'mcpServers',
       'compactContext',
       'executor',
     });
@@ -891,6 +975,10 @@ final class ExecuteRequest extends WorkerFrame {
     if (directories is! List || directories.any((path) => path is! String)) {
       throw const FormatException(
           'additionalDirectories must be a list of strings');
+    }
+    final rawMcp = json['mcpServers'] ?? const <Object?>[];
+    if (rawMcp is! List || rawMcp.any((s) => s is! Map)) {
+      throw const FormatException('mcpServers must be a list of objects');
     }
     final model = json['model'];
     if (model != null && model is! String)
@@ -950,6 +1038,10 @@ final class ExecuteRequest extends WorkerFrame {
           : WorkerSessionContext.fromJson(
               Map<String, Object?>.from(json['workerSession'] as Map)),
       additionalDirectories: List<String>.unmodifiable(directories),
+      mcpServers: List<McpServerLaunch>.unmodifiable([
+        for (final s in rawMcp)
+          McpServerLaunch.fromJson(Map<String, Object?>.from(s as Map)),
+      ]),
       compactContext: compactContext,
       executor: json['executor'] == null
           ? null

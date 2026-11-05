@@ -14,6 +14,9 @@ abstract final class WorkerProtocolLimits {
   static const maxCapabilityLength = 128;
   static const maxPromptBytes = 512 * 1024;
   static const maxAdditionalDirectories = 32;
+  static const maxMcpServers = 8;
+  static const maxMcpServerArguments = 32;
+  static const maxMcpServerEnvironment = 16;
   static const maxOutputBytes = 768 * 1024;
   static const maxModelLength = 128;
   static const maxSessionKeyLength = 256;

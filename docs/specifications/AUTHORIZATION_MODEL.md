@@ -64,6 +64,20 @@ from its configured identity set. V9 Profile payloads are canonical,
 schema-validated revisions; authorization, digest validation, and Workspace
 admission protect them without a separate Profile signature.
 
+## MCP server configuration
+
+MCP servers (ADR-028) are installation-local data owned by the Workspace
+Service. Only the Service decides which servers an execution may use: a server
+must be consented (hash of the consent document, including its command and the
+hash of every tool definition) and enabled for the Step. The Service then puts
+the resolved launch (`name`, absolute `command`, `arguments`, `environment`) in
+`execute.request.mcpServers`. Cloud never receives server commands, arguments,
+environments or tokens; it sees only enablement state and tool-definition
+hashes. The Engine treats `mcpServers` as already authorized, writes a private
+per-execution config file, and deletes it afterwards. Environment values may
+hold credentials; they are written only to that owner-only file and are never
+logged, persisted in Engine state, or included in diagnostics.
+
 ## Step-up authentication and audit
 
 Sensitive ownership or release operations may require a recent step-up proof tied to the current human session. Each route declares its required assurance and Cloud checks it before mutation. Security-relevant authorization, ownership, Workspace, Thread, and Profile changes are written to the applicable audit stream without credentials or secret payloads.
