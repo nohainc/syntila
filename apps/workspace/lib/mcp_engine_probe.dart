@@ -14,14 +14,15 @@ import 'mcp_service.dart';
 /// cleanup.
 class EngineMcpProbe implements McpProbePort {
   EngineMcpProbe({
-    required this.engineExecutable,
-    this.engineArgumentsPrefix = const [],
+    required this.locateEngine,
     required this.workingDirectory,
     this.timeout = const Duration(seconds: 45),
   });
 
-  final String engineExecutable;
-  final List<String> engineArgumentsPrefix;
+  /// The Engine is located after the Workspace is built, so it is read lazily.
+  /// Returns null when no Engine is available.
+  final ({String executable, List<String> argumentsPrefix})? Function()
+      locateEngine;
   final Directory workingDirectory;
   final Duration timeout;
 
@@ -43,9 +44,17 @@ class EngineMcpProbe implements McpProbePort {
     McpServerRecord server,
     McpServerLaunch launch,
   ) async {
+    final engine = locateEngine();
+    if (engine == null) {
+      throw const McpPolicyException(
+        'mcp_probe_failed',
+        'The Worker Engine is not available.',
+      );
+    }
+    await workingDirectory.create(recursive: true);
     final process = await Process.start(
-      engineExecutable,
-      [...engineArgumentsPrefix, '--mcp-probe'],
+      engine.executable,
+      [...engine.argumentsPrefix, '--mcp-probe'],
       workingDirectory: workingDirectory.path,
       environment: {
         for (final e in Platform.environment.entries)

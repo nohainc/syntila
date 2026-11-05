@@ -24,6 +24,7 @@ import 'package:syntila_workspace/worker_readiness.dart';
 import 'package:syntila_workspace/plugin_executor.dart';
 import 'package:syntila_workspace/plugin_store.dart'
     show PluginServiceException;
+import 'package:syntila_workspace/mcp_subsystem.dart';
 import 'package:syntila_workspace/plugin_subsystem.dart';
 import 'package:syntila_workspace/plugin_worker_runtime.dart';
 import 'package:syntila_workspace/bundled_cli_worker_engine_loader.dart';
@@ -151,6 +152,10 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
   late final WorkerReadinessMonitor readinessMonitor;
   // Custom Worker plugins (ADR-027). Shared by the management IPC and the
   // Worker runtime so both see one store, registry and entitlement lease.
+  final mcpSubsystem = McpSubsystem.build(
+    config: effectiveConfig,
+    engineSupervisor: () => cliWorkerEngineSupervisor,
+  );
   final pluginSubsystem = PluginSubsystem.build(
     config: effectiveConfig,
     credentialStore: secureCredentialStore,
@@ -985,6 +990,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
     workerReadinessMonitor: readinessMonitor,
     workerSubsystem: workerSubsystem,
     pluginSubsystem: pluginSubsystem,
+    mcpSubsystem: mcpSubsystem,
     workerShutdownHandler: () async {
       await workerSubsystem.shutdown();
     },

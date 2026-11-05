@@ -20,8 +20,10 @@ void main() {
     service = McpService(
       McpRegistry(File('${root.path}/mcp.json')),
       EngineMcpProbe(
-        engineExecutable: Platform.resolvedExecutable,
-        engineArgumentsPrefix: [engine],
+        locateEngine: () => (
+          executable: Platform.resolvedExecutable,
+          argumentsPrefix: [engine]
+        ),
         workingDirectory: root,
       ),
     );

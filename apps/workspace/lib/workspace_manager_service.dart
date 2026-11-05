@@ -1,4 +1,5 @@
 import 'plugin_executor.dart' show isPluginWorkerType;
+import 'workspace_manager_mcp.dart';
 import 'workspace_manager_plugins.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -52,6 +53,7 @@ class WorkspaceManagerService {
   WorkerReadinessMonitor? _observedReadiness;
   AllowedFolderRegistry? _allowedFolderRegistry;
   WorkspacePluginCommands? _pluginCommands;
+  WorkspaceMcpCommands? _mcpCommands;
 
   Future<void> start() async {
     final paths = WorkspacePaths(workspace.config.dataDirectory);
@@ -437,6 +439,9 @@ class WorkspaceManagerService {
     final workerSubsystem = workspace.workerSubsystem;
     if (WorkspacePluginCommands.handles(command)) {
       return _plugins().handle(command, payload);
+    }
+    if (WorkspaceMcpCommands.handles(command)) {
+      return _mcp().handle(command, payload);
     }
     switch (command) {
       case 'auth.register':
@@ -956,6 +961,18 @@ class WorkspaceManagerService {
           'Unsupported Workspace Manager command: $command',
         );
     }
+  }
+
+  /// MCP server management (ADR-028) over the Workspace's MCP subsystem.
+  WorkspaceMcpCommands _mcp() {
+    final subsystem = workspace.mcpSubsystem;
+    if (subsystem == null) {
+      throw const WorkspaceManagerProtocolException(
+        'unsupported_command',
+        'MCP servers are not available on this Workspace.',
+      );
+    }
+    return _mcpCommands ??= WorkspaceMcpCommands(subsystem.service);
   }
 
   /// Plugin management (ADR-027) over the Workspace's shared plugin

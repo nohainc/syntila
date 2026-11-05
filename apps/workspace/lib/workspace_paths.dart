@@ -134,6 +134,10 @@ class WorkspacePaths {
   Directory get pluginsDirectory =>
       Directory('${applicationSupportDirectory.path}/Plugins');
 
+  /// MCP server registry (ADR-028). Holds no secrets: only environment names.
+  Directory get mcpDirectory =>
+      Directory('${applicationSupportDirectory.path}/Mcp');
+
   /// The application-family root shared by Workspace and future desktop apps.
   Directory get applicationDataRoot =>
       (_usesManagedMacLayout || _usesManagedWindowsLayout)
