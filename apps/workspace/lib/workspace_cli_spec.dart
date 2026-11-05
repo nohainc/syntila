@@ -123,6 +123,15 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
       label: 'Plugin ID',
     ),
   ];
+  const mcpServerId = <GuiParameter>[
+    GuiParameter(
+      name: 'id',
+      kind: GuiParamKind.positional,
+      type: GuiParamType.string,
+      required: true,
+      label: 'Server ID',
+    ),
+  ];
   const pluginVersion = GuiParameter(
     name: 'version',
     kind: GuiParamKind.option,
@@ -750,6 +759,151 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
               payload: (run) => {'pluginId': run.positional('id')},
             ),
             parameters: pluginId,
+            destructive: true,
+            inGroup: true,
+          ),
+        ],
+      ),
+      group(
+        'mcp',
+        'MCP servers',
+        'Manage MCP servers that official Workers may use (tools you consent to)',
+        defaultCommand: 'list',
+        icon: GuiIcons.server,
+        navigation: true,
+        [
+          command(
+            icon: GuiIcons.list,
+            info: true,
+            'list',
+            'MCP servers',
+            'List configured MCP servers and their state',
+            service('mcp.list'),
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.plus,
+            'add',
+            'Add MCP server',
+            'Register a local MCP server command (nothing runs until you consent)',
+            service(
+              'mcp.add',
+              payload: (run) {
+                // Malformed values are sent as-is so the Service rejects them
+                // with a stable invalid_request.
+                Object? args = const <String>[];
+                final rawArgs = run.option('args');
+                if (rawArgs != null) {
+                  try {
+                    args = jsonDecode(rawArgs);
+                  } on FormatException {
+                    args = rawArgs;
+                  }
+                }
+                final rawEnv = run.option('env');
+                return {
+                  'serverId': run.positional('id'),
+                  'displayName': run.option('name') ?? run.positional('id'),
+                  'command': File(run.positional('command')!).absolute.path,
+                  'arguments': args,
+                  'environmentNames': rawEnv == null
+                      ? <String>[]
+                      : rawEnv
+                          .split(',')
+                          .map((n) => n.trim())
+                          .where((n) => n.isNotEmpty)
+                          .toList(),
+                };
+              },
+            ),
+            parameters: const [
+              GuiParameter(
+                name: 'id',
+                kind: GuiParamKind.positional,
+                type: GuiParamType.string,
+                required: true,
+                label: 'Server ID',
+              ),
+              GuiParameter(
+                name: 'command',
+                kind: GuiParamKind.positional,
+                type: GuiParamType.path,
+                required: true,
+                label: 'Server command',
+              ),
+              GuiParameter(
+                name: 'name',
+                kind: GuiParamKind.option,
+                type: GuiParamType.string,
+                label: 'Display name',
+              ),
+              GuiParameter(
+                name: 'args',
+                kind: GuiParamKind.option,
+                type: GuiParamType.string,
+                label:
+                    'Arguments as a JSON array, for example ["--root","/tmp"]',
+              ),
+              GuiParameter(
+                name: 'env',
+                kind: GuiParamKind.option,
+                type: GuiParamType.string,
+                label:
+                    'Environment variable names it may read, comma-separated',
+              ),
+            ],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.shield,
+            'consent',
+            'Consent to MCP server',
+            'Show the server and every tool definition; accept with --accept',
+            service(
+              'mcp.consent',
+              payload: (run) => {
+                'serverId': run.positional('id'),
+                if (run.option('accept') != null)
+                  'acceptHash': run.option('accept'),
+              },
+            ),
+            parameters: mcpServerId + [pluginAccept],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.power,
+            'enable',
+            'Enable MCP server',
+            'Allow Steps to use this consented server',
+            service(
+              'mcp.enable',
+              payload: (run) => {'serverId': run.positional('id')},
+            ),
+            parameters: mcpServerId,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.stop,
+            'disable',
+            'Disable MCP server',
+            'Stop offering this server to Workers',
+            service(
+              'mcp.disable',
+              payload: (run) => {'serverId': run.positional('id')},
+            ),
+            parameters: mcpServerId,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.trash,
+            'remove',
+            'Remove MCP server',
+            'Forget this server and its consent',
+            service(
+              'mcp.remove',
+              payload: (run) => {'serverId': run.positional('id')},
+            ),
+            parameters: mcpServerId,
             destructive: true,
             inGroup: true,
           ),

@@ -1,0 +1,84 @@
+part of 'workspace_cli.dart';
+
+/// Rendering for `syntila mcp ...`. Like plugins, the CLI never starts a
+/// server and never reads one's files; it prints what the Service returned. A
+/// consent document is shown in full, including every tool definition, and
+/// accepting it means rerunning the command with `--accept <documentHash>`.
+extension _McpOutput on WorkspaceCli {
+  bool _printMcpResult(String command, Object? result) {
+    if (result is! Map) return false;
+    try {
+      return _renderMcpResult(command, result);
+    } on Object {
+      return false;
+    }
+  }
+
+  bool _renderMcpResult(String command, Map result) {
+    switch (command) {
+      case 'mcp.list':
+        final servers = (result['servers'] as List).whereType<Map>();
+        if (servers.isEmpty) out.writeln('No MCP servers.');
+        for (final server in servers) {
+          final state = server['enabled'] == true
+              ? 'enabled'
+              : server['consented'] == true
+                  ? 'consented, disabled'
+                  : 'not consented';
+          out.writeln(
+            '${server['serverId']}  ${server['displayName']}  ($state)  '
+            'tools: ${(server['tools'] as List).join(', ')}',
+          );
+        }
+        return true;
+      case 'mcp.add':
+        out.writeln('Added ${result['serverId']}.');
+        out.writeln('Next: ${result['next']}');
+        return true;
+      case 'mcp.consent':
+        if (result['consentRequired'] == true) {
+          _printMcpConsent(result);
+        } else {
+          out.writeln('Consent recorded for ${result['serverId']}.');
+          out.writeln('Next: syntila mcp enable ${result['serverId']}');
+        }
+        return true;
+      case 'mcp.enable':
+        out.writeln('Enabled ${result['serverId']}.');
+        return true;
+      case 'mcp.disable':
+        out.writeln('Disabled ${result['serverId']}.');
+        return true;
+      case 'mcp.remove':
+        out.writeln('Removed ${result['serverId']}.');
+        return true;
+    }
+    return false;
+  }
+
+  void _printMcpConsent(Map result) {
+    final doc = Map<String, Object?>.from(result['document'] as Map);
+    out.writeln('Review before you consent to this MCP server');
+    out.writeln('  Server:     ${doc['serverId']}');
+    out.writeln('  Command:    ${doc['command']}');
+    out.writeln('  Digest:     ${doc['commandSha256']}');
+    out.writeln('  Arguments:  ${(doc['arguments'] as List).join(' ')}');
+    out.writeln(
+      '  Environment names it may read: '
+      '${(doc['environmentNames'] as List).join(', ')}',
+    );
+    final tools = (doc['tools'] as List).whereType<Map>().toList();
+    out.writeln('  Tools (${tools.length}):');
+    for (final tool in tools) {
+      out.writeln('    ${tool['name']}: ${tool['description'] ?? ''}');
+    }
+    out.writeln(
+      'Tool descriptions come from the server and are untrusted. If any tool '
+      'changes later, calls to it are blocked until you consent again.',
+    );
+    out.writeln('Document hash: ${result['documentHash']}');
+    out.writeln(
+      'To accept, rerun with --accept ${result['documentHash']}',
+    );
+  }
+}

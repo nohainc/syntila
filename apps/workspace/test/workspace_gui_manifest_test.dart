@@ -35,6 +35,12 @@ const _ipc = {
   'plugins.signers': 'plugins.signers',
   'plugins.trustSigner': 'plugins.trustSigner',
   'plugins.untrustSigner': 'plugins.untrustSigner',
+  'mcp.list': 'mcp.list',
+  'mcp.add': 'mcp.add',
+  'mcp.consent': 'mcp.consent',
+  'mcp.enable': 'mcp.enable',
+  'mcp.disable': 'mcp.disable',
+  'mcp.remove': 'mcp.remove',
   'slots': 'execution.getSlots',
   'assignments.list': 'execution.listActiveAssignments',
   'assignments.cancel': 'execution.cancelAssignment',
@@ -114,6 +120,7 @@ void main() {
         ('workers', 'workers.list'),
         ('folders', 'folders.list'),
         ('plugins', 'plugins.list'),
+        ('mcp', 'mcp.list'),
         ('assignments', 'assignments.list'),
         ('service', 'service.status'),
         ('config', 'config.show'),
@@ -137,6 +144,7 @@ void main() {
       'plugins.list',
       'plugins.show',
       'plugins.signers',
+      'mcp.list',
       'slots',
       'assignments.list',
       'logs',
@@ -173,6 +181,11 @@ void main() {
         'plugins.disable',
         'plugins.export',
         'plugins.remove',
+        'mcp.add',
+        'mcp.consent',
+        'mcp.enable',
+        'mcp.disable',
+        'mcp.remove',
         'workDir',
         'assignments.cancel',
         'service.install',
@@ -253,7 +266,15 @@ void main() {
     final groups = (_manifest()['groups'] as List).cast<Map>();
     expect(
       groups.map((g) => g['id']),
-      ['workers', 'folders', 'plugins', 'assignments', 'service', 'config'],
+      [
+        'workers',
+        'folders',
+        'plugins',
+        'mcp',
+        'assignments',
+        'service',
+        'config'
+      ],
     );
     final byGroup = <String, List<Object?>>{};
     for (final c in _commands()) {
