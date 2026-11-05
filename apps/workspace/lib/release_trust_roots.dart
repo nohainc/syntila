@@ -1,4 +1,3 @@
-
 import 'package:syntila_tool_profile_v1/tool_profile_v1.dart';
 
 /// Build-injected public release roots. Empty or invalid configuration fails

@@ -20,7 +20,12 @@ class McpPolicyException implements Exception {
 /// Starts the server (through the Engine, never in this process) and returns
 /// its current `tools/list`. Used to show and pin definitions at consent.
 abstract interface class McpProbePort {
-  Future<List<Map<String, Object?>>> listTools(McpServerRecord server);
+  /// [launch] is the resolved launch (command, arguments and the environment
+  /// values for the consented names); the record carries the pinned digest.
+  Future<List<Map<String, Object?>>> listTools(
+    McpServerRecord server,
+    McpServerLaunch launch,
+  );
 }
 
 /// The Service-side authority over which MCP servers an execution may use.
@@ -116,7 +121,7 @@ class McpService {
   }) async {
     final server = _require(serverId);
     await _checkBinary(server);
-    final tools = await _probe.listTools(server);
+    final tools = await _probe.listTools(server, _launchFor(server));
     final definitions = [
       for (final t in tools)
         {
@@ -202,20 +207,20 @@ class McpService {
         );
       }
       await _checkBinary(server);
-      launches.add(
-        McpServerLaunch(
-          name: server.serverId,
-          command: server.command,
-          arguments: server.arguments,
-          environment: {
-            for (final name in server.environmentNames)
-              if (_environment[name] != null) name: _environment[name]!,
-          },
-        ),
-      );
+      launches.add(_launchFor(server));
     }
     return launches;
   }
+
+  McpServerLaunch _launchFor(McpServerRecord server) => McpServerLaunch(
+        name: server.serverId,
+        command: server.command,
+        arguments: server.arguments,
+        environment: {
+          for (final name in server.environmentNames)
+            if (_environment[name] != null) name: _environment[name]!,
+        },
+      );
 
   McpServerRecord _require(String serverId) =>
       _registry.get(serverId) ??

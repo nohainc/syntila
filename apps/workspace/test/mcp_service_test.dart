@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:syntila_worker_protocol/syntila_worker_protocol.dart'
+    show McpServerLaunch;
 import 'package:syntila_workspace/mcp_registry.dart';
 import 'package:syntila_workspace/mcp_service.dart';
 import 'package:test/test.dart';
@@ -14,7 +16,10 @@ class FakeProbe implements McpProbePort {
     },
   ];
   @override
-  Future<List<Map<String, Object?>>> listTools(McpServerRecord server) async =>
+  Future<List<Map<String, Object?>>> listTools(
+    McpServerRecord server,
+    McpServerLaunch launch,
+  ) async =>
       tools;
 }
 
