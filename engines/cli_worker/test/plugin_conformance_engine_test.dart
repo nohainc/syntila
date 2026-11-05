@@ -106,7 +106,7 @@ void main() {
       final failed = result.cases.where((c) => c.status == 'failed');
       expect(failed.map((c) => '${c.id}: ${c.detail}'), isEmpty);
       expect(result.passed, isTrue);
-      expect(result.suiteVersion, '1.0.0');
+      expect(result.suiteVersion, '1.1.0');
       expect(
         progress.map((p) => p.message),
         contains('conformance:handshake.identity:passed'),

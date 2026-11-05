@@ -1,3 +1,4 @@
+import { recordWorkspaceWorkerInventory } from "../src/workspace-gateway/inventory.js";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
@@ -155,6 +156,60 @@ describe("plugin Worker scheduling (real SQL)", () => {
     expect(selection.modelId).toBeNull();
     expect(selection.effort).toBeNull();
     expect(selection.workerDisplayName).toBe("Acme Reviewer");
+  });
+
+  it("ingests a pin-bound plugin catalog and schedules only an advertised selected model", async () => {
+    const catalog = {
+      schemaVersion: 2,
+      profileDigest: DIGEST,
+      providerToolVersion: "1.4.2",
+      discoveredAt: "2026-11-05T00:00:00Z",
+      catalogRevision: "e".repeat(64),
+      stale: false,
+      models: [
+        {
+          id: "local:8b",
+          name: "Local 8B",
+          status: "listed",
+          selectionMode: "separate",
+          efforts: [],
+        },
+      ],
+    };
+    const publish = (revision: number, modelCatalog: unknown) =>
+      recordWorkspaceWorkerInventory({ SYNTILA_DB: store.db } as never, "WS", {
+        workers: [
+          {
+            workerId: "pw",
+            workerTypeId: REF,
+            activationState: "enabled",
+            readinessState: "ready",
+            localConcurrencyLimit: 2,
+            revision,
+            engineVersion: "1.4.0",
+            providerToolVersion: "1.4.2",
+            executor: JSON.parse(executor()),
+            modelCatalog,
+          },
+        ],
+      });
+    await publish(2, catalog);
+    const stored = store.sqlite
+      .prepare(
+        "SELECT model_catalog_json FROM workspace_worker_inventory WHERE worker_id='pw'",
+      )
+      .get() as { model_catalog_json: string };
+    expect(JSON.parse(stored.model_catalog_json).models[0].id).toBe("local:8b");
+    run(`UPDATE workspace_worker_inventory SET executor_json='${enforced}'`);
+    expect((await readOnly({ model: "local:8b" }))?.model).toBe("local:8b");
+    expect(await readOnly({ model: "removed:8b" })).toBeNull();
+    await publish(3, { ...catalog, profileDigest: "f".repeat(64) });
+    const rejected = store.sqlite
+      .prepare(
+        "SELECT model_catalog_json FROM workspace_worker_inventory WHERE worker_id='pw'",
+      )
+      .get() as { model_catalog_json: string | null };
+    expect(rejected.model_catalog_json).toBeNull();
   });
 
   it("stops when the owner's plan lapses, with no event needed", async () => {

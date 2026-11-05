@@ -646,7 +646,11 @@ export async function selectSpaceExecutionTarget(
         continue;
       }
       const executionOptions = pluginExecutor
-        ? pluginExecutionOptions(pluginExecutor.manifestDigest)
+        ? pluginExecutionOptions(
+            pluginExecutor.manifestDigest,
+            row.model_catalog_json,
+            row.provider_tool_version,
+          )
         : spaceWorkerExecutionOptions(
             row.execution_profile_json,
             row.provider_tool_version,

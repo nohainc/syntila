@@ -94,7 +94,59 @@ class Probe extends PluginWorker {
   Future<WorkResult> execute(WorkRequest r, WorkContext c) => body(r, c);
 }
 
+class DiscoveryProbe extends Probe {
+  DiscoveryProbe() : super((_, __) async => const WorkResult('ok'));
+  @override
+  Map<String, Object?> get capabilities => const {'modelDiscovery': true};
+  @override
+  Future<List<PluginModel>> discoverModels() async =>
+      const [PluginModel(id: 'm:8b', name: 'Model')];
+}
+
 void main() {
+  test('SDK negotiates 1.1 and responds to model discovery', () async {
+    final h = Harness(DiscoveryProbe());
+    h.send({
+      'type': 'hello',
+      'id': 'h1',
+      'protocol': {
+        'supported': ['1.1', '1.0'],
+        'preferred': '1.1'
+      },
+      'host': {'name': 'test', 'version': '1.0.0'},
+      'dataDir': Directory.systemTemp.path
+    });
+    await h.settle();
+    h.send({'type': 'models.list', 'id': 'm1'});
+    await h.settle();
+    expect(h.ofType('hello.result').single['protocol'], '1.1');
+    expect(
+        (h.ofType('models.list.result').single['models'] as List).single['id'],
+        'm:8b');
+    await h.close();
+  });
+
+  test('SDK accepts a large 1.2 execute frame', () async {
+    final h = Harness(Probe(
+        (request, _) async => WorkResult('bytes:${request.prompt.length}')));
+    h.send({
+      'type': 'hello',
+      'id': 'h1',
+      'protocol': {
+        'supported': ['1.2'],
+        'preferred': '1.2'
+      },
+      'host': {'name': 'test', 'version': '1.0.0'},
+      'dataDir': Directory.systemTemp.path
+    });
+    await h.settle();
+    final prompt = 'x' * (1024 * 1024 + 1);
+    h.execute('large', prompt: prompt);
+    await h.settle();
+    expect(h.ofType('result').single['output'], 'bytes:${prompt.length}');
+    await h.close();
+  });
+
   group('runPlugin', () {
     test('answers the handshake with the plugin identity', () async {
       final h = Harness(Probe((_, __) async => const WorkResult('x')))..hello();

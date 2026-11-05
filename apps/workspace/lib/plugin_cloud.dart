@@ -65,7 +65,7 @@ class HttpPluginCloud implements PluginCloudPort {
       final status = response.statusCode;
       if (status >= 200 && status < 300) return parsed;
       final code = parsed['code'] as String?;
-      final message = parsed['message'];
+      final message = parsed['message'] ?? parsed['error'];
       throw switch (status) {
         400 => PluginCloudException(
             code ?? 'invalid_request',
@@ -87,7 +87,9 @@ class HttpPluginCloud implements PluginCloudPort {
           ),
         409 => PluginCloudException(
             code ?? 'plugin_version_conflict',
-            'Cloud refused the change.',
+            message is String && message.isNotEmpty
+                ? message
+                : 'Cloud refused the change.',
           ),
         _ => const PluginCloudException(
             'cloud_unavailable',

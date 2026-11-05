@@ -47,6 +47,7 @@ class WorkRequest {
     this.model,
     this.sessionKey,
     this.resumeSession = false,
+    this.rebuildSession = false,
   });
 
   final String id;
@@ -69,6 +70,9 @@ class WorkRequest {
 
   /// True when [sessionKey] should already exist (resume), false when new.
   final bool resumeSession;
+
+  /// Discard incompatible execution state and rebuild from the supplied context.
+  final bool rebuildSession;
 }
 
 /// What a request can do while it runs.
@@ -109,7 +113,8 @@ class PluginFailure implements Exception {
   const PluginFailure(this.code, this.message, {this.retryable = false});
 
   /// `invalid_request`, `not_ready`, `sign_in_required`, `unsupported_policy`,
-  /// `session_not_found`, `rate_limited`, `output_too_large` or `internal`.
+  /// `session_not_found`, `model_unavailable`, `context_limit_exceeded`,
+  /// `rate_limited`, `output_too_large` or `internal`.
   final String code;
   final String message;
   final bool retryable;
@@ -133,5 +138,21 @@ abstract class PluginWorker {
   Future<PluginReadiness> probe({required bool live}) async =>
       const PluginReadiness.ready();
 
+  /// Metadata-only discovery: must not download models or run inference.
+  /// Declare `modelDiscovery: true` to expose this operation over protocol 1.1.
+  Future<List<PluginModel>> discoverModels() async => const [];
+
   Future<WorkResult> execute(WorkRequest request, WorkContext context);
+}
+
+/// Public model selection metadata; IDs are stable and provider-neutral.
+class PluginModel {
+  const PluginModel(
+      {required this.id, required this.name, this.status = 'listed'});
+  final String id;
+  final String name;
+
+  /// Discovery alone is `listed`; use `verified` only after execution evidence.
+  final String status;
+  Map<String, Object?> toJson() => {'id': id, 'name': name, 'status': status};
 }

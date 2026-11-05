@@ -186,3 +186,11 @@ running plugin Workers (same principle as `syntila logout` today).
 Payloads contain manifest metadata, digests, origin display strings and consent
 hashes. They never contain executable bytes, local paths, environment values,
 or credentials.
+
+
+A disable is locally effective even when Cloud cannot be reached. Repeating
+`plugins disable ID` retries synchronization. Before account-library removal,
+the Workspace reconciles its disabled intent with Cloud; a failed sync leaves
+local files and registry intact. Cloud still rejects removal while the plugin is
+enabled on another Workspace or referenced by active work. The CLI displays
+the Cloud-provided reason when available.

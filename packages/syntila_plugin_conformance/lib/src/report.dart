@@ -1,4 +1,4 @@
-const conformanceSuiteVersion = '1.0.0';
+const conformanceSuiteVersion = '1.1.0';
 
 /// Printed with every result. Conformance is not a safety assessment.
 const conformanceDisclaimer =

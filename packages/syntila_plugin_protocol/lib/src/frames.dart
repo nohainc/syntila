@@ -15,6 +15,7 @@ class PluginFrameException implements Exception {
 const _hostToPluginTypes = <String>{
   'hello',
   'probe',
+  'models.list',
   'execute',
   'cancel',
   'ping',
@@ -25,6 +26,7 @@ const _hostToPluginTypes = <String>{
 const _pluginToHostTypes = <String>{
   'hello.result',
   'probe.result',
+  'models.list.result',
   'progress',
   'activity',
   'result',
@@ -74,7 +76,8 @@ final class PluginFrame {
   /// One NDJSON line without the trailing newline.
   String encode() {
     final line = jsonEncode(json);
-    if (utf8.encode(line).length + 1 > PluginProtocolLimits.maxFrameBytes) {
+    if (type != 'execute' &&
+        utf8.encode(line).length + 1 > PluginProtocolLimits.maxFrameBytes) {
       throw const PluginFrameException('frame exceeds the byte limit');
     }
     return line;
@@ -103,6 +106,9 @@ final class PluginFrame {
 
   static PluginFrame probe({required String id, required String mode}) =>
       PluginFrame('probe', {'type': 'probe', 'id': id, 'mode': mode});
+
+  static PluginFrame listModels({required String id}) =>
+      PluginFrame('models.list', {'type': 'models.list', 'id': id});
 
   static PluginFrame execute({
     required String id,
@@ -169,7 +175,8 @@ PluginFrame decodePluginFrame(String line, PluginDirection direction) {
   var text = line;
   if (text.endsWith('\n')) text = text.substring(0, text.length - 1);
   if (text.endsWith('\r')) text = text.substring(0, text.length - 1);
-  if (utf8.encode(text).length + 1 > PluginProtocolLimits.maxFrameBytes) {
+  if (direction == PluginDirection.pluginToHost &&
+      utf8.encode(text).length + 1 > PluginProtocolLimits.maxFrameBytes) {
     throw const PluginFrameException('frame exceeds the byte limit');
   }
   final Object? decoded;
@@ -191,6 +198,10 @@ PluginFrame decodePluginFrame(String line, PluginDirection direction) {
       : _pluginToHostTypes;
   if (!allowed.contains(type)) {
     throw PluginFrameException('unsupported frame type: $type');
+  }
+  if (!(direction == PluginDirection.hostToPlugin && type == 'execute') &&
+      utf8.encode(text).length + 1 > PluginProtocolLimits.maxFrameBytes) {
+    throw const PluginFrameException('frame exceeds the byte limit');
   }
   _validate(type, json);
   return PluginFrame(type, json);
@@ -224,20 +235,18 @@ void _validate(String type, Map<String, Object?> json) {
       _string(plugin, 'version', max: 64);
       _string(plugin, 'name', max: 128);
       final capabilities = _map(json, 'capabilities');
-      final models = capabilities['models'];
-      if (models != null) {
-        if (models is! List || models.length > PluginProtocolLimits.maxModels) {
-          throw const PluginFrameException('models must be a short list');
-        }
-        for (final model in models) {
-          if (model is! Map) {
-            throw const PluginFrameException('model must be an object');
-          }
-          final entry = Map<String, Object?>.from(model);
-          _string(entry, 'id', max: PluginProtocolLimits.maxModelLength);
-          _string(entry, 'name', max: 128);
-        }
+      if (capabilities['models'] != null)
+        validatePluginModels(capabilities['models']);
+      validatePluginContinuity(capabilities['continuity']);
+      if (capabilities['modelDiscovery'] != null &&
+          capabilities['modelDiscovery'] is! bool) {
+        throw const PluginFrameException('modelDiscovery must be boolean');
       }
+    case 'models.list':
+      _id(json);
+    case 'models.list.result':
+      _id(json);
+      validatePluginModels(json['models']);
     case 'probe':
       _id(json);
       _enum(json, 'mode', const {'passive', 'live'});
@@ -280,11 +289,8 @@ void _validate(String type, Map<String, Object?> json) {
           deadline > PluginProtocolLimits.maxTimeoutMs) {
         throw const PluginFrameException('deadlineMs is out of range');
       }
-      _string(json, 'prompt',
-          max: PluginProtocolLimits.maxPromptBytes, allowEmpty: true);
-      if (utf8.encode(json['prompt'] as String).length >
-          PluginProtocolLimits.maxPromptBytes) {
-        throw const PluginFrameException('prompt exceeds the byte limit');
+      if (json['prompt'] is! String) {
+        throw const PluginFrameException('prompt must be a string');
       }
       _string(json, 'workingDirectory', max: 4096);
       _enum(json, 'access', const {'read_only', 'read_write'});
@@ -302,7 +308,7 @@ void _validate(String type, Map<String, Object?> json) {
         }
         final entry = Map<String, Object?>.from(session);
         _string(entry, 'key', max: PluginProtocolLimits.maxSessionKeyLength);
-        _enum(entry, 'mode', const {'new', 'resume'});
+        _enum(entry, 'mode', const {'new', 'resume', 'rebuild'});
       }
       final attachments = json['attachments'];
       if (attachments != null &&
@@ -444,4 +450,49 @@ List<Object?> _list(
     throw PluginFrameException('"$key" must be a list of $min..$max items');
   }
   return List<Object?>.from(value);
+}
+
+/// Shared validation for discovery responses and handshake metadata.
+void validatePluginModels(Object? value) {
+  if (value is! List || value.length > PluginProtocolLimits.maxModels) {
+    throw const PluginFrameException('models must be a bounded list');
+  }
+  final ids = <String>{};
+  for (final raw in value) {
+    if (raw is! Map)
+      throw const PluginFrameException('model must be an object');
+    final model = Map<String, Object?>.from(raw);
+    final id = _string(model, 'id', max: PluginProtocolLimits.maxModelLength);
+    if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$').hasMatch(id) ||
+        !ids.add(id)) {
+      throw const PluginFrameException('model ID is invalid or duplicated');
+    }
+    final name = _string(model, 'name', max: 128);
+    if (RegExp(r'[\x00-\x1f\x7f]').hasMatch(name)) {
+      throw const PluginFrameException(
+          'model name contains control characters');
+    }
+    if (model['status'] != null)
+      _enum(model, 'status', const {'listed', 'verified', 'unavailable'});
+  }
+}
+
+void validatePluginContinuity(Object? value) {
+  if (value == null) return;
+  if (value is! Map)
+    throw const PluginFrameException('continuity must be an object');
+  final spec = Map<String, Object?>.from(value);
+  _enum(spec, 'strategy',
+      const {'none', 'history_replay', 'native_handle', 'checkpoint'});
+  if (spec['formatId'] != null ||
+      const {'native_handle', 'checkpoint'}.contains(spec['strategy'])) {
+    final format = _string(spec, 'formatId', max: 96);
+    if (!RegExp(r'^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$').hasMatch(format)) {
+      throw const PluginFrameException('formatId is malformed');
+    }
+  }
+  if (spec['modelSwitchSupported'] != null &&
+      spec['modelSwitchSupported'] is! bool) {
+    throw const PluginFrameException('modelSwitchSupported must be boolean');
+  }
 }

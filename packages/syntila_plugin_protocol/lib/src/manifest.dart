@@ -220,12 +220,28 @@ PluginManifestValidation validatePluginManifest(Object? input) {
     issue('capabilities', 'must be an object');
   } else {
     final c = Map<String, Object?>.from(capabilities);
-    strictKeys('capabilities.', c,
-        {'progress', 'activity', 'sessionResume', 'readOnly'});
-    for (final key in ['progress', 'activity', 'sessionResume']) {
+    strictKeys('capabilities.', c, {
+      'progress',
+      'activity',
+      'sessionResume',
+      'readOnly',
+      'modelDiscovery',
+      'continuity'
+    });
+    for (final key in [
+      'progress',
+      'activity',
+      'sessionResume',
+      'modelDiscovery'
+    ]) {
       if (c[key] != null && c[key] is! bool) {
         issue('capabilities.$key', 'must be a boolean');
       }
+    }
+    try {
+      validatePluginContinuity(c['continuity']);
+    } on PluginFrameException catch (error) {
+      issue('capabilities.continuity', error.message);
     }
     if (c['readOnly'] != null &&
         c['readOnly'] != 'honors' &&

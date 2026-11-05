@@ -101,6 +101,30 @@ export const PluginManifestSchema = z
         progress: z.boolean().optional(),
         activity: z.boolean().optional(),
         sessionResume: z.boolean().optional(),
+        modelDiscovery: z.boolean().optional(),
+        continuity: z
+          .object({
+            strategy: z.enum([
+              "none",
+              "history_replay",
+              "native_handle",
+              "checkpoint",
+            ]),
+            formatId: z
+              .string()
+              .max(96)
+              .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/)
+              .optional(),
+            modelSwitchSupported: z.boolean().optional(),
+          })
+          .strict()
+          .refine(
+            (value) =>
+              !["native_handle", "checkpoint"].includes(value.strategy) ||
+              !!value.formatId,
+            { message: "persistent continuity requires formatId" },
+          )
+          .optional(),
         readOnly: z.enum(["honors", "never"]).optional(),
       })
       .strict(),

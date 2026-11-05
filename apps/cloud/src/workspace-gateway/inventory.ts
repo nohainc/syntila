@@ -154,19 +154,34 @@ export async function recordWorkspaceWorkerInventory(
       ? validatedCatalog.data
       : null;
     if (acceptedCatalog) {
-      const profile = await env.SYNTILA_DB.prepare(
-        `SELECT digest FROM worker_profiles
-          WHERE worker_type_id = ?1 AND revision = ?2
-         UNION ALL
-        SELECT digest FROM worker_profile_history
-          WHERE worker_type_id = ?1 AND revision = ?2
-         LIMIT 1`,
-      )
-        .bind(workerTypeId, item.profileReleaseVersion ?? null)
-        .first<{ digest: string }>();
+      let expectedDigest: string | undefined;
+      if (executorJson) {
+        const executor = JSON.parse(executorJson);
+        const pin = await env.SYNTILA_DB.prepare(
+          `SELECT manifest_digest FROM workspace_worker_plugin_enablements
+           WHERE workspace_id = ?1 AND plugin_ref = ?2 AND version = ?3 AND intent = 'enabled'`,
+        )
+          .bind(workspaceId, workerTypeId, executor.version)
+          .first<{ manifest_digest: string }>();
+        if (
+          pin &&
+          pin.manifest_digest === executor.manifestDigest &&
+          executor.version === item.providerToolVersion
+        )
+          expectedDigest = pin.manifest_digest;
+      } else {
+        const profile = await env.SYNTILA_DB.prepare(
+          `SELECT digest FROM worker_profiles WHERE worker_type_id = ?1 AND revision = ?2
+           UNION ALL SELECT digest FROM worker_profile_history
+           WHERE worker_type_id = ?1 AND revision = ?2 LIMIT 1`,
+        )
+          .bind(workerTypeId, item.profileReleaseVersion ?? null)
+          .first<{ digest: string }>();
+        expectedDigest = profile?.digest;
+      }
       if (
-        !profile ||
-        acceptedCatalog.profileDigest !== profile.digest ||
+        !expectedDigest ||
+        acceptedCatalog.profileDigest !== expectedDigest ||
         acceptedCatalog.providerToolVersion !== item.providerToolVersion
       )
         acceptedCatalog = null;

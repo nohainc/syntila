@@ -161,6 +161,21 @@ void main() {
     }
   });
 
+  test('preserves the Cloud reason for a plugin removal conflict', () async {
+    await signIn();
+    respond = (r) async {
+      r.response.statusCode = 409;
+      r.response.write(
+          '{"code":"plugin_in_use","error":"Disable this plugin on every Workspace first"}');
+    };
+    await expectLater(
+        cloud().removeFromLibrary('plugin-3fa91c04b2d7'),
+        throwsA(isA<PluginCloudException>()
+            .having((e) => e.code, 'code', 'plugin_in_use')
+            .having((e) => e.message, 'message',
+                'Disable this plugin on every Workspace first')));
+  });
+
   test('preserves the safe Cloud message for a bad plugin request', () async {
     await signIn();
     respond = (r) async {

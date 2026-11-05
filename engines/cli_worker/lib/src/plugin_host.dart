@@ -50,7 +50,8 @@ class PluginRunRequest {
     this.model,
     this.sessionKey,
     this.sessionMode = 'new',
-  }) : probeMode = null;
+  }) : probeMode = null,
+       discoverModels = false;
 
   /// A readiness probe (`passive` or `live`) instead of an execute.
   const PluginRunRequest.probe({
@@ -62,7 +63,21 @@ class PluginRunRequest {
        model = null,
        sessionKey = null,
        sessionMode = 'new',
-       probeMode = mode;
+       probeMode = mode,
+       discoverModels = false;
+
+  const PluginRunRequest.models({
+    required this.executeId,
+    required this.deadline,
+  }) : prompt = '',
+       access = 'read_only',
+       model = null,
+       sessionKey = null,
+       sessionMode = 'new',
+       probeMode = null,
+       discoverModels = true;
+
+  final bool discoverModels;
 
   final String? probeMode;
 
@@ -100,12 +115,19 @@ final class PluginProbeSuccess extends PluginRunOutcome {
     required this.state,
     required this.issueCode,
     required this.checks,
+    this.capabilities = const {},
   });
 
   /// `ready`, `setup_required`, `sign_in_required`, `unavailable` or `failed`.
   final String state;
   final String? issueCode;
   final List<Map<String, Object?>> checks;
+  final Map<String, Object?> capabilities;
+}
+
+final class PluginModelsSuccess extends PluginRunOutcome {
+  const PluginModelsSuccess(this.models);
+  final List<Map<String, Object?>> models;
 }
 
 final class PluginRunFailure extends PluginRunOutcome {
@@ -314,6 +336,19 @@ class PluginHost {
                 stderrTail: stderrTail(),
               ),
             );
+          } else if (!sentExecute && request.discoverModels) {
+            sentExecute = true;
+            if (session.negotiatedProtocol == '1.0' ||
+                session.capabilities['modelDiscovery'] != true) {
+              finish(
+                const PluginRunFailure(
+                  code: 'unsupported_frame',
+                  message: 'Model discovery is not supported',
+                ),
+              );
+            } else {
+              write(session.beginListModels(id: request.executeId));
+            }
           } else if (!sentExecute && request.probeMode != null) {
             sentExecute = true;
             write(
@@ -324,29 +359,48 @@ class PluginHost {
             );
           } else if (!sentExecute) {
             sentExecute = true;
-            onWorkStarted?.call();
-            write(
-              session.beginExecute(
-                PluginFrame.execute(
-                  id: request.executeId,
-                  deadlineMs: request.deadline.inMilliseconds.clamp(
-                    1,
-                    PluginProtocolLimits.maxTimeoutMs,
-                  ),
-                  prompt: request.prompt,
-                  workingDirectory: launch.workingDirectory,
-                  access: request.access,
-                  model: request.model,
-                  sessionKey: request.sessionKey,
-                  sessionMode: request.sessionMode,
-                ),
+            final executeFrame = PluginFrame.execute(
+              id: request.executeId,
+              deadlineMs: request.deadline.inMilliseconds.clamp(
+                1,
+                PluginProtocolLimits.maxTimeoutMs,
               ),
+              prompt: request.prompt,
+              workingDirectory: launch.workingDirectory,
+              access: request.access,
+              model: request.model,
+              sessionKey: request.sessionKey,
+              sessionMode: request.sessionMode,
             );
+            if (session.negotiatedProtocol != '1.2' &&
+                (utf8.encode(request.prompt).length >
+                        PluginProtocolLimits.maxPromptBytes ||
+                    utf8.encode(executeFrame.encode()).length + 1 >
+                        PluginProtocolLimits.maxFrameBytes)) {
+              finish(
+                const PluginRunFailure(
+                  code: 'context_limit_exceeded',
+                  message:
+                      'The plugin uses an older protocol that cannot accept this conversation. Update the plugin or reduce the context.',
+                ),
+              );
+              return;
+            }
+            onWorkStarted?.call();
+            write(session.beginExecute(executeFrame));
           }
+        case 'models.list.result':
+          finish(
+            PluginModelsSuccess([
+              for (final model in frame.json['models'] as List)
+                Map<String, Object?>.from(model as Map),
+            ]),
+          );
         case 'probe.result':
           final rawChecks = (frame.json['checks'] as List?) ?? const [];
           finish(
             PluginProbeSuccess(
+              capabilities: session.capabilities,
               state: frame.json['state'] as String,
               issueCode: frame.json['issueCode'] as String?,
               checks: [

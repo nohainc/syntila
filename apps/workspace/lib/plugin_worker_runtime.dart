@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:syntila_protocol/worker_descriptor.dart';
+import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart'
+    show negotiatePluginProtocol;
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 import 'local_worker_registry.dart';
@@ -45,7 +47,7 @@ class PluginWorkerRuntime {
     required this.registry,
     required this.probe,
     required this.engineStateDirectory,
-    this.engineProtocol = '1.0',
+    this.engineProtocol = '1.2',
   });
 
   final PluginStore store;
@@ -129,6 +131,7 @@ class PluginWorkerRuntime {
         issueCode: result.issueCode,
         diagnosticDetails: result.diagnostics,
         checks: result.checks,
+        modelCatalog: result.modelCatalog,
         toolName: execution.plugin.pluginId,
         replaceToolName: true,
         toolVersion: execution.plugin.version,
@@ -201,7 +204,11 @@ class PluginWorkerRuntime {
         : Map<String, Object?>.from(
             installed.manifest.raw['capabilities'] as Map,
           );
-    final resume = capabilities['sessionResume'] == true;
+    final continuity = capabilities['continuity'];
+    final resume = capabilities['sessionResume'] == true ||
+        (continuity is Map &&
+            const {'native_handle', 'checkpoint'}
+                .contains(continuity['strategy']));
     final conformancePassed = version?.conformance?.passed == true;
     return {
       'workerId': worker.id,
@@ -214,6 +221,10 @@ class PluginWorkerRuntime {
       'profileReleaseVersion': null,
       'providerToolName': record.pluginId,
       'providerToolVersion': pin.version,
+      if (installed != null &&
+          worker.modelCatalog?.profileDigest == pin.manifestDigest &&
+          worker.modelCatalog?.providerToolVersion == pin.version)
+        'modelCatalog': worker.modelCatalog!.toJson(includeNativeIds: false),
       'localConcurrencyLimit': worker.localConcurrencyLimit,
       'revision': worker.revision,
       'createdAt': worker.createdAt,
@@ -225,7 +236,9 @@ class PluginWorkerRuntime {
         'version': pin.version,
         'manifestDigest': pin.manifestDigest,
         'artifactDigest': installed?.artifactDigest,
-        'pluginProtocol': engineProtocol,
+        'pluginProtocol': installed == null
+            ? engineProtocol
+            : negotiatePluginProtocol(installed.manifest),
         'isolation': {'tier': 'none', 'readOnlyEnforced': false},
         'sessionResume': !resume
             ? 'none'

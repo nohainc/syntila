@@ -120,16 +120,14 @@ void main() {
     expect(other['documentHash'], isNot(shown['documentHash']));
   });
 
-  test(
-      'a Free account can import, test, register and enable; Cloud gates use',
+  test('a Free account can import, test, register and enable; Cloud gates use',
       () async {
     await prepare();
     await accept((h) => service.register('acme-reviewer', acceptHash: h));
     await accept((h) => service.enable('acme-reviewer', acceptHash: h));
     expect(cloud.calls, isNot(contains('fetchLease')));
-    final workspace =
-        (((await service.list())['plugins'] as List).single as Map)['workspace']
-            as Map;
+    final workspace = (((await service.list())['plugins'] as List).single
+        as Map)['workspace'] as Map;
     expect(workspace['effective'], 'enabled');
     expect(workspace.containsKey('reason'), isFalse);
   });
@@ -165,7 +163,23 @@ void main() {
     expect(result['cloudSynced'], isFalse);
     final plugin = ((await service.list())['plugins'] as List).single as Map;
     expect((plugin['workspace'] as Map)['intent'], 'disabled');
-    await expectCode(service.disable('acme-reviewer'), 'plugin_not_enabled');
+    cloud.online = true;
+    expect((await service.disable('acme-reviewer'))['cloudSynced'], isTrue);
+    expect(cloud.calls.where((call) => call == 'disable:1.4.2').length, 2);
+  });
+
+  test('remove reconciles a previously offline disable before removal',
+      () async {
+    await prepare();
+    await accept((h) => service.register('acme-reviewer', acceptHash: h));
+    await accept((h) => service.enable('acme-reviewer', acceptHash: h));
+    cloud.online = false;
+    expect((await service.disable('acme-reviewer'))['cloudSynced'], false);
+    await expectCode(service.remove('acme-reviewer'), 'cloud_unavailable');
+    cloud.online = true;
+    expect((await service.remove('acme-reviewer'))['removed'], true);
+    expect(cloud.calls.sublist(cloud.calls.length - 2),
+        ['disable:1.4.2', 'remove:plugin-3fa91c04b2d7']);
   });
 
   test('moving the pin shows what changes and never moves silently', () async {

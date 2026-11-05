@@ -124,7 +124,11 @@ function projectInventoryRow(
   const isPlugin = row.catalog_origin === "plugin";
   const executionOptions = isPlugin
     ? typeof row.plugin_pin_digest === "string"
-      ? pluginExecutionOptions(row.plugin_pin_digest)
+      ? pluginExecutionOptions(
+          row.plugin_pin_digest,
+          row.model_catalog_json,
+          row.provider_tool_version,
+        )
       : null
     : spaceWorkerExecutionOptions(
         row.model_profile_json,

@@ -355,20 +355,29 @@ class EngineSessionStore {
         lastUsedAt: now,
       );
     }
-    await file.writeAsString(
-      jsonEncode({
-        'version': workerSession == null ? 1 : 2,
-        if (session != null) 'workerSession': session.toJson(),
-        'sessionKey': sessionKey,
-        'workerTypeId': workerTypeId,
-        'profileDefinitionId': profileDefinitionId,
-        'providerToolIdentity': providerToolIdentity,
-        'profileReleaseVersion': profileReleaseVersion,
-        'sessionFormatId': sessionFormatId,
-        'sessionId': sessionId,
-        if (executionPolicy != null) 'executionPolicy': executionPolicy,
-      }),
+    final temporary = File(
+      '${file.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
     );
+    try {
+      await temporary.writeAsString(
+        jsonEncode({
+          'version': workerSession == null ? 1 : 2,
+          if (session != null) 'workerSession': session.toJson(),
+          'sessionKey': sessionKey,
+          'workerTypeId': workerTypeId,
+          'profileDefinitionId': profileDefinitionId,
+          'providerToolIdentity': providerToolIdentity,
+          'profileReleaseVersion': profileReleaseVersion,
+          'sessionFormatId': sessionFormatId,
+          'sessionId': sessionId,
+          if (executionPolicy != null) 'executionPolicy': executionPolicy,
+        }),
+        flush: true,
+      );
+      await temporary.rename(file.path);
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
   }
 
   Future<void> _assertContained(File file, {bool allowMissing = false}) async {

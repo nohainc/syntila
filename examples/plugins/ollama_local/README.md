@@ -1,23 +1,33 @@
 # Ollama Local custom Worker
 
-A text-generation plugin using the installed Ollama **CLI**, pinned at build
-time, connected to `127.0.0.1:11434`. The default model is `llama3.2:3b`.
-The plugin checks `ollama list` before inference; missing models produce
-`setup_required` rather than an automatic download. Install the desired local
-model yourself, then build with its exact tag:
+A text-generation plugin using the installed Ollama **CLI**, connected to
+`127.0.0.1:11434`. Protocol 1.1 discovers installed model entries using
+`ollama list`; the selected public model ID is resolved back to its native tag
+at execution. No model is compiled into the package. Namespaced tags receive
+stable hashed IDs; their original names remain visible as model labels.
+Explicit `:cloud` entries and reserved `syntila-session-` snapshots are excluded.
+A listed entry is not proof of successful inference, sufficient memory, task
+compatibility, or local-only execution of an alias; keep cloud features disabled
+in the daemon when local execution is required.
+
+Build once, then choose an installed model in the normal Worker model selector:
 
 ```sh
 ollama list
-# Only if you want to download this model:
-ollama pull llama3.2:3b
-bash examples/plugins/ollama_local/build.sh llama3.2:3b
+bash examples/plugins/ollama_local/build.sh
 ```
 
-Run build.sh from the repository checkout. It compiles an executable and writes
-`dist/plugins/ollama-local/plugin.json` with its actual hash and size. The package
-is specific to this OS/architecture and the absolute Ollama executable path on
-this machine. A different model/path requires rebuilding and renewed consent.
-It does not bundle Ollama or model weights. Keep the local Ollama daemon running.
+With multiple installed entries an explicit selection is required. With exactly
+one entry, Auto uses that entry. A missing selected model fails without replacing
+it or explicitly requesting a download. The preflight check and native CLI run
+are not atomic; concurrent model removal can trigger Ollama's own automatic pull.
+`ollama ps` lists loaded models; loading is not a
+prerequisite for selection, so unloaded installed entries remain selectable.
+
+The build creates version 1.3.0 at `dist/plugins/ollama-local`, specific to this
+OS/architecture and absolute Ollama executable path. Re-import, test, register,
+and enable the new package through the existing consent flow. It bundles neither
+Ollama nor model weights and requires a running local daemon.
 
 From a configured Plus Workspace:
 
@@ -31,9 +41,15 @@ syntila plugins enable ollama-local
 # Repeat enable with its displayed --accept hash.
 ```
 
-Prompts above 24 KiB are refused before inference rather than stalling on
-very large context ingestion. The plugin returns generated text. It does not edit files, execute model-proposed
-tools, or retain conversation sessions. Syntila currently schedules custom
+The plugin does not impose a prompt-size limit. The current Workspace-to-Engine
+protocol still limits prompts to 512 KiB and canonical bootstrap context to
+256 KiB; larger conversations require changes to that separate protocol. Conversations are also limited by the selected model’s context window; older
+material may be truncated by Ollama, and processing a long prompt can be slow. The plugin returns generated text. It does not edit files, execute model-proposed
+tools, or claim native session resume. Its continuity strategy is `history_replay`:
+the Engine supplies canonical context on each invocation, including after a
+restart. The plugin never sends interactive `/save` or `/load` through the
+one-shot prompt pipe. Native checkpoints can be implemented later through the
+same plugin contract without changing Cloud's conversation identity. Syntila currently schedules custom
 plugins for Work only. The manifest declares loopback network and subprocess
 access; these declarations do not create a sandbox.
 
@@ -56,12 +72,12 @@ an installed model; readiness failure is not a successful generation test.
 
 The supplied Modelfile uses Llama 3.1 8B with an 8,192-token context and at most
 2,048 generated tokens. The smaller context leaves more memory for other apps.
-Create a local alias (it reuses the downloaded weights), then pin the plugin to it:
+Create a local alias (it reuses the downloaded weights), then select `syntila-llama:8b` in Syntila:
 
 ```sh
 ollama pull llama3.1:8b
 ollama create syntila-llama:8b -f examples/plugins/ollama_local/Modelfile
-bash examples/plugins/ollama_local/build.sh syntila-llama:8b
+bash examples/plugins/ollama_local/build.sh
 ```
 
 The source model remains installed. `ollama ps` shows actual runtime memory and

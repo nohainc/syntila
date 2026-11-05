@@ -731,7 +731,11 @@ export async function validateWorkflowWorkerEligibility(
       push("worker_type_not_allowed_by_thread");
     const executionOptions = isPlugin
       ? pluginDigest
-        ? pluginExecutionOptions(pluginDigest)
+        ? pluginExecutionOptions(
+            pluginDigest,
+            row.modelCatalogJson,
+            row.providerToolVersion,
+          )
         : null
       : spaceWorkerExecutionOptions(
           row.executionProfileJson,

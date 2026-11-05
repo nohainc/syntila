@@ -65,6 +65,26 @@ void main() {
     expect(frames.map((f) => f.type), contains('progress'));
   });
 
+  test(
+    'protocol 1.2 transports a prompt larger than the old frame limit',
+    () async {
+      final text = 'x' * (1024 * 1024 + 1);
+      final outcome = await host.run(launch('large'), request(prompt: text));
+      expect(outcome, isA<PluginRunSuccess>());
+      expect((outcome as PluginRunSuccess).output, 'accepted:${text.length}');
+    },
+  );
+
+  test('legacy plugins receive a clear error for oversized prompts', () async {
+    final outcome = await host.run(
+      launch(''),
+      request(prompt: 'x' * (512 * 1024 + 1)),
+    );
+    expect(outcome, isA<PluginRunFailure>());
+    expect((outcome as PluginRunFailure).code, 'context_limit_exceeded');
+    expect(outcome.message, contains('older protocol'));
+  });
+
   test('observed memory breach fails work and kills the plugin', () async {
     final work = Directory.systemTemp.createTempSync('plugin-memory');
     addTearDown(() => work.deleteSync(recursive: true));

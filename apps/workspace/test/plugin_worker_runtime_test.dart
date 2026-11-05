@@ -126,6 +126,41 @@ void main() {
     expect(executor.executable, contains(executor.manifestDigest));
   });
 
+  test('plugin probe catalog reaches readiness and pinned inventory', () async {
+    await enabled(capabilities: {'modelDiscovery': true});
+    final execution = await runtime.prepareExecution(ref);
+    final catalog = DiscoveredModelCatalog(
+        schemaVersion: 2,
+        profileDigest: execution.plugin.manifestDigest,
+        providerToolVersion: execution.plugin.version,
+        discoveredAt: '2026-11-05T00:00:00Z',
+        models: [DiscoveredModel(id: 'm:8b', name: 'Model')]);
+    probeResult = (mode) => ProbeResult(
+        requestId: 'models',
+        mode: mode,
+        ready: true,
+        checks: const [],
+        modelCatalog: catalog);
+    final assessment =
+        await runtime.assess(worker(), LocalWorkerProbeMode.passive);
+    expect(assessment.modelCatalog!.models.single.id, 'm:8b');
+    final inventory = await runtime.inventoryFor(
+        worker().copyWith(modelCatalog: catalog),
+        engineVersion: '1.4.0',
+        lastSeenAt: '2026-11-05T00:00:00Z');
+    expect((inventory!['modelCatalog'] as Map)['schemaVersion'], 2);
+    final wrong = DiscoveredModelCatalog(
+        schemaVersion: 2,
+        profileDigest: 'b' * 64,
+        providerToolVersion: execution.plugin.version,
+        discoveredAt: '2026-11-05T00:00:00Z',
+        models: []);
+    final hidden = await runtime.inventoryFor(
+        worker().copyWith(modelCatalog: wrong),
+        engineVersion: '1.4.0',
+        lastSeenAt: '2026-11-05T00:00:00Z');
+    expect(hidden!.containsKey('modelCatalog'), false);
+  });
   test('probe results map to the existing readiness states', () async {
     await enabled();
     for (final (issue, passive, live) in [
@@ -294,7 +329,7 @@ void main() {
       wired = PluginWorkerRuntime(
         store: harness.service.store,
         registry: harness.service.registry,
-          probe: ({
+        probe: ({
           required executor,
           required workerTypeId,
           required stateDirectory,

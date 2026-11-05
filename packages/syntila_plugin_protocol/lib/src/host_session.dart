@@ -52,6 +52,7 @@ class PluginHostSession {
   Map<String, Object?> _capabilities = const {};
   String? _activeExecuteId;
   String? _pendingProbeId;
+  String? _pendingModelsId;
   DateTime? _cancelDeadline;
   PluginFrame? _cancelFrame;
   late DateTime _lastFrameAt;
@@ -99,6 +100,13 @@ class PluginHostSession {
     if (_pendingProbeId != null) throw StateError('probe already pending');
     _pendingProbeId = id;
     return PluginFrame.probe(id: id, mode: mode);
+  }
+
+  PluginFrame beginListModels({required String id}) {
+    _require(PluginSessionPhase.ready);
+    if (_pendingModelsId != null) throw StateError('discovery already pending');
+    _pendingModelsId = id;
+    return PluginFrame.listModels(id: id);
   }
 
   PluginFrame beginExecute(PluginFrame execute) {
@@ -168,6 +176,22 @@ class PluginHostSession {
           PluginHostFailure.protocolViolation,
           'hello.result after the handshake',
         );
+      case 'models.list.result':
+        if (_pendingModelsId == null || frame.id != _pendingModelsId) {
+          return const FrameVerdict.violation(
+              PluginHostFailure.protocolViolation,
+              'unexpected discovery response');
+        }
+        _pendingModelsId = null;
+        return const FrameVerdict.accept();
+      case 'error':
+        if ((_pendingModelsId != null && frame.id == _pendingModelsId) ||
+            (_pendingProbeId != null && frame.id == _pendingProbeId)) {
+          _pendingModelsId = null;
+          _pendingProbeId = null;
+          return const FrameVerdict.accept();
+        }
+        return _onExecutionFrame(frame);
       case 'probe.result':
         if (_pendingProbeId == null || frame.id != _pendingProbeId) {
           return const FrameVerdict.violation(

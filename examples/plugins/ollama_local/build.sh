@@ -2,24 +2,27 @@
 set -euo pipefail
 SOURCE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SOURCE/../../.." && pwd)"
-MODEL="${1:-llama3.2:3b}"
+if [[ $# -ne 0 ]]; then
+  echo "Models are discovered at runtime; build without a model argument." >&2
+  exit 2
+fi
 OLLAMA_BINARY="$(command -v ollama)"
 DEST="$ROOT/dist/plugins/ollama-local"
 mkdir -p "$DEST/bin"
 cd "$SOURCE"
 dart pub get
-dart compile exe bin/main.dart -DOLLAMA_MODEL="$MODEL" -DOLLAMA_EXECUTABLE="$OLLAMA_BINARY" -o "$DEST/bin/ollama-local"
+dart compile exe bin/main.dart -DOLLAMA_EXECUTABLE="$OLLAMA_BINARY" -o "$DEST/bin/ollama-local"
 node --input-type=module - "$DEST" <<'JS'
 import {writeFileSync} from 'node:fs';
 const platform = {darwin:'darwin',linux:'linux',win32:'windows'}[process.platform];
 const arch = {arm64:'arm64',x64:'x64'}[process.arch];
 if (!platform || !arch) throw Error('Unsupported build host');
 writeFileSync(`${process.argv[2]}/plugin.json`, JSON.stringify({
- schemaVersion:1, pluginId:'ollama-local', version:'1.0.0',
- displayName:'Ollama Local', description:'Text generation with a pinned local Ollama model. No file editing or tool execution.',
- author:{name:'Local plugin author'}, protocol:{min:'1.0',max:'1.0'},
+ schemaVersion:1, pluginId:'ollama-local', version:'1.3.0',
+ displayName:'Ollama Local', description:'Text generation with dynamically discovered Ollama models. No file editing or tool execution.',
+ author:{name:'Local plugin author'}, protocol:{min:'1.1',max:'1.2'},
  artifacts:{[`${platform}-${arch}`]:{command:'bin/ollama-local',args:[],sha256:'0'.repeat(64),size:1}},
- capabilities:{progress:true},
+ capabilities:{progress:true,modelDiscovery:true,continuity:{strategy:'history_replay'}},
  access:{workRoot:'read',network:{mode:'declared',hosts:['127.0.0.1']},subprocess:true,env:[]}
 }, null, 2)+'\n');
 JS

@@ -69,6 +69,21 @@ void main() {
         throwsA(isA<PluginFrameException>()));
   });
 
+  test('execute prompts may exceed the legacy frame and prompt limits', () {
+    final prompt = 'quote " and unicode € ' * 65000;
+    final encoded = PluginFrame.execute(
+            id: 'e1',
+            deadlineMs: 10000,
+            prompt: prompt,
+            workingDirectory: '/tmp',
+            access: 'read_only')
+        .encode();
+    expect(utf8.encode(encoded).length,
+        greaterThan(PluginProtocolLimits.maxFrameBytes));
+    final parsed = decodePluginFrame(encoded, PluginDirection.hostToPlugin);
+    expect(parsed.json['prompt'], prompt);
+  });
+
   test('bounds progress, percent and ids', () {
     expect(
       () => decodeFromPlugin(

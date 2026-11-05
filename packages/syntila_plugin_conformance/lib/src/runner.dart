@@ -15,7 +15,7 @@ class ConformanceFailure implements Exception {
   String toString() => message;
 }
 
-/// Runs the protocol conformance cases (`suiteVersion 1.0.0`) against a
+/// Runs the protocol conformance cases (`suiteVersion 1.1.0`) against a
 /// plugin. Each case starts a fresh process via the [launcher].
 ///
 /// This checks observable protocol behavior only. It cannot tell whether a
@@ -55,6 +55,8 @@ class ConformanceRunner {
     'handshake.version_negotiation': _versionNegotiation,
     'handshake.unsupported_protocol': _unsupportedProtocol,
     'probe.passive': _probePassive,
+    if (declaredCapabilities?['modelDiscovery'] == true)
+      'models.list': _listModels,
     'execute.single_terminal_frame': _singleTerminal,
     'execute.id_correlation': _idCorrelation,
     'execute.progress_ordering': _progressOrdering,
@@ -404,15 +406,29 @@ class ConformanceRunner {
 
   // ---- manifest --------------------------------------------------------------
 
+  Future<void> _listModels(_Wire w) async {
+    final hello = await w.handshake(supported: const ['1.1', '1.0']);
+    if (hello.json['protocol'] != '1.1')
+      throw ConformanceFailure('Discovery requires protocol 1.1');
+    await w.sendFrame(PluginFrame.listModels(id: 'models-1'));
+    final result = await w.read(const Duration(seconds: 10));
+    if (result.type != 'models.list.result' || result.id != 'models-1') {
+      throw ConformanceFailure('Expected a correlated models.list.result');
+    }
+  }
+
   Future<void> _capabilitiesSubset(_Wire w) async {
     final result = await w.handshake();
     final announced = Map<String, Object?>.from(
       result.json['capabilities'] as Map,
     );
     for (final entry in announced.entries) {
-      final enabled = entry.value == true || entry.value is String;
+      final enabled =
+          entry.value == true || entry.value is String || entry.value is Map;
       if (enabled && entry.key != 'models' && entry.key != 'cancel') {
-        if (!declaredCapabilities!.containsKey(entry.key)) {
+        if (!declaredCapabilities!.containsKey(entry.key) ||
+            _canonical(declaredCapabilities![entry.key]) !=
+                _canonical(entry.value)) {
           throw ConformanceFailure(
             'hello.result announces "${entry.key}", which the manifest does not declare.',
           );
@@ -597,4 +613,15 @@ class _Wire {
       if (bad(frame)) throw ConformanceFailure('The plugin sent $what.');
     }
   }
+}
+
+String _canonical(Object? value) {
+  if (value is Map)
+    return jsonEncode({
+      for (final key in value.keys.cast<String>().toList()..sort())
+        key: jsonDecode(_canonical(value[key]))
+    });
+  if (value is List)
+    return jsonEncode(value.map((v) => jsonDecode(_canonical(v))).toList());
+  return jsonEncode(value);
 }

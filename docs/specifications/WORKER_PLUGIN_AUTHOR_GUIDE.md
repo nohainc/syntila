@@ -131,7 +131,7 @@ path), and redirects `print` to stderr.
 - On `cancel`, stop and send `error` with code `cancelled` within 5 seconds.
 - Answer `ping` with `pong` (any frame you send also counts as liveness).
 - On `shutdown` or end of input, exit within 3 seconds.
-- Frames are at most 1 MiB; prompt at most 512 KiB; output at most 768 KiB.
+- In plugin protocol 1.2, execute prompts are not size-limited by the plugin protocol. Legacy protocols limit prompts to 512 KiB and frames to 1 MiB. Output remains limited to 768 KiB; the separate Worker protocol still has its own limits.
 - Artifacts in a result are paths relative to the working directory.
 - To support sessions, store state under the `dataDir` from `hello`, keyed by the
   `session.key` you receive, and declare `"sessionResume": true`.
@@ -223,6 +223,24 @@ implementing the same protocol without the Dart SDK. Its interpreter comes from
 the local environment; prefer standalone executables for distribution.
 
 The [Ollama local plugin](../../examples/plugins/ollama_local/README.md) wraps
-the installed Ollama CLI with a build-pinned model, cancellation and bounded
+the installed Ollama CLI with runtime model discovery and selection, cancellation and bounded
 output. It requires an already-downloaded model and does not edit files or
 execute model-proposed tools.
+
+
+### Discovery and continuity SDK (protocol 1.1)
+
+Override `discoverModels()` to return bounded `PluginModel` metadata and declare
+`modelDiscovery: true` in both the manifest and `capabilities`. The Engine handles
+catalog caching and publication; resolve `request.model` against current native
+entries before execution. Never silently substitute an unavailable selection.
+
+Declare `continuity: {strategy: "history_replay"}` for one-shot CLIs receiving
+canonical context. For native handles or checkpoint files, declare the matching
+strategy and a lowercase kebab `formatId`; implement new/resume/rebuild inside
+`execute`. SDK requests expose `resumeSession` and `rebuildSession`. Persist the
+provider state before reporting a created/resumed result. The optional
+`SessionStore.transact` helper provides locking, atomic commits, monotonic
+revision/generation checks and retry deduplication for the last committed turn.
+It does not provide exactly-once remote inference. See the protocol 1.1 section
+of [Worker Plugin Protocol](WORKER_PLUGIN_PROTOCOL_V1.md) for complete semantics.

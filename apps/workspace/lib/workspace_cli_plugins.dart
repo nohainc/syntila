@@ -60,8 +60,8 @@ extension _PluginOutput on WorkspaceCli {
         out.writeln('Disabled.');
         if (result['cloudSynced'] == false) {
           out.writeln(
-            'Cloud was unreachable; it will see the change when Cloud '
-            'reconnects.',
+            'Cloud could not confirm the change. Run plugins disable again '
+            'to retry, or remove the plugin after reconnecting.',
           );
         }
         if ((result['draining'] as int? ?? 0) > 0) {

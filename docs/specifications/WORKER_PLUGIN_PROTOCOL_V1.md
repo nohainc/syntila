@@ -22,8 +22,10 @@ Keywords MUST, SHOULD and MAY follow RFC 2119.
   frames and nothing else. **stderr** is free-form logging; it is captured,
   redacted and size-bounded, never parsed as protocol.
 - **Framing is NDJSON:** one UTF-8 JSON object per line terminated by `\n`.
-  The host accepts `\r\n`. No BOM. No pretty-printing across lines. A frame
-  MUST be ≤ **1 MiB (1,048,576 bytes)** including the newline. This equals
+  The host accepts `\r\n`. No BOM. No pretty-printing across lines. In protocol 1.0 and 1.1 a frame
+  MUST be ≤ **1 MiB (1,048,576 bytes)** including the newline. Protocol 1.2
+  removes this size limit for host-to-plugin `execute` frames; other frames
+  retain it. This equals
   `WorkerProtocolLimits.maxFrameBytes`; an oversize or non-JSON line on stdout is
   a protocol violation and the host terminates the plugin
   (`plugin_protocol_violation`).
@@ -141,7 +143,7 @@ Rules:
  "attachments":[]}
 ```
 
-- `prompt` ≤ 512 KiB. It is the same assembled prompt the Engine would send a
+- In protocol 1.0 and 1.1, `prompt` ≤ 512 KiB; protocol 1.2 has no plugin-protocol prompt limit. It is the same assembled prompt the Engine would send a
   provider CLI (bootstrap, delta, or stateless as the Conversation Router
   decided). Plugins SHOULD treat it as opaque text.
 - `access`: `read_only` or `read_write`. Syntila **sends** the policy; whether it
@@ -352,3 +354,86 @@ as a security or trust rating.
 ← {"type":"result","id":"e1","output":"Looks good.","artifacts":[]}
 → {"type":"shutdown"}
 ```
+
+
+## Protocol 1.1: model discovery and continuity strategies
+
+The host offers 1.1 and 1.0 and negotiates the highest common version. Existing
+1.0 plugins keep their handshake, execution, and `sessionResume` behavior.
+Plugins requiring discovery or explicit continuity strategies should declare
+`protocol: {min: "1.1", max: "1.1"}`. The Ollama example is now package 1.1.0;
+immutable 1.0.0 packages are not overwritten or automatically activated.
+
+A plugin may declare `modelDiscovery: true` in both manifest and handshake.
+The host sends `{"type":"models.list","id":"models-1"}`. The plugin replies
+with `models.list.result`, the matching ID, and `models`, an array of at most
+128 unique `{id, name, status?}` objects. Status is `listed` (default), `verified`,
+or `unavailable`. IDs use the public model token grammar; plugins map arbitrary
+native names to stable safe IDs. Native invocation mappings stay in the plugin.
+Discovery must not run inference, download weights, or modify provider state.
+An empty successful list replaces old choices. Errors retain a stale last-known
+catalog. Metadata is bounded by the host deadline and normal frame limits.
+
+Engine probes refresh discovery on live checks, first use, and after one minute;
+other passive checks reuse the catalog. Catalog identity is bound to the plugin
+manifest digest and package version. Workspace publishes the standard catalog,
+and Cloud accepts it only against the enabled, owner-scoped plugin pin. Selection
+uses normal execution-option and scheduler validation. Effort and compaction
+remain unsupported by this plugin contract.
+
+Optional `continuity` capabilities describe behavior independently of execution
+location:
+
+- `strategy: "none"`: independent execution; durable requests are rejected.
+- `strategy: "history_replay"`: Engine supplies canonical context each turn;
+  no adapter session key or native-resume claim is made.
+- `strategy: "native_handle"` or `"checkpoint"`: requires a `formatId`;
+  plugin owns the native handle/state mapping under its local data directory.
+  `modelSwitchSupported` defaults to false. Format IDs used by the Engine must
+  follow its existing lowercase kebab identifier grammar (maximum 96 characters).
+
+Without `continuity`, legacy `sessionResume: true` means native-handle behavior;
+otherwise the strategy is none. Persistent adapters receive `session.key` and
+`session.mode`: `new`, `resume`, or 1.1 `rebuild`. New/rebuild must establish fresh
+state from the supplied canonical prompt; resume must fail with
+`session_not_found` if unavailable, never silently start an empty conversation.
+Return `session.state: created` for new/rebuild and `resumed` for resume, only
+after required state is committed. Native handles and checkpoint paths never
+leave the local adapter boundary.
+
+Engine session ownership, model/policy compatibility, context revision/history
+watermarks, and exclusive cross-process execution reuse the existing session
+store. Package digest changes reconstruct state. Old timestamp markers are not
+trusted as continuity evidence. Missing native state permits one bounded rebuild
+within the same request when canonical bootstrap is available. Failed execution
+invalidates the local mapping; successful consumption advances it. State writes
+are atomic. A result/save failure is reported, never presented as a committed
+continuation. `session_commit_failed` indicates adapter state could not commit;
+`model_unavailable` means the selected model cannot be used.
+
+The SDK exposes `discoverModels()` and `PluginModel`; `SessionStore.transact`
+provides an exclusive checkpoint transaction with atomic replacement, generation
+and context-revision checks, and replay of the last committed request's output.
+It cannot undo provider side effects or deduplicate a remote call that succeeded
+before its local commit. Cancellation checks before commit and provider-specific
+checkpoint compatibility/cleanup remain the adapter's responsibility. Syntila's
+canonical conversation remains the reconstruction authority.
+
+
+## Protocol 1.2: execute prompt size and errors
+
+A host-to-plugin `execute` prompt and its enclosing NDJSON frame have no
+plugin-protocol size limit in 1.2. `maxPromptBytes` and `maxFrameBytes` in
+the hello frame retain their legacy meanings for 1.0/1.1 and do not limit 1.2
+execute prompts. Response and control-frame limits continue to apply. The host
+rejects an oversized prompt before sending it to a 1.0/1.1 plugin with a
+non-retryable context-limit error. Plugin authors remain responsible for their
+model's token/context budget and may reject requests with
+`context_limit_exceeded`; the Engine maps this to the provider-neutral
+`context_limit_exceeded` failure.
+
+This change only removes the plugin protocol ceiling. The separate local Worker
+protocol currently limits a canonical bootstrap to 256 KiB, an execute prompt
+to 512 KiB and a Worker frame to 1 MiB. Cloud and Workspace transports may
+apply their own limits. End-to-end unbounded prompts require changes to those
+separate contracts; protocol 1.2 must not be advertised as removing them.

@@ -310,7 +310,10 @@ class WorkspacePluginService {
     final report = await conformance.run(
       installed,
       workerTypeId: record.pluginRef ?? 'plugin-000000000000',
-      declaresResume: capabilities['sessionResume'] == true,
+      declaresResume: capabilities['sessionResume'] == true ||
+          (capabilities['continuity'] is Map &&
+              const {'native_handle', 'checkpoint'}
+                  .contains((capabilities['continuity'] as Map)['strategy'])),
       declaredCapabilities: capabilities,
       onProgress: onProgress,
     );
@@ -463,7 +466,7 @@ class WorkspacePluginService {
   Future<Map<String, Object?>> disable(String pluginId) async {
     final record = await _record(pluginId);
     final pin = record.pin;
-    if (pin == null || !pin.enabled) {
+    if (pin == null) {
       throw const PluginServiceException(
         'plugin_not_enabled',
         'This plugin is not enabled on this Workspace.',
@@ -516,6 +519,19 @@ class WorkspacePluginService {
     }
     if (ref != null) {
       try {
+        // A prior offline disable changes local intent first. Reconcile that
+        // intent before asking Cloud to remove the account-wide library entry.
+        final pin = record.pin;
+        if (pin != null) {
+          await cloud.setEnablement(
+            pluginRef: ref,
+            version: pin.version,
+            manifestDigest: pin.manifestDigest,
+            consentHash: pin.consentHash,
+            enabled: false,
+            shareable: pin.shareable,
+          );
+        }
         await cloud.removeFromLibrary(ref);
       } on PluginCloudException catch (error) {
         throw PluginServiceException(error.code, error.message);

@@ -12,6 +12,7 @@ Future<void> main(List<String> args) async {
       .firstWhere((a) => a.startsWith('--fault='), orElse: () => '--fault=')
       .substring('--fault='.length);
   File('${Directory.current.path}/plugin.pid').writeAsStringSync('$pid');
+  String? dataDirectory;
   if (fault == 'noise') stdout.writeln('starting up...');
 
   await for (final line
@@ -30,16 +31,48 @@ Future<void> main(List<String> args) async {
     }
     switch (frame.type) {
       case 'hello':
+        dataDirectory = frame.json['dataDir'] as String;
         send({
           'type': 'hello.result',
           'id': frame.id,
-          'protocol': '1.0',
+          'protocol': fault == 'large'
+              ? '1.2'
+              : const {'discovery', 'checkpoint'}.contains(fault)
+              ? '1.1'
+              : '1.0',
           'plugin': {
             'id': fault == 'bad-identity' ? 'someone-else' : 'fixture-plugin',
             'version': '1.0.0',
             'name': 'Fixture',
           },
-          'capabilities': {'progress': true},
+          'capabilities': {
+            'progress': true,
+            if (fault == 'discovery') 'modelDiscovery': true,
+            if (fault == 'replay') 'continuity': {'strategy': 'history_replay'},
+            if (fault == 'checkpoint')
+              'continuity': {
+                'strategy': 'checkpoint',
+                'formatId': 'fixture-v1',
+              },
+          },
+        });
+      case 'models.list':
+        if (File('$dataDirectory/catalog-failure').existsSync()) {
+          send({
+            'type': 'error',
+            'id': frame.id,
+            'code': 'not_ready',
+            'message': 'Discovery unavailable',
+          });
+          continue;
+        }
+        send({
+          'type': 'models.list.result',
+          'id': frame.id,
+          'models': [
+            if (!File('$dataDirectory/catalog-empty').existsSync())
+              {'id': 'fixture:8b', 'name': 'Fixture 8B', 'status': 'listed'},
+          ],
         });
       case 'probe':
         send({
@@ -66,7 +99,28 @@ Future<void> main(List<String> args) async {
         exit(0);
       case 'execute':
         final id = frame.id;
+        if (fault == 'checkpoint') {
+          final session = frame.json['session'] as Map;
+          final file = File('$dataDirectory/checkpoint-${session['key']}');
+          if (session['mode'] == 'resume' && !file.existsSync()) {
+            send({
+              'type': 'error',
+              'id': id,
+              'code': 'session_not_found',
+              'message': 'Missing checkpoint',
+            });
+            continue;
+          }
+          file.writeAsStringSync('committed');
+        }
         switch (fault) {
+          case 'large':
+            send({
+              'type': 'result',
+              'id': id,
+              'output': 'accepted:${(frame.json['prompt'] as String).length}',
+              'artifacts': <Object?>[],
+            });
           case 'crash':
             exit(3);
           case 'slow' || 'ignore-cancel' || 'mute':
@@ -78,6 +132,14 @@ Future<void> main(List<String> args) async {
             exit(4);
           case 'oversize':
             stdout.writeln('x' * 1100000);
+          case 'context-error':
+            send({
+              'type': 'error',
+              'id': id,
+              'code': 'context_limit_exceeded',
+              'message': 'Model context window exceeded',
+              'retryable': false,
+            });
           case 'error':
             send({
               'type': 'error',
@@ -110,7 +172,15 @@ Future<void> main(List<String> args) async {
             send({
               'type': 'result',
               'id': id,
-              'output': 'echo: ${frame.json['prompt']}',
+              'output': fault == 'checkpoint'
+                  ? 'mode:${(frame.json['session'] as Map)['mode']}'
+                  : 'echo: ${frame.json['prompt']}',
+              if (fault == 'checkpoint')
+                'session': {
+                  'state': (frame.json['session'] as Map)['mode'] == 'resume'
+                      ? 'resumed'
+                      : 'created',
+                },
               'artifacts': <Object?>[],
             });
         }

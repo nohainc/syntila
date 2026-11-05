@@ -1,8 +1,8 @@
 /// Wire and runtime limits from `WORKER_PLUGIN_PROTOCOL_V1.md`. Values that
 /// also exist in the Local Worker Protocol equal `WorkerProtocolLimits`.
 abstract final class PluginProtocolLimits {
-  static const protocolVersion = '1.0';
-  static const supportedProtocolVersions = <String>{'1.0'};
+  static const protocolVersion = '1.2';
+  static const supportedProtocolVersions = <String>{'1.2', '1.1', '1.0'};
 
   static const maxFrameBytes = 1024 * 1024;
   static const maxIdLength = 128;
@@ -16,7 +16,7 @@ abstract final class PluginProtocolLimits {
   static const maxPathLength = 256;
   static const maxSessionKeyLength = 256;
   static const maxModelLength = 128;
-  static const maxModels = 32;
+  static const maxModels = 128;
   static const maxActivityTitleLength = 256;
   static const maxActivityDetailsBytes = 16 * 1024;
   static const maxTimeoutMs = 24 * 60 * 60 * 1000;
@@ -36,12 +36,15 @@ abstract final class PluginProtocolLimits {
 /// Error codes a plugin may send. Others normalize to `internal`.
 const pluginErrorCodes = <String>{
   'invalid_request',
+  'context_limit_exceeded',
   'cancelled',
   'timeout',
   'not_ready',
   'sign_in_required',
   'unsupported_policy',
   'session_not_found',
+  'model_unavailable',
+  'session_commit_failed',
   'rate_limited',
   'output_too_large',
   'unsupported_frame',

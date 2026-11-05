@@ -374,25 +374,60 @@ export function spaceWorkerExecutionOptions(
 }
 
 /**
- * Execution options for a plugin Worker (ADR-027, decision D10): no model
- * choice and no effort. The catalog revision is the pinned manifest digest, so
- * a frozen selection can only ever refer to that exact plugin.
+ * Execution options for a plugin Worker (ADR-027): model choices come from
+ * the manifest/version-bound local catalog. Native invocation details remain
+ * inside the plugin. Effort selection is not supported by this contract.
  */
 export function pluginExecutionOptions(
   manifestDigest: string,
+  discoveredCatalog?: unknown,
+  pluginVersion?: unknown,
 ): Extract<WorkerExecutionOptions, { schemaVersion: 2 }> {
+  let catalog: unknown;
+  try {
+    catalog =
+      typeof discoveredCatalog === "string"
+        ? JSON.parse(discoveredCatalog)
+        : discoveredCatalog;
+  } catch {
+    catalog = null;
+  }
+  const parsed =
+    WorkspaceWorkerInventoryEntrySchema.shape.modelCatalog.safeParse(catalog);
+  const discovered =
+    parsed.success &&
+    parsed.data?.profileDigest === manifestDigest &&
+    parsed.data.providerToolVersion === pluginVersion
+      ? parsed.data
+      : null;
+  const models = discovered?.models ?? [];
   return {
     schemaVersion: 2,
-    catalogRevision: manifestDigest,
+    catalogRevision:
+      discovered?.schemaVersion === 2
+        ? discovered.catalogRevision
+        : manifestDigest,
+    ...(discovered?.schemaVersion === 2 && discovered.stale
+      ? { catalogStale: true }
+      : {}),
     modelSwitch: { supported: false },
     effort: { supported: false, values: [], defaultValue: null },
     models: {
-      supported: false,
+      supported: discovered != null,
       discovery: "profile_catalog",
       allowsCustomModel: false,
-      allowedModelIds: [],
+      allowedModelIds: models
+        .filter((m) => m.status !== "unavailable")
+        .map((m) => m.id),
       defaultModelId: null,
-      options: [],
+      options: models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        status: m.status,
+        selectionMode: "separate",
+        efforts: [],
+        defaultEffort: null,
+      })),
     },
   };
 }

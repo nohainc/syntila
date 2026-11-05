@@ -508,3 +508,22 @@ Consequences built into the design:
 | Per-installation lock | Unchanged. Plugin registry writes use the same lock-protected state writes as the Worker registry. |
 | `service stop` | Drains/cancels plugin assignments exactly like Engine work, then terminates the Engine and thereby the plugins (kill-on-close); registration stays. |
 | Disconnect Cloud | Service keeps running; plugin Workers go offline in Cloud; lease keeps existing expiry; no plugin is deleted. |
+
+
+## Model discovery and continuity (protocol 1.1)
+
+Custom plugins now use the shared model catalog and Cloud selection validation.
+Metadata-only `models.list` stays below the Engine boundary; Service reports the
+catalog bound to the enabled manifest digest and package version. There are no
+provider-specific branches in Cloud, Core, Workspace, or the Engine.
+
+Continuity capabilities distinguish replay, native handles, and checkpoint
+adapters. Canonical history remains Syntila-owned. The Engine uses its existing
+session store, ownership validation, revision watermarks and execution locks
+instead of timestamp-only plugin markers. Native handles/files remain local;
+plugin commands are implemented in the adapter, not shipped as Cloud commands.
+The Ollama example uses replay and dynamic selection; interactive save/load is
+not implemented in this version. Existing read-only isolation/admission rules
+remain in force; continuity support does not grant Chat eligibility.
+
+Implementation evidence and remaining limits: [Plugin models and continuity 1.1](../acceptance/PLUGIN_MODELS_CONTINUITY_V1_1.md).

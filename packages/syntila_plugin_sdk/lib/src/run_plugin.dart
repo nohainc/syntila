@@ -119,6 +119,8 @@ class _Runner implements WorkContext {
         }
       case 'probe':
         _tasks.add(_probe(frame));
+      case 'models.list':
+        if (_helloDone) _tasks.add(_listModels(frame));
       case 'execute':
         _tasks.add(_execute(frame));
       case 'cancel':
@@ -141,7 +143,10 @@ class _Runner implements WorkContext {
   bool _hello(PluginFrame frame) {
     final protocol = Map<String, Object?>.from(frame.json['protocol'] as Map);
     final supported = List<String>.from(protocol['supported'] as List);
-    if (!supported.contains(PluginProtocolLimits.protocolVersion)) {
+    final selected = PluginProtocolLimits.supportedProtocolVersions
+        .where(supported.contains)
+        .firstOrNull;
+    if (selected == null) {
       _send({
         'type': 'error',
         'code': 'unsupported_protocol',
@@ -155,7 +160,7 @@ class _Runner implements WorkContext {
     _send({
       'type': 'hello.result',
       'id': frame.id,
-      'protocol': PluginProtocolLimits.protocolVersion,
+      'protocol': selected,
       'plugin': {
         'id': plugin.id,
         'version': plugin.version,
@@ -164,6 +169,28 @@ class _Runner implements WorkContext {
       'capabilities': plugin.capabilities,
     });
     return true;
+  }
+
+  Future<void> _listModels(PluginFrame frame) async {
+    try {
+      if (plugin.capabilities['modelDiscovery'] != true) {
+        throw const PluginFailure(
+            'unsupported_frame', 'Model discovery is not supported');
+      }
+      final models = (await plugin.discoverModels())
+          .map((model) => model.toJson())
+          .toList();
+      validatePluginModels(models);
+      _send({'type': 'models.list.result', 'id': frame.id, 'models': models});
+    } on Object {
+      _send({
+        'type': 'error',
+        'id': frame.id,
+        'code': 'not_ready',
+        'message': 'Model discovery failed',
+        'retryable': true
+      });
+    }
   }
 
   Future<void> _probe(PluginFrame frame) async {
@@ -217,6 +244,7 @@ class _Runner implements WorkContext {
       model: frame.json['model'] as String?,
       sessionKey: session is Map ? session['key'] as String? : null,
       resumeSession: session is Map && session['mode'] == 'resume',
+      rebuildSession: session is Map && session['mode'] == 'rebuild',
     );
     try {
       final result = await plugin.execute(request, this);

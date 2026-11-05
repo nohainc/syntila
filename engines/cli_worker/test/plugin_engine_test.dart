@@ -35,9 +35,13 @@ class EngineProcess {
   final Process process;
   final StreamIterator<WorkerFrame> frames;
 
-  static Future<EngineProcess> start() async {
+  static Future<EngineProcess> start({String? statePath}) async {
     final work = Directory.systemTemp.createTempSync('plugin-engine-work');
-    final state = Directory.systemTemp.createTempSync('plugin-engine-state');
+    final state =
+        statePath == null
+              ? Directory.systemTemp.createTempSync('plugin-engine-state')
+              : Directory(statePath)
+          ..createSync(recursive: true);
     final process = await Process.start(engineBinary, [
       '--plugin',
       '--engine-version',
@@ -189,6 +193,19 @@ void main() {
     await engine.close();
   });
 
+  test('propagates a model context error as non-retryable', () async {
+    final engine = await EngineProcess.start();
+    final e = executor(arguments: ['--fault=context-error']);
+    engine.send(initialize(e));
+    await engine.next();
+    engine.send(execute(e));
+    final error = (await engine.untilTerminal()).last as WorkerErrorFrame;
+    expect(error.code, WorkerIssueCode.contextLimitExceeded);
+    expect(error.retryable, isFalse);
+    expect(error.diagnostics, contains('Model context window exceeded'));
+    await engine.close();
+  });
+
   test('a plugin that crashes is a retryable provider failure', () async {
     final engine = await EngineProcess.start();
     final e = executor(arguments: ['--fault=crash']);
@@ -202,6 +219,120 @@ void main() {
     await engine.close();
   });
 
+  test(
+    'plugin discovery reaches the shared model catalog and cached passive probe',
+    () async {
+      final engine = await EngineProcess.start();
+      final e = executor(arguments: ['--fault=discovery']);
+      engine.send(initialize(e));
+      await engine.next();
+      engine.send(
+        ProbeRequest(
+          requestId: 'p-models',
+          mode: WorkerProbeMode.live,
+          timeoutMs: 20000,
+        ),
+      );
+      final probe = await engine.next() as ProbeResult;
+      expect(probe.modelCatalog!.models.single.id, 'fixture:8b');
+      expect(probe.modelCatalog!.schemaVersion, 2);
+      engine.send(
+        ProbeRequest(
+          requestId: 'p-cached',
+          mode: WorkerProbeMode.passive,
+          timeoutMs: 20000,
+        ),
+      );
+      final cached = await engine.next() as ProbeResult;
+      expect(
+        cached.modelCatalog!.catalogRevision,
+        probe.modelCatalog!.catalogRevision,
+      );
+      expect(cached.modelCatalog!.stale, false);
+      final failed = File('${root.path}/catalog-failure')
+        ..writeAsStringSync('1');
+      engine.send(
+        ProbeRequest(
+          requestId: 'p-failed',
+          mode: WorkerProbeMode.live,
+          timeoutMs: 20000,
+        ),
+      );
+      final stale = await engine.next() as ProbeResult;
+      expect(stale.ready, false);
+      expect(stale.modelCatalog!.stale, true);
+      expect(stale.modelCatalog!.models.single.id, 'fixture:8b');
+      failed.deleteSync();
+      final empty = File('${root.path}/catalog-empty')..writeAsStringSync('1');
+      engine.send(
+        ProbeRequest(
+          requestId: 'p-empty',
+          mode: WorkerProbeMode.live,
+          timeoutMs: 20000,
+        ),
+      );
+      final removed = await engine.next() as ProbeResult;
+      expect(removed.ready, false);
+      expect(removed.modelCatalog!.models, isEmpty);
+      empty.deleteSync();
+      await engine.close();
+    },
+  );
+  test(
+    'checkpoint sessions persist model-bound state and resume on the next turn',
+    () async {
+      final statePath = '${root.path}/checkpoint-state';
+      var engine = await EngineProcess.start(statePath: statePath);
+      final e = executor(arguments: ['--fault=checkpoint']);
+      engine.send(initialize(e));
+      await engine.next();
+      for (final (expected, model) in [
+        ('mode:new', 'm1'),
+        ('mode:resume', 'm1'),
+        ('mode:rebuild', 'm1'),
+        ('mode:rebuild', 'm2'),
+      ]) {
+        engine.send(
+          ExecuteRequest(
+            requestId: 'checkpoint',
+            assignmentId: 'a-checkpoint',
+            prompt: 'hi',
+            model: model,
+            timeoutMs: 20000,
+            sessionPolicy: WorkerSessionPolicy.durableSession,
+            sessionKey: 's-checkpoint',
+            workerSession: WorkerSessionContext(
+              id: 's-checkpoint',
+              conversationId: 'conversation',
+              workerId: 'w1',
+              baseContextRevision: 0,
+              bootstrap: ConversationBootstrap(
+                conversationId: 'conversation',
+                contextRevision: 0,
+                throughSequence: 0,
+                text: '{}',
+              ),
+            ),
+            executionPolicy: WorkerExecutionPolicy.providerDefault,
+            executor: e,
+            protocolVersion: pluginExecutorProtocolVersion,
+          ),
+        );
+        final result = (await engine.untilTerminal()).last;
+        expect(result, isA<WorkerResult>(), reason: result.toJson().toString());
+        expect((result as WorkerResult).output, expected);
+        if (expected == 'mode:resume')
+          File('${root.path}/checkpoint-s-checkpoint').deleteSync();
+        if (expected == 'mode:new') {
+          await engine.close();
+          engine = await EngineProcess.start(statePath: statePath);
+          engine.send(initialize(e));
+          await engine.next();
+        }
+      }
+      await engine.close();
+    },
+  );
   group('options and mapping', () {
     test('parses plugin mode and rejects incomplete options', () {
       final state = Directory.systemTemp.path;
@@ -262,6 +393,10 @@ void main() {
       expect(map('rate_limited', plugin: true), (
         WorkerIssueCode.quotaExhausted,
         true,
+      ));
+      expect(map('context_limit_exceeded', plugin: true), (
+        WorkerIssueCode.contextLimitExceeded,
+        false,
       ));
       expect(map('session_not_found', plugin: true), (
         WorkerIssueCode.sessionResumeFailed,
