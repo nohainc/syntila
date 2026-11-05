@@ -1,0 +1,13 @@
+name: syntila_mcp_protocol
+description: MCP client core for the Syntila Engine - JSON-RPC codec, version negotiation, tool-definition pinning (ADR-028).
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  crypto: ^3.0.6
+
+dev_dependencies:
+  test: ^1.25.0
