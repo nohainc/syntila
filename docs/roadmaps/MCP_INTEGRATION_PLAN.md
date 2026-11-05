@@ -1,6 +1,6 @@
 # MCP integration: one protocol for tools and custom Workers
 
-**Status:** Proposed plan (2026-11-05). Not accepted; requires ADR-028 (Phase M0).
+**Status:** M0 specifications drafted (2026-11-05); ADR-028 awaits owner acceptance. M1+ not started.
 **Builds on:** [ADR-018](../decisions/ADR-018-generic-cli-worker-engine-and-tool-profiles.md) (anticipates "MCP Engine → MCP Profiles"), [ADR-027](../decisions/ADR-027-custom-worker-plugins.md), [Custom Worker plugins](../architecture/CUSTOM_WORKER_PLUGINS.md), [Plugin plan](CUSTOM_WORKER_PLUGINS_PLAN.md)
 **Would supersede (at M6):** [Worker Plugin Protocol v1](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md) as the wire protocol for custom Workers
 
