@@ -248,9 +248,12 @@ class PluginWorkerRuntime {
             ? engineProtocol
             : negotiatePluginProtocol(installed.manifest),
         'isolation': {'tier': 'none', 'readOnlyEnforced': false},
+        // "tested" is evidence that a run resumed a session. The NDJSON
+        // conformance suite does that; the MCP Worker profile check does not,
+        // so an MCP Worker can only ever be "declared_untested".
         'sessionResume': !resume
             ? 'none'
-            : conformancePassed
+            : conformancePassed && installed?.manifest.isMcp != true
                 ? 'tested'
                 : 'declared_untested',
         'shareable': pin.shareable,

@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
+import 'package:syntila_workspace/local_worker_registry.dart';
 import 'package:syntila_workspace/plugin_executor.dart';
+import 'package:syntila_workspace/plugin_worker_runtime.dart';
 import 'package:syntila_workspace/plugin_service.dart';
 import 'package:syntila_workspace/plugin_store.dart';
 import 'package:test/test.dart';
@@ -199,6 +201,70 @@ void main() {
       final executor = workerExecutorFor(plugin, Directory(temp.path));
       expect(executor.isMcp, isFalse);
       expect(executor.toJson().containsKey('toolPins'), isFalse);
+    });
+  });
+
+  group('inventory', () {
+    const ref = 'plugin-3fa91c04b2d7';
+
+    LocalWorker worker() => LocalWorker(
+          id: 'w1',
+          workspaceId: 'ws-1',
+          workerTypeId: ref,
+          localPermissions: const [],
+          localConcurrencyLimit: 2,
+          status: LocalWorkerStatus.needsAttention,
+          revision: 1,
+          createdAt: '2026-11-06T00:00:00Z',
+          updatedAt: '2026-11-06T00:00:00Z',
+        );
+
+    Future<String> sessionResumeFor({required bool mcp}) async {
+      final id = mcp ? 'echo-worker' : 'acme-reviewer';
+      await harness.service.import(
+        writePluginPackage(
+          temp,
+          id: id,
+          version: '1.0.0',
+          name: mcp ? 'inv-mcp' : 'inv-nd',
+          edit: (m) {
+            if (mcp) m['kind'] = 'mcp';
+            (m['capabilities'] as Map<String, Object?>)['sessionResume'] = true;
+          },
+        ),
+      );
+      await harness.service.test(id);
+      for (final op in [harness.service.register, harness.service.enable]) {
+        final shown = await op(id);
+        await op(id, acceptHash: shown['documentHash']! as String);
+      }
+      final runtime = PluginWorkerRuntime(
+        store: harness.service.store,
+        registry: harness.service.registry,
+        engineStateDirectory: (p) => Directory('${temp.path}/engine/$p'),
+        probe: ({
+          required executor,
+          required workerTypeId,
+          required stateDirectory,
+          required mode,
+        }) async =>
+            throw UnimplementedError(),
+      );
+      final item = await runtime.inventoryFor(
+        worker(),
+        engineVersion: '1.4.0',
+        lastSeenAt: 'x',
+      );
+      return (item!['executor'] as Map)['sessionResume'] as String;
+    }
+
+    test('an NDJSON plugin that passed the suite reports "tested"', () async {
+      expect(await sessionResumeFor(mcp: false), 'tested');
+    });
+
+    test('an MCP Worker never reports "tested": its check does not resume',
+        () async {
+      expect(await sessionResumeFor(mcp: true), 'declared_untested');
     });
   });
 }
