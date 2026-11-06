@@ -150,6 +150,8 @@ Future<void> main(List<String> args) async {
             ],
             'structuredContent': {
               'text': text,
+              if (mode == 'badsession') 'session': 'invalid',
+              if (mode == 'badartifact') 'artifacts': [r'..\secret'],
               if (prompt.contains('ART')) 'artifacts': ['out/report.md'],
               if (prompt.contains('BADART')) 'artifacts': ['/etc/passwd'],
               if (a['session'] is Map)

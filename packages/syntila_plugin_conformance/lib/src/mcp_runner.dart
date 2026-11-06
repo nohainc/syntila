@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
+
 import 'connection.dart';
 import 'report.dart';
 
@@ -163,14 +165,26 @@ class McpConformanceRunner {
       throw _Failure('execute result has no structuredContent.text.');
     }
     final session = out['session'];
-    if (session is Map && !_sessionStates.contains(session['state'])) {
-      throw _Failure('session.state "${session['state']}" is not recognised.');
+    if (session != null &&
+        (session is! Map || !_sessionStates.contains(session['state']))) {
+      throw _Failure('session must have a recognised state.');
     }
-    for (final artifact in (out['artifacts'] as List? ?? const [])) {
-      if (artifact is! String ||
-          artifact.startsWith('/') ||
-          artifact.split('/').contains('..')) {
-        throw _Failure('artifact "$artifact" is not a safe relative path.');
+    final artifacts = out['artifacts'];
+    if (artifacts != null) {
+      if (artifacts is! List ||
+          artifacts.length > PluginProtocolLimits.maxArtifacts) {
+        throw _Failure('artifacts must be a bounded list of paths.');
+      }
+      for (final artifact in artifacts) {
+        if (artifact is! String ||
+            artifact.isEmpty ||
+            artifact.length > PluginProtocolLimits.maxPathLength ||
+            artifact.startsWith('/') ||
+            RegExp(r'^[A-Za-z]:[\\/]').hasMatch(artifact) ||
+            artifact.split(RegExp(r'[\\/]')).contains('..') ||
+            artifact.contains('\u0000')) {
+          throw _Failure('artifact is not a safe relative path.');
+        }
       }
     }
   }

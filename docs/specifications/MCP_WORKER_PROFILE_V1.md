@@ -77,9 +77,10 @@ Output model list in the shape of plugin protocol 1.1 model discovery
 Conformance runs through `syntila_plugin_conformance`: `McpConformanceRunner`
 (selected when the manifest says `kind: "mcp"`) implements the cases below
 over MCP stdio; version negotiation, definition drift and oversize results are
-not covered yet. The 21 plugin cases are re-expressed 1:1 where meaningful; MCP-specific
-additions: version negotiation, definition drift, missing profile
-advertisement, second terminal result, oversize result.
+not covered yet. The current suite covers advertisement, required tools, ping, probe and execute
+result shapes, a single terminal result, and unknown-method errors. Execute
+validation checks session state and bounded, safe relative artifact paths. It
+does not yet re-express all 21 NDJSON plugin cases.
 
 ## Local Worker Protocol 4.3: how the Engine receives an MCP Worker
 

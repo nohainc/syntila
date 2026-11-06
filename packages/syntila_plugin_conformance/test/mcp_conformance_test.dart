@@ -65,4 +65,13 @@ void main() {
     expect(
         caseOf(report, 'mcp.tools_present').status, ConformanceStatus.failed);
   });
+  test('malformed sessions and unsafe Windows paths fail execute validation',
+      () async {
+    for (final mode in ['badsession', 'badartifact']) {
+      final report = await run([mode]);
+      final result = caseOf(report, 'mcp.execute_result');
+      expect(result.status, ConformanceStatus.failed, reason: mode);
+      expect(result.detail, isNot(contains('could not be exercised')));
+    }
+  });
 }
