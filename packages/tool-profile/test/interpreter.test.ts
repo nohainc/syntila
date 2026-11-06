@@ -356,7 +356,7 @@ describe("Tool Profile v1 pure interpreter", () => {
     ).toThrow("does not support additional folders");
   });
 
-  it("passes the MCP config path only when MCP servers are selected", () => {
+  it("passes MCP arguments only when a config path is provided", () => {
     const profile = loadProfile("gemini-antigravity.v1");
     const slots: NonNullable<Parameters<typeof expandExecutionArguments>[2]> = [
       { sandboxPolicyMapping: true },

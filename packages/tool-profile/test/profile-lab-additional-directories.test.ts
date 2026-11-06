@@ -69,7 +69,7 @@ describe("Profile Lab drafts pass additional folders", () => {
 });
 
 describe("Claude draft passes MCP servers through a private config", () => {
-  it("loads only the generated config, and omits the flags without servers", () => {
+  it("loads only the generated config, including an empty config", () => {
     const profile = load("claude");
     const withServers = expandExecutionArguments(
       profile,
@@ -82,8 +82,12 @@ describe("Claude draft passes MCP servers through a private config", () => {
     ]);
     // Strict: the user's own global MCP servers are not loaded.
     expect(withServers).toContain("--strict-mcp-config");
-    const without = expandExecutionArguments(profile, context());
-    expect(without).not.toContain("--mcp-config");
-    expect(without).not.toContain("--strict-mcp-config");
+    // The Engine supplies a path even for an empty selection.
+    const empty = expandExecutionArguments(
+      profile,
+      context({ mcpConfigPath: "/tmp/empty/mcp.json" }),
+    );
+    expect(empty).toContain("/tmp/empty/mcp.json");
+    expect(empty).toContain("--strict-mcp-config");
   });
 });

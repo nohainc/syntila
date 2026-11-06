@@ -41,7 +41,11 @@ void main() {
         'echo',
         '{{prompt}}',
         {
-          'mcpConfigArguments': ['--mcp-config', '{{mcpConfigPath}}'],
+          'mcpConfigArguments': [
+            '--mcp-config',
+            '{{mcpConfigPath}}',
+            '--strict-mcp-config',
+          ],
         },
         {'providerTimeoutArguments': true},
       ];
@@ -140,7 +144,12 @@ void main() {
       expect(Directory(File(path).parent.path).existsSync(), isFalse);
 
       final without = await send(execute('without', const [])) as WorkerResult;
-      expect(without.output, 'fixture echo: hello');
+      expect(without.output, contains('\"mcpServers\":{}'));
+      expect(without.output, contains(' | strict'));
+      final emptyPath = RegExp(
+        r'file: (\S+)',
+      ).firstMatch(without.output)!.group(1)!;
+      expect(File(emptyPath).existsSync(), isFalse);
       await process.stdin.close();
     },
   );

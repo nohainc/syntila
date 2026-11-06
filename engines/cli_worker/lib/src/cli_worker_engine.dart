@@ -1204,7 +1204,13 @@ class CliWorkerEngine {
 
   Future<void> _execute(ExecuteRequest request, IOSink sink) async {
     McpConfigFile? mcpConfig;
-    if (request.mcpServers.isNotEmpty && request.executor == null) {
+    final hasMcpSlot =
+        request.executor == null &&
+        (_profile.execution['arguments'] as List? ?? const []).any(
+          (part) => part is Map && part.containsKey('mcpConfigArguments'),
+        );
+    if (request.executor == null &&
+        (request.mcpServers.isNotEmpty || hasMcpSlot)) {
       mcpConfig = await McpConfigFile.write(request.mcpServers);
       _mcpConfigPaths[request.requestId] = mcpConfig.path;
     }

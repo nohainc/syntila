@@ -433,8 +433,11 @@ invalid anywhere else. Per [section 3.1](#31-schema-evolution-gate):
    `execute.request`, which the Workspace Service populates solely from servers
    the user consented to and enabled for that Step. See the
    [authorization model](AUTHORIZATION_MODEL.md#mcp-server-configuration).
-4. **Semantics.** When the request carries no `mcpServers`, the slot emits
-   nothing. When it does and the Profile has no slot, the execution fails
+4. **Semantics.** If the Profile has this slot, the Engine always writes a
+   per-execution configuration, including an empty server map when the request
+   carries no `mcpServers`, and emits the slot arguments. Profiles must use the
+   CLI isolation flags needed to prevent other MCP configuration from being
+   merged. If the request has servers and the Profile has no slot, execution fails
    with "Worker Profile does not support MCP servers"; servers are never
    dropped silently. The file lives in a fresh owner-only directory (mode 700,
    file 600 on POSIX) and is deleted when the execution ends; the user's own
