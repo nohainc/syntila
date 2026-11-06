@@ -3,6 +3,7 @@ import type { ExecutionErrorCode } from "@syntila/protocol";
 export * from "./workspace-runtime.js";
 export * from "./desktop-auth-transport.js";
 export * from "./mcp-tool-call.js";
+export * from "./mcp-inventory.js";
 
 /** Assignment completion payloads consumed by Cloud's state transition layer. */
 export interface AssignmentResultPayload {

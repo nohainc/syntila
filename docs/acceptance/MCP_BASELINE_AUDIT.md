@@ -193,17 +193,32 @@ tool-activity normalisation in `provider_activity_adapter.dart`, and
 cancellation/timeout evidence. Live runs use the user's provider accounts and
 were not made without approval.
 
-## Phase 4 work in progress
+## Phase 4 — inventory contract only (in progress)
 
-`McpService.sanitizedInventory` projects server identity, transport,
-enablement, consent, consented tool hashes and Worker bindings without launch
-configuration, endpoints or token details. Availability is `unknown`: no
-fresh diagnostic or compatible-Profile assessment is implied. It is a local
-projection only and is not wired to Cloud, realtime synchronization, IPC or UI;
-it is not an authorization decision. Focused local and remote tests cover the
-projection. Phase 4 remains incomplete: inventory contract integration,
-management UI and consent diff, selectable inventory, synchronization, and
-Phase 1 default-deny authorization remain open.
+**Delivered.** `McpInventorySchema` in
+`packages/workspace-runtime-protocol/src/mcp-inventory.ts` is the sanitized
+contract: server ID, display name, local/remote, consent, enablement,
+availability (`unknown | available | unavailable | incompatible`), a fixed
+diagnostic code, consented tool names with definition hashes, and bound Worker
+types, plus a schema version and monotonic revision. Objects are strict, so
+commands, arguments, environment, endpoints, token names, executable digests
+and tool descriptions or schemas are rejected rather than stripped; tests
+cover each. `McpService.sanitizedInventory` (Workspace) already projects this
+shape with availability `unknown`.
+
+**Not delivered.** The contract is not wired anywhere: no runtime message or
+capability, no Workspace revision counter or publisher, no Cloud storage,
+migration or route, no authorization of who may read it, no AX synchronization,
+no management page, consent diff, searchable multi-select, workflow default
+and override semantics, or stale-inventory handling. The AX editor still takes
+server IDs by hand (`workflow_editor.dart`). Existing `mcp.*` IPC commands
+remain the only management path. None of the acceptance criteria except "Cloud
+cannot be sent credentials through this contract" is met.
+
+**Design decisions needed before wiring:** whether inventory travels as a new
+message or an extension of `worker.inventory` (protocol version bump and
+generated bindings), where Cloud stores it, and how AX learns of changes
+through the existing realtime path.
 
 ## Phase 5 work in progress
 
