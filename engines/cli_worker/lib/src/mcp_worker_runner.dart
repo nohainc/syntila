@@ -295,7 +295,10 @@ class McpWorkerRunner {
       return PluginRunFailure(
         code: code,
         message: _bounded(message, PluginProtocolLimits.maxErrorMessageLength),
-        retryable: code == 'rate_limited' || code == 'timeout',
+        retryable:
+            issueMap['retryable'] == true ||
+            code == 'rate_limited' ||
+            code == 'timeout',
         fromPlugin: true,
       );
     }
@@ -344,16 +347,17 @@ class McpWorkerRunner {
         artifacts.add(a);
       }
     }
+    // The Engine confirms native-session transitions from `session.state`
+    // (`created`, `resumed` or `unavailable`), as for NDJSON plugins.
     final session = data['session'];
-    final key = session is Map ? session['key'] : null;
+    final state = session is Map ? session['state'] : null;
     return PluginRunSuccess(
       output: text,
       artifacts: artifacts,
       sessionState:
-          key is String &&
-              key.isNotEmpty &&
-              key.length <= PluginProtocolLimits.maxSessionKeyLength
-          ? key
+          state is String &&
+              const {'created', 'resumed', 'unavailable'}.contains(state)
+          ? state
           : null,
       droppedFrames: 0,
     );

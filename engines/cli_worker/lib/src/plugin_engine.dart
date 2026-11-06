@@ -212,9 +212,12 @@ class PluginEngine {
     version: executor.version,
     dataDirectory: executor.dataDirectory,
     workingDirectory: Directory.current.path,
-    environment: PluginHost.buildEnvironment(
-      consentedNames: executor.environmentNames,
-    ),
+    environment: {
+      ...PluginHost.buildEnvironment(consentedNames: executor.environmentNames),
+      // MCP has no hello frame to carry the data directory. Set by the host
+      // only: a plugin's own `SYNTILA_*` names are never inherited.
+      if (executor.isMcp) 'SYNTILA_PLUGIN_DATA_DIR': executor.dataDirectory,
+    },
     hostVersion: options.engineVersion,
     mcpToolPins: executor.isMcp ? executor.toolPins : null,
   );

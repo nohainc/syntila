@@ -43,6 +43,7 @@ export function buildPluginAuthorKit(outputDirectory) {
   try {
     for (const pkg of [
       "syntila_plugin_protocol",
+      "syntila_mcp_protocol",
       "syntila_plugin_conformance",
       "syntila_plugin_sdk",
     ]) {
@@ -50,7 +51,8 @@ export function buildPluginAuthorKit(outputDirectory) {
       copy(`${base}/pubspec.yaml`);
       copy(`${base}/pubspec.lock`);
       dartTree(`${base}/lib`);
-      if (pkg !== "syntila_plugin_protocol") dartTree(`${base}/bin`);
+      if (pkg === "syntila_plugin_conformance" || pkg === "syntila_plugin_sdk")
+        dartTree(`${base}/bin`);
     }
     for (const relative of [
       "examples/plugins/echo_dart/bin/echo_dart.dart",

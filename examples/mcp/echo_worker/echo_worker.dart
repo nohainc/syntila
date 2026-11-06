@@ -150,7 +150,12 @@ Future<void> main(List<String> args) async {
               'text': text,
               if (prompt.contains('ART')) 'artifacts': ['out/report.md'],
               if (prompt.contains('BADART')) 'artifacts': ['/etc/passwd'],
-              'session': {'key': 'echo-session-1'},
+              if (a['session'] is Map)
+                'session': {
+                  'state': (a['session'] as Map)['mode'] == 'resume'
+                      ? 'resumed'
+                      : 'created',
+                },
             },
           },
         });

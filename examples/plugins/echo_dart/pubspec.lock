@@ -9,6 +9,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.8"
+  syntila_mcp_protocol:
+    dependency: transitive
+    description:
+      path: "../../../packages/syntila_mcp_protocol"
+      relative: true
+    source: path
+    version: "0.1.0"
   syntila_plugin_protocol:
     dependency: transitive
     description:

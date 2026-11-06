@@ -4,12 +4,16 @@
 /// Future<void> main() => runPlugin(MyPlugin());
 /// ```
 ///
+/// [runMcpWorker] runs the same class as a Syntila MCP Worker
+/// (MCP_WORKER_PROFILE_V1) instead.
+///
 /// [runPlugin] speaks the Worker Plugin Protocol v1 for you: the handshake,
 /// heartbeats, cancel, exactly one terminal frame per request, frame bounds and
 /// a clean stdout. You implement [PluginWorker.execute].
 library;
 
 export 'src/plugin_worker.dart';
+export 'src/run_mcp_worker.dart';
 export 'src/run_plugin.dart';
 export 'src/session_store.dart';
 export 'src/packaging.dart';

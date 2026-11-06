@@ -86,7 +86,8 @@ void main() {
       );
       final ok = outcome as PluginRunSuccess;
       expect(ok.output, 'echo: hi | access: work | model: m1');
-      expect(ok.sessionState, 'echo-session-1');
+      // request() asks to resume a session; the Worker confirms it.
+      expect(ok.sessionState, 'resumed');
       expect(progress, [(50, 'working')]);
     },
   );

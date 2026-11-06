@@ -118,6 +118,35 @@ check `context.isCancelled`. The SDK sends exactly one terminal frame per
 request, turns thrown errors into a safe `internal` error (never a stack trace or
 path), and redirects `print` to stderr.
 
+## 1b. Dart: run the same Worker over MCP (ADR-028)
+
+The SDK can serve your `PluginWorker` as a Syntila MCP Worker instead of the NDJSON
+plugin protocol. Change only the entry point:
+
+```dart
+Future<void> main() => runMcpWorker(MyWorker()); // instead of runPlugin(MyWorker())
+```
+
+`runMcpWorker` answers `syntila.execute`, `syntila.probe` and (when you declare
+`modelDiscovery: true`) `syntila.models` as described in
+[MCP_WORKER_PROFILE_V1](MCP_WORKER_PROFILE_V1.md): exactly one answer per request,
+progress notifications with strictly increasing values, a cancel that completes
+`context.cancelled`, `print` redirected to stderr, and a `PluginFailure` mapped to
+the same stable codes. `context.dataDirectory` is `SYNTILA_PLUGIN_DATA_DIR`, which
+only the Engine sets.
+
+Package it with `"kind": "mcp"` in `plugin.json` (the `protocol` range is then the
+Syntila Worker profile range, `1.x`). `plugins test` starts the server in the Engine,
+checks the profile and the two required tools, and pins every tool definition; the
+consent screen shows them. Tool names and descriptions are fixed by the SDK so a pin
+only changes when the SDK does. Differences to keep in mind:
+
+- The Engine does not pass a working directory to MCP Workers yet; use
+  `request.workingDirectory` only if the field is sent.
+- There is no NDJSON conformance suite for MCP Workers; `plugins test` is a profile
+  check, not a behavioural test.
+- Reference servers: `examples/mcp/echo_worker` and `examples/mcp/ollama_worker`.
+
 ## 2. The protocol in ten lines
 
 - Read one JSON object per line from stdin; write one per line to stdout. stdout

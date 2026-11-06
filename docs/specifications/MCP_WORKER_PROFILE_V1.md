@@ -24,7 +24,7 @@ Input:
   "access": "work | restricted",
   "model": "string?",
   "effort": "string?",
-  "session": { "key": "string", "mode": "new | resume" },
+  "session": { "key": "string", "mode": "new | resume | rebuild" },
   "deadline": "RFC3339",
   "attachments": [{ "name": "", "mimeType": "", "resource": "uri" }]
 }
@@ -33,7 +33,7 @@ Input:
 Output (`structuredContent`; text content mirrors `text`):
 
 ```json
-{ "text": "string", "artifacts": [], "usage": {}, "session": { "key": "" }, "issue": { "code": "", "message": "" } }
+{ "text": "string", "artifacts": ["relative/path"], "session": { "state": "created | resumed | unavailable" }, "issue": { "code": "", "message": "", "retryable": false } }
 ```
 
 - `workingDirectory` is sent only to local stdio servers, inside the Thread
@@ -68,6 +68,7 @@ Output model list in the shape of plugin protocol 1.1 model discovery
 | Heartbeat | MCP `ping` (host sends; no reply within 3 intervals = unhealthy) |
 | Cancel | `notifications/cancelled`, grace, process kill |
 | Sessions | `session` in input/output; stored by the Engine as today |
+| Data directory | `SYNTILA_PLUGIN_DATA_DIR` in the server's environment (set by the Engine only); the working directory is `workingDirectory` when sent |
 | Artifacts | `resource_link`/embedded resources; Engine validates path, size, type |
 | Errors | `issue.code` from the stable plugin error set; free-form detail to diagnostics |
 

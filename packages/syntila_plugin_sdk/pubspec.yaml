@@ -10,6 +10,8 @@ dependencies:
   crypto: ^3.0.6
   syntila_plugin_protocol:
     path: ../syntila_plugin_protocol
+  syntila_mcp_protocol:
+    path: ../syntila_mcp_protocol
 
 dev_dependencies:
   syntila_plugin_conformance:
