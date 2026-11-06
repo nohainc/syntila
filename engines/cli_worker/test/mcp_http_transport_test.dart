@@ -213,4 +213,201 @@ void main() {
       isTrue,
     );
   });
+
+  group('stateless 2026-07-28 over HTTP', () {
+    test('discovers and calls with routing headers and no session', () async {
+      fake.modern = true;
+      fake.worker = true;
+      final client = connect();
+      await client.connect();
+      expect(client.isModern, isTrue);
+      expect(client.initializeMeta['syntila.worker'], '1');
+      await client.listTools();
+      final result = await client.callTool('syntila.probe', {}).result;
+      expect(result.containsKey('resultType'), isFalse);
+      await client.close();
+
+      final posts = fake.seen.where((s) => s.method == 'POST').toList();
+      expect(posts.map((s) => s.body?['method']), [
+        'server/discover',
+        'tools/list',
+        'tools/call',
+      ]);
+      for (final post in posts) {
+        expect(post.headers['mcp-protocol-version'], '2026-07-28');
+        expect(post.headers['mcp-method'], post.body?['method']);
+        expect(post.headers.containsKey('mcp-session-id'), isFalse);
+      }
+      expect(posts.last.headers['mcp-name'], 'syntila.probe');
+      expect(posts.first.headers.containsKey('mcp-name'), isFalse);
+      // No handshake, no initialized notification, no session DELETE.
+      expect(fake.seen.any((s) => s.method == 'DELETE'), isFalse);
+      expect(fake.seen.any((s) => s.body?['method'] == 'initialize'), isFalse);
+    });
+
+    test('a server session id is ignored, never stored or echoed', () async {
+      fake.modern = true;
+      final client = connect();
+      await client.connect();
+      await client.listTools();
+      await client.close();
+      expect(
+        fake.seen.any((s) => s.headers.containsKey('mcp-session-id')),
+        isFalse,
+      );
+    });
+
+    test(
+      'a cancelled stateless call aborts the stream, no cancel POST',
+      () async {
+        fake.modern = true;
+        fake.callGate = Completer<void>();
+        final client = connect();
+        await client.connect();
+        final call = client.callTool('echo', {'text': 'x'});
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        call.result.ignore();
+        call.cancel();
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        expect(
+          fake.seen.any((s) => s.body?['method'] == 'notifications/cancelled'),
+          isFalse,
+        );
+        fake.callGate!.complete();
+      },
+    );
+
+    test('an unsupported version surfaces the modern 400 error', () async {
+      fake.modern = true;
+      fake.discoverVersions = ['2030-01-01'];
+      final client = connect();
+      await expectLater(
+        client.connect(),
+        throwsA(
+          isA<McpException>()
+              .having((e) => e.code, 'code', McpFailure.versionUnsupported)
+              .having((e) => e.jsonRpcCode, 'rpc', -32022),
+        ),
+      );
+      // No silent downgrade: the handshake is never attempted.
+      expect(fake.seen.any((s) => s.body?['method'] == 'initialize'), isFalse);
+    });
+
+    test(
+      'tools with x-mcp-header parameters are refused, not mis-sent',
+      () async {
+        fake.modern = true;
+        fake.customInputSchema = {
+          'type': 'object',
+          'properties': {
+            'region': {'type': 'string', 'x-mcp-header': 'Region'},
+          },
+        };
+        final client = connect();
+        await client.connect();
+        await client.listTools();
+        expect(
+          () => client.callTool('echo', {'region': 'eu'}),
+          throwsA(
+            isA<McpException>().having(
+              (e) => e.code,
+              'code',
+              McpFailure.unsupportedFeature,
+            ),
+          ),
+        );
+        expect(
+          fake.seen.any((s) => s.body?['method'] == 'tools/call'),
+          isFalse,
+        );
+      },
+    );
+
+    test('routing header values are encoded safely', () {
+      expect(
+        StreamableHttpTransport.encodeHeaderValue('get_weather'),
+        'get_weather',
+      );
+      expect(StreamableHttpTransport.encodeHeaderValue('my tool'), 'my tool');
+      expect(
+        StreamableHttpTransport.encodeHeaderValue('naïve'),
+        '=?base64?bmHDr3Zl?=',
+      );
+      expect(
+        StreamableHttpTransport.encodeHeaderValue(' lead'),
+        '=?base64?IGxlYWQ=?=',
+      );
+      expect(
+        StreamableHttpTransport.encodeHeaderValue('a\r\nb'),
+        startsWith('=?base64?'),
+      );
+      expect(
+        StreamableHttpTransport.encodeHeaderValue('=?base64?x?='),
+        startsWith('=?base64?PT9'),
+      );
+    });
+  });
+
+  group('auto negotiation against handshake servers', () {
+    test(
+      'method-not-found on discover falls back; sessions still apply',
+      () async {
+        final client = connect();
+        await client.connect();
+        expect(client.isModern, isFalse);
+        await client.listTools();
+        await client.close();
+        final discover = fake.seen.firstWhere(
+          (s) => s.body?['method'] == 'server/discover',
+        );
+        expect(discover.headers['mcp-method'], 'server/discover');
+        // Legacy behavior after the handshake: session header and DELETE.
+        final list = fake.seen.firstWhere(
+          (s) => s.body?['method'] == 'tools/list',
+        );
+        expect(list.headers['mcp-session-id'], 'sess-1');
+        expect(list.headers.containsKey('mcp-method'), isFalse);
+        expect(fake.seen.last.method, 'DELETE');
+      },
+    );
+
+    test('an empty HTTP 400 on discover falls back to initialize', () async {
+      fake.discoverFailure = 'empty400';
+      final client = connect();
+      await client.connect();
+      expect(client.isModern, isFalse);
+      expect((await client.listTools()).single['name'], 'echo');
+    });
+
+    test('an empty success on discover is not a modern reply', () async {
+      fake.discoverFailure = 'emptyok';
+      final client = connect();
+      await client.connect();
+      expect(client.isModern, isFalse);
+      expect((await client.listTools()).single['name'], 'echo');
+    });
+
+    test('a silent server falls back after the discover timeout', () async {
+      fake.discoverFailure = 'silent';
+      final client = connect();
+      await client.connect(timeout: const Duration(milliseconds: 300));
+      expect(client.isModern, isFalse);
+    });
+
+    test('a modern -32022 body from a dual server never downgrades', () async {
+      fake.discoverFailure = 'unsupported';
+      final client = connect();
+      await expectLater(
+        client.connect(),
+        throwsA(
+          isA<McpException>().having(
+            (e) => e.code,
+            'code',
+            McpFailure.versionUnsupported,
+          ),
+        ),
+      );
+      expect(fake.seen.any((s) => s.body?['method'] == 'initialize'), isFalse);
+    });
+  });
 }

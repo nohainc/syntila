@@ -14,15 +14,71 @@ Defines what Syntila's MCP client (in the Engine) does and refuses.
 
 ## 2. Version and capability negotiation
 
-- Syntila keeps an explicit list `supportedProtocolVersions` (newest first).
-  `initialize` proposes the newest (2025-06-18, 2025-03-26, 2024-11-05); if the server answers another listed
-  version the client uses it, otherwise the connection fails with
-  `mcp_version_unsupported`.
-- Client capabilities advertised in v1: none of `sampling`, `roots`,
-  `elicitation`. Servers requesting them receive a JSON-RPC method-not-found
-  error and the event is recorded.
+Two protocol families are supported. `McpClient.connect` chooses; `initialize`
+alone is the legacy handshake.
+
+| Family | Revisions | Connection |
+| --- | --- | --- |
+| Stateless (modern) | 2026-07-28 | No `initialize`. Every request carries `_meta` `io.modelcontextprotocol/protocolVersion`, `.../clientCapabilities` (always `{}`) and `.../clientInfo`. `server/discover` reports `supportedVersions`, `capabilities`, `_meta` server info and `instructions`. |
+| Legacy (handshake) | 2025-06-18, 2025-03-26, 2024-11-05 | `initialize` proposes 2025-06-18; if the server answers another listed legacy version the client uses it, otherwise `mcp_version_unsupported`. A stateless revision is never accepted from `initialize`. |
+
+Auto negotiation (default, `McpServerSpec.protocolMode`):
+
+1. Send `server/discover` proposing the newest stateless revision. A result with
+   a mutually supported stateless version selects it.
+2. Fall back to `initialize` **only** when the server shows it is not a modern
+   server: JSON-RPC `-32601` or `-32600`, an HTTP 400 without a JSON-RPC error
+   body, no answer within 5 s, an empty success carrying neither `resultType`
+   nor `supportedVersions`, or a discover result listing only supported legacy
+   versions.
+3. A recognized modern error never falls back (no silent downgrade):
+   `-32022` unsupported version, `-32020` header mismatch, `-32021` missing
+   capability and `-32602` fail the connection. `-32022` becomes
+   `mcp_version_unsupported` and its `supported` list is shown (bounded,
+   sanitized). Other failures (auth, crash, timeout after a modern answer)
+   propagate unchanged.
+4. A discover result with no common version fails with `mcp_version_unsupported`.
+
+`modern` mode refuses anything but a stateless server; `legacy` mode never sends
+`server/discover`.
+
+Stateless behavior:
+
+- No persistent session is assumed. `ping`, `logging/setLevel` and roots
+  notifications do not exist; `ping()` is a no-op and a server `ping` request is
+  refused. Because we never open `subscriptions/listen`, a stateless server
+  cannot push `list_changed`, so the host re-lists tools before each call.
+- `resultType` is required on results (absent means complete). `complete` is
+  accepted and the field is stripped before the result is used.
+  `input_required` (elicitation, sampling, roots via multi-round-trip requests)
+  fails with `mcp_interaction_required`; Syntila never answers `inputRequests`
+  or echoes `requestState`. Any other value is `mcp_protocol_violation`.
+- Cacheable-result hints (`ttlMs`, `cacheScope`) are ignored; nothing is cached.
+- **Gated, not implemented:** `subscriptions/listen`, the
+  `io.modelcontextprotocol/tasks` extension (no `extensions` capability is
+  advertised, so servers must not return task handles), and `Mcp-Param-*`
+  routing headers. A tool whose `inputSchema` uses `x-mcp-header` is refused
+  over HTTP with `mcp_unsupported_feature` rather than sent without the headers.
+- Client capabilities advertised: none (`sampling`, `roots`, `elicitation`,
+  `extensions`). Legacy servers requesting them receive method-not-found and the
+  event is recorded.
 - Server capabilities are recorded per connection; calls to undeclared
   capabilities are not sent.
+
+HTTP behavior is chosen per request:
+
+| | Legacy (after `initialize`) | Stateless |
+| --- | --- | --- |
+| `Mcp-Session-Id` | stored from `initialize`, sent, `DELETE` on close | never sent, stored or deleted; a server-provided id is ignored |
+| `MCP-Protocol-Version` | negotiated version | the request's `_meta` version |
+| `Mcp-Method` / `Mcp-Name` | not sent | `Mcp-Method` always; `Mcp-Name` for `tools/call`, `prompts/get` (name), `resources/read` (uri); non-printable or edge-whitespace values are sent as `=?base64?...?=` |
+| Cancellation | `notifications/cancelled` POST and stream abort | stream abort only |
+| HTTP 400 | invalid request | JSON-RPC error body passed through so modern errors are recognised |
+| HTTP 404 | session expired when a session exists | not a session event |
+
+Not supported on either family: the server-to-client GET stream and SSE resumption.
+The requests the 2026-07-28 revision removed or replaced (`resources/subscribe`,
+the GET stream) are never sent.
 
 ## 3. Limits (defaults; manifest may lower, never raise)
 
@@ -36,6 +92,14 @@ Defines what Syntila's MCP client (in the Engine) does and refuses.
 | Idle server TTL (warm pool) | 5 min; the pool lives in the Engine process, which the supervisor starts per assignment, so it spans calls within one assignment only (see `docs/acceptance/MCP_LATENCY.md`) |
 
 ## 4. Tool definition pinning
+
+The same canonicalization applies to every revision: fields are the allow-list
+below, keys are sorted recursively, output has no insignificant whitespace.
+Stateless-era additions (`title`, `icons`, `execution`, `_meta`) are excluded
+like other cosmetic fields. Existing consent hashes are unchanged (locked by
+golden vectors); `x-mcp-header` inside `inputSchema` is hashed. Numbers and
+strings follow Dart `jsonEncode` (not RFC 8785), so a server whose JSON number
+formatting differs between lists will show as drift, which fails closed.
 
 At consent the client stores `sha256(canonical_json(tool))` for every tool
 (name, description, inputSchema, outputSchema, annotations). On every
@@ -80,10 +144,21 @@ admission. The Workspace advertises `workspace.mcp_tool_call.v1`; the payload al
 | Definition drift | `mcp_definition_changed` | `permission_denied` |
 | Result too large | `mcp_result_too_large` | `execution_failed` |
 | Timeout | `mcp_timeout` | `execution_timeout` |
+| Server needs client input (`input_required`) | `mcp_interaction_required` | `execution_failed` (default protocol-violation mapping) |
+| Feature deliberately unsupported (`x-mcp-header`) | `mcp_unsupported_feature` | `execution_failed` (default protocol-violation mapping) |
 
 (Existing-code names must be reconciled with Cloud's enums in M1; the rule is
 that no new wire enum value is introduced.)
 
 ## 7. Conformance vectors
 
-Protocol and Engine tests cover these cases; a dedicated `mcp-vectors` directory has not been delivered. Task polling is not implemented.
+Protocol and Engine tests cover these cases; a dedicated `mcp-vectors` directory has not been delivered. Task polling and subscriptions are not implemented.
+
+Phase 2 coverage: `packages/syntila_mcp_protocol/test/modern_test.dart` (every
+legacy revision via `initialize`; the stateless revision via `server/discover`;
+fallback and no-downgrade cases; `resultType`; golden pin vectors) and
+`engines/cli_worker/test/mcp_http_transport_test.dart` (per-family HTTP headers,
+session handling, cancellation, 400 handling, `x-mcp-header` refusal). The
+reference servers are fixtures written against the published 2026-07-28 pages,
+not an independent third-party server; interoperability with real stateless
+servers is unverified.

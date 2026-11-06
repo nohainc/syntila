@@ -80,6 +80,7 @@ class McpServerSpec {
     this.requireWorkerProfile = false,
     this.pins,
     this.maxConcurrent = 1,
+    this.protocolMode = McpProtocolMode.auto,
   }) : assert(
          (launch == null) != (remote == null),
          'a server is either local or remote',
@@ -98,11 +99,18 @@ class McpServerSpec {
   final ToolPins? pins;
   final int maxConcurrent;
 
+  /// Which protocol family to negotiate (default: stateless first, legacy
+  /// handshake only when the server shows it is not a modern server).
+  final McpProtocolMode protocolMode;
+
   bool get isRemote => remote != null;
 
   /// A remote server cannot push `list_changed` to us (no server-to-client
   /// stream yet), so its tools are re-listed before every call; otherwise it
   /// could change a consented definition mid-session unnoticed.
+  ///
+  /// Stateless servers cannot push either (we never open `subscriptions/listen`),
+  /// so the host also re-lists whenever the negotiated version is stateless.
   bool get relistBeforeCall => isRemote;
 
   /// Values that must never appear in text leaving the Engine.
@@ -217,7 +225,7 @@ class McpHost {
         e.connection = connection;
       }
       e.client = client;
-      await client.initialize();
+      await client.connect(mode: e.spec.protocolMode);
       if (e.spec.requireWorkerProfile &&
           client.initializeMeta['syntila.worker'] != '1') {
         throw McpException(
@@ -285,7 +293,9 @@ class McpLease {
   }
 
   Future<void> _refreshTools() async {
-    if (client.toolsListChanged || _entry.spec.relistBeforeCall) {
+    if (client.toolsListChanged ||
+        client.isModern ||
+        _entry.spec.relistBeforeCall) {
       _entry.tools = await client.listTools();
     }
   }

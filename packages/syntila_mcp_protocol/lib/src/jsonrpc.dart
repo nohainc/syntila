@@ -8,6 +8,11 @@ abstract final class JsonRpcCodes {
   static const invalidRequest = -32600;
   static const methodNotFound = -32601;
   static const invalidParams = -32602;
+
+  /// Stateless revisions (2026-07-28): reserved MCP range.
+  static const headerMismatch = -32020;
+  static const missingRequiredClientCapability = -32021;
+  static const unsupportedProtocolVersion = -32022;
 }
 
 sealed class JsonRpcMessage {

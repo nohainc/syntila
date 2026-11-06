@@ -17,11 +17,24 @@ import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 /// in an error message. A 401 becomes the `authRequired` failure so callers can
 /// prompt for credentials.
 ///
-/// Not supported yet: the optional server-to-client GET stream, so a server can
-/// only talk to the client inside replies to its POSTs. Callers must therefore
+/// Two header families, chosen per request. Legacy requests (after an
+/// `initialize` handshake) carry `Mcp-Session-Id` and `MCP-Protocol-Version`
+/// from the handshake. Stateless 2026-07-28 requests carry their version in
+/// `_meta`, so the transport sends `MCP-Protocol-Version`, `Mcp-Method` and, for
+/// `tools/call`, `resources/read` and `prompts/get`, `Mcp-Name`; it never sends
+/// or stores a session id, never issues the session `DELETE`, and does not POST
+/// `notifications/cancelled` (it aborts the response stream, which is how HTTP
+/// cancellation works). An HTTP 400 whose body is a JSON-RPC error is passed
+/// through so the client can recognise modern errors; an empty or unrecognised
+/// 400 becomes an invalid-request error, which lets `server/discover` fall back
+/// to `initialize` for servers that predate it.
+///
+/// Not supported: the server-to-client GET stream and `subscriptions/listen`,
+/// so a server can only talk to the client inside replies to its POSTs. Callers must therefore
 /// re-list tools themselves to notice definition changes (see
 /// `McpServerSpec.relistBeforeCall`).
-class StreamableHttpTransport implements McpTransport {
+class StreamableHttpTransport
+    implements McpTransport, McpHeaderRoutedTransport {
   StreamableHttpTransport({
     required this.endpoint,
     Map<String, String> headers = const {},
@@ -84,12 +97,65 @@ class StreamableHttpTransport implements McpTransport {
     if (decoded['method'] == 'notifications/cancelled') {
       // Stop waiting for the cancelled call's reply, as the spec allows.
       final target = (decoded['params'] as Map?)?['requestId'];
-      _inFlight.remove(target)?.abort();
+      final aborted = _inFlight.remove(target);
+      aborted?.abort();
+      // Stateless servers learn of a cancel from the closed stream only.
+      if (aborted != null && _modernCalls.remove(target)) return;
     }
-    unawaited(_post(line, isRequest ? id : null));
+    final params = decoded['params'];
+    final meta = params is Map ? params['_meta'] : null;
+    final version = meta is Map ? meta[_versionMeta] : null;
+    final modern =
+        version is String && McpLimits.modernProtocolVersions.contains(version);
+    if (modern && isRequest) _modernCalls.add(id);
+    unawaited(
+      _post(
+        line,
+        isRequest ? id : null,
+        modernVersion: modern ? version : null,
+        method: decoded['method'] is String
+            ? decoded['method'] as String
+            : null,
+        routingName: modern ? _routingName(decoded['method'], params) : null,
+      ),
+    );
   }
 
-  Future<void> _post(String body, Object? requestId) async {
+  static const _versionMeta = 'io.modelcontextprotocol/protocolVersion';
+  final _modernCalls = <Object?>{};
+
+  static String? _routingName(Object? method, Object? params) {
+    if (params is! Map) return null;
+    final value = switch (method) {
+      'tools/call' || 'prompts/get' => params['name'],
+      'resources/read' => params['uri'],
+      _ => null,
+    };
+    return value is String ? encodeHeaderValue(value) : null;
+  }
+
+  /// Header-safe form of a routing value: plain printable ASCII passes as is;
+  /// anything else (non-ASCII, control characters, edge whitespace, or text
+  /// that looks like the sentinel) becomes `=?base64?{value}?=`.
+  static String encodeHeaderValue(String value) {
+    final plain = RegExp(
+      r'^[\x21-\x7e]([\x20-\x7e]*[\x21-\x7e])?$',
+    ).hasMatch(value);
+    final sentinel = RegExp(
+      r'^=\?base64\?.*\?=$',
+      caseSensitive: false,
+    ).hasMatch(value);
+    if (plain && !sentinel) return value;
+    return '=?base64?${base64.encode(utf8.encode(value))}?=';
+  }
+
+  Future<void> _post(
+    String body,
+    Object? requestId, {
+    String? modernVersion,
+    String? method,
+    String? routingName,
+  }) async {
     try {
       final request = await _client.postUrl(endpoint).timeout(requestTimeout);
       if (requestId != null) _inFlight[requestId] = request;
@@ -99,16 +165,27 @@ class StreamableHttpTransport implements McpTransport {
       for (final entry in _headers.entries) {
         request.headers.set(entry.key, entry.value);
       }
-      final session = _sessionId;
-      if (session != null) request.headers.set('Mcp-Session-Id', session);
-      final version = _protocolVersion;
-      if (version != null) request.headers.set('MCP-Protocol-Version', version);
+      if (modernVersion != null) {
+        // Stateless: no session, routing headers mirror the body.
+        request.headers.set('MCP-Protocol-Version', modernVersion);
+        if (method != null) request.headers.set('Mcp-Method', method);
+        if (routingName != null) request.headers.set('Mcp-Name', routingName);
+      } else {
+        final session = _sessionId;
+        if (session != null) request.headers.set('Mcp-Session-Id', session);
+        final version = _protocolVersion;
+        if (version != null) {
+          request.headers.set('MCP-Protocol-Version', version);
+        }
+      }
       final bytes = utf8.encode(body);
       request.contentLength = bytes.length;
       request.add(bytes);
       final response = await request.close().timeout(requestTimeout);
-      _sessionId = response.headers.value('Mcp-Session-Id') ?? _sessionId;
-      await _handle(response, requestId);
+      if (modernVersion == null) {
+        _sessionId = response.headers.value('Mcp-Session-Id') ?? _sessionId;
+      }
+      await _handle(response, requestId, modern: modernVersion != null);
     } on TimeoutException {
       _fail(requestId, -32000, 'The MCP server did not answer in time.');
     } on HttpException {
@@ -121,12 +198,32 @@ class StreamableHttpTransport implements McpTransport {
     } on HandshakeException {
       _fail(requestId, -32000, 'The MCP server certificate was rejected.');
     } finally {
-      if (requestId != null) _inFlight.remove(requestId);
+      if (requestId != null) {
+        _inFlight.remove(requestId);
+        _modernCalls.remove(requestId);
+      }
     }
   }
 
-  Future<void> _handle(HttpClientResponse response, Object? requestId) async {
+  Future<void> _handle(
+    HttpClientResponse response,
+    Object? requestId, {
+    bool modern = false,
+  }) async {
     final status = response.statusCode;
+    if (status == 400) {
+      // A modern server explains itself in a JSON-RPC error body (unsupported
+      // version, header mismatch, missing capability). Pass that on; an empty
+      // or unrecognised body is an ordinary invalid request.
+      final body = await _readBounded(response);
+      final error = body == null ? null : _jsonRpcErrorOf(body);
+      if (error != null) {
+        _emitError(requestId, error);
+      } else {
+        _fail(requestId, -32600, 'The MCP server rejected the request.');
+      }
+      return;
+    }
     if (status == 202) {
       await response.drain<void>();
       return;
@@ -141,7 +238,7 @@ class StreamableHttpTransport implements McpTransport {
       _fail(requestId, -32002, 'The MCP server refused the request.');
       return;
     }
-    if (status == 404 && _sessionId != null) {
+    if (status == 404 && !modern && _sessionId != null) {
       await response.drain<void>();
       _sessionId = null;
       _fail(requestId, -32003, 'The MCP session expired.');
@@ -217,6 +314,29 @@ class StreamableHttpTransport implements McpTransport {
       // `event:`, `id:` and `retry:` are not needed for request replies.
     }
     dispatch();
+  }
+
+  /// The `error` object of a JSON-RPC error reply, or null for anything else.
+  static Map<String, Object?>? _jsonRpcErrorOf(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map &&
+          decoded['jsonrpc'] == '2.0' &&
+          decoded['error'] is Map &&
+          (decoded['error'] as Map)['code'] is int) {
+        return (decoded['error'] as Map).cast<String, Object?>();
+      }
+    } on FormatException {
+      // Not JSON.
+    }
+    return null;
+  }
+
+  void _emitError(Object? requestId, Map<String, Object?> error) {
+    if (requestId == null || _closed || _controller.isClosed) return;
+    _controller.add(
+      jsonEncode({'jsonrpc': '2.0', 'id': requestId, 'error': error}),
+    );
   }
 
   void _emit(String message) {

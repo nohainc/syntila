@@ -27,8 +27,11 @@ Future<void> main(List<String> args) async {
           'jsonrpc': '2.0',
           'id': id,
           'result': {
-            'protocolVersion':
-                mode == 'badversion' ? '1999-01-01' : params['protocolVersion'],
+            'protocolVersion': mode == 'badversion'
+                ? '1999-01-01'
+                : mode.startsWith('version=')
+                    ? mode.substring('version='.length)
+                    : params['protocolVersion'],
             'capabilities': {
               'tools': {'listChanged': true}
             },
@@ -98,8 +101,11 @@ Future<void> main(List<String> args) async {
           });
         }
         final args2 = params['arguments'] as Map? ?? {};
-        final text =
-            mode == 'huge' ? 'x' * (2 * 1024 * 1024) : '${args2['text']}';
+        final text = mode == 'huge'
+            ? 'x' * (2 * 1024 * 1024)
+            : mode == 'large'
+                ? 'x' * (300 * 1024)
+                : '${args2['text']}';
         send({
           'jsonrpc': '2.0',
           'id': id,
@@ -114,6 +120,15 @@ Future<void> main(List<String> args) async {
       case 'test/mutate':
         toolDesc = 'changed';
         send({'jsonrpc': '2.0', 'method': 'notifications/tools/list_changed'});
+      default:
+        // Like a real legacy server: unknown requests get method-not-found.
+        if (id != null) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {'code': -32601, 'message': 'Method not found'},
+          });
+        }
     }
   }
 }

@@ -8,7 +8,7 @@ map each requirement group to evidence and outstanding acceptance work.
 | Original requirement | Implementation and test evidence | Status and restriction |
 | --- | --- | --- |
 | M0 ADR, host, Worker, manifest, threat model | `docs/decisions/ADR-028-mcp-integration.md`, `docs/specifications/MCP_*`, `docs/security/MCP_THREAT_MODEL.md` | ADR accepted; specs describe partial implementation and targets. |
-| M1 codec, negotiation, capabilities, stdio, cancellation, progress | `packages/syntila_mcp_protocol/lib`, `test/client_test.dart`; `engines/cli_worker/test/mcp_host_test.dart` | Implemented subset; versions 2025-06-18, 2025-03-26, 2024-11-05. Tasks are not implemented. Dedicated golden vectors are missing. |
+| M1 codec, negotiation, capabilities, stdio, cancellation, progress | `packages/syntila_mcp_protocol/lib`, `test/client_test.dart`; `engines/cli_worker/test/mcp_host_test.dart` | Implemented subset; legacy 2025-06-18, 2025-03-26, 2024-11-05 and stateless 2026-07-28 (Phase 2). Tasks and subscriptions are not implemented. Dedicated golden vectors are missing. |
 | M1 host, limits, pooling, pinning, restart | `engines/cli_worker/lib/src/mcp_host.dart`, `mcp_host_test.dart` | Implemented within Engine lifetime; pool does not persist across assignments. Process isolation is not a sandbox. |
 | M2 registry, consent, probe and CLI | `apps/workspace/lib/mcp_{registry,service,engine_probe}.dart`, `workspace_cli_mcp.dart`; `test/mcp_*test.dart` | Local registry and consent with definition pins implemented; credentials and executable paths remain local. |
 | M2 Profile config and per-Step policy | `engines/cli_worker/lib/src/mcp_config.dart`, `packages/tool-profile`, `apps/workspace/lib/workspace_manager_mcp.dart`; `engine_mcp_config_test.dart`, `interpreter.test.ts`, `workspace_manager_mcp_test.dart` | Default empty selection; Claude release 3 has a slot. Inventory-backed selection, Cloud policy, activity normalization, Codex/Gemini slots and Profile Lab/provider acceptance remain open. |
@@ -120,6 +120,36 @@ unselected-but-revoked, selected-but-revoked), `mcp-tool-step.test.ts`
 results are never recorded as success). **Remaining/not claimed:** full
 Cloud-to-Service-to-Engine acceptance, Codex/Gemini isolation (Phase 3), a UI
 surface beyond the Cloud failure text, and crash-boundary durability (Phase 5).
+
+## Phase 2 — modern protocol compatibility
+
+`McpClient.connect` now negotiates either family: stateless 2026-07-28
+(`server/discover`, per-request `_meta` version, capabilities and client
+identity, `resultType`) or the legacy handshake. The Engine host uses it in
+`auto` mode. Fallback to `initialize` happens only for evidence of a
+non-modern server; a recognized modern error (`-32022`, `-32020`, `-32021`,
+`-32602`) fails with a stable diagnostic and never downgrades. The HTTP
+transport sends `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` for
+stateless requests, never sends or stores `Mcp-Session-Id`, does not DELETE a
+session, aborts the stream instead of POSTing a cancel, and passes a 400
+JSON-RPC error body through. `input_required` fails as
+`mcp_interaction_required`. See `MCP_HOST_V1.md` §2.
+
+**Deliberately gated:** `subscriptions/listen`, the tasks extension,
+`Mcp-Param-*` headers (tools using `x-mcp-header` are refused over HTTP with
+`mcp_unsupported_feature`), and cache hints. Pin hashes are unchanged and
+locked by golden vectors.
+
+**Evidence and limits.** New tests: `modern_test.dart` (20 protocol cases covering every revision, fallback,
+no-downgrade, `resultType` and pins) and 11 HTTP cases. The
+reference stateless servers are fixtures written from the published
+2026-07-28 pages (read through a web fetch on 2026-11-06; the tasks and
+`x-mcp-header` pages were not read in detail). No independent third-party
+stateless server was tested, so real-world interoperability is unverified.
+The `auto` probe costs one extra request per connection and up to 5 s against
+a legacy server that never answers unknown methods. Not covered: conformance
+runner cases for stateless Workers (its `initialize` path is unchanged),
+OAuth, and live provider use.
 
 ## Phase 3 preliminary provider inspection
 

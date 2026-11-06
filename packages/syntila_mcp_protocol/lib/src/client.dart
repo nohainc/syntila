@@ -11,6 +11,28 @@ abstract interface class McpTransport {
   Future<void> close();
 }
 
+/// Marker for transports that route by HTTP headers (`Mcp-Method`, `Mcp-Name`,
+/// `Mcp-Param-*`). Used to refuse features that need headers we cannot build.
+abstract interface class McpHeaderRoutedTransport {}
+
+/// Which protocol family [McpClient.connect] may use.
+enum McpProtocolMode {
+  /// Try stateless `server/discover`; fall back to `initialize` only when the
+  /// server shows it is not a modern server (see [McpClient.connect]).
+  auto,
+
+  /// Stateless revisions only; a non-modern server fails.
+  modern,
+
+  /// `initialize` handshake only (the pre-2026 behavior).
+  legacy,
+}
+
+const _metaVersion = 'io.modelcontextprotocol/protocolVersion';
+const _metaCapabilities = 'io.modelcontextprotocol/clientCapabilities';
+const _metaClientInfo = 'io.modelcontextprotocol/clientInfo';
+const _metaServerInfo = 'io.modelcontextprotocol/serverInfo';
+
 typedef McpProgressCallback = void Function(
     num progress, num? total, String? message);
 
@@ -27,7 +49,13 @@ class McpCall {
 }
 
 /// MCP client per `MCP_HOST_V1.md`. Advertises no client capabilities
-/// (sampling, roots and elicitation are refused with method-not-found).
+/// (sampling, roots, elicitation, extensions and subscriptions are not offered;
+/// server requests for them are refused with method-not-found).
+///
+/// Two protocol families: legacy (`initialize` handshake, 2025-06-18 and older)
+/// and modern/stateless (2026-07-28: every request carries its version,
+/// capabilities and client identity in `_meta`; no handshake, no session).
+/// [connect] chooses; [initialize] is the legacy handshake alone.
 class McpClient {
   McpClient(this._transport,
       {this.clientName = 'syntila', this.clientVersion = '0'}) {
@@ -47,6 +75,13 @@ class McpClient {
   bool get isClosed => _closed;
 
   String? negotiatedVersion;
+
+  /// True after a stateless (2026-07-28 or later) negotiation.
+  bool get isModern =>
+      negotiatedVersion != null &&
+      McpLimits.modernProtocolVersions.contains(negotiatedVersion);
+
+  final _toolSchemas = <String, Object?>{};
   Map<String, Object?> serverCapabilities = const {};
   Map<String, Object?> serverInfo = const {};
   Map<String, Object?> initializeMeta = const {};
@@ -59,7 +94,7 @@ class McpClient {
     final res = await _request(
       'initialize',
       {
-        'protocolVersion': McpLimits.supportedProtocolVersions.first,
+        'protocolVersion': McpLimits.legacyProtocolVersions.first,
         'capabilities': <String, Object?>{},
         'clientInfo': {'name': clientName, 'version': clientVersion},
       },
@@ -67,7 +102,7 @@ class McpClient {
     );
     final version = res['protocolVersion'];
     if (version is! String ||
-        !McpLimits.supportedProtocolVersions.contains(version)) {
+        !McpLimits.legacyProtocolVersions.contains(version)) {
       await close();
       throw McpException(McpFailure.versionUnsupported,
           'server selected unsupported protocol version: $version');
@@ -82,17 +117,114 @@ class McpClient {
     _send(const JsonRpcNotification('notifications/initialized'));
   }
 
+  /// Establishes the connection in the requested [mode].
+  ///
+  /// `auto` sends `server/discover`. A discover result negotiates the newest
+  /// mutually supported modern version. Only these mean "not a modern server"
+  /// and fall back to `initialize`: JSON-RPC method-not-found / invalid-request,
+  /// no answer within [McpLimits.discoverTimeout], an empty success that claims
+  /// neither a `resultType` nor `supportedVersions`, or a discover result that
+  /// lists only legacy versions we support. A recognized modern error
+  /// (unsupported version, header mismatch, missing capability, invalid params)
+  /// never falls back: it fails with a stable diagnostic.
+  Future<void> connect({
+    McpProtocolMode mode = McpProtocolMode.auto,
+    Duration? timeout,
+  }) async {
+    if (mode == McpProtocolMode.legacy) return initialize(timeout: timeout);
+    final proposed = McpLimits.modernProtocolVersions.first;
+    Map<String, Object?> result;
+    try {
+      result = await _request(
+        'server/discover',
+        {'_meta': _modernMeta(proposed)},
+        timeout ?? McpLimits.discoverTimeout,
+      );
+    } on McpException catch (e) {
+      final silentOrLegacy = e.code == McpFailure.timeout ||
+          e.jsonRpcCode == JsonRpcCodes.methodNotFound ||
+          e.jsonRpcCode == JsonRpcCodes.invalidRequest;
+      if (mode == McpProtocolMode.auto && silentOrLegacy) {
+        return initialize(timeout: timeout);
+      }
+      await close();
+      if (e.jsonRpcCode == JsonRpcCodes.unsupportedProtocolVersion ||
+          silentOrLegacy) {
+        throw McpException(McpFailure.versionUnsupported, e.message,
+            jsonRpcCode: e.jsonRpcCode);
+      }
+      rethrow;
+    }
+    final type = result['resultType'];
+    final listed = result['supportedVersions'];
+    if (listed == null && type == null && mode == McpProtocolMode.auto) {
+      // An empty success is how some handshake servers answer any method; it
+      // does not claim to be a stateless reply, so use the handshake.
+      return initialize(timeout: timeout);
+    }
+    if (type != null && type != 'complete') {
+      await close();
+      throw McpException(McpFailure.protocolViolation,
+          'server/discover returned an unsupported resultType');
+    }
+    if (listed is! List || listed.any((v) => v is! String)) {
+      await close();
+      throw McpException(McpFailure.protocolViolation,
+          'server/discover result has no supportedVersions list');
+    }
+    final versions = listed.cast<String>();
+    final common =
+        McpLimits.modernProtocolVersions.where(versions.contains).toList();
+    if (common.isEmpty) {
+      final legacyOnly = mode == McpProtocolMode.auto &&
+          McpLimits.legacyProtocolVersions.any(versions.contains);
+      if (legacyOnly) return initialize(timeout: timeout);
+      await close();
+      throw McpException(McpFailure.versionUnsupported,
+          'server supports no compatible protocol version: $versions');
+    }
+    negotiatedVersion = common.first;
+    serverCapabilities =
+        (result['capabilities'] as Map?)?.cast<String, Object?>() ?? const {};
+    initializeMeta =
+        (result['_meta'] as Map?)?.cast<String, Object?>() ?? const {};
+    serverInfo =
+        (initializeMeta[_metaServerInfo] as Map?)?.cast<String, Object?>() ??
+            const {};
+  }
+
+  Map<String, Object?> _modernMeta(String version) => {
+        _metaVersion: version,
+        _metaCapabilities: <String, Object?>{},
+        _metaClientInfo: {'name': clientName, 'version': clientVersion},
+      };
+
+  /// Adds the per-request metadata a stateless server requires.
+  Map<String, Object?>? _withMeta(Map<String, Object?>? params,
+      [Map<String, Object?> extra = const {}]) {
+    if (!isModern) {
+      if (extra.isEmpty) return params;
+      return {...?params, '_meta': extra};
+    }
+    return {
+      ...?params,
+      '_meta': {..._modernMeta(negotiatedVersion!), ...extra},
+    };
+  }
+
   Future<List<Map<String, Object?>>> listTools({Duration? timeout}) async {
     final tools = <Map<String, Object?>>[];
     String? cursor;
     do {
       final res = await _request(
         'tools/list',
-        {if (cursor != null) 'cursor': cursor},
+        _withMeta({if (cursor != null) 'cursor': cursor}),
         timeout ?? McpLimits.maxCallTimeout,
       );
+      _checkResultType(res, 'tools/list');
       for (final t in (res['tools'] as List? ?? const [])) {
         tools.add((t as Map).cast<String, Object?>());
+        _toolSchemas['${tools.last['name']}'] = tools.last['inputSchema'];
         if (tools.length > McpLimits.maxTools) {
           throw McpException(McpFailure.protocolViolation,
               'server exposes more than ${McpLimits.maxTools} tools');
@@ -110,16 +242,28 @@ class McpClient {
     McpProgressCallback? onProgress,
     Duration? timeout,
   }) {
+    if (isModern &&
+        _transport is McpHeaderRoutedTransport &&
+        _containsKey(_toolSchemas[name], 'x-mcp-header')) {
+      // Mcp-Param-* routing headers are not built; a server would reject the
+      // call, so refuse it with a stable diagnostic instead of guessing.
+      throw McpException(McpFailure.unsupportedFeature,
+          'tool $name uses x-mcp-header parameters, which are not supported');
+    }
     final id = _nextId++;
     final token = 'p$id';
     if (onProgress != null) _progress[token] = onProgress;
     final completer = Completer<Object?>();
     _pending[id] = completer;
-    _send(JsonRpcRequest(id, 'tools/call', {
-      'name': name,
-      'arguments': arguments,
-      if (onProgress != null) '_meta': {'progressToken': token},
-    }));
+    _send(JsonRpcRequest(
+        id,
+        'tools/call',
+        _withMeta({
+          'name': name,
+          'arguments': arguments,
+        }, {
+          if (onProgress != null) 'progressToken': token,
+        })));
     final limit = timeout ?? McpLimits.maxCallTimeout;
     final timer = Timer(limit, () {
       if (_pending.remove(id) != null) {
@@ -137,7 +281,10 @@ class McpClient {
     });
   }
 
+  /// Legacy liveness check. `ping` was removed from stateless revisions, so
+  /// there it does nothing; the next request reveals a dead connection.
   Future<void> ping({Duration timeout = const Duration(seconds: 5)}) async {
+    if (isModern) return;
     await _request('ping', null, timeout);
   }
 
@@ -151,8 +298,35 @@ class McpClient {
 
   // -- internals -----------------------------------------------------------
 
+  static bool _containsKey(Object? node, String key) {
+    if (node is Map) {
+      return node.containsKey(key) ||
+          node.values.any((v) => _containsKey(v, key));
+    }
+    if (node is List) return node.any((v) => _containsKey(v, key));
+    return false;
+  }
+
+  /// Stateless results carry `resultType`. Absent means complete (legacy);
+  /// `input_required` needs client input we never offer; anything else is
+  /// invalid for a client that advertises no extensions.
+  void _checkResultType(Map<String, Object?> result, String method) {
+    final type = result['resultType'];
+    if (type == null || type == 'complete') return;
+    if (type == 'input_required') {
+      throw McpException(McpFailure.interactionRequired,
+          '$method needs interactive input, which Syntila does not provide');
+    }
+    throw McpException(McpFailure.protocolViolation,
+        '$method returned unsupported resultType');
+  }
+
   Map<String, Object?> _checkResult(Object? v) {
-    final map = (v as Map?)?.cast<String, Object?>() ?? <String, Object?>{};
+    var map = (v as Map?)?.cast<String, Object?>() ?? <String, Object?>{};
+    _checkResultType(map, 'tools/call');
+    if (map.containsKey('resultType')) {
+      map = Map.of(map)..remove('resultType');
+    }
     if (utf8.encode(jsonEncode(map)).length > McpLimits.maxResultBytes) {
       throw McpException(McpFailure.resultTooLarge,
           'tool result exceeds ${McpLimits.maxResultBytes} bytes');
@@ -205,13 +379,18 @@ class McpClient {
         c?.completeError(McpException(
             m.code == -32001
                 ? McpFailure.authRequired
-                : McpFailure.protocolViolation,
-            m.message,
+                : m.code == JsonRpcCodes.unsupportedProtocolVersion
+                    ? McpFailure.versionUnsupported
+                    : McpFailure.protocolViolation,
+            m.code == JsonRpcCodes.unsupportedProtocolVersion
+                ? 'server does not support the requested protocol version'
+                    '${_supportedFrom(m.data)}'
+                : m.message,
             jsonRpcCode: m.code));
       case JsonRpcNotification():
         _onNotification(m);
       case JsonRpcRequest():
-        if (m.method == 'ping') {
+        if (m.method == 'ping' && !isModern) {
           _send(JsonRpcResponse(m.id, <String, Object?>{}));
         } else {
           unsupportedRequests.add(m.method);
@@ -219,6 +398,16 @@ class McpClient {
               'client does not support ${m.method}'));
         }
     }
+  }
+
+  static String _supportedFrom(Object? data) {
+    final supported = data is Map ? data['supported'] : null;
+    if (supported is! List) return '';
+    final safe = supported
+        .whereType<String>()
+        .where((v) => RegExp(r'^[0-9A-Za-z._-]{1,32}$').hasMatch(v))
+        .take(8);
+    return safe.isEmpty ? '' : ' (supports: ${safe.join(', ')})';
   }
 
   void _onNotification(JsonRpcNotification n) {

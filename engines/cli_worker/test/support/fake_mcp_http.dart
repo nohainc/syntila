@@ -30,6 +30,16 @@ class FakeMcpHttp {
   bool leakToken = false; // make errors echo the bearer token
   final seen = <Seen>[];
 
+  /// Stateless (2026-07-28) behavior: `server/discover`, per-request `_meta`,
+  /// required routing headers, `resultType` on every result, no sessions.
+  bool modern = false;
+  String modernResultType = 'complete';
+  List<String> discoverVersions = ['2026-07-28'];
+
+  /// Legacy-server stand-ins for `server/discover`: `empty400`, `unsupported`
+  /// (modern -32022 error), `silent` (never answers), `emptyok` (empty success), `notfound` (default).
+  String discoverFailure = 'notfound';
+
   Uri get endpoint => Uri.parse('http://127.0.0.1:${server.port}/mcp');
 
   Future<void> start() async {
@@ -67,15 +77,92 @@ class FakeMcpHttp {
       await response.close();
       return;
     }
-    Future<void> json(Object? result) async {
+    Future<void> failWith(
+      int status,
+      int code,
+      String message, [
+      Object? data,
+    ]) async {
+      response.statusCode = status;
       response.headers.contentType = ContentType.json;
       response.write(
-        jsonEncode({'jsonrpc': '2.0', 'id': id, 'result': result}),
+        jsonEncode({
+          'jsonrpc': '2.0',
+          'id': id,
+          'error': {
+            'code': code,
+            'message': message,
+            if (data != null) 'data': data,
+          },
+        }),
       );
       await response.close();
     }
 
+    Future<void> json(Object? result) async {
+      response.headers.contentType = ContentType.json;
+      final withType = modern && result is Map
+          ? {'resultType': modernResultType, ...result}
+          : result;
+      response.write(
+        jsonEncode({'jsonrpc': '2.0', 'id': id, 'result': withType}),
+      );
+      await response.close();
+    }
+
+    if (modern) {
+      final meta = (params['_meta'] as Map?)?.cast<String, Object?>() ?? {};
+      final version = meta['io.modelcontextprotocol/protocolVersion'];
+      if (version == null ||
+          meta['io.modelcontextprotocol/clientCapabilities'] == null) {
+        return failWith(400, -32602, 'Missing required _meta');
+      }
+      if (!discoverVersions.contains(version)) {
+        return failWith(400, -32022, 'Unsupported protocol version', {
+          'supported': discoverVersions,
+          'requested': version,
+        });
+      }
+      if (headers['mcp-protocol-version'] != version ||
+          headers['mcp-method'] != method) {
+        return failWith(400, -32020, 'Header mismatch');
+      }
+      if (method == 'tools/call' && headers['mcp-name'] != params['name']) {
+        return failWith(400, -32020, 'Header mismatch: Mcp-Name');
+      }
+    } else if (method == 'server/discover') {
+      switch (discoverFailure) {
+        case 'empty400':
+          response.statusCode = 400;
+          await response.close();
+          return;
+        case 'unsupported':
+          return failWith(400, -32022, 'Unsupported protocol version', {
+            'supported': ['2026-07-28'],
+            'requested': 'x',
+          });
+        case 'silent':
+          return;
+        case 'emptyok':
+          return json({});
+        default:
+          return failWith(200, -32601, 'Method not found');
+      }
+    }
+
     switch (method) {
+      case 'server/discover':
+        await json({
+          'supportedVersions': discoverVersions,
+          'capabilities': {'tools': {}},
+          '_meta': {
+            'io.modelcontextprotocol/serverInfo': {
+              'name': 'fake',
+              'version': '1',
+            },
+            if (worker) 'syntila.worker': '1',
+          },
+        });
       case 'initialize':
         response.headers.set('Mcp-Session-Id', 'sess-1');
         await json({
