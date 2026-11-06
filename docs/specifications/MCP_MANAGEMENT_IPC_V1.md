@@ -84,10 +84,11 @@ intersects with the Worker-type bindings and never widens them: absent means the
 bindings alone decide (unchanged behaviour), an empty list exposes no server,
 and a selected server that is not bound to the Worker type fails the execution
 with `mcp_server_not_bound` (never a silent subset). Consent, enablement and the
-digest checks still apply. Cloud holds server names only. There is no UI for the
-list yet; it is set through the Workflow configuration API.
+digest checks still apply. Cloud holds server names only. The Workflow editor
+accepts server IDs manually, with separate choices for inheritance, no servers,
+and a selected list. The Workspace CLI (`syntila mcp list`) shows the IDs.
 
 ## Not yet defined
 
-A UI for the per-Step `mcpTools` list, and Cloud-side policy beyond the
+An inventory-backed picker for `mcpTools`, and Cloud-side policy beyond the
 Workspace's own checks.

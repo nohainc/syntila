@@ -25,6 +25,13 @@ class AxWorkflowSelection {
         if (catalogRevision != null) 'catalogRevision': catalogRevision,
         if (mcpTools != null) 'mcpTools': List<String>.of(mcpTools!),
       };
+  AxWorkflowSelection withMcpTools(List<String>? tools) => AxWorkflowSelection(
+        worker: worker,
+        model: model,
+        effort: effort,
+        catalogRevision: catalogRevision,
+        mcpTools: tools == null ? null : List.unmodifiable(tools),
+      );
   AxWorkflowSelection overlay(AxWorkflowSelection override) =>
       AxWorkflowSelection(
           worker: override.worker ?? worker,

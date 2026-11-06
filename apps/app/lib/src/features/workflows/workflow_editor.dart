@@ -230,6 +230,9 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
                                 const AxWorkflowSelection(),
                                 options,
                                 (value) => defaults = value),
+                            _mcpServers('defaults', defaults,
+                                isDefault: true,
+                                update: (value) => defaults = value),
                             if (issues['defaults'] != null &&
                                 !_hideValidationMessage(issues['defaults']))
                               _notice(issues['defaults']!, error: true),
@@ -390,6 +393,9 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
           const SizedBox(height: 12),
           _selection(step.instanceId, selection, defaults, options,
               (value) => overrides[step.instanceId] = value),
+          _mcpServers(step.instanceId, selection,
+              isDefault: false,
+              update: (value) => overrides[step.instanceId] = value),
           Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
@@ -408,6 +414,43 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
           _notice(issue, error: true),
         const SizedBox(height: 12),
       ],
+    );
+  }
+
+  Widget _mcpServers(String scope, AxWorkflowSelection value,
+      {required bool isDefault,
+      required ValueChanged<AxWorkflowSelection> update}) {
+    final servers = value.mcpTools;
+    final summary = servers == null
+        ? (isDefault
+            ? 'Use Workspace Worker bindings'
+            : 'Inherit workflow defaults')
+        : servers.isEmpty
+            ? 'No MCP servers'
+            : servers.join(', ');
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('MCP servers'),
+      subtitle: Text(summary),
+      trailing: TextButton(
+        key: ValueKey('mcp-edit-$scope'),
+        onPressed: busy
+            ? null
+            : () async {
+                final result = await showDialog<_McpServerChoice>(
+                  context: context,
+                  builder: (_) =>
+                      _McpServerDialog(initial: servers, isDefault: isDefault),
+                );
+                if (result != null && mounted) {
+                  setState(() {
+                    error = null;
+                    update(value.withMcpTools(result.servers));
+                  });
+                }
+              },
+        child: const Text('Edit'),
+      ),
     );
   }
 
@@ -482,4 +525,125 @@ String _title(String value) {
   return value.isEmpty
       ? value
       : '${value[0].toUpperCase()}${value.substring(1)}';
+}
+
+class _McpServerChoice {
+  const _McpServerChoice(this.servers);
+  final List<String>? servers;
+}
+
+class _McpServerDialog extends StatefulWidget {
+  const _McpServerDialog({required this.initial, required this.isDefault});
+  final List<String>? initial;
+  final bool isDefault;
+  @override
+  State<_McpServerDialog> createState() => _McpServerDialogState();
+}
+
+class _McpServerDialogState extends State<_McpServerDialog> {
+  final form = GlobalKey<FormState>();
+  late String mode = widget.initial == null
+      ? 'inherit'
+      : widget.initial!.isEmpty
+          ? 'none'
+          : 'selected';
+  late final controller =
+      TextEditingController(text: widget.initial?.join('\n') ?? '');
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  List<String> get ids => controller.text
+      .split(RegExp(r'[\n,]'))
+      .map((id) => id.trim())
+      .where((id) => id.isNotEmpty)
+      .toList();
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('MCP servers'),
+        content: Form(
+            key: form,
+            child: SingleChildScrollView(
+                child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  key: const ValueKey('mcp-mode'),
+                  isExpanded: true,
+                  initialValue: mode,
+                  decoration:
+                      const InputDecoration(labelText: 'Server selection'),
+                  items: [
+                    DropdownMenuItem(
+                        value: 'inherit',
+                        child: Text(widget.isDefault
+                            ? 'Use Workspace Worker bindings'
+                            : 'Inherit workflow defaults')),
+                    const DropdownMenuItem(
+                        value: 'none', child: Text('No servers')),
+                    const DropdownMenuItem(
+                        value: 'selected', child: Text('Select server IDs')),
+                  ],
+                  onChanged: (value) => setState(() => mode = value ?? mode),
+                ),
+                if (mode == 'selected')
+                  TextFormField(
+                    key: const ValueKey('mcp-server-ids'),
+                    controller: controller,
+                    minLines: 2,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      labelText: 'Server IDs',
+                      helperText:
+                          'Enter up to 8 IDs, one per line or separated by commas.',
+                    ),
+                    validator: (_) {
+                      final values = ids;
+                      if (values.isEmpty) {
+                        return 'Enter at least one server ID.';
+                      }
+                      if (values.length > 8) {
+                        return 'Choose no more than 8 servers.';
+                      }
+                      if (values.toSet().length != values.length) {
+                        return 'Remove duplicate IDs.';
+                      }
+                      if (values.any((id) =>
+                          !RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$')
+                              .hasMatch(id))) {
+                        return 'Use lowercase letters, numbers, hyphens, or underscores.';
+                      }
+                      return null;
+                    },
+                  ),
+                const SizedBox(height: 12),
+                const Text(
+                    'Only enabled servers consented and bound to the Worker can be used. Find server IDs with syntila mcp list.'),
+              ],
+            ))),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+              key: const ValueKey('mcp-apply'),
+              onPressed: () {
+                if (!form.currentState!.validate()) return;
+                Navigator.pop(
+                    context,
+                    _McpServerChoice(
+                      mode == 'inherit'
+                          ? null
+                          : mode == 'none'
+                              ? const []
+                              : ids,
+                    ));
+              },
+              child: const Text('Apply')),
+        ],
+      );
 }

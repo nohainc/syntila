@@ -202,6 +202,55 @@ void main() {
     expect(source.values.single.stepOverrides['verify']!.effort, 'high');
   });
 
+  testWidgets('configures server IDs and explicit no-server step override',
+      (tester) async {
+    final source = await mount(tester, configuration());
+    await tester.ensureVisible(find.byKey(const ValueKey('mcp-edit-defaults')));
+    await tester.tap(find.byKey(const ValueKey('mcp-edit-defaults')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('mcp-mode')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select server IDs').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const ValueKey('mcp-server-ids')), 'files, files');
+    await tester.tap(find.byKey(const ValueKey('mcp-apply')));
+    await tester.pumpAndSettle();
+    expect(find.text('Remove duplicate IDs.'), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const ValueKey('mcp-server-ids')), 'files, search');
+    await tester.tap(find.byKey(const ValueKey('mcp-apply')));
+    await tester.pumpAndSettle();
+    await openStep(tester, 'verify');
+    await tester.tap(find.byKey(const ValueKey('override-verify')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('mcp-edit-verify')));
+    await tester.tap(find.byKey(const ValueKey('mcp-edit-verify')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('mcp-mode')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('No servers').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('mcp-apply')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('save-workflow')));
+    await tester.tap(find.byKey(const ValueKey('save-workflow')));
+    await tester.pumpAndSettle();
+    expect(source.values.single.defaults.mcpTools, ['files', 'search']);
+    expect(source.values.single.stepOverrides['verify']!.mcpTools, isEmpty);
+  });
+
+  testWidgets('MCP server editor fits a narrow screen', (tester) async {
+    await mount(tester, configuration());
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('mcp-edit-defaults')));
+    await tester.tap(find.byKey(const ValueKey('mcp-edit-defaults')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mcp-mode')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test('workflow defaults and inherited steps survive catalog revision changes',
       () {
     const saved = AxWorkflowSelection(
