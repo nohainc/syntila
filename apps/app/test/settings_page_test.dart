@@ -42,6 +42,10 @@ void main() {
         ViewPreferences.decode('{"sidebarCollapsed":true,"sidebarWidth":245.5}')
             .sidebarWidth,
         245.5);
+    expect(ViewPreferences.decode('{"muteSound":true}').muteSound, isTrue);
+    expect(ViewPreferences.decode('{"muteSound":false}').muteSound, isFalse);
+    final savedMute = const ViewPreferences(muteSound: true).encode();
+    expect(ViewPreferences.decode(savedMute).muteSound, isTrue);
   });
 
   test('store persists preferences', () {
@@ -121,5 +125,27 @@ void main() {
     expect(find.text('RECENT THREADS'), findsOneWidget);
     await pump(const ViewPreferences(showRecentThreads: false));
     expect(find.text('RECENT THREADS'), findsNothing);
+  });
+
+  testWidgets('settings page toggles mute sound option', (tester) async {
+    var prefs = const ViewPreferences();
+    late StateSetter set;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: StatefulBuilder(builder: (context, setState) {
+      set = setState;
+      return SettingsPage(
+          preferences: prefs, onChanged: (next) => set(() => prefs = next));
+    }))));
+
+    expect(find.text('Mute sound notifications'), findsOneWidget);
+    expect(prefs.muteSound, isFalse);
+
+    await tester.tap(find.byKey(const ValueKey('setting-mute-sound')));
+    await tester.pump();
+    expect(prefs.muteSound, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('setting-mute-sound')));
+    await tester.pump();
+    expect(prefs.muteSound, isFalse);
   });
 }

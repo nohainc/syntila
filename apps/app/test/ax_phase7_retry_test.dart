@@ -283,8 +283,8 @@ void main() {
 
     await tester.tap(find.byTooltip('Retry').last);
     await tester.pumpAndSettle();
-    await tester.tap(
-        find.widgetWithText(TextButton, 'Resume previous session'));
+    await tester
+        .tap(find.widgetWithText(TextButton, 'Resume previous session'));
     await tester.pumpAndSettle();
     expect(source.strategies, ['resume']);
 

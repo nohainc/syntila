@@ -155,8 +155,7 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
                               horizontal: 8, vertical: 5),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             Flexible(
-                                child: Text(
-                                    choices[current] ?? 'No Workspace',
+                                child: Text(choices[current] ?? 'No Workspace',
                                     overflow: TextOverflow.ellipsis,
                                     style: _settingValueStyle(theme))),
                             const SizedBox(width: 2),

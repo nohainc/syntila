@@ -4,10 +4,196 @@ import 'quiet_notices.dart';
 import 'package:syntila_design/syntila_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'syntila_code_block.dart';
+
+/// Represents a parsed local file, code location, or editor destination.
+class ParsedCodeLink {
+  const ParsedCodeLink({
+    required this.filePath,
+    this.line,
+    this.endLine,
+    this.editorScheme,
+  });
+
+  final String filePath;
+  final int? line;
+  final int? endLine;
+  final String? editorScheme;
+
+  /// Returns the formatted path with line specification (e.g. `main.dart:10` or `/Users/.../foo.dart:10-20`).
+  String get formattedLocation {
+    if (line == null) return filePath;
+    if (endLine != null && endLine != line) return '$filePath:$line-$endLine';
+    return '$filePath:$line';
+  }
+
+  /// Compact filename or last path segment for user-facing notices.
+  String get displayTarget {
+    final normalized = filePath.replaceAll(r'\', '/');
+    final segments = normalized.split('/').where((s) => s.isNotEmpty).toList();
+    final name = segments.isNotEmpty ? segments.last : filePath;
+    if (line == null) return name;
+    if (endLine != null && endLine != line) return '$name:$line-$endLine';
+    return '$name:$line';
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ParsedCodeLink &&
+          runtimeType == other.runtimeType &&
+          filePath == other.filePath &&
+          line == other.line &&
+          endLine == other.endLine &&
+          editorScheme == other.editorScheme;
+
+  @override
+  int get hashCode => Object.hash(filePath, line, endLine, editorScheme);
+
+  @override
+  String toString() =>
+      'ParsedCodeLink(filePath: $filePath, line: $line, endLine: $endLine, editorScheme: $editorScheme)';
+}
+
+bool _looksLikeFilePath(String raw) {
+  final hashIdx = raw.indexOf('#');
+  var path = hashIdx != -1 ? raw.substring(0, hashIdx) : raw;
+  final colonMatch = RegExp(r':\d+(?::\d+)?$').firstMatch(path);
+  if (colonMatch != null) {
+    path = path.substring(0, colonMatch.start);
+  }
+
+  if (path.isEmpty) return false;
+
+  final normalized = path.replaceAll(r'\', '/');
+  final segments = normalized.split('/').where((s) => s.isNotEmpty).toList();
+  if (segments.isEmpty) return false;
+  final fileName = segments.last;
+
+  final baseLower = fileName.toLowerCase();
+  if (const {
+    'dockerfile',
+    'makefile',
+    'license',
+    'gemfile',
+    'podfile',
+    'procfile',
+    'cmakelists.txt',
+  }.contains(baseLower)) {
+    return true;
+  }
+
+  final dotIdx = fileName.lastIndexOf('.');
+  if (dotIdx > 0 && dotIdx < fileName.length - 1) {
+    final ext = fileName.substring(dotIdx + 1).toLowerCase();
+    return RegExp(r'^[a-z0-9_-]{1,10}$').hasMatch(ext);
+  }
+
+  return false;
+}
+
+ParsedCodeLink _extractPathAndLine(String input, {String? editorScheme}) {
+  var path = input;
+  int? line;
+  int? endLine;
+
+  final hashIndex = path.indexOf('#');
+  if (hashIndex != -1) {
+    final fragment = path.substring(hashIndex + 1);
+    path = path.substring(0, hashIndex);
+    final match = RegExp(r'^L?(\d+)(?:[-:]L?(\d+))?', caseSensitive: false)
+        .firstMatch(fragment);
+    if (match != null) {
+      line = int.tryParse(match.group(1)!);
+      if (match.group(2) != null) {
+        endLine = int.tryParse(match.group(2)!);
+      }
+    }
+  }
+
+  final colonMatch = RegExp(r':(\d+)(?::\d+)?$').firstMatch(path);
+  if (colonMatch != null) {
+    line ??= int.tryParse(colonMatch.group(1)!);
+    path = path.substring(0, colonMatch.start);
+  }
+
+  return ParsedCodeLink(
+    filePath: path,
+    line: line,
+    endLine: endLine,
+    editorScheme: editorScheme,
+  );
+}
+
+/// Extracts a local code or file location from a link destination, supporting
+/// `file://` URIs, editor URIs (`vscode://file/...`, `cursor://file/...`),
+/// and relative/workspace file paths with optional `#L10-L20` or `:10` line numbers.
+ParsedCodeLink? parseCodeOrFileLink(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final trimmed = raw.trim();
+
+  if (trimmed.startsWith('#')) return null;
+
+  final lower = trimmed.toLowerCase();
+  if (lower.startsWith('http://') ||
+      lower.startsWith('https://') ||
+      lower.startsWith('javascript:') ||
+      lower.startsWith('data:') ||
+      lower.startsWith('vbscript:') ||
+      lower.startsWith('mailto:')) {
+    return null;
+  }
+
+  if (lower.startsWith('vscode://file/') ||
+      lower.startsWith('cursor://file/')) {
+    final scheme = lower.startsWith('vscode://file/') ? 'vscode' : 'cursor';
+    var rest = trimmed.substring(scheme.length + 8);
+    try {
+      rest = Uri.decodeFull(rest);
+    } catch (_) {}
+    if (!rest.startsWith('/') && !RegExp(r'^[a-zA-Z]:').hasMatch(rest)) {
+      rest = '/$rest';
+    }
+    return _extractPathAndLine(rest, editorScheme: scheme);
+  }
+
+  if (lower.startsWith('file:')) {
+    var path = trimmed.substring(5);
+    try {
+      path = Uri.decodeFull(path);
+    } catch (_) {}
+    if (path.startsWith('///')) {
+      path = path.substring(2);
+    } else if (path.toLowerCase().startsWith('//localhost/')) {
+      path = path.substring(12);
+    } else if (path.startsWith('//')) {
+      path = path.substring(1);
+    }
+    if (RegExp(r'^/[a-zA-Z]:').hasMatch(path)) {
+      path = path.substring(1);
+    }
+    return _extractPathAndLine(path);
+  }
+
+  if (RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*:').hasMatch(trimmed) &&
+      !RegExp(r'^[a-zA-Z]:[/\\]').hasMatch(trimmed)) {
+    return null;
+  }
+
+  if (_looksLikeFilePath(trimmed)) {
+    var path = trimmed;
+    try {
+      path = Uri.decodeFull(path);
+    } catch (_) {}
+    return _extractPathAndLine(path);
+  }
+
+  return null;
+}
 
 /// Accept only absolute web URLs. Uri parsing alone normalizes some malformed
 /// input, so reject whitespace, backslashes and invalid escapes first.
@@ -49,6 +235,8 @@ class SyntilaMarkdownBody extends StatelessWidget {
     super.key,
     required this.data,
     this.openLink = _launchMarkdownLink,
+    this.onOpenFile,
+    this.onNavigateTo,
     this.fitContent = false,
     this.preserveBlankLines = false,
     this.onSelectionChanged,
@@ -70,21 +258,113 @@ class SyntilaMarkdownBody extends StatelessWidget {
   /// Receives only validated web URLs; injectable for deterministic testing.
   final Future<bool> Function(Uri uri) openLink;
 
+  /// Optional handler for code or file links. If null or if it returns false,
+  /// falls back to launching an editor URI (e.g. `vscode://file/...`) and copying
+  /// the path to the clipboard.
+  final Future<bool> Function(ParsedCodeLink link)? onOpenFile;
+
+  /// Optional handler for in-app navigation routes (e.g. `/spaces/...`).
+  final ValueChanged<String>? onNavigateTo;
+
+  Future<void> _handleCodeOrFileLink(
+    BuildContext context,
+    ParsedCodeLink codeLink,
+  ) async {
+    if (onOpenFile != null) {
+      try {
+        final handled = await onOpenFile!(codeLink);
+        if (handled) return;
+      } catch (_) {}
+    }
+
+    var normalized = codeLink.filePath.replaceAll(r'\', '/');
+    if (!normalized.startsWith('/') &&
+        !RegExp(r'^[a-zA-Z]:').hasMatch(normalized)) {
+      normalized = '/$normalized';
+    }
+    final scheme = codeLink.editorScheme ?? 'vscode';
+    final lineParam = codeLink.line != null ? ':${codeLink.line}' : '';
+    final editorUri = Uri.tryParse('$scheme://file$normalized$lineParam');
+
+    var opened = false;
+    if (editorUri != null) {
+      try {
+        opened = await openLink(editorUri);
+      } catch (_) {
+        opened = false;
+      }
+    }
+
+    try {
+      await Clipboard.setData(ClipboardData(text: codeLink.formattedLocation));
+    } catch (_) {}
+
+    if (context.mounted) {
+      final message = opened
+          ? 'Opened ${codeLink.displayTarget} in editor'
+          : 'Copied path to clipboard: ${codeLink.displayTarget}';
+      ScaffoldMessenger.maybeOf(context)?.showNotice(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
   Future<void> _openLink(BuildContext context, String? href) async {
-    final uri = validatedMarkdownLink(href);
-    String? failure;
-    if (uri == null) {
-      failure = 'Only valid HTTP or HTTPS links can be opened.';
-    } else {
+    final raw = href?.trim();
+    if (raw == null || raw.isEmpty) return;
+
+    // 1. Intra-document anchors (#heading, #section) within messages:
+    // Do not attempt external URL launch or show error notice.
+    if (raw.startsWith('#')) return;
+
+    // 2. Dangerous URI schemes:
+    final lower = raw.toLowerCase();
+    if (lower.startsWith('javascript:') ||
+        lower.startsWith('data:') ||
+        lower.startsWith('vbscript:')) {
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showNotice(
+          const SnackBar(content: Text('Cannot open unsafe link.')),
+        );
+      }
+      return;
+    }
+
+    // 3. Web links (http / https):
+    final uri = validatedMarkdownLink(raw);
+    if (uri != null) {
+      String? failure;
       try {
         if (!await openLink(uri)) failure = 'Could not open this link.';
       } catch (_) {
         failure = 'Could not open this link.';
       }
+      if (failure != null && context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showNotice(
+          SnackBar(content: Text(failure)),
+        );
+      }
+      return;
     }
-    if (failure != null && context.mounted) {
+
+    // 4. Code / file / editor destinations:
+    final codeLink = parseCodeOrFileLink(raw);
+    if (codeLink != null) {
+      await _handleCodeOrFileLink(context, codeLink);
+      return;
+    }
+
+    // 5. In-app navigation routes:
+    if (raw.startsWith('/') && onNavigateTo != null) {
+      onNavigateTo!(raw);
+      return;
+    }
+
+    // Fallback: unsupported scheme or malformed destination
+    if (context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showNotice(
-        SnackBar(content: Text(failure)),
+        const SnackBar(
+            content: Text('Only valid HTTP or HTTPS links can be opened.')),
       );
     }
   }

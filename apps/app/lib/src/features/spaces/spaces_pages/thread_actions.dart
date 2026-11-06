@@ -747,9 +747,8 @@ extension _ThreadActions on _ThreadPageState {
       );
       if (choice == null || !mounted) return;
       if (choice == 'selected_model') {
-        final request = _workTimeline
-            .where((item) => item.id == workRequestId)
-            .firstOrNull;
+        final request =
+            _workTimeline.where((item) => item.id == workRequestId).firstOrNull;
         String prompt = request?.prompt ?? '';
         List<Map<String, dynamic>> attachments =
             request?.attachments.map((a) => a.toJson()).toList() ?? [];
@@ -765,8 +764,7 @@ extension _ThreadActions on _ThreadPageState {
                 await dataSource.loadWorkRequest(workRequestId: workRequestId);
             prompt = detail.text ?? prompt;
             if (attachments.isEmpty && detail.attachments.isNotEmpty) {
-              attachments =
-                  detail.attachments.map((a) => a.toJson()).toList();
+              attachments = detail.attachments.map((a) => a.toJson()).toList();
             }
             if (detail.workflowId != null) {
               workflowId = detail.workflowId!;

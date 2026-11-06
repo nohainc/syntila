@@ -22,6 +22,8 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   final authConfirmPasswordController = TextEditingController();
   final authVerificationCodeController = TextEditingController();
   final AxBrowserAlerts browserAlerts = createAxBrowserAlerts();
+  late final AxSoundNotifications soundNotifications =
+      widget.soundNotifications ?? createAxSoundNotifications();
   List<AxNotification> get notifications => store.notifications;
   void _updateNotifications(VoidCallback callback) {
     callback();

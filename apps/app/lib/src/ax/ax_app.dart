@@ -16,6 +16,7 @@ import '../navigation/ax_browser_navigation.dart';
 import '../navigation/ax_navigation.dart';
 import '../notifications/browser_alerts.dart';
 import '../notifications/notification_models.dart';
+import '../notifications/sound_notifications.dart';
 import '../platform/platform_services.dart';
 import '../platform/theme_preference.dart';
 import '../platform/view_preferences.dart';
@@ -66,9 +67,11 @@ class SyntilaAppShell extends StatefulWidget {
       this.browserNavigation,
       this.realtimeClient,
       this.themePreference,
-      this.viewPreferencesStore});
+      this.viewPreferencesStore,
+      this.soundNotifications});
   final ThemePreference? themePreference;
   final ViewPreferencesStore? viewPreferencesStore;
+  final AxSoundNotifications? soundNotifications;
   final PlatformServices services;
   final AxDataSource dataSource;
   final Uri? initialUri;

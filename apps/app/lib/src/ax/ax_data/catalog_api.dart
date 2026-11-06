@@ -85,10 +85,7 @@ mixin _CatalogApi on _AxApiClientCore {
       {String? spaceId, String? workspaceId}) async {
     final response = await client.put(Uri.parse(_workflowWorkspaceUrl(spaceId)),
         headers: _headers(contentType: 'application/json'),
-        body: jsonEncode({
-          'workspaceId': workspaceId,
-          'confirmReset': true
-        }));
+        body: jsonEncode({'workspaceId': workspaceId, 'confirmReset': true}));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw AxApiException(
           'Workspace selection failed (${response.statusCode}): ${response.body}',

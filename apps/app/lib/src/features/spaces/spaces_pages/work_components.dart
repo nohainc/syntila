@@ -2130,12 +2130,14 @@ class _WorkTimelineCard extends StatelessWidget {
                             runSpacing: 4,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              if (isWorkerResponse && onSelectExecutionParameters != null)
+                              if (isWorkerResponse &&
+                                  onSelectExecutionParameters != null)
                                 MouseRegion(
                                   cursor: SystemMouseCursors.click,
                                   child: GestureDetector(
                                     onTap: () => onSelectExecutionParameters!(
-                                      workerId: senderTurn?.workerId ?? senderStep?.workerId,
+                                      workerId: senderTurn?.workerId ??
+                                          senderStep?.workerId,
                                       workerTypeId: workerType,
                                       workerDisplayName: workerDisplayName,
                                       model: selectedModel,
@@ -3170,7 +3172,8 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                                 MouseRegion(
                                   cursor: SystemMouseCursors.click,
                                   child: GestureDetector(
-                                    onTap: () => widget.onSelectExecutionParameters!(
+                                    onTap: () =>
+                                        widget.onSelectExecutionParameters!(
                                       workerDisplayName: widget.item.author,
                                     ),
                                     child: Tooltip(
@@ -3181,11 +3184,13 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                                           CircleAvatar(
                                             radius: 12,
                                             backgroundColor:
-                                                SyntilaColors.primarySoftColor(isDark),
-                                            child: Icon(Icons.auto_awesome_rounded,
+                                                SyntilaColors.primarySoftColor(
+                                                    isDark),
+                                            child: Icon(
+                                                Icons.auto_awesome_rounded,
                                                 size: 13,
-                                                color: SyntilaColors.primaryForeground(
-                                                    isDark)),
+                                                color: SyntilaColors
+                                                    .primaryForeground(isDark)),
                                           ),
                                           const SizedBox(width: 6),
                                           Text(
@@ -3193,7 +3198,9 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                                             style: TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.w600,
-                                              color: SyntilaColors.textSecondary(isDark),
+                                              color:
+                                                  SyntilaColors.textSecondary(
+                                                      isDark),
                                             ),
                                           ),
                                         ],
@@ -3208,13 +3215,13 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                                     CircleAvatar(
                                       radius: 12,
                                       backgroundColor:
-                                          SyntilaColors.primarySoftColor(isDark),
+                                          SyntilaColors.primarySoftColor(
+                                              isDark),
                                       child: widget.item.isAiAnswer
                                           ? Icon(Icons.auto_awesome_rounded,
                                               size: 13,
-                                              color:
-                                                  SyntilaColors.primaryForeground(
-                                                      isDark))
+                                              color: SyntilaColors
+                                                  .primaryForeground(isDark))
                                           : Text(
                                               initials,
                                               style: TextStyle(

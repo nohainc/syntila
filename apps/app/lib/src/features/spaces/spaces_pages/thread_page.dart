@@ -1209,8 +1209,9 @@ class _ThreadPageState extends State<ThreadPage>
     if (matchedWorker == null &&
         workerTypeId != null &&
         workerTypeId.isNotEmpty) {
-      final sameType =
-          availableWorkers.where((w) => w.workerTypeId == workerTypeId).toList();
+      final sameType = availableWorkers
+          .where((w) => w.workerTypeId == workerTypeId)
+          .toList();
       final ready = sameType.where((w) => w.isReady).toList();
       matchedWorker = ready.length == 1
           ? ready.single
@@ -1268,7 +1269,8 @@ class _ThreadPageState extends State<ThreadPage>
 
     // 3. Reasoning effort resolution
     if (reasoningEffort != null && reasoningEffort.isNotEmpty) {
-      final targetModelId = updates['model'] ?? _workExecutionSelection['model'];
+      final targetModelId =
+          updates['model'] ?? _workExecutionSelection['model'];
       final efforts =
           activeWorker?.executionOptions?.effortsForModel(targetModelId);
       final effortSupported = efforts == null ||

@@ -35,6 +35,7 @@ class ViewPreferences {
     this.textSize = TextSizeOption.standard,
     this.sidebarCollapsed = false,
     this.sidebarWidth = defaultSidebarWidth,
+    this.muteSound = false,
   });
 
   static const defaultRecentThreadsCount = 7;
@@ -50,13 +51,15 @@ class ViewPreferences {
   final TextSizeOption textSize;
   final bool sidebarCollapsed;
   final double sidebarWidth;
+  final bool muteSound;
 
   ViewPreferences copyWith(
           {bool? showRecentThreads,
           int? recentThreadsCount,
           TextSizeOption? textSize,
           bool? sidebarCollapsed,
-          double? sidebarWidth}) =>
+          double? sidebarWidth,
+          bool? muteSound}) =>
       ViewPreferences(
         textSize: textSize ?? this.textSize,
         showRecentThreads: showRecentThreads ?? this.showRecentThreads,
@@ -64,6 +67,7 @@ class ViewPreferences {
             _clampCount(recentThreadsCount ?? this.recentThreadsCount),
         sidebarCollapsed: sidebarCollapsed ?? this.sidebarCollapsed,
         sidebarWidth: _clampSidebarWidth(sidebarWidth ?? this.sidebarWidth),
+        muteSound: muteSound ?? this.muteSound,
       );
 
   static int _clampCount(int value) =>
@@ -80,6 +84,7 @@ class ViewPreferences {
         'textSize': textSize.name,
         'sidebarCollapsed': sidebarCollapsed,
         'sidebarWidth': sidebarWidth,
+        'muteSound': muteSound,
       });
 
   static ViewPreferences decode(String? raw) {
@@ -91,6 +96,7 @@ class ViewPreferences {
       final count = json['recentThreadsCount'];
       final collapsed = json['sidebarCollapsed'];
       final width = json['sidebarWidth'];
+      final mute = json['muteSound'];
       return ViewPreferences(
         showRecentThreads: show is bool ? show : true,
         recentThreadsCount:
@@ -100,6 +106,7 @@ class ViewPreferences {
         sidebarWidth: width is num
             ? _clampSidebarWidth(width.toDouble())
             : defaultSidebarWidth,
+        muteSound: mute is bool ? mute : false,
       );
     } catch (_) {
       return const ViewPreferences();
@@ -113,11 +120,12 @@ class ViewPreferences {
       other.recentThreadsCount == recentThreadsCount &&
       other.textSize == textSize &&
       other.sidebarCollapsed == sidebarCollapsed &&
-      other.sidebarWidth == sidebarWidth;
+      other.sidebarWidth == sidebarWidth &&
+      other.muteSound == muteSound;
 
   @override
   int get hashCode => Object.hash(showRecentThreads, recentThreadsCount,
-      textSize, sidebarCollapsed, sidebarWidth);
+      textSize, sidebarCollapsed, sidebarWidth, muteSound);
 }
 
 /// Device-local storage for [ViewPreferences], independent of account and Cloud.

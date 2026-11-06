@@ -23,8 +23,8 @@ class IntegrationSource extends WorkflowSource
       spaceValues.remove(spaceId);
       spaceDefaults.remove(spaceId);
     }
-    return super.selectWorkflowWorkspace(
-        spaceId: spaceId, workspaceId: workspaceId);
+    return super
+        .selectWorkflowWorkspace(spaceId: spaceId, workspaceId: workspaceId);
   }
 
   final spaceValues = <String, Map<String, AxUserWorkflowConfiguration>>{};

@@ -120,6 +120,25 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 24),
+        Text('NOTIFICATIONS',
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.7,
+                color: SyntilaColors.neutralText(isDark))),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          key: const ValueKey('setting-mute-sound'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Mute sound notifications'),
+          subtitle: Text(
+              'Silence sounds when a new message arrives or a request completes.',
+              style: TextStyle(fontSize: 12, color: muted)),
+          value: preferences.muteSound,
+          onChanged: (value) =>
+              onChanged(preferences.copyWith(muteSound: value)),
+        ),
       ],
     );
   }

@@ -470,6 +470,7 @@ extension _AxAppController on _AxAppStateMixin {
       return;
     }
     _recordNotification(event);
+    _handleSoundNotification(event);
     if (type is String && type.startsWith('typing')) return;
     if (type is String &&
         (type.startsWith('assignment.activity') ||
@@ -762,6 +763,36 @@ extension _AxAppController on _AxAppStateMixin {
             : notification,
       );
     });
+  }
+
+  void _handleSoundNotification(Map<String, dynamic> event) {
+    if (_viewPreferences.muteSound) return;
+    final type = event['type'];
+    if (type is! String) return;
+
+    if (type == 'work_request.completed' || type == 'thread.completed') {
+      final raw = event['payload'];
+      final payload = raw is Map ? raw : null;
+      final status = payload?['status'] as String? ?? 'completed';
+      if (status == 'completed') {
+        soundNotifications.playRequestCompleted();
+      }
+      return;
+    }
+
+    if (type == 'discussion.created' || type == 'thread.discussion.created') {
+      final raw = event['payload'];
+      final payload = raw is Map ? raw : null;
+      final authorUserId = payload?['authorUserId'] ??
+          payload?['author_user_id'] ??
+          event['authorUserId'] ??
+          event['author_user_id'];
+      final viewerId = store.auth.session?.viewer?.id ?? store.auth.viewer?.id;
+      if (authorUserId != null && authorUserId == viewerId) {
+        return;
+      }
+      soundNotifications.playMessageReceived();
+    }
   }
 
   Future<void> _acceptInvitation(AxSpaceInvitation invite) async {

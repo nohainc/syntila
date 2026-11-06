@@ -551,4 +551,227 @@ void main() {
     expect(lightSheet.codeblockDecoration, isNotNull);
     expect(darkSheet.codeblockDecoration, isNotNull);
   });
+
+  group('code and file link parsing', () {
+    test('parses file: schemes with lines and ranges', () {
+      final link1 = parseCodeOrFileLink('file:///path/to/main.dart#L10-L20');
+      expect(link1, isNotNull);
+      expect(link1!.filePath, '/path/to/main.dart');
+      expect(link1.line, 10);
+      expect(link1.endLine, 20);
+      expect(link1.formattedLocation, '/path/to/main.dart:10-20');
+      expect(link1.displayTarget, 'main.dart:10-20');
+
+      final link2 = parseCodeOrFileLink('file:///path/to/file.dart:45');
+      expect(link2, isNotNull);
+      expect(link2!.filePath, '/path/to/file.dart');
+      expect(link2.line, 45);
+      expect(link2.displayTarget, 'file.dart:45');
+
+      final link3 =
+          parseCodeOrFileLink('file:///Users/dev/My%20App/lib/app.dart');
+      expect(link3, isNotNull);
+      expect(link3!.filePath, '/Users/dev/My App/lib/app.dart');
+      expect(link3.line, isNull);
+      expect(link3.displayTarget, 'app.dart');
+
+      final winLink = parseCodeOrFileLink('file:///C:/Users/dev/main.dart#L5');
+      expect(winLink, isNotNull);
+      expect(winLink!.filePath, 'C:/Users/dev/main.dart');
+      expect(winLink.line, 5);
+      expect(winLink.displayTarget, 'main.dart:5');
+    });
+
+    test('parses editor schemes: vscode and cursor', () {
+      final vscode =
+          parseCodeOrFileLink('vscode://file/Users/dev/project/main.dart:12');
+      expect(vscode, isNotNull);
+      expect(vscode!.editorScheme, 'vscode');
+      expect(vscode.filePath, '/Users/dev/project/main.dart');
+      expect(vscode.line, 12);
+
+      final cursor =
+          parseCodeOrFileLink('cursor://file/Users/dev/project/main.dart:99');
+      expect(cursor, isNotNull);
+      expect(cursor!.editorScheme, 'cursor');
+      expect(cursor.filePath, '/Users/dev/project/main.dart');
+      expect(cursor.line, 99);
+    });
+
+    test('parses relative workspace paths and known project files', () {
+      final rel1 = parseCodeOrFileLink('apps/app/lib/main.dart:15');
+      expect(rel1, isNotNull);
+      expect(rel1!.filePath, 'apps/app/lib/main.dart');
+      expect(rel1.line, 15);
+      expect(rel1.displayTarget, 'main.dart:15');
+
+      final rel2 = parseCodeOrFileLink('README.md#setup');
+      expect(rel2, isNotNull);
+      expect(rel2!.filePath, 'README.md');
+      expect(rel2.line, isNull);
+      expect(rel2.displayTarget, 'README.md');
+
+      final rel3 = parseCodeOrFileLink('./pubspec.yaml');
+      expect(rel3, isNotNull);
+      expect(rel3!.filePath, './pubspec.yaml');
+
+      final dockerfile = parseCodeOrFileLink('Dockerfile');
+      expect(dockerfile, isNotNull);
+      expect(dockerfile!.filePath, 'Dockerfile');
+    });
+
+    test('rejects anchors, web URLs, unsafe schemes, and non-file paths', () {
+      expect(parseCodeOrFileLink('#heading'), isNull);
+      expect(parseCodeOrFileLink('https://example.com/file.dart'), isNull);
+      expect(parseCodeOrFileLink('http://localhost:8080/main.dart'), isNull);
+      expect(parseCodeOrFileLink('javascript:alert(1)'), isNull);
+      expect(parseCodeOrFileLink('data:text/html'), isNull);
+      expect(parseCodeOrFileLink('mailto:dev@example.com'), isNull);
+      expect(parseCodeOrFileLink('/spaces/space-123/thread-456'), isNull);
+      expect(parseCodeOrFileLink(''), isNull);
+      expect(parseCodeOrFileLink(null), isNull);
+    });
+  });
+
+  group('multi-scheme link handling in SyntilaMarkdownBody', () {
+    testWidgets('intra-document anchor clicks complete without error',
+        (tester) async {
+      var launches = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SyntilaMarkdownBody(
+            data: '[Anchor](#section)',
+            openLink: (_) async {
+              launches++;
+              return true;
+            },
+          ),
+        ),
+      ));
+      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      renderer.onLinkTap!('#section', 'Anchor');
+      await tester.pump();
+      expect(launches, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        'file link triggers editor launcher and copies formatted location to clipboard',
+        (tester) async {
+      Uri? openedUri;
+      String? copiedText;
+
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            final args = call.arguments as Map<dynamic, dynamic>;
+            copiedText = args['text'] as String?;
+            return null;
+          }
+          return null;
+        },
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SyntilaMarkdownBody(
+            data: '[Source](file:///Users/dev/Syntila/app.dart#L10-L20)',
+            openLink: (uri) async {
+              openedUri = uri;
+              return true;
+            },
+          ),
+        ),
+      ));
+
+      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      renderer.onLinkTap!(
+          'file:///Users/dev/Syntila/app.dart#L10-L20', 'Source');
+      await tester.pump();
+
+      expect(
+          openedUri, Uri.parse('vscode://file/Users/dev/Syntila/app.dart:10'));
+      expect(copiedText, '/Users/dev/Syntila/app.dart:10-20');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('relative code path copies to clipboard when editor fails',
+        (tester) async {
+      String? copiedText;
+
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            final args = call.arguments as Map<dynamic, dynamic>;
+            copiedText = args['text'] as String?;
+            return null;
+          }
+          return null;
+        },
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SyntilaMarkdownBody(
+            data: '[Main](apps/app/lib/main.dart:45)',
+            openLink: (_) async => false, // Launcher returns false
+          ),
+        ),
+      ));
+
+      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      renderer.onLinkTap!('apps/app/lib/main.dart:45', 'Main');
+      await tester.pump();
+
+      expect(copiedText, 'apps/app/lib/main.dart:45');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('onOpenFile callback intercepts code links if provided',
+        (tester) async {
+      ParsedCodeLink? intercepted;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SyntilaMarkdownBody(
+            data: '[File](lib/src/foo.dart:25)',
+            onOpenFile: (link) async {
+              intercepted = link;
+              return true;
+            },
+          ),
+        ),
+      ));
+
+      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      renderer.onLinkTap!('lib/src/foo.dart:25', 'File');
+      await tester.pump();
+
+      expect(intercepted, isNotNull);
+      expect(intercepted!.filePath, 'lib/src/foo.dart');
+      expect(intercepted!.line, 25);
+    });
+
+    testWidgets('onNavigateTo callback intercepts in-app routes',
+        (tester) async {
+      String? navigatedRoute;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SyntilaMarkdownBody(
+            data: '[Space](/spaces/space-123)',
+            onNavigateTo: (route) {
+              navigatedRoute = route;
+            },
+          ),
+        ),
+      ));
+
+      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      renderer.onLinkTap!('/spaces/space-123', 'Space');
+      await tester.pump();
+
+      expect(navigatedRoute, '/spaces/space-123');
+    });
+  });
 }
