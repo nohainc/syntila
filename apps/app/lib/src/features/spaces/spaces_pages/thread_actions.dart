@@ -691,7 +691,139 @@ extension _ThreadActions on _ThreadPageState {
     String? sessionStrategy;
     var clearAiHistory = false;
     var compactContext = false;
-    if (step.errorCode == 'context_limit_exceeded') {
+    if (step.errorCode == 'quota_exhausted') {
+      final selectedWorkerId = _workExecutionSelection['workerId'] as String?;
+      final selectedWorker = [
+        ..._composerWorkers,
+        ..._spaceWorkers,
+        ..._eligibleWorkers,
+      ].where((w) => w.id == selectedWorkerId).firstOrNull;
+      final workerName = selectedWorker?.displayName ??
+          (selectedWorkerId != null
+              ? 'Selected Worker'
+              : (step.workerDisplayName ?? 'Default Worker'));
+      final selectedModel =
+          (_workExecutionSelection['model'] as String?)?.trim();
+      final modelLabel = (selectedModel != null && selectedModel.isNotEmpty)
+          ? selectedModel
+          : (step.modelName ?? step.model);
+      final selectionDesc = modelLabel != null && modelLabel.isNotEmpty
+          ? '$workerName ($modelLabel)'
+          : workerName;
+
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Retry request'),
+          content: Text(
+            'The provider’s usage limit has been reached. You can retry this request with the currently selected model ($selectionDesc), wait for the limit to reset and resume, or start fresh.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            if (step.kind == 'implement') ...[
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, 'resume'),
+                child: const Text('Resume previous session'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, 'fresh'),
+                child: const Text('Start fresh'),
+              ),
+            ] else
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, 'existing'),
+                child: const Text('Retry with existing worker'),
+              ),
+            FilledButton(
+              key: const ValueKey('retry-with-selected-model'),
+              onPressed: () => Navigator.pop(dialogContext, 'selected_model'),
+              child: const Text('Retry with selected model · Recommended'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null || !mounted) return;
+      if (choice == 'selected_model') {
+        final request = _workTimeline
+            .where((item) => item.id == workRequestId)
+            .firstOrNull;
+        String prompt = request?.prompt ?? '';
+        List<Map<String, dynamic>> attachments =
+            request?.attachments.map((a) => a.toJson()).toList() ?? [];
+        String workflowId =
+            request?.workflowId ?? _effectiveWorkflow.split(':').first;
+        int workflowVersion = request?.workflowVersion ??
+            (int.tryParse(_effectiveWorkflow.split(':v').last) ?? 1);
+        AxReplyReference? replyTo = request?.replyTo;
+
+        if (prompt.isEmpty && attachments.isEmpty) {
+          try {
+            final detail =
+                await dataSource.loadWorkRequest(workRequestId: workRequestId);
+            prompt = detail.text ?? prompt;
+            if (attachments.isEmpty && detail.attachments.isNotEmpty) {
+              attachments =
+                  detail.attachments.map((a) => a.toJson()).toList();
+            }
+            if (detail.workflowId != null) {
+              workflowId = detail.workflowId!;
+            }
+            if (detail.workflowVersion != null) {
+              workflowVersion = detail.workflowVersion!;
+            }
+          } catch (_) {}
+        }
+
+        final workflowRef = '$workflowId:v$workflowVersion';
+        final targetWorkflow = _availableWorkflows
+                .where((item) => item.reference == workflowRef)
+                .firstOrNull ??
+            _availableWorkflows
+                .where((item) => item.id == workflowId)
+                .firstOrNull ??
+            _availableWorkflows
+                .where((item) => item.reference == _effectiveWorkflow)
+                .firstOrNull;
+        final selection = submissionExecutionSelection(
+            targetWorkflow, _workExecutionSelection);
+        final message = _QueuedWorkMessage(
+          text: prompt,
+          attachments: attachments,
+          executionSelection: selection.isNotEmpty
+              ? selection
+              : Map<String, dynamic>.from(_workExecutionSelection),
+          workflow: _availableWorkflows.any((w) => w.reference == workflowRef)
+              ? workflowRef
+              : _effectiveWorkflow,
+          replyTo: replyTo,
+        );
+
+        if (_submittingWork ||
+            _activeWorkRequests.isNotEmpty ||
+            _workQueue.isNotEmpty) {
+          if (_sharedQueueSource != null) {
+            await _enqueueSharedWork(message);
+          } else {
+            _updateState(() => _workQueue.add(message));
+          }
+        } else {
+          await _submitWorkMessage(message);
+        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(
+            content: Text('Retrying your request with the selected model.'),
+          ),
+        );
+        return;
+      }
+      if (choice == 'resume' || choice == 'fresh') {
+        sessionStrategy = choice;
+      }
+    } else if (step.errorCode == 'context_limit_exceeded') {
       // Only the Work Request detail says whether this Worker can compact
       // its own session; without it, clearing is the one way forward.
       var canCompact = false;
@@ -743,7 +875,6 @@ extension _ThreadActions on _ThreadPageState {
       final resumeRecommended = const {
         'provider_unavailable',
         'authentication_required',
-        'quota_exhausted',
         'worker_not_ready',
         'cli_not_found',
         'unsupported_cli_version',
