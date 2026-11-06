@@ -1189,6 +1189,126 @@ class _ThreadPageState extends State<ThreadPage>
     _updateComposerState(() {});
   }
 
+  void _trySelectExecutionParameters({
+    String? workerId,
+    String? workerTypeId,
+    String? workerDisplayName,
+    String? model,
+    String? reasoningEffort,
+  }) {
+    final List<String> unavailable = [];
+    final Map<String, dynamic> updates = {};
+
+    // 1. Worker resolution: try workerId, workerTypeId (prefer ready), or displayName
+    AxWorker? matchedWorker;
+    final availableWorkers = _composerWorkers;
+    if (workerId != null && workerId.isNotEmpty) {
+      matchedWorker =
+          availableWorkers.where((w) => w.id == workerId).firstOrNull;
+    }
+    if (matchedWorker == null &&
+        workerTypeId != null &&
+        workerTypeId.isNotEmpty) {
+      final sameType =
+          availableWorkers.where((w) => w.workerTypeId == workerTypeId).toList();
+      final ready = sameType.where((w) => w.isReady).toList();
+      matchedWorker = ready.length == 1
+          ? ready.single
+          : sameType.length == 1
+              ? sameType.single
+              : sameType.firstOrNull;
+    }
+    if (matchedWorker == null &&
+        workerDisplayName != null &&
+        workerDisplayName.isNotEmpty) {
+      matchedWorker = availableWorkers
+          .where((w) =>
+              w.displayName.trim().toLowerCase() ==
+              workerDisplayName.trim().toLowerCase())
+          .firstOrNull;
+    }
+
+    if (matchedWorker != null) {
+      updates['workerId'] = matchedWorker.id;
+      final revision = matchedWorker.executionOptions?.catalogRevision;
+      if (revision != null) {
+        updates['catalogRevision'] = revision;
+      }
+    } else if (workerId != null ||
+        workerTypeId != null ||
+        workerDisplayName != null) {
+      final label = workerDisplayName ?? workerTypeId ?? workerId!;
+      unavailable.add('Worker ($label)');
+    }
+
+    // 2. Model resolution
+    final activeWorker = matchedWorker ??
+        availableWorkers
+            .where((w) => w.id == _workExecutionSelection['workerId'])
+            .firstOrNull;
+    if (model != null && model.isNotEmpty) {
+      final catalogModels = activeWorker?.executionOptions?.models;
+      final allowedIds = activeWorker?.executionOptions?.allowedModelIds;
+      final allowsCustom =
+          activeWorker?.executionOptions?.allowsCustomModel ?? false;
+      final modelSupported = (catalogModels != null &&
+              catalogModels.any((m) =>
+                  m.id.toLowerCase() == model.toLowerCase() ||
+                  m.name.toLowerCase() == model.toLowerCase())) ||
+          (allowedIds != null && allowedIds.contains(model)) ||
+          allowsCustom ||
+          activeWorker == null;
+
+      if (modelSupported) {
+        updates['model'] = model;
+      } else {
+        unavailable.add('Model ($model)');
+      }
+    }
+
+    // 3. Reasoning effort resolution
+    if (reasoningEffort != null && reasoningEffort.isNotEmpty) {
+      final targetModelId = updates['model'] ?? _workExecutionSelection['model'];
+      final efforts =
+          activeWorker?.executionOptions?.effortsForModel(targetModelId);
+      final effortSupported = efforts == null ||
+          !efforts.supported ||
+          efforts.values.isEmpty ||
+          efforts.values.contains(reasoningEffort) ||
+          activeWorker == null;
+
+      if (effortSupported) {
+        updates['reasoningEffort'] = reasoningEffort;
+      } else {
+        unavailable.add('Effort ($reasoningEffort)');
+      }
+    }
+
+    if (updates.isNotEmpty) {
+      _updateState(() {
+        _markSelectionChangedByUser();
+        if (_workSelectionMissing) {
+          _workSelectionMissing = false;
+          _workSubmitError = null;
+        }
+        _workExecutionSelection = {
+          ..._workExecutionSelection,
+          ...updates,
+        };
+      });
+      _scheduleThreadViewStateSave();
+    }
+
+    if (unavailable.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showNotice(
+        SnackBar(
+          content: Text('Not available: ${unavailable.join(', ')}'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   /// Reopens the Thread's last pane. Runs before the restored Thread's first
   /// frame, where both lists still wait to be positioned.
   void _restorePane(String? pane) {
@@ -2510,6 +2630,8 @@ class _ThreadPageState extends State<ThreadPage>
                                           message.eventType == null
                                       ? () => _deleteDiscussion(message.id)
                                       : null,
+                                  onSelectExecutionParameters:
+                                      _trySelectExecutionParameters,
                                 ),
                         );
                         final isDark =
@@ -2560,9 +2682,10 @@ class _ThreadPageState extends State<ThreadPage>
                 fontSize: 12,
                 color: SyntilaColors.textSecondary(
                     Theme.of(context).brightness == Brightness.dark))),
-      _workComposer().requestCard(context, request,
-          responseAnchorKey:
-              _chatIncomingAnchor.keyFor('work-${request.id}-answer')),
+      _workComposer(onSelectExecutionParameters: _trySelectExecutionParameters)
+          .requestCard(context, request,
+              responseAnchorKey:
+                  _chatIncomingAnchor.keyFor('work-${request.id}-answer')),
     ]);
   }
 
@@ -2754,7 +2877,16 @@ class _ThreadPageState extends State<ThreadPage>
           ],
         );
 
-  _WorkComposer _workComposer() => _WorkComposer(
+  _WorkComposer _workComposer(
+          {void Function({
+            String? workerId,
+            String? workerTypeId,
+            String? workerDisplayName,
+            String? model,
+            String? reasoningEffort,
+          })? onSelectExecutionParameters}) =>
+      _WorkComposer(
+        onSelectExecutionParameters: onSelectExecutionParameters,
         leadingControls: _composerModeControls(),
         inputHeight: _composerInputHeight,
         requestController: _requestController,

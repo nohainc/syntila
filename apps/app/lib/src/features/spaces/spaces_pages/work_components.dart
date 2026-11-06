@@ -203,7 +203,17 @@ class _WorkComposer extends StatelessWidget {
     this.replyTarget,
     this.onReply,
     this.onClearReply,
+    this.onSelectExecutionParameters,
   });
+
+  /// Selects the worker, model, and effort when tapping AI identity in conversation.
+  final void Function({
+    String? workerId,
+    String? workerTypeId,
+    String? workerDisplayName,
+    String? model,
+    String? reasoningEffort,
+  })? onSelectExecutionParameters;
 
   /// The message being replied to, and the actions that set or clear it.
   final AxReplyReference? replyTarget;
@@ -468,6 +478,7 @@ class _WorkComposer extends StatelessWidget {
                   request.id.startsWith('local-')
               ? null
               : onReply,
+          onSelectExecutionParameters: onSelectExecutionParameters,
         ),
       );
 
@@ -1639,7 +1650,17 @@ class _WorkTimelineCard extends StatelessWidget {
     required this.onCancelRun,
     this.onSynthesizePartial,
     this.onReply,
+    this.onSelectExecutionParameters,
   });
+
+  /// Selects the worker, model, and effort when tapping AI identity in conversation.
+  final void Function({
+    String? workerId,
+    String? workerTypeId,
+    String? workerDisplayName,
+    String? model,
+    String? reasoningEffort,
+  })? onSelectExecutionParameters;
 
   /// Starts a reply to this request or its answer (Reply v1).
   final ValueChanged<AxReplyReference>? onReply;
@@ -2109,15 +2130,48 @@ class _WorkTimelineCard extends StatelessWidget {
                             runSpacing: 4,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              senderAvatar,
-                              Text(
-                                senderName,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: metaColor,
+                              if (isWorkerResponse && onSelectExecutionParameters != null)
+                                MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: GestureDetector(
+                                    onTap: () => onSelectExecutionParameters!(
+                                      workerId: senderTurn?.workerId ?? senderStep?.workerId,
+                                      workerTypeId: workerType,
+                                      workerDisplayName: workerDisplayName,
+                                      model: selectedModel,
+                                      reasoningEffort: selectedReasoningEffort,
+                                    ),
+                                    child: Tooltip(
+                                      message: 'Select $senderName',
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          senderAvatar,
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            senderName,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: metaColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else ...[
+                                senderAvatar,
+                                Text(
+                                  senderName,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: metaColor,
+                                  ),
                                 ),
-                              ),
+                              ],
                               if (isWorkerResponse &&
                                   workerOwnerName?.isNotEmpty == true) ...[
                                 Tooltip(
@@ -2919,7 +2973,17 @@ class _DiscussionMessageBubble extends StatefulWidget {
     this.onDelete,
     this.onReply,
     this.editing = false,
+    this.onSelectExecutionParameters,
   });
+
+  /// Selects the worker, model, and effort when tapping AI identity in conversation.
+  final void Function({
+    String? workerId,
+    String? workerTypeId,
+    String? workerDisplayName,
+    String? model,
+    String? reasoningEffort,
+  })? onSelectExecutionParameters;
 
   /// True while this message is loaded into the page's composer for editing.
   final bool editing;
@@ -3101,41 +3165,78 @@ class _DiscussionMessageBubbleState extends State<_DiscussionMessageBubble> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (!isMe && !widget.grouped) ...[
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircleAvatar(
-                                    radius: 12,
-                                    backgroundColor:
-                                        SyntilaColors.primarySoftColor(isDark),
-                                    child: widget.item.isAiAnswer
-                                        ? Icon(Icons.auto_awesome_rounded,
-                                            size: 13,
-                                            color:
-                                                SyntilaColors.primaryForeground(
-                                                    isDark))
-                                        : Text(
-                                            initials,
+                              if (widget.item.isAiAnswer &&
+                                  widget.onSelectExecutionParameters != null)
+                                MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: GestureDetector(
+                                    onTap: () => widget.onSelectExecutionParameters!(
+                                      workerDisplayName: widget.item.author,
+                                    ),
+                                    child: Tooltip(
+                                      message: 'Select ${widget.item.author}',
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 12,
+                                            backgroundColor:
+                                                SyntilaColors.primarySoftColor(isDark),
+                                            child: Icon(Icons.auto_awesome_rounded,
+                                                size: 13,
+                                                color: SyntilaColors.primaryForeground(
+                                                    isDark)),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            widget.item.author,
                                             style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                              color: SyntilaColors
-                                                  .primaryForeground(isDark),
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: SyntilaColors.textSecondary(isDark),
                                             ),
                                           ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    widget.item.author,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color:
-                                          SyntilaColors.textSecondary(isDark),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ],
-                              ),
+                                )
+                              else
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor:
+                                          SyntilaColors.primarySoftColor(isDark),
+                                      child: widget.item.isAiAnswer
+                                          ? Icon(Icons.auto_awesome_rounded,
+                                              size: 13,
+                                              color:
+                                                  SyntilaColors.primaryForeground(
+                                                      isDark))
+                                          : Text(
+                                              initials,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: SyntilaColors
+                                                    .primaryForeground(isDark),
+                                              ),
+                                            ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      widget.item.author,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color:
+                                            SyntilaColors.textSecondary(isDark),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               const SizedBox(height: 6),
                             ],
                             if (widget.item.replyTo != null)

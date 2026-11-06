@@ -662,6 +662,10 @@ void main() {
       expect(find.textContaining('Effort changed'), findsNothing);
       expect(find.text('Wrong current worker'), findsNothing);
       expect(find.textContaining('wrong-current-model'), findsNothing);
+      expect(_inConversation(find.byTooltip('Select model-x')), findsOneWidget);
+      await tester.tap(_inConversation(find.byTooltip('Select model-x')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
     });
   }
 
@@ -2447,6 +2451,12 @@ void main() {
     // Each entry offers Reply and Copy.
     expect(find.byTooltip('Reply'), findsNWidgets(2));
     expect(find.byTooltip('Copy'), findsNWidgets(2));
+
+    // Clicking the AI sender name in the conversation selects the worker
+    expect(find.byTooltip('Select ChatGPT'), findsOneWidget);
+    await tester.tap(find.byTooltip('Select ChatGPT'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
   testWidgets('Chat create edit and copy preserve raw Markdown',
       (tester) async {
