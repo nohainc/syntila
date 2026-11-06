@@ -4,7 +4,11 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:syntila_workspace/cli_worker_engine_supervisor.dart';
 import 'package:syntila_workspace/mcp_engine_probe.dart';
+import 'package:syntila_workspace/mcp_tool_call_executor.dart';
+import 'package:syntila_workspace/mcp_tool_call_fence.dart';
+import 'package:syntila_workspace/mcp_tool_call_handler.dart';
 import 'package:syntila_workspace/mcp_registry.dart';
 import 'package:syntila_workspace/mcp_service.dart';
 import 'package:test/test.dart';
@@ -15,6 +19,7 @@ class LiveRemote {
   String? requiredToken;
   String description = 'searches';
   final authHeaders = <String?>[];
+  int toolCalls = 0;
 
   String get url => 'http://127.0.0.1:${server.port}/mcp';
 
@@ -58,6 +63,14 @@ class LiveRemote {
                 'description': description,
                 'inputSchema': {'type': 'object'},
               },
+            ],
+          };
+        case 'tools/call':
+          toolCalls++;
+          final args = (body['params'] as Map)['arguments'] as Map;
+          result = {
+            'content': [
+              {'type': 'text', 'text': 'found: ${args['query']}'},
             ],
           };
         default:
@@ -127,6 +140,68 @@ void main() {
     final stored = File('${root.path}/mcp.json').readAsStringSync();
     expect(stored, contains('LIVE_TOKEN'));
     expect(stored, isNot(contains('live-token-4242424242')));
+  });
+
+  test('remote workflow call uses consent and refuses replay and drift',
+      () async {
+    remote.requiredToken = 'live-token-4242424242';
+    final service = serviceWith({'LIVE_TOKEN': 'live-token-4242424242'});
+    service.addRemote(
+      serverId: 'live',
+      displayName: 'Live',
+      endpoint: remote.url,
+      tokenEnv: 'LIVE_TOKEN',
+      insecureLoopback: true,
+    );
+    final shown = await service.consent('live');
+    await service.consent('live', acceptHash: shown['documentHash']! as String);
+    service.enable('live');
+    final registry = McpRegistry(File('${root.path}/mcp.json'));
+    final pin = registry.get('live')!.toolPins['search']!;
+    final engineBinary = '${root.path}/engine';
+    final compilation = await Process.run(
+      Platform.resolvedExecutable,
+      ['compile', 'exe', 'bin/syntila_cli_worker.dart', '-o', engineBinary],
+      workingDirectory: '../../engines/cli_worker',
+    );
+    expect(compilation.exitCode, 0, reason: '${compilation.stderr}');
+    final supervisor = CliWorkerEngineSupervisor(
+      engineExecutable: engineBinary,
+      processRegistryDirectory: Directory('${root.path}/processes'),
+    );
+    final handler = McpToolCallHandler(
+      executor: McpToolCallExecutor(service, supervisor,
+          McpToolCallFence(Directory('${root.path}/fences'))),
+      stateDirectory: Directory('${root.path}/state'),
+      workingDirectory: root,
+    );
+    Map<String, Object?> request(String id) => {
+          'schemaVersion': 1,
+          'taskId': id,
+          'dispatchKey': 'mcp-tool-v1:$id',
+          'serverId': 'live',
+          'tool': 'search',
+          'toolDefinitionHash': pin,
+          'arguments': {'query': 'hello'},
+          'timeoutMs': 30000,
+        };
+    final completed = (await handler.handle(request('first')))!;
+    expect(completed['state'], 'completed', reason: '$completed');
+    expect(jsonEncode(completed), contains('found: hello'));
+    expect(jsonEncode(completed), isNot(contains('live-token-4242424242')));
+    expect(remote.toolCalls, 1);
+    final replay = (await handler.handle(request('first')))!;
+    expect(replay['code'], 'dispatch_already_claimed');
+    expect(remote.toolCalls, 1);
+    remote.description = 'changed definition';
+    final drift = (await handler.handle(request('second')))!;
+    expect(drift['state'], 'rejected', reason: '$drift');
+    expect(drift['code'], 'definition_changed');
+    expect(remote.toolCalls, 1);
+    expect(remote.authHeaders, contains('Bearer live-token-4242424242'));
+    expect(File('${root.path}/mcp.json').readAsStringSync(),
+        isNot(contains('live-token-4242424242')));
+    expect(supervisor.activeSlotCount, 0);
   });
 
   test('a wrong token surfaces as a stable authentication error', () async {
