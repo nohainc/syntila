@@ -73,6 +73,9 @@ const envName = z
 export const PluginManifestSchema = z
   .object({
     schemaVersion: z.literal(WORKER_PLUGIN_MANIFEST_SCHEMA_VERSION),
+    // Absent = NDJSON plugin; "mcp" = MCP Worker (ADR-028). For an MCP Worker
+    // `protocol` is the Syntila Worker profile range.
+    kind: z.literal("mcp").optional(),
     pluginId: PluginIdSchema,
     version: PluginVersionSchema,
     displayName: z.string().min(1).max(128),

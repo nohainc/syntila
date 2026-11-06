@@ -17,23 +17,27 @@ late String dartDigest;
 late Directory root;
 final plugins = PluginHost();
 
-McpServerSpec spec(String mode, {ToolPins? pins}) => McpServerSpec(
-  serverId: 'echo-$mode',
-  workspaceId: 'ws1',
-  requireWorkerProfile: true,
-  pins: pins,
-  launch: PluginLaunch(
-    executable: Platform.resolvedExecutable,
-    arguments: [File(workerPath).absolute.path, mode],
-    artifactSha256: dartDigest,
-    pluginId: 'echo-$mode',
-    version: '1.0.0',
-    dataDirectory: root.path,
-    workingDirectory: root.path,
-    environment: PluginHost.buildEnvironment(),
-    hostVersion: '1.4.0',
-  ),
-);
+McpServerSpec spec(String mode, {ToolPins? pins, bool secret = false}) =>
+    McpServerSpec(
+      serverId: 'echo-$mode',
+      workspaceId: 'ws1',
+      requireWorkerProfile: true,
+      pins: pins,
+      launch: PluginLaunch(
+        executable: Platform.resolvedExecutable,
+        arguments: [File(workerPath).absolute.path, mode],
+        artifactSha256: dartDigest,
+        pluginId: 'echo-$mode',
+        version: '1.0.0',
+        dataDirectory: root.path,
+        workingDirectory: root.path,
+        environment: {
+          ...PluginHost.buildEnvironment(),
+          if (secret) 'SECRET_TOKEN': 'sup3r-s3cret-value',
+        },
+        hostVersion: '1.4.0',
+      ),
+    );
 
 PluginRunRequest request(
   String prompt, {
@@ -53,11 +57,11 @@ void main() {
   late McpHost host;
   late McpWorkerRunner runner;
 
-  Future<McpServerSpec> consented(String mode) async {
-    final lease = await host.acquire(spec(mode));
+  Future<McpServerSpec> consented(String mode, {bool secret = false}) async {
+    final lease = await host.acquire(spec(mode, secret: secret));
     final pins = ToolPins.fromTools(lease.tools);
     lease.release();
-    return spec(mode, pins: pins);
+    return spec(mode, pins: pins, secret: secret);
   }
 
   setUpAll(() async {
@@ -188,11 +192,37 @@ void main() {
   test('probe maps the worker state and rejects unknown ones', () async {
     final ready = await runner.probe(await consented('normal'), 'passive');
     expect((ready as PluginProbeSuccess).state, 'ready');
-    expect(ready.checks.single['name'], 'echo');
+    expect(ready.checks.single, {
+      'code': 'echo',
+      'ok': true,
+      'message': 'echo worker ready',
+    });
     final bogus = await runner.probe(await consented('badprobe'), 'passive');
     expect(
       (bogus as PluginRunFailure).code,
       PluginHostFailure.protocolViolation,
     );
   });
+
+  test('a malformed probe check is a protocol violation', () async {
+    final outcome = await runner.probe(await consented('badcheck'), 'passive');
+    expect(
+      (outcome as PluginRunFailure).code,
+      PluginHostFailure.protocolViolation,
+    );
+  });
+
+  test(
+    'secrets from the launch environment are redacted from errors',
+    () async {
+      final outcome =
+          await runner.run(
+                await consented('normal', secret: true),
+                request('LEAK'),
+              )
+              as PluginRunFailure;
+      expect(outcome.message, isNot(contains('sup3r-s3cret-value')));
+      expect(outcome.message, contains('<redacted>'));
+    },
+  );
 }

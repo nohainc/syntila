@@ -6,10 +6,18 @@ import 'plugin_store.dart';
 
 /// The Local Worker Protocol 4.2 executor for an installed plugin. Everything
 /// comes from the Service's own verified store; Cloud never supplies a path.
+///
+/// An MCP Worker (manifest `kind: "mcp"`) needs [toolPins], the consented tool
+/// definition hashes; without them there is no executor to build.
 WorkerExecutor workerExecutorFor(
   InstalledPlugin plugin,
-  Directory dataDirectory,
-) {
+  Directory dataDirectory, {
+  Map<String, String>? toolPins,
+}) {
+  final mcp = plugin.manifest.isMcp;
+  if (mcp && (toolPins == null || toolPins.isEmpty)) {
+    throw StateError('An MCP Worker needs consented tool pins');
+  }
   final access =
       Map<String, Object?>.from(plugin.manifest.raw['access'] as Map);
   return WorkerExecutor(
@@ -21,6 +29,8 @@ WorkerExecutor workerExecutorFor(
     dataDirectory: dataDirectory.path,
     arguments: plugin.artifact.args,
     environmentNames: List<String>.from(access['env'] as List),
+    protocol: mcp ? 'mcp' : 'ndjson',
+    toolPins: mcp ? toolPins! : const {},
   );
 }
 

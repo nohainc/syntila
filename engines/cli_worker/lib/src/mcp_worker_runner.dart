@@ -5,6 +5,7 @@ import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 
 import 'mcp_host.dart';
 import 'plugin_host.dart';
+import 'plugin_redactor.dart';
 
 /// Executes one assignment on an MCP Worker (`MCP_WORKER_PROFILE_V1.md`):
 /// `syntila.execute` for work and `syntila.probe` for readiness, through the
@@ -43,6 +44,7 @@ class McpWorkerRunner {
       return PluginRunFailure(code: error.code, message: error.message);
     }
 
+    final redactor = PluginRedactor(secrets: spec.launch.environment.values);
     var cancelled = false;
     var finished = false;
     try {
@@ -80,7 +82,10 @@ class McpWorkerRunner {
                   total != null && total > 0
                       ? (progress / total * 100).clamp(0, 100).round()
                       : null,
-                  message ?? '',
+                  _bounded(
+                    redactor.redact(message ?? ''),
+                    PluginProtocolLimits.maxProgressMessageLength,
+                  ),
                 ),
         );
       } on McpException catch (error) {
@@ -116,7 +121,7 @@ class McpWorkerRunner {
         await lease.discard();
         return _cancelled();
       }
-      return _outcome(result);
+      return _outcome(result, redactor);
     } finally {
       finished = true;
       lease.release();
@@ -160,13 +165,36 @@ class McpWorkerRunner {
           message: 'syntila.probe returned an unknown state.',
         );
       }
+      // Same shape and bounds as the NDJSON probe: {code, ok, message}.
+      final redactor = PluginRedactor(secrets: spec.launch.environment.values);
+      final rawChecks = data['checks'] ?? const <Object?>[];
+      if (rawChecks is! List ||
+          rawChecks.length > PluginProtocolLimits.maxChecks) {
+        return _badChecks();
+      }
+      final checks = <Map<String, Object?>>[];
+      for (final c in rawChecks) {
+        if (c is! Map ||
+            c['code'] is! String ||
+            (c['code'] as String).isEmpty ||
+            (c['code'] as String).length > 64 ||
+            c['ok'] is! bool ||
+            c['message'] is! String ||
+            (c['message'] as String).isEmpty ||
+            (c['message'] as String).length >
+                PluginProtocolLimits.maxCheckMessageLength) {
+          return _badChecks();
+        }
+        checks.add({
+          'code': c['code'],
+          'ok': c['ok'],
+          'message': redactor.redact(c['message'] as String),
+        });
+      }
       return PluginProbeSuccess(
         state: state,
         issueCode: data['issueCode'] as String?,
-        checks: [
-          for (final c in (data['checks'] as List? ?? const []).take(32))
-            if (c is Map) Map<String, Object?>.from(c),
-        ],
+        checks: checks,
         capabilities: data['capabilities'] is Map
             ? Map<String, Object?>.from(data['capabilities'] as Map)
             : const {},
@@ -213,6 +241,14 @@ class McpWorkerRunner {
     }
   }
 
+  PluginRunFailure _badChecks() => const PluginRunFailure(
+    code: PluginHostFailure.protocolViolation,
+    message: 'syntila.probe returned a malformed check.',
+  );
+
+  static String _bounded(String text, int max) =>
+      text.length > max ? text.substring(0, max) : text;
+
   PluginRunOutcome _cancelled() => const PluginRunFailure(
     code: 'cancelled',
     message: 'The assignment was cancelled.',
@@ -241,7 +277,10 @@ class McpWorkerRunner {
     return const {};
   }
 
-  PluginRunOutcome _outcome(Map<String, Object?> result) {
+  PluginRunOutcome _outcome(
+    Map<String, Object?> result,
+    PluginRedactor redactor,
+  ) {
     final data = _structured(result);
     if (result['isError'] == true) {
       final issue = data['issue'];
@@ -251,13 +290,11 @@ class McpWorkerRunner {
           ? rawCode
           : 'internal';
       final message = issueMap['message'] is String
-          ? issueMap['message'] as String
+          ? redactor.redact(issueMap['message'] as String)
           : 'The MCP Worker reported an error.';
       return PluginRunFailure(
         code: code,
-        message: message.length > PluginProtocolLimits.maxErrorMessageLength
-            ? message.substring(0, PluginProtocolLimits.maxErrorMessageLength)
-            : message,
+        message: _bounded(message, PluginProtocolLimits.maxErrorMessageLength),
         retryable: code == 'rate_limited' || code == 'timeout',
         fromPlugin: true,
       );

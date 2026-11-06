@@ -90,10 +90,18 @@ class PluginWorkerRuntime {
       origin: version?.origin,
       signer: version?.signer,
     );
+    if (installed.manifest.isMcp &&
+        (version?.toolPins == null || version!.toolPins!.isEmpty)) {
+      throw const PluginServiceException(
+        'plugin_conformance_required',
+        'Run "plugins test" for this MCP Worker so its tools are pinned.',
+      );
+    }
     return PluginExecution(
       executor: workerExecutorFor(
         installed,
         store.dataDirectory(installed.pluginId),
+        toolPins: version?.toolPins,
       ),
       plugin: installed,
       readOnlyEnforced: false,

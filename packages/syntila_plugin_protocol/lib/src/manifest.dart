@@ -59,6 +59,11 @@ class PluginManifest {
   final String displayName;
   final Map<String, PluginArtifact> artifacts;
   final Map<String, Object?> raw;
+
+  /// True for an MCP Worker (ADR-028): the server speaks MCP and the Syntila
+  /// Worker profile instead of the NDJSON plugin protocol. For such a manifest
+  /// `protocol` is the Syntila Worker profile range (`1.x` = `syntila.worker/1`).
+  bool get isMcp => raw['kind'] == 'mcp';
 }
 
 class PluginManifestValidation {
@@ -101,6 +106,7 @@ PluginManifestValidation validatePluginManifest(Object? input) {
 
   strictKeys('', m, {
     'schemaVersion',
+    'kind',
     'pluginId',
     'version',
     'displayName',
@@ -117,6 +123,9 @@ PluginManifestValidation validatePluginManifest(Object? input) {
   });
 
   if (m['schemaVersion'] != 1) issue('schemaVersion', 'must be 1');
+  if (m.containsKey('kind') && m['kind'] != 'mcp') {
+    issue('kind', 'must be "mcp" when present');
+  }
 
   final pluginId = str(m, '', 'pluginId', max: 48);
   if (pluginId != null && !_pluginIdPattern.hasMatch(pluginId)) {

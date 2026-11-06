@@ -42,8 +42,9 @@ class EngineMcpProbe implements McpProbePort {
   @override
   Future<List<Map<String, Object?>>> listTools(
     McpServerRecord server,
-    McpServerLaunch launch,
-  ) async {
+    McpServerLaunch launch, {
+    bool requireWorkerProfile = false,
+  }) async {
     final engine = locateEngine();
     if (engine == null) {
       throw const McpPolicyException(
@@ -68,6 +69,7 @@ class EngineMcpProbe implements McpProbePort {
         'server': launch.toJson(),
         'commandSha256': server.commandSha256,
         'workingDirectory': workingDirectory.path,
+        if (requireWorkerProfile) 'requireWorkerProfile': true,
       }),
     );
     await process.stdin.flush();

@@ -10,18 +10,20 @@
 //   BADART    -> an absolute artifact path
 //   ART       -> a valid relative artifact
 //   CRASH     -> exits abruptly
+//   LEAK      -> isError whose message contains $SECRET_TOKEN (redaction)
 //   anything  -> progress notification, then "echo: <prompt>"
-// Mode `noexecute` omits syntila.execute; `badprobe` returns an unknown state.
+// Mode `noexecute` omits syntila.execute; `badprobe` returns an unknown state;
+// `badcheck` returns a probe check in the wrong shape.
 import 'dart:convert';
 import 'dart:io';
 
 void send(Map<String, Object?> m) => stdout.writeln(jsonEncode(m));
 
 Map<String, Object?> tool(String name) => {
-      'name': name,
-      'description': 'Syntila Worker tool $name',
-      'inputSchema': {'type': 'object'},
-    };
+  'name': name,
+  'description': 'Syntila Worker tool $name',
+  'inputSchema': {'type': 'object'},
+};
 
 Future<void> main(List<String> args) async {
   final mode = args.isEmpty ? 'normal' : args[0];
@@ -69,7 +71,14 @@ Future<void> main(List<String> args) async {
               'structuredContent': {
                 'state': mode == 'badprobe' ? 'bogus' : 'ready',
                 'checks': [
-                  {'name': 'echo', 'passed': true},
+                  if (mode == 'badcheck')
+                    {'name': 'echo', 'passed': true}
+                  else
+                    {
+                      'code': 'echo',
+                      'ok': true,
+                      'message': 'echo worker ready',
+                    },
                 ],
               },
             },
@@ -91,6 +100,24 @@ Future<void> main(List<String> args) async {
               'message': 'working',
             },
           });
+        }
+        if (prompt.contains('LEAK')) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'result': {
+              'isError': true,
+              'content': [],
+              'structuredContent': {
+                'issue': {
+                  'code': 'internal',
+                  'message':
+                      'failed with ${Platform.environment['SECRET_TOKEN']}',
+                },
+              },
+            },
+          });
+          break;
         }
         if (prompt.contains('FAIL') || prompt.contains('BADCODE')) {
           send({

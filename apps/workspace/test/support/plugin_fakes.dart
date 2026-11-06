@@ -102,6 +102,7 @@ class TestPluginService {
     Directory temp, {
     DateTime? start,
     PluginWorkerHost? workerHost,
+    PluginMcpInspectPort? mcpInspect,
   }) : now = start ?? testStart {
     final state = Directory('${temp.path}/state/Plugins');
     service = WorkspacePluginService(
@@ -116,6 +117,7 @@ class TestPluginService {
       conformance: conformance,
       clock: () => now,
       workerHost: workerHost ?? const NoopPluginWorkerHost(),
+      mcpInspect: mcpInspect,
     );
   }
 

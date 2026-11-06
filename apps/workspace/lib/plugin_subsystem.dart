@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
 
 import 'local_worker_registry.dart';
+import 'mcp_engine_probe.dart';
+import 'plugin_mcp_inspect.dart';
 import 'platform_runtime.dart';
 import 'plugin_cloud.dart';
 import 'plugin_engine_conformance.dart';
@@ -108,6 +110,19 @@ class PluginSubsystem {
         () => engineSupervisor(),
         store,
         engineState,
+      ),
+      mcpInspect: EnginePluginMcpInspect(
+        EngineMcpProbe(
+          workingDirectory: Directory('${plugins.path}/mcp-probe'),
+          locateEngine: () {
+            final supervisor = engineSupervisor();
+            if (supervisor == null) return null;
+            return (
+              executable: supervisor.engineExecutable,
+              argumentsPrefix: supervisor.engineArgumentsPrefix,
+            );
+          },
+        ),
       ),
       workerHost: workers == null
           ? const _NoWorkers()

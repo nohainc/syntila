@@ -47,8 +47,12 @@ Output (`structuredContent`; text content mirrors `text`):
 
 ### `syntila.probe` (required)
 
-Input `{ "mode": "quick | full" }`; output readiness identical to plugin
-protocol §4 (`ready`, `authentication_required`, `unavailable`, with message).
+Input `{ "mode": "passive | live" }`; `structuredContent` is
+`{ state, issueCode?, checks?, capabilities? }` exactly as in plugin protocol §4:
+`state` is `ready`, `setup_required`, `sign_in_required`, `unavailable` or
+`failed`, and each of at most 32 checks is `{ code, ok, message }` with a
+message of 1-1,024 characters. A malformed check is a protocol violation. The
+Engine redacts check, progress and error messages like the NDJSON host.
 
 ### `syntila.models` (optional)
 

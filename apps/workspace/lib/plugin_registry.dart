@@ -56,6 +56,13 @@ class PluginVersionRecord {
   final PluginOrigin origin;
   final PluginSigner? signer;
   PluginConformanceRecord? conformance;
+
+  /// MCP Workers only: tool name -> definition hash recorded by `plugins test`
+  /// and shown at consent. The Engine refuses any tool that differs.
+  Map<String, String>? toolPins;
+
+  /// MCP Workers only: what the person saw at consent (name, description, hash).
+  List<Map<String, Object?>>? toolDefinitions;
   DateTime? registeredAt;
 
   Map<String, Object?> toJson() => {
@@ -65,6 +72,8 @@ class PluginVersionRecord {
         'origin': origin.toJson(),
         if (signer != null) 'signer': signer!.toJson(),
         if (conformance != null) 'conformance': conformance!.toJson(),
+        if (toolPins != null) 'toolPins': toolPins,
+        if (toolDefinitions != null) 'toolDefinitions': toolDefinitions,
         if (registeredAt != null)
           'registeredAt': registeredAt!.toUtc().toIso8601String(),
       };
@@ -90,7 +99,16 @@ class PluginVersionRecord {
         registeredAt: json['registeredAt'] == null
             ? null
             : DateTime.parse(json['registeredAt'] as String),
-      );
+      )
+        ..toolPins = json['toolPins'] == null
+            ? null
+            : Map<String, String>.from(json['toolPins'] as Map)
+        ..toolDefinitions = json['toolDefinitions'] == null
+            ? null
+            : [
+                for (final d in json['toolDefinitions'] as List)
+                  Map<String, Object?>.from(d as Map),
+              ];
 }
 
 /// The version this Workspace runs and the user's intent for it. Intent is

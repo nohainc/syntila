@@ -13,7 +13,9 @@ import 'plugin_host.dart';
 /// [McpHost] so the Service never starts an MCP server itself.
 ///
 /// stdin: one JSON line
-/// `{"server": <McpServerLaunch>, "commandSha256": "<hex>", "workingDirectory": "<abs>"}`.
+/// `{"server": <McpServerLaunch>, "commandSha256": "<hex>", "workingDirectory": "<abs>"}`
+/// plus an optional `"requireWorkerProfile": true` that makes a server without
+/// the Syntila Worker profile marker fail.
 /// stdout: exactly one JSON line, `{"ok":true,"tools":[...]}` or
 /// `{"ok":false,"code":"...","message":"..."}`. Nothing else is written to
 /// stdout. The probe never calls a tool.
@@ -40,6 +42,7 @@ Future<Map<String, Object?>> runMcpProbe(
     final spec = McpServerSpec(
       serverId: server.name,
       workspaceId: 'probe',
+      requireWorkerProfile: request['requireWorkerProfile'] == true,
       launch: PluginLaunch(
         executable: server.command,
         arguments: server.arguments,

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart'
+    show ToolPins, toolDefinitionHash;
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 
 import 'worker_trust_policy.dart' show canonicalJson;
@@ -59,6 +61,14 @@ abstract interface class PluginConformancePort {
   });
 }
 
+/// Lists an MCP Worker's tools by running it through the Engine (ADR-028). The
+/// Service never starts the server itself. Throws [PluginServiceException].
+abstract interface class PluginMcpInspectPort {
+  /// Starts the server, requires the Syntila Worker profile marker, and returns
+  /// its current `tools/list`.
+  Future<List<Map<String, Object?>>> listWorkerTools(InstalledPlugin plugin);
+}
+
 /// Makes an enabled plugin an ordinary local Worker so it flows through the
 /// existing registry, readiness, inventory and scheduling paths.
 abstract interface class PluginWorkerHost {
@@ -104,6 +114,7 @@ class WorkspacePluginService {
     required this.conformance,
     this.activeAssignments = _none,
     this.workerHost = const _NoPluginWorkerHost(),
+    this.mcpInspect,
     DateTime Function()? clock,
     PluginSignerTrust? signerTrust,
   })  : _clock = clock ?? DateTime.now,
@@ -120,6 +131,9 @@ class WorkspacePluginService {
   final PluginConformancePort conformance;
 
   final PluginWorkerHost workerHost;
+
+  /// Needed only for MCP Workers; null makes `plugins test` refuse them.
+  final PluginMcpInspectPort? mcpInspect;
 
   /// Running or queued assignments for a plugin Worker (by `pluginRef`).
   final Future<int> Function(String pluginRef) activeAssignments;
@@ -304,6 +318,9 @@ class WorkspacePluginService {
     final record = await _record(pluginId);
     final selected = _version(record, version);
     final installed = await _load(selected, pluginId);
+    if (installed.manifest.isMcp) {
+      return _testMcp(pluginId, selected, installed);
+    }
     final capabilities = Map<String, Object?>.from(
       installed.manifest.raw['capabilities'] as Map,
     );
@@ -341,6 +358,76 @@ class WorkspacePluginService {
       ...report,
       'disclaimer':
           'Conformance shows protocol behavior only; it is not a safety assessment.',
+    };
+  }
+
+  /// MCP Workers have no NDJSON conformance suite. This checks only that the
+  /// server, run by the Engine, advertises the Syntila Worker profile and
+  /// provides the required tools, and pins their definitions for consent.
+  Future<Map<String, Object?>> _testMcp(
+    String pluginId,
+    PluginVersionRecord selected,
+    InstalledPlugin installed,
+  ) async {
+    final inspect = mcpInspect;
+    if (inspect == null) {
+      throw const PluginServiceException(
+        'plugin_mcp_unavailable',
+        'MCP Workers are not available on this Workspace.',
+      );
+    }
+    final tools = await inspect.listWorkerTools(installed);
+    final names = {for (final t in tools) '${t['name']}'};
+    final cases = <Map<String, Object?>>[
+      {
+        'id': 'mcp.profile_advertised',
+        'status': 'passed',
+        'detail': 'The server advertises the Syntila Worker profile.',
+      },
+      for (final required in const ['syntila.execute', 'syntila.probe'])
+        {
+          'id': 'mcp.tool.$required',
+          'status': names.contains(required) ? 'passed' : 'failed',
+          if (!names.contains(required)) 'detail': 'The tool is missing.',
+        },
+    ];
+    final passed = cases.every((c) => c['status'] == 'passed');
+    final definitions = [
+      for (final t in tools)
+        {
+          'name': '${t['name']}',
+          'description': '${t['description'] ?? ''}',
+          'hash': toolDefinitionHash(t),
+        },
+    ]..sort((a, b) => '${a['name']}'.compareTo('${b['name']}'));
+    await registry.mutate((records) {
+      final stored = records[pluginId]?.versions[selected.version];
+      if (stored == null || stored.manifestDigest != selected.manifestDigest) {
+        return;
+      }
+      stored.toolPins = ToolPins.fromTools(tools).hashes;
+      stored.toolDefinitions = definitions;
+      stored.conformance = PluginConformanceRecord(
+        suiteVersion: 'mcp-worker-profile-1',
+        protocol: 'syntila.worker/1',
+        passed: passed,
+        at: _clock().toUtc(),
+        failedCases: [
+          for (final c in cases)
+            if (c['status'] == 'failed') c['id'] as String,
+        ],
+      );
+    });
+    return {
+      'schemaVersion': 1,
+      'suiteVersion': 'mcp-worker-profile-1',
+      'protocol': 'syntila.worker/1',
+      'passed': passed,
+      'cases': cases,
+      'disclaimer':
+          'This checks that the server advertises the Syntila Worker profile '
+              'and provides the required tools. It is not a behavioural '
+              'conformance suite and not a safety assessment.',
     };
   }
 
@@ -676,6 +763,14 @@ class WorkspacePluginService {
         'note': 'Declared by the plugin. Not enforced: the plugin runs as you.',
       },
       'capabilities': manifest['capabilities'],
+      if (installed.manifest.isMcp)
+        'mcp': {
+          'profile': 'syntila.worker/1',
+          // Descriptions come from the server and are untrusted; the hashes
+          // are what the Engine enforces at run time.
+          'tools': record.versions[installed.version]?.toolDefinitions ??
+              const <Object?>[],
+        },
       'requires': manifest['requires'] ?? const <Object?>[],
       'isolation': {
         'tier': 'none',
