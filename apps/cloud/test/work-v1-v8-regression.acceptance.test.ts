@@ -91,6 +91,8 @@ function createAcceptanceRun(
     persistedTasks?: Array<Record<string, unknown>>;
     parallelSlots?: number;
     manualCompletion?: boolean;
+    /** Request carries `input.toolCall`; `toolReply` is the gateway's answer. */
+    toolReply?: Record<string, unknown>;
   } = {},
 ) {
   const completion = options.completion ?? "during_dispatch";
@@ -105,6 +107,7 @@ function createAcceptanceRun(
   const sleeps: string[] = [];
   selectionCalls.length = 0;
   const gatewayCalls: Record<string, unknown>[] = [];
+  const toolCalls: Record<string, unknown>[] = [];
   const taskWrites: { sql: string; values: unknown[] }[] = [];
   const assignments = new Map<string, FixtureAssignment>();
   let cancellationChecks = 0;
@@ -123,13 +126,27 @@ function createAcceptanceRun(
           }
           if (sql.includes("SELECT wr.input_json")) {
             return {
-              inputJson: JSON.stringify({ originalRequest: requestText }),
+              inputJson: JSON.stringify({
+                originalRequest: requestText,
+                ...(options.toolReply
+                  ? {
+                      toolCall: {
+                        executionWorkspaceId: "workspace-fixture",
+                        serverId: "echo",
+                        tool: "echo",
+                        toolDefinitionHash: "a".repeat(64),
+                        arguments: { text: "hi" },
+                      },
+                    }
+                  : {}),
+              }),
               snapshotJson: JSON.stringify({
                 originalRequest: requestText,
                 resolvedBindings: workerBindings,
               }),
             } as T;
           }
+          if (sql.includes("workspace_space_grants g")) return { ok: 1 } as T;
           if (sql.includes("SELECT mode FROM work_requests"))
             return { mode: "stateless" } as T;
           if (sql.includes("SELECT wr.thread_id AS threadId")) {
@@ -246,6 +263,10 @@ function createAcceptanceRun(
           executionWorkspaceId: "workspace-fixture",
         });
       }
+      if (url.endsWith("/mcp-tool-call")) {
+        toolCalls.push(JSON.parse(String(init?.body)));
+        return Response.json(options.toolReply ?? {});
+      }
       const envelope = JSON.parse(String(init?.body)) as Record<
         string,
         unknown
@@ -331,6 +352,7 @@ function createAcceptanceRun(
     step,
     taskWrites,
     gatewayCalls,
+    toolCalls,
     waits,
     sleeps,
     startedTasks,
@@ -350,6 +372,57 @@ function createAcceptanceRun(
 const workflowCases = Object.values(BUILTIN_WORKFLOW_CATALOG).filter(
   (definition) => definition.steps.every((step) => step.kind !== "tool_call"),
 );
+
+describe("Chat with tool (chat:v2) through the Workflow loop", () => {
+  const run = (f: ReturnType<typeof createAcceptanceRun>) =>
+    f.instance.run(
+      {
+        payload: {
+          runId: "run-v8-acceptance",
+          goalId: "goal-v8-acceptance",
+          idempotencyKey: "key-chat-v2",
+          workRequestId: "request-v8-acceptance",
+          organizationId: "workspace-fixture",
+          builtinWorkflow: BUILTIN_WORKFLOW_CATALOG["chat:v2"]!,
+        },
+      } as never,
+      f.step,
+    );
+
+  it("calls the tool once, then gives its recorded result to the chat prompt as untrusted data", async () => {
+    const f = createAcceptanceRun(BUILTIN_WORKFLOW_CATALOG["chat:v2"]!, {
+      toolReply: {
+        state: "completed",
+        code: "completed",
+        result: { content: [{ type: "text", text: "TOOL-RESULT-MARKER" }] },
+      },
+    });
+    const result = await run(f);
+    expect(result.status).toBe("completed");
+    expect(f.toolCalls).toHaveLength(1);
+    expect(f.toolCalls[0]).toMatchObject({ serverId: "echo", tool: "echo" });
+    // Only the chat step reaches a Worker.
+    expect(f.gatewayCalls).toHaveLength(1);
+    const prompt = String(
+      (
+        (f.gatewayCalls[0]!.payload as { snapshot: Record<string, unknown> })
+          .snapshot
+      ).objective,
+    );
+    expect(prompt).toContain("TOOL-RESULT-MARKER");
+    expect(prompt).toMatch(/untrusted/i);
+  });
+
+  it("stops without a chat answer when the tool outcome is unknown", async () => {
+    const f = createAcceptanceRun(BUILTIN_WORKFLOW_CATALOG["chat:v2"]!, {
+      toolReply: { state: "unknown", code: "result_timeout" },
+    });
+    const result = await run(f);
+    expect(result.status).not.toBe("completed");
+    expect(f.toolCalls).toHaveLength(1);
+    expect(f.gatewayCalls).toHaveLength(0);
+  });
+});
 
 describe("Work v1 acceptance through the shared assignment dispatcher", () => {
   it.each([1, 2])(

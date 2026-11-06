@@ -83,6 +83,9 @@ export type ServiceConnectionState = (typeof SERVICE_CONNECTION_STATES)[number];
 /** Capability a Service advertises when it publishes `workspace.readiness`. */
 export const SERVICE_READINESS_CAPABILITY = "workspace.readiness.v1";
 
+/** Capability a Service advertises when it handles `mcp.tool_call.request`. */
+export const SERVICE_MCP_TOOL_CALL_CAPABILITY = "workspace.mcp_tool_call.v1";
+
 /**
  * Capability Cloud announces in `hello.ack` when `worker.inventory` may carry
  * `allowedFolders`. Older Cloud rejects the field, so Services wait for it.

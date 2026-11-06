@@ -20,6 +20,7 @@ import {
   validateWorkRequest,
   validateBuiltinWorkflowDefinition,
   BUILTIN_WORKFLOWS,
+  BUILTIN_WORKFLOW_CATALOG,
   CONVERSATION_WORKFLOWS,
   configuredWorkflowDefinition,
   stepInstanceId,
@@ -55,6 +56,7 @@ import {
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 import type { SyntilaWorkflowParams } from "../workflow.js";
+import { parseMcpToolStepInput } from "../mcp-tool-step.js";
 
 export async function createOrGetRun(
   env: Env,
@@ -252,14 +254,38 @@ export async function createWorkRequestForUser(
     throw new HttpError(400, "Unsupported workflowId");
   // Research takes its researcher count from the Space configuration; the
   // accepted snapshot freezes it.
-  const canonicalWorkflow =
-    workflowId === "research"
+  // A request that carries `input.toolCall` is Chat with a tool (`chat:v2`).
+  // It is never picked by version: the tool target is part of the request.
+  const toolCallRequested =
+    body.input !== null &&
+    typeof body.input === "object" &&
+    !Array.isArray(body.input) &&
+    (body.input as Record<string, unknown>).toolCall !== undefined;
+  if (toolCallRequested && workflowId !== "chat")
+    throw new HttpError(400, "A tool call is available only in Chat");
+  if (
+    !toolCallRequested &&
+    body.workflowVersion === 2 &&
+    workflowId === "chat"
+  )
+    throw new HttpError(400, "Chat version 2 requires input.toolCall");
+  const canonicalWorkflow = toolCallRequested
+    ? BUILTIN_WORKFLOW_CATALOG["chat:v2"]!
+    : workflowId === "research"
       ? configuredWorkflowDefinition(
           BUILTIN_WORKFLOWS.research,
           (await loadSpaceWorkflowConfigurations(env, spaceId, "research"))
             .configurations[0],
         )
       : BUILTIN_WORKFLOWS[workflowId];
+  if (toolCallRequested) {
+    await requireToolCallAuthority(
+      env,
+      context.userId,
+      spaceId,
+      (body.input as Record<string, unknown>).toolCall,
+    );
+  }
   // A replay returns the request already accepted under the plan at that
   // time; it creates no execution, so it is not re-gated on the plan.
   await requireWorkflowPermission(env, context.userId, spaceId, workflowId, {
@@ -436,6 +462,10 @@ export async function createWorkRequestForUser(
     }),
   );
   requestInput.attachments = normalizedAttachments;
+  if (toolCallRequested) {
+    // Frozen in strict form; the Workspace checks it again when it runs.
+    requestInput.toolCall = parseMcpToolStepInput(submittedInput.toolCall);
+  }
   // Reply v1: only a server-built snapshot of a target in this Thread.
   const replyTo = await resolveReplyReference(
     env.SYNTILA_DB,
@@ -513,6 +543,15 @@ export async function createWorkRequestForUser(
   if (!env.SYNTILA_THREAD_COORDINATOR && mode === "stateful") {
     throw new HttpError(503, "Thread runtime coordination is unavailable");
   }
+  if (
+    toolCallRequested &&
+    parseMcpToolStepInput(submittedInput.toolCall)?.executionWorkspaceId !==
+      eligibility.primaryWorkspaceId
+  )
+    throw new HttpError(
+      400,
+      "The tool must run on the Workspace that runs the chat answer",
+    );
   if (eligibility.primaryWorkspaceId) {
     if (
       body.primaryWorkspaceId !== undefined &&
@@ -558,6 +597,8 @@ export async function createWorkRequestForUser(
     import("@syntila/core").TurnExecutionConfig
   > = {};
   for (const step of workflowSnapshot.steps) {
+    // A tool call has no Worker, model or execution config.
+    if (step.kind === "tool_call") continue;
     // Research v2 roles are bound and frozen per step instance.
     const bindingId =
       workflowId === "direct"
@@ -615,7 +656,8 @@ export async function createWorkRequestForUser(
   const now = new Date().toISOString();
   const conversationWorkflow =
     conversationWorkflowForExecution(workflowId, workflowVersion) ??
-    (workflowId === "research" && workflowVersion === 2
+    ((workflowId === "research" || workflowId === "chat") &&
+    workflowVersion === 2
       ? // Conversation identity predates graph workflows and its persisted
         // anchor accepts only chat/work. The request and Workflow Run retain
         // their actual Research identity and version.
@@ -831,4 +873,36 @@ async function resumeSubmission(
     input: workRequest.input,
   });
   return response;
+}
+
+/**
+ * Tool calls run only for the Space owner, on a Workspace they own. Space
+ * membership, a lent Workspace or a Person Grant never extend to them: the
+ * tool is run with the Workspace owner's local consent.
+ */
+async function requireToolCallAuthority(
+  env: SecurityEnv,
+  userId: string,
+  spaceId: string,
+  toolCall: unknown,
+): Promise<void> {
+  const target = parseMcpToolStepInput(toolCall);
+  if (!target) throw new HttpError(400, "input.toolCall is invalid");
+  const row = await env.SYNTILA_DB.prepare(
+    `SELECT p.owner_user_id AS spaceOwner, ew.owner_user_id AS workspaceOwner
+     FROM spaces p
+     LEFT JOIN execution_workspaces ew ON ew.id = ?2
+     WHERE p.id = ?1`,
+  )
+    .bind(spaceId, target.executionWorkspaceId)
+    .first<{ spaceOwner: string; workspaceOwner: string | null }>();
+  if (
+    !row ||
+    row.spaceOwner !== userId ||
+    row.workspaceOwner !== userId
+  )
+    throw new HttpError(
+      403,
+      "Only the Space owner can run a tool, on a Workspace they own",
+    );
 }

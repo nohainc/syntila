@@ -760,6 +760,8 @@ export function validateWorkRequest(
     }
     validateBuiltinWorkflowDefinition(request.snapshot.workflowSnapshot);
     for (const step of request.snapshot.workflowSnapshot.steps) {
+      // A tool call is run by Syntila itself and has no Worker binding.
+      if (step.kind === "tool_call") continue;
       const bindingId =
         request.workflowId === "direct"
           ? "direct"

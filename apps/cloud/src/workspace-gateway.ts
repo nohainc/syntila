@@ -21,6 +21,7 @@ import {
   ALLOWED_FOLDERS_CAPABILITY,
   WORKER_PLUGINS_CAPABILITY,
   ASSIGNMENT_STARTUP_CAPABILITY,
+  SERVICE_MCP_TOOL_CALL_CAPABILITY,
   SERVICE_READINESS_CAPABILITY,
   assignmentStartupPayload,
   serviceReadinessPayload,
@@ -3213,6 +3214,12 @@ export class WorkspaceGateway implements DurableObject {
     // Nothing has been claimed yet, so an offline Workspace is a clean refusal.
     if (!(await this.isRuntimeLive()))
       return Response.json({ error: "Workspace is offline" }, { status: 503 });
+    // An older Service would reject the unknown message; refuse before claiming.
+    if (!(await this.serviceHasCapability(SERVICE_MCP_TOOL_CALL_CAPABILITY)))
+      return Response.json(
+        { error: "Workspace does not support tool calls" },
+        { status: 503 },
+      );
     const claim = await claimMcpToolDispatch(db, {
       taskId: call.taskId,
       workspaceId,

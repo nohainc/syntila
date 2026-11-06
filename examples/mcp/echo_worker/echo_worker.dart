@@ -161,6 +161,15 @@ Future<void> main(List<String> args) async {
             },
           },
         });
+      default:
+        // JSON-RPC: every request (a message with an id) gets an answer.
+        if (id != null) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {'code': -32601, 'message': 'Method not found'},
+          });
+        }
     }
   }
 }

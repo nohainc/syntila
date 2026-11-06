@@ -133,6 +133,7 @@ String _instanceLabel(String id, String role) {
 String _roleLabel(String role) => switch (role) {
       'synthesis' => 'Synthesis',
       'chat' => 'Chat',
+      'tool_call' => 'Tool call',
       'research' => 'Research',
       'plan' => 'Plan',
       'implement' => 'Implement',

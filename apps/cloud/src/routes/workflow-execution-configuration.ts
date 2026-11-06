@@ -97,7 +97,10 @@ export async function resolveWorkflowExecutionBindings(
   executionSelection?: unknown,
 ) {
   const override = parseWorkflowExecutionSelection(executionSelection);
-  if (override && definition.steps.length !== 1)
+  if (
+    override &&
+    definition.steps.filter((step) => step.kind !== "tool_call").length !== 1
+  )
     throw new HttpError(
       400,
       "Execution overrides are available only for one-step Workflows",
@@ -243,6 +246,8 @@ export async function resolveWorkflowExecutionBindings(
   const roleCatalogs: Record<string, ModelIdentityCatalog | undefined> = {};
   const researchV2 = definition.id === "research" && definition.version === 2;
   for (const step of definition.steps) {
+    // A tool call is executed by Syntila itself and has no Worker to bind.
+    if (step.kind === "tool_call") continue;
     // Research v2 roles bind per step instance; every other step by kind.
     const id =
       definition.id === "direct"

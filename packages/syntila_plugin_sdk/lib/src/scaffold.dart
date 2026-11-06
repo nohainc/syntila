@@ -4,8 +4,10 @@ import 'dart:io';
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 
 /// Creates a local Dart author project. Existing files are never overwritten.
+/// With [mcp] the project is a Syntila MCP Worker (`kind: "mcp"`, served over
+/// stdio by [runMcpWorker]) instead of an NDJSON plugin.
 void initializePluginDirectory(String directory, String id,
-    {required String sdkPath}) {
+    {required String sdkPath, bool mcp = false}) {
   if (!RegExp(r'^[a-z][a-z0-9]*(-[a-z0-9]+)*$').hasMatch(id) ||
       id.length > 48) {
     throw const FormatException(
@@ -18,10 +20,11 @@ void initializePluginDirectory(String directory, String id,
   final command = Platform.isWindows ? 'bin/plugin.exe' : 'bin/plugin';
   final manifest = <String, Object?>{
     'schemaVersion': 1,
+    if (mcp) 'kind': 'mcp',
     'pluginId': id,
     'version': '1.0.0',
     'displayName': id,
-    'description': 'A custom Worker plugin.',
+    'description': mcp ? 'A custom MCP Worker.' : 'A custom Worker plugin.',
     'author': {'name': 'Plugin author'},
     'protocol': {'min': '1.0', 'max': '1.0'},
     'artifacts': {
@@ -68,7 +71,7 @@ class MyPlugin extends PluginWorker {
   }
 }
 
-Future<void> main() => runPlugin(MyPlugin());
+Future<void> main() => ${mcp ? 'runMcpWorker' : 'runPlugin'}(MyPlugin());
 ''');
   File('${root.path}/plugin.json').writeAsStringSync(
       '${const JsonEncoder.withIndent('  ').convert(manifest)}\n');

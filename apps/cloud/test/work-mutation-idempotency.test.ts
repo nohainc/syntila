@@ -846,3 +846,63 @@ describe("Research gap read model", () => {
     ).toEqual({});
   });
 });
+
+describe("tool call admission (chat:v2)", () => {
+  const toolCall = (executionWorkspaceId = "workspace") => ({
+    executionWorkspaceId,
+    serverId: "files",
+    tool: "read",
+    toolDefinitionHash: "a".repeat(64),
+    arguments: { path: "a.txt" },
+  });
+  const post = (
+    f: ReturnType<typeof fixture>,
+    key: string,
+    body: Record<string, unknown>,
+  ) =>
+    handleCreateWorkRequest(
+      new Request("https://cloud.test/threads/W/work-requests", {
+        method: "POST",
+        headers: { "Idempotency-Key": key },
+        body: JSON.stringify(body),
+      }),
+      f.env,
+      "W",
+    );
+
+  it("accepts input.toolCall from the Space owner as chat version 2", async () => {
+    const f = fixture();
+    const response = await post(f, "toolcall-operation-00001", {
+      workflowId: "chat",
+      input: { originalRequest: "Read it", toolCall: toolCall() },
+    });
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as { workRequest: { id: string } };
+    const row = f.sqlite
+      .prepare(
+        "SELECT workflow_id AS id, workflow_version AS version FROM work_requests WHERE id=?",
+      )
+      .get(body.workRequest.id) as { id: string; version: number };
+    expect(row).toEqual({ id: "chat", version: 2 });
+  });
+
+  it("refuses a tool on a Workspace the user does not own", async () => {
+    const f = fixture();
+    f.sqlite.exec(
+      `INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('other','o@test','O','now','now');
+       INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('theirs','other','T','now','now');`,
+    );
+    await expect(post(f, "toolcall-operation-00002", {
+      workflowId: "chat",
+      input: { originalRequest: "x", toolCall: toolCall("theirs") },
+    })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("refuses a tool call outside Chat", async () => {
+    const f = fixture();
+    await expect(post(f, "toolcall-operation-00003", {
+      workflowId: "direct",
+      input: { originalRequest: "x", toolCall: toolCall() },
+    })).rejects.toMatchObject({ status: 400 });
+  });
+});

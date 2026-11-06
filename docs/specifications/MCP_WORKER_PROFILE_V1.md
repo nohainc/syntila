@@ -74,8 +74,10 @@ Output model list in the shape of plugin protocol 1.1 model discovery
 
 ## 4. Conformance
 
-Conformance runs through `syntila_plugin_conformance` with an MCP launcher
-(M4). The 21 plugin cases are re-expressed 1:1 where meaningful; MCP-specific
+Conformance runs through `syntila_plugin_conformance`: `McpConformanceRunner`
+(selected when the manifest says `kind: "mcp"`) implements the cases below
+over MCP stdio; version negotiation, definition drift and oversize results are
+not covered yet. The 21 plugin cases are re-expressed 1:1 where meaningful; MCP-specific
 additions: version negotiation, definition drift, missing profile
 advertisement, second terminal result, oversize result.
 

@@ -12,8 +12,12 @@ const call = (taskId: string) => ({
   timeoutMs: 5000,
 });
 
-async function fixture() {
+async function fixture(capable = true) {
   const f = await gatewayFixture("created");
+  f.sqlite.exec(
+    `INSERT OR REPLACE INTO workspace_runtime_facts(workspace_id,runtime_capabilities_json,updated_at)
+     VALUES('WS','${capable ? '["workspace.mcp_tool_call.v1"]' : "[]"}','now')`,
+  );
   f.sqlite.exec(
     `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
      VALUES('tool','R','tool_call','stateless_read',5000,'tool:v1','running','now','now')`,
@@ -63,6 +67,22 @@ describe("Gateway MCP tool call", () => {
       // A repeat returns the recorded outcome and never re-dispatches.
       const again = await request(call("tool"));
       expect(await again.json()).toMatchObject({ state: "completed" });
+      expect(
+        (await f.outbound()).filter((m) => m.type === "mcp.tool_call.request"),
+      ).toHaveLength(0);
+    } finally {
+      f.sqlite.close();
+    }
+  });
+
+  it("refuses before claiming when the Workspace did not advertise tool calls", async () => {
+    const { f, request } = await fixture(false);
+    try {
+      const response = await request(call("tool"));
+      expect(response.status).toBe(503);
+      expect(
+        f.sqlite.prepare("SELECT COUNT(*) AS n FROM mcp_tool_calls").get(),
+      ).toEqual({ n: 0 });
       expect(
         (await f.outbound()).filter((m) => m.type === "mcp.tool_call.request"),
       ).toHaveLength(0);

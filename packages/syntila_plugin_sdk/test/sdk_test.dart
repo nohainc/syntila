@@ -372,6 +372,25 @@ void main() {
     });
   });
 
+  test('init --mcp generates a buildable MCP Worker project', () async {
+    final root = Directory.systemTemp.createTempSync('plugin-init-mcp');
+    addTearDown(() => root.deleteSync(recursive: true));
+    initializePluginDirectory(root.path, 'new-mcp',
+        sdkPath: Directory.current.path, mcp: true);
+    expect(File('${root.path}/plugin.json').readAsStringSync(),
+        contains('"kind": "mcp"'));
+    expect(File('${root.path}/bin/main.dart').readAsStringSync(),
+        contains('runMcpWorker(MyPlugin())'));
+    for (final args in [
+      ['pub', 'get'],
+      ['analyze'],
+    ]) {
+      final run = await Process.run(Platform.resolvedExecutable, args,
+          workingDirectory: root.path);
+      expect(run.exitCode, 0, reason: '${run.stdout}${run.stderr}');
+    }
+  });
+
   test('init generates a buildable plugin and refuses overwrite', () async {
     final root = Directory.systemTemp.createTempSync('plugin-init');
     addTearDown(() => root.deleteSync(recursive: true));

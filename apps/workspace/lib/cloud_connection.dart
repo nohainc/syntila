@@ -123,6 +123,10 @@ enum ServiceConnectionState {
 /// instead of inferring it.
 const serviceReadinessCapability = 'workspace.readiness.v1';
 
+/// Capability advertised in the hello when the Service handles
+/// `mcp.tool_call.request`; Cloud sends the message only to such a Service.
+const mcpToolCallCapability = 'workspace.mcp_tool_call.v1';
+
 /// Capability Cloud announces in `hello.ack` when it accepts
 /// `assignment.startup` progress for accepted, not-yet-running assignments.
 const assignmentStartupCapability = 'assignment.startup.v1';
@@ -1273,6 +1277,7 @@ class WorkspaceCloudConnection {
       'customCapabilities': <String>[
         startPermitCapability,
         serviceReadinessCapability,
+        mcpToolCallCapability,
       ],
       'maxConcurrentWorkers': 1,
     };

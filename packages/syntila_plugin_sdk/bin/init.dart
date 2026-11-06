@@ -4,9 +4,11 @@ import 'dart:isolate';
 import 'package:syntila_plugin_sdk/syntila_plugin_sdk.dart';
 
 Future<void> main(List<String> arguments) async {
-  if (arguments.length != 2) {
+  final mcp = arguments.contains('--mcp');
+  final positional = arguments.where((a) => a != '--mcp').toList();
+  if (positional.length != 2 || arguments.length - positional.length > 1) {
     stderr.writeln(
-        'usage: dart run syntila_plugin_sdk:init <directory> <plugin-id>');
+        'usage: dart run syntila_plugin_sdk:init [--mcp] <directory> <plugin-id>');
     exitCode = 64;
     return;
   }
@@ -14,10 +16,10 @@ Future<void> main(List<String> arguments) async {
     final library = await Isolate.resolvePackageUri(
         Uri.parse('package:syntila_plugin_sdk/syntila_plugin_sdk.dart'));
     if (library == null) throw const FormatException('SDK path unavailable');
-    initializePluginDirectory(arguments[0], arguments[1],
-        sdkPath: File.fromUri(library).parent.parent.path);
+    initializePluginDirectory(positional[0], positional[1],
+        sdkPath: File.fromUri(library).parent.parent.path, mcp: mcp);
     stdout.writeln(
-        'Created ${arguments[1]} in ${arguments[0]}. See README.md to build and pack.');
+        'Created ${positional[1]} in ${positional[0]}. See README.md to build and pack.');
   } on FormatException catch (error) {
     stderr.writeln(error.message);
     exitCode = 65;

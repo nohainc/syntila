@@ -515,6 +515,8 @@ export async function validateWorkflowWorkerEligibility(
   let primaryWorkspaceId: string | null = null;
   const now = new Date().toISOString();
   for (const step of workflow.steps) {
+    // A tool call has no Worker; the Workspace admits it when it runs.
+    if (step.kind === "tool_call") continue;
     // A step-instance binding (Research v2 role) wins over the kind binding.
     const bindingId =
       workflow.id === "direct"

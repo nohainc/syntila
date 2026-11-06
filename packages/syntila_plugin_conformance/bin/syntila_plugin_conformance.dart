@@ -54,24 +54,26 @@ Future<void> main(List<String> arguments) async {
   final capabilities = Map<String, Object?>.from(
     manifest.raw['capabilities'] as Map,
   );
-  final runner = ConformanceRunner(
-    launcher: DirectProcessLauncher(
-      executable: executable.absolute.path,
-      arguments: artifact.args,
-    ),
-    expectedPluginId: manifest.pluginId,
-    expectedVersion: manifest.version,
-    declaresResume: capabilities['sessionResume'] == true,
-    declaredCapabilities: capabilities,
+  final launcher = DirectProcessLauncher(
+    executable: executable.absolute.path,
+    arguments: artifact.args,
   );
-  final report = await runner.run(
-    onCase: json
-        ? null
-        : (c) => stdout.writeln(
-              '${c.status.name.padRight(7)} ${c.id}'
-              '${c.detail == null ? '' : '  - ${c.detail}'}',
-            ),
-  );
+  void Function(ConformanceCase)? onCase = json
+      ? null
+      : (c) => stdout.writeln(
+            '${c.status.name.padRight(7)} ${c.id}'
+            '${c.detail == null ? '' : '  - ${c.detail}'}',
+          );
+  // An MCP Worker (`kind: "mcp"`) is exercised over MCP, not the NDJSON protocol.
+  final report = manifest.raw['kind'] == 'mcp'
+      ? await McpConformanceRunner(launcher: launcher).run(onCase: onCase)
+      : await ConformanceRunner(
+          launcher: launcher,
+          expectedPluginId: manifest.pluginId,
+          expectedVersion: manifest.version,
+          declaresResume: capabilities['sessionResume'] == true,
+          declaredCapabilities: capabilities,
+        ).run(onCase: onCase);
   if (json) {
     stdout.writeln(const JsonEncoder.withIndent('  ').convert(report.toJson()));
   } else {
