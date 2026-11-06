@@ -8,6 +8,7 @@ import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart'
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 
 import 'worker_trust_policy.dart' show canonicalJson;
+import 'plugin_migration.dart';
 import 'plugin_registry.dart';
 import 'plugin_store.dart';
 import 'plugin_signer_trust.dart';
@@ -358,6 +359,23 @@ class WorkspacePluginService {
       ...report,
       'disclaimer':
           'Conformance shows protocol behavior only; it is not a safety assessment.',
+    };
+  }
+
+  /// Read-only: could this installed plugin be repackaged as an MCP Worker?
+  /// Looks at the manifest only; nothing is started.
+  Future<Map<String, Object?>> migrateCheck(
+    String pluginId, {
+    String? version,
+  }) async {
+    final record = await _record(pluginId);
+    final selected = _version(record, version);
+    final installed = await _load(selected, pluginId);
+    return {
+      'schemaVersion': 1,
+      'pluginId': pluginId,
+      'version': selected.version,
+      ...assessMcpMigration(installed.manifest),
     };
   }
 

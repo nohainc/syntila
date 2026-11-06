@@ -234,4 +234,53 @@ void main() {
     );
     expect('$out', contains('remote https://mcp.acme.example/mcp'));
   });
+
+  test('plugins migrate-check explains blockers and the steps', () async {
+    final code = await run(
+      ['plugins', 'migrate-check', 'acme-reviewer'],
+      (_, __) => {
+        'pluginId': 'acme-reviewer',
+        'version': '1.4.2',
+        'alreadyMcp': false,
+        'canMigrate': false,
+        'blockers': [
+          {
+            'code': 'working_directory_unsupported',
+            'message': 'needs the Space',
+          },
+        ],
+        'warnings': [
+          {'code': 'conformance_differs', 'message': 'profile check only'},
+        ],
+        'steps': ['do one', 'do two'],
+      },
+    );
+    expect(code, 0);
+    expect(sent.single.$1, 'plugins.migrateCheck');
+    expect(sent.single.$2, {'pluginId': 'acme-reviewer'});
+    final text = '$out';
+    expect(text,
+        contains('blocker  working_directory_unsupported: needs the Space'));
+    expect(text, contains('warning  conformance_differs'));
+    expect(text, contains('Cannot migrate yet'));
+    expect(text, contains('1. do one'));
+    expect(text, contains('nothing was run'));
+    expect(text, contains('migrating is optional'));
+  });
+
+  test('migrate-check on an MCP Worker says there is nothing to do', () async {
+    await run(
+      ['plugins', 'migrate-check', 'echo-worker'],
+      (_, __) => {
+        'pluginId': 'echo-worker',
+        'version': '1.0.0',
+        'alreadyMcp': true,
+        'canMigrate': false,
+        'blockers': <Object?>[],
+        'warnings': <Object?>[],
+        'steps': <Object?>[],
+      },
+    );
+    expect('$out', contains('Already an MCP Worker'));
+  });
 }

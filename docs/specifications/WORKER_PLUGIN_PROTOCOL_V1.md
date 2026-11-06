@@ -3,6 +3,7 @@
 **Contract ID:** `workerPluginProtocol: 1.0`
 **Status:** Phase 0 draft. Normative for plugin authors once ADR-027 is accepted.
 **Decision:** [ADR-027](../decisions/ADR-027-custom-worker-plugins.md)
+**Successor for new Workers (proposed):** the [Syntila MCP Worker profile](MCP_WORKER_PROFILE_V1.md) ([ADR-028](../decisions/ADR-028-mcp-integration.md))
 **Architecture and trust:** [Custom Worker plugins](../architecture/CUSTOM_WORKER_PLUGINS.md)
 **Host:** the generic CLI Worker Engine's plugin host (never the `syntila` CLI, never Cloud)
 
@@ -11,6 +12,13 @@ It is separate from the Local Worker Protocol (Workspace ↔ Engine) and from
 provider CLI protocols. It is not a Tool Profile and exposes no Profile schema.
 
 Keywords MUST, SHOULD and MAY follow RFC 2119.
+
+> **Freeze note (proposed, non-binding).** If ADR-028 is accepted, this protocol stays at
+> 1.2 (no further MINOR versions are planned) and new custom Workers are steered to the MCP
+> Worker profile. This note starts no deprecation clock: no MAJOR is deprecated, the 12-month
+> notice in section 11 has not begun, and nothing about NDJSON plugins changes in the product.
+> `syntila plugins migrate-check <id>` tells an author whether a plugin could move to MCP.
+
 
 ## 1. Transport and framing
 

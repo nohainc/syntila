@@ -612,6 +612,23 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           command(
+            icon: GuiIcons.check,
+            info: true,
+            'migrate-check',
+            'Check MCP migration',
+            'Say whether this plugin could be repackaged as an MCP Worker (reads the manifest only)',
+            service(
+              'plugins.migrateCheck',
+              payload: (run) => {
+                'pluginId': run.positional('id'),
+                if (run.option('version') != null)
+                  'version': run.option('version'),
+              },
+            ),
+            parameters: pluginId + [pluginVersion],
+            inGroup: true,
+          ),
+          command(
             icon: GuiIcons.test,
             'test',
             'Test plugin',

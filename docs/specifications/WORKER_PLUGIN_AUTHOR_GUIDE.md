@@ -147,6 +147,17 @@ only changes when the SDK does. Differences to keep in mind:
   check, not a behavioural test.
 - Reference servers: `examples/mcp/echo_worker` and `examples/mcp/ollama_worker`.
 
+### Should I move an existing plugin to MCP?
+
+Not necessarily: NDJSON plugins keep working and nothing here removes them. To see
+whether yours could move, run `syntila plugins migrate-check <id>`. It reads
+`plugin.json` only (nothing is started) and prints blockers, warnings and the ordered
+steps. Today the main blocker is a plugin that reads or writes the Space
+(`access.workRoot` other than `none`): the Engine does not pass a working directory to MCP
+Workers yet. `plugins test` also changes meaning for an MCP Worker (a profile check, not
+the behavioural conformance suite), so keep the NDJSON build until you have tested the
+MCP one.
+
 ## 2. The protocol in ten lines
 
 - Read one JSON object per line from stdin; write one per line to stdout. stdout

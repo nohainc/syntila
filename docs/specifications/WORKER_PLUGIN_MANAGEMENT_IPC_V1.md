@@ -194,3 +194,12 @@ the Workspace reconciles its disabled intent with Cloud; a failed sync leaves
 local files and registry intact. Cloud still rejects removal while the plugin is
 enabled on another Workspace or referenced by active work. The CLI displays
 the Cloud-provided reason when available.
+
+## `plugins.migrateCheck` (ADR-028, read-only)
+
+Payload: `pluginId`, optional `version`. Reply: `{schemaVersion, pluginId, version,
+alreadyMcp, canMigrate, blockers: [{code, message}], warnings: [{code, message}], steps:
+[string]}`. It inspects the installed `plugin.json` only; it starts nothing, contacts nothing
+and changes nothing, and it works on every plan. Codes: blocker `working_directory_unsupported`;
+warnings `session_state`, `model_discovery`, `conformance_differs`,
+`tool_definitions_are_pinned`. An MCP package reports `alreadyMcp: true`.

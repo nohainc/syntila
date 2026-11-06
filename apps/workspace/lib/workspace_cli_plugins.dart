@@ -43,6 +43,9 @@ extension _PluginOutput on WorkspaceCli {
       case 'plugins.test':
         _printConformance(result);
         return true;
+      case 'plugins.migrateCheck':
+        _printMigration(result);
+        return true;
       case 'plugins.register':
       case 'plugins.enable':
         if (result['consentRequired'] == true) {
@@ -162,6 +165,34 @@ extension _PluginOutput on WorkspaceCli {
             : 'Signer:   unsigned',
       );
     }
+  }
+
+  void _printMigration(Map result) {
+    out.writeln('${result['pluginId']} ${result['version']}');
+    if (result['alreadyMcp'] == true) {
+      out.writeln('Already an MCP Worker; nothing to migrate.');
+      return;
+    }
+    final blockers = (result['blockers'] as List).whereType<Map>().toList();
+    for (final b in blockers) {
+      out.writeln('blocker  ${b['code']}: ${b['message']}');
+    }
+    for (final w in (result['warnings'] as List).whereType<Map>()) {
+      out.writeln('warning  ${w['code']}: ${w['message']}');
+    }
+    out.writeln(
+      result['canMigrate'] == true
+          ? 'Can migrate today. Steps:'
+          : 'Cannot migrate yet (see the blockers). Steps once unblocked:',
+    );
+    var n = 1;
+    for (final step in (result['steps'] as List)) {
+      out.writeln('  ${n++}. $step');
+    }
+    out.writeln(
+      'Static check of plugin.json only: nothing was run, so behaviour is '
+      'not verified. The NDJSON protocol keeps working; migrating is optional.',
+    );
   }
 
   void _printConformance(Map result) {
