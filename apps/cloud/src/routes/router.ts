@@ -20,6 +20,7 @@ import {
   handlePluginLibrary,
   handleWorkspacePluginPin,
 } from "./worker-plugins.js";
+import { handleWorkspaceMcpInventory } from "./mcp-inventory.js";
 import { handleSpaceAdditionalFolders } from "./space-additional-folders.js";
 import { handleWorkflowConfigurations } from "./workflow-configurations.js";
 import { handleWorkflowDefault } from "./workflow-default.js";
@@ -580,6 +581,17 @@ export async function routeWorkerRequest(
         request,
         env,
         decodeURIComponent(libraryPluginMatch[1]),
+        ctx,
+      );
+    }
+    const workspaceMcpInventoryMatch = url.pathname.match(
+      /^\/api\/workspaces\/([^/]+)\/mcp-inventory$/,
+    );
+    if (workspaceMcpInventoryMatch?.[1]) {
+      return await handleWorkspaceMcpInventory(
+        request,
+        env,
+        decodeURIComponent(workspaceMcpInventoryMatch[1]),
         ctx,
       );
     }

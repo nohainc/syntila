@@ -287,6 +287,37 @@ until it was rebuilt). Publish that Profile only with an Engine that includes
 `McpInlineToml`, and consider raising the Profile's `engineCompatibility.min`
 with the next Engine version bump; that bump is not done here.
 
+## Phase 4 — AX inventory route and server picker (partly done)
+
+**Cloud.** `GET /api/workspaces/:id/mcp-inventory` returns the last sanitized
+snapshot with `online` (null when the gateway cannot say) and its age. Owner
+only: other users and revoked Workspaces get 404. The snapshot is re-validated
+against the contract on the way out, and gateway internals such as the runtime
+ID are not returned. **Limit:** members of a shared Workspace cannot read it
+yet, so they still fall back to typing IDs.
+
+**AX.** The workflow editor now loads the inventory through the sync engine
+(`AxMcpInventories`, two-minute stale time, one query per Workspace, so
+navigation does not refetch and switching Workspaces never shows another's
+servers). The MCP dialog offers a searchable multi-select by name with tool
+counts and a reason when a server cannot be chosen (not consented, disabled,
+unreachable, not bound). Unauthorized servers can be unchecked but not newly
+chosen. Saved IDs absent from the inventory stay selected and are listed under
+"Chosen but not in the Workspace inventory", so reload, edit or a disconnected
+Workspace never drops a selection. A disconnected Workspace is labelled with
+the age of what it last reported. Explicit "No servers" is stored as `[]` and
+shown differently from "not set"; a step shows the workflow default it
+inherits. When no inventory exists or cannot be loaded, the old manual ID entry
+remains as an explicit fallback. The old text "Use Workspace Worker bindings"
+was removed: after Phase 1 a missing selection grants no servers.
+
+**Not done.** Realtime invalidation (the editor refreshes on cache expiry or
+the Refresh button, not on a push), a Settings page for installing, testing,
+enabling, disabling, removing and re-consenting servers (still `syntila mcp`),
+the full-definition consent view and definition diff, per-Worker compatibility
+checks in the picker (it shows bindings, not the chosen Worker's), shared
+Workspace member access, and Flutter widget tests for the Settings page.
+
 ## Phase 6 work in progress
 
 The existing Chat tool workflow now revalidates persisted Step outcomes before

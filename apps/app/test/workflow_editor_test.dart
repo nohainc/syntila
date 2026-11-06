@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
+import 'package:syntila_app/src/ax/ax_mcp_inventory.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
 import 'package:syntila_app/src/ax/sync/ax_sync_engine.dart';
 import 'package:syntila_app/src/ax/sync/ax_session_catalogs.dart';
@@ -86,16 +87,54 @@ Iterable<String?> choices(
             matching: find.byType(DropdownButton<String>)))
         .items!
         .map((item) => item.value);
+
+/// A Workspace that publishes a sanitized MCP inventory.
+class InventorySource extends WorkflowSource
+    implements AxMcpInventoryDataSource {
+  AxMcpInventory? inventory;
+  bool failInventory = false;
+  int inventoryReads = 0;
+  @override
+  Future<AxMcpInventory?> loadMcpInventory(String workspaceId) async {
+    inventoryReads++;
+    if (failInventory) throw StateError('inventory unavailable');
+    return inventory;
+  }
+}
+
+AxMcpServer mcpServer(String id, String name,
+        {bool consented = true,
+        bool enabled = true,
+        List<String> bound = const ['custom'],
+        String availability = 'unknown'}) =>
+    AxMcpServer(
+        serverId: id,
+        displayName: name,
+        transport: 'local',
+        consented: consented,
+        enabled: enabled,
+        availability: availability,
+        diagnostic: null,
+        tools: const [AxMcpTool(name: 'read', definitionHash: 'a')],
+        boundWorkerTypes: bound);
+
+AxMcpInventory mcpInventory(List<AxMcpServer> servers,
+        {bool online = true, int age = 5}) =>
+    AxMcpInventory(
+        revision: 1, servers: servers, online: online, ageSeconds: age);
+
 Future<WorkflowSource> mount(
     WidgetTester tester, AxUserWorkflowConfiguration saved,
     {List<AxWorker>? workers,
     AxBuiltinWorkflow? definition,
+    WorkflowSource? fixture,
+    String? workspaceId,
     bool stepsOnly = false}) async {
   tester.view.physicalSize = const Size(1000, 1200);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final source = WorkflowSource()
+  final source = (fixture ?? WorkflowSource())
     ..values = [saved]
     ..workers = workers ?? [worker('a'), worker('b')];
   final engine = AxSyncEngine();
@@ -111,6 +150,7 @@ Future<WorkflowSource> mount(
                       context,
                       WorkflowEditor(
                         stepsOnly: stepsOnly,
+                        workspaceId: workspaceId,
                         definition: definition ??
                             workflow('full_cycle', 'Full Cycle',
                                 steps: ['plan', 'implement', 'verify']),
@@ -210,7 +250,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('mcp-mode')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Select server IDs').last);
+    await tester.tap(find.text('Choose servers').last);
     await tester.pumpAndSettle();
     await tester.enterText(
         find.byKey(const ValueKey('mcp-server-ids')), 'files, files');
@@ -229,7 +269,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('mcp-mode')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('No servers').last);
+    await tester.tap(find.text('No servers (explicit)').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('mcp-apply')));
     await tester.pumpAndSettle();
@@ -238,6 +278,201 @@ void main() {
     await tester.pumpAndSettle();
     expect(source.values.single.defaults.mcpTools, ['files', 'search']);
     expect(source.values.single.stepOverrides['verify']!.mcpTools, isEmpty);
+  });
+
+  group('MCP server picker', () {
+    Future<void> openDefaults(WidgetTester tester) async {
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('mcp-edit-defaults')));
+      await tester.tap(find.byKey(const ValueKey('mcp-edit-defaults')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> chooseServers(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('mcp-mode')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose servers').last);
+      await tester.pumpAndSettle();
+    }
+
+    InventorySource fixture() => InventorySource()
+      ..inventory = mcpInventory([
+        mcpServer('files', 'Project files'),
+        mcpServer('search', 'Web search'),
+        mcpServer('draft', 'Draft tool', consented: false),
+        mcpServer('off', 'Disabled tool', enabled: false),
+      ]);
+
+    testWidgets('a missing selection is described as no servers',
+        (tester) async {
+      await mount(tester, configuration(),
+          fixture: fixture(), workspaceId: 'ws');
+      expect(find.text('No MCP servers (default)'), findsOneWidget);
+      expect(find.textContaining('Worker bindings'), findsNothing);
+    });
+
+    testWidgets('servers are chosen by name, searched, and saved as IDs',
+        (tester) async {
+      final source = await mount(tester, configuration(),
+          fixture: fixture(), workspaceId: 'ws');
+      await openDefaults(tester);
+      await chooseServers(tester);
+      expect(find.text('Project files'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mcp-server-ids')), findsNothing);
+      await tester.enterText(find.byKey(const ValueKey('mcp-search')), 'web');
+      await tester.pumpAndSettle();
+      expect(find.text('Project files'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('mcp-server-search')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('mcp-search')), '');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('mcp-server-files')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('mcp-apply')));
+      await tester.pumpAndSettle();
+      expect(find.text('Web search, Project files'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('save-workflow')));
+      await tester.tap(find.byKey(const ValueKey('save-workflow')));
+      await tester.pumpAndSettle();
+      expect(source.values.single.defaults.mcpTools, ['search', 'files']);
+    });
+
+    testWidgets(
+        'unauthorized servers are identified and cannot be newly chosen',
+        (tester) async {
+      await mount(tester, configuration(),
+          fixture: fixture(), workspaceId: 'ws');
+      await openDefaults(tester);
+      await chooseServers(tester);
+      expect(find.textContaining('Not consented on the Workspace'),
+          findsOneWidget);
+      expect(find.textContaining('Disabled on the Workspace'), findsOneWidget);
+      for (final id in ['draft', 'off']) {
+        final tile = tester
+            .widget<CheckboxListTile>(find.byKey(ValueKey('mcp-server-$id')));
+        expect(tile.onChanged, isNull, reason: id);
+      }
+    });
+
+    testWidgets(
+        'a saved selection survives a server missing from the inventory',
+        (tester) async {
+      final source = await mount(
+          tester,
+          configuration(
+              defaults: const AxWorkflowSelection(
+                  worker: 'a',
+                  model: 'analysis',
+                  effort: 'low',
+                  mcpTools: ['files', 'gone'])),
+          fixture: fixture(),
+          workspaceId: 'ws');
+      await openDefaults(tester);
+      expect(find.text('Chosen but not in the Workspace inventory'),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('mcp-apply')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('save-workflow')));
+      await tester.tap(find.byKey(const ValueKey('save-workflow')));
+      await tester.pumpAndSettle();
+      expect(source.values.single.defaults.mcpTools, ['files', 'gone']);
+    });
+
+    testWidgets('a disconnected Workspace is labelled and selections stay',
+        (tester) async {
+      final source = fixture()
+        ..inventory = mcpInventory([mcpServer('files', 'Project files')],
+            online: false, age: 600);
+      await mount(
+          tester,
+          configuration(
+              defaults: const AxWorkflowSelection(
+                  worker: 'a',
+                  model: 'analysis',
+                  effort: 'low',
+                  mcpTools: ['files'])),
+          fixture: source,
+          workspaceId: 'ws');
+      await openDefaults(tester);
+      expect(find.textContaining('not connected'), findsOneWidget);
+      expect(find.textContaining('10 min ago'), findsOneWidget);
+      expect(
+          tester
+              .widget<CheckboxListTile>(
+                  find.byKey(const ValueKey('mcp-server-files')))
+              .value,
+          isTrue);
+    });
+
+    testWidgets('without an inventory the manual ID entry is the fallback',
+        (tester) async {
+      final source = fixture()..failInventory = true;
+      await mount(tester, configuration(), fixture: source, workspaceId: 'ws');
+      await openDefaults(tester);
+      await chooseServers(tester);
+      expect(find.byKey(const ValueKey('mcp-server-ids')), findsOneWidget);
+      expect(find.textContaining('could not be loaded'), findsOneWidget);
+    });
+
+    testWidgets('choosing nothing is refused, an explicit empty list is kept',
+        (tester) async {
+      final source = await mount(tester, configuration(),
+          fixture: fixture(), workspaceId: 'ws');
+      await openDefaults(tester);
+      await chooseServers(tester);
+      await tester.tap(find.byKey(const ValueKey('mcp-apply')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Choose at least one server'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('mcp-mode')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('No servers (explicit)').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('mcp-apply')));
+      await tester.pumpAndSettle();
+      expect(find.text('No MCP servers (set explicitly)'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('save-workflow')));
+      await tester.tap(find.byKey(const ValueKey('save-workflow')));
+      await tester.pumpAndSettle();
+      expect(source.values.single.defaults.mcpTools, isEmpty);
+    });
+
+    testWidgets('the inventory is cached across dialogs, refresh reloads it',
+        (tester) async {
+      final source = fixture();
+      await mount(tester, configuration(), fixture: source, workspaceId: 'ws');
+      await openDefaults(tester);
+      await tester.tap(find.descendant(
+          of: find.byType(AlertDialog), matching: find.text('Cancel')));
+      await tester.pumpAndSettle();
+      await openDefaults(tester);
+      expect(source.inventoryReads, 1);
+      await chooseServers(tester);
+      await tester.tap(find.byKey(const ValueKey('mcp-refresh')));
+      await tester.pumpAndSettle();
+      expect(source.inventoryReads, 2);
+    });
+
+    testWidgets('a step shows what it inherits', (tester) async {
+      await mount(
+          tester,
+          configuration(
+              defaults: const AxWorkflowSelection(
+                  worker: 'a',
+                  model: 'analysis',
+                  effort: 'low',
+                  mcpTools: ['files'])),
+          fixture: fixture(),
+          workspaceId: 'ws');
+      await openDefaults(tester);
+      await tester.tap(find.descendant(
+          of: find.byType(AlertDialog), matching: find.text('Cancel')));
+      await tester.pumpAndSettle();
+      await openStep(tester, 'verify');
+      await tester.tap(find.byKey(const ValueKey('override-verify')));
+      await tester.pumpAndSettle();
+      expect(
+          find.textContaining('Inherits the workflow default'), findsOneWidget);
+    });
   });
 
   testWidgets('MCP server editor fits a narrow screen', (tester) async {

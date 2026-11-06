@@ -39,6 +39,12 @@ mixin _CatalogApi on _AxApiClientCore {
     return _configurationResponse(response);
   }
 
+  Future<AxMcpInventory?> loadMcpInventory(String workspaceId) async {
+    final body = await _getJson(Uri.parse(
+        '$baseUrl/workspaces/${Uri.encodeComponent(workspaceId)}/mcp-inventory'));
+    return AxMcpInventory.fromResponse(body);
+  }
+
   Future<List<AxUserWorkflowConfiguration>> loadSpaceWorkflowConfigurations(
       String spaceId) async {
     final body = await _getJson(Uri.parse(

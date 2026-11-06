@@ -6,6 +6,7 @@ import 'ax_files.dart';
 import 'attachment_limits.dart' show AxAttachmentPolicy;
 export 'ax_files.dart';
 import 'ax_workflow_configuration.dart';
+import 'ax_mcp_inventory.dart';
 export 'ax_workflow_configuration.dart';
 import 'ax_workspace_member_access.dart';
 export 'ax_workspace_member_access.dart';
@@ -329,6 +330,7 @@ class AxApiClient extends _AxApiClientCore
         _FilesApi
     implements
         AxWorkflowConfigurationDataSource,
+        AxMcpInventoryDataSource,
         AxSpaceWorkflowConfigurationDataSource,
         AxWorkerUsageDataSource,
         AxWorkflowDefaultDataSource,
