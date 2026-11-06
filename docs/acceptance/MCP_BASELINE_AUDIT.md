@@ -151,27 +151,47 @@ a legacy server that never answers unknown methods. Not covered: conformance
 runner cases for stateless Workers (its `initialize` path is unchanged),
 OAuth, and live provider use.
 
-## Phase 3 preliminary provider inspection
+## Phase 3 — official Worker provider inspection (not complete)
 
-On 2026-11-06 the installed `codex-cli 0.160.0` help showed
-`--ignore-user-config` for `exec` and `exec resume`, while `app-server --help`
-did not show that flag. The repository's Codex Profile also has an 0.180.x
-compatibility override; the installed binary does not establish isolation for
-that range or for the app-server path. OpenAI's configuration reference
-specifies per-server `mcp_servers` entries, including enablement and tool
-filters: <https://learn.chatgpt.com/docs/config-file/config-reference>.
-Those controls alone have not been shown to exclude all ambient sources.
+Findings from the CLIs installed on 2026-11-06, observed without any model call
+or credential use. **No Profile was changed and no Worker is certified.**
 
-The installed `agy 1.5.2` advertises session-only `--settings` and persistent
-`mcp` management, but its help does not establish a complete replacement of
-ambient MCP configuration. Its Profile remains without an MCP slot pending
-isolation evidence. Installed Claude Code 2.1.308 describes
-`--strict-mcp-config` as using only `--mcp-config`. The Engine's existing
-`engine_mcp_config_test.dart` passed with selected and empty configurations;
-this uses a fixture, not a real provider tool call. Fresh/resumed sessions,
-provider credentials, cancellation, crashes, cleanup and Profile Lab evidence
-remain unverified. No Phase 3 Profile was changed or certified by this check.
-Phase 1's default-deny and provider-isolation acceptance remains open.
+**Codex (`codex-cli 0.160.0`; the Profile's 0.180.x override binary is not
+installed and was not inspected).** MCP servers come from `[mcp_servers.*]` in
+`$CODEX_HOME/config.toml`, and `-c mcp_servers.<name>.command=...` overrides
+add servers per execution without writing files. Measured with a temporary
+`CODEX_HOME`: `-c 'mcp_servers={}'` does **not** remove a server defined in
+`config.toml` (overrides merge), so an empty selection cannot be isolated that
+way. The only mechanism seen is `exec --ignore-user-config` (also on
+`exec resume`; absent from `codex mcp list` and unverified for `app-server`),
+which discards the whole user `config.toml`, not just MCP. Emitting it from
+`mcpConfigArguments` would run every Codex execution without the user's
+model-provider, sandbox and notification settings, and the slot is emitted even
+for empty selections. Project-level `.codex` configuration was not tested.
+Conclusion: a per-execution slot is feasible only with a deliberate decision
+to ignore user config, plus a live check that selected servers load, an empty
+selection exposes none, resume works and the real `config.toml` is untouched.
+
+**agy 1.5.2.** `agy mcp add/remove/enable/disable` writes persistent
+configuration. The session-only `--settings` flag **rejects** `mcpServers`
+("unknown setting"), so there is no per-execution MCP mechanism. Per the
+phase rule the capability stays unsupported: the Profile has no slot, so any
+non-empty selection fails with `mcp_unsupported`. Ambient servers a user added
+with `agy mcp add` cannot be excluded by Syntila.
+
+**Claude Code 2.1.308.** `--mcp-config` and `--strict-mcp-config` ("only use
+MCP servers from --mcp-config, ignoring all other MCP configurations") exist as
+the release 3 slot assumes. The Engine deletes the private config directory in
+a `finally`, which covers completion, error and cancellation; an Engine process
+killed outright (SIGKILL) would leave the owner-only temp directory behind, and
+that case has no test. Existing fixture-provider tests cover selected and empty
+configurations; no live Claude run has been made.
+
+**Not done:** Codex slot and tests, Profile Lab live reference-tool evidence
+for any provider, subset-selection and resume checks against real CLIs, MCP
+tool-activity normalisation in `provider_activity_adapter.dart`, and
+cancellation/timeout evidence. Live runs use the user's provider accounts and
+were not made without approval.
 
 ## Phase 4 work in progress
 
