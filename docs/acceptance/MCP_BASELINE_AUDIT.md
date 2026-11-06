@@ -253,6 +253,40 @@ retry for idempotent tools is not implemented. Re-checking Cloud grants at the
 Workspace is not done (`authorizeStart` is still constant true; Cloud checks
 grants before dispatch).
 
+## Protocol bump for reconciliation and inventory (Phases 4 and 5)
+
+Three new runtime message types, capability-gated and without a protocol
+version change (older peers never receive them), validated in the envelope:
+
+- `mcp.tool_call.status.request` / `.result` (`workspace.mcp_tool_call_status.v1`):
+  Cloud asks what the owning Workspace durably recorded for a logical key.
+  The answer is `unclaimed`, `claimed_no_outcome` or `recorded` with the
+  state, code and bounded result. The gateway route `POST /mcp-tool-call-status`
+  asks only the Workspace that holds Cloud's claim (404 without a claim, 409
+  for another Workspace), accepts the answer only from the runtime it asked,
+  and is **read-only**: it never dispatches and never edits Cloud's record, so
+  an `unknown` Cloud outcome stays `unknown`. The reply shows both views side
+  by side for diagnosis and for a person to decide on a new Step.
+- `mcp.inventory` (`workspace.mcp_inventory.v1`): the sanitized inventory with
+  a persisted, content-driven revision. The Workspace sends it once per session
+  and when the revision rises (checked every heartbeat). The gateway keeps the
+  latest snapshot per Workspace in Durable Object storage, ignores older
+  revisions, and serves it at `GET /mcp-inventory`. Payloads carrying launch
+  details fail the envelope.
+
+Not done: AX-facing Cloud routes with member authorization, the management
+page, the searchable multi-select, workflow default/override semantics,
+stale-snapshot display, and a user-visible reconciliation action. Both new
+features need the Service and Cloud released together; neither changes
+execution authority.
+
+**Rollout hazard found.** Codex Profile release 3 uses `{{mcpServersToml}}`,
+which Engines built before this change reject as an invalid Profile
+(observed as `provider_failure` with the stale local `syntila-agent` binary
+until it was rebuilt). Publish that Profile only with an Engine that includes
+`McpInlineToml`, and consider raising the Profile's `engineCompatibility.min`
+with the next Engine version bump; that bump is not done here.
+
 ## Phase 6 work in progress
 
 The existing Chat tool workflow now revalidates persisted Step outcomes before

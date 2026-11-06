@@ -35,6 +35,9 @@ export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_MESSAGE_TYPES = [
   "worker.usage.result",
   "mcp.tool_call.request",
   "mcp.tool_call.result",
+  "mcp.tool_call.status.request",
+  "mcp.tool_call.status.result",
+  "mcp.inventory",
   "input.available",
 ] as const;
 export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_BASE_ENVELOPE_FIELDS = [

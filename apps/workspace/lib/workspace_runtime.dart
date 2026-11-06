@@ -24,6 +24,7 @@ import 'package:syntila_workspace/worker_readiness.dart';
 import 'package:syntila_workspace/plugin_executor.dart';
 import 'package:syntila_workspace/plugin_store.dart'
     show PluginServiceException;
+import 'package:syntila_workspace/mcp_inventory_publisher.dart';
 import 'package:syntila_workspace/mcp_service.dart';
 import 'package:syntila_workspace/mcp_subsystem.dart';
 import 'package:syntila_workspace/plugin_subsystem.dart';
@@ -159,6 +160,10 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
   final mcpSubsystem = McpSubsystem.build(
     config: effectiveConfig,
     engineSupervisor: () => cliWorkerEngineSupervisor,
+  );
+  final mcpInventoryPublisher = McpInventoryPublisher(
+    mcpSubsystem.service,
+    File('${workspacePaths.mcpDirectory.path}/inventory-revision.json'),
   );
   final mcpToolCallFence = McpToolCallFence(
     Directory('${workspacePaths.mcpDirectory.path}/dispatch-fence'),
@@ -919,6 +924,8 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           ],
           inputAvailableHandler: inputDelivery?.wake,
           mcpToolCallHandler: mcpToolCallHandler?.handle,
+          mcpToolCallStatusHandler: mcpToolCallHandler?.status,
+          mcpInventoryProvider: mcpInventoryPublisher.snapshot,
           workerUsageProvider: (workerId) async {
             final supervisor = cliWorkerEngineSupervisor;
             final worker = await localWorkerRegistry.find(workerId);

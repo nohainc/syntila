@@ -36,6 +36,9 @@ const workspaceRuntimeMessageTypes = <String>{
   'worker.usage.result',
   'mcp.tool_call.request',
   'mcp.tool_call.result',
+  'mcp.tool_call.status.request',
+  'mcp.tool_call.status.result',
+  'mcp.inventory',
   'input.available',
 };
 

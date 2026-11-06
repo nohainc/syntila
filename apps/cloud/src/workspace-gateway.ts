@@ -16,6 +16,11 @@ import {
   serializeWorkspaceRuntimeMessage,
   McpToolCallRequestSchema,
   McpToolCallResultSchema,
+  McpInventorySchema,
+  type McpInventory,
+  McpToolCallStatusRequestSchema,
+  McpToolCallStatusResultSchema,
+  SERVICE_MCP_TOOL_CALL_STATUS_CAPABILITY,
   WORKSPACE_RUNTIME_PROTOCOL_NAME,
   WORKSPACE_RUNTIME_PROTOCOL_VERSION,
   ALLOWED_FOLDERS_CAPABILITY,
@@ -153,6 +158,15 @@ function workRequestIdOf(payload: unknown): string | undefined {
     : undefined;
 }
 
+const MCP_INVENTORY_KEY = "mcp-inventory";
+
+/** What the gateway keeps per Workspace: the last sanitized inventory. */
+interface StoredMcpInventory {
+  inventory: McpInventory;
+  receivedAt: string;
+  workspaceRuntimeId: string | null;
+}
+
 export class WorkspaceGateway implements DurableObject {
   private readonly runtimeAuthenticator: WorkspaceRuntimeAuthenticator;
   private readonly sessionStore: WorkspaceRuntimeSessionStore;
@@ -178,8 +192,17 @@ export class WorkspaceGateway implements DurableObject {
       workspaceRuntimeId: string | null;
     }
   >();
+  // Read-only status lookups, keyed by task. One in flight per task.
+  private readonly pendingMcpToolCallStatus = new Map<
+    string,
+    {
+      resolve: (payload: Record<string, unknown>) => void;
+      workspaceRuntimeId: string | null;
+    }
+  >();
   // Margin on top of the call's own timeout for Engine start-up and transport.
   private static readonly MCP_TOOL_CALL_MARGIN_MS = 60_000;
+  private static readonly MCP_STATUS_TIMEOUT_MS = 15_000;
   // The Service may run a provider CLI, so allow longer than a delivery probe.
   private static readonly USAGE_TIMEOUT_MS = 70_000;
   private static readonly MAX_PENDING_USAGE_REQUESTS = 4;
@@ -284,6 +307,15 @@ export class WorkspaceGateway implements DurableObject {
     }
     if (request.method === "POST" && url.pathname === "/worker-usage") {
       return this.requestWorkerUsage(request);
+    }
+    if (request.method === "GET" && url.pathname === "/mcp-inventory") {
+      return Response.json(
+        (await this.state.storage.get<StoredMcpInventory>(MCP_INVENTORY_KEY)) ??
+          null,
+      );
+    }
+    if (request.method === "POST" && url.pathname === "/mcp-tool-call-status") {
+      return this.requestMcpToolCallStatus(request);
     }
     if (request.method === "POST" && url.pathname === "/mcp-tool-call") {
       return this.requestMcpToolCall(request);
@@ -1275,6 +1307,40 @@ export class WorkspaceGateway implements DurableObject {
         pending.resolve(parsed.data);
         return;
       }
+      case "mcp.inventory": {
+        const parsed = McpInventorySchema.safeParse(message.payload);
+        if (!parsed.success) return;
+        // Sanitized information only, never authority. A snapshot older than
+        // the stored one is ignored; an equal revision (a new session
+        // republishing) just refreshes the receipt time.
+        const stored =
+          await this.state.storage.get<StoredMcpInventory>(MCP_INVENTORY_KEY);
+        if (stored && parsed.data.revision < stored.inventory.revision) return;
+        await this.state.storage.put(MCP_INVENTORY_KEY, {
+          inventory: parsed.data,
+          receivedAt: now,
+          workspaceRuntimeId: this.workspaceRuntimeId,
+        } satisfies StoredMcpInventory);
+        return;
+      }
+      case "mcp.tool_call.status.result": {
+        const parsed = McpToolCallStatusResultSchema.safeParse(message.payload);
+        if (!parsed.success) return;
+        const pending = this.pendingMcpToolCallStatus.get(parsed.data.taskId);
+        if (!pending) return;
+        // Same rule as results: only the runtime the question went to answers.
+        if (
+          !pending.workspaceRuntimeId ||
+          this.workspaceRuntimeId !== pending.workspaceRuntimeId
+        )
+          return;
+        this.pendingMcpToolCallStatus.delete(parsed.data.taskId);
+        pending.resolve(parsed.data);
+        return;
+      }
+      case "mcp.tool_call.status.request":
+        // Cloud originates status requests; a Service never sends one.
+        return;
       case "mcp.tool_call.request":
         // Cloud originates tool calls; a Service never sends one.
         return;
@@ -3316,6 +3382,108 @@ export class WorkspaceGateway implements DurableObject {
       String(payload.code),
       payload.result as Record<string, unknown> | undefined,
     );
+  }
+
+  /**
+   * Asks the Workspace what it durably recorded for one logical tool step.
+   * Read-only: it never claims, dispatches or changes Cloud's own record, so an
+   * `unknown` Cloud outcome stays `unknown`; the answer is for diagnosis and a
+   * person's decision. Only the Workspace that owns the claim is asked.
+   */
+  private async requestMcpToolCallStatus(request: Request): Promise<Response> {
+    const body = await request.json().catch(() => null);
+    const parsed = McpToolCallStatusRequestSchema.safeParse(body);
+    const workspaceId = this.state.id.name ?? this.executionWorkspaceId;
+    if (!parsed.success || !workspaceId)
+      return Response.json(
+        { error: "Invalid status request" },
+        { status: 400 },
+      );
+    const query = parsed.data;
+    const cloud = await loadMcpToolCall(this.env.SYNTILA_DB, query.taskId);
+    if (!cloud)
+      return Response.json({ cloud: null, workspace: null }, { status: 404 });
+    if (
+      cloud.workspaceId !== workspaceId ||
+      cloud.dispatchKey !== query.dispatchKey
+    )
+      return Response.json(
+        { error: "Tool call belongs to another Workspace" },
+        { status: 409 },
+      );
+    const cloudView = {
+      state: cloud.state,
+      code: cloud.state ? cloud.code : "dispatch_claimed",
+    };
+    if (!(await this.isRuntimeLive()))
+      return Response.json({
+        cloud: cloudView,
+        workspace: null,
+        reason: "offline",
+      });
+    if (
+      !(await this.serviceHasCapability(
+        SERVICE_MCP_TOOL_CALL_STATUS_CAPABILITY,
+      ))
+    )
+      return Response.json({
+        cloud: cloudView,
+        workspace: null,
+        reason: "unsupported",
+      });
+    if (this.pendingMcpToolCallStatus.has(query.taskId))
+      return Response.json(
+        { error: "A status request is in flight" },
+        { status: 409 },
+      );
+    const answer = new Promise<Record<string, unknown>>((resolve) => {
+      this.pendingMcpToolCallStatus.set(query.taskId, {
+        resolve,
+        workspaceRuntimeId: this.workspaceRuntimeId,
+      });
+    });
+    try {
+      await this.send({
+        protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
+        protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+        messageId: `message-${crypto.randomUUID()}`,
+        timestamp: new Date().toISOString(),
+        type: "mcp.tool_call.status.request",
+        executionWorkspaceId: this.executionWorkspaceId ?? undefined,
+        workspaceRuntimeId: this.workspaceRuntimeId ?? undefined,
+        payload: query,
+      });
+    } catch {
+      this.pendingMcpToolCallStatus.delete(query.taskId);
+      return Response.json({
+        cloud: cloudView,
+        workspace: null,
+        reason: "send_failed",
+      });
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(
+        () => resolve(null),
+        WorkspaceGateway.MCP_STATUS_TIMEOUT_MS,
+      );
+    });
+    const payload = await Promise.race([answer, timeout]);
+    clearTimeout(timer);
+    this.pendingMcpToolCallStatus.delete(query.taskId);
+    if (!payload)
+      return Response.json({
+        cloud: cloudView,
+        workspace: null,
+        reason: "timeout",
+      });
+    const {
+      schemaVersion: _v,
+      taskId: _t,
+      dispatchKey: _d,
+      ...workspace
+    } = payload;
+    return Response.json({ cloud: cloudView, workspace });
   }
 
   private async cancelAssignment(request: Request): Promise<Response> {

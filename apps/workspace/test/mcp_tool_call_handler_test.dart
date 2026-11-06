@@ -134,6 +134,31 @@ void main() {
     expect(duplicate['state'], 'unknown');
     expect(duplicate['code'], 'result_too_large');
     expect(duplicate.containsKey('result'), isFalse);
+    // Read-only reconciliation never claims, dispatches or executes.
+    Map<Object?, Object?> statusRequest(String task) => {
+          'schemaVersion': 1,
+          'taskId': task,
+          'dispatchKey': 'mcp-tool-v1:$task',
+        };
+    final recorded = (await handler.status(statusRequest('t1')))!;
+    expect(recorded['status'], 'recorded');
+    expect(recorded['state'], 'completed');
+    expect(recorded['result'], ok['result']);
+    expect((await handler.status(statusRequest('t4')))!['status'],
+        'claimed_no_outcome');
+    final never = (await handler.status(statusRequest('never-seen')))!;
+    expect(never['status'], 'unclaimed');
+    expect(await fence.wasClaimed('mcp-tool-v1:never-seen'), isFalse);
+    final tooLarge = (await handler.status(statusRequest('large-task')))!;
+    expect(tooLarge['state'], 'unknown');
+    expect(tooLarge.containsKey('result'), isFalse);
+    expect(
+        await handler.status({...statusRequest('t1'), 'tool': 'echo'}), isNull);
+    expect(
+        await handler
+            .status({...statusRequest('t1'), 'dispatchKey': 'mcp-tool-v1:x'}),
+        isNull);
+    expect(await handler.status({'schemaVersion': 1}), isNull);
     expect(supervisor.activeSlotCount, 0);
   });
 }

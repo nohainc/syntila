@@ -102,6 +102,53 @@ class McpToolCallHandler {
     }
   }
 
+  /// Read-only reconciliation: what this Workspace durably knows about one
+  /// logical key. Never claims, dispatches or executes. Returns null for a
+  /// malformed request (nothing to correlate an answer with).
+  Future<Map<String, Object?>?> status(Map<Object?, Object?> payload) async {
+    final taskId = payload['taskId'];
+    final fence = _fence;
+    if (fence == null ||
+        payload['schemaVersion'] != 1 ||
+        payload.keys.any((key) =>
+            !const {'schemaVersion', 'taskId', 'dispatchKey'}.contains(key)) ||
+        taskId is! String ||
+        taskId.isEmpty ||
+        taskId.length > 900 ||
+        payload['dispatchKey'] != 'mcp-tool-v1:$taskId') {
+      return null;
+    }
+    const dispatchKey = 'mcp-tool-v1:';
+    final key = '$dispatchKey$taskId';
+    Map<String, Object?> reply(String status, [Map<String, Object?>? extra]) =>
+        {
+          'schemaVersion': 1,
+          'taskId': taskId,
+          'dispatchKey': key,
+          'status': status,
+          ...?extra,
+        };
+    try {
+      if (!await fence.wasClaimed(key)) return reply('unclaimed');
+      final recorded = await fence.recordedOutcome(key);
+      if (recorded == null) return reply('claimed_no_outcome');
+      final answer = _result(
+        taskId,
+        recorded['state'] as String,
+        recorded['code'] as String,
+        recorded['result'],
+      );
+      return reply('recorded', {
+        'state': answer['state'],
+        'code': answer['code'],
+        if (answer.containsKey('result')) 'result': answer['result'],
+      });
+    } on Object {
+      // Unreadable storage is uncertainty, not "never ran".
+      return reply('claimed_no_outcome');
+    }
+  }
+
   Map<String, Object?> _result(
     String taskId,
     String state,

@@ -127,6 +127,12 @@ const serviceReadinessCapability = 'workspace.readiness.v1';
 /// `mcp.tool_call.request`; Cloud sends the message only to such a Service.
 const mcpToolCallCapability = 'workspace.mcp_tool_call.v1';
 
+/// Advertised by a Service that answers `mcp.tool_call.status.request`.
+const mcpToolCallStatusCapability = 'workspace.mcp_tool_call_status.v1';
+
+/// Advertised by a Service that publishes `mcp.inventory`.
+const mcpInventoryCapability = 'workspace.mcp_inventory.v1';
+
 /// Capability Cloud announces in `hello.ack` when it accepts
 /// `assignment.startup` progress for accepted, not-yet-running assignments.
 const assignmentStartupCapability = 'assignment.startup.v1';
@@ -192,6 +198,8 @@ class WorkspaceCloudConnection {
     this.allowedFolderProvider,
     this.workerUsageProvider,
     this.mcpToolCallHandler,
+    this.mcpToolCallStatusHandler,
+    this.mcpInventoryProvider,
     this.inputAvailableHandler,
     this.onSessionReady,
     this.workspaceUpdateAvailableHandler,
@@ -263,6 +271,19 @@ class WorkspaceCloudConnection {
   /// `mcp.tool_call.result` payload, or null when a duplicate is in flight.
   final Future<Map<String, Object?>?> Function(Map<Object?, Object?> payload)?
       mcpToolCallHandler;
+
+  /// Answers one `mcp.tool_call.status.request` from local records only; it
+  /// never runs a tool.
+  final Future<Map<String, Object?>?> Function(Map<Object?, Object?> payload)?
+      mcpToolCallStatusHandler;
+
+  /// The sanitized MCP inventory to publish, or null to publish nothing. It is
+  /// sent once per session and again whenever its revision rises (checked on
+  /// each heartbeat), never on every navigation or request.
+  final Future<Map<String, Object?>?> Function()? mcpInventoryProvider;
+  String? _inventoryPublishedSession;
+  int _inventoryPublishedRevision = -1;
+  bool _inventoryPublishing = false;
 
   /// Called on `input.available`: uploaded Work Request inputs can be
   /// listed and downloaded (Input Delivery v1). The message has no content.
@@ -1278,6 +1299,8 @@ class WorkspaceCloudConnection {
         startPermitCapability,
         serviceReadinessCapability,
         mcpToolCallCapability,
+        mcpToolCallStatusCapability,
+        mcpInventoryCapability,
       ],
       'maxConcurrentWorkers': 1,
     };
@@ -1626,6 +1649,7 @@ class WorkspaceCloudConnection {
         ..._livenessPayload(),
       });
       unawaited(_refreshPendingTerminalIds());
+      unawaited(_publishMcpInventory());
       _rememberClockProbe(heartbeatMessage['messageId'] as String);
       socket.send(jsonEncode(heartbeatMessage));
       _heartbeatCount++;
@@ -1853,6 +1877,8 @@ class WorkspaceCloudConnection {
       unawaited(_handleWorkerUsageRequest(decoded));
     } else if (decoded['type'] == 'mcp.tool_call.request') {
       unawaited(_handleMcpToolCallRequest(decoded));
+    } else if (decoded['type'] == 'mcp.tool_call.status.request') {
+      unawaited(_handleMcpToolCallStatusRequest(decoded));
     } else if (decoded['type'] == 'input.available') {
       inputAvailableHandler?.call();
     }
@@ -1932,6 +1958,55 @@ class WorkspaceCloudConnection {
     }
   }
 
+  Future<void> _publishMcpInventory() async {
+    final provider = mcpInventoryProvider;
+    final session = sessionId;
+    if (provider == null || session == null || _inventoryPublishing) return;
+    _inventoryPublishing = true;
+    try {
+      final inventory = await provider();
+      final socket = _transport;
+      if (inventory == null || socket == null || sessionId != session) return;
+      final revision = inventory['revision'];
+      if (revision is! int) return;
+      if (_inventoryPublishedSession == session &&
+          revision <= _inventoryPublishedRevision) {
+        return;
+      }
+      socket.send(jsonEncode(_envelope('mcp.inventory', inventory)));
+      _inventoryPublishedSession = session;
+      _inventoryPublishedRevision = revision;
+    } on Object {
+      // Retried on the next heartbeat; never disturb the connection.
+    } finally {
+      _inventoryPublishing = false;
+    }
+  }
+
+  Future<void> _handleMcpToolCallStatusRequest(
+    Map<String, dynamic> decoded,
+  ) async {
+    final payload = decoded['payload'];
+    final handler = mcpToolCallStatusHandler;
+    if (payload is! Map || handler == null) return;
+    Map<String, Object?>? result;
+    try {
+      result = await handler(payload);
+    } on Object {
+      return;
+    }
+    final socket = _transport;
+    if (result == null || socket == null || sessionId == null) return;
+    try {
+      socket.send(jsonEncode({
+        ..._envelope('mcp.tool_call.status.result', result),
+        'correlationId': decoded['messageId'],
+      }));
+    } on Object {
+      // The requester times out and keeps the step unknown.
+    }
+  }
+
   /// Acknowledges a Cloud delivery probe immediately from the message loop.
   /// The probe involves no assignment, Worker or Engine process, so its round
   /// trip isolates transport and Service message-handling latency.
@@ -1999,6 +2074,7 @@ class WorkspaceCloudConnection {
         readySessionId != _readyCallbackSessionId) {
       _readyCallbackSessionId = readySessionId;
       unawaited(readyCallback().catchError((_) {}));
+      unawaited(_publishMcpInventory());
     }
     if (_pendingAssignmentsDuringSync.isNotEmpty) {
       final pending = List<Map<String, dynamic>>.from(

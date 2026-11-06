@@ -74,3 +74,83 @@ export const McpToolCallResultSchema = z
     }
   });
 export type McpToolCallResult = z.infer<typeof McpToolCallResultSchema>;
+
+/**
+ * Read-only reconciliation of one logical tool step. Cloud asks what the
+ * Workspace durably knows about a key; the answer never dispatches anything.
+ * `unclaimed` means the Workspace never began the call (still never replayed
+ * automatically: Cloud's own claim stands); `claimed_no_outcome` means it began
+ * and no outcome is recorded, so the result stays unknown.
+ */
+export const McpToolCallStatusRequestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    taskId: z.string().min(1).max(900),
+    dispatchKey: z.string().min(1).max(912),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.dispatchKey !== `mcp-tool-v1:${value.taskId}`) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["dispatchKey"],
+        message: "Dispatch key must identify the logical task",
+      });
+    }
+  });
+export type McpToolCallStatusRequest = z.infer<
+  typeof McpToolCallStatusRequestSchema
+>;
+
+export const McpToolCallStatusResultSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    taskId: z.string().min(1).max(900),
+    dispatchKey: z.string().min(1).max(912),
+    status: z.enum(["unclaimed", "claimed_no_outcome", "recorded"]),
+    state: z.enum(["completed", "toolError", "rejected", "unknown"]).optional(),
+    code: z.string().min(1).max(128).optional(),
+    result: z.record(z.string(), z.json()).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.dispatchKey !== `mcp-tool-v1:${value.taskId}`) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["dispatchKey"],
+        message: "Dispatch key must identify the logical task",
+      });
+    }
+    const recorded = value.status === "recorded";
+    const hasState = value.state !== undefined;
+    const hasCode = value.code !== undefined;
+    if (hasState !== recorded || hasCode !== recorded) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "Only a recorded status carries a state and code",
+      });
+    }
+    if (
+      value.result !== undefined &&
+      value.state !== "completed" &&
+      value.state !== "toolError"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["result"],
+        message: "Only completed or tool-error outcomes carry a result",
+      });
+    }
+    const bytes = new TextEncoder().encode(JSON.stringify(value.result ?? {}));
+    if (bytes.length > MCP_TOOL_CALL_RESULT_MAX_BYTES) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["result"],
+        message: "Tool result exceeds the byte limit",
+      });
+    }
+  });
+export type McpToolCallStatusResult = z.infer<
+  typeof McpToolCallStatusResultSchema
+>;

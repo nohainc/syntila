@@ -1,6 +1,9 @@
+import { McpInventorySchema } from "./mcp-inventory.js";
 import {
   McpToolCallRequestSchema,
   McpToolCallResultSchema,
+  McpToolCallStatusRequestSchema,
+  McpToolCallStatusResultSchema,
 } from "./mcp-tool-call.js";
 import { z } from "zod";
 import {
@@ -50,6 +53,9 @@ export const WORKSPACE_RUNTIME_MESSAGE_TYPES = [
   "worker.usage.result",
   "mcp.tool_call.request",
   "mcp.tool_call.result",
+  "mcp.tool_call.status.request",
+  "mcp.tool_call.status.result",
+  "mcp.inventory",
   "input.available",
 ] as const;
 
@@ -85,6 +91,13 @@ export const SERVICE_READINESS_CAPABILITY = "workspace.readiness.v1";
 
 /** Capability a Service advertises when it handles `mcp.tool_call.request`. */
 export const SERVICE_MCP_TOOL_CALL_CAPABILITY = "workspace.mcp_tool_call.v1";
+
+/** Capability a Service advertises when it answers `mcp.tool_call.status.request`. */
+export const SERVICE_MCP_TOOL_CALL_STATUS_CAPABILITY =
+  "workspace.mcp_tool_call_status.v1";
+
+/** Capability a Service advertises when it publishes `mcp.inventory`. */
+export const SERVICE_MCP_INVENTORY_CAPABILITY = "workspace.mcp_inventory.v1";
 
 /**
  * Capability Cloud announces in `hello.ack` when `worker.inventory` may carry
@@ -770,6 +783,42 @@ export const workspaceRuntimeEnvelopeSchema = z
     }
     if (message.type === "mcp.tool_call.request") {
       const payload = McpToolCallRequestSchema.safeParse(message.payload);
+      if (!payload.success) {
+        for (const issue of payload.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["payload", ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    }
+    if (message.type === "mcp.tool_call.status.request") {
+      const payload = McpToolCallStatusRequestSchema.safeParse(message.payload);
+      if (!payload.success) {
+        for (const issue of payload.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["payload", ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    }
+    if (message.type === "mcp.tool_call.status.result") {
+      const payload = McpToolCallStatusResultSchema.safeParse(message.payload);
+      if (!payload.success) {
+        for (const issue of payload.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["payload", ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    }
+    if (message.type === "mcp.inventory") {
+      const payload = McpInventorySchema.safeParse(message.payload);
       if (!payload.success) {
         for (const issue of payload.error.issues) {
           ctx.addIssue({
