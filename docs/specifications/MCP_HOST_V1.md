@@ -33,7 +33,7 @@ Defines what Syntila's MCP client (in the Engine) does and refuses.
 | Tools per server | 128 |
 | Call timeout | min(assignment deadline, 10 min) |
 | Concurrent calls per server | manifest `limits.maxConcurrent` (default 1) |
-| Idle server TTL (warm pool) | 5 min |
+| Idle server TTL (warm pool) | 5 min; the pool lives in the Engine process, which the supervisor starts per assignment, so it spans calls within one assignment only (see `docs/acceptance/MCP_LATENCY.md`) |
 
 ## 4. Tool definition pinning
 
