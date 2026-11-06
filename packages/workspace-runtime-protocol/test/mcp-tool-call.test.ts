@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { McpToolCallRequestSchema } from "../src/mcp-tool-call.js";
+import {
+  McpToolCallRequestSchema,
+  McpToolCallResultSchema,
+} from "../src/mcp-tool-call.js";
 
 const request = () => ({
   schemaVersion: 1,
@@ -33,5 +36,36 @@ describe("internal MCP tool-call v1", () => {
         arguments: { text: "é".repeat(33_000) },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("internal MCP tool-call v1 result", () => {
+  const result = () => ({
+    schemaVersion: 1,
+    taskId: "task-one",
+    dispatchKey: "mcp-tool-v1:task-one",
+    state: "completed",
+    code: "completed",
+    result: { content: [{ type: "text", text: "hi" }] },
+  });
+  it("accepts every outcome state", () => {
+    expect(McpToolCallResultSchema.safeParse(result()).success).toBe(true);
+    for (const state of ["rejected", "unknown"]) {
+      const { result: _omit, ...rest } = result();
+      expect(
+        McpToolCallResultSchema.safeParse({ ...rest, state }).success,
+      ).toBe(true);
+    }
+  });
+  it("rejects results on non-result states, bad keys, oversize and extras", () => {
+    for (const bad of [
+      { ...result(), state: "unknown" },
+      { ...result(), dispatchKey: "mcp-tool-v1:other" },
+      { ...result(), state: "other" },
+      { ...result(), extra: 1 },
+      { ...result(), result: { content: "x".repeat(300 * 1024) } },
+    ]) {
+      expect(McpToolCallResultSchema.safeParse(bad).success).toBe(false);
+    }
   });
 });
