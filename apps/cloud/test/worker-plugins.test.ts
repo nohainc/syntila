@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 import { identityService } from "../src/auth/identity-service.js";
@@ -111,6 +112,58 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   store.sqlite.close();
+});
+
+const vectorPath = (name: string) =>
+  fileURLToPath(
+    new URL(
+      `../../../docs/specifications/worker-plugin-vectors/${name}`,
+      import.meta.url,
+    ),
+  );
+
+const mcpVector = () =>
+  JSON.parse(readFileSync(vectorPath("manifest-mcp.json"), "utf8")) as Record<
+    string,
+    unknown
+  >;
+
+describe("MCP Workers (manifest kind)", () => {
+  it("computes the digest the Workspace computes, and kind is part of it", async () => {
+    const expected = readFileSync(
+      vectorPath("manifest-mcp.sha256"),
+      "utf8",
+    ).trim();
+    const withKind = mcpVector();
+    expect(await pluginManifestDigest(withKind as never)).toBe(expected);
+    const { kind: _kind, ...plain } = withKind;
+    const plainDigest = await pluginManifestDigest(plain as never);
+    // The NDJSON vector pinned in the Dart SDK tests.
+    expect(plainDigest).toBe(
+      "1bb61d4147ad05e39110b86209fdb9f54dce582f6ffb0d92bbc913a928d49a8d",
+    );
+    expect(plainDigest).not.toBe(expected);
+  });
+
+  it("registers a kind=mcp manifest through the real route", async () => {
+    const m = manifest({ kind: "mcp" });
+    const response = await register("plus", m);
+    expect(response.status).toBe(201);
+    const result = (await response.json()) as Record<string, string>;
+    expect(result.pluginRef).toMatch(/^plugin-[0-9a-f]{12}$/);
+    expect(result.manifestDigest).toBe(await pluginManifestDigest(m as never));
+    expect(result.manifestDigest).not.toBe(
+      await pluginManifestDigest(manifest() as never),
+    );
+  });
+
+  it("rejects any other kind", async () => {
+    for (const kind of ["ndjson", "MCP", "", 1, null, true]) {
+      await expect(register("plus", manifest({ kind }))).rejects.toMatchObject({
+        code: "plugin_manifest_invalid",
+      });
+    }
+  });
 });
 
 describe("library", () => {

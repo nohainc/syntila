@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "kind": "mcp",
+  "pluginId": "acme-reviewer",
+  "version": "1.4.2",
+  "displayName": "Acme Reviewer — ünïcode ✓",
+  "description": "Reviews \"code\".\nSecond line with a tab\t.",
+  "author": { "name": "Acme", "contact": "plugins@acme.example" },
+  "protocol": { "min": "1.0", "max": "1.0" },
+  "artifacts": {
+    "linux-x64": {
+      "command": "bin/reviewer",
+      "args": ["--syntila", "--flag=a/b"],
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 1024
+    }
+  },
+  "capabilities": { "progress": true, "readOnly": "never" },
+  "access": {
+    "workRoot": "write",
+    "network": { "mode": "declared", "hosts": ["api.acme.example"] },
+    "subprocess": false,
+    "env": ["ACME_ENDPOINT"]
+  }
+}

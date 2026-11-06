@@ -570,7 +570,13 @@ export function expandExecutionArguments(
       if (context.mcpConfigPath !== undefined)
         output.push(
           ...part.mcpConfigArguments.map((value) =>
-            expandTemplate(value, profile, context, undefined, context.mcpConfigPath),
+            expandTemplate(
+              value,
+              profile,
+              context,
+              undefined,
+              context.mcpConfigPath,
+            ),
           ),
         );
     } else if ("forEachAdditionalDirectory" in part) {

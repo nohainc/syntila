@@ -1201,8 +1201,7 @@ export const toolProfileV1Schema = profileSchema.superRefine((profile, ctx) => {
         ctx.addIssue({
           code: "custom",
           path: [...path, index],
-          message:
-            "{{mcpConfigPath}} is only available in mcpConfigArguments",
+          message: "{{mcpConfigPath}} is only available in mcpConfigArguments",
         });
       if (values.some((value) => value.includes("{{additionalDirectory}}")))
         ctx.addIssue({
