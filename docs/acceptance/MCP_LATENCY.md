@@ -1,8 +1,8 @@
 # MCP Worker latency (ADR-028, plan phase M4)
 
 Measured with `engines/cli_worker/tool/mcp_latency_benchmark.dart`
-(`cd engines/cli_worker && dart run tool/mcp_latency_benchmark.dart`, add `--quick` for a
-short run). It compiles the Engine, an NDJSON fixture plugin, the MCP echo Worker and
+(`cd engines/cli_worker && dart run tool/mcp_latency_benchmark.dart`; `--quick` for a short
+run, `--phases` for the cold-start breakdown). It compiles the Engine, an NDJSON fixture plugin, the MCP echo Worker and
 itself to AOT binaries, and runs every path through the production
 `LimitedPluginSupervisor`.
 
@@ -35,10 +35,32 @@ Two earlier runs of the same tool gave the same picture (spawn paths within ~5%)
    half the host overhead of an assignment, ~215 ms.
 4. **The limits wrapper is ~77 ms of every spawn** (208 ms with it, 131 ms without). It
    re-executes the Engine binary around the plugin to apply CPU and file-handle limits.
-5. **~130 ms of a bare spawn is unexplained.** A tiny AOT binary should start much
-   faster. Candidates (not investigated): hashing the artifact, process-tree
-   bookkeeping, the resource monitor, and first-exec checks by the OS. Worth a profile
-   before anyone optimises the wrapper.
+5. **Where a cold start goes** (`--phases`, p50, same host; echo Worker is 6.0 MB):
+
+   | Phase | ms |
+   | --- | ---: |
+   | SHA-256 of the artifact (pure-Dart `package:crypto`, ~65 MB/s) | 93 |
+   | Raw `Process.start` + first JSON-RPC answer, no host | 33 |
+   | Limits wrapper: extra time to the first answer (re-executing the Engine binary) | ~75 |
+   | `tools/list`, `tools/call` after that | < 1 each |
+
+   So of ~210 ms: **~44% is hashing, ~36% is the limits wrapper, ~16% is the OS starting
+   the process**; the protocol is negligible. The hash cost applies to the artifact size
+   (a 60 MB Worker would cost ~0.9 s), and it is paid at least twice per assignment: the
+   Service verifies every byte in `prepareExecution` (not in these numbers) and the Engine
+   re-hashes at each launch, deliberately independent of the Service.
+
+   Possible savings, none implemented because both touch the integrity and sandbox path
+   and need a decision first:
+
+   - **Faster SHA-256** through native code (CommonCrypto on macOS, OpenSSL on Linux,
+     BCrypt on Windows via `dart:ffi`) with the pure-Dart hash as fallback. Rough gain
+     ~90 ms per hash on this host. Cost: platform-specific code I can only test on macOS
+     here. Caching a digest by size and mtime would be faster still but weakens "verify
+     the bytes at the moment of use", so I do not recommend it.
+   - **A lighter limits wrapper.** On POSIX, CPU and open-file limits can be applied with
+     `sh -c 'ulimit ...; exec "$@"'` (a few ms) instead of re-executing the Engine
+     (~75 ms). Windows needs the Job Object path and would keep the current wrapper.
 
 ## Correction: the warm pool does not survive between assignments
 

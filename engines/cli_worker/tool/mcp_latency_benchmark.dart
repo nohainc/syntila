@@ -27,7 +27,7 @@ Future<void> main(List<String> args) async {
     return;
   }
   if (args.contains('--measure')) {
-    await _measure(args);
+    await (args.contains('--phases') ? _phases(args) : _measure(args));
     return;
   }
   await _drive(args);
@@ -82,6 +82,7 @@ Future<void> _drive(List<String> args) async {
     '--mcp',
     mcp,
     if (args.contains('--quick')) '--quick',
+    if (args.contains('--phases')) '--phases',
   ], mode: ProcessStartMode.inheritStdio);
   exit(await run.exitCode);
 }
@@ -313,4 +314,122 @@ Future<void> _measure(List<String> args) async {
     '${Platform.numberOfProcessors} cores, ${jsonEncode(Platform.version.split(' ').first)}',
   );
   root.deleteSync(recursive: true);
+}
+
+/// Where does a cold start spend its time? Splits one cold MCP start into
+/// phases, with and without the limits wrapper.
+Future<void> _phases(List<String> args) async {
+  String arg(String name) => args[args.indexOf(name) + 1];
+  final engine = arg('--engine');
+  final mcpPath = arg('--mcp');
+  final runs = args.contains('--quick') ? 8 : 25;
+  final root = Directory.systemTemp.createTempSync('mcp-phases');
+  final digest = await PluginHost().sha256OfFile(mcpPath);
+  PluginLaunch launch() => PluginLaunch(
+    executable: mcpPath,
+    arguments: const [],
+    artifactSha256: digest,
+    pluginId: 'bench',
+    version: '1.0.0',
+    dataDirectory: root.path,
+    workingDirectory: root.path,
+    environment: PluginHost.buildEnvironment(),
+    hostVersion: '1.4.0',
+  );
+
+  Stats stats(List<Duration> d) => Stats(d.skip(1).toList()); // drop warm-up
+  final out = <String, Stats>{};
+
+  // Digest of the artifact.
+  final hashes = <Duration>[];
+  final plain = PluginHost();
+  for (var i = 0; i < runs + 1; i++) {
+    final c = Stopwatch()..start();
+    await plain.sha256OfFile(mcpPath);
+    hashes.add(c.elapsed);
+  }
+  out['sha256 of the artifact (${(File(mcpPath).lengthSync() / 1e6).toStringAsFixed(1)} MB)'] =
+      stats(hashes);
+
+  // Raw OS baseline: spawn the binary and get one JSON-RPC answer. No host.
+  final raw = <Duration>[];
+  for (var i = 0; i < runs + 1; i++) {
+    final c = Stopwatch()..start();
+    final p = await Process.start(
+      mcpPath,
+      const [],
+      workingDirectory: root.path,
+    );
+    p.stdin.writeln(jsonEncode({'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}));
+    await p.stdin.flush();
+    await p.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .first;
+    raw.add(c.elapsed);
+    p.kill(ProcessSignal.sigkill);
+    await p.exitCode;
+  }
+  out['raw: Process.start + first JSON-RPC answer (no host)'] = stats(raw);
+
+  Future<void> through(String label, PluginHost host) async {
+    final connect = <Duration>[];
+    final init = <Duration>[];
+    final list = <Duration>[];
+    final call = <Duration>[];
+    for (var i = 0; i < runs + 1; i++) {
+      final c = Stopwatch()..start();
+      final connection = await host.connect(launch());
+      connect.add(c.elapsed);
+      final client = McpClient(PluginConnectionTransport(connection));
+      c
+        ..reset()
+        ..start();
+      await client.initialize();
+      init.add(c.elapsed);
+      c
+        ..reset()
+        ..start();
+      final tools = await client.listTools();
+      list.add(c.elapsed);
+      c
+        ..reset()
+        ..start();
+      await client.callTool('syntila.execute', {
+        'prompt': 'hello',
+        'access': 'work',
+      }).result;
+      call.add(c.elapsed);
+      expectTools(tools);
+      await connection.kill();
+      await client.close();
+    }
+    out['$label: connect (digest + spawn + monitor)'] = stats(connect);
+    out['$label: initialize (first answer from the new process)'] = stats(init);
+    out['$label: tools/list'] = stats(list);
+    out['$label: tools/call'] = stats(call);
+  }
+
+  await through('plain', PluginHost());
+  await through(
+    'limited',
+    PluginHost(supervisor: LimitedPluginSupervisor(engine: engine)),
+  );
+
+  stdout.writeln('');
+  stdout.writeln('| Phase | p50 ms | p95 ms | min ms | max ms |');
+  stdout.writeln('| --- | ---: | ---: | ---: | ---: |');
+  for (final e in out.entries) {
+    final s = e.value;
+    stdout.writeln(
+      '| ${e.key} | ${s.percentile(0.5).toStringAsFixed(2)} | '
+      '${s.percentile(0.95).toStringAsFixed(2)} | ${s.min.toStringAsFixed(2)} | '
+      '${s.max.toStringAsFixed(2)} |',
+    );
+  }
+  root.deleteSync(recursive: true);
+}
+
+void expectTools(List<Map<String, Object?>> tools) {
+  if (tools.isEmpty) throw StateError('no tools');
 }
