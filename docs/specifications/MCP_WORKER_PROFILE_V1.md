@@ -1,14 +1,13 @@
-# Syntila MCP Worker profile v1 (draft)
+# Syntila MCP Worker profile v1
 
-**Status:** Draft; the Engine runner and a reference server implement sections 1-3 (see `examples/mcp/echo_worker`). Gated on [ADR-028](../decisions/ADR-028-mcp-integration.md).
+**Status:** Partially implemented under accepted [ADR-028](../decisions/ADR-028-mcp-integration.md). Local Workers, SDK and partial conformance exist; remote Worker execution and complete conformance remain open.
 A standard MCP server becomes a Syntila Worker only by implementing this
 profile. Transport and framing are [MCP host v1](MCP_HOST_V1.md).
 
 ## 1. Advertisement
 
 `initialize` result includes `_meta: { "syntila.worker": "1" }`. The Engine
-refuses to schedule a server as a Worker without it, and refuses any server
-whose manifest says `class: "tool"`.
+refuses to schedule a server as a Worker without it, and requires the Worker-profile marker and consented tool pins.
 
 ## 2. Tools
 
@@ -39,9 +38,8 @@ Output (`structuredContent`; text content mirrors `text`):
 - The Engine limits output text to 768 KiB measured as UTF-8 bytes.
 - `workingDirectory` is sent only to local stdio servers, inside the Thread
   directory; never to remote servers.
-- Exactly one terminal outcome per call: a result or a JSON-RPC error. The
-  Engine treats a second completion as a protocol violation and kills the
-  server.
+- A call has one terminal outcome. Conformance checks a sampled exchange; it
+  does not establish enforcement of every possible duplicate response.
 - `access: restricted` is advisory to the server; Syntila does not claim
   enforcement (ADR-027 §3). Read-only scheduling is allowed only where the host
   reports an enforced isolation tier (none today).
@@ -66,11 +64,11 @@ Output model list in the shape of plugin protocol 1.1 model discovery
 | --- | --- |
 | Readiness | `initialize` then `syntila.probe` |
 | Progress / activity | `notifications/progress`; message payload `{ "activity": {...} }` |
-| Heartbeat | MCP `ping` (host sends; no reply within 3 intervals = unhealthy) |
+| Heartbeat | MCP `ping` is covered by conformance; periodic heartbeat enforcement is not established |
 | Cancel | `notifications/cancelled`, grace, process kill |
 | Sessions | `session` in input/output; stored by the Engine as today |
 | Data directory | `SYNTILA_PLUGIN_DATA_DIR` in the server's environment (set by the Engine only); the working directory is `workingDirectory` when sent |
-| Artifacts | `resource_link`/embedded resources; Engine validates path, size, type |
+| Artifacts | Returned relative paths are validated; remote resource transfer is not implemented |
 | Errors | `issue.code` from the stable plugin error set; free-form detail to diagnostics |
 
 ## 4. Conformance
@@ -78,7 +76,7 @@ Output model list in the shape of plugin protocol 1.1 model discovery
 Conformance runs through `syntila_plugin_conformance`: `McpConformanceRunner`
 (selected when the manifest says `kind: "mcp"`) implements the cases below
 over MCP stdio; definition drift and oversize results are not covered yet. The current suite covers host-compatible version selection and fallback from an
-unknown version, advertisement, required tools, ping, probe and execute
+unknown version, advertisement, required tools, tool definition shape and uniqueness, ping, probe and execute
 result shapes, a single terminal result, and unknown-method errors. Execute
 validation checks the returned text against the UTF-8 output limit, session
 state, and bounded, safe relative artifact paths. This checks the sampled reply;
@@ -95,5 +93,4 @@ both keys and keep protocol `4.2`. The Service, not Cloud, supplies the pins fro
 the consent record. The Engine launches the server with the same digest pin,
 limits and tree cleanup as an NDJSON plugin, requires the Worker-profile
 marker, refuses any tool whose definition differs from its pin, and maps results
-and errors onto the existing stable issue codes. Conformance for MCP Workers
-is not available yet (the Engine answers with `profile_schema_incompatible`).
+and errors onto the existing stable issue codes. MCP conformance is available through the package runner described above; it does not yet cover the full NDJSON suite.

@@ -1,6 +1,6 @@
 # MCP server manifest v1 (draft)
 
-**Status:** Draft. Extends the [plugin manifest](WORKER_PLUGIN_PROTOCOL_V1.md#10-manifest-pluginjson)
+**Status:** Proposed target, not the implemented manifest schema. Today local MCP Workers use the existing plugin manifest with `kind: "mcp"`; remote tools use the Workspace registry rather than this proposed remote manifest. The `class`, `mcp` and OAuth fields below are not implemented. See the [baseline audit](../acceptance/MCP_BASELINE_AUDIT.md). This proposal extends the [plugin manifest](WORKER_PLUGIN_PROTOCOL_V1.md#10-manifest-pluginjson)
 (`schemaVersion` 1, strict keys, same canonical-JSON `manifestDigest`).
 
 ## Additional / changed fields

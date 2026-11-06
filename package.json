@@ -83,7 +83,8 @@
     "protocol:check": "node scripts/verify-protocol-bindings.mjs",
     "check:static": "pnpm brand:check && pnpm cloud:schema-check && pnpm v8:architecture-check && pnpm protocol:boundaries-check && pnpm protocol:check && pnpm usage:architecture-guard && pnpm docs:check && pnpm cloud:execution-boundary-check && pnpm production:preflight && pnpm auth:access-guard && pnpm format:check && pnpm lint",
     "check:typescript": "pnpm --dir apps/cloud types:check && pnpm build && pnpm test && pnpm check:fixture-e2e",
-    "check:apps": "bash scripts/check-flutter-app.sh workspace && bash scripts/check-flutter-app.sh profile_lab && bash scripts/check-flutter-app.sh app"
+    "check:apps": "bash scripts/check-flutter-app.sh workspace && bash scripts/check-flutter-app.sh profile_lab && bash scripts/check-flutter-app.sh app",
+    "validate:mcp": "bash scripts/validate-mcp.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

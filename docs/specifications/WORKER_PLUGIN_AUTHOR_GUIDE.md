@@ -143,8 +143,9 @@ only changes when the SDK does. Differences to keep in mind:
 
 - The Engine passes the admitted working directory to local MCP Workers.
   A declared access level is not a filesystem sandbox.
-- There is no NDJSON conformance suite for MCP Workers; `plugins test` is a profile
-  check, not a behavioural test.
+- MCP conformance is a separate, partial suite; it checks sampled protocol
+  behavior, including tool definition shapes, but does not yet cover the full
+  NDJSON behavioral suite. `plugins test` is an Engine-backed profile check.
 - Reference servers: `examples/mcp/echo_worker` and `examples/mcp/ollama_worker`.
 
 ### Should I move an existing plugin to MCP?
