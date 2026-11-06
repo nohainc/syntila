@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
+import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 
 import 'connection.dart';
 import 'report.dart';
@@ -29,6 +30,8 @@ class McpConformanceRunner {
   Future<ConformanceReport> run(
       {void Function(ConformanceCase)? onCase}) async {
     final cases = <String, Future<void> Function(_McpWire)>{
+      'mcp.version_negotiation': _versionNegotiation,
+      'mcp.version_fallback': _versionFallback,
       'mcp.advertisement': _advertisement,
       'mcp.tools_present': _toolsPresent,
       'mcp.ping': _ping,
@@ -76,6 +79,29 @@ class McpConformanceRunner {
           'The server could not be exercised: ${error.runtimeType}');
     } finally {
       await connection?.kill();
+    }
+  }
+
+  Future<void> _versionNegotiation(_McpWire w) async {
+    final init = await w.initialize();
+    final version = init['protocolVersion'];
+    if (!McpLimits.supportedProtocolVersions.contains(version)) {
+      throw _Failure('server selected an unsupported protocol version.');
+    }
+  }
+
+  Future<void> _versionFallback(_McpWire w) async {
+    final result = await w.request('initialize', {
+      'protocolVersion': '1900-01-01',
+      'capabilities': <String, Object?>{},
+      'clientInfo': {'name': 'syntila-conformance', 'version': '1'},
+    });
+    final version = result['protocolVersion'];
+    if (version is! String ||
+        version == '1900-01-01' ||
+        !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(version)) {
+      throw _Failure(
+          'server did not select a valid fallback protocol version.');
     }
   }
 
@@ -220,7 +246,7 @@ class _McpWire {
 
   Future<Map<String, Object?>> initialize() async {
     final result = await request('initialize', {
-      'protocolVersion': '2025-06-18',
+      'protocolVersion': McpLimits.supportedProtocolVersions.first,
       'capabilities': <String, Object?>{},
       'clientInfo': {'name': 'syntila-conformance', 'version': '1'},
     });

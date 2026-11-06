@@ -8,6 +8,8 @@ environment:
 
 dependencies:
   crypto: ^3.0.6
+  syntila_mcp_protocol:
+    path: ../syntila_mcp_protocol
   syntila_plugin_protocol:
     path: ../syntila_plugin_protocol
 

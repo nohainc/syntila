@@ -38,7 +38,17 @@ Future<void> main(List<String> args) async {
           'jsonrpc': '2.0',
           'id': id,
           'result': {
-            'protocolVersion': params['protocolVersion'],
+            'protocolVersion': mode == 'echo_version'
+                ? params['protocolVersion']
+                : mode == 'badversion'
+                ? '1999-01-01'
+                : const [
+                    '2025-06-18',
+                    '2025-03-26',
+                    '2024-11-05',
+                  ].contains(params['protocolVersion'])
+                ? params['protocolVersion']
+                : '2025-06-18',
             'capabilities': {'tools': {}},
             'serverInfo': {'name': 'echo-worker', 'version': '1'},
             '_meta': {'syntila.worker': '1'},

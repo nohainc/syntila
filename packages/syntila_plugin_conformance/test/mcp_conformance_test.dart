@@ -74,4 +74,16 @@ void main() {
       expect(result.detail, isNot(contains('could not be exercised')));
     }
   });
+  test('unsupported server version fails negotiation', () async {
+    final report = await run(const ['badversion']);
+    expect(caseOf(report, 'mcp.version_negotiation').status,
+        ConformanceStatus.failed);
+  });
+  test('echoing an unknown version fails fallback negotiation', () async {
+    final report = await run(const ['echo_version']);
+    expect(caseOf(report, 'mcp.version_fallback').status,
+        ConformanceStatus.failed);
+    expect(caseOf(report, 'mcp.version_negotiation').status,
+        ConformanceStatus.passed);
+  });
 }
