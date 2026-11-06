@@ -200,6 +200,6 @@ the Cloud-provided reason when available.
 Payload: `pluginId`, optional `version`. Reply: `{schemaVersion, pluginId, version,
 alreadyMcp, canMigrate, blockers: [{code, message}], warnings: [{code, message}], steps:
 [string]}`. It inspects the installed `plugin.json` only; it starts nothing, contacts nothing
-and changes nothing, and it works on every plan. Codes: blocker `working_directory_unsupported`;
-warnings `session_state`, `model_discovery`, `conformance_differs`,
+and changes nothing, and it works on every plan. Warnings include `working_directory_access`,
+`session_state`, `model_discovery`, `conformance_differs`,
 `tool_definitions_are_pinned`. An MCP package reports `alreadyMcp: true`.

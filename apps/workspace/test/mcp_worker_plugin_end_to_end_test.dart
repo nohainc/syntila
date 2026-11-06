@@ -207,12 +207,13 @@ void main() {
       workerId: worker.id,
       maxConcurrentAssignments: 1,
       assignmentId: 'assignment-1',
-      prompt: 'hello from the Space',
+      prompt: 'REPORT_WORKING_DIRECTORY',
       timeout: const Duration(seconds: 60),
       executionPolicy: WorkerExecutionPolicy.providerDefault,
       onProgress: (p) => progress.add(p.message),
     );
-    expect(result.output, startsWith('echo: hello from the Space'));
+    expect(result.output,
+        'workingDirectory: ${Directory('${temp.path}/space').resolveSymbolicLinksSync()}');
     expect(progress, contains('working'));
 
     // Tampering with the installed bytes is refused before anything runs.

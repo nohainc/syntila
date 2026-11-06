@@ -260,6 +260,11 @@ class McpHost {
 }
 
 /// Exclusive use of one warm session. Always [release] it.
+/// The host refused a call after refresh and before sending it.
+class McpCallNotDispatched implements Exception {
+  const McpCallNotDispatched();
+}
+
 class McpLease {
   McpLease._(this._host, this._entry);
 
@@ -291,6 +296,8 @@ class McpLease {
     Map<String, Object?> arguments, {
     McpProgressCallback? onProgress,
     Duration? timeout,
+    bool Function()? mayDispatch,
+    Duration Function()? timeoutAtDispatch,
   }) async {
     final pins = _entry.spec.pins;
     await _refreshTools();
@@ -300,11 +307,14 @@ class McpLease {
         'tool "$name" is not consented or its definition changed',
       );
     }
+    if (mayDispatch != null && !mayDispatch()) {
+      throw const McpCallNotDispatched();
+    }
     return client.callTool(
       name,
       arguments,
       onProgress: onProgress,
-      timeout: timeout,
+      timeout: timeoutAtDispatch?.call() ?? timeout,
     );
   }
 

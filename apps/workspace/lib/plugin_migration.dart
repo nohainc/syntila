@@ -30,12 +30,11 @@ Map<String, Object?> assessMcpMigration(PluginManifest manifest) {
 
   final workRoot = access['workRoot'];
   if (workRoot != null && workRoot != 'none') {
-    blockers.add({
-      'code': 'working_directory_unsupported',
+    warnings.add({
+      'code': 'working_directory_access',
       'message':
-          'The plugin declares workRoot "$workRoot", but the Engine does not '
-              'pass a working directory to MCP Workers yet, so it could not read '
-              'or write the Space.',
+          'The plugin declares workRoot "$workRoot". Local MCP Workers receive '
+              'the assigned working directory; access declarations are not a sandbox.',
     });
   }
 

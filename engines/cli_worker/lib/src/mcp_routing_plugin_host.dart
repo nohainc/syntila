@@ -58,7 +58,7 @@ class McpRoutingPluginHost extends PluginHost {
       spec,
       request,
       cancel: cancel,
-      workingDirectory: null,
+      workingDirectory: launch.workingDirectory,
       onProgress: onFrame == null
           ? null
           : (percentage, message) => onFrame(

@@ -141,8 +141,8 @@ checks the profile and the two required tools, and pins every tool definition; t
 consent screen shows them. Tool names and descriptions are fixed by the SDK so a pin
 only changes when the SDK does. Differences to keep in mind:
 
-- The Engine does not pass a working directory to MCP Workers yet; use
-  `request.workingDirectory` only if the field is sent.
+- The Engine passes the admitted working directory to local MCP Workers.
+  A declared access level is not a filesystem sandbox.
 - There is no NDJSON conformance suite for MCP Workers; `plugins test` is a profile
   check, not a behavioural test.
 - Reference servers: `examples/mcp/echo_worker` and `examples/mcp/ollama_worker`.
@@ -152,9 +152,9 @@ only changes when the SDK does. Differences to keep in mind:
 Not necessarily: NDJSON plugins keep working and nothing here removes them. To see
 whether yours could move, run `syntila plugins migrate-check <id>`. It reads
 `plugin.json` only (nothing is started) and prints blockers, warnings and the ordered
-steps. Today the main blocker is a plugin that reads or writes the Space
-(`access.workRoot` other than `none`): the Engine does not pass a working directory to MCP
-Workers yet. `plugins test` also changes meaning for an MCP Worker (a profile check, not
+steps. A plugin that reads or writes the Space receives an access warning
+(`access.workRoot` other than `none`), since filesystem isolation is not enforced.
+`plugins test` also changes meaning for an MCP Worker (a profile check, not
 the behavioural conformance suite), so keep the NDJSON build until you have tested the
 MCP one.
 

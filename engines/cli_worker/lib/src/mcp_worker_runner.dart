@@ -73,7 +73,8 @@ class McpWorkerRunner {
                 'key': request.sessionKey,
                 'mode': request.sessionMode,
               },
-            if (workingDirectory != null) 'workingDirectory': workingDirectory,
+            if (workingDirectory != null && !spec.isRemote)
+              'workingDirectory': workingDirectory,
           },
           timeout: request.deadline,
           onProgress: onProgress == null

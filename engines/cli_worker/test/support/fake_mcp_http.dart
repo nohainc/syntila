@@ -16,6 +16,11 @@ class FakeMcpHttp {
   String? requiredToken;
   bool bigReply = false;
   bool failCalls = false;
+  bool toolError = false;
+  bool outputSchema = false;
+  bool malformedResult = false;
+  Completer<void>? callGate;
+  Completer<void>? listGate;
   bool expireSession = false;
   bool worker = false; // behave as a Syntila MCP Worker
   String toolDescription = 'echoes';
@@ -77,6 +82,7 @@ class FakeMcpHttp {
           if (worker) '_meta': {'syntila.worker': '1'},
         });
       case 'tools/list':
+        if (listGate case final gate?) await gate.future;
         await json({
           'tools': [
             for (final name
@@ -85,10 +91,12 @@ class FakeMcpHttp {
                 'name': name,
                 'description': toolDescription,
                 'inputSchema': {'type': 'object'},
+                if (outputSchema) 'outputSchema': {'type': 'object'},
               },
           ],
         });
       case 'tools/call':
+        if (callGate case final gate?) await gate.future;
         if (params['name'] == 'syntila.probe') {
           await json({
             'content': [],
@@ -120,6 +128,15 @@ class FakeMcpHttp {
         } else if (failCalls) {
           response.statusCode = 500;
           await response.close();
+        } else if (malformedResult) {
+          await json({});
+        } else if (toolError) {
+          await json({
+            'isError': true,
+            'content': [
+              {'type': 'text', 'text': 'tool failed'},
+            ],
+          });
         } else if (bigReply) {
           await json({
             'content': [

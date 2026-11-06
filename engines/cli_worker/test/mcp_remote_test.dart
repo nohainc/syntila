@@ -159,6 +159,32 @@ void main() {
   });
 
   test(
+    'a remote Worker never receives a local working-directory path',
+    () async {
+      fake.worker = true;
+      final outcome = await runner.run(
+        await consented(worker: true),
+        PluginRunRequest(
+          executeId: 'e',
+          prompt: 'hello',
+          access: 'read_only',
+          deadline: const Duration(seconds: 30),
+        ),
+        workingDirectory: '/local/private/path',
+      );
+      expect(outcome, isA<PluginRunSuccess>());
+      final call = fake.seen.lastWhere(
+        (s) => s.body?['method'] == 'tools/call',
+      );
+      final params = call.body!['params'] as Map;
+      expect(
+        (params['arguments'] as Map).containsKey('workingDirectory'),
+        isFalse,
+      );
+    },
+  );
+
+  test(
     'a remote server without the Worker profile is rejected as a Worker',
     () async {
       final outcome = await runner.run(

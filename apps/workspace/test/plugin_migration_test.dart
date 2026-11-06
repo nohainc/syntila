@@ -64,14 +64,13 @@ void main() {
       expect(steps[1], contains('"kind": "mcp"'));
     });
 
-    test('reading or writing the Space blocks it until MCP gets a working dir',
-        () {
+    test('reading or writing the Space warns about access', () {
       for (final root in ['read', 'write']) {
         final a = assessMcpMigration(manifest(workRoot: root));
-        expect(a['canMigrate'], isFalse, reason: root);
-        expect(codes(a, 'blockers'), ['working_directory_unsupported']);
+        expect(a['canMigrate'], isTrue, reason: root);
+        expect(codes(a, 'warnings'), contains('working_directory_access'));
         expect(
-          ((a['blockers']! as List).single as Map)['message'],
+          ((a['warnings']! as List).first as Map)['message'],
           contains('workRoot "$root"'),
         );
         // The steps are still listed so the author sees the whole path.
@@ -134,8 +133,8 @@ void main() {
       final a = await harness.service.migrateCheck('acme-reviewer');
       expect(a['pluginId'], 'acme-reviewer');
       expect(a['version'], '1.4.2');
-      expect(a['canMigrate'], isFalse);
-      expect(codes(a, 'blockers'), ['working_directory_unsupported']);
+      expect(a['canMigrate'], isTrue);
+      expect(codes(a, 'warnings'), contains('working_directory_access'));
       // Read-only: the library is unchanged and nothing was registered.
       expect(await harness.service.list(), before);
       expect(harness.cloud.calls, isEmpty);

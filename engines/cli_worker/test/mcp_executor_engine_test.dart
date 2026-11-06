@@ -194,6 +194,20 @@ void main() {
     },
   );
 
+  test('a local MCP Worker receives the admitted working directory', () async {
+    final engine = await EngineProcess.start();
+    addTearDown(engine.close);
+    final e = executor();
+    engine.send(initialize(e));
+    expect(await engine.next(), isA<InitializeResult>());
+    engine.send(execute(e, prompt: 'REPORT_WORKING_DIRECTORY'));
+    final result = (await engine.untilTerminal()).last as WorkerResult;
+    expect(
+      result.output,
+      'workingDirectory: ${root.resolveSymbolicLinksSync()}',
+    );
+  });
+
   test('a worker error keeps its stable mapping', () async {
     final engine = await EngineProcess.start();
     addTearDown(engine.close);
