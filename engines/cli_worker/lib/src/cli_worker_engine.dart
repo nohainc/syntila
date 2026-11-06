@@ -1624,6 +1624,7 @@ class CliWorkerEngine {
           additionalDirectories: request.additionalDirectories,
           mcpConfigPath: _mcpConfigPaths[request.requestId],
           mcpServersToml: _mcpInline[request.requestId]?.servers,
+          mcpServerNames: [for (final s in request.mcpServers) s.name],
         );
         final stdinText = _expandStdin(_map(execution['stdin']), context);
         final eventProgress = <String>{};
@@ -2012,6 +2013,7 @@ class CliWorkerEngine {
         additionalDirectories: request.additionalDirectories,
         mcpConfigPath: _mcpConfigPaths[request.requestId],
         mcpServersToml: _mcpInline[request.requestId]?.servers,
+        mcpServerNames: [for (final s in request.mcpServers) s.name],
       ),
       environment: {
         ..._environment(compactionContext),
@@ -2106,6 +2108,7 @@ class CliWorkerEngine {
     List<String> additionalDirectories = const [],
     String? mcpConfigPath,
     String? mcpServersToml,
+    List<String> mcpServerNames = const [],
   }) {
     final output = <String>[];
     // Folders are never dropped silently: a Profile that cannot pass them to
@@ -2144,6 +2147,7 @@ class CliWorkerEngine {
                   'autoCompactionArguments',
                   'forEachAdditionalDirectory',
                   'mcpConfigArguments',
+                  'forEachMcpServer',
                 }.contains(marker.keys.single)) ||
             (marker.length == 2 && keys.containsAll({'ifPresent', 'values'})) ||
             (marker.length == 3 &&
@@ -2163,6 +2167,16 @@ class CliWorkerEngine {
                 marker['mcpConfigArguments'],
               ).map((v) => _template(v, scoped)),
             );
+          }
+        } else if (marker.containsKey('forEachMcpServer')) {
+          // One repetition per selected server, e.g. to pre-approve exactly the
+          // servers a Step chose. Nothing for an empty selection.
+          if (mcpConfigPath != null) {
+            final values = _stringList(marker['forEachMcpServer']);
+            for (final name in mcpServerNames) {
+              final scoped = {...context, 'mcpServer': name};
+              output.addAll(values.map((v) => _template(v, scoped)));
+            }
           }
         } else if (marker.containsKey('forEachAdditionalDirectory')) {
           final values = _stringList(marker['forEachAdditionalDirectory']);

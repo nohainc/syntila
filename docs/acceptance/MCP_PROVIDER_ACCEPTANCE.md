@@ -8,40 +8,58 @@ the Syntila Engine, Workspace or Cloud; Engine behavior is covered by the
 fixture-provider tests listed at the end. Results are observations from one
 machine, not a certification of every CLI version.
 
-## Claude (Profile release 3, `--mcp-config` + `--strict-mcp-config`)
+## Correction to the earlier version of this file
+
+The first Claude run above this revision passed `--allowedTools mcp__ref__echo`
+by hand. The Profile did not pass it, and under the Profile's real permission
+modes the call is **denied**: `acceptEdits` ("restricted") answered
+"Claude requested permissions to use mcp__ref__echo, but you haven't granted it
+yet", and `plan` ("provider_default") blocks MCP tools outright. Likewise Codex
+runs with `--ask-for-approval never`, which refuses every MCP call ("MCP tool
+call requires approval, but approval policy is never"). Release 3 as first
+committed therefore could not call a tool except in full-access mode. This is
+fixed below, and the results here come from runs that use the Profiles'
+real flags.
+
+## Claude (Profile release 4: `--mcp-config`, `--strict-mcp-config`, per-server `--allowedTools`)
+
+Selecting a server on a Step is the approval, so the Profile pre-approves
+exactly those servers with the new `forEachMcpServer` slot
+(`--allowedTools mcp__<server>`, one per selected server, nothing for an empty
+selection). `plan` mode still blocks MCP tools; that is the read-only default
+and is left as is.
 
 | Check | Result |
 | --- | --- |
-| Reference tool call | Passed. The init event listed `ref` as connected with `mcp__ref__echo`; the model called it and returned `phase3-ok`. |
-| Empty selection with an ambient project `.mcp.json` in the working directory | Passed. `mcp_servers: []`, no `mcp__` tools, the model answered NONE. |
-| Subset | Passed. Only the configured server was connected; `mcp__other__echo` was not available. |
-| Session continuity | Passed. `--resume <session>` with the same config recalled the earlier result and made a second call. |
-| User configuration untouched | Passed. `~/.claude.json` has no `mcpServers` after the runs (Claude updates its own state file as usual). |
-| Not tested | A user-scope ambient server (it would need `claude mcp add`, which edits permanent config); cancellation and timeout of a live Claude call. |
+| Reference tool call under `--permission-mode acceptEdits` with the selected server pre-approved | Passed (`perm-test` returned). |
+| Same call without the pre-approval | Denied, as above. |
+| Empty selection (empty strict config, no allow rule) | Passed: no `mcp__` tool exists in the session. |
+| Empty selection with an ambient project `.mcp.json` in the working directory | Passed: `mcp_servers: []`. |
+| Subset | Passed: only configured servers connect, and only those are pre-approved. |
+| Session continuity | Passed with `--resume` (run before the permission fix, with the same config). |
+| User configuration untouched | Passed: `~/.claude.json` has no `mcpServers`. |
+| Not tested | A user-scope ambient server; live cancellation and timeout; through the Syntila Engine (flags were issued directly). |
 
-## Codex (Profile release 3, `--ignore-user-config -c mcp_servers=<table>`)
+## Codex (Profile release 3: `--ignore-user-config -c mcp_servers=<table>`)
 
-The model turn could not run: the account is over its usage limit until the
-evening, so **no Codex tool call was made** and resume was not exercised.
-Configuration loading was verified without a model by launching the CLI with
-logging wrapper commands as the MCP servers and reading which ones started.
-The `-c` value was rendered by the Engine's `McpInlineToml`.
+OpenAI usage was reset, so these are **live model runs** with the Profile's
+real command shape (`codex --ask-for-approval never --sandbox workspace-write
+exec --json --skip-git-repo-check --ignore-user-config -c mcp_servers=<table>`),
+the table rendered by the Engine's `McpInlineToml`, and a user `config.toml`
+that defines an `ambient` server.
 
 | Check | Result |
 | --- | --- |
-| User `config.toml` defines an `ambient` server, no flags | `ambient` starts (control). |
-| `-c 'mcp_servers={}'` alone | `ambient` still starts: overrides merge, so this does not isolate. |
-| `--ignore-user-config` with an empty selection | Nothing starts. |
-| `--ignore-user-config` with a subset | Only the selected server starts; arguments with spaces, quotes and backslashes arrive intact. |
-| Secrets | Passed by `env_vars` names; the value reached the server through the CLI's environment and never appeared on the command line. Servers do not inherit other environment variables. |
-| `exec resume` | Accepts the same two flags (`--help`); a real resume was not run. |
-| Project `.codex/config.toml` | An untrusted project's config did not load even without the flag; a trusted project was not tested. |
-| Not tested | A real tool call, resume with MCP, cancellation, the 0.180.x vector (binary not installed; the slot was added there unverified). |
+| Reference tool call, fresh session | Passed: the MCP call completed and the model returned `fresh-ok`. |
+| Reference tool call, resumed session (`exec resume` with the same flags) | Passed: same thread id, `resume-ok` returned. |
+| Empty selection (`mcp_servers={}`) | Passed: the model reported no MCP tool available, although the user's config defines one. |
+| Subset | Passed (earlier, model-free): only the selected server starts. |
+| Approval | Without a per-server approval the call fails with `approval policy is never`; `default_tools_approval_mode="approve"` is now emitted per selected server (`auto`, `prompt` and `writes` were also tried and still failed). |
+| Isolation facts | `-c 'mcp_servers={}'` alone does not remove a user-config server; `--ignore-user-config` does. Secrets travel by `env_vars` name only. |
+| Not tested | Live cancellation and timeout; the 0.180.x vector (binary not installed); a trusted project's `.codex/config.toml`; through the Syntila Engine. |
 
-Consequence: the Codex Profile ignores the user's whole `config.toml` on every
-execution it is used for (auth still comes from `CODEX_HOME`). This was
-approved by the owner. The Codex release is therefore best published only
-after a live tool call is recorded.
+Consequence, approved by the owner: this Profile ignores the user's whole Codex
+`config.toml` on every execution. Auth still comes from `CODEX_HOME`.
 
 ## agy / Gemini (no slot; unsupported)
 
@@ -59,7 +77,8 @@ with `mcp_unsupported`, and Syntila cannot hide servers a user added to agy.
 - `engines/cli_worker/test/engine_mcp_config_test.dart`: private 0600 config,
   empty and selected configurations, deletion after the run (existing).
 - `packages/tool-profile/test/interpreter.test.ts`: `{{mcpServersToml}}`
-  expansion, empty table, no emission without MCP.
+  expansion, empty table, no emission without MCP; `forEachMcpServer`
+  repetition per server and nothing when empty.
 - `apps/workspace/test/mcp_service_test.dart`: Claude and Codex assets carry
   the slot in every vector; Gemini does not.
 - `provider_activity_adapter_test.dart` (existing): Claude `mcp__*` and Codex

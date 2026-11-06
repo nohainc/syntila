@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "profileDefinitionId": "claude-code",
-  "releaseVersion": 3,
+  "releaseVersion": 4,
   "logicalWorkerTypeId": "claude",
   "engineFamily": "cli",
   "engineCompatibility": {
@@ -88,6 +88,9 @@
           "{{mcpConfigPath}}",
           "--strict-mcp-config"
         ]
+      },
+      {
+        "forEachMcpServer": ["--allowedTools", "mcp__{{mcpServer}}"]
       }
     ],
     "stdin": {

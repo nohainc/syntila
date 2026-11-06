@@ -24,17 +24,29 @@ Future<void> main(List<String> arguments) async {
     return;
   }
   // `echo <prompt> --mcp-config <file>` reports the MCP servers it was given
-  // and the file's permissions, then proves the file is readable.
-  if ((arguments.length == 4 ||
-          (arguments.length == 5 && arguments[4] == '--strict-mcp-config')) &&
-      arguments.first == 'echo' &&
-      arguments[2] == '--mcp-config') {
-    final text = File(arguments[3]).readAsStringSync();
-    final mode = File(arguments[3]).statSync().mode & 0x1ff;
+  // and the file's permissions, then proves the file is readable. Repeated
+  // `--allowedTools <name>` pairs are reported and set aside first.
+  final allowedTools = <String>[];
+  final mcpArguments = <String>[];
+  for (var i = 0; i < arguments.length; i++) {
+    if (arguments[i] == '--allowedTools' && i + 1 < arguments.length) {
+      allowedTools.add(arguments[++i]);
+    } else {
+      mcpArguments.add(arguments[i]);
+    }
+  }
+  if ((mcpArguments.length == 4 ||
+          (mcpArguments.length == 5 &&
+              mcpArguments[4] == '--strict-mcp-config')) &&
+      mcpArguments.first == 'echo' &&
+      mcpArguments[2] == '--mcp-config') {
+    final text = File(mcpArguments[3]).readAsStringSync();
+    final mode = File(mcpArguments[3]).statSync().mode & 0x1ff;
     stdout.writeln(
-      'fixture echo: ${arguments[1]} | mcp: $text'
-      ' | file: ${arguments[3]} | mode: ${mode.toRadixString(8)}'
-      '${arguments.length == 5 ? ' | strict' : ''}',
+      'fixture echo: ${mcpArguments[1]} | mcp: $text'
+      ' | file: ${mcpArguments[3]} | mode: ${mode.toRadixString(8)}'
+      '${mcpArguments.length == 5 ? ' | strict' : ''}'
+      ' | allowed: ${allowedTools.join(',')}',
     );
     return;
   }

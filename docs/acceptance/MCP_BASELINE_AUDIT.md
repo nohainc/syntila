@@ -151,26 +151,30 @@ a legacy server that never answers unknown methods. Not covered: conformance
 runner cases for stateless Workers (its `initialize` path is unchanged),
 OAuth, and live provider use.
 
-## Phase 3 — official Worker MCP integration (mostly done)
+## Phase 3 — official Worker MCP integration (done except cancel/timeout evidence)
 
 Details and commands: [MCP_PROVIDER_ACCEPTANCE.md](MCP_PROVIDER_ACCEPTANCE.md).
 
-- **Claude (release 3):** live reference-tool call, empty selection (with an
-  ambient project config), subset and `--resume` all behaved as required, and
-  the user's permanent configuration was untouched.
-- **Codex (release 3, new):** `--ignore-user-config -c mcp_servers={{mcpServersToml}}`
-  through the existing `mcpConfigArguments` slot, in the base and the 0.180.x
-  vectors. Measured: servers load, subsets and empty selections isolate,
-  secrets travel by `env_vars` name only. **No live tool call or resume was
-  possible** (usage limit), and the 0.180.x vector is unverified.
-  Side effect, approved: the user's whole `config.toml` is ignored.
+- **Defect found and fixed.** The first Claude release 3 and Codex release 3
+  could not make a tool call in non-interactive runs: Claude's `acceptEdits`
+  denies unlisted MCP tools and `plan` blocks them; Codex's `never` approval
+  policy refuses every MCP call. Earlier evidence passed only because a manual
+  `--allowedTools` was added. Fix: a new Profile slot `forEachMcpServer`
+  (Claude release 4: `--allowedTools mcp__<server>` per selected server) and
+  `default_tools_approval_mode="approve"` per selected server in the Codex
+  table. Selecting a server on a Step is the approval; nothing is pre-approved
+  for an empty selection.
+- **Claude (release 4):** reference call, empty selection (even with an
+  ambient project config), subset and `--resume` verified live.
+- **Codex (release 3):** live fresh call, live resumed call (same thread) and
+  an empty selection with no tool visible, with the Profile's real command
+  shape; user `config.toml` is ignored on every run (owner-approved). The 0.180.x
+  vector is unverified.
 - **agy / Gemini:** unsupported by design; no per-execution mechanism exists.
-- **Engine/Profile changes:** `McpInlineToml`, `{{mcpServersToml}}` in the TS
-  and Dart Profile validators and interpreter, Codex Profile release 3,
-  conflicting server variables refused, stale temp config sweep.
-- **Open:** Codex live call and resume; cancellation/timeout evidence for
-  every provider; Profile publication; a crash test for the SIGKILL gap
-  (mitigated by the sweep, not tested at kill time).
+- **Open:** cancellation and timeout evidence for every provider, runs through
+  the Syntila Engine and Workspace rather than the CLIs directly, Profile
+  publication (Claude 4 and Codex 3 need an Engine with `forEachMcpServer` and
+  `McpInlineToml`), and the SIGKILL cleanup crash test.
 
 ## Phase 4 — inventory contract only (in progress)
 

@@ -112,6 +112,9 @@ const placeholderNames = [
   // Only defined inside a mcpConfigArguments argument slot: the same servers as
   // an inline TOML table, for CLIs configured by a `-c` override.
   "mcpServersToml",
+  // Only defined inside a forEachMcpServer argument slot: one selected server's
+  // name per repetition.
+  "mcpServer",
 ] as const;
 const templatedString = boundedString.superRefine((value, ctx) => {
   const placeholders = [...value.matchAll(/\{\{([^{}]+)\}\}/g)];
@@ -261,6 +264,21 @@ const argument = z.union([
           (values) =>
             values.some((value) => value.includes("{{additionalDirectory}}")),
           "Additional folder arguments must include {{additionalDirectory}}",
+        ),
+    })
+    .strict(),
+  // Repeats arguments once per MCP server the Step selected, for example
+  // ["--allowedTools", "mcp__{{mcpServer}}"]. Emits nothing when none is
+  // selected.
+  z
+    .object({
+      forEachMcpServer: z
+        .array(templatedString)
+        .min(1)
+        .max(8)
+        .refine(
+          (values) => values.some((value) => value.includes("{{mcpServer}}")),
+          "MCP server arguments must include {{mcpServer}}",
         ),
     })
     .strict(),
@@ -1195,6 +1213,12 @@ export const toolProfileV1Schema = profileSchema.superRefine((profile, ctx) => {
         message:
           "Execution arguments allow one forEachAdditionalDirectory slot",
       });
+    if (count("forEachMcpServer") > 1)
+      ctx.addIssue({
+        code: "custom",
+        path,
+        message: "Execution arguments allow one forEachMcpServer slot",
+      });
     if (count("mcpConfigArguments") > 1)
       ctx.addIssue({
         code: "custom",
@@ -1209,6 +1233,12 @@ export const toolProfileV1Schema = profileSchema.superRefine((profile, ctx) => {
           code: "custom",
           path: [...path, index],
           message: "{{mcpConfigPath}} is only available in mcpConfigArguments",
+        });
+      if (values.some((value) => value.includes("{{mcpServer}}")))
+        ctx.addIssue({
+          code: "custom",
+          path: [...path, index],
+          message: "{{mcpServer}} is only available in forEachMcpServer",
         });
       if (values.some((value) => value.includes("{{mcpServersToml}}")))
         ctx.addIssue({

@@ -43,6 +43,8 @@ export interface ProfileExecutionContext {
   mcpConfigPath?: string;
   /** The same servers as an inline TOML table, for `{{mcpServersToml}}`. */
   mcpServersToml?: string;
+  /** Names of the selected servers, for `forEachMcpServer`. */
+  mcpServerNames?: readonly string[];
 }
 
 export interface ProfileExecutionInput {
@@ -486,6 +488,7 @@ function expandTemplate(
   context: ProfileExecutionContext,
   additionalDirectory?: string,
   mcpConfigPath?: string,
+  mcpServer?: string,
 ): string {
   const timeout = timeoutValues(profile, context);
   const substitutions: Record<string, string | undefined> = {
@@ -507,6 +510,7 @@ function expandTemplate(
     mcpConfigPath,
     mcpServersToml:
       mcpConfigPath === undefined ? undefined : context.mcpServersToml,
+    mcpServer,
   };
   return value.replace(/\{\{([^{}]+)\}\}/g, (_whole, name: string) => {
     const replacement = substitutions[name];
@@ -583,6 +587,21 @@ export function expandExecutionArguments(
             ),
           ),
         );
+    } else if ("forEachMcpServer" in part) {
+      if (context.mcpConfigPath !== undefined)
+        for (const server of context.mcpServerNames ?? [])
+          output.push(
+            ...part.forEachMcpServer.map((value) =>
+              expandTemplate(
+                value,
+                profile,
+                context,
+                undefined,
+                context.mcpConfigPath,
+                server,
+              ),
+            ),
+          );
     } else if ("forEachAdditionalDirectory" in part) {
       for (const directory of directories)
         output.push(

@@ -111,6 +111,10 @@ class McpInlineToml {
       }
       final fields = <String>[
         'command=${_string(server.command)}',
+        // Selecting the server on the Step is the approval; the CLI's own
+        // approval policy is `never` in non-interactive runs, which would
+        // otherwise refuse every call.
+        'default_tools_approval_mode="approve"',
         if (server.arguments.isNotEmpty)
           'args=[${server.arguments.map(_string).join(',')}]',
         if (server.environment.isNotEmpty)

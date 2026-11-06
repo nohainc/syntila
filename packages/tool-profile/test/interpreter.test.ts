@@ -432,6 +432,50 @@ describe("Tool Profile v1 pure interpreter", () => {
     ).toThrow();
   });
 
+  it("repeats forEachMcpServer arguments once per selected server", () => {
+    const profile = loadProfile("gemini-antigravity.v1");
+    const slots: NonNullable<Parameters<typeof expandExecutionArguments>[2]> = [
+      { sandboxPolicyMapping: true },
+      { modelArguments: true },
+      { sessionResumeArguments: true },
+      { providerTimeoutArguments: true },
+      { mcpConfigArguments: ["--mcp-config", "{{mcpConfigPath}}"] },
+      { forEachMcpServer: ["--allowedTools", "mcp__{{mcpServer}}"] },
+    ];
+    const two = expandExecutionArguments(
+      profile,
+      context({
+        mcpConfigPath: "/tmp/mcp.json",
+        mcpServerNames: ["files", "search"],
+      }),
+      [...slots],
+    );
+    expect(two.slice(-4)).toEqual([
+      "--allowedTools",
+      "mcp__files",
+      "--allowedTools",
+      "mcp__search",
+    ]);
+    // An empty selection pre-approves nothing; no MCP execution emits nothing.
+    expect(
+      expandExecutionArguments(
+        profile,
+        context({ mcpConfigPath: "/tmp/mcp.json", mcpServerNames: [] }),
+        [...slots],
+      ),
+    ).not.toContain("--allowedTools");
+    expect(
+      expandExecutionArguments(profile, context(), [...slots]),
+    ).not.toContain("--allowedTools");
+    // The placeholder is not available outside its slot.
+    expect(() =>
+      expandExecutionArguments(profile, context(), [
+        ...slots.slice(0, 4),
+        "mcp__{{mcpServer}}",
+      ]),
+    ).toThrow();
+  });
+
   it("rejects {{mcpConfigPath}} outside its slot and malformed slots", () => {
     const profile = loadProfile("gemini-antigravity.v1");
     const base = [

@@ -456,6 +456,18 @@ void main() {
       expect(profileSupportsMcpServers(asset('gemini')), isFalse);
     });
 
+    test('Claude pre-approves exactly the selected servers', () {
+      final args = (asset('claude')['execution'] as Map)['arguments'] as List;
+      expect(
+        args.whereType<Map>().where((p) => p.containsKey('forEachMcpServer')),
+        [
+          {
+            'forEachMcpServer': ['--allowedTools', 'mcp__{{mcpServer}}'],
+          },
+        ],
+      );
+    });
+
     test('Codex isolates user config and takes servers from the table', () {
       List<Object?> slot(List<Object?> args) => [
             for (final part in args)

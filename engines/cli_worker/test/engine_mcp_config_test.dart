@@ -47,6 +47,9 @@ void main() {
             '--strict-mcp-config',
           ],
         },
+        {
+          'forEachMcpServer': ['--allowedTools', 'mcp__{{mcpServer}}'],
+        },
         {'providerTimeoutArguments': true},
       ];
       final profileBytes = utf8.encode(
@@ -135,6 +138,8 @@ void main() {
           '"args":["--root","/tmp/a b"],"env":{"TOKEN":"secret-value"}}}',
         ),
       );
+      // Exactly the selected servers are pre-approved, nothing else.
+      expect(withMcp.output, contains(' | allowed: mcp__files'));
       final path = RegExp(r'file: (\S+)').firstMatch(withMcp.output)!.group(1)!;
       if (!Platform.isWindows) {
         expect(withMcp.output, contains('mode: 600'));
@@ -146,6 +151,8 @@ void main() {
       final without = await send(execute('without', const [])) as WorkerResult;
       expect(without.output, contains('\"mcpServers\":{}'));
       expect(without.output, contains(' | strict'));
+      // No selection pre-approves nothing.
+      expect(without.output.trimRight(), endsWith('| allowed:'));
       final emptyPath = RegExp(
         r'file: (\S+)',
       ).firstMatch(without.output)!.group(1)!;

@@ -31,8 +31,9 @@ void main() {
     ]);
     expect(
       toml.servers,
-      '{"files"={command="/usr/bin/files",args=["--root","/tmp/a b"]},'
-      '"git"={command="/usr/bin/files"}}',
+      '{"files"={command="/usr/bin/files",'
+      'default_tools_approval_mode="approve",args=["--root","/tmp/a b"]},'
+      '"git"={command="/usr/bin/files",default_tools_approval_mode="approve"}}',
     );
   });
 
