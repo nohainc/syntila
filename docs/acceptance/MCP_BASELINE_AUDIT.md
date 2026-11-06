@@ -234,10 +234,17 @@ outcome, a claim without an outcome, and no journal for pre-dispatch
 rejections. Cloud first-outcome and cross-Workspace tests exist from earlier
 work and Phase 1.
 
+**Crash-boundary tests (added later).** `mcp_tool_call_supervisor_test.dart` now
+covers each boundary: admission failure (rejected, no claim, no Engine), claim
+ordering (after admission, before any byte reaches the Engine), an Engine that
+dies before reading, garbled or out-of-contract answers, a valid answer with a
+non-zero exit, and no answer before the deadline. All but pre-dispatch
+rejections end `unknown`, free the slot, and never carry a result.
+
 **Not done.** Power-loss evidence: no machine was power-cycled, so durability
 rests on the syscalls succeeding, not on a failure experiment; Linux and
-Windows were not run. No crash-injection test at every lifecycle boundary
-(kill between claim and write, between write and answer). Cloud cannot yet ask
+Windows were not run. A real process-kill test between claim and write is still missing (the
+boundaries are simulated with shell stand-ins). Cloud cannot yet ask
 a Workspace for its journal after a lost reply, so Cloud still records
 `unknown` for those; the journal is visible only locally. There is no IPC
 status command or UI, and no manual-recovery command: the only recovery is to
