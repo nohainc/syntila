@@ -5,6 +5,7 @@ import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:syntila_plugin_conformance/syntila_plugin_conformance.dart'
     show PluginConnection, PluginExited;
 
+import 'mcp_http_transport.dart';
 import 'plugin_host.dart';
 
 /// Adapts a supervised [PluginConnection] (digest-checked, limited, process
@@ -51,20 +52,43 @@ class PluginConnectionTransport implements McpTransport {
   }
 }
 
-/// Everything the Service resolved about one MCP server.
+/// A remote MCP server reached over Streamable HTTP (ADR-028 M5). The Service
+/// resolves the token from its own store at the moment of use; the Engine keeps
+/// it in memory only and never writes it anywhere.
+class McpRemote {
+  const McpRemote({
+    required this.endpoint,
+    this.bearerToken,
+    this.allowInsecureLoopback = false,
+  });
+
+  final Uri endpoint;
+  final String? bearerToken;
+
+  /// Plain http to a loopback host, for tests and local development only.
+  final bool allowInsecureLoopback;
+}
+
+/// Everything the Service resolved about one MCP server: either a local process
+/// ([launch]) or a remote endpoint ([remote]), never both.
 class McpServerSpec {
   McpServerSpec({
     required this.serverId,
     required this.workspaceId,
-    required this.launch,
+    this.launch,
+    this.remote,
     this.requireWorkerProfile = false,
     this.pins,
     this.maxConcurrent = 1,
-  });
+  }) : assert(
+         (launch == null) != (remote == null),
+         'a server is either local or remote',
+       );
 
   final String serverId;
   final String workspaceId;
-  final PluginLaunch launch;
+  final PluginLaunch? launch;
+  final McpRemote? remote;
 
   /// Worker-class servers must advertise `_meta["syntila.worker"]`.
   final bool requireWorkerProfile;
@@ -74,8 +98,26 @@ class McpServerSpec {
   final ToolPins? pins;
   final int maxConcurrent;
 
-  String get key =>
-      '$workspaceId|$serverId|${launch.pluginId}@${launch.version}|${launch.artifactSha256}';
+  bool get isRemote => remote != null;
+
+  /// A remote server cannot push `list_changed` to us (no server-to-client
+  /// stream yet), so its tools are re-listed before every call; otherwise it
+  /// could change a consented definition mid-session unnoticed.
+  bool get relistBeforeCall => isRemote;
+
+  /// Values that must never appear in text leaving the Engine.
+  Iterable<String> get secrets => [
+    ...?launch?.environment.values,
+    if (remote?.bearerToken case final token?) token,
+  ];
+
+  String get key {
+    final l = launch;
+    if (l != null) {
+      return '$workspaceId|$serverId|${l.pluginId}@${l.version}|${l.artifactSha256}';
+    }
+    return '$workspaceId|$serverId|${remote!.endpoint}';
+  }
 }
 
 class _Entry {
@@ -156,9 +198,24 @@ class McpHost {
       if (wait > Duration.zero) await Future<void>.delayed(wait);
     }
     try {
-      final connection = await _plugins.connect(e.spec.launch);
-      final client = McpClient(PluginConnectionTransport(connection));
-      e.connection = connection;
+      final remote = e.spec.remote;
+      final McpClient client;
+      if (remote != null) {
+        client = McpClient(
+          StreamableHttpTransport(
+            endpoint: remote.endpoint,
+            allowInsecureLoopback: remote.allowInsecureLoopback,
+            headers: {
+              if (remote.bearerToken != null)
+                'Authorization': 'Bearer ${remote.bearerToken}',
+            },
+          ),
+        );
+      } else {
+        final connection = await _plugins.connect(e.spec.launch!);
+        client = McpClient(PluginConnectionTransport(connection));
+        e.connection = connection;
+      }
       e.client = client;
       await client.initialize();
       if (e.spec.requireWorkerProfile &&
@@ -218,8 +275,14 @@ class McpLease {
   Future<ToolPinDiff?> pinDiff() async {
     final pins = _entry.spec.pins;
     if (pins == null) return null;
-    if (client.toolsListChanged) _entry.tools = await client.listTools();
+    await _refreshTools();
     return pins.diff(_entry.tools);
+  }
+
+  Future<void> _refreshTools() async {
+    if (client.toolsListChanged || _entry.spec.relistBeforeCall) {
+      _entry.tools = await client.listTools();
+    }
   }
 
   /// Calls a tool only if it was consented and is unchanged.
@@ -230,7 +293,7 @@ class McpLease {
     Duration? timeout,
   }) async {
     final pins = _entry.spec.pins;
-    if (client.toolsListChanged) _entry.tools = await client.listTools();
+    await _refreshTools();
     if (pins == null || !pins.allows(name, _entry.tools)) {
       throw McpException(
         McpFailure.definitionChanged,

@@ -142,15 +142,15 @@ void main() {
       serverId: good.serverId,
       workspaceId: good.workspaceId,
       launch: PluginLaunch(
-        executable: good.launch.executable,
-        arguments: good.launch.arguments,
+        executable: good.launch!.executable,
+        arguments: good.launch!.arguments,
         artifactSha256: '0' * 64,
-        pluginId: good.launch.pluginId,
-        version: good.launch.version,
-        dataDirectory: good.launch.dataDirectory,
-        workingDirectory: good.launch.workingDirectory,
-        environment: good.launch.environment,
-        hostVersion: good.launch.hostVersion,
+        pluginId: good.launch!.pluginId,
+        version: good.launch!.version,
+        dataDirectory: good.launch!.dataDirectory,
+        workingDirectory: good.launch!.workingDirectory,
+        environment: good.launch!.environment,
+        hostVersion: good.launch!.hostVersion,
       ),
     );
     await expectLater(host.acquire(bad), throwsA(isA<PluginLaunchException>()));

@@ -14,6 +14,7 @@ import 'plugin_host.dart';
 ///
 /// stdin: one JSON line
 /// `{"server": <McpServerLaunch>, "commandSha256": "<hex>", "workingDirectory": "<abs>"}`
+/// or, for a remote server, `{"remote": {"endpoint": "https://...", "bearerToken": "..."}}`
 /// plus an optional `"requireWorkerProfile": true` that makes a server without
 /// the Syntila Worker profile marker fail.
 /// stdout: exactly one JSON line, `{"ok":true,"tools":[...]}` or
@@ -31,30 +32,54 @@ Future<Map<String, Object?>> runMcpProbe(
   final host = McpHost(pluginHost: plugins);
   final data = await Directory.systemTemp.createTemp('syntila-mcp-probe-');
   try {
-    final server = McpServerLaunch.fromJson(
-      Map<String, Object?>.from(request['server'] as Map),
-    );
-    final sha = request['commandSha256'];
-    final cwd = request['workingDirectory'];
-    if (sha is! String || cwd is! String || !Directory(cwd).isAbsolute) {
-      throw const FormatException('invalid probe request');
+    final McpServerSpec spec;
+    final remote = request['remote'];
+    if (remote is Map) {
+      // A remote server: no process, no digest; the endpoint is the identity.
+      final endpoint = Uri.tryParse('${remote['endpoint']}');
+      if (endpoint == null || !endpoint.hasAuthority) {
+        throw const FormatException('invalid remote endpoint');
+      }
+      final token = remote['bearerToken'];
+      spec = McpServerSpec(
+        serverId: 'remote',
+        workspaceId: 'probe',
+        requireWorkerProfile: request['requireWorkerProfile'] == true,
+        remote: McpRemote(
+          endpoint: endpoint,
+          bearerToken: token is String && token.isNotEmpty ? token : null,
+          allowInsecureLoopback: remote['allowInsecureLoopback'] == true,
+        ),
+      );
+    } else {
+      final server = McpServerLaunch.fromJson(
+        Map<String, Object?>.from(request['server'] as Map),
+      );
+      final sha = request['commandSha256'];
+      final cwd = request['workingDirectory'];
+      if (sha is! String || cwd is! String || !Directory(cwd).isAbsolute) {
+        throw const FormatException('invalid probe request');
+      }
+      spec = McpServerSpec(
+        serverId: server.name,
+        workspaceId: 'probe',
+        requireWorkerProfile: request['requireWorkerProfile'] == true,
+        launch: PluginLaunch(
+          executable: server.command,
+          arguments: server.arguments,
+          artifactSha256: sha,
+          pluginId: server.name,
+          version: '0',
+          dataDirectory: data.path,
+          workingDirectory: cwd,
+          environment: {
+            ...PluginHost.buildEnvironment(),
+            ...server.environment,
+          },
+          hostVersion: '0',
+        ),
+      );
     }
-    final spec = McpServerSpec(
-      serverId: server.name,
-      workspaceId: 'probe',
-      requireWorkerProfile: request['requireWorkerProfile'] == true,
-      launch: PluginLaunch(
-        executable: server.command,
-        arguments: server.arguments,
-        artifactSha256: sha,
-        pluginId: server.name,
-        version: '0',
-        dataDirectory: data.path,
-        workingDirectory: cwd,
-        environment: {...PluginHost.buildEnvironment(), ...server.environment},
-        hostVersion: '0',
-      ),
-    );
     final lease = await host.acquire(spec).timeout(deadline);
     final tools = lease.tools;
     lease.release();

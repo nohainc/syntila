@@ -44,7 +44,7 @@ class McpWorkerRunner {
       return PluginRunFailure(code: error.code, message: error.message);
     }
 
-    final redactor = PluginRedactor(secrets: spec.launch.environment.values);
+    final redactor = PluginRedactor(secrets: spec.secrets);
     var cancelled = false;
     var finished = false;
     try {
@@ -166,7 +166,7 @@ class McpWorkerRunner {
         );
       }
       // Same shape and bounds as the NDJSON probe: {code, ok, message}.
-      final redactor = PluginRedactor(secrets: spec.launch.environment.values);
+      final redactor = PluginRedactor(secrets: spec.secrets);
       final rawChecks = data['checks'] ?? const <Object?>[];
       if (rawChecks is! List ||
           rawChecks.length > PluginProtocolLimits.maxChecks) {
