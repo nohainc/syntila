@@ -19,18 +19,24 @@ const executionErrorCodes = <String>{
 const executionErrorMessages = <String, String>{
   'worker_not_ready': 'The selected Worker is not ready on its Workspace.',
   'cli_not_found': 'The required local CLI could not be found.',
-  'authentication_required': 'Sign in to the configured provider on this computer.',
-  'unsupported_cli_version': 'The installed local CLI version is not supported.',
+  'authentication_required':
+      'Sign in to the configured provider on this computer.',
+  'unsupported_cli_version':
+      'The installed local CLI version is not supported.',
   'model_not_supported': 'The selected model is not supported by this Worker.',
-  'permission_denied': 'A local permission required for this assignment was denied.',
-  'space_folder_exists': 'A folder with this Space\'s name already exists on the Workspace and is not empty. Confirm to use it.',
+  'permission_denied':
+      'A local permission required for this assignment was denied.',
+  'space_folder_exists':
+      'A folder with this Space\'s name already exists on the Workspace and is not empty. Confirm to use it.',
   'quota_exhausted': 'The provider\'s usage limit has been reached.',
   'provider_unavailable': 'The provider is temporarily unavailable.',
   'timeout': 'The assignment exceeded its time limit.',
   'cancelled': 'The assignment was cancelled.',
   'execution_failed': 'The assignment could not be completed.',
-  'context_limit_exceeded': 'This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.',
-  'additional_folders_unsupported': 'This Worker cannot use the Space\'s additional folders yet. Detach the additional folders or choose another Worker.',
+  'context_limit_exceeded':
+      'This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.',
+  'additional_folders_unsupported':
+      'This Worker cannot use the Space\'s additional folders yet. Detach the additional folders or choose another Worker.',
 };
 
 const workspaceRuntimeProtocolSchemaName = 'syntila.workspace-runtime-protocol';
@@ -64,6 +70,8 @@ const workspaceRuntimeProtocolSchemaMessageTypes = <String>{
   'diagnostic.probe.ack',
   'worker.usage.request',
   'worker.usage.result',
+  'mcp.tool_call.request',
+  'mcp.tool_call.result',
   'input.available',
 };
 const workspaceRuntimeProtocolSchemaBaseEnvelopeFields = <String>[

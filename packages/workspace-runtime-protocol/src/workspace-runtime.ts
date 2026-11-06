@@ -1,3 +1,7 @@
+import {
+  McpToolCallRequestSchema,
+  McpToolCallResultSchema,
+} from "./mcp-tool-call.js";
 import { z } from "zod";
 import {
   EXECUTION_PERMISSIONS,
@@ -44,6 +48,8 @@ export const WORKSPACE_RUNTIME_MESSAGE_TYPES = [
   "diagnostic.probe.ack",
   "worker.usage.request",
   "worker.usage.result",
+  "mcp.tool_call.request",
+  "mcp.tool_call.result",
   "input.available",
 ] as const;
 
@@ -749,6 +755,30 @@ export const workspaceRuntimeEnvelopeSchema = z
               })
               .strict();
       const payload = schema.safeParse(message.payload);
+      if (!payload.success) {
+        for (const issue of payload.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["payload", ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    }
+    if (message.type === "mcp.tool_call.request") {
+      const payload = McpToolCallRequestSchema.safeParse(message.payload);
+      if (!payload.success) {
+        for (const issue of payload.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["payload", ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    }
+    if (message.type === "mcp.tool_call.result") {
+      const payload = McpToolCallResultSchema.safeParse(message.payload);
       if (!payload.success) {
         for (const issue of payload.error.issues) {
           ctx.addIssue({

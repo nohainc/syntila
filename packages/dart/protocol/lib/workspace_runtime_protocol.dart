@@ -34,6 +34,8 @@ const workspaceRuntimeMessageTypes = <String>{
   'diagnostic.probe.ack',
   'worker.usage.request',
   'worker.usage.result',
+  'mcp.tool_call.request',
+  'mcp.tool_call.result',
   'input.available',
 };
 

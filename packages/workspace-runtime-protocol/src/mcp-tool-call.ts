@@ -33,3 +33,44 @@ export const McpToolCallRequestSchema = z
   });
 
 export type McpToolCallRequest = z.infer<typeof McpToolCallRequestSchema>;
+
+export const MCP_TOOL_CALL_RESULT_MAX_BYTES = 256 * 1024;
+export const McpToolCallResultSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    taskId: z.string().min(1).max(900),
+    dispatchKey: z.string().min(1).max(912),
+    state: z.enum(["completed", "toolError", "rejected", "unknown"]),
+    code: z.string().min(1).max(128),
+    result: z.record(z.string(), z.json()).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.dispatchKey !== `mcp-tool-v1:${value.taskId}`) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["dispatchKey"],
+        message: "Dispatch key must identify the logical task",
+      });
+    }
+    if (
+      value.result !== undefined &&
+      value.state !== "completed" &&
+      value.state !== "toolError"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["result"],
+        message: "Only completed or tool-error outcomes carry a result",
+      });
+    }
+    const bytes = new TextEncoder().encode(JSON.stringify(value.result ?? {}));
+    if (bytes.length > MCP_TOOL_CALL_RESULT_MAX_BYTES) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["result"],
+        message: "Tool result exceeds the byte limit",
+      });
+    }
+  });
+export type McpToolCallResult = z.infer<typeof McpToolCallResultSchema>;

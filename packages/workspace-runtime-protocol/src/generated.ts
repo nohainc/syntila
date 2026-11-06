@@ -33,6 +33,8 @@ export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_MESSAGE_TYPES = [
   "diagnostic.probe.ack",
   "worker.usage.request",
   "worker.usage.result",
+  "mcp.tool_call.request",
+  "mcp.tool_call.result",
   "input.available",
 ] as const;
 export const WORKSPACE_RUNTIME_PROTOCOL_SCHEMA_BASE_ENVELOPE_FIELDS = [
