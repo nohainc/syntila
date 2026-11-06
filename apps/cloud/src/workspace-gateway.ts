@@ -3,10 +3,19 @@ import {
   failLostEngineAssignments,
   parseEngineLivenessReport,
 } from "./assignment-liveness.js";
+import {
+  claimMcpToolDispatch,
+  loadMcpToolCall,
+  recordMcpToolOutcome,
+  type McpToolCallRecord,
+  type McpToolState,
+} from "./mcp-tool-dispatch-claim.js";
 import { signalAssignmentTerminal } from "./assignment-workflow-signal.js";
 import {
   parseWorkspaceRuntimeMessage,
   serializeWorkspaceRuntimeMessage,
+  McpToolCallRequestSchema,
+  McpToolCallResultSchema,
   WORKSPACE_RUNTIME_PROTOCOL_NAME,
   WORKSPACE_RUNTIME_PROTOCOL_VERSION,
   ALLOWED_FOLDERS_CAPABILITY,
@@ -160,6 +169,12 @@ export class WorkspaceGateway implements DurableObject {
       timer: ReturnType<typeof setTimeout>;
     }
   >();
+  private readonly pendingMcpToolCalls = new Map<
+    string,
+    { resolve: (payload: Record<string, unknown>) => void }
+  >();
+  // Margin on top of the call's own timeout for Engine start-up and transport.
+  private static readonly MCP_TOOL_CALL_MARGIN_MS = 60_000;
   // The Service may run a provider CLI, so allow longer than a delivery probe.
   private static readonly USAGE_TIMEOUT_MS = 70_000;
   private static readonly MAX_PENDING_USAGE_REQUESTS = 4;
@@ -264,6 +279,9 @@ export class WorkspaceGateway implements DurableObject {
     }
     if (request.method === "POST" && url.pathname === "/worker-usage") {
       return this.requestWorkerUsage(request);
+    }
+    if (request.method === "POST" && url.pathname === "/mcp-tool-call") {
+      return this.requestMcpToolCall(request);
     }
     if (request.method === "POST" && url.pathname === "/inputs-available") {
       return this.announceInputsAvailable();
@@ -1232,6 +1250,18 @@ export class WorkspaceGateway implements DurableObject {
         pending.resolve(payload);
         return;
       }
+      case "mcp.tool_call.result": {
+        const parsed = McpToolCallResultSchema.safeParse(message.payload);
+        if (!parsed.success) return;
+        const pending = this.pendingMcpToolCalls.get(parsed.data.taskId);
+        if (!pending) return;
+        this.pendingMcpToolCalls.delete(parsed.data.taskId);
+        pending.resolve(parsed.data);
+        return;
+      }
+      case "mcp.tool_call.request":
+        // Cloud originates tool calls; a Service never sends one.
+        return;
       case "worker.usage.request":
         // Cloud originates usage requests; a Service never sends one.
         return;
@@ -3165,6 +3195,85 @@ export class WorkspaceGateway implements DurableObject {
     }
   }
 
+  /**
+   * Runs one MCP tool step on the Workspace with at-most-once dispatch. The
+   * durable claim is written before the message is sent and is never undone;
+   * every uncertain path records `unknown` and is never replayed.
+   */
+  private async requestMcpToolCall(request: Request): Promise<Response> {
+    const body = await request.json().catch(() => null);
+    const parsed = McpToolCallRequestSchema.safeParse(body);
+    const workspaceId = this.state.id.name ?? this.executionWorkspaceId;
+    if (!parsed.success || !workspaceId)
+      return Response.json({ error: "Invalid tool call" }, { status: 400 });
+    const call = parsed.data;
+    const db = this.env.SYNTILA_DB;
+    const previous = await loadMcpToolCall(db, call.taskId);
+    if (previous) return Response.json(mcpToolCallReply(previous));
+    // Nothing has been claimed yet, so an offline Workspace is a clean refusal.
+    if (!(await this.isRuntimeLive()))
+      return Response.json({ error: "Workspace is offline" }, { status: 503 });
+    const claim = await claimMcpToolDispatch(db, {
+      taskId: call.taskId,
+      workspaceId,
+      claimedAt: new Date().toISOString(),
+    });
+    if (!claim)
+      return Response.json(
+        mcpToolCallReply(await loadMcpToolCall(db, call.taskId)),
+      );
+    const finish = async (
+      state: McpToolState,
+      code: string,
+      result?: Record<string, unknown>,
+    ) => {
+      await recordMcpToolOutcome(db, {
+        taskId: call.taskId,
+        state,
+        code,
+        result,
+        completedAt: new Date().toISOString(),
+      });
+      return Response.json(
+        mcpToolCallReply(await loadMcpToolCall(db, call.taskId)),
+      );
+    };
+    const answer = new Promise<Record<string, unknown>>((resolve) => {
+      this.pendingMcpToolCalls.set(call.taskId, { resolve });
+    });
+    try {
+      await this.send({
+        protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
+        protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+        messageId: `message-${crypto.randomUUID()}`,
+        timestamp: new Date().toISOString(),
+        type: "mcp.tool_call.request",
+        executionWorkspaceId: this.executionWorkspaceId ?? undefined,
+        workspaceRuntimeId: this.workspaceRuntimeId ?? undefined,
+        payload: call,
+      });
+    } catch {
+      this.pendingMcpToolCalls.delete(call.taskId);
+      return finish("unknown", "send_failed");
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(
+        () => resolve(null),
+        call.timeoutMs + WorkspaceGateway.MCP_TOOL_CALL_MARGIN_MS,
+      );
+    });
+    const payload = await Promise.race([answer, timeout]);
+    clearTimeout(timer);
+    this.pendingMcpToolCalls.delete(call.taskId);
+    if (!payload) return finish("unknown", "result_timeout");
+    return finish(
+      payload.state as McpToolState,
+      String(payload.code),
+      payload.result as Record<string, unknown> | undefined,
+    );
+  }
+
   private async cancelAssignment(request: Request): Promise<Response> {
     if (!(await this.isRuntimeLive()))
       return Response.json({ error: "Workspace is offline" }, { status: 503 });
@@ -3267,4 +3376,13 @@ export class WorkspaceGateway implements DurableObject {
   private sendError(error: string): void {
     if (this.socket) this.socket.send(JSON.stringify({ error }));
   }
+}
+
+/** The bounded reply to the workflow; an unrecorded outcome is unknown. */
+function mcpToolCallReply(record: McpToolCallRecord | null) {
+  return {
+    state: record?.state ?? "unknown",
+    code: record?.state ? record.code : "dispatch_already_claimed",
+    result: record?.result ?? undefined,
+  };
 }
