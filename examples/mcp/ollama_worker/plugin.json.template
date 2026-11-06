@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "mcp",
+  "pluginId": "ollama-mcp",
+  "version": "1.0.0",
+  "displayName": "Ollama (MCP Worker)",
+  "description": "Runs assignments on a local Ollama model through its HTTP API.",
+  "author": { "name": "Your name" },
+  "protocol": { "min": "1.0", "max": "1.0" },
+  "artifacts": {
+    "__PLATFORM__": {
+      "command": "bin/run",
+      "args": [],
+      "sha256": "__SHA256__",
+      "size": __SIZE__
+    }
+  },
+  "capabilities": { "progress": true, "modelDiscovery": true },
+  "access": {
+    "workRoot": "none",
+    "network": { "mode": "declared", "hosts": ["127.0.0.1"] },
+    "subprocess": false,
+    "env": ["OLLAMA_BASE_URL"]
+  },
+  "license": "Apache-2.0"
+}
