@@ -24,6 +24,13 @@ import {
   ResearchContextOverflowError,
   workStepPromptInputs,
 } from "./workflow-prompts.js";
+import {
+  type McpToolStepOutcome,
+  parseMcpToolStepInput,
+  runMcpToolStep,
+  toolStepFailure,
+  toolStepResult,
+} from "./mcp-tool-step.js";
 import { ASSIGNMENT_TERMINAL_EVENT_TYPE } from "./assignment-workflow-signal.js";
 import {
   INPUT_DELIVERY_IDLE_TIMEOUT_MS,
@@ -740,6 +747,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     let promptInput = await this.loadWorkRequestPromptInput(params);
     let tasks = [...planWorkflowTasks(definition, workRequestId)];
     const stepResults: Partial<Record<string, StepResult>> = {};
+    const toolOutputs: Record<
+      string,
+      { serverId: string; tool: string; value: unknown }
+    > = {};
     const db = (this.env as ExecutionEnv).SYNTILA_DB;
     if (db && params.workRequestId) {
       const requestMode = await db
@@ -921,7 +932,11 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             promptInput,
             step,
             stepResults,
+            toolOutputs,
           );
+          if (result.toolOutput && result.status === "completed") {
+            toolOutputs[stepInstanceId(result.task.step)] = result.toolOutput;
+          }
           const cancellationRequested = await (
             this.env as ExecutionEnv
           ).SYNTILA_DB.prepare(
@@ -1023,6 +1038,83 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     return { ...started, stage: "completed", status: "completed" };
   }
 
+  /**
+   * A Syntila-executed MCP tool step: no Worker, prompt or Engine session.
+   * The Workflow step never retries (`limit: 0`); the Gateway's durable claim
+   * makes a replay return the recorded outcome instead of calling again.
+   */
+  private async runToolCallTask(
+    params: SyntilaWorkflowParams,
+    task: PlannedWorkflowTask,
+    promptInput: Record<string, unknown>,
+    workflowStep: WorkflowStep,
+    startedAt: string,
+  ): Promise<{
+    task: PlannedWorkflowTask;
+    status: "completed" | "failed" | "cancelled";
+    output?: unknown;
+    stepResult?: StepResult;
+    toolOutput?: { serverId: string; tool: string; value: unknown };
+    error?: string;
+  }> {
+    const input = parseMcpToolStepInput(promptInput.toolCall);
+    if (!input) {
+      return {
+        task,
+        status: "failed",
+        error: "The request has no valid tool call (invalid_tool_call).",
+      };
+    }
+    await this.persistWorkflowTaskState(
+      task,
+      undefined,
+      undefined,
+      "running",
+      1,
+    );
+    const encoded = await workflowStep.do(
+      `workflow:${stepInstanceId(task.step)}:tool:1`,
+      {
+        retries: { limit: 0, delay: "1 second" as const },
+        timeout:
+          `${Math.ceil(input.timeoutMs / 60_000) + 2} minutes` as `${number} minutes`,
+      },
+      async () =>
+        JSON.stringify(
+          await runMcpToolStep(
+            this.env as unknown as Parameters<typeof runMcpToolStep>[0],
+            { workRequestId: params.workRequestId!, taskId: task.id },
+            input,
+          ),
+        ),
+    );
+    const outcome = JSON.parse(encoded) as McpToolStepOutcome;
+    const stepResult = toolStepResult(input, outcome, startedAt);
+    if (outcome.state !== "completed") {
+      return {
+        task,
+        status: "failed",
+        stepResult,
+        error: toolStepFailure(outcome),
+      };
+    }
+    return {
+      task,
+      status: "completed",
+      stepResult,
+      output: {
+        serverId: input.serverId,
+        tool: input.tool,
+        code: outcome.code,
+      },
+      toolOutput: {
+        serverId: input.serverId,
+        tool: input.tool,
+        value: outcome.result ?? {},
+      },
+    };
+  }
+
   private async runWorkflowTask(
     params: SyntilaWorkflowParams,
     definition: BuiltinWorkflowDefinition,
@@ -1030,11 +1122,16 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     promptInput: Record<string, unknown>,
     workflowStep: WorkflowStep,
     stepResults: Partial<Record<string, StepResult>>,
+    toolOutputs: Record<
+      string,
+      { serverId: string; tool: string; value: unknown }
+    > = {},
   ): Promise<{
     task: PlannedWorkflowTask;
     status: "completed" | "failed" | "cancelled";
     output?: unknown;
     stepResult?: StepResult;
+    toolOutput?: { serverId: string; tool: string; value: unknown };
     error?: string;
   }> {
     const db = (this.env as ExecutionEnv).SYNTILA_DB;
@@ -1044,6 +1141,15 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         status: "failed",
         error: "Work Request execution context is unavailable",
       };
+    }
+    if (task.step.kind === "tool_call") {
+      return this.runToolCallTask(
+        params,
+        task,
+        promptInput,
+        workflowStep,
+        new Date().toISOString(),
+      );
     }
     let attempt = 0;
     const startedAt = new Date().toISOString();
@@ -1100,10 +1206,13 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 taskId: task.id,
                 context: { status: `attempt_${attempt}` },
               });
-              const promptInputs = workStepPromptInputs(
-                { ...promptInput, workRequestId: params.workRequestId },
-                stepResults,
-              );
+              const promptInputs = {
+                ...workStepPromptInputs(
+                  { ...promptInput, workRequestId: params.workRequestId },
+                  stepResults,
+                ),
+                mcpToolOutputs: toolOutputs,
+              };
               const configuredInstructions =
                 typeof stepBinding.additionalInstructions === "string"
                   ? stepBinding.additionalInstructions

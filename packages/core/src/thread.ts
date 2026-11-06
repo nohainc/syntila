@@ -128,6 +128,7 @@ export const STEP_KINDS = [
   "test",
   "verify",
   "synthesis",
+  "tool_call",
 ] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
@@ -205,7 +206,9 @@ export type WorkflowResultSemantics =
   /** One independent researcher's report (Research v2). */
   | "research_report"
   /** The synthesized Research outcome built from all researcher reports. */
-  | "research_synthesis";
+  | "research_synthesis"
+  /** The recorded outcome of one MCP tool call; never a Worker answer. */
+  | "tool_result";
 
 export interface BuiltinWorkflowStep {
   /**
@@ -301,6 +304,7 @@ const builtinStep = (
       test: "test_report",
       verify: "verification_report",
       synthesis: "research_synthesis",
+      tool_call: "tool_result",
     } satisfies Record<StepKind, WorkflowResultSemantics>
   )[kind],
 });
@@ -333,6 +337,8 @@ const builtin = (
           return true;
         case "synthesis":
           return prior === "research";
+        case "tool_call":
+          return false;
       }
     });
     return builtinStep(
@@ -430,6 +436,60 @@ export function researchWorkflowV2(
   };
 }
 
+/** Step-instance IDs of Tool Chat: one tool call, then a chat about it. */
+export const TOOL_CHAT_TOOL_STEP_ID = "tool";
+export const TOOL_CHAT_CHAT_STEP_ID = "chat";
+
+/**
+ * Tool Chat (`chat:v2`): one MCP tool call whose recorded outcome is given to a
+ * read-only chat answer. The call is a Syntila-executed step with no Worker;
+ * its target and arguments are part of the accepted request, not of this
+ * definition. An unknown outcome stops the Workflow: it is never retried.
+ */
+export function toolChatWorkflowV2(): BuiltinWorkflowDefinition {
+  return {
+    id: "chat",
+    version: 2,
+    name: "Chat with tool",
+    description:
+      "Call one consented MCP tool, then discuss its recorded result.",
+    steps: [
+      {
+        id: TOOL_CHAT_TOOL_STEP_ID,
+        kind: "tool_call",
+        order: 0,
+        executionMode: "stateless_read",
+        executionClass: "workspace_action",
+        requiredCapabilities: [],
+        readWritePolicy: "read_only",
+        timeoutMs: 15 * 60 * 1000,
+        promptProfileVersion: "tool_call:v1",
+        dependsOn: [],
+        inputsFrom: [],
+        dependsOnSteps: [],
+        inputsFromSteps: [],
+        resultSemantics: "tool_result",
+      },
+      {
+        id: TOOL_CHAT_CHAT_STEP_ID,
+        kind: "chat",
+        order: 1,
+        executionMode: "stateless_read",
+        executionClass: "analysis",
+        requiredCapabilities: ["authorized_context_read"],
+        readWritePolicy: "read_only",
+        timeoutMs: 15 * 60 * 1000,
+        promptProfileVersion: "chat:v1",
+        dependsOn: ["tool_call"],
+        inputsFrom: ["tool_call"],
+        dependsOnSteps: [TOOL_CHAT_TOOL_STEP_ID],
+        inputsFromSteps: [TOOL_CHAT_TOOL_STEP_ID],
+        resultSemantics: "conversation_response",
+      },
+    ],
+  };
+}
+
 const RESEARCH_V1 = builtin(
   "research",
   "Research",
@@ -499,6 +559,9 @@ export const BUILTIN_WORKFLOW_CATALOG: Readonly<
   "plan_implement:v1": BUILTIN_WORKFLOWS.plan_implement,
   "implement_verify:v1": BUILTIN_WORKFLOWS.implement_verify,
   "full_cycle:v1": BUILTIN_WORKFLOWS.full_cycle,
+  // Chat with one preceding MCP tool call. It is a catalog-only version, so
+  // ordinary Chat (v1) stays current and `work_requests.workflow_id` is unchanged.
+  "chat:v2": toolChatWorkflowV2(),
 };
 
 export function builtinWorkflowReference(

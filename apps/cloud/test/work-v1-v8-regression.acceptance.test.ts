@@ -345,7 +345,11 @@ function createAcceptanceRun(
 }
 
 // Every catalog definition, including Research v2 with repeated step instances.
-const workflowCases = Object.values(BUILTIN_WORKFLOW_CATALOG);
+// Tool-call workflows have no Worker for every step; the tool step has its own
+// coverage in mcp-tool-step.test.ts.
+const workflowCases = Object.values(BUILTIN_WORKFLOW_CATALOG).filter(
+  (definition) => definition.steps.every((step) => step.kind !== "tool_call"),
+);
 
 describe("Work v1 acceptance through the shared assignment dispatcher", () => {
   it.each([1, 2])(

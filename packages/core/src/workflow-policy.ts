@@ -65,6 +65,16 @@ export const WORKFLOW_CONTROL_POLICIES: Readonly<
     },
     composerBindingId: "research",
   },
+  // One Syntila-executed MCP tool call, then a chat answer. Not a composer
+  // workflow: the tool target comes from the request, never from a picker.
+  "chat:v2": {
+    executionPolicy: {
+      ...GRAPH_WORKFLOW_POLICY,
+      multiWorker: false,
+      automaticContinuation: true,
+    },
+    composerBindingId: null,
+  },
   "plan_implement:v1": {
     executionPolicy: GRAPH_WORKFLOW_POLICY,
     composerBindingId: null,

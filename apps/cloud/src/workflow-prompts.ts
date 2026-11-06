@@ -96,6 +96,7 @@ const stepLabels: Readonly<Record<StepKind, string>> = {
   test: "Test",
   verify: "Verification",
   synthesis: "Research synthesis",
+  tool_call: "Tool call",
 };
 
 const profileInstructions: Readonly<
@@ -145,6 +146,12 @@ const profileInstructions: Readonly<
   synthesis: {
     version: "synthesis:v1",
     instructions: RESEARCH_SYNTHESIS_INSTRUCTIONS(),
+  },
+  // Tool calls are executed by Syntila, never prompted; this entry only keeps
+  // the profile table total.
+  tool_call: {
+    version: "tool_call:v1",
+    instructions: "Syntila executes this step; it is never sent to a Worker.",
   },
 };
 
@@ -477,6 +484,9 @@ export function renderWorkStepPrompt(
     }
   }
   for (const upstreamKind of step.inputsFrom) {
+    // A tool step has no text result; its validated output arrives separately
+    // as untrusted data (`mcpToolOutputs`) below.
+    if (upstreamKind === "tool_call") continue;
     const result = boundedText(
       inputs.stepResults?.[upstreamKind]?.text,
       MAX_SECTION_CHARS,
@@ -490,6 +500,15 @@ export function renderWorkStepPrompt(
   }
   // Only explicit instance dependencies may carry tool data. A model or user
   // cannot introduce an input by adding an unrelated entry to the map.
+  for (const id of workflowStep.inputsFromSteps ?? []) {
+    const producer = workflow.steps.find(
+      (candidate) => stepInstanceId(candidate) === id,
+    );
+    if (producer?.kind === "tool_call" && !inputs.mcpToolOutputs?.[id]) {
+      // A step that depends on a tool never runs without its recorded output.
+      throw new Error(`MCP tool output is required from step ${id}`);
+    }
+  }
   const toolInputs = (workflowStep.inputsFromSteps ?? [])
     .filter((id) => inputs.mcpToolOutputs?.[id] !== undefined)
     .map((id) => {

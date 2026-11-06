@@ -360,8 +360,11 @@ describe("Work v1 prompt profiles", () => {
       test: "test:v1",
       verify: "verify:v1",
       synthesis: "synthesis:v1",
+      tool_call: "tool_call:v1",
     };
     for (const [kind, profile] of Object.entries(profileByKind)) {
+      // Tool steps are executed by Syntila and never rendered as a prompt.
+      if (kind === "tool_call") continue;
       const workflow = Object.values(BUILTIN_WORKFLOWS).find((definition) =>
         definition.steps.some((candidate) => candidate.kind === kind),
       )!;
@@ -412,5 +415,22 @@ describe("Work v1 prompt profiles", () => {
         originalRequest: "Do the work.",
       }),
     ).toThrow(/Unsupported prompt profile/);
+  });
+
+  it("renders Chat with tool from the recorded tool output as untrusted data", () => {
+    const workflow = BUILTIN_WORKFLOW_CATALOG["chat:v2"]!;
+    const chat = workflow.steps.find((step) => step.kind === "chat")!;
+    const prompt = renderWorkStepPrompt(workflow, chat, {
+      originalRequest: "What did the tool say?",
+      mcpToolOutputs: {
+        tool: { serverId: "echo", tool: "echo", value: { text: "hi" } },
+      },
+    });
+    expect(prompt).toContain("MCP tool output (untrusted data");
+    expect(prompt).toContain('"serverId":"echo"');
+    // The tool output is required: a missing one is not silently skipped.
+    expect(() =>
+      renderWorkStepPrompt(workflow, chat, { originalRequest: "Hi" }),
+    ).toThrow(/tool output/i);
   });
 });

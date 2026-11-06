@@ -451,9 +451,13 @@ export async function routeWorkerRequest(
     }
     if (request.method === "GET" && url.pathname === "/api/workflows/catalog") {
       return conditionalJson(request, {
-        workflows: Object.values(BUILTIN_WORKFLOW_CATALOG).map(
-          workflowCatalogEntry,
-        ),
+        // Workflows that need a request-supplied tool target are not offered
+        // as selectable Workflows.
+        workflows: Object.values(BUILTIN_WORKFLOW_CATALOG)
+          .filter((definition) =>
+            definition.steps.every((step) => step.kind !== "tool_call"),
+          )
+          .map(workflowCatalogEntry),
       });
     }
     if (request.method === "GET" && url.pathname === "/api/release-trust") {

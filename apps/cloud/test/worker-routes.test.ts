@@ -108,9 +108,12 @@ describe("Worker API routes", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      workflows: Object.values(BUILTIN_WORKFLOW_CATALOG).map(
-        workflowCatalogEntry,
-      ),
+      // Tool-call workflows need a request-supplied target and are not listed.
+      workflows: Object.values(BUILTIN_WORKFLOW_CATALOG)
+        .filter((definition) =>
+          definition.steps.every((step) => step.kind !== "tool_call"),
+        )
+        .map(workflowCatalogEntry),
     });
   });
 
