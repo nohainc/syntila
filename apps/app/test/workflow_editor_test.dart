@@ -133,6 +133,75 @@ Future<void> openStep(WidgetTester tester, String id) async {
 }
 
 void main() {
+  test('MCP selections round-trip and an empty override disables inheritance',
+      () {
+    final saved = AxUserWorkflowConfiguration.fromJson({
+      'schemaVersion': 1,
+      'workflowId': 'full_cycle',
+      'enabled': true,
+      'defaults': {
+        'worker': 'a',
+        'mcpTools': ['files']
+      },
+      'stepOverrides': {
+        'verify': {'mcpTools': <String>[]}
+      },
+    });
+    expect(saved.toJson()['defaults'], {
+      'worker': 'a',
+      'mcpTools': ['files']
+    });
+    expect(saved.selectionFor('plan').mcpTools, ['files']);
+    expect(saved.selectionFor('verify').mcpTools, isEmpty);
+    expect((saved.toJson()['stepOverrides'] as Map)['verify'],
+        {'mcpTools': <String>[]});
+  });
+
+  testWidgets(
+      'editing Worker settings preserves default and step MCP selections',
+      (tester) async {
+    final source = await mount(
+        tester,
+        configuration(
+          defaults: const AxWorkflowSelection(
+              worker: 'a',
+              model: 'analysis',
+              effort: 'low',
+              mcpTools: ['files']),
+          overrides: {
+            'verify': const AxWorkflowSelection(effort: 'low', mcpTools: [])
+          },
+        ));
+    await choose(tester, 'defaults', 'Model', 'Review model');
+    await tester.tap(find.byKey(const ValueKey('save-workflow')));
+    await tester.pumpAndSettle();
+    expect(source.values.single.defaults.mcpTools, ['files']);
+    expect(source.values.single.stepOverrides['verify']!.mcpTools, isEmpty);
+  });
+
+  testWidgets('editing a step preserves its explicit empty MCP selection',
+      (tester) async {
+    final source = await mount(
+        tester,
+        configuration(
+          defaults: const AxWorkflowSelection(
+              worker: 'a',
+              model: 'analysis',
+              effort: 'low',
+              mcpTools: ['files']),
+          overrides: {
+            'verify': const AxWorkflowSelection(effort: 'low', mcpTools: [])
+          },
+        ));
+    await openStep(tester, 'verify');
+    await choose(tester, 'verify', 'Effort', 'High');
+    await tester.tap(find.byKey(const ValueKey('save-workflow')));
+    await tester.pumpAndSettle();
+    expect(source.values.single.defaults.mcpTools, ['files']);
+    expect(source.values.single.stepOverrides['verify']!.mcpTools, isEmpty);
+    expect(source.values.single.stepOverrides['verify']!.effort, 'high');
+  });
+
   test('workflow defaults and inherited steps survive catalog revision changes',
       () {
     const saved = AxWorkflowSelection(

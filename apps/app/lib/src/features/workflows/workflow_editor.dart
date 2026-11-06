@@ -445,7 +445,8 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
             worker: selection.worker,
             model: selection.model,
             effort: selection.effort,
-            catalogRevision: selection.catalogRevision));
+            catalogRevision: selection.catalogRevision,
+            mcpTools: value.mcpTools));
       }),
     );
   }

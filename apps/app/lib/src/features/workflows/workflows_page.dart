@@ -328,22 +328,31 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
     Future<void> updateSelection(AxWorkflowSelection next) async {
       try {
         final AxUserWorkflowConfiguration updated;
+        AxWorkflowSelection preserveTools(List<String>? tools) =>
+            AxWorkflowSelection(
+              worker: next.worker,
+              model: next.model,
+              effort: next.effort,
+              catalogRevision: next.catalogRevision,
+              mcpTools: tools,
+            );
         if (definition.steps.length == 1) {
           final stepKind = definition.steps.first.kind;
           final overrides = Map<String, AxWorkflowSelection>.from(
               configuration.stepOverrides);
-          overrides[stepKind] = next;
+          overrides[stepKind] =
+              preserveTools(configuration.stepOverrides[stepKind]?.mcpTools);
           updated = AxUserWorkflowConfiguration(
             workflowId: definition.id,
             enabled: configuration.enabled,
-            defaults: next,
+            defaults: preserveTools(configuration.defaults.mcpTools),
             stepOverrides: overrides,
           );
         } else {
           updated = AxUserWorkflowConfiguration(
             workflowId: definition.id,
             enabled: configuration.enabled,
-            defaults: next,
+            defaults: preserveTools(configuration.defaults.mcpTools),
             stepOverrides: configuration.stepOverrides,
           );
         }

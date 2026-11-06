@@ -2,25 +2,35 @@
 /// Null model/effort values represent Auto and are omitted from the wire payload.
 class AxWorkflowSelection {
   const AxWorkflowSelection(
-      {this.worker, this.model, this.effort, this.catalogRevision});
+      {this.worker,
+      this.model,
+      this.effort,
+      this.catalogRevision,
+      this.mcpTools});
   final String? worker, model, effort, catalogRevision;
+
+  /// Null inherits; an empty list explicitly selects no servers.
+  final List<String>? mcpTools;
   factory AxWorkflowSelection.fromJson(Map<String, dynamic> json) =>
       AxWorkflowSelection(
           worker: json['worker'] as String?,
           model: json['model'] as String?,
           effort: json['effort'] as String?,
-          catalogRevision: json['catalogRevision'] as String?);
+          catalogRevision: json['catalogRevision'] as String?,
+          mcpTools: (json['mcpTools'] as List?)?.cast<String>().toList());
   Map<String, dynamic> toJson() => {
         if (worker != null) 'worker': worker,
         if (model != null) 'model': model,
         if (effort != null) 'effort': effort,
         if (catalogRevision != null) 'catalogRevision': catalogRevision,
+        if (mcpTools != null) 'mcpTools': List<String>.of(mcpTools!),
       };
   AxWorkflowSelection overlay(AxWorkflowSelection override) =>
       AxWorkflowSelection(
           worker: override.worker ?? worker,
           model: override.model ?? model,
           effort: override.effort ?? effort,
+          mcpTools: override.mcpTools ?? mcpTools,
           catalogRevision: override.worker != null && override.worker != worker
               ? override.catalogRevision
               : override.catalogRevision ?? catalogRevision);

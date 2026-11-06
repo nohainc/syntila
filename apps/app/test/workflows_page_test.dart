@@ -257,6 +257,41 @@ void main() {
     }
   });
 
+  testWidgets('card edits preserve distinct default and step MCP selections',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final source = WorkflowSource()
+      ..workers = [worker('a')]
+      ..scopedValues['ws'] = [
+        AxUserWorkflowConfiguration(
+          workflowId: 'direct',
+          defaults: const AxWorkflowSelection(mcpTools: ['files']),
+          stepOverrides: {'implement': const AxWorkflowSelection(mcpTools: [])},
+        )
+      ];
+    final engine = AxSyncEngine();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+      child: WorkflowsPage(
+        workspaceId: 'ws',
+        catalogs: AxSessionCatalogs(source, engine: engine),
+        configurations:
+            AxWorkflowConfigurations(source, engine: engine).forWorkspace('ws'),
+      ),
+    ))));
+    await tester.pumpAndSettle();
+    final choice = find.byKey(const ValueKey('workflow-worker-direct-a'));
+    await tester.ensureVisible(choice);
+    await tester.tap(choice);
+    await tester.pumpAndSettle();
+    final saved =
+        source.scopedValues['ws']!.singleWhere((v) => v.workflowId == 'direct');
+    expect(saved.defaults.mcpTools, ['files']);
+    expect(saved.stepOverrides['implement']!.mcpTools, isEmpty);
+  });
+
   testWidgets('disabled workflow remains configurable without enabling it',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 1600));
