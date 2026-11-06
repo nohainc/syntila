@@ -4,7 +4,13 @@ extension _AxAppRunDetails on _AxAppStateMixin {
   Widget _runDetailsView(bool compact) {
     switch (navigation.kind) {
       case AxRouteKind.people:
-        return PeoplePage(people: store.people);
+        return PeoplePage(
+          people: store.people,
+          onOpenThread: (spaceId, threadId) =>
+              _navigateTo(AxNavigation.thread(spaceId, threadId)),
+          onOpenSpace: (spaceId) =>
+              _navigateTo(AxNavigation.space(spaceId)),
+        );
       case AxRouteKind.notes:
         final source = widget.dataSource;
         if (source is! AxNotesDataSource) break;

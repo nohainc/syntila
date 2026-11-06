@@ -11,6 +11,8 @@ import 'package:syntila_app/src/features/spaces/spaces_pages.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
 import 'package:syntila_app/src/ax/sync/ax_work_history.dart';
+import 'package:syntila_app/src/ax/sync/ax_discussion_cache.dart';
+import 'package:syntila_app/src/ax/sync/persistence/ax_thread_view_state_store.dart';
 
 import 'ax_fixture_data.dart';
 import 'conversation_turn_fixture.dart';
@@ -4416,6 +4418,288 @@ void main() {
     expect(find.byTooltip('Report issue'), findsNothing);
     expect(find.byTooltip('Retry request'), findsNothing);
   });
+
+  testWidgets(
+      'Direct Space header displays peer avatar, display name, and connection state',
+      (tester) async {
+    const space = AxSpace(
+      id: 'space-direct-1',
+      name: 'Julia Roberts',
+      kind: 'direct',
+      branch: '',
+      lastActivity: '',
+    );
+    final generalThread = const AxThread(
+      id: 'general',
+      spaceId: 'space-direct-1',
+      name: 'General',
+      isGeneral: true,
+      lead: '',
+      status: 'active',
+      brief: '',
+      primaryWorkspace: '',
+      queueStatus: '',
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: SpacePage(
+            space: space,
+            dataSource: _SpaceStreamsSource([generalThread]),
+            onOpenThread: (_) {},
+            onArchive: () {},
+            onDelete: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Julia Roberts'), findsOneWidget);
+    expect(find.text('Personal connection'), findsOneWidget);
+    expect(find.text('General'), findsWidgets);
+    expect(find.byType(DropdownButton<String>), findsNothing);
+  });
+
+  testWidgets(
+      'Direct Space header actions hide global destructive deletion and expose personal actions',
+      (tester) async {
+    const space = AxSpace(
+      id: 'space-direct-1',
+      name: 'Julia Roberts',
+      kind: 'direct',
+      branch: '',
+      lastActivity: '',
+    );
+    final generalThread = const AxThread(
+      id: 'general',
+      spaceId: 'space-direct-1',
+      name: 'General',
+      isGeneral: true,
+      lead: '',
+      status: 'active',
+      brief: '',
+      primaryWorkspace: '',
+      queueStatus: '',
+    );
+    var openedThreadId = '';
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: SpacePage(
+            space: space,
+            dataSource: _SpaceStreamsSource([generalThread]),
+            onOpenThread: (id) => openedThreadId = id,
+            onArchive: () {},
+            onDelete: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Direct conversation actions'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open General Thread'), findsOneWidget);
+    expect(find.text('View person'), findsOneWidget);
+    expect(find.text('Hide conversation'), findsOneWidget);
+    expect(find.text('Manage personal notifications'), findsOneWidget);
+    expect(find.text('Remove connection'), findsOneWidget);
+    expect(find.text('Delete'), findsNothing);
+    expect(find.text('Edit'), findsNothing);
+
+    await tester.tap(find.text('Open General Thread'));
+    await tester.pumpAndSettle();
+    expect(openedThreadId, 'general');
+  });
+
+  testWidgets(
+      'Direct Space General Thread displays explicit General badge and topic threads allow management',
+      (tester) async {
+    const space = AxSpace(
+      id: 'space-direct-1',
+      name: 'Julia Roberts',
+      kind: 'direct',
+      branch: '',
+      lastActivity: '',
+    );
+    final generalThread = const AxThread(
+      id: 'general',
+      spaceId: 'space-direct-1',
+      name: 'General',
+      isGeneral: true,
+      lead: '',
+      status: 'active',
+      brief: '',
+      primaryWorkspace: '',
+      queueStatus: '',
+    );
+    final topicThread = const AxThread(
+      id: 'topic-1',
+      spaceId: 'space-direct-1',
+      name: 'Home renovation',
+      isGeneral: false,
+      lead: '',
+      status: 'active',
+      brief: '',
+      primaryWorkspace: '',
+      queueStatus: '',
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: SpacePage(
+            space: space,
+            dataSource: _SpaceStreamsSource([generalThread, topicThread]),
+            onOpenThread: (_) {},
+            onArchive: () {},
+            onDelete: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // General badge must be present
+    expect(find.text('General'), findsWidgets);
+
+    // General thread cannot be archived or deleted
+    final actionButtons = find.byTooltip('Thread actions');
+    expect(actionButtons, findsNWidgets(2));
+
+    await tester.tap(actionButtons.first);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(MenuItemButton, 'Archive'), findsNothing);
+    expect(find.widgetWithText(MenuItemButton, 'Delete'), findsNothing);
+
+    // Tap outside to close menu
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
+    // Topic thread can be renamed, archived, or deleted
+    await tester.tap(actionButtons.last);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(MenuItemButton, 'Rename'), findsOneWidget);
+    expect(find.widgetWithText(MenuItemButton, 'Archive'), findsOneWidget);
+    expect(find.widgetWithText(MenuItemButton, 'Delete'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Direct Space members tab displays fixed participants without permission toggles or invite button',
+      (tester) async {
+    const space = AxSpace(
+      id: 'space-direct-1',
+      name: 'Julia Roberts',
+      kind: 'direct',
+      branch: '',
+      lastActivity: '',
+    );
+    final members = [
+      const AxSpaceMember(
+        userId: 'user-me',
+        displayName: 'My Name',
+        email: 'me@example.com',
+        role: 'member',
+        createdAt: '2026-01-01',
+      ),
+      const AxSpaceMember(
+        userId: 'user-peer',
+        displayName: 'Julia Roberts',
+        email: 'julia@example.com',
+        role: 'member',
+        createdAt: '2026-01-01',
+      ),
+    ];
+    final dataSource = _DirectSpaceMembersSource(members);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: SpacePage(
+            space: space,
+            section: SpacePageSection.members,
+            viewerEmail: 'me@example.com',
+            dataSource: dataSource,
+            onOpenThread: (_) {},
+            onArchive: () {},
+            onDelete: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Participants'), findsOneWidget);
+    expect(find.text('My Name'), findsOneWidget);
+    expect(find.text('Julia Roberts'), findsWidgets);
+    expect(find.text('You'), findsOneWidget);
+    expect(find.text('Message'), findsOneWidget);
+    expect(find.text('Invite'), findsNothing);
+  });
+
+  testWidgets(
+      'NewThreadPage allows thread creation and hides settings in Direct Space',
+      (tester) async {
+    const space = AxSpace(
+      id: 'space-direct-1',
+      name: 'Julia Roberts',
+      kind: 'direct',
+      branch: '',
+      lastActivity: '',
+    );
+    final dataSource = _SpaceStreamsSource([]);
+
+    String? createdName;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: NewThreadPage(
+          space: space,
+          dataSource: dataSource,
+          discussionCache: AxDiscussionCache.forSource(dataSource),
+          workHistoryCache: AxWorkHistoryCache.forSource(dataSource),
+          threadViewStateStore: MemoryAxThreadViewStateStore(),
+          createThread: (name) async {
+            createdName = name;
+            return const AxThread(
+              id: 'thread-created-1',
+              spaceId: 'space-direct-1',
+              name: 'Vacation plans',
+              lead: '',
+              status: 'active',
+              brief: '',
+              primaryWorkspace: '',
+              queueStatus: '',
+            );
+          },
+          onOpenThread: (_) {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Julia Roberts'), findsOneWidget);
+    expect(find.text('Personal connection'), findsOneWidget);
+    expect(find.text('Settings'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'Vacation plans');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(createdName, 'Vacation plans');
+  });
+}
+
+class _DirectSpaceMembersSource extends AxFixtureDataSource {
+  _DirectSpaceMembersSource(this.members);
+  final List<AxSpaceMember> members;
+
+  @override
+  Future<List<AxSpaceMember>> loadSpaceMembers({required String spaceId}) async =>
+      members;
+
+  @override
+  Future<List<AxThread>> loadSpaceThreads({required String spaceId}) async =>
+      const [];
 }
 
 class _IssueReportDataSource extends AxFixtureDataSource {

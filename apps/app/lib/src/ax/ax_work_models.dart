@@ -950,7 +950,7 @@ abstract interface class AxDataSource {
     String? instructions,
     Map<String, dynamic>? settings,
   });
-  Future<void> archiveSpace({required String spaceId});
+  Future<void> archiveSpace({required String spaceId, bool direct = false});
   Future<void> deleteSpace({required String spaceId});
   Future<List<AxSpaceMember>> loadSpaceMembers({
     required String spaceId,

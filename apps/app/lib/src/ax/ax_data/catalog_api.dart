@@ -74,6 +74,107 @@ mixin _CatalogApi on _AxApiClientCore {
         (row) => AxPerson.fromJson(Map<String, dynamic>.from(row as Map))));
   }
 
+  Future<void> sendPersonInvitation({String? email, String? userId}) async {
+    final response = await client.post(
+      Uri.parse('$baseUrl/people/invitations'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode({
+        if (email != null) 'email': email,
+        if (userId != null) 'userId': userId,
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+        'Failed to send personal invitation (${response.statusCode}): ${response.body}',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
+  Future<void> acceptPersonInvitation(String invitationId) async {
+    final response = await client.post(
+      Uri.parse(
+          '$baseUrl/people/invitations/${Uri.encodeComponent(invitationId)}/accept'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+        'Failed to accept personal invitation (${response.statusCode}): ${response.body}',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
+  Future<void> declinePersonInvitation(String invitationId) async {
+    final response = await client.post(
+      Uri.parse(
+          '$baseUrl/people/invitations/${Uri.encodeComponent(invitationId)}/decline'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+        'Failed to decline personal invitation (${response.statusCode}): ${response.body}',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
+  Future<void> cancelPersonInvitation(String invitationId) async {
+    final response = await client.post(
+      Uri.parse(
+          '$baseUrl/people/invitations/${Uri.encodeComponent(invitationId)}/cancel'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+        'Failed to cancel personal invitation (${response.statusCode}): ${response.body}',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
+  Future<void> disconnectPersonConnection(String userId) async {
+    final response = await client.post(
+      Uri.parse(
+          '$baseUrl/people/connections/${Uri.encodeComponent(userId)}/disconnect'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+        'Failed to disconnect connection (${response.statusCode}): ${response.body}',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
+  Future<void> blockPerson(String userId) async {
+    final response = await client.post(
+      Uri.parse(
+          '$baseUrl/people/blocks/${Uri.encodeComponent(userId)}'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+        'Failed to block person (${response.statusCode}): ${response.body}',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
+  Future<void> unblockPerson(String userId) async {
+    final response = await client.delete(
+      Uri.parse(
+          '$baseUrl/people/blocks/${Uri.encodeComponent(userId)}'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+        'Failed to unblock person (${response.statusCode}): ${response.body}',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
   String _workflowWorkspaceUrl(String? spaceId) => spaceId == null
       ? '$baseUrl/user/workflow-workspace'
       : '$baseUrl/spaces/${Uri.encodeComponent(spaceId)}/workflow-workspace';

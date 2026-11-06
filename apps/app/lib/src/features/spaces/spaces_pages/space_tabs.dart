@@ -95,13 +95,46 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
     final pending = thread.id.startsWith('local-thread-');
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      title: Text(
-        thread.name,
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+      title: thread.isGeneral
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    thread.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: SyntilaColors.primarySoftColor(isDark),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'General',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: SyntilaColors.primaryForeground(isDark),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Text(
+              thread.name,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
       subtitle: !thread.creatorIsOwner && thread.creatorEmail.isNotEmpty
           ? Text('Created by ${thread.creatorEmail}',
               style: const TextStyle(fontSize: 12))
@@ -132,13 +165,20 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
                   },
                   itemBuilder: (menuContext) => [
                     for (final (action, label, icon) in [
-                      if (!archived && (isOwner || thread.canConfigureWork))
+                      if (!archived &&
+                          (isOwner ||
+                              thread.canConfigureWork ||
+                              widget.space.isDirect))
                         ('edit', 'Rename', Icons.edit_outlined),
-                      archived
-                          ? ('restore', 'Restore', Icons.unarchive_outlined)
-                          : ('archive', 'Archive', Icons.archive_outlined),
-                      if (isOwner || thread.canDestroy)
-                        ('delete', 'Delete', Icons.delete_outline),
+                      if (!thread.isGeneral) ...[
+                        archived
+                            ? ('restore', 'Restore', Icons.unarchive_outlined)
+                            : ('archive', 'Archive', Icons.archive_outlined),
+                        if (isOwner ||
+                            thread.canDestroy ||
+                            widget.space.isDirect)
+                          ('delete', 'Delete', Icons.delete_outline),
+                      ],
                     ])
                       SyntilaMenuEntry<String>(
                         value: action,
@@ -198,6 +238,152 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
 
   Widget _membersTab() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (widget.space.isDirect) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!widget.embedded) ...[
+              Text('Participants',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+            ],
+            if (membersError != null)
+              const Text(
+                  'Participants could not be loaded. Reopen this Space to try again.'),
+            if (membersLoading)
+              const LinearProgressIndicator()
+            else
+              ...members.map((member) {
+                final isMe = member.email == widget.viewerEmail;
+                return Card(
+                  elevation: 0,
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(color: Theme.of(context).dividerColor),
+                  ),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: SyntilaColors.primarySoftColor(isDark),
+                      child: Text(
+                        member.displayName.isNotEmpty
+                            ? member.displayName[0].toUpperCase()
+                            : (member.email.isNotEmpty
+                                ? member.email[0].toUpperCase()
+                                : 'U'),
+                        style: TextStyle(
+                          color: SyntilaColors.primaryForeground(isDark),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    title: Text(member.displayName.isNotEmpty
+                        ? member.displayName
+                        : member.email),
+                    subtitle: member.displayName.isNotEmpty &&
+                            member.email.isNotEmpty
+                        ? Text(member.email)
+                        : null,
+                    trailing: isMe
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: SyntilaColors.primarySoftColor(isDark),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'You',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: SyntilaColors.primaryForeground(isDark),
+                              ),
+                            ),
+                          )
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextButton(
+                                onPressed: () {
+                                  final general = threads
+                                          .where((t) => t.isGeneral)
+                                          .firstOrNull ??
+                                      threads
+                                          .where((t) =>
+                                              t.id == 'general' ||
+                                              t.name.toLowerCase() ==
+                                                  'general')
+                                          .firstOrNull ??
+                                      threads.firstOrNull;
+                                  if (general != null) {
+                                    widget.onOpenThread(general.id);
+                                  }
+                                },
+                                child: const Text('Message'),
+                              ),
+                              PopupMenuButton<String>(
+                                color: SyntilaMenuStyle.background(isDark),
+                                surfaceTintColor: Colors.transparent,
+                                elevation: 12,
+                                shadowColor: SyntilaMenuStyle.shadow(isDark),
+                                shape: SyntilaMenuStyle.shape(isDark),
+                                menuPadding: SyntilaMenuStyle.padding,
+                                tooltip: 'Participant actions',
+                                onSelected: (action) {
+                                  if (action == 'view_person') {
+                                    widget.onOpenPeople?.call();
+                                  } else if (action == 'remove_connection') {
+                                    unawaited(_confirmRemoveConnection());
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    height: 36,
+                                    textStyle:
+                                        SyntilaMenuStyle.popupTextStyle(isDark),
+                                    value: 'view_person',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.person_outline,
+                                            color: SyntilaColors
+                                                .textSecondary(isDark),
+                                            size: 18),
+                                        const SizedBox(width: 8),
+                                        const Text('View person'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    height: 36,
+                                    textStyle:
+                                        SyntilaMenuStyle.popupTextStyle(isDark),
+                                    value: 'remove_connection',
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.person_remove_outlined,
+                                            size: 18,
+                                            color: SyntilaColors.error),
+                                        SizedBox(width: 8),
+                                        Text('Remove connection',
+                                            style: TextStyle(
+                                                color: SyntilaColors.error)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                  ),
+                );
+              }),
+          ],
+        ),
+      );
+    }
     final hasOtherMembers = members.any((m) => m.role != 'owner') ||
         members.length > 1 ||
         invitations.isNotEmpty;

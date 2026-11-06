@@ -62,7 +62,15 @@ Future<void> main(List<String> args) async {
           'id': id,
           'result': {
             'tools': [
-              if (mode != 'noexecute') tool('syntila.execute'),
+              if (mode != 'noexecute')
+                if (mode == 'badschema')
+                  {
+                    'name': 'syntila.execute',
+                    'inputSchema': {'type': 'array'},
+                  }
+                else
+                  tool('syntila.execute'),
+              if (mode == 'duplicate_tool') tool('syntila.execute'),
               tool('syntila.probe'),
             ],
           },

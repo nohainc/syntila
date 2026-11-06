@@ -118,6 +118,7 @@ export function sqliteD1(
     "0100_assignment_cloud_queue.sql",
     "0101_worker_plugins.sql",
     "0104_mcp_tool_dispatch_fence.sql",
+    "0105_direct_spaces_and_personal_connections.sql",
   ]) {
     sqlite.exec(
       readFileSync(

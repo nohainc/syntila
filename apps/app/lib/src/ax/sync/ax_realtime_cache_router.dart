@@ -134,7 +134,8 @@ class AxRealtimeCacheRouter {
       return recovery;
     }
     if (type == 'people.updated') {
-      await engine.revalidateWhere((key) => key == AxQueryKey(['people']));
+      await engine.revalidateWhere((key) =>
+          key == AxQueryKey(['people']) || key == AxQueryKey(['spaces']));
       return;
     }
     if (type.startsWith('worker.inventory.')) {
@@ -249,6 +250,7 @@ class AxRealtimeCacheRouter {
           _managed(key) &&
           (scope.kind != 'user' ||
               key == AxQueryKey(['people']) ||
+              key == AxQueryKey(['spaces']) ||
               _observed(key)) &&
           (discussionResynchronize == null || key.parts[0] != 'thread')),
       if (discussionResynchronize != null)
@@ -269,6 +271,7 @@ class AxRealtimeCacheRouter {
   bool _managed(AxQueryKey key) =>
       key == AxQueryKey(['workers']) ||
       key == AxQueryKey(['people']) ||
+      key == AxQueryKey(['spaces']) ||
       (key.parts[0] == 'space' && key.parts.length >= 2) ||
       key.parts[0] == 'space-workflow-configurations' ||
       key.parts[0] == 'workflow-workspace' ||

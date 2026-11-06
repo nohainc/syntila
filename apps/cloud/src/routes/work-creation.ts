@@ -224,6 +224,33 @@ export async function createWorkRequestForUser(
 ): Promise<Response> {
   const handlerStartedAt = startedAt;
   const context = { userId };
+  const directSpace = await env.SYNTILA_DB.prepare(
+    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId
+     FROM direct_spaces ds
+     LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
+     WHERE ds.space_id = ?1`,
+  )
+    .bind(spaceId)
+    .first<{ status: string | null; userLowId: string; userHighId: string }>()
+    .catch(() => null);
+  if (directSpace) {
+    const isBlocked = await env.SYNTILA_DB.prepare(
+      `SELECT 1 FROM user_blocks
+       WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2)
+          OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
+    )
+      .bind(directSpace.userLowId, directSpace.userHighId)
+      .first();
+    if (isBlocked) {
+      throw new HttpError(403, "Messaging is blocked between participants");
+    }
+    if (directSpace.status !== "connected") {
+      throw new HttpError(
+        403,
+        "This personal conversation is disconnected and read-only",
+      );
+    }
+  }
   const executionSelection = parseWorkflowExecutionSelection(
     body.executionSelection,
   );
@@ -274,7 +301,7 @@ export async function createWorkRequestForUser(
     : workflowId === "research"
       ? configuredWorkflowDefinition(
           BUILTIN_WORKFLOWS.research,
-          (await loadSpaceWorkflowConfigurations(env, spaceId, "research"))
+          (await loadSpaceWorkflowConfigurations(env, spaceId, "research", context.userId))
             .configurations[0],
         )
       : BUILTIN_WORKFLOWS[workflowId];
@@ -889,18 +916,24 @@ async function requireToolCallAuthority(
   const target = parseMcpToolStepInput(toolCall);
   if (!target) throw new HttpError(400, "input.toolCall is invalid");
   const row = await env.SYNTILA_DB.prepare(
-    `SELECT p.owner_user_id AS spaceOwner, ew.owner_user_id AS workspaceOwner
+    `SELECT p.owner_user_id AS spaceOwner, COALESCE(p.kind, 'group') AS spaceKind,
+            ew.owner_user_id AS workspaceOwner
      FROM spaces p
      LEFT JOIN execution_workspaces ew ON ew.id = ?2
      WHERE p.id = ?1`,
   )
     .bind(spaceId, target.executionWorkspaceId)
-    .first<{ spaceOwner: string; workspaceOwner: string | null }>();
-  if (
-    !row ||
-    row.spaceOwner !== userId ||
-    row.workspaceOwner !== userId
-  )
+    .first<{
+      spaceOwner: string;
+      spaceKind: string;
+      workspaceOwner: string | null;
+    }>();
+  if (!row || row.workspaceOwner !== userId)
+    throw new HttpError(
+      403,
+      "A tool call can only be run on a Workspace you own",
+    );
+  if (row.spaceKind !== "direct" && row.spaceOwner !== userId)
     throw new HttpError(
       403,
       "Only the Space owner can run a tool, on a Workspace they own",

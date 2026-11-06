@@ -13,6 +13,20 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
       required String userId,
       required String role,
       required AxSpacePermissions permissions}) async {}
+  @override
+  Future<void> sendPersonInvitation({String? email, String? userId}) async {}
+  @override
+  Future<void> acceptPersonInvitation(String invitationId) async {}
+  @override
+  Future<void> declinePersonInvitation(String invitationId) async {}
+  @override
+  Future<void> cancelPersonInvitation(String invitationId) async {}
+  @override
+  Future<void> disconnectPersonConnection(String userId) async {}
+  @override
+  Future<void> blockPerson(String userId) async {}
+  @override
+  Future<void> unblockPerson(String userId) async {}
   const AxFixtureDataSource({this.authenticated = true});
 
   final bool authenticated;
@@ -230,7 +244,7 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
   }
 
   @override
-  Future<void> archiveSpace({required String spaceId}) async {}
+  Future<void> archiveSpace({required String spaceId, bool direct = false}) async {}
 
   @override
   Future<void> deleteSpace({required String spaceId}) async {}

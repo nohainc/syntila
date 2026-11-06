@@ -34,6 +34,7 @@ class McpConformanceRunner {
       'mcp.version_fallback': _versionFallback,
       'mcp.advertisement': _advertisement,
       'mcp.tools_present': _toolsPresent,
+      'mcp.tool_definitions': _toolDefinitions,
       'mcp.ping': _ping,
       'mcp.probe_shape': _probeShape,
       'mcp.execute_result': _executeResult,
@@ -123,6 +124,33 @@ class McpConformanceRunner {
     for (final required in const ['syntila.execute', 'syntila.probe']) {
       if (!names.contains(required)) {
         throw _Failure('tools/list does not offer $required.');
+      }
+    }
+  }
+
+  Future<void> _toolDefinitions(_McpWire w) async {
+    await w.initialize();
+    final result = await w.request('tools/list', {});
+    final tools = result['tools'];
+    if (tools is! List || tools.length > McpLimits.maxTools) {
+      throw _Failure('tools/list must return a bounded list of definitions.');
+    }
+    final names = <String>{};
+    for (final tool in tools) {
+      if (tool is! Map ||
+          tool['name'] is! String ||
+          (tool['name'] as String).isEmpty ||
+          !names.add(tool['name'] as String)) {
+        throw _Failure('tool names must be non-empty and unique.');
+      }
+      final input = tool['inputSchema'];
+      if (input is! Map || input['type'] != 'object') {
+        throw _Failure('tool inputSchema must be an object schema.');
+      }
+      final output = tool['outputSchema'];
+      if (output != null && (output is! Map || output['type'] != 'object')) {
+        throw _Failure(
+            'tool outputSchema must be an object schema when present.');
       }
     }
   }

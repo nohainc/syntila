@@ -62,23 +62,35 @@ export async function handleWorkflowDefault(
 ) {
   const context = await securityContext(request, env, ctx);
   let ownerUserId = context.userId;
+  let isDirectSpace = false;
   if (spaceId) {
     const membership = await env.SYNTILA_DB.prepare(
-      `SELECT s.owner_user_id AS ownerUserId
+      `SELECT s.owner_user_id AS ownerUserId, COALESCE(s.kind, 'group') AS kind
          FROM spaces s
          JOIN space_memberships m ON m.space_id = s.id
          JOIN users u ON u.id = m.user_id
         WHERE s.id = ?1 AND m.user_id = ?2 AND u.status = 'active'`,
     )
       .bind(spaceId, context.userId)
-      .first<{ ownerUserId: string }>();
+      .first<{ ownerUserId: string; kind: string }>();
     if (!membership) throw new HttpError(403, "Space membership required");
-    ownerUserId = membership.ownerUserId;
-    if (request.method !== "GET" && ownerUserId !== context.userId)
-      throw new HttpError(403, "Only the Space owner can configure workflows");
+    isDirectSpace = membership.kind === "direct";
+    if (isDirectSpace) {
+      if (request.method !== "GET") {
+        throw new HttpError(
+          403,
+          "Direct Spaces do not support Space-level default Workflow overrides; configure personal defaults instead",
+        );
+      }
+      ownerUserId = context.userId;
+    } else {
+      ownerUserId = membership.ownerUserId;
+      if (request.method !== "GET" && ownerUserId !== context.userId)
+        throw new HttpError(403, "Only the Space owner can configure workflows");
+    }
   }
 
-  const userWorkspaceId = spaceId
+  const userWorkspaceId = spaceId && !isDirectSpace
     ? null
     : await resolveUserWorkflowWorkspace(
         env,
@@ -87,12 +99,17 @@ export async function handleWorkflowDefault(
       );
 
   if (request.method === "GET") {
-    const selected = spaceId
+    const selected = spaceId && !isDirectSpace
       ? await loadSpaceWorkflowDefault(env, spaceId, ownerUserId)
       : await loadUserWorkflowDefault(env, ownerUserId, userWorkspaceId);
     const configuration = spaceId
       ? (
-          await loadSpaceWorkflowConfigurations(env, spaceId)
+          await loadSpaceWorkflowConfigurations(
+            env,
+            spaceId,
+            undefined,
+            context.userId,
+          )
         ).configurations.find((value) => value.workflowId === selected)
       : JSON.parse(
           (

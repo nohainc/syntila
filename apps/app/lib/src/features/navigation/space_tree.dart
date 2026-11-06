@@ -143,6 +143,7 @@ class SpaceTree extends StatelessWidget {
       ];
     }
 
+    final directSpaces = group(shellContext.directSpaces);
     final ownedSpaces = group(shellContext.ownedSpaces);
     final sharedSpaces = group(shellContext.sharedSpaces);
     return Column(
@@ -228,8 +229,13 @@ class SpaceTree extends StatelessWidget {
               ),
             ),
           ),
+        if (directSpaces.isNotEmpty) ...[
+          _groupLabel(context, 'PERSONAL'),
+          ...directSpaces.map((space) => _buildSpaceItem(context, space)),
+        ],
         if (ownedSpaces.isNotEmpty) ...[
-          if (sharedSpaces.isNotEmpty) _groupLabel(context, 'YOUR SPACES'),
+          if (sharedSpaces.isNotEmpty || directSpaces.isNotEmpty)
+            _groupLabel(context, 'YOUR SPACES'),
           ...ownedSpaces.map((space) => _buildSpaceItem(context, space)),
         ],
         if (sharedSpaces.isNotEmpty) ...[
@@ -332,17 +338,42 @@ class SpaceTree extends StatelessWidget {
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
-                              SyntilaFolderIcon(
-                                isExpanded: isExpanded,
-                                size: 16,
-                                color: spaceIdentityColor(
-                                        space.settings['color'],
-                                        isDark: Theme.of(context).brightness ==
-                                            Brightness.dark) ??
-                                    SyntilaColors.navigationTextMuted(
-                                        Theme.of(context).brightness ==
-                                            Brightness.dark),
-                              ),
+                              if (space.isDirect)
+                                (space.avatarUrl != null &&
+                                        space.avatarUrl!.isNotEmpty)
+                                    ? CircleAvatar(
+                                        radius: 8,
+                                        backgroundImage:
+                                            NetworkImage(space.avatarUrl!),
+                                      )
+                                    : CircleAvatar(
+                                        radius: 8,
+                                        backgroundColor: SyntilaBrand.accent
+                                            .withValues(alpha: 0.2),
+                                        child: Text(
+                                          space.name.isNotEmpty
+                                              ? space.name.characters.first
+                                                  .toUpperCase()
+                                              : '?',
+                                          style: const TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            color: SyntilaBrand.accent,
+                                          ),
+                                        ),
+                                      )
+                              else
+                                SyntilaFolderIcon(
+                                  isExpanded: isExpanded,
+                                  size: 16,
+                                  color: spaceIdentityColor(
+                                          space.settings['color'],
+                                          isDark: Theme.of(context).brightness ==
+                                              Brightness.dark) ??
+                                      SyntilaColors.navigationTextMuted(
+                                          Theme.of(context).brightness ==
+                                              Brightness.dark),
+                                ),
                               if (!isExpanded)
                                 Positioned(
                                   right: -3,
@@ -384,7 +415,8 @@ class SpaceTree extends StatelessWidget {
                       if (pageLayout &&
                           isSpaceActive &&
                           onCreateThread != null &&
-                          space.effectivePermissions.manageOwnThreads)
+                          (space.isDirect ||
+                              space.effectivePermissions.manageOwnThreads))
                         IconButton(
                           tooltip: 'New Thread',
                           icon: const Icon(Icons.add_rounded, size: 20),
@@ -673,7 +705,11 @@ class SpaceTree extends StatelessWidget {
                     fontSize: 12.5, fontWeight: FontWeight.w500),
               ),
             ),
-          if (space.role == 'owner' || thread.canConfigureWork)
+          if (!isArchived &&
+              !thread.isGeneral &&
+              (space.role == 'owner' ||
+                  thread.canConfigureWork ||
+                  space.isDirect))
             MenuItemButton(
               style: itemStyle(),
               leadingIcon:
@@ -684,39 +720,41 @@ class SpaceTree extends StatelessWidget {
                 style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
               ),
             ),
-          MenuItemButton(
-            style: itemStyle(),
-            leadingIcon: Icon(
-              isArchived ? Icons.unarchive_outlined : Icons.archive_outlined,
-              size: 16,
-              color: menuIconColor,
-            ),
-            onPressed: () => select(isArchived ? 'unarchive' : 'archive'),
-            child: Text(
-              isArchived ? 'Unarchive Thread' : 'Archive Thread',
-              style:
-                  const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
-            ),
-          ),
-          divider(),
-          if (space.role == 'owner' || thread.canDestroy)
+          if (!thread.isGeneral) ...[
             MenuItemButton(
-              style: itemStyle(isDestructive: true),
+              style: itemStyle(),
               leadingIcon: Icon(
-                Icons.delete_rounded,
+                isArchived ? Icons.unarchive_outlined : Icons.archive_outlined,
                 size: 16,
-                color: SyntilaColors.errorText(isDark),
+                color: menuIconColor,
               ),
-              onPressed: () => select('delete'),
+              onPressed: () => select(isArchived ? 'unarchive' : 'archive'),
               child: Text(
-                'Delete Thread',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
+                isArchived ? 'Unarchive Thread' : 'Archive Thread',
+                style:
+                    const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
+              ),
+            ),
+            divider(),
+            if (space.role == 'owner' || thread.canDestroy || space.isDirect)
+              MenuItemButton(
+                style: itemStyle(isDestructive: true),
+                leadingIcon: Icon(
+                  Icons.delete_rounded,
+                  size: 16,
                   color: SyntilaColors.errorText(isDark),
                 ),
+                onPressed: () => select('delete'),
+                child: Text(
+                  'Delete Thread',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: SyntilaColors.errorText(isDark),
+                  ),
+                ),
               ),
-            ),
+          ],
         ],
       ),
     );
@@ -830,28 +868,31 @@ class SpaceTree extends StatelessWidget {
               onPressed: () => onNavigateTo(AxNavigation.space(space.id)),
               child: const Text('Open Space'),
             ),
-          MenuItemButton(
-            style: itemStyle(),
-            leadingIcon: Icon(Icons.edit_outlined, size: 16, color: iconColor),
-            onPressed: () => select('edit'),
-            child: const Text('Edit Space'),
-          ),
+          if (!space.isDirect)
+            MenuItemButton(
+              style: itemStyle(),
+              leadingIcon: Icon(Icons.edit_outlined, size: 16, color: iconColor),
+              onPressed: () => select('edit'),
+              child: const Text('Edit Space'),
+            ),
           MenuItemButton(
             style: itemStyle(),
             leadingIcon:
                 Icon(Icons.archive_outlined, size: 16, color: iconColor),
             onPressed: () => select('archive'),
-            child: const Text('Archive Space'),
+            child: Text(space.isDirect ? 'Hide Conversation' : 'Archive Space'),
           ),
-          divider(),
-          MenuItemButton(
-            style: itemStyle(isDestructive: true),
-            leadingIcon: Icon(Icons.delete_rounded,
-                size: 16, color: SyntilaColors.errorText(isDark)),
-            onPressed: () => select('delete'),
-            child: Text('Delete Space',
-                style: TextStyle(color: SyntilaColors.errorText(isDark))),
-          ),
+          if (!space.isDirect) ...[
+            divider(),
+            MenuItemButton(
+              style: itemStyle(isDestructive: true),
+              leadingIcon: Icon(Icons.delete_rounded,
+                  size: 16, color: SyntilaColors.errorText(isDark)),
+              onPressed: () => select('delete'),
+              child: Text('Delete Space',
+                  style: TextStyle(color: SyntilaColors.errorText(isDark))),
+            ),
+          ],
         ],
       ),
     );

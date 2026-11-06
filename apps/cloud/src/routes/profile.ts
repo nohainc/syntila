@@ -1,5 +1,6 @@
 import { getAccountPlan } from "../account-plan.js";
 import { avatarObjectKeys } from "../avatar-storage.js";
+import { publishPeopleProfileChanged } from "../people.js";
 import { securityContext, HttpError, json } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
 
@@ -127,6 +128,7 @@ export async function handleUploadAvatar(
       .run();
     if (updated.meta.changes !== 1)
       throw new HttpError(409, "Profile changed; retry the upload");
+    await publishPeopleProfileChanged(env, context.userId);
   } catch (error) {
     await bucket.delete([key, originalKey]).catch(() => undefined);
     throw error;

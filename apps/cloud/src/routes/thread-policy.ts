@@ -21,6 +21,7 @@ import {
   canManageThread,
   canViewThread,
   DEFAULT_THREAD_ACCESS_POLICY,
+  type SpaceKind,
   type SpaceMembership,
   type Thread,
   type BuiltinWorkflowDefinition,
@@ -232,6 +233,11 @@ export function threadMetadata(
     queueStatus: "Idle",
     hasActiveWork: row.hasActiveWork === 1,
     hasUnread: row.hasUnread === 1,
+    isGeneral:
+      row.isGeneral === 1 ||
+      row.is_general === 1 ||
+      row.isGeneral === true ||
+      row.is_general === true,
     pinnedAt: typeof row.pinnedAt === "string" ? row.pinnedAt : null,
     pinPosition: typeof row.pinPosition === "number" ? row.pinPosition : 0,
     createdAt: String(row.createdAt ?? row.created_at),
@@ -275,10 +281,14 @@ export type ThreadAccess = "view" | "discuss" | "execute" | "manage";
 
 async function loadThreadRow(env: SecurityEnv, threadId: string) {
   const row = await env.SYNTILA_DB.prepare(
-    `SELECT id, space_id AS spaceId, name, status,
-            access_policy_json AS accessPolicyJson, lead_user_id AS leadUserId,
-            created_at AS createdAt, updated_at AS updatedAt
-     FROM threads WHERE id = ?1`,
+    `SELECT t.id, t.space_id AS spaceId, t.name, t.status,
+            t.access_policy_json AS accessPolicyJson, t.lead_user_id AS leadUserId,
+            COALESCE(t.is_general, 0) AS isGeneral,
+            t.created_at AS createdAt, t.updated_at AS updatedAt,
+            COALESCE(s.kind, 'group') AS spaceKind
+     FROM threads t
+     JOIN spaces s ON s.id = t.space_id
+     WHERE t.id = ?1`,
   )
     .bind(threadId)
     .first<Record<string, unknown>>();
@@ -401,6 +411,7 @@ async function threadAccessForContext(
     createdAt: String(row.createdAt),
     updatedAt: String(row.updatedAt),
   };
+  const spaceKind = (row.spaceKind as SpaceKind) ?? "group";
   const allowed =
     access === "view"
       ? canViewThread(context.userId, effectiveMembership, thread)
@@ -408,7 +419,12 @@ async function threadAccessForContext(
         ? canDiscussThread(context.userId, effectiveMembership, thread)
         : access === "execute"
           ? canExecuteThread(context.userId, effectiveMembership, thread)
-          : canManageThread(context.userId, effectiveMembership, thread);
+          : canManageThread(
+              context.userId,
+              effectiveMembership,
+              thread,
+              spaceKind,
+            );
   if (!allowed) throw new HttpError(403, `Thread ${access} access is required`);
   return { context, thread, spaceId: String(row.spaceId) };
 }

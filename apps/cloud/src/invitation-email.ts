@@ -74,3 +74,57 @@ export async function sendSpaceInvitationEmail(
     return false;
   }
 }
+
+export interface SendPersonInvitationEmailParams {
+  readonly recipientEmail: string;
+  readonly inviterName: string;
+  readonly appUrl: string;
+}
+
+export async function sendPersonInvitationEmail(
+  env: SecurityEnv,
+  params: SendPersonInvitationEmailParams,
+): Promise<boolean> {
+  const { recipientEmail, inviterName, appUrl } = params;
+
+  if (!env.SYNTILA_EMAIL) {
+    if (
+      env.SYNTILA_ENVIRONMENT === "development" ||
+      env.SYNTILA_ENVIRONMENT === "test"
+    ) {
+      console.info("person.invitation.email.development", {
+        recipientEmail,
+        inviterName,
+      });
+      return true;
+    }
+    console.warn(
+      "SYNTILA_EMAIL is not configured; personal invitation email skipped",
+    );
+  }
+
+  try {
+    const configuredOrigin = env.SYNTILA_APP_URL ?? env.BETTER_AUTH_URL;
+    const approvedOrigin = configuredOrigin
+      ? new URL(configuredOrigin).origin
+      : new URL(appUrl).origin;
+    await sendTemplateEmail(env, {
+      to: recipientEmail,
+      templateId: "person.invitation.v1",
+      input: {
+        inviterName,
+        recipientEmail,
+        invitationUrl: appUrl,
+      },
+      renderOptions: { approvedOrigins: [approvedOrigin] },
+    });
+    return true;
+  } catch (error) {
+    const failure = classifyEmailDeliveryFailure(error);
+    console.error("Failed to send personal invitation email", {
+      status: failure.status,
+      providerCode: failure.providerCode,
+    });
+    return false;
+  }
+}

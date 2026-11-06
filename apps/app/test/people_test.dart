@@ -32,6 +32,60 @@ class PeopleSource extends AxFixtureDataSource {
   final sentUserIds = <String>[];
   Completer<void>? pendingInvite;
   void Function()? afterInvite;
+
+  String? sentPersonEmail;
+  String? sentPersonUserId;
+  String? acceptedInvitationId;
+  String? declinedInvitationId;
+  String? cancelledInvitationId;
+  String? disconnectedUserId;
+  String? blockedUserId;
+  String? unblockedUserId;
+  bool failPersonAction = false;
+
+  @override
+  Future<void> sendPersonInvitation({String? email, String? userId}) async {
+    if (failPersonAction) throw StateError('failed to send');
+    sentPersonEmail = email;
+    sentPersonUserId = userId;
+  }
+
+  @override
+  Future<void> acceptPersonInvitation(String invitationId) async {
+    if (failPersonAction) throw StateError('failed to accept');
+    acceptedInvitationId = invitationId;
+  }
+
+  @override
+  Future<void> declinePersonInvitation(String invitationId) async {
+    if (failPersonAction) throw StateError('failed to decline');
+    declinedInvitationId = invitationId;
+  }
+
+  @override
+  Future<void> cancelPersonInvitation(String invitationId) async {
+    if (failPersonAction) throw StateError('failed to cancel');
+    cancelledInvitationId = invitationId;
+  }
+
+  @override
+  Future<void> disconnectPersonConnection(String userId) async {
+    if (failPersonAction) throw StateError('failed to disconnect');
+    disconnectedUserId = userId;
+  }
+
+  @override
+  Future<void> blockPerson(String userId) async {
+    if (failPersonAction) throw StateError('failed to block');
+    blockedUserId = userId;
+  }
+
+  @override
+  Future<void> unblockPerson(String userId) async {
+    if (failPersonAction) throw StateError('failed to unblock');
+    unblockedUserId = userId;
+  }
+
   @override
   Future<void> invitePersonToSpace(
       {required String spaceId,
@@ -710,5 +764,373 @@ void main() {
     expect(source.invitedEmail, isNull);
     expect(source.invitedPermissions!.chat, isTrue);
     expect(source.invitedPermissions!.work, isFalse);
+  });
+
+  group('People Page Redesign (Phase 5)', () {
+    testWidgets('Empty list shows empty message and Add Person button',
+        (tester) async {
+      final source = PeopleSource()..rows = [];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+            'No people yet. Invite someone to start a private conversation.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('empty-add-person-button')),
+          findsOneWidget);
+    });
+
+    testWidgets('Add Person dialog sends invitation by email', (tester) async {
+      final source = PeopleSource()..rows = [];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('add-person-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('add-person-email-field')),
+        'newcolleague@test.com',
+      );
+      await tester.tap(find.byKey(const ValueKey('send-invitation-button')));
+      await tester.pumpAndSettle();
+
+      expect(source.sentPersonEmail, 'newcolleague@test.com');
+    });
+
+    testWidgets(
+        'Known collaborator shows Connect button which sends invitation by stable user ID',
+        (tester) async {
+      final source = PeopleSource()
+        ..rows = [
+          const AxPerson(
+            userId: 'user-bob',
+            displayName: 'Bob User',
+            email: 'bob@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 1,
+            connectionStatus: 'collaborator',
+          )
+        ];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Collaborator'), findsOneWidget);
+      final connectBtn = find.byKey(const ValueKey('connect-user-bob'));
+      expect(connectBtn, findsOneWidget);
+
+      await tester.tap(connectBtn);
+      await tester.pumpAndSettle();
+
+      expect(source.sentPersonUserId, 'user-bob');
+    });
+
+    testWidgets(
+        'Pending status shows Cancel button and cancels outgoing invitation',
+        (tester) async {
+      final source = PeopleSource()
+        ..rows = [
+          const AxPerson(
+            userId: 'user-charlie',
+            displayName: 'Charlie User',
+            email: 'charlie@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 0,
+            connectionStatus: 'invitation_sent',
+            invitationId: 'pinv-123',
+          )
+        ];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Invitation sent'), findsOneWidget);
+      expect(find.text('Pending'), findsOneWidget);
+      final cancelBtn =
+          find.byKey(const ValueKey('cancel-invitation-user-charlie'));
+      expect(cancelBtn, findsOneWidget);
+
+      await tester.tap(cancelBtn);
+      await tester.pumpAndSettle();
+
+      expect(source.cancelledInvitationId, 'pinv-123');
+    });
+
+    testWidgets(
+        'Received invitation shows Accept and Decline buttons and triggers actions',
+        (tester) async {
+      final source = PeopleSource()
+        ..rows = [
+          const AxPerson(
+            userId: 'user-david',
+            displayName: 'David User',
+            email: 'david@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 0,
+            connectionStatus: 'invitation_received',
+            invitationId: 'pinv-456',
+          )
+        ];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Invitation received'), findsOneWidget);
+      final acceptBtn =
+          find.byKey(const ValueKey('accept-invitation-user-david'));
+      final declineBtn =
+          find.byKey(const ValueKey('decline-invitation-user-david'));
+      expect(acceptBtn, findsOneWidget);
+      expect(declineBtn, findsOneWidget);
+
+      await tester.tap(acceptBtn);
+      await tester.pumpAndSettle();
+      expect(source.acceptedInvitationId, 'pinv-456');
+
+      await tester.tap(declineBtn);
+      await tester.pumpAndSettle();
+      expect(source.declinedInvitationId, 'pinv-456');
+    });
+
+    testWidgets(
+        'Connected Person shows Message button opening General Thread and Remove connection',
+        (tester) async {
+      String? openedSpaceId;
+      String? openedThreadId;
+
+      final source = PeopleSource()
+        ..rows = [
+          const AxPerson(
+            userId: 'user-eva',
+            displayName: 'Eva User',
+            email: 'eva@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 0,
+            connectionStatus: 'connected',
+            directSpaceId: 'space-direct-eva',
+            generalThreadId: 'thread-gen-eva',
+          )
+        ];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: PeoplePage(
+            people: people,
+            onOpenThread: (spaceId, threadId) {
+              openedSpaceId = spaceId;
+              openedThreadId = threadId;
+            },
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Connected'), findsOneWidget);
+      final msgBtn = find.byKey(const ValueKey('message-user-eva'));
+      expect(msgBtn, findsOneWidget);
+
+      await tester.tap(msgBtn);
+      await tester.pumpAndSettle();
+
+      expect(openedSpaceId, 'space-direct-eva');
+      expect(openedThreadId, 'thread-gen-eva');
+
+      // Test Remove connection via popup menu
+      final menuBtn = find.byKey(const ValueKey('person-menu-user-eva'));
+      expect(menuBtn, findsOneWidget);
+      await tester.tap(menuBtn);
+      await tester.pumpAndSettle();
+
+      final removeMenuItem = find.text('Remove connection');
+      expect(removeMenuItem, findsOneWidget);
+      await tester.tap(removeMenuItem);
+      await tester.pumpAndSettle();
+
+      expect(source.disconnectedUserId, 'user-eva');
+    });
+
+    testWidgets('Disconnected Person shows Reconnect button', (tester) async {
+      final source = PeopleSource()
+        ..rows = [
+          const AxPerson(
+            userId: 'user-frank',
+            displayName: 'Frank User',
+            email: 'frank@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 0,
+            connectionStatus: 'disconnected',
+            directSpaceId: 'space-direct-frank',
+            generalThreadId: 'thread-gen-frank',
+          )
+        ];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Disconnected'), findsOneWidget);
+      final reconnectBtn = find.byKey(const ValueKey('reconnect-user-frank'));
+      expect(reconnectBtn, findsOneWidget);
+
+      await tester.tap(reconnectBtn);
+      await tester.pumpAndSettle();
+
+      expect(source.sentPersonUserId, 'user-frank');
+    });
+
+    testWidgets('Connected Person menu allows blocking', (tester) async {
+      final source = PeopleSource()
+        ..rows = [
+          const AxPerson(
+            userId: 'user-blockee',
+            displayName: 'Blockee User',
+            email: 'blockee@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 0,
+            connectionStatus: 'connected',
+            directSpaceId: 'space-direct-blockee',
+            generalThreadId: 'thread-gen-blockee',
+          )
+        ];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      final menuBtn = find.byKey(const ValueKey('person-menu-user-blockee'));
+      expect(menuBtn, findsOneWidget);
+      await tester.tap(menuBtn);
+      await tester.pumpAndSettle();
+
+      final blockMenuItem = find.text('Block');
+      expect(blockMenuItem, findsOneWidget);
+      await tester.tap(blockMenuItem);
+      await tester.pumpAndSettle();
+
+      expect(source.blockedUserId, 'user-blockee');
+    });
+
+    testWidgets('Blocked Person displays Blocked badge and Unblock button',
+        (tester) async {
+      final source = PeopleSource()
+        ..rows = [
+          const AxPerson(
+            userId: 'user-blocked',
+            displayName: 'Blocked Person',
+            email: 'blocked@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 0,
+            connectionStatus: 'blocked',
+          )
+        ];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Blocked'), findsOneWidget);
+      final unblockBtn = find.byKey(const ValueKey('unblock-user-blocked'));
+      expect(unblockBtn, findsOneWidget);
+
+      await tester.tap(unblockBtn);
+      await tester.pumpAndSettle();
+
+      expect(source.unblockedUserId, 'user-blocked');
+    });
+
+    testWidgets('Search filters people list locally', (tester) async {
+      final source = PeopleSource()
+        ..rows = [
+          const AxPerson(
+            userId: 'user-alice',
+            displayName: 'Alice User',
+            email: 'alice@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 1,
+          ),
+          const AxPerson(
+            userId: 'user-bob',
+            displayName: 'Bob Builder',
+            email: 'bob@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 1,
+          ),
+        ];
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alice User'), findsOneWidget);
+      expect(find.text('Bob Builder'), findsOneWidget);
+
+      final searchField = find.byKey(const ValueKey('people-search-field'));
+      expect(searchField, findsOneWidget);
+
+      await tester.enterText(searchField, 'builder');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alice User'), findsNothing);
+      expect(find.text('Bob Builder'), findsOneWidget);
+    });
+
+    testWidgets(
+        'Permission and network failures show error in Add Person dialog',
+        (tester) async {
+      final source = PeopleSource()
+        ..rows = []
+        ..failPersonAction = true;
+      final engine = AxSyncEngine();
+      final people = AxPeople(source, engine: engine);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: PeoplePage(people: people)),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('add-person-button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey('add-person-email-field')),
+        'fail@test.com',
+      );
+      await tester.tap(find.byKey(const ValueKey('send-invitation-button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Failed to send invitation'),
+        findsOneWidget,
+      );
+    });
   });
 }

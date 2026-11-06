@@ -42,8 +42,11 @@ function fixture(coordinatorAvailable = true) {
           async first() {
             if (sql.includes("space_workflow_settings"))
               return { workspaceId: "workspace" };
-            if (sql.includes("owner_user_id AS ownerUserId FROM spaces"))
-              return { ownerUserId: "owner" };
+            if (
+              sql.includes("owner_user_id AS ownerUserId") &&
+              sql.includes("FROM spaces")
+            )
+              return { ownerUserId: "owner", kind: "group" };
             if (sql.includes("space_memberships"))
               return { role: "owner", settingsJson: "{}" };
             if (sql.includes("thread_execution_policies"))

@@ -329,6 +329,7 @@ class AxThread {
     this.archived = false,
     this.creatorEmail = '',
     this.creatorIsOwner = true,
+    this.isGeneral = false,
     this.hasActiveWork = false,
     this.hasUnread = false,
     this.pinnedAt = '',
@@ -360,6 +361,7 @@ class AxThread {
   final bool archived;
   final String creatorEmail;
   final bool creatorIsOwner;
+  final bool isGeneral;
 
   Map<String, dynamic> get viewState => metadata['viewState'] is Map
       ? Map<String, dynamic>.from(metadata['viewState'] as Map)
@@ -410,6 +412,7 @@ class AxThread {
                 },
           creatorEmail: creatorEmail,
           creatorIsOwner: creatorIsOwner,
+          isGeneral: isGeneral,
           hasActiveWork: hasActiveWork,
           hasUnread: hasUnread ?? this.hasUnread,
           pinnedAt: pinnedAt ?? this.pinnedAt,
@@ -444,6 +447,9 @@ class AxThread {
         archived: json['archived'] == true,
         creatorEmail: _string(json, 'creatorEmail'),
         creatorIsOwner: json['creatorIsOwner'] != false,
+        isGeneral: json['isGeneral'] == true ||
+            json['is_general'] == 1 ||
+            json['is_general'] == true,
         hasActiveWork: json['hasActiveWork'] == true,
         hasUnread: json['hasUnread'] == true,
         pinnedAt: _string(json, 'pinnedAt', ''),
@@ -734,6 +740,8 @@ class AxSpace {
     this.instructions = '',
     this.archived = false,
     this.role = 'owner',
+    this.kind = 'group',
+    this.avatarUrl,
     this.settings = const {},
     this.permissions,
     this.hasActiveWork = false,
@@ -751,8 +759,13 @@ class AxSpace {
   final String instructions;
   final bool archived;
   final String role;
+  final String kind;
+  final String? avatarUrl;
   final Map<String, dynamic> settings;
   final AxSpacePermissions? permissions;
+
+  bool get isDirect => kind == 'direct';
+  bool get isGroup => kind == 'group';
 
   /// Server-derived for the signed-in user across all of the Space's Threads.
   final bool hasActiveWork;
@@ -790,6 +803,8 @@ class AxSpace {
             (json['settings'] is Map &&
                 (json['settings'] as Map)['archived'] == true),
         role: _string(json, 'role', 'owner'),
+        kind: _string(json, 'kind', 'group'),
+        avatarUrl: json['avatarUrl'] as String?,
         permissions: json['permissions'] is Map
             ? AxSpacePermissions.fromJson(json['permissions'] as Map)
             : null,
@@ -812,6 +827,8 @@ class AxSpace {
     String? instructions,
     bool? archived,
     String? role,
+    String? kind,
+    String? avatarUrl,
     Map<String, dynamic>? settings,
     String? pinnedAt,
     bool? hasActiveWork,
@@ -828,12 +845,108 @@ class AxSpace {
         instructions: instructions ?? this.instructions,
         archived: archived ?? this.archived,
         role: role ?? this.role,
+        kind: kind ?? this.kind,
+        avatarUrl: avatarUrl ?? this.avatarUrl,
         settings: settings ?? this.settings,
         permissions: permissions,
         hasActiveWork: hasActiveWork ?? this.hasActiveWork,
         hasUnread: hasUnread ?? this.hasUnread,
         pinnedAt: pinnedAt ?? this.pinnedAt,
         pinPosition: pinPosition ?? this.pinPosition,
+      );
+}
+
+/// Approved personal connection between two users.
+class AxPersonConnection {
+  const AxPersonConnection({
+    required this.userLowId,
+    required this.userHighId,
+    required this.status,
+    required this.establishedAt,
+    this.disconnectedAt,
+    this.directSpaceId,
+  });
+
+  final String userLowId;
+  final String userHighId;
+  final String status;
+  final String establishedAt;
+  final String? disconnectedAt;
+  final String? directSpaceId;
+
+  bool get isConnected => status == 'connected';
+
+  factory AxPersonConnection.fromJson(Map<String, dynamic> json) =>
+      AxPersonConnection(
+        userLowId: _string(json, 'userLowId'),
+        userHighId: _string(json, 'userHighId'),
+        status: _string(json, 'status', 'connected'),
+        establishedAt: _string(json, 'establishedAt'),
+        disconnectedAt: json['disconnectedAt'] as String?,
+        directSpaceId: json['directSpaceId'] as String?,
+      );
+}
+
+/// Personal 1:1 connection invitation.
+class AxPersonInvitation {
+  const AxPersonInvitation({
+    required this.id,
+    required this.inviterUserId,
+    this.inviteeUserId,
+    this.email,
+    required this.status,
+    required this.createdAt,
+    required this.expiresAt,
+    this.acceptedByUserId,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String inviterUserId;
+  final String? inviteeUserId;
+  final String? email;
+  final String status;
+  final String createdAt;
+  final String expiresAt;
+  final String? acceptedByUserId;
+  final String updatedAt;
+
+  bool get isPending => status == 'pending';
+
+  factory AxPersonInvitation.fromJson(Map<String, dynamic> json) =>
+      AxPersonInvitation(
+        id: _string(json, 'id'),
+        inviterUserId: _string(json, 'inviterUserId'),
+        inviteeUserId: json['inviteeUserId'] as String?,
+        email: json['email'] as String?,
+        status: _string(json, 'status', 'pending'),
+        createdAt: _string(json, 'createdAt'),
+        expiresAt: _string(json, 'expiresAt'),
+        acceptedByUserId: json['acceptedByUserId'] as String?,
+        updatedAt: _string(json, 'updatedAt'),
+      );
+}
+
+/// Per-user Direct Space UI presentation state.
+class AxDirectSpaceUserState {
+  const AxDirectSpaceUserState({
+    required this.spaceId,
+    required this.userId,
+    this.hidden = false,
+    this.lastOpenedAt,
+  });
+
+  final String spaceId;
+  final String userId;
+  final bool hidden;
+  final String? lastOpenedAt;
+
+  factory AxDirectSpaceUserState.fromJson(Map<String, dynamic> json) =>
+      AxDirectSpaceUserState(
+        spaceId: _string(json, 'spaceId'),
+        userId: _string(json, 'userId'),
+        hidden: json['hidden'] == true,
+        lastOpenedAt: json['lastOpenedAt'] as String?,
       );
 }
 

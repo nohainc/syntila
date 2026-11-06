@@ -801,13 +801,15 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
 
   Future<void> _archiveSpace(AxSpace space) async {
     final confirmed = await _confirmSpaceAction(
-      title: 'Archive Space?',
-      message: 'Archived spaces leave the active Spaces list.',
-      action: 'Archive',
+      title: space.isDirect ? 'Hide Conversation?' : 'Archive Space?',
+      message: space.isDirect
+          ? 'Hidden conversations leave the active sidebar list.'
+          : 'Archived spaces leave the active Spaces list.',
+      action: space.isDirect ? 'Hide' : 'Archive',
     );
     if (!confirmed) return;
     try {
-      await widget.dataSource.archiveSpace(spaceId: space.id);
+      await widget.dataSource.archiveSpace(spaceId: space.id, direct: space.isDirect);
       unawaited(store.archivedSpaces
           .refresh()
           .then<void>((_) {}, onError: (Object _, StackTrace __) {}));
@@ -819,7 +821,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
           store.spaces.items.where((item) => item.id != space.id).toList());
       selectedSpaceId = null;
       _navigateTo(const AxNavigation.home(), replace: true);
-      _showSnackBar('Space archived.');
+      _showSnackBar(space.isDirect ? 'Conversation hidden.' : 'Space archived.');
     } catch (error) {
       if (mounted) _showSnackBar(error.toString(), type: ToastType.error);
     }

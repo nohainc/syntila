@@ -69,10 +69,12 @@ class AxShellContext {
   final List<AxSpace> _spaces;
   final ValueListenable<List<AxSpace>>? spaceListenable;
   List<AxSpace> get spaces => spaceListenable?.value ?? _spaces;
-  List<AxSpace> get ownedSpaces =>
-      sortAxSpacesByLastUpdate(spaces.where((space) => space.role == 'owner'));
-  List<AxSpace> get sharedSpaces =>
-      sortAxSpacesByLastUpdate(spaces.where((space) => space.role != 'owner'));
+  List<AxSpace> get directSpaces =>
+      sortAxSpacesByLastUpdate(spaces.where((space) => space.isDirect));
+  List<AxSpace> get ownedSpaces => sortAxSpacesByLastUpdate(
+      spaces.where((space) => !space.isDirect && space.role == 'owner'));
+  List<AxSpace> get sharedSpaces => sortAxSpacesByLastUpdate(
+      spaces.where((space) => !space.isDirect && space.role != 'owner'));
   final AxSpaceThreads? spaceThreads;
   final Map<String, List<AxThread>> threadsBySpace;
   final AxSpace? selectedSpace;

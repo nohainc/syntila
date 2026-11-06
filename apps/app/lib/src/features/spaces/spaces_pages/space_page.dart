@@ -19,6 +19,7 @@ class SpacePage extends StatelessWidget {
     this.mutations,
     this.viewerEmail,
     this.workflowConfigurations,
+    this.onOpenPeople,
   });
 
   /// Space-scoped workflow preferences; used for the Workspace selector. When
@@ -42,6 +43,7 @@ class SpacePage extends StatelessWidget {
   final AxSpaceTabQueries? tabQueries;
   final AxCollaborationMutations? mutations;
   final String? viewerEmail;
+  final VoidCallback? onOpenPeople;
 
   @override
   Widget build(BuildContext context) => _SpaceWorkspace(
@@ -60,6 +62,7 @@ class SpacePage extends StatelessWidget {
         mutations: mutations,
         viewerEmail: viewerEmail,
         workflowConfigurations: workflowConfigurations,
+        onOpenPeople: onOpenPeople,
       );
 }
 
@@ -80,6 +83,7 @@ class _SpaceWorkspace extends StatefulWidget {
     this.mutations,
     this.viewerEmail,
     this.workflowConfigurations,
+    this.onOpenPeople,
   });
 
   final AxWorkflowConfigurations? workflowConfigurations;
@@ -101,6 +105,7 @@ class _SpaceWorkspace extends StatefulWidget {
   final AxSpaceTabQueries? tabQueries;
   final AxCollaborationMutations? mutations;
   final String? viewerEmail;
+  final VoidCallback? onOpenPeople;
 
   @override
   State<_SpaceWorkspace> createState() => _SpaceWorkspaceState();
@@ -120,8 +125,11 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
   late AxCollaborationMutations _collaboration;
   AxWorkflowConfigurations? _workflows;
   final _tabCancels = <void Function()>[];
-  bool get canManage => widget.space.effectivePermissions.manageOwnThreads;
-  bool get canInvite => widget.space.role == 'owner';
+  bool get canManage =>
+      widget.space.isDirect ||
+      widget.space.effectivePermissions.manageOwnThreads;
+  bool get canInvite =>
+      !widget.space.isDirect && widget.space.role == 'owner';
   final _savingMembers = <String>{};
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -272,6 +280,68 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                             children: [
                               if (_editing)
                                 Expanded(child: _spaceEditForm())
+                              else if (widget.space.isDirect)
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 20,
+                                        backgroundColor:
+                                            SyntilaColors.primarySoftColor(_isDark),
+                                        backgroundImage: widget.space.avatarUrl != null &&
+                                                widget.space.avatarUrl!.isNotEmpty
+                                            ? NetworkImage(widget.space.avatarUrl!)
+                                            : null,
+                                        child: widget.space.avatarUrl == null ||
+                                                widget.space.avatarUrl!.isEmpty
+                                            ? Text(
+                                                widget.space.name.isNotEmpty
+                                                    ? widget.space.name[0].toUpperCase()
+                                                    : 'P',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: SyntilaColors
+                                                      .primaryForeground(_isDark),
+                                                ),
+                                              )
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              widget.space.name.isNotEmpty
+                                                  ? widget.space.name
+                                                  : 'Personal connection',
+                                              textAlign: TextAlign.start,
+                                              style: const TextStyle(
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.w600,
+                                                letterSpacing: -0.3,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'Personal connection',
+                                              textAlign: TextAlign.start,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
                               else
                                 Expanded(
                                   child: Column(
@@ -310,7 +380,7 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                                 ),
                               SizedBox(
                                 key: const ValueKey('space-header-actions'),
-                                child: isOwner && !_editing
+                                child: (widget.space.isDirect || isOwner) && !_editing
                                     ? PopupMenuButton<String>(
                                         color: SyntilaMenuStyle.background(
                                             _isDark),
@@ -321,78 +391,240 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                                         shape: SyntilaMenuStyle.shape(_isDark),
                                         menuPadding: SyntilaMenuStyle.padding,
                                         icon: const Icon(Icons.more_vert),
-                                        tooltip: 'Space actions',
+                                        tooltip: widget.space.isDirect
+                                            ? 'Direct conversation actions'
+                                            : 'Space actions',
                                         splashRadius: 18,
                                         onSelected: (action) {
-                                          if (action == 'edit') {
-                                            _startEditing();
-                                          } else if (action == 'archive') {
-                                            widget.onArchive();
-                                          } else if (action == 'delete') {
-                                            widget.onDelete();
+                                          if (widget.space.isDirect) {
+                                            if (action == 'open_general') {
+                                              final general = threads
+                                                      .where((t) => t.isGeneral)
+                                                      .firstOrNull ??
+                                                  threads
+                                                      .where((t) =>
+                                                          t.id == 'general' ||
+                                                          t.name.toLowerCase() ==
+                                                              'general')
+                                                      .firstOrNull ??
+                                                  threads.firstOrNull;
+                                              if (general != null) {
+                                                widget.onOpenThread(general.id);
+                                              }
+                                            } else if (action == 'view_person') {
+                                              widget.onOpenPeople?.call();
+                                            } else if (action == 'hide_conversation') {
+                                              widget.onArchive();
+                                            } else if (action == 'notifications') {
+                                              ScaffoldMessenger.of(context).showNotice(
+                                                const SnackBar(
+                                                    content: Text(
+                                                        'Personal notifications: all messages enabled.')),
+                                              );
+                                            } else if (action == 'remove_connection') {
+                                              unawaited(_confirmRemoveConnection());
+                                            }
+                                          } else {
+                                            if (action == 'edit') {
+                                              _startEditing();
+                                            } else if (action == 'archive') {
+                                              widget.onArchive();
+                                            } else if (action == 'delete') {
+                                              widget.onDelete();
+                                            }
                                           }
                                         },
-                                        itemBuilder: (context) => [
-                                          PopupMenuItem(
-                                            height: 36,
-                                            textStyle:
-                                                SyntilaMenuStyle.popupTextStyle(
-                                                    _isDark),
-                                            value: 'edit',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.edit_outlined,
-                                                    color: SyntilaColors
-                                                        .textSecondary(_isDark),
-                                                    size: 18),
-                                                const SizedBox(width: 8),
-                                                const Text('Edit'),
+                                        itemBuilder: (context) => widget.space.isDirect
+                                            ? [
+                                                PopupMenuItem(
+                                                  height: 36,
+                                                  textStyle:
+                                                      SyntilaMenuStyle.popupTextStyle(
+                                                          _isDark),
+                                                  value: 'open_general',
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.chat_bubble_outline,
+                                                          color: SyntilaColors
+                                                              .textSecondary(_isDark),
+                                                          size: 18),
+                                                      const SizedBox(width: 8),
+                                                      const Flexible(
+                                                        child: Text(
+                                                          'Open General Thread',
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                PopupMenuItem(
+                                                  height: 36,
+                                                  textStyle:
+                                                      SyntilaMenuStyle.popupTextStyle(
+                                                          _isDark),
+                                                  value: 'view_person',
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.person_outline,
+                                                          color: SyntilaColors
+                                                              .textSecondary(_isDark),
+                                                          size: 18),
+                                                      const SizedBox(width: 8),
+                                                      const Flexible(
+                                                        child: Text(
+                                                          'View person',
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                PopupMenuItem(
+                                                  height: 36,
+                                                  textStyle:
+                                                      SyntilaMenuStyle.popupTextStyle(
+                                                          _isDark),
+                                                  value: 'hide_conversation',
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.visibility_off_outlined,
+                                                          color: SyntilaColors
+                                                              .textSecondary(_isDark),
+                                                          size: 18),
+                                                      const SizedBox(width: 8),
+                                                      const Flexible(
+                                                        child: Text(
+                                                          'Hide conversation',
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                PopupMenuItem(
+                                                  height: 36,
+                                                  textStyle:
+                                                      SyntilaMenuStyle.popupTextStyle(
+                                                          _isDark),
+                                                  value: 'notifications',
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.notifications_none_outlined,
+                                                          color: SyntilaColors
+                                                              .textSecondary(_isDark),
+                                                          size: 18),
+                                                      const SizedBox(width: 8),
+                                                      const Flexible(
+                                                        child: Text(
+                                                          'Manage personal notifications',
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                PopupMenuItem(
+                                                  height: 36,
+                                                  textStyle:
+                                                      SyntilaMenuStyle.popupTextStyle(
+                                                          _isDark),
+                                                  value: 'remove_connection',
+                                                  child: const Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.person_remove_outlined,
+                                                          size: 18,
+                                                          color: SyntilaColors.error),
+                                                      SizedBox(width: 8),
+                                                      Flexible(
+                                                        child: Text(
+                                                          'Remove connection',
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: TextStyle(
+                                                              color:
+                                                                  SyntilaColors.error),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ]
+                                            : [
+                                                PopupMenuItem(
+                                                  height: 36,
+                                                  textStyle:
+                                                      SyntilaMenuStyle.popupTextStyle(
+                                                          _isDark),
+                                                  value: 'edit',
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.edit_outlined,
+                                                          color: SyntilaColors
+                                                              .textSecondary(_isDark),
+                                                          size: 18),
+                                                      const SizedBox(width: 8),
+                                                      const Text('Edit'),
+                                                    ],
+                                                  ),
+                                                ),
+                                                PopupMenuItem(
+                                                  height: 36,
+                                                  textStyle:
+                                                      SyntilaMenuStyle.popupTextStyle(
+                                                          _isDark),
+                                                  value: 'archive',
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.archive_outlined,
+                                                          color: SyntilaColors
+                                                              .textSecondary(_isDark),
+                                                          size: 18),
+                                                      const SizedBox(width: 8),
+                                                      const Text('Archive'),
+                                                    ],
+                                                  ),
+                                                ),
+                                                PopupMenuItem(
+                                                  height: 36,
+                                                  textStyle:
+                                                      SyntilaMenuStyle.popupTextStyle(
+                                                          _isDark),
+                                                  value: 'delete',
+                                                  child: const Row(
+                                                    children: [
+                                                      Icon(Icons.delete_outline,
+                                                          size: 18,
+                                                          color: SyntilaColors.error),
+                                                      SizedBox(width: 8),
+                                                      Text('Delete',
+                                                          style: TextStyle(
+                                                              color:
+                                                                  SyntilaColors.error)),
+                                                    ],
+                                                  ),
+                                                ),
                                               ],
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            height: 36,
-                                            textStyle:
-                                                SyntilaMenuStyle.popupTextStyle(
-                                                    _isDark),
-                                            value: 'archive',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.archive_outlined,
-                                                    color: SyntilaColors
-                                                        .textSecondary(_isDark),
-                                                    size: 18),
-                                                const SizedBox(width: 8),
-                                                const Text('Archive'),
-                                              ],
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            height: 36,
-                                            textStyle:
-                                                SyntilaMenuStyle.popupTextStyle(
-                                                    _isDark),
-                                            value: 'delete',
-                                            child: const Row(
-                                              children: [
-                                                Icon(Icons.delete_outline,
-                                                    size: 18,
-                                                    color: SyntilaColors.error),
-                                                SizedBox(width: 8),
-                                                Text('Delete',
-                                                    style: TextStyle(
-                                                        color: SyntilaColors
-                                                            .error)),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
                                       )
                                     : const SizedBox.shrink(),
                               ),
                             ],
                           ),
-                          if (_workflows != null && !_editing)
+                          if (_workflows != null && !_editing && !widget.space.isDirect)
                             Align(
                               alignment: Alignment.centerLeft,
                               child: _SpaceWorkspaceSelector(
@@ -413,4 +645,59 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
           ),
         ),
       );
+
+  Future<void> _confirmRemoveConnection() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove connection?'),
+        content: Text(
+          'This will remove your connection with ${widget.space.name.isNotEmpty ? widget.space.name : 'this person'}. The conversation history will be retained, but new messages cannot be sent until you reconnect.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: SyntilaColors.error),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final peer = _findPeerUserId();
+      if (peer != null) {
+        await _people.disconnect(peer);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(content: Text('Connection removed.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not remove connection: $e')),
+        );
+      }
+    }
+  }
+
+  String? _findPeerUserId() {
+    final peerFromMembers =
+        members.where((m) => m.email != widget.viewerEmail).firstOrNull?.userId;
+    if (peerFromMembers != null) return peerFromMembers;
+    final peerFromPeople = _people.engine
+        .peek(_people.query)
+        .data
+        ?.where((p) => p.directSpaceId == widget.space.id)
+        .firstOrNull
+        ?.userId;
+    return peerFromPeople;
+  }
 }

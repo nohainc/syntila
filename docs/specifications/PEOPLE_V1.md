@@ -1,6 +1,53 @@
 # People v1
 
-People is an automatically maintained, private directory of established collaborators. Email invitations remain pending until accepted. Creating an invitation does not create a Person. Successful membership creation establishes relationships between the new member and every existing member of that Space, including collaborators other than the inviter.
+People is a private directory distinguishing between established collaborators, pending personal invitations, and approved personal connections. Email invitations remain pending until accepted. Creating an invitation does not create a Person. Successful membership creation in a Group Space establishes relationships between the new member and every existing member of that Space, including collaborators other than the inviter.
+
+## Collaborators vs. Personal Connections
+
+The directory recognizes two distinct relationship tiers:
+1. **Known collaborator:** someone the user has worked with in a shared Group Space (`people_relationships`). A collaborator is eligible for a personal invitation or invitation to other Spaces, but is not automatically a personal connection and does not automatically have a Direct Space.
+2. **Pending personal invitation:** an explicit invitation sent to establish a direct 1:1 communication link.
+3. **Approved personal connection:** a connection formed when a personal invitation is accepted by the recipient. Acceptance provisions exactly one shared Direct Space with an initial General Thread.
+
+Group Spaces never automatically generate Direct Spaces between all participating members.
+
+## Personal invitation lifecycle
+
+~~~text
+Alice selects Add Person
+         │
+         ▼
+Alice enters Bob's email (or selects known collaborator)
+         │
+         ▼
+Personal invitation created (pending)
+         │
+         ▼
+Bob receives invitation
+         │
+    ┌────┴────┐
+    ▼         ▼
+ Accept     Decline
+    │         │
+    ▼         └── No Direct Space
+Connected
+    │
+    ▼
+Get or create unique Direct Space (unordered pair {Alice, Bob})
+    │
+    ▼
+Add Alice + Bob as participants
+    │
+    ▼
+Create default General Thread
+    │
+    ▼
+Direct Space available to both users
+~~~
+
+- **Concurrency and idempotency:** If Alice and Bob invite each other concurrently, or if acceptance is retried, Cloud guarantees race-safe convergence: exactly one Direct Space is retrieved or created for the unordered pair `{Alice, Bob}`.
+- **Contact removal:** Removing a personal connection disassociates the 1:1 connection and archives or freezes the Direct Space. Contact removal has no effect on unrelated shared Group Spaces.
+- **Identity:** Relationships bind strictly to immutable user IDs (`userId`). Mutable display names and emails are never used as permanent relationship identifiers.
 
 ## Persistence and identity
 
@@ -10,7 +57,24 @@ Migration `0023_people_relationships.sql` backfills accepted co-members across a
 
 ## Authenticated APIs
 
-`GET /api/people` returns `{schemaVersion: 1, people: [...]}` for the authenticated user only. Each Person has `userId`, current `displayName`, `email`, nullable `avatarUrl`, `establishedAt`, and current `sharedSpaceCount`. Profiles are joined live rather than copied into relationships. There are no creation, deletion, ownership, global search, or enumeration endpoints.
+`GET /api/people` returns `{schemaVersion: 1, people: [...]}` for the authenticated user only. Each Person has:
+- `userId` (stable identifier)
+- current `displayName`
+- `email`
+- nullable `avatarUrl`
+- `establishedAt`
+- current `sharedSpaceCount` (counting shared Group Spaces only)
+- `sharedSpaces: [{id, name}]` (Group Spaces only)
+- `invitableSpaces: [{id, name, permissions, canInvite}]` (Group Spaces owned by user)
+- `pendingInvitationSpaceIds: string[]`
+- `connectionStatus`: `'connected' | 'disconnected' | 'blocked' | 'invitation_sent' | 'invitation_received' | 'collaborator'`
+- `directSpaceId`: `string | null` (present when connected or disconnected)
+- `generalThreadId`: `string | null` (present when connected or disconnected)
+- `invitationId`: `string | null` (present when pending invitation exists)
+
+Profiles and personal connection states are joined live rather than copied into relationships. There are no creation, deletion, ownership, global search, or enumeration endpoints.
+
+`POST /api/people/connections/:userId/disconnect` (and `DELETE /api/people/connections/:userId`) transitions an approved personal connection to `'disconnected'` with `disconnected_at` timestamp. Historical conversation messages remain preserved in the Direct Space in read-only audit state. Reconnection is initiated via a new personal invitation (`POST /api/people/invitations`).
 
 `POST /api/spaces/:spaceId/invitations` accepts exactly one of `email` or `userId`, plus role/permissions. A known `userId` must be an established Person of the caller; Cloud resolves the current email and applies existing Space invitation authorization. Self invitations and duplicate pending invitations are rejected. Acceptance claims the invitation and creates membership in one batch; failed, expired, or competing acceptance cannot establish a relationship.
 
@@ -24,7 +88,21 @@ Apply migrations 0023 and 0025 before deploying Cloud and AX changes. Migration 
 
 ## People page and details
 
-The existing application/account popup opens the global `/people` route; People has no main sidebar entry and does not depend on selected Space. Name/email search filters only the already-authorized in-memory People list. Search does not issue Cloud discovery requests.
+The existing application/account popup opens the global `/people` route; People has no main sidebar entry and does not depend on selected Space. Name/email search filters only the already-authorized in-memory People list locally without issuing Cloud discovery requests.
+
+### Primary Add Person Action and Empty State
+- **Add Person Action:** A primary "Add Person" button opens a dialog to send a personal connection invitation by email.
+- **Empty State:** For new accounts without people, the page displays: `No people yet. Invite someone to start a private conversation.` with an inline Add Person button.
+- **Search Empty State:** If a local query produces no matches, the page reports `No people match "<query>"`.
+
+### Connection State Actions
+Each Person card displays the contact's name, email, avatar, connection state badge, shared Group Spaces, and contextual actions:
+- **Known Collaborator:** Displays `Collaborator` badge, `Connect` button (sends invitation using their stable `userId`), and `Add to Space`.
+- **Invitation Sent:** Displays `Invitation sent` badge, `Pending` label, `Cancel` button, and `Add to Space`.
+- **Invitation Received:** Displays `Invitation received` badge, `Accept` and `Decline` buttons, and `Add to Space`.
+- **Connected:** Displays `Connected` badge, `Message` button (which directly opens the Direct Space's General Thread via `onOpenThread`), `Add to Space`, and `Remove connection` menu action.
+- **Disconnected:** Displays `Disconnected` badge, `Reconnect` button, and `Add to Space`.
+- **Blocked:** Displays `Blocked` badge, `Unblock` action, and `Add to Space`.
 
 The version 1 People response additionally includes `sharedSpaces: [{id, name}]` and `invitableSpaces: [{id, name, permissions, canInvite}]`. Shared names are restricted to Spaces where both users are members; a Person's other Spaces remain private. Invitation destinations are limited to Spaces owned by the current user and exclude archived Spaces, existing membership, and unexpired pending invitations. The permissions snapshot bounds requested collaborator/viewer rights; the invitation endpoint rechecks live ownership, membership, and invitation state on submission.
 
@@ -53,6 +131,15 @@ Both paths expose the same per-Space permission editor. Read access is inherent 
 Migration `0024_space_invitation_identity.sql` adds nullable `invitee_user_id` to Space invitations. Known-Person requests persist this identity; email is a delivery-address snapshot. Inbox, Accept, Reject, pending detection, and notifications use the user ID whenever present, so email changes or reuse cannot transfer consent. Unknown/legacy pending email invitations remain email-addressed until accepted; acceptance binds them to the authenticated user ID. Existing accepted invitations are backfilled from `accepted_by_user_id`. A unique pending Space/user index supplements the pending email index. Account deletion cascades invitations addressed to that deleted identity rather than falling back to a reusable email.
 
 Apply migration 0024 after 0023, then 0025, before deploying these Cloud/AX changes. These migrations preserve accepted memberships and People relationships while cleaning persisted invitation identity and obsolete member-level invitation rights. The obsolete email-only AX writer and unused email-only authentication invitation reader are removed. There is no separate membership or global discovery API.
+
+## Personal Connections, Lifecycle, Privacy, and Account Deletion
+
+Direct Spaces and personal connections implement discrete user lifecycle and privacy controls:
+- **Hide / Unhide Conversation:** A requesting user can hide a Direct Space from their active view (`PATCH /api/spaces/:id` with `{ hidden: true }`). It remains visible to the other participant. Visibility is restored explicitly via `{ hidden: false }` or automatically when a new incoming discussion message is received.
+- **Connection Removal:** Transitioning a connection to `status = 'disconnected'` freezes direct messaging and AI execution in the Direct Space until reconnected. Disconnecting does not alter shared Group Spaces or delete message history. Reconnection reuses the canonical pair identity without duplicating spaces.
+- **Blocking & Unblocking:** Users can block unwanted peers (`POST /api/people/blocks/:userId`), which immediately disconnects any active direct connection and prevents invitations, direct messages, and AI execution in both directions. Unblocking (`DELETE /api/people/blocks/:userId`) restores the ability to send reconnection invitations.
+- **Direct Space Deletion Guard:** Generic destructive space deletion (`DELETE /api/spaces/:id`) is explicitly forbidden on Direct Spaces (returns HTTP 403) to prevent one user from unilaterally destroying conversation history.
+- **Account Deletion Safety:** When a user account is deleted or deactivated, `handleAccountDeletionCleanup` safely transfers technical ownership of Direct Spaces to the active surviving peer (`spaces.owner_user_id = peer.id`, `space_memberships.role = 'owner'`), removes the deleting user's membership, disconnects personal connections, and cancels pending invitations. Conversation history is fully preserved for the surviving participant without foreign-key constraint failures.
 
 ## Account avatar files
 

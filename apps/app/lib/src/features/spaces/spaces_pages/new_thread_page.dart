@@ -95,7 +95,8 @@ class _NewThreadPageState extends State<NewThreadPage> {
   Future<void> _createNamedThread() async {
     if (_busy ||
         _nameController.text.trim().isEmpty ||
-        !widget.space.effectivePermissions.manageOwnThreads) {
+        (!widget.space.isDirect &&
+            !widget.space.effectivePermissions.manageOwnThreads)) {
       return;
     }
     setState(() {
@@ -140,19 +141,81 @@ class _NewThreadPageState extends State<NewThreadPage> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (widget.space.name.trim().isNotEmpty) ...[
-                          Text(widget.space.name.trim(),
-                              key: const ValueKey('space-landing-name'),
-                              style: Theme.of(context).textTheme.headlineSmall),
-                          const SizedBox(height: 12),
-                        ],
-                        if (widget.space.description.trim().isNotEmpty) ...[
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxHeight: 140),
-                            child: SingleChildScrollView(
-                                child: Text(widget.space.description)),
+                        if (widget.space.isDirect) ...[
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 20,
+                                backgroundColor: SyntilaColors.primarySoftColor(
+                                    Theme.of(context).brightness ==
+                                        Brightness.dark),
+                                backgroundImage: widget.space.avatarUrl !=
+                                            null &&
+                                        widget.space.avatarUrl!.isNotEmpty
+                                    ? NetworkImage(widget.space.avatarUrl!)
+                                    : null,
+                                child: widget.space.avatarUrl == null ||
+                                        widget.space.avatarUrl!.isEmpty
+                                    ? Text(
+                                        widget.space.name.isNotEmpty
+                                            ? widget.space.name[0].toUpperCase()
+                                            : 'P',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          color: SyntilaColors.primaryForeground(
+                                              Theme.of(context).brightness ==
+                                                  Brightness.dark),
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      widget.space.name.isNotEmpty
+                                          ? widget.space.name
+                                          : 'Personal connection',
+                                      key: const ValueKey('space-landing-name'),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineSmall,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Personal connection',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 16),
+                        ] else ...[
+                          if (widget.space.name.trim().isNotEmpty) ...[
+                            Text(widget.space.name.trim(),
+                                key: const ValueKey('space-landing-name'),
+                                style: Theme.of(context).textTheme.headlineSmall),
+                            const SizedBox(height: 12),
+                          ],
+                          if (widget.space.description.trim().isNotEmpty) ...[
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 140),
+                              child: SingleChildScrollView(
+                                  child: Text(widget.space.description)),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
                         ],
                         Align(
                           alignment: Alignment.centerLeft,
@@ -172,7 +235,8 @@ class _NewThreadPageState extends State<NewThreadPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_workflows != null || widget.space.role == 'owner')
+                  if (!widget.space.isDirect &&
+                      (_workflows != null || widget.space.role == 'owner'))
                     _SpaceLandingSection(
                       title: 'Settings',
                       arrowKey: const ValueKey('space-settings-arrow'),

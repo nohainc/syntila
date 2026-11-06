@@ -196,19 +196,32 @@ export async function handleWorkflowWorkspace(
   let ownerUserId = context.userId;
   if (spaceId) {
     const space = await env.SYNTILA_DB.prepare(
-      "SELECT s.owner_user_id AS ownerUserId FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ?1 AND m.user_id = ?2",
+      "SELECT s.owner_user_id AS ownerUserId, COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ?1 AND m.user_id = ?2",
     )
       .bind(spaceId, context.userId)
-      .first<{ ownerUserId: string }>();
+      .first<{ ownerUserId: string; kind: string }>();
     if (!space) throw new HttpError(403, "Space membership required");
-    ownerUserId = space.ownerUserId;
-    if (request.method !== "GET" && ownerUserId !== context.userId)
-      throw new HttpError(
-        403,
-        "Only the Space owner can select its workflow Workspace",
-      );
+    if (space.kind === "direct") {
+      if (request.method !== "GET") {
+        throw new HttpError(
+          403,
+          "Direct Spaces do not support Space-level Workspace attachments; use personal Workspaces or Person Grants",
+        );
+      }
+      ownerUserId = context.userId;
+    } else {
+      ownerUserId = space.ownerUserId;
+      if (request.method !== "GET" && ownerUserId !== context.userId)
+        throw new HttpError(
+          403,
+          "Only the Space owner can select its workflow Workspace",
+        );
+    }
   }
-  const current = await loadWorkflowWorkspace(env, ownerUserId, spaceId);
+  const current =
+    spaceId && (await env.SYNTILA_DB.prepare("SELECT COALESCE(kind, 'group') AS kind FROM spaces WHERE id = ?1").bind(spaceId).first<{ kind: string }>())?.kind === "direct"
+      ? await loadWorkflowWorkspace(env, ownerUserId)
+      : await loadWorkflowWorkspace(env, ownerUserId, spaceId);
   const owned = await env.SYNTILA_DB.prepare(
     "SELECT id, name FROM execution_workspaces WHERE owner_user_id = ?1 AND status != 'revoked' ORDER BY name, id",
   )

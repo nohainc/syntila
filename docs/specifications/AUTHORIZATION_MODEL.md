@@ -6,13 +6,94 @@ Cloud resolves the authenticated Better Auth session to an active Syntila user. 
 
 ## Space access
 
-Space roles are `owner`, `collaborator`, and `viewer`. Their permission sets are defined in `packages/security/src/index.ts`:
+Syntila defines two Space kinds: `group` (default) and `direct`.
+
+In `group` Spaces, roles are `owner`, `collaborator`, and `viewer`. Their permission sets are defined in `packages/security/src/index.ts`:
 
 - Owners can read, write, and manage their Space, start Work, and control Runs.
 - Collaborators default to reading, Chat, Work, and management of their own Threads. Owners can refine these rights individually.
 - Viewers can read Space content.
 
 Cloud checks membership at the resource boundary. A missing, suspended, or deactivated user is denied.
+
+## Direct Spaces and personal connection authorization
+
+A `direct` Space represents a dedicated one-to-one conversation between two approved personal connections (ADR-029).
+
+### 1. Invariants and cardinality
+- Exactly one Direct Space exists for any distinct unordered user pair `{userA, userB}`.
+- Exactly two participants are permitted. Adding a third member is strictly forbidden (`403 Forbidden`).
+- Direct Spaces cannot be converted into Group Spaces, nor can Group Spaces be converted into Direct Spaces.
+
+### 2. Technical ownership vs. participant rights
+- For database schema and referential integrity compatibility, `spaces.owner_user_id` is retained and records the inviter (or designated participant).
+- Technical ownership does not confer unequal conversational ownership. Both participants have symmetric, equivalent rights:
+  - Reading, posting Discussion messages, and participating in real-time updates.
+  - Executing Chat and initiating Work requests.
+  - Creating additional Threads, and managing/renaming Threads they created.
+  - Resetting AI conversation context.
+- Administrative powers typically reserved for Space owners are strictly restricted in Direct Spaces:
+  - Adding a third member or sending Space invitations is rejected (`403 Forbidden`).
+  - Changing participant roles or permissions through member APIs is rejected (`403 Forbidden`).
+  - Member removal is rejected (`403 Forbidden`); ending the relationship uses the contact removal flow.
+  - Deleting the Direct Space directly is rejected (`403 Forbidden`).
+  - Transferring Space ownership is rejected (`400 Bad Request`).
+  - Converting the Space kind between `direct` and `group` is rejected (`400 Bad Request`).
+  - Renaming the Direct Space or archiving it globally is rejected (`400 Bad Request`). Display title and avatar are dynamically resolved from the peer's profile.
+  - Deleting another participant's discussion message is rejected (`403 Forbidden`); only the message author can delete their own messages.
+  - Renaming, archiving, or managing custom Threads created by the other participant is rejected (`403 Forbidden`). Each participant can only manage custom Threads they created.
+  - The default General Thread cannot be renamed or archived (`400 Bad Request`), nor deleted (`403 Forbidden`).
+
+### 3. Lifecycle of the default General Thread
+- Acceptance of a personal invitation atomically provisions or retrieves the unique Direct Space and creates a default Thread named `General`.
+- The default General Thread cannot be deleted by either participant.
+- Either participant may create additional topic-specific Threads.
+- Thread deletion and conversation clearing strictly enforce the contribution rule: a Thread can only be cleared or deleted if the user created the Thread and no other human has contributed (`has_other_contributions == 0`). The technical owner cannot unilaterally destroy or clear Threads containing the peer's messages or created by the peer.
+
+### 4. Workspace and execution isolation
+- Membership in a Direct Space does not grant access to the other participant's local Workspace or file tree.
+- Direct Spaces do not support Space-level Workspace attachments; callers attempting to attach a Workspace receive `403 Forbidden`.
+- Workflows execute under existing isolation boundaries: requesters use their own Workspaces via `useOwnWorkers`, or explicitly authorized Person Grants (ADR-020).
+- Tool calls (`input.toolCall`) in a Direct Space require that the requester owns the target execution Workspace.
+- Local credentials, provider tokens, and filesystem paths remain protected within each participant's own environment.
+
+### 5. Removal, retention, and account deletion
+- **Hide conversation:** A per-user preference that hides the Direct Space from the active sidebar. The conversation remains intact and unread activity restores it to view.
+- **Remove contact:** Terminates the personal connection and transitions the Direct Space to a frozen/archived read-only state:
+  - Both participants retain read-only access to historical Threads, messages, and attachments for compliance and audit.
+  - Submitting new Discussion messages, creating new Threads, or initiating new Work requests is rejected (`403 Forbidden: This personal conversation is disconnected and read-only`).
+  - Existing Group Spaces remain unchanged.
+- **Account deletion:** Cascades the personal connection relationship. To prevent foreign key constraint violations on `spaces.owner_user_id ON DELETE RESTRICT`, account deletion routines clean up or tombstone Direct Spaces where the deleting user is the technical owner, ensuring the deletion completes cleanly while preserving data integrity for the remaining participant.
+
+### 6. Direct Space Permissions Matrix
+
+| Operation | Alice (Technical Owner) | Bob (Participant) | Charlie (Unrelated User) | Former Connection (Disconnected) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Discover Space (List Spaces)** | Allowed | Allowed | Denied (isolated) | Allowed (read-only) |
+| **Fetch Direct Space & Threads** | Allowed | Allowed | Denied (`404`/`403`) | Allowed (read-only) |
+| **Read Discussion & AI turns** | Allowed | Allowed | Denied (`404`/`403`) | Allowed (read-only) |
+| **Send Discussion Message** | Allowed | Allowed | Denied (`404`/`403`) | Denied (`403 read-only`) |
+| **Create Custom Thread** | Allowed | Allowed | Denied (`404`/`403`) | Denied (`403 read-only`) |
+| **Manage/Rename Own Thread** | Allowed | Allowed | Denied (`404`/`403`) | Denied (`403 read-only`) |
+| **Manage/Rename Peer's Thread** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Rename General Thread** | Denied (`400`) | Denied (`400`) | Denied (`404`/`403`) | Denied (`400`) |
+| **Archive General Thread** | Denied (`400`) | Denied (`400`) | Denied (`404`/`403`) | Denied (`400`) |
+| **Delete General Thread** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Delete Own Thread (no other inputs)** | Allowed | Allowed | Denied (`404`/`403`) | Denied (`403`) |
+| **Delete Peer's Thread** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Delete Own Discussion Message** | Allowed | Allowed | Denied (`404`/`403`) | Denied (`403`) |
+| **Delete Peer's Discussion Message** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Invite 3rd Member** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Remove / Kick Peer** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Change Peer's Role** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Delete Direct Space** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Convert Space to Group** | Denied (`400`) | Denied (`400`) | Denied (`404`/`403`) | Denied (`400`) |
+| **Transfer Ownership** | Denied (`400`) | Denied (`400`) | Denied (`404`/`403`) | Denied (`400`) |
+| **Global Space Rename** | Denied (`400`) | Denied (`400`) | Denied (`404`/`403`) | Denied (`400`) |
+| **Global Space Archive** | Denied (`400`) | Denied (`400`) | Denied (`404`/`403`) | Denied (`400`) |
+| **Attach Space Workspace** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
+| **Tool Call on Own Workspace** | Allowed | Allowed | Denied (`404`/`403`) | Denied (`403`) |
+| **Tool Call on Peer's Workspace** | Denied (`403`) | Denied (`403`) | Denied (`404`/`403`) | Denied (`403`) |
 
 ## Workspace execution access
 
@@ -256,3 +337,13 @@ exception. Apply the migration before deploying the updated Cloud routes; older
 clients may display notices as ordinary messages, while Cloud still protects
 them from edits/deletion. No local Workspace or provider credential migration
 is required. Personal hide/unhide is outside this feature.
+
+## Direct Space authorization
+
+Direct Spaces (`spaces.kind = 'direct'`) represent approved 1:1 personal connections and enforce distinct authorization semantics:
+- **Strict Two-Participant Invariant:** Direct Spaces are permanently fixed to exactly two members. Member invitations, third-party additions, role mutations, ownership transfers, and converting the Space to a group are rejected (`403 Forbidden`).
+- **Symmetric Conversation & Execution Rights:** Both participants possess identical conversational and execution rights regardless of technical owner/collaborator role assignments. Both can create custom Threads, post messages, run Chat workflows with their authorized personal AI Workers, and trigger Work requests.
+- **Protected General Thread & Destructive Actions:** The default `General` Thread cannot be deleted by either participant. Deleting the Direct Space itself via `DELETE /api/spaces/:id` is blocked (`403 Forbidden`).
+- **Workspace Isolation:** Direct Space participation never grants access to the peer's personal Workspace or AI credentials. Workflows execute only on Workspaces explicitly owned by the requesting member or granted via explicit Person Grants.
+- **Contact Removal & Blocking:** Disconnecting freezes the Direct Space into a read-only state, preventing new direct messages or AI runs until reconnected. Blocking (`POST /api/people/blocks/:userId`) halts messaging and AI execution bidirectionally.
+- **Account Deletion Ownership Transfer:** Deleting an account transfers technical ownership of Direct Spaces to the active surviving participant, preserving thread history without orphan foreign keys.

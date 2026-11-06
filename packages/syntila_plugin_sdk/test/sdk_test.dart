@@ -389,6 +389,20 @@ void main() {
           workingDirectory: root.path);
       expect(run.exitCode, 0, reason: '${run.stdout}${run.stderr}');
     }
+    final binary = '${root.path}/mcp-worker${Platform.isWindows ? '.exe' : ''}';
+    final compiled = await Process.run(Platform.resolvedExecutable,
+        ['compile', 'exe', 'bin/main.dart', '-o', binary],
+        workingDirectory: root.path);
+    expect(compiled.exitCode, 0,
+        reason: '${compiled.stdout}${compiled.stderr}');
+    final report = await McpConformanceRunner(
+      launcher: DirectProcessLauncher(executable: binary),
+    ).run();
+    expect(report.passed, isTrue,
+        reason: report.cases
+            .where((c) => c.status != ConformanceStatus.passed)
+            .map((c) => '${c.id}: ${c.detail}')
+            .join('\n'));
   });
 
   test('init generates a buildable plugin and refuses overwrite', () async {

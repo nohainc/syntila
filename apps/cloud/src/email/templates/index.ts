@@ -9,6 +9,7 @@ import type {
   EmailTemplateMetadata,
   EmailRenderOptions,
   PasswordChangedInput,
+  PersonInvitationInput,
   RenderedEmail,
   RenderedEmailContent,
   ResetPasswordInput,
@@ -373,6 +374,33 @@ function renderAccessRevoked(
   };
 }
 
+function renderPersonInvitation(
+  input: PersonInvitationInput,
+): RenderedEmailContent {
+  const inviterNameValue = subjectPart(input.inviterName, "inviterName");
+  const inviterName = safeText(inviterNameValue, "inviterName");
+  const recipientEmail = safeEmail(input.recipientEmail, "recipientEmail");
+  const invitationUrl = safeUrl(input.invitationUrl, "invitationUrl");
+  const subject = `${inviterNameValue} invited you to connect on Syntila`;
+  return {
+    templateId: "person.invitation.v1",
+    subject,
+    ...renderEmailLayout({
+      templateId: "person.invitation.v1",
+      subject,
+      variant: "action-required",
+      eyebrow: "Personal invitation",
+      title: "You have been invited to connect",
+      intro: `<strong>${inviterName}</strong> invited you to connect on Syntila.`,
+      bodyHtml: `<p style="margin:20px 0 0;color:#435066;font-size:15px;line-height:24px;">Sign in with <strong>${recipientEmail}</strong> to accept the invitation and start a direct conversation.</p>`,
+      bodyText: `${inviterNameValue} invited you to connect on Syntila.\n\nSign in with ${input.recipientEmail.trim()} to accept:\n${invitationUrl}`,
+      action: { label: "View invitation", url: invitationUrl },
+      securityNotice:
+        "If you were not expecting this invitation, you can safely ignore this email.",
+    }),
+  };
+}
+
 function renderWelcome(input: WelcomeInput): RenderedEmailContent {
   const recipientName = safeName(input.recipientName);
   const appUrl = safeUrl(input.appUrl, "appUrl");
@@ -499,6 +527,14 @@ export const emailTemplateCatalog = Object.freeze([
     render: renderAccessRevoked,
   },
   {
+    id: "person.invitation.v1",
+    priority: "essential",
+    category: "essential",
+    availability: "implemented",
+    variant: "action-required",
+    render: renderPersonInvitation,
+  },
+  {
     id: "auth.welcome.v1",
     priority: "essential",
     category: "essential",
@@ -532,6 +568,7 @@ const templateById: {
   "space.invitation.v1": renderInvitation,
   "space.invitation-accepted.v1": renderInvitationAccepted,
   "space.access-revoked.v1": renderAccessRevoked,
+  "person.invitation.v1": renderPersonInvitation,
   "auth.welcome.v1": renderWelcome,
   "auth.account-deleted.v1": renderAccountDeleted,
 };
@@ -551,6 +588,8 @@ function urlForTemplate<TId extends EmailTemplateId>(
       ];
     case "space.invitation.v1":
       return [["invitationUrl", (input as SpaceInvitationInput).invitationUrl]];
+    case "person.invitation.v1":
+      return [["invitationUrl", (input as PersonInvitationInput).invitationUrl]];
     case "auth.welcome.v1":
       return [["appUrl", (input as WelcomeInput).appUrl]];
     case "auth.account-deleted.v1":

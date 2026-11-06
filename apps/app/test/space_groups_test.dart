@@ -17,6 +17,21 @@ const shared = AxSpace(
     branch: '',
     lastActivity: '',
     role: 'collaborator');
+const direct = AxSpace(
+    id: 'direct-1',
+    name: 'Alice Cooper',
+    branch: '',
+    lastActivity: '2026-11-06T12:00:00Z',
+    kind: 'direct',
+    role: 'member');
+const directPinned = AxSpace(
+    id: 'direct-2',
+    name: 'Bob Marley',
+    branch: '',
+    lastActivity: '2026-11-05T12:00:00Z',
+    kind: 'direct',
+    pinnedAt: '2026-11-06T00:00:00Z',
+    role: 'member');
 
 void main() {
   testWidgets('recent Threads section stays visible when empty',
@@ -93,4 +108,55 @@ void main() {
       }
     });
   }
+
+  testWidgets('direct spaces render under PERSONAL group before owned and shared',
+      (tester) async {
+    final context = AxShellContext(
+      navigation: const AxNavigation.home(),
+      spaces: const [shared, own, direct],
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SpaceTree(
+          shellContext: context,
+          onNavigateTo: (_) {},
+        ),
+      ),
+    ));
+
+    expect(find.text('PERSONAL'), findsOneWidget);
+    expect(find.text('YOUR SPACES'), findsOneWidget);
+    expect(find.text('SHARED WITH YOU'), findsOneWidget);
+
+    final personalY = tester.getTopLeft(find.text(direct.name)).dy;
+    final ownY = tester.getTopLeft(find.text(own.name)).dy;
+    final sharedY = tester.getTopLeft(find.text(shared.name)).dy;
+
+    expect(personalY, lessThan(ownY));
+    expect(ownY, lessThan(sharedY));
+  });
+
+  testWidgets('pinned direct spaces appear before unpinned direct spaces',
+      (tester) async {
+    final context = AxShellContext(
+      navigation: const AxNavigation.home(),
+      spaces: const [direct, directPinned],
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SpaceTree(
+          shellContext: context,
+          onNavigateTo: (_) {},
+        ),
+      ),
+    ));
+
+    expect(find.text('PERSONAL'), findsOneWidget);
+    final pinnedY = tester.getTopLeft(find.text(directPinned.name)).dy;
+    final unpinnedY = tester.getTopLeft(find.text(direct.name)).dy;
+
+    expect(pinnedY, lessThan(unpinnedY));
+  });
 }

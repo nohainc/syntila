@@ -7,7 +7,7 @@
 
 import type { TurnExecutionConfig } from "./conversation.js";
 import { DomainInvariantError } from "./domain-error.js";
-import type { SpaceMembership, SpaceRole } from "./space.js";
+import type { SpaceKind, SpaceMembership, SpaceRole } from "./space.js";
 
 export type ThreadStatus =
   "active" | "paused" | "blocked" | "completed" | "archived";
@@ -715,13 +715,18 @@ export function canExecuteThread(
   return canAccessThreadPermission(userId, membership, thread, "execute");
 }
 
-/** Management is Space-owner or assigned Thread-lead authority. */
+/** Management is Space-owner or assigned Thread-lead authority.
+ * In a Direct Space, each participant can only manage Threads they created. */
 export function canManageThread(
   userId: string,
   membership: SpaceMembership | null | undefined,
   thread: Thread,
+  spaceKind: SpaceKind = "group",
 ): boolean {
   if (!membership || membership.spaceId !== thread.spaceId) return false;
+  if (spaceKind === "direct") {
+    return thread.lead.userId === userId;
+  }
   if (membership.role === "owner") return true;
   return (
     (membership.permissions?.manageOwnThreads ??

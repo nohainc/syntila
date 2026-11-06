@@ -20,7 +20,7 @@ it("spaces authorized Home read model with attention, running, recentWork, produ
   try {
     sqlite.exec(`
       CREATE TABLE users (id TEXT, email TEXT, display_name TEXT, status TEXT);
-      CREATE TABLE spaces (id TEXT, name TEXT, description TEXT, settings_json TEXT, created_at TEXT, updated_at TEXT);
+      CREATE TABLE spaces (id TEXT, name TEXT, description TEXT, kind TEXT DEFAULT 'group', settings_json TEXT, created_at TEXT, updated_at TEXT);
       CREATE TABLE space_memberships (id TEXT, space_id TEXT, user_id TEXT, role TEXT, created_at TEXT, updated_at TEXT);
       CREATE TABLE space_invitations (id TEXT, space_id TEXT, email TEXT, role TEXT, status TEXT, invited_by_user_id TEXT, expires_at TEXT, created_at TEXT, updated_at TEXT);
       CREATE TABLE threads (id TEXT, space_id TEXT, name TEXT, status TEXT, access_policy_json TEXT, lead_user_id TEXT, created_at TEXT, updated_at TEXT);
@@ -28,17 +28,20 @@ it("spaces authorized Home read model with attention, running, recentWork, produ
       CREATE TABLE discussion_messages (id TEXT, thread_id TEXT, user_id TEXT, content TEXT, created_at TEXT, updated_at TEXT);
       CREATE TABLE conversation_history_entries (id TEXT, work_request_id TEXT, conversation_id TEXT, kind TEXT, text TEXT, created_at TEXT);
       CREATE TABLE conversation_work_requests (work_request_id TEXT, conversation_id TEXT, thread_id TEXT);
+      CREATE TABLE user_pins (user_id TEXT, kind TEXT, target_id TEXT, pinned_at TEXT, position INTEGER);
+      CREATE TABLE direct_spaces (space_id TEXT, user_low_id TEXT, user_high_id TEXT, general_thread_id TEXT);
+      CREATE TABLE direct_space_user_state (space_id TEXT, user_id TEXT, hidden INTEGER, last_opened_at TEXT, created_at TEXT, updated_at TEXT);
 
       -- Users
       INSERT INTO users VALUES ('user-123', 'vitalii@nohainc.com', 'Vitalii', 'active');
       INSERT INTO users VALUES ('user-inviter', 'julia@nohainc.com', 'Julia', 'active');
 
       -- Authorized Space
-      INSERT INTO spaces VALUES ('proj-auth', 'Authorized Space', 'Active space', '{"archived":false}', '2026-10-01T00:00:00Z', '2026-10-08T00:00:00Z');
+      INSERT INTO spaces (id, name, description, settings_json, created_at, updated_at) VALUES ('proj-auth', 'Authorized Space', 'Active space', '{"archived":false}', '2026-10-01T00:00:00Z', '2026-10-08T00:00:00Z');
       INSERT INTO space_memberships VALUES ('pm-1', 'proj-auth', 'user-123', 'owner', '2026-10-01T00:00:00Z', '2026-10-08T00:00:00Z');
 
       -- Revoked / Unauthorized Space (user is not a member)
-      INSERT INTO spaces VALUES ('proj-revoked', 'Revoked Space', 'Revoked', '{"archived":false}', '2026-10-01T00:00:00Z', '2026-10-08T00:00:00Z');
+      INSERT INTO spaces (id, name, description, settings_json, created_at, updated_at) VALUES ('proj-revoked', 'Revoked Space', 'Revoked', '{"archived":false}', '2026-10-01T00:00:00Z', '2026-10-08T00:00:00Z');
 
       -- Pending Invitation for user
       INSERT INTO space_invitations VALUES ('inv-1', 'proj-auth', 'vitalii@nohainc.com', 'editor', 'pending', 'user-inviter', '2099-01-01T00:00:00Z', '2026-10-08T00:00:00Z', '2026-10-08T00:00:00Z');

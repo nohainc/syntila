@@ -74,6 +74,12 @@ void main() {
       expect(result.detail, isNot(contains('could not be exercised')));
     }
   });
+  test('rejects invalid schemas and duplicate tool names', () async {
+    for (final mode in ['badschema', 'duplicate_tool']) {
+      final result = caseOf(await run([mode]), 'mcp.tool_definitions');
+      expect(result.status, ConformanceStatus.failed, reason: mode);
+    }
+  });
   test('unsupported server version fails negotiation', () async {
     final report = await run(const ['badversion']);
     expect(caseOf(report, 'mcp.version_negotiation').status,

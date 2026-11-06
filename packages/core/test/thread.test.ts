@@ -174,6 +174,11 @@ describe("Thread domain", () => {
     expect(canManageThread("removed-user", undefined, thread)).toBe(false);
     expect(canViewThread("removed-user", undefined, thread)).toBe(false);
     expect(canExecuteThread("viewer-1", memberships[2], thread)).toBe(false);
+
+    // In a Direct Space, each participant can only manage threads they created.
+    const owner = memberships[0]!;
+    expect(canManageThread(owner.userId, owner, thread, "direct")).toBe(false);
+    expect(canManageThread(collaborator.userId, collaborator, thread, "direct")).toBe(true);
   });
 
   it("requires a Primary Workspace for stateful Work Requests", () => {

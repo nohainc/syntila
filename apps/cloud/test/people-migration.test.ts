@@ -44,3 +44,32 @@ it("backfills accepted co-members once, retains relationships, and consolidates 
     sqlite.close();
   }
 });
+
+it("preserves existing spaces, threads, memberships, and people relationships when applying 0105 migration", () => {
+  const { sqlite } = sqliteD1();
+  try {
+    sqlite.exec(`
+      INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('u1','u1@test','User 1','now','now'),('u2','u2@test','User 2','now','now');
+      INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('sp1','u1','Preexisting Group Space','now','now');
+      INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m1','sp1','u1','owner','now','now'),('m2','sp1','u2','collaborator','now','now');
+      INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('th1','sp1','Preexisting Thread','active','u1','now','now');
+    `);
+
+    // Existing space has kind default 'group'
+    const spaceRow = sqlite.prepare("SELECT kind FROM spaces WHERE id = 'sp1'").get() as { kind: string };
+    expect(spaceRow.kind).toBe("group");
+
+    // People relationships remain intact
+    const rels = sqlite.prepare("SELECT * FROM people_relationships").all();
+    expect(rels).toEqual([
+      expect.objectContaining({ user_low_id: "u1", user_high_id: "u2" }),
+    ]);
+
+    // Threads and memberships preserved
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM threads WHERE space_id = 'sp1'").get()).toEqual({ n: 1 });
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM space_memberships WHERE space_id = 'sp1'").get()).toEqual({ n: 2 });
+    expect(sqlite.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  } finally {
+    sqlite.close();
+  }
+});

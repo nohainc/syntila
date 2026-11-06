@@ -2628,7 +2628,8 @@ class _ThreadPageState extends State<ThreadPage>
                                       : null,
                                   onEdit: () => _startEditMessage(message.id),
                                   onDelete: (message.isMe ||
-                                              widget.space.role == 'owner') &&
+                                              (!widget.space.isDirect &&
+                                                  widget.space.role == 'owner')) &&
                                           message.eventType == null
                                       ? () => _deleteDiscussion(message.id)
                                       : null,

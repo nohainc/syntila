@@ -162,6 +162,65 @@ extension _AxAppViews on _AxAppStateMixin {
   Widget _spaceOverviewView() {
     final space = selectedSpace;
     if (space == null) return _homeView();
+    if (space.isDirect) {
+      return AxQueryBuilder<List<AxThread>>(
+        key: ValueKey('direct-space-threads-${space.id}'),
+        engine: store.spaceThreads.engine,
+        query: store.spaceThreads.query(space.id),
+        builder: (context, state) {
+          final threads = state.data;
+          if (threads != null && threads.isNotEmpty) {
+            final general = threads.where((t) => t.isGeneral).firstOrNull ??
+                threads.where((t) => t.id == 'general' || t.name.toLowerCase() == 'general').firstOrNull ??
+                threads.first;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted &&
+                  navigation.spaceId == space.id &&
+                  navigation.threadId == null &&
+                  navigation.kind == AxRouteKind.space) {
+                _navigateTo(AxNavigation.thread(space.id, general.id), replace: true);
+              }
+            });
+          }
+          if (state.isFetching && (threads == null || threads.isEmpty)) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (state.error != null && (threads == null || threads.isEmpty)) {
+            return Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => store.spaceThreads.ensure(space.id),
+                  child: const Text('Retry loading conversation'),
+                ),
+              ),
+            );
+          }
+          return NewThreadPage(
+            key: ValueKey('space-draft-${space.id}'),
+            space: space,
+            dataSource: widget.dataSource,
+            discussionCache: store.discussion,
+            workHistoryCache: store.workHistory,
+            threadViewStateStore: store.threadViewState,
+            catalogs: store.catalogs,
+            workflowConfigurations: AxWorkflowConfigurations(widget.dataSource,
+                engine: store.syncEngine, spaceId: space.id),
+            currentUserId: store.auth.viewer?.id,
+            currentUserName: store.auth.viewer?.displayName,
+            viewerEmail: store.auth.viewer?.email,
+            createThread: (name) =>
+                store.collaboration.createThread(spaceId: space.id, name: name),
+            onOpenThread: (thread) => _openThread(space.id, thread.id),
+            onOpenThreadId: (threadId) => _openThread(space.id, threadId),
+            spaceThreads: store.spaceThreads,
+            tabQueries: store.spaceTabs,
+            mutations: store.collaboration,
+          );
+        },
+      );
+    }
     return NewThreadPage(
       key: ValueKey('space-draft-${space.id}'),
       space: space,
@@ -201,6 +260,7 @@ extension _AxAppViews on _AxAppStateMixin {
       dataSource: widget.dataSource,
       viewerEmail: store.auth.viewer?.email,
       onOpenThread: (threadId) => _openThread(space.id, threadId),
+      onOpenPeople: () => _navigateTo(const AxNavigation.people()),
       onSaveEdits: (name, description, color) =>
           _saveSpaceEdits(space, name, description, color),
       onArchive: () => _archiveSpace(space),
@@ -252,9 +312,10 @@ extension _AxAppViews on _AxAppStateMixin {
           currentUserName: store.auth.viewer?.displayName,
           viewerEmail: store.auth.viewer?.email,
           onBackToSpace: () => _navigateTo(AxNavigation.space(space.id)),
-          onClearConversation: thread.canDestroy || space.role == 'owner'
-              ? () => _clearChatHistory(thread)
-              : null,
+          onClearConversation:
+              thread.canDestroy || space.role == 'owner' || space.isDirect
+                  ? () => _clearChatHistory(thread)
+                  : null,
           onClearAiHistory: () => _clearWorkHistory(thread),
           onRestore: () async {
             try {
@@ -267,6 +328,12 @@ extension _AxAppViews on _AxAppStateMixin {
             await store.collaboration.editThread(thread, viewState: viewState);
           },
           onArchive: () async {
+            if (thread.isGeneral) {
+              if (mounted) {
+                _showSnackBar('The General Thread cannot be deleted.');
+              }
+              return;
+            }
             try {
               await store.collaboration.deleteThread(thread);
               _discardNotificationsFor(threadId: thread.id);
@@ -278,6 +345,12 @@ extension _AxAppViews on _AxAppStateMixin {
             }
           },
           onRename: (name) async {
+            if (thread.isGeneral) {
+              if (mounted) {
+                _showSnackBar('The General Thread cannot be renamed.');
+              }
+              return;
+            }
             try {
               await store.collaboration.editThread(
                 thread,

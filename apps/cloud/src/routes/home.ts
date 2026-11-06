@@ -16,12 +16,34 @@ export async function handleGetHomeReadModel(
 
   // 1. Authorized Spaces for this user
   const spacesRows = await env.SYNTILA_DB.prepare(
-    `SELECT p.id, p.name, p.description, pm.role,
-            p.settings_json AS settingsJson, p.created_at AS createdAt, p.updated_at AS updatedAt
+    `SELECT p.id, p.name, p.description, pm.role, COALESCE(p.kind, 'group') AS kind,
+            p.settings_json AS settingsJson, p.created_at AS createdAt, p.updated_at AS updatedAt,
+            peer_u.display_name AS peerDisplayName
      FROM spaces p
      JOIN space_memberships pm ON pm.space_id = p.id
+     LEFT JOIN direct_spaces ds ON ds.space_id = p.id
+     LEFT JOIN users peer_u ON peer_u.id = (CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END)
+     LEFT JOIN direct_space_user_state dsus ON dsus.space_id = p.id AND dsus.user_id = ?1
      WHERE pm.user_id = ?1
        AND COALESCE(json_extract(p.settings_json, '$.archived'), 0) = 0
+       AND (
+         p.kind != 'direct'
+         OR (
+           COALESCE(dsus.hidden, 0) = 0
+           AND (
+             dsus.last_opened_at IS NOT NULL
+             OR EXISTS (
+               SELECT 1 FROM user_pins up
+               WHERE up.user_id = ?1 AND up.kind = 'space' AND up.target_id = p.id
+             )
+             OR EXISTS (
+               SELECT 1 FROM discussion_messages dm
+               JOIN threads t ON t.id = dm.thread_id
+               WHERE t.space_id = p.id
+             )
+           )
+         )
+       )
      ORDER BY p.updated_at DESC, p.id DESC`,
   )
     .bind(context.userId)
@@ -30,13 +52,19 @@ export async function handleGetHomeReadModel(
       name: string;
       description: string | null;
       role: string;
+      kind: string;
       settingsJson: string;
       createdAt: string;
       updatedAt: string;
+      peerDisplayName: string | null;
     }>();
 
-  const authorizedSpaces = spacesRows.results ?? [];
+  const authorizedSpaces = (spacesRows.results ?? []).map((p) => ({
+    ...p,
+    name: p.kind === "direct" && p.peerDisplayName ? p.peerDisplayName : p.name,
+  }));
   const authorizedSpaceIds = authorizedSpaces.map((p) => p.id);
+  const authorizedSpaceMap = new Map(authorizedSpaces.map((p) => [p.id, p.name]));
 
   // 2. Pending Invitations for this user
   const invitationsRows = await env.SYNTILA_DB.prepare(
@@ -199,7 +227,7 @@ export async function handleGetHomeReadModel(
       running.push({
         id: r.id,
         spaceId: r.spaceId,
-        spaceName: r.spaceName,
+        spaceName: authorizedSpaceMap.get(r.spaceId) ?? r.spaceName,
         threadId: r.threadId,
         threadTitle: r.threadTitle,
         status: r.status,
@@ -246,7 +274,7 @@ export async function handleGetHomeReadModel(
     for (const ws of threadRows.results ?? []) {
       recentWork.push({
         spaceId: ws.spaceId,
-        spaceName: ws.spaceName,
+        spaceName: authorizedSpaceMap.get(ws.spaceId) ?? ws.spaceName,
         threadId: ws.threadId,
         threadTitle: ws.threadTitle,
         collaboratorsDisplay: ws.leadUserId

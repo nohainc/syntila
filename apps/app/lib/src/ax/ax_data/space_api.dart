@@ -117,11 +117,11 @@ mixin _SpaceApi on _AxApiClientCore {
   }
 
   @override
-  Future<void> archiveSpace({required String spaceId}) async {
+  Future<void> archiveSpace({required String spaceId, bool direct = false}) async {
     final response = await client.patch(
       Uri.parse('$baseUrl/spaces/$spaceId'),
       headers: _headers(contentType: 'application/json'),
-      body: jsonEncode({'archived': true}),
+      body: jsonEncode(direct ? {'hidden': true} : {'archived': true}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw AxApiException('Space archive failed (${response.statusCode})',

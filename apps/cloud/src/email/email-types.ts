@@ -14,6 +14,7 @@ export type EmailTemplateId =
   | "space.invitation.v1"
   | "space.invitation-accepted.v1"
   | "space.access-revoked.v1"
+  | "person.invitation.v1"
   | "auth.welcome.v1"
   | "auth.account-deleted.v1";
 
@@ -110,6 +111,12 @@ export interface SpaceInvitationInput {
   readonly recipientEmail: string;
 }
 
+export interface PersonInvitationInput {
+  readonly inviterName: string;
+  readonly recipientEmail: string;
+  readonly invitationUrl: string;
+}
+
 export interface SpaceInvitationAcceptedInput {
   readonly recipientName?: string | null;
   readonly memberName: string;
@@ -144,6 +151,7 @@ export interface EmailTemplateInputMap {
   readonly "space.invitation.v1": SpaceInvitationInput;
   readonly "space.invitation-accepted.v1": SpaceInvitationAcceptedInput;
   readonly "space.access-revoked.v1": SpaceAccessRevokedInput;
+  readonly "person.invitation.v1": PersonInvitationInput;
   readonly "auth.welcome.v1": WelcomeInput;
   readonly "auth.account-deleted.v1": AccountDeletedInput;
 }

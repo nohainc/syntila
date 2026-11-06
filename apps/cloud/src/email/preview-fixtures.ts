@@ -46,6 +46,11 @@ export const emailPreviewFixtures: Readonly<{
     invitationUrl: `${EMAIL_PREVIEW_ORIGIN}/?invitation=preview-invitation`,
     recipientEmail: "ada@example.com",
   },
+  "person.invitation.v1": {
+    inviterName: "Grace Hopper",
+    invitationUrl: `${EMAIL_PREVIEW_ORIGIN}/?person_invitation=preview-person-invitation`,
+    recipientEmail: "ada@example.com",
+  },
   "space.invitation-accepted.v1": {
     recipientName: "Grace Hopper",
     memberName: "Ada Lovelace",

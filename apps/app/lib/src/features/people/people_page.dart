@@ -9,13 +9,24 @@ import '../common/quiet_notices.dart';
 import '../invitations/space_invitation_dialog.dart';
 
 class PeoplePage extends StatefulWidget {
-  const PeoplePage({super.key, required this.people});
+  const PeoplePage({
+    super.key,
+    required this.people,
+    this.onOpenThread,
+    this.onOpenSpace,
+  });
+
   final AxPeople people;
+  final void Function(String spaceId, String threadId)? onOpenThread;
+  final ValueChanged<String>? onOpenSpace;
+
   @override
   State<PeoplePage> createState() => _PeoplePageState();
 }
 
 class _PeoplePageState extends State<PeoplePage> {
+  String _searchQuery = '';
+
   @override
   void initState() {
     super.initState();
@@ -36,36 +47,119 @@ class _PeoplePageState extends State<PeoplePage> {
 
   @override
   Widget build(BuildContext context) => AxQueryBuilder(
-      engine: widget.people.engine,
-      query: widget.people.query,
-      ensure: false,
-      builder: (context, state) {
-        final people = state.data ?? const <AxPerson>[];
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('People', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 8),
-          const Text(
-              'People you collaborate with will appear here after they accept a Space invitation.'),
-          const SizedBox(height: 20),
-          _PeopleReadStatus(people: widget.people, state: state),
-          if (people.isNotEmpty)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < people.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 12),
-                  _personCard(people[i]),
+        engine: widget.people.engine,
+        query: widget.people.query,
+        ensure: false,
+        builder: (context, state) {
+          final allPeople = state.data ?? const <AxPerson>[];
+          final query = _searchQuery.trim().toLowerCase();
+          final filtered = query.isEmpty
+              ? allPeople
+              : allPeople
+                  .where((p) =>
+                      p.displayName.toLowerCase().contains(query) ||
+                      p.email.toLowerCase().contains(query))
+                  .toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('People',
+                        style: Theme.of(context).textTheme.headlineMedium),
+                  ),
+                  FilledButton.icon(
+                    key: const ValueKey('add-person-button'),
+                    onPressed: _showAddPersonDialog,
+                    icon: const Icon(Icons.person_add_outlined, size: 18),
+                    label: const Text('Add Person'),
+                  ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                  'People you collaborate with will appear here after they accept a Space invitation.'),
+              const SizedBox(height: 16),
+              if (allPeople.isNotEmpty) ...[
+                TextField(
+                  key: const ValueKey('people-search-field'),
+                  decoration: InputDecoration(
+                    hintText: 'Search people by name or email...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onChanged: (val) => setState(() => _searchQuery = val),
+                ),
+                const SizedBox(height: 16),
               ],
-            ),
-        ]);
-      });
+              _PeopleReadStatus(people: widget.people, state: state),
+              if (allPeople.isEmpty && !state.isFetching)
+                _emptyState()
+              else if (filtered.isEmpty && allPeople.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text('No people match "$_searchQuery".',
+                        style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant)),
+                  ),
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < filtered.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 12),
+                      _personCard(filtered[i]),
+                    ],
+                  ],
+                ),
+            ],
+          );
+        },
+      );
+
+  Widget _emptyState() => Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.people_outline,
+                  size: 56,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+              const SizedBox(height: 16),
+              Text(
+                'No people yet. Invite someone to start a private conversation.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                key: const ValueKey('empty-add-person-button'),
+                onPressed: _showAddPersonDialog,
+                icon: const Icon(Icons.person_add_outlined, size: 18),
+                label: const Text('Add Person'),
+              ),
+            ],
+          ),
+        ),
+      );
 
   Widget _personCard(AxPerson person) {
     final displayName =
         person.displayName.trim().isEmpty ? person.email : person.displayName;
     final sharedCount =
         '${person.sharedSpaceCount} shared ${person.sharedSpaceCount == 1 ? 'Space' : 'Spaces'}';
+
     return Card(
       key: ValueKey('person-${person.userId}'),
       margin: EdgeInsets.zero,
@@ -81,22 +175,30 @@ class _PeoplePageState extends State<PeoplePage> {
                     source: widget.people.source, url: person.avatarUrl),
                 const SizedBox(width: 12),
                 Expanded(
-                    child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(displayName,
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 3),
-                    Text(person.email,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant)),
-                  ],
-                )),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(displayName,
+                                style: Theme.of(context).textTheme.titleMedium),
+                          ),
+                          _connectionBadge(person.connectionStatus),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(person.email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
+                    ],
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -104,33 +206,363 @@ class _PeoplePageState extends State<PeoplePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                    child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(sharedCount),
-                    if (person.sharedSpaces.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(person.sharedSpaces.map((s) => s.name).join(', '),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(sharedCount),
+                      if (person.sharedSpaces.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          person.sharedSpaces.map((s) => s.name).join(', '),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant)),
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                )),
-                const SizedBox(width: 8),
-                TextButton(
-                  key: ValueKey('add-to-space-${person.userId}'),
-                  onPressed: () => _addToSpace(person.userId),
-                  child: const Text('Add to Space'),
+                  ),
                 ),
+                const SizedBox(width: 8),
+                _actionButtons(person),
               ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _connectionBadge(String status) {
+    Color bg;
+    Color fg;
+    String label;
+
+    switch (status) {
+      case 'connected':
+        bg = Colors.green.withValues(alpha: 0.15);
+        fg = Colors.green.shade800;
+        label = 'Connected';
+        break;
+      case 'invitation_sent':
+        bg = Colors.orange.withValues(alpha: 0.15);
+        fg = Colors.orange.shade800;
+        label = 'Invitation sent';
+        break;
+      case 'invitation_received':
+        bg = Colors.blue.withValues(alpha: 0.15);
+        fg = Colors.blue.shade800;
+        label = 'Invitation received';
+        break;
+      case 'disconnected':
+        bg = Colors.grey.withValues(alpha: 0.2);
+        fg = Colors.grey.shade700;
+        label = 'Disconnected';
+        break;
+      case 'blocked':
+        bg = Colors.red.withValues(alpha: 0.15);
+        fg = Colors.red.shade800;
+        label = 'Blocked';
+        break;
+      case 'collaborator':
+      default:
+        bg = Colors.blueGrey.withValues(alpha: 0.12);
+        fg = Colors.blueGrey.shade700;
+        label = 'Collaborator';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg),
+      ),
+    );
+  }
+
+  Widget _actionButtons(AxPerson person) {
+    switch (person.connectionStatus) {
+      case 'connected':
+        return Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            FilledButton.icon(
+              key: ValueKey('message-${person.userId}'),
+              onPressed: () => _openMessage(person),
+              icon: const Icon(Icons.chat_bubble_outline, size: 16),
+              label: const Text('Message'),
+            ),
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
+            ),
+            PopupMenuButton<String>(
+              key: ValueKey('person-menu-${person.userId}'),
+              onSelected: (val) {
+                if (val == 'disconnect') _disconnect(person.userId);
+                if (val == 'block') _block(person.userId);
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'disconnect',
+                  child: Text('Remove connection'),
+                ),
+                const PopupMenuItem(
+                  value: 'block',
+                  child: Text('Block'),
+                ),
+              ],
+            ),
+          ],
+        );
+
+      case 'invitation_sent':
+        return Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Text('Pending',
+                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+            ),
+            if (person.invitationId != null)
+              OutlinedButton(
+                key: ValueKey('cancel-invitation-${person.userId}'),
+                onPressed: () => _cancelInvitation(person.invitationId!),
+                child: const Text('Cancel'),
+              ),
+            if (!person.userId.startsWith('email:'))
+              TextButton(
+                key: ValueKey('add-to-space-${person.userId}'),
+                onPressed: () => _addToSpace(person.userId),
+                child: const Text('Add to Space'),
+              ),
+          ],
+        );
+
+      case 'invitation_received':
+        return Wrap(
+          spacing: 8,
+          children: [
+            if (person.invitationId != null) ...[
+              FilledButton(
+                key: ValueKey('accept-invitation-${person.userId}'),
+                onPressed: () => _acceptInvitation(person.invitationId!),
+                child: const Text('Accept'),
+              ),
+              OutlinedButton(
+                key: ValueKey('decline-invitation-${person.userId}'),
+                onPressed: () => _declineInvitation(person.invitationId!),
+                child: const Text('Decline'),
+              ),
+            ],
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
+            ),
+          ],
+        );
+
+      case 'disconnected':
+        return Wrap(
+          spacing: 8,
+          children: [
+            FilledButton(
+              key: ValueKey('reconnect-${person.userId}'),
+              onPressed: () => _connect(person.userId),
+              child: const Text('Reconnect'),
+            ),
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
+            ),
+          ],
+        );
+
+      case 'blocked':
+        return Wrap(
+          spacing: 8,
+          children: [
+            OutlinedButton(
+              key: ValueKey('unblock-${person.userId}'),
+              onPressed: () => _unblock(person.userId),
+              child: const Text('Unblock'),
+            ),
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
+            ),
+          ],
+        );
+
+      case 'collaborator':
+      default:
+        return Wrap(
+          spacing: 8,
+          children: [
+            FilledButton(
+              key: ValueKey('connect-${person.userId}'),
+              onPressed: () => _connect(person.userId),
+              child: const Text('Connect'),
+            ),
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
+            ),
+          ],
+        );
+    }
+  }
+
+  void _openMessage(AxPerson person) {
+    if (person.directSpaceId != null && person.generalThreadId != null) {
+      widget.onOpenThread?.call(person.directSpaceId!, person.generalThreadId!);
+    } else if (person.directSpaceId != null && widget.onOpenSpace != null) {
+      widget.onOpenSpace!(person.directSpaceId!);
+    } else {
+      ScaffoldMessenger.of(context).showNotice(
+        const SnackBar(content: Text('Direct conversation is not available.')),
+      );
+    }
+  }
+
+  Future<void> _connect(String userId) async {
+    try {
+      await widget.people.sendInvitation(userId: userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(content: Text('Connection invitation sent.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not send connection invitation: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _acceptInvitation(String invitationId) async {
+    try {
+      await widget.people.acceptInvitation(invitationId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(content: Text('Connection accepted.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not accept invitation: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _declineInvitation(String invitationId) async {
+    try {
+      await widget.people.declineInvitation(invitationId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(content: Text('Invitation declined.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not decline invitation: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelInvitation(String invitationId) async {
+    try {
+      await widget.people.cancelInvitation(invitationId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(content: Text('Invitation cancelled.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not cancel invitation: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _disconnect(String userId) async {
+    try {
+      await widget.people.disconnect(userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(content: Text('Connection removed.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not remove connection: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _block(String userId) async {
+    try {
+      await widget.people.block(userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(content: Text('User blocked.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not block user: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _unblock(String userId) async {
+    try {
+      await widget.people.unblock(userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(content: Text('User unblocked.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not unblock user: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showAddPersonDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _AddPersonDialog(people: widget.people),
     );
   }
 
@@ -144,6 +576,106 @@ class _PeoplePageState extends State<PeoplePage> {
           .showNotice(const SnackBar(content: Text('Space invitation sent.')));
     }
   }
+}
+
+class _AddPersonDialog extends StatefulWidget {
+  const _AddPersonDialog({required this.people});
+
+  final AxPeople people;
+
+  @override
+  State<_AddPersonDialog> createState() => _AddPersonDialogState();
+}
+
+class _AddPersonDialogState extends State<_AddPersonDialog> {
+  final _emailController = TextEditingController();
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _error = 'Enter a valid email address.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      await widget.people.sendInvitation(email: email);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Invitation sent to $email.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          _error = 'Failed to send invitation: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Add Person'),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter an email address to send a personal connection invitation.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const ValueKey('add-person-email-field'),
+                controller: _emailController,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  hintText: 'colleague@example.com',
+                  errorText: _error,
+                  isDense: true,
+                  border: const OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _send(),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _submitting ? null : () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('send-invitation-button'),
+            onPressed: _submitting ? null : _send,
+            child: _submitting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Send Invitation'),
+          ),
+        ],
+      );
 }
 
 class _PersonAvatar extends StatefulWidget {

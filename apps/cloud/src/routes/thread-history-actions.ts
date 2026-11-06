@@ -31,14 +31,32 @@ export async function requireDestructiveThreadAccess(
 ) {
   const row = await env.SYNTILA_DB.prepare(
     `SELECT t.lead_user_id AS creator,
-    t.has_other_contributions AS contributed, s.owner_user_id AS owner
+    t.has_other_contributions AS contributed, s.owner_user_id AS owner,
+    COALESCE(s.kind, 'group') AS spaceKind
     FROM threads t JOIN spaces s ON s.id = t.space_id WHERE t.id = ?1`,
   )
     .bind(threadId)
-    .first<{ creator: string; contributed: number; owner: string }>();
+    .first<{
+      creator: string;
+      contributed: number;
+      owner: string;
+      spaceKind: string;
+    }>();
+  if (!row) throw new HttpError(404, "Thread not found");
+
+  if (row.spaceKind === "direct") {
+    if (row.creator !== userId || row.contributed !== 0) {
+      throw new HttpError(
+        403,
+        "In a Direct Space, only the Thread creator with no other contributions may delete or clear this Thread",
+      );
+    }
+    return;
+  }
+
   if (
-    !row ||
-    (row.owner !== userId && (row.creator !== userId || row.contributed !== 0))
+    row.owner !== userId &&
+    (row.creator !== userId || row.contributed !== 0)
   )
     throw new HttpError(
       403,
@@ -56,7 +74,7 @@ export function destructiveThreadGuard(
   return env.SYNTILA_DB.prepare(
     `UPDATE threads SET has_other_contributions = CASE
     WHEN ((lead_user_id = ?2 AND has_other_contributions = 0) OR EXISTS
-      (SELECT 1 FROM spaces s WHERE s.id = threads.space_id AND s.owner_user_id = ?2))
+      (SELECT 1 FROM spaces s WHERE s.id = threads.space_id AND s.owner_user_id = ?2 AND COALESCE(s.kind, 'group') <> 'direct'))
       AND NOT EXISTS (SELECT 1 FROM work_requests wr WHERE wr.thread_id = threads.id
         AND wr.status IN ('queued','running','waiting'))
     THEN has_other_contributions ELSE -1 END WHERE id = ?1`,

@@ -1,4 +1,14 @@
-import { handleListPeople } from "./people.js";
+import {
+  handleListPeople,
+  handleCreatePersonInvitation,
+  handleListPersonInvitations,
+  handleAcceptPersonInvitation,
+  handleDeclinePersonInvitation,
+  handleCancelPersonInvitation,
+  handleDisconnectPersonConnection,
+  handleBlockPerson,
+  handleUnblockPerson,
+} from "./people.js";
 import {
   handleAccountPlan,
   handleGetAvatar,
@@ -215,6 +225,88 @@ export async function routeWorkerRequest(
     }
     if (url.pathname === "/api/people")
       return await handleListPeople(request, env, ctx);
+    if (url.pathname === "/api/people/invitations") {
+      if (request.method === "POST")
+        return await handleCreatePersonInvitation(request, env, ctx);
+      if (request.method === "GET")
+        return await handleListPersonInvitations(request, env, ctx);
+    }
+    const personInvitationActionMatch = url.pathname.match(
+      /^\/api\/people\/invitations\/([^/]+)\/(accept|decline|cancel)$/,
+    );
+    if (personInvitationActionMatch && request.method === "POST") {
+      const invitationId = decodeURIComponent(personInvitationActionMatch[1]!);
+      const action = personInvitationActionMatch[2];
+      if (action === "accept")
+        return await handleAcceptPersonInvitation(
+          request,
+          env,
+          invitationId,
+          ctx,
+        );
+      if (action === "decline")
+        return await handleDeclinePersonInvitation(
+          request,
+          env,
+          invitationId,
+          ctx,
+        );
+      if (action === "cancel")
+        return await handleCancelPersonInvitation(
+          request,
+          env,
+          invitationId,
+          ctx,
+        );
+    }
+    const personDisconnectMatch = url.pathname.match(
+      /^\/api\/people\/connections\/([^/]+)(\/disconnect)?$/,
+    );
+    if (
+      personDisconnectMatch &&
+      (request.method === "POST" || request.method === "DELETE")
+    ) {
+      return await handleDisconnectPersonConnection(
+        request,
+        env,
+        decodeURIComponent(personDisconnectMatch[1]!),
+        ctx,
+      );
+    }
+    const personBlockMatch = url.pathname.match(
+      /^\/api\/people\/blocks\/([^/]+)$/,
+    );
+    if (personBlockMatch) {
+      if (request.method === "POST") {
+        return await handleBlockPerson(
+          request,
+          env,
+          decodeURIComponent(personBlockMatch[1]!),
+          ctx,
+        );
+      }
+      if (request.method === "DELETE") {
+        return await handleUnblockPerson(
+          request,
+          env,
+          decodeURIComponent(personBlockMatch[1]!),
+          ctx,
+        );
+      }
+    }
+    const personConnectionActionMatch = url.pathname.match(
+      /^\/api\/people\/connections\/([^/]+)\/(block|unblock)$/,
+    );
+    if (personConnectionActionMatch && request.method === "POST") {
+      const targetUserId = decodeURIComponent(personConnectionActionMatch[1]!);
+      const action = personConnectionActionMatch[2];
+      if (action === "block") {
+        return await handleBlockPerson(request, env, targetUserId, ctx);
+      }
+      if (action === "unblock") {
+        return await handleUnblockPerson(request, env, targetUserId, ctx);
+      }
+    }
     if (request.method === "PUT" && url.pathname === "/api/profile/avatar")
       return await handleUploadAvatar(request, env, ctx);
     if (url.pathname === "/api/me/privacy")

@@ -60,6 +60,7 @@ export async function handleListSpaceThreads(
   const rows = await env.SYNTILA_DB.prepare(
     `SELECT threads.id, threads.space_id AS spaceId,
             threads.name, threads.status, threads.has_other_contributions AS hasOtherContributions,
+            COALESCE(threads.is_general, 0) AS isGeneral,
             threads.access_policy_json AS accessPolicyJson,
             usage.config_json AS workConfigJson,
             threads.metadata_json AS metadataJson,
@@ -195,6 +196,33 @@ export async function handleCreateThread(
     spaceId,
     "manageOwnThreads",
   );
+  const directSpace = await env.SYNTILA_DB.prepare(
+    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId
+     FROM direct_spaces ds
+     LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
+     WHERE ds.space_id = ?1`,
+  )
+    .bind(spaceId)
+    .first<{ status: string | null; userLowId: string; userHighId: string }>()
+    .catch(() => null);
+  if (directSpace) {
+    const isBlocked = await env.SYNTILA_DB.prepare(
+      `SELECT 1 FROM user_blocks
+       WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2)
+          OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
+    )
+      .bind(directSpace.userLowId, directSpace.userHighId)
+      .first();
+    if (isBlocked) {
+      throw new HttpError(403, "Messaging is blocked between participants");
+    }
+    if (directSpace.status !== "connected") {
+      throw new HttpError(
+        403,
+        "This personal conversation is disconnected and read-only",
+      );
+    }
+  }
   const body = (await request.json().catch(() => ({}))) as Record<
     string,
     unknown
@@ -297,6 +325,40 @@ export async function handleUpdateThread(
       "manage",
       accessContext,
     );
+
+  const isDirectGeneral = await env.SYNTILA_DB.prepare(
+    "SELECT space_id FROM direct_spaces WHERE general_thread_id = ?1",
+  )
+    .bind(threadId)
+    .first<{ space_id: string }>();
+  if (isDirectGeneral) {
+    if (body.name !== undefined && body.name !== thread.name) {
+      throw new HttpError(
+        400,
+        "The default General Thread of a Direct Space cannot be renamed",
+      );
+    }
+    if (body.status === "archived") {
+      throw new HttpError(
+        400,
+        "The default General Thread of a Direct Space cannot be archived",
+      );
+    }
+  }
+
+  const space = await env.SYNTILA_DB.prepare(
+    "SELECT COALESCE(kind, 'group') AS kind FROM spaces WHERE id = ?1",
+  )
+    .bind(thread.spaceId)
+    .first<{ kind: string }>();
+  if (space?.kind === "direct" && !isDirectGeneral) {
+    if (thread.lead.userId !== context.userId) {
+      throw new HttpError(
+        403,
+        "In a Direct Space, you can only manage Threads you created",
+      );
+    }
+  }
   const name =
     body.name === undefined ? thread.name : requiredString(body.name, "name");
   const status =
@@ -497,6 +559,17 @@ export async function handleDeleteThread(
     accessContext,
   );
   await requireDestructiveThreadAccess(env, threadId, context.userId);
+  const isDirectGeneral = await env.SYNTILA_DB.prepare(
+    "SELECT space_id FROM direct_spaces WHERE general_thread_id = ?1",
+  )
+    .bind(threadId)
+    .first<{ space_id: string }>();
+  if (isDirectGeneral) {
+    throw new HttpError(
+      403,
+      "The default General Thread of a Direct Space cannot be deleted",
+    );
+  }
   const active = await env.SYNTILA_DB.prepare(
     "SELECT COUNT(*) AS count FROM work_requests WHERE thread_id = ?1 AND status IN ('queued', 'running', 'waiting')",
   )
@@ -644,6 +717,33 @@ export async function handleCreateDiscussionMessage(
     "discuss",
     accessContext,
   );
+  const directSpace = await env.SYNTILA_DB.prepare(
+    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId
+     FROM direct_spaces ds
+     LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
+     WHERE ds.space_id = ?1`,
+  )
+    .bind(spaceId)
+    .first<{ status: string | null; userLowId: string; userHighId: string }>()
+    .catch(() => null);
+  if (directSpace) {
+    const isBlocked = await env.SYNTILA_DB.prepare(
+      `SELECT 1 FROM user_blocks
+       WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2)
+          OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
+    )
+      .bind(directSpace.userLowId, directSpace.userHighId)
+      .first();
+    if (isBlocked) {
+      throw new HttpError(403, "Messaging is blocked between participants");
+    }
+    if (directSpace.status !== "connected") {
+      throw new HttpError(
+        403,
+        "This personal conversation is disconnected and read-only",
+      );
+    }
+  }
   if (thread?.status === "archived")
     throw new HttpError(
       409,
@@ -715,6 +815,13 @@ export async function handleCreateDiscussionMessage(
       now,
     ),
   );
+  if (directSpace) {
+    mutations.push(
+      env.SYNTILA_DB.prepare(
+        "UPDATE direct_space_user_state SET hidden = 0, updated_at = ?1 WHERE space_id = ?2",
+      ).bind(now, spaceId),
+    );
+  }
   const response = {
     message: {
       id,
@@ -858,7 +965,20 @@ export async function handleDeleteDiscussionMessage(
     accessContext,
   );
   const policy = await loadSpacePermissions(env, context.userId, spaceId);
-  if (
+  const space = await env.SYNTILA_DB.prepare(
+    "SELECT COALESCE(kind, 'group') AS kind FROM spaces WHERE id = ?1",
+  )
+    .bind(spaceId)
+    .first<{ kind: string }>();
+
+  if (space?.kind === "direct") {
+    if (String(message.authorUserId) !== context.userId) {
+      throw new HttpError(
+        403,
+        "In a Direct Space, only the message author may delete their message",
+      );
+    }
+  } else if (
     String(message.authorUserId) !== context.userId &&
     policy.role !== "owner"
   )

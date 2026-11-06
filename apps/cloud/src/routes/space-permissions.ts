@@ -2,6 +2,7 @@ import { requirePaidFeature } from "../account-plan.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
   SPACE_MEMBER_PERMISSION_KEYS,
+  defaultSpaceMemberPermissions,
   spaceMemberPermissions,
   type SpaceMemberPermissions,
   type SecurityContext,
@@ -37,15 +38,18 @@ export async function loadSpacePermissions(
   spaceId: string,
 ) {
   const row = await env.SYNTILA_DB.prepare(
-    `SELECT sm.role, s.settings_json AS settingsJson FROM space_memberships sm
+    `SELECT sm.role, s.settings_json AS settingsJson, COALESCE(s.kind, 'group') AS kind FROM space_memberships sm
      JOIN spaces s ON s.id = sm.space_id WHERE sm.space_id = ?1 AND sm.user_id = ?2`,
   )
     .bind(spaceId, userId)
-    .first<{ role: string; settingsJson: string }>();
+    .first<{ role: string; settingsJson: string; kind: string }>();
   if (!row) throw new HttpError(403, "Space membership is required");
   return {
     role: row.role,
-    rights: spaceMemberPermissions(row.role, row.settingsJson, userId),
+    rights:
+      row.kind === "direct"
+        ? defaultSpaceMemberPermissions("collaborator")
+        : spaceMemberPermissions(row.role, row.settingsJson, userId),
     settingsJson: row.settingsJson,
   };
 }
@@ -116,6 +120,7 @@ export async function requireWorkflowPermission(
     env,
     spaceId,
     workflowId,
+    userId,
   );
   if (configuration.configurations[0]?.enabled === false)
     throw new HttpError(403, "Workflow is disabled in this Space");

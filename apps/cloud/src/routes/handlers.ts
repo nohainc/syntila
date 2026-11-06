@@ -139,3 +139,11 @@ export {
   handleWorkspaceRuntimeTransport,
 } from "./workspaces.js";
 export { handleGetHomeReadModel } from "./home.js";
+export {
+  handleListPeople,
+  handleCreatePersonInvitation,
+  handleListPersonInvitations,
+  handleAcceptPersonInvitation,
+  handleDeclinePersonInvitation,
+  handleCancelPersonInvitation,
+} from "./people.js";

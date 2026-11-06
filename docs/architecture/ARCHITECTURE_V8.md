@@ -120,8 +120,8 @@ Gemini, and future approved logical Workers rather than implementation details.
 
 Users should understand only:
 
-> **Space** = collaboration boundary.\
-> **Thread** = persistent unit of work.\
+> **Space** = collaboration boundary (Group Space for team/project collaboration; Direct Space for 1:1 personal connection).\
+> **Thread** = persistent unit of work and conversation.\
 > **Workspace** = machine where AI can execute.  
 > **Worker** = AI/tool choice available on that Workspace.  
 > **Workflow** = Syntila-defined way to perform work.
@@ -180,7 +180,8 @@ collaboration; Work v1 Work Requests provide execution.
 AX remains the human web application.
 
 It owns:
-- Spaces and Threads;
+- Spaces (`group` and `direct`) and Threads;
+- Personal direct conversations (under a dedicated Personal navigation hierarchy);
 - Discuss;
 - Work;
 - built-in Workflow selection;
@@ -213,9 +214,13 @@ Cloud does not execute provider CLIs.
 #### Authorization boundaries
 
 Cloud request identity contains the authenticated human, session, and current
-Space membership roles. Space reads, writes, and Work execution are checked
-against the Space membership on each request. Workspace membership roles and
-organization aliases are not authorization principals.
+Space membership roles. Spaces are categorized into `group` and `direct` kinds
+(ADR-029). Space reads, writes, and Work execution are checked against the Space
+membership on each request. In Direct Spaces, technical ownership is retained for
+schema compatibility, while both participants hold symmetric conversation and
+Thread rights. Direct Spaces reuse the existing Thread, Discuss, Work Request,
+and AI History infrastructure. Workspace membership roles and organization
+aliases are not authorization principals.
 
 Execution Workspaces have one owner. Workspace operations recheck that owner
 against the Workspace row. A Space can use an Execution Workspace only

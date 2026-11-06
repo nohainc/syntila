@@ -28,6 +28,7 @@ describe("email template architecture", () => {
       "space.invitation.v1",
       "space.invitation-accepted.v1",
       "space.access-revoked.v1",
+      "person.invitation.v1",
       "auth.welcome.v1",
       "auth.account-deleted.v1",
     ]);
