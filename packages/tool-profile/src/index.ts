@@ -109,6 +109,9 @@ const placeholderNames = [
   "additionalDirectory",
   // Only defined inside a mcpConfigArguments argument slot.
   "mcpConfigPath",
+  // Only defined inside a mcpConfigArguments argument slot: the same servers as
+  // an inline TOML table, for CLIs configured by a `-c` override.
+  "mcpServersToml",
 ] as const;
 const templatedString = boundedString.superRefine((value, ctx) => {
   const placeholders = [...value.matchAll(/\{\{([^{}]+)\}\}/g)];
@@ -272,8 +275,12 @@ const argument = z.union([
         .max(8)
         .refine(
           (values) =>
-            values.some((value) => value.includes("{{mcpConfigPath}}")),
-          "MCP configuration arguments must include {{mcpConfigPath}}",
+            values.some(
+              (value) =>
+                value.includes("{{mcpConfigPath}}") ||
+                value.includes("{{mcpServersToml}}"),
+            ),
+          "MCP configuration arguments must include {{mcpConfigPath}} or {{mcpServersToml}}",
         ),
     })
     .strict(),
@@ -1202,6 +1209,12 @@ export const toolProfileV1Schema = profileSchema.superRefine((profile, ctx) => {
           code: "custom",
           path: [...path, index],
           message: "{{mcpConfigPath}} is only available in mcpConfigArguments",
+        });
+      if (values.some((value) => value.includes("{{mcpServersToml}}")))
+        ctx.addIssue({
+          code: "custom",
+          path: [...path, index],
+          message: "{{mcpServersToml}} is only available in mcpConfigArguments",
         });
       if (values.some((value) => value.includes("{{additionalDirectory}}")))
         ctx.addIssue({

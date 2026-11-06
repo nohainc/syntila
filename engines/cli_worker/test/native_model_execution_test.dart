@@ -30,7 +30,13 @@ Future<void> main(List<String> args) async {
   }
   await stdin.drain<void>();
   final model = args[args.indexOf('--model') + 1];
-  final effortIndex = args.indexOf('-c');
+  // Other `-c` overrides exist (the MCP isolation slot); effort is the one
+  // that sets model_reasoning_effort.
+  final effortIndex = [
+    for (var i = 0; i < args.length - 1; i++)
+      if (args[i] == '-c' && args[i + 1].startsWith('model_reasoning_effort'))
+        i,
+  ].firstOrNull ?? -1;
   final effort = effortIndex < 0 ? 'omitted' : args[effortIndex + 1];
   stdout.writeln(jsonEncode({'type':'thread.started','thread_id':'native-fixture'}));
   stdout.writeln(jsonEncode({'type':'item.completed','item':{'type':'agent_message','text':'$model|$effort'}}));

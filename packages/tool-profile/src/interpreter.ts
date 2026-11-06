@@ -41,6 +41,8 @@ export interface ProfileExecutionContext {
   additionalDirectories?: readonly string[];
   /** Absolute path of the Engine-written MCP config; absent = no MCP servers. */
   mcpConfigPath?: string;
+  /** The same servers as an inline TOML table, for `{{mcpServersToml}}`. */
+  mcpServersToml?: string;
 }
 
 export interface ProfileExecutionInput {
@@ -503,6 +505,8 @@ function expandTemplate(
     workerStateDirectory: context.workerStateDirectory,
     additionalDirectory,
     mcpConfigPath,
+    mcpServersToml:
+      mcpConfigPath === undefined ? undefined : context.mcpServersToml,
   };
   return value.replace(/\{\{([^{}]+)\}\}/g, (_whole, name: string) => {
     const replacement = substitutions[name];

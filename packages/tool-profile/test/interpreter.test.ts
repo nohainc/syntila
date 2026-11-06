@@ -383,6 +383,55 @@ describe("Tool Profile v1 pure interpreter", () => {
     ).toThrow("does not support MCP servers");
   });
 
+  it("passes an inline TOML table through {{mcpServersToml}} and isolates user config", () => {
+    const profile = loadProfile("chatgpt-codex.v2");
+    const slots: NonNullable<Parameters<typeof expandExecutionArguments>[2]> = [
+      { sandboxPolicyMapping: true },
+      { modelArguments: true },
+      { sessionResumeArguments: true },
+      { providerTimeoutArguments: true },
+      {
+        mcpConfigArguments: [
+          "--ignore-user-config",
+          "-c",
+          "mcp_servers={{mcpServersToml}}",
+        ],
+      },
+    ];
+    const withMcp = expandExecutionArguments(
+      profile,
+      context({
+        mcpConfigPath: "/tmp/run/mcp.json",
+        mcpServersToml: '{"files"={command="/bin/files"}}',
+      }),
+      [...slots],
+    );
+    expect(withMcp.slice(-3)).toEqual([
+      "--ignore-user-config",
+      "-c",
+      'mcp_servers={"files"={command="/bin/files"}}',
+    ]);
+    // An empty selection still isolates: the table is empty, never absent.
+    expect(
+      expandExecutionArguments(
+        profile,
+        context({ mcpConfigPath: "/tmp/run/mcp.json", mcpServersToml: "{}" }),
+        [...slots],
+      ).slice(-3),
+    ).toEqual(["--ignore-user-config", "-c", "mcp_servers={}"]);
+    // No MCP execution at all: nothing is emitted.
+    expect(
+      expandExecutionArguments(profile, context(), [...slots]),
+    ).not.toContain("--ignore-user-config");
+    // The placeholder needs a config path to be defined.
+    expect(() =>
+      expandExecutionArguments(profile, context(), [
+        ...slots.slice(0, 4),
+        "mcp_servers={{mcpServersToml}}",
+      ]),
+    ).toThrow();
+  });
+
   it("rejects {{mcpConfigPath}} outside its slot and malformed slots", () => {
     const profile = loadProfile("gemini-antigravity.v1");
     const base = [

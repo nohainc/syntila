@@ -1201,6 +1201,7 @@ class CliWorkerEngine {
 
   /// Per-execution MCP config paths, keyed by request id.
   final _mcpConfigPaths = <String, String>{};
+  final _mcpInline = <String, McpInlineToml>{};
 
   Future<void> _execute(ExecuteRequest request, IOSink sink) async {
     McpConfigFile? mcpConfig;
@@ -1211,6 +1212,20 @@ class CliWorkerEngine {
         );
     if (request.executor == null &&
         (request.mcpServers.isNotEmpty || hasMcpSlot)) {
+      try {
+        _mcpInline[request.requestId] = McpInlineToml.build(request.mcpServers);
+      } on FormatException catch (error) {
+        return _write(
+          sink,
+          _executionError(
+            request,
+            code: WorkerIssueCode.permissionDenied,
+            message: error.message,
+            stage: 'mcp_configuration',
+            detail: error.message,
+          ),
+        );
+      }
       mcpConfig = await McpConfigFile.write(request.mcpServers);
       _mcpConfigPaths[request.requestId] = mcpConfig.path;
     }
@@ -1218,6 +1233,7 @@ class CliWorkerEngine {
       await _executeCore(request, sink);
     } finally {
       _mcpConfigPaths.remove(request.requestId);
+      _mcpInline.remove(request.requestId);
       await mcpConfig?.delete();
     }
   }
@@ -1607,6 +1623,7 @@ class CliWorkerEngine {
           context,
           additionalDirectories: request.additionalDirectories,
           mcpConfigPath: _mcpConfigPaths[request.requestId],
+          mcpServersToml: _mcpInline[request.requestId]?.servers,
         );
         final stdinText = _expandStdin(_map(execution['stdin']), context);
         final eventProgress = <String>{};
@@ -1616,7 +1633,10 @@ class CliWorkerEngine {
         final result = await _streamingRunner.run(
           executable,
           args,
-          environment: _environment(context),
+          environment: {
+            ..._environment(context),
+            ...?_mcpInline[request.requestId]?.environment,
+          },
           workingDirectory: context['workingDirectory']!,
           stdinText: stdinText,
           timeout: Duration(milliseconds: remainingMs),
@@ -1991,8 +2011,12 @@ class CliWorkerEngine {
         compactionContext,
         additionalDirectories: request.additionalDirectories,
         mcpConfigPath: _mcpConfigPaths[request.requestId],
+        mcpServersToml: _mcpInline[request.requestId]?.servers,
       ),
-      environment: _environment(compactionContext),
+      environment: {
+        ..._environment(compactionContext),
+        ...?_mcpInline[request.requestId]?.environment,
+      },
       workingDirectory: compactionContext['workingDirectory']!,
       stdinText: _expandStdin(_map(execution['stdin']), compactionContext),
       timeout: Duration(milliseconds: remainingMs),
@@ -2081,6 +2105,7 @@ class CliWorkerEngine {
     Map<String, String> context, {
     List<String> additionalDirectories = const [],
     String? mcpConfigPath,
+    String? mcpServersToml,
   }) {
     final output = <String>[];
     // Folders are never dropped silently: a Profile that cannot pass them to
@@ -2128,7 +2153,11 @@ class CliWorkerEngine {
         }
         if (marker.containsKey('mcpConfigArguments')) {
           if (mcpConfigPath != null) {
-            final scoped = {...context, 'mcpConfigPath': mcpConfigPath};
+            final scoped = {
+              ...context,
+              'mcpConfigPath': mcpConfigPath,
+              'mcpServersToml': ?mcpServersToml,
+            };
             output.addAll(
               _stringList(
                 marker['mcpConfigArguments'],

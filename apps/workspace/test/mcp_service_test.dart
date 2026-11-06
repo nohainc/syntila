@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -439,6 +440,43 @@ void main() {
     expect(
         profileSupportsMcpServers(profile(['a', slot], ['b', slot])), isTrue);
     expect(profileSupportsMcpServers({}), isFalse);
+  });
+
+  group('official Profile assets', () {
+    Map<String, Object?> asset(String name) =>
+        jsonDecode(File('../profile_lab/assets/profiles/$name.json')
+            .readAsStringSync()) as Map<String, Object?>;
+
+    test('Claude and Codex carry the MCP slot in every vector; others refuse',
+        () {
+      expect(profileSupportsMcpServers(asset('claude')), isTrue);
+      expect(profileSupportsMcpServers(asset('chatgpt')), isTrue);
+      // agy has no session-only MCP setting (`--settings` rejects mcpServers),
+      // so Gemini stays unsupported rather than falling back to global config.
+      expect(profileSupportsMcpServers(asset('gemini')), isFalse);
+    });
+
+    test('Codex isolates user config and takes servers from the table', () {
+      List<Object?> slot(List<Object?> args) => [
+            for (final part in args)
+              if (part is Map && part.containsKey('mcpConfigArguments'))
+                ...(part['mcpConfigArguments'] as List),
+          ];
+      final chatgpt = asset('chatgpt');
+      final vectors = <List<Object?>>[
+        (chatgpt['execution'] as Map)['arguments'] as List<Object?>,
+        for (final override in chatgpt['compatibilityOverrides'] as List)
+          (override as Map)['executionArguments'] as List<Object?>,
+      ];
+      expect(vectors, isNotEmpty);
+      for (final args in vectors) {
+        expect(slot(args), [
+          '--ignore-user-config',
+          '-c',
+          'mcp_servers={{mcpServersToml}}',
+        ]);
+      }
+    });
   });
 
   group('mcpLaunchesForExecution', () {

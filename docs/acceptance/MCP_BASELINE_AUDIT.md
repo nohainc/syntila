@@ -151,47 +151,26 @@ a legacy server that never answers unknown methods. Not covered: conformance
 runner cases for stateless Workers (its `initialize` path is unchanged),
 OAuth, and live provider use.
 
-## Phase 3 — official Worker provider inspection (not complete)
+## Phase 3 — official Worker MCP integration (mostly done)
 
-Findings from the CLIs installed on 2026-11-06, observed without any model call
-or credential use. **No Profile was changed and no Worker is certified.**
+Details and commands: [MCP_PROVIDER_ACCEPTANCE.md](MCP_PROVIDER_ACCEPTANCE.md).
 
-**Codex (`codex-cli 0.160.0`; the Profile's 0.180.x override binary is not
-installed and was not inspected).** MCP servers come from `[mcp_servers.*]` in
-`$CODEX_HOME/config.toml`, and `-c mcp_servers.<name>.command=...` overrides
-add servers per execution without writing files. Measured with a temporary
-`CODEX_HOME`: `-c 'mcp_servers={}'` does **not** remove a server defined in
-`config.toml` (overrides merge), so an empty selection cannot be isolated that
-way. The only mechanism seen is `exec --ignore-user-config` (also on
-`exec resume`; absent from `codex mcp list` and unverified for `app-server`),
-which discards the whole user `config.toml`, not just MCP. Emitting it from
-`mcpConfigArguments` would run every Codex execution without the user's
-model-provider, sandbox and notification settings, and the slot is emitted even
-for empty selections. Project-level `.codex` configuration was not tested.
-Conclusion: a per-execution slot is feasible only with a deliberate decision
-to ignore user config, plus a live check that selected servers load, an empty
-selection exposes none, resume works and the real `config.toml` is untouched.
-
-**agy 1.5.2.** `agy mcp add/remove/enable/disable` writes persistent
-configuration. The session-only `--settings` flag **rejects** `mcpServers`
-("unknown setting"), so there is no per-execution MCP mechanism. Per the
-phase rule the capability stays unsupported: the Profile has no slot, so any
-non-empty selection fails with `mcp_unsupported`. Ambient servers a user added
-with `agy mcp add` cannot be excluded by Syntila.
-
-**Claude Code 2.1.308.** `--mcp-config` and `--strict-mcp-config` ("only use
-MCP servers from --mcp-config, ignoring all other MCP configurations") exist as
-the release 3 slot assumes. The Engine deletes the private config directory in
-a `finally`, which covers completion, error and cancellation; an Engine process
-killed outright (SIGKILL) would leave the owner-only temp directory behind, and
-that case has no test. Existing fixture-provider tests cover selected and empty
-configurations; no live Claude run has been made.
-
-**Not done:** Codex slot and tests, Profile Lab live reference-tool evidence
-for any provider, subset-selection and resume checks against real CLIs, MCP
-tool-activity normalisation in `provider_activity_adapter.dart`, and
-cancellation/timeout evidence. Live runs use the user's provider accounts and
-were not made without approval.
+- **Claude (release 3):** live reference-tool call, empty selection (with an
+  ambient project config), subset and `--resume` all behaved as required, and
+  the user's permanent configuration was untouched.
+- **Codex (release 3, new):** `--ignore-user-config -c mcp_servers={{mcpServersToml}}`
+  through the existing `mcpConfigArguments` slot, in the base and the 0.180.x
+  vectors. Measured: servers load, subsets and empty selections isolate,
+  secrets travel by `env_vars` name only. **No live tool call or resume was
+  possible** (usage limit), and the 0.180.x vector is unverified.
+  Side effect, approved: the user's whole `config.toml` is ignored.
+- **agy / Gemini:** unsupported by design; no per-execution mechanism exists.
+- **Engine/Profile changes:** `McpInlineToml`, `{{mcpServersToml}}` in the TS
+  and Dart Profile validators and interpreter, Codex Profile release 3,
+  conflicting server variables refused, stale temp config sweep.
+- **Open:** Codex live call and resume; cancellation/timeout evidence for
+  every provider; Profile publication; a crash test for the SIGKILL gap
+  (mitigated by the sweep, not tested at kill time).
 
 ## Phase 4 — inventory contract only (in progress)
 

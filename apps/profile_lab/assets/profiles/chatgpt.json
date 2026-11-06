@@ -337,6 +337,13 @@
           "sessionResumeArguments": true
         },
         {
+          "mcpConfigArguments": [
+            "--ignore-user-config",
+            "-c",
+            "mcp_servers={{mcpServersToml}}"
+          ]
+        },
+        {
           "providerTimeoutArguments": true
         },
         "--json",
@@ -469,6 +476,13 @@
         "ifAbsent": "sessionId",
         "ifSessionPolicy": "stateless",
         "values": ["--ephemeral"]
+      },
+      {
+        "mcpConfigArguments": [
+          "--ignore-user-config",
+          "-c",
+          "mcp_servers={{mcpServersToml}}"
+        ]
       },
       {
         "providerTimeoutArguments": true
@@ -651,7 +665,7 @@
       "timeoutMs": 10000
     }
   },
-  "releaseVersion": 2,
+  "releaseVersion": 3,
   "sandbox": {
     "mappings": {
       "full_access": ["--dangerously-bypass-approvals-and-sandbox"],

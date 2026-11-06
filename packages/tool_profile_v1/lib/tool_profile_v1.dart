@@ -474,7 +474,9 @@ bool _validArgument(Object? item) {
         values.isNotEmpty &&
         values.length <= 8 &&
         values.every((v) => v is String && v.length <= 4096) &&
-        values.any((v) => (v as String).contains('{{mcpConfigPath}}'));
+        values.any((v) =>
+            (v as String).contains('{{mcpConfigPath}}') ||
+            v.contains('{{mcpServersToml}}'));
   }
   const allowed = {
     'sandboxPolicyMapping',
