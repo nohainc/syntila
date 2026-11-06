@@ -13,7 +13,16 @@ export interface WorkflowSelection {
   readonly model?: string;
   readonly effort?: string;
   readonly catalogRevision?: string;
+  /**
+   * Local MCP server IDs this Step may expose to its Worker. Absent means the
+   * Workspace's own Worker-type bindings decide; an empty list exposes none.
+   * Names only: the Workspace still requires consent, enablement and a binding.
+   */
+  readonly mcpTools?: readonly string[];
 }
+/** Server IDs as the Workspace registry accepts them. */
+export const MCP_TOOLS_LIMIT = 8;
+const MCP_SERVER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 /**
  * Overrides are keyed by step-instance ID: the kind for definitions that
  * never repeat a kind, `research-1..n` and `synthesis` for Research v2.
@@ -104,8 +113,19 @@ export function parseUserWorkflowConfiguration(
   };
   const selection = (input: unknown): WorkflowSelection => {
     const value = object(input);
-    keys(value, ["worker", "model", "effort", "catalogRevision"]);
-    const result: Record<string, string> = {};
+    keys(value, ["worker", "model", "effort", "catalogRevision", "mcpTools"]);
+    const result: Record<string, string | readonly string[]> = {};
+    if (value.mcpTools !== undefined && value.mcpTools !== null) {
+      const tools = value.mcpTools;
+      if (
+        !Array.isArray(tools) ||
+        tools.length > MCP_TOOLS_LIMIT ||
+        tools.some((id) => typeof id !== "string" || !MCP_SERVER_ID.test(id)) ||
+        new Set(tools).size !== tools.length
+      )
+        throw new DomainInvariantError("Invalid mcpTools selection");
+      result.mcpTools = [...(tools as string[])];
+    }
     for (const key of [
       "worker",
       "model",
@@ -129,7 +149,7 @@ export function parseUserWorkflowConfiguration(
         throw new DomainInvariantError("Invalid catalog revision");
       result[key] = choice.trim();
     }
-    return result;
+    return result as WorkflowSelection;
   };
   const value = object(input);
   const researchV2 = value.schemaVersion === 2;

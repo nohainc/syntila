@@ -47,6 +47,12 @@ export function prepareWorkerStepExecution(
   const { step, binding, scope } = input;
   const option = (value: unknown) =>
     typeof value === "string" ? value : undefined;
+  // Only the accepted, frozen Step selection may name MCP servers; a value
+  // inside the request's own input is never trusted.
+  const { mcpServerIds: _untrusted, ...workerInput } = input.workerInput;
+  const mcpTools = Array.isArray(binding.mcpTools)
+    ? binding.mcpTools.filter((id): id is string => typeof id === "string")
+    : undefined;
   return {
     schemaVersion: 1,
     workerId: option(binding.workerId),
@@ -56,7 +62,8 @@ export function prepareWorkerStepExecution(
       objective: input.prompt,
       capabilities: [...step.requiredCapabilities],
       input: {
-        ...input.workerInput,
+        ...workerInput,
+        ...(mcpTools ? { mcpServerIds: mcpTools } : {}),
         prompt: input.prompt,
         effectiveWorkerPrompt: input.prompt,
       },

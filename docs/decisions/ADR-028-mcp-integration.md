@@ -1,6 +1,6 @@
 # ADR-028: MCP integration (tools and custom Workers)
 
-**Status:** Proposed (2026-11-05). Becomes Accepted on owner approval; phases M1+ are gated on it.
+**Status:** Accepted (2026-11-06, owner approval). Phases M1+ are no longer gated on it.
 **Date:** 2026-11-05
 **Builds on:** [ADR-018](ADR-018-generic-cli-worker-engine-and-tool-profiles.md) (anticipates an MCP Engine), [ADR-027](ADR-027-custom-worker-plugins.md)
 **Plan:** [MCP integration plan](../roadmaps/MCP_INTEGRATION_PLAN.md)

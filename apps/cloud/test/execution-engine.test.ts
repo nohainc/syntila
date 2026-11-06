@@ -150,3 +150,35 @@ it("keeps a complete Research v2 report instead of cutting it at 96,000 characte
     completeWorkerStepExecution({ ...base, fullText: true }).text,
   ).toHaveLength(150_000);
 });
+
+it("sends only the frozen Step selection as MCP server IDs, never one from the request input", () => {
+  const base = {
+    taskId: "task",
+    step: BUILTIN_WORKFLOWS.direct.steps[0]!,
+    bindingId: "direct" as const,
+    prompt: "Implement this",
+    scope: {
+      spaceId: "P",
+      requesterUserId: "U",
+      threadId: "W",
+      workRequestId: "R",
+    },
+    retry: {},
+  };
+  const run = (
+    binding: Record<string, unknown>,
+    workerInput: Record<string, unknown>,
+  ) =>
+    prepareWorkerStepExecution({ ...base, binding, workerInput }).task.input;
+  expect(
+    run({ workerId: "w", mcpTools: ["files"] }, { mcpServerIds: ["evil"] }),
+  ).toMatchObject({ mcpServerIds: ["files"] });
+  // An explicit empty selection is sent so the Workspace exposes nothing.
+  expect(run({ workerId: "w", mcpTools: [] }, {})).toMatchObject({
+    mcpServerIds: [],
+  });
+  // No selection: nothing is sent, and a smuggled value is dropped.
+  expect(
+    run({ workerId: "w" }, { mcpServerIds: ["evil"] }),
+  ).not.toHaveProperty("mcpServerIds");
+});

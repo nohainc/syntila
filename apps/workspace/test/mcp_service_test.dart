@@ -271,6 +271,61 @@ void main() {
       expect(await service.launchesForWorker('claude'), isEmpty);
     });
 
+    test('a Step selection narrows the bound servers and never widens them',
+        () async {
+      await addServer();
+      await consentFully();
+      service.enable('files');
+      service.bind('chatgpt', 'files');
+      // An empty selection exposes nothing, even though a server is bound.
+      expect(await service.launchesForWorker('chatgpt', selectedServerIds: []),
+          isEmpty);
+      expect(
+          (await service
+                  .launchesForWorker('chatgpt', selectedServerIds: ['files']))
+              .single
+              .name,
+          'files');
+      // Naming a server that is not bound refuses, never a silent subset.
+      await expectLater(
+        service.launchesForWorker('chatgpt', selectedServerIds: ['ghost']),
+        throwsA(_code('mcp_server_not_bound')),
+      );
+      await expectLater(
+        service.launchesForWorker('claude', selectedServerIds: ['files']),
+        throwsA(_code('mcp_server_not_bound')),
+      );
+    });
+
+    test('the Step list is read strictly from the assignment input', () {
+      expect(assignmentMcpServerIds({}), isNull);
+      expect(assignmentMcpServerIds({'input': {}}), isNull);
+      expect(
+          assignmentMcpServerIds({
+            'input': {'mcpServerIds': []}
+          }),
+          isEmpty);
+      expect(
+          assignmentMcpServerIds({
+            'input': {
+              'mcpServerIds': ['files', 'db-1']
+            }
+          }),
+          ['files', 'db-1']);
+      for (final bad in <Object>[
+        'files',
+        ['Files'],
+        [1],
+        List.generate(9, (i) => 's$i'),
+      ]) {
+        expect(
+            () => assignmentMcpServerIds({
+                  'input': {'mcpServerIds': bad}
+                }),
+            throwsA(_code('invalid_request')));
+      }
+    });
+
     test('binding does not bypass consent or enablement', () async {
       await addServer();
       service.bind('chatgpt', 'files');

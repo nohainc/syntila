@@ -76,11 +76,18 @@ execution fails with `worker_not_ready` and a local diagnostic carrying the
 it from every binding. Bindings live in the Workspace's `Mcp/servers.json` and are
 never sent to Cloud.
 
-**Deviation from the plan:** ADR-028 and the plan describe a per-Step `mcpTools`
-list in the workflow configuration, decided by Cloud policy. That is not built.
-Worker-type bindings are a coarser, local-only stand-in; a later per-Step list
-should intersect with them, not replace the consent checks.
+**Per-Step selection.** A Step's `mcpTools` (server IDs, at most 8, in the user
+Workflow configuration defaults or a step override) is frozen into the accepted
+Work Request's resolved bindings and sent as `input.mcpServerIds` in the
+assignment; Cloud strips any such value from the request's own input. It
+intersects with the Worker-type bindings and never widens them: absent means the
+bindings alone decide (unchanged behaviour), an empty list exposes no server,
+and a selected server that is not bound to the Worker type fails the execution
+with `mcp_server_not_bound` (never a silent subset). Consent, enablement and the
+digest checks still apply. Cloud holds server names only. There is no UI for the
+list yet; it is set through the Workflow configuration API.
 
 ## Not yet defined
 
-The per-Step `mcpTools` list and its Cloud policy.
+A UI for the per-Step `mcpTools` list, and Cloud-side policy beyond the
+Workspace's own checks.

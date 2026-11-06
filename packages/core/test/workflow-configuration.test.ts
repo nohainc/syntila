@@ -101,3 +101,27 @@ it("does not inherit another Worker's reviewed catalog revision", () => {
       ?.catalogRevision,
   ).toBe("a".repeat(64));
 });
+it("accepts a per-Step mcpTools list, lets a step replace the default and rejects bad lists", () => {
+  const config = parseUserWorkflowConfiguration(definition, {
+    ...input,
+    defaults: { worker: "w", mcpTools: ["files"] },
+    stepOverrides: { verify: { mcpTools: [] } },
+  });
+  const effective = resolveUserWorkflowConfiguration(definition, config);
+  expect(effective.steps.implement?.mcpTools).toEqual(["files"]);
+  // An empty list is an explicit "none", not "inherit".
+  expect(effective.steps.verify?.mcpTools).toEqual([]);
+  for (const mcpTools of [
+    "files",
+    ["Files"],
+    ["a", "a"],
+    ["../x"],
+    Array.from({ length: 9 }, (_, i) => `s${i}`),
+  ])
+    expect(() =>
+      parseUserWorkflowConfiguration(definition, {
+        ...input,
+        defaults: { worker: "w", mcpTools },
+      }),
+    ).toThrow();
+});

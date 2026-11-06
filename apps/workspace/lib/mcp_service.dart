@@ -285,7 +285,14 @@ class McpService {
   /// Launches for one execution of [workerTypeId]: the bound servers, or an
   /// empty list when none are bound. A bound server that is not consented,
   /// enabled and unchanged refuses the whole request (never a silent subset).
-  Future<List<McpServerLaunch>> launchesForWorker(String workerTypeId) async {
+  ///
+  /// [selectedServerIds] is a Step's own selection (from the accepted
+  /// assignment). It narrows the bound servers and never widens them: naming a
+  /// server that is not bound to this Worker type refuses the execution.
+  Future<List<McpServerLaunch>> launchesForWorker(
+    String workerTypeId, {
+    List<String>? selectedServerIds,
+  }) async {
     final List<String> ids;
     try {
       ids = _registry.bindings()[workerTypeId] ?? const <String>[];
@@ -294,6 +301,24 @@ class McpService {
         'mcp_registry_unreadable',
         'The MCP server registry could not be read.',
       );
+    }
+    if (selectedServerIds != null) {
+      final unbound = [
+        for (final id in selectedServerIds)
+          if (!ids.contains(id)) id,
+      ];
+      if (unbound.isNotEmpty) {
+        throw McpPolicyException(
+          'mcp_server_not_bound',
+          'This Step selects MCP servers that are not bound to this Worker: '
+              '${unbound.join(', ')}.',
+        );
+      }
+      final selected = [
+        for (final id in ids)
+          if (selectedServerIds.contains(id)) id,
+      ];
+      return selected.isEmpty ? const [] : resolveLaunches(selected);
     }
     return ids.isEmpty ? const [] : resolveLaunches(ids);
   }
@@ -552,11 +577,15 @@ Future<List<McpServerLaunch>> mcpLaunchesForExecution(
   McpService service,
   String workerTypeId,
   Map<String, Object?> profile, {
+  List<String>? selectedServerIds,
   void Function(String message)? onRegistryUnreadable,
 }) async {
   final List<McpServerLaunch> launches;
   try {
-    launches = await service.launchesForWorker(workerTypeId);
+    launches = await service.launchesForWorker(
+      workerTypeId,
+      selectedServerIds: selectedServerIds,
+    );
   } on McpPolicyException catch (error) {
     if (error.code == 'mcp_registry_unreadable') {
       onRegistryUnreadable?.call(error.message);
@@ -572,4 +601,23 @@ Future<List<McpServerLaunch>> mcpLaunchesForExecution(
     );
   }
   return launches;
+}
+
+/// The MCP server IDs a Step selected, from the accepted assignment's input.
+/// Null when the assignment carries no selection (the Worker-type bindings
+/// alone decide). An empty list means none; a malformed value refuses.
+List<String>? assignmentMcpServerIds(Map<String, Object?> payload) {
+  final input = payload['input'];
+  final value = input is Map ? input['mcpServerIds'] : null;
+  if (value == null) return null;
+  final pattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
+  if (value is! List ||
+      value.length > 8 ||
+      value.any((id) => id is! String || !pattern.hasMatch(id))) {
+    throw const McpPolicyException(
+      'invalid_request',
+      'The Step\'s MCP server list is invalid.',
+    );
+  }
+  return List<String>.unmodifiable(value.cast<String>());
 }

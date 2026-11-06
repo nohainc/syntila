@@ -671,6 +671,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
             mcpSubsystem.service,
             worker.workerTypeId,
             release?.profile ?? const <String, Object?>{},
+            selectedServerIds: assignmentMcpServerIds(payload),
             onRegistryUnreadable: (message) => stderr.writeln(
               'MCP: $message Running ${worker.workerTypeId} without MCP '
               'servers.',

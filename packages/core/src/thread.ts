@@ -173,6 +173,8 @@ export interface WorkflowExecutionBinding {
   readonly reasoningEffort?: string;
   readonly catalogRevision?: string;
   readonly additionalInstructions?: string;
+  /** Frozen MCP server IDs for this Step; absent = Workspace bindings alone. */
+  readonly mcpTools?: readonly string[];
 }
 
 /** Thread-authored context. Execution preferences belong to the user. */
