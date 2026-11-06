@@ -100,10 +100,11 @@ class AppSidebar extends StatelessWidget {
             constraints.hasBoundedWidth ? constraints.maxWidth : 220.0;
         final narrow = width < 160;
         final sidePadding = narrow ? 6.0 : 10.0;
+        const rightPadding = 10.0;
         return Container(
           width: width,
           color: SyntilaColors.navigationBackground(isDark),
-          padding: EdgeInsets.fromLTRB(sidePadding, 16, sidePadding, 14),
+          padding: EdgeInsets.fromLTRB(sidePadding, 16, rightPadding, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
