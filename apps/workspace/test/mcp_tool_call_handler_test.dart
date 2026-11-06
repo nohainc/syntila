@@ -57,12 +57,10 @@ void main() {
       engineExecutable: engineBinary,
       processRegistryDirectory: Directory('${root.path}/processes'),
     );
-    final executor = McpToolCallExecutor(
-      service,
-      supervisor,
-      McpToolCallFence(Directory('${root.path}/fences')),
-    );
+    final fence = McpToolCallFence(Directory('${root.path}/fences'));
+    final executor = McpToolCallExecutor(service, supervisor, fence);
     final handler = McpToolCallHandler(
+      fence: fence,
       executor: executor,
       stateDirectory: Directory('${root.path}/state'),
       workingDirectory: root,
@@ -82,10 +80,22 @@ void main() {
     expect(ok['state'], 'completed', reason: ok.toString());
     expect(ok['dispatchKey'], 'mcp-tool-v1:t1');
     expect((ok['result'] as Map)['content'], isNotEmpty);
-    // A repeat of the same logical step is never re-dispatched.
+    // A repeat of the same logical step is never re-dispatched; the Workspace
+    // reports the outcome it durably recorded instead.
     final again = (await handler.handle(payload('t1')))!;
-    expect(again['state'], 'unknown');
-    expect(again['code'], 'dispatch_already_claimed');
+    expect(again['state'], 'completed');
+    expect(again['result'], ok['result']);
+    expect(
+        (await fence.recordedOutcome('mcp-tool-v1:t1'))!['state'], 'completed');
+    // A claim with no recorded outcome (a crash before the answer) stays
+    // unknown and is not dispatched.
+    expect(await fence.claim('mcp-tool-v1:t4'), isTrue);
+    final crashed = (await handler.handle(payload('t4')))!;
+    expect(crashed['state'], 'unknown');
+    expect(crashed['code'], 'dispatch_already_claimed');
+    expect(crashed.containsKey('result'), isFalse);
+    // Rejection before dispatch does not claim or journal the key.
+    expect(await fence.wasClaimed('mcp-tool-v1:t3'), isFalse);
     // Malformed payloads are rejected with a result that Cloud can correlate.
     final bad = (await handler.handle({...payload('t2'), 'extra': 1}))!;
     expect(bad['state'], 'rejected');
@@ -122,7 +132,8 @@ void main() {
     expect(oversized.containsKey('result'), isFalse);
     final duplicate = (await handler.handle(largeRequest))!;
     expect(duplicate['state'], 'unknown');
-    expect(duplicate['code'], 'dispatch_already_claimed');
+    expect(duplicate['code'], 'result_too_large');
+    expect(duplicate.containsKey('result'), isFalse);
     expect(supervisor.activeSlotCount, 0);
   });
 }

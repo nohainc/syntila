@@ -160,17 +160,20 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
     config: effectiveConfig,
     engineSupervisor: () => cliWorkerEngineSupervisor,
   );
+  final mcpToolCallFence = McpToolCallFence(
+    Directory('${workspacePaths.mcpDirectory.path}/dispatch-fence'),
+  );
   final mcpToolCallHandler = cliWorkerEngineSupervisor == null
       ? null
       : McpToolCallHandler(
+          fence: mcpToolCallFence,
           executor: McpToolCallExecutor(
             mcpSubsystem.service,
             cliWorkerEngineSupervisor,
-            McpToolCallFence(
-              Directory('${workspacePaths.mcpDirectory.path}/dispatch-fence'),
-            ),
+            mcpToolCallFence,
           ),
-          stateDirectory: Directory('${workspacePaths.mcpDirectory.path}/calls'),
+          stateDirectory:
+              Directory('${workspacePaths.mcpDirectory.path}/calls'),
           workingDirectory:
               Directory('${workspacePaths.mcpDirectory.path}/work'),
         );

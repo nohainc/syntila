@@ -220,21 +220,52 @@ message or an extension of `worker.inventory` (protocol version bump and
 generated bindings), where Cloud stores it, and how AX learns of changes
 through the existing realtime path.
 
-## Phase 5 work in progress
+## Phase 5 — direct-call reliability (partly done)
 
-The gateway now refuses to return a previously claimed outcome from a
-different Workspace, including when a concurrent claim loses the insert race.
-A regression test checks the refusal, prevents result disclosure and confirms
-no dispatch. Existing claim and fence tests pass. A completed but oversized
-result was separately changed in Phase 1 work to unknown without replay.
+**Lifecycle audit (existing order, verified in code and tests).** Cloud admits
+and claims the logical Step durably before delivery; the Workspace resolves
+consent, tool hash and executable digest (`admitToolCall`) after taking an
+Engine slot, then checks `authorizeStart`, starts the Engine, claims the local
+fence, and only then writes the request. Failures before the claim are
+`rejected` (the key is not consumed); any failure at or after the claim is
+`unknown`. A repeat of a claimed key is never dispatched.
 
-The Workspace fence uses exclusive marker creation and file flush, but has no
-verified parent-directory synchronization or operating-system interruption
-coverage. Cloud's claim row currently cascades on task deletion, so permanent
-logical-key retention is not established. Crash-boundary coverage,
-authorization and runtime correlation review, reconciliation and controlled
-manual recovery remain open. Phase 1's security acceptance and the broader
-Chat/Worker regression suites have not passed; Phase 5 is not accepted.
+**Changed in this phase.**
+- *Fence durability.* `claim` returns true only after the marker is flushed and
+  the file, its directory and that directory's parent are synced
+  (`durable_sync.dart`: `fsync` on POSIX, `F_FULLFSYNC` first on macOS). A
+  sync failure throws, the marker stays, and the caller reports `unknown`
+  without sending. Windows has no directory sync through Dart; only
+  `flush: true` applies there (`durableDirectorySyncSupported` is false).
+- *Local outcome journal and reconciliation.* After a claimed call the
+  Workspace records the first terminal outcome beside the marker. A repeat of
+  that key now returns the recorded outcome (including a bounded result)
+  instead of a bare `dispatch_already_claimed`; a claim with no readable record
+  stays `unknown`. Neither path calls the tool. Records survive Service
+  restarts. A rejection before dispatch writes nothing.
+- *Retention.* Fence markers and journal files are never deleted. Task IDs are
+  unique and never reused, and Cloud's claim row cascades with its task, so a
+  retired logical key cannot become executable again: the Workspace still
+  refuses it.
+
+**Evidence.** Fence tests cover sync ordering, failed sync, the real sync on
+macOS (including a non-ASCII path), first-outcome-wins, corrupt records and
+the unchanged claim semantics; the handler test covers replay of a recorded
+outcome, a claim without an outcome, and no journal for pre-dispatch
+rejections. Cloud first-outcome and cross-Workspace tests exist from earlier
+work and Phase 1.
+
+**Not done.** Power-loss evidence: no machine was power-cycled, so durability
+rests on the syscalls succeeding, not on a failure experiment; Linux and
+Windows were not run. No crash-injection test at every lifecycle boundary
+(kill between claim and write, between write and answer). Cloud cannot yet ask
+a Workspace for its journal after a lost reply, so Cloud still records
+`unknown` for those; the journal is visible only locally. There is no IPC
+status command or UI, and no manual-recovery command: the only recovery is to
+run a new Step with a new key after a person inspects the outcome. Automatic
+retry for idempotent tools is not implemented. Re-checking Cloud grants at the
+Workspace is not done (`authorizeStart` is still constant true; Cloud checks
+grants before dispatch).
 
 ## Phase 6 work in progress
 

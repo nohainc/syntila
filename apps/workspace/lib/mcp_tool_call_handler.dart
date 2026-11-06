@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 
 import 'mcp_tool_call_executor.dart';
+import 'mcp_tool_call_fence.dart';
 import 'mcp_tool_call_request.dart';
 
 /// Turns a Cloud `mcp.tool_call.request` payload into a `mcp.tool_call.result`
@@ -15,13 +16,19 @@ class McpToolCallHandler {
     required Directory stateDirectory,
     required Directory workingDirectory,
     this.maxConcurrentAssignments = 8,
-  })  : _executor = executor,
+    McpToolCallFence? fence,
+  })  : _fence = fence,
+        _executor = executor,
         _stateDirectory = stateDirectory,
         _workingDirectory = workingDirectory;
 
   static const maxResultBytes = 256 * 1024;
 
   final McpToolCallExecutor _executor;
+
+  /// Journal for outcomes of claimed keys; the same fence the executor claims
+  /// from. Without it behavior is the original: no local outcome is kept.
+  final McpToolCallFence? _fence;
   final Directory _stateDirectory;
   final Directory _workingDirectory;
   final int maxConcurrentAssignments;
@@ -50,12 +57,42 @@ class McpToolCallHandler {
         maxConcurrentAssignments: maxConcurrentAssignments,
         authorizeStart: () => true,
       );
-      return _result(
+      final fence = _fence;
+      if (fence != null && outcome['code'] == 'dispatch_already_claimed') {
+        // Report what this Workspace durably knows about the earlier dispatch.
+        // This never calls the tool: a missing or unreadable record stays
+        // unknown.
+        final recorded = await fence.recordedOutcome(request.dispatchKey);
+        if (recorded != null) {
+          return _result(
+            request.taskId,
+            recorded['state'] as String,
+            recorded['code'] as String,
+            recorded['result'],
+          );
+        }
+      }
+      final reply = _result(
         request.taskId,
         outcome['state'] as String,
         outcome['code'] as String,
         outcome['result'],
       );
+      if (fence != null &&
+          outcome['code'] != 'dispatch_already_claimed' &&
+          await fence.wasClaimed(request.dispatchKey)) {
+        try {
+          await fence.recordOutcome(
+            request.dispatchKey,
+            state: reply['state']! as String,
+            code: reply['code']! as String,
+            result: reply['result'] as Map<String, Object?>?,
+          );
+        } on Object {
+          // The journal is diagnostic; the reply to Cloud is unaffected.
+        }
+      }
+      return reply;
     } on Object {
       // The executor reports its own outcomes; a throw means its parameters
       // were invalid, but the safe answer never authorizes a retry.
