@@ -138,6 +138,15 @@ void main() {
     );
   });
 
+  test('enforces the output limit in UTF-8 bytes', () async {
+    final s = await consented('normal');
+    final within = await runner.run(s, request('MULTIBYTE_WITHIN_LIMIT'));
+    expect(within, isA<PluginRunSuccess>());
+    final over = await runner.run(s, request('MULTIBYTE_OVER_LIMIT'));
+    expect(over, isA<PluginRunFailure>());
+    expect((over as PluginRunFailure).code, 'output_too_large');
+  });
+
   test('a crash is reported and the next run starts a fresh server', () async {
     final s = await consented('normal');
     final crashed = await runner.run(s, request('CRASH')) as PluginRunFailure;

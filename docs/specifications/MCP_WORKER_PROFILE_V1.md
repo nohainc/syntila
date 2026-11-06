@@ -36,6 +36,7 @@ Output (`structuredContent`; text content mirrors `text`):
 { "text": "string", "artifacts": ["relative/path"], "session": { "state": "created | resumed | unavailable" }, "issue": { "code": "", "message": "", "retryable": false } }
 ```
 
+- The Engine limits output text to 768 KiB measured as UTF-8 bytes.
 - `workingDirectory` is sent only to local stdio servers, inside the Thread
   directory; never to remote servers.
 - Exactly one terminal outcome per call: a result or a JSON-RPC error. The

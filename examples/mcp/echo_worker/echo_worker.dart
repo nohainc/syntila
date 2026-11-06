@@ -146,7 +146,11 @@ Future<void> main(List<String> args) async {
           });
           break;
         }
-        final text = prompt == 'REPORT_WORKING_DIRECTORY'
+        final text = prompt == 'MULTIBYTE_OVER_LIMIT'
+            ? 'é' * (400 * 1024)
+            : prompt == 'MULTIBYTE_WITHIN_LIMIT'
+            ? 'é' * (300 * 1024)
+            : prompt == 'REPORT_WORKING_DIRECTORY'
             ? 'workingDirectory: ${a['workingDirectory']}'
             : prompt.contains('BIGTEXT')
             ? 'x' * (900 * 1024)
@@ -156,7 +160,8 @@ Future<void> main(List<String> args) async {
           'id': id,
           'result': {
             'content': [
-              {'type': 'text', 'text': text},
+              if (!prompt.startsWith('MULTIBYTE_'))
+                {'type': 'text', 'text': text},
             ],
             'structuredContent': {
               'text': text,

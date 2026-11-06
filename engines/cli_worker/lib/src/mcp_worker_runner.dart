@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
@@ -317,7 +318,7 @@ class McpWorkerRunner {
         message: 'The MCP Worker returned no text result.',
       );
     }
-    if (text.length > PluginProtocolLimits.maxOutputBytes) {
+    if (utf8.encode(text).length > PluginProtocolLimits.maxOutputBytes) {
       return const PluginRunFailure(
         code: 'output_too_large',
         message: 'The MCP Worker output exceeded the limit.',
