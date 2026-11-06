@@ -1646,7 +1646,9 @@ final class _EngineIdentity {
         schemaVersion: 1,
         providerToolName: null,
         executor: pluginExecutor,
-        protocolVersion: pluginExecutorProtocolVersion,
+        protocolVersion: pluginExecutor.isMcp
+            ? mcpExecutorProtocolVersion
+            : pluginExecutorProtocolVersion,
         profileFile: null,
       );
     }

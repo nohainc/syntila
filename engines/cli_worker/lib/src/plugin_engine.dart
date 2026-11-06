@@ -10,6 +10,7 @@ import 'conversation_execution_router.dart';
 import 'model_discovery.dart';
 import 'engine_session_store.dart';
 import 'worker_session.dart';
+import 'mcp_routing_plugin_host.dart';
 import 'plugin_host.dart';
 import 'plugin_process_limits.dart';
 
@@ -65,7 +66,8 @@ class PluginEngine {
     required this.options,
     PluginHost? host,
     ConversationExecutionRouter router = const ConversationExecutionRouter(),
-  }) : _host = host ?? PluginHost(supervisor: LimitedPluginSupervisor()),
+  }) : _host =
+           host ?? McpRoutingPluginHost(supervisor: LimitedPluginSupervisor()),
        _router = router;
 
   final PluginEngineOptions options;
@@ -112,6 +114,15 @@ class PluginEngine {
   }
 
   Future<void> run({Stream<List<int>>? input, IOSink? output}) async {
+    try {
+      await _serve(input: input, output: output);
+    } finally {
+      final host = _host;
+      if (host is McpRoutingPluginHost) await host.close();
+    }
+  }
+
+  Future<void> _serve({Stream<List<int>>? input, IOSink? output}) async {
     final sink = output ?? stdout;
     final lines = (input ?? stdin)
         .transform(utf8.decoder)
@@ -205,6 +216,7 @@ class PluginEngine {
       consentedNames: executor.environmentNames,
     ),
     hostVersion: options.engineVersion,
+    mcpToolPins: executor.isMcp ? executor.toolPins : null,
   );
 
   WorkerErrorFrame _notInitialized(String requestId) => WorkerErrorFrame(
@@ -331,6 +343,17 @@ class PluginEngine {
       return _write(sink, _notInitialized(request.requestId));
     }
     final executor = admitted.executor!;
+    if (executor.isMcp) {
+      // The NDJSON conformance suite does not apply; an MCP launcher is open.
+      return _write(
+        sink,
+        WorkerErrorFrame(
+          requestId: request.requestId,
+          code: WorkerIssueCode.profileSchemaIncompatible,
+          message: 'Conformance for MCP Workers is not available yet',
+        ),
+      );
+    }
     final runner = ConformanceRunner(
       launcher: PluginHostLauncher(_host, _launch(executor)),
       expectedPluginId: executor.pluginId,

@@ -11,6 +11,8 @@ final class WorkerExecutor {
     required this.dataDirectory,
     this.arguments = const [],
     this.environmentNames = const [],
+    this.protocol = 'ndjson',
+    this.toolPins = const {},
   }) {
     if (!RegExp(r'^[a-z][a-z0-9]*(-[a-z0-9]+)*$').hasMatch(pluginId) ||
         pluginId.length > 48) {
@@ -34,6 +36,24 @@ final class WorkerExecutor {
               RegExp(r'^[A-Za-z]:[\\/]').hasMatch(path))) {
         throw const FormatException('executor paths must be absolute');
       }
+    }
+    if (protocol != 'ndjson' && protocol != 'mcp') {
+      throw const FormatException('executor protocol must be ndjson or mcp');
+    }
+    if (protocol == 'mcp') {
+      // Consented tool-definition hashes: the Engine refuses any other tool.
+      if (toolPins.isEmpty ||
+          toolPins.length > 128 ||
+          toolPins.entries.any((e) =>
+              e.key.isEmpty ||
+              e.key.length > 128 ||
+              !RegExp(r'^[a-f0-9]{64}$').hasMatch(e.value))) {
+        throw const FormatException(
+            'an mcp executor needs 1-128 SHA-256 tool pins');
+      }
+    } else if (toolPins.isNotEmpty) {
+      throw const FormatException(
+          'toolPins are only valid for an mcp executor');
     }
     if (arguments.length > 32 ||
         arguments.any((a) => a.length > 256 || a.contains('\x00'))) {
@@ -61,6 +81,14 @@ final class WorkerExecutor {
   final List<String> arguments;
   final List<String> environmentNames;
 
+  /// `ndjson` (Worker Plugin Protocol) or `mcp` (Syntila MCP Worker profile).
+  final String protocol;
+
+  /// Tool name -> definition hash recorded at consent; `mcp` only.
+  final Map<String, String> toolPins;
+
+  bool get isMcp => protocol == 'mcp';
+
   Map<String, Object?> toJson() => {
         'kind': 'plugin',
         'pluginId': pluginId,
@@ -71,6 +99,8 @@ final class WorkerExecutor {
         'dataDirectory': dataDirectory,
         'arguments': arguments,
         'environmentNames': environmentNames,
+        if (isMcp) 'protocol': protocol,
+        if (isMcp) 'toolPins': toolPins,
       };
 
   factory WorkerExecutor.fromJson(Map<String, Object?> json) {
@@ -84,6 +114,8 @@ final class WorkerExecutor {
       'dataDirectory',
       'arguments',
       'environmentNames',
+      'protocol',
+      'toolPins',
     };
     final unknown = json.keys.where((key) => !allowed.contains(key));
     if (unknown.isNotEmpty) {
@@ -109,7 +141,18 @@ final class WorkerExecutor {
       return List<String>.unmodifiable(value.cast<String>());
     }
 
+    final rawPins = json['toolPins'] ?? const <String, Object?>{};
+    if (rawPins is! Map || rawPins.values.any((v) => v is! String)) {
+      throw const FormatException('executor toolPins must map names to hashes');
+    }
+    final protocol = json['protocol'] ?? 'ndjson';
+    if (protocol is! String) {
+      throw const FormatException('executor protocol must be a string');
+    }
     return WorkerExecutor(
+      protocol: protocol,
+      toolPins: Map<String, String>.unmodifiable(
+          rawPins.map((k, v) => MapEntry('$k', v as String))),
       pluginId: string('pluginId'),
       version: string('version'),
       manifestDigest: string('manifestDigest'),

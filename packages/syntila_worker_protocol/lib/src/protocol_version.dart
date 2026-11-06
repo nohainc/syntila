@@ -4,10 +4,16 @@ const localWorkerProtocolVersion = '4.1';
 /// (ADR-027 plugin executor). Frames default to 4.1; a plugin execute names
 /// 4.2 explicitly, and 4.0/4.1 peers are unchanged.
 const pluginExecutorProtocolVersion = '4.2';
+
+/// Protocol 4.3 adds `protocol: "mcp"` and `toolPins` to the plugin `executor`
+/// (ADR-028 MCP Worker). An MCP executor names 4.3 explicitly, so a 4.2 peer
+/// rejects it instead of reading it as an NDJSON plugin; 4.0-4.2 are unchanged.
+const mcpExecutorProtocolVersion = '4.3';
 const supportedLocalWorkerProtocolVersions = {
   '4.0',
   localWorkerProtocolVersion,
   pluginExecutorProtocolVersion,
+  mcpExecutorProtocolVersion,
 };
 
 /// Selects the newest protocol version supported by both sides.

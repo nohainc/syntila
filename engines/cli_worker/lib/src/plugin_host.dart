@@ -25,6 +25,7 @@ class PluginLaunch {
     required this.workingDirectory,
     required this.environment,
     required this.hostVersion,
+    this.mcpToolPins,
   });
 
   /// Absolute path inside the Service's read-only plugin store.
@@ -39,6 +40,10 @@ class PluginLaunch {
   /// The complete child environment (use [PluginHost.buildEnvironment]).
   final Map<String, String> environment;
   final String hostVersion;
+
+  /// Non-null marks an MCP Worker launch (ADR-028): the consented tool
+  /// definition hashes. Null is an NDJSON plugin.
+  final Map<String, String>? mcpToolPins;
 }
 
 class PluginRunRequest {

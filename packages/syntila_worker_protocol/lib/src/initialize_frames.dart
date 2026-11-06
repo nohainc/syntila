@@ -47,8 +47,11 @@ final class InitializeRequest extends WorkerFrame {
     }
     _validateProtocol(protocolVersion);
     if (executor != null) {
-      if (protocolVersion != pluginExecutorProtocolVersion) {
-        throw const FormatException('executor requires protocol 4.2');
+      final required = executor!.isMcp
+          ? mcpExecutorProtocolVersion
+          : pluginExecutorProtocolVersion;
+      if (protocolVersion != required) {
+        throw FormatException('executor requires protocol $required');
       }
       if (executor!.manifestDigest != profileDigest) {
         throw const FormatException(

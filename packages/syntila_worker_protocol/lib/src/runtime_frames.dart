@@ -794,8 +794,13 @@ final class ExecuteRequest extends WorkerFrame {
     this.protocolVersion = localWorkerProtocolVersion,
   }) {
     _validateProtocol(protocolVersion);
-    if (executor != null && protocolVersion != pluginExecutorProtocolVersion) {
-      throw const FormatException('executor requires protocol 4.2');
+    if (executor != null) {
+      final required = executor!.isMcp
+          ? mcpExecutorProtocolVersion
+          : pluginExecutorProtocolVersion;
+      if (protocolVersion != required) {
+        throw FormatException('executor requires protocol $required');
+      }
     }
     if (compactContext && sessionPolicy != WorkerSessionPolicy.durableSession) {
       throw const FormatException('compactContext requires a durable session');

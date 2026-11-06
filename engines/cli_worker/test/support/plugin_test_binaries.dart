@@ -71,6 +71,7 @@ class PluginTestBinaries {
       '../../packages/syntila_plugin_conformance/lib',
       '../../packages/syntila_plugin_conformance/test/fixtures',
       '../../packages/syntila_worker_protocol/lib',
+      '../../packages/syntila_mcp_protocol/lib',
       '../../packages/syntila_cli_worker_runtime/lib',
     ]) {
       final directory = Directory('${root.path}/$path');

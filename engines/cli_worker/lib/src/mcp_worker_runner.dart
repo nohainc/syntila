@@ -21,6 +21,7 @@ class McpWorkerRunner {
 
   static const executeTool = 'syntila.execute';
   static const probeTool = 'syntila.probe';
+  static const modelsTool = 'syntila.models';
   static const protocolTag = 'syntila.worker/1';
 
   /// [cancel] completing requests cooperative cancellation; after
@@ -166,7 +167,44 @@ class McpWorkerRunner {
           for (final c in (data['checks'] as List? ?? const []).take(32))
             if (c is Map) Map<String, Object?>.from(c),
         ],
+        capabilities: data['capabilities'] is Map
+            ? Map<String, Object?>.from(data['capabilities'] as Map)
+            : const {},
       );
+    } on McpException catch (error) {
+      await lease.discard();
+      return _failure(error);
+    } finally {
+      lease.release();
+    }
+  }
+
+  /// Model discovery (`syntila.models`, optional). A server without the tool
+  /// has no discoverable models, which is not an error.
+  Future<PluginRunOutcome> models(McpServerSpec spec) async {
+    final McpLease lease;
+    try {
+      lease = await _host.acquire(spec);
+    } on McpException catch (error) {
+      return _failure(error);
+    } on PluginLaunchException catch (error) {
+      return PluginRunFailure(code: error.code, message: error.message);
+    }
+    try {
+      if (!lease.tools.any((t) => t['name'] == modelsTool)) {
+        return const PluginModelsSuccess([]);
+      }
+      final result = await (await lease.callTool(
+        modelsTool,
+        const {},
+        timeout: const Duration(seconds: 8),
+      )).result;
+      final raw = _structured(result)['models'];
+      return PluginModelsSuccess([
+        if (raw is List)
+          for (final m in raw.take(PluginProtocolLimits.maxModels))
+            if (m is Map) Map<String, Object?>.from(m),
+      ]);
     } on McpException catch (error) {
       await lease.discard();
       return _failure(error);

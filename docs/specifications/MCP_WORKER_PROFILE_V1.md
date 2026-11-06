@@ -73,3 +73,16 @@ Conformance runs through `syntila_plugin_conformance` with an MCP launcher
 (M4). The 21 plugin cases are re-expressed 1:1 where meaningful; MCP-specific
 additions: version negotiation, definition drift, missing profile
 advertisement, second terminal result, oversize result.
+
+## Local Worker Protocol 4.3: how the Engine receives an MCP Worker
+
+An MCP Worker is a plugin package whose executor says `"protocol": "mcp"`. On
+`initialize` and `execute.request` the `executor` object then carries
+`toolPins` (tool name -> SHA-256 of the consented definition, 1-128 entries) and
+the frame must name protocol `4.3`; a 4.2 peer rejects it. NDJSON executors omit
+both keys and keep protocol `4.2`. The Service, not Cloud, supplies the pins from
+the consent record. The Engine launches the server with the same digest pin,
+limits and tree cleanup as an NDJSON plugin, requires the Worker-profile
+marker, refuses any tool whose definition differs from its pin, and maps results
+and errors onto the existing stable issue codes. Conformance for MCP Workers
+is not available yet (the Engine answers with `profile_schema_incompatible`).
