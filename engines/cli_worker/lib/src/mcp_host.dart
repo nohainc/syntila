@@ -298,6 +298,7 @@ class McpLease {
     Duration? timeout,
     bool Function()? mayDispatch,
     Duration Function()? timeoutAtDispatch,
+    void Function()? onDispatch,
   }) async {
     final pins = _entry.spec.pins;
     await _refreshTools();
@@ -310,6 +311,7 @@ class McpLease {
     if (mayDispatch != null && !mayDispatch()) {
       throw const McpCallNotDispatched();
     }
+    onDispatch?.call();
     return client.callTool(
       name,
       arguments,

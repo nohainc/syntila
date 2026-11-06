@@ -18,6 +18,9 @@ class FakeMcpHttp {
   bool failCalls = false;
   bool toolError = false;
   bool outputSchema = false;
+  Map<String, Object?>? customInputSchema;
+  Map<String, Object?>? customOutputSchema;
+  Object? customStructuredContent;
   bool malformedResult = false;
   Completer<void>? callGate;
   Completer<void>? listGate;
@@ -90,8 +93,9 @@ class FakeMcpHttp {
               {
                 'name': name,
                 'description': toolDescription,
-                'inputSchema': {'type': 'object'},
-                if (outputSchema) 'outputSchema': {'type': 'object'},
+                'inputSchema': customInputSchema ?? {'type': 'object'},
+                if (outputSchema)
+                  'outputSchema': customOutputSchema ?? {'type': 'object'},
               },
           ],
         });
@@ -175,6 +179,8 @@ class FakeMcpHttp {
                 'text': 'json: ${(params['arguments'] as Map)['text']}',
               },
             ],
+            if (customStructuredContent != null)
+              'structuredContent': customStructuredContent,
           });
         }
       default:

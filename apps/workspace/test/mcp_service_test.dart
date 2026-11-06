@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart'
     show McpServerLaunch;
 import 'package:syntila_workspace/mcp_registry.dart';
@@ -142,6 +143,75 @@ void main() {
     await expectLater(
       service.resolveLaunches(['files']),
       throwsA(_code('mcp_binary_changed')),
+    );
+  });
+
+  test('direct call admission requires enabled consent and the frozen pin',
+      () async {
+    await addServer();
+    final hash = toolDefinitionHash(probe.tools.single);
+    Future<McpToolCallAdmission> admit(String pin) => service.admitToolCall(
+          serverId: 'files',
+          tool: 'read',
+          expectedToolHash: pin,
+        );
+    await expectLater(admit(hash), throwsA(_code('mcp_not_enabled')));
+    await consentFully();
+    service.enable('files');
+    await expectLater(
+        admit('0' * 64), throwsA(_code('mcp_tool_not_consented')));
+    await expectLater(
+      service.admitToolCall(
+        serverId: 'files',
+        tool: 'write',
+        expectedToolHash: hash,
+      ),
+      throwsA(_code('mcp_tool_not_consented')),
+    );
+    final admitted = await admit(hash);
+    expect(admitted.launch!.command, server.path);
+    expect(admitted.launch!.environment, {'API_TOKEN': 'secret'});
+    expect(admitted.commandSha256,
+        sha256.convert(server.readAsBytesSync()).toString());
+    expect(admitted.remote, isNull);
+    server.writeAsBytesSync([9]);
+    await expectLater(admit(hash), throwsA(_code('mcp_binary_changed')));
+    service.disable('files');
+    await expectLater(admit(hash), throwsA(_code('mcp_not_enabled')));
+  });
+
+  test('remote direct admission resolves secrets only locally', () async {
+    service.addRemote(
+      serverId: 'remote',
+      displayName: 'Remote',
+      endpoint: 'https://example.com/mcp',
+      tokenEnv: 'API_TOKEN',
+    );
+    final shown = await service.consent('remote');
+    await service.consent('remote',
+        acceptHash: shown['documentHash']! as String);
+    service.enable('remote');
+    final admitted = await service.admitToolCall(
+      serverId: 'remote',
+      tool: 'read',
+      expectedToolHash: toolDefinitionHash(probe.tools.single),
+    );
+    expect(admitted.remote!.bearerToken, 'secret');
+    expect(admitted.launch, isNull);
+    expect(File('${root.path}/mcp.json').readAsStringSync(),
+        isNot(contains('secret')));
+    final missingToken = McpService(
+      McpRegistry(File('${root.path}/mcp.json')),
+      probe,
+      environment: {},
+    );
+    await expectLater(
+      missingToken.admitToolCall(
+        serverId: 'remote',
+        tool: 'read',
+        expectedToolHash: toolDefinitionHash(probe.tools.single),
+      ),
+      throwsA(_code('mcp_token_missing')),
     );
   });
 

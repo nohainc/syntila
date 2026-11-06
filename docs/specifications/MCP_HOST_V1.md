@@ -55,6 +55,52 @@ are not callable until consented.
 - Arguments and results pass through the redactor before logging; neither is
   stored in diagnostics by default.
 
+The Engine also has an experimental internal `--mcp-tool-call` one-shot mode.
+It accepts one bounded JSON request over stdin containing a local launch or
+remote target, consented tool hashes, tool name, arguments and deadline. It
+returns one JSON outcome (`completed`, `toolError`, `rejected`, or `unknown`)
+over stdout. The caller may send a second line, `{"cancel":true}`, to request
+cancellation; closing stdin alone does not cancel. Cancellation after dispatch
+does not prove that the server stopped and may result in an unknown outcome.
+The result is untrusted and is not a diagnostic. The caller must
+perform Workspace admission and consent checks and must durably track uncertain
+outcomes; the mode does not provide workflow scheduling, crash recovery, or a
+user-facing cancellation channel. It must not be treated as an authorized
+workflow execution path until those controls are connected.
+
+The internal Workspace executor resolves the enabled, consented server and
+frozen tool pin after acquiring a shared Engine slot. The supervisor writes an
+Engine ownership record before sending the request, bounds the response, and
+classifies missing results after sending as unknown. The internal executor also
+creates an exclusive persistent claim keyed by logical workflow step before
+sending. Markers are retained even after success and partial markers count as
+claimed. This prevents duplicate dispatch on the same Workspace when the same
+key is used; it is not distributed or sufficient for power-loss guarantees
+without platform-specific filesystem durability evidence. Cloud must allocate
+a stable logical-step key, prevent cross-Workspace replay and reconcile
+unknown outcomes before this becomes an assignment endpoint.
+
+The Cloud prompt renderer can render explicitly declared tool-output instance
+inputs as attributed, JSON-encoded untrusted data and refuses inputs that do
+not fit rather than silently truncating them. The workflow data path does not
+yet populate these inputs, and this label is not a security boundary against
+prompt injection; execution permissions remain independently enforced.
+
+Cloud migration 0104 provides a persistent, unique claim per task; its internal
+claim operation selects only a `tool_call` task and its matching assignment and
+Workspace. A duplicate claim, including one from another Workspace, is denied.
+No existing workflow exposes that task kind, and the claim is not yet used by
+the dispatcher or delivery path. A successful claim is not proof of execution;
+losing its acknowledgement must not lead to a second dispatch.
+
+The internal tool-call request v1 contains `schemaVersion`, `taskId`,
+`dispatchKey`, `serverId`, `tool`, `toolDefinitionHash`, `arguments`, and
+`timeoutMs`. Its key must equal `mcp-tool-v1:<taskId>`; arguments are bounded
+to 64 KiB of UTF-8 encoded JSON. TypeScript and Workspace validators reject
+unknown fields and mismatched keys. The Workspace deep-copies and freezes arguments before
+admission. This is a payload contract only: it is not an advertised transport
+capability or an authorization to execute a tool.
+
 ## 6. Error mapping
 
 | Condition | Stable code (diagnostic `mcp_*`) | Maps to existing issue code |

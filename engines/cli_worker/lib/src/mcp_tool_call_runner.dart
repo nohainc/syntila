@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 
 import 'mcp_host.dart';
+import 'mcp_schema_validation.dart';
 
 /// Result of one direct tool invocation. No outcome authorizes a retry.
 enum McpToolCallState { completed, toolError, rejected, unknown }
@@ -107,13 +108,39 @@ class McpToolCallRunner {
         );
       }
       final definition = lease.tools.firstWhere((t) => t['name'] == tool);
-      if (definition.containsKey('outputSchema')) {
-        // Do not invoke until schema validation is available: refusing after a
-        // side effect would leave callers with an unusable result.
-        return const McpToolCallOutcome(
+      Duration validationBudget() {
+        final remaining = timeout - elapsed.elapsed;
+        return remaining < const Duration(seconds: 2)
+            ? remaining
+            : const Duration(seconds: 2);
+      }
+
+      final input = await validateMcpSchema(
+        definition['inputSchema'],
+        arguments,
+        budget: validationBudget(),
+      );
+      if (input != McpSchemaResult.valid) {
+        return McpToolCallOutcome(
           McpToolCallState.rejected,
-          code: 'output_schema_unsupported',
+          code: input == McpSchemaResult.invalid
+              ? 'invalid_arguments'
+              : 'input_schema_unsupported',
         );
+      }
+      if (definition.containsKey('outputSchema')) {
+        final outputSchema = await validateMcpSchema(
+          definition['outputSchema'],
+          null,
+          compileOnly: true,
+          budget: validationBudget(),
+        );
+        if (outputSchema != McpSchemaResult.valid) {
+          return const McpToolCallOutcome(
+            McpToolCallState.rejected,
+            code: 'output_schema_unsupported',
+          );
+        }
       }
 
       try {
@@ -123,12 +150,59 @@ class McpToolCallRunner {
             code: 'cancelled_or_timed_out_before_dispatch',
           );
         }
-        final call = await lease.callTool(
+        var dispatchStarted = false;
+        var abandonedDispatch = false;
+        final dispatch = lease.callTool(
           tool,
           arguments,
-          mayDispatch: () => !cancelled && elapsed.elapsed < timeout,
+          mayDispatch: () =>
+              !abandonedDispatch && !cancelled && elapsed.elapsed < timeout,
           timeoutAtDispatch: () => timeout - elapsed.elapsed,
+          onDispatch: () => dispatchStarted = true,
         );
+        unawaited(
+          dispatch.then<void>((lateCall) {
+            if (!abandonedDispatch) return;
+            unawaited(
+              lateCall.result.then<void>(
+                (_) {},
+                onError: (Object _, StackTrace __) {},
+              ),
+            );
+          }, onError: (Object _, StackTrace __) {}),
+        );
+        final McpCall call;
+        try {
+          final candidates = <Future<McpCall?>>[dispatch];
+          if (cancel != null) candidates.add(cancel.then((_) => null));
+          final selected = await Future.any(
+            candidates,
+          ).timeout(timeout - elapsed.elapsed);
+          if (selected == null) {
+            abandonedDispatch = true;
+            await lease.discard();
+            return McpToolCallOutcome(
+              dispatchStarted
+                  ? McpToolCallState.unknown
+                  : McpToolCallState.rejected,
+              code: dispatchStarted
+                  ? 'cancelled_after_dispatch'
+                  : 'cancelled_before_dispatch',
+            );
+          }
+          call = selected;
+        } on TimeoutException {
+          abandonedDispatch = true;
+          await lease.discard();
+          return McpToolCallOutcome(
+            dispatchStarted
+                ? McpToolCallState.unknown
+                : McpToolCallState.rejected,
+            code: dispatchStarted
+                ? 'outcome_unknown'
+                : 'timeout_before_dispatch',
+          );
+        }
         // A result that arrives first remains authoritative. If cancellation
         // wins, notify the server and discard the connection; even a local
         // process may already have performed an external side effect.
@@ -157,6 +231,20 @@ class McpToolCallRunner {
             McpToolCallState.unknown,
             code: 'invalid_response',
           );
+        }
+        if (isError != true && definition.containsKey('outputSchema')) {
+          final output = await validateMcpSchema(
+            definition['outputSchema'],
+            structured,
+            budget: validationBudget(),
+          );
+          if (structured is! Map || output != McpSchemaResult.valid) {
+            await lease.discard();
+            return const McpToolCallOutcome(
+              McpToolCallState.unknown,
+              code: 'invalid_structured_result',
+            );
+          }
         }
         return McpToolCallOutcome(
           isError == true

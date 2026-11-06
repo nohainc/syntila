@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
 import '../lib/src/cli_worker_engine.dart';
 import '../lib/src/mcp_probe.dart';
+import '../lib/src/mcp_tool_call_mode.dart';
 import '../lib/src/plugin_engine.dart';
 import '../lib/src/plugin_process_limits.dart';
 
@@ -18,6 +19,13 @@ Future<void> main(List<String> arguments) async {
       return;
     }
     initializeWindowsProcessJob();
+    if (arguments.isNotEmpty &&
+        arguments.first == mcpToolCallFlag &&
+        (arguments.length == 1 ||
+            (arguments.length == 3 && arguments[1] == '--state-directory'))) {
+      await runMcpToolCallMode();
+      return;
+    }
     if (PluginEngineOptions.isPluginMode(arguments)) {
       await PluginEngine(options: PluginEngineOptions.parse(arguments)).run();
       return;

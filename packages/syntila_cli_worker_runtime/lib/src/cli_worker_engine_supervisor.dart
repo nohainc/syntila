@@ -936,6 +936,170 @@ final class CliWorkerEngineSupervisor {
     }
   }
 
+  /// Supervise an internal one-shot MCP tool call using the same Workspace
+  /// slot pool and process ownership as normal assignments. The caller must
+  /// durably fence duplicate dispatches and admit the tool in [prepareRequest].
+  /// A missing or malformed response after sending is always outcome-unknown.
+  Future<Map<String, Object?>> executeMcpToolCall({
+    required String assignmentId,
+    required Directory stateDirectory,
+    required Directory workingDirectory,
+    required int maxConcurrentAssignments,
+    required FutureOr<Map<String, Object?>> Function() prepareRequest,
+    required FutureOr<bool> Function() claimDispatch,
+    required Duration timeout,
+    FutureOr<bool> Function()? authorizeStart,
+  }) async {
+    if (assignmentId.isEmpty ||
+        maxConcurrentAssignments < 1 ||
+        processRegistryDirectory == null ||
+        timeout.inMilliseconds < 1 ||
+        timeout >
+            const Duration(milliseconds: WorkerProtocolLimits.maxTimeoutMs)) {
+      throw ArgumentError('Invalid MCP tool-call execution parameters');
+    }
+    if (_activeAssignments.containsKey(assignmentId) ||
+        _reservedAssignmentIds.contains(assignmentId) ||
+        _queuedAssignments.containsKey(assignmentId)) {
+      throw const FormatException(
+        'Assignment already has an active or queued Engine execution',
+      );
+    }
+    const workerId = 'mcp-tool-call';
+    await _acquireSlot(
+      workerId,
+      assignmentId,
+      maxConcurrentAssignments,
+      timeout: defaultQueueWaitTimeout,
+    );
+    Process? process;
+    File? record;
+    var sent = false;
+    var fenceAttempted = false;
+    try {
+      await stateDirectory.create(recursive: true);
+      if (!await workingDirectory.exists()) {
+        throw const FormatException('Working directory does not exist');
+      }
+      final previous = _processRecordFile(assignmentId);
+      if (previous != null && await previous.exists()) {
+        throw const FormatException(
+          'Assignment already has an Engine ownership record',
+        );
+      }
+      final requestBytes = utf8.encode(
+        '${jsonEncode(await prepareRequest())}\n',
+      );
+      if (requestBytes.length > maxFrameBytes) {
+        throw const FormatException(
+          'MCP tool-call request exceeds frame limit',
+        );
+      }
+      if (_cancelledAssignments.remove(assignmentId) ||
+          (authorizeStart != null && !await authorizeStart()) ||
+          _cancelledAssignments.remove(assignmentId)) {
+        return {'state': 'rejected', 'code': 'cancelled_before_dispatch'};
+      }
+      process = await _platformRuntime.startIsolatedProcess(
+        engineExecutable,
+        [
+          ...engineArgumentsPrefix,
+          '--mcp-tool-call',
+          '--state-directory',
+          stateDirectory.absolute.path,
+        ],
+        workingDirectory: workingDirectory.path,
+        environment: _engineEnvironment(),
+        includeParentEnvironment: false,
+      );
+      _activeAssignments[assignmentId] = process;
+      _activeWorkerByAssignment[assignmentId] = workerId;
+      _reservedAssignmentIds.remove(assignmentId);
+      _reservedWorkerByAssignment.remove(assignmentId);
+      unawaited(process.stderr.drain<void>().catchError((_) {}));
+      record = await _writeProcessRecord(
+        process,
+        assignmentId: assignmentId,
+        stateDirectory: stateDirectory,
+        workingDirectory: workingDirectory,
+        workerId: workerId,
+        deadlineAt: DateTime.now().toUtc().add(timeout).toIso8601String(),
+      );
+      if (_cancelledAssignments.remove(assignmentId)) {
+        return {'state': 'rejected', 'code': 'cancelled_before_dispatch'};
+      }
+      // The claim must complete before even one byte can reach the Engine.
+      // An error while persisting it is ambiguous and therefore fails closed.
+      fenceAttempted = true;
+      if (!await claimDispatch()) {
+        return {'state': 'unknown', 'code': 'dispatch_already_claimed'};
+      }
+      if (_cancelledAssignments.remove(assignmentId)) {
+        return {'state': 'unknown', 'code': 'cancelled_after_claim'};
+      }
+      final output = _readMcpCallOutput(process.stdout);
+      output.ignore();
+      // Even a partial write could have reached the Engine.
+      sent = true;
+      process.stdin.add(requestBytes);
+      await process.stdin.flush().timeout(timeout);
+      await process.stdin.close();
+      final response = await output.timeout(timeout);
+      final exit = await process.exitCode.timeout(const Duration(seconds: 5));
+      if (exit != 0 ||
+          response is! Map ||
+          !const {
+            'completed',
+            'toolError',
+            'rejected',
+            'unknown',
+          }.contains(response['state']) ||
+          response['code'] is! String) {
+        return {'state': 'unknown', 'code': 'invalid_engine_response'};
+      }
+      return Map<String, Object?>.from(response);
+    } on Object {
+      return sent || fenceAttempted
+          ? {'state': 'unknown', 'code': 'outcome_unknown'}
+          : {'state': 'rejected', 'code': 'engine_not_dispatched'};
+    } finally {
+      _activeAssignments.remove(assignmentId);
+      _activeWorkerByAssignment.remove(assignmentId);
+      _reservedAssignmentIds.remove(assignmentId);
+      _reservedWorkerByAssignment.remove(assignmentId);
+      _cancelledAssignments.remove(assignmentId);
+      try {
+        var cleanupFinished = true;
+        if (process != null) {
+          try {
+            await _platformRuntime
+                .terminateProcessTree(process, force: true)
+                .timeout(const Duration(seconds: 10));
+            await process.exitCode.timeout(const Duration(seconds: 2));
+          } on Object {
+            cleanupFinished = false;
+          }
+        }
+        if (cleanupFinished) await _deleteProcessRecord(record);
+      } finally {
+        _releaseSlot(assignmentId);
+      }
+    }
+  }
+
+  Future<Object?> _readMcpCallOutput(Stream<List<int>> stream) async {
+    final bytes = <int>[];
+    await for (final chunk in stream) {
+      if (bytes.length + chunk.length > maxFrameBytes) {
+        throw const FormatException(
+          'MCP tool-call response exceeds frame limit',
+        );
+      }
+      bytes.addAll(chunk);
+    }
+    return jsonDecode(utf8.decode(bytes));
+  }
+
   Future<bool> cancel(String assignmentId) async {
     final queued = _queuedAssignments.remove(assignmentId);
     if (queued != null) {

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -31,6 +32,26 @@ class McpRemoteTarget {
   final Uri endpoint;
   final String? bearerToken;
   final bool insecureLoopback;
+}
+
+/// A local, short-lived admission snapshot. It can contain credentials and
+/// must never be sent to Cloud, persisted, or logged.
+class McpToolCallAdmission {
+  const McpToolCallAdmission._({
+    required this.serverId,
+    required this.tool,
+    required this.toolHash,
+    this.launch,
+    this.commandSha256,
+    this.remote,
+  });
+
+  final String serverId;
+  final String tool;
+  final String toolHash;
+  final McpServerLaunch? launch;
+  final String? commandSha256;
+  final McpRemoteTarget? remote;
 }
 
 abstract interface class McpProbePort {
@@ -280,6 +301,61 @@ class McpService {
   /// Tool pins the Engine host must enforce for this server.
   ToolPins pinsFor(String serverId) =>
       ToolPins(Map.of(_require(serverId).toolPins));
+
+  /// Resolves one frozen tool identity for a direct call. This is only local
+  /// admission: the assignment's authorization, durable no-replay record and
+  /// the Engine's revalidation remain mandatory before actual execution.
+  Future<McpToolCallAdmission> admitToolCall({
+    required String serverId,
+    required String tool,
+    required String expectedToolHash,
+  }) async {
+    if (!_idPattern.hasMatch(serverId) ||
+        tool.isEmpty ||
+        tool.length > 128 ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(expectedToolHash)) {
+      throw const McpPolicyException('invalid_request', 'Invalid tool call.');
+    }
+    final server = _registry.get(serverId);
+    if (server == null || !server.enabled || !server.consented) {
+      throw const McpPolicyException(
+        'mcp_not_enabled',
+        'MCP server is not enabled and consented.',
+      );
+    }
+    if (server.toolPins[tool] != expectedToolHash) {
+      throw const McpPolicyException(
+        'mcp_tool_not_consented',
+        'The requested tool definition is not consented.',
+      );
+    }
+    if (server.isRemote) {
+      _remoteEndpoint(server.endpoint!,
+          insecureLoopback: server.insecureLoopback);
+      return McpToolCallAdmission._(
+        serverId: serverId,
+        tool: tool,
+        toolHash: expectedToolHash,
+        remote: _remoteTargetFor(server),
+      );
+    }
+    final snapshot = jsonEncode(server.toJson());
+    await _checkBinary(server);
+    final current = _registry.get(serverId);
+    if (current == null || jsonEncode(current.toJson()) != snapshot) {
+      throw const McpPolicyException(
+        'mcp_admission_changed',
+        'MCP server configuration changed during admission.',
+      );
+    }
+    return McpToolCallAdmission._(
+      serverId: serverId,
+      tool: tool,
+      toolHash: expectedToolHash,
+      launch: _launchFor(current),
+      commandSha256: current.commandSha256,
+    );
+  }
 
   /// The only route from configuration to `execute.request.mcpServers`.
   /// Every requested server must be consented, enabled and byte-identical to

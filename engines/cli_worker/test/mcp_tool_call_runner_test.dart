@@ -78,8 +78,9 @@ void main() {
     expect(calls(), 0);
   });
 
-  test('refuses output schemas before any side effect', () async {
+  test('refuses external schema references before any side effect', () async {
     fake.outputSchema = true;
+    fake.customOutputSchema = {r'$ref': 'https://example.com/schema'};
     final result = await runner.call(
       spec(await consent()),
       'echo',
@@ -88,6 +89,54 @@ void main() {
     );
     expect(result.code, 'output_schema_unsupported');
     expect(calls(), 0);
+  });
+
+  test('rejects arguments that do not satisfy the input schema', () async {
+    fake.customInputSchema = {
+      'type': 'object',
+      'properties': {
+        'text': {'type': 'string'},
+      },
+      'required': ['text'],
+    };
+    final result = await runner.call(
+      spec(await consent()),
+      'echo',
+      {},
+      timeout: const Duration(seconds: 5),
+    );
+    expect(result.code, 'invalid_arguments');
+    expect(calls(), 0);
+  });
+
+  test('validates structured results against the pinned schema', () async {
+    fake.outputSchema = true;
+    fake.customOutputSchema = {
+      'type': 'object',
+      'properties': {
+        'count': {'type': 'integer'},
+      },
+      'required': ['count'],
+    };
+    fake.customStructuredContent = {'count': 3};
+    final pins = await consent();
+    final valid = await runner.call(
+      spec(pins),
+      'echo',
+      {},
+      timeout: const Duration(seconds: 5),
+    );
+    expect(valid.state, McpToolCallState.completed);
+    fake.customStructuredContent = {'count': 'bad'};
+    final invalid = await runner.call(
+      spec(pins),
+      'echo',
+      {},
+      timeout: const Duration(seconds: 5),
+    );
+    expect(invalid.state, McpToolCallState.unknown);
+    expect(invalid.code, 'invalid_structured_result');
+    expect(calls(), 2);
   });
 
   test('distinguishes an MCP tool error from success', () async {
@@ -195,12 +244,33 @@ void main() {
       {},
       timeout: const Duration(milliseconds: 100),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 180));
-    gate.complete();
-    final result = await pending;
+    final result = await pending.timeout(const Duration(seconds: 2));
     expect(result.state, McpToolCallState.rejected);
     expect(calls(), 0);
+    gate.complete();
   });
+
+  test(
+    'cancellation during tool refresh returns before the server replies',
+    () async {
+      final pins = await consent();
+      final gate = fake.listGate = Completer<void>();
+      final cancellation = Completer<void>();
+      final pending = runner.call(
+        spec(pins),
+        'echo',
+        {},
+        timeout: const Duration(seconds: 5),
+        cancel: cancellation.future,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      cancellation.complete();
+      final result = await pending.timeout(const Duration(seconds: 2));
+      expect(result.state, McpToolCallState.rejected);
+      expect(calls(), 0);
+      gate.complete();
+    },
+  );
 
   test('the dispatch timeout excludes time spent refreshing tools', () async {
     final pins = await consent();

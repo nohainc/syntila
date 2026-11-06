@@ -117,6 +117,7 @@ export function sqliteD1(
     "0099_workflow_step_instances.sql",
     "0100_assignment_cloud_queue.sql",
     "0101_worker_plugins.sql",
+    "0104_mcp_tool_dispatch_fence.sql",
   ]) {
     sqlite.exec(
       readFileSync(
