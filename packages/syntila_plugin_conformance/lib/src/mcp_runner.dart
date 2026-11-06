@@ -190,6 +190,10 @@ class McpConformanceRunner {
     if (out is! Map || out['text'] is! String) {
       throw _Failure('execute result has no structuredContent.text.');
     }
+    if (utf8.encode(out['text'] as String).length >
+        PluginProtocolLimits.maxOutputBytes) {
+      throw _Failure('execute text exceeds the UTF-8 byte limit.');
+    }
     final session = out['session'];
     if (session != null &&
         (session is! Map || !_sessionStates.contains(session['state']))) {

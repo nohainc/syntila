@@ -80,7 +80,9 @@ Conformance runs through `syntila_plugin_conformance`: `McpConformanceRunner`
 over MCP stdio; definition drift and oversize results are not covered yet. The current suite covers host-compatible version selection and fallback from an
 unknown version, advertisement, required tools, ping, probe and execute
 result shapes, a single terminal result, and unknown-method errors. Execute
-validation checks session state and bounded, safe relative artifact paths. It
+validation checks the returned text against the UTF-8 output limit, session
+state, and bounded, safe relative artifact paths. This checks the sampled reply;
+it does not prove all future replies will be within the limit. It
 does not yet re-express all 21 NDJSON plugin cases.
 
 ## Local Worker Protocol 4.3: how the Engine receives an MCP Worker

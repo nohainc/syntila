@@ -146,7 +146,11 @@ Future<void> main(List<String> args) async {
           });
           break;
         }
-        final text = prompt == 'MULTIBYTE_OVER_LIMIT'
+        final text = mode == 'output_at_limit'
+            ? 'é' * (384 * 1024)
+            : mode == 'output_over_limit'
+            ? '${'é' * (384 * 1024)}x'
+            : prompt == 'MULTIBYTE_OVER_LIMIT'
             ? 'é' * (400 * 1024)
             : prompt == 'MULTIBYTE_WITHIN_LIMIT'
             ? 'é' * (300 * 1024)
@@ -160,7 +164,8 @@ Future<void> main(List<String> args) async {
           'id': id,
           'result': {
             'content': [
-              if (!prompt.startsWith('MULTIBYTE_'))
+              if (!prompt.startsWith('MULTIBYTE_') &&
+                  !mode.startsWith('output_'))
                 {'type': 'text', 'text': text},
             ],
             'structuredContent': {

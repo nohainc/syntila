@@ -86,4 +86,13 @@ void main() {
     expect(caseOf(report, 'mcp.version_negotiation').status,
         ConformanceStatus.passed);
   });
+  test('execute output is bounded by UTF-8 bytes', () async {
+    final atLimit =
+        caseOf(await run(['output_at_limit']), 'mcp.execute_result');
+    expect(atLimit.status, ConformanceStatus.passed);
+    final overLimit =
+        caseOf(await run(['output_over_limit']), 'mcp.execute_result');
+    expect(overLimit.status, ConformanceStatus.failed);
+    expect(overLimit.detail, contains('UTF-8 byte limit'));
+  });
 }
