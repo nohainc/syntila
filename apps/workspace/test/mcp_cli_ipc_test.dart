@@ -151,4 +151,87 @@ void main() {
     expect(code, 0);
     expect('$out', contains('Worker chatgpt may use: files'));
   });
+
+  test('add-remote sends the URL, the variable name and the loopback flag',
+      () async {
+    final code = await run(
+      [
+        'mcp',
+        'add-remote',
+        'acme',
+        'https://mcp.acme.example/mcp',
+        '--token-env',
+        'ACME_TOKEN',
+      ],
+      (_, __) => {'serverId': 'acme', 'next': 'syntila mcp consent acme'},
+    );
+    expect(code, 0);
+    expect(sent.single.$1, 'mcp.addRemote');
+    expect(sent.single.$2, {
+      'serverId': 'acme',
+      'displayName': 'acme',
+      'endpoint': 'https://mcp.acme.example/mcp',
+      'tokenEnv': 'ACME_TOKEN',
+    });
+    sent.clear();
+    await run(
+      [
+        'mcp',
+        'add-remote',
+        'dev',
+        'http://127.0.0.1:9/mcp',
+        '--insecure-loopback'
+      ],
+      (_, __) => {'serverId': 'dev', 'next': 'x'},
+    );
+    expect(sent.single.$2['insecureLoopback'], true);
+    expect(sent.single.$2.containsKey('tokenEnv'), isFalse);
+  });
+
+  test('a remote consent screen warns that data leaves the computer', () async {
+    final code = await run(
+      ['mcp', 'consent', 'acme'],
+      (_, __) => {
+        'consentRequired': true,
+        'documentHash': 'f' * 64,
+        'document': {
+          'serverId': 'acme',
+          'transport': 'remote',
+          'endpoint': 'https://mcp.acme.example/mcp',
+          'tokenEnvironmentName': 'ACME_TOKEN',
+          'tools': [
+            {'name': 'search', 'description': 'searches the web'},
+          ],
+        },
+      },
+    );
+    expect(code, 3);
+    final text = '$out';
+    expect(text, contains('Remote:     https://mcp.acme.example/mcp'));
+    expect(text, contains('ACME_TOKEN'));
+    expect(text, contains('leaves this computer'));
+    expect(text, contains('search: searches the web'));
+    expect(text, isNot(contains('Digest:')));
+    expect(text, contains('--accept ${'f' * 64}'));
+  });
+
+  test('list marks remote servers', () async {
+    await run(
+      ['mcp', 'list'],
+      (_, __) => {
+        'servers': [
+          {
+            'serverId': 'acme',
+            'displayName': 'Acme',
+            'remote': true,
+            'endpoint': 'https://mcp.acme.example/mcp',
+            'consented': false,
+            'enabled': false,
+            'tools': <Object?>[],
+          },
+        ],
+      },
+    );
+    expect('$out', contains('remote https://mcp.acme.example/mcp'));
+  });
 }

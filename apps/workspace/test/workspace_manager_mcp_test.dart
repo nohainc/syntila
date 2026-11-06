@@ -21,6 +21,23 @@ class FakeProbe implements McpProbePort {
           'inputSchema': {'type': 'object'},
         },
       ];
+
+  McpRemoteTarget? lastRemote;
+
+  @override
+  Future<List<Map<String, Object?>>> listRemoteTools(
+    McpServerRecord server,
+    McpRemoteTarget remote,
+  ) async {
+    lastRemote = remote;
+    return [
+      {
+        'name': 'read',
+        'description': 'reads',
+        'inputSchema': {'type': 'object'},
+      },
+    ];
+  }
 }
 
 void main() {
@@ -158,6 +175,55 @@ void main() {
           (e) => e.code,
           'code',
           'mcp_registry_unreadable',
+        ),
+      ),
+    );
+  });
+
+  test('addRemote validates its payload and stores only the variable name',
+      () async {
+    await commands.handle('mcp.addRemote', {
+      'serverId': 'acme',
+      'displayName': 'Acme',
+      'endpoint': 'https://mcp.acme.example/mcp',
+      'tokenEnv': 'ACME_TOKEN',
+    });
+    final listed = await commands.handle('mcp.list', {}) as Map;
+    final server = (listed['servers'] as List).single as Map;
+    expect(server['remote'], isTrue);
+    expect(server['endpoint'], 'https://mcp.acme.example/mcp');
+    for (final bad in <Map<String, Object?>>[
+      {'serverId': 'b1', 'displayName': 'x', 'endpoint': 5},
+      {
+        'serverId': 'b2',
+        'displayName': 'x',
+        'endpoint': 'https://a.example/m',
+        'tokenEnv': 7
+      },
+      {
+        'serverId': 'b3',
+        'displayName': 'x',
+        'endpoint': 'https://a.example/m',
+        'insecureLoopback': 'yes'
+      },
+    ]) {
+      await expectLater(
+        commands.handle('mcp.addRemote', bad),
+        throwsA(isA<WorkspaceManagerProtocolException>()),
+        reason: '$bad',
+      );
+    }
+    await expectLater(
+      commands.handle('mcp.addRemote', {
+        'serverId': 'insecure',
+        'displayName': 'x',
+        'endpoint': 'http://mcp.acme.example/mcp',
+      }),
+      throwsA(
+        isA<WorkspaceManagerProtocolException>().having(
+          (e) => e.code,
+          'code',
+          'invalid_request',
         ),
       ),
     );

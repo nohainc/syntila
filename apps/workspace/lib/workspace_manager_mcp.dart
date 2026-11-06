@@ -102,6 +102,28 @@ class WorkspaceMcpCommands {
           arguments: _strings(payload, 'arguments'),
           environmentNames: _strings(payload, 'environmentNames'),
         );
+      case 'mcp.addRemote':
+        final endpoint = payload['endpoint'];
+        final name = payload['displayName'];
+        final tokenEnv = payload['tokenEnv'];
+        if (endpoint is! String ||
+            name is! String ||
+            (tokenEnv != null && tokenEnv is! String) ||
+            (payload['insecureLoopback'] != null &&
+                payload['insecureLoopback'] is! bool)) {
+          throw const WorkspaceManagerProtocolException(
+            'invalid_request',
+            'endpoint and displayName must be strings; tokenEnv a string; '
+                'insecureLoopback a boolean.',
+          );
+        }
+        return service.addRemote(
+          serverId: _id(payload),
+          displayName: name,
+          endpoint: endpoint,
+          tokenEnv: tokenEnv as String?,
+          insecureLoopback: payload['insecureLoopback'] == true,
+        );
       case 'mcp.consent':
         return service.consent(_id(payload), acceptHash: _hash(payload));
       case 'mcp.enable':

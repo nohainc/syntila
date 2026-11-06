@@ -19,12 +19,32 @@ class McpPolicyException implements Exception {
 
 /// Starts the server (through the Engine, never in this process) and returns
 /// its current `tools/list`. Used to show and pin definitions at consent.
+/// A remote server as the Engine needs it: the endpoint and the token the
+/// Service read from its environment just now. Never persisted.
+class McpRemoteTarget {
+  const McpRemoteTarget({
+    required this.endpoint,
+    this.bearerToken,
+    this.insecureLoopback = false,
+  });
+
+  final Uri endpoint;
+  final String? bearerToken;
+  final bool insecureLoopback;
+}
+
 abstract interface class McpProbePort {
   /// [launch] is the resolved launch (command, arguments and the environment
   /// values for the consented names); the record carries the pinned digest.
   Future<List<Map<String, Object?>>> listTools(
     McpServerRecord server,
     McpServerLaunch launch,
+  );
+
+  /// Same for a remote server (Streamable HTTP).
+  Future<List<Map<String, Object?>>> listRemoteTools(
+    McpServerRecord server,
+    McpRemoteTarget remote,
   );
 }
 
@@ -54,7 +74,9 @@ class McpService {
           {
             'serverId': s.serverId,
             'displayName': s.displayName,
-            'command': s.command,
+            if (s.command != null) 'command': s.command,
+            if (s.endpoint != null) 'endpoint': s.endpoint,
+            'remote': s.isRemote,
             'consented': s.consented,
             'enabled': s.enabled,
             'tools': (s.toolPins.keys.toList()..sort()),
@@ -120,8 +142,13 @@ class McpService {
     String? acceptHash,
   }) async {
     final server = _require(serverId);
-    await _checkBinary(server);
-    final tools = await _probe.listTools(server, _launchFor(server));
+    final List<Map<String, Object?>> tools;
+    if (server.isRemote) {
+      tools = await _probe.listRemoteTools(server, _remoteTargetFor(server));
+    } else {
+      await _checkBinary(server);
+      tools = await _probe.listTools(server, _launchFor(server));
+    }
     final definitions = [
       for (final t in tools)
         {
@@ -135,14 +162,24 @@ class McpService {
             if (t.containsKey(key)) key: t[key],
         },
     ]..sort((a, b) => '${a['name']}'.compareTo('${b['name']}'));
-    final document = {
-      'serverId': server.serverId,
-      'command': server.command,
-      'commandSha256': server.commandSha256,
-      'arguments': server.arguments,
-      'environmentNames': server.environmentNames,
-      'tools': definitions,
-    };
+    final document = server.isRemote
+        ? {
+            'serverId': server.serverId,
+            'transport': 'remote',
+            'endpoint': server.endpoint,
+            // The NAME of the variable that holds the token; never its value.
+            'tokenEnvironmentName': server.tokenEnv,
+            'insecureLoopback': server.insecureLoopback,
+            'tools': definitions,
+          }
+        : {
+            'serverId': server.serverId,
+            'command': server.command,
+            'commandSha256': server.commandSha256,
+            'arguments': server.arguments,
+            'environmentNames': server.environmentNames,
+            'tools': definitions,
+          };
     final hash = sha256Hex(canonicalJson(document));
     if (acceptHash == null) {
       return {
@@ -196,7 +233,12 @@ class McpService {
     if (!_workerTypePattern.hasMatch(workerTypeId)) {
       throw const McpPolicyException('invalid_request', 'Invalid Worker type.');
     }
-    _require(serverId);
+    if (_require(serverId).isRemote) {
+      throw const McpPolicyException(
+        'mcp_remote_unsupported',
+        'Remote MCP servers cannot be bound to official Workers yet.',
+      );
+    }
     final current = _registry.bindings()[workerTypeId] ?? const <String>[];
     if (!current.contains(serverId)) {
       _registry.setBinding(workerTypeId, [...current, serverId]..sort());
@@ -253,15 +295,121 @@ class McpService {
           'MCP server "$id" is not enabled and consented.',
         );
       }
+      if (server.isRemote) {
+        throw McpPolicyException(
+          'mcp_remote_unsupported',
+          'MCP server "$id" is remote; official Workers cannot use remote '
+              'servers yet.',
+        );
+      }
       await _checkBinary(server);
       launches.add(_launchFor(server));
     }
     return launches;
   }
 
+  /// Validated, normalised endpoint for [addRemote].
+  static Uri _remoteEndpoint(String raw, {required bool insecureLoopback}) {
+    final uri = Uri.tryParse(raw);
+    const loopback = {'127.0.0.1', 'localhost', '::1', '[::1]'};
+    final secure = uri != null && uri.scheme == 'https';
+    final plain = uri != null &&
+        uri.scheme == 'http' &&
+        insecureLoopback &&
+        loopback.contains(uri.host);
+    if (raw.length > 2048 ||
+        uri == null ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasFragment ||
+        !(secure || plain)) {
+      throw const McpPolicyException(
+        'invalid_request',
+        'The endpoint must be an https URL without credentials or a '
+            'fragment (plain http only for loopback, explicitly allowed).',
+      );
+    }
+    return uri;
+  }
+
+  /// Registers a remote MCP server. Nothing is contacted until consent.
+  Map<String, Object?> addRemote({
+    required String serverId,
+    required String displayName,
+    required String endpoint,
+    String? tokenEnv,
+    bool insecureLoopback = false,
+  }) {
+    if (!_idPattern.hasMatch(serverId)) {
+      throw const McpPolicyException('invalid_request', 'Invalid server id.');
+    }
+    if (_registry.get(serverId) != null) {
+      throw const McpPolicyException(
+        'mcp_exists',
+        'A server with this id already exists.',
+      );
+    }
+    if (displayName.isEmpty || displayName.length > 128) {
+      throw const McpPolicyException('invalid_request', 'Invalid name.');
+    }
+    final uri = _remoteEndpoint(endpoint, insecureLoopback: insecureLoopback);
+    if (tokenEnv != null &&
+        (!_envPattern.hasMatch(tokenEnv) || tokenEnv.startsWith('SYNTILA_'))) {
+      throw const McpPolicyException(
+        'invalid_request',
+        'The token variable name is invalid.',
+      );
+    }
+    _registry.put(
+      McpServerRecord(
+        serverId: serverId,
+        displayName: displayName,
+        endpoint: uri.toString(),
+        tokenEnv: tokenEnv,
+        insecureLoopback: insecureLoopback,
+      ),
+    );
+    return {'serverId': serverId, 'next': 'syntila mcp consent $serverId'};
+  }
+
+  McpRemoteTarget _remoteTargetFor(McpServerRecord server) {
+    final name = server.tokenEnv;
+    final token = name == null ? null : _environment[name];
+    if (name != null && (token == null || token.isEmpty)) {
+      // Fail closed: never contact the server without the credential the
+      // person agreed to send.
+      throw McpPolicyException(
+        'mcp_token_missing',
+        'The environment variable $name is not set for "${server.serverId}".',
+      );
+    }
+    return McpRemoteTarget(
+      endpoint: Uri.parse(server.endpoint!),
+      bearerToken: token,
+      insecureLoopback: server.insecureLoopback,
+    );
+  }
+
+  /// The only route from configuration to a remote connection: consented,
+  /// enabled, and the token present. Cloud never sees any of it.
+  McpRemoteTarget resolveRemote(String serverId) {
+    final server = _registry.get(serverId);
+    if (server == null ||
+        !server.isRemote ||
+        !server.enabled ||
+        !server.consented) {
+      throw McpPolicyException(
+        'mcp_not_enabled',
+        'Remote MCP server "$serverId" is not enabled and consented.',
+      );
+    }
+    return _remoteTargetFor(server);
+  }
+
   McpServerLaunch _launchFor(McpServerRecord server) => McpServerLaunch(
         name: server.serverId,
-        command: server.command,
+        command: server.command!,
         arguments: server.arguments,
         environment: {
           for (final name in server.environmentNames)
@@ -279,7 +427,7 @@ class McpService {
   Future<void> _checkBinary(McpServerRecord server) async {
     final String digest;
     try {
-      digest = await _sha256OfFile(server.command);
+      digest = await _sha256OfFile(server.command!);
     } on FileSystemException {
       throw McpPolicyException(
         'mcp_binary_changed',

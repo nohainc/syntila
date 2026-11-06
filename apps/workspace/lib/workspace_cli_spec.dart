@@ -864,6 +864,60 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             inGroup: true,
           ),
           command(
+            icon: GuiIcons.link,
+            'add-remote',
+            'Add remote MCP server',
+            'Register a remote MCP server by https URL (nothing is contacted until you consent)',
+            service(
+              'mcp.addRemote',
+              payload: (run) => {
+                'serverId': run.positional('id'),
+                'displayName': run.option('name') ?? run.positional('id'),
+                'endpoint': run.positional('url'),
+                if (run.option('token-env') != null)
+                  'tokenEnv': run.option('token-env'),
+                if (run.flag('insecure-loopback')) 'insecureLoopback': true,
+              },
+            ),
+            parameters: const [
+              GuiParameter(
+                name: 'id',
+                kind: GuiParamKind.positional,
+                type: GuiParamType.string,
+                required: true,
+                label: 'Server ID',
+              ),
+              GuiParameter(
+                name: 'url',
+                kind: GuiParamKind.positional,
+                type: GuiParamType.string,
+                required: true,
+                label: 'Endpoint URL (https)',
+              ),
+              GuiParameter(
+                name: 'name',
+                kind: GuiParamKind.option,
+                type: GuiParamType.string,
+                label: 'Display name',
+              ),
+              GuiParameter(
+                name: 'token-env',
+                kind: GuiParamKind.option,
+                type: GuiParamType.string,
+                label:
+                    'Name of the environment variable that holds the bearer token (the token itself is never stored)',
+              ),
+              GuiParameter(
+                name: 'insecure-loopback',
+                kind: GuiParamKind.flag,
+                type: GuiParamType.boolean,
+                label:
+                    'Allow plain http to a loopback address (development only)',
+              ),
+            ],
+            inGroup: true,
+          ),
+          command(
             icon: GuiIcons.shield,
             'consent',
             'Consent to MCP server',

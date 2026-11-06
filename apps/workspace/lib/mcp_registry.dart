@@ -8,23 +8,42 @@ class McpServerRecord {
   McpServerRecord({
     required this.serverId,
     required this.displayName,
-    required this.command,
-    required this.commandSha256,
+    this.command,
+    this.commandSha256,
+    this.endpoint,
+    this.tokenEnv,
+    this.insecureLoopback = false,
     this.arguments = const [],
     this.environmentNames = const [],
     this.toolPins = const {},
     this.consentHash,
     this.enabled = false,
-  });
+  }) : assert(
+          (command == null) != (endpoint == null),
+          'a server is either a local command or a remote endpoint',
+        );
 
   final String serverId;
   final String displayName;
-  final String command;
 
-  /// SHA-256 of the executable at add time; re-checked at every launch.
-  final String commandSha256;
+  /// Local server: the executable and the SHA-256 of its bytes at add time
+  /// (re-checked at every launch). Null for a remote server.
+  final String? command;
+  final String? commandSha256;
+
+  /// Remote server (Streamable HTTP): the endpoint URL. Null for a local one.
+  final String? endpoint;
+
+  /// Remote server: the NAME of the environment variable that holds the bearer
+  /// token. The value is read when the server is used and is never stored.
+  final String? tokenEnv;
+
+  /// Remote server: allow plain http to a loopback host (development only).
+  final bool insecureLoopback;
   final List<String> arguments;
   final List<String> environmentNames;
+
+  bool get isRemote => endpoint != null;
 
   /// Tool name -> definition hash recorded at consent. Empty = not consented.
   Map<String, String> toolPins;
@@ -40,6 +59,9 @@ class McpServerRecord {
         displayName: displayName,
         command: command,
         commandSha256: commandSha256,
+        endpoint: endpoint,
+        tokenEnv: tokenEnv,
+        insecureLoopback: insecureLoopback,
         arguments: arguments,
         environmentNames: environmentNames,
         toolPins: Map.of(toolPins),
@@ -50,8 +72,11 @@ class McpServerRecord {
   Map<String, Object?> toJson() => {
         'serverId': serverId,
         'displayName': displayName,
-        'command': command,
-        'commandSha256': commandSha256,
+        if (command != null) 'command': command,
+        if (commandSha256 != null) 'commandSha256': commandSha256,
+        if (endpoint != null) 'endpoint': endpoint,
+        if (tokenEnv != null) 'tokenEnv': tokenEnv,
+        if (insecureLoopback) 'insecureLoopback': true,
         'arguments': arguments,
         'environmentNames': environmentNames,
         'toolPins': toolPins,
@@ -63,8 +88,11 @@ class McpServerRecord {
       McpServerRecord(
         serverId: json['serverId'] as String,
         displayName: json['displayName'] as String,
-        command: json['command'] as String,
-        commandSha256: json['commandSha256'] as String,
+        command: json['command'] as String?,
+        commandSha256: json['commandSha256'] as String?,
+        endpoint: json['endpoint'] as String?,
+        tokenEnv: json['tokenEnv'] as String?,
+        insecureLoopback: json['insecureLoopback'] == true,
         arguments: List<String>.from(json['arguments'] as List),
         environmentNames: List<String>.from(json['environmentNames'] as List),
         toolPins: Map<String, String>.from(json['toolPins'] as Map),

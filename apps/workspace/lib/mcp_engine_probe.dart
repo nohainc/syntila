@@ -44,7 +44,33 @@ class EngineMcpProbe implements McpProbePort {
     McpServerRecord server,
     McpServerLaunch launch, {
     bool requireWorkerProfile = false,
-  }) async {
+  }) =>
+      _run(server.serverId, {
+        'server': launch.toJson(),
+        'commandSha256': server.commandSha256,
+        'workingDirectory': workingDirectory.path,
+        if (requireWorkerProfile) 'requireWorkerProfile': true,
+      });
+
+  @override
+  Future<List<Map<String, Object?>>> listRemoteTools(
+    McpServerRecord server,
+    McpRemoteTarget remote, {
+    bool requireWorkerProfile = false,
+  }) =>
+      _run(server.serverId, {
+        'remote': {
+          'endpoint': remote.endpoint.toString(),
+          if (remote.bearerToken != null) 'bearerToken': remote.bearerToken,
+          if (remote.insecureLoopback) 'allowInsecureLoopback': true,
+        },
+        if (requireWorkerProfile) 'requireWorkerProfile': true,
+      });
+
+  Future<List<Map<String, Object?>>> _run(
+    String serverId,
+    Map<String, Object?> request,
+  ) async {
     final engine = locateEngine();
     if (engine == null) {
       throw const McpPolicyException(
@@ -64,14 +90,7 @@ class EngineMcpProbe implements McpProbePort {
       includeParentEnvironment: false,
     );
     unawaited(process.stderr.drain<void>().catchError((_) {}));
-    process.stdin.writeln(
-      jsonEncode({
-        'server': launch.toJson(),
-        'commandSha256': server.commandSha256,
-        'workingDirectory': workingDirectory.path,
-        if (requireWorkerProfile) 'requireWorkerProfile': true,
-      }),
-    );
+    process.stdin.writeln(jsonEncode(request));
     await process.stdin.flush();
     await process.stdin.close();
     final String line;
@@ -85,7 +104,7 @@ class EngineMcpProbe implements McpProbePort {
       process.kill(ProcessSignal.sigkill);
       throw McpPolicyException(
         'mcp_probe_failed',
-        'The MCP server "${server.serverId}" could not be inspected.',
+        'The MCP server "$serverId" could not be inspected.',
       );
     }
     final Object? decoded;

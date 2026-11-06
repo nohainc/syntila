@@ -21,6 +21,17 @@ class FakeProbe implements McpProbePort {
     McpServerLaunch launch,
   ) async =>
       tools;
+
+  McpRemoteTarget? lastRemote;
+
+  @override
+  Future<List<Map<String, Object?>>> listRemoteTools(
+    McpServerRecord server,
+    McpRemoteTarget remote,
+  ) async {
+    lastRemote = remote;
+    return tools;
+  }
 }
 
 void main() {

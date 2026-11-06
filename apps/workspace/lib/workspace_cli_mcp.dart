@@ -30,6 +30,7 @@ extension _McpOutput on WorkspaceCli {
                   : 'not consented';
           out.writeln(
             '${server['serverId']}  ${server['displayName']}  ($state)  '
+            '${server['remote'] == true ? 'remote ${server['endpoint']}  ' : ''}'
             'tools: ${(server['tools'] as List).join(', ')}',
           );
         }
@@ -51,6 +52,7 @@ extension _McpOutput on WorkspaceCli {
         );
         return true;
       case 'mcp.add':
+      case 'mcp.addRemote':
         out.writeln('Added ${result['serverId']}.');
         out.writeln('Next: ${result['next']}');
         return true;
@@ -79,13 +81,25 @@ extension _McpOutput on WorkspaceCli {
     final doc = Map<String, Object?>.from(result['document'] as Map);
     out.writeln('Review before you consent to this MCP server');
     out.writeln('  Server:     ${doc['serverId']}');
-    out.writeln('  Command:    ${doc['command']}');
-    out.writeln('  Digest:     ${doc['commandSha256']}');
-    out.writeln('  Arguments:  ${(doc['arguments'] as List).join(' ')}');
-    out.writeln(
-      '  Environment names it may read: '
-      '${(doc['environmentNames'] as List).join(', ')}',
-    );
+    if (doc['transport'] == 'remote') {
+      out.writeln('  Remote:     ${doc['endpoint']}');
+      out.writeln(
+        '  Token:      ${doc['tokenEnvironmentName'] ?? 'none (no credential is sent)'}'
+        '${doc['tokenEnvironmentName'] == null ? '' : ' (read from this environment variable when used)'}',
+      );
+      out.writeln(
+        'Everything you send this server leaves this computer. Its tools '
+        'run on someone else\'s machine.',
+      );
+    } else {
+      out.writeln('  Command:    ${doc['command']}');
+      out.writeln('  Digest:     ${doc['commandSha256']}');
+      out.writeln('  Arguments:  ${(doc['arguments'] as List).join(' ')}');
+      out.writeln(
+        '  Environment names it may read: '
+        '${(doc['environmentNames'] as List).join(', ')}',
+      );
+    }
     final tools = (doc['tools'] as List).whereType<Map>().toList();
     out.writeln('  Tools (${tools.length}):');
     for (final tool in tools) {

@@ -11,6 +11,7 @@ starts an MCP server; every server is started by the Engine.
 | --- | --- | --- |
 | `mcp.list` | none | `{servers: [{serverId, displayName, command, consented, enabled, tools}], bindings: {workerTypeId: [serverId]}}` |
 | `mcp.add` | `serverId` (`[a-z0-9][a-z0-9_-]{0,63}`), `displayName`, `command` (existing absolute path), `arguments` (<=32 strings), `environmentNames` (<=16, no `SYNTILA_*`) | `{serverId, next}` |
+| `mcp.addRemote` | `serverId`, `displayName`, `endpoint` (https URL), optional `tokenEnv` (variable NAME), optional `insecureLoopback` (boolean) | `{serverId, next}` |
 | `mcp.consent` | `serverId`, optional `acceptHash` | without hash: `{consentRequired: true, document, documentHash}`; with the matching hash: `{serverId, consented: true, documentHash}` |
 | `mcp.bind` / `mcp.unbind` | `serverId`, `workerTypeId` | `{workerTypeId, serverId, bound}` |
 | `mcp.enable` / `mcp.disable` / `mcp.remove` | `serverId` | `{serverId, enabled}` / `{serverId, removed}` |
@@ -40,6 +41,27 @@ pin (`mcp_definition_changed`).
 `mcp_not_consented`, `mcp_not_enabled`, `mcp_consent_mismatch`,
 `mcp_binary_changed`, `mcp_probe_failed`, plus the Engine's `mcp_*` and
 `plugin_digest_mismatch` codes surfaced from the probe.
+
+## Remote servers (Streamable HTTP)
+
+`mcp.addRemote` registers a server reached over HTTPS and contacts nothing. The
+endpoint must be `https`, without credentials or a fragment (plain `http` only for a
+loopback host with `insecureLoopback`, for development). Only the NAME of the variable
+holding the bearer token is stored; its value is read from the Service's environment each
+time the server is used, handed to the Engine in memory, redacted from messages, and never
+written to the registry, a consent document, a log or Cloud. If the variable is unset the
+operation fails with `mcp_token_missing` without contacting the server.
+
+`mcp.consent` for a remote server shows `transport: "remote"`, the endpoint, the token
+variable name and every tool definition, and the CLI states that everything sent to the
+server leaves the computer. The Engine re-lists the server's tools before every call, so a
+definition changed on the server after consent is refused (`mcp_definition_changed`) even
+though a remote server cannot push `list_changed`.
+
+Remote servers cannot be bound to official Workers yet (`mcp_remote_unsupported`): the
+per-run CLI config files have no `url`/`headers` form. Added error codes:
+`mcp_token_missing`, `mcp_remote_unsupported`, and the Engine's `mcp_auth_required`
+(HTTP 401).
 
 ## Bindings: which Worker types receive which servers
 
