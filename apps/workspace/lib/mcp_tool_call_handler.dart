@@ -76,16 +76,18 @@ class McpToolCallHandler {
             ? Map<String, Object?>.from(result)
             : null;
     var finalCode = code;
+    var finalState = state;
     if (carried != null &&
         utf8.encode(jsonEncode(carried)).length > maxResultBytes) {
       carried = null;
       finalCode = 'result_too_large';
+      finalState = 'unknown';
     }
     return {
       'schemaVersion': 1,
       'taskId': taskId,
       'dispatchKey': 'mcp-tool-v1:$taskId',
-      'state': state,
+      'state': finalState,
       'code': finalCode,
       if (carried != null) 'result': carried,
     };

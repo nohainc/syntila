@@ -64,6 +64,42 @@ export type McpToolStepOutcome = {
   result?: Record<string, unknown>;
 };
 
+/** Treat malformed or unusable persisted outcomes as uncertain, never success. */
+export function normalizeMcpToolStepOutcome(
+  value: unknown,
+): McpToolStepOutcome {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return { state: "unknown", code: "invalid_recorded_outcome" };
+  const record = value as Record<string, unknown>;
+  if (
+    !["completed", "toolError", "rejected", "unknown"].includes(
+      String(record.state),
+    ) ||
+    typeof record.code !== "string" ||
+    !record.code ||
+    record.code.length > 128
+  )
+    return { state: "unknown", code: "invalid_recorded_outcome" };
+  if (record.state === "completed") {
+    if (
+      typeof record.result !== "object" ||
+      record.result === null ||
+      Array.isArray(record.result)
+    )
+      return { state: "unknown", code: "result_unavailable" };
+    try {
+      if (
+        new TextEncoder().encode(JSON.stringify(record.result)).length >
+        256 * 1024
+      )
+        return { state: "unknown", code: "result_too_large" };
+    } catch {
+      return { state: "unknown", code: "invalid_recorded_outcome" };
+    }
+  }
+  return record as unknown as McpToolStepOutcome;
+}
+
 interface McpToolStepEnv {
   readonly SYNTILA_DB: D1Database;
   readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
@@ -138,6 +174,13 @@ export async function runMcpToolStep(
     typeof body.code !== "string"
   )
     return { state: "unknown", code: "invalid_gateway_reply" };
+  if (
+    body.state === "completed" &&
+    (!body.result ||
+      typeof body.result !== "object" ||
+      Array.isArray(body.result))
+  )
+    return { state: "unknown", code: "result_unavailable" };
   return {
     state: body.state as McpToolStepOutcome["state"],
     code: body.code,
@@ -173,6 +216,19 @@ const FAILURE_MESSAGES: Record<string, string> = {
     "The tool call may have run, but its outcome is unknown. It was not retried.",
 };
 
+/** Codes where the tool was called but its output cannot be used. */
+const OUTPUT_UNAVAILABLE_MESSAGES: Record<string, string> = {
+  result_too_large:
+    "The tool may have run and changed things, but its output was too large to keep. It was not retried and nothing was passed to later steps.",
+  result_unavailable:
+    "The tool may have run and changed things, but its output is unavailable. It was not retried and nothing was passed to later steps.",
+};
+
 export function toolStepFailure(outcome: McpToolStepOutcome): string {
+  const unavailable =
+    outcome.state === "unknown"
+      ? OUTPUT_UNAVAILABLE_MESSAGES[outcome.code]
+      : undefined;
+  if (unavailable) return `${unavailable} (${outcome.code})`;
   return `${FAILURE_MESSAGES[outcome.state] ?? "The tool call failed."} (${outcome.code})`;
 }

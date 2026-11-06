@@ -107,6 +107,24 @@ describe("Gateway MCP tool call", () => {
     }
   });
 
+  it("does not return another Workspace's claimed outcome or dispatch again", async () => {
+    const { f, request } = await fixture();
+    try {
+      f.sqlite
+        .exec(`INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('WS2','U','Other','now','now');
+        INSERT INTO mcp_tool_calls(task_id,workspace_id,dispatch_key,claimed_at,state,code,result_json,completed_at)
+        VALUES('tool','WS2','mcp-tool-v1:tool','now','completed','completed','{"content":[{"text":"private"}]}','now')`);
+      const response = await request(call("tool"));
+      expect(response.status).toBe(409);
+      expect(await response.text()).not.toContain("private");
+      expect(
+        (await f.outbound()).filter((m) => m.type === "mcp.tool_call.request"),
+      ).toHaveLength(0);
+    } finally {
+      f.sqlite.close();
+    }
+  });
+
   it("rejects malformed calls and ignores results nobody awaits", async () => {
     const { f, request } = await fixture();
     try {
@@ -125,6 +143,36 @@ describe("Gateway MCP tool call", () => {
       ).toEqual({ n: 0 });
     } finally {
       f.sqlite.close();
+    }
+  });
+
+  it("never records an oversized or mismatched result as success", async () => {
+    for (const bad of [
+      { result: { text: "x".repeat(300 * 1024) } },
+      { dispatchKey: "mcp-tool-v1:other" },
+      { taskId: "other-task" },
+    ]) {
+      const { f, request } = await fixture();
+      try {
+        void request(call("tool"));
+        await outboundRequest(f);
+        await f
+          .send("mcp.tool_call.result", {
+            schemaVersion: 1,
+            taskId: "tool",
+            dispatchKey: "mcp-tool-v1:tool",
+            state: "completed",
+            code: "completed",
+            ...bad,
+          })
+          .catch(() => undefined);
+        const row = f.sqlite
+          .prepare("SELECT state FROM mcp_tool_calls WHERE task_id = 'tool'")
+          .get() as { state: string | null } | undefined;
+        expect(row?.state ?? null).not.toBe("completed");
+      } finally {
+        f.sqlite.close();
+      }
     }
   });
 });

@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import {
+  normalizeMcpToolStepOutcome,
   parseMcpToolStepInput,
   runMcpToolStep,
   toolStepFailure,
@@ -123,4 +124,43 @@ it("explains that an unknown outcome is never retried", () => {
   expect(toolStepFailure({ state: "unknown", code: "result_timeout" })).toMatch(
     /not retried/,
   );
+});
+
+it("does not accept a completed reply without a usable result", async () => {
+  for (const result of [undefined, null, [], "invalid"]) {
+    const { env } = await fixture("active", async () =>
+      Response.json({ state: "completed", code: "result_too_large", result }),
+    );
+    const outcome = await runMcpToolStep(env, scope, input);
+    expect(outcome).toEqual({ state: "unknown", code: "result_unavailable" });
+    expect(toolStepFailure(outcome)).toMatch(/may have run.*not retried/);
+  }
+});
+
+it("fails closed when a persisted outcome cannot supply a usable result", () => {
+  for (const value of [
+    null,
+    {},
+    { state: "completed", code: "result_too_large" },
+    { state: "completed", code: "ok", result: [] },
+    { state: "completed", code: "ok", result: { text: "x".repeat(262145) } },
+  ]) {
+    expect(normalizeMcpToolStepOutcome(value).state).toBe("unknown");
+  }
+  expect(
+    normalizeMcpToolStepOutcome({
+      state: "completed",
+      code: "ok",
+      result: { content: [] },
+    }).state,
+  ).toBe("completed");
+});
+
+it("explains that a tool with unusable output may have run", () => {
+  for (const code of ["result_too_large", "result_unavailable"]) {
+    const message = toolStepFailure({ state: "unknown", code });
+    expect(message).toMatch(/may have run and changed things/);
+    expect(message).toMatch(/not retried/);
+    expect(message).toMatch(/nothing was passed to later steps/);
+  }
 });

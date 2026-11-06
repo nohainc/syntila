@@ -25,8 +25,8 @@ import {
   workStepPromptInputs,
 } from "./workflow-prompts.js";
 import {
-  type McpToolStepOutcome,
   parseMcpToolStepInput,
+  normalizeMcpToolStepOutcome,
   runMcpToolStep,
   toolStepFailure,
   toolStepResult,
@@ -1088,7 +1088,13 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           ),
         ),
     );
-    const outcome = JSON.parse(encoded) as McpToolStepOutcome;
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(encoded);
+    } catch {
+      decoded = null;
+    }
+    const outcome = normalizeMcpToolStepOutcome(decoded);
     const stepResult = toolStepResult(input, outcome, startedAt);
     if (outcome.state !== "completed") {
       return {

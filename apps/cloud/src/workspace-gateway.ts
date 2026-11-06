@@ -172,7 +172,11 @@ export class WorkspaceGateway implements DurableObject {
   >();
   private readonly pendingMcpToolCalls = new Map<
     string,
-    { resolve: (payload: Record<string, unknown>) => void }
+    {
+      resolve: (payload: Record<string, unknown>) => void;
+      // Only the runtime the call was sent to may answer it.
+      workspaceRuntimeId: string | null;
+    }
   >();
   // Margin on top of the call's own timeout for Engine start-up and transport.
   private static readonly MCP_TOOL_CALL_MARGIN_MS = 60_000;
@@ -1252,10 +1256,21 @@ export class WorkspaceGateway implements DurableObject {
         return;
       }
       case "mcp.tool_call.result": {
+        // Malformed or oversized results never get here: the protocol layer
+        // rejects them, the call stays unresolved and ends as unknown on
+        // timeout (never a success, never a replay).
         const parsed = McpToolCallResultSchema.safeParse(message.payload);
         if (!parsed.success) return;
         const pending = this.pendingMcpToolCalls.get(parsed.data.taskId);
         if (!pending) return;
+        // The Service envelope carries no runtime id, so correlate on the
+        // authenticated attachment: a result is accepted only while the same
+        // runtime the call was dispatched to is attached.
+        if (
+          !pending.workspaceRuntimeId ||
+          this.workspaceRuntimeId !== pending.workspaceRuntimeId
+        )
+          return;
         this.pendingMcpToolCalls.delete(parsed.data.taskId);
         pending.resolve(parsed.data);
         return;
@@ -3210,7 +3225,17 @@ export class WorkspaceGateway implements DurableObject {
     const call = parsed.data;
     const db = this.env.SYNTILA_DB;
     const previous = await loadMcpToolCall(db, call.taskId);
-    if (previous) return Response.json(mcpToolCallReply(previous));
+    if (previous) {
+      if (
+        previous.workspaceId !== workspaceId ||
+        previous.dispatchKey !== call.dispatchKey
+      )
+        return Response.json(
+          { error: "Tool call belongs to another Workspace" },
+          { status: 409 },
+        );
+      return Response.json(mcpToolCallReply(previous));
+    }
     // Nothing has been claimed yet, so an offline Workspace is a clean refusal.
     if (!(await this.isRuntimeLive()))
       return Response.json({ error: "Workspace is offline" }, { status: 503 });
@@ -3225,10 +3250,19 @@ export class WorkspaceGateway implements DurableObject {
       workspaceId,
       claimedAt: new Date().toISOString(),
     });
-    if (!claim)
-      return Response.json(
-        mcpToolCallReply(await loadMcpToolCall(db, call.taskId)),
-      );
+    if (!claim) {
+      const existing = await loadMcpToolCall(db, call.taskId);
+      if (
+        existing &&
+        (existing.workspaceId !== workspaceId ||
+          existing.dispatchKey !== call.dispatchKey)
+      )
+        return Response.json(
+          { error: "Tool call belongs to another Workspace" },
+          { status: 409 },
+        );
+      return Response.json(mcpToolCallReply(existing));
+    }
     const finish = async (
       state: McpToolState,
       code: string,
@@ -3246,7 +3280,10 @@ export class WorkspaceGateway implements DurableObject {
       );
     };
     const answer = new Promise<Record<string, unknown>>((resolve) => {
-      this.pendingMcpToolCalls.set(call.taskId, { resolve });
+      this.pendingMcpToolCalls.set(call.taskId, {
+        resolve,
+        workspaceRuntimeId: this.workspaceRuntimeId,
+      });
     });
     try {
       await this.send({

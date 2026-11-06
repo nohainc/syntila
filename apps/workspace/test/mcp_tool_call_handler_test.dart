@@ -95,6 +95,34 @@ void main() {
     final unpinned = (await handler
         .handle({...payload('t3'), 'toolDefinitionHash': 'b' * 64}))!;
     expect(unpinned['state'], 'rejected');
+    await service.add(
+      serverId: 'large',
+      displayName: 'Large',
+      command: Platform.resolvedExecutable,
+      arguments: [
+        File('../../packages/syntila_mcp_protocol/test/fixtures/echo_server.dart')
+            .absolute
+            .path,
+        'large',
+      ],
+    );
+    final largeConsent = await service.consent('large');
+    await service.consent('large',
+        acceptHash: largeConsent['documentHash']! as String);
+    service.enable('large');
+    final largePin = registry.get('large')!.toolPins['echo']!;
+    final largeRequest = {
+      ...payload('large-task'),
+      'serverId': 'large',
+      'toolDefinitionHash': largePin
+    };
+    final oversized = (await handler.handle(largeRequest))!;
+    expect(oversized['state'], 'unknown');
+    expect(oversized['code'], 'result_too_large');
+    expect(oversized.containsKey('result'), isFalse);
+    final duplicate = (await handler.handle(largeRequest))!;
+    expect(duplicate['state'], 'unknown');
+    expect(duplicate['code'], 'dispatch_already_claimed');
     expect(supervisor.activeSlotCount, 0);
   });
 }

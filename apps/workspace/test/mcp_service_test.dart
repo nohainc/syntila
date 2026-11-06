@@ -69,6 +69,40 @@ void main() {
     return hash;
   }
 
+  test('sanitized inventory excludes local launch data and reports pins',
+      () async {
+    await addServer();
+    await consentFully();
+    service.enable('files');
+    service.bind('chatgpt', 'files');
+    final item = service.sanitizedInventory().single;
+    expect(item, {
+      'serverId': 'files',
+      'displayName': 'Files',
+      'transport': 'local',
+      'consented': true,
+      'enabled': true,
+      'availability': 'unknown',
+      'tools': [
+        {
+          'name': 'read',
+          'definitionHash': service.pinsFor('files').hashes['read']
+        }
+      ],
+      'boundWorkerTypes': ['chatgpt'],
+    });
+    final encoded = item.toString();
+    for (final value in [
+      server.path,
+      '--root',
+      '/tmp',
+      'API_TOKEN',
+      'secret'
+    ]) {
+      expect(encoded, isNot(contains(value)));
+    }
+  });
+
   test('the command digest is the raw SHA-256 of the file bytes', () async {
     await addServer();
     final stored = McpRegistry(File('${root.path}/mcp.json')).get('files')!;
@@ -267,8 +301,38 @@ void main() {
       await consentFully();
       service.enable('files');
       service.bind('chatgpt', 'files');
-      expect((await service.launchesForWorker('chatgpt')).single.name, 'files');
-      expect(await service.launchesForWorker('claude'), isEmpty);
+      // Default-deny: a binding is a ceiling. Without a Step selection (missing
+      // or empty) the bound server is not exposed.
+      expect(await service.launchesForWorker('chatgpt'), isEmpty);
+      expect(await service.launchesForWorker('chatgpt', selectedServerIds: []),
+          isEmpty);
+      expect(
+          (await service
+                  .launchesForWorker('chatgpt', selectedServerIds: ['files']))
+              .single
+              .name,
+          'files');
+      await expectLater(
+        service.launchesForWorker('claude', selectedServerIds: ['files']),
+        throwsA(_code('mcp_server_not_bound')),
+      );
+    });
+
+    test('an unselected bound server is neither launched nor validated',
+        () async {
+      await addServer();
+      await consentFully();
+      service.enable('files');
+      service.bind('chatgpt', 'files');
+      // Consent revoked: only a Step that selects it fails; others get nothing.
+      service.disable('files');
+      expect(await service.launchesForWorker('chatgpt'), isEmpty);
+      expect(await service.launchesForWorker('chatgpt', selectedServerIds: []),
+          isEmpty);
+      await expectLater(
+        service.launchesForWorker('chatgpt', selectedServerIds: ['files']),
+        throwsA(_code('mcp_not_enabled')),
+      );
     });
 
     test('a Step selection narrows the bound servers and never widens them',
@@ -330,7 +394,7 @@ void main() {
       await addServer();
       service.bind('chatgpt', 'files');
       await expectLater(
-        service.launchesForWorker('chatgpt'),
+        service.launchesForWorker('chatgpt', selectedServerIds: ['files']),
         throwsA(_code('mcp_not_enabled')),
       );
     });
@@ -427,16 +491,26 @@ void main() {
       await consentFully();
       service.enable('files');
       service.bind('chatgpt', 'files');
+      const selected = ['files'];
       await expectLater(
-        mcpLaunchesForExecution(service, 'chatgpt', withoutSlot),
+        mcpLaunchesForExecution(service, 'chatgpt', withoutSlot,
+            selectedServerIds: selected),
         throwsA(_code('mcp_unsupported')),
       );
       await expectLater(
-        mcpLaunchesForExecution(service, 'chatgpt', const {}),
+        mcpLaunchesForExecution(service, 'chatgpt', const {},
+            selectedServerIds: selected),
         throwsA(_code('mcp_unsupported')),
       );
+      // Bound but not selected: no servers, so even a Profile without the slot
+      // runs, and a Profile with the slot receives nothing.
+      expect(await mcpLaunchesForExecution(service, 'chatgpt', withoutSlot),
+          isEmpty);
       expect(
-        (await mcpLaunchesForExecution(service, 'chatgpt', withSlot))
+          await mcpLaunchesForExecution(service, 'chatgpt', withSlot), isEmpty);
+      expect(
+        (await mcpLaunchesForExecution(service, 'chatgpt', withSlot,
+                selectedServerIds: selected))
             .single
             .name,
         'files',
@@ -447,7 +521,8 @@ void main() {
       await addServer();
       service.bind('chatgpt', 'files');
       await expectLater(
-        mcpLaunchesForExecution(service, 'chatgpt', withSlot),
+        mcpLaunchesForExecution(service, 'chatgpt', withSlot,
+            selectedServerIds: ['files']),
         throwsA(_code('mcp_not_enabled')),
       );
     });

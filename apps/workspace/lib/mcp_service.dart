@@ -104,6 +104,33 @@ class McpService {
           },
       ];
 
+  /// A secret-free inventory projection. Availability is unknown until a
+  /// live diagnostic mechanism supplies fresh evidence; consent and enablement
+  /// alone do not prove that the server is reachable or its definitions match.
+  /// This is not an authorization decision.
+  List<Map<String, Object?>> sanitizedInventory() {
+    final bindings = _registry.bindings();
+    return [
+      for (final server in _registry.list())
+        {
+          'serverId': server.serverId,
+          'displayName': server.displayName,
+          'transport': server.isRemote ? 'remote' : 'local',
+          'consented': server.consented,
+          'enabled': server.enabled,
+          'availability': 'unknown',
+          'tools': [
+            for (final name in (server.toolPins.keys.toList()..sort()))
+              {'name': name, 'definitionHash': server.toolPins[name]},
+          ],
+          'boundWorkerTypes': ([
+            for (final entry in bindings.entries)
+              if (entry.value.contains(server.serverId)) entry.key,
+          ]..sort()),
+        },
+    ];
+  }
+
   Future<Map<String, Object?>> add({
     required String serverId,
     required String displayName,
@@ -282,13 +309,12 @@ class McpService {
 
   Map<String, List<String>> bindings() => _registry.bindings();
 
-  /// Launches for one execution of [workerTypeId]: the bound servers, or an
-  /// empty list when none are bound. A bound server that is not consented,
-  /// enabled and unchanged refuses the whole request (never a silent subset).
-  ///
-  /// [selectedServerIds] is a Step's own selection (from the accepted
-  /// assignment). It narrows the bound servers and never widens them: naming a
-  /// server that is not bound to this Worker type refuses the execution.
+  /// Launches for one execution of [workerTypeId]. Default-deny: effective
+  /// servers = consented (and enabled) ∩ bound to this Worker type ∩ named by
+  /// the Step. A missing [selectedServerIds] and an explicit empty list both
+  /// yield no servers; Worker bindings are a ceiling, never a grant. Naming a
+  /// server that is not bound to this Worker type, or that is not consented,
+  /// enabled and unchanged, refuses the whole request (never a silent subset).
   Future<List<McpServerLaunch>> launchesForWorker(
     String workerTypeId, {
     List<String>? selectedServerIds,
@@ -320,7 +346,8 @@ class McpService {
       ];
       return selected.isEmpty ? const [] : resolveLaunches(selected);
     }
-    return ids.isEmpty ? const [] : resolveLaunches(ids);
+    // No accepted Step selection: nothing is granted.
+    return const [];
   }
 
   /// Tool pins the Engine host must enforce for this server.
@@ -604,8 +631,8 @@ Future<List<McpServerLaunch>> mcpLaunchesForExecution(
 }
 
 /// The MCP server IDs a Step selected, from the accepted assignment's input.
-/// Null when the assignment carries no selection (the Worker-type bindings
-/// alone decide). An empty list means none; a malformed value refuses.
+/// Null when the assignment carries no selection, which grants no servers
+/// (default-deny; an empty list means the same). A malformed value refuses.
 List<String>? assignmentMcpServerIds(Map<String, Object?> payload) {
   final input = payload['input'];
   final value = input is Map ? input['mcpServerIds'] : null;

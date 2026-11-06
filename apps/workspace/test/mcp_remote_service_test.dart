@@ -72,6 +72,25 @@ void main() {
     return hash;
   }
 
+  test('sanitized remote inventory omits endpoint and token details', () async {
+    addAcme();
+    await consentFully();
+    service.enable('acme');
+    final item = service.sanitizedInventory().single;
+    expect(item['transport'], 'remote');
+    expect(item['availability'], 'unknown');
+    expect(item['tools'], [
+      {
+        'name': 'search',
+        'definitionHash': service.pinsFor('acme').hashes['search']
+      }
+    ]);
+    final encoded = jsonEncode(item);
+    for (final value in ['mcp.acme.example', 'ACME_MCP_TOKEN', token]) {
+      expect(encoded, isNot(contains(value)));
+    }
+  });
+
   group('addRemote validation', () {
     test('accepts https and records only the token variable NAME', () {
       addAcme();

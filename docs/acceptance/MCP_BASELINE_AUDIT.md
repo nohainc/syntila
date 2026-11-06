@@ -72,15 +72,54 @@ verification of every change in that range or an exhaustive per-requirement
 acceptance matrix. Phase 0's complete-history and full-regression acceptance
 criteria remain open pending that review and the appropriate component gates.
 
-## Phase 1 work in progress
+## Phase 1 — security and execution correctness
 
-Oversized Workspace tool results are classified as unknown and never carry a
-partial result. Cloud rejects a completed gateway reply without an object
-result as unknown. Focused Workspace and Cloud tests exercise oversized output,
-duplicate dispatch and malformed completed replies. This does not complete
-Phase 1: default-deny selection with snapshot compatibility, provider
-isolation, comprehensive correlation and authorization review, and the full
-security regression suite remain open. Phase 0's acceptance remains open too.
+**Selection semantics (default-deny).** Effective servers = consented and
+enabled ∩ bound to the Worker type ∩ named by the accepted Step selection
+(`mcpTools`, delivered as `input.mcpServerIds`; Cloud strips any
+request-supplied value). A missing selection and `[]` both yield no servers;
+Worker bindings are a ceiling and never a grant. Naming an unbound server
+fails with `mcp_server_not_bound`; naming a server that is not consented,
+enabled and unchanged fails with `mcp_not_enabled` / `mcp_binary_changed`.
+Servers that are bound but unselected are neither launched nor validated.
+Previously a missing selection exposed every bound server; that was the
+defect. **Compatibility:** persisted Workflow versions and in-flight snapshots
+without `mcpTools` are now interpreted as "no servers". This is deliberately
+a reduction in capability, never an expansion; a Step that relied on bindings
+must be reconfigured with an explicit selection. No Workflow-level default
+exists yet, so none is honored.
+
+**Provider isolation.** Engine behavior is unchanged and verified: Profiles
+with the `mcpConfigArguments` slot (today only Claude release 3) always get a
+private config, empty for an empty selection, with `--strict-mcp-config`;
+compaction reuses the same arguments. Profiles without the slot (Codex,
+Gemini and the others) refuse any non-empty selection with `mcp_unsupported`.
+**Known limitation:** for those Profiles an empty selection cannot exclude the
+user's own global provider MCP configuration, because no verified isolation
+flag exists; Phase 3 owns that evidence. MCP-enabled execution is refused, not
+silently degraded.
+
+**Unusable tool results.** The Workspace reports an oversized result as
+`unknown`/`result_too_large` with no partial result; Cloud treats a
+`completed` reply without an object result, and any malformed or oversized
+persisted outcome, as `unknown`. Unknown outcomes fail the Step and are not
+replayed. The failure text now says the tool may have run and changed things,
+was not retried, and nothing was passed to later steps.
+
+**Authorization and correlation.** Workspace admission re-checks consent,
+enablement, the frozen tool hash and the executable digest immediately before
+execution (existing tests). The gateway refuses to return another Workspace's
+claimed call, and accepts a result only while the runtime the call was
+dispatched to is still attached; malformed, oversized or key-mismatched
+results are rejected by the protocol layer and the call ends as unknown on
+timeout.
+
+**Tests added/changed.** `mcp_service_test.dart` (missing, empty, unbound,
+unselected-but-revoked, selected-but-revoked), `mcp-tool-step.test.ts`
+(failure wording), `mcp-tool-call-gateway.test.ts` (invalid and mismatched
+results are never recorded as success). **Remaining/not claimed:** full
+Cloud-to-Service-to-Engine acceptance, Codex/Gemini isolation (Phase 3), a UI
+surface beyond the Cloud failure text, and crash-boundary durability (Phase 5).
 
 ## Phase 3 preliminary provider inspection
 
