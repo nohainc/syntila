@@ -187,6 +187,7 @@ class WorkspaceCloudConnection {
     this.workerInventoryProvider,
     this.allowedFolderProvider,
     this.workerUsageProvider,
+    this.mcpToolCallHandler,
     this.inputAvailableHandler,
     this.onSessionReady,
     this.workspaceUpdateAvailableHandler,
@@ -253,6 +254,11 @@ class WorkspaceCloudConnection {
   /// forwarded verbatim; the Service never interprets it.
   final Future<Map<String, Object?>> Function(String workerId)?
       workerUsageProvider;
+
+  /// Executes one Cloud-originated MCP tool call and returns the
+  /// `mcp.tool_call.result` payload, or null when a duplicate is in flight.
+  final Future<Map<String, Object?>?> Function(Map<Object?, Object?> payload)?
+      mcpToolCallHandler;
 
   /// Called on `input.available`: uploaded Work Request inputs can be
   /// listed and downloaded (Input Delivery v1). The message has no content.
@@ -1840,6 +1846,8 @@ class WorkspaceCloudConnection {
       _handleDeliveryProbe(decoded);
     } else if (decoded['type'] == 'worker.usage.request') {
       unawaited(_handleWorkerUsageRequest(decoded));
+    } else if (decoded['type'] == 'mcp.tool_call.request') {
+      unawaited(_handleMcpToolCallRequest(decoded));
     } else if (decoded['type'] == 'input.available') {
       inputAvailableHandler?.call();
     }
@@ -1892,6 +1900,30 @@ class WorkspaceCloudConnection {
       }));
     } on Object {
       // The requester times out; never disturb the connection for this.
+    }
+  }
+
+  /// Runs an MCP tool call and answers once. A lost answer is safe: Cloud
+  /// holds the durable dispatch claim and treats silence as outcome-unknown.
+  Future<void> _handleMcpToolCallRequest(Map<String, dynamic> decoded) async {
+    final payload = decoded['payload'];
+    final handler = mcpToolCallHandler;
+    if (payload is! Map || handler == null) return;
+    Map<String, Object?>? result;
+    try {
+      result = await handler(payload);
+    } on Object {
+      return;
+    }
+    final socket = _transport;
+    if (result == null || socket == null || sessionId == null) return;
+    try {
+      socket.send(jsonEncode({
+        ..._envelope('mcp.tool_call.result', result),
+        'correlationId': decoded['messageId'],
+      }));
+    } on Object {
+      // Never disturb the connection; Cloud reconciles to unknown.
     }
   }
 

@@ -30,6 +30,9 @@ import 'package:syntila_workspace/plugin_subsystem.dart';
 import 'package:syntila_workspace/plugin_worker_runtime.dart';
 import 'package:syntila_workspace/bundled_cli_worker_engine_loader.dart';
 import 'package:syntila_workspace/cli_worker_engine_supervisor.dart';
+import 'package:syntila_workspace/mcp_tool_call_executor.dart';
+import 'package:syntila_workspace/mcp_tool_call_fence.dart';
+import 'package:syntila_workspace/mcp_tool_call_handler.dart';
 import 'package:syntila_workspace/worker_diagnostic_store.dart';
 
 String _runtimeFailureDiagnostic(
@@ -157,6 +160,20 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
     config: effectiveConfig,
     engineSupervisor: () => cliWorkerEngineSupervisor,
   );
+  final mcpToolCallHandler = cliWorkerEngineSupervisor == null
+      ? null
+      : McpToolCallHandler(
+          executor: McpToolCallExecutor(
+            mcpSubsystem.service,
+            cliWorkerEngineSupervisor,
+            McpToolCallFence(
+              Directory('${workspacePaths.mcpDirectory.path}/dispatch-fence'),
+            ),
+          ),
+          stateDirectory: Directory('${workspacePaths.mcpDirectory.path}/calls'),
+          workingDirectory:
+              Directory('${workspacePaths.mcpDirectory.path}/work'),
+        );
   final pluginSubsystem = PluginSubsystem.build(
     config: effectiveConfig,
     credentialStore: secureCredentialStore,
@@ -897,6 +914,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
               folder.toCloudSummary(),
           ],
           inputAvailableHandler: inputDelivery?.wake,
+          mcpToolCallHandler: mcpToolCallHandler?.handle,
           workerUsageProvider: (workerId) async {
             final supervisor = cliWorkerEngineSupervisor;
             final worker = await localWorkerRegistry.find(workerId);
