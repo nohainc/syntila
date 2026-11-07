@@ -290,3 +290,51 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
     }
   });
 });
+
+describe("Support Space sidebar visibility", () => {
+  async function setup() {
+    const { sqliteD1 } = await import("./helpers/sqlite-d1.js");
+    const { sqlite, db } = sqliteD1();
+    const now = new Date().toISOString();
+    sqlite.exec(`
+      INSERT INTO users (id, email, display_name, avatar_url, status, created_at, updated_at) VALUES
+        ('user-alice','alice@test.com','Alice',NULL,'active','${now}','${now}'),
+        ('user-support','support@syntila.test','Support',NULL,'active','${now}','${now}');
+    `);
+    const users: Record<string, any> = {
+      alice: { id: "user-alice", email: "alice@test.com", displayName: "Alice", avatarUrl: null, status: "active" },
+      support: { id: "user-support", email: "support@syntila.test", displayName: "Support", avatarUrl: null, status: "active" },
+    };
+    const env = {
+      SYNTILA_ENVIRONMENT: "development",
+      SYNTILA_DB: db,
+      SYNTILA_SUPPORT_ACCOUNT_EMAIL: "support@syntila.test",
+      TEST_AUTHENTICATION: async (req: Request) => {
+        const u = users[req.headers.get("authorization")!.replace("Bearer ", "")];
+        return { userId: u.id, user: u, workspaceId: "", spaceRoles: {}, sessionId: `s-${u.id}`, clientType: "web" };
+      },
+    };
+    const f = (who: string, path: string, init: RequestInit = {}) =>
+      worker.fetch(new Request(`https://syntila.test${path}`, { ...init, headers: { authorization: `Bearer ${who}`, "content-type": "application/json" } }), env as never);
+    const ids = async (who: string) =>
+      ((await (await f(who, "/api/spaces")).json()) as any).spaces.map((s: any) => s.id);
+    const res = await f("alice", "/api/people/support", { method: "POST" });
+    const { spaceId } = (await res.json()) as { spaceId: string };
+    return { sqlite, f, ids, spaceId };
+  }
+
+  it("is hidden by default, stays hidden after open and replies, and follows the user's setting", async () => {
+    const { sqlite, f, ids, spaceId } = await setup();
+    expect(await ids("alice")).not.toContain(spaceId);
+    await f("alice", `/api/spaces/${spaceId}`); // opening does not unhide
+    expect(await ids("alice")).not.toContain(spaceId);
+
+    expect((await f("alice", `/api/spaces/${spaceId}`, { method: "PATCH", body: JSON.stringify({ hidden: false }) })).status).toBe(200);
+    expect(await ids("alice")).toContain(spaceId);
+    expect(sqlite.prepare("SELECT hidden FROM direct_space_user_state WHERE space_id=? AND user_id='user-alice'").get(spaceId)).toEqual({ hidden: 0 });
+
+    await f("alice", `/api/spaces/${spaceId}`, { method: "PATCH", body: JSON.stringify({ hidden: true }) });
+    expect(await ids("alice")).not.toContain(spaceId);
+    expect(sqlite.prepare("SELECT hidden FROM direct_space_user_state WHERE space_id=? AND user_id='user-alice'").get(spaceId)).toEqual({ hidden: 1 });
+  });
+});

@@ -34,7 +34,7 @@ class Statement {
 }
 
 export function sqliteD1(
-  options: { beforeTurnLifecycleRepair?: boolean } = {},
+  options: { beforeTurnLifecycleRepair?: boolean; beforeOptionalDirectThread?: boolean } = {},
 ) {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(
@@ -119,6 +119,11 @@ export function sqliteD1(
     "0101_worker_plugins.sql",
     "0104_mcp_tool_dispatch_fence.sql",
     "0105_direct_spaces_and_personal_connections.sql",
+    "0106_three_space_member_rights.sql",
+    ...(options.beforeOptionalDirectThread ? [] : ["0107_optional_direct_general_thread.sql"]),
+    "0108_support_spaces.sql",
+    "0109_support_space_default_hidden.sql",
+    "0110_release_paused_phases.sql",
   ]) {
     sqlite.exec(
       readFileSync(

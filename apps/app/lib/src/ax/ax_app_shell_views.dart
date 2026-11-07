@@ -86,6 +86,7 @@ extension _AxAppShellViews on _AxAppStateMixin {
                                       onOpenExternal: (uri) =>
                                           browserNavigation.openExternal(uri),
                                       onOpenArchivedSpaces: _openArchivedSpaces,
+                                      onMessageSupport: _messageSupport,
                                       sidebarWidth: _desktopSidebarWidth,
                                       onSidebarWidthChanged: (width) =>
                                           _setViewPreferences(_viewPreferences
@@ -154,6 +155,7 @@ extension _AxAppShellViews on _AxAppStateMixin {
                                             browserNavigation.openExternal(uri),
                                         onOpenArchivedSpaces:
                                             _openArchivedSpaces,
+                                        onMessageSupport: _messageSupport,
                                         onToggleCollapse: () =>
                                             _setViewPreferences(
                                                 _viewPreferences.copyWith(
@@ -301,6 +303,12 @@ extension _AxAppShellViews on _AxAppStateMixin {
                                       },
                                       onOpenExternal: (uri) =>
                                           browserNavigation.openExternal(uri),
+                                      onMessageSupport: () {
+                                        _updateState(() {
+                                          _sidebarPeeking = false;
+                                        });
+                                        unawaited(_messageSupport());
+                                      },
                                       onOpenArchivedSpaces: () {
                                         _updateState(() {
                                           _sidebarPeeking = false;
@@ -943,6 +951,7 @@ extension _AxAppShellViews on _AxAppStateMixin {
                           onToggleTheme: _toggleTheme,
                           onSetThemeMode: _setThemeMode,
                           onOpenArchivedSpaces: _openArchivedSpaces,
+                                      onMessageSupport: _messageSupport,
                           onOpenAbout: () => unawaited(_showAboutSyntila()),
                           onLogout: () => unawaited(_logout()),
                           onOpenExternal: (uri) =>

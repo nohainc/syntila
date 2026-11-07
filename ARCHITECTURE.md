@@ -294,7 +294,7 @@ in the current runtime. See [ADR-019](docs/decisions/ADR-019-per-user-workflow-e
 and [User Workflow Configuration v1](docs/specifications/USER_WORKFLOW_CONFIGURATION_V1.md)
 for persistence, migration, resolution, security, cache, and validation boundaries.
 
-People is a private, automatic directory of established collaborators, separate from Space membership. Cloud persists one user-ID pair after membership establishment and joins current profiles; AX shares one reactive session cache between People and invitations. See [People v1](docs/specifications/PEOPLE_V1.md).
+People is a private, automatic directory of established collaborators, separate from Space membership. Cloud persists one user-ID pair after membership establishment and joins current profiles; AX shares one reactive session cache between People and invitations. See [People v1](docs/specifications/PEOPLE_V1.md). Each user can obtain one personal support Space with the account named by `SYNTILA_SUPPORT_ACCOUNT_EMAIL`, provisioned idempotently as a Direct Space (see People v1, Personal support Space). Support Spaces are hidden in the sidebar by default under a per-user account setting and are human-messaging only: Chat, Work, and own Workers are denied server-side.
 
 The user owns a private People directory of known collaborators and participates in Spaces through Members, Invitations, and Permissions. First collaboration follows email invitation → acceptance → People relationship; future collaboration follows People selection → Space invitation → acceptance. Both invitation entry points share one permission-aware subsystem, with known recipients persisted by user ID.
 

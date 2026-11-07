@@ -125,10 +125,8 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
   late AxCollaborationMutations _collaboration;
   AxWorkflowConfigurations? _workflows;
   final _tabCancels = <void Function()>[];
-  bool get canManage =>
-      widget.space.isDirect ||
-      widget.space.effectivePermissions.manageOwnThreads;
-  bool get canInvite => !widget.space.isDirect && widget.space.role == 'owner';
+  bool get canManage => widget.space.effectivePermissions.manageOwnThreads;
+  bool get canInvite => widget.space.role == 'owner';
   final _savingMembers = <String>{};
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -195,7 +193,8 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
         if (mounted) _updateState(() => apply(state));
       }, fireImmediately: false));
       _ensure(_streams.engine, query);
-    } else if (widget.section == SpacePageSection.members) {
+    } else if (widget.section == SpacePageSection.members &&
+        !widget.space.isDirect) {
       final membersQuery = _queries.members(id);
       final invitationsQuery = _queries.invitations(id);
       void apply() {
@@ -247,6 +246,9 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.space.isDirect && widget.section == SpacePageSection.members) {
+      return const SizedBox.shrink();
+    }
     if (widget.embedded) {
       return widget.section == SpacePageSection.members
           ? _membersTab()
@@ -385,8 +387,7 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                                 ),
                               SizedBox(
                                 key: const ValueKey('space-header-actions'),
-                                child: (widget.space.isDirect || isOwner) &&
-                                        !_editing
+                                child: isOwner && !_editing
                                     ? PopupMenuButton<String>(
                                         color: SyntilaMenuStyle.background(
                                             _isDark),
@@ -439,32 +440,29 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                                                         .textSecondary(_isDark),
                                                     size: 18),
                                                 const SizedBox(width: 8),
-                                                Text(widget.space.isDirect
-                                                    ? 'Hide'
-                                                    : 'Archive'),
+                                                const Text('Archive'),
                                               ],
                                             ),
                                           ),
-                                          if (!widget.space.isDirect)
-                                            PopupMenuItem(
-                                              height: 36,
-                                              textStyle: SyntilaMenuStyle
-                                                  .popupTextStyle(_isDark),
-                                              value: 'delete',
-                                              child: const Row(
-                                                children: [
-                                                  Icon(Icons.delete_outline,
-                                                      size: 18,
-                                                      color:
-                                                          SyntilaColors.error),
-                                                  SizedBox(width: 8),
-                                                  Text('Delete',
-                                                      style: TextStyle(
-                                                          color: SyntilaColors
-                                                              .error)),
-                                                ],
-                                              ),
+                                          PopupMenuItem(
+                                            height: 36,
+                                            textStyle:
+                                                SyntilaMenuStyle.popupTextStyle(
+                                                    _isDark),
+                                            value: 'delete',
+                                            child: const Row(
+                                              children: [
+                                                Icon(Icons.delete_outline,
+                                                    size: 18,
+                                                    color: SyntilaColors.error),
+                                                SizedBox(width: 8),
+                                                Text('Delete',
+                                                    style: TextStyle(
+                                                        color: SyntilaColors
+                                                            .error)),
+                                              ],
                                             ),
+                                          ),
                                         ],
                                       )
                                     : const SizedBox.shrink(),
@@ -494,59 +492,4 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
           ),
         ),
       );
-
-  Future<void> _confirmRemoveConnection() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Remove connection?'),
-        content: Text(
-          'This will remove your connection with ${widget.space.name.isNotEmpty ? widget.space.name : 'this person'}. The conversation history will be retained, but new messages cannot be sent until you reconnect.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: SyntilaColors.error),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    try {
-      final peer = _findPeerUserId();
-      if (peer != null) {
-        await _people.disconnect(peer);
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showNotice(
-          const SnackBar(content: Text('Connection removed.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showNotice(
-          SnackBar(content: Text('Could not remove connection: $e')),
-        );
-      }
-    }
-  }
-
-  String? _findPeerUserId() {
-    final peerFromMembers =
-        members.where((m) => m.email != widget.viewerEmail).firstOrNull?.userId;
-    if (peerFromMembers != null) return peerFromMembers;
-    final peerFromPeople = _people.engine
-        .peek(_people.query)
-        .data
-        ?.where((p) => p.directSpaceId == widget.space.id)
-        .firstOrNull
-        ?.userId;
-    return peerFromPeople;
-  }
 }

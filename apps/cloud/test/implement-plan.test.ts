@@ -391,7 +391,7 @@ phases:
 });
 
 describe("Implement workflow: phase completion and auto-pause", () => {
-  it("pauses the queue and marks work request as waiting when output has STATUS: NEEDS_INPUT", async () => {
+  it("pauses the remaining phases and finishes the phase when output has STATUS: NEEDS_INPUT", async () => {
     const { sqlite, env } = fixture();
 
     sqlite
@@ -438,14 +438,15 @@ describe("Implement workflow: phase completion and auto-pause", () => {
     const wrRow = sqlite
       .prepare("SELECT status FROM work_requests WHERE id = 'wr-phase-1'")
       .get() as { status: string };
-    expect(wrRow.status).toBe("waiting");
+    // Not left half-open: a reply runs as a normal request.
+    expect(wrRow.status).not.toBe("waiting");
 
     const queueState = sqlite
       .prepare("SELECT paused_reason, failure_message FROM thread_request_queue_state WHERE thread_id = 'T'")
       .get() as { paused_reason: string; failure_message: string };
     expect(queueState).toBeDefined();
     expect(queueState.paused_reason).toBe("failure");
-    expect(queueState.failure_message).toContain("Setup Database paused: Database credentials not specified");
+    expect(queueState.failure_message).toContain("Setup Database needs your input: Database credentials not specified");
   });
 
   it("pauses the queue and marks work request as failed when verification output has STATUS: FAILED", async () => {

@@ -1,3 +1,4 @@
+import 'package:syntila_app/src/ax/sync/persistence/ax_plan_decisions.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 
@@ -1999,11 +2000,11 @@ void main() {
     // Verify approvePlan was called with 'final' mode
     expect(data.calls, contains('approvePlan:wr-plan-1:final'));
 
-    // Verify confirmation message
+    // The decision closes the card for good, even when the response rebuilds.
     expect(
-        find.textContaining(
-            'Plan approved. Implementation steps added to Thread Queue.'),
-        findsOneWidget);
+        find.byKey(const ValueKey('plan-approval-card-wr-plan-1')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    expect(AxPlanDecisions.isDecided('wr-plan-1'), isTrue);
   });
   testWidgets('a failed request pauses the queue until the user resumes it',
       (tester) async {
@@ -4615,7 +4616,7 @@ void main() {
   });
 
   testWidgets(
-      'Direct Space header menu reuses standard space menu (Edit, Hide; no Delete)',
+      'Direct Space header menu reuses standard space menu (Edit, Archive, Delete)',
       (tester) async {
     const space = AxSpace(
       id: 'space-direct-1',
@@ -4655,10 +4656,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Edit'), findsOneWidget);
-    expect(find.text('Hide'), findsOneWidget);
-    expect(find.text('Delete'), findsNothing);
+    expect(find.text('Archive'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
 
-    await tester.tap(find.text('Hide'));
+    await tester.tap(find.text('Archive'));
     await tester.pumpAndSettle();
     expect(archived, isTrue);
   });
@@ -4735,63 +4736,12 @@ void main() {
   });
 
   testWidgets(
-      'Direct Space members tab displays fixed participants without permission toggles or invite button',
+      'NewThreadPage shows the Direct Space identity and allows thread creation',
       (tester) async {
     const space = AxSpace(
       id: 'space-direct-1',
       name: 'Julia Roberts',
-      kind: 'direct',
-      branch: '',
-      lastActivity: '',
-    );
-    final members = [
-      const AxSpaceMember(
-        userId: 'user-me',
-        displayName: 'My Name',
-        email: 'me@example.com',
-        role: 'member',
-        createdAt: '2026-01-01',
-      ),
-      const AxSpaceMember(
-        userId: 'user-peer',
-        displayName: 'Julia Roberts',
-        email: 'julia@example.com',
-        role: 'member',
-        createdAt: '2026-01-01',
-      ),
-    ];
-    final dataSource = _DirectSpaceMembersSource(members);
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(
-          child: SpacePage(
-            space: space,
-            section: SpacePageSection.members,
-            viewerEmail: 'me@example.com',
-            dataSource: dataSource,
-            onOpenThread: (_) {},
-            onArchive: () {},
-            onDelete: () {},
-          ),
-        ),
-      ),
-    ));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Participants'), findsOneWidget);
-    expect(find.text('My Name'), findsOneWidget);
-    expect(find.text('Julia Roberts'), findsWidgets);
-    expect(find.text('You'), findsOneWidget);
-    expect(find.text('Message'), findsOneWidget);
-    expect(find.text('Invite'), findsNothing);
-  });
-
-  testWidgets(
-      'NewThreadPage allows thread creation and hides settings in Direct Space',
-      (tester) async {
-    const space = AxSpace(
-      id: 'space-direct-1',
-      name: 'Julia Roberts',
+      role: 'owner',
       kind: 'direct',
       branch: '',
       lastActivity: '',
@@ -4828,7 +4778,6 @@ void main() {
 
     expect(find.text('Julia Roberts'), findsOneWidget);
     expect(find.text('Personal connection'), findsOneWidget);
-    expect(find.text('Settings'), findsNothing);
 
     await tester.enterText(find.byType(TextField), 'Vacation plans');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -4836,20 +4785,6 @@ void main() {
 
     expect(createdName, 'Vacation plans');
   });
-}
-
-class _DirectSpaceMembersSource extends AxFixtureDataSource {
-  _DirectSpaceMembersSource(this.members);
-  final List<AxSpaceMember> members;
-
-  @override
-  Future<List<AxSpaceMember>> loadSpaceMembers(
-          {required String spaceId}) async =>
-      members;
-
-  @override
-  Future<List<AxThread>> loadSpaceThreads({required String spaceId}) async =>
-      const [];
 }
 
 class _IssueReportDataSource extends AxFixtureDataSource {
@@ -5346,6 +5281,13 @@ class _SharedQueueDataSource extends _SlowSubmissionDataSource
     calls.add('remove:$itemId');
     return _set(AxThreadQueue(
         items: queue.items.where((i) => i.id != itemId).toList()));
+  }
+
+  @override
+  Future<AxThreadQueue> stopThreadQueuePhases(
+      String threadId, String itemId) async {
+    calls.add('stop-phases:$itemId');
+    return queue;
   }
 
   @override

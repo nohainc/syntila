@@ -10,25 +10,36 @@ import {
 import { HttpError } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
 
+const GRANTED_RIGHT_KEYS = ["chat", "work", "manageOwnThreads"] as const;
+
+/**
+ * Accepts the three granted rights. Legacy clients also send `useOwnWorkers`;
+ * it is tolerated (any boolean) but ignored, because it is derived from Chat.
+ */
 export function validateMemberPermissions(
   value: unknown,
 ): SpaceMemberPermissions {
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
   if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    Object.keys(value).length !== SPACE_MEMBER_PERMISSION_KEYS.length ||
-    SPACE_MEMBER_PERMISSION_KEYS.some(
-      (key) => typeof (value as Record<string, unknown>)[key] !== "boolean",
-    )
+    !record ||
+    Object.keys(record).some(
+      (key) => !(SPACE_MEMBER_PERMISSION_KEYS as readonly string[]).includes(key),
+    ) ||
+    GRANTED_RIGHT_KEYS.some((key) => typeof record[key] !== "boolean") ||
+    (Object.hasOwn(record, "useOwnWorkers") &&
+      typeof record.useOwnWorkers !== "boolean")
   ) {
     throw new HttpError(400, "All member permissions must be boolean values");
   }
-  const permissions = value as SpaceMemberPermissions;
-  // Own Workers are a Chat refinement; denying Chat also denies them.
+  const chat = record.chat as boolean;
   return {
-    ...permissions,
-    useOwnWorkers: permissions.chat && permissions.useOwnWorkers,
+    chat,
+    work: record.work as boolean,
+    manageOwnThreads: record.manageOwnThreads as boolean,
+    useOwnWorkers: chat,
   };
 }
 
@@ -38,16 +49,33 @@ export async function loadSpacePermissions(
   spaceId: string,
 ) {
   const row = await env.SYNTILA_DB.prepare(
-    `SELECT sm.role, s.settings_json AS settingsJson, COALESCE(s.kind, 'group') AS kind FROM space_memberships sm
+    `SELECT sm.role, s.settings_json AS settingsJson, COALESCE(s.kind, 'group') AS kind,
+            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = s.id) AS isSupport
+     FROM space_memberships sm
      JOIN spaces s ON s.id = sm.space_id WHERE sm.space_id = ?1 AND sm.user_id = ?2`,
   )
     .bind(spaceId, userId)
-    .first<{ role: string; settingsJson: string; kind: string }>();
+    .first<{
+      role: string;
+      settingsJson: string;
+      kind: string;
+      isSupport: number;
+    }>();
   if (!row) throw new HttpError(403, "Space membership is required");
+  const isSupport = row.isSupport === 1;
   return {
     role: row.role,
-    rights:
-      row.kind === "direct"
+    kind: row.kind,
+    isSupport,
+    // Support Spaces are human messaging only: no Chat, Work, or own Workers.
+    rights: isSupport
+      ? {
+          ...defaultSpaceMemberPermissions("collaborator"),
+          chat: false,
+          work: false,
+          useOwnWorkers: false,
+        }
+      : row.kind === "direct"
         ? defaultSpaceMemberPermissions("collaborator")
         : spaceMemberPermissions(row.role, row.settingsJson, userId),
     settingsJson: row.settingsJson,
@@ -108,6 +136,10 @@ export async function requireWorkflowPermission(
 ) {
   const policy = await loadSpacePermissions(env, userId, spaceId);
   const chat = workflowId === "chat";
+  if (policy.isSupport)
+    throw new HttpError(403, "Support Threads accept messages only");
+  if (policy.kind === "direct" && !chat)
+    throw new HttpError(403, "Personal Spaces support Chat only");
   if (!(chat ? policy.rights.chat : policy.rights.work)) {
     throw new HttpError(
       403,
@@ -120,7 +152,6 @@ export async function requireWorkflowPermission(
     env,
     spaceId,
     workflowId,
-    userId,
   );
   if (configuration.configurations[0]?.enabled === false)
     throw new HttpError(403, "Workflow is disabled in this Space");

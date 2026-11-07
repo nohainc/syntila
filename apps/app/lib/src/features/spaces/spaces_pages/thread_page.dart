@@ -248,7 +248,7 @@ class _ThreadPageState extends State<ThreadPage>
 
   /// The saved Thread tab now selects the conversation composer target:
   /// index 0 sends a Chat message, index 1 asks AI (a Work Request).
-  bool get _askAiMode => _tabController.index == 1;
+  bool get _askAiMode => !widget.space.isSupport && _tabController.index == 1;
 
   /// Read-only AI History (the former Work timeline) beside or, on narrow
   /// layouts, instead of the conversation.
@@ -841,6 +841,7 @@ class _ThreadPageState extends State<ThreadPage>
   List<AxBuiltinWorkflow> get _currentWorkflows =>
       _currentWorkflowVersions(_availableWorkflows);
   List<AxBuiltinWorkflow> get _availableWorkflows => _workflowCatalog
+      .where((workflow) => !widget.space.isDirect || workflow.id == 'chat')
       // Only runnable workflows are offered: hidden (unreleased) and locked
       // (Plus required) ones are not. Cloud still enforces both.
       .where((workflow) =>
@@ -985,12 +986,16 @@ class _ThreadPageState extends State<ThreadPage>
   bool _workflowWorkspaceLoaded = false;
   bool get _chatWorkflowSelected =>
       _effectiveWorkflow.split(':').first == 'chat';
-  List<AxWorker> get _composerWorkers => _chatWorkflowSelected
-      ? [..._spaceWorkers, ..._ownChatWorkers]
-      : _spaceWorkers;
-  List<AxWorker> get _composerEligibleWorkers => _chatWorkflowSelected
-      ? [..._eligibleWorkers, ..._ownChatWorkers.where((w) => w.isReady)]
-      : _eligibleWorkers;
+  List<AxWorker> get _composerWorkers => widget.space.isDirect
+      ? _ownChatWorkers
+      : _chatWorkflowSelected
+          ? [..._spaceWorkers, ..._ownChatWorkers]
+          : _spaceWorkers;
+  List<AxWorker> get _composerEligibleWorkers => widget.space.isDirect
+      ? _ownChatWorkers.where((w) => w.isReady).toList()
+      : _chatWorkflowSelected
+          ? [..._eligibleWorkers, ..._ownChatWorkers.where((w) => w.isReady)]
+          : _eligibleWorkers;
   AxWorkflowConfigurations? _workflowConfigurations;
   void Function()? _cancelWorkflowConfigurations;
   void Function()? _cancelWorkflowDefault;
@@ -1517,7 +1522,7 @@ class _ThreadPageState extends State<ThreadPage>
     // the Space's own, so none is offered as the viewer's own.
     // In Direct Spaces, each participant can always use their own workers in Chat.
     _ownChatWorkers = (widget.space.isDirect ||
-            (widget.space.effectivePermissions.useOwnWorkers &&
+            (widget.space.effectivePermissions.chat &&
                 (_selectedWorkflowWorkspaceId != null ||
                     _workflowWorkspaceLoaded)))
         ? [
@@ -2841,7 +2846,7 @@ class _ThreadPageState extends State<ThreadPage>
                     },
                   ),
                 )),
-        leadingControls: _composerModeControls(),
+        leadingControls: widget.space.isSupport ? null : _composerModeControls(),
         inputHeight: _composerInputHeight,
         showControlTooltips: false,
         controller: _discussionController,
@@ -2895,7 +2900,7 @@ class _ThreadPageState extends State<ThreadPage>
           })? onSelectExecutionParameters}) =>
       _WorkComposer(
         onSelectExecutionParameters: onSelectExecutionParameters,
-        leadingControls: _composerModeControls(),
+        leadingControls: widget.space.isSupport ? null : _composerModeControls(),
         inputHeight: _composerInputHeight,
         requestController: _requestController,
         historyController: _workHistoryController,
@@ -2903,10 +2908,15 @@ class _ThreadPageState extends State<ThreadPage>
         currentUserId: widget.currentUserId,
         currentUserName: widget.currentUserName,
         workflow: _effectiveWorkflow,
+        hideWorkflowSelection: widget.space.isDirect,
         workflowCatalog: _availableWorkflows,
         workConfig: _composerWorkConfig,
         researchConfiguration: _userWorkflowConfigurations
             .where((configuration) => configuration.workflowId == 'research')
+            .firstOrNull,
+        implementConfiguration: _userWorkflowConfigurations
+            .where(
+                (configuration) => configuration.workflowId == 'plan_implement')
             .firstOrNull,
         spaceWorkers: _composerWorkers,
         eligibleWorkers: _composerEligibleWorkers,
@@ -2959,6 +2969,7 @@ class _ThreadPageState extends State<ThreadPage>
         onSynthesizePartial:
             widget.dataSource == null ? null : _synthesizePartialResearch,
         onApprovePlan: widget.dataSource == null ? null : _approvePlan,
+        onRevisePlan: widget.dataSource == null ? null : _revisePlan,
         onHistoryNavigate: _openRequestHistory,
         historyPrompts: _requestHistoryOpen ? _requestHistoryPrompts : null,
         historyOpenDirection: _requestHistoryDirection,

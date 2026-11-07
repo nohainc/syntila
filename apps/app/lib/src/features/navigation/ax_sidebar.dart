@@ -37,6 +37,7 @@ class AxSidebar extends AppSidebar {
     required super.onOpenAbout,
     required super.onOpenExternal,
     super.onOpenArchivedSpaces,
+    super.onMessageSupport,
     super.onToggleCollapse,
     super.compact = false,
   });
@@ -63,6 +64,7 @@ class AxIconRail extends AppIconRail {
     required super.onOpenAbout,
     required super.onOpenExternal,
     super.onOpenArchivedSpaces,
+    super.onMessageSupport,
     super.onToggleCollapse,
     super.sidebarWidth,
     super.onSidebarWidthChanged,

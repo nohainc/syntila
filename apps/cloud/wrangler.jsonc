@@ -18,6 +18,7 @@
     },
   ],
   "vars": {
+    "SYNTILA_SUPPORT_ACCOUNT_EMAIL": "syntila@nohainc.com",
     "SYNTILA_PROFILE_LAB_OWNER_EMAIL": "vitalii@nohainc.com",
     "SYNTILA_ENVIRONMENT": "development",
     // Optional social sign-in; empty disables a provider. Declared here so

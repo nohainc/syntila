@@ -18,7 +18,16 @@ import { createWorkRequestForUser } from "./work-creation.js";
  * author may edit, remove, or move their own queued request to the front.
  */
 
-const ACTIVE_STATUSES = "('queued', 'running', 'waiting')";
+/**
+ * Work that keeps the queue waiting. A phase that paused for input stays
+ * `waiting` after its Workflow finished; it holds the remaining phases (the
+ * queue pause), but not the requests people send in reply.
+ */
+const processingWork = (alias: string) => `(${alias}.status IN ('queued', 'running')
+  OR (${alias}.status = 'waiting' AND (
+    EXISTS (SELECT 1 FROM workflow_tasks pt WHERE pt.work_request_id = ${alias}.id
+             AND pt.status IN ('queued', 'running', 'waiting'))
+    OR NOT EXISTS (SELECT 1 FROM workflow_tasks pt WHERE pt.work_request_id = ${alias}.id))))`;
 /** A send that has not finished in this time is retried by the sweep. */
 const STALE_SENDING_MS = 2 * 60 * 1000;
 
@@ -211,7 +220,12 @@ export async function advanceThreadQueue(
   {
     failedRequest = false,
     pauseMessage,
-  }: { failedRequest?: boolean; pauseMessage?: string } = {},
+    forceHead = false,
+  }: {
+    failedRequest?: boolean;
+    pauseMessage?: string;
+    forceHead?: boolean;
+  } = {},
 ): Promise<void> {
   const db = env.SYNTILA_DB;
   const head = await db
@@ -241,11 +255,11 @@ export async function advanceThreadQueue(
     )
     .bind(threadId)
     .first();
-  if (paused) return;
+  if (paused && !forceHead) return;
   const active = await db
     .prepare(
-      `SELECT 1 AS found FROM work_requests
-        WHERE thread_id = ?1 AND status IN ${ACTIVE_STATUSES} LIMIT 1`,
+      `SELECT 1 AS found FROM work_requests w
+        WHERE w.thread_id = ?1 AND ${processingWork("w")} LIMIT 1`,
     )
     .bind(threadId)
     .first();
@@ -307,7 +321,11 @@ export async function advanceThreadQueue(
 export async function advanceThreadQueueSafely(
   env: SecurityEnv,
   threadId: string,
-  options?: { failedRequest?: boolean; pauseMessage?: string },
+  options?: {
+    failedRequest?: boolean;
+    pauseMessage?: string;
+    forceHead?: boolean;
+  },
 ) {
   try {
     await advanceThreadQueue(env, threadId, options);
@@ -335,7 +353,7 @@ export async function sweepThreadRequestQueues(env: SecurityEnv) {
                          WHERE s.thread_id = q.thread_id)
         AND NOT EXISTS (SELECT 1 FROM work_requests w
                          WHERE w.thread_id = q.thread_id
-                           AND w.status IN ${ACTIVE_STATUSES})
+                           AND ${processingWork("w")})
       LIMIT 50`,
   ).all<{ threadId: string }>();
   for (const { threadId } of threads.results ?? [])
@@ -349,6 +367,7 @@ export async function sweepThreadRequestQueues(env: SecurityEnv) {
  * PUT    /api/threads/:id/queue/:item           edit your request
  * DELETE /api/threads/:id/queue/:item           remove your request
  * POST   /api/threads/:id/queue/:item/send-now  move your request first
+ * POST   /api/threads/:id/queue/:item/stop-phases  remove every queued phase of that plan
  */
 export async function handleThreadRequestQueue(
   request: Request,
@@ -395,6 +414,38 @@ export async function handleThreadRequestQueue(
       .first<{ position: number | null; n: number }>();
     // A pause belongs to the requests it held; a new queue starts running.
     if (!last?.n) await resume(env, threadId);
+    // People's requests run between implementation phases instead of after
+    // the whole plan: they go after earlier requests but before the next phase.
+    const nextPhase = body.isPhased
+      ? null
+      : await db
+          .prepare(
+            `SELECT MIN(position) AS position FROM thread_request_queue
+              WHERE thread_id = ?1 AND json_extract(request_json, '$.isPhased') = 1`,
+          )
+          .bind(threadId)
+          .first<{ position: number | null }>();
+    let position = (last?.position ?? 0) + 1;
+    if (nextPhase?.position != null) {
+      const before = await db
+        .prepare(
+          "SELECT MAX(position) AS position FROM thread_request_queue WHERE thread_id = ?1 AND position < ?2",
+        )
+        .bind(threadId, nextPhase.position)
+        .first<{ position: number | null }>();
+      position =
+        ((before?.position ?? nextPhase.position - 1) + nextPhase.position) / 2;
+    }
+    // A plan paused for input waits for this reply: it is sent right away and
+    // the remaining phases stay paused until someone resumes them.
+    const planPaused =
+      nextPhase?.position != null &&
+      !!(await db
+        .prepare(
+          "SELECT 1 AS found FROM thread_request_queue_state WHERE thread_id = ?1",
+        )
+        .bind(threadId)
+        .first());
     await db
       .prepare(
         `INSERT INTO thread_request_queue
@@ -406,11 +457,11 @@ export async function handleThreadRequestQueue(
         threadId,
         context.userId,
         JSON.stringify(body),
-        (last?.position ?? 0) + 1,
+        position,
         now,
       )
       .run();
-    await advanceThreadQueueSafely(env, threadId);
+    await advanceThreadQueueSafely(env, threadId, { forceHead: planPaused });
     await publishQueueUpdated(env, threadId, spaceId);
     return queueResponse(await loadQueue(env, threadId), 201);
   }
@@ -475,11 +526,36 @@ export async function handleThreadRequestQueue(
       .bind(JSON.stringify(body), now, itemId)
       .run();
   } else if (method === "DELETE" && !action) {
+    if (existingRequest.isPhased)
+      throw new HttpError(
+        400,
+        "A single implementation phase cannot be removed. Stop all phases instead.",
+      );
     await db
       .prepare(
         "DELETE FROM thread_request_queue WHERE id = ?1 AND status = 'queued'",
       )
       .bind(itemId)
+      .run();
+    const left = await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1",
+      )
+      .bind(threadId)
+      .first<{ n: number }>();
+    if (!left?.n) await resume(env, threadId);
+  } else if (method === "POST" && action === "stop-phases") {
+    const planId = existingRequest.planWorkRequestId;
+    if (!existingRequest.isPhased || typeof planId !== "string")
+      throw new HttpError(400, "This request is not an implementation phase");
+    await db
+      .prepare(
+        `DELETE FROM thread_request_queue
+          WHERE thread_id = ?1 AND status = 'queued' AND author_user_id = ?2
+            AND json_extract(request_json, '$.planWorkRequestId') = ?3`,
+      )
+      // D1 rejects LIKE patterns over 50 bytes, which a plan id exceeds.
+      .bind(threadId, context.userId, planId)
       .run();
     const left = await db
       .prepare(
@@ -509,8 +585,9 @@ export async function handleThreadRequestQueue(
       )
       .bind((first?.position ?? 0) - 1, now, itemId)
       .run();
-    await resume(env, threadId);
-    await advanceThreadQueueSafely(env, threadId);
+    // A paused queue (for example after a failed phase) stays paused: only
+    // this request is sent, the remaining phases wait for an explicit resume.
+    await advanceThreadQueueSafely(env, threadId, { forceHead: true });
   } else {
     throw new HttpError(405, "Unsupported method");
   }

@@ -150,8 +150,10 @@ class _WorkComposer extends StatelessWidget {
     required this.currentUserName,
     required this.workflow,
     required this.workflowCatalog,
+    this.hideWorkflowSelection = false,
     this.workConfig = const <String, dynamic>{},
     this.researchConfiguration,
+    this.implementConfiguration,
     this.spaceWorkers = const <AxWorker>[],
     this.eligibleWorkers = const <AxWorker>[],
     required this.loadingWorkflows,
@@ -183,6 +185,7 @@ class _WorkComposer extends StatelessWidget {
     required this.onCancelRun,
     this.onSynthesizePartial,
     this.onApprovePlan,
+    this.onRevisePlan,
     required this.onWorkflowChanged,
     required this.onRun,
     this.selectionMissing = false,
@@ -229,9 +232,11 @@ class _WorkComposer extends StatelessWidget {
   final String? currentUserId;
   final String? currentUserName;
   final String workflow;
+  final bool hideWorkflowSelection;
   final List<AxBuiltinWorkflow> workflowCatalog;
   final Map<String, dynamic> workConfig;
   final AxUserWorkflowConfiguration? researchConfiguration;
+  final AxUserWorkflowConfiguration? implementConfiguration;
   final List<AxWorker> spaceWorkers;
   final List<AxWorker> eligibleWorkers;
   final bool loadingWorkflows;
@@ -275,6 +280,9 @@ class _WorkComposer extends StatelessWidget {
     Map<String, dynamic>? implementer,
     Map<String, dynamic>? verifier,
   })? onApprovePlan;
+
+  /// Implement workflow: ask the AI to update the plan with extra guidance.
+  final Future<bool> Function(String requestId, String prompt)? onRevisePlan;
   final ValueChanged<String> onWorkflowChanged;
 
   final Future<void> Function() onRun;
@@ -475,9 +483,10 @@ class _WorkComposer extends StatelessWidget {
           onSynthesizePartial: localWorkProgress.containsKey(request.id)
               ? null
               : onSynthesizePartial,
-          onApprovePlan: localWorkProgress.containsKey(request.id)
-              ? null
-              : onApprovePlan,
+          onApprovePlan:
+              localWorkProgress.containsKey(request.id) ? null : onApprovePlan,
+          onRevisePlan:
+              localWorkProgress.containsKey(request.id) ? null : onRevisePlan,
           // Members cancel only their own requests.
           onCancelRun: localWorkProgress.containsKey(request.id) ||
                   (currentUserId != null &&
@@ -751,99 +760,109 @@ class _WorkComposer extends StatelessWidget {
               ),
             ),
           ),
-          DecoratedBox(
-            key: const ValueKey('work-workflow-track'),
-            decoration: BoxDecoration(
-              border: Border.all(color: colors.outlineVariant),
-              borderRadius: const BorderRadius.all(Radius.circular(8)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(1),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                if (!singleList) ...[
-                  primaryWorkflow(
-                      'chat', 'Chat', 'Chat — talk with the Worker'),
-                  primaryWorkflow(
-                      'direct', 'Work', 'Work — run a tracked Work Request'),
-                ],
-                // Hide the menu when it has nothing to list.
-                if (menuWorkflows.isNotEmpty)
-                  Builder(
-                    builder: (workflowBtnContext) => Semantics(
-                      key: const ValueKey('work-choose-workflow'),
-                      label: menuSelected
-                          ? 'Choose workflow, ${selectedWorkflow.name} selected'
-                          : 'More workflows',
-                      selected: menuSelected,
-                      button: true,
-                      enabled: canSelect && menuWorkflows.isNotEmpty,
-                      child: Material(
-                        animationDuration: Duration.zero,
-                        color: menuSelected ? activeBackground : controlBg,
-                        borderRadius: controlBorderRadius,
-                        child: InkWell(
+          if (!hideWorkflowSelection)
+            DecoratedBox(
+              key: const ValueKey('work-workflow-track'),
+              decoration: BoxDecoration(
+                border: Border.all(color: colors.outlineVariant),
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(1),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (!singleList) ...[
+                    primaryWorkflow(
+                        'chat', 'Chat', 'Chat — talk with the Worker'),
+                    primaryWorkflow(
+                        'direct', 'Work', 'Work — run a tracked Work Request'),
+                  ],
+                  // Hide the menu when it has nothing to list.
+                  if (menuWorkflows.isNotEmpty)
+                    Builder(
+                      builder: (workflowBtnContext) => Semantics(
+                        key: const ValueKey('work-choose-workflow'),
+                        label: menuSelected
+                            ? 'Choose workflow, ${selectedWorkflow.name} selected'
+                            : 'More workflows',
+                        selected: menuSelected,
+                        button: true,
+                        enabled: canSelect && menuWorkflows.isNotEmpty,
+                        child: Material(
+                          animationDuration: Duration.zero,
+                          color: menuSelected ? activeBackground : controlBg,
                           borderRadius: controlBorderRadius,
-                          hoverColor: Colors.transparent,
-                          splashFactory: NoSplash.splashFactory,
-                          onTap: canSelect && menuWorkflows.isNotEmpty
-                              ? () async {
-                                  final value = await _showAnchoredMenu<String>(
-                                    buttonContext: workflowBtnContext,
-                                    itemHeight: 36.0,
-                                    items: [
-                                      for (final item in menuWorkflows)
-                                        workflowEntry(item, workflowBtnContext),
-                                    ],
-                                  );
-                                  if (!workflowBtnContext.mounted ||
-                                      value == null) {
-                                    return;
+                          child: InkWell(
+                            borderRadius: controlBorderRadius,
+                            hoverColor: Colors.transparent,
+                            splashFactory: NoSplash.splashFactory,
+                            onTap: canSelect && menuWorkflows.isNotEmpty
+                                ? () async {
+                                    final value =
+                                        await _showAnchoredMenu<String>(
+                                      buttonContext: workflowBtnContext,
+                                      itemHeight: 36.0,
+                                      items: [
+                                        for (final item in menuWorkflows)
+                                          workflowEntry(
+                                              item, workflowBtnContext),
+                                      ],
+                                    );
+                                    if (!workflowBtnContext.mounted ||
+                                        value == null) {
+                                      return;
+                                    }
+                                    onWorkflowChanged(value);
                                   }
-                                  onWorkflowChanged(value);
-                                }
-                              : null,
-                          child: Container(
-                            alignment: Alignment.center,
-                            height: composerButtonSize,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ConstrainedBox(
-                                  constraints:
-                                      const BoxConstraints(maxWidth: 130),
-                                  child: Text(
-                                    menuSelected
-                                        ? selectedWorkflow.name
-                                        : (singleList ? 'Workflow' : 'More'),
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          color: menuSelected
-                                              ? selectedForeground
-                                              : inactiveForeground,
-                                        ),
+                                : null,
+                            child: Container(
+                              alignment: Alignment.center,
+                              height: composerButtonSize,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 130),
+                                    child: Text(
+                                      menuSelected
+                                          ? selectedWorkflow.name
+                                          : (singleList ? 'Workflow' : 'More'),
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: menuSelected
+                                                ? selectedForeground
+                                                : inactiveForeground,
+                                          ),
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 2),
-                                const Icon(Icons.keyboard_arrow_down, size: 14),
-                              ],
+                                  const SizedBox(width: 2),
+                                  const Icon(Icons.keyboard_arrow_down,
+                                      size: 14),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ]),
+                ]),
+              ),
             ),
-          ),
           if (_selectedWorkflow()?.id == 'research' &&
               _selectedWorkflow()?.version == 2)
             ResearchExecutionSelection(
               configuration: researchConfiguration,
+              workers: spaceWorkers,
+            )
+          else if (_selectedWorkflow()?.id == 'plan_implement')
+            ResearchExecutionSelection.implement(
+              configuration: implementConfiguration,
               workers: spaceWorkers,
             )
           else
@@ -1662,6 +1681,7 @@ class _WorkTimelineCard extends StatelessWidget {
     required this.onCancelRun,
     this.onSynthesizePartial,
     this.onApprovePlan,
+    this.onRevisePlan,
     this.onReply,
     this.onSelectExecutionParameters,
   });
@@ -1708,6 +1728,9 @@ class _WorkTimelineCard extends StatelessWidget {
     Map<String, dynamic>? implementer,
     Map<String, dynamic>? verifier,
   })? onApprovePlan;
+
+  /// Implement workflow: ask the AI to update the plan with extra guidance.
+  final Future<bool> Function(String requestId, String prompt)? onRevisePlan;
 
   String get _workflowName =>
       request.workflowName ??
@@ -2446,6 +2469,7 @@ class _WorkTimelineCard extends StatelessWidget {
                                     child: AxPlanApprovalCard(
                                       requestId: request.id,
                                       onApprove: onApprovePlan,
+                                      onRevise: onRevisePlan,
                                       color: metaColor,
                                     ),
                                   ),
@@ -2767,6 +2791,7 @@ class AxToolCallStepCards extends StatelessWidget {
     );
   }
 }
+
 /// Displays verification mode options and an approve action that enqueues
 /// phases into the Thread Request Queue.
 class AxPlanApprovalCard extends StatefulWidget {
@@ -2774,6 +2799,7 @@ class AxPlanApprovalCard extends StatefulWidget {
     super.key,
     required this.requestId,
     required this.onApprove,
+    this.onRevise,
     this.color,
   });
 
@@ -2784,6 +2810,7 @@ class AxPlanApprovalCard extends StatefulWidget {
     Map<String, dynamic>? implementer,
     Map<String, dynamic>? verifier,
   })? onApprove;
+  final Future<bool> Function(String requestId, String prompt)? onRevise;
   final Color? color;
 
   @override
@@ -2793,12 +2820,37 @@ class AxPlanApprovalCard extends StatefulWidget {
 class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
   String _verificationMode = 'per_phase';
   bool _submitting = false;
-  bool _submitted = false;
+  bool _revising = false;
+  final _revisionController = TextEditingController();
+
+  /// Approving, revising or cancelling decides the plan: its card closes and
+  /// never shows again for this response.
+  bool get _dismissed => AxPlanDecisions.isDecided(widget.requestId);
+
+  void _decide() =>
+      setState(() => AxPlanDecisions.markDecided(widget.requestId));
+
+  @override
+  void dispose() {
+    _revisionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _revise() async {
+    final prompt = _revisionController.text.trim();
+    if (prompt.isEmpty || widget.onRevise == null || _revising) return;
+    setState(() => _revising = true);
+    final sent = await widget.onRevise!(widget.requestId, prompt);
+    if (!mounted) return;
+    setState(() => _revising = false);
+    if (sent) _decide();
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (_dismissed) return const SizedBox.shrink();
 
     return Container(
       key: ValueKey('plan-approval-card-${widget.requestId}'),
@@ -2878,63 +2930,76 @@ class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
             ],
           ),
           const SizedBox(height: 14),
-          if (_submitted)
-            Row(
-              children: [
-                const Icon(
-                  Icons.check_circle_outline,
-                  size: 16,
-                  color: Colors.green,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Plan approved. Implementation steps added to Thread Queue.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.green.shade700,
-                    ),
+          if (widget.onRevise != null) ...[
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(
+                child: TextField(
+                  key: ValueKey('revise-plan-field-${widget.requestId}'),
+                  controller: _revisionController,
+                  enabled: !_revising && !_submitting,
+                  minLines: 1,
+                  maxLines: 4,
+                  style: const TextStyle(fontSize: 12),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    hintText: 'Ask the AI to update the plan…',
                   ),
+                  onSubmitted: (_) => _revise(),
                 ),
-              ],
-            )
-          else
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
-                key: ValueKey('approve-plan-button-${widget.requestId}'),
-                onPressed: _submitting || widget.onApprove == null
-                    ? null
-                    : () async {
-                        setState(() => _submitting = true);
-                        final success = await widget.onApprove!(
-                          widget.requestId,
-                          verificationMode: _verificationMode,
-                        );
-                        if (mounted) {
-                          setState(() {
-                            _submitting = false;
-                            if (success) _submitted = true;
-                          });
-                        }
-                      },
-                icon: _submitting
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                key: ValueKey('revise-plan-send-${widget.requestId}'),
+                tooltip: 'Send to update the plan',
+                onPressed: _revising || _submitting ? null : _revise,
+                icon: _revising
                     ? const SizedBox(
                         width: 14,
                         height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.play_arrow_rounded, size: 16),
-                label: Text(
-                  _submitting ? 'Enqueuing phases...' : 'Approve & Start Phases',
-                  style: const TextStyle(fontSize: 12),
-                ),
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.send_rounded, size: 16),
+              ),
+            ]),
+            const SizedBox(height: 10),
+          ],
+          Row(children: [
+            FilledButton.icon(
+              key: ValueKey('approve-plan-button-${widget.requestId}'),
+              onPressed: _submitting || widget.onApprove == null
+                  ? null
+                  : () async {
+                      setState(() => _submitting = true);
+                      final success = await widget.onApprove!(
+                        widget.requestId,
+                        verificationMode: _verificationMode,
+                      );
+                      if (!mounted) return;
+                      setState(() => _submitting = false);
+                      if (success) _decide();
+                    },
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.play_arrow_rounded, size: 16),
+              label: Text(
+                _submitting ? 'Enqueuing phases...' : 'Approve & Start Phases',
+                style: const TextStyle(fontSize: 12),
               ),
             ),
+            const SizedBox(width: 8),
+            TextButton(
+              key: ValueKey('cancel-plan-button-${widget.requestId}'),
+              onPressed: _submitting ? null : _decide,
+              child: const Text('Cancel', style: TextStyle(fontSize: 12)),
+            ),
+          ]),
         ],
       ),
     );
@@ -2957,7 +3022,7 @@ class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
         ),
       ),
       selected: selected,
-      onSelected: _submitted || _submitting
+      onSelected: _submitting
           ? null
           : (bool isSelected) {
               if (isSelected) {
@@ -4167,11 +4232,15 @@ class _QueuedMessagesPanel extends StatelessWidget {
                             ),
                           ],
                           IconButton(
-                            tooltip: 'Remove from queue',
+                            tooltip: isPhased
+                                ? 'Stop all phases'
+                                : 'Remove from queue',
                             iconSize: 16,
                             constraints: iconConstraints,
                             padding: EdgeInsets.zero,
-                            icon: const Icon(Icons.close_rounded),
+                            icon: Icon(isPhased
+                                ? Icons.stop_circle_outlined
+                                : Icons.close_rounded),
                             onPressed: () => onRemove(message),
                           ),
                         ],

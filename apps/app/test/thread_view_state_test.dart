@@ -55,6 +55,22 @@ void main() {
         AxThreadViewState.aiHistoryPane);
   });
 
+  test('Cloud tab never hides the mode holding a local draft', () {
+    final state = AxThreadViewState.withRemote(
+        const AxThreadViewState(tabIndex: 1, workDraft: 'ask ai'), {
+      'tabIndex': 0,
+      'model': 'cloud',
+      'selectionUpdatedAt': '2026-10-21T20:00:09.000Z',
+    })!;
+    expect(state.tabIndex, 1);
+    expect(state.workDraft, 'ask ai');
+    // Without a local copy (another browser) the Cloud tab still applies.
+    expect(
+        AxThreadViewState.withRemote(null, {'tabIndex': 1, 'model': 'm'})!
+            .tabIndex,
+        1);
+  });
+
   group('withRemote', () {
     const local = AxThreadViewState(
       workflowReference: 'direct:2',

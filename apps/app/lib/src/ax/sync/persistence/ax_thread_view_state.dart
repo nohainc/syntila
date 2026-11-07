@@ -70,8 +70,8 @@ class AxThreadViewState {
       };
 
   /// Thread metadata wins over the browser-local copy for the selection
-  /// unless the local selection is newer; the drafts stay local because they
-  /// are never shared through Cloud.
+  /// unless the local selection is newer; the drafts and the tab (composer mode)
+  /// stay local because they are never shared through Cloud.
   static AxThreadViewState? withRemote(
       AxThreadViewState? local, Map<String, dynamic> remote) {
     if (remote.isEmpty) return local;
@@ -92,7 +92,10 @@ class AxThreadViewState {
 
     final tab = remote['tabIndex'];
     return AxThreadViewState(
-      tabIndex: tab is int ? tab.clamp(0, 1) : local?.tabIndex ?? 0,
+      // The tab is the composer mode, so it stays with the local drafts: a
+      // Cloud tab differing from this browser's would restore a draft into
+      // the hidden composer.
+      tabIndex: local?.tabIndex ?? (tab is int ? tab.clamp(0, 1) : 0),
       workflowReference: string('workflowReference'),
       workerId: string('workerId'),
       workerTypeId: string('workerTypeId') ??

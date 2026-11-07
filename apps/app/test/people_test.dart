@@ -971,6 +971,34 @@ void main() {
       expect(source.disconnectedUserId, 'user-eva');
     });
 
+    testWidgets('Message opens a personal Space without a default Thread',
+        (tester) async {
+      String? openedSpaceId;
+      final source = PeopleSource()
+        ..rows = [
+          const AxPerson(
+            userId: 'user-eva',
+            displayName: 'Eva User',
+            email: 'eva@test.com',
+            establishedAt: 'now',
+            sharedSpaceCount: 0,
+            connectionStatus: 'connected',
+            directSpaceId: 'space-direct-eva',
+          )
+        ];
+      final people = AxPeople(source, engine: AxSyncEngine());
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: PeoplePage(
+        people: people,
+        onOpenSpace: (spaceId) => openedSpaceId = spaceId,
+      ))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('message-user-eva')));
+      await tester.pumpAndSettle();
+      expect(openedSpaceId, 'space-direct-eva');
+    });
+
     testWidgets('Disconnected Person shows Reconnect button', (tester) async {
       final source = PeopleSource()
         ..rows = [

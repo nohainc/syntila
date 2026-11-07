@@ -29,7 +29,7 @@ A `direct` Space represents a dedicated one-to-one conversation between two appr
 - For database schema and referential integrity compatibility, `spaces.owner_user_id` is retained and records the inviter (or designated participant).
 - Technical ownership does not confer unequal conversational ownership. Both participants have symmetric, equivalent rights:
   - Reading, posting Discussion messages, and participating in real-time updates.
-  - Executing Chat and initiating Work requests.
+  - Executing Chat using their own Workers; other workflows are unavailable.
   - Creating additional Threads, and managing/renaming Threads they created.
   - Resetting AI conversation context.
 - Administrative powers typically reserved for Space owners are strictly restricted in Direct Spaces:
@@ -44,16 +44,15 @@ A `direct` Space represents a dedicated one-to-one conversation between two appr
   - Renaming, archiving, or managing custom Threads created by the other participant is rejected (`403 Forbidden`). Each participant can only manage custom Threads they created.
   - The default General Thread cannot be renamed or archived (`400 Bad Request`), nor deleted (`403 Forbidden`).
 
-### 3. Lifecycle of the default General Thread
-- Acceptance of a personal invitation atomically provisions or retrieves the unique Direct Space and creates a default Thread named `General`.
-- The default General Thread cannot be deleted by either participant.
-- Either participant may create additional topic-specific Threads.
+### 3. Thread lifecycle
+- Acceptance of a personal invitation provisions or retrieves the unique Direct Space without creating a Thread. Either participant may create Threads.
+- Existing default General Threads are preserved and cannot be deleted by either participant.
 - Thread deletion and conversation clearing strictly enforce the contribution rule: a Thread can only be cleared or deleted if the user created the Thread and no other human has contributed (`has_other_contributions == 0`). The technical owner cannot unilaterally destroy or clear Threads containing the peer's messages or created by the peer.
 
 ### 4. Workspace and execution isolation
 - Membership in a Direct Space does not grant access to the other participant's local Workspace or file tree.
 - Direct Spaces do not support Space-level Workspace attachments; callers attempting to attach a Workspace receive `403 Forbidden`.
-- Workflows execute under existing isolation boundaries: requesters use their own Workspaces via `useOwnWorkers`, or explicitly authorized Person Grants (ADR-020).
+- Workflows execute under existing isolation boundaries: requesters use their own Workers in Chat, which follows the `chat` right (Direct Spaces always allow it), or explicitly authorized Person Grants (ADR-020).
 - Tool calls (`input.toolCall`) in a Direct Space require that the requester owns the target execution Workspace.
 - Local credentials, provider tokens, and filesystem paths remain protected within each participant's own environment.
 
@@ -198,8 +197,8 @@ creation-time `lead_user_id`; the API does not reassign this field.
 
 The v1 rights map lives at `spaces.settings_json.memberPermissions[userId]`.
 Missing maps preserve role defaults: collaborators have Chat, Work and Thread creation;
-viewers can read; owners have all rights. Own Workers in Chat is available by default
-and always available for all members rather than configurable in the Members grid. Workspace
+viewers can read; owners have all rights. Own Workers in Chat is not a granted right:
+it is derived from `chat` (see "Three-right contract" below). Workspace
 attachment requires an explicit grant for non-owners; member invitations remain
 owner-only.
 Malformed stored overrides fail closed. Removing a member removes their override
@@ -207,9 +206,9 @@ and revokes their contributed Workspace Grants.
 
 `PATCH /api/spaces/:id/members/:userId/permissions` accepts
 `{ permissions: { chat, useOwnWorkers, work, manageOwnThreads } }`.
-All four fields must be booleans; extra fields are rejected. `useOwnWorkers`
-is stored and returned as false whenever `chat` is false, and a stored
-override without it grants no own Workers. Owner rights
+`chat`, `work` and `manageOwnThreads` must be booleans; unknown fields are
+rejected. `useOwnWorkers` is optional and, if sent, must be a boolean but is
+ignored; responses always return it equal to `chat`. Owner rights
 cannot be changed. Existing role presets remain available through the role
 endpoint and reset the member's explicit rights to that preset. Space and
 member read models include effective `permissions`. Ordinary Space responses
@@ -226,7 +225,7 @@ flags and removes `settings.allowWork`; obsolete writes receive 400. History is
 preserved, and accepted runs retain their execution evidence. Already-running
 provider calls are not cancelled by a settings change.
 
-Own Workers in Chat (`useOwnWorkers`) lets a member answer the Chat workflow
+Own Workers in Chat (derived from `chat`) lets a member answer the Chat workflow
 with a Worker from a Workspace they own, instead of a Worker from the Space's
 Workflow Workspace. Only Workers the member owns qualify; Workers other people
 share with them (Person Grants, the Space Workspace) do not. On first use the
@@ -272,6 +271,41 @@ Invitation acceptance cannot rewrite an existing member's rights.
 Migration 0025 removes obsolete `inviteMembers` snapshots from persisted Space
 settings. Deploy Cloud before the updated AX app. Older clients cannot bypass
 the owner-only invitation boundary or current member rights.
+
+## Three-right contract
+
+Owners grant exactly three rights to non-owner members. Defaults for a stored-override-free
+member: collaborator = all three; viewer = none (read-only); owner = all, not editable;
+direct-Space participants = collaborator defaults.
+
+| Right | Semantics | Enforcement points |
+|---|---|---|
+| `chat` | Discuss and run the Chat workflow. Includes answering with a Worker from a Workspace the member owns (the "personal Worker"). | `requireWorkflowPermission`, scheduler `rights.chat`, thread `discuss`/`execute` |
+| `work` | Run non-Chat workflows; sets the execution ceiling, intersected with Workspace grant and Step policy. | `requireWorkflowPermission`, scheduler `rights.work` |
+| `manageOwnThreads` | Create Threads and manage Threads the member leads. Never grants Chat or Work. | `requireSpaceRight`, `canManageThread` |
+
+**Personal Worker behavior.** `useOwnWorkers` is no longer an independent right. The
+effective value is `chat`, computed in `spaceMemberPermissions` and
+`validateMemberPermissions`, and the stored value is never read. Everything else is
+unchanged: only Workers the requester owns qualify, only for Chat, with a read-only
+`repository:read` Space grant created on first use, and the scheduler still rejects other
+members' personal Workers (`own_worker_not_allowed`). The member is never granted the
+Space's Workflow Workspace by this derivation.
+
+**Data conversion.** No data rewrite is required for correctness. Stored
+`memberPermissions[userId].useOwnWorkers` is ignored on read and may stay until a later
+cleanup migration drops it. Cases: (1) `chat:true`, `useOwnWorkers:true` or absent: no
+change in effect (absent previously denied own Workers and now allows them, as the
+documented default intended); (2) `chat:false`: unchanged, no own Workers; (3) `chat:true`,
+`useOwnWorkers:false` explicit: this widens access. The Members grid never exposed the
+field, so these rows can only come from direct API writes; the cleanup migration must list
+them (audit event) before dropping the field, and the owner should be told. Malformed
+overrides still fail closed to no rights.
+
+**Client compatibility.** Cloud keeps returning four fields in `permissions` and accepts
+the legacy four-field PATCH body, so shipped AX apps keep working (they send
+`useOwnWorkers` from state and hide it in the grid). New clients may send three fields.
+Deploy Cloud first; the field is removed from responses only after old clients age out.
 
 ## Private notes
 
@@ -342,8 +376,23 @@ is required. Personal hide/unhide is outside this feature.
 
 Direct Spaces (`spaces.kind = 'direct'`) represent approved 1:1 personal connections and enforce distinct authorization semantics:
 - **Strict Two-Participant Invariant:** Direct Spaces are permanently fixed to exactly two members. Member invitations, third-party additions, role mutations, ownership transfers, and converting the Space to a group are rejected (`403 Forbidden`).
-- **Symmetric Conversation & Execution Rights:** Both participants possess identical conversational and execution rights regardless of technical owner/collaborator role assignments. Both can create custom Threads, post messages, run Chat workflows with their authorized personal AI Workers, and trigger Work requests.
+- **Symmetric Conversation & Execution Rights:** Both participants can create custom Threads, post messages, and run Chat with Workers in their own Workspaces. Personal Spaces do not permit other workflows or another participant's Workers.
 - **Protected General Thread & Destructive Actions:** The default `General` Thread cannot be deleted by either participant. Deleting the Direct Space itself via `DELETE /api/spaces/:id` is blocked (`403 Forbidden`).
 - **Workspace Isolation:** Direct Space participation never grants access to the peer's personal Workspace or AI credentials. Workflows execute only on Workspaces explicitly owned by the requesting member or granted via explicit Person Grants.
 - **Contact Removal & Blocking:** Disconnecting freezes the Direct Space into a read-only state, preventing new direct messages or AI runs until reconnected. Blocking (`POST /api/people/blocks/:userId`) halts messaging and AI execution bidirectionally.
 - **Account Deletion Ownership Transfer:** Deleting an account transfers technical ownership of Direct Spaces to the active surviving participant, preserving thread history without orphan foreign keys.
+
+## Space member rights (three-right contract)
+
+Owners grant exactly three rights per member, stored under `settings.memberPermissions[userId]` and, for pending invitations, `settings.invitationPermissions[invitationId]`:
+
+| Right | Default (owner / collaborator / viewer) | Enforcement |
+| --- | --- | --- |
+| `chat` | yes / yes / no | Start Chat runs (`run.start`); run Chat on the member's own Workers outside the Space Workflow Workspace. |
+| `work` | yes / yes / no | Start Workflow runs on the Space Workflow Workspace (`run.start`). |
+| `manageOwnThreads` | yes / yes / no | Create and manage the member's own Threads (`spaces:write`). |
+
+- `spaces:write` needs any right; `run.start` needs `chat` or `work`; read is inherent in membership. Owners hold all rights and cannot be overridden; invitation management, `runs:control` and `spaces:manage` are owner-only. Direct Spaces ignore stored overrides and use collaborator defaults.
+- Stored values count only when strictly `true`; absent or malformed values grant nothing. A member with no override gets role defaults. Invitation acceptance intersects the snapshot with the inviter's current rights.
+- `useOwnWorkers` is derived from `chat`, never stored or read from storage. Cloud still tolerates it in write bodies (ignored) so older clients keep working; Cloud responses may still include it for them.
+- Migration `0106_three_space_member_rights.sql` removes the legacy key from both snapshot maps, preserving other settings and leaving absent or malformed data untouched. It is idempotent. Previously independent `useOwnWorkers: false` records no longer restrict members who hold `chat`; the only access change is that those members can use their own Workers.

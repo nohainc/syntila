@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
 import 'package:syntila_app/src/ax/sync/ax_session_catalogs.dart';
+import 'package:syntila_app/src/ax/sync/ax_discussion_cache.dart';
 import 'package:syntila_app/src/ax/sync/ax_sync_engine.dart';
 import 'package:syntila_app/src/ax/sync/ax_workflow_configurations.dart';
 import 'package:syntila_app/src/ax/sync/ax_work_history.dart';
@@ -108,6 +109,88 @@ class _ResearchSource extends IntegrationSource {
 }
 
 void main() {
+  testWidgets('personal Space settings hide Workspace and folder selection',
+      (tester) async {
+    final source = IntegrationSource();
+    final engine = AxSyncEngine();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: NewThreadPage(
+      space: const AxSpace(
+          id: 's',
+          name: 'Personal',
+          kind: 'direct',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      dataSource: source,
+      workflowConfigurations:
+          AxWorkflowConfigurations(source, engine: engine, spaceId: 's'),
+      discussionCache: AxDiscussionCache.forSource(source),
+      workHistoryCache: AxWorkHistoryCache.forSource(source),
+      threadViewStateStore: MemoryAxThreadViewStateStore(),
+      createThread: (_) async => throw UnimplementedError(),
+      onOpenThread: (_) {},
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text('Members'), findsNothing);
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('space-workspace')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('space-additional-folders')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('personal Threads force Chat and hide workflow selection',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final source = IntegrationSource()..workers = [worker('a')];
+    final engine = AxSyncEngine();
+    final store = MemoryAxThreadViewStateStore();
+    await store.save(
+        userId: 'user',
+        threadId: 'personal-thread',
+        state: const AxThreadViewState(
+            tabIndex: 1, workflowReference: 'direct:v2'));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      initialTab: 1,
+      space: const AxSpace(
+          id: 's',
+          name: 'Personal',
+          kind: 'direct',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      thread: const AxThread(
+          id: 'personal-thread',
+          spaceId: 's',
+          name: 'Thread',
+          lead: '',
+          status: 'active',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: '',
+          canExecuteWork: true),
+      currentUserId: 'user',
+      dataSource: source,
+      catalogs: AxSessionCatalogs(source, engine: engine),
+      workflowConfigurations: AxWorkflowConfigurations(source, engine: engine),
+      workHistoryCache: AxWorkHistoryCache(source, engine: engine),
+      threadViewStateStore: store,
+      onBackToSpace: () {},
+      onArchive: () {},
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('work-workflow-track')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('work-composer-selection')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets(
       'Research keeps workflow controls and exposes every configured execution',
       (tester) async {

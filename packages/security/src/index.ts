@@ -121,6 +121,12 @@ export function authorize(
   }
 }
 
+/**
+ * Maps the Space member rights contract (see space-permissions.ts) onto
+ * Permissions: `spaces:write` needs chat, work or manageOwnThreads;
+ * `run.start` needs chat or work. `useOwnWorkers` is derived from `chat` and
+ * never consulted here. Owners and rights-less contexts use role defaults.
+ */
 export function allowsSpacePermission(
   role: SpaceRole,
   rights: SpaceMemberPermissions | undefined,

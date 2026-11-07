@@ -153,6 +153,8 @@ export type SecurityEnv = Env & {
   readonly SYNTILA_PROFILE_LAB_OWNER_EMAIL?: string;
   readonly SYNTILA_PROFILE_RELEASE_MANAGER_USER_IDS?: string;
   readonly SYNTILA_ISSUE_SUPPORT_USER_IDS?: string;
+  /** Email of the active Syntila account that staffs personal support Spaces. */
+  readonly SYNTILA_SUPPORT_ACCOUNT_EMAIL?: string;
   readonly BETTER_AUTH_SECRET?: string;
   readonly BETTER_AUTH_URL?: string;
   readonly SYNTILA_AUTH_GITHUB_CLIENT_ID?: string;

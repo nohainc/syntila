@@ -1,4 +1,6 @@
 import 'ax_people.dart';
+import 'sync/ax_support.dart';
+export 'sync/ax_support.dart';
 export 'ax_people.dart';
 import 'ax_notes.dart';
 export 'ax_notes.dart';
@@ -340,6 +342,7 @@ class AxApiClient extends _AxApiClientCore
         AxWorkspacePersonAccessDataSource,
         AxWorkspaceSharingDataSource,
         AxPeopleDataSource,
+        AxSupportDataSource,
         AxThreadReadDataSource,
         AxThreadReadReceiptsDataSource,
         AxReadReceiptPrivacyDataSource,

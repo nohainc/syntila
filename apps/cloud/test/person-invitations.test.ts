@@ -182,12 +182,13 @@ describe("Personal Invitations API (Phase 2)", () => {
     expect(body2.status).toBe("connected");
     expect(body2.directSpaceId).toBeDefined();
 
-    // Verify Direct Space and General Thread exist in DB
+    // The Direct Space starts without an automatically created Thread.
     const ds = sqlite
       .prepare("SELECT * FROM direct_spaces WHERE space_id = ?")
-      .get(body2.directSpaceId) as { space_id: string; general_thread_id: string };
+      .get(body2.directSpaceId) as { space_id: string; general_thread_id: string | null };
     expect(ds).toBeDefined();
-    expect(ds.general_thread_id).toBeDefined();
+    expect(ds.general_thread_id).toBeNull();
+    expect(sqlite.prepare("SELECT id FROM threads WHERE space_id = ?").all(body2.directSpaceId)).toHaveLength(0);
 
     // Verify both participants are in space_memberships
     const members = sqlite

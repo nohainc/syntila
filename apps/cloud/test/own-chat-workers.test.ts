@@ -6,12 +6,13 @@ vi.mock("../src/routes/handlers.js", () => ({
   validateWorkflowWorkerEligibility: admission,
 }));
 import { resolveWorkflowExecutionBindings } from "../src/routes/workflow-execution-configuration.js";
+import { requireWorkflowPermission } from "../src/routes/space-permissions.js";
 
 /**
  * Space "space" uses Workspace "space-ws" (owned by "owner"). "member" owns
  * "own-ws" with Worker "mine" and borrows "lent-ws" with Worker "lent".
  */
-function fixture(memberRights: Record<string, boolean> | null) {
+function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
   const inventory = [
     { workerId: "shared", workspaceId: "space-ws", ownerUserId: "owner" },
     { workerId: "mine", workspaceId: "own-ws", ownerUserId: "member" },
@@ -38,7 +39,10 @@ function fixture(memberRights: Record<string, boolean> | null) {
               return {
                 role: "collaborator",
                 settingsJson: JSON.stringify(settings),
+                kind,
               };
+            if (sql.includes("SELECT i.workspace_id AS workspaceId FROM workspace_worker_inventory"))
+              return inventory.find((worker) => worker.workerId === this.values[0] && worker.ownerUserId === this.values[1]) ?? null;
             if (sql.includes("FROM workspace_worker_inventory i\n       JOIN"))
               return (
                 inventory.find(
@@ -74,18 +78,18 @@ function fixture(memberRights: Record<string, boolean> | null) {
       },
     },
   } as unknown as SecurityEnv;
-  const resolve = (workerId: string) =>
+  const resolve = (workerId: string | undefined, workflow = BUILTIN_WORKFLOWS.chat) =>
     resolveWorkflowExecutionBindings(
       env,
       "member",
       "space",
       "thread",
-      BUILTIN_WORKFLOWS.chat,
+      workflow,
       {},
       [],
       { workerId },
     );
-  return { resolve, writes };
+  return { resolve, writes, env };
 }
 
 beforeEach(() => {
@@ -110,14 +114,34 @@ it("admits the member's own Worker for Chat through a read-only grant", async ()
   expect(grant?.values.slice(1, 4)).toEqual(["space", "own-ws", "member"]);
 });
 
-it("rejects own Workers when the Space does not allow them", async () => {
-  const f = fixture({ chat: true, useOwnWorkers: false });
+it("rejects own Workers when the member lacks Chat", async () => {
+  const f = fixture({ chat: false, work: true });
   await expect(f.resolve("mine")).rejects.toMatchObject({ status: 403 });
   expect(f.writes).toEqual([]);
+});
+
+it("ignores a legacy stored useOwnWorkers: false while Chat is granted", async () => {
+  const f = fixture({ chat: true, useOwnWorkers: false });
+  await expect(f.resolve("mine")).resolves.toBeDefined();
 });
 
 it("never treats a Worker shared with the member as their own", async () => {
   const f = fixture(null);
   await expect(f.resolve("lent")).rejects.toMatchObject({ status: 422 });
   expect(f.writes).toEqual([]);
+});
+
+it("requires an owned Worker in a personal Space", async () => {
+  const f = fixture(null, "direct");
+  await expect(f.resolve("shared")).rejects.toMatchObject({ status: 403 });
+  await expect(f.resolve("lent")).rejects.toMatchObject({ status: 403 });
+  await expect(f.resolve(undefined)).rejects.toMatchObject({ status: 403 });
+  await expect(f.resolve("mine", BUILTIN_WORKFLOWS.direct)).rejects.toMatchObject({ status: 403 });
+  await expect(f.resolve("mine")).resolves.toBeDefined();
+});
+
+it("rejects non-Chat workflow admission in a personal Space", async () => {
+  const f = fixture(null, "direct");
+  await expect(requireWorkflowPermission(f.env, "member", "space", "direct"))
+    .rejects.toMatchObject({ status: 403 });
 });

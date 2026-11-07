@@ -301,7 +301,7 @@ export async function createWorkRequestForUser(
     : workflowId === "research"
       ? configuredWorkflowDefinition(
           BUILTIN_WORKFLOWS.research,
-          (await loadSpaceWorkflowConfigurations(env, spaceId, "research", context.userId))
+          (await loadSpaceWorkflowConfigurations(env, spaceId, "research"))
             .configurations[0],
         )
       : BUILTIN_WORKFLOWS[workflowId];

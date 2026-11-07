@@ -23,6 +23,7 @@ class AppTopHud extends StatefulWidget implements PreferredSizeWidget {
     this.onToggleTheme,
     this.onSetThemeMode,
     this.onOpenArchivedSpaces,
+    this.onMessageSupport,
     this.onOpenAbout,
     this.onLogout,
     this.onOpenExternal,
@@ -41,6 +42,7 @@ class AppTopHud extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback? onToggleTheme;
   final ValueChanged<ThemeMode>? onSetThemeMode;
   final VoidCallback? onOpenArchivedSpaces;
+  final VoidCallback? onMessageSupport;
   final VoidCallback? onOpenAbout;
   final VoidCallback? onLogout;
   final ValueChanged<Uri>? onOpenExternal;
@@ -388,6 +390,7 @@ class _AppTopHudState extends State<AppTopHud> {
                     onToggleTheme: widget.onToggleTheme,
                     onSetThemeMode: widget.onSetThemeMode,
                     onOpenArchivedSpaces: widget.onOpenArchivedSpaces,
+                    onMessageSupport: widget.onMessageSupport,
                     onOpenAbout: widget.onOpenAbout ?? () {},
                     onOpenExternal: widget.onOpenExternal ?? (_) {},
                     onLogout: widget.onLogout ?? () {},

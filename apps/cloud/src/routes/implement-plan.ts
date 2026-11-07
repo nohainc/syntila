@@ -263,9 +263,10 @@ export async function handleApprovePlan(
   const alreadyApproved = await db
     .prepare(
       `SELECT 1 AS found FROM thread_request_queue
-        WHERE thread_id = ?1 AND request_json LIKE ?2 LIMIT 1`,
+        WHERE thread_id = ?1
+          AND json_extract(request_json, '$.planWorkRequestId') = ?2 LIMIT 1`,
     )
-    .bind(workRequest.threadId, `%"planWorkRequestId":"${workRequestId}"%`)
+    .bind(workRequest.threadId, workRequestId)
     .first();
   if (alreadyApproved) throw new HttpError(409, "This plan was already approved");
 
@@ -571,14 +572,10 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
           ? reasonMatch[1]!.trim()
           : "worker requested input or is blocked";
 
-        await db
-          .prepare(
-            "UPDATE work_requests SET status = 'waiting', updated_at = ?1 WHERE id = ?2",
-          )
-          .bind(new Date().toISOString(), workRequestId)
-          .run();
-
-        const pauseMsg = `${phaseTitle} paused: ${reason}. Reply in the Thread and resume the queue.`;
+        // The phase itself is finished: its answer is the question. Only the
+        // remaining phases pause, so a reply runs as a normal request and
+        // nothing stays half-open for Cancel or Stop to get stuck on.
+        const pauseMsg = `${phaseTitle} needs your input: ${reason}. Reply in the Thread, then resume the queue to continue with the next phase.`;
         await advanceThreadQueueSafely(env, threadId, {
           failedRequest: true,
           pauseMessage: pauseMsg,
@@ -588,10 +585,6 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
 
       // A phase must positively report completion; silence means we cannot tell.
       if (!isVerification && !/STATUS:\s*COMPLETED/i.test(outputText)) {
-        await db
-          .prepare("UPDATE work_requests SET status = 'waiting', updated_at = ?1 WHERE id = ?2")
-          .bind(new Date().toISOString(), workRequestId)
-          .run();
         const pauseMsg = `${phaseTitle} paused: worker did not report STATUS: COMPLETED. Review the output and resume the queue.`;
         await advanceThreadQueueSafely(env, threadId, {
           failedRequest: true,

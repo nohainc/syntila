@@ -18,6 +18,7 @@ class GlobalAppMenu extends StatelessWidget {
     required this.onOpenExternal,
     required this.onLogout,
     this.onOpenArchivedSpaces,
+    this.onMessageSupport,
     this.compact = false,
     this.buttonConstraints = const BoxConstraints(minWidth: 28, minHeight: 28),
     this.iconSize = 18,
@@ -31,6 +32,9 @@ class GlobalAppMenu extends StatelessWidget {
   final ValueChanged<Uri> onOpenExternal;
   final VoidCallback onLogout;
   final VoidCallback? onOpenArchivedSpaces;
+
+  /// Opens the personal support Space; the item is omitted when null.
+  final VoidCallback? onMessageSupport;
   final bool compact;
   final BoxConstraints buttonConstraints;
   final double iconSize;
@@ -249,6 +253,24 @@ class GlobalAppMenu extends StatelessWidget {
             style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
           ),
         ),
+        if (onMessageSupport != null)
+          MenuItemButton(
+            key: const ValueKey('menu-message-syntila'),
+            style: itemStyle(),
+            leadingIcon: Icon(
+              Icons.support_agent_rounded,
+              size: 16,
+              color: menuIconColor,
+            ),
+            onPressed: () {
+              onMessageSupport!();
+              if (compact) Scaffold.maybeOf(context)?.closeDrawer();
+            },
+            child: const Text(
+              'Message Syntila',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
+            ),
+          ),
         MenuItemButton(
           style: itemStyle(),
           leadingIcon: Icon(

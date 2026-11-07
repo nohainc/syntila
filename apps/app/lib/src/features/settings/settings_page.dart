@@ -4,6 +4,7 @@ import '../../brand.dart';
 import '../../platform/view_preferences.dart';
 import '../../ax/ax_models.dart';
 import '../../ax/sync/ax_mcp_inventories.dart';
+import '../../ax/sync/ax_support.dart';
 import 'mcp_management_view.dart';
 
 /// Device-local view settings and Workspace MCP management.
@@ -15,6 +16,7 @@ class SettingsPage extends StatefulWidget {
     this.workspaceId,
     this.workspaces = const [],
     this.inventories,
+    this.support,
     this.knownWorkerTypes = const ['chatgpt', 'codex', 'claude'],
   });
 
@@ -23,6 +25,9 @@ class SettingsPage extends StatefulWidget {
   final String? workspaceId;
   final List<AxWorkspace> workspaces;
   final AxMcpInventories? inventories;
+
+  /// Account-level support sidebar setting; the switch is omitted when null.
+  final AxSupportEntry? support;
   final List<String> knownWorkerTypes;
 
   @override
@@ -31,10 +36,54 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   String? _selectedWorkspaceId;
+  bool? _supportVisible;
+  bool _supportBusy = false;
+  String? _supportError;
+
+  Future<void> _loadSupport() async {
+    final support = widget.support;
+    if (support == null) return;
+    setState(() {
+      _supportBusy = true;
+      _supportError = null;
+    });
+    try {
+      final space = await support.load();
+      if (!mounted) return;
+      setState(() => _supportVisible = !space.hidden);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _supportError = 'Could not load this setting.');
+      }
+    } finally {
+      if (mounted) setState(() => _supportBusy = false);
+    }
+  }
+
+  Future<void> _setSupportVisible(bool visible) async {
+    final support = widget.support;
+    if (support == null || _supportBusy) return;
+    setState(() {
+      _supportBusy = true;
+      _supportError = null;
+    });
+    try {
+      final space = await support.setSidebarVisible(visible);
+      if (!mounted) return;
+      setState(() => _supportVisible = !space.hidden);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _supportError = 'Could not change this setting.');
+      }
+    } finally {
+      if (mounted) setState(() => _supportBusy = false);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadSupport();
     _selectedWorkspaceId = widget.workspaceId ??
         (widget.workspaces.isNotEmpty ? widget.workspaces.first.id : null);
   }
@@ -66,7 +115,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 fontWeight: FontWeight.w700,
                 color: SyntilaColors.textPrimary(isDark))),
         const SizedBox(height: 4),
-        Text('These preferences apply to this device.',
+        Text('Most preferences apply to this device.',
             style: TextStyle(fontSize: 12.5, color: muted)),
         const SizedBox(height: 24),
         Text('APPEARANCE',
@@ -158,6 +207,38 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
         ),
+        if (widget.support != null) ...[
+          SwitchListTile(
+            key: const ValueKey('setting-show-support'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Show Syntila Support in sidebar'),
+            subtitle: Text(
+                'Applies to your account on every device. You can always reach support from the application menu.',
+                style: TextStyle(fontSize: 12, color: muted)),
+            value: _supportVisible ?? false,
+            onChanged: _supportBusy || (_supportVisible == null)
+                ? null
+                : _setSupportVisible,
+          ),
+          if (_supportError != null)
+            Row(
+              key: const ValueKey('setting-show-support-error'),
+              children: [
+                Expanded(
+                  child: Text(_supportError!,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: SyntilaColors.errorText(isDark))),
+                ),
+                TextButton(
+                  onPressed: _supportVisible == null
+                      ? _loadSupport
+                      : () => _setSupportVisible(!_supportVisible!),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+        ],
         const SizedBox(height: 24),
         Text('NOTIFICATIONS',
             style: TextStyle(

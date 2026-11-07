@@ -162,69 +162,6 @@ extension _AxAppViews on _AxAppStateMixin {
   Widget _spaceOverviewView() {
     final space = selectedSpace;
     if (space == null) return _homeView();
-    if (space.isDirect) {
-      return AxQueryBuilder<List<AxThread>>(
-        key: ValueKey('direct-space-threads-${space.id}'),
-        engine: store.spaceThreads.engine,
-        query: store.spaceThreads.query(space.id),
-        builder: (context, state) {
-          final threads = state.data;
-          if (threads != null && threads.isNotEmpty) {
-            final general = threads.where((t) => t.isGeneral).firstOrNull ??
-                threads
-                    .where((t) =>
-                        t.id == 'general' || t.name.toLowerCase() == 'general')
-                    .firstOrNull ??
-                threads.first;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted &&
-                  navigation.spaceId == space.id &&
-                  navigation.threadId == null &&
-                  navigation.kind == AxRouteKind.space) {
-                _navigateTo(AxNavigation.thread(space.id, general.id),
-                    replace: true);
-              }
-            });
-          }
-          if (state.isFetching && (threads == null || threads.isEmpty)) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (state.error != null && (threads == null || threads.isEmpty)) {
-            return Scaffold(
-              body: Center(
-                child: TextButton(
-                  onPressed: () => store.spaceThreads.ensure(space.id),
-                  child: const Text('Retry loading conversation'),
-                ),
-              ),
-            );
-          }
-          return NewThreadPage(
-            key: ValueKey('space-draft-${space.id}'),
-            space: space,
-            dataSource: widget.dataSource,
-            discussionCache: store.discussion,
-            workHistoryCache: store.workHistory,
-            threadViewStateStore: store.threadViewState,
-            catalogs: store.catalogs,
-            workflowConfigurations: AxWorkflowConfigurations(widget.dataSource,
-                engine: store.syncEngine, spaceId: space.id),
-            currentUserId: store.auth.viewer?.id,
-            currentUserName: store.auth.viewer?.displayName,
-            viewerEmail: store.auth.viewer?.email,
-            createThread: (name) =>
-                store.collaboration.createThread(spaceId: space.id, name: name),
-            onOpenThread: (thread) => _openThread(space.id, thread.id),
-            onOpenThreadId: (threadId) => _openThread(space.id, threadId),
-            spaceThreads: store.spaceThreads,
-            tabQueries: store.spaceTabs,
-            mutations: store.collaboration,
-          );
-        },
-      );
-    }
     return NewThreadPage(
       key: ValueKey('space-draft-${space.id}'),
       space: space,
@@ -309,7 +246,7 @@ extension _AxAppViews on _AxAppStateMixin {
           key: ValueKey(thread.id),
           space: space,
           thread: thread,
-          showAiHistory: space.showAiHistory,
+          showAiHistory: space.showAiHistory && !space.isSupport,
           dataSource: widget.dataSource,
           realtimeEvents: realtimeClient.events,
           currentUserId: store.auth.viewer?.id,

@@ -16,6 +16,7 @@ import {
 } from "../invitation-email.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { createEventPublisher } from "../event-publisher.js";
+import { ensureSupportSpace, SupportSpaceError } from "../people.js";
 
 export interface PeopleSpace {
   readonly id: string;
@@ -332,7 +333,6 @@ async function provisionDirectConnection(
 
   if (!directSpaceId) {
     directSpaceId = `space-direct-${crypto.randomUUID()}`;
-    const generalThreadId = `thread-gen-${crypto.randomUUID()}`;
     statements.push(
       env.SYNTILA_DB.prepare(
         "INSERT INTO spaces (id, owner_user_id, name, kind, settings_json, created_at, updated_at) VALUES (?1, ?2, 'Direct Space', 'direct', '{}', ?3, ?3)",
@@ -344,11 +344,8 @@ async function provisionDirectConnection(
         "INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (?1, ?2, ?3, 'collaborator', ?4, ?4) ON CONFLICT(space_id, user_id) DO NOTHING",
       ).bind(`pm-${crypto.randomUUID()}`, directSpaceId, recipientUserId, now),
       env.SYNTILA_DB.prepare(
-        "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?1, ?2, 'General', 'active', ?3, 1, ?4, ?4)",
-      ).bind(generalThreadId, directSpaceId, inviterUserId, now),
-      env.SYNTILA_DB.prepare(
-        "INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-      ).bind(directSpaceId, userLowId, userHighId, generalThreadId, now),
+        "INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at) VALUES (?1, ?2, ?3, NULL, ?4)",
+      ).bind(directSpaceId, userLowId, userHighId, now),
       env.SYNTILA_DB.prepare(
         "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, 0, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING",
       ).bind(directSpaceId, inviterUserId, now),
@@ -556,11 +553,22 @@ export async function handleCreatePersonInvitation(
        WHERE user_low_id = ?1 AND user_high_id = ?2 AND status = 'connected'`,
     )
       .bind(userLowId, userHighId)
-      .first<{ status: string; direct_space_id: string }>();
+      .first<{ status: string; direct_space_id: string | null }>();
     if (existingConn) {
+      // The personal Space was deleted: connecting again creates a new one.
+      const directSpaceId =
+        existingConn.direct_space_id ??
+        (
+          await provisionDirectConnection(
+            env,
+            context.userId,
+            inviteeUserId,
+            `restore-${crypto.randomUUID()}`,
+          )
+        ).directSpaceId;
       return json({
         status: "already_connected",
-        directSpaceId: existingConn.direct_space_id,
+        directSpaceId,
       });
     }
 
@@ -1262,3 +1270,49 @@ export async function handleUnblockPerson(
 
 
 
+/**
+ * GET /api/people/support: the caller's support Space and sidebar visibility
+ * without provisioning. POST /api/people/support gets or creates the Space.
+ */
+export async function handleEnsureSupportSpace(
+  request: Request,
+  env: SecurityEnv,
+  ctx?: ExecutionContext,
+): Promise<Response> {
+  const context = await securityContext(request, env, ctx);
+  if (request.method === "GET") {
+    const row = await env.SYNTILA_DB.prepare(
+      `SELECT ss.space_id AS spaceId, COALESCE(dsus.hidden, 1) AS hidden
+       FROM support_spaces ss
+       JOIN space_memberships pm ON pm.space_id = ss.space_id AND pm.user_id = ss.user_id
+       LEFT JOIN direct_space_user_state dsus
+         ON dsus.space_id = ss.space_id AND dsus.user_id = ss.user_id
+       WHERE ss.user_id = ?1
+       ORDER BY ss.created_at DESC LIMIT 1`,
+    )
+      .bind(context.userId)
+      .first<{ spaceId: string; hidden: number }>();
+    return json({
+      spaceId: row?.spaceId ?? null,
+      hidden: row ? row.hidden === 1 : true,
+    });
+  }
+  if (request.method !== "POST")
+    throw new HttpError(405, "Method not allowed");
+  try {
+    const result = await ensureSupportSpace(env, context.userId);
+    const state = await env.SYNTILA_DB.prepare(
+      "SELECT hidden FROM direct_space_user_state WHERE space_id = ?1 AND user_id = ?2",
+    )
+      .bind(result.spaceId, context.userId)
+      .first<{ hidden: number }>();
+    return json(
+      { spaceId: result.spaceId, hidden: (state?.hidden ?? 1) === 1 },
+      { status: result.created ? 201 : 200 },
+    );
+  } catch (error) {
+    if (error instanceof SupportSpaceError)
+      throw new HttpError(error.status, error.message);
+    throw error;
+  }
+}

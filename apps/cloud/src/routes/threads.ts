@@ -197,13 +197,19 @@ export async function handleCreateThread(
     "manageOwnThreads",
   );
   const directSpace = await env.SYNTILA_DB.prepare(
-    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId
+    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId,
+            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = ds.space_id) AS isSupport
      FROM direct_spaces ds
      LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
      WHERE ds.space_id = ?1`,
   )
     .bind(spaceId)
-    .first<{ status: string | null; userLowId: string; userHighId: string }>()
+    .first<{
+      status: string | null;
+      userLowId: string;
+      userHighId: string;
+      isSupport: number;
+    }>()
     .catch(() => null);
   if (directSpace) {
     const isBlocked = await env.SYNTILA_DB.prepare(
@@ -216,7 +222,7 @@ export async function handleCreateThread(
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }
-    if (directSpace.status !== "connected") {
+    if (directSpace.status !== "connected" && !directSpace.isSupport) {
       throw new HttpError(
         403,
         "This personal conversation is disconnected and read-only",
@@ -718,13 +724,19 @@ export async function handleCreateDiscussionMessage(
     accessContext,
   );
   const directSpace = await env.SYNTILA_DB.prepare(
-    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId
+    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId,
+            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = ds.space_id) AS isSupport
      FROM direct_spaces ds
      LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
      WHERE ds.space_id = ?1`,
   )
     .bind(spaceId)
-    .first<{ status: string | null; userLowId: string; userHighId: string }>()
+    .first<{
+      status: string | null;
+      userLowId: string;
+      userHighId: string;
+      isSupport: number;
+    }>()
     .catch(() => null);
   if (directSpace) {
     const isBlocked = await env.SYNTILA_DB.prepare(
@@ -737,7 +749,7 @@ export async function handleCreateDiscussionMessage(
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }
-    if (directSpace.status !== "connected") {
+    if (directSpace.status !== "connected" && !directSpace.isSupport) {
       throw new HttpError(
         403,
         "This personal conversation is disconnected and read-only",
@@ -815,7 +827,8 @@ export async function handleCreateDiscussionMessage(
       now,
     ),
   );
-  if (directSpace) {
+  // A support Space's sidebar visibility is the user's own setting; replies never change it.
+  if (directSpace && !directSpace.isSupport) {
     mutations.push(
       env.SYNTILA_DB.prepare(
         "UPDATE direct_space_user_state SET hidden = 0, last_opened_at = ?1, updated_at = ?1 WHERE space_id = ?2",

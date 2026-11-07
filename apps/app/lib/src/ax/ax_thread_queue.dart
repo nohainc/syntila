@@ -123,6 +123,9 @@ abstract interface class AxThreadQueueDataSource {
 
   Future<AxThreadQueue> removeThreadQueueItem(String threadId, String itemId);
 
+  /// Removes every queued phase of the Implement plan [itemId] belongs to.
+  Future<AxThreadQueue> stopThreadQueuePhases(String threadId, String itemId);
+
   /// Moves the author's own request to the front and resumes the queue.
   Future<AxThreadQueue> sendThreadQueueItemNow(String threadId, String itemId);
 

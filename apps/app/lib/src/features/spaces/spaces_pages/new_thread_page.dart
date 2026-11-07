@@ -95,8 +95,7 @@ class _NewThreadPageState extends State<NewThreadPage> {
   Future<void> _createNamedThread() async {
     if (_busy ||
         _nameController.text.trim().isEmpty ||
-        (!widget.space.isDirect &&
-            !widget.space.effectivePermissions.manageOwnThreads)) {
+        !widget.space.effectivePermissions.manageOwnThreads) {
       return;
     }
     setState(() {
@@ -237,8 +236,7 @@ class _NewThreadPageState extends State<NewThreadPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (!widget.space.isDirect &&
-                      (_workflows != null || widget.space.role == 'owner'))
+                  if (_workflows != null || widget.space.role == 'owner')
                     _SpaceLandingSection(
                       title: 'Settings',
                       arrowKey: const ValueKey('space-settings-arrow'),
@@ -251,7 +249,8 @@ class _NewThreadPageState extends State<NewThreadPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                if (_workflows != null)
+                                if (_workflows != null &&
+                                    !widget.space.isDirect)
                                   Padding(
                                     padding: EdgeInsets.only(
                                         bottom: widget.space.role == 'owner'
@@ -308,21 +307,22 @@ class _NewThreadPageState extends State<NewThreadPage> {
                         ),
                       ),
                     ),
-                  _SpaceLandingSection(
-                    title: 'Members',
-                    arrowKey: const ValueKey('space-members-arrow'),
-                    child: SpacePage(
-                      embedded: true,
-                      workflowConfigurations: widget.workflowConfigurations,
-                      section: SpacePageSection.members,
-                      space: widget.space,
-                      dataSource: widget.dataSource,
-                      viewerEmail: widget.viewerEmail,
-                      onOpenThread: (_) {},
-                      onArchive: () {},
-                      onDelete: () {},
+                  if (!widget.space.isDirect)
+                    _SpaceLandingSection(
+                      title: 'Members',
+                      arrowKey: const ValueKey('space-members-arrow'),
+                      child: SpacePage(
+                        embedded: true,
+                        workflowConfigurations: widget.workflowConfigurations,
+                        section: SpacePageSection.members,
+                        space: widget.space,
+                        dataSource: widget.dataSource,
+                        viewerEmail: widget.viewerEmail,
+                        onOpenThread: (_) {},
+                        onArchive: () {},
+                        onDelete: () {},
+                      ),
                     ),
-                  ),
                   _SpaceLandingSection(
                     title: 'Archived Threads',
                     arrowKey: const ValueKey('space-archived-arrow'),

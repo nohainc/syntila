@@ -73,7 +73,7 @@ class _BackgroundWorkQueue {
       final history = await cache.refresh(threadId);
       final processing = history.requests.any((request) =>
           !request.id.startsWith('local-') &&
-          const {'queued', 'running', 'waiting'}.contains(request.status));
+          request.isProcessing);
       // The page may have opened, or the queue changed, while reading.
       if (processing || _owners.contains(key) || !_hasWork(key)) return;
       final queue = _ThreadPageState._queuedWorkByThread[key]!;

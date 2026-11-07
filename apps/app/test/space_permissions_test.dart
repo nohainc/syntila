@@ -221,17 +221,22 @@ void main() {
     expect(find.byKey(const ValueKey('permission-member-manageOwnThreads')),
         findsOneWidget);
   });
-  test('own Workers is available by default and for all members', () {
-    expect(const AxSpacePermissions().useOwnWorkers, isTrue);
-    expect(AxSpacePermissions.forRole('viewer').useOwnWorkers, isTrue);
-    expect(AxSpacePermissions.forRole('collaborator').useOwnWorkers, isTrue);
-    expect(AxSpacePermissions.fromJson({}).useOwnWorkers, isTrue);
-    expect(AxSpacePermissions.fromJson({'chat': false}).useOwnWorkers, isTrue);
+  test('exposes exactly three rights and ignores legacy useOwnWorkers', () {
+    expect(const AxSpacePermissions().chat, isFalse);
+    expect(AxSpacePermissions.forRole('viewer').toJson(),
+        {'chat': false, 'work': false, 'manageOwnThreads': false});
+    expect(AxSpacePermissions.forRole('collaborator').toJson(),
+        {'chat': true, 'work': true, 'manageOwnThreads': true});
+    expect(AxSpacePermissions.fromJson({'useOwnWorkers': true}).chat, isFalse);
+    expect(
+        AxSpacePermissions.fromJson({'chat': true, 'useOwnWorkers': false})
+            .chat,
+        isTrue);
     expect(
         AxSpacePermissions.fromJson({'chat': true, 'useOwnWorkers': true})
             .toJson()
             .keys,
-        ['chat', 'useOwnWorkers', 'work', 'manageOwnThreads']);
+        ['chat', 'work', 'manageOwnThreads']);
   });
   testWidgets('member actions follow explicit rights, not collaborator role',
       (tester) async {
@@ -306,7 +311,7 @@ void main() {
             lastActivity: '',
             role: 'collaborator',
             permissions:
-                AxSpacePermissions(chat: true, useOwnWorkers: allowed)),
+                AxSpacePermissions(chat: allowed)),
         thread:
             memberThread.copyWith(workConfig: {'defaultWorkflowId': 'chat'}),
         dataSource: OwnWorkersSource(),

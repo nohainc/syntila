@@ -43,6 +43,7 @@ class AppSidebar extends StatelessWidget {
     required this.onOpenAbout,
     required this.onOpenExternal,
     this.onOpenArchivedSpaces,
+    this.onMessageSupport,
     this.onToggleCollapse,
     this.compact = false,
   })  : onToggleSpaceExpanded = onToggleSpaceExpanded ?? _noopString,
@@ -83,6 +84,7 @@ class AppSidebar extends StatelessWidget {
   final VoidCallback onOpenAbout;
   final ValueChanged<Uri> onOpenExternal;
   final VoidCallback? onOpenArchivedSpaces;
+  final VoidCallback? onMessageSupport;
   final VoidCallback? onToggleCollapse;
   final bool compact;
 
@@ -398,6 +400,7 @@ class AppSidebar extends StatelessWidget {
         onOpenExternal: onOpenExternal,
         onLogout: onLogout,
         onOpenArchivedSpaces: onOpenArchivedSpaces,
+        onMessageSupport: onMessageSupport,
         compact: compact,
       );
 }
@@ -423,6 +426,7 @@ class AppIconRail extends StatelessWidget {
     required this.onOpenAbout,
     required this.onOpenExternal,
     this.onOpenArchivedSpaces,
+    this.onMessageSupport,
     this.onToggleCollapse,
     this.sidebarWidth = 200,
     this.onSidebarWidthChanged,
@@ -446,6 +450,7 @@ class AppIconRail extends StatelessWidget {
   final VoidCallback onOpenAbout;
   final ValueChanged<Uri> onOpenExternal;
   final VoidCallback? onOpenArchivedSpaces;
+  final VoidCallback? onMessageSupport;
   final VoidCallback? onToggleCollapse;
   final double sidebarWidth;
   final ValueChanged<double>? onSidebarWidthChanged;
@@ -799,6 +804,7 @@ class AppIconRail extends StatelessWidget {
             onOpenExternal: onOpenExternal,
             onLogout: onLogout,
             onOpenArchivedSpaces: onOpenArchivedSpaces,
+            onMessageSupport: onMessageSupport,
           ),
           const SizedBox(height: 8),
 

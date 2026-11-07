@@ -279,12 +279,20 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
           List<AxUserWorkflowConfiguration> values, String id) =>
       values.firstWhere((value) => value.workflowId == id,
           orElse: () => AxUserWorkflowConfiguration(workflowId: id));
+  /// Implement ships only its plan step in the definition but runs three
+  /// configurable roles (plan, implement, verify).
+  static bool _singleStep(AxBuiltinWorkflow definition) =>
+      definition.id != 'plan_implement' && definition.steps.length == 1;
+
+  static int _stepCount(AxBuiltinWorkflow definition) =>
+      definition.id == 'plan_implement' ? 3 : definition.steps.length;
+
   Widget _card(
       AxBuiltinWorkflow definition,
       AxUserWorkflowConfiguration configuration,
       List<AxWorker> workers,
       bool isDefault) {
-    final selection = definition.steps.length == 1
+    final selection = _singleStep(definition)
         ? configuration.selectionFor(definition.steps.first.kind)
         : configuration.defaults;
     final theme = Theme.of(context);
@@ -336,7 +344,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
               catalogRevision: next.catalogRevision,
               mcpTools: tools,
             );
-        if (definition.steps.length == 1) {
+        if (_singleStep(definition)) {
           final stepKind = definition.steps.first.kind;
           final overrides = Map<String, AxWorkflowSelection>.from(
               configuration.stepOverrides);
@@ -848,7 +856,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
                     ),
                   ),
                 const SizedBox(width: 8),
-                if (definition.steps.length > 1)
+                if (!_singleStep(definition))
                   InkWell(
                     key: ValueKey('open-workflow-${definition.id}'),
                     borderRadius: BorderRadius.circular(8),
@@ -862,7 +870,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
                           : null,
                       icon: const Icon(Icons.tune, size: 14),
                       label: Text(
-                          '${definition.steps.length} ${definition.steps.length == 1 ? 'step' : 'steps'}'),
+                          '${_stepCount(definition)} ${_stepCount(definition) == 1 ? 'step' : 'steps'}'),
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,

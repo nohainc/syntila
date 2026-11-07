@@ -23,7 +23,8 @@ extension _ThreadActions on _ThreadPageState {
   Future<void> _runWork() async {
     final text = _requestController.text;
     final submit = widget.onRunWork;
-    if (!_canExecute ||
+    if (widget.space.isSupport ||
+        !_canExecute ||
         (text.trim().isEmpty && _workAttachments.isEmpty) ||
         (submit == null && widget.onRunWorkWithSelection == null) ||
         _submittingWork) {
@@ -85,7 +86,7 @@ extension _ThreadActions on _ThreadPageState {
   List<AxWorkRequest> get _activeWorkRequests => _workTimeline
       .where((request) =>
           !request.id.startsWith('local-') &&
-          const {'queued', 'running', 'waiting'}.contains(request.status))
+          request.isProcessing)
       .toList(growable: false);
 
   /// Messages waiting for this Thread's active request to finish.
@@ -301,7 +302,39 @@ extension _ThreadActions on _ThreadPageState {
     if (mounted) _followLatestWork();
   }
 
+  Future<void> _stopQueuedPhases(_QueuedWorkMessage message) async {
+    final shared = _sharedQueueSource;
+    final id = message.id;
+    if (shared == null || id == null || !message.own) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        constraints: SyntilaDialogStyle.small,
+        title: const Text('Stop all phases?'),
+        content: const Text(
+            'Individual phases cannot be removed. This removes every remaining queued phase and verification of this plan. Work already done stays.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep phases'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Stop all phases'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _applySharedQueue(
+        () => shared.stopThreadQueuePhases(widget.thread.id, id));
+  }
+
   void _removeQueuedWork(_QueuedWorkMessage message) {
+    if (message.isPhased) {
+      unawaited(_stopQueuedPhases(message));
+      return;
+    }
     final shared = _sharedQueueSource;
     if (shared != null) {
       final id = message.id;
@@ -998,6 +1031,28 @@ extension _ThreadActions on _ThreadPageState {
       if (showFeedback) {
         ScaffoldMessenger.of(context).showNotice(
           const SnackBar(content: Text('Could not cancel this request.')),
+        );
+      }
+      return false;
+    }
+  }
+
+  /// Sends a new Implement request that updates the plan with extra guidance.
+  Future<bool> _revisePlan(String workRequestId, String prompt) async {
+    try {
+      await _workMessageSender()(_QueuedWorkMessage(
+        text: 'Update the implementation plan from the previous Implement '
+            'request using this guidance:\n$prompt',
+        attachments: const [],
+        executionSelection: const {},
+        workflow: 'plan_implement:v2',
+      ));
+      if (mounted) _followLatestWork();
+      return true;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not update the plan: $error')),
         );
       }
       return false;

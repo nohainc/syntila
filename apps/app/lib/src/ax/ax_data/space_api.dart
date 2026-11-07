@@ -117,15 +117,65 @@ mixin _SpaceApi on _AxApiClientCore {
   }
 
   @override
-  Future<void> archiveSpace(
-      {required String spaceId, bool direct = false}) async {
+  Future<void> archiveSpace({required String spaceId}) async {
     final response = await client.patch(
       Uri.parse('$baseUrl/spaces/$spaceId'),
       headers: _headers(contentType: 'application/json'),
-      body: jsonEncode(direct ? {'hidden': true} : {'archived': true}),
+      body: jsonEncode({'archived': true}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw AxApiException('Space archive failed (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
+  Future<AxSupportSpace> loadSupportSpace() async =>
+      _supportSpace(await _getJson(Uri.parse('$baseUrl/people/support')));
+
+  Future<AxSupportSpace> ensureSupportSpace() async {
+    final response = await client.post(
+      Uri.parse('$baseUrl/people/support'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      var detail = '';
+      try {
+        final body = jsonDecode(response.body);
+        if (body is Map && body['error'] is String) {
+          detail = ': ${body['error']}';
+        }
+      } catch (_) {
+        // Keep the status-only message when the server returned non-JSON.
+      }
+      throw AxApiException('Support is unavailable$detail',
+          statusCode: response.statusCode);
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map) {
+      throw const AxApiException('Support response is malformed');
+    }
+    return _supportSpace(Map<String, dynamic>.from(body));
+  }
+
+  AxSupportSpace _supportSpace(Map<String, dynamic> body) {
+    final id = body['spaceId'];
+    return AxSupportSpace(
+      spaceId: id is String && id.isNotEmpty ? id : null,
+      hidden: body['hidden'] != false,
+    );
+  }
+
+  @override
+  Future<void> setSpaceHidden(
+      {required String spaceId, required bool hidden}) async {
+    final response = await client.patch(
+      Uri.parse('$baseUrl/spaces/$spaceId'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode({'hidden': hidden}),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+          'Space visibility update failed (${response.statusCode})',
           statusCode: response.statusCode);
     }
   }

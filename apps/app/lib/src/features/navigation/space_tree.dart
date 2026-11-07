@@ -884,9 +884,9 @@ class SpaceTree extends StatelessWidget {
             leadingIcon:
                 Icon(Icons.archive_outlined, size: 16, color: iconColor),
             onPressed: () => select('archive'),
-            child: Text(space.isDirect ? 'Hide Conversation' : 'Archive Space'),
+            child: const Text('Archive Space'),
           ),
-          if (!space.isDirect) ...[
+          ...[
             divider(),
             MenuItemButton(
               style: itemStyle(isDestructive: true),

@@ -1065,8 +1065,7 @@ it("runs Chat outside the Space Workspace only on the requester's own Workspace 
   const denied = {
     memberPermissions: {
       "user-a": {
-        chat: true,
-        useOwnWorkers: false,
+        chat: false,
         work: true,
         manageOwnThreads: true,
       },
@@ -1078,6 +1077,20 @@ it("runs Chat outside the Space Workspace only on the requester's own Workspace 
       request,
     ),
   ).toBeNull();
+  // A legacy stored useOwnWorkers: false is ignored; Chat alone decides.
+  const legacy = {
+    memberPermissions: {
+      "user-a": { chat: true, useOwnWorkers: false, work: false },
+    },
+  };
+  expect(
+    (
+      await selectSpaceExecutionTarget(
+        db([own], "collaborator", null, undefined, legacy),
+        request,
+      )
+    )?.workspaceId,
+  ).toBe("workspace-own");
   // A Worker of the Space Workflow Workspace is not attributed to its owner.
   const spaceTarget = await selectSpaceExecutionTarget(
     db([candidate({ workspace_owner_name: "Owner" })]),

@@ -280,30 +280,26 @@ class AxPhaseItem {
       };
 }
 
+/// The three Space member rights shared with Cloud. Using one's own Workers in
+/// Chat is not a right of its own: it follows [chat]. A legacy
+/// `useOwnWorkers` field from older Cloud responses is ignored.
 class AxSpacePermissions {
   const AxSpacePermissions(
-      {this.chat = false,
-      this.useOwnWorkers = true,
-      this.work = false,
-      this.manageOwnThreads = false});
-  final bool chat, work, manageOwnThreads, useOwnWorkers;
+      {this.chat = false, this.work = false, this.manageOwnThreads = false});
+  final bool chat, work, manageOwnThreads;
 
   factory AxSpacePermissions.forRole(String role) => AxSpacePermissions(
       chat: role == 'owner' || role == 'collaborator',
-      useOwnWorkers: true,
       work: role == 'owner' || role == 'collaborator',
       manageOwnThreads: role == 'owner' || role == 'collaborator');
   factory AxSpacePermissions.fromJson(Map json) => AxSpacePermissions(
       chat: json['chat'] == true,
-      useOwnWorkers: json['useOwnWorkers'] != false,
       work: json['work'] == true,
       manageOwnThreads: json['manageOwnThreads'] == true);
 
-  /// Key order is the members table column order; serialization preserves
-  /// useOwnWorkers for Cloud compatibility.
+  /// Key order is the members table column order.
   Map<String, bool> toJson() => {
         'chat': chat,
-        'useOwnWorkers': useOwnWorkers,
         'work': work,
         'manageOwnThreads': manageOwnThreads
       };
@@ -741,6 +737,7 @@ class AxSpace {
     this.archived = false,
     this.role = 'owner',
     this.kind = 'group',
+    this.isSupport = false,
     this.avatarUrl,
     this.settings = const {},
     this.permissions,
@@ -760,6 +757,9 @@ class AxSpace {
   final bool archived;
   final String role;
   final String kind;
+
+  /// The caller's personal support Space: human messaging only, no AI.
+  final bool isSupport;
   final String? avatarUrl;
   final Map<String, dynamic> settings;
   final AxSpacePermissions? permissions;
@@ -804,6 +804,7 @@ class AxSpace {
                 (json['settings'] as Map)['archived'] == true),
         role: _string(json, 'role', 'owner'),
         kind: _string(json, 'kind', 'group'),
+        isSupport: json['isSupport'] == true,
         avatarUrl: json['avatarUrl'] as String?,
         permissions: json['permissions'] is Map
             ? AxSpacePermissions.fromJson(json['permissions'] as Map)
@@ -846,6 +847,7 @@ class AxSpace {
         archived: archived ?? this.archived,
         role: role ?? this.role,
         kind: kind ?? this.kind,
+        isSupport: isSupport,
         avatarUrl: avatarUrl ?? this.avatarUrl,
         settings: settings ?? this.settings,
         permissions: permissions,

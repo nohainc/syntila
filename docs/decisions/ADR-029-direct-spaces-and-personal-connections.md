@@ -39,7 +39,7 @@ To preserve database schema and foreign key compatibility without rewriting the 
 - The `spaces.owner_user_id` column is retained and populated with the original inviter's user ID (or a deterministic participant ID).
 - In `space_memberships`, one user has role `owner` and the other has role `collaborator`.
 - **Symmetric Messaging and Workflow Rights:** Technical ownership does not confer unequal messaging rights. In application and authorization logic, both participants have identical, symmetric rights:
-  - Both participants can read, post Discussion messages, run Chat workflows, and initiate Work requests.
+  - Both participants can read, post Discussion messages, and run Chat with their own Workers.
   - Both participants can create and manage additional Threads.
   - Both participants can reset AI conversation context and archive/restore Threads.
 - **Restricted Owner Administrative Powers:** Owner-level powers that could unilaterally disrupt the other participant are disabled for Direct Spaces:
@@ -49,11 +49,10 @@ To preserve database schema and foreign key compatibility without rewriting the 
   - Deleting the default General Thread is forbidden.
   - Destructive clearing or deletion of shared Threads created with mutual participation is prohibited unless initiated via mutual agreement or explicit contact removal semantics.
 
-### 5. Lifecycle of the Default General Thread
+### 5. Thread lifecycle
 
-- **Automatic Creation:** Upon connection approval, Syntila idempotently retrieves or creates the unique Direct Space and immediately provisions a default Thread named `General`.
-- **Permanent Availability:** The default General Thread serves as the primary conversational baseline. It cannot be deleted by either participant.
-- **Additional Threads:** Either participant may create additional topic-specific Threads (e.g., "Vacation", "Project Ideas") within the Direct Space.
+- **Creation:** Connection approval retrieves or creates the unique Direct Space without creating a Thread. Either participant may create Threads.
+- **Existing General Threads:** Previously created default General Threads are preserved and cannot be deleted by either participant.
 
 ### 6. Reuse of Existing Thread, Discussion, Work, and AI Models
 
@@ -72,7 +71,7 @@ Direct Spaces present a personalized identity depending on who is viewing the Sp
 ### 8. Execution and Workspace Boundaries
 
 - Direct Space membership does not grant access to the other participant's local Workspace or execution environments.
-- AI Chat and Work workflows execute according to existing authorization policy: using a member's own Workspace (`useOwnWorkers`), a workspace granted via a Person Grant (ADR-020), or an explicitly attached Space Workspace.
+- Personal Spaces support only Chat, using a Worker owned by the requester. Person Grants and another participant's Workspace do not confer Worker access in a personal Space.
 - Local provider credentials, API keys, and file trees remain safely bounded within their respective owners' Workspaces.
 
 ### 9. Removal, Retention, and Deletion Semantics
@@ -88,7 +87,7 @@ Direct Spaces present a personalized identity depending on who is viewing the Sp
 ### 10. Sidebar Navigation Structure
 
 The application sidebar introduces a first-class **Personal** section positioned above or distinct from **Spaces**:
-- **Personal:** Lists Direct Spaces labeled with the contact's name and avatar, containing their General and custom Threads.
+- **Personal:** Lists Direct Spaces labeled with the contact's name and avatar, containing Threads created by participants and any existing General Thread.
 - **Spaces:** Lists Group Spaces and their respective Threads.
 
 ### 11. Migration, Full Acceptance, and Rollout Policy

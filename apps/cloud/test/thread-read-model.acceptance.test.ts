@@ -23,6 +23,7 @@ it("reads threads and configuration with distinct update timestamps", async () =
       CREATE TABLE conversations (id TEXT, thread_id TEXT);
       CREATE TABLE conversation_history_entries (conversation_id TEXT, text TEXT, occurred_at TEXT, actor_type TEXT, actor_id TEXT, kind TEXT, metadata_json TEXT NOT NULL DEFAULT '{}');
       CREATE TABLE space_memberships (id TEXT, space_id TEXT, user_id TEXT, role TEXT, created_at TEXT, updated_at TEXT);
+      CREATE TABLE support_spaces (user_id TEXT, support_user_id TEXT, space_id TEXT, created_at TEXT);
       INSERT INTO spaces (id, owner_user_id, settings_json) VALUES ('space-test', 'user-owner', '{}');
       INSERT INTO users VALUES ('user-owner', 'owner@syntila.test', 'Owner');
       INSERT INTO threads (id, space_id, name, status, has_other_contributions, is_general, access_policy_json, metadata_json, lead_user_id, created_at, updated_at) VALUES ('stream-test', 'space-test', 'Test stream', 'active', 0, 0, '{}', '{}', 'user-owner', 'created', 'stream-updated');

@@ -163,7 +163,7 @@ void main() {
   });
 
   testWidgets(
-      'direct space context menu includes Edit Space and Hide Conversation, no Delete',
+      'direct space context menu matches a regular space: Edit, Archive and Delete',
       (tester) async {
     final context = const AxShellContext(
       navigation: AxNavigation.space('direct-1'),
@@ -192,8 +192,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Edit Space'), findsOneWidget);
-    expect(find.text('Hide Conversation'), findsOneWidget);
-    expect(find.text('Delete Space'), findsNothing);
+    expect(find.text('Archive Space'), findsOneWidget);
+    expect(find.text('Delete Space'), findsOneWidget);
   });
 
   testWidgets(

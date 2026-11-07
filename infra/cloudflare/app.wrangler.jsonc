@@ -23,6 +23,7 @@
     },
   ],
   "vars": {
+    "SYNTILA_SUPPORT_ACCOUNT_EMAIL": "syntila@nohainc.com",
     "SYNTILA_PROFILE_LAB_OWNER_EMAIL": "vitalii@nohainc.com",
     "SYNTILA_ENVIRONMENT": "production",
     "BETTER_AUTH_URL": "https://syntila.app",

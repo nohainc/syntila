@@ -19,6 +19,7 @@ class AxTopBar extends AppTopHud {
     super.onToggleTheme,
     super.onSetThemeMode,
     super.onOpenArchivedSpaces,
+    super.onMessageSupport,
     super.onOpenAbout,
     super.onLogout,
     super.onOpenExternal,

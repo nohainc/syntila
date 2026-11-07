@@ -231,3 +231,35 @@ it("rejects device files, which Cloud could not upload later", async () => {
     }),
   ).rejects.toMatchObject({ status: 400 });
 });
+
+it("sends a reply to a plan paused for input before its remaining phases", async () => {
+  const { sqlite, env, call, enqueue } = fixture();
+  // Phase 1 paused for input: its Workflow finished, the request stays waiting.
+  sqlite.exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
+      VALUES('phase-1','T','owner','stateless','direct',2,'{}','{}','waiting','{"isPhased":true}','now','now');
+    INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,attempt,created_at,updated_at)
+      VALUES('task-1','phase-1','implement','stateful_thread',60000,'v1','completed',1,'now','now');
+    INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
+      VALUES('phase-2','T','owner','{"workflowId":"direct","isPhased":true,"input":{"isPhased":true}}',1,'queued','now','now');
+    INSERT INTO thread_request_queue_state(thread_id,paused_reason,failure_message,updated_at)
+      VALUES('T','failure','Phase 1 paused','now');`);
+  const queue = await enqueue("owner", "tools are installed, try again");
+  // The reply is sent; nothing is cancelled and phase 2 stays paused.
+  expect(created.calls.map((c) => c.body.input)).toEqual([
+    { originalRequest: "tools are installed, try again" },
+  ]);
+  expect(queue.paused).toBe(true);
+  expect(queue.items.map((i) => i.id)).toEqual(["phase-2"]);
+  expect(
+    sqlite.prepare("SELECT status FROM work_requests WHERE id = 'phase-1'").get(),
+  ).toEqual({ status: "waiting" });
+
+  // While the reply processes, a further request waits ahead of phase 2.
+  await enqueue("member", "one more thing");
+  expect(created.calls).toHaveLength(1);
+  expect(
+    (await call("owner", "GET")).items.map((i) => i.request.isPhased ?? false),
+  ).toEqual([false, true]);
+  await advanceThreadQueue(env, "T");
+  expect(created.calls).toHaveLength(1);
+});

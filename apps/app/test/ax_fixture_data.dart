@@ -253,8 +253,11 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
   }
 
   @override
-  Future<void> archiveSpace(
-      {required String spaceId, bool direct = false}) async {}
+  Future<void> archiveSpace({required String spaceId}) async {}
+
+  @override
+  Future<void> setSpaceHidden(
+      {required String spaceId, required bool hidden}) async {}
 
   @override
   Future<void> deleteSpace({required String spaceId}) async {}

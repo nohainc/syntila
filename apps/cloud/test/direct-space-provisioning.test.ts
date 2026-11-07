@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 import worker from "../src/index.js";
 
-describe("Direct Space & General Thread Provisioning (Phase 3)", () => {
+describe("Direct Space provisioning", () => {
   function createTestEnv() {
     const { sqlite, db } = sqliteD1();
     const now = new Date().toISOString();
@@ -55,7 +55,7 @@ describe("Direct Space & General Thread Provisioning (Phase 3)", () => {
     return { sqlite, db, env, users };
   }
 
-  it("automatically provisions Direct Space and General Thread upon invitation acceptance", async () => {
+  it("provisions a Direct Space without a Thread and allows participants to create one", async () => {
     const { env, sqlite } = createTestEnv();
 
     // 1. Alice invites Bob
@@ -95,12 +95,19 @@ describe("Direct Space & General Thread Provisioning (Phase 3)", () => {
       space_id: string;
       user_low_id: string;
       user_high_id: string;
-      general_thread_id: string;
+      general_thread_id: string | null;
     };
     expect(directSpaceRow).toBeDefined();
     expect(directSpaceRow.user_low_id).toBe("user-alice");
     expect(directSpaceRow.user_high_id).toBe("user-bob");
-    expect(directSpaceRow.general_thread_id).toMatch(/^thread-gen-/);
+    expect(directSpaceRow.general_thread_id).toBeNull();
+    const peopleResponse = await worker.fetch(new Request("https://syntila.test/api/people", {
+      headers: { authorization: "Bearer bob" },
+    }), env as never);
+    const people = await peopleResponse.json() as { people: Array<{ userId: string; directSpaceId: string | null; generalThreadId: string | null }> };
+    expect(people.people.find((person) => person.userId === "user-alice")).toMatchObject({
+      directSpaceId: acceptBody.directSpaceId, generalThreadId: null,
+    });
 
     const spaceRow = sqlite.prepare("SELECT * FROM spaces WHERE id = ?").get(acceptBody.directSpaceId) as {
       id: string;
@@ -111,13 +118,14 @@ describe("Direct Space & General Thread Provisioning (Phase 3)", () => {
     expect(spaceRow.kind).toBe("direct");
     expect(spaceRow.owner_user_id).toBe("user-alice");
 
-    const threadRow = sqlite.prepare("SELECT * FROM threads WHERE id = ?").get(directSpaceRow.general_thread_id) as {
-      id: string;
-      space_id: string;
-      name: string;
-    };
-    expect(threadRow.space_id).toBe(acceptBody.directSpaceId);
-    expect(threadRow.name).toBe("General");
+    expect(sqlite.prepare("SELECT id FROM threads WHERE space_id = ?").all(acceptBody.directSpaceId)).toHaveLength(0);
+    for (const user of ["alice", "bob"]) {
+      const response = await worker.fetch(new Request(`https://syntila.test/api/spaces/${acceptBody.directSpaceId}/threads`, {
+        method: "POST", headers: { authorization: `Bearer ${user}`, "content-type": "application/json" },
+        body: JSON.stringify({ name: `${user}'s thread` }),
+      }), env as never);
+      expect(response.status).toBe(201);
+    }
 
     const memberships = sqlite.prepare("SELECT user_id, role FROM space_memberships WHERE space_id = ? ORDER BY user_id").all(acceptBody.directSpaceId) as {
       user_id: string;
@@ -165,12 +173,12 @@ describe("Direct Space & General Thread Provisioning (Phase 3)", () => {
     const acceptBody2 = (await acceptRes2.json()) as { directSpaceId: string };
     expect(acceptBody2.directSpaceId).toBe(acceptBody1.directSpaceId);
 
-    // Verify exactly one Direct Space and one General Thread exist
+    // Verify exactly one Direct Space and no automatically created Threads.
     const spaceCount = sqlite.prepare("SELECT COUNT(*) AS count FROM spaces WHERE kind = 'direct'").get() as { count: number };
     expect(spaceCount.count).toBe(1);
 
     const threadCount = sqlite.prepare("SELECT COUNT(*) AS count FROM threads WHERE space_id = ?").get(acceptBody1.directSpaceId) as { count: number };
-    expect(threadCount.count).toBe(1);
+    expect(threadCount.count).toBe(0);
   });
 
   it("automatically provisions Direct Space on reciprocal invitations", async () => {
@@ -255,7 +263,11 @@ describe("Direct Space & General Thread Provisioning (Phase 3)", () => {
       env as never,
     );
     const { directSpaceId } = (await acceptRes.json()) as { directSpaceId: string };
-    const { general_thread_id } = sqlite.prepare("SELECT general_thread_id FROM direct_spaces WHERE space_id = ?").get(directSpaceId) as { general_thread_id: string };
+    // Simulate an existing connection from before migration 0107.
+    const general_thread_id = "legacy-general";
+    const now = new Date().toISOString();
+    sqlite.prepare("INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?, ?, 'General', 'active', 'user-alice', 1, ?, ?)").run(general_thread_id, directSpaceId, now, now);
+    sqlite.prepare("UPDATE direct_spaces SET general_thread_id = ? WHERE space_id = ?").run(general_thread_id, directSpaceId);
 
     // Attempt to delete the General Thread -> forbidden 403
     const deleteGenRes = await worker.fetch(

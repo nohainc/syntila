@@ -7,35 +7,23 @@ export async function loadSpaceWorkflowConfigurations(
   env: Pick<SecurityEnv, "SYNTILA_DB">,
   spaceId: string,
   workflowId?: string,
-  requestingUserId?: string,
 ) {
   const space = await env.SYNTILA_DB.prepare(
-    "SELECT owner_user_id AS ownerUserId, COALESCE(kind, 'group') AS kind FROM spaces WHERE id = ?1",
+    "SELECT owner_user_id AS ownerUserId FROM spaces WHERE id = ?1",
   )
     .bind(spaceId)
-    .first<{ ownerUserId: string; kind: string }>();
+    .first<{ ownerUserId: string }>();
   if (!space) throw new HttpError(404, "Space not found");
-
-  const effectiveUserId =
-    space.kind === "direct" && requestingUserId
-      ? requestingUserId
-      : space.ownerUserId;
-
   const workspace = await loadWorkflowWorkspace(
     env,
-    effectiveUserId,
-    space.kind === "direct" ? undefined : spaceId,
+    space.ownerUserId,
+    spaceId,
   );
   const rows = await env.SYNTILA_DB.prepare(
     `SELECT workflow_id, configuration_json FROM user_workflow_configurations WHERE user_id = ?1 AND workspace_id = ?4 AND (?2 IS NULL OR workflow_id = ?2)
     UNION ALL SELECT workflow_id, configuration_json FROM space_workflow_configurations WHERE space_id = ?3 AND (?2 IS NULL OR workflow_id = ?2)`,
   )
-    .bind(
-      effectiveUserId,
-      workflowId ?? null,
-      space.kind === "direct" ? null : spaceId,
-      workspace.workspaceId,
-    )
+    .bind(space.ownerUserId, workflowId ?? null, spaceId, workspace.workspaceId)
     .all<{ workflow_id: string; configuration_json: string }>();
   // Space rows deliberately replace an entire workflow, including Worker and Auto model/effort fields.
   const configurations = new Map(
@@ -46,23 +34,20 @@ export async function loadSpaceWorkflowConfigurations(
   );
   return {
     ...workspace,
-    ownerUserId: effectiveUserId,
-    kind: space.kind,
+    ownerUserId: space.ownerUserId,
     defaultWorkflowId:
-      (space.kind !== "direct"
-        ? (
-            await env.SYNTILA_DB.prepare(
-              "SELECT workflow_id AS workflowId FROM space_workflow_defaults WHERE space_id = ?1",
-            )
-              .bind(spaceId)
-              .first<{ workflowId: string }>()
-          )?.workflowId
-        : null) ??
+      (
+        await env.SYNTILA_DB.prepare(
+          "SELECT workflow_id AS workflowId FROM space_workflow_defaults WHERE space_id = ?1",
+        )
+          .bind(spaceId)
+          .first<{ workflowId: string }>()
+      )?.workflowId ??
       (
         await env.SYNTILA_DB.prepare(
           "SELECT workflow_id AS workflowId FROM user_workflow_defaults WHERE user_id = ?1 AND workspace_id = ?2",
         )
-          .bind(effectiveUserId, workspace.workspaceId)
+          .bind(space.ownerUserId, workspace.workspaceId)
           .first<{ workflowId: string }>()
       )?.workflowId ??
       "chat",

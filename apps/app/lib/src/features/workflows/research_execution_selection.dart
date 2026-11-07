@@ -8,20 +8,33 @@ class ResearchExecutionSelection extends StatelessWidget {
     super.key,
     required this.configuration,
     required this.workers,
-  });
+  }) : implement = false;
+
+  /// Implement's plan, implement and verify roles.
+  const ResearchExecutionSelection.implement({
+    super.key,
+    required this.configuration,
+    required this.workers,
+  }) : implement = true;
+
+  final bool implement;
 
   final AxUserWorkflowConfiguration? configuration;
   final List<AxWorker> workers;
 
   @override
   Widget build(BuildContext context) => TextButton.icon(
-        key: const ValueKey('research-execution-selection'),
+        key: ValueKey(implement
+            ? 'implement-execution-selection'
+            : 'research-execution-selection'),
         icon: const Icon(Icons.tune, size: 16),
-        label: const Text('Research executions'),
+        label: Text(implement ? 'Implement executions' : 'Research executions'),
         onPressed: () => showDialog<void>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Research execution selections'),
+            title: Text(implement
+                ? 'Implement execution selections'
+                : 'Research execution selections'),
             content: SizedBox(
               width: 440,
               child: SingleChildScrollView(
@@ -29,17 +42,27 @@ class ResearchExecutionSelection extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    if (implement)
+                      const Text(
+                          'Implement plans in phases, then executes each phase and verifies it. Each role uses a fresh session with recent Thread history; older history may be omitted. Selections follow this Space’s Workspace workflows.')
+                    else
+                      const Text(
                         'Every message sent with Research starts a new investigation and a new synthesis after all researchers finish. Steps run in parallel as slots become available, or wait their turn. Each role uses a fresh session with recent Thread history; older history may be omitted. Each researcher uses a different model. Selections follow this Space’s Workspace workflows.'),
                     const SizedBox(height: 12),
-                    for (var i = 1;
-                        i <= (configuration?.researcherCount ?? 2);
-                        i++)
-                      _role('Researcher $i', 'research-$i'),
-                    _role('Synthesis', 'synthesis'),
+                    if (implement) ...[
+                      _role('Plan', 'plan'),
+                      _role('Implement', 'implement'),
+                      _role('Verify', 'verify'),
+                    ] else ...[
+                      for (var i = 1;
+                          i <= (configuration?.researcherCount ?? 2);
+                          i++)
+                        _role('Researcher $i', 'research-$i'),
+                      _role('Synthesis', 'synthesis'),
+                    ],
                     const SizedBox(height: 12),
-                    const Text(
-                        'To change these selections, open the Workspace’s Workflows tab and edit Research.'),
+                    Text(
+                        'To change these selections, open the Workspace’s Workflows tab and edit ${implement ? 'Implement' : 'Research'}.'),
                   ],
                 ),
               ),

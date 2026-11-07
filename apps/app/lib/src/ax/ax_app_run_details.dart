@@ -1,6 +1,38 @@
 part of 'ax_app.dart';
 
 extension _AxAppRunDetails on _AxAppStateMixin {
+  /// Open the personal support Space even while its sidebar entry is hidden.
+  Future<void> _messageSupport() async {
+    final source = widget.dataSource;
+    if (source is! AxSupportDataSource || _supportOpening) return;
+    _supportOpening = true;
+    final messenger = messengerKey.currentState;
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(const SnackBar(
+        content: Text('Opening Syntila support…'),
+        duration: Duration(seconds: 10)));
+    try {
+      final spaceId =
+          await AxSupportEntry(source as AxSupportDataSource).open();
+      messenger?.hideCurrentSnackBar();
+      if (mounted) _navigateTo(AxNavigation.space(spaceId));
+    } catch (error) {
+      messenger?.hideCurrentSnackBar();
+      final unavailable = error is AxApiException && error.statusCode == 503;
+      messenger?.showSnackBar(SnackBar(
+        content: Text(unavailable
+            ? 'Syntila support is not available right now.'
+            : 'Could not open Syntila support. Check your connection and try again.'),
+        action: SnackBarAction(
+            label: 'Retry', onPressed: () => unawaited(_messageSupport())),
+        // With an action it stays until dismissed, so it can be closed.
+        showCloseIcon: true,
+      ));
+    } finally {
+      _supportOpening = false;
+    }
+  }
+
   Widget _runDetailsView(bool compact) {
     switch (navigation.kind) {
       case AxRouteKind.people:
@@ -43,6 +75,9 @@ extension _AxAppRunDetails on _AxAppStateMixin {
               (workspaces.isNotEmpty ? workspaces.first.id : null),
           workspaces: workspaces,
           inventories: store.mcpInventories,
+          support: widget.dataSource is AxSupportDataSource
+              ? AxSupportEntry(widget.dataSource as AxSupportDataSource)
+              : null,
         );
       case AxRouteKind.spaces:
         return _homeView();

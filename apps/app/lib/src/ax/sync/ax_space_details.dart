@@ -17,6 +17,11 @@ class AxSpaceDetails {
   AxSpace? peek(String spaceId) => engine.peek(query(spaceId)).data;
   Future<AxSpace> ensure(String spaceId) => engine.ensure(query(spaceId));
 
+  /// Persist the caller's sidebar visibility; other sessions receive the
+  /// server's user-scoped space event and refetch.
+  Future<void> setHidden(String spaceId, bool hidden) =>
+      source.setSpaceHidden(spaceId: spaceId, hidden: hidden);
+
   /// Record a successful server write, fencing any older detail reads.
   Future<AxSpace> record(AxSpace space) {
     final entity = space.copyWith(threads: const []);

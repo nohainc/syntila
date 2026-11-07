@@ -710,6 +710,17 @@ class AxWorkRequest {
               ? status
               : executionPhase);
 
+  /// Queued or executing: later requests wait their turn behind it. A plan
+  /// phase that paused for input stays `waiting` after all its steps
+  /// finished; it waits for a reply instead of holding new requests back.
+  bool get isProcessing =>
+      status == 'queued' ||
+      status == 'running' ||
+      (status == 'waiting' &&
+          (steps.isEmpty ||
+              steps.any((step) =>
+                  const {'queued', 'running', 'waiting'}.contains(step.status))));
+
   /// Research reports remain inspectable on their steps, never as the outcome.
   String? get primaryResponseText {
     if (workflowId == 'research' && workflowVersion == 2) {
@@ -950,7 +961,10 @@ abstract interface class AxDataSource {
     String? instructions,
     Map<String, dynamic>? settings,
   });
-  Future<void> archiveSpace({required String spaceId, bool direct = false});
+  Future<void> archiveSpace({required String spaceId});
+
+  /// Persist the caller's own sidebar visibility for a personal Space.
+  Future<void> setSpaceHidden({required String spaceId, required bool hidden});
   Future<void> deleteSpace({required String spaceId});
   Future<List<AxSpaceMember>> loadSpaceMembers({
     required String spaceId,

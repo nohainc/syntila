@@ -171,6 +171,8 @@ abstract final class SyntilaBrand {
         ),
         actionTextColor: SyntilaColors.primaryForegroundDark,
         disabledActionTextColor: SyntilaColors.textSecondaryLight,
+        // The default (onInverseSurface) disappears on this background.
+        closeIconColor: SyntilaColors.textPrimaryDark,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(SyntilaRadius.md)),
@@ -272,6 +274,8 @@ abstract final class SyntilaBrand {
         ),
         actionTextColor: SyntilaColors.primaryForegroundDark,
         disabledActionTextColor: SyntilaColors.textSecondaryDark,
+        // The default (onInverseSurface) disappears on this background.
+        closeIconColor: SyntilaColors.textPrimaryDark,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           side: const BorderSide(color: SyntilaColors.borderDark),

@@ -8,6 +8,7 @@ import {
   handleDisconnectPersonConnection,
   handleBlockPerson,
   handleUnblockPerson,
+  handleEnsureSupportSpace,
 } from "./people.js";
 import {
   handleAccountPlan,
@@ -227,6 +228,8 @@ export async function routeWorkerRequest(
         decodeURIComponent(desktopSessionRotateMatch[1]),
       );
     }
+    if (url.pathname === "/api/people/support")
+      return await handleEnsureSupportSpace(request, env, ctx);
     if (url.pathname === "/api/people")
       return await handleListPeople(request, env, ctx);
     if (url.pathname === "/api/people/invitations") {
@@ -1211,7 +1214,7 @@ export async function routeWorkerRequest(
       );
     }
     const threadQueueMatch = url.pathname.match(
-      /^\/api\/threads\/([^/]+)\/queue(?:\/(pause|resume)|\/([^/]+)(?:\/(send-now))?)?$/,
+      /^\/api\/threads\/([^/]+)\/queue(?:\/(pause|resume)|\/([^/]+)(?:\/(send-now|stop-phases))?)?$/,
     );
     if (threadQueueMatch)
       return await handleThreadRequestQueue(
