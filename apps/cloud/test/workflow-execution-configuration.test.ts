@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { BUILTIN_WORKFLOWS, configuredWorkflowDefinition } from "@syntila/core";
+import {
+  BUILTIN_WORKFLOWS,
+  BUILTIN_WORKFLOW_CATALOG,
+  configuredWorkflowDefinition,
+  type BuiltinWorkflowDefinition,
+} from "@syntila/core";
 import type { SecurityEnv } from "../src/routes/http-security.js";
 const admission = vi.hoisted(() => vi.fn());
 vi.mock("../src/routes/handlers.js", () => ({
@@ -26,6 +31,43 @@ it("accepts Auto only for transient model and effort overrides", () => {
   );
 });
 
+const testMultiStepDefinition: BuiltinWorkflowDefinition = {
+  id: "plan_implement",
+  version: 1,
+  name: "Multi-Step Test",
+  description: "Test workflow with multiple steps",
+  steps: [
+    {
+      id: "implement",
+      kind: "implement",
+      order: 0,
+      executionMode: "stateless_read",
+      executionClass: "workspace_action",
+      requiredCapabilities: [],
+      readWritePolicy: "read_only",
+      timeoutMs: 60000,
+      promptProfileVersion: "implement:v1",
+      dependsOn: [],
+      inputsFrom: [],
+      resultSemantics: "thread_changes",
+    },
+    {
+      id: "verify",
+      kind: "verify",
+      order: 1,
+      executionMode: "stateless_read",
+      executionClass: "analysis",
+      requiredCapabilities: [],
+      readWritePolicy: "read_only",
+      timeoutMs: 60000,
+      promptProfileVersion: "verify:v1",
+      dependsOn: [],
+      inputsFrom: [],
+      resultSemantics: "verification_report",
+    },
+  ],
+};
+
 function fixture(
   defaults: object = {},
   stepOverrides: object = {},
@@ -40,7 +82,7 @@ function fixture(
   ];
   const configuration = {
     schemaVersion: 1,
-    workflowId: "implement_verify",
+    workflowId: "plan_implement",
     enabled: true,
     defaults,
     stepOverrides,
@@ -103,7 +145,7 @@ function fixture(
   const resolve = (
     requester = "user",
     threadId = "thread",
-    definition = BUILTIN_WORKFLOWS.implement_verify,
+    definition = testMultiStepDefinition,
     executionSelection?: unknown,
   ) =>
     resolveWorkflowExecutionBindings(
@@ -213,7 +255,7 @@ it("revalidates inherited preferences and pins current revisions without rewriti
     { verify: { effort: "high", catalogRevision: oldRevision } },
   );
   admission.mockImplementation(
-    async (_env, _space, _thread, definition, bindings) => {
+    async (_env, _space, _thread, _definition, bindings) => {
       const binding = Object.values(bindings)[0] as {
         catalogRevision?: string;
       };
@@ -222,7 +264,10 @@ it("revalidates inherited preferences and pins current revisions without rewriti
         issues: [],
         primaryWorkspaceId: "second",
         workerProfiles: {},
-        workerCatalogRevisions: { [definition.steps[0].kind]: currentRevision },
+        workerCatalogRevisions: {
+          implement: currentRevision,
+          verify: currentRevision,
+        },
       };
     },
   );

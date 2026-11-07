@@ -21,17 +21,13 @@ void main() {
         WorkflowAccess.available);
   });
 
-  test('Chat and Work stay available on Free; other workflows are unchanged',
+  test(
+      'Chat, Work, and Implement stay available on Free',
       () {
-    for (final id in ['chat', 'direct']) {
+    for (final id in ['chat', 'direct', 'plan_implement']) {
       expect(workflowAccess(id, viewerEmail: 'f@x.test', hasPlus: false),
           WorkflowAccess.available);
     }
-    expect(
-        workflowAccess('full_cycle', viewerEmail: 'f@x.test', hasPlus: false),
-        WorkflowAccess.hidden);
-    expect(workflowAccess('full_cycle', viewerEmail: preview, hasPlus: false),
-        WorkflowAccess.available);
   });
 
   test('a locked Research explains the Plus benefit', () {

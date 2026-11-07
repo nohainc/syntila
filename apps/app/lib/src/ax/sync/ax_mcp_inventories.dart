@@ -29,4 +29,32 @@ class AxMcpInventories {
 
   Future<AxMcpInventory?> refresh(String workspaceId) =>
       engine.refresh(query(workspaceId));
+
+  void clear() => _queries.clear();
+
+  Future<Map<String, dynamic>> execute(
+    String workspaceId, {
+    required String action,
+    required String serverId,
+    String? displayName,
+    String? endpoint,
+    String? tokenEnv,
+    bool? insecureLoopback,
+    String? workerTypeId,
+    String? acceptHash,
+  }) async {
+    final result = await (source as AxMcpInventoryDataSource).executeMcpAction(
+      workspaceId,
+      action: action,
+      serverId: serverId,
+      displayName: displayName,
+      endpoint: endpoint,
+      tokenEnv: tokenEnv,
+      insecureLoopback: insecureLoopback,
+      workerTypeId: workerTypeId,
+      acceptHash: acceptHash,
+    );
+    await refresh(workspaceId);
+    return result;
+  }
 }

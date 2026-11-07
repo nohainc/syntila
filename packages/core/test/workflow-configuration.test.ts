@@ -4,9 +4,7 @@ import {
   parseUserWorkflowConfiguration,
   resolveUserWorkflowConfiguration,
 } from "../src/index.js";
-const definition = Object.values(BUILTIN_WORKFLOW_CATALOG).find(
-  (d) => d.id === "full_cycle",
-)!;
+const definition = BUILTIN_WORKFLOW_CATALOG["research:v2"]!;
 const input = {
   schemaVersion: 1,
   workflowId: definition.id,
@@ -18,28 +16,28 @@ it("keeps definitions separate, requires an explicit Worker and overlays steps w
   const config = parseUserWorkflowConfiguration(definition, {
     ...input,
     defaults: { worker: "offline", model: "m" },
-    stepOverrides: { verify: { worker: "reviewer", effort: "high" } },
+    stepOverrides: { synthesis: { worker: "reviewer", effort: "high" } },
   });
   const effective = resolveUserWorkflowConfiguration(definition, config);
   expect(effective.definition).toBe(definition);
-  expect(effective.steps.verify).toEqual({
+  expect(effective.steps.synthesis).toEqual({
     worker: "reviewer",
     model: "m",
     effort: "high",
   });
-  expect(config.stepOverrides.verify).toEqual({
+  expect(config.stepOverrides.synthesis).toEqual({
     worker: "reviewer",
     effort: "high",
   });
   expect(resolveUserWorkflowConfiguration(definition).enabled).toBe(true);
-  expect(resolveUserWorkflowConfiguration(definition).steps.verify).toEqual({});
+  expect(resolveUserWorkflowConfiguration(definition).steps.synthesis).toEqual({});
 });
 it("normalizes Model/Effort Auto and rejects Worker Auto plus invalid identities", () => {
   expect(
     parseUserWorkflowConfiguration(definition, {
       ...input,
       defaults: { worker: "offline", model: "Auto" },
-      stepOverrides: { verify: { effort: "Auto" } },
+      stepOverrides: { synthesis: { effort: "Auto" } },
     }),
   ).toEqual({
     ...input,
@@ -53,10 +51,10 @@ it("normalizes Model/Effort Auto and rejects Worker Auto plus invalid identities
   ).toThrow(/Worker must be selected explicitly/);
   for (const extra of [
     { userId: "other" },
-    { schemaVersion: 2 },
+    { schemaVersion: 3 },
     { stepOverrides: { unknown: {} } },
     { defaults: { worker: 2 } },
-    { workflowId: "chat" },
+    { workflowId: "direct" },
   ]) {
     expect(() =>
       parseUserWorkflowConfiguration(definition, { ...input, ...extra }),
@@ -74,7 +72,7 @@ it("accepts optional reviewed catalog revisions while keeping legacy selections 
     },
   });
   expect(
-    resolveUserWorkflowConfiguration(definition, config).steps.implement
+    resolveUserWorkflowConfiguration(definition, config).steps["research-1"]
       ?.catalogRevision,
   ).toBe("a".repeat(64));
   for (const catalogRevision of ["Auto", "unknown", "A".repeat(64)])
@@ -90,14 +88,14 @@ it("does not inherit another Worker's reviewed catalog revision", () => {
   const configured = parseUserWorkflowConfiguration(definition, {
     ...input,
     defaults: { worker: "one", catalogRevision: "a".repeat(64) },
-    stepOverrides: { verify: { worker: "two" } },
+    stepOverrides: { synthesis: { worker: "two" } },
   });
   expect(
-    resolveUserWorkflowConfiguration(definition, configured).steps.verify
+    resolveUserWorkflowConfiguration(definition, configured).steps.synthesis
       ?.catalogRevision,
   ).toBeUndefined();
   expect(
-    resolveUserWorkflowConfiguration(definition, configured).steps.implement
+    resolveUserWorkflowConfiguration(definition, configured).steps["research-1"]
       ?.catalogRevision,
   ).toBe("a".repeat(64));
 });
@@ -105,12 +103,12 @@ it("accepts a per-Step mcpTools list, lets a step replace the default and reject
   const config = parseUserWorkflowConfiguration(definition, {
     ...input,
     defaults: { worker: "w", mcpTools: ["files"] },
-    stepOverrides: { verify: { mcpTools: [] } },
+    stepOverrides: { synthesis: { mcpTools: [] } },
   });
   const effective = resolveUserWorkflowConfiguration(definition, config);
-  expect(effective.steps.implement?.mcpTools).toEqual(["files"]);
+  expect(effective.steps["research-1"]?.mcpTools).toEqual(["files"]);
   // An empty list is an explicit "none", not "inherit".
-  expect(effective.steps.verify?.mcpTools).toEqual([]);
+  expect(effective.steps.synthesis?.mcpTools).toEqual([]);
   for (const mcpTools of [
     "files",
     ["Files"],
@@ -124,4 +122,34 @@ it("accepts a per-Step mcpTools list, lets a step replace the default and reject
         defaults: { worker: "w", mcpTools },
       }),
     ).toThrow();
+});
+
+it("supports independent role configuration for plan, implement, and verify in Implement workflow", () => {
+  const implementDef = BUILTIN_WORKFLOW_CATALOG["plan_implement:v2"]!;
+  const parsed = parseUserWorkflowConfiguration(implementDef, {
+    schemaVersion: 1,
+    workflowId: implementDef.id,
+    enabled: true,
+    defaults: { worker: "planner-worker", model: "deep-think", effort: "high" },
+    stepOverrides: {
+      implement: { worker: "coder-worker", model: "fast-code", effort: "medium" },
+      verify: { worker: "auditor-worker", model: "strict-auditor", effort: "high" },
+    },
+  });
+  const effective = resolveUserWorkflowConfiguration(implementDef, parsed);
+  expect(effective.steps.plan).toEqual({
+    worker: "planner-worker",
+    model: "deep-think",
+    effort: "high",
+  });
+  expect(effective.steps.implement).toEqual({
+    worker: "coder-worker",
+    model: "fast-code",
+    effort: "medium",
+  });
+  expect(effective.steps.verify).toEqual({
+    worker: "auditor-worker",
+    model: "strict-auditor",
+    effort: "high",
+  });
 });

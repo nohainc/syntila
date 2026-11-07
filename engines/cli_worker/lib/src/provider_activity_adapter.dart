@@ -1364,6 +1364,7 @@ class ProviderActivityAdapter {
     if (!failed) return done;
     return switch (runningTitle) {
       'Running a command' => 'Command failed',
+      'Using a connected tool' => 'Connected tool failed',
       null => 'Tool failed',
       _ => '${done == 'Tool finished' ? 'Tool' : done} failed',
     };

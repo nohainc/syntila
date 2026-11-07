@@ -24,6 +24,7 @@ import 'package:syntila_workspace/worker_readiness.dart';
 import 'package:syntila_workspace/plugin_executor.dart';
 import 'package:syntila_workspace/plugin_store.dart'
     show PluginServiceException;
+import 'package:syntila_workspace/mcp_action_handler.dart';
 import 'package:syntila_workspace/mcp_inventory_publisher.dart';
 import 'package:syntila_workspace/mcp_service.dart';
 import 'package:syntila_workspace/mcp_subsystem.dart';
@@ -32,7 +33,6 @@ import 'package:syntila_workspace/plugin_worker_runtime.dart';
 import 'package:syntila_workspace/bundled_cli_worker_engine_loader.dart';
 import 'package:syntila_workspace/cli_worker_engine_supervisor.dart';
 import 'package:syntila_workspace/mcp_tool_call_executor.dart';
-import 'package:syntila_workspace/mcp_tool_call_fence.dart';
 import 'package:syntila_workspace/mcp_tool_call_handler.dart';
 import 'package:syntila_workspace/worker_diagnostic_store.dart';
 
@@ -165,9 +165,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
     mcpSubsystem.service,
     File('${workspacePaths.mcpDirectory.path}/inventory-revision.json'),
   );
-  final mcpToolCallFence = McpToolCallFence(
-    Directory('${workspacePaths.mcpDirectory.path}/dispatch-fence'),
-  );
+  final mcpToolCallFence = mcpSubsystem.fence;
   final mcpToolCallHandler = cliWorkerEngineSupervisor == null
       ? null
       : McpToolCallHandler(
@@ -182,6 +180,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           workingDirectory:
               Directory('${workspacePaths.mcpDirectory.path}/work'),
         );
+  final mcpActionHandler = McpActionHandler(mcpSubsystem.service);
   final pluginSubsystem = PluginSubsystem.build(
     config: effectiveConfig,
     credentialStore: secureCredentialStore,
@@ -926,6 +925,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           mcpToolCallHandler: mcpToolCallHandler?.handle,
           mcpToolCallStatusHandler: mcpToolCallHandler?.status,
           mcpInventoryProvider: mcpInventoryPublisher.snapshot,
+          mcpActionHandler: mcpActionHandler.handle,
           workerUsageProvider: (workerId) async {
             final supervisor = cliWorkerEngineSupervisor;
             final worker = await localWorkerRegistry.find(workerId);

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BUILTIN_WORKFLOW_CATALOG, workflowCatalogEntry } from "@syntila/core";
+import { BUILTIN_WORKFLOWS, workflowCatalogEntry } from "@syntila/core";
 import { handleGetReleaseTrustState } from "../src/routes/releases.js";
 import {
   routeWorkerRequest,
@@ -109,7 +109,7 @@ describe("Worker API routes", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       // Tool-call workflows need a request-supplied target and are not listed.
-      workflows: Object.values(BUILTIN_WORKFLOW_CATALOG)
+      workflows: Object.values(BUILTIN_WORKFLOWS)
         .filter((definition) =>
           definition.steps.every((step) => step.kind !== "tool_call"),
         )

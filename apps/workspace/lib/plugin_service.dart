@@ -8,7 +8,6 @@ import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart'
 import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
 
 import 'worker_trust_policy.dart' show canonicalJson;
-import 'plugin_migration.dart';
 import 'plugin_registry.dart';
 import 'plugin_store.dart';
 import 'plugin_signer_trust.dart';
@@ -320,7 +319,12 @@ class WorkspacePluginService {
     final selected = _version(record, version);
     final installed = await _load(selected, pluginId);
     if (installed.manifest.isMcp) {
-      return _testMcp(pluginId, selected, installed);
+      return _testMcp(
+        pluginId,
+        selected,
+        installed,
+        onProgress: onProgress,
+      );
     }
     final capabilities = Map<String, Object?>.from(
       installed.manifest.raw['capabilities'] as Map,
@@ -362,22 +366,6 @@ class WorkspacePluginService {
     };
   }
 
-  /// Read-only: could this installed plugin be repackaged as an MCP Worker?
-  /// Looks at the manifest only; nothing is started.
-  Future<Map<String, Object?>> migrateCheck(
-    String pluginId, {
-    String? version,
-  }) async {
-    final record = await _record(pluginId);
-    final selected = _version(record, version);
-    final installed = await _load(selected, pluginId);
-    return {
-      'schemaVersion': 1,
-      'pluginId': pluginId,
-      'version': selected.version,
-      ...assessMcpMigration(installed.manifest),
-    };
-  }
 
   /// MCP Workers have no NDJSON conformance suite. This checks only that the
   /// server, run by the Engine, advertises the Syntila Worker profile and
@@ -385,8 +373,9 @@ class WorkspacePluginService {
   Future<Map<String, Object?>> _testMcp(
     String pluginId,
     PluginVersionRecord selected,
-    InstalledPlugin installed,
-  ) async {
+    InstalledPlugin installed, {
+    void Function(String progress)? onProgress,
+  }) async {
     final inspect = mcpInspect;
     if (inspect == null) {
       throw const PluginServiceException(
@@ -395,6 +384,7 @@ class WorkspacePluginService {
       );
     }
     final tools = await inspect.listWorkerTools(installed);
+    onProgress?.call('conformance:mcp.worker_profile:passed');
     final names = {for (final t in tools) '${t['name']}'};
     final cases = <Map<String, Object?>>[
       {

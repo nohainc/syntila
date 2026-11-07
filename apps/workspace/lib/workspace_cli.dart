@@ -35,7 +35,6 @@ import 'package:gui_manifest/gui_manifest.dart'
         runCli;
 
 part 'workspace_cli_spec.dart';
-part 'workspace_cli_plugins.dart';
 part 'workspace_cli_mcp.dart';
 
 typedef WorkspaceCliRequest = Future<Object?> Function(
@@ -158,9 +157,7 @@ class WorkspaceCli {
         dataDir,
         call.$1,
         call.$2,
-        timeout: call.$1 == 'plugins.test'
-            ? const Duration(minutes: 10)
-            : const Duration(seconds: 60),
+        timeout: const Duration(seconds: 60),
       );
       if (call.$1 == 'connection.connect') {
         result = await _waitForConnection(dataDir, result);
@@ -189,10 +186,9 @@ class WorkspaceCli {
       }
       // A plugin consent document is a valid answer that still needs the
       // person's explicit acceptance, so it exits 3 instead of 0.
-      final consentPending =
-          (call.$1.startsWith('plugins.') || call.$1.startsWith('mcp.')) &&
-              result is Map &&
-              result['consentRequired'] == true;
+      final consentPending = call.$1.startsWith('mcp.') &&
+          result is Map &&
+          result['consentRequired'] == true;
       if (json && consentPending) {
         _print(result, true);
         return 3;
@@ -303,9 +299,6 @@ class WorkspaceCli {
 
   bool _printServiceResult(
       String command, Object? result, Map<String, Object?> payload) {
-    if (command.startsWith('plugins.') && _printPluginResult(command, result)) {
-      return true;
-    }
     if (command.startsWith('mcp.') && _printMcpResult(command, result)) {
       return true;
     }

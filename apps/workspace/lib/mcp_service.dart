@@ -273,6 +273,38 @@ class McpService {
     return {'serverId': serverId, 'removed': true};
   }
 
+  /// Probes the server and returns its current tools without modifying pins or
+  /// consent. Throws if the server is unreachable or its binary check fails.
+  Future<Map<String, Object?>> test(String serverId) async {
+    final server = _require(serverId);
+    final List<Map<String, Object?>> tools;
+    if (server.isRemote) {
+      tools = await _probe.listRemoteTools(server, _remoteTargetFor(server));
+    } else {
+      await _checkBinary(server);
+      tools = await _probe.listTools(server, _launchFor(server));
+    }
+    final definitions = [
+      for (final t in tools)
+        {
+          for (final key in const [
+            'name',
+            'description',
+            'inputSchema',
+            'outputSchema',
+            'annotations',
+          ])
+            if (t.containsKey(key)) key: t[key],
+        },
+    ]..sort((a, b) => '${a['name']}'.compareTo('${b['name']}'));
+    return {
+      'serverId': serverId,
+      'reachable': true,
+      'toolsCount': tools.length,
+      'tools': definitions,
+    };
+  }
+
   static final _workerTypePattern = RegExp(r'^[a-z][a-z0-9_-]{0,63}$');
 
   /// Lets [workerTypeId] receive [serverId] in its executions. Binding does not

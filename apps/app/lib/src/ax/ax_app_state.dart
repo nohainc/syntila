@@ -809,7 +809,8 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
     );
     if (!confirmed) return;
     try {
-      await widget.dataSource.archiveSpace(spaceId: space.id, direct: space.isDirect);
+      await widget.dataSource
+          .archiveSpace(spaceId: space.id, direct: space.isDirect);
       unawaited(store.archivedSpaces
           .refresh()
           .then<void>((_) {}, onError: (Object _, StackTrace __) {}));
@@ -821,13 +822,21 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
           store.spaces.items.where((item) => item.id != space.id).toList());
       selectedSpaceId = null;
       _navigateTo(const AxNavigation.home(), replace: true);
-      _showSnackBar(space.isDirect ? 'Conversation hidden.' : 'Space archived.');
+      _showSnackBar(
+          space.isDirect ? 'Conversation hidden.' : 'Space archived.');
     } catch (error) {
       if (mounted) _showSnackBar(error.toString(), type: ToastType.error);
     }
   }
 
   Future<void> _deleteSpace(String spaceId) async {
+    final directSpace = store.spaces.items
+        .where((s) => s.id == spaceId && s.isDirect)
+        .firstOrNull;
+    if (directSpace != null) {
+      await _archiveSpace(directSpace);
+      return;
+    }
     final confirmed = await _confirmSpaceAction(
       title: 'Delete Space?',
       message: 'This permanently removes the Space and its Threads.',

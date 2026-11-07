@@ -900,12 +900,12 @@ void main() {
         .map((text) => text.data)
         .toList();
     await tester.tap(
-        find.descendant(of: menu, matching: find.text('Plan & Implement')));
+        find.descendant(of: menu, matching: find.text('Implement')));
     await tester.pumpAndSettle();
     expect(
         find.descendant(
             of: find.byKey(const ValueKey('work-choose-workflow')),
-            matching: find.text('Plan & Implement')),
+            matching: find.text('Implement')),
         findsOneWidget);
     expect(
         tester
@@ -1851,6 +1851,159 @@ void main() {
     expect(data.calls.last, 'remove:q2');
     expect(find.byKey(const ValueKey('work-queue-panel')), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'phased queue item displays Phase lock badge and hides edit and send-now',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final data = _SharedQueueDataSource()..ready.complete([]);
+    data.requests = [
+      const AxWorkRequest(
+        id: 'r1',
+        requestedByName: 'You',
+        requestedByUserId: 'user-owner',
+        prompt: 'Running',
+        workflowId: 'direct',
+        workflowVersion: 1,
+        status: 'running',
+        createdAt: '2026-10-06T10:00:00Z',
+        steps: [],
+      )
+    ];
+    data.queue = AxThreadQueue(items: [
+      data.item(
+        'phase-1',
+        'user-owner',
+        'Phase 1: Database Migration',
+        isPhased: true,
+        phaseTitle: 'Database Migration',
+      ),
+    ]);
+    final realtime = StreamController<Map<String, dynamic>>.broadcast();
+    addTearDown(realtime.close);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      initialTab: 1,
+      space: const AxSpace(
+          id: 'space-1',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      thread: const AxThread(
+          id: 'thread-1',
+          spaceId: 'space-1',
+          name: 'Stream',
+          lead: '',
+          status: 'active',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: ''),
+      dataSource: data,
+      currentUserId: 'user-owner',
+      realtimeEvents: realtime.stream,
+      onBackToSpace: _noop,
+      onArchive: _noop,
+    ))));
+    await tester.pumpAndSettle();
+    await _askAi(tester);
+
+    // Verify Phase badge is shown
+    expect(find.text('Phase'), findsOneWidget);
+
+    // Verify Edit and Send now buttons are hidden for phased item
+    expect(find.byTooltip('Edit'), findsNothing);
+    expect(find.byTooltip('Send now'), findsNothing);
+
+    // Verify Remove from queue button is present
+    expect(find.byTooltip('Remove from queue'), findsOneWidget);
+
+    // Remove item
+    await tester.tap(find.byTooltip('Remove from queue'));
+    await tester.pumpAndSettle();
+    expect(data.calls.last, 'remove:phase-1');
+  });
+
+  testWidgets(
+      'completed Implement plan displays AxPlanApprovalCard with verification selector and approve button',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final data = _SharedQueueDataSource()..ready.complete([]);
+    data.requests = [
+      const AxWorkRequest(
+        id: 'wr-plan-1',
+        requestedByName: 'You',
+        requestedByUserId: 'user-owner',
+        prompt: 'Plan the architecture',
+        workflowId: 'plan_implement',
+        workflowVersion: 2,
+        status: 'completed',
+        createdAt: '2026-10-06T10:00:00Z',
+        steps: [],
+        finalText:
+            'Here is the plan:\n\n### Phase 1: Setup\n### Phase 2: Implementation',
+      )
+    ];
+    final realtime = StreamController<Map<String, dynamic>>.broadcast();
+    addTearDown(realtime.close);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      initialTab: 1,
+      space: const AxSpace(
+          id: 'space-1',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      thread: const AxThread(
+          id: 'thread-1',
+          spaceId: 'space-1',
+          name: 'Stream',
+          lead: '',
+          status: 'active',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: ''),
+      dataSource: data,
+      currentUserId: 'user-owner',
+      realtimeEvents: realtime.stream,
+      onBackToSpace: _noop,
+      onArchive: _noop,
+    ))));
+    await tester.pumpAndSettle();
+    await _askAi(tester);
+
+    // Verify the Plan Approval Card is displayed
+    expect(
+        find.byKey(const ValueKey('plan-approval-card-wr-plan-1')), findsOneWidget);
+    expect(find.text('Implementation Plan Ready'), findsOneWidget);
+
+    // Select final verification
+    final finalChip = find.byKey(const ValueKey('verify-mode-final-wr-plan-1'));
+    expect(finalChip, findsOneWidget);
+    await tester.tap(finalChip);
+    await tester.pumpAndSettle();
+
+    // Click Approve & Start Phases
+    final approveBtn =
+        find.byKey(const ValueKey('approve-plan-button-wr-plan-1'));
+    expect(approveBtn, findsOneWidget);
+    await tester.tap(approveBtn);
+    await tester.pumpAndSettle();
+
+    // Verify approvePlan was called with 'final' mode
+    expect(data.calls, contains('approvePlan:wr-plan-1:final'));
+
+    // Verify confirmation message
+    expect(
+        find.textContaining(
+            'Plan approved. Implementation steps added to Thread Queue.'),
+        findsOneWidget);
   });
   testWidgets('a failed request pauses the queue until the user resumes it',
       (tester) async {
@@ -4462,7 +4615,7 @@ void main() {
   });
 
   testWidgets(
-      'Direct Space header actions hide global destructive deletion and expose personal actions',
+      'Direct Space header menu reuses standard space menu (Edit, Hide; no Delete)',
       (tester) async {
     const space = AxSpace(
       id: 'space-direct-1',
@@ -4482,15 +4635,15 @@ void main() {
       primaryWorkspace: '',
       queueStatus: '',
     );
-    var openedThreadId = '';
+    var archived = false;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
           child: SpacePage(
             space: space,
             dataSource: _SpaceStreamsSource([generalThread]),
-            onOpenThread: (id) => openedThreadId = id,
-            onArchive: () {},
+            onOpenThread: (_) {},
+            onArchive: () => archived = true,
             onDelete: () {},
           ),
         ),
@@ -4498,20 +4651,16 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Direct conversation actions'));
+    await tester.tap(find.byTooltip('Space actions'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Open General Thread'), findsOneWidget);
-    expect(find.text('View person'), findsOneWidget);
-    expect(find.text('Hide conversation'), findsOneWidget);
-    expect(find.text('Manage personal notifications'), findsOneWidget);
-    expect(find.text('Remove connection'), findsOneWidget);
+    expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Hide'), findsOneWidget);
     expect(find.text('Delete'), findsNothing);
-    expect(find.text('Edit'), findsNothing);
 
-    await tester.tap(find.text('Open General Thread'));
+    await tester.tap(find.text('Hide'));
     await tester.pumpAndSettle();
-    expect(openedThreadId, 'general');
+    expect(archived, isTrue);
   });
 
   testWidgets(
@@ -4694,7 +4843,8 @@ class _DirectSpaceMembersSource extends AxFixtureDataSource {
   final List<AxSpaceMember> members;
 
   @override
-  Future<List<AxSpaceMember>> loadSpaceMembers({required String spaceId}) async =>
+  Future<List<AxSpaceMember>> loadSpaceMembers(
+          {required String spaceId}) async =>
       members;
 
   @override
@@ -5120,7 +5270,8 @@ class _SharedQueueDataSource extends _SlowSubmissionDataSource
   AxThreadQueue queue = AxThreadQueue.empty;
   final calls = <String>[];
 
-  AxThreadQueueItem item(String id, String author, String text) =>
+  AxThreadQueueItem item(String id, String author, String text,
+          {bool isPhased = false, String? phaseTitle}) =>
       AxThreadQueueItem(
           id: id,
           authorUserId: author,
@@ -5129,8 +5280,25 @@ class _SharedQueueDataSource extends _SlowSubmissionDataSource
           request: {
             'workflowId': 'direct',
             'workflowVersion': 1,
-            'input': {'originalRequest': text},
+            'isPhased': isPhased,
+            if (phaseTitle != null) 'phaseTitle': phaseTitle,
+            'input': {
+              'originalRequest': text,
+              'isPhased': isPhased,
+              if (phaseTitle != null) 'phaseTitle': phaseTitle,
+            },
           });
+
+  @override
+  Future<Map<String, dynamic>> approvePlan({
+    required String workRequestId,
+    String verificationMode = 'none',
+    Map<String, dynamic>? implementer,
+    Map<String, dynamic>? verifier,
+  }) async {
+    calls.add('approvePlan:$workRequestId:$verificationMode');
+    return {'approved': true, 'workRequestId': workRequestId};
+  }
 
   AxThreadQueue _set(AxThreadQueue next) => queue = next;
 
@@ -5274,9 +5442,7 @@ class _CurrentWorkflowUiDataSource extends _VersionedWorkflowDataSource {
           ['direct', 1, 'Direct', 'implement'],
           ['direct', 2, 'Work', 'implement'],
           ['research', 1, 'Research', 'research'],
-          ['plan_implement', 1, 'Plan & Implement', 'plan'],
-          ['implement_verify', 1, 'Implement & Verify', 'implement'],
-          ['full_cycle', 1, 'Full Cycle', 'research'],
+          ['plan_implement', 2, 'Implement', 'plan'],
         ])
           AxBuiltinWorkflow.fromJson({
             'id': entry[0],

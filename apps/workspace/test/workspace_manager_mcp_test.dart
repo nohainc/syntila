@@ -4,6 +4,7 @@ import 'package:syntila_worker_protocol/syntila_worker_protocol.dart'
     show McpServerLaunch;
 import 'package:syntila_workspace/mcp_registry.dart';
 import 'package:syntila_workspace/mcp_service.dart';
+import 'package:syntila_workspace/mcp_tool_call_fence.dart';
 import 'package:syntila_workspace/workspace_manager_ipc.dart';
 import 'package:syntila_workspace/workspace_manager_mcp.dart';
 import 'package:test/test.dart';
@@ -227,5 +228,99 @@ void main() {
         ),
       ),
     );
+  });
+
+  group('mcp.toolCallStatus', () {
+    test('reports fence_unavailable when no fence is configured', () async {
+      await expectLater(
+        commands.handle('mcp.toolCallStatus', {'taskId': 'task-1'}),
+        throwsA(
+          isA<WorkspaceManagerProtocolException>().having(
+            (e) => e.code,
+            'code',
+            'fence_unavailable',
+          ),
+        ),
+      );
+    });
+
+    test('validates taskId parameter', () async {
+      final fence = McpToolCallFence(Directory('${root.path}/fence'));
+      final commandsWithFence = WorkspaceMcpCommands(
+        McpService(McpRegistry(File('${root.path}/mcp.json')), FakeProbe()),
+        fence: fence,
+      );
+      for (final bad in <Map<String, Object?>>[
+        {},
+        {'taskId': ''},
+        {'taskId': 123},
+        {'taskId': 'x' * 901},
+      ]) {
+        await expectLater(
+          commandsWithFence.handle('mcp.toolCallStatus', bad),
+          throwsA(
+            isA<WorkspaceManagerProtocolException>().having(
+              (e) => e.code,
+              'code',
+              'invalid_request',
+            ),
+          ),
+        );
+      }
+    });
+
+    test('returns unclaimed when dispatch key was never claimed', () async {
+      final fence = McpToolCallFence(Directory('${root.path}/fence'));
+      final commandsWithFence = WorkspaceMcpCommands(
+        McpService(McpRegistry(File('${root.path}/mcp.json')), FakeProbe()),
+        fence: fence,
+      );
+      final res = await commandsWithFence.handle('mcp.toolCallStatus', {
+        'taskId': 'task-unclaimed',
+      }) as Map;
+      expect(res['taskId'], 'task-unclaimed');
+      expect(res['dispatchKey'], 'mcp-tool-v1:task-unclaimed');
+      expect(res['status'], 'unclaimed');
+    });
+
+    test('returns claimed_no_outcome when claimed without recorded outcome',
+        () async {
+      final fence = McpToolCallFence(Directory('${root.path}/fence'));
+      final commandsWithFence = WorkspaceMcpCommands(
+        McpService(McpRegistry(File('${root.path}/mcp.json')), FakeProbe()),
+        fence: fence,
+      );
+      await fence.claim('mcp-tool-v1:task-claimed');
+      final res = await commandsWithFence.handle('mcp.toolCallStatus', {
+        'taskId': 'task-claimed',
+      }) as Map;
+      expect(res['taskId'], 'task-claimed');
+      expect(res['dispatchKey'], 'mcp-tool-v1:task-claimed');
+      expect(res['status'], 'claimed_no_outcome');
+    });
+
+    test('returns recorded outcome with state, code and result', () async {
+      final fence = McpToolCallFence(Directory('${root.path}/fence'));
+      final commandsWithFence = WorkspaceMcpCommands(
+        McpService(McpRegistry(File('${root.path}/mcp.json')), FakeProbe()),
+        fence: fence,
+      );
+      await fence.claim('mcp-tool-v1:task-recorded');
+      await fence.recordOutcome(
+        'mcp-tool-v1:task-recorded',
+        state: 'completed',
+        code: 'completed',
+        result: {'output': 'hello world'},
+      );
+      final res = await commandsWithFence.handle('mcp.toolCallStatus', {
+        'taskId': 'task-recorded',
+      }) as Map;
+      expect(res['taskId'], 'task-recorded');
+      expect(res['dispatchKey'], 'mcp-tool-v1:task-recorded');
+      expect(res['status'], 'recorded');
+      expect(res['state'], 'completed');
+      expect(res['code'], 'completed');
+      expect(res['result'], {'output': 'hello world'});
+    });
   });
 }

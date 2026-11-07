@@ -129,6 +129,15 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
   Future<void> cancelWorkRequest({required String workRequestId}) async {}
 
   @override
+  Future<Map<String, dynamic>> approvePlan({
+    required String workRequestId,
+    String verificationMode = 'none',
+    Map<String, dynamic>? implementer,
+    Map<String, dynamic>? verifier,
+  }) async =>
+      {'approved': true, 'workRequestId': workRequestId};
+
+  @override
   Future<AxIssueReport?> loadIssueReport({
     required String requestId,
     String? assignmentId,
@@ -244,7 +253,8 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
   }
 
   @override
-  Future<void> archiveSpace({required String spaceId, bool direct = false}) async {}
+  Future<void> archiveSpace(
+      {required String spaceId, bool direct = false}) async {}
 
   @override
   Future<void> deleteSpace({required String spaceId}) async {}
@@ -512,7 +522,7 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
         queueStatus: 'Idle',
         workConfig: workConfig ??
             const {
-              'defaultWorkflowId': 'full_cycle',
+              'defaultWorkflowId': 'direct',
               'bindings': <String, dynamic>{},
             },
       );

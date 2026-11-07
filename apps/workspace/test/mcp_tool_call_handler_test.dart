@@ -159,6 +159,20 @@ void main() {
             .status({...statusRequest('t1'), 'dispatchKey': 'mcp-tool-v1:x'}),
         isNull);
     expect(await handler.status({'schemaVersion': 1}), isNull);
+    // authorizeStart rejection prevents fence claim and returns rejected.
+    final rejectingHandler = McpToolCallHandler(
+      fence: fence,
+      executor: executor,
+      stateDirectory: Directory('${root.path}/state'),
+      workingDirectory: root,
+      maxConcurrentAssignments: 1,
+      authorizeStart: (req) => false,
+    );
+    final rejectedByAuth =
+        (await rejectingHandler.handle(payload('auth-fail')))!;
+    expect(rejectedByAuth['state'], 'rejected');
+    expect(rejectedByAuth['code'], 'cancelled_before_dispatch');
+    expect(await fence.wasClaimed('mcp-tool-v1:auth-fail'), isFalse);
     expect(supervisor.activeSlotCount, 0);
   });
 }

@@ -97,7 +97,7 @@ export async function handleValidateWorkRequest(
     .bind(threadId)
     .first<{ configJson: string | null }>();
   const config = parseJson<Record<string, unknown>>(row?.configJson, {
-    defaultWorkflowId: "full_cycle",
+    defaultWorkflowId: "direct",
     bindings: {},
   });
   const body = (await request.json()) as Record<string, unknown>;
@@ -271,7 +271,7 @@ export async function createWorkRequestForUser(
     .first<{ configJson: string | null; settingsJson: string | null }>();
   const workConfig = parseJson<Record<string, unknown>>(
     workConfigRow?.configJson,
-    { defaultWorkflowId: "full_cycle", bindings: {} },
+    { defaultWorkflowId: "direct", bindings: {} },
   );
   const workflowId = requiredString(
     body.workflowId ?? workConfig.defaultWorkflowId,

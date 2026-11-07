@@ -363,6 +363,57 @@ void main() {
       });
       expect(failed.single.title, 'Tool failed');
       expect(failed.single.type, 'tool.failed');
+
+      // MCP tool call lifecycle: start, complete, and fail.
+      line(claude, {
+        'type': 'assistant',
+        'message': {
+          'content': [
+            {
+              'type': 'tool_use',
+              'id': 'toolu_mcp_ok',
+              'name': 'mcp__github__create_issue',
+              'input': {'title': 'bug'},
+            },
+            {
+              'type': 'tool_use',
+              'id': 'toolu_mcp_err',
+              'name': 'mcp__github__close_issue',
+              'input': {'issue_number': 42},
+            },
+          ],
+        },
+      });
+      final mcpDone = line(claude, {
+        'type': 'user',
+        'message': {
+          'content': [
+            {
+              'type': 'tool_result',
+              'tool_use_id': 'toolu_mcp_ok',
+              'content': 'created',
+            },
+          ],
+        },
+      });
+      expect(mcpDone.single.type, 'tool.completed');
+      expect(mcpDone.single.title, 'Used a connected tool');
+
+      final mcpFail = line(claude, {
+        'type': 'user',
+        'message': {
+          'content': [
+            {
+              'type': 'tool_result',
+              'tool_use_id': 'toolu_mcp_err',
+              'is_error': true,
+              'content': 'forbidden',
+            },
+          ],
+        },
+      });
+      expect(mcpFail.single.type, 'tool.failed');
+      expect(mcpFail.single.title, 'Connected tool failed');
       expect(failed.single.status, 'failed');
       expect(failed.single.activityId, 'toolu_02');
 

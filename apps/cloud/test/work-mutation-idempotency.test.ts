@@ -674,11 +674,11 @@ describe("Research plan admission", () => {
       expect(
         (await f.submit("Do", "research-work-00000001", "direct")).status,
       ).toBe(202);
-      const fullCycle = await f
-        .submit("All", "research-full-00000001", "full_cycle")
+      const implementPlan = await f
+        .submit("All", "research-plan-00000001", "plan_implement")
         .then((r) => r.status)
         .catch((e: { status?: number; code?: string }) => e.code ?? e.status);
-      expect(fullCycle).not.toBe("paid_plan_required");
+      expect(implementPlan).not.toBe("paid_plan_required");
     } finally {
       f.sqlite.close();
     }

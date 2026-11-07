@@ -54,13 +54,13 @@ it("spaces authorized Home read model with attention, running, recentWork, produ
       INSERT INTO threads VALUES ('ws-revoked', 'proj-revoked', 'Secret Thread', 'active', '{}', 'other', '2026-10-02T00:00:00Z', '2026-10-08T05:00:00Z');
 
       -- Active Run in authorized space
-      INSERT INTO work_requests VALUES ('run-active', 'proj-auth', 'ws-auth', 'user-123', 'full_cycle', '1.0.0', '{}', '{}', '{"objective":"Building Home API projection"}', 'running', '2026-10-08T05:10:00Z', '2026-10-08T05:10:00Z');
+      INSERT INTO work_requests VALUES ('run-active', 'proj-auth', 'ws-auth', 'user-123', 'direct', '2', '{}', '{}', '{"objective":"Building Home API projection"}', 'running', '2026-10-08T05:10:00Z', '2026-10-08T05:10:00Z');
 
       -- Active Run in revoked space (must NOT appear)
-      INSERT INTO work_requests VALUES ('run-secret', 'proj-revoked', 'ws-revoked', 'other', 'full_cycle', '1.0.0', '{}', '{}', '{"objective":"Secret Execution"}', 'running', '2026-10-08T05:10:00Z', '2026-10-08T05:10:00Z');
+      INSERT INTO work_requests VALUES ('run-secret', 'proj-revoked', 'ws-revoked', 'other', 'direct', '2', '{}', '{}', '{"objective":"Secret Execution"}', 'running', '2026-10-08T05:10:00Z', '2026-10-08T05:10:00Z');
 
       -- Failed execution in authorized space (attention item)
-      INSERT INTO work_requests VALUES ('run-failed', 'proj-auth', 'ws-auth', 'user-123', 'full_cycle', '1.0.0', '{}', '{}', '{"objective":"Flaky task"}', 'failed', '2026-10-08T04:00:00Z', '2026-10-08T04:30:00Z');
+      INSERT INTO work_requests VALUES ('run-failed', 'proj-auth', 'ws-auth', 'user-123', 'direct', '2', '{}', '{}', '{"objective":"Flaky task"}', 'failed', '2026-10-08T04:00:00Z', '2026-10-08T04:30:00Z');
     `);
 
     const db = {

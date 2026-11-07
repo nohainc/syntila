@@ -3,10 +3,44 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:syntila_cli_worker_engine/src/mcp_config.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:test/test.dart';
 
 void main() {
+  group('McpConfigFile.sweepStale', () {
+    test(
+      'sweeps stale directories older than cutoff and preserves active or unrelated entries',
+      () async {
+        final root = await Directory.systemTemp.createTemp('sweep-test-');
+        addTearDown(() => root.delete(recursive: true));
+
+        final staleDir = Directory('${root.path}/syntila-mcp-stale')
+          ..createSync();
+        // Allow filesystem timestamp to advance past the threshold.
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+
+        final freshDir = Directory('${root.path}/syntila-mcp-fresh')
+          ..createSync();
+        final otherDir = Directory('${root.path}/other-stale')
+          ..createSync();
+        final staleFile = File('${root.path}/syntila-mcp-file')
+          ..writeAsStringSync('not a directory');
+
+        final removed = await McpConfigFile.sweepStale(
+          olderThan: const Duration(milliseconds: 80),
+          root: root,
+        );
+
+        expect(removed, 1);
+        expect(staleDir.existsSync(), isFalse);
+        expect(freshDir.existsSync(), isTrue);
+        expect(otherDir.existsSync(), isTrue);
+        expect(staleFile.existsSync(), isTrue);
+      },
+    );
+  });
+
   test(
     'passes consented MCP servers through a private per-execution config',
     () async {

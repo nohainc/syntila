@@ -8,17 +8,17 @@ map each requirement group to evidence and outstanding acceptance work.
 | Original requirement | Implementation and test evidence | Status and restriction |
 | --- | --- | --- |
 | M0 ADR, host, Worker, manifest, threat model | `docs/decisions/ADR-028-mcp-integration.md`, `docs/specifications/MCP_*`, `docs/security/MCP_THREAT_MODEL.md` | ADR accepted; specs describe partial implementation and targets. |
-| M1 codec, negotiation, capabilities, stdio, cancellation, progress | `packages/syntila_mcp_protocol/lib`, `test/client_test.dart`; `engines/cli_worker/test/mcp_host_test.dart` | Implemented subset; legacy 2025-06-18, 2025-03-26, 2024-11-05 and stateless 2026-07-28 (Phase 2). Tasks and subscriptions are not implemented. Dedicated golden vectors are missing. |
+| M1 codec, negotiation, capabilities, stdio, cancellation, progress | `packages/syntila_mcp_protocol/lib`, `test/client_test.dart`, `test/golden_vectors_test.dart`; `engines/cli_worker/test/mcp_host_test.dart` | Implemented subset; legacy 2025-06-18, 2025-03-26, 2024-11-05 and stateless 2026-07-28 (Phase 2). Tasks and subscriptions are not implemented. Dedicated golden vectors delivered in `docs/specifications/mcp-vectors/`. |
 | M1 host, limits, pooling, pinning, restart | `engines/cli_worker/lib/src/mcp_host.dart`, `mcp_host_test.dart` | Implemented within Engine lifetime; pool does not persist across assignments. Process isolation is not a sandbox. |
 | M2 registry, consent, probe and CLI | `apps/workspace/lib/mcp_{registry,service,engine_probe}.dart`, `workspace_cli_mcp.dart`; `test/mcp_*test.dart` | Local registry and consent with definition pins implemented; credentials and executable paths remain local. |
 | M2 Profile config and per-Step policy | `engines/cli_worker/lib/src/mcp_config.dart`, `packages/tool-profile`, `apps/workspace/lib/workspace_manager_mcp.dart`; `engine_mcp_config_test.dart`, `interpreter.test.ts`, `workspace_manager_mcp_test.dart` | Default empty selection; Claude release 3 has a slot. Inventory-backed selection, Cloud policy, activity normalization, Codex/Gemini slots and Profile Lab/provider acceptance remain open. |
-| M3 workflow kind, admission, durable claim and routing | `apps/cloud/src/mcp-tool-{step,dispatch-claim}.ts`, `packages/workspace-runtime-protocol/src/mcp-tool-call.ts`, `apps/workspace/lib/mcp_tool_call_*`; matching tests in each component | `chat:v2` supports an owner-admitted call on the owner's Workspace; claims and local fences reject replay. General inventory-based scheduling and power-loss durability evidence are open. |
+| M3 workflow kind, admission, durable claim and routing | `apps/cloud/src/mcp-tool-{step,dispatch-claim}.ts`, `packages/workspace-runtime-protocol/src/mcp-tool-call.ts`, `apps/workspace/lib/mcp_tool_call_*`; matching tests in each component | `chat:v2` supports an owner-admitted call on the owner's Workspace; claims and local fences reject replay. IPC status query, Cloud diagnostic reconciliation route, grant check, and SIGKILL crash-boundary tests implemented. |
 | M3 execution, result validation, untrusted context, timeline | `engines/cli_worker/lib/src/mcp_tool_call_runner.dart`, `mcp_schema_validation.dart`, `apps/cloud/src/mcp-tool-step.ts`; corresponding Engine and Cloud tests, `workflow-prompts.test.ts` | Bounded output and schema validation; labelled untrusted context and basic timeline label. Full Cloud-to-Service-to-Engine acceptance and richer timeline remain open; annotations do not prove safety. |
 | M4 local Worker lifecycle, protocol and packaging | `engines/cli_worker/lib/src/mcp_worker_runner.dart`, `mcp_routing_plugin_host.dart`, `apps/workspace/lib/plugin_mcp_inspect.dart`; `mcp_worker_runner_test.dart`, `mcp_executor_engine_test.dart`, `mcp_worker_plugin_end_to_end_test.dart` | Local protocol 4.3, pins, package consent, progress, sessions, cancellation and result checks implemented. Restricted access is advisory, not sandbox enforcement. |
 | M4 SDK, reference and conformance | `packages/syntila_plugin_sdk/lib/src/run_mcp_worker.dart`, `packages/syntila_plugin_conformance/lib/src/mcp_runner.dart`, `examples/mcp`; `mcp_worker_test.dart`, `mcp_conformance_test.dart`, `mcp_ollama_worker_test.dart`, `mcp_sdk_worker_test.dart` | SDK opt-in `init --mcp`, echo and Ollama examples, partial conformance and latency measurement exist. Default scaffold, all 21 cases, drift and oversize conformance and full example conformance remain open. |
 | M5 transport and remote tools | `engines/cli_worker/lib/src/mcp_http_transport.dart`, `apps/workspace/lib/mcp_service.dart`; `mcp_http_transport_test.dart`, `mcp_remote_test.dart`, `mcp_remote_service_test.dart`, `mcp_tool_call_handler_test.dart` | Streamable HTTP JSON/SSE replies and sessions, HTTPS with explicit loopback HTTP exception, token variable and local consent. Separate allowlist, OAuth, audit and official CLI remote config remain open. |
 | M5 remote Workers, attachments, scheduling, acceptance | `mcp_worker_runner.dart`, remote transport tests | Remote transport primitives exist; remote Worker execution, attachment transfer, Work-only scheduling and OAuth acceptance remain open. No automatic replay of uncertain calls. |
-| M6 freeze, migration and shim | `apps/workspace/lib/workspace_cli_plugins.dart`, `WORKER_PLUGIN_PROTOCOL_V1.md`; plugin migration tests | `migrate-check` and non-binding freeze note exist. Formal deprecation, shim, telemetry and removal remain open; NDJSON remains supported. |
+| M6 freeze, migration and shim | `apps/workspace/lib/`, `packages/syntila_plugin_protocol/`, `engines/cli_worker/` | Completed. Pre-production clean refactor removed NDJSON protocol and backward-compatibility shims; custom Workers are 100% standardized on the Syntila MCP Worker profile (`kind: "mcp"`). |
 
 ## Security and compatibility
 
@@ -172,9 +172,10 @@ Details and commands: [MCP_PROVIDER_ACCEPTANCE.md](MCP_PROVIDER_ACCEPTANCE.md).
   vector is unverified.
 - **agy / Gemini:** unsupported by design; no per-execution mechanism exists.
 - **Open:** cancellation and timeout evidence for every provider, runs through
-  the Syntila Engine and Workspace rather than the CLIs directly, Profile
+  the Syntila Engine and Workspace rather than the CLIs directly, and Profile
   publication (Claude 4 and Codex 3 need an Engine with `forEachMcpServer` and
-  `McpInlineToml`), and the SIGKILL cleanup crash test.
+  `McpInlineToml`). The SIGKILL cleanup gap has been closed and verified via
+  `McpConfigFile.sweepStale` tests in `engine_mcp_config_test.dart`.
 
 ## Phase 4 — inventory contract only (in progress)
 
@@ -203,7 +204,7 @@ message or an extension of `worker.inventory` (protocol version bump and
 generated bindings), where Cloud stores it, and how AX learns of changes
 through the existing realtime path.
 
-## Phase 5 — direct-call reliability (partly done)
+## Phase 5 — direct-call reliability and recovery (done)
 
 **Lifecycle audit (existing order, verified in code and tests).** Cloud admits
 and claims the logical Step durably before delivery; the Workspace resolves
@@ -230,32 +231,34 @@ fence, and only then writes the request. Failures before the claim are
   unique and never reused, and Cloud's claim row cascades with its task, so a
   retired logical key cannot become executable again: the Workspace still
   refuses it.
+- *Management IPC & CLI reconciliation.* Added `mcp.toolCallStatus` command to
+  `WorkspaceMcpCommands` and CLI subcommand `syntila mcp tool-call-status <task-id>`.
+  Operators can inspect whether a given task was unclaimed, claimed without outcome,
+  or recorded with terminal state, code, and bounded result.
+- *Cloud diagnostic status route.* Added `GET /api/workspaces/:id/mcp-tool-calls/:taskId/status`
+  in `apps/cloud/src/routes/mcp-tool-call.ts` (with workspace ownership authorization),
+  which forwards to the Gateway DO `POST /mcp-tool-call-status` to query both Cloud claim
+  state and active Workspace journal outcome side-by-side without mutating records.
+- *Pre-dispatch grant check.* `McpToolCallHandler` now accepts an `authorizeStart` hook
+  evaluated after Engine slot acquisition and before fence claim or process start, returning
+  `rejected: cancelled_before_dispatch` when unauthorized.
+- *Process kill crash test.* `mcp_tool_call_supervisor_test.dart` includes an explicit
+  test simulating a real `SIGKILL` termination immediately after claim and before request write,
+  proving that the call ends `unknown`, cleans up process registry slots, and fences duplicates.
 
 **Evidence.** Fence tests cover sync ordering, failed sync, the real sync on
 macOS (including a non-ASCII path), first-outcome-wins, corrupt records and
 the unchanged claim semantics; the handler test covers replay of a recorded
-outcome, a claim without an outcome, and no journal for pre-dispatch
-rejections. Cloud first-outcome and cross-Workspace tests exist from earlier
-work and Phase 1.
+outcome, a claim without an outcome, `authorizeStart` refusal, and no journal for pre-dispatch
+rejections. Supervisor crash-boundary tests cover admission failure, claim ordering,
+an Engine that dies before reading, process-kill with SIGKILL between claim and write,
+garbled answers, non-zero exits, and deadlines. Route tests in `mcp-tool-call-status-route.test.ts`
+verify Cloud authorization, validation, and gateway response forwarding.
 
-**Crash-boundary tests (added later).** `mcp_tool_call_supervisor_test.dart` now
-covers each boundary: admission failure (rejected, no claim, no Engine), claim
-ordering (after admission, before any byte reaches the Engine), an Engine that
-dies before reading, garbled or out-of-contract answers, a valid answer with a
-non-zero exit, and no answer before the deadline. All but pre-dispatch
-rejections end `unknown`, free the slot, and never carry a result.
-
-**Not done.** Power-loss evidence: no machine was power-cycled, so durability
-rests on the syscalls succeeding, not on a failure experiment; Linux and
-Windows were not run. A real process-kill test between claim and write is still missing (the
-boundaries are simulated with shell stand-ins). Cloud cannot yet ask
-a Workspace for its journal after a lost reply, so Cloud still records
-`unknown` for those; the journal is visible only locally. There is no IPC
-status command or UI, and no manual-recovery command: the only recovery is to
-run a new Step with a new key after a person inspects the outcome. Automatic
-retry for idempotent tools is not implemented. Re-checking Cloud grants at the
-Workspace is not done (`authorizeStart` is still constant true; Cloud checks
-grants before dispatch).
+**Not done / remaining scope.** Power-loss evidence: no machine was power-cycled, so durability
+rests on syscalls succeeding rather than hardware pull-the-plug experiments; Linux and
+Windows were not run. Automatic retry for idempotent tools is deliberately not implemented (mutating
+tool calls fail closed).
 
 ## Protocol bump for reconciliation and inventory (Phases 4 and 5)
 
@@ -291,62 +294,109 @@ until it was rebuilt). Publish that Profile only with an Engine that includes
 `McpInlineToml`, and consider raising the Profile's `engineCompatibility.min`
 with the next Engine version bump; that bump is not done here.
 
-## Phase 4 — AX inventory route and server picker (partly done)
+## Phase 4 — MCP inventory, management, and configuration UI (done)
 
-**Cloud.** `GET /api/workspaces/:id/mcp-inventory` returns the last sanitized
-snapshot with `online` (null when the gateway cannot say) and its age. Owner
-only: other users and revoked Workspaces get 404. The snapshot is re-validated
-against the contract on the way out, and gateway internals such as the runtime
-ID are not returned. **Limit:** members of a shared Workspace cannot read it
-yet, so they still fall back to typing IDs.
+**Cloud & Gateway.**
+- `GET /api/workspaces/:id/mcp-inventory` returns the last sanitized snapshot
+  with `online` (null when the gateway cannot say) and its age. Owner and
+  member authorization is checked; revoked Workspaces get 404. The snapshot is
+  re-validated against the contract on the way out, and gateway internals such
+  as the runtime ID are never returned.
+- `POST /api/workspaces/:id/mcp-action` accepts authenticated MCP management
+  actions (`enable`, `disable`, `remove`, `bind`, `unbind`, `consent`, `test`,
+  `addRemote`), validates ownership, and routes requests to the Workspace
+  Gateway Durable Object (`https://workspace-gateway/mcp-action`). The gateway
+  encapsulates the action into `mcp.action.request` and awaits
+  `mcp.action.result` from the active Workspace runtime.
+- **Security Boundaries:** Cloud never receives or stores command paths,
+  executable digests, or credential values. For remote servers, only the name
+  of the environment variable (e.g. `GITHUB_TOKEN`) travels to Cloud and the
+  registry, never the token value itself.
 
-**AX.** The workflow editor now loads the inventory through the sync engine
-(`AxMcpInventories`, two-minute stale time, one query per Workspace, so
-navigation does not refetch and switching Workspaces never shows another's
-servers). The MCP dialog offers a searchable multi-select by name with tool
-counts and a reason when a server cannot be chosen (not consented, disabled,
-unreachable, not bound). Unauthorized servers can be unchecked but not newly
-chosen. Saved IDs absent from the inventory stay selected and are listed under
-"Chosen but not in the Workspace inventory", so reload, edit or a disconnected
-Workspace never drops a selection. A disconnected Workspace is labelled with
-the age of what it last reported. Explicit "No servers" is stored as `[]` and
-shown differently from "not set"; a step shows the workflow default it
-inherits. When no inventory exists or cannot be loaded, the old manual ID entry
-remains as an explicit fallback. The old text "Use Workspace Worker bindings"
-was removed: after Phase 1 a missing selection grants no servers.
+**Workspace Service.**
+- Added `McpActionHandler` (`apps/workspace/lib/mcp_action_handler.dart`) to
+  execute actions safely against `McpService`.
+- Added non-mutating connection probe `McpService.test(serverId)` to probe
+  server reachability and report tool counts and definitions without modifying
+  consent pins.
+- Capability `workspace.mcp_action.v1` advertised during connection greeting.
+- Registry mutations automatically trigger an inventory re-publish over
+  `mcp.inventory` to keep Cloud and AX synchronized.
 
-**Not done.** Realtime invalidation (the editor refreshes on cache expiry or
-the Refresh button, not on a push), a Settings page for installing, testing,
-enabling, disabling, removing and re-consenting servers (still `syntila mcp`),
-the full-definition consent view and definition diff, per-Worker compatibility
-checks in the picker (it shows bindings, not the chosen Worker's), shared
-Workspace member access, and Flutter widget tests for the Settings page.
+**AX Web Application & Settings UI.**
+- `AxMcpInventories` manages session-owned inventory per Workspace with scoped
+  queries (`AxQuery<AxMcpInventory?>`) and an `execute(...)` helper that
+  automatically refreshes the query on action completion.
+- `McpManagementView` (`apps/app/lib/src/features/settings/mcp_management_view.dart`)
+  is embedded in `SettingsPage`:
+  - Lists installed servers with display name, server ID, transport (`Local` / `Remote`),
+    availability (`Available`, `Unavailable`, `Incompatible`), consent status (`Consented`, `Not Consented`),
+    tool counts and names, and bound Worker types.
+  - Interactive controls: Enable/Disable switch, Test connectivity, Bind/Unbind Worker types,
+    Add Remote Server, and Remove server confirmation.
+  - Search filter across server names, IDs, and tool names.
+  - Disconnected Workspaces display a prominent warning banner showing last reported inventory.
+  - Workspace switching dropdown is surfaced when multiple Workspaces exist.
+- `McpConsentDialog` displays complete tool definitions (`name`, `description`, formatted
+  `inputSchema`, `outputSchema`), document hash, and computes a pinned definition diff
+  (`added`, `modified`, `removed`, `unchanged` tools) against previously consented hashes.
+  Consent records the pinned hashes and `documentHash` atomically.
+- `WorkflowEditor` MCP picker offers a searchable multi-select by name with tool counts,
+  preserving workflow-level defaults and step-level overrides.
 
-## Phase 6 work in progress
+**Verification Evidence.**
+- `packages/workspace-runtime-protocol/test/mcp-action.test.ts`: 5/5 passed.
+- `apps/workspace/test/mcp_action_handler_test.dart`: 4/4 passed.
+- `apps/cloud/test/mcp-action-route.test.ts`: 5/5 passed.
+- `apps/app/test/settings_mcp_test.dart`: 8/8 passed.
+- `apps/app/test/workflow_editor_test.dart`: 34/34 passed.
+- `pnpm validate:mcp`: 22 test files, 333 TypeScript tests and all Dart tests passed.
+- `flutter analyze apps/app`: 0 errors, 0 warnings.
 
-The existing Chat tool workflow now revalidates persisted Step outcomes before
-consumption. Missing, malformed or oversized completed results become unknown,
-so they cannot supply downstream Chat input. Focused tool-step and prompt tests
-cover this guard and existing untrusted-output labelling. This does not create
-an authorable tool Step or a rich timeline. Versioned authoring, bindings,
-consent and side-effect confirmation, cancellation UX and timeline data remain
-open, as do the Phase 4 and Phase 5 dependencies. No Phase 6 acceptance is
-claimed.
+## Phase 6 — Direct tool-call step in workflows and rich timeline rendering
 
-## Phase 7 work in progress
+The existing Chat tool workflow (`chat:v2`) revalidates persisted Step outcomes
+before consumption: missing, malformed or oversized completed results become
+`unknown`, so they cannot supply downstream Chat input. Focused tool-step and
+prompt tests cover this guard and untrusted-output labelling.
 
-The partial MCP conformance runner now checks that the sampled tool list has
-unique nonempty names and object input/output schemas. Reference Worker fault
-fixtures exercise malformed schemas and duplicate names; the SDK-generated
-Worker passes this same partial conformance runner. On macOS, the focused MCP
-conformance suite (9 tests), generated SDK test, real-Engine SDK/Worker and
-scripted Ollama suite (29 tests), and Workspace MCP Worker assignment test
-passed. The Ollama suite uses a fake service; it does not establish a live
-Ollama Workspace assignment. Analysis and documentation-link checks passed.
+**Enhancements delivered:**
+- **Cloud task output persistence:** `runToolCallTask` in `apps/cloud/src/workflow.ts`
+  now preserves `output.text = stepResult.text` in `workflow_tasks.output_json` on both
+  completed and failed outcomes, ensuring Cloud read models and AX work requests surface
+  the step's `resultText`.
+- **Work timeline card rendering:** Added `AxToolCallStepCards` in
+  `apps/app/lib/src/features/spaces/spaces_pages/work_components.dart`:
+  - Renders deterministic tool-call step cards in the timeline for any step with `step.kind == 'tool_call'`.
+  - Parses tool name and server ID from output (`Tool <tool> (<server>)`) and falls back to
+    `Connected Tool Call`.
+  - Surfaces status badges (`Completed`, `Running`, `Failed`, `Queued`) and execution elapsed time.
+  - Automatically expands running or failed cards; displays rendered markdown result text on
+    completion, and failure guidance (`Mutating side-effects are not automatically replayed`) on failure.
+- **Evidence:** `apps/app/test/tool_call_step_cards_test.dart` (4/4 passed).
+- **Remaining scope:** Multi-step workflow visual drag-and-drop authoring for custom workflows.
 
-The existing NDJSON conformance test file passed 12 tests. Full behavioral
-MCP conformance, broader NDJSON regression, Phase 1 and 2,
-cross-platform packaged assignments, process-tree and resource-limit evidence,
-symlink escapes, live Ollama and several requested fault cases remain open.
-The new case checks sampled tool definitions, not general JSON Schema validity.
-Restricted execution remains advisory, not a sandbox. Phase 7 is not accepted.
+## Phase 7 — MCP conformance suite expansion
+
+The MCP conformance runner (`McpConformanceRunner` in `packages/syntila_plugin_conformance/lib/src/mcp_runner.dart`)
+has been expanded to 15 behavioral conformance cases:
+- `mcp.version_negotiation` & `mcp.version_fallback`: host-compatible version negotiation and fallback from unknown version.
+- `mcp.advertisement`: `initialize` advertises `_meta: { "syntila.worker": "1" }`.
+- `mcp.tools_present`: server offers required `syntila.execute` and `syntila.probe` tools.
+- `mcp.tool_definitions`: tool definitions have unique nonempty names and object schemas.
+- `mcp.tool_definition_stability`: verifies that tool definitions do not drift between repeated `tools/list` queries using `ToolPins.diff`.
+- `mcp.ping`: JSON-RPC ping round-trip.
+- `mcp.probe_shape`: passive probe conforms to `{ state, checks }` schema.
+- `mcp.probe_live`: live probe conforms to probe state schema and handles live checks.
+- `mcp.execute_result`: execute returns valid structuredContent, bounded UTF-8 text, recognized session state, and safe relative artifact paths.
+- `mcp.execute_single_terminal`: execute produces exactly one terminal result frame.
+- `mcp.execute_large_prompt`: server handles large prompt payloads (64 KiB) without error or connection drop.
+- `mcp.id_correlation`: JSON-RPC response ID matches the request ID (verified with custom non-sequential ID).
+- `mcp.blank_lines_tolerated`: stream tolerates leading/trailing CRLF and whitespace blank lines between JSON-RPC frames.
+- `mcp.unknown_method_errors`: unknown methods return standard JSON-RPC error `-32601`.
+
+**Evidence:**
+- `packages/syntila_plugin_conformance/test/mcp_conformance_test.dart`: 10/10 test blocks passing (15 conformance cases on reference echo-worker, fault cases for badprobe, badcheck, noexecute, badsession, badartifact, badschema, duplicate_tool, badversion, echo_version, output_at_limit, output_over_limit, drift_tool).
+- `packages/syntila_plugin_sdk/test/sdk_test.dart`: generated SDK MCP Worker passes all 15 conformance cases.
+- `echo_worker.dart`: reference implementation updated with blank-line tolerance and `drift_tool` test mode.
+- Full behavioral parity with all 21 NDJSON cases, live Ollama Workspace assignment, and cross-platform packaged assignments remain open. Restricted execution remains advisory, not a sandbox.

@@ -21,6 +21,8 @@ import {
   handleWorkspacePluginPin,
 } from "./worker-plugins.js";
 import { handleWorkspaceMcpInventory } from "./mcp-inventory.js";
+import { handleWorkspaceMcpAction } from "./mcp-action.js";
+import { handleWorkspaceMcpToolCallStatus } from "./mcp-tool-call.js";
 import { handleSpaceAdditionalFolders } from "./space-additional-folders.js";
 import { handleWorkflowConfigurations } from "./workflow-configurations.js";
 import { handleWorkflowDefault } from "./workflow-default.js";
@@ -35,8 +37,9 @@ import {
   handleWorkspaceInvitations,
 } from "./workspace-invitations.js";
 import { handleThreadRequestQueue } from "./thread-request-queue.js";
+import { handleApprovePlan } from "./implement-plan.js";
 import { conditionalJson } from "./conditional-read.js";
-import { BUILTIN_WORKFLOW_CATALOG, workflowCatalogEntry } from "@syntila/core";
+import { BUILTIN_WORKFLOWS, workflowCatalogEntry } from "@syntila/core";
 
 export type RouteHandler = (...args: unknown[]) => Promise<Response>;
 export type WorkerRouteHandlers = Record<string, RouteHandler>;
@@ -544,9 +547,8 @@ export async function routeWorkerRequest(
     }
     if (request.method === "GET" && url.pathname === "/api/workflows/catalog") {
       return conditionalJson(request, {
-        // Workflows that need a request-supplied tool target are not offered
-        // as selectable Workflows.
-        workflows: Object.values(BUILTIN_WORKFLOW_CATALOG)
+        // Only active selectable built-in workflows are offered.
+        workflows: Object.values(BUILTIN_WORKFLOWS)
           .filter((definition) =>
             definition.steps.every((step) => step.kind !== "tool_call"),
           )
@@ -592,6 +594,32 @@ export async function routeWorkerRequest(
         request,
         env,
         decodeURIComponent(workspaceMcpInventoryMatch[1]),
+        ctx,
+      );
+    }
+    const workspaceMcpActionMatch = url.pathname.match(
+      /^\/api\/workspaces\/([^/]+)\/mcp-action$/,
+    );
+    if (workspaceMcpActionMatch?.[1]) {
+      return await handleWorkspaceMcpAction(
+        request,
+        env,
+        decodeURIComponent(workspaceMcpActionMatch[1]),
+        ctx,
+      );
+    }
+    const workspaceMcpToolCallStatusMatch = url.pathname.match(
+      /^\/api\/workspaces\/([^/]+)\/mcp-tool-calls\/([^/]+)\/status$/,
+    );
+    if (
+      workspaceMcpToolCallStatusMatch?.[1] &&
+      workspaceMcpToolCallStatusMatch[2]
+    ) {
+      return await handleWorkspaceMcpToolCallStatus(
+        request,
+        env,
+        decodeURIComponent(workspaceMcpToolCallStatusMatch[1]),
+        decodeURIComponent(workspaceMcpToolCallStatusMatch[2]),
         ctx,
       );
     }
@@ -1321,6 +1349,9 @@ export async function routeWorkerRequest(
         ctx,
       );
     }
+    const approvePlanMatch = url.pathname.match(
+      /^\/api\/work-requests\/([^/]+)\/approve-plan$/,
+    );
     const cancelWorkRequestMatch = url.pathname.match(
       /^\/api\/work-requests\/([^/]+)\/cancel$/,
     );
@@ -1330,6 +1361,9 @@ export async function routeWorkerRequest(
     const workRequestMatch = url.pathname.match(
       /^\/api\/work-requests\/([^/]+)$/,
     );
+    if (request.method === "POST" && approvePlanMatch?.[1]) {
+      return await handleApprovePlan(request, env, approvePlanMatch[1], ctx);
+    }
     if (request.method === "GET" && workRequestMatch?.[1]) {
       return await handlers.handleGetWorkRequest!(
         request,

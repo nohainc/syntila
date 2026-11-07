@@ -23,6 +23,7 @@ String writePluginPackage(
     ..writeAsBytesSync(bytes);
   final manifest = <String, Object?>{
     'schemaVersion': 1,
+    'kind': 'mcp',
     'pluginId': id,
     'version': version,
     'displayName': 'Acme',

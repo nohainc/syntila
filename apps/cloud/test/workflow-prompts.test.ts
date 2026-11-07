@@ -195,7 +195,7 @@ describe("Work v1 prompt profiles", () => {
     expect(prompt).toContain("use Work mode");
   });
   it("gives Research request text and attachment contents only", () => {
-    const workflow = BUILTIN_WORKFLOWS.full_cycle;
+    const workflow = BUILTIN_WORKFLOW_CATALOG["research:v1"]!;
     const prompt = renderWorkStepPrompt(workflow, workflow.steps[0]!, {
       originalRequest: "Investigate login redirect",
       attachments: [
@@ -218,9 +218,9 @@ describe("Work v1 prompt profiles", () => {
     expect(prompt).not.toContain("Must not be inherited");
   });
 
-  it("gives Plan attachment metadata and Research result, without contents", () => {
-    const workflow = BUILTIN_WORKFLOWS.full_cycle;
-    const prompt = renderWorkStepPrompt(workflow, workflow.steps[1]!, {
+  it("gives Plan attachment metadata and structured planning prompt", () => {
+    const workflow = BUILTIN_WORKFLOW_CATALOG["plan_implement:v2"]!;
+    const prompt = renderWorkStepPrompt(workflow, workflow.steps[0]!, {
       originalRequest: "Investigate login redirect",
       attachments: [
         {
@@ -233,140 +233,35 @@ describe("Work v1 prompt profiles", () => {
       spaceInstructions: "Space policy",
       threadInstructions: "Thread policy",
       stepInstructions: { plan: "Include callback coverage." },
-      stepResults: {
-        research: stepResult("Redirect loop starts after callback."),
-        implement: stepResult("Must not be inherited."),
-      },
       currentThreadContext: "Must not be inherited.",
     });
 
     expect(prompt).toContain("Attachment metadata:");
     expect(prompt).toContain("trace.txt (text/plain), 123 bytes");
     expect(prompt).not.toContain("private attachment body");
-    expect(prompt).toContain(
-      "Research result:\nRedirect loop starts after callback.",
-    );
-    expect(prompt).not.toContain("Must not be inherited");
-  });
-
-  it("gives Implement only relevant research and plan results", () => {
-    const workflow = BUILTIN_WORKFLOWS.full_cycle;
-    const prompt = renderWorkStepPrompt(workflow, workflow.steps[2]!, {
-      originalRequest: "Fix login redirect",
-      attachments: [{ name: "trace.txt", content: "Must not be inherited." }],
-      spaceInstructions: "Use the shared router.",
-      threadInstructions: "Preserve existing behavior.",
-      stepInstructions: { implement: "Add a regression fix." },
-      stepResults: {
-        research: stepResult("Callback state is lost."),
-        plan: stepResult("Preserve callback state."),
-        test: stepResult("Must not be inherited."),
-      },
-      currentThreadContext: "Must not be inherited.",
-    });
-
-    expect(prompt).toContain("Research result:\nCallback state is lost.");
-    expect(prompt).toContain("Plan result:\nPreserve callback state.");
-    expect(prompt).toContain("Use the writable Thread filesystem");
-    expect(prompt).not.toContain("Attachment:");
-    expect(prompt).not.toContain("Must not be inherited");
-  });
-
-  it("gives Test Plan and Implementation results plus current filesystem", () => {
-    const workflow = BUILTIN_WORKFLOWS.full_cycle;
-    const prompt = renderWorkStepPrompt(workflow, workflow.steps[3]!, {
-      originalRequest: "Fix login redirect",
-      attachments: [{ name: "trace.txt", content: "Must not be inherited." }],
-      spaceInstructions: "Space policy",
-      threadInstructions: "Thread policy",
-      stepInstructions: { test: "Run callback regression tests." },
-      stepResults: {
-        research: stepResult("Must not be inherited."),
-        plan: stepResult("Preserve callback state."),
-        implement: stepResult("Updated callback persistence."),
-      },
-      currentThreadContext: "Working tree contains the implementation.",
-    });
-
-    expect(prompt).toContain("Plan result:\nPreserve callback state.");
-    expect(prompt).toContain(
-      "Implementation result:\nUpdated callback persistence.",
-    );
-    expect(prompt).toContain("Current Thread filesystem:");
-    expect(prompt).toContain("Working tree contains the implementation.");
-    expect(prompt).not.toContain("Must not be inherited");
-    expect(prompt).not.toContain("Attachment:");
-  });
-
-  it("gives Verify relevant results and filesystem without session history", () => {
-    const workflow = BUILTIN_WORKFLOWS.full_cycle;
-    const prompt = renderWorkStepPrompt(workflow, workflow.steps[4]!, {
-      originalRequest: "Fix login redirect",
-      attachments: [{ name: "trace.txt", content: "Must not be inherited." }],
-      spaceInstructions: "Space policy",
-      threadInstructions: "Thread policy",
-      stepInstructions: { verify: "Check callback state." },
-      stepResults: {
-        research: stepResult("Callback state was dropped."),
-        plan: stepResult("Preserve callback state."),
-        implement: stepResult("Updated callback persistence."),
-        test: stepResult("Callback regression test passes."),
-        verify: stepResult("Must not be inherited."),
-      },
-      currentThreadContext: "Current files include the regression test.",
-    });
-
-    expect(prompt).toContain("Research result:");
-    expect(prompt).toContain("Plan result:");
-    expect(prompt).toContain("Implementation result:");
-    expect(prompt).toContain("Test result:");
-    expect(prompt).toContain("Current Thread filesystem:");
-    expect(prompt).toContain("fresh isolated assignment");
-    expect(prompt).not.toContain("Must not be inherited");
-  });
-
-  it("omits Research and Plan from Verify when that Workflow has neither", () => {
-    const workflow = BUILTIN_WORKFLOWS.implement_verify;
-    const prompt = renderWorkStepPrompt(workflow, workflow.steps[1]!, {
-      originalRequest: "Implement then verify",
-      stepResults: {
-        research: stepResult("Not part of this Workflow."),
-        plan: stepResult("Not part of this Workflow."),
-        implement: stepResult("Implementation result."),
-      },
-      currentThreadContext: "Current files.",
-    });
-    expect(prompt).toContain("Implementation result:");
-    expect(prompt).not.toContain("Research result:");
-    expect(prompt).not.toContain("Plan result:");
-  });
-
-  it("fails closed when a declared upstream result is unavailable", () => {
-    const workflow = BUILTIN_WORKFLOWS.plan_implement;
-    expect(() =>
-      renderWorkStepPrompt(workflow, workflow.steps[1]!, {
-        originalRequest: "Implement the plan",
-      }),
-    ).toThrow(/Required plan result is unavailable/);
+    expect(prompt).toContain("Space instructions:");
+    expect(prompt).toContain("Thread instructions:");
   });
 
   it("uses the catalog profile for each StepKind", () => {
-    const profileByKind: Record<StepKind, string> = {
+    const profileByKind: Record<string, string> = {
       chat: "chat:v1",
-      // The current Research is v2; Full Cycle keeps research:v1.
       research: "research:v2",
-      plan: "plan:v1",
+      plan: "plan:v2",
       implement: "implement:v1",
-      test: "test:v1",
-      verify: "verify:v1",
       synthesis: "synthesis:v1",
       tool_call: "tool_call:v1",
     };
     for (const [kind, profile] of Object.entries(profileByKind)) {
       // Tool steps are executed by Syntila and never rendered as a prompt.
       if (kind === "tool_call") continue;
-      const workflow = Object.values(BUILTIN_WORKFLOWS).find((definition) =>
-        definition.steps.some((candidate) => candidate.kind === kind),
+      const workflow = Object.values(BUILTIN_WORKFLOW_CATALOG).find(
+        (definition) =>
+          definition.steps.some(
+            (candidate) =>
+              candidate.kind === kind &&
+              candidate.promptProfileVersion === profile,
+          ),
       )!;
       const step = workflow.steps.find((candidate) => candidate.kind === kind)!;
       expect(step.promptProfileVersion).toBe(profile);
@@ -399,7 +294,7 @@ describe("Work v1 prompt profiles", () => {
     expect(inputs.attachments).toHaveLength(1);
     expect(inputs.stepResults?.research?.text).toBe("Found one issue");
 
-    const workflow = BUILTIN_WORKFLOWS.full_cycle;
+    const workflow = BUILTIN_WORKFLOWS.direct;
     const prompt = renderWorkStepPrompt(workflow, workflow.steps[0]!, {
       originalRequest: "x".repeat(200_000),
     });

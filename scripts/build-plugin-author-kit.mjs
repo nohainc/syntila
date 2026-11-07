@@ -55,10 +55,7 @@ export function buildPluginAuthorKit(outputDirectory) {
         dartTree(`${base}/bin`);
     }
     for (const relative of [
-      "examples/plugins/echo_dart/bin/echo_dart.dart",
-      "examples/plugins/echo_dart/pubspec.yaml",
-      "examples/plugins/echo_dart/pubspec.lock",
-      "examples/plugins/echo_python/echo.py",
+      "examples/mcp/echo_worker/echo_worker.dart",
       "scripts/sign-plugin.mjs",
       "docs/specifications/WORKER_PLUGIN_PROTOCOL_V1.md",
     ])
@@ -74,10 +71,10 @@ export function buildPluginAuthorKit(outputDirectory) {
       join(kit, "README.md"),
       `# Syntila plugin author kit
 
-This archive contains the protocol, SDK, conformance runner and Dart/Python
-examples. It uses only internal relative package paths; no Syntila checkout,
-account or Plus entitlement is needed for authoring. Install Dart (SDK >=3.5),
-Node for optional signing, and Python 3 only for the Python example.
+This archive contains the protocol, SDK, conformance runner and reference MCP
+Worker. It uses only internal relative package paths; no Syntila checkout,
+account or Plus entitlement is needed for authoring. Install Dart (SDK >=3.5)
+and Node for optional signing.
 
 From the extracted kit root:
 

@@ -8,6 +8,7 @@ import {
 const sha = "a".repeat(64);
 const manifest = () => ({
   schemaVersion: 1,
+  kind: "mcp" as const,
   pluginId: "acme-reviewer",
   version: "1.4.2",
   displayName: "Acme Reviewer",

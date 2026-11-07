@@ -191,5 +191,35 @@ void main() {
       },
       skip: Platform.isWindows,
     );
+
+    test(
+      'process kill with SIGKILL between claim and write ends unknown and cleans up',
+      () async {
+        final pidFile = File('${root.path}/engine.pid');
+        final received = File('${root.path}/received');
+        final host = supervisor(
+          'echo \$\$ > "${pidFile.path}"; read request && touch "${received.path}"; exit 0',
+        );
+        final result = await callWith(
+          host,
+          claim: () async {
+            for (var i = 0; i < 200 && !pidFile.existsSync(); i++) {
+              await Future<void>.delayed(const Duration(milliseconds: 10));
+            }
+            final pid = int.parse(pidFile.readAsStringSync().trim());
+            Process.killPid(pid, ProcessSignal.sigkill);
+            return true;
+          },
+        );
+        expect(result['state'], 'unknown');
+        expect(
+          result['code'],
+          anyOf('outcome_unknown', 'invalid_engine_response'),
+        );
+        expect(received.existsSync(), isFalse);
+        expect(host.activeSlotCount, 0);
+      },
+      skip: Platform.isWindows,
+    );
   });
 }

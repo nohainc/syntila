@@ -113,4 +113,17 @@ class AxMcpInventory {
 abstract interface class AxMcpInventoryDataSource {
   /// Null when the Workspace has published nothing yet.
   Future<AxMcpInventory?> loadMcpInventory(String workspaceId);
+
+  /// Executes an authenticated MCP management action on the Workspace.
+  Future<Map<String, dynamic>> executeMcpAction(
+    String workspaceId, {
+    required String action,
+    required String serverId,
+    String? displayName,
+    String? endpoint,
+    String? tokenEnv,
+    bool? insecureLoopback,
+    String? workerTypeId,
+    String? acceptHash,
+  });
 }

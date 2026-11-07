@@ -1,5 +1,6 @@
 import { DomainInvariantError } from "./domain-error.js";
 import {
+  IMPLEMENT_WORKFLOW_ROLES,
   RESEARCH_RESEARCHER_LIMITS,
   researchWorkflowV2,
   stepInstanceId,
@@ -73,12 +74,15 @@ export function resolveUserWorkflowConfiguration(
 ): EffectiveWorkflowConfiguration {
   if (configuration && configuration.workflowId !== definition.id)
     throw new DomainInvariantError("Workflow configuration identity mismatch");
+  const stepIds: readonly string[] =
+    definition.id === "plan_implement"
+      ? IMPLEMENT_WORKFLOW_ROLES
+      : definition.steps.map((step) => stepInstanceId(step));
   return {
     definition,
     enabled: configuration?.enabled ?? true,
     steps: Object.fromEntries(
-      definition.steps.map((step) => {
-        const id = stepInstanceId(step);
+      stepIds.map((id) => {
         const override = configuration?.stepOverrides[id];
         return [
           id,
@@ -190,13 +194,13 @@ export function parseUserWorkflowConfiguration(
       ? researchWorkflowV2(researcherCount)
       : definition;
   const overrides = object(value.stepOverrides ?? {});
-  // Version 1 keys overrides by kind (its historical meaning).
-  keys(
-    overrides,
-    researchV2
-      ? shape.steps.map(stepInstanceId)
-      : [...new Set(shape.steps.map((step) => step.kind))],
-  );
+  const allowedStepKeys: readonly string[] =
+    definition.id === "plan_implement"
+      ? IMPLEMENT_WORKFLOW_ROLES
+      : researchV2
+        ? shape.steps.map(stepInstanceId)
+        : [...new Set(shape.steps.map((step) => step.kind))];
+  keys(overrides, allowedStepKeys);
   return {
     schemaVersion: researchV2 ? 2 : 1,
     workflowId: definition.id,

@@ -8,8 +8,7 @@ extension _AxAppRunDetails on _AxAppStateMixin {
           people: store.people,
           onOpenThread: (spaceId, threadId) =>
               _navigateTo(AxNavigation.thread(spaceId, threadId)),
-          onOpenSpace: (spaceId) =>
-              _navigateTo(AxNavigation.space(spaceId)),
+          onOpenSpace: (spaceId) => _navigateTo(AxNavigation.space(spaceId)),
         );
       case AxRouteKind.notes:
         final source = widget.dataSource;
@@ -40,6 +39,10 @@ extension _AxAppRunDetails on _AxAppStateMixin {
         return SettingsPage(
           preferences: _viewPreferences,
           onChanged: _setViewPreferences,
+          workspaceId: executionWorkspaceId ??
+              (workspaces.isNotEmpty ? workspaces.first.id : null),
+          workspaces: workspaces,
+          inventories: store.mcpInventories,
         );
       case AxRouteKind.spaces:
         return _homeView();

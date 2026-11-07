@@ -51,9 +51,6 @@ Future<void> main(List<String> arguments) async {
     exitCode = 65;
     return;
   }
-  final capabilities = Map<String, Object?>.from(
-    manifest.raw['capabilities'] as Map,
-  );
   final launcher = DirectProcessLauncher(
     executable: executable.absolute.path,
     arguments: artifact.args,
@@ -64,16 +61,9 @@ Future<void> main(List<String> arguments) async {
             '${c.status.name.padRight(7)} ${c.id}'
             '${c.detail == null ? '' : '  - ${c.detail}'}',
           );
-  // An MCP Worker (`kind: "mcp"`) is exercised over MCP, not the NDJSON protocol.
-  final report = manifest.raw['kind'] == 'mcp'
-      ? await McpConformanceRunner(launcher: launcher).run(onCase: onCase)
-      : await ConformanceRunner(
-          launcher: launcher,
-          expectedPluginId: manifest.pluginId,
-          expectedVersion: manifest.version,
-          declaresResume: capabilities['sessionResume'] == true,
-          declaredCapabilities: capabilities,
-        ).run(onCase: onCase);
+  // Workers must speak the Syntila MCP Worker profile over stdio.
+  final report =
+      await McpConformanceRunner(launcher: launcher).run(onCase: onCase);
   if (json) {
     stdout.writeln(const JsonEncoder.withIndent('  ').convert(report.toJson()));
   } else {

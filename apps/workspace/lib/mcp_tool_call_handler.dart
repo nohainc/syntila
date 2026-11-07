@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -17,10 +18,12 @@ class McpToolCallHandler {
     required Directory workingDirectory,
     this.maxConcurrentAssignments = 8,
     McpToolCallFence? fence,
+    FutureOr<bool> Function(McpToolCallRequest request)? authorizeStart,
   })  : _fence = fence,
         _executor = executor,
         _stateDirectory = stateDirectory,
-        _workingDirectory = workingDirectory;
+        _workingDirectory = workingDirectory,
+        _authorizeStart = authorizeStart;
 
   static const maxResultBytes = 256 * 1024;
 
@@ -32,6 +35,7 @@ class McpToolCallHandler {
   final Directory _stateDirectory;
   final Directory _workingDirectory;
   final int maxConcurrentAssignments;
+  final FutureOr<bool> Function(McpToolCallRequest request)? _authorizeStart;
   final _inFlight = <String>{};
 
   /// Returns null for a duplicate of a request that is already running; its
@@ -55,7 +59,7 @@ class McpToolCallHandler {
         stateDirectory: _stateDirectory,
         workingDirectory: _workingDirectory,
         maxConcurrentAssignments: maxConcurrentAssignments,
-        authorizeStart: () => true,
+        authorizeStart: () => _authorizeStart?.call(request) ?? true,
       );
       final fence = _fence;
       if (fence != null && outcome['code'] == 'dispatch_already_claimed') {

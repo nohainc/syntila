@@ -75,17 +75,9 @@ export const WORKFLOW_CONTROL_POLICIES: Readonly<
     },
     composerBindingId: null,
   },
-  "plan_implement:v1": {
-    executionPolicy: GRAPH_WORKFLOW_POLICY,
-    composerBindingId: null,
-  },
-  "implement_verify:v1": {
-    executionPolicy: GRAPH_WORKFLOW_POLICY,
-    composerBindingId: null,
-  },
-  "full_cycle:v1": {
-    executionPolicy: GRAPH_WORKFLOW_POLICY,
-    composerBindingId: null,
+  "plan_implement:v2": {
+    executionPolicy: MANUAL_WORKFLOW_POLICY,
+    composerBindingId: "plan",
   },
 };
 

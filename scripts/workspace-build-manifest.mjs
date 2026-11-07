@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +40,8 @@ const sources = execFileSync(
   .split("\0")
   .filter(Boolean)
   .filter((name) => /\.(dart|yaml|lock|json|sh)$/.test(name))
+  // `--cached` lists tracked files that were deleted but not yet staged.
+  .filter((name) => existsSync(join(root, name)))
   .sort();
 const sourceDigest = digest(
   sources

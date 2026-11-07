@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
@@ -109,11 +110,12 @@ void main() {
     });
   }
 
-  testWidgets('direct spaces render under PERSONAL group before owned and shared',
+  testWidgets(
+      'direct spaces render under PERSONAL group before owned and shared',
       (tester) async {
-    final context = AxShellContext(
-      navigation: const AxNavigation.home(),
-      spaces: const [shared, own, direct],
+    final context = const AxShellContext(
+      navigation: AxNavigation.home(),
+      spaces: [shared, own, direct],
     );
 
     await tester.pumpWidget(MaterialApp(
@@ -139,9 +141,9 @@ void main() {
 
   testWidgets('pinned direct spaces appear before unpinned direct spaces',
       (tester) async {
-    final context = AxShellContext(
-      navigation: const AxNavigation.home(),
-      spaces: const [direct, directPinned],
+    final context = const AxShellContext(
+      navigation: AxNavigation.home(),
+      spaces: [direct, directPinned],
     );
 
     await tester.pumpWidget(MaterialApp(
@@ -158,5 +160,92 @@ void main() {
     final unpinnedY = tester.getTopLeft(find.text(direct.name)).dy;
 
     expect(pinnedY, lessThan(unpinnedY));
+  });
+
+  testWidgets(
+      'direct space context menu includes Edit Space and Hide Conversation, no Delete',
+      (tester) async {
+    final context = const AxShellContext(
+      navigation: AxNavigation.space('direct-1'),
+      spaces: [direct],
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SpaceTree(
+          shellContext: context,
+          onNavigateTo: (_) {},
+          pageLayout: true,
+          onEditSpace: (_) async {},
+          onArchiveSpace: (_) async {},
+          onDeleteSpace: (_) async {},
+        ),
+      ),
+    ));
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(find.text(direct.name)));
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Space menu'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit Space'), findsOneWidget);
+    expect(find.text('Hide Conversation'), findsOneWidget);
+    expect(find.text('Delete Space'), findsNothing);
+  });
+
+  testWidgets(
+      'personal threads appear in RECENT THREADS section with peer name',
+      (tester) async {
+    const generalThread = AxThread(
+      id: 'gen-1',
+      spaceId: 'direct-1',
+      name: 'General',
+      isGeneral: true,
+      lead: '',
+      brief: '',
+      primaryWorkspace: '',
+      queueStatus: '',
+      status: 'active',
+      updatedAt: '2026-11-06T10:00:00Z',
+    );
+    const subThread = AxThread(
+      id: 'sub-1',
+      spaceId: 'direct-1',
+      name: 'Project Discussion',
+      isGeneral: false,
+      lead: '',
+      brief: '',
+      primaryWorkspace: '',
+      queueStatus: '',
+      status: 'active',
+      updatedAt: '2026-11-06T09:00:00Z',
+    );
+
+    final context = const AxShellContext(
+      navigation: AxNavigation.home(),
+      spaces: [direct],
+      threadsBySpace: {
+        'direct-1': [generalThread, subThread],
+      },
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SpaceTree(
+          shellContext: context,
+          showRecentThreads: true,
+          onNavigateTo: (_) {},
+        ),
+      ),
+    ));
+
+    expect(find.text('RECENT THREADS'), findsOneWidget);
+    // General thread shows peer name ('Alice Cooper')
+    expect(find.text('Alice Cooper'), findsWidgets);
+    // Sub-thread shows 'Alice Cooper · Project Discussion'
+    expect(find.text('Alice Cooper · Project Discussion'), findsOneWidget);
   });
 }

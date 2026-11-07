@@ -189,8 +189,8 @@ it("separates conversation facts and selects only transitive prerequisite result
   const workflow: WorkflowExecutionContext = {
     schemaVersion: 1,
     workflowRunId: "workflow-run-R",
-    workflowId: "implement_verify",
-    workflowVersion: 1,
+    workflowId: "plan_implement",
+    workflowVersion: 2,
     workRequestId: "R",
     status: "running",
     activeStepId: "verify",

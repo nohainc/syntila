@@ -64,7 +64,7 @@ AxUserWorkflowConfiguration configuration(
         {Map<String, AxWorkflowSelection> overrides = const {},
         AxWorkflowSelection defaults = defaultSelection}) =>
     AxUserWorkflowConfiguration(
-        workflowId: 'full_cycle', defaults: defaults, stepOverrides: overrides);
+        workflowId: 'plan_implement', defaults: defaults, stepOverrides: overrides);
 
 Finder picker(String scope, String label) => find.byWidgetPredicate((widget) =>
     widget is DropdownButtonFormField<String> &&
@@ -99,6 +99,21 @@ class InventorySource extends WorkflowSource
     inventoryReads++;
     if (failInventory) throw StateError('inventory unavailable');
     return inventory;
+  }
+
+  @override
+  Future<Map<String, dynamic>> executeMcpAction(
+    String workspaceId, {
+    required String action,
+    required String serverId,
+    String? displayName,
+    String? endpoint,
+    String? tokenEnv,
+    bool? insecureLoopback,
+    String? workerTypeId,
+    String? acceptHash,
+  }) async {
+    return <String, dynamic>{'status': 'ok'};
   }
 }
 
@@ -152,7 +167,7 @@ Future<WorkflowSource> mount(
                         stepsOnly: stepsOnly,
                         workspaceId: workspaceId,
                         definition: definition ??
-                            workflow('full_cycle', 'Full Cycle',
+                            workflow('plan_implement', 'Implement',
                                 steps: ['plan', 'implement', 'verify']),
                         configuration: saved,
                         catalogs: catalogs,
@@ -177,7 +192,7 @@ void main() {
       () {
     final saved = AxUserWorkflowConfiguration.fromJson({
       'schemaVersion': 1,
-      'workflowId': 'full_cycle',
+      'workflowId': 'plan_implement',
       'enabled': true,
       'defaults': {
         'worker': 'a',

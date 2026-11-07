@@ -93,8 +93,6 @@ class WorkspacePluginCommands {
         return service.list();
       case 'plugins.show':
         return service.show(_id(payload), _version(payload));
-      case 'plugins.migrateCheck':
-        return service.migrateCheck(_id(payload), version: _version(payload));
       case 'plugins.import':
         return service.import(_absolutePath(payload, 'path'));
       case 'plugins.validate':

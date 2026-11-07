@@ -216,7 +216,7 @@ export function threadMetadata(
     briefAuthorName: row.briefAuthorName ?? null,
     accessPolicy,
     workConfig: parseJson(row.workConfigJson ?? row.configJson, {
-      defaultWorkflowId: "full_cycle",
+      defaultWorkflowId: "direct",
       bindings: {},
     }),
     metadata: viewerMetadata(

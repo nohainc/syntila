@@ -26,7 +26,7 @@ it("reads threads and configuration with distinct update timestamps", async () =
       INSERT INTO spaces (id, owner_user_id, settings_json) VALUES ('space-test', 'user-owner', '{}');
       INSERT INTO users VALUES ('user-owner', 'owner@syntila.test', 'Owner');
       INSERT INTO threads (id, space_id, name, status, has_other_contributions, is_general, access_policy_json, metadata_json, lead_user_id, created_at, updated_at) VALUES ('stream-test', 'space-test', 'Test stream', 'active', 0, 0, '{}', '{}', 'user-owner', 'created', 'stream-updated');
-      INSERT INTO thread_work_configs VALUES ('stream-test', '{"defaultWorkflowId":"full_cycle","bindings":{}}', 'config-updated');
+      INSERT INTO thread_work_configs VALUES ('stream-test', '{"defaultWorkflowId":"direct","bindings":{}}', 'config-updated');
       INSERT INTO space_memberships VALUES ('membership', 'space-test', 'user-owner', 'owner', 'created', 'updated');
     `);
     const db = {

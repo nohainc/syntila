@@ -68,20 +68,24 @@ void main() {
         temp,
         name: 'kind-${kind ?? 'none'}',
         edit: (m) {
-          if (include) m['kind'] = kind;
+          if (include) {
+            m['kind'] = kind;
+          } else {
+            m.remove('kind');
+          }
         },
       );
       return jsonDecode(File('$dir/plugin.json').readAsStringSync())
           as Map<String, Object?>;
     }
 
-    test('mcp is valid, absent is NDJSON, anything else is rejected', () {
+    test('mcp is valid, absent or anything else is rejected', () {
       final mcp = validatePluginManifest(manifest('mcp'));
       expect(mcp.isValid, isTrue);
       expect(mcp.manifest!.isMcp, isTrue);
       final plain = validatePluginManifest(manifest(null, include: false));
-      expect(plain.isValid, isTrue);
-      expect(plain.manifest!.isMcp, isFalse);
+      expect(plain.isValid, isFalse);
+      expect(plain.issues.single.path, 'kind');
       final bad = validatePluginManifest(manifest('ndjson'));
       expect(bad.isValid, isFalse);
       expect(bad.issues.single.path, 'kind');
@@ -155,17 +159,14 @@ void main() {
     );
   });
 
-  test('without an inspector MCP Workers are refused, NDJSON unaffected',
-      () async {
+  test('without an inspector MCP Workers are refused', () async {
     final plain = TestPluginService(
       Directory.systemTemp.createTempSync('mcp-plugin-plain'),
+      mcpInspect: null,
     );
     await plain.service.import(mcpPackage(name: 'm2'));
     await expectCode(
         plain.service.test('echo-worker'), 'plugin_mcp_unavailable');
-    await plain.service.import(writePluginPackage(temp, name: 'nd'));
-    final report = await plain.service.test('acme-reviewer');
-    expect(report['suiteVersion'], isNot('mcp-worker-profile-1'));
   });
 
   group('executor', () {
@@ -193,14 +194,15 @@ void main() {
       );
     });
 
-    test('an NDJSON executor is unchanged', () async {
+    test('an executor without tool pins is rejected', () async {
       final plugin = await installed(
         writePluginPackage(temp, name: 'nd2'),
         'acme-reviewer',
       );
-      final executor = workerExecutorFor(plugin, Directory(temp.path));
-      expect(executor.isMcp, isFalse);
-      expect(executor.toJson().containsKey('toolPins'), isFalse);
+      expect(
+        () => workerExecutorFor(plugin, Directory(temp.path)),
+        throwsStateError,
+      );
     });
   });
 
@@ -219,16 +221,16 @@ void main() {
           updatedAt: '2026-11-06T00:00:00Z',
         );
 
-    Future<String> sessionResumeFor({required bool mcp}) async {
-      final id = mcp ? 'echo-worker' : 'acme-reviewer';
+    Future<String> sessionResumeFor() async {
+      final id = 'echo-worker';
       await harness.service.import(
         writePluginPackage(
           temp,
           id: id,
           version: '1.0.0',
-          name: mcp ? 'inv-mcp' : 'inv-nd',
+          name: 'inv-mcp',
           edit: (m) {
-            if (mcp) m['kind'] = 'mcp';
+            m['kind'] = 'mcp';
             (m['capabilities'] as Map<String, Object?>)['sessionResume'] = true;
           },
         ),
@@ -258,13 +260,9 @@ void main() {
       return (item!['executor'] as Map)['sessionResume'] as String;
     }
 
-    test('an NDJSON plugin that passed the suite reports "tested"', () async {
-      expect(await sessionResumeFor(mcp: false), 'tested');
-    });
-
     test('an MCP Worker never reports "tested": its check does not resume',
         () async {
-      expect(await sessionResumeFor(mcp: true), 'declared_untested');
+      expect(await sessionResumeFor(), 'declared_untested');
     });
   });
 }

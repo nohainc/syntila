@@ -98,20 +98,17 @@ describe("Thread domain", () => {
         resultSemantics: "conversation_response",
       },
     ]);
-    for (const id of [
-      "direct",
-      "research",
-      "plan_implement",
-      "implement_verify",
-      "full_cycle",
-    ] as const) {
-      expect(
-        BUILTIN_WORKFLOWS[id].steps.map((step) => step.kind),
-      ).not.toContain("chat");
+    for (const definition of Object.values(BUILTIN_WORKFLOWS)) {
+      if (definition.id !== "chat") {
+        expect(
+          definition.steps.map((step) => step.kind),
+        ).not.toContain("chat");
+      }
     }
-    expect(BUILTIN_WORKFLOWS.full_cycle.steps.map((step) => step.kind)).toEqual(
-      ["research", "plan", "implement", "test", "verify"],
-    );
+    expect(BUILTIN_WORKFLOWS.plan_implement.name).toBe("Implement");
+    expect(BUILTIN_WORKFLOWS.plan_implement.steps.map((step) => step.kind)).toEqual([
+      "plan",
+    ]);
   });
   it("requires a Space owner or collaborator as the lead", () => {
     expect(() => validateThread(thread, memberships)).not.toThrow();
@@ -288,25 +285,20 @@ describe("Thread domain", () => {
       }
     }
     expect(
-      BUILTIN_WORKFLOWS.full_cycle.steps.map((step) => [
+      BUILTIN_WORKFLOW_CATALOG["research:v2"]!.steps.map((step) => [
         step.kind,
         step.inputsFrom,
       ]),
     ).toEqual([
       ["research", []],
-      ["plan", ["research"]],
-      ["implement", ["research", "plan"]],
-      ["test", ["plan", "implement"]],
-      ["verify", ["research", "plan", "implement", "test"]],
-    ]);
-    expect(BUILTIN_WORKFLOWS.implement_verify.steps[1]?.inputsFrom).toEqual([
-      "implement",
+      ["research", []],
+      ["synthesis", ["research"]],
     ]);
     const custom: BuiltinWorkflowDefinition = {
-      ...BUILTIN_WORKFLOWS.implement_verify,
+      ...BUILTIN_WORKFLOW_CATALOG["direct:v2"]!,
       steps: [
         {
-          ...BUILTIN_WORKFLOWS.implement_verify.steps[0]!,
+          ...BUILTIN_WORKFLOW_CATALOG["direct:v2"]!.steps[0]!,
           kind: "research",
         },
       ],

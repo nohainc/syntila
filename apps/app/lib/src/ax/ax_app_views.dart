@@ -171,14 +171,18 @@ extension _AxAppViews on _AxAppStateMixin {
           final threads = state.data;
           if (threads != null && threads.isNotEmpty) {
             final general = threads.where((t) => t.isGeneral).firstOrNull ??
-                threads.where((t) => t.id == 'general' || t.name.toLowerCase() == 'general').firstOrNull ??
+                threads
+                    .where((t) =>
+                        t.id == 'general' || t.name.toLowerCase() == 'general')
+                    .firstOrNull ??
                 threads.first;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted &&
                   navigation.spaceId == space.id &&
                   navigation.threadId == null &&
                   navigation.kind == AxRouteKind.space) {
-                _navigateTo(AxNavigation.thread(space.id, general.id), replace: true);
+                _navigateTo(AxNavigation.thread(space.id, general.id),
+                    replace: true);
               }
             });
           }

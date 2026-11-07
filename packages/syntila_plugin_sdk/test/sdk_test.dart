@@ -327,6 +327,7 @@ void main() {
       File('${dir.path}/plugin.json').writeAsStringSync(
         jsonEncode({
           'schemaVersion': 1,
+          'kind': 'mcp',
           'pluginId': 'packed',
           'version': '1.0.0',
           'displayName': 'Packed',
@@ -430,87 +431,5 @@ void main() {
       expect(run.exitCode, 0, reason: '${run.stdout}${run.stderr}');
     }
     expect(packPluginDirectory(root.path).manifest.pluginId, 'new-plugin');
-  });
-
-  test('Python echo passes standalone conformance', () async {
-    final script = File('../../examples/plugins/echo_python/echo.py').absolute;
-    final report = await ConformanceRunner(
-      launcher: DirectProcessLauncher(
-          executable: 'python3', arguments: [script.path]),
-      expectedPluginId: 'echo-python',
-      expectedVersion: '1.0.0',
-      declaresResume: true,
-      declaredCapabilities: const {'progress': true, 'sessionResume': true},
-    ).run();
-    expect(
-        report.cases
-            .where((c) => c.status == ConformanceStatus.failed)
-            .map((c) => '${c.id}: ${c.detail}'),
-        isEmpty);
-    expect(report.cases.where((c) => c.status == ConformanceStatus.skipped),
-        isEmpty);
-    expect(report.cases, hasLength(21));
-    expect(report.passed, isTrue);
-  });
-
-  test('the echo example, packed, passes every conformance case', () async {
-    final root = Directory.systemTemp.createTempSync('echo-example');
-    addTearDown(() => root.deleteSync(recursive: true));
-    final binary = '${root.path}/echo';
-    final compiled = await Process.run(
-        Platform.resolvedExecutable,
-        [
-          'compile',
-          'exe',
-          'bin/echo_dart.dart',
-          '-o',
-          binary,
-        ],
-        workingDirectory: '../../examples/plugins/echo_dart');
-    expect(compiled.exitCode, 0,
-        reason: '${compiled.stdout}${compiled.stderr}');
-    final package = Directory('${root.path}/package/bin')
-      ..createSync(recursive: true);
-    File(binary).copySync('${package.path}/echo');
-    File('${root.path}/package/plugin.json').writeAsStringSync(
-      jsonEncode({
-        'schemaVersion': 1,
-        'pluginId': 'echo-dart',
-        'version': '1.0.0',
-        'displayName': 'Echo (Dart)',
-        'description': 'Reference plugin.',
-        'author': {'name': 'Syntila'},
-        'protocol': {'min': '1.0', 'max': '1.0'},
-        'artifacts': {
-          currentPluginPlatform(): {'command': 'bin/echo'},
-        },
-        'capabilities': {'progress': true, 'sessionResume': true},
-        'access': {
-          'workRoot': 'write',
-          'network': {'mode': 'none'},
-          'subprocess': false,
-          'env': <String>[],
-        },
-      }),
-    );
-    final packed = packPluginDirectory('${root.path}/package');
-    final work = Directory('${root.path}/cwd')..createSync();
-    final report = await ConformanceRunner(
-      launcher: DirectProcessLauncher(
-        executable: '${root.path}/package/bin/echo',
-        workingDirectory: work.path,
-      ),
-      expectedPluginId: packed.manifest.pluginId,
-      expectedVersion: packed.manifest.version,
-      declaresResume: true,
-      declaredCapabilities: const {'progress': true, 'sessionResume': true},
-    ).run();
-    final failed = report.cases
-        .where((c) => c.status == ConformanceStatus.failed)
-        .map((c) => '${c.id}: ${c.detail}');
-    expect(failed, isEmpty);
-    expect(report.cases.where((c) => c.status == ConformanceStatus.skipped),
-        isEmpty);
-    expect(report.passed, isTrue);
   });
 }

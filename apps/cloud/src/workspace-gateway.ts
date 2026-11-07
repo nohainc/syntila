@@ -21,6 +21,10 @@ import {
   McpToolCallStatusRequestSchema,
   McpToolCallStatusResultSchema,
   SERVICE_MCP_TOOL_CALL_STATUS_CAPABILITY,
+  SERVICE_MCP_ACTION_CAPABILITY,
+  McpActionRequestSchema,
+  McpActionResultSchema,
+  type McpActionResult,
   WORKSPACE_RUNTIME_PROTOCOL_NAME,
   WORKSPACE_RUNTIME_PROTOCOL_VERSION,
   ALLOWED_FOLDERS_CAPABILITY,
@@ -200,6 +204,14 @@ export class WorkspaceGateway implements DurableObject {
       workspaceRuntimeId: string | null;
     }
   >();
+  private readonly pendingMcpActions = new Map<
+    string,
+    {
+      resolve: (payload: McpActionResult) => void;
+      workspaceRuntimeId: string | null;
+    }
+  >();
+  private static readonly MCP_ACTION_TIMEOUT_MS = 30_000;
   // Margin on top of the call's own timeout for Engine start-up and transport.
   private static readonly MCP_TOOL_CALL_MARGIN_MS = 60_000;
   private static readonly MCP_STATUS_TIMEOUT_MS = 15_000;
@@ -319,6 +331,9 @@ export class WorkspaceGateway implements DurableObject {
     }
     if (request.method === "POST" && url.pathname === "/mcp-tool-call") {
       return this.requestMcpToolCall(request);
+    }
+    if (request.method === "POST" && url.pathname === "/mcp-action") {
+      return this.requestMcpAction(request);
     }
     if (request.method === "POST" && url.pathname === "/inputs-available") {
       return this.announceInputsAvailable();
@@ -1338,6 +1353,23 @@ export class WorkspaceGateway implements DurableObject {
         pending.resolve(parsed.data);
         return;
       }
+      case "mcp.action.result": {
+        const parsed = McpActionResultSchema.safeParse(message.payload);
+        if (!parsed.success) return;
+        const pending = this.pendingMcpActions.get(parsed.data.actionId);
+        if (!pending) return;
+        if (
+          !pending.workspaceRuntimeId ||
+          this.workspaceRuntimeId !== pending.workspaceRuntimeId
+        )
+          return;
+        this.pendingMcpActions.delete(parsed.data.actionId);
+        pending.resolve(parsed.data);
+        return;
+      }
+      case "mcp.action.request":
+        // Cloud originates actions; a Service never sends one.
+        return;
       case "mcp.tool_call.status.request":
         // Cloud originates status requests; a Service never sends one.
         return;
@@ -3556,6 +3588,80 @@ export class WorkspaceGateway implements DurableObject {
         { status: 504 },
       );
     }
+  }
+
+  private async requestMcpAction(request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => null)) as unknown;
+    const parsed = McpActionRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return Response.json(
+        { error: "Invalid action request", details: parsed.error.issues },
+        { status: 400 },
+      );
+    }
+    const action = parsed.data;
+    if (!(await this.isRuntimeLive())) {
+      return Response.json(
+        { error: "Workspace is offline", code: "workspace_offline" },
+        { status: 503 },
+      );
+    }
+    if (!(await this.serviceHasCapability(SERVICE_MCP_ACTION_CAPABILITY))) {
+      return Response.json(
+        {
+          error: "Workspace Service does not support MCP management actions",
+          code: "unsupported",
+        },
+        { status: 501 },
+      );
+    }
+    const answer = new Promise<McpActionResult>((resolve) => {
+      this.pendingMcpActions.set(action.actionId, {
+        resolve,
+        workspaceRuntimeId: this.workspaceRuntimeId,
+      });
+    });
+    try {
+      await this.send({
+        protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
+        protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+        messageId: `message-${crypto.randomUUID()}`,
+        timestamp: new Date().toISOString(),
+        type: "mcp.action.request",
+        executionWorkspaceId: this.executionWorkspaceId ?? undefined,
+        workspaceRuntimeId: this.workspaceRuntimeId ?? undefined,
+        payload: action,
+      });
+    } catch {
+      this.pendingMcpActions.delete(action.actionId);
+      return Response.json(
+        {
+          error: "Failed to deliver action to Workspace Service",
+          code: "send_failed",
+        },
+        { status: 502 },
+      );
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(
+        () => resolve(null),
+        WorkspaceGateway.MCP_ACTION_TIMEOUT_MS,
+      );
+    });
+    const outcome = await Promise.race([answer, timeout]);
+    if (timer) clearTimeout(timer);
+    this.pendingMcpActions.delete(action.actionId);
+    if (!outcome) {
+      return Response.json(
+        {
+          error: "Workspace Service timed out answering action",
+          code: "timeout",
+        },
+        { status: 504 },
+      );
+    }
+    return Response.json(outcome);
   }
 
   private async send(message: Record<string, unknown>): Promise<void> {

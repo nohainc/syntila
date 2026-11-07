@@ -14,8 +14,10 @@ WorkerExecutor workerExecutorFor(
   Directory dataDirectory, {
   Map<String, String>? toolPins,
 }) {
-  final mcp = plugin.manifest.isMcp;
-  if (mcp && (toolPins == null || toolPins.isEmpty)) {
+  if (!plugin.manifest.isMcp) {
+    throw StateError('NDJSON plugins are unsupported; kind must be "mcp"');
+  }
+  if (toolPins == null || toolPins.isEmpty) {
     throw StateError('An MCP Worker needs consented tool pins');
   }
   final access =
@@ -29,8 +31,8 @@ WorkerExecutor workerExecutorFor(
     dataDirectory: dataDirectory.path,
     arguments: plugin.artifact.args,
     environmentNames: List<String>.from(access['env'] as List),
-    protocol: mcp ? 'mcp' : 'ndjson',
-    toolPins: mcp ? toolPins! : const {},
+    protocol: 'mcp',
+    toolPins: toolPins,
   );
 }
 

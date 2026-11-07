@@ -20,7 +20,7 @@ for (const path of [
   "packages/syntila_plugin_protocol/lib/frames.dart",
   "packages/syntila_plugin_conformance/lib/runner.dart",
   "packages/syntila_plugin_sdk/lib/run_plugin.dart",
-  "examples/plugins/echo_dart/bin/echo_dart.dart",
+  "examples/mcp/echo_worker/echo_worker.dart",
 ]) {
   test(`plugin change selects Dart and Engine checks: ${path}`, () => {
     const root = mkdtempSync(join(tmpdir(), "syntila-ci-filter-"));

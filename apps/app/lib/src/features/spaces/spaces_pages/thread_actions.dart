@@ -1004,6 +1004,38 @@ extension _ThreadActions on _ThreadPageState {
     }
   }
 
+  Future<bool> _approvePlan(
+    String workRequestId, {
+    String verificationMode = 'none',
+    Map<String, dynamic>? implementer,
+    Map<String, dynamic>? verifier,
+  }) async {
+    final dataSource = widget.dataSource;
+    if (dataSource == null) return false;
+    try {
+      await dataSource.approvePlan(
+        workRequestId: workRequestId,
+        verificationMode: verificationMode,
+        implementer: implementer,
+        verifier: verifier,
+      );
+      _loadSharedQueue();
+      if (!mounted) return true;
+      ScaffoldMessenger.of(context).showNotice(
+        const SnackBar(
+          content: Text('Plan approved. Implementation phases enqueued.'),
+        ),
+      );
+      return true;
+    } catch (error) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showNotice(
+        SnackBar(content: Text('Could not approve plan: $error')),
+      );
+      return false;
+    }
+  }
+
   Future<void> _pickDiscussionFiles() async {
     final threadId = widget.thread.id;
     try {

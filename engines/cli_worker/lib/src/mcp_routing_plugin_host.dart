@@ -35,12 +35,12 @@ class McpRoutingPluginHost extends PluginHost {
   }) {
     final pins = launch.mcpToolPins;
     if (pins == null) {
-      return super.run(
-        launch,
-        request,
-        onFrame: onFrame,
-        onWorkStarted: onWorkStarted,
-        cancel: cancel,
+      return Future.value(
+        const PluginRunFailure(
+          code: PluginHostFailure.protocolUnsupported,
+          message:
+              'NDJSON plugin protocol is unsupported; only kind: "mcp" is supported.',
+        ),
       );
     }
     final spec = McpServerSpec(

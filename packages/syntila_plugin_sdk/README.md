@@ -13,7 +13,7 @@ dart run syntila_plugin_sdk:init /path/to/new-plugin new-plugin
 The target must be empty; follow its README to compile and pack.
 
 Subclass `PluginWorker`, implement `id`, `version` and `execute`, then call
-`runPlugin`. See [the echo example](../../examples/plugins/echo_dart/README.md)
+`runMcpWorker`. See [the echo example](../../examples/mcp/echo_worker/README.md)
 and [author guide](../../docs/specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md).
 
 The runner handles handshake, probes, ping responses, cooperative cancellation,

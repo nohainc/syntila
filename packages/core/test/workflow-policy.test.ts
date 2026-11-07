@@ -32,7 +32,7 @@ it("allows independent manual choices for Chat and Work without continuation", (
 });
 
 it("spaces graph policy and per-Step selection without altering execution snapshots", () => {
-  const original = BUILTIN_WORKFLOW_CATALOG["implement_verify:v1"]!;
+  const original = BUILTIN_WORKFLOW_CATALOG["research:v2"]!;
   const snapshot = JSON.stringify(original);
   const projected = workflowCatalogEntry(original);
   expect(projected.executionPolicy).toMatchObject({
@@ -41,7 +41,7 @@ it("spaces graph policy and per-Step selection without altering execution snapsh
     automaticContinuation: true,
     requiresApprovalBetweenSteps: false,
   });
-  expect(projected.composerBindingId).toBeNull();
+  expect(projected.composerBindingId).toBe("research");
   expect(JSON.stringify(original)).toBe(snapshot);
   expect(original).not.toHaveProperty("executionPolicy");
 });
@@ -75,7 +75,7 @@ it("requires explicit policy for every catalog version and future graph", () => 
   expect(() =>
     workflowCatalogEntry({
       ...BUILTIN_WORKFLOW_CATALOG["direct:v2"]!,
-      steps: BUILTIN_WORKFLOW_CATALOG["implement_verify:v1"]!.steps,
+      steps: BUILTIN_WORKFLOW_CATALOG["research:v2"]!.steps,
     }),
   ).toThrow(/does not match/);
 });

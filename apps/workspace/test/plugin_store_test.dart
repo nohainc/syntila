@@ -38,6 +38,7 @@ String writePackage({
   }
   final manifest = <String, Object?>{
     'schemaVersion': 1,
+    'kind': 'mcp',
     'pluginId': id,
     'version': version,
     'displayName': 'Acme',

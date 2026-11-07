@@ -497,7 +497,7 @@ void main() {
         AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
     expect(
         await api.validateWorkRequestEligibility(
-            threadId: 'thread', workflowId: 'full_cycle'),
+            threadId: 'thread', workflowId: 'direct'),
         ['Work: select this Worker\'s Workspace in the Space Workflows tab.']);
   });
 

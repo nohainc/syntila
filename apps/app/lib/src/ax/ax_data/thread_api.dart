@@ -973,6 +973,34 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   }
 
   @override
+  Future<Map<String, dynamic>> approvePlan({
+    required String workRequestId,
+    String verificationMode = 'none',
+    Map<String, dynamic>? implementer,
+    Map<String, dynamic>? verifier,
+  }) async {
+    final response = await client.post(
+      Uri.parse('$baseUrl/work-requests/$workRequestId/approve-plan'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode({
+        'verificationMode': verificationMode,
+        if (implementer != null) 'implementer': implementer,
+        if (verifier != null) 'verifier': verifier,
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+        'Plan approval failed (${response.statusCode})',
+        statusCode: response.statusCode,
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    return decoded is Map<String, dynamic>
+        ? decoded
+        : (decoded is Map ? Map<String, dynamic>.from(decoded) : const {});
+  }
+
+  @override
   Future<AxIssueReport?> loadIssueReport({
     required String requestId,
     String? assignmentId,

@@ -282,10 +282,10 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
                     title: Text(member.displayName.isNotEmpty
                         ? member.displayName
                         : member.email),
-                    subtitle: member.displayName.isNotEmpty &&
-                            member.email.isNotEmpty
-                        ? Text(member.email)
-                        : null,
+                    subtitle:
+                        member.displayName.isNotEmpty && member.email.isNotEmpty
+                            ? Text(member.email)
+                            : null,
                     trailing: isMe
                         ? Container(
                             padding: const EdgeInsets.symmetric(
@@ -314,8 +314,7 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
                                       threads
                                           .where((t) =>
                                               t.id == 'general' ||
-                                              t.name.toLowerCase() ==
-                                                  'general')
+                                              t.name.toLowerCase() == 'general')
                                           .firstOrNull ??
                                       threads.firstOrNull;
                                   if (general != null) {
@@ -348,8 +347,8 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
                                     child: Row(
                                       children: [
                                         Icon(Icons.person_outline,
-                                            color: SyntilaColors
-                                                .textSecondary(isDark),
+                                            color: SyntilaColors.textSecondary(
+                                                isDark),
                                             size: 18),
                                         const SizedBox(width: 8),
                                         const Text('View person'),

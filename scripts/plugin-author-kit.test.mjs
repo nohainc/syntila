@@ -60,7 +60,7 @@ test(
         ]),
       );
       assert.equal(report.passed, true);
-      assert.equal(report.cases.length, 21);
+      assert.equal(report.cases.length, 15);
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }

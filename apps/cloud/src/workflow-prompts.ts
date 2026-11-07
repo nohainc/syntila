@@ -51,6 +51,8 @@ export interface WorkStepPromptInputs {
    */
   readonly missingStepIds?: readonly string[];
   readonly currentThreadContext?: string;
+  readonly isPhased?: boolean;
+  readonly isVerification?: boolean;
 }
 
 /**
@@ -153,6 +155,88 @@ const profileInstructions: Readonly<
     version: "tool_call:v1",
     instructions: "Syntila executes this step; it is never sent to a Worker.",
   },
+};
+
+export const PLAN_V2_INSTRUCTIONS = [
+  "You are preparing an implementation plan for the user request.",
+  "This is a read-only planning step: do not create, modify, delete or rename files, change Git state, or install dependencies.",
+  "Investigate the existing repository state and break the work down into clear, ordered, executable implementation phases.",
+  "",
+  "Format your response with:",
+  "1. Overview: A concise summary of the architectural approach.",
+  "2. Implementation Phases: Clearly numbered phases (Phase 1, Phase 2, etc.).",
+  "For EACH phase include:",
+  "- Phase Title & Goal: What this phase accomplishes.",
+  "- Target Files: Files to inspect, create, modify, or test.",
+  "- Tasks: Specific step-by-step technical work.",
+  "- Completion Criteria: Explicit conditions for determining whether the phase succeeded.",
+  "",
+  "At the end of your response, include a structured YAML manifest inside a ```yaml:phases ... ``` fence so Syntila can parse and enqueue the phases after user approval:",
+  "```yaml:phases",
+  "phases:",
+  "  - id: 1",
+  "    title: \"<Short title>\"",
+  "    description: \"<One-sentence description of the phase work>\"",
+  "    files: [\"<path/1>\", \"<path/2>\"]",
+  "    criteria: \"<Verification criteria for this phase>\"",
+  "```",
+].join("\n");
+
+export const IMPLEMENT_V2_INSTRUCTIONS = [
+  "Implement the requested phase in the authorized Thread.",
+  "Use the writable Thread filesystem available to this assignment.",
+  "Follow the approved plan and phase objectives.",
+  "When you complete your work, you MUST end your response with an explicit status block:",
+  "```status",
+  "STATUS: COMPLETED",
+  "SUMMARY: <Brief summary of what was done>",
+  "```",
+  "If you encounter a blocker, ambiguous requirement, or need user decision, report:",
+  "```status",
+  "STATUS: NEEDS_INPUT",
+  "REASON: <Clear explanation of what needs user input>",
+  "```",
+].join("\n");
+
+export const VERIFY_V2_INSTRUCTIONS = [
+  "Independently inspect the current Thread filesystem in read-only mode and compare it against the original request, plan, and phase completion criteria.",
+  "Use a fresh isolated assignment; do not inherit or rely on the implementer's conversational session.",
+  "Report confirmed outcomes, verification evidence (commands run, files inspected), gaps, and risks. Do not modify files.",
+  "End your response with an explicit status block:",
+  "```status",
+  "STATUS: PASSED",
+  "SUMMARY: <Confirmed verified outcomes>",
+  "```",
+  "Or if verification failed:",
+  "```status",
+  "STATUS: FAILED",
+  "REASON: <What failed verification and why>",
+  "```",
+].join("\n");
+
+const profileInstructionsByVersion: Readonly<
+  Record<string, { version: string; instructions: string }>
+> = {
+  "chat:v1": profileInstructions.chat,
+  "research:v1": profileInstructions.research,
+  "plan:v1": profileInstructions.plan,
+  "plan:v2": {
+    version: "plan:v2",
+    instructions: PLAN_V2_INSTRUCTIONS,
+  },
+  "implement:v1": profileInstructions.implement,
+  "implement:v2": {
+    version: "implement:v2",
+    instructions: IMPLEMENT_V2_INSTRUCTIONS,
+  },
+  "test:v1": profileInstructions.test,
+  "verify:v1": profileInstructions.verify,
+  "verify:v2": {
+    version: "verify:v2",
+    instructions: VERIFY_V2_INSTRUCTIONS,
+  },
+  "synthesis:v1": profileInstructions.synthesis,
+  "tool_call:v1": profileInstructions.tool_call,
 };
 
 function boundedText(value: unknown, maxChars: number): string {
@@ -392,8 +476,10 @@ export function renderWorkStepPrompt(
       "Original Work Request text is required for a Worker prompt",
     );
   }
-  const profile = profileInstructions[step.kind];
-  if (profile.version !== step.promptProfileVersion) {
+  const profile =
+    profileInstructionsByVersion[step.promptProfileVersion] ??
+    profileInstructions[step.kind];
+  if (!profile || profile.version !== step.promptProfileVersion) {
     throw new Error(
       `Unsupported prompt profile ${step.promptProfileVersion} for ${step.kind}`,
     );
@@ -419,9 +505,15 @@ export function renderWorkStepPrompt(
         boundedText(inputs.stepInstructions?.[step.kind], MAX_SECTION_CHARS),
       ),
     ].filter((value) => value.length > 0);
+    const phasedInstructions = inputs.isPhased
+      ? inputs.isVerification
+        ? VERIFY_V2_INSTRUCTIONS
+        : IMPLEMENT_V2_INSTRUCTIONS
+      : null;
     return [
       ...sections,
-      "Carry out the request in the current Thread using the permissions provided for this assignment. Return the result directly.",
+      phasedInstructions ??
+        "Carry out the request in the current Thread using the permissions provided for this assignment. Return the result directly.",
     ]
       .join("\n\n")
       .slice(0, MAX_PROMPT_CHARS);
@@ -675,5 +767,7 @@ export function workStepPromptInputs(
     stepInstructions,
     stepResults,
     currentThreadContext: stringValue("currentThreadContext"),
+    isPhased: input.isPhased === true,
+    isVerification: input.isVerification === true,
   };
 }

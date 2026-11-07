@@ -1,8 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:syntila_workspace/plugin_service.dart'
-    show pluginConsentStatement;
 import 'package:syntila_workspace/workspace_cli.dart';
 import 'package:syntila_workspace/workspace_manager_ipc.dart';
 import 'package:syntila_workspace/workspace_manager_plugins.dart';
@@ -30,7 +27,8 @@ Future<void> expectIpcCode(Future<Object?> future, String code) => expectLater(
 void main() {
   setUp(() {
     temp = Directory.systemTemp.createTempSync('plugin-cli-ipc-test');
-    harness = TestPluginService(temp);
+    harness =
+        TestPluginService(temp, mcpInspect: const FakePluginMcpInspect());
     events.clear();
     commands = WorkspacePluginCommands(harness.service, publish: events.add);
   });
@@ -122,246 +120,15 @@ void main() {
   });
 
   group('CLI', () {
-    late StringBuffer out;
-    late StringBuffer err;
-    late List<(String, Map<String, Object?>)> sent;
-
-    Future<int> run(
-      List<String> args,
-      Object? Function(String, Map<String, Object?>) reply,
-    ) {
-      final dir = Directory.systemTemp.createTempSync('plugin-cli');
-      addTearDown(() => dir.deleteSync(recursive: true));
-      return WorkspaceCli(
+    test('plugins commands are removed from the workspace app CLI', () async {
+      final out = StringBuffer();
+      final err = StringBuffer();
+      final code = await WorkspaceCli(
         out: out,
         err: err,
-        request: (name, payload) async {
-          sent.add((name, payload));
-          return reply(name, payload);
-        },
-      ).run(['--data-dir', dir.path, ...args]);
-    }
-
-    setUp(() {
-      out = StringBuffer();
-      err = StringBuffer();
-      sent = [];
-    });
-
-    test('sends absolute paths: the Service has a different working directory',
-        () async {
-      await run(
-          ['plugins', 'import', 'rel/pkg'],
-          (_, __) => {
-                'pluginId': 'a',
-                'version': '1.0.0',
-                'manifestDigest': 'a' * 64,
-                'next': 'validate',
-              });
-      expect(File(sent.single.$2['path'] as String).isAbsolute, isTrue);
-      expect(sent.single.$1, 'plugins.import');
-
-      sent.clear();
-      await run(
-          ['plugins', 'export', 'acme', 'out.zip'],
-          (_, __) => {
-                'pluginId': 'acme',
-                'version': '1.0.0',
-                'manifestDigest': 'b' * 64,
-              });
-      expect(sent.single.$1, 'plugins.export');
-      expect(File(sent.single.$2['outputPath'] as String).isAbsolute, isTrue);
-    });
-
-    Map<String, Object?> consentReply() => {
-          'consentRequired': true,
-          'documentHash': 'c' * 64,
-          'document': {
-            'operation': 'register',
-            'plugin': {
-              'id': 'acme',
-              'version': '1.0.0',
-              'displayName': 'Acme',
-              'author': 'Acme',
-              'authorVerified': false,
-            },
-            'origin': {'kind': 'local_path', 'locator': 'pkg'},
-            'digest': {
-              'manifest': 'a' * 64,
-              'artifact': 'b' * 64,
-              'platform': 'linux-x64',
-            },
-            'requestedAccess': {
-              'workRoot': 'write',
-              'network': {'mode': 'none'},
-              'subprocess': false,
-              'env': <String>[],
-            },
-            'isolation': {'tier': 'none', 'readOnlyEnforced': false},
-            'signature': {'status': 'unsigned'},
-            'statement': pluginConsentStatement,
-          },
-        };
-
-    test('shows the consent document and exits 3 until it is accepted',
-        () async {
-      final code =
-          await run(['plugins', 'register', 'acme'], (_, __) => consentReply());
-      expect(code, 3);
-      final text = '$out';
-      expect(text, contains('Review before you register this plugin'));
-      expect(text, contains('a' * 64));
-      expect(text, contains('unverified, as claimed'));
-      expect(text, contains('This program runs as you'));
-      expect(text, contains('--accept ${'c' * 64}'));
-      expect(text, isNot(contains('Registered')));
-    });
-
-    test('--accept is forwarded and a completed registration exits 0',
-        () async {
-      final code = await run(
-        [
-          'plugins',
-          'register',
-          'acme',
-          '--accept',
-          'c' * 64,
-          '--version',
-          '1.0.0'
-        ],
-        (_, __) => {
-          'registered': true,
-          'pluginRef': 'plugin-3fa91c04b2d7',
-          'version': '1.0.0'
-        },
-      );
-      expect(code, 0);
-      expect(sent.single.$2['acceptHash'], 'c' * 64);
-      expect(sent.single.$2['version'], '1.0.0');
-      expect('$out', contains('plugin-3fa91c04b2d7'));
-    });
-
-    test('signer commands remain IPC-only and consent exits 3', () async {
-      final fingerprint = 'a' * 64;
-      var code = await run(
-          ['plugins', 'trust-signer', 'acme', '--version', '1.0.0'],
-          (_, __) => {
-                'consentRequired': true,
-                'documentHash': 'b' * 64,
-                'document': {
-                  'pluginId': 'acme',
-                  'version': '1.0.0',
-                  'manifestDigest': 'c' * 64,
-                  'fingerprint': fingerprint,
-                  'statement': 'Recognition does not approve execution.'
-                },
-              });
-      expect(code, 3);
-      expect(sent.single.$1, 'plugins.trustSigner');
-      expect(sent.single.$2['version'], '1.0.0');
-      expect('$out', contains(fingerprint));
-      expect('$out', contains('--accept ${'b' * 64}'));
-      sent.clear();
-      code = await run(
-          ['plugins', 'trust-signer', 'acme', '--accept', 'b' * 64],
-          (_, __) => {'trustedLocally': true, 'fingerprint': fingerprint});
-      expect(code, 0);
-      expect(sent.single.$2['acceptHash'], 'b' * 64);
-      sent.clear();
-      await run(['plugins', 'untrust-signer', fingerprint],
-          (_, __) => {'removed': true, 'fingerprint': fingerprint});
-      expect(sent.single.$1, 'plugins.untrustSigner');
-      expect(sent.single.$2['fingerprint'], fingerprint);
-      sent.clear();
-      await run(
-          ['plugins', 'signers'],
-          (_, __) => {
-                'signers': [
-                  {'fingerprint': fingerprint, 'acceptedAt': 'now'}
-                ],
-                'statement': 'Local recognition only.',
-              });
-      expect(sent.single.$1, 'plugins.signers');
-      expect('$out', contains('Local recognition only.'));
-    });
-
-    test('--json prints the raw reply and still exits 3 for pending consent',
-        () async {
-      final code = await run(
-          ['--json', 'plugins', 'enable', 'acme'], (_, __) => consentReply());
-      expect(code, 3);
-      expect((jsonDecode('$out') as Map)['documentHash'], 'c' * 64);
-    });
-
-    test('renders conformance with the disclaimer and exits 0', () async {
-      final code = await run(
-          ['plugins', 'test', 'acme'],
-          (_, __) => {
-                'suiteVersion': '1.0.0',
-                'passed': false,
-                'cases': [
-                  {'id': 'handshake.identity', 'status': 'passed', 'ms': 4},
-                  {
-                    'id': 'cancel.within_grace',
-                    'status': 'failed',
-                    'ms': 5300,
-                    'detail': 'No terminal frame'
-                  },
-                ],
-                'disclaimer': 'Conformance shows protocol behavior only.',
-              });
-      expect(code, 0);
-      expect('$out', contains('cancel.within_grace'));
-      expect('$out', contains('No terminal frame'));
-      expect('$out', contains('FAILED'));
-      expect('$out', contains('protocol behavior only'));
-    });
-
-    test('lists plugins without a local Plus warning',
-        () async {
-      await run(
-          ['plugins', 'list'],
-          (_, __) => {
-                'entitlement': {'entitled': false},
-                'plugins': [
-                  {
-                    'pluginId': 'acme',
-                    'displayName': 'Acme',
-                    'versions': [
-                      {
-                        'version': '1.0.0',
-                        'manifestDigest': 'a' * 64,
-                        'registered': true
-                      },
-                    ],
-                    'workspace': {
-                      'pinnedVersion': '1.0.0',
-                      'effective': 'disabled',
-                      'reason': 'plus_required',
-                    },
-                  },
-                ],
-              });
-      expect('$out', isNot(contains('Syntila Plus')));
-      expect('$out', contains('plus_required'));
-    });
-
-    test('a reply it cannot render falls back instead of crashing', () async {
-      final code =
-          await run(['plugins', 'list'], (_, __) => {'plugins': 'nonsense'});
-      expect(code, 0);
-      expect('$err', isEmpty);
-    });
-
-    test('service errors print the stable code and exit 1', () async {
-      final code = await run(['plugins', 'import', 'x'], (_, __) {
-        throw const WorkspaceManagerProtocolException(
-          'paid_plan_required',
-          'Custom Worker plugins require Syntila Plus.',
-        );
-      });
-      expect(code, 1);
-      expect('$err', contains('paid_plan_required'));
+      ).run(['plugins']);
+      expect(code, 64);
+      expect('$err', contains('Could not find a command named "plugins"'));
     });
   });
 }

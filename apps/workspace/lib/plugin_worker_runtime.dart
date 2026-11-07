@@ -90,18 +90,23 @@ class PluginWorkerRuntime {
       origin: version?.origin,
       signer: version?.signer,
     );
-    if (installed.manifest.isMcp &&
-        (version?.toolPins == null || version!.toolPins!.isEmpty)) {
+    if (!installed.manifest.isMcp) {
+      throw const PluginServiceException(
+        'plugin_unsupported',
+        'Legacy NDJSON plugins are not supported; manifest kind must be "mcp".',
+      );
+    }
+    if (version?.toolPins == null || version!.toolPins!.isEmpty) {
       throw const PluginServiceException(
         'plugin_conformance_required',
-        'Run "plugins test" for this MCP Worker so its tools are pinned.',
+        'MCP Worker tools must be inspected and pinned.',
       );
     }
     return PluginExecution(
       executor: workerExecutorFor(
         installed,
         store.dataDirectory(installed.pluginId),
-        toolPins: version?.toolPins,
+        toolPins: version.toolPins,
       ),
       plugin: installed,
       readOnlyEnforced: false,

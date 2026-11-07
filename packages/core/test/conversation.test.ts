@@ -16,7 +16,7 @@ it("separates manual product workflow identity from versioned execution", () => 
     );
     expect(definition.capabilities).toEqual([
       ...new Set(
-        BUILTIN_WORKFLOWS[definition.execution.workflowId].steps.flatMap(
+        BUILTIN_WORKFLOWS[definition.execution.workflowId]!.steps.flatMap(
           (step) => step.requiredCapabilities,
         ),
       ),
@@ -33,5 +33,5 @@ it("separates manual product workflow identity from versioned execution", () => 
     workflowVersion: 2,
   });
   expect(conversationWorkflowForExecution("direct", 1)).toBeNull();
-  expect(conversationWorkflowForExecution("implement_verify", 1)).toBeNull();
+  expect(conversationWorkflowForExecution("plan_implement", 1)).toBeNull();
 });

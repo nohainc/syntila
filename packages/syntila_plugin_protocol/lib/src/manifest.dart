@@ -123,8 +123,8 @@ PluginManifestValidation validatePluginManifest(Object? input) {
   });
 
   if (m['schemaVersion'] != 1) issue('schemaVersion', 'must be 1');
-  if (m.containsKey('kind') && m['kind'] != 'mcp') {
-    issue('kind', 'must be "mcp" when present');
+  if (m['kind'] != 'mcp') {
+    issue('kind', 'must be "mcp" (NDJSON plugins are unsupported)');
   }
 
   final pluginId = str(m, '', 'pluginId', max: 48);

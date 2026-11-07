@@ -45,6 +45,44 @@ mixin _CatalogApi on _AxApiClientCore {
     return AxMcpInventory.fromResponse(body);
   }
 
+  Future<Map<String, dynamic>> executeMcpAction(
+    String workspaceId, {
+    required String action,
+    required String serverId,
+    String? displayName,
+    String? endpoint,
+    String? tokenEnv,
+    bool? insecureLoopback,
+    String? workerTypeId,
+    String? acceptHash,
+  }) async {
+    final response = await client.post(
+      Uri.parse(
+          '$baseUrl/workspaces/${Uri.encodeComponent(workspaceId)}/mcp-action'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode({
+        'actionId': 'act-${DateTime.now().microsecondsSinceEpoch}',
+        'action': action,
+        'serverId': serverId,
+        if (displayName != null) 'displayName': displayName,
+        if (endpoint != null) 'endpoint': endpoint,
+        if (tokenEnv != null) 'tokenEnv': tokenEnv,
+        if (insecureLoopback != null) 'insecureLoopback': insecureLoopback,
+        if (workerTypeId != null) 'workerTypeId': workerTypeId,
+        if (acceptHash != null) 'acceptHash': acceptHash,
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final errorBody = (jsonDecode(response.body) as Map?);
+      final message = errorBody?['error'] as String? ??
+          'MCP action failed (${response.statusCode})';
+      final code = errorBody?['code'] as String?;
+      throw AxApiException(message,
+          statusCode: response.statusCode, code: code);
+    }
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
   Future<List<AxUserWorkflowConfiguration>> loadSpaceWorkflowConfigurations(
       String spaceId) async {
     final body = await _getJson(Uri.parse(
@@ -155,8 +193,7 @@ mixin _CatalogApi on _AxApiClientCore {
 
   Future<void> blockPerson(String userId) async {
     final response = await client.post(
-      Uri.parse(
-          '$baseUrl/people/blocks/${Uri.encodeComponent(userId)}'),
+      Uri.parse('$baseUrl/people/blocks/${Uri.encodeComponent(userId)}'),
       headers: _headers(),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -169,8 +206,7 @@ mixin _CatalogApi on _AxApiClientCore {
 
   Future<void> unblockPerson(String userId) async {
     final response = await client.delete(
-      Uri.parse(
-          '$baseUrl/people/blocks/${Uri.encodeComponent(userId)}'),
+      Uri.parse('$baseUrl/people/blocks/${Uri.encodeComponent(userId)}'),
       headers: _headers(),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {

@@ -624,8 +624,8 @@ class WorkspaceManagerService {
         }
         if (isPluginWorkerType(workerTypeId)) {
           throw const WorkspaceManagerProtocolException(
-            'plugin_use_plugins_enable',
-            'Custom plugins are enabled with: syntila plugins enable <id>',
+            'plugin_managed_via_mcp',
+            'Custom plugins are managed via MCP.',
           );
         }
         final coordinator = workspace.workerCatalogCoordinator;
@@ -691,8 +691,8 @@ class WorkspaceManagerService {
         if (removeTarget != null &&
             isPluginWorkerType(removeTarget.workerTypeId)) {
           throw const WorkspaceManagerProtocolException(
-            'plugin_use_plugins_remove',
-            'Custom plugins are removed with: syntila plugins remove <id>',
+            'plugin_managed_via_mcp',
+            'Custom plugins are managed via MCP.',
           );
         }
         var removed = false;
@@ -972,7 +972,8 @@ class WorkspaceManagerService {
         'MCP servers are not available on this Workspace.',
       );
     }
-    return _mcpCommands ??= WorkspaceMcpCommands(subsystem.service);
+    return _mcpCommands ??=
+        WorkspaceMcpCommands(subsystem.service, fence: subsystem.fence);
   }
 
   /// Plugin management (ADR-027) over the Workspace's shared plugin

@@ -80,6 +80,8 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
           widget.definition.steps.length > 1 ||
           widget.definition.steps.any((step) => step.id != null));
 
+  bool get _planImplement => widget.definition.id == 'plan_implement';
+
   /// Researchers to run (Research v2), 2 to 4; Cloud enforces the same bounds.
   late int researcherCount = widget.configuration.researcherCount ?? 2;
 
@@ -91,6 +93,13 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
               kind: 'research', order: i - 1, id: 'research-$i'),
         AxBuiltinWorkflowStep(
             kind: 'synthesis', order: researcherCount, id: 'synthesis'),
+      ];
+    }
+    if (_planImplement) {
+      return const [
+        AxBuiltinWorkflowStep(kind: 'plan', order: 0, id: 'plan'),
+        AxBuiltinWorkflowStep(kind: 'implement', order: 1, id: 'implement'),
+        AxBuiltinWorkflowStep(kind: 'verify', order: 2, id: 'verify'),
       ];
     }
     final sorted = [...widget.definition.steps]
@@ -368,6 +377,19 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
         ),
       ]);
 
+  String _stepDescription(String instanceId) {
+    if (instanceId == 'plan') {
+      return 'Prepares structured implementation phases and completion criteria.';
+    }
+    if (instanceId == 'implement') {
+      return 'Executes implementation phase by phase according to the approved plan.';
+    }
+    if (instanceId == 'verify') {
+      return 'Audits changes and validates criteria after phases or at final review.';
+    }
+    return '';
+  }
+
   Widget _step(int index, AxBuiltinWorkflowStep step,
       AxWorkflowSelectionOptions options, String? issue) {
     final custom = overriding.contains(step.instanceId);
@@ -381,6 +403,18 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
           : 'Inherit defaults'),
       trailing: const Icon(Icons.chevron_right),
       children: [
+        if (_stepDescription(step.instanceId).isNotEmpty) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _stepDescription(step.instanceId),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         const Align(
             alignment: Alignment.centerLeft,
             child: Text('Execution',

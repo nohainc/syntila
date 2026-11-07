@@ -19,6 +19,8 @@ import 'dart:io';
 
 void send(Map<String, Object?> m) => stdout.writeln(jsonEncode(m));
 
+int _toolsListCount = 0;
+
 Map<String, Object?> tool(String name) => {
   'name': name,
   'description': 'Syntila Worker tool $name',
@@ -29,6 +31,7 @@ Future<void> main(List<String> args) async {
   final mode = args.isEmpty ? 'normal' : args[0];
   await for (final line
       in stdin.transform(utf8.decoder).transform(const LineSplitter())) {
+    if (line.trim().isEmpty) continue;
     final m = jsonDecode(line) as Map<String, Object?>;
     final id = m['id'];
     final params = (m['params'] as Map?)?.cast<String, Object?>() ?? {};
@@ -57,6 +60,7 @@ Future<void> main(List<String> args) async {
       case 'ping':
         send({'jsonrpc': '2.0', 'id': id, 'result': {}});
       case 'tools/list':
+        _toolsListCount++;
         send({
           'jsonrpc': '2.0',
           'id': id,
@@ -67,6 +71,12 @@ Future<void> main(List<String> args) async {
                   {
                     'name': 'syntila.execute',
                     'inputSchema': {'type': 'array'},
+                  }
+                else if (mode == 'drift_tool' && _toolsListCount > 1)
+                  {
+                    'name': 'syntila.execute',
+                    'description': 'Drifted description',
+                    'inputSchema': {'type': 'object'},
                   }
                 else
                   tool('syntila.execute'),

@@ -1106,6 +1106,13 @@ abstract interface class AxDataSource {
     required String workRequestId,
   }) async =>
       throw UnimplementedError('Work Request cancellation is not available');
+  Future<Map<String, dynamic>> approvePlan({
+    required String workRequestId,
+    String verificationMode = 'none',
+    Map<String, dynamic>? implementer,
+    Map<String, dynamic>? verifier,
+  }) async =>
+      throw UnimplementedError('Plan approval is not available');
   Future<AxIssueReport?> loadIssueReport({
     required String requestId,
     String? assignmentId,

@@ -1,5 +1,9 @@
 import { McpInventorySchema } from "./mcp-inventory.js";
 import {
+  McpActionRequestSchema,
+  McpActionResultSchema,
+} from "./mcp-action.js";
+import {
   McpToolCallRequestSchema,
   McpToolCallResultSchema,
   McpToolCallStatusRequestSchema,
@@ -56,6 +60,8 @@ export const WORKSPACE_RUNTIME_MESSAGE_TYPES = [
   "mcp.tool_call.status.request",
   "mcp.tool_call.status.result",
   "mcp.inventory",
+  "mcp.action.request",
+  "mcp.action.result",
   "input.available",
 ] as const;
 
@@ -98,6 +104,9 @@ export const SERVICE_MCP_TOOL_CALL_STATUS_CAPABILITY =
 
 /** Capability a Service advertises when it publishes `mcp.inventory`. */
 export const SERVICE_MCP_INVENTORY_CAPABILITY = "workspace.mcp_inventory.v1";
+
+/** Capability a Service advertises when it handles `mcp.action.request`. */
+export const SERVICE_MCP_ACTION_CAPABILITY = "workspace.mcp_action.v1";
 
 /**
  * Capability Cloud announces in `hello.ack` when `worker.inventory` may carry
@@ -819,6 +828,30 @@ export const workspaceRuntimeEnvelopeSchema = z
     }
     if (message.type === "mcp.inventory") {
       const payload = McpInventorySchema.safeParse(message.payload);
+      if (!payload.success) {
+        for (const issue of payload.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["payload", ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    }
+    if (message.type === "mcp.action.request") {
+      const payload = McpActionRequestSchema.safeParse(message.payload);
+      if (!payload.success) {
+        for (const issue of payload.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["payload", ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    }
+    if (message.type === "mcp.action.result") {
+      const payload = McpActionResultSchema.safeParse(message.payload);
       if (!payload.success) {
         for (const issue of payload.error.issues) {
           ctx.addIssue({

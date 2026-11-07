@@ -117,7 +117,8 @@ mixin _SpaceApi on _AxApiClientCore {
   }
 
   @override
-  Future<void> archiveSpace({required String spaceId, bool direct = false}) async {
+  Future<void> archiveSpace(
+      {required String spaceId, bool direct = false}) async {
     final response = await client.patch(
       Uri.parse('$baseUrl/spaces/$spaceId'),
       headers: _headers(contentType: 'application/json'),

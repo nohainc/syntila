@@ -22,6 +22,7 @@ let env: SecurityEnv;
 
 const manifest = (over: Record<string, unknown> = {}) => ({
   schemaVersion: 1,
+  kind: "mcp" as const,
   pluginId: "acme-reviewer",
   version: "1.4.2",
   displayName: "Acme Reviewer",
@@ -152,12 +153,17 @@ describe("MCP Workers (manifest kind)", () => {
     const result = (await response.json()) as Record<string, string>;
     expect(result.pluginRef).toMatch(/^plugin-[0-9a-f]{12}$/);
     expect(result.manifestDigest).toBe(await pluginManifestDigest(m as never));
+    const { kind: _k, ...withoutKind } = m;
     expect(result.manifestDigest).not.toBe(
-      await pluginManifestDigest(manifest() as never),
+      await pluginManifestDigest(withoutKind as never),
     );
   });
 
-  it("rejects any other kind", async () => {
+  it("rejects any other kind or absent kind", async () => {
+    const { kind: _k, ...withoutKind } = manifest();
+    await expect(register("plus", withoutKind)).rejects.toMatchObject({
+      code: "plugin_manifest_invalid",
+    });
     for (const kind of ["ndjson", "MCP", "", 1, null, true]) {
       await expect(register("plus", manifest({ kind }))).rejects.toMatchObject({
         code: "plugin_manifest_invalid",

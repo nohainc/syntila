@@ -35,10 +35,15 @@ class McpConformanceRunner {
       'mcp.advertisement': _advertisement,
       'mcp.tools_present': _toolsPresent,
       'mcp.tool_definitions': _toolDefinitions,
+      'mcp.tool_definition_stability': _toolDefinitionStability,
       'mcp.ping': _ping,
       'mcp.probe_shape': _probeShape,
+      'mcp.probe_live': _probeLive,
       'mcp.execute_result': _executeResult,
       'mcp.execute_single_terminal': _singleTerminal,
+      'mcp.execute_large_prompt': _executeLargePrompt,
+      'mcp.id_correlation': _idCorrelation,
+      'mcp.blank_lines_tolerated': _blankLinesTolerated,
       'mcp.unknown_method_errors': _unknownMethod,
     };
     final results = <ConformanceCase>[];
@@ -155,6 +160,28 @@ class McpConformanceRunner {
     }
   }
 
+  Future<void> _toolDefinitionStability(_McpWire w) async {
+    await w.initialize();
+    final first = await w.request('tools/list', {});
+    final second = await w.request('tools/list', {});
+    final tools1 = (first['tools'] as List? ?? const [])
+        .whereType<Map>()
+        .map((t) => t.cast<String, Object?>())
+        .toList();
+    final tools2 = (second['tools'] as List? ?? const [])
+        .whereType<Map>()
+        .map((t) => t.cast<String, Object?>())
+        .toList();
+    final pins1 = ToolPins.fromTools(tools1);
+    final diff = pins1.diff(tools2);
+    if (diff.changed.isNotEmpty ||
+        diff.added.isNotEmpty ||
+        diff.removed.isNotEmpty) {
+      throw _Failure(
+          'tools/list definitions drifted between repeated queries.');
+    }
+  }
+
   Future<void> _ping(_McpWire w) async {
     await w.initialize();
     await w.request('ping', {});
@@ -186,6 +213,19 @@ class McpConformanceRunner {
           message.length > 1024) {
         throw _Failure('a probe check is malformed.');
       }
+    }
+  }
+
+  Future<void> _probeLive(_McpWire w) async {
+    await w.initialize();
+    final result = await w.request('tools/call', {
+      'name': 'syntila.probe',
+      'arguments': {'mode': 'live'},
+    });
+    final probe = result['structuredContent'];
+    if (probe is! Map) throw _Failure('probe has no structuredContent.');
+    if (!_probeStates.contains(probe['state'])) {
+      throw _Failure('probe state "${probe['state']}" is not recognised.');
     }
   }
 
@@ -255,6 +295,31 @@ class McpConformanceRunner {
     }
   }
 
+  Future<void> _executeLargePrompt(_McpWire w) async {
+    final prompt = 'P' * (64 * 1024);
+    final result = await _execute(w, prompt);
+    final out = result['structuredContent'];
+    if (out is! Map || out['text'] is! String) {
+      throw _Failure('large prompt execute result has no text.');
+    }
+  }
+
+  Future<void> _idCorrelation(_McpWire w) async {
+    await w.initialize();
+    const testId = 8888;
+    final response = await w.rawRequest('ping', {}, id: testId);
+    if (response['id'] != testId) {
+      throw _Failure('server response id does not match request id.');
+    }
+  }
+
+  Future<void> _blankLinesTolerated(_McpWire w) async {
+    await w.sendRaw('\n\r\n  \n');
+    await w.initialize();
+    await w.sendRaw('  \r\n\n');
+    await w.request('ping', {});
+  }
+
   Future<void> _unknownMethod(_McpWire w) async {
     await w.initialize();
     final error = await w.rawRequest('syntila/unknown', {});
@@ -276,6 +341,8 @@ class _McpWire {
   final PluginConnection _connection;
   int _next = 1;
 
+  Future<void> sendRaw(String raw) => _connection.send(raw);
+
   Future<Map<String, Object?>> initialize() async {
     final result = await request('initialize', {
       'protocolVersion': McpLimits.supportedProtocolVersions.first,
@@ -289,24 +356,26 @@ class _McpWire {
 
   Future<Map<String, Object?>> rawRequest(
     String method,
-    Map<String, Object?> params,
-  ) async {
-    final id = _next++;
+    Map<String, Object?> params, {
+    int? id,
+  }) async {
+    final reqId = id ?? _next++;
     await _connection.send(jsonEncode(
-        {'jsonrpc': '2.0', 'id': id, 'method': method, 'params': params}));
+        {'jsonrpc': '2.0', 'id': reqId, 'method': method, 'params': params}));
     while (true) {
       final line = await _connection.readLine(const Duration(seconds: 8));
       if (line == null) throw _Failure('$method did not answer in time.');
       final message = _decode(line);
-      if (message['id'] == id) return message;
+      if (message['id'] == reqId) return message;
     }
   }
 
   Future<Map<String, Object?>> request(
     String method,
-    Map<String, Object?> params,
-  ) async {
-    final message = await rawRequest(method, params);
+    Map<String, Object?> params, {
+    int? id,
+  }) async {
+    final message = await rawRequest(method, params, id: id);
     final result = message['result'];
     if (result is! Map) {
       throw _Failure('$method returned an error: ${message['error']}');

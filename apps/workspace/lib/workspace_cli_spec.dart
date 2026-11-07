@@ -114,15 +114,6 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
     label: 'Worker type',
   );
 
-  const pluginId = <GuiParameter>[
-    GuiParameter(
-      name: 'id',
-      kind: GuiParamKind.positional,
-      type: GuiParamType.string,
-      required: true,
-      label: 'Plugin ID',
-    ),
-  ];
   const mcpServerId = <GuiParameter>[
     GuiParameter(
       name: 'id',
@@ -141,13 +132,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
       label: 'Worker type',
     ),
   ];
-  const pluginVersion = GuiParameter(
-    name: 'version',
-    kind: GuiParamKind.option,
-    type: GuiParamType.string,
-    label: 'Version',
-  );
-  const pluginAccept = GuiParameter(
+  const mcpAcceptConsent = GuiParameter(
     name: 'accept',
     kind: GuiParamKind.option,
     type: GuiParamType.string,
@@ -539,258 +524,6 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         ],
       ),
       group(
-        'plugins',
-        'Plugins',
-        'Manage custom Worker plugins (Syntila Plus)',
-        defaultCommand: 'list',
-        icon: GuiIcons.package,
-        navigation: true,
-        [
-          command(
-            icon: GuiIcons.list,
-            info: true,
-            'list',
-            'Plugins',
-            'List imported plugins and their state',
-            service('plugins.list'),
-            view: GuiView.table,
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.list,
-            info: true,
-            'show',
-            'Plugin details',
-            'Show one plugin: digest, origin and conformance',
-            service(
-              'plugins.show',
-              payload: (run) => {
-                'pluginId': run.positional('id'),
-                if (run.option('version') != null)
-                  'version': run.option('version'),
-              },
-            ),
-            parameters: pluginId + [pluginVersion],
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.plus,
-            'import',
-            'Import plugin',
-            'Copy a plugin package (directory or .zip) into the Workspace',
-            service(
-              'plugins.import',
-              payload: (run) => {
-                'path': File(run.positional('path')!).absolute.path,
-              },
-            ),
-            parameters: const [
-              GuiParameter(
-                name: 'path',
-                kind: GuiParamKind.positional,
-                type: GuiParamType.path,
-                required: true,
-                label: 'Package',
-              ),
-            ],
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.check,
-            'validate',
-            'Validate plugin',
-            'Check the manifest and files without running anything',
-            service(
-              'plugins.validate',
-              payload: (run) => {
-                'pluginId': run.positional('id'),
-                if (run.option('version') != null)
-                  'version': run.option('version'),
-              },
-            ),
-            parameters: pluginId + [pluginVersion],
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.check,
-            info: true,
-            'migrate-check',
-            'Check MCP migration',
-            'Say whether this plugin could be repackaged as an MCP Worker (reads the manifest only)',
-            service(
-              'plugins.migrateCheck',
-              payload: (run) => {
-                'pluginId': run.positional('id'),
-                if (run.option('version') != null)
-                  'version': run.option('version'),
-              },
-            ),
-            parameters: pluginId + [pluginVersion],
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.test,
-            'test',
-            'Test plugin',
-            'Run the protocol conformance suite in the Service',
-            service(
-              'plugins.test',
-              payload: (run) => {
-                'pluginId': run.positional('id'),
-                if (run.option('version') != null)
-                  'version': run.option('version'),
-              },
-            ),
-            parameters: pluginId + [pluginVersion],
-            longRunning: true,
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.list,
-            info: true,
-            'signers',
-            'Recognized signers',
-            'List locally recognized signing-key fingerprints',
-            service('plugins.signers'),
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.plus,
-            'trust-signer',
-            'Recognize signer',
-            'Recognize the verified signing key of an installed plugin (shows consent)',
-            service('plugins.trustSigner',
-                payload: (run) => {
-                      'pluginId': run.positional('id'),
-                      if (run.option('version') != null)
-                        'version': run.option('version'),
-                      if (run.option('accept') != null)
-                        'acceptHash': run.option('accept'),
-                    }),
-            parameters: pluginId + [pluginVersion, pluginAccept],
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.trash,
-            'untrust-signer',
-            'Forget signer',
-            'Forget a local signer fingerprint; plugin pins are unchanged',
-            service('plugins.untrustSigner',
-                payload: (run) => {
-                      'fingerprint': run.positional('fingerprint'),
-                    }),
-            parameters: const [
-              GuiParameter(
-                  name: 'fingerprint',
-                  kind: GuiParamKind.positional,
-                  type: GuiParamType.string,
-                  required: true,
-                  label: 'SHA-256 signer fingerprint')
-            ],
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.plus,
-            'register',
-            'Register plugin',
-            'Add a tested version to your account library (shows consent first)',
-            service(
-              'plugins.register',
-              payload: (run) => {
-                'pluginId': run.positional('id'),
-                if (run.option('version') != null)
-                  'version': run.option('version'),
-                if (run.option('accept') != null)
-                  'acceptHash': run.option('accept'),
-              },
-            ),
-            parameters: pluginId + [pluginVersion, pluginAccept],
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.power,
-            'enable',
-            'Enable plugin',
-            'Enable a registered version on this Workspace (shows consent first)',
-            service(
-              'plugins.enable',
-              payload: (run) => {
-                'pluginId': run.positional('id'),
-                if (run.option('version') != null)
-                  'version': run.option('version'),
-                if (run.option('accept') != null)
-                  'acceptHash': run.option('accept'),
-                'shareable': run.flag('shareable'),
-              },
-            ),
-            parameters: pluginId +
-                [
-                  pluginVersion,
-                  pluginAccept,
-                  const GuiParameter(
-                    name: 'shareable',
-                    kind: GuiParamKind.flag,
-                    type: GuiParamType.boolean,
-                    label: 'Let people with access to this Workspace use it',
-                  ),
-                ],
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.stop,
-            'disable',
-            'Disable plugin',
-            'Stop scheduling this plugin on this Workspace',
-            service(
-              'plugins.disable',
-              payload: (run) => {'pluginId': run.positional('id')},
-            ),
-            parameters: pluginId,
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.list,
-            'export',
-            'Export plugin',
-            'Write a credential-free bundle to move it to another machine',
-            service(
-              'plugins.export',
-              payload: (run) => {
-                'pluginId': run.positional('id'),
-                'outputPath': File(run.positional('out')!).absolute.path,
-                if (run.option('version') != null)
-                  'version': run.option('version'),
-              },
-            ),
-            parameters: pluginId +
-                [
-                  const GuiParameter(
-                    name: 'out',
-                    kind: GuiParamKind.positional,
-                    type: GuiParamType.path,
-                    required: true,
-                    label: 'Output file',
-                  ),
-                  pluginVersion,
-                ],
-            inGroup: true,
-          ),
-          command(
-            icon: GuiIcons.trash,
-            'remove',
-            'Remove plugin',
-            'Remove a plugin from your library and this Workspace',
-            service(
-              'plugins.remove',
-              payload: (run) => {'pluginId': run.positional('id')},
-            ),
-            parameters: pluginId,
-            destructive: true,
-            inGroup: true,
-          ),
-        ],
-      ),
-      group(
         'mcp',
         'MCP servers',
         'Manage MCP servers that official Workers may use (tools you consent to)',
@@ -947,7 +680,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
                   'acceptHash': run.option('accept'),
               },
             ),
-            parameters: mcpServerId + [pluginAccept],
+            parameters: mcpServerId + [mcpAcceptConsent],
             inGroup: true,
           ),
           command(
@@ -1015,6 +748,27 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             ),
             parameters: mcpServerId,
             destructive: true,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.pulse,
+            info: true,
+            'tool-call-status',
+            'MCP tool-call status',
+            'Show the local fence and journal outcome for a task ID',
+            service(
+              'mcp.toolCallStatus',
+              payload: (run) => {'taskId': run.positional('id')},
+            ),
+            parameters: const [
+              GuiParameter(
+                name: 'id',
+                kind: GuiParamKind.positional,
+                type: GuiParamType.string,
+                required: true,
+                label: 'Task ID',
+              ),
+            ],
             inGroup: true,
           ),
         ],

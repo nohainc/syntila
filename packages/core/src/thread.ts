@@ -157,10 +157,8 @@ export interface StepResult {
 export const WORKFLOW_IDS = [
   "chat",
   "direct",
-  "research",
   "plan_implement",
-  "implement_verify",
-  "full_cycle",
+  "research",
 ] as const;
 export type WorkflowId = (typeof WORKFLOW_IDS)[number];
 export const THREAD_BINDING_IDS = ["direct", ...STEP_KINDS] as const;
@@ -503,7 +501,47 @@ const DIRECT_V1 = builtin("direct", "Direct", "Implement the requested work.", [
   "implement",
 ]);
 
-/** Current version for each built-in ID; immutable history is below. */
+/**
+ * Implement v2 (ADR-030): An interactive, phased implementation workflow.
+ * Step 1 prepares a structured plan partitioned into implementation phases.
+ * Upon user approval and verification configuration, phases execute via the
+ * Thread Request Queue.
+ */
+export const IMPLEMENT_WORKFLOW_ROLES = ["plan", "implement", "verify"] as const;
+export type ImplementWorkflowRole = (typeof IMPLEMENT_WORKFLOW_ROLES)[number];
+
+export function implementWorkflowV2(): BuiltinWorkflowDefinition {
+  return {
+    id: "plan_implement",
+    version: 2,
+    name: "Implement",
+    description:
+      "Plan in phases, review the approach, and execute step-by-step with verification.",
+    steps: [
+      {
+        id: "plan",
+        kind: "plan",
+        order: 0,
+        executionMode: "stateless_read",
+        executionClass: "analysis",
+        requiredCapabilities: ["authorized_context_read"],
+        readWritePolicy: "read_only",
+        timeoutMs: 15 * 60 * 1000,
+        promptProfileVersion: "plan:v2",
+        dependsOn: [],
+        inputsFrom: [],
+        dependsOnSteps: [],
+        inputsFromSteps: [],
+        resultSemantics: "implementation_plan",
+      },
+    ],
+  };
+}
+
+export const ACTIVE_WORKFLOW_IDS = WORKFLOW_IDS;
+export type ActiveWorkflowId = WorkflowId;
+
+/** Current version for each active built-in ID; immutable history is below. */
 export const BUILTIN_WORKFLOWS: Readonly<
   Record<WorkflowId, BuiltinWorkflowDefinition>
 > = {
@@ -520,50 +558,23 @@ export const BUILTIN_WORKFLOWS: Readonly<
     ["implement"],
     2,
   ),
-  // Current Research: independent researchers plus synthesis (ADR-026). The
-  // researcher count comes from configuration at acceptance; v1 stays in the
-  // catalog for accepted snapshots.
+  plan_implement: implementWorkflowV2(),
   research: researchWorkflowV2(),
-  plan_implement: builtin(
-    "plan_implement",
-    "Plan & Implement",
-    "One Worker creates a plan, then a Worker carries it out.",
-    ["plan", "implement"],
-  ),
-  implement_verify: builtin(
-    "implement_verify",
-    "Implement & Verify",
-    "One Worker performs the work, another independently checks it.",
-    ["implement", "verify"],
-  ),
-  full_cycle: builtin(
-    "full_cycle",
-    "Full Cycle",
-    "Research, plan, implement, test, and verify the result.",
-    ["research", "plan", "implement", "test", "verify"],
-  ),
 };
 
 /**
  * Authoritative immutable definitions keyed by stable release reference.
- * Keep older entries when a Workflow gets a newer version so saved Work
- * Request snapshots remain verifiable and executable.
  */
 export const BUILTIN_WORKFLOW_CATALOG: Readonly<
   Record<string, BuiltinWorkflowDefinition>
 > = {
   "chat:v1": BUILTIN_WORKFLOWS.chat,
+  "chat:v2": toolChatWorkflowV2(),
   "direct:v1": DIRECT_V1,
   "direct:v2": BUILTIN_WORKFLOWS.direct,
+  "plan_implement:v2": BUILTIN_WORKFLOWS.plan_implement,
   "research:v1": RESEARCH_V1,
-  // Full Cycle keeps its own single v1 research step.
   "research:v2": BUILTIN_WORKFLOWS.research,
-  "plan_implement:v1": BUILTIN_WORKFLOWS.plan_implement,
-  "implement_verify:v1": BUILTIN_WORKFLOWS.implement_verify,
-  "full_cycle:v1": BUILTIN_WORKFLOWS.full_cycle,
-  // Chat with one preceding MCP tool call. It is a catalog-only version, so
-  // ordinary Chat (v1) stays current and `work_requests.workflow_id` is unchanged.
-  "chat:v2": toolChatWorkflowV2(),
 };
 
 export function builtinWorkflowReference(

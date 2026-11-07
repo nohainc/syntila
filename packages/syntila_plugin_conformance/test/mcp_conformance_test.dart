@@ -101,4 +101,11 @@ void main() {
     expect(overLimit.status, ConformanceStatus.failed);
     expect(overLimit.detail, contains('UTF-8 byte limit'));
   });
+  test('detects tool definition drift across repeated queries', () async {
+    final report = await run(const ['drift_tool']);
+    expect(caseOf(report, 'mcp.tool_definition_stability').status,
+        ConformanceStatus.failed);
+    expect(caseOf(report, 'mcp.tool_definitions').status,
+        ConformanceStatus.passed);
+  });
 }

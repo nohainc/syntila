@@ -74,8 +74,9 @@ void main() {
     };
     Future<Object?> handler(
         String command, Map<String, Object?> payload) async {
-      if (!fixtures.containsKey(command))
+      if (!fixtures.containsKey(command)) {
         throw StateError('Missing fixture: $command');
+      }
       return fixtures[command];
     }
 

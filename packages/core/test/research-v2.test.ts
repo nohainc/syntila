@@ -153,20 +153,7 @@ describe("Research v2 definition", () => {
         (t) => t.id,
       ),
     ).toEqual(["task-wr-research"]);
-    expect(
-      planWorkflowTasks(BUILTIN_WORKFLOWS.full_cycle, "wr").map((t) => t.id),
-    ).toEqual([
-      "task-wr-research",
-      "task-wr-plan",
-      "task-wr-implement",
-      "task-wr-test",
-      "task-wr-verify",
-    ]);
-    // Research is v2 now; Full Cycle keeps its v1 research step.
     expect(BUILTIN_WORKFLOWS.research.version).toBe(2);
-    expect(BUILTIN_WORKFLOWS.full_cycle.steps[0]!.promptProfileVersion).toBe(
-      "research:v1",
-    );
     for (const definition of Object.values(BUILTIN_WORKFLOW_CATALOG))
       expect(() =>
         validateBuiltinWorkflowDefinition(

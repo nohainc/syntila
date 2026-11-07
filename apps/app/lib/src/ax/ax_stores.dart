@@ -1,6 +1,7 @@
 import 'sync/ax_people.dart';
 import 'sync/ax_archived_spaces.dart';
 import 'sync/ax_workflow_configurations.dart';
+import 'sync/ax_mcp_inventories.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -474,6 +475,7 @@ class AxStore {
     workflowConfigurations.clear();
     people.clear();
     archivedSpaces.clear();
+    mcpInventories.clear();
     _disposed = true;
     _sessionGeneration++;
     spaces.dispose();
@@ -497,6 +499,8 @@ class AxStore {
   late final archivedSpaces = AxArchivedSpaces(dataSource, engine: syncEngine);
   late final workflowConfigurations =
       AxWorkflowConfigurations(dataSource, engine: syncEngine);
+  late final AxMcpInventories mcpInventories =
+      AxMcpInventories(dataSource, engine: syncEngine);
   late final AxSessionCatalogs catalogs =
       AxSessionCatalogs(dataSource, engine: syncEngine);
   late final AxSpaceTabQueries spaceTabs =
@@ -576,6 +580,7 @@ class AxStore {
     workflowConfigurations.clear();
     people.clear();
     archivedSpaces.clear();
+    mcpInventories.clear();
     unawaited(persistence.clearUser());
     _sessionGeneration++;
     spaces.clear();

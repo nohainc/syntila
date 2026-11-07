@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN_DIR="$ROOT/examples/plugins/ollama_local"
+PLUGIN_DIR="$ROOT/examples/mcp/ollama_worker"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "Syntila Ollama Local plugin build requires macOS." >&2

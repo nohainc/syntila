@@ -14,6 +14,8 @@ dependencies:
     path: ../../packages/syntila_design
   syntila_protocol:
     path: ../../packages/dart/protocol
+  syntila_mcp_protocol:
+    path: ../../packages/syntila_mcp_protocol
   http: ^1.2.2
   http_parser: ^4.0.2
   web: ^1.1.1

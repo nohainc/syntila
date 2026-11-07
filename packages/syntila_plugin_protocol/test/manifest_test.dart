@@ -9,6 +9,7 @@ Map<String, Object?> manifest() =>
 
 final _example = <String, Object?>{
   'schemaVersion': 1,
+  'kind': 'mcp',
   'pluginId': 'acme-reviewer',
   'version': '1.4.2',
   'displayName': 'Acme Reviewer',
@@ -52,6 +53,9 @@ void main() {
   test('rejects non-objects and unknown keys at every level', () {
     expect(validatePluginManifest('x').isValid, isFalse);
     expectInvalid({...manifest(), 'accesss': {}}, 'accesss');
+    final withoutKind = manifest()..remove('kind');
+    expectInvalid(withoutKind, 'kind');
+    expectInvalid({...manifest(), 'kind': 'ndjson'}, 'kind');
     final m = manifest();
     (m['access'] as Map<String, Object?>)['filesystem'] = 'all';
     expectInvalid(m, 'access.filesystem');

@@ -182,6 +182,7 @@ class _WorkComposer extends StatelessWidget {
     required this.onRetryStep,
     required this.onCancelRun,
     this.onSynthesizePartial,
+    this.onApprovePlan,
     required this.onWorkflowChanged,
     required this.onRun,
     this.selectionMissing = false,
@@ -266,6 +267,14 @@ class _WorkComposer extends StatelessWidget {
 
   /// Research v2: synthesize the reports that succeeded after a failure.
   final Future<void> Function(String)? onSynthesizePartial;
+
+  /// Implement workflow: approve the plan and enqueue implementation phases.
+  final Future<bool> Function(
+    String, {
+    String verificationMode,
+    Map<String, dynamic>? implementer,
+    Map<String, dynamic>? verifier,
+  })? onApprovePlan;
   final ValueChanged<String> onWorkflowChanged;
 
   final Future<void> Function() onRun;
@@ -466,6 +475,9 @@ class _WorkComposer extends StatelessWidget {
           onSynthesizePartial: localWorkProgress.containsKey(request.id)
               ? null
               : onSynthesizePartial,
+          onApprovePlan: localWorkProgress.containsKey(request.id)
+              ? null
+              : onApprovePlan,
           // Members cancel only their own requests.
           onCancelRun: localWorkProgress.containsKey(request.id) ||
                   (currentUserId != null &&
@@ -1649,6 +1661,7 @@ class _WorkTimelineCard extends StatelessWidget {
     required this.onRetryStep,
     required this.onCancelRun,
     this.onSynthesizePartial,
+    this.onApprovePlan,
     this.onReply,
     this.onSelectExecutionParameters,
   });
@@ -1687,6 +1700,14 @@ class _WorkTimelineCard extends StatelessWidget {
 
   /// Research v2: synthesize the reports that succeeded after a failure.
   final Future<void> Function(String)? onSynthesizePartial;
+
+  /// Implement workflow: approve the plan and enqueue implementation phases.
+  final Future<bool> Function(
+    String, {
+    String verificationMode,
+    Map<String, dynamic>? implementer,
+    Map<String, dynamic>? verifier,
+  })? onApprovePlan;
 
   String get _workflowName =>
       request.workflowName ??
@@ -2402,6 +2423,12 @@ class _WorkTimelineCard extends StatelessWidget {
                                           data: message,
                                         ),
                                 ],
+                                if (request.steps
+                                    .any((step) => step.kind == 'tool_call'))
+                                  AxToolCallStepCards(
+                                    request: request,
+                                    color: metaColor,
+                                  ),
                                 if (request.workflowId == 'research' &&
                                     request.workflowVersion == 2 &&
                                     request.steps.length > 1)
@@ -2411,6 +2438,16 @@ class _WorkTimelineCard extends StatelessWidget {
                                     onRetryStep: onRetryStep,
                                     onSynthesizePartial: onSynthesizePartial,
                                     color: metaColor,
+                                  ),
+                                if (request.workflowId == 'plan_implement' &&
+                                    request.status == 'completed')
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 12),
+                                    child: AxPlanApprovalCard(
+                                      requestId: request.id,
+                                      onApprove: onApprovePlan,
+                                      color: metaColor,
+                                    ),
                                   ),
                                 if (!overlayFooter) footer,
                                 if (reportedIssue != null) ...[
@@ -2611,6 +2648,322 @@ class AxResearchStepCards extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Timeline rendering for deterministic MCP tool call steps.
+class AxToolCallStepCards extends StatelessWidget {
+  const AxToolCallStepCards({
+    super.key,
+    required this.request,
+    required this.color,
+  });
+
+  final AxWorkRequest request;
+  final Color color;
+
+  static String _state(AxWorkRequestStep step) => switch (step.status) {
+        'completed' => 'Completed',
+        'running' => 'Running',
+        'failed' => 'Failed',
+        'cancelled' => 'Cancelled',
+        _ => 'Queued',
+      };
+
+  static String _label(AxWorkRequestStep step) {
+    final text = step.resultText?.trim() ?? '';
+    final match = RegExp(r'^Tool\s+(\S+)\s+on\s+(\S+):', caseSensitive: false)
+        .firstMatch(text);
+    if (match != null) {
+      return 'Tool ${match.group(1)} (${match.group(2)})';
+    }
+    return 'Connected Tool Call';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = request.steps.where((s) => s.kind == 'tool_call').toList();
+    if (steps.isEmpty) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      key: const ValueKey('tool-call-step-cards'),
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final step in steps)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Material(
+                color: color.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+                clipBehavior: Clip.antiAlias,
+                child: Theme(
+                  data: Theme.of(context)
+                      .copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    key: ValueKey('tool-call-step-${step.id}-${step.status}'),
+                    dense: true,
+                    initiallyExpanded:
+                        step.status == 'running' || step.status == 'failed',
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    leading: Icon(
+                      Icons.handyman_outlined,
+                      size: 18,
+                      color: step.status == 'failed' ? scheme.error : color,
+                    ),
+                    title: Text(
+                      '${_label(step)} · ${_state(step)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: step.status == 'failed' ? scheme.error : color,
+                      ),
+                    ),
+                    subtitle: Text(
+                      [
+                        'Deterministic tool call',
+                        if (step.elapsedMs != null)
+                          '${step.elapsedMs! ~/ 1000}s',
+                      ].join(' · '),
+                      style: TextStyle(fontSize: 11, color: color),
+                    ),
+                    childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                    expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (step.resultText?.trim().isNotEmpty == true)
+                        _MemoizedWorkMarkdown(
+                          key: ValueKey((request.id, step.id)),
+                          data: step.resultText!,
+                        )
+                      else if (step.status == 'completed')
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Text(
+                            'Tool executed successfully.',
+                            style: TextStyle(fontSize: 12, color: color),
+                          ),
+                        ),
+                      if (step.status == 'failed')
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Text(
+                            step.errorMessage ??
+                                'The tool call failed or its outcome was uncertain. Mutating side-effects are not automatically replayed.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: scheme.error,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+/// Displays verification mode options and an approve action that enqueues
+/// phases into the Thread Request Queue.
+class AxPlanApprovalCard extends StatefulWidget {
+  const AxPlanApprovalCard({
+    super.key,
+    required this.requestId,
+    required this.onApprove,
+    this.color,
+  });
+
+  final String requestId;
+  final Future<bool> Function(
+    String, {
+    String verificationMode,
+    Map<String, dynamic>? implementer,
+    Map<String, dynamic>? verifier,
+  })? onApprove;
+  final Color? color;
+
+  @override
+  State<AxPlanApprovalCard> createState() => _AxPlanApprovalCardState();
+}
+
+class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
+  String _verificationMode = 'per_phase';
+  bool _submitting = false;
+  bool _submitted = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      key: ValueKey('plan-approval-card-${widget.requestId}'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: SyntilaColors.composerRail(isDark),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: colors.primary.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.assignment_turned_in_outlined,
+                size: 18,
+                color: colors.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Implementation Plan Ready',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: colors.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Review the plan above. Select how you would like phases to be verified, then approve to enqueue implementation steps.',
+            style: TextStyle(
+              fontSize: 12,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Verification Mode',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _buildChoiceChip(
+                key: ValueKey('verify-mode-per-phase-${widget.requestId}'),
+                label: 'Verify after each phase (Recommended)',
+                value: 'per_phase',
+                colors: colors,
+              ),
+              _buildChoiceChip(
+                key: ValueKey('verify-mode-final-${widget.requestId}'),
+                label: 'Final verification only',
+                value: 'final',
+                colors: colors,
+              ),
+              _buildChoiceChip(
+                key: ValueKey('verify-mode-none-${widget.requestId}'),
+                label: 'No verification',
+                value: 'none',
+                colors: colors,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (_submitted)
+            Row(
+              children: [
+                const Icon(
+                  Icons.check_circle_outline,
+                  size: 16,
+                  color: Colors.green,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Plan approved. Implementation steps added to Thread Queue.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green.shade700,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                key: ValueKey('approve-plan-button-${widget.requestId}'),
+                onPressed: _submitting || widget.onApprove == null
+                    ? null
+                    : () async {
+                        setState(() => _submitting = true);
+                        final success = await widget.onApprove!(
+                          widget.requestId,
+                          verificationMode: _verificationMode,
+                        );
+                        if (mounted) {
+                          setState(() {
+                            _submitting = false;
+                            if (success) _submitted = true;
+                          });
+                        }
+                      },
+                icon: _submitting
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.play_arrow_rounded, size: 16),
+                label: Text(
+                  _submitting ? 'Enqueuing phases...' : 'Approve & Start Phases',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChoiceChip({
+    required Key key,
+    required String label,
+    required String value,
+    required ColorScheme colors,
+  }) {
+    final selected = _verificationMode == value;
+    return ChoiceChip(
+      key: key,
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      selected: selected,
+      onSelected: _submitted || _submitting
+          ? null
+          : (bool isSelected) {
+              if (isSelected) {
+                setState(() => _verificationMode = value);
+              }
+            },
     );
   }
 }
@@ -3601,6 +3954,8 @@ class _QueuedWorkMessage {
     this.id,
     this.authorName = '',
     this.own = true,
+    this.isPhased = false,
+    this.phaseTitle,
   });
 
   /// A request in the Thread's shared queue, which only its author changes.
@@ -3615,6 +3970,8 @@ class _QueuedWorkMessage {
         replyTo: item.replyTo,
         authorName: item.authorName,
         own: own,
+        isPhased: item.isPhased,
+        phaseTitle: item.phaseTitle,
       );
 
   /// The shared queue item; null for a message in the local queue.
@@ -3623,6 +3980,9 @@ class _QueuedWorkMessage {
 
   /// Whether the viewer queued it and so may edit, remove or send it now.
   final bool own;
+
+  final bool isPhased;
+  final String? phaseTitle;
 
   final AxReplyReference? replyTo;
   final String text;
@@ -3729,6 +4089,7 @@ class _QueuedMessagesPanel extends StatelessWidget {
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
                   final message = messages[index];
+                  final isPhased = message.isPhased;
                   final body = message.text.trim().isEmpty
                       ? '${message.attachments.length} attachment(s)'
                       : message.text.trim();
@@ -3738,10 +4099,46 @@ class _QueuedMessagesPanel extends StatelessWidget {
                       : '${message.authorName}: $body';
                   return InkWell(
                     key: ValueKey('work-queue-item-$index'),
-                    onTap: message.own ? () => onEdit(message) : null,
+                    onTap: (!isPhased && message.own)
+                        ? () => onEdit(message)
+                        : null,
                     child: Padding(
                       padding: const EdgeInsets.only(left: 12, right: 4),
                       child: Row(children: [
+                        if (isPhased)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Tooltip(
+                              message:
+                                  'Phased implementation step (runs in planned sequence)',
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: colors.primaryContainer
+                                      .withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.lock_outline,
+                                        size: 11,
+                                        color: colors.onPrimaryContainer),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      'Phase',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: colors.onPrimaryContainer,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         Expanded(
                           child: Text(
                             text,
@@ -3751,22 +4148,24 @@ class _QueuedMessagesPanel extends StatelessWidget {
                           ),
                         ),
                         if (message.own) ...[
-                          IconButton(
-                            tooltip: 'Edit',
-                            iconSize: 16,
-                            constraints: iconConstraints,
-                            padding: EdgeInsets.zero,
-                            icon: const Icon(Icons.edit_outlined),
-                            onPressed: () => onEdit(message),
-                          ),
-                          IconButton(
-                            tooltip: 'Send now',
-                            iconSize: 16,
-                            constraints: iconConstraints,
-                            padding: EdgeInsets.zero,
-                            icon: const Icon(Icons.arrow_upward_rounded),
-                            onPressed: () => onSendNow(message),
-                          ),
+                          if (!isPhased) ...[
+                            IconButton(
+                              tooltip: 'Edit',
+                              iconSize: 16,
+                              constraints: iconConstraints,
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () => onEdit(message),
+                            ),
+                            IconButton(
+                              tooltip: 'Send now',
+                              iconSize: 16,
+                              constraints: iconConstraints,
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.arrow_upward_rounded),
+                              onPressed: () => onSendNow(message),
+                            ),
+                          ],
                           IconButton(
                             tooltip: 'Remove from queue',
                             iconSize: 16,

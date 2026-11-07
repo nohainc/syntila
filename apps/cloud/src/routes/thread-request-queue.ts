@@ -208,7 +208,10 @@ async function errorMessageOf(response: Response) {
 export async function advanceThreadQueue(
   env: SecurityEnv,
   threadId: string,
-  { failedRequest = false }: { failedRequest?: boolean } = {},
+  {
+    failedRequest = false,
+    pauseMessage,
+  }: { failedRequest?: boolean; pauseMessage?: string } = {},
 ): Promise<void> {
   const db = env.SYNTILA_DB;
   const head = await db
@@ -226,7 +229,7 @@ export async function advanceThreadQueue(
       threadId,
       "failure",
       null,
-      "A request failed. Resume the queue to send the next request.",
+      pauseMessage ?? "A request failed. Resume the queue to send the next request.",
     );
     await publishQueueUpdated(env, threadId);
     return;
@@ -304,7 +307,7 @@ export async function advanceThreadQueue(
 export async function advanceThreadQueueSafely(
   env: SecurityEnv,
   threadId: string,
-  options?: { failedRequest?: boolean },
+  options?: { failedRequest?: boolean; pauseMessage?: string },
 ) {
   try {
     await advanceThreadQueue(env, threadId, options);
@@ -427,11 +430,11 @@ export async function handleThreadRequestQueue(
   if (!itemId) throw new HttpError(405, "Unsupported method");
   const item = await db
     .prepare(
-      `SELECT author_user_id AS authorUserId, status FROM thread_request_queue
+      `SELECT author_user_id AS authorUserId, status, request_json AS requestJson FROM thread_request_queue
         WHERE id = ?1 AND thread_id = ?2`,
     )
     .bind(itemId, threadId)
-    .first<{ authorUserId: string; status: string }>();
+    .first<{ authorUserId: string; status: string; requestJson: string }>();
   if (!item) throw new HttpError(404, "Queued request not found");
   // Members share the queue but act only on their own requests.
   if (item.authorUserId !== context.userId)
@@ -442,7 +445,20 @@ export async function handleThreadRequestQueue(
   if (item.status !== "queued")
     throw new HttpError(409, "This request is already being sent");
 
+  let existingRequest: Record<string, unknown> = {};
+  try {
+    existingRequest = JSON.parse(item.requestJson) as Record<string, unknown>;
+  } catch {
+    // ignore
+  }
+
   if (method === "PUT" && !action) {
+    if (existingRequest.isPhased) {
+      throw new HttpError(
+        400,
+        "Phased implementation steps cannot be edited. Remove the step if you wish to cancel it.",
+      );
+    }
     const payload = (await request.json()) as Record<string, unknown>;
     const body = requestBody(payload.request);
     await requireWorkflowPermission(
@@ -473,6 +489,12 @@ export async function handleThreadRequestQueue(
       .first<{ n: number }>();
     if (!left?.n) await resume(env, threadId);
   } else if (method === "POST" && action === "send-now") {
+    if (existingRequest.isPhased) {
+      throw new HttpError(
+        400,
+        "Phased implementation steps execute in their planned sequence and cannot be moved to the front.",
+      );
+    }
     // First in line and running again. Requests still processing finish
     // first: members cannot cancel each other's requests.
     const first = await db

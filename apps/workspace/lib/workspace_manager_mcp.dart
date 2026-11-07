@@ -2,15 +2,17 @@ import 'dart:io';
 
 import 'mcp_registry.dart';
 import 'mcp_service.dart';
+import 'mcp_tool_call_fence.dart';
 import 'workspace_manager_ipc.dart';
 
 /// Translates `mcp.*` IPC commands into [McpService] calls and policy errors
 /// into stable IPC error codes. Like `plugins.*`, the CLI only sends requests
 /// and prints results: it never starts a server.
 class WorkspaceMcpCommands {
-  WorkspaceMcpCommands(this.service);
+  WorkspaceMcpCommands(this.service, {this.fence});
 
   final McpService service;
+  final McpToolCallFence? fence;
 
   static final _idPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
 
@@ -132,6 +134,47 @@ class WorkspaceMcpCommands {
         return service.disable(_id(payload));
       case 'mcp.remove':
         return service.remove(_id(payload));
+      case 'mcp.test':
+        return service.test(_id(payload));
+      case 'mcp.toolCallStatus':
+        final fence = this.fence;
+        if (fence == null) {
+          throw const WorkspaceManagerProtocolException(
+            'fence_unavailable',
+            'Tool-call fence is unavailable on this Workspace.',
+          );
+        }
+        final taskId = payload['taskId'];
+        if (taskId is! String || taskId.isEmpty || taskId.length > 900) {
+          throw const WorkspaceManagerProtocolException(
+            'invalid_request',
+            'taskId must be a non-empty string under 900 characters.',
+          );
+        }
+        final dispatchKey = 'mcp-tool-v1:$taskId';
+        if (!await fence.wasClaimed(dispatchKey)) {
+          return {
+            'taskId': taskId,
+            'dispatchKey': dispatchKey,
+            'status': 'unclaimed',
+          };
+        }
+        final recorded = await fence.recordedOutcome(dispatchKey);
+        if (recorded == null) {
+          return {
+            'taskId': taskId,
+            'dispatchKey': dispatchKey,
+            'status': 'claimed_no_outcome',
+          };
+        }
+        return {
+          'taskId': taskId,
+          'dispatchKey': dispatchKey,
+          'status': 'recorded',
+          'state': recorded['state'],
+          'code': recorded['code'],
+          if (recorded.containsKey('result')) 'result': recorded['result'],
+        };
       default:
         throw WorkspaceManagerProtocolException(
           'unsupported_command',

@@ -235,52 +235,28 @@ void main() {
     expect('$out', contains('remote https://mcp.acme.example/mcp'));
   });
 
-  test('plugins migrate-check explains blockers and the steps', () async {
+
+  test('tool-call-status sends taskId and renders status and outcome',
+      () async {
     final code = await run(
-      ['plugins', 'migrate-check', 'acme-reviewer'],
-      (_, __) => {
-        'pluginId': 'acme-reviewer',
-        'version': '1.4.2',
-        'alreadyMcp': false,
-        'canMigrate': false,
-        'blockers': [
-          {
-            'code': 'working_directory_unsupported',
-            'message': 'needs the Space',
-          },
-        ],
-        'warnings': [
-          {'code': 'conformance_differs', 'message': 'profile check only'},
-        ],
-        'steps': ['do one', 'do two'],
+      ['mcp', 'tool-call-status', 'task-999'],
+      (name, payload) {
+        expect(name, 'mcp.toolCallStatus');
+        expect(payload, {'taskId': 'task-999'});
+        return {
+          'taskId': 'task-999',
+          'dispatchKey': 'mcp-tool-v1:task-999',
+          'status': 'recorded',
+          'state': 'completed',
+          'code': 'completed',
+          'result': {'output': 'ok'},
+        };
       },
     );
     expect(code, 0);
-    expect(sent.single.$1, 'plugins.migrateCheck');
-    expect(sent.single.$2, {'pluginId': 'acme-reviewer'});
-    final text = '$out';
-    expect(text,
-        contains('blocker  working_directory_unsupported: needs the Space'));
-    expect(text, contains('warning  conformance_differs'));
-    expect(text, contains('Cannot migrate yet'));
-    expect(text, contains('1. do one'));
-    expect(text, contains('nothing was run'));
-    expect(text, contains('migrating is optional'));
-  });
-
-  test('migrate-check on an MCP Worker says there is nothing to do', () async {
-    await run(
-      ['plugins', 'migrate-check', 'echo-worker'],
-      (_, __) => {
-        'pluginId': 'echo-worker',
-        'version': '1.0.0',
-        'alreadyMcp': true,
-        'canMigrate': false,
-        'blockers': <Object?>[],
-        'warnings': <Object?>[],
-        'steps': <Object?>[],
-      },
-    );
-    expect('$out', contains('Already an MCP Worker'));
+    expect('$out', contains('Task:         task-999'));
+    expect('$out', contains('Fence status: recorded'));
+    expect('$out', contains('State:        completed'));
+    expect('$out', contains('Result:       {"output":"ok"}'));
   });
 }

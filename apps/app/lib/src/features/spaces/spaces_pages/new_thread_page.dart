@@ -149,11 +149,11 @@ class _NewThreadPageState extends State<NewThreadPage> {
                                 backgroundColor: SyntilaColors.primarySoftColor(
                                     Theme.of(context).brightness ==
                                         Brightness.dark),
-                                backgroundImage: widget.space.avatarUrl !=
-                                            null &&
-                                        widget.space.avatarUrl!.isNotEmpty
-                                    ? NetworkImage(widget.space.avatarUrl!)
-                                    : null,
+                                backgroundImage:
+                                    widget.space.avatarUrl != null &&
+                                            widget.space.avatarUrl!.isNotEmpty
+                                        ? NetworkImage(widget.space.avatarUrl!)
+                                        : null,
                                 child: widget.space.avatarUrl == null ||
                                         widget.space.avatarUrl!.isEmpty
                                     ? Text(
@@ -163,9 +163,11 @@ class _NewThreadPageState extends State<NewThreadPage> {
                                         style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.w600,
-                                          color: SyntilaColors.primaryForeground(
-                                              Theme.of(context).brightness ==
-                                                  Brightness.dark),
+                                          color:
+                                              SyntilaColors.primaryForeground(
+                                                  Theme.of(context)
+                                                          .brightness ==
+                                                      Brightness.dark),
                                         ),
                                       )
                                     : null,
@@ -173,8 +175,7 @@ class _NewThreadPageState extends State<NewThreadPage> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       widget.space.name.isNotEmpty
@@ -205,7 +206,8 @@ class _NewThreadPageState extends State<NewThreadPage> {
                           if (widget.space.name.trim().isNotEmpty) ...[
                             Text(widget.space.name.trim(),
                                 key: const ValueKey('space-landing-name'),
-                                style: Theme.of(context).textTheme.headlineSmall),
+                                style:
+                                    Theme.of(context).textTheme.headlineSmall),
                             const SizedBox(height: 12),
                           ],
                           if (widget.space.description.trim().isNotEmpty) ...[

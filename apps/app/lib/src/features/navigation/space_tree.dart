@@ -368,8 +368,9 @@ class SpaceTree extends StatelessWidget {
                                   size: 16,
                                   color: spaceIdentityColor(
                                           space.settings['color'],
-                                          isDark: Theme.of(context).brightness ==
-                                              Brightness.dark) ??
+                                          isDark:
+                                              Theme.of(context).brightness ==
+                                                  Brightness.dark) ??
                                       SyntilaColors.navigationTextMuted(
                                           Theme.of(context).brightness ==
                                               Brightness.dark),
@@ -529,7 +530,11 @@ class SpaceTree extends StatelessWidget {
                         child: Tooltip(
                           message: recent ? space.name : '',
                           child: Text(
-                            thread.title,
+                            recent && space.isDirect
+                                ? (thread.isGeneral
+                                    ? space.name
+                                    : '${space.name} · ${thread.title}')
+                                : thread.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -731,8 +736,8 @@ class SpaceTree extends StatelessWidget {
               onPressed: () => select(isArchived ? 'unarchive' : 'archive'),
               child: Text(
                 isArchived ? 'Unarchive Thread' : 'Archive Thread',
-                style:
-                    const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                    fontSize: 12.5, fontWeight: FontWeight.w500),
               ),
             ),
             divider(),
@@ -868,13 +873,12 @@ class SpaceTree extends StatelessWidget {
               onPressed: () => onNavigateTo(AxNavigation.space(space.id)),
               child: const Text('Open Space'),
             ),
-          if (!space.isDirect)
-            MenuItemButton(
-              style: itemStyle(),
-              leadingIcon: Icon(Icons.edit_outlined, size: 16, color: iconColor),
-              onPressed: () => select('edit'),
-              child: const Text('Edit Space'),
-            ),
+          MenuItemButton(
+            style: itemStyle(),
+            leadingIcon: Icon(Icons.edit_outlined, size: 16, color: iconColor),
+            onPressed: () => select('edit'),
+            child: const Text('Edit Space'),
+          ),
           MenuItemButton(
             style: itemStyle(),
             leadingIcon:

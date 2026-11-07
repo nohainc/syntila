@@ -818,7 +818,7 @@ export async function handleCreateDiscussionMessage(
   if (directSpace) {
     mutations.push(
       env.SYNTILA_DB.prepare(
-        "UPDATE direct_space_user_state SET hidden = 0, updated_at = ?1 WHERE space_id = ?2",
+        "UPDATE direct_space_user_state SET hidden = 0, last_opened_at = ?1, updated_at = ?1 WHERE space_id = ?2",
       ).bind(now, spaceId),
     );
   }

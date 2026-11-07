@@ -150,8 +150,10 @@ class WorkflowSource extends AxFixtureDataSource
       workflow('chat', 'Chat'),
       workflow('direct', 'Direct'),
       workflow('direct', 'Work', version: 2, steps: ['implement']),
-      workflow('implement_verify', 'Implement & Verify',
-          steps: ['implement', 'verify'])
+      workflow('plan_implement', 'Implement',
+          version: 2, steps: ['plan']),
+      workflow('research', 'Research',
+          version: 2, steps: ['research', 'synthesis']),
     ];
   }
 
@@ -217,8 +219,8 @@ void main() {
     expect(find.byKey(const ValueKey('workflow-chat')), findsOneWidget);
     expect(find.byKey(const ValueKey('workflow-direct')), findsOneWidget);
     expect(
-        find.byKey(const ValueKey('workflow-implement_verify')), findsNothing);
-    expect(find.text('Implement & Verify'), findsNothing);
+        find.byKey(const ValueKey('workflow-plan_implement')), findsOneWidget);
+    expect(find.text('Implement'), findsOneWidget);
   });
 
   testWidgets('Worker selectors align below short and wrapped descriptions',
@@ -350,27 +352,27 @@ void main() {
     await tester.pumpWidget(page('ws'));
     await tester.pumpAndSettle();
     await tester
-        .tap(find.byKey(const ValueKey('open-workflow-implement_verify')));
+        .tap(find.byKey(const ValueKey('open-workflow-research')));
     await tester.pumpAndSettle();
     // Only this Workspace's Workers can be chosen.
-    await tester.tap(find.byKey(const ValueKey('workflow-step-implement')));
+    await tester.tap(find.byKey(const ValueKey('workflow-step-research-1')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('override-implement')));
+    await tester.tap(find.byKey(const ValueKey('override-research-1')));
     await tester.pumpAndSettle();
-    expect(choices(tester, 'implement', 'Worker'), ['', 'a']);
+    expect(choices(tester, 'research-1', 'Worker'), ['', 'a']);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
     await tester.pumpWidget(page('other'));
     await tester.pumpAndSettle();
     await tester
-        .tap(find.byKey(const ValueKey('open-workflow-implement_verify')));
+        .tap(find.byKey(const ValueKey('open-workflow-research')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('workflow-step-implement')));
+    await tester.tap(find.byKey(const ValueKey('workflow-step-research-1')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('override-implement')));
+    await tester.tap(find.byKey(const ValueKey('override-research-1')));
     await tester.pumpAndSettle();
-    expect(choices(tester, 'implement', 'Worker'), ['', 'b']);
+    expect(choices(tester, 'research-1', 'Worker'), ['', 'b']);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
@@ -472,7 +474,7 @@ void main() {
     expect(
         tester
             .widget<InkWell>(
-                find.byKey(const ValueKey('open-workflow-implement_verify')))
+                find.byKey(const ValueKey('open-workflow-research')))
             .onTap,
         isNotNull);
     final chat = tester.getRect(find.byKey(const ValueKey('workflow-chat')));
@@ -620,7 +622,7 @@ void main() {
     expect(find.text('High'), findsOneWidget);
     expect(find.text('2 steps'), findsOneWidget);
     await tester
-        .tap(find.byKey(const ValueKey('open-workflow-implement_verify')));
+        .tap(find.byKey(const ValueKey('open-workflow-research')));
     await tester.pumpAndSettle();
     expect(
         find.descendant(
@@ -633,7 +635,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(source.reads, 1);
     await tester
-        .tap(find.byKey(const ValueKey('open-workflow-implement_verify')));
+        .tap(find.byKey(const ValueKey('open-workflow-research')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
@@ -730,7 +732,7 @@ void main() {
     expect(
         tester
             .widget<InkWell>(
-                find.byKey(const ValueKey('open-workflow-implement_verify')))
+                find.byKey(const ValueKey('open-workflow-research')))
             .onTap,
         isNotNull);
     await tester.tap(find.byKey(const ValueKey('use-workspace-for-workflows')));
@@ -751,14 +753,14 @@ void main() {
       ..scopedValues['other'] = [
         AxUserWorkflowConfiguration(workflowId: 'chat', enabled: true)
       ]
-      ..scopedDefaults['other'] = 'implement_verify';
+      ..scopedDefaults['other'] = 'plan_implement';
     final engine = AxSyncEngine();
     final configurations = AxWorkflowConfigurations(source, engine: engine);
     final other = configurations.forWorkspace('other');
     expect(identical(other, configurations.forWorkspace('other')), isTrue);
     expect(other.queryKey, isNot(configurations.queryKey));
     expect(await other.ensure(), hasLength(1));
-    expect(await other.ensureDefault(), 'implement_verify');
+    expect(await other.ensureDefault(), 'plan_implement');
     expect(await configurations.forWorkspace('ws').ensure(), isEmpty);
     await other.save(
         AxUserWorkflowConfiguration(workflowId: 'direct', enabled: false));

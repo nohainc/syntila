@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_WORKFLOWS,
+  BUILTIN_WORKFLOW_CATALOG,
   stepDependencyIds,
   markWorkflowTaskResult,
   planWorkflowTasks,
@@ -30,27 +31,21 @@ describe("Work v1 workflow runner", () => {
     }
   });
 
-  it("keeps Full Cycle linear and uses StepKind as the task role", () => {
-    const tasks = planWorkflowTasks(BUILTIN_WORKFLOWS.full_cycle, "request-1");
-    expect(tasks.map((task) => task.step.kind)).toEqual([
-      "research",
-      "plan",
-      "implement",
-      "test",
-      "verify",
-    ]);
+  it("plans dependent tasks and uses StepKind as the task role", () => {
+    const tasks = planWorkflowTasks(
+      BUILTIN_WORKFLOW_CATALOG["chat:v2"]!,
+      "request-1",
+    );
+    expect(tasks.map((task) => task.step.kind)).toEqual(["tool_call", "chat"]);
     expect(tasks.map((task) => task.dependencyTaskIds)).toEqual([
       [],
-      ["task-request-1-research"],
-      ["task-request-1-plan"],
-      ["task-request-1-implement"],
-      ["task-request-1-test"],
+      ["task-request-1-tool"],
     ]);
   });
 
   it("propagates failure and cancellation to dependent Tasks", () => {
     const tasks = planWorkflowTasks(
-      BUILTIN_WORKFLOWS.full_cycle,
+      BUILTIN_WORKFLOW_CATALOG["chat:v2"]!,
       "request-failure",
     );
     const first = tasks[0]!;

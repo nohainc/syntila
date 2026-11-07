@@ -207,7 +207,7 @@ describe("Space execution scheduler", () => {
   it("uses the accepted Step snapshot for Worker and model", async () => {
     const configured = candidate({
       work_request_snapshot_json: JSON.stringify({
-        defaultWorkflowId: "full_cycle",
+        defaultWorkflowId: "direct",
         resolvedBindings: {
           implement: {
             workerId: "worker-a",
@@ -378,7 +378,7 @@ describe("Space execution scheduler", () => {
     const configured = {
       ...candidate(),
       work_request_snapshot_json: JSON.stringify({
-        defaultWorkflowId: "full_cycle",
+        defaultWorkflowId: "direct",
         resolvedBindings: { implement: { workerId: "worker-a" } },
       }),
     };

@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { BUILTIN_WORKFLOWS } from "@syntila/core";
 import { resolveWorkflowStepExecutionConfig } from "../src/routes/workflow-step-execution-config.js";
-it.each(["chat", "direct", "implement_verify"] as const)(
+it.each(["chat", "direct", "plan_implement"] as const)(
   "snapshots %s execution without guessing Auto model/effort",
   (id) => {
     const workflow = BUILTIN_WORKFLOWS[id];

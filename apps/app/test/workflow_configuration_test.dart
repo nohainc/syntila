@@ -41,7 +41,7 @@ void main() {
   test('Auto is omitted and step choices inherit defaults without copying them',
       () {
     final configuration = AxUserWorkflowConfiguration(
-        workflowId: 'full_cycle',
+        workflowId: 'plan_implement',
         defaults: const AxWorkflowSelection(worker: 'offline', model: 'm'),
         stepOverrides: {'verify': const AxWorkflowSelection(effort: 'high')});
     final restored =

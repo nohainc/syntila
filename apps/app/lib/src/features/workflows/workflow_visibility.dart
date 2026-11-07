@@ -1,7 +1,12 @@
 import '../../ax/ax_models.dart';
 
 /// Workflows that are currently supported for regular users.
-const implementedWorkflowIds = <String>{'chat', 'direct', 'work'};
+const implementedWorkflowIds = <String>{
+  'chat',
+  'direct',
+  'work',
+  'plan_implement',
+};
 
 /// Workflows that need the requester's Syntila Plus. Cloud enforces this; the
 /// app only shows the lock.

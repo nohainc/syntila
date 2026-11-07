@@ -96,15 +96,39 @@ class NoopPluginWorkerHost implements PluginWorkerHost {
   Future<void> remove(String pluginRef) async {}
 }
 
+/// A fake MCP tool inspector for plugin packages.
+class FakePluginMcpInspect implements PluginMcpInspectPort {
+  const FakePluginMcpInspect();
+
+  @override
+  Future<List<Map<String, Object?>>> listWorkerTools(
+    InstalledPlugin plugin,
+  ) async {
+    return [
+      for (final name in ['syntila.execute', 'syntila.probe'])
+        {
+          'name': name,
+          'description': 'Syntila Worker tool $name',
+          'inputSchema': {'type': 'object'},
+        },
+    ];
+  }
+}
+
+const Object _unspecifiedInspect = Object();
+
 /// A real service over temp directories with fake Cloud and Engine ports.
 class TestPluginService {
   TestPluginService(
     Directory temp, {
     DateTime? start,
     PluginWorkerHost? workerHost,
-    PluginMcpInspectPort? mcpInspect,
+    Object? mcpInspect = _unspecifiedInspect,
   }) : now = start ?? testStart {
     final state = Directory('${temp.path}/state/Plugins');
+    final inspectPort = identical(mcpInspect, _unspecifiedInspect)
+        ? const FakePluginMcpInspect()
+        : mcpInspect as PluginMcpInspectPort?;
     service = WorkspacePluginService(
       store: PluginStore(
         root: state,
@@ -117,7 +141,7 @@ class TestPluginService {
       conformance: conformance,
       clock: () => now,
       workerHost: workerHost ?? const NoopPluginWorkerHost(),
-      mcpInspect: mcpInspect,
+      mcpInspect: inspectPort,
     );
   }
 

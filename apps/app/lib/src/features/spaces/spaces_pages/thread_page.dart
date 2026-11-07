@@ -1515,12 +1515,16 @@ class _ThreadPageState extends State<ThreadPage>
         .toList();
     // Until the Space Workspace is known, a Worker cannot be told apart from
     // the Space's own, so none is offered as the viewer's own.
-    _ownChatWorkers = widget.space.effectivePermissions.useOwnWorkers &&
-            (_selectedWorkflowWorkspaceId != null || _workflowWorkspaceLoaded)
+    // In Direct Spaces, each participant can always use their own workers in Chat.
+    _ownChatWorkers = (widget.space.isDirect ||
+            (widget.space.effectivePermissions.useOwnWorkers &&
+                (_selectedWorkflowWorkspaceId != null ||
+                    _workflowWorkspaceLoaded)))
         ? [
             for (final worker in workers)
               if (!worker.shared &&
-                  worker.workspaceId != _selectedWorkflowWorkspaceId)
+                  (widget.space.isDirect ||
+                      worker.workspaceId != _selectedWorkflowWorkspaceId))
                 worker.withDisplayName(
                     '${worker.displayName} · ${worker.workspaceName}'),
           ]
@@ -2629,7 +2633,8 @@ class _ThreadPageState extends State<ThreadPage>
                                   onEdit: () => _startEditMessage(message.id),
                                   onDelete: (message.isMe ||
                                               (!widget.space.isDirect &&
-                                                  widget.space.role == 'owner')) &&
+                                                  widget.space.role ==
+                                                      'owner')) &&
                                           message.eventType == null
                                       ? () => _deleteDiscussion(message.id)
                                       : null,
@@ -2953,6 +2958,7 @@ class _ThreadPageState extends State<ThreadPage>
         onCancelRun: widget.dataSource == null ? null : _cancelWorkRequest,
         onSynthesizePartial:
             widget.dataSource == null ? null : _synthesizePartialResearch,
+        onApprovePlan: widget.dataSource == null ? null : _approvePlan,
         onHistoryNavigate: _openRequestHistory,
         historyPrompts: _requestHistoryOpen ? _requestHistoryPrompts : null,
         historyOpenDirection: _requestHistoryDirection,

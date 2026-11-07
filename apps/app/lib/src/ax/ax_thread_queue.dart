@@ -27,6 +27,12 @@ class AxThreadQueueItem {
 
   String get text => _input['originalRequest']?.toString() ?? '';
 
+  bool get isPhased =>
+      request['isPhased'] == true || _input['isPhased'] == true;
+
+  String? get phaseTitle =>
+      (request['phaseTitle'] ?? _input['phaseTitle'])?.toString();
+
   String get workflowId => request['workflowId']?.toString() ?? '';
 
   int get workflowVersion =>

@@ -5,7 +5,7 @@ import 'package:syntila_app/src/ax/workflow_run_presentation.dart';
 import 'conversation_turn_fixture.dart';
 
 AxBuiltinWorkflow definition(
-        {String id = 'implement_verify',
+        {String id = 'plan_implement',
         int version = 1,
         bool multiStep = true}) =>
     AxBuiltinWorkflow.fromJson({
@@ -44,7 +44,7 @@ Map<String, dynamic> runJson() => {
       'userMessageId': 'message-user-R',
       'triggerMessageId': 'message-user-R',
       'workRequestId': 'R',
-      'workflowId': 'implement_verify',
+      'workflowId': 'plan_implement',
       'workflowVersion': 1,
       'status': 'running',
       'runtimeRunIds': ['runtime-R'],
@@ -65,7 +65,7 @@ AxConversationTurn turn(
         String id, String stepId, String name, String model, String effort) =>
     AxConversationTurn.fromJson({
       ...turnFixture(id: id).toJson(),
-      'workflowId': 'implement_verify',
+      'workflowId': 'plan_implement',
       'workflowVersion': 1,
       'taskId': 'task-$stepId',
       'workerId': name == 'Gemini' ? 'gemini' : 'chatgpt',
@@ -86,7 +86,7 @@ void main() {
       'profileReleaseVersion': 4,
       'modelId': null,
       'effort': 'high',
-      'workflowId': 'implement_verify',
+      'workflowId': 'plan_implement',
       'workflowVersion': 1,
     };
     final json = runJson();
