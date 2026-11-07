@@ -118,6 +118,20 @@ mixin _CatalogApi on _AxApiClientCore {
         (row) => AxPerson.fromJson(Map<String, dynamic>.from(row as Map))));
   }
 
+  Future<String> openPersonalSpace(String userId) async {
+    final response = await client.post(
+      Uri.parse(
+          '$baseUrl/people/connections/${Uri.encodeComponent(userId)}/space'),
+      headers: _headers(),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException('Failed to open personal Space',
+          statusCode: response.statusCode);
+    }
+    return (jsonDecode(response.body) as Map<String, dynamic>)['spaceId']
+        as String;
+  }
+
   Future<void> sendPersonInvitation({String? email, String? userId}) async {
     final response = await client.post(
       Uri.parse('$baseUrl/people/invitations'),

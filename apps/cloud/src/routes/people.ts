@@ -62,6 +62,7 @@ export async function handleListPeople(
     );
   const now = new Date().toISOString();
   const callerEmail = context.user.email.toLowerCase();
+  const supportEmail = env.SYNTILA_SUPPORT_ACCOUNT_EMAIL?.trim().toLowerCase();
 
   const [rows, emailPendingRows, personInvs, spaces, shared, pending] =
     await Promise.all([
@@ -193,7 +194,9 @@ export async function handleListPeople(
     pendingByEmail.set(row.email, ids);
   }
 
-  const peopleList: Person[] = rows.results.map((person) => {
+  const peopleList: Person[] = rows.results.filter(
+    (person) => person.email.trim().toLowerCase() !== supportEmail,
+  ).map((person) => {
     const membership = sharedByUser.get(person.userId) ?? new Set<string>();
     const invitations = new Set([
       ...(pendingByUser.get(person.userId) ?? []),
@@ -271,6 +274,7 @@ export async function handleListPeople(
   // Append pending email invitations sent by caller to unknown accounts
   const knownEmails = new Set(rows.results.map((r) => r.email.toLowerCase()));
   for (const emailInv of emailPendingRows.results) {
+    if (emailInv.email.trim().toLowerCase() === supportEmail) continue;
     if (!knownEmails.has(emailInv.email.toLowerCase())) {
       peopleList.push({
         userId: `email:${emailInv.email}`,
@@ -302,7 +306,7 @@ async function provisionDirectConnection(
   env: SecurityEnv,
   inviterUserId: string,
   recipientUserId: string,
-  invitationId: string,
+  invitationId: string | null,
 ): Promise<{ directSpaceId: string; userLowId: string; userHighId: string }> {
   const isBlocked = await env.SYNTILA_DB.prepare(
     `SELECT 1 FROM user_blocks
@@ -355,7 +359,7 @@ async function provisionDirectConnection(
     );
   }
 
-  statements.push(
+  if (invitationId) statements.push(
     env.SYNTILA_DB.prepare(
       `INSERT INTO person_connections (user_low_id, user_high_id, status, established_at, direct_space_id)
        VALUES (?1, ?2, 'connected', ?3, ?4)
@@ -375,6 +379,10 @@ async function provisionDirectConnection(
          AND ((inviter_user_id = ?4 AND invitee_user_id = ?5) OR (inviter_user_id = ?5 AND invitee_user_id = ?4))`,
     ).bind(recipientUserId, now, invitationId, userLowId, userHighId),
   );
+
+  if (!invitationId) statements.push(env.SYNTILA_DB.prepare(
+    "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'",
+  ).bind(directSpaceId, userLowId, userHighId));
 
   try {
     if (isNewSpace) {
@@ -400,11 +408,14 @@ async function provisionDirectConnection(
       .first<{ space_id: string }>();
     if (rechecked) {
       directSpaceId = rechecked.space_id;
-      await env.SYNTILA_DB.prepare(
+      if (invitationId) await env.SYNTILA_DB.prepare(
         "UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3",
       )
         .bind(recipientUserId, now, invitationId)
         .run();
+      else await env.SYNTILA_DB.prepare(
+        "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'",
+      ).bind(directSpaceId, userLowId, userHighId).run();
     } else {
       throw error;
     }
@@ -422,6 +433,22 @@ async function provisionDirectConnection(
     payload: { entityId: inviterUserId },
   });
   return { directSpaceId, userLowId, userHighId };
+}
+
+export async function handleOpenPersonalSpace(
+  request: Request, env: SecurityEnv, peerId: string, ctx?: ExecutionContext,
+): Promise<Response> {
+  const context = await securityContext(request, env, ctx);
+  if (request.method !== "POST") throw new HttpError(405, "Method not allowed");
+  if (peerId === context.userId) throw new HttpError(400, "Invalid person");
+  const { userLowId, userHighId } = normalizeUserPair(context.userId, peerId);
+  const connection = await env.SYNTILA_DB.prepare(
+    `SELECT 1 FROM person_connections pc JOIN users u ON u.id = ?3 AND u.status = 'active'
+     WHERE pc.user_low_id = ?1 AND pc.user_high_id = ?2 AND pc.status = 'connected'`,
+  ).bind(userLowId, userHighId, peerId).first();
+  if (!connection) throw new HttpError(403, "Person is not connected");
+  const result = await provisionDirectConnection(env, context.userId, peerId, null);
+  return json({ spaceId: result.directSpaceId });
 }
 
 export async function handleCreatePersonInvitation(

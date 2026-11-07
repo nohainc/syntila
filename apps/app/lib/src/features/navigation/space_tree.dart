@@ -229,26 +229,48 @@ class SpaceTree extends StatelessWidget {
               ),
             ),
           ),
-        if (directSpaces.isNotEmpty) ...[
-          _groupLabel(context, 'PERSONAL'),
-          ...directSpaces.map((space) => _buildSpaceItem(context, space)),
-        ],
-        if (ownedSpaces.isNotEmpty) ...[
-          if (sharedSpaces.isNotEmpty || directSpaces.isNotEmpty)
-            _groupLabel(context, 'YOUR SPACES'),
-          ...ownedSpaces.map((space) => _buildSpaceItem(context, space)),
-        ],
+        _collapsibleGroup(context, 'YOUR SPACES', ownedSpaces),
         if (sharedSpaces.isNotEmpty) ...[
-          _groupLabel(context, 'SHARED WITH YOU'),
-          ...sharedSpaces.map((space) => _buildSpaceItem(context, space)),
+          _collapsibleGroup(context, 'SHARED WITH YOU', sharedSpaces),
         ],
+        if (directSpaces.isNotEmpty)
+          _collapsibleGroup(context, 'PEOPLE', directSpaces),
       ],
     );
   }
 
-  Widget _groupLabel(BuildContext context, String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(10, 12, 8, 6),
-        child: _sidebarGroupLabel(context, label),
+  Widget _collapsibleGroup(
+          BuildContext context, String label, List<AxSpace> spaces) =>
+      _CollapsibleSpaceGroup(
+        key: ValueKey('space-group-$label'),
+        label: label,
+        collapsed:
+            shellContext.viewPreferences.collapsedSidebarGroups.contains(label),
+        onToggle: () {
+          final groups = {
+            ...shellContext.viewPreferences.collapsedSidebarGroups
+          };
+          if (!groups.remove(label)) groups.add(label);
+          shellContext.onViewPreferencesChanged?.call(shellContext
+              .viewPreferences
+              .copyWith(collapsedSidebarGroups: groups));
+        },
+        selectedSpaceId: shellContext.navigation.spaceId,
+        spaces: spaces,
+        activityOf: (space) {
+          final threads = (shellContext.spaceThreads?.peek(space.id) ??
+                  shellContext.threadsBySpace[space.id] ??
+                  const <AxThread>[])
+              .where((t) => !t.archived && t.status.toLowerCase() != 'archived')
+              .toList();
+          return (
+            running: space.hasActiveWork || threads.any((t) => t.hasActiveWork),
+            unread: threads.isNotEmpty
+                ? threads.any((t) => t.hasUnread)
+                : space.hasUnread,
+          );
+        },
+        buildSpace: (space) => _buildSpaceItem(context, space),
       );
 
   Widget _buildSpaceItem(BuildContext context, AxSpace space) {
@@ -530,10 +552,8 @@ class SpaceTree extends StatelessWidget {
                         child: Tooltip(
                           message: recent ? space.name : '',
                           child: Text(
-                            recent && space.isDirect
-                                ? (thread.isGeneral
-                                    ? space.name
-                                    : '${space.name} · ${thread.title}')
+                            recent
+                                ? '${space.name} · ${thread.title}'
                                 : thread.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1128,6 +1148,8 @@ class _RecentThreadSelectionScope
 
 Widget _sidebarGroupLabel(BuildContext context, String label) => Text(
       label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontSize: 9,
         fontWeight: FontWeight.w700,
@@ -1264,7 +1286,7 @@ class _RecentThreadsSectionState extends State<_RecentThreadsSection> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 2, 8, 6),
-          child: _sidebarGroupLabel(context, 'RECENT THREADS'),
+          child: _sidebarGroupLabel(context, 'RECENT'),
         ),
         if (recent.isEmpty)
           Padding(
@@ -1606,4 +1628,111 @@ class _FolderPainter extends CustomPainter {
   @override
   bool shouldRepaint(_FolderPainter oldDelegate) =>
       oldDelegate.isExpanded != isExpanded || oldDelegate.color != color;
+}
+
+/// Section heading that collapses its spaces; long lists show a "Show more" tail.
+class _CollapsibleSpaceGroup extends StatefulWidget {
+  const _CollapsibleSpaceGroup({
+    super.key,
+    required this.label,
+    required this.collapsed,
+    required this.onToggle,
+    required this.spaces,
+    required this.buildSpace,
+    required this.activityOf,
+    this.selectedSpaceId,
+  });
+
+  static const collapsedLimit = 8;
+
+  final String label;
+  final bool collapsed;
+  final VoidCallback onToggle;
+  final List<AxSpace> spaces;
+  final String? selectedSpaceId;
+  final Widget Function(AxSpace space) buildSpace;
+  final ({bool running, bool unread}) Function(AxSpace space) activityOf;
+
+  @override
+  State<_CollapsibleSpaceGroup> createState() => _CollapsibleSpaceGroupState();
+}
+
+class _CollapsibleSpaceGroupState extends State<_CollapsibleSpaceGroup> {
+  bool _showAll = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = SyntilaColors.navigationTextMuted(isDark);
+    final collapsed = widget.collapsed;
+    final spaces = widget.spaces;
+    final List<AxSpace> shown;
+    if (collapsed) {
+      shown = const <AxSpace>[];
+    } else if (_showAll ||
+        spaces.length <= _CollapsibleSpaceGroup.collapsedLimit) {
+      shown = spaces;
+    } else {
+      var index = 0;
+      shown = spaces.where((s) {
+        final keep = index++ < _CollapsibleSpaceGroup.collapsedLimit ||
+            s.isPinned ||
+            s.id == widget.selectedSpaceId;
+        return keep;
+      }).toList();
+    }
+    final hidden = collapsed ? 0 : spaces.length - shown.length;
+    final canShowLess = !collapsed &&
+        _showAll &&
+        spaces.length > _CollapsibleSpaceGroup.collapsedLimit;
+    final hiddenSpaces = collapsed ? spaces : const <AxSpace>[];
+    final running = hiddenSpaces.any((s) => widget.activityOf(s).running);
+    final unread = hiddenSpaces.any((s) => widget.activityOf(s).unread);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          button: true,
+          expanded: !collapsed,
+          label: widget.label,
+          child: InkWell(
+            onTap: widget.onToggle,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 12, 8, 6),
+              child: Row(
+                children: [
+                  Flexible(child: _sidebarGroupLabel(context, widget.label)),
+                  const SizedBox(width: 2),
+                  Icon(
+                    collapsed
+                        ? Icons.chevron_right_rounded
+                        : Icons.expand_more_rounded,
+                    size: 12,
+                    color: muted,
+                  ),
+                  if (collapsed && (running || unread)) ...[
+                    const SizedBox(width: 6),
+                    SidebarActivityIndicators(
+                        running: running, unread: unread, gap: 0),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        ...shown.map(widget.buildSpace),
+        if (hidden > 0 || canShowLess)
+          InkWell(
+            onTap: () => setState(() => _showAll = !_showAll),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(26, 4, 8, 4),
+              child: Text(
+                _showAll ? 'Show less' : 'Show $hidden more',
+                style: TextStyle(fontSize: 10.5, color: muted),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }

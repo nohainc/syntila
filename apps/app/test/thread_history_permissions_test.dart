@@ -42,6 +42,7 @@ void main() {
   Future<void> show(WidgetTester tester,
       {required _HistorySource source,
       String role = 'owner',
+      bool isSupport = false,
       bool archived = false,
       Future<void> Function()? restore,
       Future<void> Function()? reset}) async {
@@ -51,7 +52,12 @@ void main() {
         home: Scaffold(
             body: ThreadPage(
       space: AxSpace(
-          id: 'space', name: 'Space', branch: '', lastActivity: '', role: role),
+          id: 'space',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: role,
+          isSupport: isSupport),
       thread: AxThread(
           id: 'thread',
           spaceId: 'space',
@@ -110,6 +116,11 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Clear'));
     await tester.pumpAndSettle();
     expect(resets, 1);
+  });
+  testWidgets('support threads hide reset AI context', (tester) async {
+    await show(tester,
+        source: _HistorySource(), isSupport: true, reset: () async {});
+    expect(find.byTooltip('Reset AI context'), findsNothing);
   });
   testWidgets('archived thread replaces composer with restore for viewers',
       (tester) async {

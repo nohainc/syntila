@@ -89,3 +89,7 @@ abstract interface class AxPeopleDataSource {
   Future<void> blockPerson(String userId);
   Future<void> unblockPerson(String userId);
 }
+
+abstract interface class AxPersonalSpaceDataSource {
+  Future<String> openPersonalSpace(String userId);
+}

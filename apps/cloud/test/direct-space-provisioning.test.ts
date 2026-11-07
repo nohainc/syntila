@@ -55,6 +55,21 @@ describe("Direct Space provisioning", () => {
     return { sqlite, db, env, users };
   }
 
+  it("creates a missing personal Space for a connected person and reuses it", async () => {
+    const { env, sqlite } = createTestEnv();
+    sqlite.exec(`INSERT INTO person_connections (user_low_id, user_high_id, status, established_at) VALUES ('user-alice', 'user-bob', 'connected', '2026-01-01')`);
+    const open = (who: string, peer: string) => worker.fetch(new Request(`https://syntila.test/api/people/connections/${peer}/space`, { method: "POST", headers: { authorization: `Bearer ${who}` } }), env as never);
+    expect((await open("alice", "user-charlie")).status).toBe(403);
+    const first = await open("alice", "user-bob");
+    expect(first.status).toBe(200);
+    const { spaceId } = await first.json() as { spaceId: string };
+    expect(spaceId).toBeTruthy();
+    const second = await open("bob", "user-alice");
+    expect(await second.json()).toEqual({ spaceId });
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM direct_spaces").get()).toEqual({ n: 1 });
+    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM threads WHERE space_id = ?").get(spaceId)).toEqual({ n: 0 });
+  });
+
   it("provisions a Direct Space without a Thread and allows participants to create one", async () => {
     const { env, sqlite } = createTestEnv();
 

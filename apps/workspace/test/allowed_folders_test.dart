@@ -178,6 +178,13 @@ void main() {
         throwsA(isA<AllowedFolderViolation>()));
   });
 
+  test('names attached folders in the prompt', () {
+    expect(promptWithAdditionalFolders('task', const []), 'task');
+    final prompt = promptWithAdditionalFolders('task', ['/a', '/b']);
+    expect(prompt, contains('- /a\n- /b'));
+    expect(prompt, endsWith('\n\ntask'));
+  });
+
   test('reads folder IDs from assignment input and fails closed', () {
     expect(assignmentAdditionalFolderIds(const {}), isEmpty);
     expect(

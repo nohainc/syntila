@@ -342,6 +342,7 @@ class AxApiClient extends _AxApiClientCore
         AxWorkspacePersonAccessDataSource,
         AxWorkspaceSharingDataSource,
         AxPeopleDataSource,
+        AxPersonalSpaceDataSource,
         AxSupportDataSource,
         AxThreadReadDataSource,
         AxThreadReadReceiptsDataSource,

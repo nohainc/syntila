@@ -298,7 +298,7 @@ class _PeoplePageState extends State<PeoplePage> {
               key: ValueKey('message-${person.userId}'),
               onPressed: () => _openMessage(person),
               icon: const Icon(Icons.chat_bubble_outline, size: 16),
-              label: const Text('Message'),
+              label: const Text('Open Space'),
             ),
             TextButton(
               key: ValueKey('add-to-space-${person.userId}'),
@@ -428,15 +428,25 @@ class _PeoplePageState extends State<PeoplePage> {
     }
   }
 
-  void _openMessage(AxPerson person) {
-    if (person.directSpaceId != null && person.generalThreadId != null) {
-      widget.onOpenThread?.call(person.directSpaceId!, person.generalThreadId!);
-    } else if (person.directSpaceId != null && widget.onOpenSpace != null) {
-      widget.onOpenSpace!(person.directSpaceId!);
-    } else {
-      ScaffoldMessenger.of(context).showNotice(
-        const SnackBar(content: Text('Direct conversation is not available.')),
-      );
+  Future<void> _openMessage(AxPerson person) async {
+    try {
+      final source = widget.people.source;
+      final spaceId = source is AxPersonalSpaceDataSource
+          ? await (source as AxPersonalSpaceDataSource)
+              .openPersonalSpace(person.userId)
+          : person.directSpaceId;
+      if (!mounted) return;
+      if (spaceId == null || widget.onOpenSpace == null) {
+        throw StateError('Personal Space is unavailable');
+      }
+      widget.onOpenSpace!(spaceId);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(
+              content: Text('Could not open the Space. Please try again.')),
+        );
+      }
     }
   }
 

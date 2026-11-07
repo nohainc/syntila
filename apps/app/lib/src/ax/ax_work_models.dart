@@ -718,8 +718,8 @@ class AxWorkRequest {
       status == 'running' ||
       (status == 'waiting' &&
           (steps.isEmpty ||
-              steps.any((step) =>
-                  const {'queued', 'running', 'waiting'}.contains(step.status))));
+              steps.any((step) => const {'queued', 'running', 'waiting'}
+                  .contains(step.status))));
 
   /// Research reports remain inspectable on their steps, never as the outcome.
   String? get primaryResponseText {

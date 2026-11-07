@@ -16,7 +16,17 @@ import 'ax_fixture_data.dart';
 import 'package:syntila_app/src/features/spaces/spaces_pages.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
 
-class PeopleSource extends AxFixtureDataSource {
+class PeopleSource extends AxFixtureDataSource
+    implements AxPersonalSpaceDataSource {
+  String? openedPersonId;
+  String personalSpaceId = "space-direct-eva";
+  @override
+  Future<String> openPersonalSpace(String userId) async {
+    if (failPersonAction) throw StateError("failed to open");
+    openedPersonId = userId;
+    return personalSpaceId;
+  }
+
   int loads = 0;
   bool failRead = false;
   List<AxPerson> rows = [];
@@ -913,11 +923,9 @@ void main() {
       expect(source.declinedInvitationId, 'pinv-456');
     });
 
-    testWidgets(
-        'Connected Person shows Message button opening General Thread and Remove connection',
+    testWidgets('Connected Person opens Space and can remove connection',
         (tester) async {
       String? openedSpaceId;
-      String? openedThreadId;
 
       final source = PeopleSource()
         ..rows = [
@@ -938,10 +946,7 @@ void main() {
         home: Scaffold(
           body: PeoplePage(
             people: people,
-            onOpenThread: (spaceId, threadId) {
-              openedSpaceId = spaceId;
-              openedThreadId = threadId;
-            },
+            onOpenSpace: (spaceId) => openedSpaceId = spaceId,
           ),
         ),
       ));
@@ -955,7 +960,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(openedSpaceId, 'space-direct-eva');
-      expect(openedThreadId, 'thread-gen-eva');
+      expect(source.openedPersonId, 'user-eva');
 
       // Test Remove connection via popup menu
       final menuBtn = find.byKey(const ValueKey('person-menu-user-eva'));
@@ -983,7 +988,6 @@ void main() {
             establishedAt: 'now',
             sharedSpaceCount: 0,
             connectionStatus: 'connected',
-            directSpaceId: 'space-direct-eva',
           )
         ];
       final people = AxPeople(source, engine: AxSyncEngine());

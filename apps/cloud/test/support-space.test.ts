@@ -49,6 +49,24 @@ describe("support Space provisioning", () => {
     expect(sqlite.prepare("SELECT COUNT(*) c FROM person_connections").get()).toEqual({ c: 0 });
   });
 
+  it("excludes the configured support account from People while retaining other people", async () => {
+    const { sqlite, env } = setup(" SUPPORT@syntila.test ");
+    sqlite.exec(`INSERT INTO people_relationships (user_low_id, user_high_id, established_at) VALUES ('user-alice', 'user-support', '2026-01-01'), ('user-alice', 'user-bob', '2026-01-01')`);
+    const res = await worker.fetch(new Request("https://syntila.test/api/people", { headers: { authorization: "Bearer alice" } }), env as never);
+    const body = await res.json() as { people: { userId: string }[] };
+    expect(body.people.map(p => p.userId)).toEqual(["user-bob"]);
+  });
+
+  it("recreates support after deletion", async () => {
+    const { env, call } = setup();
+    const { spaceId } = await (await call("alice")).json() as { spaceId: string };
+    const deleted = await worker.fetch(new Request(`https://syntila.test/api/spaces/${spaceId}`, { method: "DELETE", headers: { authorization: "Bearer alice" } }), env as never);
+    expect(deleted.status).toBe(200);
+    const next = await call("alice");
+    expect(next.status).toBe(201);
+    expect((await next.json() as { spaceId: string }).spaceId).not.toBe(spaceId);
+  });
+
   it("converges under concurrent requests", async () => {
     const { sqlite, call } = setup();
     const res = await Promise.all([call("alice"), call("alice"), call("alice")]);

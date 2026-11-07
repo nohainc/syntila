@@ -2183,6 +2183,7 @@ class _ThreadPageState extends State<ThreadPage>
                     ),
                     if (!widget.isDraft &&
                         !notes &&
+                        !widget.space.isSupport &&
                         widget.onClearAiHistory != null)
                       IconButton(
                         key: const ValueKey('reset-ai-context'),
@@ -2846,7 +2847,8 @@ class _ThreadPageState extends State<ThreadPage>
                     },
                   ),
                 )),
-        leadingControls: widget.space.isSupport ? null : _composerModeControls(),
+        leadingControls:
+            widget.space.isSupport ? null : _composerModeControls(),
         inputHeight: _composerInputHeight,
         showControlTooltips: false,
         controller: _discussionController,
@@ -2900,7 +2902,8 @@ class _ThreadPageState extends State<ThreadPage>
           })? onSelectExecutionParameters}) =>
       _WorkComposer(
         onSelectExecutionParameters: onSelectExecutionParameters,
-        leadingControls: widget.space.isSupport ? null : _composerModeControls(),
+        leadingControls:
+            widget.space.isSupport ? null : _composerModeControls(),
         inputHeight: _composerInputHeight,
         requestController: _requestController,
         historyController: _workHistoryController,

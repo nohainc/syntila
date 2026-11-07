@@ -308,6 +308,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
                 Theme.of(context).brightness == Brightness.dark),
         themeMode: _themeMode,
         viewPreferences: _viewPreferences,
+        onViewPreferencesChanged: _setViewPreferences,
         realtimeStale: realtimeStale,
         realtimeListenable: store.realtimeStatus,
         realtimeNotice: realtimeNotice,

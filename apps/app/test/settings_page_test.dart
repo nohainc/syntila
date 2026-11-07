@@ -122,9 +122,9 @@ void main() {
           onNavigateTo: (_) {},
         ))));
     await pump(const ViewPreferences());
-    expect(find.text('RECENT THREADS'), findsOneWidget);
+    expect(find.text('RECENT'), findsOneWidget);
     await pump(const ViewPreferences(showRecentThreads: false));
-    expect(find.text('RECENT THREADS'), findsNothing);
+    expect(find.text('RECENT'), findsNothing);
   });
 
   testWidgets('settings page toggles mute sound option', (tester) async {

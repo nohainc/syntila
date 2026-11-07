@@ -236,7 +236,8 @@ class _NewThreadPageState extends State<NewThreadPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_workflows != null || widget.space.role == 'owner')
+                  if (!widget.space.isSupport &&
+                      (_workflows != null || widget.space.role == 'owner'))
                     _SpaceLandingSection(
                       title: 'Settings',
                       arrowKey: const ValueKey('space-settings-arrow'),

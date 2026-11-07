@@ -2610,8 +2610,10 @@ class AxResearchStepCards extends StatelessWidget {
                       [
                         if ((step.modelName ?? step.model)?.isNotEmpty == true)
                           step.modelName ?? step.model!,
+                        if (step.reasoningEffort?.isNotEmpty == true)
+                          step.reasoningEffort!,
                         if (step.elapsedMs != null)
-                          '${step.elapsedMs! ~/ 1000}s',
+                          _formatStepElapsed(step.elapsedMs!),
                       ].join(' · '),
                       style: TextStyle(fontSize: 11, color: color),
                     ),
@@ -4508,4 +4510,14 @@ class _ReplyQuote extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatStepElapsed(int ms) {
+  final total = ms ~/ 1000;
+  final hours = total ~/ 3600;
+  final minutes = (total % 3600) ~/ 60;
+  final seconds = total % 60;
+  if (hours > 0) return '${hours}h ${minutes}m';
+  if (minutes > 0) return '${minutes}m ${seconds}s';
+  return '${seconds}s';
 }

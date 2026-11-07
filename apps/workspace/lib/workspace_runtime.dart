@@ -738,7 +738,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           assignmentId: context.assignmentId,
           attemptId: context.attemptId,
           executionId: context.executionId,
-          prompt: prompt,
+          prompt: promptWithAdditionalFolders(prompt, additionalDirectories),
           timeout: Duration(milliseconds: timeoutValue),
           queueWaitTimeout: queueWaitTimeout,
           sessionPolicy: sessionPolicyValue == 'durable_session'

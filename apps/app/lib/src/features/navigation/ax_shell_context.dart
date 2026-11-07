@@ -51,6 +51,7 @@ class AxShellContext {
     this.isDarkTheme = true,
     this.themeMode = ThemeMode.system,
     this.viewPreferences = const ViewPreferences(),
+    this.onViewPreferencesChanged,
     bool realtimeStale = false,
     String? realtimeNotice,
     this.realtimeListenable,
@@ -131,6 +132,7 @@ class AxShellContext {
   final bool isDarkTheme;
   final ThemeMode themeMode;
   final ViewPreferences viewPreferences;
+  final ValueChanged<ViewPreferences>? onViewPreferencesChanged;
   final bool _realtimeStale;
   final String? _realtimeNotice;
   final ValueListenable<(bool, String?)>? realtimeListenable;

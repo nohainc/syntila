@@ -279,6 +279,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
           List<AxUserWorkflowConfiguration> values, String id) =>
       values.firstWhere((value) => value.workflowId == id,
           orElse: () => AxUserWorkflowConfiguration(workflowId: id));
+
   /// Implement ships only its plan step in the definition but runs three
   /// configurable roles (plan, implement, verify).
   static bool _singleStep(AxBuiltinWorkflow definition) =>

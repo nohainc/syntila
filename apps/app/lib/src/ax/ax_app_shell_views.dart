@@ -951,7 +951,7 @@ extension _AxAppShellViews on _AxAppStateMixin {
                           onToggleTheme: _toggleTheme,
                           onSetThemeMode: _setThemeMode,
                           onOpenArchivedSpaces: _openArchivedSpaces,
-                                      onMessageSupport: _messageSupport,
+                          onMessageSupport: _messageSupport,
                           onOpenAbout: () => unawaited(_showAboutSyntila()),
                           onLogout: () => unawaited(_logout()),
                           onOpenExternal: (uri) =>

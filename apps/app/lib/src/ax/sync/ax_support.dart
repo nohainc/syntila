@@ -16,7 +16,7 @@ abstract interface class AxSupportDataSource {
   Future<void> setSpaceHidden({required String spaceId, required bool hidden});
 }
 
-/// Opens the support Space on demand; hidden sidebar entries never block it.
+/// Opens the support Space on demand and makes it visible in the sidebar.
 class AxSupportEntry {
   AxSupportEntry(this.source);
   final AxSupportDataSource source;
@@ -28,6 +28,7 @@ class AxSupportEntry {
     final space = await source.ensureSupportSpace();
     final id = space.spaceId;
     if (id == null) throw StateError('Support Space is unavailable');
+    await source.setSpaceHidden(spaceId: id, hidden: false);
     return id;
   }
 

@@ -298,11 +298,8 @@ class AxSpacePermissions {
       manageOwnThreads: json['manageOwnThreads'] == true);
 
   /// Key order is the members table column order.
-  Map<String, bool> toJson() => {
-        'chat': chat,
-        'work': work,
-        'manageOwnThreads': manageOwnThreads
-      };
+  Map<String, bool> toJson() =>
+      {'chat': chat, 'work': work, 'manageOwnThreads': manageOwnThreads};
 }
 
 class AxThread {

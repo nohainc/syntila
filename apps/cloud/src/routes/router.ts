@@ -1,5 +1,6 @@
 import {
   handleListPeople,
+  handleOpenPersonalSpace,
   handleCreatePersonInvitation,
   handleListPersonInvitations,
   handleAcceptPersonInvitation,
@@ -266,6 +267,9 @@ export async function routeWorkerRequest(
           ctx,
         );
     }
+    const personalSpaceMatch = url.pathname.match(/^\/api\/people\/connections\/([^/]+)\/space$/);
+    if (personalSpaceMatch && request.method === "POST")
+      return await handleOpenPersonalSpace(request, env, decodeURIComponent(personalSpaceMatch[1]!), ctx);
     const personDisconnectMatch = url.pathname.match(
       /^\/api\/people\/connections\/([^/]+)(\/disconnect)?$/,
     );

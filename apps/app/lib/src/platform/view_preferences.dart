@@ -36,6 +36,7 @@ class ViewPreferences {
     this.sidebarCollapsed = false,
     this.sidebarWidth = defaultSidebarWidth,
     this.muteSound = false,
+    this.collapsedSidebarGroups = const {},
   });
 
   static const defaultRecentThreadsCount = 7;
@@ -53,13 +54,17 @@ class ViewPreferences {
   final double sidebarWidth;
   final bool muteSound;
 
+  /// Sidebar section labels the user has collapsed on this device.
+  final Set<String> collapsedSidebarGroups;
+
   ViewPreferences copyWith(
           {bool? showRecentThreads,
           int? recentThreadsCount,
           TextSizeOption? textSize,
           bool? sidebarCollapsed,
           double? sidebarWidth,
-          bool? muteSound}) =>
+          bool? muteSound,
+          Set<String>? collapsedSidebarGroups}) =>
       ViewPreferences(
         textSize: textSize ?? this.textSize,
         showRecentThreads: showRecentThreads ?? this.showRecentThreads,
@@ -68,6 +73,8 @@ class ViewPreferences {
         sidebarCollapsed: sidebarCollapsed ?? this.sidebarCollapsed,
         sidebarWidth: _clampSidebarWidth(sidebarWidth ?? this.sidebarWidth),
         muteSound: muteSound ?? this.muteSound,
+        collapsedSidebarGroups:
+            collapsedSidebarGroups ?? this.collapsedSidebarGroups,
       );
 
   static int _clampCount(int value) =>
@@ -85,6 +92,7 @@ class ViewPreferences {
         'sidebarCollapsed': sidebarCollapsed,
         'sidebarWidth': sidebarWidth,
         'muteSound': muteSound,
+        'collapsedSidebarGroups': collapsedSidebarGroups.toList()..sort(),
       });
 
   static ViewPreferences decode(String? raw) {
@@ -97,6 +105,7 @@ class ViewPreferences {
       final collapsed = json['sidebarCollapsed'];
       final width = json['sidebarWidth'];
       final mute = json['muteSound'];
+      final groups = json['collapsedSidebarGroups'];
       return ViewPreferences(
         showRecentThreads: show is bool ? show : true,
         recentThreadsCount:
@@ -107,6 +116,8 @@ class ViewPreferences {
             ? _clampSidebarWidth(width.toDouble())
             : defaultSidebarWidth,
         muteSound: mute is bool ? mute : false,
+        collapsedSidebarGroups:
+            groups is List ? groups.whereType<String>().toSet() : const {},
       );
     } catch (_) {
       return const ViewPreferences();
@@ -121,11 +132,19 @@ class ViewPreferences {
       other.textSize == textSize &&
       other.sidebarCollapsed == sidebarCollapsed &&
       other.sidebarWidth == sidebarWidth &&
-      other.muteSound == muteSound;
+      other.muteSound == muteSound &&
+      other.collapsedSidebarGroups.length == collapsedSidebarGroups.length &&
+      other.collapsedSidebarGroups.containsAll(collapsedSidebarGroups);
 
   @override
-  int get hashCode => Object.hash(showRecentThreads, recentThreadsCount,
-      textSize, sidebarCollapsed, sidebarWidth, muteSound);
+  int get hashCode => Object.hash(
+      showRecentThreads,
+      recentThreadsCount,
+      textSize,
+      sidebarCollapsed,
+      sidebarWidth,
+      muteSound,
+      Object.hashAllUnordered(collapsedSidebarGroups));
 }
 
 /// Device-local storage for [ViewPreferences], independent of account and Cloud.

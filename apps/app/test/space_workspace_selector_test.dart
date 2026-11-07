@@ -96,6 +96,34 @@ Future<void> pumpSpace(
 }
 
 void main() {
+  testWidgets('support spaces do not show an empty Settings section',
+      (tester) async {
+    final source = SpaceSettingsSource();
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: NewThreadPage(
+      space: const AxSpace(
+          id: 'S',
+          name: 'Support',
+          branch: '',
+          lastActivity: 'now',
+          kind: 'direct',
+          isSupport: true),
+      dataSource: source,
+      discussionCache: AxDiscussionCache.forSource(source),
+      workHistoryCache: AxWorkHistoryCache.forSource(source),
+      threadViewStateStore: MemoryAxThreadViewStateStore(),
+      createThread: (_) async => throw StateError('Not used'),
+      onOpenThread: (_) {},
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text('Settings'), findsNothing);
+    expect(find.byKey(const ValueKey('space-show-ai-history-setting')),
+        findsNothing);
+  });
+
   testWidgets('AI History is hidden by default and owners can expose it',
       (tester) async {
     final source = SpaceSettingsSource();

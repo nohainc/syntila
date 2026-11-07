@@ -496,8 +496,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   Future<AxThreadQueue> removeThreadQueueItem(String threadId, String itemId) =>
       _queueCall('DELETE', threadId, path: '/${Uri.encodeComponent(itemId)}');
 
-  Future<AxThreadQueue> stopThreadQueuePhases(
-          String threadId, String itemId) =>
+  Future<AxThreadQueue> stopThreadQueuePhases(String threadId, String itemId) =>
       _queueCall('POST', threadId,
           path: '/${Uri.encodeComponent(itemId)}/stop-phases');
 

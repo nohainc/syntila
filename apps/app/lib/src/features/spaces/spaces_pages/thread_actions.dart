@@ -84,9 +84,8 @@ extension _ThreadActions on _ThreadPageState {
 
   /// Saved requests of this Thread that are still processing.
   List<AxWorkRequest> get _activeWorkRequests => _workTimeline
-      .where((request) =>
-          !request.id.startsWith('local-') &&
-          request.isProcessing)
+      .where(
+          (request) => !request.id.startsWith('local-') && request.isProcessing)
       .toList(growable: false);
 
   /// Messages waiting for this Thread's active request to finish.

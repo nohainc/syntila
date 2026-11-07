@@ -33,10 +33,10 @@ class _FakeSupport implements AxSupportDataSource {
 }
 
 void main() {
-  test('open provisions on demand and ignores sidebar visibility', () async {
+  test('open provisions on demand and enables sidebar visibility', () async {
     final source = _FakeSupport();
     expect(await AxSupportEntry(source).open(), 'space-direct-support');
-    expect(source.hidden, isTrue);
+    expect(source.hidden, isFalse);
   });
 
   test('open surfaces failures so callers can retry', () async {

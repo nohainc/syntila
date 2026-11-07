@@ -525,3 +525,14 @@ List<String> assignmentAdditionalFolderIds(Map<String, Object?> payload) {
   }
   return List<String>.unmodifiable(value.cast<String>());
 }
+
+/// Prefixes [prompt] with the attached folder paths. The CLI receives them
+/// only as `--add-dir` permissions, which do not tell the model where the
+/// project is; without this it searches the empty Space folder it starts in.
+String promptWithAdditionalFolders(String prompt, List<String> directories) {
+  if (directories.isEmpty) return prompt;
+  final list = directories.map((path) => '- $path').join('\n');
+  return 'Attached project folders (the current working directory is the '
+      'Space folder; look for and change project files in these folders):\n'
+      '$list\n\n$prompt';
+}

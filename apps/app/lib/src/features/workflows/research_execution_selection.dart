@@ -47,7 +47,7 @@ class ResearchExecutionSelection extends StatelessWidget {
                           'Implement plans in phases, then executes each phase and verifies it. Each role uses a fresh session with recent Thread history; older history may be omitted. Selections follow this Space’s Workspace workflows.')
                     else
                       const Text(
-                        'Every message sent with Research starts a new investigation and a new synthesis after all researchers finish. Steps run in parallel as slots become available, or wait their turn. Each role uses a fresh session with recent Thread history; older history may be omitted. Each researcher uses a different model. Selections follow this Space’s Workspace workflows.'),
+                          'Every message sent with Research starts a new investigation and a new synthesis after all researchers finish. Steps run in parallel as slots become available, or wait their turn. Each role uses a fresh session with recent Thread history; older history may be omitted. Each researcher uses a different model. Selections follow this Space’s Workspace workflows.'),
                     const SizedBox(height: 12),
                     if (implement) ...[
                       _role('Plan', 'plan'),

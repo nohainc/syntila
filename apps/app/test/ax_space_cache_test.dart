@@ -174,9 +174,9 @@ void main() {
     ]);
     await tester.pumpAndSettle();
 
-    expect(find.text('RECENT THREADS'), findsOneWidget);
+    expect(find.text('RECENT'), findsOneWidget);
     expect(
-        tester.getTopLeft(find.text('RECENT THREADS')).dy,
+        tester.getTopLeft(find.text('RECENT')).dy,
         lessThan(tester
             .getTopLeft(find.byKey(ValueKey('sidebar-space-row-${a.id}')))
             .dy));
@@ -188,14 +188,10 @@ void main() {
     expect(find.text('A 1'), findsNothing);
     Finder recentTitle(String id, String name) => find.descendant(
         of: find.byKey(ValueKey('recent-thread-row-${b.id}-$id')),
-        matching: find.text(name));
+        matching: find.textContaining(name));
     final recentB4 = recentTitle('b-4', 'B 4');
-    final originalB4 = find.descendant(
-        of: find.byKey(const ValueKey('sidebar-thread-row-b-4')),
-        matching: find.text('B 4'));
     expect(tester.getTopLeft(recentB4).dy,
         lessThan(tester.getTopLeft(recentTitle('b-3', 'B 3')).dy));
-    expect(tester.getTopLeft(recentB4).dx, tester.getTopLeft(originalB4).dx);
     expect(
         find.descendant(
             of: find.byKey(const ValueKey('recent-thread-row-atlas-b-4')),
@@ -241,10 +237,10 @@ void main() {
                     id: 'a-$index', updatedAt: '2026-10-29T10:0$index:00Z'),
             ]);
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('A newest')).dy,
+    expect(tester.getTopLeft(find.textContaining('A newest')).dy,
         lessThan(tester.getTopLeft(recentB4).dy));
 
-    await tester.tap(find.text('A newest'));
+    await tester.tap(find.textContaining('A newest'));
     expect(selected?.spaceId, a.id);
     expect(selected?.threadId, 'a-newest');
   });
@@ -374,7 +370,7 @@ void main() {
     expect(rowDecoration(originalKey).color, isNot(Colors.transparent));
   });
 
-  testWidgets('a new user message reorders Recent Threads', (tester) async {
+  testWidgets('a new user message reorders Recent', (tester) async {
     final source = MessageActivitySource();
     final cache = AxSpaceThreads(source);
     final router = AxRealtimeCacheRouter(cache.engine,
@@ -397,7 +393,7 @@ void main() {
 
     Finder recentTitle(String threadId, String title) => find.descendant(
         of: find.byKey(ValueKey('recent-thread-row-${a.id}-$threadId')),
-        matching: find.text(title));
+        matching: find.textContaining(title));
     final initiallyRecent = recentTitle('initially-recent', 'Initially recent');
     final messageTarget = recentTitle('message-target', 'New message target');
     expect(tester.getTopLeft(initiallyRecent).dy,

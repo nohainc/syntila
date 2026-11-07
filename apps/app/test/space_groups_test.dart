@@ -46,7 +46,7 @@ void main() {
       onNavigateTo: (_) {},
     ))));
 
-    expect(find.text('RECENT THREADS'), findsOneWidget);
+    expect(find.text('RECENT'), findsOneWidget);
     expect(find.text('No recent threads yet'), findsOneWidget);
   });
 
@@ -70,9 +70,7 @@ void main() {
       ))));
       expect(
           find.text('YOUR SPACES'),
-          spaces.contains(own) && spaces.contains(shared)
-              ? findsOneWidget
-              : findsNothing);
+          findsOneWidget);
       expect(find.text('SHARED WITH YOU'),
           spaces.contains(shared) ? findsOneWidget : findsNothing);
       if (spaces.length == 2) {
@@ -111,7 +109,7 @@ void main() {
   }
 
   testWidgets(
-      'direct spaces render under PERSONAL group before owned and shared',
+      'direct spaces render under PEOPLE group after owned and shared',
       (tester) async {
     final context = const AxShellContext(
       navigation: AxNavigation.home(),
@@ -127,7 +125,7 @@ void main() {
       ),
     ));
 
-    expect(find.text('PERSONAL'), findsOneWidget);
+    expect(find.text('PEOPLE'), findsOneWidget);
     expect(find.text('YOUR SPACES'), findsOneWidget);
     expect(find.text('SHARED WITH YOU'), findsOneWidget);
 
@@ -135,8 +133,8 @@ void main() {
     final ownY = tester.getTopLeft(find.text(own.name)).dy;
     final sharedY = tester.getTopLeft(find.text(shared.name)).dy;
 
-    expect(personalY, lessThan(ownY));
     expect(ownY, lessThan(sharedY));
+    expect(sharedY, lessThan(personalY));
   });
 
   testWidgets('pinned direct spaces appear before unpinned direct spaces',
@@ -155,7 +153,7 @@ void main() {
       ),
     ));
 
-    expect(find.text('PERSONAL'), findsOneWidget);
+    expect(find.text('PEOPLE'), findsOneWidget);
     final pinnedY = tester.getTopLeft(find.text(directPinned.name)).dy;
     final unpinnedY = tester.getTopLeft(find.text(direct.name)).dy;
 
@@ -197,7 +195,7 @@ void main() {
   });
 
   testWidgets(
-      'personal threads appear in RECENT THREADS section with peer name',
+      'personal threads appear in RECENT section with peer name',
       (tester) async {
     const generalThread = AxThread(
       id: 'gen-1',
@@ -242,7 +240,7 @@ void main() {
       ),
     ));
 
-    expect(find.text('RECENT THREADS'), findsOneWidget);
+    expect(find.text('RECENT'), findsOneWidget);
     // General thread shows peer name ('Alice Cooper')
     expect(find.text('Alice Cooper'), findsWidgets);
     // Sub-thread shows 'Alice Cooper · Project Discussion'

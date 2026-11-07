@@ -1,7 +1,7 @@
 part of 'ax_app.dart';
 
 extension _AxAppRunDetails on _AxAppStateMixin {
-  /// Open the personal support Space even while its sidebar entry is hidden.
+  /// Open the personal support Space and show it in the sidebar.
   Future<void> _messageSupport() async {
     final source = widget.dataSource;
     if (source is! AxSupportDataSource || _supportOpening) return;
@@ -14,6 +14,7 @@ extension _AxAppRunDetails on _AxAppStateMixin {
     try {
       final spaceId =
           await AxSupportEntry(source as AxSupportDataSource).open();
+      await store.spaces.refresh();
       messenger?.hideCurrentSnackBar();
       if (mounted) _navigateTo(AxNavigation.space(spaceId));
     } catch (error) {
