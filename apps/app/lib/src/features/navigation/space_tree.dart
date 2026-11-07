@@ -257,19 +257,6 @@ class SpaceTree extends StatelessWidget {
         },
         selectedSpaceId: shellContext.navigation.spaceId,
         spaces: spaces,
-        activityOf: (space) {
-          final threads = (shellContext.spaceThreads?.peek(space.id) ??
-                  shellContext.threadsBySpace[space.id] ??
-                  const <AxThread>[])
-              .where((t) => !t.archived && t.status.toLowerCase() != 'archived')
-              .toList();
-          return (
-            running: space.hasActiveWork || threads.any((t) => t.hasActiveWork),
-            unread: threads.isNotEmpty
-                ? threads.any((t) => t.hasUnread)
-                : space.hasUnread,
-          );
-        },
         buildSpace: (space) => _buildSpaceItem(context, space),
       );
 
@@ -1639,7 +1626,6 @@ class _CollapsibleSpaceGroup extends StatefulWidget {
     required this.onToggle,
     required this.spaces,
     required this.buildSpace,
-    required this.activityOf,
     this.selectedSpaceId,
   });
 
@@ -1651,7 +1637,6 @@ class _CollapsibleSpaceGroup extends StatefulWidget {
   final List<AxSpace> spaces;
   final String? selectedSpaceId;
   final Widget Function(AxSpace space) buildSpace;
-  final ({bool running, bool unread}) Function(AxSpace space) activityOf;
 
   @override
   State<_CollapsibleSpaceGroup> createState() => _CollapsibleSpaceGroupState();
@@ -1685,9 +1670,6 @@ class _CollapsibleSpaceGroupState extends State<_CollapsibleSpaceGroup> {
     final canShowLess = !collapsed &&
         _showAll &&
         spaces.length > _CollapsibleSpaceGroup.collapsedLimit;
-    final hiddenSpaces = collapsed ? spaces : const <AxSpace>[];
-    final running = hiddenSpaces.any((s) => widget.activityOf(s).running);
-    final unread = hiddenSpaces.any((s) => widget.activityOf(s).unread);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1710,11 +1692,6 @@ class _CollapsibleSpaceGroupState extends State<_CollapsibleSpaceGroup> {
                     size: 12,
                     color: muted,
                   ),
-                  if (collapsed && (running || unread)) ...[
-                    const SizedBox(width: 6),
-                    SidebarActivityIndicators(
-                        running: running, unread: unread, gap: 0),
-                  ],
                 ],
               ),
             ),
