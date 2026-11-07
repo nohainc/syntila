@@ -1,8 +1,5 @@
 import { McpInventorySchema } from "./mcp-inventory.js";
-import {
-  McpActionRequestSchema,
-  McpActionResultSchema,
-} from "./mcp-action.js";
+import { McpActionRequestSchema, McpActionResultSchema } from "./mcp-action.js";
 import {
   McpToolCallRequestSchema,
   McpToolCallResultSchema,

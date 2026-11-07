@@ -48,32 +48,32 @@ describe("Space creation", () => {
     let batches = 0;
     await expect(
       handleCreateSpace(
-      new Request("https://syntila.test/api/spaces", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: "Not mine",
-          workspaceId: "ws-revoked",
+        new Request("https://syntila.test/api/spaces", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: "Not mine",
+            workspaceId: "ws-revoked",
+          }),
         }),
-      }),
-      {
-        SYNTILA_ENVIRONMENT: "development",
-        SYNTILA_DB: db,
-        TEST_AUTHENTICATION: async () => ({
-          userId: "user-1",
-          user: {
-            id: "user-1",
-            email: "owner@example.test",
-            displayName: "Owner",
-            status: "active",
-          },
-          workspaceId: "",
-          spaceRoles: {},
-          sessionId: "session-1",
-          clientType: "web",
-        }),
-      } as never,
-    ),
+        {
+          SYNTILA_ENVIRONMENT: "development",
+          SYNTILA_DB: db,
+          TEST_AUTHENTICATION: async () => ({
+            userId: "user-1",
+            user: {
+              id: "user-1",
+              email: "owner@example.test",
+              displayName: "Owner",
+              status: "active",
+            },
+            workspaceId: "",
+            spaceRoles: {},
+            sessionId: "session-1",
+            clientType: "web",
+          }),
+        } as never,
+      ),
     ).rejects.toMatchObject({ status: 403 });
     expect(batches).toBe(0);
   });

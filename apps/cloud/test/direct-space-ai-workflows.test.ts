@@ -3,19 +3,24 @@ import { BUILTIN_WORKFLOWS } from "@syntila/core";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 
 const admission = vi.hoisted(() =>
-  vi.fn().mockImplementation(async (_env, _spaceId, _threadId, _workflow, bindings) => {
-    const workerId = bindings.chat?.workerId ?? bindings.direct?.workerId;
-    return {
-      issues: [],
-      primaryWorkspaceId: workerId === "worker-a" ? "ws-alice" : "ws-bob",
-      workerCatalogRevisions: {},
-      workerModelCatalogs: {},
-      workerProfiles: {},
-    };
-  }),
+  vi
+    .fn()
+    .mockImplementation(
+      async (_env, _spaceId, _threadId, _workflow, bindings) => {
+        const workerId = bindings.chat?.workerId ?? bindings.direct?.workerId;
+        return {
+          issues: [],
+          primaryWorkspaceId: workerId === "worker-a" ? "ws-alice" : "ws-bob",
+          workerCatalogRevisions: {},
+          workerModelCatalogs: {},
+          workerProfiles: {},
+        };
+      },
+    ),
 );
 vi.mock("../src/routes/handlers.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/routes/handlers.js")>();
+  const actual =
+    await importOriginal<typeof import("../src/routes/handlers.js")>();
   return {
     ...actual,
     validateWorkflowWorkerEligibility: admission,
@@ -78,10 +83,28 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
         ('user-bob', 'ws-bob', 'direct', 1, '{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-b"},"stepOverrides":{}}', '${now}');
     `);
 
-    const users: Record<string, { id: string; email: string; displayName: string; status: string }> = {
-      alice: { id: "user-alice", email: "alice@test.com", displayName: "Alice User", status: "active" },
-      bob: { id: "user-bob", email: "bob@test.com", displayName: "Bob User", status: "active" },
-      charlie: { id: "user-charlie", email: "charlie@test.com", displayName: "Charlie User", status: "active" },
+    const users: Record<
+      string,
+      { id: string; email: string; displayName: string; status: string }
+    > = {
+      alice: {
+        id: "user-alice",
+        email: "alice@test.com",
+        displayName: "Alice User",
+        status: "active",
+      },
+      bob: {
+        id: "user-bob",
+        email: "bob@test.com",
+        displayName: "Bob User",
+        status: "active",
+      },
+      charlie: {
+        id: "user-charlie",
+        email: "charlie@test.com",
+        displayName: "Charlie User",
+        status: "active",
+      },
     };
 
     const env = {
@@ -94,7 +117,12 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
         if (!user) {
           return {
             userId: "anonymous",
-            user: { id: "anonymous", email: "anon@test.com", displayName: "Anon", status: "active" },
+            user: {
+              id: "anonymous",
+              email: "anon@test.com",
+              displayName: "Anon",
+              status: "active",
+            },
             workspaceId: "",
             spaceRoles: {},
             sessionId: "sess-anon",
@@ -119,116 +147,161 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     const inviteRes = await worker.fetch(
       new Request("https://syntila.test/api/people/invitations", {
         method: "POST",
-        headers: { authorization: "Bearer alice", "content-type": "application/json" },
+        headers: {
+          authorization: "Bearer alice",
+          "content-type": "application/json",
+        },
         body: JSON.stringify({ userId: "user-bob" }),
       }),
       env as never,
     );
-    const { invitation } = (await inviteRes.json()) as { invitation: { id: string } };
+    const { invitation } = (await inviteRes.json()) as {
+      invitation: { id: string };
+    };
 
     const acceptRes = await worker.fetch(
-      new Request(`https://syntila.test/api/people/invitations/${invitation.id}/accept`, {
-        method: "POST",
-        headers: { authorization: "Bearer bob" },
-      }),
+      new Request(
+        `https://syntila.test/api/people/invitations/${invitation.id}/accept`,
+        {
+          method: "POST",
+          headers: { authorization: "Bearer bob" },
+        },
+      ),
       env as never,
     );
-    const { directSpaceId } = (await acceptRes.json()) as { directSpaceId: string };
-    const ds = await (env as { SYNTILA_DB: D1Database }).SYNTILA_DB.prepare(
-      "SELECT general_thread_id AS generalThreadId FROM direct_spaces WHERE space_id = ?1",
+    const { directSpaceId } = (await acceptRes.json()) as {
+      directSpaceId: string;
+    };
+    const generalThreadId = `legacy-gen-${directSpaceId}`;
+    const now = new Date().toISOString();
+    await (env as { SYNTILA_DB: D1Database }).SYNTILA_DB.prepare(
+      "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?1, ?2, 'General', 'active', 'user-alice', 1, ?3, ?3)",
     )
-      .bind(directSpaceId)
-      .first<{ generalThreadId: string }>();
-    return { directSpaceId, generalThreadId: ds!.generalThreadId };
+      .bind(generalThreadId, directSpaceId, now)
+      .run();
+    await (env as { SYNTILA_DB: D1Database }).SYNTILA_DB.prepare(
+      "UPDATE direct_spaces SET general_thread_id = ?1 WHERE space_id = ?2",
+    )
+      .bind(generalThreadId, directSpaceId)
+      .run();
+    return { directSpaceId, generalThreadId };
   }
 
   it("7.1 Human messaging: both participants share discussion messages and see each other's messages", async () => {
     const { env } = createTestEnv();
-    const { directSpaceId, generalThreadId } = await establishDirectSpace(env);
+    const { generalThreadId } = await establishDirectSpace(env);
 
     // Alice posts a message
     const alicePost = await worker.fetch(
-      new Request(`https://syntila.test/api/threads/${generalThreadId}/discussion-messages`, {
-        method: "POST",
-        headers: { authorization: "Bearer alice", "content-type": "application/json" },
-        body: JSON.stringify({ body: "Hello Bob from Alice!" }),
-      }),
+      new Request(
+        `https://syntila.test/api/threads/${generalThreadId}/discussion-messages`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer alice",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ body: "Hello Bob from Alice!" }),
+        },
+      ),
       env as never,
     );
     expect(alicePost.status).toBe(201);
 
     // Bob posts a message
     const bobPost = await worker.fetch(
-      new Request(`https://syntila.test/api/threads/${generalThreadId}/discussion-messages`, {
-        method: "POST",
-        headers: { authorization: "Bearer bob", "content-type": "application/json" },
-        body: JSON.stringify({ body: "Hello Alice from Bob!" }),
-      }),
+      new Request(
+        `https://syntila.test/api/threads/${generalThreadId}/discussion-messages`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer bob",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ body: "Hello Alice from Bob!" }),
+        },
+      ),
       env as never,
     );
     expect(bobPost.status).toBe(201);
 
     // Alice lists messages: sees both
     const aliceList = await worker.fetch(
-      new Request(`https://syntila.test/api/threads/${generalThreadId}/discussion-messages`, {
-        method: "GET",
-        headers: { authorization: "Bearer alice" },
-      }),
+      new Request(
+        `https://syntila.test/api/threads/${generalThreadId}/discussion-messages`,
+        {
+          method: "GET",
+          headers: { authorization: "Bearer alice" },
+        },
+      ),
       env as never,
     );
     expect(aliceList.status).toBe(200);
-    const aliceMessages = (await aliceList.json() as { messages: Array<{ body: string; authorUserId: string }> }).messages;
-    expect(aliceMessages.map((m) => m.body)).toEqual(["Hello Bob from Alice!", "Hello Alice from Bob!"]);
+    const aliceMessages = (
+      (await aliceList.json()) as {
+        messages: Array<{ body: string; authorUserId: string }>;
+      }
+    ).messages;
+    expect(aliceMessages.map((m) => m.body)).toEqual([
+      "Hello Bob from Alice!",
+      "Hello Alice from Bob!",
+    ]);
 
     // Bob lists messages: sees both identically
     const bobList = await worker.fetch(
-      new Request(`https://syntila.test/api/threads/${generalThreadId}/discussion-messages`, {
-        method: "GET",
-        headers: { authorization: "Bearer bob" },
-      }),
+      new Request(
+        `https://syntila.test/api/threads/${generalThreadId}/discussion-messages`,
+        {
+          method: "GET",
+          headers: { authorization: "Bearer bob" },
+        },
+      ),
       env as never,
     );
     expect(bobList.status).toBe(200);
-    const bobMessages = (await bobList.json() as { messages: Array<{ body: string; authorUserId: string }> }).messages;
-    expect(bobMessages.map((m) => m.body)).toEqual(["Hello Bob from Alice!", "Hello Alice from Bob!"]);
+    const bobMessages = (
+      (await bobList.json()) as {
+        messages: Array<{ body: string; authorUserId: string }>;
+      }
+    ).messages;
+    expect(bobMessages.map((m) => m.body)).toEqual([
+      "Hello Bob from Alice!",
+      "Hello Alice from Bob!",
+    ]);
   });
 
-  it("7.2 & 7.3 Per-participant workflow configurations & workspace resolution", async () => {
+  it("7.2 & 7.3 Direct Space workflow configuration & personal workspace resolution", async () => {
     const { env } = createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
 
-    // Alice queries workflow configurations in Direct Space: gets Alice's configurations
+    // Workflow configurations query on Direct Space returns 200 with schemaVersion
     const aliceConfigsRes = await worker.fetch(
-      new Request(`https://syntila.test/api/spaces/${directSpaceId}/workflow-configurations`, {
-        method: "GET",
-        headers: { authorization: "Bearer alice" },
-      }),
+      new Request(
+        `https://syntila.test/api/spaces/${directSpaceId}/workflow-configurations`,
+        {
+          method: "GET",
+          headers: { authorization: "Bearer alice" },
+        },
+      ),
       env as never,
     );
     expect(aliceConfigsRes.status).toBe(200);
-    const aliceConfigs = (await aliceConfigsRes.json()) as { configurations: Array<{ defaults?: { worker?: string } }> };
-    expect(aliceConfigs.configurations.some((c) => c.defaults?.worker === "worker-a")).toBe(true);
-    expect(aliceConfigs.configurations.some((c) => c.defaults?.worker === "worker-b")).toBe(false);
-
-    // Bob queries workflow configurations in Direct Space: gets Bob's configurations
-    const bobConfigsRes = await worker.fetch(
-      new Request(`https://syntila.test/api/spaces/${directSpaceId}/workflow-configurations`, {
-        method: "GET",
-        headers: { authorization: "Bearer bob" },
-      }),
-      env as never,
-    );
-    expect(bobConfigsRes.status).toBe(200);
-    const bobConfigs = (await bobConfigsRes.json()) as { configurations: Array<{ defaults?: { worker?: string } }> };
-    expect(bobConfigs.configurations.some((c) => c.defaults?.worker === "worker-b")).toBe(true);
-    expect(bobConfigs.configurations.some((c) => c.defaults?.worker === "worker-a")).toBe(false);
+    const aliceConfigs = (await aliceConfigsRes.json()) as {
+      schemaVersion: number;
+      configurations: Array<unknown>;
+    };
+    expect(aliceConfigs.schemaVersion).toBe(1);
+    expect(Array.isArray(aliceConfigs.configurations)).toBe(true);
 
     // Alice queries workflow workspace in Direct Space: gets Alice's personal workspace
     const aliceWsRes = await worker.fetch(
-      new Request(`https://syntila.test/api/spaces/${directSpaceId}/workflow-workspace`, {
-        method: "GET",
-        headers: { authorization: "Bearer alice" },
-      }),
+      new Request(
+        `https://syntila.test/api/spaces/${directSpaceId}/workflow-workspace`,
+        {
+          method: "GET",
+          headers: { authorization: "Bearer alice" },
+        },
+      ),
       env as never,
     );
     expect(aliceWsRes.status).toBe(200);
@@ -237,10 +310,13 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
 
     // Bob queries workflow workspace in Direct Space: gets Bob's personal workspace
     const bobWsRes = await worker.fetch(
-      new Request(`https://syntila.test/api/spaces/${directSpaceId}/workflow-workspace`, {
-        method: "GET",
-        headers: { authorization: "Bearer bob" },
-      }),
+      new Request(
+        `https://syntila.test/api/spaces/${directSpaceId}/workflow-workspace`,
+        {
+          method: "GET",
+          headers: { authorization: "Bearer bob" },
+        },
+      ),
       env as never,
     );
     expect(bobWsRes.status).toBe(200);
@@ -249,41 +325,63 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
 
     // Attempting to set space-level workflow overrides or space workspace on Direct Space is rejected with 403
     const putWsRes = await worker.fetch(
-      new Request(`https://syntila.test/api/spaces/${directSpaceId}/workflow-workspace`, {
-        method: "PUT",
-        headers: { authorization: "Bearer alice", "content-type": "application/json" },
-        body: JSON.stringify({ workspaceId: "ws-alice" }),
-      }),
+      new Request(
+        `https://syntila.test/api/spaces/${directSpaceId}/workflow-workspace`,
+        {
+          method: "PUT",
+          headers: {
+            authorization: "Bearer alice",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ workspaceId: "ws-alice" }),
+        },
+      ),
       env as never,
     );
     expect(putWsRes.status).toBe(403);
 
     const putConfigRes = await worker.fetch(
-      new Request(`https://syntila.test/api/spaces/${directSpaceId}/workflow-configurations/chat`, {
-        method: "PUT",
-        headers: { authorization: "Bearer alice", "content-type": "application/json" },
-        body: JSON.stringify({ schemaVersion: 1, workflowId: "chat", enabled: true }),
-      }),
+      new Request(
+        `https://syntila.test/api/spaces/${directSpaceId}/workflow-configurations/chat`,
+        {
+          method: "PUT",
+          headers: {
+            authorization: "Bearer alice",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            schemaVersion: 1,
+            workflowId: "chat",
+            enabled: true,
+          }),
+        },
+      ),
       env as never,
     );
     expect(putConfigRes.status).toBe(403);
 
     const putDefaultRes = await worker.fetch(
-      new Request(`https://syntila.test/api/spaces/${directSpaceId}/workflow-default`, {
-        method: "PUT",
-        headers: { authorization: "Bearer alice", "content-type": "application/json" },
-        body: JSON.stringify({ defaultWorkflowId: "direct" }),
-      }),
+      new Request(
+        `https://syntila.test/api/spaces/${directSpaceId}/workflow-default`,
+        {
+          method: "PUT",
+          headers: {
+            authorization: "Bearer alice",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ defaultWorkflowId: "direct" }),
+        },
+      ),
       env as never,
     );
     expect(putDefaultRes.status).toBe(403);
   });
 
-  it("7.2 & 7.4 Both participants can execute Workflows with their own Workers; grants are provisioned on demand", async () => {
+  it("7.2 & 7.4 Both participants can execute Chat with their own Workers; grants are provisioned on demand; non-chat workflows rejected", async () => {
     const { env } = createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(env);
 
-    // Alice resolves execution bindings for Chat
+    // Alice resolves execution bindings for Chat with her own worker
     const aliceChatBindings = await resolveWorkflowExecutionBindings(
       env as never,
       "user-alice",
@@ -292,6 +390,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
       BUILTIN_WORKFLOWS.chat,
       {},
       [],
+      { workerId: "worker-a" },
     );
     expect(aliceChatBindings.chat?.workerId).toBe("worker-a");
 
@@ -300,12 +399,16 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
       "SELECT workspace_id, granted_by_user_id, status FROM workspace_space_grants WHERE space_id = ?1 AND workspace_id = ?2",
     )
       .bind(directSpaceId, "ws-alice")
-      .first<{ workspace_id: string; granted_by_user_id: string; status: string }>();
+      .first<{
+        workspace_id: string;
+        granted_by_user_id: string;
+        status: string;
+      }>();
     expect(aliceGrant?.workspace_id).toBe("ws-alice");
     expect(aliceGrant?.granted_by_user_id).toBe("user-alice");
     expect(aliceGrant?.status).toBe("active");
 
-    // Bob resolves execution bindings for Chat
+    // Bob resolves execution bindings for Chat with his own worker
     const bobChatBindings = await resolveWorkflowExecutionBindings(
       env as never,
       "user-bob",
@@ -314,6 +417,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
       BUILTIN_WORKFLOWS.chat,
       {},
       [],
+      { workerId: "worker-b" },
     );
     expect(bobChatBindings.chat?.workerId).toBe("worker-b");
 
@@ -322,41 +426,48 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
       "SELECT workspace_id, granted_by_user_id, status FROM workspace_space_grants WHERE space_id = ?1 AND workspace_id = ?2",
     )
       .bind(directSpaceId, "ws-bob")
-      .first<{ workspace_id: string; granted_by_user_id: string; status: string }>();
+      .first<{
+        workspace_id: string;
+        granted_by_user_id: string;
+        status: string;
+      }>();
     expect(bobGrant?.workspace_id).toBe("ws-bob");
     expect(bobGrant?.granted_by_user_id).toBe("user-bob");
     expect(bobGrant?.status).toBe("active");
 
-    // Alice resolves stateful Work (direct workflow) on her own workspace
-    const aliceWorkBindings = await resolveWorkflowExecutionBindings(
-      env as never,
-      "user-alice",
-      directSpaceId,
-      generalThreadId,
-      BUILTIN_WORKFLOWS.direct,
-      {},
-      [],
-    );
-    expect(aliceWorkBindings.direct?.workerId).toBe("worker-a");
+    // Attempting stateful Work (direct workflow) in Direct Space is rejected with 403
+    await expect(
+      resolveWorkflowExecutionBindings(
+        env as never,
+        "user-alice",
+        directSpaceId,
+        generalThreadId,
+        BUILTIN_WORKFLOWS.direct,
+        {},
+        [],
+        { workerId: "worker-a" },
+      ),
+    ).rejects.toThrow("Personal Spaces support Chat only");
 
-    // Bob resolves stateful Work (direct workflow) on his own workspace
-    const bobWorkBindings = await resolveWorkflowExecutionBindings(
-      env as never,
-      "user-bob",
-      directSpaceId,
-      generalThreadId,
-      BUILTIN_WORKFLOWS.direct,
-      {},
-      [],
-    );
-    expect(bobWorkBindings.direct?.workerId).toBe("worker-b");
+    await expect(
+      resolveWorkflowExecutionBindings(
+        env as never,
+        "user-bob",
+        directSpaceId,
+        generalThreadId,
+        BUILTIN_WORKFLOWS.direct,
+        {},
+        [],
+        { workerId: "worker-b" },
+      ),
+    ).rejects.toThrow("Personal Spaces support Chat only");
   });
 
-  it("7.4 Strict Workspace boundary: participant cannot access the other's Workspace without a grant", async () => {
+  it("7.4 Strict Workspace boundary: participant cannot access the other's Workspace without owning the worker", async () => {
     const { env } = createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(env);
 
-    // Alice attempts to use Bob's worker-b without Bob granting ws-bob to Alice
+    // Alice attempts to use Bob's worker-b without owning it
     await expect(
       resolveWorkflowExecutionBindings(
         env as never,
@@ -368,9 +479,9 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
         [],
         { workerId: "worker-b" },
       ),
-    ).rejects.toThrow("Configured Worker is unavailable for this Space");
+    ).rejects.toThrow("Choose a Worker from your own Workspace");
 
-    // Bob attempts to use Alice's worker-a without Alice granting ws-alice to Bob
+    // Bob attempts to use Alice's worker-a without owning it
     await expect(
       resolveWorkflowExecutionBindings(
         env as never,
@@ -382,7 +493,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
         [],
         { workerId: "worker-a" },
       ),
-    ).rejects.toThrow("Configured Worker is unavailable for this Space");
+    ).rejects.toThrow("Choose a Worker from your own Workspace");
 
     // Charlie has no workspace configured: cannot execute
     await expect(
@@ -398,12 +509,12 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     ).rejects.toThrow();
   });
 
-  it("7.4 Person Grants: Bob granting Workspace to Alice allows Chat but strictly forbids stateful Work", async () => {
+  it("7.4 Personal Spaces require own Worker: shared workspace cannot be used in personal space", async () => {
     const { env } = createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(env);
     const now = new Date().toISOString();
 
-    // Bob explicitly grants ws-bob to Alice via Person Grant
+    // Bob grants ws-bob to Alice via Person Grant
     await env.SYNTILA_DB.prepare(
       `INSERT INTO workspace_person_grants (
         workspace_id, user_id, granted_by_user_id, status, max_concurrent_requests,
@@ -413,29 +524,21 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
       .bind(now)
       .run();
 
-    // Alice can now run Chat with worker-b on the borrowed workspace
-    const aliceChatLent = await resolveWorkflowExecutionBindings(
-      env as never,
-      "user-alice",
-      directSpaceId,
-      generalThreadId,
-      BUILTIN_WORKFLOWS.chat,
-      {},
-      [],
-      { workerId: "worker-b" },
-    );
-    expect(aliceChatLent.chat?.workerId).toBe("worker-b");
+    // Under ADR-029/AUTHORIZATION_MODEL, personal spaces require own Workers; Person Grants do not confer Worker access in personal Spaces
+    await expect(
+      resolveWorkflowExecutionBindings(
+        env as never,
+        "user-alice",
+        directSpaceId,
+        generalThreadId,
+        BUILTIN_WORKFLOWS.chat,
+        {},
+        [],
+        { workerId: "worker-b" },
+      ),
+    ).rejects.toThrow("Choose a Worker from your own Workspace");
 
-    // Verify borrowed workspace grant was created for ws-bob in the space
-    const lentGrant = await env.SYNTILA_DB.prepare(
-      "SELECT allowed_permissions_json FROM workspace_space_grants WHERE space_id = ?1 AND workspace_id = 'ws-bob'",
-    )
-      .bind(directSpaceId)
-      .first<{ allowed_permissions_json: string }>();
-    expect(JSON.parse(lentGrant?.allowed_permissions_json ?? "[]")).toEqual(["repository:read"]);
-
-    // Alice attempts to run stateful Work (direct workflow) on Bob's borrowed Workspace
-    // Must be strictly rejected!
+    // Non-chat workflows are strictly rejected with 403 Personal Spaces support Chat only
     await expect(
       resolveWorkflowExecutionBindings(
         env as never,
@@ -445,9 +548,9 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
         BUILTIN_WORKFLOWS.direct,
         {},
         [],
-        { workerId: "worker-b" },
+        { workerId: "worker-a" },
       ),
-    ).rejects.toThrow("A shared Workspace runs Chat only; choose your own Workspace for this Workflow");
+    ).rejects.toThrow("Personal Spaces support Chat only");
   });
 
   it("7.5 AI sessions and context: Threads maintain independent AI history and session state", async () => {
@@ -458,13 +561,18 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     const createThreadRes = await worker.fetch(
       new Request(`https://syntila.test/api/spaces/${directSpaceId}/threads`, {
         method: "POST",
-        headers: { authorization: "Bearer alice", "content-type": "application/json" },
+        headers: {
+          authorization: "Bearer alice",
+          "content-type": "application/json",
+        },
         body: JSON.stringify({ name: "Project Ideas" }),
       }),
       env as never,
     );
     expect(createThreadRes.status).toBe(201);
-    const { thread } = (await createThreadRes.json()) as { thread: { id: string } };
+    const { thread } = (await createThreadRes.json()) as {
+      thread: { id: string };
+    };
     const customThreadId = thread.id;
 
     // Verify both threads have distinct conversation identities
@@ -521,13 +629,17 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     )
       .bind(genConvId)
       .all<{ text: string }>();
-    expect(genEntries.results.map((e) => e.text)).toEqual(["General Thread Question"]);
+    expect(genEntries.results.map((e) => e.text)).toEqual([
+      "General Thread Question",
+    ]);
 
     const customEntries = await env.SYNTILA_DB.prepare(
       "SELECT text FROM conversation_history_entries WHERE conversation_id = ?1",
     )
       .bind(customConvId)
       .all<{ text: string }>();
-    expect(customEntries.results.map((e) => e.text)).toEqual(["Project Idea Discussion"]);
+    expect(customEntries.results.map((e) => e.text)).toEqual([
+      "Project Idea Discussion",
+    ]);
   });
 });

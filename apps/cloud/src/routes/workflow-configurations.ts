@@ -44,13 +44,24 @@ export async function handleWorkflowConfigurations(
   if (spaceId) {
     const membership = await db
       .prepare(
-        `SELECT s.owner_user_id AS ownerUserId FROM spaces s JOIN space_memberships m ON m.space_id = s.id JOIN users u ON u.id = m.user_id WHERE s.id = ?1 AND m.user_id = ?2 AND u.status = 'active'`,
+        `SELECT s.owner_user_id AS ownerUserId, COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id JOIN users u ON u.id = m.user_id WHERE s.id = ?1 AND m.user_id = ?2 AND u.status = 'active'`,
       )
       .bind(spaceId, context.userId)
-      .first<{ ownerUserId: string }>();
+      .first<{ ownerUserId: string; kind: string }>();
     if (!membership) throw new HttpError(403, "Space membership required");
-    if (request.method !== "GET" && membership.ownerUserId !== context.userId)
+    if (membership.kind === "direct") {
+      if (request.method !== "GET") {
+        throw new HttpError(
+          403,
+          "Direct Spaces do not support Space-level Workflow overrides; configure personal Workflows instead",
+        );
+      }
+    } else if (
+      request.method !== "GET" &&
+      membership.ownerUserId !== context.userId
+    ) {
       throw new HttpError(403, "Only the Space owner can configure workflows");
+    }
   }
   // User-level configuration is stored per Workspace.
   const userWorkspaceId = spaceId

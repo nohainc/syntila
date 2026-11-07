@@ -103,7 +103,7 @@ class MyPlugin extends PluginWorker {
 Future<void> main() => runPlugin(MyPlugin());
 ```
 
-`examples/plugins/echo_dart` is a complete plugin that also supports session
+`examples/mcp/echo_worker` is a complete worker that also supports session
 resume (`SessionStore`) and cancel; tests exercise all 21 conformance cases
 standalone and through the Engine host. After
 `dart compile exe`, fill the hashes with:
@@ -259,11 +259,7 @@ consent by hash. `plugins signers` lists fingerprints and `plugins untrust-signe
 <fingerprint>` forgets one. Recognized keys still need explicit consent for every
 registration, update and enablement; they do not verify the claimed author name.
 
-The [Python example](../../examples/plugins/echo_python/README.md) demonstrates
-implementing the same protocol without the Dart SDK. Its interpreter comes from
-the local environment; prefer standalone executables for distribution.
-
-The [Ollama local plugin](../../examples/plugins/ollama_local/README.md) wraps
+The [Ollama local worker](../../examples/mcp/ollama_worker/README.md) wraps
 the installed Ollama CLI with runtime model discovery and selection, cancellation and bounded
 output. It requires an already-downloaded model and does not edit files or
 execute model-proposed tools.

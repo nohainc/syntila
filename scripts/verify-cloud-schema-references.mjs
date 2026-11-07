@@ -91,7 +91,7 @@ const errors = [];
 const tableReference =
   /\b(?:FROM|JOIN|INTO|DELETE\s+FROM)\s+["`]?([a-z_][\w]*)|\bUPDATE\s+(?!SET\b)["`]?([a-z_][\w]*)/gi;
 const cteDeclaration =
-  /\b(?:WITH|,)\s*(?:RECURSIVE\s+)?([a-z_][\w]*)\s+AS\s*\(/gi;
+  /(?:\bWITH|,)\s*(?:RECURSIVE\s+)?([a-z_][\w]*)\s+AS\s*\(/gi;
 const sqlFunctions = new Set(["json_each", "json_tree", "pragma_table_info"]);
 
 for (const path of sources) {

@@ -19,7 +19,7 @@ class McpManagementView extends StatefulWidget {
     super.key,
     required this.workspaceId,
     required this.inventories,
-    this.knownWorkerTypes = const ['chatgpt', 'codex', 'claude'],
+    this.knownWorkerTypes = const ['chatgpt', 'claude', 'gemini'],
   });
 
   final String workspaceId;

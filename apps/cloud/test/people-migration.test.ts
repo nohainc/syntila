@@ -56,7 +56,9 @@ it("preserves existing spaces, threads, memberships, and people relationships wh
     `);
 
     // Existing space has kind default 'group'
-    const spaceRow = sqlite.prepare("SELECT kind FROM spaces WHERE id = 'sp1'").get() as { kind: string };
+    const spaceRow = sqlite
+      .prepare("SELECT kind FROM spaces WHERE id = 'sp1'")
+      .get() as { kind: string };
     expect(spaceRow.kind).toBe("group");
 
     // People relationships remain intact
@@ -66,8 +68,18 @@ it("preserves existing spaces, threads, memberships, and people relationships wh
     ]);
 
     // Threads and memberships preserved
-    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM threads WHERE space_id = 'sp1'").get()).toEqual({ n: 1 });
-    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM space_memberships WHERE space_id = 'sp1'").get()).toEqual({ n: 2 });
+    expect(
+      sqlite
+        .prepare("SELECT COUNT(*) AS n FROM threads WHERE space_id = 'sp1'")
+        .get(),
+    ).toEqual({ n: 1 });
+    expect(
+      sqlite
+        .prepare(
+          "SELECT COUNT(*) AS n FROM space_memberships WHERE space_id = 'sp1'",
+        )
+        .get(),
+    ).toEqual({ n: 2 });
     expect(sqlite.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   } finally {
     sqlite.close();

@@ -21,9 +21,7 @@ void main() {
         WorkflowAccess.available);
   });
 
-  test(
-      'Chat, Work, and Implement stay available on Free',
-      () {
+  test('Chat, Work, and Implement stay available on Free', () {
     for (final id in ['chat', 'direct', 'plan_implement']) {
       expect(workflowAccess(id, viewerEmail: 'f@x.test', hasPlus: false),
           WorkflowAccess.available);

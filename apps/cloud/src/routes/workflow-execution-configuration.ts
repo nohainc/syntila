@@ -108,7 +108,9 @@ export async function resolveWorkflowExecutionBindings(
           `SELECT i.workspace_id AS workspaceId FROM workspace_worker_inventory i
            JOIN execution_workspaces ew ON ew.id = i.workspace_id
            WHERE i.worker_id = ?1 AND ew.owner_user_id = ?2 AND ew.status != 'revoked'`,
-        ).bind(override.workerId, userId).first()
+        )
+          .bind(override.workerId, userId)
+          .first()
       : null;
     if (!ownedWorker)
       throw new HttpError(403, "Choose a Worker from your own Workspace");

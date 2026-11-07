@@ -310,8 +310,7 @@ void main() {
             branch: '',
             lastActivity: '',
             role: 'collaborator',
-            permissions:
-                AxSpacePermissions(chat: allowed)),
+            permissions: AxSpacePermissions(chat: allowed)),
         thread:
             memberThread.copyWith(workConfig: {'defaultWorkflowId': 'chat'}),
         dataSource: OwnWorkersSource(),

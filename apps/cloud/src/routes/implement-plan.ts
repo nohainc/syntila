@@ -20,7 +20,6 @@ export interface ParsedPhase {
   criteria?: string;
 }
 
-
 function unquote(value: string): string {
   const v = value.trim();
   const q = v[0];
@@ -46,7 +45,9 @@ function parseYamlPhases(raw: string): ParsedPhase[] {
     const indent = line.length - line.trimStart().length;
     const trimmed = line.trim();
     const keyMatch = trimmed.match(/^(?:-\s+)?([A-Za-z_]+):\s*(.*)$/);
-    const isItemStart = trimmed.startsWith("- ") && keyMatch !== null &&
+    const isItemStart =
+      trimmed.startsWith("- ") &&
+      keyMatch !== null &&
       (itemIndent < 0 || indent <= itemIndent);
     if (isItemStart) {
       itemIndent = itemIndent < 0 ? indent : itemIndent;
@@ -60,14 +61,21 @@ function parseYamlPhases(raw: string): ParsedPhase[] {
       if (lastKey === "files") {
         const inline = value.match(/^\[(.*)\]$/);
         current.files = inline
-          ? inline[1]!.split(",").map((f) => unquote(f)).filter(Boolean)
+          ? inline[1]!
+              .split(",")
+              .map((f) => unquote(f))
+              .filter(Boolean)
           : [];
       } else {
         current[lastKey] = unquote(value);
       }
     } else if (trimmed.startsWith("- ") && lastKey === "files") {
       (current.files as string[]).push(unquote(trimmed.slice(2)));
-    } else if (lastKey && lastKey !== "files" && typeof current[lastKey] === "string") {
+    } else if (
+      lastKey &&
+      lastKey !== "files" &&
+      typeof current[lastKey] === "string"
+    ) {
       current[lastKey] = `${current[lastKey]} ${unquote(trimmed)}`.trim();
     }
   }
@@ -79,7 +87,10 @@ function parseYamlPhases(raw: string): ParsedPhase[] {
       title: item.title as string,
       description: typeof item.description === "string" ? item.description : "",
       files: Array.isArray(item.files) ? item.files : [],
-      criteria: typeof item.criteria === "string" && item.criteria ? item.criteria : undefined,
+      criteria:
+        typeof item.criteria === "string" && item.criteria
+          ? item.criteria
+          : undefined,
     }));
 }
 
@@ -92,7 +103,9 @@ export function parseImplementationPhases(planText: string): ParsedPhase[] {
   if (!planText || !planText.trim()) return [];
 
   // 1. Try yaml:phases or yaml fence with "phases:"
-  const yamlMatch = planText.match(/```(?:yaml:phases|yaml|json:phases|json)\s*\n([\s\S]*?)```/i);
+  const yamlMatch = planText.match(
+    /```(?:yaml:phases|yaml|json:phases|json)\s*\n([\s\S]*?)```/i,
+  );
   if (yamlMatch) {
     const rawContent = yamlMatch[1]!.trim();
     if (rawContent.startsWith("{") || rawContent.startsWith("[")) {
@@ -133,8 +146,12 @@ export function parseImplementationPhases(planText: string): ParsedPhase[] {
     return matches.map((item, i) => {
       const nextIndex = matches[i + 1]?.startIndex ?? planText.length;
       const sectionBody = planText.slice(item.startIndex, nextIndex);
-      const descMatch = sectionBody.match(/(?:Goal|Description|Purpose)[:\s]*([^\n]+)/i);
-      const criteriaMatch = sectionBody.match(/(?:Completion Criteria|Criteria)[:\s]*([^\n]+)/i);
+      const descMatch = sectionBody.match(
+        /(?:Goal|Description|Purpose)[:\s]*([^\n]+)/i,
+      );
+      const criteriaMatch = sectionBody.match(
+        /(?:Completion Criteria|Criteria)[:\s]*([^\n]+)/i,
+      );
       return {
         id: item.id || i + 1,
         title: item.title,
@@ -228,7 +245,10 @@ export async function handleApprovePlan(
   let planText = "";
   try {
     const parsedOutput = JSON.parse(planTask.outputJson);
-    planText = typeof parsedOutput === "string" ? parsedOutput : (parsedOutput.text ?? JSON.stringify(parsedOutput));
+    planText =
+      typeof parsedOutput === "string"
+        ? parsedOutput
+        : (parsedOutput.text ?? JSON.stringify(parsedOutput));
   } catch {
     planText = planTask.outputJson;
   }
@@ -256,9 +276,10 @@ export async function handleApprovePlan(
       );
     if (!valid) throw new HttpError(400, "Invalid customPhases");
   }
-  const phases = body.customPhases && body.customPhases.length > 0
-    ? body.customPhases
-    : parseImplementationPhases(planText);
+  const phases =
+    body.customPhases && body.customPhases.length > 0
+      ? body.customPhases
+      : parseImplementationPhases(planText);
 
   const alreadyApproved = await db
     .prepare(
@@ -268,10 +289,14 @@ export async function handleApprovePlan(
     )
     .bind(workRequest.threadId, workRequestId)
     .first();
-  if (alreadyApproved) throw new HttpError(409, "This plan was already approved");
+  if (alreadyApproved)
+    throw new HttpError(409, "This plan was already approved");
 
   if (phases.length === 0) {
-    throw new HttpError(400, "Could not identify any implementation phases in the plan");
+    throw new HttpError(
+      400,
+      "Could not identify any implementation phases in the plan",
+    );
   }
 
   // Resolve workflow configuration for plan_implement to get default implementer and verifier selections
@@ -279,16 +304,25 @@ export async function handleApprovePlan(
     env,
     workRequest.spaceId,
     "plan_implement",
-    context.userId,
   );
   const planImplementDef = BUILTIN_WORKFLOWS.plan_implement;
   const parsedConfig = spaceWorkflowConfig.configurations[0]
-    ? parseUserWorkflowConfiguration(planImplementDef, spaceWorkflowConfig.configurations[0])
+    ? parseUserWorkflowConfiguration(
+        planImplementDef,
+        spaceWorkflowConfig.configurations[0],
+      )
     : undefined;
-  const effective = resolveUserWorkflowConfiguration(planImplementDef, parsedConfig);
+  const effective = resolveUserWorkflowConfiguration(
+    planImplementDef,
+    parsedConfig,
+  );
 
-  const implementerOverride = body.implementer ? parseWorkflowExecutionSelection(body.implementer) : undefined;
-  const verifierOverride = body.verifier ? parseWorkflowExecutionSelection(body.verifier) : undefined;
+  const implementerOverride = body.implementer
+    ? parseWorkflowExecutionSelection(body.implementer)
+    : undefined;
+  const verifierOverride = body.verifier
+    ? parseWorkflowExecutionSelection(body.verifier)
+    : undefined;
 
   const cleanSelection = (sel: {
     workerId?: string | null;
@@ -303,15 +337,18 @@ export async function handleApprovePlan(
   };
 
   const implementSelection = cleanSelection({
-    workerId: implementerOverride?.workerId ?? effective.steps.implement?.worker,
+    workerId:
+      implementerOverride?.workerId ?? effective.steps.implement?.worker,
     model: implementerOverride?.model ?? effective.steps.implement?.model,
-    reasoningEffort: implementerOverride?.reasoningEffort ?? effective.steps.implement?.effort,
+    reasoningEffort:
+      implementerOverride?.reasoningEffort ?? effective.steps.implement?.effort,
   });
 
   const verifySelection = cleanSelection({
     workerId: verifierOverride?.workerId ?? effective.steps.verify?.worker,
     model: verifierOverride?.model ?? effective.steps.verify?.model,
-    reasoningEffort: verifierOverride?.reasoningEffort ?? effective.steps.verify?.effort,
+    reasoningEffort:
+      verifierOverride?.reasoningEffort ?? effective.steps.verify?.effort,
   });
 
   const lastPos = await db
@@ -342,7 +379,9 @@ export async function handleApprovePlan(
       `Phase ${phaseNum}/${totalPhases}: ${phase.title}`,
       "",
       `Goal: ${phase.description}`,
-      phase.files && phase.files.length > 0 ? `Target files: ${phase.files.join(", ")}` : "",
+      phase.files && phase.files.length > 0
+        ? `Target files: ${phase.files.join(", ")}`
+        : "",
       phase.criteria ? `Completion criteria: ${phase.criteria}` : "",
       "",
       "Carry out this phase according to the approved plan. Follow the implementation criteria.",
@@ -467,7 +506,14 @@ export async function handleApprovePlan(
            (id, thread_id, author_user_id, request_json, position, status, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6, ?6)`,
       )
-      .bind(item.id, item.threadId, item.userId, item.requestJson, item.position, now),
+      .bind(
+        item.id,
+        item.threadId,
+        item.userId,
+        item.requestJson,
+        item.position,
+        now,
+      ),
   );
 
   await db.batch(statements);
@@ -501,7 +547,8 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
   env: SecurityEnv,
   threadId: string,
   workRequestId: string,
-  type: "work_request.completed" | "work_request.failed" | "work_request.cancelled",
+  type:
+    "work_request.completed" | "work_request.failed" | "work_request.cancelled",
 ): Promise<{ paused: boolean; reason?: string }> {
   const db = env.SYNTILA_DB;
   if (!db || !workRequestId) {
@@ -513,7 +560,9 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
 
   try {
     const wr = await db
-      .prepare("SELECT input_json AS inputJson FROM work_requests WHERE id = ?1")
+      .prepare(
+        "SELECT input_json AS inputJson FROM work_requests WHERE id = ?1",
+      )
       .bind(workRequestId)
       .first<{ inputJson: string | null }>();
 
@@ -527,7 +576,9 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
     const isPhased = Boolean(inputData?.isPhased);
     const phaseTitle = String(
       inputData?.phaseTitle ??
-        (inputData?.phaseIndex ? `Phase ${inputData.phaseIndex}` : "Implementation step"),
+        (inputData?.phaseIndex
+          ? `Phase ${inputData.phaseIndex}`
+          : "Implementation step"),
     );
     const isVerification = Boolean(inputData?.isVerification);
 
@@ -555,17 +606,21 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
 
       let outputText = "";
       try {
-        const parsed = taskRow?.outputJson ? JSON.parse(taskRow.outputJson) : null;
+        const parsed = taskRow?.outputJson
+          ? JSON.parse(taskRow.outputJson)
+          : null;
         outputText =
           typeof parsed === "string"
             ? parsed
-            : (parsed?.text ?? (parsed?.output ?? JSON.stringify(parsed ?? "")));
+            : (parsed?.text ?? parsed?.output ?? JSON.stringify(parsed ?? ""));
       } catch {
         outputText = taskRow?.outputJson ?? "";
       }
 
       // Check if worker needs user input or is blocked
-      const needsInputMatch = outputText.match(/STATUS:\s*(NEEDS_INPUT|BLOCKED)/i);
+      const needsInputMatch = outputText.match(
+        /STATUS:\s*(NEEDS_INPUT|BLOCKED)/i,
+      );
       if (needsInputMatch) {
         const reasonMatch = outputText.match(/REASON:\s*([^\n`]+)/i);
         const reason = reasonMatch

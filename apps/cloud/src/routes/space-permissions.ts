@@ -26,7 +26,8 @@ export function validateMemberPermissions(
   if (
     !record ||
     Object.keys(record).some(
-      (key) => !(SPACE_MEMBER_PERMISSION_KEYS as readonly string[]).includes(key),
+      (key) =>
+        !(SPACE_MEMBER_PERMISSION_KEYS as readonly string[]).includes(key),
     ) ||
     GRANTED_RIGHT_KEYS.some((key) => typeof record[key] !== "boolean") ||
     (Object.hasOwn(record, "useOwnWorkers") &&

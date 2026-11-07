@@ -35,7 +35,8 @@ void main() {
   }
 
   group('AxToolCallStepCards', () {
-    testWidgets('renders nothing when request has no tool_call steps', (tester) async {
+    testWidgets('renders nothing when request has no tool_call steps',
+        (tester) async {
       final request = createRequest(steps: [
         const AxWorkRequestStep(
           kind: 'chat',
@@ -57,7 +58,9 @@ void main() {
       expect(find.byKey(const ValueKey('tool-call-step-cards')), findsNothing);
     });
 
-    testWidgets('renders completed tool call with parsed tool label and resultText', (tester) async {
+    testWidgets(
+        'renders completed tool call with parsed tool label and resultText',
+        (tester) async {
       final request = createRequest(steps: [
         const AxWorkRequestStep(
           kind: 'tool_call',
@@ -85,22 +88,26 @@ void main() {
         ),
       );
 
-      expect(find.byKey(const ValueKey('tool-call-step-cards')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('tool-call-step-cards')), findsOneWidget);
       expect(
         find.byKey(const ValueKey('tool-call-step-tool-completed')),
         findsOneWidget,
       );
-      expect(find.text('Tool read_file (filesystem) · Completed'), findsOneWidget);
+      expect(
+          find.text('Tool read_file (filesystem) · Completed'), findsOneWidget);
       expect(find.text('Deterministic tool call · 2s'), findsOneWidget);
 
       // Expand the card
       await tester.tap(find.text('Tool read_file (filesystem) · Completed'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Tool read_file on filesystem: completed'), findsOneWidget);
+      expect(
+          find.text('Tool read_file on filesystem: completed'), findsOneWidget);
     });
 
-    testWidgets('renders running tool call step initially expanded', (tester) async {
+    testWidgets('renders running tool call step initially expanded',
+        (tester) async {
       final request = createRequest(
         status: 'running',
         steps: [
@@ -124,13 +131,15 @@ void main() {
         ),
       );
 
-      expect(find.byKey(const ValueKey('tool-call-step-cards')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('tool-call-step-cards')), findsOneWidget);
       expect(find.text('Tool fetch (web) · Running'), findsOneWidget);
       // Initially expanded for running steps:
       expect(find.text('Tool fetch on web: running'), findsOneWidget);
     });
 
-    testWidgets('renders failed tool call step with error guidance', (tester) async {
+    testWidgets('renders failed tool call step with error guidance',
+        (tester) async {
       final request = createRequest(
         status: 'failed',
         steps: [
@@ -155,10 +164,12 @@ void main() {
         ),
       );
 
-      expect(find.byKey(const ValueKey('tool-call-step-cards')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('tool-call-step-cards')), findsOneWidget);
       expect(find.text('Connected Tool Call · Failed'), findsOneWidget);
       // Initially expanded for failed steps:
-      expect(find.text('Workspace grant expired or was revoked'), findsOneWidget);
+      expect(
+          find.text('Workspace grant expired or was revoked'), findsOneWidget);
     });
   });
 }

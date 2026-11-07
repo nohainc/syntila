@@ -91,7 +91,8 @@ class _SlowWorkersSource extends IntegrationSource {
 class _ResearchSource extends IntegrationSource {
   @override
   Future<List<AxBuiltinWorkflow>> loadBuiltinWorkflowCatalog() async => [
-        ...await super.loadBuiltinWorkflowCatalog(),
+        ...(await super.loadBuiltinWorkflowCatalog())
+            .where((w) => w.id != 'research'),
         AxBuiltinWorkflow.fromJson({
           'id': 'research',
           'version': 2,

@@ -404,10 +404,8 @@ describe("Chat with tool (chat:v2) through the Workflow loop", () => {
     // Only the chat step reaches a Worker.
     expect(f.gatewayCalls).toHaveLength(1);
     const prompt = String(
-      (
-        (f.gatewayCalls[0]!.payload as { snapshot: Record<string, unknown> })
-          .snapshot
-      ).objective,
+      (f.gatewayCalls[0]!.payload as { snapshot: Record<string, unknown> })
+        .snapshot.objective,
     );
     expect(prompt).toContain("TOOL-RESULT-MARKER");
     expect(prompt).toMatch(/untrusted/i);

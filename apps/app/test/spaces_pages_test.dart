@@ -900,8 +900,8 @@ void main() {
             find.descendant(of: menu, matching: find.byType(Text)))
         .map((text) => text.data)
         .toList();
-    await tester.tap(
-        find.descendant(of: menu, matching: find.text('Implement')));
+    await tester
+        .tap(find.descendant(of: menu, matching: find.text('Implement')));
     await tester.pumpAndSettle();
     expect(
         find.descendant(
@@ -1919,13 +1919,16 @@ void main() {
     expect(find.byTooltip('Edit'), findsNothing);
     expect(find.byTooltip('Send now'), findsNothing);
 
-    // Verify Remove from queue button is present
-    expect(find.byTooltip('Remove from queue'), findsOneWidget);
+    // Verify Stop all phases button is present (phased items show 'Stop all phases')
+    expect(find.byTooltip('Stop all phases'), findsOneWidget);
 
-    // Remove item
-    await tester.tap(find.byTooltip('Remove from queue'));
+    // Stop phases (shows confirmation dialog)
+    await tester.tap(find.byTooltip('Stop all phases'));
     await tester.pumpAndSettle();
-    expect(data.calls.last, 'remove:phase-1');
+    expect(find.text('Stop all phases?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Stop all phases'));
+    await tester.pumpAndSettle();
+    expect(data.calls.last, 'stop-phases:phase-1');
   });
 
   testWidgets(
@@ -1980,8 +1983,8 @@ void main() {
     await _askAi(tester);
 
     // Verify the Plan Approval Card is displayed
-    expect(
-        find.byKey(const ValueKey('plan-approval-card-wr-plan-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plan-approval-card-wr-plan-1')),
+        findsOneWidget);
     expect(find.text('Implementation Plan Ready'), findsOneWidget);
 
     // Select final verification
@@ -2001,8 +2004,8 @@ void main() {
     expect(data.calls, contains('approvePlan:wr-plan-1:final'));
 
     // The decision closes the card for good, even when the response rebuilds.
-    expect(
-        find.byKey(const ValueKey('plan-approval-card-wr-plan-1')), findsNothing);
+    expect(find.byKey(const ValueKey('plan-approval-card-wr-plan-1')),
+        findsNothing);
     await tester.pumpWidget(const SizedBox());
     expect(AxPlanDecisions.isDecided('wr-plan-1'), isTrue);
   });

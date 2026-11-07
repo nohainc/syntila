@@ -250,14 +250,7 @@ void main() {
     final groups = (_manifest()['groups'] as List).cast<Map>();
     expect(
       groups.map((g) => g['id']),
-      [
-        'workers',
-        'folders',
-        'mcp',
-        'assignments',
-        'service',
-        'config'
-      ],
+      ['workers', 'folders', 'mcp', 'assignments', 'service', 'config'],
     );
     final byGroup = <String, List<Object?>>{};
     for (final c in _commands()) {

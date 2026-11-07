@@ -19,11 +19,34 @@ describe("Personal Invitations API (Phase 2)", () => {
         ('user-alice', 'user-bob', '${now}');
     `);
 
-    const users: Record<string, { id: string; email: string; displayName: string; status: string }> = {
-      alice: { id: "user-alice", email: "alice@test.com", displayName: "Alice User", status: "active" },
-      bob: { id: "user-bob", email: "bob@test.com", displayName: "Bob User", status: "active" },
-      charlie: { id: "user-charlie", email: "charlie@test.com", displayName: "Charlie User", status: "active" },
-      inactive: { id: "user-inactive", email: "inactive@test.com", displayName: "Inactive User", status: "suspended" },
+    const users: Record<
+      string,
+      { id: string; email: string; displayName: string; status: string }
+    > = {
+      alice: {
+        id: "user-alice",
+        email: "alice@test.com",
+        displayName: "Alice User",
+        status: "active",
+      },
+      bob: {
+        id: "user-bob",
+        email: "bob@test.com",
+        displayName: "Bob User",
+        status: "active",
+      },
+      charlie: {
+        id: "user-charlie",
+        email: "charlie@test.com",
+        displayName: "Charlie User",
+        status: "active",
+      },
+      inactive: {
+        id: "user-inactive",
+        email: "inactive@test.com",
+        displayName: "Inactive User",
+        status: "suspended",
+      },
     };
 
     const env = {
@@ -36,7 +59,12 @@ describe("Personal Invitations API (Phase 2)", () => {
         if (!user) {
           return {
             userId: "anonymous",
-            user: { id: "anonymous", email: "anon@test.com", displayName: "Anon", status: "active" },
+            user: {
+              id: "anonymous",
+              email: "anon@test.com",
+              displayName: "Anon",
+              status: "active",
+            },
             workspaceId: "",
             spaceRoles: {},
             sessionId: "sess-anon",
@@ -134,7 +162,10 @@ describe("Personal Invitations API (Phase 2)", () => {
 
     const post1 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ userId: "user-bob" }),
     });
     const res1 = await worker.fetch(post1, env as never);
@@ -144,12 +175,18 @@ describe("Personal Invitations API (Phase 2)", () => {
     // Retry sending
     const post2 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ userId: "user-bob" }),
     });
     const res2 = await worker.fetch(post2, env as never);
     expect(res2.status).toBe(200);
-    const body2 = (await res2.json()) as { status: string; invitation: { id: string } };
+    const body2 = (await res2.json()) as {
+      status: string;
+      invitation: { id: string };
+    };
     expect(body2.status).toBe("pending");
     expect(body2.invitation.id).toBe(body1.invitation.id);
   });
@@ -160,7 +197,10 @@ describe("Personal Invitations API (Phase 2)", () => {
     // Alice invites Bob
     const req1 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ userId: "user-bob" }),
     });
     const res1 = await worker.fetch(req1, env as never);
@@ -169,7 +209,10 @@ describe("Personal Invitations API (Phase 2)", () => {
     // Bob simultaneously sends invitation to Alice
     const req2 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer bob", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer bob",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ userId: "user-alice" }),
     });
     const res2 = await worker.fetch(req2, env as never);
@@ -185,26 +228,42 @@ describe("Personal Invitations API (Phase 2)", () => {
     // The Direct Space starts without an automatically created Thread.
     const ds = sqlite
       .prepare("SELECT * FROM direct_spaces WHERE space_id = ?")
-      .get(body2.directSpaceId) as { space_id: string; general_thread_id: string | null };
+      .get(body2.directSpaceId) as {
+      space_id: string;
+      general_thread_id: string | null;
+    };
     expect(ds).toBeDefined();
     expect(ds.general_thread_id).toBeNull();
-    expect(sqlite.prepare("SELECT id FROM threads WHERE space_id = ?").all(body2.directSpaceId)).toHaveLength(0);
+    expect(
+      sqlite
+        .prepare("SELECT id FROM threads WHERE space_id = ?")
+        .all(body2.directSpaceId),
+    ).toHaveLength(0);
 
     // Verify both participants are in space_memberships
     const members = sqlite
       .prepare("SELECT user_id, role FROM space_memberships WHERE space_id = ?")
       .all(body2.directSpaceId) as { user_id: string; role: string }[];
     expect(members).toHaveLength(2);
-    expect(members.map((m) => m.user_id).sort()).toEqual(["user-alice", "user-bob"]);
+    expect(members.map((m) => m.user_id).sort()).toEqual([
+      "user-alice",
+      "user-bob",
+    ]);
 
     // Subsequent invite returns already_connected
     const req3 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ userId: "user-bob" }),
     });
     const res3 = await worker.fetch(req3, env as never);
-    const body3 = (await res3.json()) as { status: string; directSpaceId: string };
+    const body3 = (await res3.json()) as {
+      status: string;
+      directSpaceId: string;
+    };
     expect(body3.status).toBe("already_connected");
     expect(body3.directSpaceId).toBe(body2.directSpaceId);
   });
@@ -215,11 +274,16 @@ describe("Personal Invitations API (Phase 2)", () => {
     // Decline flow
     const req1 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ userId: "user-bob" }),
     });
     const res1 = await worker.fetch(req1, env as never);
-    const { invitation: inv1 } = (await res1.json()) as { invitation: { id: string } };
+    const { invitation: inv1 } = (await res1.json()) as {
+      invitation: { id: string };
+    };
 
     const declineReq = new Request(
       `https://syntila.test/api/people/invitations/${inv1.id}/decline`,
@@ -227,7 +291,9 @@ describe("Personal Invitations API (Phase 2)", () => {
     );
     const declineRes = await worker.fetch(declineReq, env as never);
     expect(declineRes.status).toBe(200);
-    expect((await declineRes.json()) as { status: string }).toEqual({ status: "declined" });
+    expect((await declineRes.json()) as { status: string }).toEqual({
+      status: "declined",
+    });
 
     // Trying to accept declined invitation returns 400
     const acceptReq = new Request(
@@ -240,11 +306,16 @@ describe("Personal Invitations API (Phase 2)", () => {
     // Cancel flow
     const req2 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ email: "someone@test.com" }),
     });
     const res2 = await worker.fetch(req2, env as never);
-    const { invitation: inv2 } = (await res2.json()) as { invitation: { id: string } };
+    const { invitation: inv2 } = (await res2.json()) as {
+      invitation: { id: string };
+    };
 
     const cancelReq = new Request(
       `https://syntila.test/api/people/invitations/${inv2.id}/cancel`,
@@ -252,7 +323,9 @@ describe("Personal Invitations API (Phase 2)", () => {
     );
     const cancelRes = await worker.fetch(cancelReq, env as never);
     expect(cancelRes.status).toBe(200);
-    expect((await cancelRes.json()) as { status: string }).toEqual({ status: "cancelled" });
+    expect((await cancelRes.json()) as { status: string }).toEqual({
+      status: "cancelled",
+    });
 
     // Expiration flow
     const past = new Date(Date.now() - 1000).toISOString();
@@ -273,7 +346,10 @@ describe("Personal Invitations API (Phase 2)", () => {
 
     const req = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ userId: "user-bob" }),
     });
     const res = await worker.fetch(req, env as never);
@@ -294,14 +370,19 @@ describe("Personal Invitations API (Phase 2)", () => {
     // Alice invites Bob by userId
     const req = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ userId: "user-bob" }),
     });
     const res = await worker.fetch(req, env as never);
     const { invitation } = (await res.json()) as { invitation: { id: string } };
 
     // Bob changes his email in database
-    sqlite.exec("UPDATE users SET email = 'bob-new@test.com' WHERE id = 'user-bob'");
+    sqlite.exec(
+      "UPDATE users SET email = 'bob-new@test.com' WHERE id = 'user-bob'",
+    );
 
     // Bob accepts
     const acceptReq = new Request(
@@ -310,7 +391,10 @@ describe("Personal Invitations API (Phase 2)", () => {
     );
     const acceptRes = await worker.fetch(acceptReq, env as never);
     expect(acceptRes.status).toBe(200);
-    const acceptBody = (await acceptRes.json()) as { status: string; directSpaceId: string };
+    const acceptBody = (await acceptRes.json()) as {
+      status: string;
+      directSpaceId: string;
+    };
     expect(acceptBody.status).toBe("accepted");
     expect(acceptBody.directSpaceId).toBeDefined();
   });
@@ -321,7 +405,10 @@ describe("Personal Invitations API (Phase 2)", () => {
     // Alice invites non-registered email eva@test.com
     const req = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ email: "eva@test.com" }),
     });
     const res = await worker.fetch(req, env as never);
@@ -340,7 +427,12 @@ describe("Personal Invitations API (Phase 2)", () => {
       ...env,
       TEST_AUTHENTICATION: async () => ({
         userId: "user-eva",
-        user: { id: "user-eva", email: "eva@test.com", displayName: "Eva User", status: "active" },
+        user: {
+          id: "user-eva",
+          email: "eva@test.com",
+          displayName: "Eva User",
+          status: "active",
+        },
         workspaceId: "",
         spaceRoles: {},
         sessionId: "sess-eva",
@@ -362,13 +454,18 @@ describe("Personal Invitations API (Phase 2)", () => {
     );
     const acceptRes = await worker.fetch(acceptReq, evaEnv as never);
     expect(acceptRes.status).toBe(200);
-    const acceptBody = (await acceptRes.json()) as { status: string; directSpaceId: string };
+    const acceptBody = (await acceptRes.json()) as {
+      status: string;
+      directSpaceId: string;
+    };
     expect(acceptBody.status).toBe("accepted");
     expect(acceptBody.directSpaceId).toBeDefined();
 
     // Connection exists in DB for (alice, eva)
     const conn = sqlite
-      .prepare("SELECT * FROM person_connections WHERE user_low_id = 'user-alice' AND user_high_id = 'user-eva'")
+      .prepare(
+        "SELECT * FROM person_connections WHERE user_low_id = 'user-alice' AND user_high_id = 'user-eva'",
+      )
       .get() as { status: string };
     expect(conn.status).toBe("connected");
   });
@@ -379,7 +476,10 @@ describe("Personal Invitations API (Phase 2)", () => {
     // Trying to invite inactive recipient returns 400
     const req1 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ email: "inactive@test.com" }),
     });
     const res1 = await worker.fetch(req1, env as never);
@@ -388,13 +488,20 @@ describe("Personal Invitations API (Phase 2)", () => {
     // Alice invites Bob, then Alice is deactivated before acceptance
     const req2 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ userId: "user-bob" }),
     });
     const res2 = await worker.fetch(req2, env as never);
-    const { invitation } = (await res2.json()) as { invitation: { id: string } };
+    const { invitation } = (await res2.json()) as {
+      invitation: { id: string };
+    };
 
-    sqlite.exec("UPDATE users SET status = 'deactivated' WHERE id = 'user-alice'");
+    sqlite.exec(
+      "UPDATE users SET status = 'deactivated' WHERE id = 'user-alice'",
+    );
 
     const acceptReq = new Request(
       `https://syntila.test/api/people/invitations/${invitation.id}/accept`,
@@ -418,7 +525,10 @@ describe("Personal Invitations API (Phase 2)", () => {
 
     const req = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
-      headers: { authorization: "Bearer alice", "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer alice",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ email: "target-overflow@test.com" }),
     });
     const res = await worker.fetch(req, env as never);

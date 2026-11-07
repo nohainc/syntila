@@ -246,14 +246,14 @@ void main() {
       expect(executor['shareable'], isFalse);
     });
 
-    test('session resume is "tested" only after a passing run', () async {
+    test('session resume is "declared_untested" for MCP plugins', () async {
       await enabled(capabilities: {'sessionResume': true});
       final item = (await runtime.inventoryFor(
         worker(),
         engineVersion: '1.4.0',
         lastSeenAt: 'x',
       ))!;
-      expect((item['executor'] as Map)['sessionResume'], 'tested');
+      expect((item['executor'] as Map)['sessionResume'], 'declared_untested');
     });
 
     test('an unknown plugin has no inventory entry', () async {

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 import {
   parseImplementationPhases,
@@ -92,7 +92,9 @@ Completion Criteria: Profile renders avatar and bio.
     const phases = parseImplementationPhases(plan);
     expect(phases).toHaveLength(2);
     expect(phases[0]?.title).toBe("Authentication Migration");
-    expect(phases[0]?.description).toBe("Migrate tokens from session store to JWT.");
+    expect(phases[0]?.description).toBe(
+      "Migrate tokens from session store to JWT.",
+    );
     expect(phases[0]?.criteria).toBe("Auth tests pass.");
     expect(phases[1]?.title).toBe("User Profile UI");
     expect(phases[1]?.description).toBe("Update frontend profile components.");
@@ -120,7 +122,12 @@ function fixture() {
     SYNTILA_DB: db,
     TEST_AUTHENTICATION: async (_req: Request) => ({
       userId: "owner",
-      user: { id: "owner", email: "owner@test", displayName: "OWNER", status: "active" },
+      user: {
+        id: "owner",
+        email: "owner@test",
+        displayName: "OWNER",
+        status: "active",
+      },
       workspaceId: "",
       spaceRoles: { S: "owner" },
       sessionId: "test",
@@ -146,16 +153,22 @@ describe("Implement workflow: plan approval and queue restrictions", () => {
         }),
       );
 
-    const req = new Request("https://syntila.test/api/threads/T/queue/trq-phase-1", {
-      method: "PUT",
-      headers: {
-        authorization: "Bearer test",
-        "content-type": "application/json",
+    const req = new Request(
+      "https://syntila.test/api/threads/T/queue/trq-phase-1",
+      {
+        method: "PUT",
+        headers: {
+          authorization: "Bearer test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          request: {
+            workflowId: "direct",
+            input: { originalRequest: "edited" },
+          },
+        }),
       },
-      body: JSON.stringify({
-        request: { workflowId: "direct", input: { originalRequest: "edited" } },
-      }),
-    });
+    );
 
     await expect(
       handleThreadRequestQueue(req, env, "T", "trq-phase-1", null),
@@ -189,10 +202,12 @@ describe("Implement workflow: plan approval and queue restrictions", () => {
 
     await expect(
       handleThreadRequestQueue(req, env, "T", "trq-phase-1", "send-now"),
-    ).rejects.toThrow(/Phased implementation steps execute in their planned sequence/);
+    ).rejects.toThrow(
+      /Phased implementation steps execute in their planned sequence/,
+    );
   });
 
-  it("allows removing (deleting) a phased queue item", async () => {
+  it("rejects removing a single phased item and removes all with stop-phases", async () => {
     const { sqlite, env } = fixture();
     sqlite
       .prepare(
@@ -204,17 +219,41 @@ describe("Implement workflow: plan approval and queue restrictions", () => {
           workflowId: "direct",
           isPhased: true,
           phaseIndex: 1,
+          planWorkRequestId: "wr-plan-1",
         }),
       );
 
-    const req = new Request("https://syntila.test/api/threads/T/queue/trq-phase-1", {
-      method: "DELETE",
-      headers: {
-        authorization: "Bearer test",
+    const deleteReq = new Request(
+      "https://syntila.test/api/threads/T/queue/trq-phase-1",
+      {
+        method: "DELETE",
+        headers: {
+          authorization: "Bearer test",
+        },
       },
-    });
+    );
 
-    const res = await handleThreadRequestQueue(req, env, "T", "trq-phase-1", null);
+    await expect(
+      handleThreadRequestQueue(deleteReq, env, "T", "trq-phase-1", null),
+    ).rejects.toMatchObject({ status: 400 });
+
+    const stopReq = new Request(
+      "https://syntila.test/api/threads/T/queue/trq-phase-1/stop-phases",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test",
+        },
+      },
+    );
+
+    const res = await handleThreadRequestQueue(
+      stopReq,
+      env,
+      "T",
+      "trq-phase-1",
+      "stop-phases",
+    );
     expect(res.status).toBe(200);
 
     const row = sqlite
@@ -258,27 +297,32 @@ phases:
       )
       .run(planJson);
 
-    const req = new Request("https://syntila.test/api/work-requests/wr-plan-1/approve-plan", {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test",
-        "content-type": "application/json",
+    const req = new Request(
+      "https://syntila.test/api/work-requests/wr-plan-1/approve-plan",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          verificationMode: "per_phase",
+        }),
       },
-      body: JSON.stringify({
-        verificationMode: "per_phase",
-      }),
-    });
+    );
 
     const response = await handleApprovePlan(req, env, "wr-plan-1");
     expect(response.status).toBe(200);
-    const body = (await response.json()) as any;
+    const body = (await response.json()) as Record<string, unknown>;
     expect(body.approved).toBe(true);
     expect(body.phasesCount).toBe(2);
     // 2 phases + 2 per-phase verifications = 4 items enqueued
     expect(body.enqueuedCount).toBe(4);
 
     const queuedRows = sqlite
-      .prepare("SELECT request_json, position FROM thread_request_queue WHERE thread_id = 'T' ORDER BY position")
+      .prepare(
+        "SELECT request_json, position FROM thread_request_queue WHERE thread_id = 'T' ORDER BY position",
+      )
       .all() as Array<{ request_json: string; position: number }>;
 
     expect(queuedRows).toHaveLength(4);
@@ -321,7 +365,11 @@ phases:
           stepOverrides: {
             plan: { worker: "worker-plan" },
             implement: { worker: "worker-impl", model: "model-impl" },
-            verify: { worker: "worker-ver", model: "model-ver", effort: "high" },
+            verify: {
+              worker: "worker-ver",
+              model: "model-ver",
+              effort: "high",
+            },
           },
         }),
       );
@@ -352,23 +400,28 @@ phases:
       .run(planJson);
 
     // Call approve plan with verificationMode='per_phase' and an override for implementer model
-    const req = new Request("https://syntila.test/api/work-requests/wr-plan-2/approve-plan", {
-      method: "POST",
-      headers: {
-        authorization: "Bearer test",
-        "content-type": "application/json",
+    const req = new Request(
+      "https://syntila.test/api/work-requests/wr-plan-2/approve-plan",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          verificationMode: "per_phase",
+          implementer: { model: "model-override" },
+        }),
       },
-      body: JSON.stringify({
-        verificationMode: "per_phase",
-        implementer: { model: "model-override" },
-      }),
-    });
+    );
 
     const response = await handleApprovePlan(req, env, "wr-plan-2");
     expect(response.status).toBe(200);
 
     const queuedRows = sqlite
-      .prepare("SELECT request_json FROM thread_request_queue WHERE thread_id = 'T' ORDER BY position")
+      .prepare(
+        "SELECT request_json FROM thread_request_queue WHERE thread_id = 'T' ORDER BY position",
+      )
       .all() as Array<{ request_json: string }>;
 
     expect(queuedRows).toHaveLength(2);
@@ -433,7 +486,9 @@ describe("Implement workflow: phase completion and auto-pause", () => {
     );
 
     expect(result.paused).toBe(true);
-    expect(result.reason).toContain("Database credentials not specified in env");
+    expect(result.reason).toContain(
+      "Database credentials not specified in env",
+    );
 
     const wrRow = sqlite
       .prepare("SELECT status FROM work_requests WHERE id = 'wr-phase-1'")
@@ -442,11 +497,15 @@ describe("Implement workflow: phase completion and auto-pause", () => {
     expect(wrRow.status).not.toBe("waiting");
 
     const queueState = sqlite
-      .prepare("SELECT paused_reason, failure_message FROM thread_request_queue_state WHERE thread_id = 'T'")
+      .prepare(
+        "SELECT paused_reason, failure_message FROM thread_request_queue_state WHERE thread_id = 'T'",
+      )
       .get() as { paused_reason: string; failure_message: string };
     expect(queueState).toBeDefined();
     expect(queueState.paused_reason).toBe("failure");
-    expect(queueState.failure_message).toContain("Setup Database needs your input: Database credentials not specified");
+    expect(queueState.failure_message).toContain(
+      "Setup Database needs your input: Database credentials not specified",
+    );
   });
 
   it("pauses the queue and marks work request as failed when verification output has STATUS: FAILED", async () => {
@@ -500,10 +559,14 @@ describe("Implement workflow: phase completion and auto-pause", () => {
     expect(wrRow.status).toBe("failed");
 
     const queueState = sqlite
-      .prepare("SELECT paused_reason, failure_message FROM thread_request_queue_state WHERE thread_id = 'T'")
+      .prepare(
+        "SELECT paused_reason, failure_message FROM thread_request_queue_state WHERE thread_id = 'T'",
+      )
       .get() as { paused_reason: string; failure_message: string };
     expect(queueState).toBeDefined();
-    expect(queueState.failure_message).toContain("Verify Database failed: 2 unit tests failed");
+    expect(queueState.failure_message).toContain(
+      "Verify Database failed: 2 unit tests failed",
+    );
   });
 
   it("does not pause the queue when a phase completes with STATUS: COMPLETED", async () => {
@@ -555,7 +618,7 @@ describe("Implement workflow: hardening", () => {
       "```yaml:phases",
       "phases:",
       "  - id: 1",
-      '    title: "Add \'cache\' layer"',
+      "    title: \"Add 'cache' layer\"",
       "    description: Wrap the loader",
       "      and keep the API stable",
       "    files:",
@@ -569,11 +632,14 @@ describe("Implement workflow: hardening", () => {
     ].join("\n");
     const phases = parseImplementationPhases(plan);
     expect(phases).toHaveLength(2);
-    expect(phases[0]!.description).toBe("Wrap the loader and keep the API stable");
+    expect(phases[0]!.description).toBe(
+      "Wrap the loader and keep the API stable",
+    );
     expect(phases[0]!.files).toEqual(["src/a.ts", "src/b.ts"]);
     expect(phases[1]!.title).toBe("Second");
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function seedPlan(sqlite: any, workflowId = "plan_implement") {
     sqlite
       .prepare(
@@ -593,7 +659,10 @@ describe("Implement workflow: hardening", () => {
     handleApprovePlan(
       new Request("https://syntila.test/api/work-requests/wr-h/approve-plan", {
         method: "POST",
-        headers: { authorization: "Bearer test", "content-type": "application/json" },
+        headers: {
+          authorization: "Bearer test",
+          "content-type": "application/json",
+        },
         body: JSON.stringify(body),
       }),
       env,
@@ -607,28 +676,51 @@ describe("Implement workflow: hardening", () => {
 
     const b = fixture();
     await seedPlan(b.sqlite);
-    await expect(approve(b.env, { verificationMode: "bogus" })).rejects.toMatchObject({ status: 400 });
-    await expect(approve(b.env, { customPhases: [{ title: 1 }] })).rejects.toMatchObject({ status: 400 });
-    expect((await approve(b.env, { verificationMode: "none" })).status).toBe(200);
-    await expect(approve(b.env, { verificationMode: "none" })).rejects.toMatchObject({ status: 409 });
+    await expect(
+      approve(b.env, { verificationMode: "bogus" }),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      approve(b.env, { customPhases: [{ title: 1 }] }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect((await approve(b.env, { verificationMode: "none" })).status).toBe(
+      200,
+    );
+    await expect(
+      approve(b.env, { verificationMode: "none" }),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("pauses when a phase or verification reports no status marker", async () => {
-    for (const [isVerification, kind] of [[false, "implement"], [true, "verify"]] as const) {
+    for (const [isVerification, kind] of [
+      [false, "implement"],
+      [true, "verify"],
+    ] as const) {
       const { sqlite, env } = fixture();
       sqlite
         .prepare(
           `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
            VALUES('wr-x','T','owner','stateless','direct',2,'{}','{}','completed',?,'now','now')`,
         )
-        .run(JSON.stringify({ isPhased: true, phaseIndex: 1, phaseTitle: "P", isVerification }));
+        .run(
+          JSON.stringify({
+            isPhased: true,
+            phaseIndex: 1,
+            phaseTitle: "P",
+            isVerification,
+          }),
+        );
       sqlite
         .prepare(
           `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
            VALUES('task-x','wr-x',?,'stateless_read',60000,'x','completed',?,'now','now')`,
         )
         .run(kind, JSON.stringify({ text: "done, no marker" }));
-      const result = await evaluatePhaseCompletionAndAdvanceQueue(env, "T", "wr-x", "work_request.completed");
+      const result = await evaluatePhaseCompletionAndAdvanceQueue(
+        env,
+        "T",
+        "wr-x",
+        "work_request.completed",
+      );
       expect(result.paused).toBe(true);
     }
   });
@@ -639,16 +731,39 @@ describe("Implement workflow: hardening", () => {
       `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
        VALUES(?,'T','owner','stateless','direct',2,'{}','{}','completed',?,'now','now')`,
     );
-    ins.run("wr-impl", JSON.stringify({ isPhased: true, planWorkRequestId: "wr-plan", phaseIndex: 1, isVerification: false }));
-    ins.run("wr-ver", JSON.stringify({ isPhased: true, planWorkRequestId: "wr-plan", phaseIndex: 1, isVerification: true }));
+    ins.run(
+      "wr-impl",
+      JSON.stringify({
+        isPhased: true,
+        planWorkRequestId: "wr-plan",
+        phaseIndex: 1,
+        isVerification: false,
+      }),
+    );
+    ins.run(
+      "wr-ver",
+      JSON.stringify({
+        isPhased: true,
+        planWorkRequestId: "wr-plan",
+        phaseIndex: 1,
+        isVerification: true,
+      }),
+    );
     sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
          VALUES('task-ver','wr-ver','verify','stateless_read',60000,'x','completed',?,'now','now')`,
       )
       .run(JSON.stringify({ text: "STATUS: FAILED\nREASON: broken" }));
-    await evaluatePhaseCompletionAndAdvanceQueue(env, "T", "wr-ver", "work_request.completed");
-    const row = sqlite.prepare("SELECT status FROM work_requests WHERE id='wr-impl'").get() as { status: string };
+    await evaluatePhaseCompletionAndAdvanceQueue(
+      env,
+      "T",
+      "wr-ver",
+      "work_request.completed",
+    );
+    const row = sqlite
+      .prepare("SELECT status FROM work_requests WHERE id='wr-impl'")
+      .get() as { status: string };
     expect(row.status).toBe("failed");
   });
 });

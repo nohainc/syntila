@@ -1655,4 +1655,3 @@ export async function handleAccountDeletionCleanup(
     .bind(userId)
     .run();
 }
-

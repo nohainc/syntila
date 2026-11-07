@@ -150,8 +150,7 @@ class WorkflowSource extends AxFixtureDataSource
       workflow('chat', 'Chat'),
       workflow('direct', 'Direct'),
       workflow('direct', 'Work', version: 2, steps: ['implement']),
-      workflow('plan_implement', 'Implement',
-          version: 2, steps: ['plan']),
+      workflow('plan_implement', 'Implement', version: 2, steps: ['plan']),
       workflow('research', 'Research',
           version: 2, steps: ['research', 'synthesis']),
     ];
@@ -351,8 +350,7 @@ void main() {
                     configurations: root.forWorkspace(workspaceId)))));
     await tester.pumpWidget(page('ws'));
     await tester.pumpAndSettle();
-    await tester
-        .tap(find.byKey(const ValueKey('open-workflow-research')));
+    await tester.tap(find.byKey(const ValueKey('open-workflow-research')));
     await tester.pumpAndSettle();
     // Only this Workspace's Workers can be chosen.
     await tester.tap(find.byKey(const ValueKey('workflow-step-research-1')));
@@ -365,8 +363,7 @@ void main() {
 
     await tester.pumpWidget(page('other'));
     await tester.pumpAndSettle();
-    await tester
-        .tap(find.byKey(const ValueKey('open-workflow-research')));
+    await tester.tap(find.byKey(const ValueKey('open-workflow-research')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('workflow-step-research-1')));
     await tester.pumpAndSettle();
@@ -621,8 +618,7 @@ void main() {
     expect(find.text('Clear'), findsOneWidget);
     expect(find.text('High'), findsOneWidget);
     expect(find.text('2 steps'), findsOneWidget);
-    await tester
-        .tap(find.byKey(const ValueKey('open-workflow-research')));
+    await tester.tap(find.byKey(const ValueKey('open-workflow-research')));
     await tester.pumpAndSettle();
     expect(
         find.descendant(
@@ -634,8 +630,7 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(source.reads, 1);
-    await tester
-        .tap(find.byKey(const ValueKey('open-workflow-research')));
+    await tester.tap(find.byKey(const ValueKey('open-workflow-research')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();

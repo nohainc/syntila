@@ -892,17 +892,21 @@ describe("tool call admission (chat:v2)", () => {
       `INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('other','o@test','O','now','now');
        INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('theirs','other','T','now','now');`,
     );
-    await expect(post(f, "toolcall-operation-00002", {
-      workflowId: "chat",
-      input: { originalRequest: "x", toolCall: toolCall("theirs") },
-    })).rejects.toMatchObject({ status: 403 });
+    await expect(
+      post(f, "toolcall-operation-00002", {
+        workflowId: "chat",
+        input: { originalRequest: "x", toolCall: toolCall("theirs") },
+      }),
+    ).rejects.toMatchObject({ status: 403 });
   });
 
   it("refuses a tool call outside Chat", async () => {
     const f = fixture();
-    await expect(post(f, "toolcall-operation-00003", {
-      workflowId: "direct",
-      input: { originalRequest: "x", toolCall: toolCall() },
-    })).rejects.toMatchObject({ status: 400 });
+    await expect(
+      post(f, "toolcall-operation-00003", {
+        workflowId: "direct",
+        input: { originalRequest: "x", toolCall: toolCall() },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });

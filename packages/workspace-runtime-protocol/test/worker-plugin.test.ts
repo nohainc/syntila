@@ -118,5 +118,4 @@ describe("worker plugin manifest", () => {
     expect(PluginRefSchema.safeParse("chatgpt").success).toBe(false);
     expect(PluginRefSchema.safeParse("plugin-xyz").success).toBe(false);
   });
-
 });

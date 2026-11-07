@@ -366,7 +366,6 @@ class WorkspacePluginService {
     };
   }
 
-
   /// MCP Workers have no NDJSON conformance suite. This checks only that the
   /// server, run by the Engine, advertises the Syntila Worker profile and
   /// provides the required tools, and pins their definitions for consent.

@@ -290,11 +290,7 @@ export async function createWorkRequestForUser(
     (body.input as Record<string, unknown>).toolCall !== undefined;
   if (toolCallRequested && workflowId !== "chat")
     throw new HttpError(400, "A tool call is available only in Chat");
-  if (
-    !toolCallRequested &&
-    body.workflowVersion === 2 &&
-    workflowId === "chat"
-  )
+  if (!toolCallRequested && body.workflowVersion === 2 && workflowId === "chat")
     throw new HttpError(400, "Chat version 2 requires input.toolCall");
   const canonicalWorkflow = toolCallRequested
     ? BUILTIN_WORKFLOW_CATALOG["chat:v2"]!

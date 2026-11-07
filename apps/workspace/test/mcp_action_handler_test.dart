@@ -22,7 +22,9 @@ class _FakeProbe implements McpProbePort {
         'description': 'Reads a file',
         'inputSchema': {
           'type': 'object',
-          'properties': {'path': {'type': 'string'}},
+          'properties': {
+            'path': {'type': 'string'}
+          },
         },
       },
     ];
@@ -40,7 +42,9 @@ class _FakeProbe implements McpProbePort {
         'description': 'Queries remote database',
         'inputSchema': {
           'type': 'object',
-          'properties': {'q': {'type': 'string'}},
+          'properties': {
+            'q': {'type': 'string'}
+          },
         },
       },
     ];

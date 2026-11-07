@@ -165,7 +165,11 @@ export async function handleListPeople(
         WHERE i.status='pending' AND i.expires_at>?2`,
       )
         .bind(context.userId, now)
-        .all<{ spaceId: string; email: string; inviteeUserId: string | null }>(),
+        .all<{
+          spaceId: string;
+          email: string;
+          inviteeUserId: string | null;
+        }>(),
     ]);
 
   const permissions = new Map(
@@ -194,82 +198,82 @@ export async function handleListPeople(
     pendingByEmail.set(row.email, ids);
   }
 
-  const peopleList: Person[] = rows.results.filter(
-    (person) => person.email.trim().toLowerCase() !== supportEmail,
-  ).map((person) => {
-    const membership = sharedByUser.get(person.userId) ?? new Set<string>();
-    const invitations = new Set([
-      ...(pendingByUser.get(person.userId) ?? []),
-      ...(pendingByEmail.get(person.email.trim().toLowerCase()) ?? []),
-    ]);
+  const peopleList: Person[] = rows.results
+    .filter((person) => person.email.trim().toLowerCase() !== supportEmail)
+    .map((person) => {
+      const membership = sharedByUser.get(person.userId) ?? new Set<string>();
+      const invitations = new Set([
+        ...(pendingByUser.get(person.userId) ?? []),
+        ...(pendingByEmail.get(person.email.trim().toLowerCase()) ?? []),
+      ]);
 
-    // Check personal invitations with this user
-    let connectionStatus: Person["connectionStatus"] = "collaborator";
-    let invitationId: string | null = null;
+      // Check personal invitations with this user
+      let connectionStatus: Person["connectionStatus"] = "collaborator";
+      let invitationId: string | null = null;
 
-    const matchingInv = personInvs.results.find(
-      (inv) =>
-        (inv.inviterUserId === person.userId &&
-          (inv.inviteeUserId === context.userId ||
-            inv.email === callerEmail)) ||
-        (inv.inviterUserId === context.userId &&
-          (inv.inviteeUserId === person.userId ||
-            inv.email === person.email.trim().toLowerCase())),
-    );
+      const matchingInv = personInvs.results.find(
+        (inv) =>
+          (inv.inviterUserId === person.userId &&
+            (inv.inviteeUserId === context.userId ||
+              inv.email === callerEmail)) ||
+          (inv.inviterUserId === context.userId &&
+            (inv.inviteeUserId === person.userId ||
+              inv.email === person.email.trim().toLowerCase())),
+      );
 
-    if (person.isBlocked === 1) {
-      connectionStatus = "blocked";
-    } else if (matchingInv) {
-      if (matchingInv.inviterUserId === context.userId) {
-        connectionStatus = "invitation_sent";
+      if (person.isBlocked === 1) {
+        connectionStatus = "blocked";
+      } else if (matchingInv) {
+        if (matchingInv.inviterUserId === context.userId) {
+          connectionStatus = "invitation_sent";
+        } else {
+          connectionStatus = "invitation_received";
+        }
+        invitationId = matchingInv.id;
+      } else if (person.rawConnectionStatus === "connected") {
+        connectionStatus = "connected";
+      } else if (person.rawConnectionStatus === "disconnected") {
+        connectionStatus = "disconnected";
       } else {
-        connectionStatus = "invitation_received";
+        connectionStatus = "collaborator";
       }
-      invitationId = matchingInv.id;
-    } else if (person.rawConnectionStatus === "connected") {
-      connectionStatus = "connected";
-    } else if (person.rawConnectionStatus === "disconnected") {
-      connectionStatus = "disconnected";
-    } else {
-      connectionStatus = "collaborator";
-    }
 
-    return {
-      userId: person.userId,
-      displayName: person.displayName,
-      email: person.email,
-      avatarUrl: avatarUrlFor(request, person.userId, person.avatarUrl),
-      establishedAt: person.establishedAt,
-      sharedSpaceCount: person.sharedSpaceCount,
-      connectionStatus,
-      directSpaceId: person.directSpaceId,
-      generalThreadId: person.generalThreadId,
-      invitationId,
-      pendingInvitationSpaceIds: [...invitations].filter((id) =>
-        spaces.results.some(
-          (space) => space.id === id && space.role === "owner",
+      return {
+        userId: person.userId,
+        displayName: person.displayName,
+        email: person.email,
+        avatarUrl: avatarUrlFor(request, person.userId, person.avatarUrl),
+        establishedAt: person.establishedAt,
+        sharedSpaceCount: person.sharedSpaceCount,
+        connectionStatus,
+        directSpaceId: person.directSpaceId,
+        generalThreadId: person.generalThreadId,
+        invitationId,
+        pendingInvitationSpaceIds: [...invitations].filter((id) =>
+          spaces.results.some(
+            (space) => space.id === id && space.role === "owner",
+          ),
         ),
-      ),
-      sharedSpaces: spaces.results
-        .filter((space) => space.kind === "group" && membership.has(space.id))
-        .map(({ id, name }): PeopleSpace => ({ id, name })),
-      invitableSpaces: spaces.results
-        .filter(
-          (space) =>
-            space.kind === "group" &&
-            space.role === "owner" &&
-            space.archived === 0 &&
-            !membership.has(space.id) &&
-            !invitations.has(space.id),
-        )
-        .map(({ id, name, role }): InvitablePeopleSpace => ({
-          id,
-          name,
-          permissions: permissions.get(id)!,
-          canInvite: role === "owner",
-        })),
-    };
-  });
+        sharedSpaces: spaces.results
+          .filter((space) => space.kind === "group" && membership.has(space.id))
+          .map(({ id, name }): PeopleSpace => ({ id, name })),
+        invitableSpaces: spaces.results
+          .filter(
+            (space) =>
+              space.kind === "group" &&
+              space.role === "owner" &&
+              space.archived === 0 &&
+              !membership.has(space.id) &&
+              !invitations.has(space.id),
+          )
+          .map(({ id, name, role }): InvitablePeopleSpace => ({
+            id,
+            name,
+            permissions: permissions.get(id)!,
+            canInvite: role === "owner",
+          })),
+      };
+    });
 
   // Append pending email invitations sent by caller to unknown accounts
   const knownEmails = new Set(rows.results.map((r) => r.email.toLowerCase()));
@@ -359,30 +363,34 @@ async function provisionDirectConnection(
     );
   }
 
-  if (invitationId) statements.push(
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO person_connections (user_low_id, user_high_id, status, established_at, direct_space_id)
+  if (invitationId)
+    statements.push(
+      env.SYNTILA_DB.prepare(
+        `INSERT INTO person_connections (user_low_id, user_high_id, status, established_at, direct_space_id)
        VALUES (?1, ?2, 'connected', ?3, ?4)
        ON CONFLICT(user_low_id, user_high_id) DO UPDATE SET
          status = 'connected', established_at = ?3, disconnected_at = NULL, direct_space_id = ?4`,
-    ).bind(userLowId, userHighId, now, directSpaceId),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO people_relationships (user_low_id, user_high_id, established_at)
+      ).bind(userLowId, userHighId, now, directSpaceId),
+      env.SYNTILA_DB.prepare(
+        `INSERT INTO people_relationships (user_low_id, user_high_id, established_at)
        VALUES (?1, ?2, ?3) ON CONFLICT(user_low_id, user_high_id) DO NOTHING`,
-    ).bind(userLowId, userHighId, now),
-    env.SYNTILA_DB.prepare(
-      `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3`,
-    ).bind(recipientUserId, now, invitationId),
-    env.SYNTILA_DB.prepare(
-      `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2
+      ).bind(userLowId, userHighId, now),
+      env.SYNTILA_DB.prepare(
+        `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3`,
+      ).bind(recipientUserId, now, invitationId),
+      env.SYNTILA_DB.prepare(
+        `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2
        WHERE id <> ?3 AND status = 'pending'
          AND ((inviter_user_id = ?4 AND invitee_user_id = ?5) OR (inviter_user_id = ?5 AND invitee_user_id = ?4))`,
-    ).bind(recipientUserId, now, invitationId, userLowId, userHighId),
-  );
+      ).bind(recipientUserId, now, invitationId, userLowId, userHighId),
+    );
 
-  if (!invitationId) statements.push(env.SYNTILA_DB.prepare(
-    "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'",
-  ).bind(directSpaceId, userLowId, userHighId));
+  if (!invitationId)
+    statements.push(
+      env.SYNTILA_DB.prepare(
+        "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'",
+      ).bind(directSpaceId, userLowId, userHighId),
+    );
 
   try {
     if (isNewSpace) {
@@ -408,14 +416,18 @@ async function provisionDirectConnection(
       .first<{ space_id: string }>();
     if (rechecked) {
       directSpaceId = rechecked.space_id;
-      if (invitationId) await env.SYNTILA_DB.prepare(
-        "UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3",
-      )
-        .bind(recipientUserId, now, invitationId)
-        .run();
-      else await env.SYNTILA_DB.prepare(
-        "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'",
-      ).bind(directSpaceId, userLowId, userHighId).run();
+      if (invitationId)
+        await env.SYNTILA_DB.prepare(
+          "UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3",
+        )
+          .bind(recipientUserId, now, invitationId)
+          .run();
+      else
+        await env.SYNTILA_DB.prepare(
+          "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'",
+        )
+          .bind(directSpaceId, userLowId, userHighId)
+          .run();
     } else {
       throw error;
     }
@@ -436,7 +448,10 @@ async function provisionDirectConnection(
 }
 
 export async function handleOpenPersonalSpace(
-  request: Request, env: SecurityEnv, peerId: string, ctx?: ExecutionContext,
+  request: Request,
+  env: SecurityEnv,
+  peerId: string,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   if (request.method !== "POST") throw new HttpError(405, "Method not allowed");
@@ -445,9 +460,16 @@ export async function handleOpenPersonalSpace(
   const connection = await env.SYNTILA_DB.prepare(
     `SELECT 1 FROM person_connections pc JOIN users u ON u.id = ?3 AND u.status = 'active'
      WHERE pc.user_low_id = ?1 AND pc.user_high_id = ?2 AND pc.status = 'connected'`,
-  ).bind(userLowId, userHighId, peerId).first();
+  )
+    .bind(userLowId, userHighId, peerId)
+    .first();
   if (!connection) throw new HttpError(403, "Person is not connected");
-  const result = await provisionDirectConnection(env, context.userId, peerId, null);
+  const result = await provisionDirectConnection(
+    env,
+    context.userId,
+    peerId,
+    null,
+  );
   return json({ spaceId: result.directSpaceId });
 }
 
@@ -466,13 +488,13 @@ export async function handleCreatePersonInvitation(
     `SELECT COUNT(*) AS count FROM person_invitations
      WHERE inviter_user_id = ?1 AND created_at >= ?2`,
   )
-    .bind(
-      context.userId,
-      new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    )
+    .bind(context.userId, new Date(Date.now() - 60 * 60 * 1000).toISOString())
     .first<{ count: number }>();
   if (Number(recent?.count ?? 0) >= PERSONAL_INVITATION_RATE_LIMIT_PER_HOUR) {
-    throw new HttpError(429, "Too many invitations sent. Please try again later.");
+    throw new HttpError(
+      429,
+      "Too many invitations sent. Please try again later.",
+    );
   }
 
   const body = (await request.json().catch(() => ({}))) as Record<
@@ -480,8 +502,7 @@ export async function handleCreatePersonInvitation(
     unknown
   >;
   const rawEmail = typeof body.email === "string" ? body.email.trim() : null;
-  const rawUserId =
-    typeof body.userId === "string" ? body.userId.trim() : null;
+  const rawUserId = typeof body.userId === "string" ? body.userId.trim() : null;
 
   if ((!rawEmail && !rawUserId) || (rawEmail && rawUserId)) {
     throw new HttpError(
@@ -640,26 +661,24 @@ export async function handleCreatePersonInvitation(
           context.userId,
           pendingInv.id,
         );
-        return json(
-          {
-            status: "connected",
-            directSpaceId: provisioned.directSpaceId,
-            invitation: {
-              id: pendingInv.id,
-              inviterUserId: pendingInv.inviter_user_id,
-              inviteeUserId: context.userId,
-              email: targetEmail,
-              status: "accepted",
-              createdAt: pendingInv.created_at,
-              expiresAt: pendingInv.expires_at,
-            },
-            connection: {
-              userLowId: provisioned.userLowId,
-              userHighId: provisioned.userHighId,
-              status: "connected",
-            },
+        return json({
+          status: "connected",
+          directSpaceId: provisioned.directSpaceId,
+          invitation: {
+            id: pendingInv.id,
+            inviterUserId: pendingInv.inviter_user_id,
+            inviteeUserId: context.userId,
+            email: targetEmail,
+            status: "accepted",
+            createdAt: pendingInv.created_at,
+            expiresAt: pendingInv.expires_at,
           },
-        );
+          connection: {
+            userLowId: provisioned.userLowId,
+            userHighId: provisioned.userHighId,
+            status: "connected",
+          },
+        });
       }
     }
   } else {
@@ -758,26 +777,24 @@ export async function handleCreatePersonInvitation(
             context.userId,
             racingInv.id,
           );
-          return json(
-            {
-              status: "connected",
-              directSpaceId: provisioned.directSpaceId,
-              invitation: {
-                id: racingInv.id,
-                inviterUserId: racingInv.inviter_user_id,
-                inviteeUserId: context.userId,
-                email: targetEmail,
-                status: "accepted",
-                createdAt: racingInv.created_at,
-                expiresAt: racingInv.expires_at,
-              },
-              connection: {
-                userLowId: provisioned.userLowId,
-                userHighId: provisioned.userHighId,
-                status: "connected",
-              },
+          return json({
+            status: "connected",
+            directSpaceId: provisioned.directSpaceId,
+            invitation: {
+              id: racingInv.id,
+              inviterUserId: racingInv.inviter_user_id,
+              inviteeUserId: context.userId,
+              email: targetEmail,
+              status: "accepted",
+              createdAt: racingInv.created_at,
+              expiresAt: racingInv.expires_at,
             },
-          );
+            connection: {
+              userLowId: provisioned.userLowId,
+              userHighId: provisioned.userHighId,
+              status: "connected",
+            },
+          });
         }
       }
 
@@ -1137,10 +1154,7 @@ export async function handleCancelPersonInvitation(
   }
 
   if (inv.inviter_user_id !== context.userId) {
-    throw new HttpError(
-      403,
-      "Only the inviter can cancel this invitation",
-    );
+    throw new HttpError(403, "Only the inviter can cancel this invitation");
   }
 
   if (inv.status === "cancelled") {
@@ -1295,8 +1309,6 @@ export async function handleUnblockPerson(
   return json({ status: "unblocked" });
 }
 
-
-
 /**
  * GET /api/people/support: the caller's support Space and sidebar visibility
  * without provisioning. POST /api/people/support gets or creates the Space.
@@ -1324,8 +1336,7 @@ export async function handleEnsureSupportSpace(
       hidden: row ? row.hidden === 1 : true,
     });
   }
-  if (request.method !== "POST")
-    throw new HttpError(405, "Method not allowed");
+  if (request.method !== "POST") throw new HttpError(405, "Method not allowed");
   try {
     const result = await ensureSupportSpace(env, context.userId);
     const state = await env.SYNTILA_DB.prepare(

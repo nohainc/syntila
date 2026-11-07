@@ -168,8 +168,7 @@ it("sends only the frozen Step selection as MCP server IDs, never one from the r
   const run = (
     binding: Record<string, unknown>,
     workerInput: Record<string, unknown>,
-  ) =>
-    prepareWorkerStepExecution({ ...base, binding, workerInput }).task.input;
+  ) => prepareWorkerStepExecution({ ...base, binding, workerInput }).task.input;
   expect(
     run({ workerId: "w", mcpTools: ["files"] }, { mcpServerIds: ["evil"] }),
   ).toMatchObject({ mcpServerIds: ["files"] });
@@ -178,7 +177,7 @@ it("sends only the frozen Step selection as MCP server IDs, never one from the r
     mcpServerIds: [],
   });
   // No selection: nothing is sent, and a smuggled value is dropped.
-  expect(
-    run({ workerId: "w" }, { mcpServerIds: ["evil"] }),
-  ).not.toHaveProperty("mcpServerIds");
+  expect(run({ workerId: "w" }, { mcpServerIds: ["evil"] })).not.toHaveProperty(
+    "mcpServerIds",
+  );
 });

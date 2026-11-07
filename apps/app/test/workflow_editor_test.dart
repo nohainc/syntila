@@ -64,7 +64,9 @@ AxUserWorkflowConfiguration configuration(
         {Map<String, AxWorkflowSelection> overrides = const {},
         AxWorkflowSelection defaults = defaultSelection}) =>
     AxUserWorkflowConfiguration(
-        workflowId: 'plan_implement', defaults: defaults, stepOverrides: overrides);
+        workflowId: 'plan_implement',
+        defaults: defaults,
+        stepOverrides: overrides);
 
 Finder picker(String scope, String label) => find.byWidgetPredicate((widget) =>
     widget is DropdownButtonFormField<String> &&

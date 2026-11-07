@@ -41,8 +41,18 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
                 settingsJson: JSON.stringify(settings),
                 kind,
               };
-            if (sql.includes("SELECT i.workspace_id AS workspaceId FROM workspace_worker_inventory"))
-              return inventory.find((worker) => worker.workerId === this.values[0] && worker.ownerUserId === this.values[1]) ?? null;
+            if (
+              sql.includes(
+                "SELECT i.workspace_id AS workspaceId FROM workspace_worker_inventory",
+              )
+            )
+              return (
+                inventory.find(
+                  (worker) =>
+                    worker.workerId === this.values[0] &&
+                    worker.ownerUserId === this.values[1],
+                ) ?? null
+              );
             if (sql.includes("FROM workspace_worker_inventory i\n       JOIN"))
               return (
                 inventory.find(
@@ -78,7 +88,10 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
       },
     },
   } as unknown as SecurityEnv;
-  const resolve = (workerId: string | undefined, workflow = BUILTIN_WORKFLOWS.chat) =>
+  const resolve = (
+    workerId: string | undefined,
+    workflow = BUILTIN_WORKFLOWS.chat,
+  ) =>
     resolveWorkflowExecutionBindings(
       env,
       "member",
@@ -136,12 +149,15 @@ it("requires an owned Worker in a personal Space", async () => {
   await expect(f.resolve("shared")).rejects.toMatchObject({ status: 403 });
   await expect(f.resolve("lent")).rejects.toMatchObject({ status: 403 });
   await expect(f.resolve(undefined)).rejects.toMatchObject({ status: 403 });
-  await expect(f.resolve("mine", BUILTIN_WORKFLOWS.direct)).rejects.toMatchObject({ status: 403 });
+  await expect(
+    f.resolve("mine", BUILTIN_WORKFLOWS.direct),
+  ).rejects.toMatchObject({ status: 403 });
   await expect(f.resolve("mine")).resolves.toBeDefined();
 });
 
 it("rejects non-Chat workflow admission in a personal Space", async () => {
   const f = fixture(null, "direct");
-  await expect(requireWorkflowPermission(f.env, "member", "space", "direct"))
-    .rejects.toMatchObject({ status: 403 });
+  await expect(
+    requireWorkflowPermission(f.env, "member", "space", "direct"),
+  ).rejects.toMatchObject({ status: 403 });
 });

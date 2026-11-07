@@ -17,7 +17,7 @@ class SettingsPage extends StatefulWidget {
     this.workspaces = const [],
     this.inventories,
     this.support,
-    this.knownWorkerTypes = const ['chatgpt', 'codex', 'claude'],
+    this.knownWorkerTypes = const ['chatgpt', 'claude', 'gemini'],
   });
 
   final ViewPreferences preferences;

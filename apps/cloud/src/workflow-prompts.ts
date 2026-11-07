@@ -175,10 +175,10 @@ export const PLAN_V2_INSTRUCTIONS = [
   "```yaml:phases",
   "phases:",
   "  - id: 1",
-  "    title: \"<Short title>\"",
-  "    description: \"<One-sentence description of the phase work>\"",
-  "    files: [\"<path/1>\", \"<path/2>\"]",
-  "    criteria: \"<Verification criteria for this phase>\"",
+  '    title: "<Short title>"',
+  '    description: "<One-sentence description of the phase work>"',
+  '    files: ["<path/1>", "<path/2>"]',
+  '    criteria: "<Verification criteria for this phase>"',
   "```",
 ].join("\n");
 

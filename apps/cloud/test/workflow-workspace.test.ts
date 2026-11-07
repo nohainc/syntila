@@ -76,7 +76,9 @@ it("attaches Workspaces only by explicit per-Space choice, never by inheritance"
     ).toEqual({ workspace_id: null });
     expect(
       sqlite
-        .prepare("SELECT COUNT(*) AS n FROM workspace_space_grants WHERE space_id=?")
+        .prepare(
+          "SELECT COUNT(*) AS n FROM workspace_space_grants WHERE space_id=?",
+        )
         .get(plain.space.id),
     ).toEqual({ n: 0 });
     const chosen = (await (

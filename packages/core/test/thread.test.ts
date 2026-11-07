@@ -100,15 +100,13 @@ describe("Thread domain", () => {
     ]);
     for (const definition of Object.values(BUILTIN_WORKFLOWS)) {
       if (definition.id !== "chat") {
-        expect(
-          definition.steps.map((step) => step.kind),
-        ).not.toContain("chat");
+        expect(definition.steps.map((step) => step.kind)).not.toContain("chat");
       }
     }
     expect(BUILTIN_WORKFLOWS.plan_implement.name).toBe("Implement");
-    expect(BUILTIN_WORKFLOWS.plan_implement.steps.map((step) => step.kind)).toEqual([
-      "plan",
-    ]);
+    expect(
+      BUILTIN_WORKFLOWS.plan_implement.steps.map((step) => step.kind),
+    ).toEqual(["plan"]);
   });
   it("requires a Space owner or collaborator as the lead", () => {
     expect(() => validateThread(thread, memberships)).not.toThrow();
@@ -175,7 +173,9 @@ describe("Thread domain", () => {
     // In a Direct Space, each participant can only manage threads they created.
     const owner = memberships[0]!;
     expect(canManageThread(owner.userId, owner, thread, "direct")).toBe(false);
-    expect(canManageThread(collaborator.userId, collaborator, thread, "direct")).toBe(true);
+    expect(
+      canManageThread(collaborator.userId, collaborator, thread, "direct"),
+    ).toBe(true);
   });
 
   it("requires a Primary Workspace for stateful Work Requests", () => {

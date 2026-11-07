@@ -68,9 +68,7 @@ void main() {
         onToggleSpaceExpanded: (_) {},
         onCreateSpace: () {},
       ))));
-      expect(
-          find.text('YOUR SPACES'),
-          findsOneWidget);
+      expect(find.text('YOUR SPACES'), findsOneWidget);
       expect(find.text('SHARED WITH YOU'),
           spaces.contains(shared) ? findsOneWidget : findsNothing);
       if (spaces.length == 2) {
@@ -108,8 +106,7 @@ void main() {
     });
   }
 
-  testWidgets(
-      'direct spaces render under PEOPLE group after owned and shared',
+  testWidgets('direct spaces render under PEOPLE group after owned and shared',
       (tester) async {
     final context = const AxShellContext(
       navigation: AxNavigation.home(),
@@ -194,8 +191,7 @@ void main() {
     expect(find.text('Delete Space'), findsOneWidget);
   });
 
-  testWidgets(
-      'personal threads appear in RECENT section with peer name',
+  testWidgets('personal threads appear in RECENT section with peer name',
       (tester) async {
     const generalThread = AxThread(
       id: 'gen-1',

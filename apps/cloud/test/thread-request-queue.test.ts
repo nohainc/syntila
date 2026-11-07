@@ -251,7 +251,9 @@ it("sends a reply to a plan paused for input before its remaining phases", async
   expect(queue.paused).toBe(true);
   expect(queue.items.map((i) => i.id)).toEqual(["phase-2"]);
   expect(
-    sqlite.prepare("SELECT status FROM work_requests WHERE id = 'phase-1'").get(),
+    sqlite
+      .prepare("SELECT status FROM work_requests WHERE id = 'phase-1'")
+      .get(),
   ).toEqual({ status: "waiting" });
 
   // While the reply processes, a further request waits ahead of phase 2.

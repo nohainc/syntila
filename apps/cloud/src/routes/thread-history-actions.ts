@@ -54,10 +54,7 @@ export async function requireDestructiveThreadAccess(
     return;
   }
 
-  if (
-    row.owner !== userId &&
-    (row.creator !== userId || row.contributed !== 0)
-  )
+  if (row.owner !== userId && (row.creator !== userId || row.contributed !== 0))
     throw new HttpError(
       403,
       "Only the Space owner or a creator without other people's contributions may clear or delete this Thread",

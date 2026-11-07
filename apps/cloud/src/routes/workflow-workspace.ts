@@ -27,7 +27,9 @@ export async function loadWorkflowWorkspace(
   // A Space uses only its own choice; it never inherits the account's
   // Workspace (attaching a Workspace lets Work run on that machine).
   return {
-    workspaceId: spaceId ? (space?.workspaceId ?? null) : (global?.workspaceId ?? null),
+    workspaceId: spaceId
+      ? (space?.workspaceId ?? null)
+      : (global?.workspaceId ?? null),
     inherited: false,
   };
 }
@@ -196,19 +198,39 @@ export async function handleWorkflowWorkspace(
   let ownerUserId = context.userId;
   if (spaceId) {
     const space = await env.SYNTILA_DB.prepare(
-      "SELECT s.owner_user_id AS ownerUserId FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ?1 AND m.user_id = ?2",
+      "SELECT s.owner_user_id AS ownerUserId, COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ?1 AND m.user_id = ?2",
     )
       .bind(spaceId, context.userId)
-      .first<{ ownerUserId: string }>();
+      .first<{ ownerUserId: string; kind: string }>();
     if (!space) throw new HttpError(403, "Space membership required");
-    ownerUserId = space.ownerUserId;
-    if (request.method !== "GET" && ownerUserId !== context.userId)
-      throw new HttpError(
-        403,
-        "Only the Space owner can select its workflow Workspace",
-      );
+    if (space.kind === "direct") {
+      if (request.method !== "GET") {
+        throw new HttpError(
+          403,
+          "Direct Spaces do not support Space-level Workspace attachments; use personal Workspaces or Person Grants",
+        );
+      }
+      ownerUserId = context.userId;
+    } else {
+      ownerUserId = space.ownerUserId;
+      if (request.method !== "GET" && ownerUserId !== context.userId)
+        throw new HttpError(
+          403,
+          "Only the Space owner can select its workflow Workspace",
+        );
+    }
   }
-  const current = await loadWorkflowWorkspace(env, ownerUserId, spaceId);
+  const current =
+    spaceId &&
+    (
+      await env.SYNTILA_DB.prepare(
+        "SELECT COALESCE(kind, 'group') AS kind FROM spaces WHERE id = ?1",
+      )
+        .bind(spaceId)
+        .first<{ kind: string }>()
+    )?.kind === "direct"
+      ? await loadWorkflowWorkspace(env, ownerUserId)
+      : await loadWorkflowWorkspace(env, ownerUserId, spaceId);
   const owned = await env.SYNTILA_DB.prepare(
     "SELECT id, name FROM execution_workspaces WHERE owner_user_id = ?1 AND status != 'revoked' ORDER BY name, id",
   )
@@ -288,12 +310,12 @@ export async function handleWorkflowWorkspace(
   const statements: D1PreparedStatement[] = [];
   if (spaceId) {
     statements.push(
-        db
-          .prepare(
-            "INSERT INTO space_workflow_settings(space_id,workspace_id,updated_at) VALUES(?1,?2,?3) ON CONFLICT(space_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at",
-          )
-          .bind(spaceId, selected, now),
-      );
+      db
+        .prepare(
+          "INSERT INTO space_workflow_settings(space_id,workspace_id,updated_at) VALUES(?1,?2,?3) ON CONFLICT(space_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at",
+        )
+        .bind(spaceId, selected, now),
+    );
     statements.push(
       db
         .prepare(

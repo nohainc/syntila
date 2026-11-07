@@ -235,7 +235,6 @@ void main() {
     expect('$out', contains('remote https://mcp.acme.example/mcp'));
   });
 
-
   test('tool-call-status sends taskId and renders status and outcome',
       () async {
     final code = await run(

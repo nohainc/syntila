@@ -73,7 +73,9 @@ export function normalizeUserPair(
   if (a === b) {
     throw new DomainInvariantError("Cannot pair a user with themselves");
   }
-  return a < b ? { userLowId: a, userHighId: b } : { userLowId: b, userHighId: a };
+  return a < b
+    ? { userLowId: a, userHighId: b }
+    : { userLowId: b, userHighId: a };
 }
 
 /** Direct Space identity referencing a dedicated one-to-one Space. */
@@ -92,7 +94,8 @@ export const PERSON_INVITATION_STATUSES = [
   "cancelled",
   "expired",
 ] as const;
-export type PersonInvitationStatus = (typeof PERSON_INVITATION_STATUSES)[number];
+export type PersonInvitationStatus =
+  (typeof PERSON_INVITATION_STATUSES)[number];
 
 export interface PersonInvitation {
   readonly id: string;
@@ -110,7 +113,8 @@ export const PERSON_CONNECTION_STATUSES = [
   "connected",
   "disconnected",
 ] as const;
-export type PersonConnectionStatus = (typeof PERSON_CONNECTION_STATUSES)[number];
+export type PersonConnectionStatus =
+  (typeof PERSON_CONNECTION_STATUSES)[number];
 
 export interface PersonConnection {
   readonly userLowId: string;
@@ -129,4 +133,3 @@ export interface DirectSpaceUserState {
   readonly createdAt: string;
   readonly updatedAt: string;
 }
-

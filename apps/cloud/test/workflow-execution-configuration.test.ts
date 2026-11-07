@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   BUILTIN_WORKFLOWS,
-  BUILTIN_WORKFLOW_CATALOG,
   configuredWorkflowDefinition,
   type BuiltinWorkflowDefinition,
 } from "@syntila/core";

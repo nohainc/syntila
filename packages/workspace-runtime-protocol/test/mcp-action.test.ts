@@ -122,8 +122,8 @@ describe("mcp-action protocol", () => {
         serverId: "fetch",
       },
     };
-    expect(workspaceRuntimeEnvelopeSchema.safeParse(validEnvelope).success).toBe(
-      true,
-    );
+    expect(
+      workspaceRuntimeEnvelopeSchema.safeParse(validEnvelope).success,
+    ).toBe(true);
   });
 });

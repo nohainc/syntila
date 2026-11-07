@@ -467,6 +467,13 @@ export async function handleUpdateSpace(
   ) {
     throw new HttpError(400, "Space ownership cannot be transferred");
   }
+  if (
+    existing.kind === "direct" &&
+    body.name !== undefined &&
+    body.name !== existing.name
+  ) {
+    throw new HttpError(400, "Direct Space name cannot be modified");
+  }
   // A personal Space is named after the other person, so the name is fixed.
   if (existing.kind === "direct") delete body.name;
 
@@ -536,7 +543,9 @@ export async function handleUpdateSpace(
           context.userId,
         ),
         instructions:
-          typeof settings.instructions === "string" ? settings.instructions : "",
+          typeof settings.instructions === "string"
+            ? settings.instructions
+            : "",
         settings,
         archived: targetHidden,
         createdAt: existing.createdAt,

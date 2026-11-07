@@ -83,7 +83,10 @@ export async function ensureSupportSpace(
   if (!support)
     throw new SupportSpaceError(503, "Support account is unavailable");
   if (support.id === userId)
-    throw new SupportSpaceError(409, "The support account has no support Space");
+    throw new SupportSpaceError(
+      409,
+      "The support account has no support Space",
+    );
 
   const blocked = await env.SYNTILA_DB.prepare(
     `SELECT 1 FROM user_blocks

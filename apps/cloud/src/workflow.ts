@@ -1,4 +1,3 @@
-import { advanceThreadQueueSafely } from "./routes/thread-request-queue.js";
 import { evaluatePhaseCompletionAndAdvanceQueue } from "./routes/implement-plan.js";
 import type { SecurityEnv } from "./routes/http-security.js";
 import {

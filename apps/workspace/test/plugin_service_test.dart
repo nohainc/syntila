@@ -89,7 +89,12 @@ void main() {
     await service.import(writePluginPackage(temp));
     await expectCode(
         service.register('acme-reviewer'), 'plugin_conformance_required');
-    conformance.passes = false;
+    harness.mcpInspect.tools = [
+      {
+        'name': 'syntila.execute',
+        'inputSchema': {'type': 'object'}
+      },
+    ];
     final failed = await service.test('acme-reviewer');
     expect(failed['passed'], isFalse);
     await expectCode(

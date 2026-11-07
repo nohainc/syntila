@@ -27,8 +27,7 @@ Future<void> expectIpcCode(Future<Object?> future, String code) => expectLater(
 void main() {
   setUp(() {
     temp = Directory.systemTemp.createTempSync('plugin-cli-ipc-test');
-    harness =
-        TestPluginService(temp, mcpInspect: const FakePluginMcpInspect());
+    harness = TestPluginService(temp, mcpInspect: FakePluginMcpInspect());
     events.clear();
     commands = WorkspacePluginCommands(harness.service, publish: events.add);
   });

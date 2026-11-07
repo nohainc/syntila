@@ -30,7 +30,9 @@ it("keeps definitions separate, requires an explicit Worker and overlays steps w
     effort: "high",
   });
   expect(resolveUserWorkflowConfiguration(definition).enabled).toBe(true);
-  expect(resolveUserWorkflowConfiguration(definition).steps.synthesis).toEqual({});
+  expect(resolveUserWorkflowConfiguration(definition).steps.synthesis).toEqual(
+    {},
+  );
 });
 it("normalizes Model/Effort Auto and rejects Worker Auto plus invalid identities", () => {
   expect(
@@ -132,8 +134,16 @@ it("supports independent role configuration for plan, implement, and verify in I
     enabled: true,
     defaults: { worker: "planner-worker", model: "deep-think", effort: "high" },
     stepOverrides: {
-      implement: { worker: "coder-worker", model: "fast-code", effort: "medium" },
-      verify: { worker: "auditor-worker", model: "strict-auditor", effort: "high" },
+      implement: {
+        worker: "coder-worker",
+        model: "fast-code",
+        effort: "medium",
+      },
+      verify: {
+        worker: "auditor-worker",
+        model: "strict-auditor",
+        effort: "high",
+      },
     },
   });
   const effective = resolveUserWorkflowConfiguration(implementDef, parsed);

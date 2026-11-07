@@ -26,10 +26,19 @@ export const McpActionRequestSchema = z
     serverId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
     displayName: z.string().min(1).max(80).optional(),
     endpoint: z.string().url().max(2048).optional(),
-    tokenEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/).optional(),
+    tokenEnv: z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/)
+      .optional(),
     insecureLoopback: z.boolean().optional(),
-    workerTypeId: z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/).optional(),
-    acceptHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+    workerTypeId: z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]{0,63}$/)
+      .optional(),
+    acceptHash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
   })
   .strict();
 

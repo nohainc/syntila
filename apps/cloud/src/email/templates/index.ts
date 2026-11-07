@@ -589,7 +589,9 @@ function urlForTemplate<TId extends EmailTemplateId>(
     case "space.invitation.v1":
       return [["invitationUrl", (input as SpaceInvitationInput).invitationUrl]];
     case "person.invitation.v1":
-      return [["invitationUrl", (input as PersonInvitationInput).invitationUrl]];
+      return [
+        ["invitationUrl", (input as PersonInvitationInput).invitationUrl],
+      ];
     case "auth.welcome.v1":
       return [["appUrl", (input as WelcomeInput).appUrl]];
     case "auth.account-deleted.v1":

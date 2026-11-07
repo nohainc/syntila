@@ -23,7 +23,9 @@ import { createWorkRequestForUser } from "./work-creation.js";
  * `waiting` after its Workflow finished; it holds the remaining phases (the
  * queue pause), but not the requests people send in reply.
  */
-const processingWork = (alias: string) => `(${alias}.status IN ('queued', 'running')
+const processingWork = (
+  alias: string,
+) => `(${alias}.status IN ('queued', 'running')
   OR (${alias}.status = 'waiting' AND (
     EXISTS (SELECT 1 FROM workflow_tasks pt WHERE pt.work_request_id = ${alias}.id
              AND pt.status IN ('queued', 'running', 'waiting'))
@@ -243,7 +245,8 @@ export async function advanceThreadQueue(
       threadId,
       "failure",
       null,
-      pauseMessage ?? "A request failed. Resume the queue to send the next request.",
+      pauseMessage ??
+        "A request failed. Resume the queue to send the next request.",
     );
     await publishQueueUpdated(env, threadId);
     return;

@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 import { normalizeUserPair } from "@syntila/core";
@@ -177,13 +176,17 @@ describe("Direct Spaces and Personal Connections Schema (Phase 1)", () => {
       `);
 
       const connection = sqlite
-        .prepare("SELECT * FROM person_connections WHERE user_low_id = 'u1' AND user_high_id = 'u2'")
+        .prepare(
+          "SELECT * FROM person_connections WHERE user_low_id = 'u1' AND user_high_id = 'u2'",
+        )
         .get() as { status: string; direct_space_id: string };
       expect(connection.status).toBe("connected");
       expect(connection.direct_space_id).toBe("ds1");
 
       const u2State = sqlite
-        .prepare("SELECT hidden FROM direct_space_user_state WHERE space_id = 'ds1' AND user_id = 'u2'")
+        .prepare(
+          "SELECT hidden FROM direct_space_user_state WHERE space_id = 'ds1' AND user_id = 'u2'",
+        )
         .get() as { hidden: number };
       expect(u2State.hidden).toBe(1);
 

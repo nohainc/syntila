@@ -91,13 +91,21 @@ describe("POST /api/workspaces/:id/mcp-action", () => {
 
   it("refuses callers who do not own the Workspace with 404", async () => {
     await expect(
-      postAction("other", "ws-owner", { actionId: "1", action: "enable", serverId: "srv" }),
+      postAction("other", "ws-owner", {
+        actionId: "1",
+        action: "enable",
+        serverId: "srv",
+      }),
     ).rejects.toMatchObject({ status: 404 });
   });
 
   it("refuses revoked Workspaces with 404", async () => {
     await expect(
-      postAction("owner", "ws-gone", { actionId: "1", action: "enable", serverId: "srv" }),
+      postAction("owner", "ws-gone", {
+        actionId: "1",
+        action: "enable",
+        serverId: "srv",
+      }),
     ).rejects.toMatchObject({ status: 404 });
   });
 

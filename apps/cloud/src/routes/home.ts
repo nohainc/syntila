@@ -64,7 +64,9 @@ export async function handleGetHomeReadModel(
     name: p.kind === "direct" && p.peerDisplayName ? p.peerDisplayName : p.name,
   }));
   const authorizedSpaceIds = authorizedSpaces.map((p) => p.id);
-  const authorizedSpaceMap = new Map(authorizedSpaces.map((p) => [p.id, p.name]));
+  const authorizedSpaceMap = new Map(
+    authorizedSpaces.map((p) => [p.id, p.name]),
+  );
 
   // 2. Pending Invitations for this user
   const invitationsRows = await env.SYNTILA_DB.prepare(

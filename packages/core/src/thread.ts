@@ -507,7 +507,11 @@ const DIRECT_V1 = builtin("direct", "Direct", "Implement the requested work.", [
  * Upon user approval and verification configuration, phases execute via the
  * Thread Request Queue.
  */
-export const IMPLEMENT_WORKFLOW_ROLES = ["plan", "implement", "verify"] as const;
+export const IMPLEMENT_WORKFLOW_ROLES = [
+  "plan",
+  "implement",
+  "verify",
+] as const;
 export type ImplementWorkflowRole = (typeof IMPLEMENT_WORKFLOW_ROLES)[number];
 
 export function implementWorkflowV2(): BuiltinWorkflowDefinition {
