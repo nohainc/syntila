@@ -23,9 +23,9 @@ Future<void> main(List<String> arguments) async {
   }
   await evidence.create(recursive: true);
   final executable = options['executable'] ?? 'codex';
-  final profile =
-      jsonDecode(await File(requiredOption('profile-file')).readAsString())
-          as Map<String, dynamic>;
+  final profile = jsonDecode(
+    await File(requiredOption('profile-file')).readAsString(),
+  ) as Map<String, dynamic>;
   final policy = options['sandbox-policy'] ?? 'restricted';
   final context = <String, String>{
     'workingDirectory': workDirectory.path,
@@ -154,9 +154,8 @@ Future<void> main(List<String> arguments) async {
     summary['exitCode'] = await process.exitCode;
     await Future.wait([inputTask, outputTask, errorTask]);
     if (finalResponse != null) {
-      await File(
-        '${evidence.path}/last-agent-message.txt',
-      ).writeAsString(finalResponse!);
+      await File('${evidence.path}/last-agent-message.txt')
+          .writeAsString(finalResponse!);
       if (eventCounts.containsKey('turn.completed')) {
         await finalFile.writeAsString(finalResponse!);
       }

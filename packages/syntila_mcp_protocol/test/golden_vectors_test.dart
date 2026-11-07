@@ -8,8 +8,7 @@ const _vectorDirectory = '../../docs/specifications/mcp-vectors';
 String replay(String name) {
   final file = File('$_vectorDirectory/$name.transcript');
   if (!file.existsSync()) throw StateError('Vector not found: $name');
-  final lines =
-      file.readAsLinesSync().where((line) => line.trim().isNotEmpty);
+  final lines = file.readAsLinesSync().where((line) => line.trim().isNotEmpty);
 
   final pendingRequests = <Object>{};
   final completedRequests = <Object>{};

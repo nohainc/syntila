@@ -22,8 +22,7 @@ void main() {
 
         final freshDir = Directory('${root.path}/syntila-mcp-fresh')
           ..createSync();
-        final otherDir = Directory('${root.path}/other-stale')
-          ..createSync();
+        final otherDir = Directory('${root.path}/other-stale')..createSync();
         final staleFile = File('${root.path}/syntila-mcp-file')
           ..writeAsStringSync('not a directory');
 

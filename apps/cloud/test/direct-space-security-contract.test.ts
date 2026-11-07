@@ -85,9 +85,7 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
 
   async function establishDirectSpace(
     env: unknown,
-    sqlite?: {
-      prepare: (sql: string) => { run: (...args: unknown[]) => unknown };
-    },
+    sqlite?: ReturnType<typeof sqliteD1>["sqlite"],
   ) {
     const inviteRes = await worker.fetch(
       new Request("https://syntila.test/api/people/invitations", {
