@@ -139,6 +139,8 @@ export const requiredProductionSmokeColumns = Object.freeze({
     "created_at",
     "updated_at",
     "parallel_slots",
+    "space_ai_chat",
+    "space_ai_work",
   ],
   workspace_installations: [
     "installation_id",
@@ -364,7 +366,10 @@ export const requiredProductionSmokeTableDefinitions = Object.freeze(
         ) {
           const evolutionPaths =
             tableName === "execution_workspaces"
-              ? ["0070_workspace_parallel_slots.sql"]
+              ? [
+                  "0070_workspace_parallel_slots.sql",
+                  "0112_workspace_space_ai_sharing.sql",
+                ]
               : ["0079_ai_history_cutoff.sql"];
           const columns = evolutionPaths.flatMap((path) => {
             const evolution = readFileSync(

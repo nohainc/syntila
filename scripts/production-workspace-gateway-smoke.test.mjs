@@ -69,6 +69,7 @@ describe("production Workspace Gateway smoke schema gate", () => {
       "0095_desktop_session_device.sql",
       "0099_workflow_step_instances.sql",
       "0104_mcp_tool_dispatch_fence.sql",
+      "0112_workspace_space_ai_sharing.sql",
     ]) {
       database.exec(
         readFileSync(
@@ -271,6 +272,15 @@ describe("production Workspace Gateway smoke schema gate", () => {
       slotsMigration.match(
         /ALTER TABLE execution_workspaces ADD COLUMN[^;]+;/,
       )[0],
+    );
+    database.exec(
+      readFileSync(
+        new URL(
+          "../apps/cloud/migrations-v8/0112_workspace_space_ai_sharing.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
     );
     database.exec(
       readFileSync(
