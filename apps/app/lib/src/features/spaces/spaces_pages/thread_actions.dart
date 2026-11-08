@@ -62,6 +62,7 @@ extension _ThreadActions on _ThreadPageState {
       _workAttachments = [];
       _replyTarget = null;
     });
+    _composerInputHeight.resetManual();
     _requestController.clear();
     // While a request is processing, or earlier messages are still waiting,
     // the message waits its turn; [_dispatchQueuedWork] sends it later.
@@ -1154,6 +1155,7 @@ extension _ThreadActions on _ThreadPageState {
       _discussionAttachments = [];
       _replyTarget = null;
     });
+    _composerInputHeight.resetManual();
     _discussionController.clear();
     final cache = _discussionCache;
     final id = widget.thread.id;

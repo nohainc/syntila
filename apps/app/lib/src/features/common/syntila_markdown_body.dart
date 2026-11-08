@@ -240,10 +240,12 @@ class SyntilaMarkdownBody extends StatelessWidget {
     this.fitContent = false,
     this.preserveBlankLines = false,
     this.onSelectionChanged,
+    this.showTableZoom = true,
   });
 
   final String data;
   final bool fitContent;
+  final bool showTableZoom;
 
   /// Notes opt in to visible blank lines without changing saved Markdown or
   /// whitespace rendering in conversation messages.
@@ -382,10 +384,10 @@ class SyntilaMarkdownBody extends StatelessWidget {
 
   /// Conversation messages: gpt_markdown sized to content, one per message so
   /// the thread's list virtualizes messages while each body caches segments.
-  Widget _buildGpt(BuildContext context) {
+  Widget _buildGpt(BuildContext context, {String? tableSource}) {
     final theme = Theme.of(context);
-    final data =
-        preserveBlankLines ? visibleBlankLinesMarkdown(this.data) : this.data;
+    final data = tableSource ??
+        (preserveBlankLines ? visibleBlankLinesMarkdown(this.data) : this.data);
     // gpt_markdown's image hook receives only the URL; recover the alt text.
     final imageAlts = {
       for (final m
@@ -400,6 +402,30 @@ class SyntilaMarkdownBody extends StatelessWidget {
       // Authored content is Markdown only; raw HTML stays literal text.
       html: false,
       isStreaming: false,
+      blockComponents: showTableZoom && tableSource == null
+          ? _tableComponents(
+              data,
+              (context, source) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Zoom table',
+                        icon: const Icon(Icons.zoom_in, size: 18),
+                        onPressed: () => showDialog<void>(
+                          context: context,
+                          builder: (_) => _TableZoomDialog(
+                            data: source,
+                            openLink: openLink,
+                            onOpenFile: onOpenFile,
+                            onNavigateTo: onNavigateTo,
+                          ),
+                        ),
+                      ),
+                      _buildGpt(context, tableSource: source),
+                    ],
+                  ))
+          : null,
       onLinkTap: (url, _) => unawaited(_openLink(context, url)),
       // Fence bodies keep their trailing newline so copy matches the source.
       codeBuilder: (_, language, code, __) => SyntilaCodeBlock(
@@ -435,6 +461,185 @@ class SyntilaMarkdownBody extends StatelessWidget {
     );
     if (fitContent) return body;
     return SizedBox(width: double.infinity, child: body);
+  }
+}
+
+// Custom blocks retain the original table source, so both the inline table and
+// the dialog use the normal Markdown renderer rather than plain-text cells.
+List<MarkdownBlockComponent> _tableComponents(
+    String source, Widget Function(BuildContext, String) buildTable) {
+  final definitions = MarkdownDefinitions.collect(source);
+  final prefixes = <String>{};
+  for (final line in source.split('\n')) {
+    var text = line.trimLeft();
+    while (text.startsWith('>')) {
+      text = text.substring(1).trimLeft();
+    }
+    text = text.replaceFirst(RegExp(r'^(?:[-+*]|\d+[.)])\s+'), '');
+    if (text.isNotEmpty) prefixes.add(String.fromCharCode(text.codeUnitAt(0)));
+  }
+  return [
+    for (final prefix in prefixes)
+      MarkdownBlockComponent(
+        syntax: _TableBlockSyntax(prefix),
+        builder: (context, node, _) {
+          final references = <String, MdLinkDefinition>{};
+          for (final match in RegExp(r'\[([^\]\n]+)\]').allMatches(node.body)) {
+            final label = match.group(1)!;
+            final definition = definitions.link(label);
+            if (definition != null) references[label] = definition;
+          }
+          final suffix = references.entries.map((entry) {
+            final url = entry.value.url.replaceAll('>', '%3E');
+            return '[${entry.key}]: <$url>';
+          }).join('\n');
+          return buildTable(
+              context, suffix.isEmpty ? node.body : '${node.body}\n\n$suffix');
+        },
+      ),
+  ];
+}
+
+class _TableBlockSyntax extends MarkdownBlockSyntax {
+  const _TableBlockSyntax(this.prefix);
+  @override
+  final String prefix;
+  @override
+  String get type => 'zoomable-table-${prefix.codeUnitAt(0)}';
+
+  @override
+  MarkdownBlockMatch? parse(List<String> lines, int startLine) {
+    if (startLine + 1 >= lines.length || !lines[startLine].contains('|')) {
+      return null;
+    }
+    final header = '${lines[startLine]}\n${lines[startLine + 1]}';
+    final nodes = Plusparse.parse(header).children;
+    if (nodes.length != 1 || nodes.single is! MdTable) return null;
+    var end = startLine + 2;
+    while (end < lines.length &&
+        lines[end].trim().isNotEmpty &&
+        lines[end].contains('|')) {
+      end++;
+    }
+    return MarkdownBlockMatch(
+      node: MdCustomBlock(
+        type: type,
+        body: lines.sublist(startLine, end).join('\n'),
+        closed: true,
+      ),
+      endLine: end,
+    );
+  }
+}
+
+class _TableZoomDialog extends StatefulWidget {
+  const _TableZoomDialog({
+    required this.data,
+    required this.openLink,
+    this.onOpenFile,
+    this.onNavigateTo,
+  });
+
+  final String data;
+  final Future<bool> Function(Uri) openLink;
+  final Future<bool> Function(ParsedCodeLink)? onOpenFile;
+  final ValueChanged<String>? onNavigateTo;
+
+  @override
+  State<_TableZoomDialog> createState() => _TableZoomDialogState();
+}
+
+class _TableZoomDialogState extends State<_TableZoomDialog> {
+  double _scale = 1;
+  final _tableKey = GlobalKey();
+  Size? _tableSize;
+
+  void _measureTable() {
+    final root = _tableKey.currentContext;
+    if (root == null) return;
+    RenderBox? table;
+    void visit(Element element) {
+      if (table != null) return;
+      if (element.widget is Table) {
+        final render = element.renderObject;
+        if (render is RenderBox && render.hasSize) table = render;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    root.visitChildElements(visit);
+    final size = table?.size;
+    if (size != null && size != _tableSize && mounted) {
+      setState(() => _tableSize = size);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureTable());
+    final available = MediaQuery.sizeOf(context);
+    final maxWidth = (available.width - 48).clamp(0.0, double.infinity);
+    final maxHeight = (available.height - 48).clamp(0.0, double.infinity);
+    final width = ((_tableSize?.width ?? maxWidth) + 32)
+        .clamp(maxWidth < 280 ? maxWidth : 280.0, maxWidth);
+    // Header, divider, content padding and the horizontal scrollbar strip.
+    final height = ((_tableSize?.height ?? maxHeight) + 89)
+        .clamp(maxHeight < 100 ? maxHeight : 100.0, maxHeight);
+    return Dialog(
+      constraints: const BoxConstraints(),
+      insetPadding: const EdgeInsets.all(24),
+      child: SizedBox(
+        key: const ValueKey('table-zoom-content'),
+        width: width,
+        height: height,
+        child: Column(children: [
+          Row(children: [
+            const SizedBox(width: 16),
+            const Expanded(
+                child: Text('Zoom table',
+                    maxLines: 1, overflow: TextOverflow.ellipsis)),
+            IconButton(
+              tooltip: 'Zoom out',
+              onPressed:
+                  _scale <= .5 ? null : () => setState(() => _scale -= .25),
+              icon: const Icon(Icons.remove),
+            ),
+            Text('${(_scale * 100).round()}%'),
+            IconButton(
+              tooltip: 'Zoom in',
+              onPressed:
+                  _scale >= 2 ? null : () => setState(() => _scale += .25),
+              icon: const Icon(Icons.add),
+            ),
+            IconButton(
+              tooltip: 'Close',
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close),
+            ),
+          ]),
+          const Divider(height: 1),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(_scale),
+                ),
+                child: SyntilaMarkdownBody(
+                  key: _tableKey,
+                  data: widget.data,
+                  openLink: widget.openLink,
+                  onOpenFile: widget.onOpenFile,
+                  onNavigateTo: widget.onNavigateTo,
+                  showTableZoom: false,
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 }
 

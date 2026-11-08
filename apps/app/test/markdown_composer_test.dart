@@ -493,6 +493,41 @@ void main() {
     expectAnchoredBottom();
   });
 
+  testWidgets('Thread grip resizes the input and reset restores its height',
+      (tester) async {
+    final controller = TextEditingController();
+    final height = ComposerInputHeight();
+    addTearDown(controller.dispose);
+    addTearDown(height.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+          body: SizedBox(
+              width: 600,
+              child: StatefulBuilder(
+                builder: (context, rebuild) => MarkdownComposer(
+                  controller: controller,
+                  chatStyle: true,
+                  twoRowLayout: true,
+                  inputHeight: height,
+                  onSend: () => rebuild(() {
+                    height.resetManual();
+                    controller.clear();
+                  }),
+                ),
+              ))),
+    ));
+    await tester.pumpAndSettle();
+    final initial = tester.getSize(find.byType(TextField)).height;
+    await tester.drag(find.byKey(const ValueKey('composer-resize-grip')),
+        const Offset(0, -100));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(TextField)).height, greaterThan(initial));
+    await tester.enterText(find.byType(TextField), 'Hello');
+    await tester.tap(find.byKey(const ValueKey('composer-send-Send message')));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(TextField)).height, initial);
+  });
+
   testWidgets(
       'shared Thread input height survives mode switches without hover hints',
       (tester) async {

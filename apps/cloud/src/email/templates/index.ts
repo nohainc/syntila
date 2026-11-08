@@ -116,7 +116,7 @@ function validityText(minutes: number): string {
 }
 
 function validityHtml(minutes: number): string {
-  return `<p style="margin:20px 0 0;color:#435066;font-size:15px;line-height:24px;">${escapeHtml(validityText(minutes))}</p>`;
+  return `<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">${escapeHtml(validityText(minutes))}</p>`;
 }
 
 function renderVerifyEmail(input: VerifyEmailInput): RenderedEmailContent {
@@ -175,7 +175,7 @@ function renderVerifyEmailCode(
       intro: emailChange
         ? `Hi ${recipientName}. Enter the one-time verification code below to confirm changing the email address on your Syntila account.`
         : `Welcome to Syntila, ${recipientName}. Enter the one-time verification code below to finish creating your account.`,
-      bodyHtml: `<div style="margin:24px 0 8px;padding:18px 24px;background:#f4f1ff;border:1px solid #dcd5ff;border-radius:10px;text-align:center;font-family:Courier,monospace;font-size:32px;font-weight:700;letter-spacing:8px;color:#172033;">${escapeHtml(verificationCode)}</div><p style="margin:16px 0 0;color:#435066;font-size:15px;line-height:24px;">${escapeHtml(codeValidityText)}</p>`,
+      bodyHtml: `<div style="margin:24px 0 8px;padding:18px 24px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:10px;text-align:center;font-family:Courier,monospace;font-size:32px;font-weight:700;letter-spacing:8px;color:#17181a;">${escapeHtml(verificationCode)}</div><p style="margin:16px 0 0;color:#434547;font-size:15px;line-height:24px;">${escapeHtml(codeValidityText)}</p>`,
       bodyText: `Enter the one-time verification code below to ${emailChange ? "confirm your email change" : "finish creating your account"}:\n\n${verificationCode}\n\n${codeValidityText}`,
       securityNotice:
         "If you did not request a Syntila verification code, you can safely ignore this email.",
@@ -228,7 +228,7 @@ function renderPasswordChanged(
       title: "Password changed",
       intro: `Hi ${recipientName}, your Syntila password was changed${detail}.`,
       bodyHtml:
-        '<p style="margin:20px 0 0;color:#435066;font-size:15px;line-height:24px;">If you did not make this change, secure your account immediately by signing in and changing your password again.</p>',
+        '<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">If you did not make this change, secure your account immediately by signing in and changing your password again.</p>',
       bodyText: `Your Syntila password was changed${changedAt ? ` at ${changedAt}` : ""}. If you did not make this change, secure your account immediately.`,
       securityNotice: "This is an account-security notification.",
     }),
@@ -282,7 +282,7 @@ function renderEmailChanged(input: EmailChangedInput): RenderedEmailContent {
       title: "Email address changed",
       intro: `Hi ${recipientName}, your Syntila email address is now ${newEmail}${detail}.`,
       bodyHtml:
-        '<p style="margin:20px 0 0;color:#435066;font-size:15px;line-height:24px;">If you did not make this change, secure your account immediately.</p>',
+        '<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">If you did not make this change, secure your account immediately.</p>',
       bodyText: `Your Syntila email address is now ${newEmail}${changedAt ? ` at ${changedAt}` : ""}. If you did not make this change, secure your account immediately.`,
       securityNotice: "This is an account-security notification.",
     }),
@@ -309,7 +309,7 @@ function renderInvitation(input: SpaceInvitationInput): RenderedEmailContent {
       eyebrow: "Space invitation",
       title: "You have been invited to a Space",
       intro: `<strong>${inviterName}</strong> invited you to join <strong>${spaceName}</strong> as a <strong>${role}</strong>.`,
-      bodyHtml: `<p style="margin:20px 0 0;color:#435066;font-size:15px;line-height:24px;">Sign in with <strong>${recipientEmail}</strong> to accept the invitation.</p>`,
+      bodyHtml: `<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">Sign in with <strong>${recipientEmail}</strong> to accept the invitation.</p>`,
       bodyText: `${inviterNameValue} invited you to join "${spaceNameValue}" as a ${roleValue} on Syntila.\n\nSign in with ${input.recipientEmail.trim()} to accept.`,
       action: { label: "View invitation", url: invitationUrl },
       securityNotice:
@@ -367,7 +367,7 @@ function renderAccessRevoked(
       title: "Space access removed",
       intro: `Hi ${recipientName}, your access to <strong>${spaceName}</strong> has been removed.${reason ? ` Reason: <strong>${reason}</strong>` : ""}`,
       bodyHtml:
-        '<p style="margin:20px 0 0;color:#435066;font-size:15px;line-height:24px;">Contact the Space owner if you believe this happened by mistake.</p>',
+        '<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">Contact the Space owner if you believe this happened by mistake.</p>',
       bodyText: `Your access to "${spaceNameValue}" has been removed.${reasonValue ? ` Reason: ${reasonValue}` : ""}\n\nContact the Space owner if you believe this happened by mistake.`,
       securityNotice: "This is a Space membership notification.",
     }),
@@ -392,7 +392,7 @@ function renderPersonInvitation(
       eyebrow: "Personal invitation",
       title: "You have been invited to connect",
       intro: `<strong>${inviterName}</strong> invited you to connect on Syntila.`,
-      bodyHtml: `<p style="margin:20px 0 0;color:#435066;font-size:15px;line-height:24px;">Sign in with <strong>${recipientEmail}</strong> to accept the invitation and start a direct conversation.</p>`,
+      bodyHtml: `<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">Sign in with <strong>${recipientEmail}</strong> to accept the invitation and start a direct conversation.</p>`,
       bodyText: `${inviterNameValue} invited you to connect on Syntila.\n\nSign in with ${input.recipientEmail.trim()} to accept:\n${invitationUrl}`,
       action: { label: "View invitation", url: invitationUrl },
       securityNotice:
@@ -416,7 +416,7 @@ function renderWelcome(input: WelcomeInput): RenderedEmailContent {
       title: "Congratulations! Your account is ready",
       intro: `Congratulations, ${recipientName}! Your Syntila account has been created and your email address is verified.`,
       bodyHtml:
-        '<p style="margin:20px 0 0;color:#435066;font-size:15px;line-height:24px;">Your workspace for AI collaboration and execution is ready. Create or join a Space, connect a Workspace, and start your first conversation.</p>',
+        '<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">Your workspace for AI collaboration and execution is ready. Create or join a Space, connect a Workspace, and start your first conversation.</p>',
       bodyText:
         "Congratulations! Your Syntila account has been created and your email address is verified.\n\nYour workspace for AI collaboration and execution is ready. Create or join a Space, connect a Workspace, and start your first conversation.",
       action: { label: "Open Syntila", url: appUrl },
@@ -445,7 +445,7 @@ function renderAccountDeleted(
       title: "Account deleted",
       intro: `Hi ${recipientName}, your Syntila account was deleted${detail}.`,
       bodyHtml:
-        '<p style="margin:20px 0 0;color:#435066;font-size:15px;line-height:24px;">If you did not request this, contact Syntila support as soon as possible.</p>',
+        '<p style="margin:20px 0 0;color:#434547;font-size:15px;line-height:24px;">If you did not request this, contact Syntila support as soon as possible.</p>',
       bodyText: `Your Syntila account was deleted${deletedAt ? ` at ${deletedAt}` : ""}. If you did not request this, contact Syntila support as soon as possible.`,
       ...(appUrl ? { action: { label: "Open Syntila", url: appUrl } } : {}),
       securityNotice: "This is an account-security notification.",

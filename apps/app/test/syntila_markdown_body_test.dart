@@ -46,6 +46,97 @@ final status = 'ready';
 ''';
 
 void main() {
+  testWidgets('table zoom opens, changes scale and closes', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+          body: SyntilaMarkdownBody(
+              data:
+                  'Before paragraph\n\n| Name | State |\n| --- | --- |\n| Worker | Ready |\n\nBetween paragraph\n\n| Item | Value |\n| --- | --- |\n| Second | Other |')),
+    ));
+    expect(find.byTooltip('Zoom table'), findsNWidgets(2));
+    await tester.tap(find.byTooltip('Zoom table').last);
+    await tester.pumpAndSettle();
+    expect(find.text('100%'), findsOneWidget);
+    final dialog = find.byType(Dialog);
+    final rendered = tester.widget<SyntilaMarkdownBody>(find.descendant(
+        of: dialog, matching: find.byType(SyntilaMarkdownBody)));
+    expect(rendered.data, contains('Second'));
+    expect(rendered.data, isNot(contains('Worker')));
+    expect(rendered.data, isNot(contains('Before paragraph')));
+    final table = find.descendant(of: dialog, matching: find.byType(Table));
+    final beforeZoom = tester.getSize(table).height;
+    await tester.tap(find.byTooltip('Zoom in'));
+    await tester.pumpAndSettle();
+    expect(find.text('125%'), findsOneWidget);
+    expect(tester.getSize(table).height, greaterThan(beforeZoom));
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('125%'), findsNothing);
+  });
+
+  testWidgets('table dialog fits content and uses the desktop width',
+      (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    Future<Size> openTable(String data) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: Center(
+                    child: SizedBox(
+          width: 400,
+          child: SyntilaMarkdownBody(data: data),
+        )))),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Zoom table'));
+      await tester.pumpAndSettle();
+      return tester.getSize(find.byKey(const ValueKey('table-zoom-content')));
+    }
+
+    final small = await openTable('| A | B |\n| --- | --- |\n| 1 | 2 |');
+    expect(small.width, lessThan(500));
+    expect(small.height, lessThan(300));
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    final header =
+        List.generate(24, (i) => 'Long column number $i').join(' | ');
+    final separator = List.filled(24, '---').join(' | ');
+    final row = List.filled(24, 'Example value').join(' | ');
+    final wide = await openTable('| $header |\n| $separator |\n| $row |');
+    expect(wide.width, greaterThan(1000));
+    expect(wide.width, lessThanOrEqualTo(1552));
+    expect(wide.height, lessThan(300));
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    final rows = List.generate(80, (i) => '| Row $i | Value |').join('\n');
+    final tall = await openTable('| Name | Value |\n| --- | --- |\n$rows');
+    expect(tall.height, lessThanOrEqualTo(852));
+    expect(tall.height, greaterThan(700));
+    final dialog = find.byType(Dialog);
+    await tester.drag(
+        find
+            .descendant(
+                of: dialog, matching: find.byType(SingleChildScrollView))
+            .first,
+        const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('table-like text in a code fence has no zoom control',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+          body: SyntilaMarkdownBody(
+        data: '```\n| Name | Value |\n| --- | --- |\n| a | b |\n```',
+      )),
+    ));
+    expect(find.byTooltip('Zoom table'), findsNothing);
+  });
+
   test('note blank lines become display-only spacers outside code', () {
     String show(String s) => visibleBlankLinesMarkdown(s).replaceAll('​', 'Z');
     expect(show('Alpha\n\nBeta'), 'Alpha\n\nBeta');
@@ -423,7 +514,8 @@ void main() {
           ),
         ),
       ));
-      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      final renderer =
+          tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
       expect(renderer.html, isFalse);
       expect(find.byType(SelectionArea), findsOneWidget);
       expect(renderer.data, source);
@@ -455,7 +547,7 @@ void main() {
         ),
       ),
     ));
-    final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+    final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
     renderer.onLinkTap!('https://example.com/docs', 'Docs');
     expect(destination, 'https://example.com/docs');
 
@@ -511,7 +603,7 @@ void main() {
         ),
       ),
     ));
-    final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+    final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
     renderer.onLinkTap!('javascript:alert', 'Unsafe');
     await tester.pump();
     expect(launches, 0);
@@ -648,7 +740,8 @@ void main() {
           ),
         ),
       ));
-      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      final renderer =
+          tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
       renderer.onLinkTap!('#section', 'Anchor');
       await tester.pump();
       expect(launches, 0);
@@ -685,7 +778,8 @@ void main() {
         ),
       ));
 
-      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      final renderer =
+          tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
       renderer.onLinkTap!(
           'file:///Users/dev/Syntila/app.dart#L10-L20', 'Source');
       await tester.pump();
@@ -721,7 +815,8 @@ void main() {
         ),
       ));
 
-      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      final renderer =
+          tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
       renderer.onLinkTap!('apps/app/lib/main.dart:45', 'Main');
       await tester.pump();
 
@@ -744,7 +839,8 @@ void main() {
         ),
       ));
 
-      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      final renderer =
+          tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
       renderer.onLinkTap!('lib/src/foo.dart:25', 'File');
       await tester.pump();
 
@@ -767,7 +863,8 @@ void main() {
         ),
       ));
 
-      final renderer = tester.widget<GptMarkdown>(find.byType(GptMarkdown));
+      final renderer =
+          tester.widget<GptMarkdown>(find.byType(GptMarkdown).first);
       renderer.onLinkTap!('/spaces/space-123', 'Space');
       await tester.pump();
 

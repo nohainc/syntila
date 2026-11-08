@@ -100,8 +100,11 @@ lifetime in minutes and state it in the message. The current configuration is
 fractional, or negative lifetime rather than inventing one.
 
 The shared layout renders a dark Syntila header, the approved
-`syntila_email_logo.png` asset, product name, event title, optional action
-button, copy-and-paste fallback link, security notice, and branded footer. The
+`syntila_email_logo.png` asset with a versioned URL to refresh email image
+caches, product name, event title, optional action button, copy-and-paste
+fallback link, security notice, and branded footer. The layout uses the app’s
+Precision Indigo accent and neutral palette, with distinct status colors for
+confirmation and security notices. The
 logo is served from the deployed Syntila app asset path and has an accessible
 text/alt fallback; disabling images does not remove the product identity or
 instructions. The layout uses inline styles plus a narrow-screen media query,

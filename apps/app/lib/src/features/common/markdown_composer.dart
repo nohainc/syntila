@@ -705,6 +705,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
   @override
   Widget build(BuildContext context) {
     final isTouch = _isTouchPlatform(context);
+    final manualLines = widget.inputHeight?.manualLines;
     final inputContent = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -771,9 +772,13 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                 style: widget.chatStyle
                     ? SyntilaMessageTypography.fromTheme(Theme.of(context))
                     : null,
-                minLines:
-                    widget.chatStyle || widget.compact ? 1 : widget.minLines,
-                maxLines: widget.maxLines,
+                minLines: manualLines ??
+                    (widget.chatStyle || widget.compact ? 1 : widget.minLines),
+                maxLines: manualLines == null
+                    ? widget.maxLines
+                    : (manualLines > widget.maxLines
+                        ? manualLines
+                        : widget.maxLines),
                 decoration: InputDecoration(
                   labelText: widget.labelText,
                   hintText: widget.hintText,
@@ -985,6 +990,38 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                           ),
                         ]),
                       if (!widget.chatStyle && !_preview) _formattingToolbar(),
+                      if (widget.inputHeight != null)
+                        MouseRegion(
+                          cursor: SystemMouseCursors.resizeUpDown,
+                          child: GestureDetector(
+                            key: const ValueKey('composer-resize-grip'),
+                            behavior: HitTestBehavior.opaque,
+                            onVerticalDragUpdate: (details) => setState(() {
+                              widget.inputHeight!.resize(
+                                -details.delta.dy,
+                                maxHeight:
+                                    MediaQuery.sizeOf(context).height * .4,
+                              );
+                            }),
+                            child: Semantics(
+                              label: 'Resize input',
+                              child: Center(
+                                child: Container(
+                                  margin:
+                                      const EdgeInsets.symmetric(vertical: 5),
+                                  width: 36,
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .outlineVariant,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       if (widget.attachments != null)
                         Padding(
                             padding: const EdgeInsets.all(10),
@@ -1112,6 +1149,19 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
 class ComposerInputHeight extends ValueNotifier<double> {
   ComposerInputHeight() : super(0);
 
+  double? _manualHeight;
+  int? get manualLines => _manualHeight == null
+      ? null
+      : ((_manualHeight! - 20) / 21).round().clamp(1, 20);
+
+  void resize(double delta, {required double maxHeight}) {
+    final limit = maxHeight.clamp(41.0, 440.0);
+    _manualHeight = ((_manualHeight ?? value.clamp(41.0, limit)) + delta)
+        .clamp(41.0, limit);
+  }
+
+  void resetManual() => _manualHeight = null;
+
   final _heights = <TextEditingController, double>{};
   final _emptyHeights = <TextEditingController, double>{};
   final _listeners = <TextEditingController, VoidCallback>{};
@@ -1156,6 +1206,7 @@ class ComposerInputHeight extends ValueNotifier<double> {
   /// Forgets all measurements, e.g. when the Thread changes.
   void reset() {
     _heights.clear();
+    resetManual();
     value = 0;
   }
 
