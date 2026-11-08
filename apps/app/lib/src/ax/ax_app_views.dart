@@ -26,7 +26,11 @@ extension _AxAppViews on _AxAppStateMixin {
 
   Widget _homeView() => AxDeferredListenableBuilder(
       listenable:
-          Listenable.merge([store.homeChanges, store.workspaceInvitations]),
+          Listenable.merge([
+        store.homeChanges,
+        store.workspaceInvitations,
+        store.people.incomingInvitations,
+      ]),
       builder: (context, _) => _HomeThreadCollection(
           spaces: store.spaces.items,
           spaceThreads: store.spaceThreads,
@@ -129,6 +133,11 @@ extension _AxAppViews on _AxAppStateMixin {
                     onAcceptInvitation: _acceptInvitation,
                     onDeclineInvitation: _declineInvitation,
                     workspaceInvitations: store.workspaceInvitations.value,
+                    personInvitations: store.people.incomingInvitations.value,
+                    onAcceptPersonInvitation: (invite) =>
+                        unawaited(_acceptPersonInvitation(invite)),
+                    onDeclinePersonInvitation: (invite) =>
+                        unawaited(_declinePersonInvitation(invite)),
                     onAcceptWorkspaceInvitation: (invite) =>
                         unawaited(_acceptWorkspaceInvitation(invite)),
                     onDeclineWorkspaceInvitation: (invite) =>
@@ -393,6 +402,11 @@ extension _AxAppViews on _AxAppStateMixin {
                     sharingRefresh: store.workspaceInvitationRevision,
                     onSetParallelSlots: (workspace, slots) =>
                         store.workspaces.setParallelSlots(workspace.id, slots),
+                    onSpaceAiSharingChanged: (workspaceId,
+                            {bool? allowChat, bool? allowWork}) =>
+                        store.workspaces.setSpaceAiSharing(workspaceId,
+                            allowChat: allowChat ?? false,
+                            allowWork: allowWork ?? false),
                     workerUsageSource:
                         widget.dataSource is AxWorkerUsageDataSource
                             ? widget.dataSource as AxWorkerUsageDataSource

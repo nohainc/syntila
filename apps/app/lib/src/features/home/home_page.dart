@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../ax/ax_models.dart';
+import '../../ax/ax_people.dart';
 import '../../brand.dart';
 import '../../ax/worker_presentation.dart';
 import '../invitations/invitation_card.dart';
@@ -35,6 +36,9 @@ class HomePage extends StatelessWidget {
     this.workspaceInvitations = const [],
     this.onAcceptWorkspaceInvitation,
     this.onDeclineWorkspaceInvitation,
+    this.personInvitations = const [],
+    this.onAcceptPersonInvitation,
+    this.onDeclinePersonInvitation,
     this.onOpenThread,
     this.onOpenNotifications,
     this.onReadAttentionItem,
@@ -73,6 +77,9 @@ class HomePage extends StatelessWidget {
   final List<AxMyWorkspaceInvitation> workspaceInvitations;
   final ValueChanged<AxMyWorkspaceInvitation>? onAcceptWorkspaceInvitation;
   final ValueChanged<AxMyWorkspaceInvitation>? onDeclineWorkspaceInvitation;
+  final List<AxPerson> personInvitations;
+  final ValueChanged<AxPerson>? onAcceptPersonInvitation;
+  final ValueChanged<AxPerson>? onDeclinePersonInvitation;
   final void Function(String spaceId, String threadId)? onOpenThread;
   final VoidCallback? onOpenNotifications;
   final ValueChanged<String>? onReadAttentionItem;
@@ -113,6 +120,9 @@ class HomePage extends StatelessWidget {
           workspaceInvitations: workspaceInvitations,
           onAcceptWorkspaceInvitation: onAcceptWorkspaceInvitation,
           onDeclineWorkspaceInvitation: onDeclineWorkspaceInvitation,
+          personInvitations: personInvitations,
+          onAcceptPersonInvitation: onAcceptPersonInvitation,
+          onDeclinePersonInvitation: onDeclinePersonInvitation,
           run: run,
           openFindingCount: openFindingCount,
           onOpenWorkspaces: onOpenWorkspaces,
@@ -641,6 +651,9 @@ class EstablishedUserHome extends StatelessWidget {
     this.workspaceInvitations = const [],
     this.onAcceptWorkspaceInvitation,
     this.onDeclineWorkspaceInvitation,
+    this.personInvitations = const [],
+    this.onAcceptPersonInvitation,
+    this.onDeclinePersonInvitation,
     required this.run,
     required this.openFindingCount,
     required this.onOpenWorkspaces,
@@ -676,6 +689,9 @@ class EstablishedUserHome extends StatelessWidget {
   final List<AxMyWorkspaceInvitation> workspaceInvitations;
   final ValueChanged<AxMyWorkspaceInvitation>? onAcceptWorkspaceInvitation;
   final ValueChanged<AxMyWorkspaceInvitation>? onDeclineWorkspaceInvitation;
+  final List<AxPerson> personInvitations;
+  final ValueChanged<AxPerson>? onAcceptPersonInvitation;
+  final ValueChanged<AxPerson>? onDeclinePersonInvitation;
   final AxRun? run;
   final int openFindingCount;
   final VoidCallback onOpenWorkspaces;
@@ -784,7 +800,9 @@ class EstablishedUserHome extends StatelessWidget {
       effectiveAttentionItems = const [];
     }
     final hasAttentionItems =
-        effectiveAttentionItems.isNotEmpty || workspaceInvitations.isNotEmpty;
+        effectiveAttentionItems.isNotEmpty ||
+        workspaceInvitations.isNotEmpty ||
+        personInvitations.isNotEmpty;
     final authorizedSpaceIds = spaces.map((p) => p.id).toSet();
     final isRunAuthorized = run != null &&
         (run!.spaceId == null ||
@@ -879,6 +897,9 @@ class EstablishedUserHome extends StatelessWidget {
               workspaceInvitations: workspaceInvitations,
               onAcceptWorkspaceInvitation: onAcceptWorkspaceInvitation,
               onDeclineWorkspaceInvitation: onDeclineWorkspaceInvitation,
+              personInvitations: personInvitations,
+              onAcceptPersonInvitation: onAcceptPersonInvitation,
+              onDeclinePersonInvitation: onDeclinePersonInvitation,
               onOpenSpace: onOpenSpace,
               onOpenThread: onOpenThread,
               onOpenWorkspaces: onOpenWorkspaces,
@@ -1349,6 +1370,9 @@ class _ForYouSection extends StatelessWidget {
     this.workspaceInvitations = const [],
     this.onAcceptWorkspaceInvitation,
     this.onDeclineWorkspaceInvitation,
+    this.personInvitations = const [],
+    this.onAcceptPersonInvitation,
+    this.onDeclinePersonInvitation,
     ValueChanged<String>? onOpenSpace,
     this.onOpenThread,
     required this.onOpenWorkspaces,
@@ -1369,6 +1393,9 @@ class _ForYouSection extends StatelessWidget {
   final List<AxMyWorkspaceInvitation> workspaceInvitations;
   final ValueChanged<AxMyWorkspaceInvitation>? onAcceptWorkspaceInvitation;
   final ValueChanged<AxMyWorkspaceInvitation>? onDeclineWorkspaceInvitation;
+  final List<AxPerson> personInvitations;
+  final ValueChanged<AxPerson>? onAcceptPersonInvitation;
+  final ValueChanged<AxPerson>? onDeclinePersonInvitation;
   final ValueChanged<String> onOpenSpace;
   final void Function(String spaceId, String threadId)? onOpenThread;
   final VoidCallback onOpenWorkspaces;
@@ -1397,12 +1424,15 @@ class _ForYouSection extends StatelessWidget {
         invitations.where((invite) => invite.status == 'pending').toList();
     // Invitations are never truncated; other items fill the rest of the cap.
     final invitationCount =
-        pendingSpaceInvitations.length + workspaceInvitations.length;
+        pendingSpaceInvitations.length +
+            workspaceInvitations.length +
+            personInvitations.length;
     final items =
         eligibleItems.take((4 - invitationCount).clamp(0, 4)).toList();
     if (items.isEmpty &&
         pendingSpaceInvitations.isEmpty &&
-        workspaceInvitations.isEmpty) {
+        workspaceInvitations.isEmpty &&
+        personInvitations.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -1431,6 +1461,16 @@ class _ForYouSection extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         // Every pending invitation is always listed, with its own controls.
+        for (final invite in personInvitations)
+          AxInvitationCard(
+            key: ValueKey('home-person-invitation-${invite.invitationId}'),
+            icon: Icons.person_add_alt_outlined,
+            title: invite.displayName,
+            badge: 'CONNECTION',
+            invitedBy: invite.displayName,
+            onDecline: () => onDeclinePersonInvitation?.call(invite),
+            onAccept: () => onAcceptPersonInvitation?.call(invite),
+          ),
         for (final invite in workspaceInvitations)
           AxInvitationCard(
             key: ValueKey('home-workspace-invitation-${invite.id}'),

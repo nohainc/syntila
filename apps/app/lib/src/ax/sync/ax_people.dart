@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../ax_data.dart';
 import 'ax_sync_engine.dart';
 
@@ -7,15 +9,29 @@ class AxPeople {
   final AxDataSource source;
   final AxSyncEngine engine;
   static final key = AxQueryKey(['people']);
+
+  /// Connection invitations addressed to the viewer, updated by every People
+  /// load so the Inbox popup and Home share the one query.
+  final ValueNotifier<List<AxPerson>> incomingInvitations =
+      ValueNotifier(const []);
   late final query = AxQuery<List<AxPerson>>(
       key: key,
       staleTime: const Duration(minutes: 45),
-      load: () async =>
-          List.unmodifiable(await (source as AxPeopleDataSource).loadPeople()));
+      load: () async {
+        final people = List<AxPerson>.unmodifiable(
+            await (source as AxPeopleDataSource).loadPeople());
+        incomingInvitations.value = List.unmodifiable(people.where((person) =>
+            person.connectionStatus == 'invitation_received' &&
+            person.invitationId != null));
+        return people;
+      });
   Future<List<AxPerson>> ensure() =>
       engine.ensure(query, policy: AxCachePolicy.cacheFirst);
   Future<List<AxPerson>> refresh() => engine.refresh(query);
-  void clear() => engine.remove(key);
+  void clear() {
+    engine.remove(key);
+    incomingInvitations.value = const [];
+  }
 
   Future<void> sendInvitation({String? email, String? userId}) async {
     await (source as AxPeopleDataSource)

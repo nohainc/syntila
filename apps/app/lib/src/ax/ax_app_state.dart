@@ -444,6 +444,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
     store.spaces.addListener(_restoreSidebarExpansion);
     store.invitations.addListener(_onInvitationsChanged);
     store.workspaceInvitations.addListener(_onInvitationsChanged);
+    store.people.incomingInvitations.addListener(_onInvitationsChanged);
     _searchQueryController.addListener(_onSearchQueryChanged);
     browserNavigation = widget.browserNavigation ?? createAxBrowserNavigation();
     final initialUri = widget.initialUri ?? browserNavigation.current;
@@ -500,6 +501,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
     store.spaces.removeListener(_restoreSidebarExpansion);
     store.invitations.removeListener(_onInvitationsChanged);
     store.workspaceInvitations.removeListener(_onInvitationsChanged);
+    store.people.incomingInvitations.removeListener(_onInvitationsChanged);
     _searchQueryController.removeListener(_onSearchQueryChanged);
     _searchQueryController.dispose();
     _searchFocusNode.dispose();

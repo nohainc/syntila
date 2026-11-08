@@ -208,6 +208,7 @@ class AxStore {
         runs = RunStore(dataSource) {
     invitations.addListener(_updateUnreadNotifications);
     workspaceInvitations.addListener(_updateUnreadNotifications);
+    people.incomingInvitations.addListener(_updateUnreadNotifications);
   }
 
   /// Workspace invitations addressed to the signed-in person, surfaced in the
@@ -450,8 +451,15 @@ class AxStore {
   void _updateUnreadNotifications() {
     unreadNotifications.value = notifications.where((n) => !n.read).length +
         invitations.items.length +
-        workspaceInvitations.value.length;
+        workspaceInvitations.value.length +
+        people.incomingInvitations.value.length;
   }
+
+  Future<void> acceptPersonInvitation(AxPerson person) =>
+      people.acceptInvitation(person.invitationId!);
+
+  Future<void> declinePersonInvitation(AxPerson person) =>
+      people.declineInvitation(person.invitationId!);
 
   Future<void> acceptInvitation(AxSpaceInvitation invite) =>
       collaboration.acceptInvitation(invite);
@@ -465,6 +473,7 @@ class AxStore {
     profileSecurityChanges.dispose();
     invitations.removeListener(_updateUnreadNotifications);
     workspaceInvitations.removeListener(_updateUnreadNotifications);
+    people.incomingInvitations.removeListener(_updateUnreadNotifications);
     workspaceInvitations.dispose();
     workspaceInvitationRevision.dispose();
     invitations.dispose();
@@ -725,6 +734,20 @@ class WorkspaceStore extends ValueNotifier<List<AxWorkspace>> {
     replace(items
         .map((workspace) => workspace.id == workspaceId
             ? workspace.copyWith(parallelSlots: slots)
+            : workspace)
+        .toList());
+  }
+
+  Future<void> setSpaceAiSharing(
+    String workspaceId, {
+    required bool allowChat,
+    required bool allowWork,
+  }) async {
+    await source.setWorkspaceSpaceAiSharing(
+        workspaceId: workspaceId, allowChat: allowChat, allowWork: allowWork);
+    replace(items
+        .map((workspace) => workspace.id == workspaceId
+            ? workspace.copyWith(spaceAiChat: allowChat, spaceAiWork: allowWork)
             : workspace)
         .toList());
   }

@@ -691,6 +691,8 @@ extension _AxAppController on _AxAppStateMixin {
         for (final invite in store.invitations.value) 'space:${invite.id}',
         for (final invite in store.workspaceInvitations.value)
           'workspace:${invite.id}',
+        for (final invite in store.people.incomingInvitations.value)
+          'person:${invite.invitationId}',
       };
 
   /// Announces an invitation that arrived live in the Notification Center
@@ -720,6 +722,11 @@ extension _AxAppController on _AxAppStateMixin {
       if (known.contains('workspace:${invite.id}')) continue;
       announce('workspace:${invite.id}', 'workspace.invitation.received',
           '${invite.ownerName} invited you to use ${invite.workspaceName}');
+    }
+    for (final invite in store.people.incomingInvitations.value) {
+      if (known.contains('person:${invite.invitationId}')) continue;
+      announce('person:${invite.invitationId}', 'person.invitation.received',
+          '${invite.displayName} invited you to connect');
     }
   }
 
@@ -817,6 +824,30 @@ extension _AxAppController on _AxAppStateMixin {
     } catch (error) {
       if (mounted) {
         _showSnackBar('Failed to accept invitation: $error',
+            type: ToastType.error);
+      }
+    }
+  }
+
+  Future<void> _acceptPersonInvitation(AxPerson invite) async {
+    try {
+      await store.acceptPersonInvitation(invite);
+      if (mounted) _showSnackBar('Connected with ${invite.displayName}.');
+    } catch (error) {
+      if (mounted) {
+        _showSnackBar('Failed to accept invitation: $error',
+            type: ToastType.error);
+      }
+    }
+  }
+
+  Future<void> _declinePersonInvitation(AxPerson invite) async {
+    try {
+      await store.declinePersonInvitation(invite);
+      if (mounted) _showSnackBar('Invitation declined.');
+    } catch (error) {
+      if (mounted) {
+        _showSnackBar('Failed to decline invitation: $error',
             type: ToastType.error);
       }
     }
@@ -922,13 +953,18 @@ extension _AxAppController on _AxAppStateMixin {
     final isDesktop = SyntilaBrand.isDesktop(width);
     final sidebarWidth = _desktopSidebarCollapsed ? 50.0 : _desktopSidebarWidth;
     Widget buildInbox(BuildContext context) => ListenableBuilder(
-          listenable:
-              Listenable.merge([store.invitations, store.workspaceInvitations]),
+          listenable: Listenable.merge([
+            store.invitations,
+            store.workspaceInvitations,
+            store.people.incomingInvitations,
+          ]),
           builder: (context, _) {
             final pendingInvitations = store.invitations.items;
             final workspaceInvitations = store.workspaceInvitations.value;
+            final personInvitations = store.people.incomingInvitations.value;
             final isEmpty = pendingInvitations.isEmpty &&
                 workspaceInvitations.isEmpty &&
+                personInvitations.isEmpty &&
                 notifications.isEmpty;
             // Keep desktop notifications beside their sidebar entry point.
             return AlertDialog(
@@ -1002,7 +1038,8 @@ extension _AxAppController on _AxAppStateMixin {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (pendingInvitations.isNotEmpty ||
-                                workspaceInvitations.isNotEmpty) ...[
+                                workspaceInvitations.isNotEmpty ||
+                                personInvitations.isNotEmpty) ...[
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 8),
                                 child: Text(
@@ -1016,6 +1053,18 @@ extension _AxAppController on _AxAppStateMixin {
                                   ),
                                 ),
                               ),
+                              for (final invite in personInvitations)
+                                _invitationCard(
+                                  context,
+                                  icon: Icons.person_add_alt_outlined,
+                                  title: invite.displayName,
+                                  badge: 'CONNECTION',
+                                  invitedBy: invite.displayName,
+                                  onDecline: () => unawaited(
+                                      _declinePersonInvitation(invite)),
+                                  onAccept: () => unawaited(
+                                      _acceptPersonInvitation(invite)),
+                                ),
                               for (final invite in workspaceInvitations)
                                 _invitationCard(
                                   context,
@@ -1052,7 +1101,8 @@ extension _AxAppController on _AxAppStateMixin {
                             ],
                             if (notifications.isNotEmpty) ...[
                               if (pendingInvitations.isNotEmpty ||
-                                  workspaceInvitations.isNotEmpty)
+                                  workspaceInvitations.isNotEmpty ||
+                                  personInvitations.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
                                   child: Text(
