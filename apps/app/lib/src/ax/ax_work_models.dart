@@ -1204,6 +1204,14 @@ abstract interface class AxDataSource {
     required int slots,
   }) async =>
       throw UnimplementedError('Parallel slots are not available');
+
+  /// Sets the owner's Space AI availability (chat / work) for a Workspace.
+  Future<void> setWorkspaceSpaceAiSharing({
+    required String workspaceId,
+    required bool allowChat,
+    required bool allowWork,
+  }) async =>
+      throw UnimplementedError('Space AI sharing is not available');
   Future<List<AxWorkspaceMember>> loadWorkspaceMembers(
       {required String workspaceId});
   Future<List<AxWorkspaceInvitation>> loadWorkspaceInvitations(

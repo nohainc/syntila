@@ -31,6 +31,8 @@ export async function handleListWorkspaces(
             CASE WHEN owner_user_id = ?1
               THEN COALESCE(parallel_slots, ${DEFAULT_WORKSPACE_PARALLEL_SLOTS})
             END AS parallelSlots,
+            CASE WHEN owner_user_id = ?1 THEN space_ai_chat END AS spaceAiChat,
+            CASE WHEN owner_user_id = ?1 THEN space_ai_work END AS spaceAiWork,
             EXISTS (SELECT 1 FROM workspace_runtime_identities identity
                     WHERE identity.workspace_id = execution_workspaces.id
                       AND identity.revoked_at IS NULL) AS hasRuntimeIdentity,
@@ -155,8 +157,16 @@ export async function handleUpdateWorkspace(
   >;
   const hasName = body.name !== undefined;
   const hasSlots = body.parallelSlots !== undefined;
-  if (!hasName && !hasSlots)
-    throw new HttpError(400, "Provide a name or parallelSlots");
+  const hasChat = body.spaceAiChat !== undefined;
+  const hasWork = body.spaceAiWork !== undefined;
+  if (!hasName && !hasSlots && !hasChat && !hasWork)
+    throw new HttpError(400, "Provide a name, parallelSlots or Space AI option");
+  if (
+    (hasChat && typeof body.spaceAiChat !== "boolean") ||
+    (hasWork && typeof body.spaceAiWork !== "boolean")
+  ) {
+    throw new HttpError(400, "spaceAiChat and spaceAiWork must be booleans");
+  }
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (hasName && (name.length < 1 || name.length > 120)) {
     throw new HttpError(400, "Workspace name must be 1 to 120 characters");
@@ -190,6 +200,8 @@ export async function handleUpdateWorkspace(
     `UPDATE execution_workspaces
         SET name = CASE WHEN ?1 IS NULL THEN name ELSE ?1 END,
             parallel_slots = CASE WHEN ?5 IS NULL THEN parallel_slots ELSE ?5 END,
+            space_ai_chat = CASE WHEN ?6 IS NULL THEN space_ai_chat ELSE ?6 END,
+            space_ai_work = CASE WHEN ?7 IS NULL THEN space_ai_work ELSE ?7 END,
             updated_at = ?2
       WHERE id = ?3 AND owner_user_id = ?4 AND status <> 'revoked'`,
   )
@@ -199,6 +211,8 @@ export async function handleUpdateWorkspace(
       workspaceId,
       context.userId,
       hasSlots ? slots : null,
+      hasChat ? (body.spaceAiChat ? 1 : 0) : null,
+      hasWork ? (body.spaceAiWork ? 1 : 0) : null,
     )
     .run();
   if (!result.success || result.meta.changes === 0) {
@@ -213,6 +227,8 @@ export async function handleUpdateWorkspace(
     {
       ...(hasName ? { name } : {}),
       ...(hasSlots ? { parallelSlots: slots } : {}),
+      ...(hasChat ? { spaceAiChat: body.spaceAiChat } : {}),
+      ...(hasWork ? { spaceAiWork: body.spaceAiWork } : {}),
     },
     workspaceId,
   );
@@ -232,6 +248,8 @@ export async function handleUpdateWorkspace(
       id: workspaceId,
       ...(hasName ? { name } : {}),
       ...(hasSlots ? { parallelSlots: slots } : {}),
+      ...(hasChat ? { spaceAiChat: body.spaceAiChat } : {}),
+      ...(hasWork ? { spaceAiWork: body.spaceAiWork } : {}),
       updatedAt: now,
     },
   });

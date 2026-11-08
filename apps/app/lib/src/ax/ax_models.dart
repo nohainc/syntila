@@ -1482,6 +1482,8 @@ class AxWorkspace {
     this.activeTaskCount = 0,
     this.shared = false,
     this.parallelSlots,
+    this.spaceAiChat = false,
+    this.spaceAiWork = false,
   });
 
   final String id;
@@ -1510,6 +1512,10 @@ class AxWorkspace {
   /// lent Workspace); set on the Workspaces page and enforced by Cloud.
   final int? parallelSlots;
 
+  /// Owner-chosen Space AI availability for this Workspace.
+  final bool spaceAiChat;
+  final bool spaceAiWork;
+
   factory AxWorkspace.fromJson(Map<String, dynamic> json) => AxWorkspace(
         id: _string(json, 'id'),
         name: _string(json, 'name'),
@@ -1534,6 +1540,8 @@ class AxWorkspace {
         activeTaskCount: json['activeTaskCount'] as int? ?? 0,
         shared: json['shared'] == true || json['shared'] == 1,
         parallelSlots: json['parallelSlots'] as int?,
+        spaceAiChat: json['spaceAiChat'] == true || json['spaceAiChat'] == 1,
+        spaceAiWork: json['spaceAiWork'] == true || json['spaceAiWork'] == 1,
       );
 
   AxWorkspace copyWith({
@@ -1541,6 +1549,8 @@ class AxWorkspace {
     int? activeTaskCount,
     String? lastSeen,
     int? parallelSlots,
+    bool? spaceAiChat,
+    bool? spaceAiWork,
   }) =>
       AxWorkspace(
         id: id,
@@ -1563,6 +1573,8 @@ class AxWorkspace {
         activeTaskCount: activeTaskCount ?? this.activeTaskCount,
         shared: shared,
         parallelSlots: parallelSlots ?? this.parallelSlots,
+        spaceAiChat: spaceAiChat ?? this.spaceAiChat,
+        spaceAiWork: spaceAiWork ?? this.spaceAiWork,
       );
 }
 

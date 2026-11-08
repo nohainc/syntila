@@ -255,8 +255,10 @@ class _WorkspacesPageState extends State<WorkspacesPage>
           _WorkspaceSpaceAiOptions(
             key: ValueKey('workspace-space-ai-options-${workspace.id}'),
             workspaceId: workspace.id,
-            initialChat: _workspaceChatSharing[workspace.id] ?? false,
-            initialWork: _workspaceWorkSharing[workspace.id] ?? false,
+            initialChat:
+                _workspaceChatSharing[workspace.id] ?? workspace.spaceAiChat,
+            initialWork:
+                _workspaceWorkSharing[workspace.id] ?? workspace.spaceAiWork,
             onChanged: (chat, work) {
               setState(() {
                 _workspaceChatSharing[workspace.id] = chat;

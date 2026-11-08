@@ -26,15 +26,27 @@ echo "Inspecting local D1 schema before migration: $database_name"
 prepared_dir="$(mktemp -d "${TMPDIR:-/tmp}/syntila-local-d1-migration.XXXXXX")"
 trap 'rm -rf "$prepared_dir"' EXIT
 
+inspect_schema() {
+  local inspection_status=0
+  pnpm exec wrangler d1 execute "$database_name" \
+    --local --config "$wrangler_config" --json \
+    --command "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY type,name; SELECT name FROM d1_migrations WHERE name = '0006_chat_workflow_admission.sql';" \
+    > "$prepared_dir/schema.json" 2> "$prepared_dir/schema.stderr" || inspection_status=$?
+  if [[ "$inspection_status" -ne 0 ]]; then
+    echo "Local D1 schema inspection failed (exit $inspection_status): $database_name" >&2
+    cat "$prepared_dir/schema.stderr" >&2
+    cat "$prepared_dir/schema.json" >&2
+    echo "Pending migrations were not applied. Resolve the inspection error before retrying." >&2
+    return "$inspection_status"
+  fi
+}
+
 if [[ -d apps/cloud/.wrangler/state ]]; then
   mkdir -p "$prepared_dir/.wrangler"
   cp -a apps/cloud/.wrangler/state "$prepared_dir/.wrangler/"
 fi
 
-pnpm exec wrangler d1 execute "$database_name" \
-  --local --config "$wrangler_config" --json \
-  --command "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY type,name; SELECT name FROM d1_migrations WHERE name = '0006_chat_workflow_admission.sql';" \
-  > "$prepared_dir/schema.json"
+inspect_schema
 
 if ! node scripts/space-thread-schema-preflight.mjs "$prepared_dir/schema.json"; then
   node scripts/prepare-space-thread-cutover.mjs \
@@ -42,10 +54,7 @@ if ! node scripts/space-thread-schema-preflight.mjs "$prepared_dir/schema.json";
   echo "Applying Space/Thread cutover: $database_name (local)"
   pnpm exec wrangler d1 migrations apply "$database_name" \
     --local --config "$prepared_dir/cutover/wrangler.json"
-  pnpm exec wrangler d1 execute "$database_name" \
-    --local --config "$wrangler_config" --json \
-    --command "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY type,name; SELECT name FROM d1_migrations WHERE name = '0006_chat_workflow_admission.sql';" \
-    > "$prepared_dir/schema.json"
+  inspect_schema
   node scripts/space-thread-schema-preflight.mjs "$prepared_dir/schema.json"
 fi
 

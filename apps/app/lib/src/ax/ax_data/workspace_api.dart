@@ -81,6 +81,24 @@ mixin _WorkspaceApi on _AxApiClientCore {
   }
 
   @override
+  Future<void> setWorkspaceSpaceAiSharing({
+    required String workspaceId,
+    required bool allowChat,
+    required bool allowWork,
+  }) async {
+    final response = await client.patch(
+      Uri.parse('$baseUrl/workspaces/$workspaceId'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode({'spaceAiChat': allowChat, 'spaceAiWork': allowWork}),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+          'Space AI sharing update failed (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
+  @override
   Future<AxWorkspace> updateWorkspace({
     required String workspaceId,
     required String name,
