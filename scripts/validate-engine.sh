@@ -7,6 +7,7 @@ engine_packages=(
   packages/syntila_worker_protocol
   packages/syntila_plugin_protocol
   packages/syntila_plugin_conformance
+  packages/syntila_plugin_sdk
   packages/syntila_mcp_protocol
   packages/tool_profile_v1
   packages/syntila_cli_worker_runtime
