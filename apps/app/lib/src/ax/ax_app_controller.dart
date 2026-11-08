@@ -783,6 +783,16 @@ extension _AxAppController on _AxAppStateMixin {
     if (type == 'discussion.created' || type == 'thread.discussion.created') {
       final raw = event['payload'];
       final payload = raw is Map ? raw : null;
+      final eventThreadId = payload?['threadId'] ??
+          payload?['thread_id'] ??
+          event['threadId'] ??
+          event['thread_id'];
+      if (navigation.kind == AxRouteKind.thread &&
+          _tabVisible &&
+          eventThreadId is String &&
+          eventThreadId == navigation.threadId) {
+        return;
+      }
       final authorUserId = payload?['authorUserId'] ??
           payload?['author_user_id'] ??
           event['authorUserId'] ??

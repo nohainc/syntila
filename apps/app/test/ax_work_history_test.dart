@@ -177,10 +177,16 @@ void main() {
       final previous = request('previous');
       history.replace('w', [previous]);
       final response = Completer<String>();
+      const reply = AxReplyReference(
+          kind: 'response',
+          id: 'previous',
+          authorName: 'Worker',
+          excerpt: 'Answer');
       final sending = history.createRequest('w',
           prompt: 'Next request',
           workflowId: 'direct',
           idempotencyKey: 'submission',
+          replyTo: reply,
           execute: (_, __, ___, ____) => response.future);
       await Future<void>.delayed(Duration.zero);
       history.acceptSubmission('w', 'unrelated', 'wrong');
@@ -194,7 +200,9 @@ void main() {
           'status': 'queued'
         },
       });
+      expect(history.request('w', 'saved')!.replyTo, reply);
       history.patchRequest('w', request('saved', status: 'running'));
+      expect(history.request('w', 'saved')!.replyTo, reply);
       expect(
           history.peek('w').requests.map((r) => r.id), ['previous', 'saved']);
       expect(history.request('w', 'previous'), same(previous));
@@ -207,9 +215,23 @@ void main() {
       expect(await sending, 'saved');
       expect(history.peek('w').requests.length, 2);
       expect(history.request('w', 'saved')!.status, 'running');
+      expect(history.request('w', 'saved')!.replyTo, reply);
       history.clear();
     });
   }
+
+  test('detail refresh retains a reply when the response omits it', () async {
+    const reply = AxReplyReference(
+        kind: 'request', id: 'earlier', authorName: 'You', excerpt: 'Question');
+    cache.replace('w', [request('30').copyWith(replyTo: reply)]);
+    final read = cache.refreshRequest('w', '30');
+    source.detailPending.last.complete(const AxWorkRequestStatus(
+      status: 'running',
+      originalRequest: 'Prompt 30',
+    ));
+    await read;
+    expect(cache.request('w', '30')!.replyTo, reply);
+  });
 
   test('initial load requests one page of 50 and shares a future', () async {
     final load = cache.refresh('w');

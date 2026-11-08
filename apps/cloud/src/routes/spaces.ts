@@ -83,6 +83,7 @@ export async function handleListSpaces(
               p.settings_json AS settingsJson, p.created_at AS createdAt, ${lastSpaceActivitySql("p")} AS updatedAt,
               peer_u.id AS peerUserId,
               peer_u.display_name AS peerDisplayName,
+              dsus.personal_name AS personalName,
               peer_u.avatar_url AS peerAvatarUrl,
               COALESCE(dsus.hidden, 0) AS hidden,
               EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id) AS isSupport,
@@ -114,7 +115,7 @@ export async function handleListSpaces(
              ? ""
              : `AND COALESCE(json_extract(p.settings_json, '$.archived'), 0) = 0
                 AND (
-                  p.kind != 'direct'
+                  (p.kind != 'direct' AND COALESCE(dsus.hidden, 0) = 0)
                   OR (
                     EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id AND ss.user_id = ?1)
                     AND COALESCE(dsus.hidden, 1) = 0
@@ -163,6 +164,7 @@ export async function handleListSpaces(
         updatedAt: string;
         peerUserId: string | null;
         peerDisplayName: string | null;
+        personalName: string | null;
         peerAvatarUrl: string | null;
         hidden: number;
         isSupport: number;
@@ -177,7 +179,9 @@ export async function handleListSpaces(
       const isDirect = row.kind === "direct";
       return {
         id: row.id,
-        name: isDirect && row.peerDisplayName ? row.peerDisplayName : row.name,
+        name: isDirect
+          ? (row.personalName ?? row.peerDisplayName ?? row.name)
+          : row.name,
         description: row.description,
         role: row.role,
         kind: row.kind ?? "group",
@@ -195,8 +199,14 @@ export async function handleListSpaces(
           typeof settings.instructions === "string"
             ? settings.instructions
             : "",
-        settings,
-        archived: isDirect ? row.hidden === 1 : settings.archived === true,
+        settings: isDirect
+          ? {
+              ...settings,
+              personalName: row.personalName,
+              originalName: row.peerDisplayName,
+            }
+          : settings,
+        archived: row.hidden === 1 || settings.archived === true,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         hasActiveWork: row.hasActiveWork === 1,
@@ -349,11 +359,13 @@ export async function handleGetSpace(
             p.settings_json AS settingsJson, p.created_at AS createdAt, p.updated_at AS updatedAt,
             peer_u.id AS peerUserId,
             peer_u.display_name AS peerDisplayName,
+            dsus.personal_name AS personalName,
             peer_u.avatar_url AS peerAvatarUrl
      FROM spaces p
      JOIN space_memberships pm ON pm.space_id = p.id
      LEFT JOIN direct_spaces ds ON ds.space_id = p.id
      LEFT JOIN users peer_u ON peer_u.id = (CASE WHEN ds.user_low_id = ?2 THEN ds.user_high_id ELSE ds.user_low_id END)
+     LEFT JOIN direct_space_user_state dsus ON dsus.space_id = p.id AND dsus.user_id = ?2
      WHERE p.id = ?1 AND pm.user_id = ?2`,
   )
     .bind(spaceId, context.userId)
@@ -368,6 +380,7 @@ export async function handleGetSpace(
       updatedAt: string;
       peerUserId: string | null;
       peerDisplayName: string | null;
+      personalName: string | null;
       peerAvatarUrl: string | null;
       isSupport: number;
     }>();
@@ -391,7 +404,9 @@ export async function handleGetSpace(
   return conditionalJson(request, {
     space: {
       id: row.id,
-      name: isDirect && row.peerDisplayName ? row.peerDisplayName : row.name,
+      name: isDirect
+        ? (row.personalName ?? row.peerDisplayName ?? row.name)
+        : row.name,
       description: row.description,
       role: row.role,
       kind: row.kind ?? "group",
@@ -407,7 +422,13 @@ export async function handleGetSpace(
       ),
       instructions:
         typeof settings.instructions === "string" ? settings.instructions : "",
-      settings,
+      settings: isDirect
+        ? {
+            ...settings,
+            personalName: row.personalName,
+            originalName: row.peerDisplayName,
+          }
+        : settings,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     },
@@ -423,7 +444,7 @@ export async function handleUpdateSpace(
   const context = await authorizeRequest(
     request,
     env,
-    "spaces:write",
+    "spaces:read",
     spaceId,
     accessContext,
   );
@@ -447,17 +468,86 @@ export async function handleUpdateSpace(
     }>();
   if (!existing) throw new HttpError(404, "Space not found");
 
-  if (existing.kind === "direct") {
-    const membership = await env.SYNTILA_DB.prepare(
-      "SELECT role FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
+  const body = (await request.json()) as Record<string, unknown>;
+  const personalSettings =
+    body.settings &&
+    typeof body.settings === "object" &&
+    !Array.isArray(body.settings)
+      ? (body.settings as Record<string, unknown>)
+      : undefined;
+  if (
+    existing.kind === "direct" &&
+    personalSettings &&
+    Object.prototype.hasOwnProperty.call(personalSettings, "personalName")
+  ) {
+    if (
+      Object.keys(body).some((key) => key !== "settings") ||
+      Object.keys(personalSettings).some((key) => key !== "personalName")
+    ) {
+      throw new HttpError(400, "Personal name must be updated separately");
+    }
+    const input = personalSettings.personalName;
+    if (
+      input !== null &&
+      (typeof input !== "string" || !input.trim() || input.trim().length > 120)
+    ) {
+      throw new HttpError(
+        400,
+        "Personal name must be between 1 and 120 characters",
+      );
+    }
+    const personalName = typeof input === "string" ? input.trim() : null;
+    const member = await env.SYNTILA_DB.prepare(
+      "SELECT role, EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1) AS isSupport FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
     )
       .bind(spaceId, context.userId)
-      .first<{ role: string }>();
-    if (!membership) throw new HttpError(403, "Forbidden");
-  } else if (context.userId !== existing.ownerUserId) {
-    throw new HttpError(403, "Only the Space owner can update Space settings");
+      .first<{ role: string; isSupport: number }>();
+    if (!member) throw new HttpError(403, "Forbidden");
+    const peer = await env.SYNTILA_DB.prepare(
+      `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl
+       FROM direct_spaces ds JOIN users u
+         ON u.id = CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END
+       WHERE ds.space_id = ?2`,
+    )
+      .bind(context.userId, spaceId)
+      .first<{ id: string; displayName: string; avatarUrl: string | null }>();
+    if (!peer) throw new HttpError(404, "Person not found");
+    const now = new Date().toISOString();
+    await env.SYNTILA_DB.prepare(
+      `INSERT INTO direct_space_user_state (space_id, user_id, hidden, personal_name, created_at, updated_at)
+       VALUES (?1, ?2, CASE WHEN EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2) THEN 1 ELSE 0 END, ?3, ?4, ?4)
+       ON CONFLICT(space_id, user_id) DO UPDATE SET personal_name = excluded.personal_name, updated_at = excluded.updated_at`,
+    )
+      .bind(spaceId, context.userId, personalName, now)
+      .run();
+    await publishCollaborationEvent(env, "space.updated", spaceId, spaceId, {
+      recipientUserIds: [context.userId],
+    });
+    const settings = publicSpaceSettings(existing.settingsJson);
+    return json({
+      space: {
+        id: existing.id,
+        name: personalName ?? peer.displayName,
+        description: existing.description,
+        role: member.role,
+        kind: "direct",
+        isSupport: member.isSupport === 1,
+        avatarUrl: avatarUrlFor(request, peer.id, peer.avatarUrl),
+        permissions: spaceMemberPermissions(
+          member.role,
+          existing.settingsJson,
+          context.userId,
+        ),
+        instructions:
+          typeof settings.instructions === "string"
+            ? settings.instructions
+            : "",
+        settings: { ...settings, personalName, originalName: peer.displayName },
+        createdAt: existing.createdAt,
+        updatedAt: now,
+      },
+    });
   }
-  const body = (await request.json()) as Record<string, unknown>;
   if (body.kind !== undefined && body.kind !== existing.kind) {
     throw new HttpError(400, "Space kind cannot be changed");
   }
@@ -478,7 +568,7 @@ export async function handleUpdateSpace(
   if (existing.kind === "direct") delete body.name;
 
   const isDirect = existing.kind === "direct";
-  // Archiving a personal Space hides it for the caller only.
+  // Direct Spaces and shared Spaces are archived for the caller only.
   const requestedSettings =
     body.settings && typeof body.settings === "object"
       ? (body.settings as Record<string, unknown>)
@@ -488,10 +578,29 @@ export async function handleUpdateSpace(
     body.archived,
     requestedSettings?.archived,
   ].find((value) => typeof value === "boolean") as boolean | undefined;
-  const targetHidden = isDirect ? archiveFlag : undefined;
+  const targetHidden =
+    isDirect || context.userId !== existing.ownerUserId
+      ? archiveFlag
+      : undefined;
 
-  if (isDirect && targetHidden !== undefined) {
+  if (targetHidden !== undefined) {
+    const allowedKeys = new Set(["archived", "hidden", "settings"]);
+    if (
+      Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+      (requestedSettings &&
+        Object.keys(requestedSettings).some((key) => key !== "archived"))
+    ) {
+      throw new HttpError(403, "Only personal archive state can be changed");
+    }
+    const membership = await env.SYNTILA_DB.prepare(
+      "SELECT role FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
+    )
+      .bind(spaceId, context.userId)
+      .first<{ role: string }>();
+    if (!membership) throw new HttpError(403, "Forbidden");
     const now = new Date().toISOString();
+    // This existing per-user state table also stores shared Space visibility;
+    // last_opened_at remains specific to Direct Space discovery.
     await env.SYNTILA_DB.prepare(
       `INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at)
        VALUES (?1, ?2, ?3, ?4, ?4)
@@ -515,16 +624,25 @@ export async function handleUpdateSpace(
 
     let dynamicName = existing.name;
     let avatarUrl: string | null = null;
-    const peer = await env.SYNTILA_DB.prepare(
-      `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl
+    const peer = isDirect
+      ? await env.SYNTILA_DB.prepare(
+          `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl,
+                  state.personal_name AS personalName
        FROM direct_spaces ds
        JOIN users u ON u.id = (CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END)
+       LEFT JOIN direct_space_user_state state ON state.space_id = ds.space_id AND state.user_id = ?1
        WHERE ds.space_id = ?2`,
-    )
-      .bind(context.userId, spaceId)
-      .first<{ id: string; displayName: string; avatarUrl: string | null }>();
+        )
+          .bind(context.userId, spaceId)
+          .first<{
+            id: string;
+            displayName: string;
+            avatarUrl: string | null;
+            personalName: string | null;
+          }>()
+      : null;
     if (peer) {
-      dynamicName = peer.displayName;
+      dynamicName = peer.personalName ?? peer.displayName;
       avatarUrl = avatarUrlFor(request, peer.id, peer.avatarUrl);
     }
 
@@ -534,11 +652,11 @@ export async function handleUpdateSpace(
         id: existing.id,
         name: dynamicName,
         description: existing.description,
-        role: "member",
-        kind: "direct",
+        role: membership.role,
+        kind: existing.kind,
         ...(avatarUrl !== null ? { avatarUrl } : {}),
         permissions: spaceMemberPermissions(
-          "member",
+          membership.role,
           existing.settingsJson,
           context.userId,
         ),
@@ -546,12 +664,30 @@ export async function handleUpdateSpace(
           typeof settings.instructions === "string"
             ? settings.instructions
             : "",
-        settings,
+        settings: isDirect
+          ? {
+              ...settings,
+              personalName: peer?.personalName ?? null,
+              originalName: peer?.displayName ?? null,
+            }
+          : settings,
         archived: targetHidden,
         createdAt: existing.createdAt,
         updatedAt: now,
       },
     });
+  }
+
+  await authorizeRequest(request, env, "spaces:write", spaceId, accessContext);
+  if (isDirect) {
+    const membership = await env.SYNTILA_DB.prepare(
+      "SELECT role FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
+    )
+      .bind(spaceId, context.userId)
+      .first<{ role: string }>();
+    if (!membership) throw new HttpError(403, "Forbidden");
+  } else if (context.userId !== existing.ownerUserId) {
+    throw new HttpError(403, "Only the Space owner can update Space settings");
   }
 
   if (
@@ -686,17 +822,28 @@ export async function handleUpdateSpace(
   );
   let dynamicName = space.name;
   let avatarUrl: string | null = null;
+  let personalName: string | null = null;
+  let originalName: string | null = null;
   if (existing.kind === "direct") {
     const peer = await env.SYNTILA_DB.prepare(
-      `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl
+      `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl,
+              state.personal_name AS personalName
        FROM direct_spaces ds
        JOIN users u ON u.id = (CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END)
+       LEFT JOIN direct_space_user_state state ON state.space_id = ds.space_id AND state.user_id = ?1
        WHERE ds.space_id = ?2`,
     )
       .bind(context.userId, spaceId)
-      .first<{ id: string; displayName: string; avatarUrl: string | null }>();
+      .first<{
+        id: string;
+        displayName: string;
+        avatarUrl: string | null;
+        personalName: string | null;
+      }>();
     if (peer) {
-      dynamicName = peer.displayName;
+      personalName = peer.personalName;
+      originalName = peer.displayName;
+      dynamicName = peer.personalName ?? peer.displayName;
       avatarUrl = avatarUrlFor(request, peer.id, peer.avatarUrl);
     }
   }
@@ -707,7 +854,14 @@ export async function handleUpdateSpace(
       name: dynamicName,
       ...(avatarUrl !== null ? { avatarUrl } : {}),
       kind: existing.kind ?? "group",
-      settings: publicSpaceSettings(JSON.stringify(space.settings)),
+      settings:
+        existing.kind === "direct"
+          ? {
+              ...publicSpaceSettings(JSON.stringify(space.settings)),
+              personalName,
+              originalName,
+            }
+          : publicSpaceSettings(JSON.stringify(space.settings)),
       instructions:
         typeof space.settings.instructions === "string"
           ? space.settings.instructions

@@ -526,6 +526,12 @@ void main() {
         'conversationId': 'conversation-r',
         'status': 'completed',
         'originalRequest': '# Prompt',
+        'replyTo': {
+          'kind': 'response',
+          'id': 'earlier',
+          'authorName': 'Worker',
+          'excerpt': 'Earlier answer'
+        },
         'workflowId': 'direct',
         'workflowVersion': 2,
         'createdAt': '2026-10-06T00:00:00Z'
@@ -540,6 +546,7 @@ void main() {
     expect(result.conversationId, 'conversation-r');
     expect(result.text, '# Result');
     expect(result.originalRequest, '# Prompt');
+    expect(result.replyTo?.excerpt, 'Earlier answer');
     await expectLater(api.loadWorkRequest(workRequestId: 'other'),
         throwsA(isA<AxApiException>()));
   });

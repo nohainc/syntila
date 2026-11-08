@@ -655,6 +655,12 @@ export async function routeWorkerRequest(
     ) {
       return await handlers.handleListRuntimeInputs!(request, env);
     }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/workspace-runtime/outputs"
+    ) {
+      return await handlers.handleUploadWorkerOutputImage!(request, env);
+    }
     const runtimeInputMatch = url.pathname.match(
       /^\/api\/workspace-runtime\/inputs\/([^/]+)\/(content|delivered|attempt)$/,
     );

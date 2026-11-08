@@ -57,6 +57,7 @@ extension _ThreadActions on _ThreadPageState {
       workflow: _effectiveWorkflow,
       replyTo: _replyTarget,
     );
+    _queueFileErrorTimer?.cancel();
     _updateState(() {
       _workSubmitError = null;
       _workAttachments = [];
@@ -124,8 +125,19 @@ extension _ThreadActions on _ThreadPageState {
       return true;
     } catch (error) {
       if (reportErrors && mounted && widget.thread.id == threadId) {
-        _updateState(() => _workSubmitError =
-            error is AxApiException ? error.message : error.toString());
+        final message =
+            error is AxApiException ? error.message : error.toString();
+        _queueFileErrorTimer?.cancel();
+        _updateState(() => _workSubmitError = message);
+        if (message ==
+            'Files from this device cannot wait in the queue. Send the request when nothing is processing, or attach the file from My Files.') {
+          _queueFileErrorTimer = Timer(const Duration(seconds: 3), () {
+            if (mounted && _workSubmitError == message) {
+              _updateState(() => _workSubmitError = null);
+            }
+            _queueFileErrorTimer = null;
+          });
+        }
       }
       return false;
     }

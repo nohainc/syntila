@@ -45,6 +45,10 @@ Direct Space available to both users, who can create Threads
 - **Concurrency and idempotency:** If Alice and Bob invite each other concurrently, or if acceptance is retried, Cloud guarantees race-safe convergence: exactly one Direct Space is retrieved or created for the unordered pair `{Alice, Bob}`.
 - **Contact removal:** Removing a personal connection disassociates the 1:1 connection and archives or freezes the Direct Space. Contact removal has no effect on unrelated shared Group Spaces.
 - **Identity:** Relationships bind strictly to immutable user IDs (`userId`). Mutable display names and emails are never used as permanent relationship identifiers.
+- **Personal Space name:** A participant may choose a private name for their
+  People Space and reset it to the other person's current profile name. The
+  choice is stored per user, follows them across devices, and does not rename
+  the person or change what the other participant sees.
 - **Deployment:** Apply migration `0107_optional_direct_general_thread.sql` before deploying Cloud code that creates personal Spaces without a default Thread. Existing General Threads and their references are preserved.
 
 ## Personal support Space

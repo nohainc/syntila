@@ -919,6 +919,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
       requestedByUserId: requestMap['requestedByUserId']?.toString(),
       requestedByName: requestMap['requestedByName']?.toString(),
       originalRequest: requestMap['originalRequest']?.toString(),
+      replyTo: AxReplyReference.fromJson(requestMap['replyTo']),
       attachments: AxWorkAttachment.fromList(requestMap['attachments']),
       createdAt: requestMap['createdAt']?.toString(),
       steps: steps,

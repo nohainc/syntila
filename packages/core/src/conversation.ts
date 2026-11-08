@@ -185,6 +185,16 @@ export interface ConversationTurn {
   readonly completedAt: string | null;
   readonly resultText: string | null;
   readonly createdAt: string;
+  /** Images the Worker produced; downloaded through the Thread file route. */
+  readonly images?: readonly ConversationTurnImage[];
+}
+
+export interface ConversationTurnImage {
+  readonly kind: "file";
+  readonly fileId: string;
+  readonly name: string;
+  readonly mediaType: string;
+  readonly sizeBytes: number;
 }
 
 export const CONVERSATION_HISTORY_KINDS = [

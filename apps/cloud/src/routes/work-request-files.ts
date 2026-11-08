@@ -559,7 +559,9 @@ export async function handleDownloadThreadFile(
     `SELECT 1 AS present FROM discussion_messages dm, json_each(dm.attachments_json) f
     WHERE dm.thread_id = ?1 AND json_extract(f.value, '$.fileId') = ?2
     UNION ALL SELECT 1 AS present FROM work_requests wr, json_each(wr.input_json, '$.attachments') f
-    WHERE wr.thread_id = ?1 AND json_extract(f.value, '$.fileId') = ?2 LIMIT 1`,
+    WHERE wr.thread_id = ?1 AND json_extract(f.value, '$.fileId') = ?2
+    UNION ALL SELECT 1 AS present FROM worker_assignments wa, json_each(wa.output_json, '$.output.images') f
+    WHERE wa.thread_id = ?1 AND wa.status = 'completed' AND json_extract(f.value, '$.fileId') = ?2 LIMIT 1`,
   )
     .bind(threadId, fileId)
     .first();

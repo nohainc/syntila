@@ -287,3 +287,174 @@ class AttachmentDownloadScope extends InheritedWidget {
       download != oldWidget.download ||
       open != oldWidget.open;
 }
+
+/// Images a Worker attached to its answer, shown inline below the text.
+class ResponseImages extends StatelessWidget {
+  const ResponseImages({super.key, required this.files});
+  final List<Map<String, dynamic>> files;
+  @override
+  Widget build(BuildContext context) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final file in files)
+            ResponseImage(
+                key: ValueKey('response-image-${file['fileId']}'), file: file),
+        ],
+      );
+}
+
+class ResponseImage extends StatefulWidget {
+  const ResponseImage({super.key, required this.file});
+  final Map<String, dynamic> file;
+  @override
+  State<ResponseImage> createState() => _ResponseImageState();
+}
+
+class _ResponseImageState extends State<ResponseImage> {
+  static const double _maxSize = 420;
+
+  /// Recently shown images by file id, so a rebuilt timeline does not
+  /// download them again.
+  static final _cache = <String, Future<Uint8List>>{};
+  Future<Uint8List>? _bytes;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _bytes ??= _load();
+  }
+
+  Future<Uint8List>? _load() {
+    final fileId = widget.file['fileId'];
+    final scope =
+        context.getInheritedWidgetOfExactType<AttachmentDownloadScope>();
+    if (fileId is! String || scope == null) return null;
+    final cached = _cache.remove(fileId);
+    final future = cached ??
+        scope.load(widget.file).then((bytes) => Uint8List.fromList(bytes));
+    _cache[fileId] = future;
+    if (_cache.length > 24) _cache.remove(_cache.keys.first);
+    // A failed download is retried the next time the image is built.
+    future.catchError((Object _) {
+      _cache.remove(fileId);
+      return Uint8List(0);
+    });
+    return future;
+  }
+
+  Future<void> _view(Uint8List bytes) => showDialog<void>(
+        context: context,
+        builder: (context) => Dialog(
+          key: const ValueKey('response-image-viewer'),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(children: [
+            InteractiveViewer(
+              maxScale: 8,
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: _OverlayIconButton(
+                tooltip: 'Close preview',
+                icon: Icons.close,
+                size: 28,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ]),
+        ),
+      );
+
+  Future<void> _download(Uint8List bytes) async {
+    final scope =
+        context.getInheritedWidgetOfExactType<AttachmentDownloadScope>();
+    try {
+      await scope?.download(widget.file, bytes);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not download image: $error')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final name = widget.file['name']?.toString() ?? 'Image';
+    Widget placeholder(Widget child) => Container(
+          width: 240,
+          height: 160,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerLow,
+            border: Border.all(color: colors.outlineVariant),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: child,
+        );
+    return Semantics(
+      label: name,
+      image: true,
+      child: FutureBuilder<Uint8List>(
+        future: _bytes,
+        builder: (context, snapshot) {
+          final bytes = snapshot.data;
+          if (snapshot.hasError || (bytes != null && bytes.isEmpty) ||
+              _bytes == null) {
+            return placeholder(Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.broken_image_outlined,
+                    color: colors.onSurfaceVariant),
+                const SizedBox(height: 4),
+                Text('Image unavailable',
+                    style: TextStyle(
+                        fontSize: 12, color: colors.onSurfaceVariant)),
+              ],
+            ));
+          }
+          if (bytes == null) {
+            return placeholder(const SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2)));
+          }
+          return ConstrainedBox(
+            constraints:
+                const BoxConstraints(maxWidth: _maxSize, maxHeight: _maxSize),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(children: [
+                Material(
+                  type: MaterialType.transparency,
+                  child: InkWell(
+                    key: const ValueKey('response-image-open'),
+                    onTap: () => _view(bytes),
+                    child: Image.memory(
+                      bytes,
+                      gaplessPlayback: true,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) =>
+                          placeholder(const Icon(Icons.broken_image_outlined)),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: _OverlayIconButton(
+                    tooltip: 'Download image',
+                    icon: Icons.download_outlined,
+                    onPressed: () => _download(bytes),
+                  ),
+                ),
+              ]),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}

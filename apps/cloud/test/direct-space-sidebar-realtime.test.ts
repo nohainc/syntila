@@ -109,6 +109,181 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
     return { directSpaceId, invitationId: invitation.id };
   }
 
+  it("keeps a People Space name personal and resets to the current profile name", async () => {
+    const { env, sqlite } = createTestEnv();
+    const { directSpaceId } = await establishDirectSpace(env);
+    const url = `https://syntila.test/api/spaces/${directSpaceId}`;
+    const requestAs = (user: string, body?: object) =>
+      worker.fetch(
+        new Request(url, {
+          method: body ? "PATCH" : "GET",
+          headers: {
+            Authorization: `Bearer ${user}`,
+            ...(body ? { "Content-Type": "application/json" } : {}),
+          },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        }),
+        env as never,
+      );
+    expect(
+      (await requestAs("alice", { settings: { personalName: "Bob (work)" } }))
+        .status,
+    ).toBe(200);
+    expect(((await (await requestAs("alice")).json()) as any).space.name).toBe(
+      "Bob (work)",
+    );
+    expect(((await (await requestAs("bob")).json()) as any).space.name).toBe(
+      "Alice User",
+    );
+    sqlite.exec(
+      "UPDATE users SET display_name = 'Robert' WHERE id = 'user-bob'",
+    );
+    const listed = await worker.fetch(
+      new Request("https://syntila.test/api/spaces?archived=true", {
+        headers: { Authorization: "Bearer alice" },
+      }),
+      env as never,
+    );
+    const personal = ((await listed.json()) as any).spaces.find(
+      (s: any) => s.id === directSpaceId,
+    );
+    expect(personal.name).toBe("Bob (work)");
+    expect(personal.settings.originalName).toBe("Robert");
+    expect(
+      (await requestAs("alice", { settings: { personalName: null } })).status,
+    ).toBe(200);
+    expect(((await (await requestAs("alice")).json()) as any).space.name).toBe(
+      "Robert",
+    );
+    expect(((await (await requestAs("bob")).json()) as any).space.name).toBe(
+      "Alice User",
+    );
+    expect(
+      (await requestAs("alice", { settings: { personalName: "  " } })).status,
+    ).toBe(400);
+    expect(
+      (
+        await requestAs("alice", {
+          settings: { personalName: "Alias", color: "red" },
+        })
+      ).status,
+    ).toBe(400);
+  });
+
+  for (const role of ["viewer", "collaborator"]) {
+    it(`archives and restores a shared Space for the ${role} only`, async () => {
+      const { env, sqlite } = createTestEnv();
+      sqlite.exec(`
+        INSERT INTO spaces (id, name, kind, owner_user_id, created_at, updated_at)
+        VALUES ('shared', 'Shared', 'group', 'user-alice', 'now', 'now');
+        INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES
+          ('owner-membership', 'shared', 'user-alice', 'owner', 'now', 'now'),
+          ('member-membership', 'shared', 'user-bob', '${role}', 'now', 'now');
+      `);
+      const patch = (body: object) =>
+        worker.fetch(
+          new Request("https://syntila.test/api/spaces/shared", {
+            method: "PATCH",
+            headers: {
+              Authorization: "Bearer bob",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+          }),
+          env as never,
+        );
+      const list = async (user: string, archived = false) => {
+        const response = await worker.fetch(
+          new Request(
+            `https://syntila.test/api/spaces${archived ? "?archived=true" : ""}`,
+            {
+              headers: { Authorization: `Bearer ${user}` },
+            },
+          ),
+          env as never,
+        );
+        return ((await response.json()) as any).spaces;
+      };
+
+      const outsider = await worker.fetch(
+        new Request("https://syntila.test/api/spaces/shared", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        }),
+        env as never,
+      );
+      expect(outsider.status).toBe(403);
+      expect(
+        (await patch({ archived: true, description: "changed" })).status,
+      ).toBe(403);
+      expect((await patch({ archived: true })).status).toBe(200);
+      expect((await list("bob")).some((s: any) => s.id === "shared")).toBe(
+        false,
+      );
+      expect(
+        (await list("bob", true)).find((s: any) => s.id === "shared").archived,
+      ).toBe(true);
+      expect(
+        (await list("alice")).find((s: any) => s.id === "shared").archived,
+      ).toBe(false);
+      expect((await patch({ settings: { archived: false } })).status).toBe(200);
+      expect(
+        (await list("bob")).find((s: any) => s.id === "shared").archived,
+      ).toBe(false);
+    });
+  }
+
+  it("archives and restores a People Space for the caller only", async () => {
+    const { env } = createTestEnv();
+    const { directSpaceId } = await establishDirectSpace(env);
+    const url = `https://syntila.test/api/spaces/${directSpaceId}`;
+    await worker.fetch(
+      new Request(url, { headers: { Authorization: "Bearer bob" } }),
+      env as never,
+    );
+    const patch = (body: object) =>
+      worker.fetch(
+        new Request(url, {
+          method: "PATCH",
+          headers: {
+            Authorization: "Bearer bob",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }),
+        env as never,
+      );
+    const list = async (user: string, archived = false) => {
+      const response = await worker.fetch(
+        new Request(
+          `https://syntila.test/api/spaces${archived ? "?archived=true" : ""}`,
+          {
+            headers: { Authorization: `Bearer ${user}` },
+          },
+        ),
+        env as never,
+      );
+      return ((await response.json()) as any).spaces;
+    };
+    expect((await patch({ archived: true })).status).toBe(200);
+    expect((await list("bob")).some((s: any) => s.id === directSpaceId)).toBe(
+      false,
+    );
+    expect(
+      (await list("bob", true)).find((s: any) => s.id === directSpaceId)
+        .archived,
+    ).toBe(true);
+    expect(
+      (await list("alice", true)).find((s: any) => s.id === directSpaceId)
+        .archived,
+    ).toBe(false);
+    expect((await patch({ settings: { archived: false } })).status).toBe(200);
+    expect(
+      (await list("bob")).find((s: any) => s.id === directSpaceId).archived,
+    ).toBe(false);
+  });
+
   it("inactive/unused Direct Space is not in sidebar until opened, messaged, or pinned", async () => {
     const { env } = createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);

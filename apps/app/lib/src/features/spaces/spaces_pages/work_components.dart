@@ -1051,6 +1051,43 @@ class _WorkComposer extends StatelessWidget {
                 onSendNow: onQueuedSendNow ?? (_) {},
               ),
             ),
+          if (submitError != null)
+            _ComposerPanelLayer(
+              backgroundKey: const ValueKey('request-error-layer-background'),
+              horizontalInset: 0,
+              background: SyntilaColors.composerBackground(isDark),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        submitError!,
+                        key: const ValueKey('request-error-panel'),
+                        style: SyntilaMessageTypography.fromTheme(
+                          Theme.of(context),
+                        ).copyWith(color: colors.error),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Copy request error',
+                      icon: const Icon(Icons.copy_outlined, size: 16),
+                      onPressed: () async {
+                        await Clipboard.setData(
+                            ClipboardData(text: submitError!));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showNotice(
+                            const SnackBar(
+                                content: Text('Request error copied')),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
           MarkdownComposer(
             attachments: _composerExtras(
               reply: replyTarget,
@@ -1063,6 +1100,7 @@ class _WorkComposer extends StatelessWidget {
             inputHeight: inputHeight,
             showControlTooltips: false,
             controller: requestController,
+            sendIcon: Icons.arrow_upward_rounded,
             hintText: 'Write a message...',
             chatStyle: true,
             minLines: 1,
@@ -1102,30 +1140,6 @@ class _WorkComposer extends StatelessWidget {
                 style: TextStyle(fontSize: 12),
               ),
             ),
-          if (submitError != null) ...[
-            const SizedBox(height: 10),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: SelectableText(
-                  submitError!,
-                  style: SyntilaMessageTypography.fromTheme(Theme.of(context))
-                      .copyWith(color: colors.error),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Copy request error',
-                icon: const Icon(Icons.copy_outlined, size: 16),
-                onPressed: () async {
-                  await Clipboard.setData(ClipboardData(text: submitError!));
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showNotice(
-                      const SnackBar(content: Text('Request error copied')),
-                    );
-                  }
-                },
-              ),
-            ]),
-          ],
         ],
       ),
     );
@@ -1267,7 +1281,7 @@ class AxWorkerUsagePanel extends StatelessWidget {
               children: [
                 Container(
                   color: attached
-                      ? SyntilaColors.composerRail(
+                      ? SyntilaColors.composerBackground(
                           Theme.of(context).brightness == Brightness.dark)
                       : null,
                   padding: attached
@@ -1373,17 +1387,6 @@ class AxWorkerUsagePanel extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (attached)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Divider(
-                      key: const ValueKey('worker-usage-bottom-line'),
-                      height: 1,
-                      thickness: 1,
-                      color: SyntilaColors.composerRail(
-                          Theme.of(context).brightness == Brightness.dark),
-                    ),
-                  ),
               ],
             ),
           );
@@ -1392,12 +1395,12 @@ class AxWorkerUsagePanel extends StatelessWidget {
             onTapOutside: (_) => controller.dismiss(),
             child: _ComposerPanelLayer(
               backgroundKey: const ValueKey('worker-usage-layer-background'),
-              horizontalInset: 40,
+              horizontalInset: 0,
               background: SyntilaColors.composerBackground(
                   Theme.of(context).brightness == Brightness.dark),
               joinsInput: joinsInput,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 240),
+              child: SizedBox(
+                height: 180,
                 child: SingleChildScrollView(child: panel),
               ),
             ),
@@ -1918,9 +1921,11 @@ class _WorkTimelineCard extends StatelessWidget {
             (!requestIsTerminal &&
                 AxExecutionPhase.isKnown(executionPhase) &&
                 !AxExecutionPhase.isExecuting(executionPhase));
-    final isWorkerResponse = !isError &&
-        hasWorkerIdentity &&
-        (isPreStart ||
+    // A failed request keeps its worker identity (model, effort) so the
+    // user can see which worker hit the error.
+    final isWorkerResponse = hasWorkerIdentity &&
+        (isError ||
+            isPreStart ||
             progress.isExecuting ||
             senderStep?.status == 'running' ||
             response?.isNotEmpty == true);
@@ -2287,7 +2292,9 @@ class _WorkTimelineCard extends StatelessWidget {
                                                 : progressText) ??
                                             switch (request.status) {
                                               'completed' =>
-                                                'Request completed.',
+                                                request.responseImages.isEmpty
+                                                    ? 'Request completed.'
+                                                    : null,
                                               'failed' =>
                                                 'Your request could not be completed.',
                                               'timed_out' =>
@@ -2446,6 +2453,15 @@ class _WorkTimelineCard extends StatelessWidget {
                                           data: message,
                                         ),
                                 ],
+                                if (request.responseImages.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: ResponseImages(files: [
+                                      for (final image
+                                          in request.responseImages)
+                                        image.toJson(),
+                                    ]),
+                                  ),
                                 if (request.steps
                                     .any((step) => step.kind == 'tool_call'))
                                   AxToolCallStepCards(
@@ -3925,83 +3941,74 @@ class _RequestHistoryPanelState extends State<_RequestHistoryPanel> {
     return _ComposerPanelLayer(
       backgroundKey: const ValueKey('request-history-layer-background'),
       joinsInput: widget.joinsInput,
-      horizontalInset: 40,
+      horizontalInset: 0,
       background: SyntilaColors.composerBackground(isDark),
-      child: TapRegion(
-        onTapOutside: (_) => widget.onClosed(),
-        child: Focus(
-          focusNode: _focus,
-          onKeyEvent: (_, event) {
-            if (event is KeyUpEvent) return KeyEventResult.ignored;
-            final key = event.logicalKey;
-            if (key == LogicalKeyboardKey.arrowUp) {
-              _move(-1);
-            } else if (key == LogicalKeyboardKey.arrowDown) {
-              _move(1);
-            } else if (key == LogicalKeyboardKey.enter ||
-                key == LogicalKeyboardKey.numpadEnter) {
-              _select(_selected);
-            } else if (key == LogicalKeyboardKey.escape) {
-              widget.onClosed();
-            } else {
-              return KeyEventResult.ignored;
-            }
-            return KeyEventResult.handled;
-          },
-          child: Container(
-            key: const ValueKey('request-history-panel'),
-            constraints: const BoxConstraints(maxHeight: 289),
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Flexible(
-                  child: widget.prompts.isEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Text('No earlier requests in this thread.',
-                              style: TextStyle(fontSize: 12)),
-                        )
-                      : ListView.builder(
-                          key: const ValueKey('request-history-list'),
-                          controller: _scroll,
-                          shrinkWrap: true,
-                          itemExtent: 48,
-                          itemCount: widget.prompts.length,
-                          itemBuilder: (context, index) => InkWell(
-                            onTap: () => _select(index),
-                            child: Container(
-                              color: index == _selected
-                                  ? SyntilaColors.navigationSelectedColor(
-                                      isDark)
-                                  : null,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                widget.prompts[index].trim(),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12),
+      child: SizedBox(
+        height: 180,
+        child: TapRegion(
+          onTapOutside: (_) => widget.onClosed(),
+          child: Focus(
+            focusNode: _focus,
+            onKeyEvent: (_, event) {
+              if (event is KeyUpEvent) return KeyEventResult.ignored;
+              final key = event.logicalKey;
+              if (key == LogicalKeyboardKey.arrowUp) {
+                _move(-1);
+              } else if (key == LogicalKeyboardKey.arrowDown) {
+                _move(1);
+              } else if (key == LogicalKeyboardKey.enter ||
+                  key == LogicalKeyboardKey.numpadEnter) {
+                _select(_selected);
+              } else if (key == LogicalKeyboardKey.escape) {
+                widget.onClosed();
+              } else {
+                return KeyEventResult.ignored;
+              }
+              return KeyEventResult.handled;
+            },
+            child: Container(
+              key: const ValueKey('request-history-panel'),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: widget.prompts.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Text('No earlier requests in this thread.',
+                                style: TextStyle(fontSize: 12)),
+                          )
+                        : ListView.builder(
+                            key: const ValueKey('request-history-list'),
+                            controller: _scroll,
+                            itemExtent: 48,
+                            itemCount: widget.prompts.length,
+                            itemBuilder: (context, index) => InkWell(
+                              onTap: () => _select(index),
+                              child: Container(
+                                color: index == _selected
+                                    ? SyntilaColors.navigationSelectedColor(
+                                        isDark)
+                                    : null,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  widget.prompts[index].trim(),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Divider(
-                    key: const ValueKey('request-history-bottom-line'),
-                    height: 1,
-                    thickness: 1,
-                    color: SyntilaColors.composerRail(isDark),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -4067,7 +4074,7 @@ enum _WorkQueuePause {
   user,
 }
 
-/// An inset queue layer whose background extends behind the active composer.
+/// A queued-work panel layered above the active composer.
 class _QueuedMessagesPanel extends StatelessWidget {
   const _QueuedMessagesPanel({
     required this.messages,
@@ -4094,12 +4101,13 @@ class _QueuedMessagesPanel extends StatelessWidget {
     const iconConstraints = BoxConstraints.tightFor(width: 28, height: 28);
     return _ComposerPanelLayer(
       backgroundKey: const ValueKey('work-queue-layer-background'),
-      // Span the input's central area, between the 40px composer rails.
-      horizontalInset: 40,
+      horizontalInset: 0,
       background: SyntilaColors.composerBackground(isDark),
       child: Container(
         key: const ValueKey('work-queue-panel'),
-        constraints: const BoxConstraints(maxHeight: 192),
+        // Fits the content; shows at most 6 items before scrolling.
+        constraints: BoxConstraints(
+            maxHeight: (hasPanelAbove ? 1 : 0) + 30 + 6 * 48),
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
         child: Column(
@@ -4115,7 +4123,7 @@ class _QueuedMessagesPanel extends StatelessWidget {
               ),
             Container(
               key: const ValueKey('work-queue-header'),
-              color: SyntilaColors.composerRail(isDark),
+              color: SyntilaColors.composerBackground(isDark),
               padding: const EdgeInsets.fromLTRB(12, 2, 4, 0),
               child: Row(children: [
                 Expanded(
@@ -4250,15 +4258,6 @@ class _QueuedMessagesPanel extends StatelessWidget {
                     ),
                   );
                 },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Divider(
-                key: const ValueKey('work-queue-bottom-line'),
-                height: 1,
-                thickness: 1,
-                color: SyntilaColors.composerRail(isDark),
               ),
             ),
           ],

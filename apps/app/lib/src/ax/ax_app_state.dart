@@ -666,6 +666,10 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   /// Sidebar "Edit Space": edits the name and description in a dialog,
   /// without navigating. Errors stay in the dialog so nothing typed is lost.
   Future<void> _editSpace(AxSpace space) async {
+    if (space.isDirect) {
+      await _editPersonalSpaceName(space);
+      return;
+    }
     final nameController = TextEditingController(text: space.name);
     final descriptionController =
         TextEditingController(text: space.description);
@@ -763,9 +767,92 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
     );
   }
 
+  Future<void> _editPersonalSpaceName(AxSpace space) async {
+    final controller = TextEditingController(text: space.name);
+    final original = space.settings['originalName'];
+    String? error;
+    var saving = false;
+    await showDialog<void>(
+      context: navigatorKey.currentContext ?? context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> save({bool reset = false}) async {
+            if (saving) return;
+            final name = controller.text.trim();
+            if (!reset && name.isEmpty) {
+              setDialogState(() => error = 'Enter a name or reset it.');
+              return;
+            }
+            setDialogState(() {
+              saving = true;
+              error = null;
+            });
+            try {
+              await store.collaboration.editSpace(space, settings: {
+                'personalName': reset || name == original ? null : name,
+              });
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            } catch (failure) {
+              if (dialogContext.mounted) {
+                setDialogState(() {
+                  saving = false;
+                  error = failure.toString();
+                });
+              }
+            }
+          }
+
+          return AlertDialog(
+            key: const ValueKey('personal-space-name-dialog'),
+            title: const Text('Rename People Space'),
+            content: SizedBox(
+              width: 440,
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                enabled: !saving,
+                maxLength: 120,
+                onSubmitted: (_) => save(),
+                decoration: InputDecoration(
+                  labelText: 'Name for you',
+                  helperText: original is String && original.isNotEmpty
+                      ? 'Only you see this name. Person: $original'
+                      : 'Only you see this name.',
+                  errorText: error,
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: saving ? null : () => save(reset: true),
+                  child: const Text('Reset to person’s name')),
+              TextButton(
+                  onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: saving ? null : () => save(),
+                  child: Text(saving ? 'Saving…' : 'Save')),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   /// Saves an inline Space edit; returns an error for the form or null.
   Future<String?> _saveSpaceEdits(
       AxSpace space, String name, String description, String? color) async {
+    if (space.isDirect) {
+      try {
+        await store.collaboration.editSpace(space, settings: {
+          'personalName': name == space.settings['originalName'] ? null : name,
+        });
+        if (mounted) _showSnackBar('Name updated for you.');
+        return null;
+      } catch (error) {
+        return error.toString();
+      }
+    }
     final taken = store.spaces.items.any((other) =>
         other.id != space.id &&
         other.role == 'owner' &&

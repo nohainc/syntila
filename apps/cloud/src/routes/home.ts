@@ -18,7 +18,7 @@ export async function handleGetHomeReadModel(
   const spacesRows = await env.SYNTILA_DB.prepare(
     `SELECT p.id, p.name, p.description, pm.role, COALESCE(p.kind, 'group') AS kind,
             p.settings_json AS settingsJson, p.created_at AS createdAt, p.updated_at AS updatedAt,
-            peer_u.display_name AS peerDisplayName
+            peer_u.display_name AS peerDisplayName, dsus.personal_name AS personalName
      FROM spaces p
      JOIN space_memberships pm ON pm.space_id = p.id
      LEFT JOIN direct_spaces ds ON ds.space_id = p.id
@@ -27,7 +27,7 @@ export async function handleGetHomeReadModel(
      WHERE pm.user_id = ?1
        AND COALESCE(json_extract(p.settings_json, '$.archived'), 0) = 0
        AND (
-         p.kind != 'direct'
+         (p.kind != 'direct' AND COALESCE(dsus.hidden, 0) = 0)
          OR (
            COALESCE(dsus.hidden, 0) = 0
            AND (
@@ -57,11 +57,15 @@ export async function handleGetHomeReadModel(
       createdAt: string;
       updatedAt: string;
       peerDisplayName: string | null;
+      personalName: string | null;
     }>();
 
   const authorizedSpaces = (spacesRows.results ?? []).map((p) => ({
     ...p,
-    name: p.kind === "direct" && p.peerDisplayName ? p.peerDisplayName : p.name,
+    name:
+      p.kind === "direct"
+        ? (p.personalName ?? p.peerDisplayName ?? p.name)
+        : p.name,
   }));
   const authorizedSpaceIds = authorizedSpaces.map((p) => p.id);
   const authorizedSpaceMap = new Map(

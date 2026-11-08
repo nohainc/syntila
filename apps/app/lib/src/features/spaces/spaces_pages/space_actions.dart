@@ -51,10 +51,17 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
       } else {
         final updated = await _collaboration.editSpace(
           widget.space,
-          name: name,
-          description: description,
-          instructions: widget.space.instructions,
-          settings: {'color': _editColor},
+          name: widget.space.isDirect ? null : name,
+          description: widget.space.isDirect ? null : description,
+          instructions:
+              widget.space.isDirect ? null : widget.space.instructions,
+          settings: widget.space.isDirect
+              ? {
+                  'personalName': name == widget.space.settings['originalName']
+                      ? null
+                      : name
+                }
+              : {'color': _editColor},
         );
         widget.onSpaceUpdated?.call(updated);
       }
@@ -76,14 +83,18 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Edit Space', style: Theme.of(context).textTheme.titleMedium),
+            Text(widget.space.isDirect ? 'Rename People Space' : 'Edit Space',
+                style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             TextField(
               controller: _nameController,
               autofocus: true,
               enabled: !_savingEdits,
               decoration: InputDecoration(
-                labelText: 'Space Name',
+                labelText:
+                    widget.space.isDirect ? 'Name for you' : 'Space Name',
+                helperText:
+                    widget.space.isDirect ? 'Only you see this name.' : null,
                 errorText: _editError,
               ),
               onChanged: (_) {
@@ -91,24 +102,37 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
               },
               onSubmitted: (_) => _saveEdits(),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descriptionController,
-              enabled: !_savingEdits,
-              decoration: const InputDecoration(labelText: 'Description'),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 12),
-            SpaceColorSelector(
-              value: _editColor,
-              onChanged: _savingEdits
-                  ? null
-                  : (value) => _updateState(() => _editColor = value),
-            ),
+            if (!widget.space.isDirect) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _descriptionController,
+                enabled: !_savingEdits,
+                decoration: const InputDecoration(labelText: 'Description'),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 12),
+              SpaceColorSelector(
+                value: _editColor,
+                onChanged: _savingEdits
+                    ? null
+                    : (value) => _updateState(() => _editColor = value),
+              ),
+            ],
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                if (widget.space.isDirect &&
+                    widget.space.settings['originalName'] is String)
+                  TextButton(
+                    onPressed: _savingEdits
+                        ? null
+                        : () => _updateState(() {
+                              _nameController.text = widget
+                                  .space.settings['originalName'] as String;
+                            }),
+                    child: const Text('Reset to person’s name'),
+                  ),
                 TextButton(
                   onPressed: _savingEdits ? null : _cancelEditing,
                   child: const Text('Cancel'),

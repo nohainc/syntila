@@ -1623,10 +1623,10 @@ void main() {
       final queueHeader = tester
           .widget<Container>(find.byKey(const ValueKey('work-queue-header')));
       final isDark = brightness == Brightness.dark;
-      expect(queueHeader.color, SyntilaColors.composerRail(isDark));
+      expect(queueHeader.color, SyntilaColors.composerBackground(isDark));
 
-      // The queue is an inset back layer of the input, with no gap. Its
-      // decorative overlap must not cover the input or hide the queue controls.
+      // The queue spans the composer width and joins its top edge with no gap.
+      // Its background overlap must not cover the input or queue controls.
       for (final width in [1200.0, 390.0]) {
         await tester.binding.setSurfaceSize(Size(width, 1400));
         await tester.pumpAndSettle();
@@ -1636,8 +1636,9 @@ void main() {
             .getRect(find.byKey(const ValueKey('work-queue-layer-background')));
         final composer = tester.getRect(find.byType(MarkdownComposer));
         expect(queue.bottom, composer.top);
-        expect(queue.left, composer.left + 40);
-        expect(queue.right, composer.right - 40);
+        expect(queue.left, composer.left);
+        expect(queue.right, composer.right);
+        expect(queue.height, lessThanOrEqualTo(30 + 1 + 6 * 48));
         expect(layer.bottom, composer.top + 10);
         expect(find.byTooltip('Pause queue').hitTestable(), findsOneWidget);
         expect(find.byTooltip('Edit').hitTestable(), findsNWidgets(3));
@@ -3360,8 +3361,9 @@ void main() {
           find.byKey(const ValueKey('request-history-layer-background')));
       final input = tester.getRect(find.byType(MarkdownComposer));
       expect(history.bottom, input.top);
-      expect(history.left, input.left + 40);
-      expect(history.right, input.right - 40);
+      expect(history.left, input.left);
+      expect(history.right, input.right);
+      expect(history.height, 180);
       expect(layer.bottom, input.top + 10);
       expect(older.hitTestable(), findsOneWidget);
       expect(newer.hitTestable(), findsOneWidget);

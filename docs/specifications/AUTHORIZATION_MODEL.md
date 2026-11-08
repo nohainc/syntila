@@ -66,6 +66,13 @@ A `direct` Space represents a dedicated one-to-one conversation between two appr
 
 ### 6. Direct Space Permissions Matrix
 
+Members can archive or restore their own view of a Direct Space or a Group
+Space shared with them, including when their role is read-only. This changes
+only their visibility and does not revoke membership or alter another member's
+view. A Group Space owner's archive continues to apply to the whole Space.
+Direct Space visibility is restored when a new message arrives or the Space is
+opened. Personal visibility uses the existing per-user Space state table.
+
 | Operation | Alice (Technical Owner) | Bob (Participant) | Charlie (Unrelated User) | Former Connection (Disconnected) |
 | :--- | :---: | :---: | :---: | :---: |
 | **Discover Space (List Spaces)** | Allowed | Allowed | Denied (isolated) | Allowed (read-only) |

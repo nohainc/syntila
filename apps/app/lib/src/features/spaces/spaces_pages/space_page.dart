@@ -387,7 +387,8 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                                 ),
                               SizedBox(
                                 key: const ValueKey('space-header-actions'),
-                                child: isOwner && !_editing
+                                child: (isOwner || widget.space.isDirect) &&
+                                        !_editing
                                     ? PopupMenuButton<String>(
                                         color: SyntilaMenuStyle.background(
                                             _isDark),

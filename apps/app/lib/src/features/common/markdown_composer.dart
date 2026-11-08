@@ -468,7 +468,6 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
       mainAxisSize: MainAxisSize.min,
       children: [
         topSlot,
-        const SizedBox(height: 4),
         bottomSlot,
       ],
     );
@@ -789,7 +788,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                   isDense: widget.chatStyle,
                   hoverColor: Colors.transparent,
                   contentPadding: widget.chatStyle
-                      ? const EdgeInsets.fromLTRB(10, 12, 10, 8)
+                      ? const EdgeInsets.fromLTRB(10, 6, 10, 4)
                       : null,
                   suffixIcon: widget.chatStyle &&
                           !widget.twoRowLayout &&
@@ -948,7 +947,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                 children: [
                   if (widget.leadingControls != null)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
                       child: SizedBox(
                         key: const ValueKey('composer-leading-rail'),
                         width: 32,
@@ -1008,7 +1007,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                               child: Center(
                                 child: Container(
                                   margin:
-                                      const EdgeInsets.symmetric(vertical: 5),
+                                      const EdgeInsets.symmetric(vertical: 2),
                                   width: 36,
                                   height: 4,
                                   decoration: BoxDecoration(
@@ -1128,7 +1127,7 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
                   )),
                   if (_hasTrailingRail)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                      padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
                       child: SizedBox(
                         key: const ValueKey('composer-trailing-rail'),
                         width: 32,

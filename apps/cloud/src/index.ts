@@ -185,6 +185,7 @@ export const routeHandlers = {
   handleDownloadRuntimeInput: handlers.handleDownloadRuntimeInput,
   handleConfirmRuntimeInput: handlers.handleConfirmRuntimeInput,
   handleReportRuntimeInputAttempt: handlers.handleReportRuntimeInputAttempt,
+  handleUploadWorkerOutputImage: handlers.handleUploadWorkerOutputImage,
   handleUploadWorkRequestFile: handlers.handleUploadWorkRequestFile,
   handleDownloadThreadFile: handlers.handleDownloadThreadFile,
   handleCancelWorkRequest: handlers.handleCancelWorkRequest,

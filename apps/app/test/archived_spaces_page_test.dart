@@ -192,4 +192,28 @@ void main() {
       expect(tester.takeException(), isNull);
     }
   });
+
+  testWidgets('shared Space archive can be restored without a delete action',
+      (tester) async {
+    final source = _ArchivedSource([first.copyWith(role: 'viewer')]);
+    final engine = AxSyncEngine();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ArchivedSpacesPage(
+          archivedSpaces: AxArchivedSpaces(source, engine: engine),
+          mutations: AxCollaborationMutations(source, engine: engine),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('archived-space-actions-archived-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Restore'), findsOneWidget);
+    expect(find.text('Delete'), findsNothing);
+    await tester.tap(find.text('Restore'));
+    await tester.pumpAndSettle();
+    expect(source.restored, ['archived-1']);
+    expect(find.text('Research'), findsNothing);
+  });
 }

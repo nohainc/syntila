@@ -66,6 +66,10 @@ Direct Spaces do not invent parallel chat or agent infrastructure:
 Direct Spaces present a personalized identity depending on who is viewing the Space:
 - When viewed by User A, the Space title is User B's current profile `displayName`, and the avatar is User B's profile `avatarUrl`.
 - When viewed by User B, the Space title is User A's current profile `displayName`, and the avatar is User A's profile `avatarUrl`.
+- Either participant may set a private personal Space name. It replaces the
+  displayed title only for that participant, persists across devices, and can be
+  reset to follow the other person's current profile name. It does not change
+  the profile or the other participant's view.
 - Underlying persistence and authorization strictly use immutable user IDs (`userId`), never mutable display names or emails.
 
 ### 8. Execution and Workspace Boundaries

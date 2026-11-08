@@ -35,7 +35,83 @@ class LongListSource extends AxFixtureDataSource {
   }
 }
 
+class PersonalNameSource extends AxFixtureDataSource {
+  AxSpace person = axFixtureSnapshot().spaces.first.copyWith(
+    kind: 'direct',
+    role: 'collaborator',
+    name: 'Alex',
+    settings: {'originalName': 'Alex', 'personalName': null},
+  );
+  final updates = <Map<String, dynamic>>[];
+
+  @override
+  Future<List<AxSpace>> loadSpaces({bool includeArchived = false}) async =>
+      [person];
+
+  @override
+  Future<AxSnapshot> loadBootstrapState(
+          {String? spaceId, String? workspaceId}) async =>
+      axFixtureSnapshot().copyWith(spaces: [person]);
+
+  @override
+  Future<AxSpace> updateSpace(
+      {required String spaceId,
+      String? name,
+      String? description,
+      String? instructions,
+      Map<String, dynamic>? settings}) async {
+    updates.add(Map.of(settings!));
+    final personal = settings['personalName'] as String?;
+    person = person.copyWith(name: personal ?? 'Alex', settings: {
+      'originalName': 'Alex',
+      'personalName': personal,
+    });
+    return person;
+  }
+}
+
 void main() {
+  testWidgets('People Space rename and reset are personal settings',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final source = PersonalNameSource();
+    await tester.pumpWidget(SyntilaAppShell(
+      services: const DefaultPlatformServices(),
+      dataSource: source,
+      initialUri: Uri.parse('/spaces'),
+    ));
+    await tester.pumpAndSettle();
+
+    Future<void> openEditor() async {
+      final row = find.byKey(const ValueKey('sidebar-space-row-space-auth'));
+      await tester.tap(
+          find.descendant(of: row, matching: find.byTooltip('Space menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit Space'));
+      await tester.pumpAndSettle();
+    }
+
+    await openEditor();
+    final dialog = find.byKey(const ValueKey('personal-space-name-dialog'));
+    expect(dialog, findsOneWidget);
+    await tester.enterText(
+        find.descendant(of: dialog, matching: find.byType(TextField)),
+        'Alex at work');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(source.updates.last, {'personalName': 'Alex at work'});
+    expect(find.text('Alex at work'), findsWidgets);
+
+    await openEditor();
+    await tester.tap(find.text('Reset to person’s name'));
+    await tester.pumpAndSettle();
+    expect(source.updates.last, {'personalName': null});
+    expect(find.text('Alex'), findsWidgets);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('Edit Space menu opens the Space edit dialog on mobile',
       (tester) async {
     tester.view.physicalSize = const Size(390, 800);

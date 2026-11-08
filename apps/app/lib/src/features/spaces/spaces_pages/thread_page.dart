@@ -942,6 +942,7 @@ class _ThreadPageState extends State<ThreadPage>
       !_workPresentation.hasData && _workPresentation.isFetching;
   String? get _workTimelineError => _workPresentation.error?.toString();
   String? _workSubmitError;
+  Timer? _queueFileErrorTimer;
 
   /// The last send was blocked by an incomplete Worker/model/effort choice.
   bool _workSelectionMissing = false;
@@ -1991,6 +1992,7 @@ class _ThreadPageState extends State<ThreadPage>
     _chatHistoryController.removeListener(_onChatHistoryScroll);
     _tabController.removeListener(_onThreadTabChanged);
     _replyHighlightTimer?.cancel();
+    _queueFileErrorTimer?.cancel();
     _requestController.dispose();
     _workHistoryController.dispose();
     _chatHistoryController.dispose();
@@ -2762,7 +2764,6 @@ class _ThreadPageState extends State<ThreadPage>
         mainAxisSize: MainAxisSize.min,
         children: [
           toggle(false, 'Message', Icons.chat_bubble_outline_rounded),
-          const SizedBox(height: 4),
           toggle(true, 'Ask AI', Icons.auto_awesome_rounded),
         ],
       ),
@@ -2799,7 +2800,7 @@ class _ThreadPageState extends State<ThreadPage>
         onCancel: _editingMessageId != null ? _cancelEditMessage : null,
         sendIcon: _editingMessageId != null
             ? Icons.check_rounded
-            : Icons.send_rounded,
+            : Icons.arrow_upward_rounded,
         sendTooltip:
             _editingMessageId != null ? 'Save changes' : 'Send message',
         toolbarLeadingControls: widget.isDraft || _editingMessageId != null

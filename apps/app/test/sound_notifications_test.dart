@@ -98,6 +98,58 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
+  testWidgets('stays quiet for incoming messages in the visible open thread',
+      (tester) async {
+    final sounds = TestSoundNotifications();
+    final realtime = TestRealtime();
+    final source = _SoundNotificationSource();
+    String? rawPrefs;
+    final store = ViewPreferencesStore(
+      read: () => rawPrefs,
+      write: (v) => rawPrefs = v,
+    );
+    store.save(const ViewPreferences(muteSound: false));
+
+    await tester.pumpWidget(MaterialApp(
+      home: SyntilaAppShell(
+        services: const DefaultPlatformServices(),
+        dataSource: source,
+        realtimeClient: realtime,
+        soundNotifications: sounds,
+        viewPreferencesStore: store,
+        initialUri: Uri.parse('/spaces/space-auth/threads/thread-auth'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    realtime.emit({
+      'type': 'discussion.created',
+      'payload': {
+        'threadId': 'thread-auth',
+        'authorUserId': 'user-other',
+        'text': 'Visible in the open thread',
+      },
+    });
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(sounds.played, isEmpty);
+
+    realtime.emit({
+      'type': 'discussion.created',
+      'payload': {
+        'threadId': 'another-thread',
+        'authorUserId': 'user-other',
+        'text': 'Not visible in the open thread',
+      },
+    });
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(sounds.played, [AxSoundKind.messageReceived]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   testWidgets('plays sound when a request is completed', (tester) async {
     final sounds = TestSoundNotifications();
     final realtime = TestRealtime();

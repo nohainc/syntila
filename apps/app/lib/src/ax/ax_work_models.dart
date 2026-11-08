@@ -185,6 +185,7 @@ class AxConversationTurn {
         startedAt = json['startedAt'] as String?,
         completedAt = json['completedAt'] as String?,
         resultText = json['resultText'] as String?,
+        images = AxWorkAttachment.fromList(json['images']),
         createdAt = json['createdAt'] as String;
   final String id;
   final String conversationId;
@@ -215,6 +216,9 @@ class AxConversationTurn {
   final String? startedAt;
   final String? completedAt;
   final String? resultText;
+
+  /// Images the Worker produced; bytes come from the Thread file download.
+  final List<AxWorkAttachment> images;
   final String createdAt;
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -245,6 +249,8 @@ class AxConversationTurn {
         'startedAt': startedAt,
         'completedAt': completedAt,
         'resultText': resultText,
+        if (images.isNotEmpty)
+          'images': [for (final image in images) image.toJson()],
         'createdAt': createdAt,
       };
 }
@@ -325,8 +331,10 @@ class AxWorkAttachment {
       required this.sizeBytes,
       this.previewText,
       this.fileId,
-      this.previewImage});
+      this.previewImage,
+      this.mediaType});
   final String name;
+  final String? mediaType;
   final int sizeBytes;
   final String? fileId;
   final String? previewText;
@@ -336,6 +344,7 @@ class AxWorkAttachment {
         'name': name,
         'sizeBytes': sizeBytes,
         if (fileId != null) 'fileId': fileId,
+        if (mediaType != null) 'mediaType': mediaType,
         if (previewText != null) 'previewText': previewText,
         if (previewImage != null) 'previewImage': previewImage
       };
@@ -350,6 +359,7 @@ class AxWorkAttachment {
               fileId: item['fileId'] as String?,
               previewText: item['previewText'] as String?,
               previewImage: item['previewImage'] as String?,
+              mediaType: item['mediaType'] as String?,
               sizeBytes:
                   item['sizeBytes'] is int ? item['sizeBytes'] as int : 0)));
 }
@@ -374,6 +384,7 @@ class AxWorkRequestStatus {
     this.requestedByUserId,
     this.requestedByName,
     this.originalRequest,
+    this.replyTo,
     this.createdAt,
     this.steps = const [],
     this.activityHistory = const [],
@@ -398,6 +409,7 @@ class AxWorkRequestStatus {
   final String? requestedByUserId;
   final String? requestedByName;
   final String? originalRequest;
+  final AxReplyReference? replyTo;
   final String? createdAt;
   final List<AxWorkRequestStep> steps;
   final List<Map<String, dynamic>> activityHistory;
@@ -681,6 +693,7 @@ class AxWorkRequest {
     String? status,
     List<AxWorkRequestStep>? steps,
     List<Map<String, dynamic>>? activityHistory,
+    AxReplyReference? replyTo,
   }) =>
       AxWorkRequest(
           id: id,
@@ -701,7 +714,7 @@ class AxWorkRequest {
           finalText: finalText,
           error: error,
           activityHistory: activityHistory ?? this.activityHistory,
-          replyTo: replyTo,
+          replyTo: replyTo ?? this.replyTo,
           completedWithGaps: completedWithGaps,
           partialSynthesisAvailable: partialSynthesisAvailable,
           // A terminal status forces the terminal phase so a request that
@@ -746,6 +759,12 @@ class AxWorkRequest {
                 .where((text) => text.trim().isNotEmpty)
                 .firstOrNull;
   }
+
+  /// Images the Workers attached to their answers, in turn order.
+  List<AxWorkAttachment> get responseImages => [
+        for (final turn in turns)
+          if (turn.status == 'completed') ...turn.images,
+      ];
 
   String? get testSummary {
     for (final step in steps) {

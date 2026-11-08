@@ -200,8 +200,8 @@ void main() {
       final layer = tester
           .getRect(find.byKey(const ValueKey('worker-usage-layer-background')));
       final input = tester.getRect(find.byType(MarkdownComposer));
-      expect(layer.left, input.left + 40);
-      expect(layer.right, input.right - 40);
+      expect(layer.left, input.left);
+      expect(layer.right, input.right);
       expect(layer.bottom, input.top + 10);
       expect(find.byTooltip('Refresh usage').hitTestable(), findsOneWidget);
       expect(find.byTooltip('Close usage'), findsNothing);

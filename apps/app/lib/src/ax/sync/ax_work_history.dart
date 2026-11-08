@@ -169,24 +169,23 @@ class AxWorkHistoryCache {
   }
 
   List<AxWorkRequest> _merge(
-          Iterable<AxWorkRequest> old, Iterable<AxWorkRequest> added) =>
-      {
-        for (final item in old) item.id: item,
-        for (final item in added)
-          // List pages carry no activity history; keep what the detail read
-          // already loaded so reopening a Thread does not show a blank history.
-          item.id: item.activityHistory.isEmpty &&
-                  old.any(
-                      (o) => o.id == item.id && o.activityHistory.isNotEmpty)
-              ? item.copyWith(
-                  activityHistory:
-                      old.firstWhere((o) => o.id == item.id).activityHistory)
-              : item
-      }.values.toList()
-        ..sort((a, b) {
-          final time = a.createdAt.compareTo(b.createdAt);
-          return time == 0 ? a.id.compareTo(b.id) : time;
-        });
+      Iterable<AxWorkRequest> old, Iterable<AxWorkRequest> added) {
+    final merged = {for (final item in old) item.id: item};
+    for (final item in added) {
+      final previous = merged[item.id];
+      // Partial updates may omit details already known for this request.
+      final activity = item.activityHistory.isEmpty &&
+              previous?.activityHistory.isNotEmpty == true
+          ? previous!.activityHistory
+          : null;
+      final reply = item.replyTo == null ? previous?.replyTo : null;
+      merged[item.id] = activity != null || reply != null
+          ? item.copyWith(activityHistory: activity, replyTo: reply)
+          : item;
+    }
+    return merged.values.toList()..sort(_compare);
+  }
+
   Future<AxWorkHistory> _load(String id, bool activeOnly) async {
     if (_isLegacyThreadId(id)) {
       return AxWorkHistory(initialLoaded: true);
@@ -333,6 +332,7 @@ class AxWorkHistoryCache {
                     requestedByUserId: local.requestedByUserId,
                     prompt: local.prompt,
                     attachments: local.attachments,
+                    replyTo: local.replyTo,
                     workflowId: local.workflowId,
                     workflowVersion: local.workflowVersion,
                     workflowName: local.workflowName,
@@ -351,7 +351,13 @@ class AxWorkHistoryCache {
       engine.update(query(threadId), (state) {
         final current = state.data ?? AxWorkHistory();
         return AxWorkHistory(
-            requests: current.requests.where((r) => r.id != localId).toList(),
+            requests: [
+              for (final r in current.requests)
+                if (r.id != localId)
+                  r.id == requestId && r.replyTo == null
+                      ? r.copyWith(replyTo: local.replyTo)
+                      : r,
+            ],
             olderCursor: current.olderCursor,
             initialLoaded: current.initialLoaded,
             newestPageRequest: current.newestPageRequest,
@@ -501,7 +507,10 @@ class AxWorkHistoryCache {
               id,
               [
                 for (final request in history.requests)
-                  if (request.id != localId) request,
+                  if (request.id != localId)
+                    request.id == savedId && request.replyTo == null
+                        ? request.copyWith(replyTo: replyTo)
+                        : request,
                 if (!history.requests.any((r) => r.id == savedId))
                   AxWorkRequest(
                       id: savedId,
@@ -761,6 +770,7 @@ class AxWorkHistoryCache {
                   detail.requestedByUserId ?? previous?.requestedByUserId,
               prompt: detail.originalRequest ?? previous!.prompt,
               attachments: detail.attachments,
+              replyTo: detail.replyTo ?? previous?.replyTo,
               workflowId: detail.workflowId ?? previous!.workflowId,
               workflowVersion:
                   detail.workflowVersion ?? previous!.workflowVersion,

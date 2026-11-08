@@ -129,6 +129,7 @@ export function sqliteD1(
     "0108_support_spaces.sql",
     "0109_support_space_default_hidden.sql",
     "0110_release_paused_phases.sql",
+    "0111_direct_space_personal_name.sql",
   ]) {
     sqlite.exec(
       readFileSync(

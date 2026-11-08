@@ -35,6 +35,7 @@ import 'package:syntila_workspace/cli_worker_engine_supervisor.dart';
 import 'package:syntila_workspace/mcp_tool_call_executor.dart';
 import 'package:syntila_workspace/mcp_tool_call_handler.dart';
 import 'package:syntila_workspace/worker_diagnostic_store.dart';
+import 'package:syntila_workspace/worker_output_images.dart';
 
 String _runtimeFailureDiagnostic(
   String stage,
@@ -340,6 +341,17 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           staging: inputStaging,
           pushConnected: () => connection?.isConnected ?? false,
         );
+  final outputImageCloud = inputCloudUri == null ||
+          inputRuntimeId == null ||
+          inputRuntimeId.isEmpty ||
+          inputToken == null ||
+          inputToken.isEmpty
+      ? null
+      : HttpWorkerOutputImageCloud(
+          cloudUri: inputCloudUri,
+          workspaceRuntimeId: inputRuntimeId,
+          authToken: inputToken,
+        );
   late final WorkerAssignmentHandler workerHandler;
   workerHandler = WorkerAssignmentHandler(
     resolveLogicalWorker: (workerId) async {
@@ -438,6 +450,16 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
     },
     onStartupStage: (context, stage, detail) => connection
         ?.traceAssignmentStage(context, stage.wireName, extra: detail),
+    publishOutputImages: outputImageCloud == null
+        ? null
+        : (context, workingDirectory) => publishWorkerOutputImages(
+              cloud: outputImageCloud,
+              workingDirectory: workingDirectory,
+              assignmentId: context.assignmentId,
+              onError: (error) => stderr.writeln(
+                'Worker output image upload failed: ${error.runtimeType}',
+              ),
+            ),
     onExecutionStarted: (context) async {
       await connection?.reportWorkerStarted(context);
     },
@@ -738,7 +760,10 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           assignmentId: context.assignmentId,
           attemptId: context.attemptId,
           executionId: context.executionId,
-          prompt: promptWithAdditionalFolders(prompt, additionalDirectories),
+          prompt: promptWithAdditionalFolders(
+            promptWithOutputImages(prompt, context.assignmentId),
+            additionalDirectories,
+          ),
           timeout: Duration(milliseconds: timeoutValue),
           queueWaitTimeout: queueWaitTimeout,
           sessionPolicy: sessionPolicyValue == 'durable_session'

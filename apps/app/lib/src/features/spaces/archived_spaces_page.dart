@@ -139,18 +139,19 @@ class _ArchivedSpacesPageState extends State<ArchivedSpacesPage> {
             Text('Restore', style: SyntilaMenuStyle.textStyle),
           ]),
         ),
-        PopupMenuItem<String>(
-          value: 'delete',
-          height: 48,
-          child: Row(children: [
-            Icon(Icons.delete_outline_rounded,
-                size: 16, color: Theme.of(context).colorScheme.error),
-            const SizedBox(width: 8),
-            Text('Delete',
-                style: SyntilaMenuStyle.textStyle
-                    .copyWith(color: Theme.of(context).colorScheme.error)),
-          ]),
-        ),
+        if (space.isDirect || space.role == 'owner')
+          PopupMenuItem<String>(
+            value: 'delete',
+            height: 48,
+            child: Row(children: [
+              Icon(Icons.delete_outline_rounded,
+                  size: 16, color: Theme.of(context).colorScheme.error),
+              const SizedBox(width: 8),
+              Text('Delete',
+                  style: SyntilaMenuStyle.textStyle
+                      .copyWith(color: Theme.of(context).colorScheme.error)),
+            ]),
+          ),
       ],
       child: Ink(
         width: 48,

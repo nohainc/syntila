@@ -20,6 +20,7 @@ import 'engine_logger.dart';
 import 'engine_session_store.dart';
 import 'conversation_execution_router.dart';
 import 'provider_activity_adapter.dart';
+import 'provider_images.dart';
 
 const _compiledEngineVersion = String.fromEnvironment(
   'ENGINE_VERSION',
@@ -1631,6 +1632,10 @@ class CliWorkerEngine {
         var toolSeen = false;
         final stdout = StringBuffer();
         var stdoutBytes = 0;
+        // File timestamps can be coarser than the clock; allow a little slack.
+        final providerStartedAt = DateTime.now().subtract(
+          const Duration(seconds: 2),
+        );
         final result = await _streamingRunner.run(
           executable,
           args,
@@ -1684,7 +1689,7 @@ class CliWorkerEngine {
         );
         _providerExitCode = result.exitCode;
         acceptingProviderEvents = false;
-        final interpreted = _interpret(
+        var interpreted = _interpret(
           stdout.toString(),
           result.stderr,
           result.exitCode,
@@ -1692,6 +1697,23 @@ class CliWorkerEngine {
           priorSession: priorSession,
           durable: request.sessionPolicy == WorkerSessionPolicy.durableSession,
         );
+        final capturedImages = await _captureProviderImages(
+          stdout.toString(),
+          workingDirectory: context['workingDirectory']!,
+          assignmentId: request.assignmentId,
+          since: providerStartedAt,
+          environment: _environment(context),
+        );
+        if (interpreted.emptyResponse && capturedImages > 0) {
+          // An answer that is only an image is a complete answer.
+          final threadId = codexThreadId(stdout.toString());
+          interpreted = _InterpretedOutput(
+            '',
+            threadId != null && _validSessionId(threadId) ? threadId : null,
+            null,
+            terminalObserved: interpreted.terminalObserved,
+          );
+        }
         if (_string(_map(execution['output'])['mode']) == 'jsonl' &&
             !interpreted.terminalObserved) {
           _logger.log(
@@ -2617,6 +2639,34 @@ class CliWorkerEngine {
         details: safeDetails.isEmpty ? null : safeDetails,
       ),
     );
+  }
+
+  /// Copies images a provider keeps outside the working directory into the
+  /// assignment's output directory. Never fails the assignment.
+  Future<int> _captureProviderImages(
+    String stdout, {
+    required String workingDirectory,
+    required String assignmentId,
+    required DateTime since,
+    required Map<String, String> environment,
+  }) async {
+    if (_providerActivityAdapter?.kind != 'codex-jsonl') return 0;
+    try {
+      return await captureCodexImages(
+        stdout: stdout,
+        workingDirectory: workingDirectory,
+        assignmentId: assignmentId,
+        since: since,
+        environment: environment,
+      );
+    } on Object catch (error) {
+      _logger.log(
+        'warning',
+        'engine.assignment.image_capture_failed',
+        context: {'detail': error.runtimeType.toString()},
+      );
+      return 0;
+    }
   }
 
   _InterpretedOutput _interpret(

@@ -361,7 +361,7 @@ export async function handleFailWorkRequestInputUpload(
   return json({ fileId, state: "failed" });
 }
 
-async function requireRuntime(request: Request, env: SecurityEnv) {
+export async function requireRuntime(request: Request, env: SecurityEnv) {
   const runtimeId = new URL(request.url).searchParams.get("workspaceRuntimeId");
   const credential = extractBearerToken(request.headers);
   if (!runtimeId || !credential)

@@ -189,6 +189,9 @@ const threadExecutionGuidance = <String>[
   'Use Workspace-local Git, SSH, or provider CLI authentication for private repositories.',
 ];
 
+typedef WorkerOutputImagePublisher = Future<List<Map<String, Object?>>>
+    Function(WorkspaceAssignmentContext context, Directory workingDirectory);
+
 typedef AssignmentLogicalWorkerResolver = FutureOr<AssignmentLogicalWorker?>
     Function(String workerId);
 typedef ToolProfileAssignmentExecutor = Future<WorkerResult> Function(
@@ -282,6 +285,7 @@ class WorkerAssignmentHandler {
     this.cancelToolProfileAssignment,
     this.resolveLaunchPlan,
     this.onStartupStage,
+    this.publishOutputImages,
   })  : spaceMutationCoordinator = spaceMutationCoordinator ??
             (spaceDirectoryLifecycle == null
                 ? null
@@ -326,6 +330,10 @@ class WorkerAssignmentHandler {
   /// Receives local startup milestones (worker resolved, profile ready,
   /// waiting for Space, ...). Observation only.
   final AssignmentStartupRelay? onStartupStage;
+
+  /// Uploads the images the Worker left for the user and returns their
+  /// descriptors for the result's `output.images`.
+  final WorkerOutputImagePublisher? publishOutputImages;
   final _cancellationRequests = <String>{};
 
   /// Wake-ups for assignments waiting on the Space/Thread mutation lock, so
@@ -566,11 +574,17 @@ class WorkerAssignmentHandler {
           message: 'The assignment was cancelled before terminal delivery.',
         );
       }
+      final images = publishOutputImages == null
+          ? const <Map<String, Object?>>[]
+          : await publishOutputImages!(context, scope.workingDirectory);
       final output = {
         'summary': engineResult.output.isEmpty
             ? 'Worker $workerId completed assignment'
             : engineResult.output,
-        'output': {'text': engineResult.output},
+        'output': {
+          'text': engineResult.output,
+          if (images.isNotEmpty) 'images': images,
+        },
         'artifactIds': engineResult.artifacts,
       };
       final summary = output['summary'];
