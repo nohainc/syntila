@@ -69,17 +69,21 @@ extension _AxAppRunDetails on _AxAppStateMixin {
       case AxRouteKind.profileSecurity:
         return _profileSecurityView();
       case AxRouteKind.settings:
-        return SettingsPage(
-          preferences: _viewPreferences,
-          onChanged: _setViewPreferences,
-          workspaceId: executionWorkspaceId ??
-              (workspaces.isNotEmpty ? workspaces.first.id : null),
-          workspaces: workspaces,
-          inventories: store.mcpInventories,
-          support: widget.dataSource is AxSupportDataSource
-              ? AxSupportEntry(widget.dataSource as AxSupportDataSource)
-              : null,
-        );
+        return AxQueryBuilder<List<AxWorker>>(
+            engine: store.syncEngine,
+            query: store.catalogs.workers,
+            builder: (context, workers) => SettingsPage(
+                  workers: workers.data ?? const [],
+                  preferences: _viewPreferences,
+                  onChanged: _setViewPreferences,
+                  workspaceId: executionWorkspaceId ??
+                      (workspaces.isNotEmpty ? workspaces.first.id : null),
+                  workspaces: workspaces,
+                  inventories: store.mcpInventories,
+                  support: widget.dataSource is AxSupportDataSource
+                      ? AxSupportEntry(widget.dataSource as AxSupportDataSource)
+                      : null,
+                ));
       case AxRouteKind.spaces:
         return _homeView();
       case AxRouteKind.space:

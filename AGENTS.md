@@ -41,7 +41,7 @@ Every implementation task must report:
 - migrations or compatibility impact.
 
 ## Quality
-- Add or update tests for behavior changes.
+- Prefer functional tests that exercise meaningful user-visible behavior and important failure paths. Add focused unit or contract tests when they protect consequential rules or boundaries that functional tests cannot cover efficiently. Avoid tests that merely repeat implementation details or assert incidental names and constants; update existing coverage when appropriate instead of adding redundant tests.
 - Keep schemas/contracts versioned. The v8 D1 schema is a fresh-start baseline,
   not a compatibility migration chain.
 - Cloud route/service modules own D1 access. Keep Syntila Core independent of

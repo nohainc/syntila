@@ -31,7 +31,7 @@ for pkg in "${engine_packages[@]}"; do
       # start, so process-spawning tests are not starved of CPU.
       dart run tool/prepare_plugin_test_binaries.dart
     fi
-    if [[ -d test ]]; then
+    if [[ -d test ]] && find test -name "*_test.dart" -print -quit | grep -q .; then
       if [[ "$pkg" == engines/cli_worker ]]; then
         # These tests start real Engine/provider processes with bounded startup
         # deadlines. Parallel JIT startups can starve each other on busy hosts.

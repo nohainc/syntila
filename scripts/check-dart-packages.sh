@@ -53,8 +53,13 @@ check_dart_package() {
   (
     cd "$ROOT/$package_path"
     dart analyze
-    if [[ -d test ]]; then
-      dart test
+    if [[ -d test ]] && find test -name "*_test.dart" -print -quit | grep -q .; then
+      if [[ "$package_path" == engines/cli_worker ]]; then
+        dart run tool/prepare_plugin_test_binaries.dart
+        dart test --concurrency=1
+      else
+        dart test
+      fi
     fi
   )
 }

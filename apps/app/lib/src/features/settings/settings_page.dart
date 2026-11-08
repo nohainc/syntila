@@ -17,7 +17,7 @@ class SettingsPage extends StatefulWidget {
     this.workspaces = const [],
     this.inventories,
     this.support,
-    this.knownWorkerTypes = const ['chatgpt', 'claude', 'gemini'],
+    this.workers = const [],
   });
 
   final ViewPreferences preferences;
@@ -28,7 +28,7 @@ class SettingsPage extends StatefulWidget {
 
   /// Account-level support sidebar setting; the switch is omitted when null.
   final AxSupportEntry? support;
-  final List<String> knownWorkerTypes;
+  final List<AxWorker> workers;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -301,7 +301,11 @@ class _SettingsPageState extends State<SettingsPage> {
               key: ValueKey('mcp-view-$currentWorkspaceId'),
               workspaceId: currentWorkspaceId,
               inventories: widget.inventories!,
-              knownWorkerTypes: widget.knownWorkerTypes,
+              knownWorkerTypes: widget.workers
+                  .where((worker) => worker.workspaceId == currentWorkspaceId)
+                  .map((worker) => worker.workerTypeId)
+                  .toSet()
+                  .toList(),
             )
           else ...[
             Text('MCP SERVERS',

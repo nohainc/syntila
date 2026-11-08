@@ -19,7 +19,7 @@ class McpManagementView extends StatefulWidget {
     super.key,
     required this.workspaceId,
     required this.inventories,
-    this.knownWorkerTypes = const ['chatgpt', 'claude', 'gemini'],
+    this.knownWorkerTypes = const [],
   });
 
   final String workspaceId;
@@ -1143,7 +1143,10 @@ class _McpBindingsDialogState extends State<McpBindingsDialog> {
               style: TextStyle(fontSize: 12.5),
             ),
             const SizedBox(height: 12),
-            for (final type in widget.knownWorkerTypes)
+            for (final type in {
+              ...widget.knownWorkerTypes,
+              ...widget.server.boundWorkerTypes
+            })
               CheckboxListTile(
                 key: ValueKey('mcp-binding-$type'),
                 title: Text(type),

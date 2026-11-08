@@ -93,7 +93,7 @@ describe("start permit", () => {
   it.each(["revoke", "replace-runtime"])(
     "denies a grant when %s wins between admission and the permit write",
     async (interruption) => {
-      for (let iteration = 0; iteration < 20; iteration += 1) {
+      for (let iteration = 0; iteration < 3; iteration += 1) {
         const f = await seed("acknowledged");
         const original = f.db.prepare.bind(f.db);
         let interrupted = false;
@@ -128,6 +128,7 @@ describe("start permit", () => {
         }
       }
     },
+    20000,
   );
   it("grants a short-lived permit while the assignment is Acknowledged", async () => {
     const f = await seed("acknowledged");

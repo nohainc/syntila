@@ -77,6 +77,7 @@ Direct Spaces present a personalized identity depending on who is viewing the Sp
 ### 9. Removal, Retention, and Deletion Semantics
 
 - **Hide Conversation:** A local per-user state change (or local archive flag) that removes the Direct Space from that user's active sidebar without deleting messages, revoking connections, or affecting the other participant's view. Incoming messages restore visibility.
+- **Delete Space:** Either participant may delete the Direct Space and its shared history. The connection remains, and opening the Space again creates a fresh one.
 - **Remove Contact:** An explicit termination of the personal connection.
   - Breaking a connection does not modify or delete shared Group Spaces.
   - The Direct Space is archived or transitioned to read-only/disconnected status, preventing new message submission while preserving historical audit and legal retention.

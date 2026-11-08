@@ -103,7 +103,6 @@ describe("Thread domain", () => {
         expect(definition.steps.map((step) => step.kind)).not.toContain("chat");
       }
     }
-    expect(BUILTIN_WORKFLOWS.plan_implement.name).toBe("Implement");
     expect(
       BUILTIN_WORKFLOWS.plan_implement.steps.map((step) => step.kind),
     ).toEqual(["plan"]);

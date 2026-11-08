@@ -249,6 +249,36 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
       env as never,
     );
     expect(archiveRes.status).toBe(200);
+
+    for (const participant of ["alice", "bob"]) {
+      const open = await worker.fetch(
+        new Request(
+          `https://syntila.test/api/people/connections/${participant === "alice" ? "user-bob" : "user-alice"}/space`,
+          {
+            method: "POST",
+            headers: { authorization: `Bearer ${participant}` },
+          },
+        ),
+        env as never,
+      );
+      expect(open.status).toBe(200);
+      const { spaceId } = (await open.json()) as { spaceId: string };
+      const deleted = await worker.fetch(
+        new Request(`https://syntila.test/api/spaces/${spaceId}`, {
+          method: "DELETE",
+          headers: { authorization: `Bearer ${participant}` },
+        }),
+        env as never,
+      );
+      expect(deleted.status).toBe(200);
+      const missing = await worker.fetch(
+        new Request(`https://syntila.test/api/spaces/${spaceId}`, {
+          headers: { authorization: `Bearer ${participant}` },
+        }),
+        env as never,
+      );
+      expect(missing.status).toBe(404);
+    }
   });
 
   it("4.2 & 4.4 Symmetric conversation permissions & thread management boundaries", async () => {

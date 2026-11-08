@@ -291,6 +291,26 @@ void main() {
             onChanged: (_) {},
             workspaceId: workspaceId,
             workspaces: workspaces,
+            workers: const [
+              AxWorker(
+                  id: 'w1',
+                  workspaceId: 'ws-1',
+                  workspaceName: 'Main Mac',
+                  workerTypeId: 'claude',
+                  displayName: 'Claude',
+                  status: 'ready',
+                  readinessState: 'ready',
+                  localConcurrencyLimit: 1),
+              AxWorker(
+                  id: 'w2',
+                  workspaceId: 'ws-2',
+                  workspaceName: 'Cloud Linux',
+                  workerTypeId: 'other-worker',
+                  displayName: 'Other',
+                  status: 'ready',
+                  readinessState: 'ready',
+                  localConcurrencyLimit: 1),
+            ],
             inventories: inventories,
           ),
         ),
@@ -605,6 +625,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(McpBindingsDialog), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('mcp-binding-other-worker')), findsNothing);
     expect(find.text('Worker Bindings for GitHub Tools'), findsOneWidget);
 
     // Bind 'claude'

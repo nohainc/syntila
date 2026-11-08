@@ -5,11 +5,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      plugin_acceptance_only:
-        description: Run only plugin resource acceptance on Linux and Windows
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -20,7 +15,6 @@ concurrency:
 
 jobs:
   changes:
-    if: ${{ !inputs.plugin_acceptance_only }}
     name: Detect changes
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -45,7 +39,6 @@ jobs:
         run: bash scripts/ci/detect-changes.sh
 
   static:
-    if: ${{ !inputs.plugin_acceptance_only }}
     name: Repository static guard
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -148,8 +141,8 @@ jobs:
       - uses: ./.github/actions/setup-flutter
       - name: Validate Worker engine
         run: bash scripts/validate-engine.sh
-      - name: Validate plugin author tools and CI filters
-        run: node --test scripts/plugin-author-kit.test.mjs scripts/sign-plugin.test.mjs scripts/ci/detect-changes.test.mjs
+      - name: Validate CI filters
+        run: node --test scripts/ci/detect-changes.test.mjs
       - name: Build plugin author kit
         run: node scripts/build-plugin-author-kit.mjs
       - name: Retain plugin author kit
@@ -158,57 +151,6 @@ jobs:
           name: plugin-author-kit
           path: dist/plugin-author-kit/*
           if-no-files-found: error
-
-  plugin-resource-acceptance:
-    name: Plugin resources (${{ matrix.runner }})
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.plugin_acceptance_only }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm, windows-2022]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-flutter
-      - name: Resolve focused test dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          for package in packages/syntila_plugin_protocol packages/syntila_plugin_conformance engines/cli_worker; do
-            (cd "$package" && dart pub get)
-          done
-      - name: Verify native and observed resource limits
-        shell: bash
-        working-directory: engines/cli_worker
-        run: |
-          set -euo pipefail
-          dart test --reporter expanded test/plugin_process_limits_test.dart test/plugin_resource_monitor_test.dart test/plugin_windows_handles_test.dart | tee "$RUNNER_TEMP/plugin-resource-tests.log"
-      - name: Retain resource acceptance log
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: plugin-resources-${{ matrix.runner }}
-          path: ${{ runner.temp }}/plugin-resource-tests.log
-          if-no-files-found: warn
-
-  plugin-limits-windows:
-    name: Plugin resource limits on Windows
-    needs: changes
-    if: needs.changes.outputs.engine == 'true'
-    runs-on: windows-2022
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-flutter
-      - name: Verify inherited Windows job limits
-        shell: pwsh
-        working-directory: engines/cli_worker
-        run: |
-          dart pub get
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dart test test/plugin_process_limits_test.dart
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   site:
     name: Public site
@@ -222,7 +164,7 @@ jobs:
       - uses: ./.github/actions/check-site
 
   ci-passed:
-    name: ${{ inputs.plugin_acceptance_only && 'Plugin resource acceptance passed' || 'CI passed' }}
+    name: CI passed
     if: always()
     needs:
       [
@@ -235,8 +177,6 @@ jobs:
         workspace-gui,
         profile-lab,
         engine,
-        plugin-limits-windows,
-        plugin-resource-acceptance,
         site,
       ]
     runs-on: ubuntu-24.04

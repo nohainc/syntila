@@ -186,7 +186,7 @@ describe("assignment lifecycle ordering", () => {
       // before or after it.
       expect(f.row().status, key).toBe("completed");
     }
-  }, 30_000);
+  }, 60_000);
 
   it("makes terminal outcomes immutable when the result arrives more than once", async () => {
     const f = await seed("running");

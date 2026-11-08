@@ -733,8 +733,7 @@ describe("Direct Space provisioning", () => {
       "Direct Space members cannot be modified or removed",
     );
 
-    // 4. Either participant can delete the personal Space -> 200
-    // (Stranger Charlie cannot delete it -> 403)
+    // 4. Stranger Charlie cannot delete the personal Space -> 403
     const deleteCharlieRes = await worker.fetch(
       new Request(`https://syntila.test/api/spaces/${directSpaceId}`, {
         method: "DELETE",

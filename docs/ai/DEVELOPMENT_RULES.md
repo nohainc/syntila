@@ -19,12 +19,7 @@ An AI worker must:
 - Never log credentials or sensitive tokens.
 
 ## Tests
-At minimum, behavior changes require:
-- unit tests for domain rules/state transitions;
-- schema/contract tests for protocol changes;
-- integration tests for storage/provider/runtime boundaries where relevant.
-
-Tests must verify failure paths, not only success paths.
+Prefer functional tests that exercise meaningful user-visible behavior, including important failure paths. Add focused unit tests for consequential domain rules or state transitions when functional coverage would be impractical, and contract or integration tests for important protocol and infrastructure boundaries. Avoid redundant tests and assertions that only repeat implementation details or incidental names and constants. Update existing coverage when it already exercises the behavior.
 
 ## Documentation
 Update documentation in the same task when changing:
