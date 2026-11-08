@@ -205,7 +205,7 @@ export const requiredProductionSmokeColumns = Object.freeze({
 
 const tableDefinitionSources = Object.freeze({
   workflow_tasks: [
-    "apps/cloud/migrations-v8/0099_workflow_step_instances.sql",
+    "apps/cloud/migrations-v8/0104_mcp_tool_dispatch_fence.sql",
     "workflow_tasks",
   ],
   conversation_workflow_step_runs: [

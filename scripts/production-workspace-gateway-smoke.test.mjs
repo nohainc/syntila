@@ -68,6 +68,7 @@ describe("production Workspace Gateway smoke schema gate", () => {
       "0092_read_receipt_privacy.sql",
       "0095_desktop_session_device.sql",
       "0099_workflow_step_instances.sql",
+      "0104_mcp_tool_dispatch_fence.sql",
     ]) {
       database.exec(
         readFileSync(
@@ -250,6 +251,7 @@ describe("production Workspace Gateway smoke schema gate", () => {
       "0016_workflow_step_runs.sql",
       "0079_ai_history_cutoff.sql",
       "0099_workflow_step_instances.sql",
+      "0104_mcp_tool_dispatch_fence.sql",
     ]) {
       database.exec(
         readFileSync(
@@ -444,6 +446,24 @@ describe("production Workspace Gateway smoke schema gate", () => {
       "BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}",
     );
   });
+});
+
+it("rejects the pre-MCP workflow task constraint", () => {
+  const definitions = {
+    ...canonicalDefinitions,
+    workflow_tasks: canonicalDefinitions.workflow_tasks.replace(
+      ", 'tool_call'",
+      "",
+    ),
+  };
+  expect(
+    productionSmokeSchemaIssues(
+      Object.keys(requiredProductionSmokeColumns),
+      requiredProductionSmokeColumns,
+      definitions,
+      canonicalIndexes,
+    ).join(" "),
+  ).toContain("workflow_tasks table definition differs");
 });
 
 it("detects deployed workflow execution-mode constraint drift before accepting production schema", () => {
