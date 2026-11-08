@@ -299,3 +299,11 @@ Unaccepted choices retain strict revision validation. If no Worker qualifies,
 the dispatch failure includes the scheduler's rejection reasons so a changed
 catalog or unavailable selection is distinguishable from readiness or policy
 failures. No schema migration is required.
+
+Manual retries use the same accepted-selection revalidation as dispatch. The
+retry endpoint receives the stored step configurations, verifies the same
+Worker/Profile/model/effort, and validates against current capabilities. It does
+not rewrite accepted bindings. Unaccepted choices and Auto defaults still
+require their original pin. The app preserves Cloud eligibility messages and
+shows retry errors inline in the Thread instead of relying on suppressed
+transient notices.

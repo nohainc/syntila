@@ -410,6 +410,8 @@ export async function handleRetryWorkRequest(
     String(row.threadId),
     { ...workflow, steps: [step] },
     bindings,
+    snapshot.stepExecutionConfigs as
+      Record<string, import("@syntila/core").TurnExecutionConfig> | undefined,
   );
   if (eligibility.issues.length > 0) {
     return json(

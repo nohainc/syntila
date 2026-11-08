@@ -39,3 +39,21 @@ sessions, or bypass the fence check. Audit all restored Threads rather than
 repairing only the first reported failure. The repair must not retry a failed
 request automatically; the user can retry it after alignment. Verify database
 integrity and foreign keys after committing.
+
+## Same-owner session reference drift
+
+A restored installation can pass fencing and then fail at `session_lookup` with
+`session_resume_failed`. Compare attribution before resetting anything. A local
+logical session reference may differ while its Conversation and Worker match.
+The Engine reports that case separately, quarantines the old mapping, and starts
+a new native session from canonical bootstrap context (or revision zero). It
+never resumes the mismatched native session. Different Conversation or Worker
+ownership remains a hard failure and is not eligible for this recovery.
+
+For an already installed Engine, a fresh Implement retry or incrementing the
+Thread's `work_session_generation` while it has no active requests/unreleased
+leases isolates the new native session without deleting history or local
+session records. Back up first. Do not change Conversation/Worker ownership or
+manually relabel native session records. The Engine source recovery change
+requires the next normal Engine build/install; rotating the Cloud session scope
+takes effect without rebuilding the installed Engine.

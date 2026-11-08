@@ -4,7 +4,10 @@ import {
   pluginExecutionOptions,
   spaceWorkerExecutionOptions,
 } from "../worker-execution-options.js";
-import { supportsPluginExecutor } from "../execution-selection-snapshot.js";
+import {
+  canRevalidateAcceptedSelection,
+  supportsPluginExecutor,
+} from "../execution-selection-snapshot.js";
 import { pluginOwnerEntitledSql } from "../account-plan.js";
 import { PluginInventoryExecutorSchema } from "@syntila/workspace-runtime-protocol";
 import {
@@ -510,6 +513,7 @@ export async function validateWorkflowWorkerEligibility(
       catalogRevision?: string;
     }
   >,
+  acceptedConfigs?: Record<string, import("@syntila/core").TurnExecutionConfig>,
 ): Promise<{
   issues: WorkEligibilityIssue[];
   primaryWorkspaceId: string | null;
@@ -782,11 +786,22 @@ export async function validateWorkflowWorkerEligibility(
           allowsCustomModels: executionOptions.models.allowsCustomModel,
         };
       }
+      const accepted = acceptedConfigs?.[stepInstanceId(step)];
+      const revalidate =
+        canRevalidateAcceptedSelection(executionOptions, accepted, {
+          workerId: binding.workerId ?? "",
+          profileId: String(row.profileDefinitionId),
+          profileReleaseVersion: Number(row.profileReleaseVersion),
+        }) &&
+        accepted?.modelId === (binding.model ?? null) &&
+        accepted?.effort === (binding.reasoningEffort ?? null);
       const error = validateWorkerExecutionSelection(
         executionOptions,
         binding.model ?? null,
         binding.reasoningEffort ?? null,
-        binding.catalogRevision,
+        revalidate && executionOptions.schemaVersion === 2
+          ? executionOptions.catalogRevision
+          : binding.catalogRevision,
       );
       if (error)
         issues.push({

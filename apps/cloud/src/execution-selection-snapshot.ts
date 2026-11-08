@@ -4,6 +4,38 @@ import {
   workerEffortOptionsForModel,
 } from "@syntila/core";
 
+/** A catalog refresh may not change an already accepted explicit selection. */
+export function canRevalidateAcceptedSelection(
+  options: WorkerExecutionOptions | null,
+  config:
+    | {
+        schemaVersion?: unknown;
+        workerId?: unknown;
+        profileId?: unknown;
+        profileReleaseVersion?: unknown;
+        modelId?: unknown;
+        effort?: unknown;
+      }
+    | undefined,
+  identity: {
+    workerId: string;
+    profileId: string;
+    profileReleaseVersion: number;
+  },
+): boolean {
+  return (
+    options?.schemaVersion === 2 &&
+    config?.schemaVersion === 1 &&
+    config.workerId === identity.workerId &&
+    config.profileId === identity.profileId &&
+    config.profileReleaseVersion === identity.profileReleaseVersion &&
+    typeof config.modelId === "string" &&
+    (typeof config.effort === "string" ||
+      (config.effort === null &&
+        !workerEffortOptionsForModel(options, config.modelId).supported))
+  );
+}
+
 /** Frozen public evidence; provider-native resolution belongs to the Engine. */
 export function resolveExecutionSelectionSnapshot(
   options: WorkerExecutionOptions,

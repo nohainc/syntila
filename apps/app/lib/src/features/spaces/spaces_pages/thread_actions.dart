@@ -967,6 +967,7 @@ extension _ThreadActions on _ThreadPageState {
         compactContext: compactContext,
       );
       if (!mounted) return;
+      _updateState(() => _workSubmitError = null);
       if (clearAiHistory) unawaited(_refreshWorkTimeline());
       unawaited(_workHistoryCache
           .refreshRequest(widget.thread.id, workRequestId, supersede: true)
@@ -974,14 +975,11 @@ extension _ThreadActions on _ThreadPageState {
       ScaffoldMessenger.of(context).showNotice(
         const SnackBar(content: Text('Retrying your request.')),
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showNotice(
-        const SnackBar(
-          content:
-              Text('Could not retry your request. Check Worker readiness.'),
-        ),
-      );
+      _updateState(() => _workSubmitError = error is AxApiException
+          ? error.message
+          : 'Could not retry your request. Please try again.');
     }
   }
 

@@ -1,4 +1,5 @@
 import {
+  canRevalidateAcceptedSelection,
   resolveExecutionSelectionSnapshot,
   supportsExecutionCatalogPin,
   supportsPluginExecutor,
@@ -12,10 +13,7 @@ import {
   PluginInventoryExecutorSchema,
   type PluginSnapshotExecutor,
 } from "@syntila/workspace-runtime-protocol";
-import {
-  validateWorkerExecutionSelection,
-  workerEffortOptionsForModel,
-} from "@syntila/core";
+import { validateWorkerExecutionSelection } from "@syntila/core";
 import { spaceMemberPermissions } from "@syntila/security";
 import {
   EXECUTION_PERMISSIONS,
@@ -670,13 +668,11 @@ export async function selectSpaceExecutionTarget(
       // selection is still supported. Pin the new revision for this assignment;
       // never substitute a Worker, Profile, model, effort, or Auto default.
       const catalogRevalidated =
-        turnConfig != null &&
-        typeof turnConfig.modelId === "string" &&
-        (typeof turnConfig.effort === "string" ||
-          (turnConfig.effort === null &&
-            executionOptions != null &&
-            !workerEffortOptionsForModel(executionOptions, turnConfig.modelId)
-              .supported)) &&
+        canRevalidateAcceptedSelection(executionOptions, turnConfig, {
+          workerId,
+          profileId: String(row.profile_definition_id),
+          profileReleaseVersion: Number(row.profile_release_version),
+        }) &&
         executionOptions?.schemaVersion === 2 &&
         expectedRevision != null &&
         expectedRevision !== executionOptions.catalogRevision;

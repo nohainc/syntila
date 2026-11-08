@@ -666,6 +666,44 @@ void main() {
         sessionBusy: true,
         expectFailure: true,
       );
+
+      // A restored Cloud can change a logical reference while keeping the
+      // same owner. Rebuild from canonical context, never resume that handle.
+      final driftedFile = stateDirectory
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.uri.pathSegments.last.startsWith('session-'))
+          .singleWhere(
+            (f) =>
+                (jsonDecode(f.readAsStringSync()) as Map)['sessionKey'] ==
+                missingContextScope,
+          );
+      final drifted = jsonDecode(driftedFile.readAsStringSync()) as Map;
+      (drifted['workerSession'] as Map)['id'] = 'old-logical-reference';
+      await driftedFile.writeAsString(jsonEncode(drifted));
+      final recoveredReference = await executeRelease(
+        releaseVersion: 4,
+        sessionFormatId: 'antigravity-conversation-v1',
+        compatibleFormatIds: ['antigravity-conversation-v1'],
+        requestId: 'same-owner-reference-recovery',
+        prompt: 'Recover unavailable',
+        model: 'model-A',
+        sessionKey: missingContextScope,
+        bootstrap: contextSnapshot(1, priorHistory),
+      );
+      expect(recoveredReference!.output, 'Gemini answer');
+      final recoveredState =
+          jsonDecode(await driftedFile.readAsString()) as Map;
+      expect(
+        (recoveredState['workerSession'] as Map)['id'],
+        'worker-session-fixture',
+      );
+      expect(
+        stateDirectory.listSync().whereType<File>().any(
+          (f) => f.path.contains('.recovery-'),
+        ),
+        isTrue,
+      );
     },
   );
 }

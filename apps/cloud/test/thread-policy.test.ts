@@ -93,6 +93,8 @@ it("validates selected effort and models against the selected Worker Profile", a
   const row = {
     workspaceId: "WS",
     workerTypeId: "generic-worker",
+    profileDefinitionId: "generic-profile",
+    profileReleaseVersion: 1,
     activationState: "enabled",
     readinessState: "ready",
     executionProfileJson: JSON.stringify({
@@ -172,4 +174,42 @@ it("validates selected effort and models against the selected Worker Profile", a
       message: expect.stringContaining("catalog changed"),
     }),
   );
+  const accepted = {
+    chat: {
+      schemaVersion: 1 as const,
+      workerId: "worker",
+      profileId: "generic-profile",
+      profileReleaseVersion: 1,
+      modelId: "a",
+      effort: "deep",
+      workflowId: "chat" as const,
+      workflowVersion: 1,
+    },
+  };
+  const retry = await validateWorkflowWorkerEligibility(
+    env,
+    "P",
+    "W",
+    BUILTIN_WORKFLOWS.chat,
+    pinned,
+    accepted,
+  );
+  expect(
+    retry.issues.some(
+      (issue) => issue.code === "profile_execution_option_unavailable",
+    ),
+  ).toBe(false);
+  const replacedProfile = await validateWorkflowWorkerEligibility(
+    env,
+    "P",
+    "W",
+    BUILTIN_WORKFLOWS.chat,
+    pinned,
+    { chat: { ...accepted.chat, profileReleaseVersion: 2 } },
+  );
+  expect(
+    replacedProfile.issues.some(
+      (issue) => issue.code === "profile_execution_option_unavailable",
+    ),
+  ).toBe(true);
 });

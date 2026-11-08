@@ -87,6 +87,23 @@ void main() {
     await api.loadWorkRequest(workRequestId: 'r');
     expect(calls, 2);
   });
+  test('retry retains actionable eligibility errors from Cloud', () async {
+    final api = AxApiClient(
+        baseUrl: 'https://cloud.test/api',
+        client: _JsonClient({
+          'error': 'work_request_ineligible',
+          'issues': [
+            {
+              'message':
+                  'synthesis: Worker catalog changed; refresh and confirm the selection.'
+            }
+          ]
+        }, statusCode: 422));
+    await expectLater(
+        api.retryWorkRequestStep(workRequestId: 'r', stepKind: 'synthesis'),
+        throwsA(isA<AxApiException>().having(
+            (e) => e.message, 'reason', contains('Worker catalog changed'))));
+  });
   test('retry sends side-effect confirmation only after explicit approval',
       () async {
     final client = _JsonClient({});

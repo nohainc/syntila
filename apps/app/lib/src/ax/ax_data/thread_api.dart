@@ -955,8 +955,26 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      var detail = '';
+      try {
+        final body = jsonDecode(response.body);
+        if (body is Map) {
+          final issues = body['issues'];
+          final messages = issues is List
+              ? issues
+                  .whereType<Map>()
+                  .map((issue) => issue['message'])
+                  .whereType<String>()
+                  .toList()
+              : <String>[];
+          final message = messages.isNotEmpty
+              ? messages.join(' ')
+              : body['message'] ?? body['error'];
+          if (message is String) detail = ': $message';
+        }
+      } on Object {/* Keep status when the response is not JSON. */}
       throw AxApiException(
-        'Step retry failed (${response.statusCode})',
+        'Step retry failed (${response.statusCode})$detail',
         statusCode: response.statusCode,
       );
     }
