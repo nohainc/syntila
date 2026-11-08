@@ -62,6 +62,22 @@ Filename: pool/main/c/syntila/syntila-gui_1.0.17_amd64.deb
 Size: 10830372
 SHA256: 795372c43e03d4f025753d4f81f1eb47d9f4ec6b1b46aa0c165298f73af9c00f
 
+Package: syntila-gui
+Version: 1.0.18
+Architecture: amd64
+Maintainer: Syntila <support@conclaveax.com>
+Section: devel
+Priority: optional
+Depends: syntila (= 1.0.18), libgtk-3-0, libc6 (>= 2.31)
+Homepage: https://conclaveax.com
+Description: Desktop GUI for the Syntila Workspace
+ Renders the syntila management CLI (status, Workers, folders, logs and
+ every other command) as a desktop app. Installed beside the syntila CLI in
+ /usr/lib/syntila and requires the matching syntila package.
+Filename: pool/main/c/syntila/syntila-gui_1.0.18_amd64.deb
+Size: 11016212
+SHA256: 7fd6a28f521b197379b7bed23596a56425978f490c4a3d19d5a7facf6d4323cd
+
 Package: syntila
 Version: 1.0.10
 Architecture: amd64
@@ -197,6 +213,23 @@ Description: Headless Syntila Workspace service and management CLI
 Filename: pool/main/c/syntila/syntila_1.0.17_amd64.deb
 Size: 7189666
 SHA256: 4664bd7f82d0d94ae98caa24c4a4b2eca589b313c805d7a59fb0f8358757f9b6
+
+Package: syntila
+Version: 1.0.18
+Architecture: amd64
+Maintainer: Syntila <support@conclaveax.com>
+Section: devel
+Priority: optional
+Depends: libc6 (>= 2.31), libgcc-s1, libstdc++6, ca-certificates
+Recommends: systemd, dbus-user-session
+Suggests: libsecret-tools, syntila-gui
+Homepage: https://conclaveax.com
+Description: Headless Syntila Workspace service and management CLI
+ Includes the generic CLI Worker Engine. Runs as the user who owns provider
+ CLI logins. No desktop environment is required. Provider CLIs are separate.
+Filename: pool/main/c/syntila/syntila_1.0.18_amd64.deb
+Size: 7973742
+SHA256: eccf233c1b35b8c50ab6f65b665fce9d8b1cd235695bcd7a00d50d64316768ff
 
 Package: syntila
 Version: 1.0.9
