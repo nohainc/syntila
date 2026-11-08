@@ -1377,7 +1377,7 @@ void main() {
       expect(
           tester
               .widget<IconButton>(
-                  find.widgetWithIcon(IconButton, Icons.send_rounded))
+                  find.widgetWithIcon(IconButton, Icons.arrow_upward_rounded))
               .onPressed,
           isNull);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
@@ -1455,7 +1455,7 @@ void main() {
         expect(
             tester
                 .widget<IconButton>(
-                    find.widgetWithIcon(IconButton, Icons.send_rounded))
+                    find.widgetWithIcon(IconButton, Icons.arrow_upward_rounded))
                 .onPressed,
             isNotNull);
         await tester
@@ -1493,7 +1493,7 @@ void main() {
         expect(
             tester
                 .widget<IconButton>(
-                    find.widgetWithIcon(IconButton, Icons.send_rounded))
+                    find.widgetWithIcon(IconButton, Icons.arrow_upward_rounded))
                 .onPressed,
             isNotNull);
         expect(

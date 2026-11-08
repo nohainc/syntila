@@ -260,7 +260,7 @@ void main() {
       expect(tester.takeException(), isNull);
 
       await tester.dragFrom(
-          tester.getTopLeft(background) + const Offset(40, 180),
+          tester.getTopLeft(background) + const Offset(40, 100),
           const Offset(0, -100));
       await tester.pumpAndSettle();
       expect(controller.visible, isTrue);
