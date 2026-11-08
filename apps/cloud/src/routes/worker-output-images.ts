@@ -59,7 +59,10 @@ export async function handleUploadWorkerOutputImage(
   const mediaType =
     request.headers.get("content-type")?.split(";", 1)[0]?.trim() ?? "";
   if (!IMAGE_MEDIA_TYPES.has(mediaType))
-    throw new HttpError(415, "Only PNG, JPEG, GIF and WebP images are accepted");
+    throw new HttpError(
+      415,
+      "Only PNG, JPEG, GIF and WebP images are accepted",
+    );
   const body = await request.arrayBuffer();
   if (body.byteLength === 0 || body.byteLength > MAX_WORKER_OUTPUT_IMAGE_BYTES)
     throw new HttpError(413, "Image exceeds the 20 MiB limit");

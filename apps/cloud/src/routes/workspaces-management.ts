@@ -160,7 +160,10 @@ export async function handleUpdateWorkspace(
   const hasChat = body.spaceAiChat !== undefined;
   const hasWork = body.spaceAiWork !== undefined;
   if (!hasName && !hasSlots && !hasChat && !hasWork)
-    throw new HttpError(400, "Provide a name, parallelSlots or Space AI option");
+    throw new HttpError(
+      400,
+      "Provide a name, parallelSlots or Space AI option",
+    );
   if (
     (hasChat && typeof body.spaceAiChat !== "boolean") ||
     (hasWork && typeof body.spaceAiWork !== "boolean")
