@@ -14,15 +14,17 @@ void main() {
 
   test('reads the Codex thread id', () {
     expect(codexThreadId(stdout), '01a1bab2-2ed6-70c2');
-    expect(codexThreadId('{"type":"thread.started","thread_id":"../x"}'),
-        isNull);
+    expect(
+      codexThreadId('{"type":"thread.started","thread_id":"../x"}'),
+      isNull,
+    );
   });
 
   test('copies images Codex generated during the run', () async {
     final home = Directory('${root.path}/codex');
-    final generated =
-        await Directory('${home.path}/generated_images/01a1bab2-2ed6-70c2')
-            .create(recursive: true);
+    final generated = await Directory(
+      '${home.path}/generated_images/01a1bab2-2ed6-70c2',
+    ).create(recursive: true);
     final old = File('${generated.path}/old.png')..writeAsBytesSync([1]);
     old.setLastModifiedSync(DateTime(2020));
     File('${generated.path}/new.png').writeAsBytesSync([1, 2, 3]);
@@ -39,8 +41,7 @@ void main() {
 
     expect(copied, 1);
     final outputs = Directory(outputImagesDirectory(work.path, 'asg-1'));
-    expect(outputs.listSync().map((e) => e.uri.pathSegments.last),
-        ['new.png']);
+    expect(outputs.listSync().map((e) => e.uri.pathSegments.last), ['new.png']);
   });
 
   test('copies nothing without a thread id', () async {

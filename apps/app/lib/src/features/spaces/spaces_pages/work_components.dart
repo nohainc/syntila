@@ -4106,8 +4106,8 @@ class _QueuedMessagesPanel extends StatelessWidget {
       child: Container(
         key: const ValueKey('work-queue-panel'),
         // Fits the content; shows at most 6 items before scrolling.
-        constraints: BoxConstraints(
-            maxHeight: (hasPanelAbove ? 1 : 0) + 30 + 6 * 48),
+        constraints:
+            BoxConstraints(maxHeight: (hasPanelAbove ? 1 : 0) + 30 + 6 * 48),
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
         child: Column(

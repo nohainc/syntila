@@ -463,8 +463,8 @@ void main() {
           tester.getRect(find.byKey(const ValueKey('composer-leading-rail')));
       final rail = tester.getRect(find.byKey(railKey));
       final composer = tester.getRect(find.byType(MarkdownComposer));
-      final trailingSlot = tester.getRect(
-          find.byKey(const ValueKey('composer-trailing-rail')));
+      final trailingSlot =
+          tester.getRect(find.byKey(const ValueKey('composer-trailing-rail')));
       expect(slot.width, 32);
       expect(slot.left, composer.left + 4);
       expect(rail.center.dx, closeTo(slot.center.dx, 0.01));

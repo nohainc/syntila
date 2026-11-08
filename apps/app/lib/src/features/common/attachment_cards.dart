@@ -402,7 +402,8 @@ class _ResponseImageState extends State<ResponseImage> {
         future: _bytes,
         builder: (context, snapshot) {
           final bytes = snapshot.data;
-          if (snapshot.hasError || (bytes != null && bytes.isEmpty) ||
+          if (snapshot.hasError ||
+              (bytes != null && bytes.isEmpty) ||
               _bytes == null) {
             return placeholder(Column(
               mainAxisSize: MainAxisSize.min,

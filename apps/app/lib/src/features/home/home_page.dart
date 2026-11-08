@@ -799,8 +799,7 @@ class EstablishedUserHome extends StatelessWidget {
     } catch (_) {
       effectiveAttentionItems = const [];
     }
-    final hasAttentionItems =
-        effectiveAttentionItems.isNotEmpty ||
+    final hasAttentionItems = effectiveAttentionItems.isNotEmpty ||
         workspaceInvitations.isNotEmpty ||
         personInvitations.isNotEmpty;
     final authorizedSpaceIds = spaces.map((p) => p.id).toSet();
@@ -1423,10 +1422,9 @@ class _ForYouSection extends StatelessWidget {
     final pendingSpaceInvitations =
         invitations.where((invite) => invite.status == 'pending').toList();
     // Invitations are never truncated; other items fill the rest of the cap.
-    final invitationCount =
-        pendingSpaceInvitations.length +
-            workspaceInvitations.length +
-            personInvitations.length;
+    final invitationCount = pendingSpaceInvitations.length +
+        workspaceInvitations.length +
+        personInvitations.length;
     final items =
         eligibleItems.take((4 - invitationCount).clamp(0, 4)).toList();
     if (items.isEmpty &&

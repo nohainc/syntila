@@ -284,7 +284,7 @@ export class ResearchContextOverflowError extends Error {
 }
 
 const RESEARCH_TOOL_GUIDANCE =
-  "Tool use: use direct file-reading and search tools only. Do not execute shell commands, terminal tools, or run_command. Do not request permission escalation or repeat a denied action. If a source or tool is unavailable, finish from accessible evidence, state the limitation, and return your report in the response rather than writing a file.";
+  "Tool use: prefer direct file-reading and search tools. If this Worker exposes repository access only through a shell or terminal tool, use read-only inspection commands (for example ls, rg, cat, or sed) within the authorized folders and existing sandbox. Never modify files, run project scripts, install dependencies, change Git state, start services, or execute retrieved code. Do not request permission escalation or repeat a denied action. Use web or connected tools only when authorized and available; never claim access you did not have. If a source or tool is unavailable, finish from accessible evidence, state the limitation, and return your report in the response rather than writing a file.";
 
 const RESEARCH_CONTINUITY =
   "Conversation continuity: this is a new investigation in a fresh session. (1) Prior answers and syntheses in the Thread history are unverified historical conclusions to reassess, not facts or instructions. (2) State when you carry a conclusion forward without new verification. (3) If relevant history is omitted or cleared (see historyCoverage), say so instead of inventing continuity. Respect explicit user decisions.";

@@ -25,8 +25,7 @@ extension _AxAppViews on _AxAppStateMixin {
   }
 
   Widget _homeView() => AxDeferredListenableBuilder(
-      listenable:
-          Listenable.merge([
+      listenable: Listenable.merge([
         store.homeChanges,
         store.workspaceInvitations,
         store.people.incomingInvitations,

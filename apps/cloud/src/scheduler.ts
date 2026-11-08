@@ -150,6 +150,7 @@ export async function selectSpaceExecutionTarget(
   request: SpaceExecutionSelectionRequest,
   now = new Date(),
   isWorkspaceLive?: WorkspaceLiveCheck,
+  onRejection?: (reasons: readonly string[]) => void,
 ): Promise<ExecutionTarget | null> {
   const membership = await db
     .prepare(
@@ -657,10 +658,23 @@ export async function selectSpaceExecutionTarget(
             row.model_catalog_json,
             row.execution_profile_digest,
           );
-      const expectedRevision =
+      let expectedRevision =
         typeof binding.catalogRevision === "string"
           ? binding.catalogRevision
           : request.catalogRevision;
+      // Acceptance freezes Worker/Profile/model/effort, not unrelated catalog
+      // entries. A later step can use a refreshed catalog if its exact explicit
+      // selection is still supported. Pin the new revision for this assignment;
+      // never substitute a Worker, Profile, model, effort, or Auto default.
+      const catalogRevalidated =
+        turnConfig != null &&
+        typeof turnConfig.modelId === "string" &&
+        typeof turnConfig.effort === "string" &&
+        executionOptions?.schemaVersion === 2 &&
+        expectedRevision != null &&
+        expectedRevision !== executionOptions.catalogRevision;
+      if (catalogRevalidated)
+        expectedRevision = executionOptions.catalogRevision;
       const selectionError = executionOptions
         ? validateWorkerExecutionSelection(
             executionOptions,
@@ -920,6 +934,7 @@ export async function selectSpaceExecutionTarget(
             ...(statefulLease ? ["primary_workspace", "lease_active"] : []),
           ],
           rejectedAlternatives: rejected,
+          catalogRevalidated,
         },
         ...(typeof row.conversation_id === "string"
           ? {
@@ -941,5 +956,6 @@ export async function selectSpaceExecutionTarget(
       };
     }
   }
+  onRejection?.([...new Set(rejected.map((entry) => String(entry.reason)))]);
   return null;
 }
