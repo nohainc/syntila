@@ -6,6 +6,79 @@ import 'package:syntila_cli_worker_engine/src/engine_session_store.dart';
 
 void main() {
   test(
+    'changed references are recoverable only for the same Conversation and Worker',
+    () async {
+      final root = await Directory.systemTemp.createTemp('session-reference-');
+      addTearDown(() => root.delete(recursive: true));
+      final store = EngineSessionStore(root);
+      await store.write(
+        sessionKey: 'scope',
+        workerTypeId: 'worker',
+        profileDefinitionId: 'profile',
+        providerToolIdentity: 'tool',
+        profileReleaseVersion: 1,
+        sessionFormatId: 'format',
+        sessionId: 'native',
+        workerSession: WorkerSessionContext(
+          id: 'old-reference',
+          conversationId: 'conversation',
+          workerId: 'worker',
+          baseContextRevision: 0,
+        ),
+        synchronizedContextRevision: 0,
+      );
+      Future<String?> read(String conversationId, String workerId) =>
+          store.read(
+            sessionKey: 'scope',
+            workerTypeId: 'worker',
+            profileDefinitionId: 'profile',
+            providerToolIdentity: 'tool',
+            compatibleFormatIds: ['format'],
+            workerSession: WorkerSessionContext(
+              id: 'new-reference',
+              conversationId: conversationId,
+              workerId: workerId,
+              baseContextRevision: 0,
+            ),
+          );
+      for (final owner in [
+        ('other-conversation', 'worker'),
+        ('conversation', 'other-worker'),
+      ]) {
+        await expectLater(
+          read(owner.$1, owner.$2),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'owner mismatch',
+              'Worker Session belongs to another Conversation or Worker',
+            ),
+          ),
+        );
+      }
+      await expectLater(
+        read('conversation', 'worker'),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'reference drift',
+            staleSessionReferenceMessage,
+          ),
+        ),
+      );
+      expect(
+        await store.quarantine(
+          sessionKey: 'scope',
+          workerTypeId: 'worker',
+          profileDefinitionId: 'profile',
+          providerToolIdentity: 'tool',
+        ),
+        isTrue,
+      );
+      expect(await read('conversation', 'worker'), isNull);
+    },
+  );
+  test(
     'session revision and history watermarks reflect consumed context and never regress',
     () async {
       final root = await Directory.systemTemp.createTemp('session-revisions-');

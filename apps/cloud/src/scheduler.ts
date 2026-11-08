@@ -12,7 +12,10 @@ import {
   PluginInventoryExecutorSchema,
   type PluginSnapshotExecutor,
 } from "@syntila/workspace-runtime-protocol";
-import { validateWorkerExecutionSelection } from "@syntila/core";
+import {
+  validateWorkerExecutionSelection,
+  workerEffortOptionsForModel,
+} from "@syntila/core";
 import { spaceMemberPermissions } from "@syntila/security";
 import {
   EXECUTION_PERMISSIONS,
@@ -669,7 +672,11 @@ export async function selectSpaceExecutionTarget(
       const catalogRevalidated =
         turnConfig != null &&
         typeof turnConfig.modelId === "string" &&
-        typeof turnConfig.effort === "string" &&
+        (typeof turnConfig.effort === "string" ||
+          (turnConfig.effort === null &&
+            executionOptions != null &&
+            !workerEffortOptionsForModel(executionOptions, turnConfig.modelId)
+              .supported)) &&
         executionOptions?.schemaVersion === 2 &&
         expectedRevision != null &&
         expectedRevision !== executionOptions.catalogRevision;

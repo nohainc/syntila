@@ -274,3 +274,28 @@ backfilled automatically: a later Conversation clear cannot be distinguished
 safely from missing associations. Their stored reports remain available where
 existing history and authorization permit, but are not automatically supplied
 to later sessions. This change does not require a schema migration.
+
+## Catalog refresh and repository inspection
+
+Research and synthesis use the same provider-independent tool guidance. Prefer
+native file/search tools; when a Worker exposes repository reads only through a
+terminal tool, read-only inspection commands are permitted within authorized
+folders and the existing sandbox. File mutation, project scripts, dependency
+installation, Git changes, services, retrieved-code execution, and escalation
+remain prohibited. This changes guidance, not the granted permissions or Engine
+sandbox. A report must disclose inaccessible sources rather than claim they were
+inspected.
+
+For all workflows, an accepted explicit model and effort may be revalidated
+against a refreshed catalog at dispatch. Worker identity and Profile revision
+must still match the accepted step configuration; the exact model and effort
+must remain available. Models with no effort control may retain a null effort;
+Auto effort on models with effort controls remains pinned. The assignment records and pins the current catalog
+revision, with `catalogRevalidated` in its selection explanation. No active
+assignment is rewritten. Auto selections remain pinned to their accepted
+catalog because refreshing them could silently change defaults. A missing
+model/effort, stale catalog, changed Profile, or denied grant remains a failure.
+Unaccepted choices retain strict revision validation. If no Worker qualifies,
+the dispatch failure includes the scheduler's rejection reasons so a changed
+catalog or unavailable selection is distinguishable from readiness or policy
+failures. No schema migration is required.

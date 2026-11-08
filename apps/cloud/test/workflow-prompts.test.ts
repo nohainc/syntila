@@ -328,3 +328,21 @@ describe("Work v1 prompt profiles", () => {
     ).toThrow(/tool output/i);
   });
 });
+
+it("allows sandboxed read-only inspection for every Research role regardless of provider tool names", () => {
+  const workflow = BUILTIN_WORKFLOW_CATALOG["research:v2"]!;
+  for (const step of workflow.steps) {
+    const prompt = renderWorkStepPrompt(workflow, step, {
+      originalRequest: "Inspect the repository",
+      stepResults: {
+        "research-1": stepResult("First report"),
+        "research-2": stepResult("Second report"),
+      },
+    });
+    expect(prompt).toContain("read-only inspection commands");
+    expect(prompt).toContain("authorized folders and existing sandbox");
+    expect(prompt).toContain("Never modify files");
+    expect(prompt).toContain("Do not request permission escalation");
+    expect(prompt).not.toContain("Do not execute shell commands");
+  }
+});

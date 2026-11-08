@@ -12,6 +12,11 @@ import 'worker_session.dart';
 const staleSessionAheadOfCloudMessage =
     'Worker Session contains context newer than this turn';
 
+/// A changed logical reference may be rebuilt only after owner attribution
+/// matches. Never treat a different Conversation or Worker as recoverable.
+const staleSessionReferenceMessage =
+    'Worker Session reference changed within the same Conversation and Worker';
+
 /// Local logical-session mapping. Provider session IDs never cross Protocol 4.0.
 class EngineSessionStore {
   const EngineSessionStore(this.directory);
@@ -127,12 +132,14 @@ class EngineSessionStore {
         );
       }
       if (workerSession == null ||
-          stored.id != workerSession.id ||
           stored.conversationId != workerSession.conversationId ||
           stored.workerId != workerSession.workerId) {
         throw const FormatException(
           'Worker Session belongs to another Conversation or Worker',
         );
+      }
+      if (stored.id != workerSession.id) {
+        throw const FormatException(staleSessionReferenceMessage);
       }
       // Separate effort is per turn. Combined effort variants select a native
       // model and must respect the same model-switch contract.

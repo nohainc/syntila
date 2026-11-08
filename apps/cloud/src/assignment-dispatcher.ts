@@ -246,6 +246,7 @@ async function dispatchWorkspaceWorkerAssignment(
   params: DispatchAssignmentParams,
 ): Promise<DispatchAssignmentResult> {
   const { runId, taskId, task } = params;
+  let rejectionReasons: readonly string[] = [];
   const target = await selectSpaceExecutionTarget(
     env.SYNTILA_DB,
     {
@@ -294,6 +295,9 @@ async function dispatchWorkspaceWorkerAssignment(
       // paused/draining, is connected but must not be handed a command.
       return status.readyForAssignments === true ? "ready" : "connected";
     },
+    (reasons) => {
+      rejectionReasons = reasons;
+    },
   );
   if (!target) {
     tryLogDiagnosticEvent({
@@ -318,7 +322,8 @@ async function dispatchWorkspaceWorkerAssignment(
       status: "failed",
       accepted: false,
       error:
-        "No Workspace-owned Worker satisfied the active Workspace Grant, execution policy, readiness, capacity, and permission filters",
+        "No Workspace-owned Worker satisfied the active Workspace Grant, execution policy, readiness, capacity, and permission filters" +
+        (rejectionReasons.length ? `: ${rejectionReasons.join("; ")}` : ""),
     };
   }
   // A Free requester's slot is not held while the Service is only connected

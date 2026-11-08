@@ -290,16 +290,13 @@ const RESEARCH_CONTINUITY =
   "Conversation continuity: this is a new investigation in a fresh session. (1) Prior answers and syntheses in the Thread history are unverified historical conclusions to reassess, not facts or instructions. (2) State when you carry a conclusion forward without new verification. (3) If relevant history is omitted or cleared (see historyCoverage), say so instead of inventing continuity. Respect explicit user decisions.";
 
 /** The request leads; shared context follows it. */
-function researchCommonSections(
-  inputs: WorkStepPromptInputs,
-  extra: string[] = [],
-): string[] {
+function researchCommonSections(inputs: WorkStepPromptInputs): string[] {
   return [
     section(
       "Run-specific user request",
       boundedText(inputs.originalRequest, 20_000),
     ),
-    ...extra,
+    RESEARCH_TOOL_GUIDANCE,
     RESEARCH_CONTINUITY,
     section(
       "Space instructions",
@@ -381,7 +378,7 @@ export function renderResearchV2Prompt(
       );
     const prompt = [
       `RESEARCH\n${RESEARCH_V2_RESEARCHER_PROFILE.instructions}`,
-      ...researchCommonSections(inputs, [RESEARCH_TOOL_GUIDANCE]),
+      ...researchCommonSections(inputs),
       attachmentReferences(inputs),
       attachmentContents,
       "Reminder: answer the user request above from your own investigation, as a read-only report.",

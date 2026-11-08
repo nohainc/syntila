@@ -1198,6 +1198,7 @@ class CliWorkerEngine {
       message == 'Engine session state is invalid' ||
       message == 'Missing local Worker Session' ||
       message == 'Engine session state exceeds its limit' ||
+      message == staleSessionReferenceMessage ||
       message == staleSessionAheadOfCloudMessage;
 
   /// Per-execution MCP config paths, keyed by request id.

@@ -79,7 +79,7 @@ it.each(
       workspace_worker_id TEXT, worker_type_id TEXT, model TEXT, engine_version TEXT, permission_snapshot_json TEXT,
       status TEXT, attempt_id TEXT, dispatched_at TEXT, acknowledged_at TEXT, running_at TEXT,
       start_permit_required INTEGER, start_permit_issued_at TEXT, startup_stage TEXT, startup_stage_at TEXT,
-      cloud_queue_reason TEXT, cloud_queue_since TEXT);
+      cloud_queue_reason TEXT, cloud_queue_since TEXT, output_json TEXT);
     CREATE TABLE workspace_worker_inventory(worker_id TEXT, worker_type_id TEXT,
       provider_tool_name TEXT, provider_tool_version TEXT);
     CREATE TABLE worker_activity_history(

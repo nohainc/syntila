@@ -567,6 +567,13 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
   }) async {}
 
   @override
+  Future<void> setWorkspaceSpaceAiSharing({
+    required String workspaceId,
+    required bool allowChat,
+    required bool allowWork,
+  }) async {}
+
+  @override
   Future<List<AxWorkspaceMember>> loadWorkspaceMembers(
           {required String workspaceId}) async =>
       const [

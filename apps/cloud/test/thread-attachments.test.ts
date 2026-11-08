@@ -41,6 +41,7 @@ function fixture() {
   sqlite.exec(`CREATE TABLE users(id TEXT, display_name TEXT);
     CREATE TABLE discussion_messages(id TEXT, thread_id TEXT, author_user_id TEXT, body TEXT, references_json TEXT, attachments_json TEXT NOT NULL DEFAULT '[]', created_at TEXT, edited_at TEXT, event_type TEXT, kind TEXT DEFAULT 'message', work_request_id TEXT, worker_display_name TEXT, reply_to_json TEXT);
     CREATE TABLE work_requests(thread_id TEXT, input_json TEXT);
+    CREATE TABLE worker_assignments(thread_id TEXT, status TEXT, output_json TEXT);
     CREATE TABLE user_files(id TEXT PRIMARY KEY, user_id TEXT, thread_id TEXT, space_id TEXT, name TEXT, media_type TEXT, size_bytes INTEGER, created_at TEXT);
     CREATE TABLE space_audit_log(id TEXT, space_id TEXT, actor_type TEXT, actor_id TEXT, action TEXT, target_type TEXT, target_id TEXT, details_json TEXT, created_at TEXT);`);
   sqlite.exec("PRAGMA foreign_keys = OFF");

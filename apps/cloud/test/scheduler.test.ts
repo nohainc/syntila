@@ -1204,3 +1204,179 @@ it("requires a pin-capable Engine and freezes the normalized Gemini selection be
     "resolvedNativeModelId",
   );
 });
+
+it.each(["chatgpt", "gemini", "claude", "custom-worker"])(
+  "revalidates an accepted explicit selection after catalog refresh for %s",
+  async (workerTypeId) => {
+    // The scheduler consumes generic Profile metadata, independent of Worker name.
+    const profile = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../profile_lab/assets/profiles/gemini.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    const revision = "b".repeat(64);
+    const catalog = {
+      schemaVersion: 2,
+      profileDigest: "a".repeat(64),
+      providerToolVersion: "1.3.3",
+      catalogRevision: revision,
+      discoveredAt: "2026-11-08T00:00:00Z",
+      models: [
+        {
+          id: "model-a",
+          name: "Model A",
+          efforts: ["low", "high"],
+          defaultEffort: null,
+          selectionMode: "combined",
+          status: "listed",
+        },
+      ],
+    };
+    const config = {
+      schemaVersion: 1,
+      workerId: "worker-a",
+      profileId: "gemini-antigravity",
+      profileReleaseVersion: 3,
+      modelId: "model-a",
+      effort: "high",
+    };
+    const binding = {
+      workerId: "worker-a",
+      model: "model-a",
+      reasoningEffort: "high",
+      catalogRevision: "c".repeat(64),
+    };
+    const row = (overrides: Record<string, unknown> = {}) =>
+      candidate({
+        worker_type_id: workerTypeId,
+        profile_definition_id: config.profileId,
+        provider_tool_version: "1.3.3",
+        execution_profile_json: JSON.stringify(profile),
+        execution_profile_digest: catalog.profileDigest,
+        engine_version: "1.4.0",
+        model_catalog_json: JSON.stringify(catalog),
+        work_request_snapshot_json: JSON.stringify({
+          resolvedBindings: { synthesis: binding },
+          stepExecutionConfigs: { synthesis: config },
+        }),
+        ...overrides,
+      });
+    const request = {
+      spaceId: "space-a",
+      requesterUserId: "user-a",
+      role: "synthesis",
+      capabilities: ["repository"],
+      threadId: "thread-a",
+      workRequestId: "request-a",
+      workBindingId: "synthesis",
+      executionClass: "stateless_read" as const,
+    };
+    const target = await selectSpaceExecutionTarget(db([row()]), request);
+    expect(target).toMatchObject({
+      workerId: "worker-a",
+      model: "model-a",
+      reasoningEffort: "high",
+      readOnly: true,
+    });
+    expect(target?.permissionSnapshot.executionSelection).toMatchObject({
+      modelId: "model-a",
+      effort: "high",
+      catalogRevision: revision,
+    });
+    expect(target?.selectionExplanation.catalogRevalidated).toBe(true);
+    expect(target?.effectivePermissions).not.toContain("repository:write");
+    const rejections = vi.fn();
+    expect(
+      await selectSpaceExecutionTarget(
+        db([
+          row({
+            model_catalog_json: JSON.stringify({ ...catalog, models: [] }),
+          }),
+        ]),
+        request,
+        new Date(),
+        undefined,
+        rejections,
+      ),
+    ).toBeNull();
+    expect(rejections).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.stringContaining("profile_execution_option_unavailable"),
+      ]),
+    );
+    expect(
+      await selectSpaceExecutionTarget(
+        db([
+          row({
+            model_catalog_json: JSON.stringify({
+              ...catalog,
+              models: [{ ...catalog.models[0], efforts: ["low"] }],
+            }),
+          }),
+        ]),
+        request,
+      ),
+    ).toBeNull();
+    expect(
+      await selectSpaceExecutionTarget(
+        db([row({ profile_release_version: 4 })]),
+        request,
+      ),
+    ).toBeNull();
+    // Unaccepted selections still require the original catalog pin.
+    expect(
+      await selectSpaceExecutionTarget(
+        db([row({ work_request_snapshot_json: "{}" })]),
+        {
+          ...request,
+          workRequestId: undefined,
+          threadId: undefined,
+          model: "model-a",
+          reasoningEffort: "high",
+          catalogRevision: binding.catalogRevision,
+        },
+      ),
+    ).toBeNull();
+    // Workers whose selected model has no effort control can refresh too.
+    const noEffort = await selectSpaceExecutionTarget(
+      db([
+        row({
+          model_catalog_json: JSON.stringify({
+            ...catalog,
+            models: [
+              { ...catalog.models[0], efforts: [], selectionMode: "separate" },
+            ],
+          }),
+          work_request_snapshot_json: JSON.stringify({
+            resolvedBindings: { synthesis: binding },
+            stepExecutionConfigs: { synthesis: { ...config, effort: null } },
+          }),
+        }),
+      ]),
+      request,
+    );
+    expect(noEffort?.permissionSnapshot.executionSelection).toMatchObject({
+      modelId: "model-a",
+      effort: null,
+      catalogRevision: revision,
+    });
+    // Auto must not silently resolve a new default after a catalog change.
+    expect(
+      await selectSpaceExecutionTarget(
+        db([
+          row({
+            work_request_snapshot_json: JSON.stringify({
+              resolvedBindings: { synthesis: binding },
+              stepExecutionConfigs: { synthesis: { ...config, effort: null } },
+            }),
+          }),
+        ]),
+        request,
+      ),
+    ).toBeNull();
+  },
+);
