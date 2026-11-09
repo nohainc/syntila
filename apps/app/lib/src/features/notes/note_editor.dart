@@ -271,6 +271,7 @@ class _NoteEditorState extends State<NoteEditor> {
               counterText: '',
             ),
           ),
+        if (widget.showTitle) const SizedBox(height: 6),
         _toolbar(),
         Expanded(
           child: !_editing

@@ -215,7 +215,7 @@ class _WorkspaceMemberAccessSectionState
               ? (_custom
                   ? 'Custom access replaces the Workspace default for this person.'
                   : 'This person follows the Workspace default until you save custom access.')
-              : 'Choose which Workers, models and efforts invited Space members can use on this Workspace. You are never limited. What they may do (chat, work, commands) is set per Space.',
+              : 'Default Workers, models and efforts that invited Space members can use on this Workspace. Per-person access overrides it. What members may do (chat, work, commands) is set per Space.',
           style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
       const SizedBox(height: 8),
       if (_loading)
@@ -234,19 +234,19 @@ class _WorkspaceMemberAccessSectionState
         else
           _buildAccessGrid(context, workers),
         const SizedBox(height: 8),
-        Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton(
-                key: const ValueKey('member-access-save'),
-                onPressed: _dirty && !_saving ? _save : null,
-                child: const Text('Save access'))),
-        if (_isPerson && _custom)
-          Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                  key: const ValueKey('person-access-reset'),
-                  onPressed: _saving ? null : _reset,
-                  child: const Text('Reset to default'))),
+        Row(children: [
+          FilledButton(
+              key: const ValueKey('member-access-save'),
+              onPressed: _dirty && !_saving ? _save : null,
+              child: const Text('Save access')),
+          if (_isPerson && _custom) ...[
+            const SizedBox(width: 8),
+            TextButton(
+                key: const ValueKey('person-access-reset'),
+                onPressed: _saving ? null : _reset,
+                child: const Text('Restore to default')),
+          ],
+        ]),
       ],
     ];
     if (widget.expandable) {

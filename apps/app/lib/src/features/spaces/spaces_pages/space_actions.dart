@@ -83,7 +83,7 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.space.isDirect ? 'Rename People Space' : 'Edit Space',
+            Text(widget.space.isDirect ? 'Rename Space' : 'Edit Space',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             TextField(
@@ -91,10 +91,7 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
               autofocus: true,
               enabled: !_savingEdits,
               decoration: InputDecoration(
-                labelText:
-                    widget.space.isDirect ? 'Name for you' : 'Space Name',
-                helperText:
-                    widget.space.isDirect ? 'Only you see this name.' : null,
+                labelText: widget.space.isDirect ? 'Name' : 'Space Name',
                 errorText: _editError,
               ),
               onChanged: (_) {
@@ -131,7 +128,7 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
                               _nameController.text = widget
                                   .space.settings['originalName'] as String;
                             }),
-                    child: const Text('Reset to person’s name'),
+                    child: const Text('Reset'),
                   ),
                 TextButton(
                   onPressed: _savingEdits ? null : _cancelEditing,

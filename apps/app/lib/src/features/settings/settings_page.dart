@@ -99,6 +99,18 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  ButtonStyle _segmentStyle(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return ButtonStyle(
+      foregroundColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected)
+              ? colors.onPrimary
+              : colors.onSurface),
+      backgroundColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? colors.primary : null),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -114,9 +126,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 fontSize: 25,
                 fontWeight: FontWeight.w700,
                 color: SyntilaColors.textPrimary(isDark))),
-        const SizedBox(height: 4),
-        Text('Most preferences apply to this device.',
-            style: TextStyle(fontSize: 12.5, color: muted)),
         const SizedBox(height: 24),
         Text('APPEARANCE',
             style: TextStyle(
@@ -125,31 +134,26 @@ class _SettingsPageState extends State<SettingsPage> {
                 letterSpacing: 0.7,
                 color: SyntilaColors.neutralText(isDark))),
         const SizedBox(height: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Row(
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Text size', style: TextStyle(fontSize: 14)),
-                const SizedBox(height: 2),
-                Text('Makes text larger across the app.',
-                    style: TextStyle(fontSize: 12, color: muted)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SegmentedButton<TextSizeOption>(
-                key: const ValueKey('setting-text-size'),
-                showSelectedIcon: false,
-                segments: [
-                  for (final option in TextSizeOption.values)
-                    ButtonSegment(value: option, label: Text(option.label)),
-                ],
-                selected: {widget.preferences.textSize},
-                onSelectionChanged: (selection) => widget.onChanged(
-                    widget.preferences.copyWith(textSize: selection.first)),
+            const Text('Text size', style: TextStyle(fontSize: 14)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: SegmentedButton<TextSizeOption>(
+                  key: const ValueKey('setting-text-size'),
+                  showSelectedIcon: false,
+                  style: _segmentStyle(context),
+                  segments: [
+                    for (final option in TextSizeOption.values)
+                      ButtonSegment(value: option, label: Text(option.label)),
+                  ],
+                  selected: {widget.preferences.textSize},
+                  onSelectionChanged: (selection) => widget.onChanged(
+                      widget.preferences.copyWith(textSize: selection.first)),
+                ),
               ),
             ),
           ],
@@ -166,9 +170,6 @@ class _SettingsPageState extends State<SettingsPage> {
           key: const ValueKey('setting-show-recent-threads'),
           contentPadding: EdgeInsets.zero,
           title: const Text('Show recent threads'),
-          subtitle: Text(
-              'List your most recently active threads at the top of the sidebar.',
-              style: TextStyle(fontSize: 12, color: muted)),
           value: showRecent,
           onChanged: (value) => widget
               .onChanged(widget.preferences.copyWith(showRecentThreads: value)),
@@ -178,22 +179,15 @@ class _SettingsPageState extends State<SettingsPage> {
           opacity: showRecent ? 1 : 0.45,
           child: Row(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Recent threads to show',
-                        style: TextStyle(fontSize: 14)),
-                    const SizedBox(height: 2),
-                    Text('How many threads the section lists.',
-                        style: TextStyle(fontSize: 12, color: muted)),
-                  ],
-                ),
+              const Expanded(
+                child: Text('Recent threads to show',
+                    style: TextStyle(fontSize: 14)),
               ),
               const SizedBox(width: 16),
               SegmentedButton<int>(
                 key: const ValueKey('setting-recent-threads-count'),
                 showSelectedIcon: false,
+                style: _segmentStyle(context),
                 segments: [
                   for (final count in ViewPreferences.recentThreadsCountOptions)
                     ButtonSegment(value: count, label: Text('$count')),
@@ -212,9 +206,6 @@ class _SettingsPageState extends State<SettingsPage> {
             key: const ValueKey('setting-show-support'),
             contentPadding: EdgeInsets.zero,
             title: const Text('Show Syntila Support in sidebar'),
-            subtitle: Text(
-                'Applies to your account on every device. You can always reach support from the application menu.',
-                style: TextStyle(fontSize: 12, color: muted)),
             value: _supportVisible ?? false,
             onChanged: _supportBusy || (_supportVisible == null)
                 ? null
@@ -251,9 +242,6 @@ class _SettingsPageState extends State<SettingsPage> {
           key: const ValueKey('setting-mute-sound'),
           contentPadding: EdgeInsets.zero,
           title: const Text('Mute sound notifications'),
-          subtitle: Text(
-              'Silence sounds when a new message arrives or a request completes.',
-              style: TextStyle(fontSize: 12, color: muted)),
           value: widget.preferences.muteSound,
           onChanged: (value) =>
               widget.onChanged(widget.preferences.copyWith(muteSound: value)),

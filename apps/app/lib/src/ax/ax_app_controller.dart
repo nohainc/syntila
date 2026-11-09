@@ -317,25 +317,8 @@ extension _AxAppController on _AxAppStateMixin {
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
               ),
             ),
-          ],
-        ),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Syntila brings people and AI Workers together in Spaces and Threads to discuss ideas, share context, and get work done.',
-                style: TextStyle(fontSize: 13.5, height: 1.45),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Team conversations, AI requests, and results stay together in one place. Choose how Workers handle tasks through Workflows, and run AI work on your own machines with Syntila Workspace and the provider CLIs you already use.',
-                style: TextStyle(fontSize: 12.5, height: 1.45),
-              ),
-              const SizedBox(height: 16),
-              Builder(builder: (context) {
+            const SizedBox(width: 12),
+            Builder(builder: (context) {
                 final dark = Theme.of(context).brightness == Brightness.dark;
                 final foreground = SyntilaColors.primaryForeground(dark);
                 return Container(
@@ -365,7 +348,24 @@ extension _AxAppController on _AxAppStateMixin {
                   ),
                 );
               }),
-              const SizedBox(height: 12),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Syntila brings people and AI Workers together in Spaces and Threads to discuss ideas, share context, and get work done.',
+                style: TextStyle(fontSize: 13.5, height: 1.45),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Team conversations, AI requests, and results stay together in one place. Choose how Workers handle tasks through Workflows, and run AI work on your own machines with Syntila Workspace and the provider CLIs you already use.',
+                style: TextStyle(fontSize: 12.5, height: 1.45),
+              ),
+              const SizedBox(height: 16),
               Text(
                 '© ${DateTime.now().year} Syntila',
                 style: Theme.of(dialogContext).textTheme.bodySmall,
@@ -980,6 +980,9 @@ extension _AxAppController on _AxAppStateMixin {
                   const Expanded(child: Text('Inbox')),
                   if (notifications.isNotEmpty)
                     IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: composerButtonConstraints,
+                      style: composerIconButtonStyle(),
                       onPressed: () {
                         _persistNotificationsRead();
                         _updateNotifications(() {
@@ -993,10 +996,13 @@ extension _AxAppController on _AxAppStateMixin {
                         Navigator.of(context).pop();
                       },
                       tooltip: 'Mark all as read',
-                      icon: const Icon(Icons.done_all_rounded),
+                      icon: const Icon(Icons.done_all_rounded, size: composerIconSize),
                     ),
                   if (browserAlerts.supported)
                     IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: composerButtonConstraints,
+                      style: composerIconButtonStyle(),
                       onPressed: () {
                         Navigator.of(context).pop();
                         if (browserAlerts.enabled) {
@@ -1014,14 +1020,19 @@ extension _AxAppController on _AxAppStateMixin {
                       tooltip: browserAlerts.enabled
                           ? 'Turn off desktop alerts'
                           : 'Turn on desktop alerts',
-                      icon: Icon(browserAlerts.enabled
-                          ? Icons.notifications_active_outlined
-                          : Icons.notifications_off_outlined),
+                      icon: Icon(
+                          browserAlerts.enabled
+                              ? Icons.notifications_active_outlined
+                              : Icons.notifications_off_outlined,
+                          size: composerIconSize),
                     ),
                   IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: composerButtonConstraints,
+                      style: composerIconButtonStyle(),
                     onPressed: () => Navigator.of(context).pop(),
                     tooltip: 'Close',
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(Icons.close_rounded, size: composerIconSize),
                   ),
                 ],
               ),

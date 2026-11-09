@@ -884,7 +884,7 @@ class SpaceTree extends StatelessWidget {
             style: itemStyle(),
             leadingIcon: Icon(Icons.edit_outlined, size: 16, color: iconColor),
             onPressed: () => select('edit'),
-            child: const Text('Edit Space'),
+            child: Text(space.isDirect ? 'Rename Space' : 'Edit Space'),
           ),
           MenuItemButton(
             style: itemStyle(),

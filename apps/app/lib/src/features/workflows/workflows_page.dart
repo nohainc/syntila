@@ -187,12 +187,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
                                     definition,
                                     _configuration(
                                         preferences.data!, definition.id),
-                                    workers,
-                                    defaultState.data == definition.id &&
-                                        (definition.id == 'chat' ||
-                                            _configuration(preferences.data!,
-                                                    definition.id)
-                                                .enabled)),
+                                    workers),
                             ];
 
                             const double gap = 12;
@@ -285,14 +280,22 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
   static bool _singleStep(AxBuiltinWorkflow definition) =>
       definition.id != 'plan_implement' && definition.steps.length == 1;
 
+  static String _shortDescription(AxBuiltinWorkflow definition) =>
+      switch (definition.id) {
+        'chat' => 'Discuss the request with Thread context.',
+        'direct' || 'work' => 'Do the requested work.',
+        'plan_implement' => 'Plan, implement and verify in steps.',
+        'research' => 'Compare independent research reports.',
+        _ => definition.description,
+      };
+
   static int _stepCount(AxBuiltinWorkflow definition) =>
       definition.id == 'plan_implement' ? 3 : definition.steps.length;
 
   Widget _card(
       AxBuiltinWorkflow definition,
       AxUserWorkflowConfiguration configuration,
-      List<AxWorker> workers,
-      bool isDefault) {
+      List<AxWorker> workers) {
     final selection = _singleStep(definition)
         ? configuration.selectionFor(definition.steps.first.kind)
         : configuration.defaults;
@@ -331,6 +334,10 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
     final descriptionHeight = descriptionMetrics.preferredLineHeight * 2;
     descriptionMetrics.dispose();
 
+    final defaultsWorker = configuration.defaults.worker;
+    final stepsReady = defaultsWorker != null &&
+        defaultsWorker.isNotEmpty &&
+        (allowsAutoModel || configuration.defaults.model?.isNotEmpty == true);
     final isChat = definition.id == 'chat';
     final isEnabled = isChat || configuration.enabled;
 
@@ -394,6 +401,20 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (!_singleStep(definition))
+                  IconButton(
+                    key: ValueKey('workflow-advanced-${definition.id}'),
+                    tooltip: stepsReady
+                        ? '${_stepCount(definition)} steps'
+                        : 'Select a default Worker and model to configure steps',
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 18,
+                    icon: const Icon(Icons.tune),
+                    onPressed:
+                        widget.canEdit && !_changingWorkspace && stepsReady
+                            ? () => _edit(definition, configuration)
+                            : null,
+                  ),
                 Transform.scale(
                   scale: 0.8,
                   alignment: Alignment.centerRight,
@@ -426,7 +447,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
             // Reserve both description lines so Worker selectors align across cards.
             SizedBox(
               height: descriptionHeight,
-              child: Text(definition.description,
+              child: Text(_shortDescription(definition),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: descriptionStyle),
@@ -761,128 +782,6 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
               );
             }),
             const Spacer(),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (isDefault)
-                  Flexible(
-                    child: Container(
-                      key: ValueKey('workflow-default-${definition.id}'),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: colors.primary.withValues(alpha: 0.12),
-                        border: Border.all(
-                          color: colors.primary.withValues(alpha: 0.35),
-                          width: 1,
-                        ),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.check_circle_rounded,
-                              size: 13, color: colors.primary),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              'Default',
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    color: colors.primary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else if (!isEnabled)
-                  Flexible(
-                    child: Container(
-                      key: ValueKey('workflow-status-${definition.id}'),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: colors.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        'Disabled',
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: colors.onSurfaceVariant,
-                            fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  )
-                else
-                  Flexible(
-                    child: TextButton(
-                      key: ValueKey('workflow-make-default-${definition.id}'),
-                      onPressed: widget.canEdit && !_changingWorkspace
-                          ? () async {
-                              try {
-                                await widget.configurations
-                                    .setDefault(definition.id);
-                              } catch (error) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showNotice(
-                                      SnackBar(
-                                          content: Text(error.toString())));
-                                }
-                              }
-                            }
-                          : null,
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        minimumSize: Size.zero,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 4),
-                      ),
-                      child: const Text(
-                        'Make default',
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                if (!_singleStep(definition))
-                  InkWell(
-                    key: ValueKey('open-workflow-${definition.id}'),
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: widget.canEdit && !_changingWorkspace
-                        ? () => _edit(definition, configuration)
-                        : null,
-                    child: TextButton.icon(
-                      key: ValueKey('workflow-advanced-${definition.id}'),
-                      onPressed: widget.canEdit && !_changingWorkspace
-                          ? () => _edit(definition, configuration)
-                          : null,
-                      icon: const Icon(Icons.tune, size: 14),
-                      label: Text(
-                          '${_stepCount(definition)} ${_stepCount(definition) == 1 ? 'step' : 'steps'}'),
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        minimumSize: Size.zero,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 4),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
           ]),
         ));
   }

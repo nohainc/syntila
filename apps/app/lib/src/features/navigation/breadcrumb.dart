@@ -129,6 +129,26 @@ class AppBreadcrumb extends StatelessWidget {
         ],
     };
 
+    // On mobile a Thread shows its Space name (a link to the Space page) and
+    // its own name, both always visible and ellipsized to share the width.
+    if (compact && nav.kind == AxRouteKind.thread && space != null) {
+      return Row(
+        children: [
+          Flexible(
+            child: _breadcrumbLink(
+              space.name,
+              () => onNavigateTo(AxNavigation.space(space.id)),
+            ),
+          ),
+          _divider(),
+          Flexible(
+              flex: 2,
+              child: _breadcrumbText(thread?.title ?? 'Thread',
+                  isCurrent: true)),
+        ],
+      );
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(

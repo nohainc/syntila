@@ -11,16 +11,14 @@ import '../../ax/ax_people.dart';
 import '../../ax/ax_workspace_member_access.dart';
 import 'workspace_member_access_section.dart';
 import '../common/quiet_notices.dart';
-import '../common/action_status_chip.dart';
-import '../../ax/ax_action_status.dart';
 
 /// Monthly run-time limits offered to the owner, in hours (null = no limit).
 const _runTimeHours = <int?>[null, 1, 5, 10, 25, 50, 100];
 
 const _modeLabels = {
-  'chat': 'Chat only',
-  'work': 'Chat and work',
-  'work+shell': 'Work and commands',
+  'chat': 'Chat',
+  'work': 'Chat, Work',
+  'work+shell': 'Chat, Work, Commands',
 };
 
 String _duration(int seconds) {
@@ -287,11 +285,6 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
               key: ValueKey('sharing-invitation-${invitation.id}'),
               contentPadding: EdgeInsets.zero,
               title: Text(invitation.email),
-              subtitle: Align(
-                  alignment: Alignment.centerLeft,
-                  child: ActionStatusChip(
-                      status: axInvitationStatus(invitation.status),
-                      kind: AxActionKind.invitation)),
               trailing: TextButton(
                   key: ValueKey('sharing-revoke-invitation-${invitation.id}'),
                   onPressed: _busy
@@ -430,8 +423,16 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
                     child: Text(initial)),
                 const SizedBox(width: 10),
                 Expanded(
-                    child: Text('${person.displayName} · ${person.email}',
-                        style: const TextStyle(fontWeight: FontWeight.w600))),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(person.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(person.email,
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+                    ])),
                 if (person.active)
                   TextButton(
                       key: ValueKey('sharing-revoke-${person.userId}'),
@@ -440,8 +441,10 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
                 else
                   Text('Access revoked', style: muted),
               ]),
+              Text('Workflows',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
               Text(
-                  '$mode${person.custom ? ' (custom)' : ''} · ${usage.requests} request${usage.requests == 1 ? '' : 's'} · about ${_duration(usage.approxSeconds)}'
+                  '$mode · ${usage.requests} request${usage.requests == 1 ? '' : 's'} · about ${_duration(usage.approxSeconds)}'
                   '${usage.lastUsedAt == null ? '' : ' · last used ${usage.lastUsedAt}'}',
                   style: muted),
               if (person.active)
@@ -452,7 +455,7 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
                         spacing: 8,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Text('At once:', style: muted),
+                          Text('Parallel requests:', style: muted),
                           _quotaSelector(
                             key: ValueKey('sharing-quota-${person.userId}'),
                             selected: person.maxConcurrentRequests.clamp(1, 10),
@@ -501,11 +504,6 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
                   children: [
                     Container(
                         margin: const EdgeInsets.only(top: 4, bottom: 8),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                            border: Border.all(
-                                color: Theme.of(context).dividerColor),
-                            borderRadius: BorderRadius.circular(14)),
                         child: WorkspaceMemberAccessSection(
                             key: ValueKey('person-access-${person.userId}'),
                             workspaceId: widget.workspaceId,

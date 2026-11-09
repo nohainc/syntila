@@ -790,7 +790,7 @@ extension _AxAppViews on _AxAppStateMixin {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Expanded(
+                                      Flexible(
                                           child: Text(
                                         accountSessionLabel(session.userAgent),
                                         style: Theme.of(context)
@@ -807,6 +807,31 @@ extension _AxAppViews on _AxAppStateMixin {
                                         textAlign: TextAlign.start,
                                         softWrap: true,
                                       )),
+                                      if (isCurrent) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: SyntilaColors
+                                                .primarySoftColor(Theme.of(
+                                                            context)
+                                                        .brightness ==
+                                                    Brightness.dark),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                          child: Text('Current',
+                                              style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: SyntilaColors
+                                                      .primaryForeground(Theme
+                                                                  .of(context)
+                                                              .brightness ==
+                                                          Brightness.dark))),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                   const SizedBox(height: 2),
@@ -834,21 +859,7 @@ extension _AxAppViews on _AxAppStateMixin {
                               child: Align(
                                 alignment: Alignment.centerRight,
                                 child: isCurrent
-                                    ? Padding(
-                                        padding: const EdgeInsets.only(top: 2),
-                                        child: Text('Current',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                    color: SyntilaColors
-                                                        .textPrimary(Theme.of(
-                                                                    context)
-                                                                .brightness ==
-                                                            Brightness.dark),
-                                                    fontWeight:
-                                                        FontWeight.w500)),
-                                      )
+                                    ? const SizedBox.shrink()
                                     : _profileIconButton(context,
                                         icon: Icons.logout,
                                         busy: isRevoking,

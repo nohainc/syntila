@@ -42,21 +42,32 @@ class _NotesPageState extends State<NotesPage> {
     }
   }
 
-  Future<void> _create() async {
-    try {
-      final note = await widget.source.createNote();
-      if (!mounted) return;
-      await _open(note);
-    } on Object {
-      if (mounted) setState(() => _error = 'The note could not be created.');
-    }
-  }
+  // A new note is only a local draft until it has text.
+  Future<void> _create() async => _open(AxNote(
+      id: 'draft-${DateTime.now().microsecondsSinceEpoch}',
+      title: '',
+      body: '',
+      revision: 1,
+      updatedAt: ''));
+
+  static bool _isDraft(AxNote note) => note.id.startsWith('draft-');
 
   Future<void> _open(AxNote note) async => setState(() => _selected = note);
 
   Future<void> _close() async {
     setState(() => _selected = null);
     await _reload();
+    // Existing notes left completely empty are removed.
+    final empty = (_notes ?? const <AxNote>[]).where(
+        (n) => n.title.trim().isEmpty && n.body.trim().isEmpty);
+    if (empty.isNotEmpty) {
+      for (final note in empty) {
+        try {
+          await widget.source.deleteNote(note.id);
+        } on Object {/* Kept; retried on the next close. */}
+      }
+      await _reload();
+    }
   }
 
   Future<void> _delete(AxNote note) async {
@@ -94,7 +105,10 @@ class _NotesPageState extends State<NotesPage> {
   Widget _buildContent(BuildContext context) {
     final selected = _selected;
     if (selected != null) return _editor(selected);
-    final notes = _notes;
+    // Completely empty notes are never listed.
+    final notes = _notes
+        ?.where((n) => n.title.trim().isNotEmpty || n.body.trim().isNotEmpty)
+        .toList();
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     // The page gets the full height (no outer scroll), so the list scrolls
     // itself and the editor can fill it.
@@ -191,6 +205,41 @@ class _NotesPageState extends State<NotesPage> {
     ));
   }
 
+  // Id of the stored copy of the open note; null while it is not stored
+  // because it is empty.
+  String? _storedId;
+  String? _storedFor;
+
+  /// Empty notes (no title, no body) are not stored: an existing one is
+  /// deleted and a new one is only created once there is text.
+  Future<AxNote> _saveNote(
+      AxNote note, String title, String body, int? revision) async {
+    if (_storedFor != note.id) {
+      _storedFor = note.id;
+      _storedId = _isDraft(note) ? null : note.id;
+    }
+    final empty = title.trim().isEmpty && body.trim().isEmpty;
+    if (empty) {
+      final id = _storedId;
+      if (id != null) {
+        await widget.source.deleteNote(id);
+        _storedId = null;
+        if (mounted && _selected == null) unawaited(_reload());
+      }
+      return note;
+    }
+    final id = _storedId;
+    if (id == null) {
+      final created =
+          await widget.source.createNote(title: title, body: body);
+      _storedId = created.id;
+      if (mounted && _selected == null) unawaited(_reload());
+      return created;
+    }
+    return widget.source.updateNote(id,
+        title: title, body: body, revision: revision ?? note.revision);
+  }
+
   /// The selected note's editor, shown in place of the list.
   Widget _editor(AxNote note) {
     final path = note.spacePath;
@@ -230,12 +279,10 @@ class _NotesPageState extends State<NotesPage> {
           child: NoteEditor(
             key: ValueKey('notes-editor-${note.id}'),
             showTitle: true,
-            load: () => widget.source.loadNote(note.id),
-            save: ({required title, required body, revision}) => widget.source
-                .updateNote(note.id,
-                    title: title,
-                    body: body,
-                    revision: revision ?? note.revision),
+            load: () async =>
+                _isDraft(note) ? null : widget.source.loadNote(note.id),
+            save: ({required title, required body, revision}) =>
+                _saveNote(note, title, body, revision),
           ),
         ),
       ],

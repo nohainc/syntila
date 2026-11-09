@@ -258,7 +258,7 @@ class GlobalAppMenu extends StatelessWidget {
             key: const ValueKey('menu-message-syntila'),
             style: itemStyle(),
             leadingIcon: Icon(
-              Icons.support_agent_rounded,
+              Icons.chat_bubble_outline_rounded,
               size: 16,
               color: menuIconColor,
             ),

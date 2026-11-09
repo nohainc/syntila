@@ -896,26 +896,10 @@ class _WorkspaceSpaceAiOptionsState extends State<_WorkspaceSpaceAiOptions> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Space AI availability',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Make this Workspace available to other members of your Spaces.',
-          style: TextStyle(
-            fontSize: 13,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 8),
         CheckboxListTile(
           key: ValueKey('workspace-space-ai-chat-${widget.workspaceId}'),
           contentPadding: EdgeInsets.zero,
-          title: const Text('Use Space AI for chat'),
-          subtitle: const Text(
+          title: const Text(
               'Allow other Space members to use this Workspace in Chat'),
           value: _allowChat,
           onChanged: (value) => _toggleChat(value == true),
@@ -923,8 +907,7 @@ class _WorkspaceSpaceAiOptionsState extends State<_WorkspaceSpaceAiOptions> {
         CheckboxListTile(
           key: ValueKey('workspace-space-ai-work-${widget.workspaceId}'),
           contentPadding: EdgeInsets.zero,
-          title: const Text('Use Space AI for work'),
-          subtitle: const Text(
+          title: const Text(
               'Allow other Space members to use this Workspace in Work'),
           value: _allowWork,
           onChanged: (value) => _toggleWork(value == true),

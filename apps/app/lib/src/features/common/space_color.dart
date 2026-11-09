@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:syntila_design/syntila_design.dart';
 
 /// Named palette values persist in Space settings; unknown values are neutral.
 const spaceColorNames = <String>[
@@ -47,30 +48,57 @@ class SpaceColorSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return DropdownButtonFormField<String>(
+    final current = spaceColorNames.contains(value) ? value! : '';
+    Widget swatch(String name) => Container(
+        width: 14,
+        height: 14,
+        decoration: BoxDecoration(
+            color: spaceIdentityColor(name, isDark: isDark),
+            border: name.isEmpty
+                ? Border.all(color: Theme.of(context).disabledColor)
+                : null,
+            borderRadius: BorderRadius.circular(3)));
+    return PopupMenuButton<String>(
       key: const ValueKey('space-color-selector'),
-      initialValue: spaceColorNames.contains(value) ? value : '',
-      decoration: const InputDecoration(labelText: 'Space color'),
-      items: [
-        const DropdownMenuItem(value: '', child: Text('No color')),
-        for (final name in spaceColorNames)
-          DropdownMenuItem(
+      enabled: onChanged != null,
+      tooltip: 'Choose Space color',
+      color: SyntilaColors.composerBackground(isDark),
+      surfaceTintColor: Colors.transparent,
+      elevation: 12,
+      shadowColor: SyntilaMenuStyle.shadow(isDark),
+      shape: SyntilaMenuStyle.shape(isDark),
+      menuPadding: SyntilaMenuStyle.padding,
+      itemBuilder: (context) => [
+        for (final name in ['', ...spaceColorNames])
+          SyntilaMenuEntry<String>(
             value: name,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                      color: spaceIdentityColor(name, isDark: isDark),
-                      borderRadius: BorderRadius.circular(3))),
-              const SizedBox(width: 8),
-              Text(name),
-            ]),
+            child: MenuItemButton(
+              style: SyntilaMenuStyle.item(isDark),
+              leadingIcon: Icon(
+                  name == current
+                      ? Icons.check_circle_rounded
+                      : Icons.circle_outlined,
+                  size: 15),
+              onPressed: () => Navigator.pop(context, name),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                swatch(name),
+                const SizedBox(width: 8),
+                Text(name.isEmpty ? 'No color' : name,
+                    style: SyntilaMenuStyle.textStyle),
+              ]),
+            ),
           ),
       ],
-      onChanged: onChanged == null
-          ? null
-          : (value) => onChanged!(value == '' ? null : value),
+      onSelected: (name) => onChanged!(name.isEmpty ? null : name),
+      child: InputDecorator(
+        decoration: const InputDecoration(
+            labelText: 'Space color', suffixIcon: Icon(Icons.expand_more)),
+        child: Row(children: [
+          swatch(current),
+          const SizedBox(width: 8),
+          Text(current.isEmpty ? 'No color' : current),
+        ]),
+      ),
     );
   }
 }

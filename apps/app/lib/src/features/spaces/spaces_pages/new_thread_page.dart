@@ -362,6 +362,7 @@ class _NewThreadPageState extends State<NewThreadPage> {
           final duplicate = _duplicate(state.data ?? const []);
           return TextField(
             key: const ValueKey('new-thread-name'),
+            autofocus: true,
             controller: _nameController,
             enabled:
                 !_busy && widget.space.effectivePermissions.manageOwnThreads,

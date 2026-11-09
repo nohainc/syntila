@@ -806,7 +806,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
 
           return AlertDialog(
             key: const ValueKey('personal-space-name-dialog'),
-            title: const Text('Rename People Space'),
+            title: const Text('Rename Space'),
             content: SizedBox(
               width: 440,
               child: TextField(
@@ -816,10 +816,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
                 maxLength: 120,
                 onSubmitted: (_) => save(),
                 decoration: InputDecoration(
-                  labelText: 'Name for you',
-                  helperText: original is String && original.isNotEmpty
-                      ? 'Only you see this name. Person: $original'
-                      : 'Only you see this name.',
+                  labelText: 'Name',
                   errorText: error,
                 ),
               ),
@@ -827,7 +824,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
             actions: [
               TextButton(
                   onPressed: saving ? null : () => save(reset: true),
-                  child: const Text('Reset to person’s name')),
+                  child: const Text('Reset')),
               TextButton(
                   onPressed: saving ? null : () => Navigator.pop(dialogContext),
                   child: const Text('Cancel')),
