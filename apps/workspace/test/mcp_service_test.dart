@@ -75,7 +75,6 @@ void main() {
     await addServer();
     await consentFully();
     service.enable('files');
-    service.bind('chatgpt', 'files');
     final item = service.sanitizedInventory().single;
     expect(item, {
       'serverId': 'files',
@@ -90,7 +89,6 @@ void main() {
           'definitionHash': service.pinsFor('files').hashes['read']
         }
       ],
-      'boundWorkerTypes': ['chatgpt'],
     });
     final encoded = item.toString();
     for (final value in [
@@ -116,10 +114,7 @@ void main() {
   test('a server cannot be enabled or resolved before consent', () async {
     await addServer();
     expect(() => service.enable('files'), throwsA(_code('mcp_not_consented')));
-    await expectLater(
-      service.resolveLaunches(['files']),
-      throwsA(_code('mcp_not_enabled')),
-    );
+    expect(await service.launchesForOwnerExecution(), isEmpty);
   });
 
   test('consent shows full definitions and pins them', () async {
@@ -156,7 +151,7 @@ void main() {
     await addServer();
     await consentFully();
     service.enable('files');
-    final launch = (await service.resolveLaunches(['files'])).single;
+    final launch = (await service.launchesForOwnerExecution()).single;
     expect(launch.name, 'files');
     expect(launch.command, server.path);
     expect(launch.arguments, ['--root', '/tmp']);
@@ -170,15 +165,17 @@ void main() {
         isNot(contains('secret')));
   });
 
-  test('a modified binary is refused at resolve time', () async {
+  test('a modified binary is never launched and is reported', () async {
     await addServer();
     await consentFully();
     service.enable('files');
     server.writeAsBytesSync([9, 9, 9]);
-    await expectLater(
-      service.resolveLaunches(['files']),
-      throwsA(_code('mcp_binary_changed')),
+    final skipped = <String>[];
+    expect(
+      await service.launchesForOwnerExecution(onSkipped: skipped.add),
+      isEmpty,
     );
+    expect(skipped.single, contains('changed since it was added'));
   });
 
   test('direct call admission requires enabled consent and the frozen pin',
@@ -250,14 +247,23 @@ void main() {
     );
   });
 
-  test('one unusable server refuses the whole request, not a subset', () async {
+  test('one unusable server is left out; the others still launch', () async {
     await addServer();
     await consentFully();
     service.enable('files');
-    await expectLater(
-      service.resolveLaunches(['files', 'ghost']),
-      throwsA(_code('mcp_not_enabled')),
-    );
+    final other = File('${root.path}/other')..writeAsBytesSync([1, 2, 3]);
+    await service.add(
+        serverId: 'other', displayName: 'Other', command: other.path);
+    final shown = await service.consent('other');
+    await service.consent('other',
+        acceptHash: shown['documentHash']! as String);
+    service.enable('other');
+    other.writeAsBytesSync([4, 5, 6]);
+    final skipped = <String>[];
+    final launches =
+        await service.launchesForOwnerExecution(onSkipped: skipped.add);
+    expect([for (final l in launches) l.name], ['files']);
+    expect(skipped.single, contains('"other"'));
   });
 
   test('disable stops resolution; remove deletes the record', () async {
@@ -265,10 +271,7 @@ void main() {
     await consentFully();
     service.enable('files');
     service.disable('files');
-    await expectLater(
-      service.resolveLaunches(['files']),
-      throwsA(_code('mcp_not_enabled')),
-    );
+    expect(await service.launchesForOwnerExecution(), isEmpty);
     service.remove('files');
     expect(service.list(), isEmpty);
   });
@@ -288,136 +291,32 @@ void main() {
     }
   });
 
-  group('Worker bindings', () {
-    test('nothing is bound by default, so executions get no servers', () async {
-      await addServer();
-      await consentFully();
-      service.enable('files');
-      expect(await service.launchesForWorker('chatgpt'), isEmpty);
-    });
-
-    test('a bound, consented, enabled server is resolved for that Worker only',
+  group('owner grants', () {
+    test('every enabled, consented server is offered, for any Worker',
         () async {
       await addServer();
       await consentFully();
+      expect(await service.launchesForOwnerExecution(), isEmpty);
       service.enable('files');
-      service.bind('chatgpt', 'files');
-      // Default-deny: a binding is a ceiling. Without a Step selection (missing
-      // or empty) the bound server is not exposed.
-      expect(await service.launchesForWorker('chatgpt'), isEmpty);
-      expect(await service.launchesForWorker('chatgpt', selectedServerIds: []),
-          isEmpty);
+      expect((await service.launchesForOwnerExecution()).single.name, 'files');
+    });
+
+    test('only the authenticated Workspace owner counts as the owner', () {
+      expect(assignmentRequestedByOwner({'requestedByUserId': 'u1'}, 'u1'),
+          isTrue);
+      expect(assignmentRequestedByOwner({'requestedByUserId': 'u2'}, 'u1'),
+          isFalse);
+      expect(assignmentRequestedByOwner({}, 'u1'), isFalse);
+      expect(assignmentRequestedByOwner({'requestedByUserId': 'u1'}, null),
+          isFalse);
       expect(
-          (await service
-                  .launchesForWorker('chatgpt', selectedServerIds: ['files']))
-              .single
-              .name,
-          'files');
-      await expectLater(
-        service.launchesForWorker('claude', selectedServerIds: ['files']),
-        throwsA(_code('mcp_server_not_bound')),
-      );
-    });
-
-    test('an unselected bound server is neither launched nor validated',
-        () async {
-      await addServer();
-      await consentFully();
-      service.enable('files');
-      service.bind('chatgpt', 'files');
-      // Consent revoked: only a Step that selects it fails; others get nothing.
-      service.disable('files');
-      expect(await service.launchesForWorker('chatgpt'), isEmpty);
-      expect(await service.launchesForWorker('chatgpt', selectedServerIds: []),
-          isEmpty);
-      await expectLater(
-        service.launchesForWorker('chatgpt', selectedServerIds: ['files']),
-        throwsA(_code('mcp_not_enabled')),
-      );
-    });
-
-    test('a Step selection narrows the bound servers and never widens them',
-        () async {
-      await addServer();
-      await consentFully();
-      service.enable('files');
-      service.bind('chatgpt', 'files');
-      // An empty selection exposes nothing, even though a server is bound.
-      expect(await service.launchesForWorker('chatgpt', selectedServerIds: []),
-          isEmpty);
+          assignmentRequestedByOwner({'requestedByUserId': ''}, ''), isFalse);
+      // A value inside the request's own input is never trusted.
       expect(
-          (await service
-                  .launchesForWorker('chatgpt', selectedServerIds: ['files']))
-              .single
-              .name,
-          'files');
-      // Naming a server that is not bound refuses, never a silent subset.
-      await expectLater(
-        service.launchesForWorker('chatgpt', selectedServerIds: ['ghost']),
-        throwsA(_code('mcp_server_not_bound')),
-      );
-      await expectLater(
-        service.launchesForWorker('claude', selectedServerIds: ['files']),
-        throwsA(_code('mcp_server_not_bound')),
-      );
-    });
-
-    test('the Step list is read strictly from the assignment input', () {
-      expect(assignmentMcpServerIds({}), isNull);
-      expect(assignmentMcpServerIds({'input': {}}), isNull);
-      expect(
-          assignmentMcpServerIds({
-            'input': {'mcpServerIds': []}
-          }),
-          isEmpty);
-      expect(
-          assignmentMcpServerIds({
-            'input': {
-              'mcpServerIds': ['files', 'db-1']
-            }
-          }),
-          ['files', 'db-1']);
-      for (final bad in <Object>[
-        'files',
-        ['Files'],
-        [1],
-        List.generate(9, (i) => 's$i'),
-      ]) {
-        expect(
-            () => assignmentMcpServerIds({
-                  'input': {'mcpServerIds': bad}
-                }),
-            throwsA(_code('invalid_request')));
-      }
-    });
-
-    test('binding does not bypass consent or enablement', () async {
-      await addServer();
-      service.bind('chatgpt', 'files');
-      await expectLater(
-        service.launchesForWorker('chatgpt', selectedServerIds: ['files']),
-        throwsA(_code('mcp_not_enabled')),
-      );
-    });
-
-    test('unbind and remove drop bindings', () async {
-      await addServer();
-      service.bind('chatgpt', 'files');
-      service.bind('claude', 'files');
-      service.unbind('chatgpt', 'files');
-      expect(service.bindings(), {
-        'claude': ['files'],
-      });
-      service.remove('files');
-      expect(service.bindings(), isEmpty);
-    });
-
-    test('binding an unknown server or bad Worker type is rejected', () async {
-      expect(() => service.bind('chatgpt', 'ghost'),
-          throwsA(_code('mcp_not_found')));
-      await addServer();
-      expect(() => service.bind('Bad Type', 'files'),
-          throwsA(_code('invalid_request')));
+          assignmentRequestedByOwner({
+            'input': {'requestedByUserId': 'u1'}
+          }, 'u1'),
+          isFalse);
     });
   });
 
@@ -506,12 +405,15 @@ void main() {
       },
     };
 
-    test('official Workers with nothing bound get no servers and no error',
-        () async {
-      expect(await mcpLaunchesForExecution(service, 'chatgpt', withoutSlot),
+    test('official Workers with no servers get none and no error', () async {
+      expect(
+          await mcpLaunchesForExecution(service, withoutSlot,
+              requestedByOwner: true),
           isEmpty);
       expect(
-          await mcpLaunchesForExecution(service, 'chatgpt', const {}), isEmpty);
+          await mcpLaunchesForExecution(service, const {},
+              requestedByOwner: true),
+          isEmpty);
     });
 
     test('a corrupt registry never breaks Workers: no servers, warning',
@@ -520,9 +422,9 @@ void main() {
       String? warning;
       final launches = await mcpLaunchesForExecution(
         service,
-        'chatgpt',
         withSlot,
-        onRegistryUnreadable: (m) => warning = m,
+        requestedByOwner: true,
+        onSkipped: (m) => warning = m,
       );
       expect(launches, isEmpty);
       expect(warning, contains('could not be read'));
@@ -532,49 +434,40 @@ void main() {
         () async {
       File('${root.path}/mcp.json')
           .writeAsStringSync('{"servers": 5, "bindings": {"x": 1}}');
-      expect(await mcpLaunchesForExecution(service, 'x', withSlot), isEmpty);
+      expect(
+          await mcpLaunchesForExecution(service, withSlot,
+              requestedByOwner: true),
+          isEmpty);
     });
 
-    test('bound servers on a Profile without the slot fail the execution',
+    test('the owner gets every enabled server; anyone else gets none',
         () async {
       await addServer();
       await consentFully();
       service.enable('files');
-      service.bind('chatgpt', 'files');
-      const selected = ['files'];
-      await expectLater(
-        mcpLaunchesForExecution(service, 'chatgpt', withoutSlot,
-            selectedServerIds: selected),
-        throwsA(_code('mcp_unsupported')),
-      );
-      await expectLater(
-        mcpLaunchesForExecution(service, 'chatgpt', const {},
-            selectedServerIds: selected),
-        throwsA(_code('mcp_unsupported')),
-      );
-      // Bound but not selected: no servers, so even a Profile without the slot
-      // runs, and a Profile with the slot receives nothing.
-      expect(await mcpLaunchesForExecution(service, 'chatgpt', withoutSlot),
+      expect(
+          (await mcpLaunchesForExecution(service, withSlot,
+                  requestedByOwner: true))
+              .single
+              .name,
+          'files');
+      expect(
+          await mcpLaunchesForExecution(service, withSlot,
+              requestedByOwner: false),
           isEmpty);
-      expect(
-          await mcpLaunchesForExecution(service, 'chatgpt', withSlot), isEmpty);
-      expect(
-        (await mcpLaunchesForExecution(service, 'chatgpt', withSlot,
-                selectedServerIds: selected))
-            .single
-            .name,
-        'files',
-      );
     });
 
-    test('a bound but unusable server still fails closed', () async {
+    test('a Profile without the slot runs without servers and is reported',
+        () async {
       await addServer();
-      service.bind('chatgpt', 'files');
-      await expectLater(
-        mcpLaunchesForExecution(service, 'chatgpt', withSlot,
-            selectedServerIds: ['files']),
-        throwsA(_code('mcp_not_enabled')),
-      );
+      await consentFully();
+      service.enable('files');
+      final skipped = <String>[];
+      expect(
+          await mcpLaunchesForExecution(service, withoutSlot,
+              requestedByOwner: true, onSkipped: skipped.add),
+          isEmpty);
+      expect(skipped.single, contains('cannot use MCP servers'));
     });
   });
 }

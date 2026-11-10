@@ -13,6 +13,8 @@ class SettingsPage extends StatefulWidget {
     super.key,
     required this.preferences,
     required this.onChanged,
+    this.themeMode = ThemeMode.system,
+    this.onThemeModeChanged,
     this.workspaceId,
     this.workspaces = const [],
     this.inventories,
@@ -22,6 +24,8 @@ class SettingsPage extends StatefulWidget {
 
   final ViewPreferences preferences;
   final ValueChanged<ViewPreferences> onChanged;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode>? onThemeModeChanged;
   final String? workspaceId;
   final List<AxWorkspace> workspaces;
   final AxMcpInventories? inventories;
@@ -134,6 +138,35 @@ class _SettingsPageState extends State<SettingsPage> {
                 letterSpacing: 0.7,
                 color: SyntilaColors.neutralText(isDark))),
         const SizedBox(height: 8),
+        Row(
+          children: [
+            const Text('Theme', style: TextStyle(fontSize: 14)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: SegmentedButton<ThemeMode>(
+                  key: const ValueKey('setting-theme'),
+                  showSelectedIcon: false,
+                  style: _segmentStyle(context),
+                  segments: const [
+                    ButtonSegment(
+                        value: ThemeMode.system, label: Text('System')),
+                    ButtonSegment(value: ThemeMode.light, label: Text('Light')),
+                    ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
+                  ],
+                  selected: {widget.themeMode},
+                  onSelectionChanged: widget.onThemeModeChanged == null
+                      ? null
+                      : (selection) =>
+                          widget.onThemeModeChanged!(selection.first),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         Row(
           children: [
             const Text('Text size', style: TextStyle(fontSize: 14)),
@@ -289,11 +322,6 @@ class _SettingsPageState extends State<SettingsPage> {
               key: ValueKey('mcp-view-$currentWorkspaceId'),
               workspaceId: currentWorkspaceId,
               inventories: widget.inventories!,
-              knownWorkerTypes: widget.workers
-                  .where((worker) => worker.workspaceId == currentWorkspaceId)
-                  .map((worker) => worker.workerTypeId)
-                  .toSet()
-                  .toList(),
             )
           else ...[
             Text('MCP SERVERS',

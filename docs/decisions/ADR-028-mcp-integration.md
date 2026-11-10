@@ -40,9 +40,10 @@ Syntila-specific one.
 7. **Cloud never holds secrets.** OAuth tokens and server credentials stay in
    the Workspace Service's local store. Cloud receives only enablement state
    and tool-definition hashes.
-8. **Safe defaults.** No MCP tools are exposed to a Step unless the workflow
-   lists them; sampling, roots and elicitation are not offered in v1; tool
-   output is untrusted data; definition drift blocks calls until re-consent.
+8. **Safe defaults.** Official Workers receive MCP servers only for the
+   Workspace owner's own work (amended, see §7); sampling, roots and
+   elicitation are not offered in v1; tool output is untrusted data;
+   definition drift blocks calls until re-consent.
 9. **Client implementation:** an owned, small Dart package
    (`syntila_mcp_protocol`) unless M1 evaluation finds an official Dart SDK that
    passes the host vectors and pins protocol versions; the choice is recorded
@@ -80,3 +81,32 @@ path remain. `provider_specific_worker_executable: true` stays verbatim.
 - O1: Should remote MCP Tools be a paid feature?
 - O2: Official Dart MCP SDK vs owned codec (decided in M1).
 - O3: Minimum MCP spec revision to pin first (decided in M1 from the then-current spec; must include progress, cancellation and Streamable HTTP).
+
+## 7. Amendment (2026-11-11): owner-scoped servers, no per-Step selection
+
+**Supersedes** the per-Worker bindings and the per-Step `mcpTools` selection
+that §2.8 originally implied. Three places to configure one server (CLI to add,
+Settings to bind, the workflow to select) proved too complicated: a server could
+be added, consented and bound and still never reach a run.
+
+1. **The Workspace app is the only place to add servers.** Local
+   (`syntila mcp add`) and remote (`syntila mcp add-remote`) servers are added
+   on the machine that runs them. Settings in the web app can review consent,
+   test, enable, disable and remove, but cannot add servers; the Workspace
+   refuses a Cloud-relayed `addRemote`.
+2. **No Worker bindings, no Step selection.** Every enabled, consented server is
+   given to every official Worker and every Workflow run on that Workspace.
+   Consent (with its definition hash and drift re-consent) remains the single
+   gate. Legacy `bindings` in the local registry and `mcpTools` in saved
+   Workflow configurations are ignored; the inventory's `boundWorkerTypes` is
+   optional for older Workspaces.
+3. **Owner only.** The Workspace grants servers only when the assignment's
+   authenticated `requestedByUserId` equals its registered `ownerUserId`. Work
+   by Space members or shared-Workspace users runs without MCP servers, because
+   the servers act with the owner's local files and credentials. Sharing servers
+   with others is deferred to a future decision.
+4. **Fewer servers, never a failed run.** A server that cannot be launched
+   safely (remote for an official Worker, command changed since consent), a
+   Profile without the MCP slot, or an unreadable registry leaves the server(s)
+   out and is reported in the Workspace log; the run continues.
+

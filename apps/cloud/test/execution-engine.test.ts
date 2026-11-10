@@ -151,8 +151,8 @@ it("keeps a complete Research v2 report instead of cutting it at 96,000 characte
   ).toHaveLength(150_000);
 });
 
-it("sends only the frozen Step selection as MCP server IDs, never one from the request input", () => {
-  const base = {
+it("sends the authenticated requester, which the Workspace uses to grant MCP servers only to its owner", () => {
+  const task = prepareWorkerStepExecution({
     taskId: "task",
     step: BUILTIN_WORKFLOWS.direct.steps[0]!,
     bindingId: "direct" as const,
@@ -164,20 +164,10 @@ it("sends only the frozen Step selection as MCP server IDs, never one from the r
       workRequestId: "R",
     },
     retry: {},
-  };
-  const run = (
-    binding: Record<string, unknown>,
-    workerInput: Record<string, unknown>,
-  ) => prepareWorkerStepExecution({ ...base, binding, workerInput }).task.input;
-  expect(
-    run({ workerId: "w", mcpTools: ["files"] }, { mcpServerIds: ["evil"] }),
-  ).toMatchObject({ mcpServerIds: ["files"] });
-  // An explicit empty selection is sent so the Workspace exposes nothing.
-  expect(run({ workerId: "w", mcpTools: [] }, {})).toMatchObject({
-    mcpServerIds: [],
-  });
-  // No selection: nothing is sent, and a smuggled value is dropped.
-  expect(run({ workerId: "w" }, { mcpServerIds: ["evil"] })).not.toHaveProperty(
-    "mcpServerIds",
-  );
+    // A legacy saved selection no longer names MCP servers for the Step.
+    binding: { workerId: "w", mcpTools: ["files"] },
+    workerInput: {},
+  }).task;
+  expect(task.requestedByUserId).toBe("U");
+  expect(task.input).not.toHaveProperty("mcpServerIds");
 });

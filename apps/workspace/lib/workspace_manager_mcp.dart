@@ -54,18 +54,6 @@ class WorkspaceMcpCommands {
     return value;
   }
 
-  String _workerType(Map<String, Object?> payload) {
-    final value = payload['workerTypeId'];
-    if (value is! String ||
-        !RegExp(r'^[a-z][a-z0-9_-]{0,63}$').hasMatch(value)) {
-      throw const WorkspaceManagerProtocolException(
-        'invalid_request',
-        'workerTypeId must be a lowercase Worker type ID.',
-      );
-    }
-    return value;
-  }
-
   List<String> _strings(Map<String, Object?> payload, String key) {
     final value = payload[key] ?? const <Object?>[];
     if (value is! List || value.any((item) => item is! String)) {
@@ -80,11 +68,7 @@ class WorkspaceMcpCommands {
   Future<Object?> _handle(String command, Map<String, Object?> payload) async {
     switch (command) {
       case 'mcp.list':
-        return {'servers': service.list(), 'bindings': service.bindings()};
-      case 'mcp.bind':
-        return service.bind(_workerType(payload), _id(payload));
-      case 'mcp.unbind':
-        return service.unbind(_workerType(payload), _id(payload));
+        return {'servers': service.list()};
       case 'mcp.add':
         final command = payload['command'];
         final name = payload['displayName'];

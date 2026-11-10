@@ -55,9 +55,12 @@ export const McpInventoryServerSchema = z
     availability: McpInventoryAvailabilitySchema,
     diagnostic: McpInventoryDiagnosticSchema.optional(),
     tools: z.array(McpInventoryToolSchema).max(MCP_INVENTORY_MAX_TOOLS),
+    /** Legacy: sent by older Workspaces, ignored. Servers are no longer bound
+     * per Worker type; every consented, enabled server serves the owner. */
     boundWorkerTypes: z
       .array(z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/))
-      .max(32),
+      .max(32)
+      .optional(),
   })
   .strict()
   .superRefine((server, ctx) => {
@@ -71,9 +74,8 @@ export const McpInventoryServerSchema = z
         });
       names.add(tool.name);
     }
-    if (
-      new Set(server.boundWorkerTypes).size !== server.boundWorkerTypes.length
-    )
+    const bound = server.boundWorkerTypes ?? [];
+    if (new Set(bound).size !== bound.length)
       ctx.addIssue({
         code: "custom",
         path: ["boundWorkerTypes"],

@@ -10,21 +10,19 @@ import '../../ax/sync/ax_query_builder.dart';
 
 /// Service-owned MCP servers management UI.
 ///
-/// Displays installed servers, availability, consent status, tools and Worker
-/// bindings. Lets users install remote servers, test connection, enable, disable,
-/// remove, bind/unbind, and review complete tool definitions during consent with
-/// a clear definition diff.
+/// Displays installed servers, availability, consent status and tools. Lets
+/// users test connection, enable, disable, remove, and review complete tool
+/// definitions during consent with a clear definition diff. Servers are added
+/// only in the Workspace app, on the machine that runs them.
 class McpManagementView extends StatefulWidget {
   const McpManagementView({
     super.key,
     required this.workspaceId,
     required this.inventories,
-    this.knownWorkerTypes = const [],
   });
 
   final String workspaceId;
   final AxMcpInventories inventories;
-  final List<String> knownWorkerTypes;
 
   @override
   State<McpManagementView> createState() => _McpManagementViewState();
@@ -141,31 +139,6 @@ class _McpManagementViewState extends State<McpManagementView> {
     }
   }
 
-  Future<void> _openAddRemoteDialog() async {
-    final added = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => McpAddRemoteServerDialog(
-        workspaceId: widget.workspaceId,
-        inventories: widget.inventories,
-      ),
-    );
-    if (added == true) {
-      _setStatus('Remote server added. Consent is required before enabling.');
-    }
-  }
-
-  Future<void> _openBindingsDialog(AxMcpServer server) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => McpBindingsDialog(
-        workspaceId: widget.workspaceId,
-        server: server,
-        inventories: widget.inventories,
-        knownWorkerTypes: widget.knownWorkerTypes,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -218,12 +191,6 @@ class _McpManagementViewState extends State<McpManagementView> {
                           widget.inventories.refresh(widget.workspaceId),
                       icon: const Icon(Icons.refresh, size: 16),
                       label: const Text('Refresh'),
-                    ),
-                    FilledButton.icon(
-                      key: const ValueKey('setting-mcp-add-remote'),
-                      onPressed: _openAddRemoteDialog,
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('Add Remote Server'),
                     ),
                   ],
                 ),
@@ -334,7 +301,7 @@ class _McpManagementViewState extends State<McpManagementView> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Click "Add Remote Server" above or use `syntila mcp add <id> --command <path>` on your machine.',
+                      'Add MCP servers in the Workspace app on this machine. Once consented and enabled, they work for every Worker and Workflow you run on this Workspace.',
                       style: TextStyle(fontSize: 12.5, color: muted),
                       textAlign: TextAlign.center,
                     ),
@@ -451,16 +418,11 @@ class _McpManagementViewState extends State<McpManagementView> {
             ),
           ],
           const SizedBox(height: 12),
-          // Tools & bindings summary
+          // Tools summary
           Text(
             'Tools (${server.tools.length}): ${server.tools.map((t) => t.name).join(', ')}',
             style: TextStyle(
                 fontSize: 12.5, color: SyntilaColors.textSecondary(isDark)),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Worker bindings: ${server.boundWorkerTypes.isEmpty ? "None" : server.boundWorkerTypes.join(", ")}',
-            style: TextStyle(fontSize: 12, color: muted),
           ),
           const SizedBox(height: 12),
           // Actions row
@@ -485,13 +447,6 @@ class _McpManagementViewState extends State<McpManagementView> {
                 icon: const Icon(Icons.verified_user_outlined, size: 16),
                 label: Text(server.consented ? 'Re-consent' : 'Consent'),
               ),
-              if (!server.isRemote)
-                OutlinedButton.icon(
-                  key: ValueKey('setting-mcp-bind-${server.serverId}'),
-                  onPressed: () => _openBindingsDialog(server),
-                  icon: const Icon(Icons.link, size: 16),
-                  label: const Text('Worker Bindings'),
-                ),
               IconButton(
                 key: ValueKey('setting-mcp-remove-${server.serverId}'),
                 tooltip: 'Remove server',
@@ -905,266 +860,6 @@ class _McpConsentDialogState extends State<McpConsentDialog> {
           ],
         ],
       ),
-    );
-  }
-}
-
-/// Dialog to configure and add a new remote MCP server.
-class McpAddRemoteServerDialog extends StatefulWidget {
-  const McpAddRemoteServerDialog({
-    super.key,
-    required this.workspaceId,
-    required this.inventories,
-  });
-
-  final String workspaceId;
-  final AxMcpInventories inventories;
-
-  @override
-  State<McpAddRemoteServerDialog> createState() =>
-      _McpAddRemoteServerDialogState();
-}
-
-class _McpAddRemoteServerDialogState extends State<McpAddRemoteServerDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _id = TextEditingController();
-  final _name = TextEditingController();
-  final _endpoint = TextEditingController();
-  final _tokenEnv = TextEditingController();
-  bool _insecureLoopback = false;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _id.dispose();
-    _name.dispose();
-    _endpoint.dispose();
-    _tokenEnv.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      await widget.inventories.execute(
-        widget.workspaceId,
-        action: 'addRemote',
-        serverId: _id.text.trim().toLowerCase(),
-        displayName: _name.text.trim(),
-        endpoint: _endpoint.text.trim(),
-        tokenEnv: _tokenEnv.text.trim().isEmpty ? null : _tokenEnv.text.trim(),
-        insecureLoopback: _insecureLoopback,
-      );
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = '$e';
-          _saving = false;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add Remote MCP Server'),
-      content: SizedBox(
-        width: 480,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(_error!,
-                      style: const TextStyle(
-                          color: SyntilaColors.error, fontSize: 12)),
-                ),
-              TextFormField(
-                key: const ValueKey('mcp-add-id'),
-                controller: _id,
-                decoration: const InputDecoration(
-                  labelText: 'Server ID',
-                  hintText: 'e.g. github-remote',
-                  isDense: true,
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'Required';
-                  if (!RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$')
-                      .hasMatch(val.trim())) {
-                    return 'Lowercase letters, numbers, dash and underscore only (max 64 chars)';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                key: const ValueKey('mcp-add-name'),
-                controller: _name,
-                decoration: const InputDecoration(
-                  labelText: 'Display Name',
-                  hintText: 'e.g. GitHub Tools',
-                  isDense: true,
-                ),
-                validator: (val) =>
-                    val == null || val.trim().isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                key: const ValueKey('mcp-add-endpoint'),
-                controller: _endpoint,
-                decoration: const InputDecoration(
-                  labelText: 'Endpoint URL',
-                  hintText: 'https://...',
-                  isDense: true,
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'Required';
-                  final uri = Uri.tryParse(val.trim());
-                  if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
-                    return 'Valid URL required';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                key: const ValueKey('mcp-add-token-env'),
-                controller: _tokenEnv,
-                decoration: const InputDecoration(
-                  labelText: 'Token Environment Variable (optional)',
-                  hintText: 'e.g. GITHUB_TOKEN',
-                  isDense: true,
-                ),
-                validator: (val) {
-                  if (val != null && val.trim().isNotEmpty) {
-                    if (!RegExp(r'^[A-Za-z_][A-Za-z0-9_]{0,127}$')
-                        .hasMatch(val.trim())) {
-                      return 'Valid environment variable name required';
-                    }
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              SwitchListTile(
-                key: const ValueKey('mcp-add-loopback'),
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Allow insecure loopback (http://localhost)',
-                    style: TextStyle(fontSize: 13)),
-                value: _insecureLoopback,
-                onChanged: (val) => setState(() => _insecureLoopback = val),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const ValueKey('mcp-add-submit'),
-          onPressed: _saving ? null : _submit,
-          child: Text(_saving ? 'Adding...' : 'Add Server'),
-        ),
-      ],
-    );
-  }
-}
-
-/// Dialog to manage Worker bindings for a server.
-class McpBindingsDialog extends StatefulWidget {
-  const McpBindingsDialog({
-    super.key,
-    required this.workspaceId,
-    required this.server,
-    required this.inventories,
-    required this.knownWorkerTypes,
-  });
-
-  final String workspaceId;
-  final AxMcpServer server;
-  final AxMcpInventories inventories;
-  final List<String> knownWorkerTypes;
-
-  @override
-  State<McpBindingsDialog> createState() => _McpBindingsDialogState();
-}
-
-class _McpBindingsDialogState extends State<McpBindingsDialog> {
-  late final Set<String> _bound = {...widget.server.boundWorkerTypes};
-  bool _busy = false;
-
-  Future<void> _toggleBinding(String workerTypeId, bool bind) async {
-    setState(() => _busy = true);
-    try {
-      await widget.inventories.execute(
-        widget.workspaceId,
-        action: bind ? 'bind' : 'unbind',
-        serverId: widget.server.serverId,
-        workerTypeId: workerTypeId,
-      );
-      setState(() {
-        if (bind) {
-          _bound.add(workerTypeId);
-        } else {
-          _bound.remove(workerTypeId);
-        }
-      });
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Worker Bindings for ${widget.server.displayName}'),
-      content: SizedBox(
-        width: 380,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Select which Workers may access this server when selected in a Workflow:',
-              style: TextStyle(fontSize: 12.5),
-            ),
-            const SizedBox(height: 12),
-            for (final type in {
-              ...widget.knownWorkerTypes,
-              ...widget.server.boundWorkerTypes
-            })
-              CheckboxListTile(
-                key: ValueKey('mcp-binding-$type'),
-                title: Text(type),
-                value: _bound.contains(type),
-                enabled: !_busy,
-                onChanged: (val) {
-                  if (val != null) _toggleBinding(type, val);
-                },
-              ),
-          ],
-        ),
-      ),
-      actions: [
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Done'),
-        ),
-      ],
     );
   }
 }

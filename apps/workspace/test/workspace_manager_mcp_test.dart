@@ -142,29 +142,19 @@ void main() {
     }
   });
 
-  test('bind and unbind change what mcp.list reports', () async {
+  test('Worker bindings are gone: every server serves every Worker', () async {
     await add();
-    await commands.handle('mcp.bind', {
-      'serverId': 'files',
-      'workerTypeId': 'chatgpt',
-    });
-    var listed = await commands.handle('mcp.list', {}) as Map;
-    expect(listed['bindings'], {
-      'chatgpt': ['files'],
-    });
-    await commands.handle('mcp.unbind', {
-      'serverId': 'files',
-      'workerTypeId': 'chatgpt',
-    });
-    listed = await commands.handle('mcp.list', {}) as Map;
-    expect(listed['bindings'], isEmpty);
-    await expectLater(
-      commands.handle('mcp.bind', {
-        'serverId': 'files',
-        'workerTypeId': 'Bad Type',
-      }),
-      throwsA(isA<WorkspaceManagerProtocolException>()),
-    );
+    final listed = await commands.handle('mcp.list', {}) as Map;
+    expect(listed.containsKey('bindings'), isFalse);
+    for (final command in ['mcp.bind', 'mcp.unbind']) {
+      await expectLater(
+        commands.handle(command, {
+          'serverId': 'files',
+          'workerTypeId': 'chatgpt',
+        }),
+        throwsA(isA<WorkspaceManagerProtocolException>()),
+      );
+    }
   });
 
   test('a corrupt registry gives a stable, actionable error', () async {

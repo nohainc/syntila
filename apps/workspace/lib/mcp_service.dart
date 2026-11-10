@@ -109,7 +109,6 @@ class McpService {
   /// alone do not prove that the server is reachable or its definitions match.
   /// This is not an authorization decision.
   List<Map<String, Object?>> sanitizedInventory() {
-    final bindings = _registry.bindings();
     return [
       for (final server in _registry.list())
         {
@@ -123,10 +122,6 @@ class McpService {
             for (final name in (server.toolPins.keys.toList()..sort()))
               {'name': name, 'definitionHash': server.toolPins[name]},
           ],
-          'boundWorkerTypes': ([
-            for (final entry in bindings.entries)
-              if (entry.value.contains(server.serverId)) entry.key,
-          ]..sort()),
         },
     ];
   }
@@ -305,81 +300,42 @@ class McpService {
     };
   }
 
-  static final _workerTypePattern = RegExp(r'^[a-z][a-z0-9_-]{0,63}$');
-
-  /// Lets [workerTypeId] receive [serverId] in its executions. Binding does not
-  /// bypass consent: launch resolution still requires consent and enablement.
-  Map<String, Object?> bind(String workerTypeId, String serverId) {
-    if (!_workerTypePattern.hasMatch(workerTypeId)) {
-      throw const McpPolicyException('invalid_request', 'Invalid Worker type.');
-    }
-    if (_require(serverId).isRemote) {
-      throw const McpPolicyException(
-        'mcp_remote_unsupported',
-        'Remote MCP servers cannot be bound to official Workers yet.',
-      );
-    }
-    final current = _registry.bindings()[workerTypeId] ?? const <String>[];
-    if (!current.contains(serverId)) {
-      _registry.setBinding(workerTypeId, [...current, serverId]..sort());
-    }
-    return {'workerTypeId': workerTypeId, 'serverId': serverId, 'bound': true};
-  }
-
-  Map<String, Object?> unbind(String workerTypeId, String serverId) {
-    final current = _registry.bindings()[workerTypeId] ?? const <String>[];
-    _registry.setBinding(workerTypeId, [
-      for (final id in current)
-        if (id != serverId) id,
-    ]);
-    return {
-      'workerTypeId': workerTypeId,
-      'serverId': serverId,
-      'bound': false,
-    };
-  }
-
-  Map<String, List<String>> bindings() => _registry.bindings();
-
-  /// Launches for one execution of [workerTypeId]. Default-deny: effective
-  /// servers = consented (and enabled) ∩ bound to this Worker type ∩ named by
-  /// the Step. A missing [selectedServerIds] and an explicit empty list both
-  /// yield no servers; Worker bindings are a ceiling, never a grant. Naming a
-  /// server that is not bound to this Worker type, or that is not consented,
-  /// enabled and unchanged, refuses the whole request (never a silent subset).
-  Future<List<McpServerLaunch>> launchesForWorker(
-    String workerTypeId, {
-    List<String>? selectedServerIds,
+  /// Launches for one execution of the Workspace owner's own work (ADR-028):
+  /// every enabled, consented local server, for any Worker and Workflow, with
+  /// no further selection. A server that cannot be launched safely (remote, or
+  /// its command changed since consent) is left out and reported through
+  /// [onSkipped]; it never runs and never fails the whole execution.
+  Future<List<McpServerLaunch>> launchesForOwnerExecution({
+    void Function(String message)? onSkipped,
   }) async {
-    final List<String> ids;
+    final List<McpServerRecord> servers;
     try {
-      ids = _registry.bindings()[workerTypeId] ?? const <String>[];
+      servers = _registry.list();
     } on McpRegistryUnreadable {
       throw const McpPolicyException(
         'mcp_registry_unreadable',
         'The MCP server registry could not be read.',
       );
     }
-    if (selectedServerIds != null) {
-      final unbound = [
-        for (final id in selectedServerIds)
-          if (!ids.contains(id)) id,
-      ];
-      if (unbound.isNotEmpty) {
-        throw McpPolicyException(
-          'mcp_server_not_bound',
-          'This Step selects MCP servers that are not bound to this Worker: '
-              '${unbound.join(', ')}.',
+    final launches = <McpServerLaunch>[];
+    for (final server in servers) {
+      if (!server.enabled || !server.consented) continue;
+      if (server.isRemote) {
+        onSkipped?.call(
+          'MCP server "${server.serverId}" is remote; Workers cannot use '
+          'remote servers yet.',
         );
+        continue;
       }
-      final selected = [
-        for (final id in ids)
-          if (selectedServerIds.contains(id)) id,
-      ];
-      return selected.isEmpty ? const [] : resolveLaunches(selected);
+      try {
+        await _checkBinary(server);
+      } on McpPolicyException catch (error) {
+        onSkipped?.call(error.message);
+        continue;
+      }
+      launches.add(_launchFor(server));
     }
-    // No accepted Step selection: nothing is granted.
-    return const [];
+    return launches;
   }
 
   /// Tool pins the Engine host must enforce for this server.
@@ -441,34 +397,6 @@ class McpService {
     );
   }
 
-  /// The only route from configuration to `execute.request.mcpServers`.
-  /// Every requested server must be consented, enabled and byte-identical to
-  /// what was consented; otherwise the whole request is refused (never a
-  /// silent subset).
-  Future<List<McpServerLaunch>> resolveLaunches(List<String> serverIds) async {
-    final launches = <McpServerLaunch>[];
-    for (final id in serverIds) {
-      final server = _registry.get(id);
-      if (server == null || !server.enabled || !server.consented) {
-        throw McpPolicyException(
-          'mcp_not_enabled',
-          'MCP server "$id" is not enabled and consented.',
-        );
-      }
-      if (server.isRemote) {
-        throw McpPolicyException(
-          'mcp_remote_unsupported',
-          'MCP server "$id" is remote; official Workers cannot use remote '
-              'servers yet.',
-        );
-      }
-      await _checkBinary(server);
-      launches.add(_launchFor(server));
-    }
-    return launches;
-  }
-
-  /// Validated, normalised endpoint for [addRemote].
   static Uri _remoteEndpoint(String raw, {required bool insecureLoopback}) {
     final uri = Uri.tryParse(raw);
     const loopback = {'127.0.0.1', 'localhost', '::1', '[::1]'};
@@ -627,56 +555,44 @@ bool profileSupportsMcpServers(Map<String, Object?> profile) {
 
 /// What an execution of an official Worker gets, decided in one place.
 ///
-/// An unreadable registry must never affect Workers that do not use MCP, so it
-/// yields no servers and calls [onRegistryUnreadable] (a less capable run, never
-/// a more privileged one). A bound server that is not consented, enabled and
-/// unchanged, or a Profile without the slot, throws [McpPolicyException]: the
-/// execution fails rather than running with a silent subset.
+/// Only the Workspace owner's own work receives MCP servers: a Space member or
+/// shared-Workspace user whose work runs here gets none, because the servers
+/// act with the owner's local files and credentials. [requestedByOwner] must
+/// come from the authenticated assignment, never from request input.
+///
+/// An unreadable registry, a Profile without the MCP slot, or a server that
+/// cannot be launched safely yields fewer servers and a message through
+/// [onSkipped] (a less capable run, never a more privileged one).
 Future<List<McpServerLaunch>> mcpLaunchesForExecution(
   McpService service,
-  String workerTypeId,
   Map<String, Object?> profile, {
-  List<String>? selectedServerIds,
-  void Function(String message)? onRegistryUnreadable,
+  required bool requestedByOwner,
+  void Function(String message)? onSkipped,
 }) async {
+  if (!requestedByOwner) return const [];
   final List<McpServerLaunch> launches;
   try {
-    launches = await service.launchesForWorker(
-      workerTypeId,
-      selectedServerIds: selectedServerIds,
-    );
+    launches = await service.launchesForOwnerExecution(onSkipped: onSkipped);
   } on McpPolicyException catch (error) {
-    if (error.code == 'mcp_registry_unreadable') {
-      onRegistryUnreadable?.call(error.message);
-      return const [];
-    }
-    rethrow;
+    onSkipped?.call(error.message);
+    return const [];
   }
   if (launches.isNotEmpty && !profileSupportsMcpServers(profile)) {
-    throw const McpPolicyException(
-      'mcp_unsupported',
-      'This Worker cannot use MCP servers yet. Unbind them with '
-          '"syntila mcp unbind" or choose another Worker.',
-    );
+    onSkipped?.call('This Worker cannot use MCP servers yet.');
+    return const [];
   }
   return launches;
 }
 
-/// The MCP server IDs a Step selected, from the accepted assignment's input.
-/// Null when the assignment carries no selection, which grants no servers
-/// (default-deny; an empty list means the same). A malformed value refuses.
-List<String>? assignmentMcpServerIds(Map<String, Object?> payload) {
-  final input = payload['input'];
-  final value = input is Map ? input['mcpServerIds'] : null;
-  if (value == null) return null;
-  final pattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
-  if (value is! List ||
-      value.length > 8 ||
-      value.any((id) => id is! String || !pattern.hasMatch(id))) {
-    throw const McpPolicyException(
-      'invalid_request',
-      'The Step\'s MCP server list is invalid.',
-    );
-  }
-  return List<String>.unmodifiable(value.cast<String>());
+/// True only when the authenticated requester of this assignment is the
+/// Workspace owner. Unknown on either side means not the owner.
+bool assignmentRequestedByOwner(
+  Map<String, Object?> payload,
+  String? ownerUserId,
+) {
+  final requester = payload['requestedByUserId'];
+  return ownerUserId != null &&
+      ownerUserId.isNotEmpty &&
+      requester is String &&
+      requester == ownerUserId;
 }

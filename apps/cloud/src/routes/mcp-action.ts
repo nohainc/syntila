@@ -3,8 +3,7 @@ import type { SecurityEnv } from "./http-security.js";
 
 /**
  * `POST /api/workspaces/:id/mcp-action`: invokes a Service-owned MCP management
- * action on the Workspace (enable, disable, remove, bind, unbind, consent, test,
- * addRemote).
+ * action on the Workspace (enable, disable, remove, consent, test).
  *
  * Cloud acts only as an authenticated transport to the Workspace that owns the
  * local registry; Cloud never receives or stores local command paths, tokens or

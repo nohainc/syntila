@@ -53,7 +53,6 @@ class _FakeProbe implements McpProbePort {
 
 void main() {
   late Directory tempDir;
-  late File binary;
   late McpRegistry registry;
   late _FakeProbe probe;
   late McpService service;
@@ -61,7 +60,7 @@ void main() {
 
   setUp(() {
     tempDir = Directory.systemTemp.createTempSync('mcp-action-test');
-    binary = File('${tempDir.path}/srv')..writeAsBytesSync([1, 2, 3]);
+    File('${tempDir.path}/srv').writeAsBytesSync([1, 2, 3]);
     registry = McpRegistry(File('${tempDir.path}/servers.json'));
     probe = _FakeProbe();
     service = McpService(
@@ -80,19 +79,15 @@ void main() {
     expect((result['error'] as Map)['code'], 'invalid_request');
   });
 
-  test('supports addRemote, consent, enable, disable, and test lifecycle',
+  test('supports consent, enable, disable, test and remove lifecycle',
       () async {
-    // 1. addRemote
-    final addResult = await handler.handle({
-      'actionId': 'act-add',
-      'action': 'addRemote',
-      'serverId': 'remote-db',
-      'displayName': 'Remote DB',
-      'endpoint': 'https://example.com/mcp',
-      'tokenEnv': 'REMOTE_TOKEN',
-    });
-    expect(addResult['ok'], true);
-    expect(addResult['serverId'], 'remote-db');
+    // Servers are added only in the Workspace app, never through Cloud.
+    service.addRemote(
+      serverId: 'remote-db',
+      displayName: 'Remote DB',
+      endpoint: 'https://example.com/mcp',
+      tokenEnv: 'REMOTE_TOKEN',
+    );
 
     // 2. test
     final testResult = await handler.handle({
@@ -154,31 +149,20 @@ void main() {
     expect((removeResult['result'] as Map)['removed'], true);
   });
 
-  test('bind and unbind for local servers', () async {
-    await service.add(
-      serverId: 'local-srv',
-      displayName: 'Local Srv',
-      command: binary.path,
-    );
-    await service.consent('local-srv');
-
-    final bindResult = await handler.handle({
-      'actionId': 'act-bind',
-      'action': 'bind',
-      'serverId': 'local-srv',
-      'workerTypeId': 'codex',
-    });
-    expect(bindResult['ok'], true);
-    expect((bindResult['result'] as Map)['bound'], true);
-
-    final unbindResult = await handler.handle({
-      'actionId': 'act-unbind',
-      'action': 'unbind',
-      'serverId': 'local-srv',
-      'workerTypeId': 'codex',
-    });
-    expect(unbindResult['ok'], true);
-    expect((unbindResult['result'] as Map)['bound'], false);
+  test('Cloud cannot add servers or bind them to Workers', () async {
+    for (final action in ['addRemote', 'bind', 'unbind']) {
+      final result = await handler.handle({
+        'actionId': 'act-$action',
+        'action': action,
+        'serverId': 'remote-db',
+        'displayName': 'Remote DB',
+        'endpoint': 'https://example.com/mcp',
+        'workerTypeId': 'codex',
+      });
+      expect(result['ok'], false);
+      expect((result['error'] as Map)['code'], 'unsupported_action');
+    }
+    expect(service.list(), isEmpty);
   });
 
   test('reports errors as structured outcomes without throwing', () async {

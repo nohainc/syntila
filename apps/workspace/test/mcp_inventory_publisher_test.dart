@@ -56,9 +56,9 @@ void main() {
     // A new publisher (a restarted Service) continues from the stored value.
     final restarted = (await McpInventoryPublisher(service, state).snapshot())!;
     expect(restarted['revision'], added['revision']);
-    service.bind('chatgpt', 'files');
-    final bound = (await McpInventoryPublisher(service, state).snapshot())!;
-    expect(bound['revision'] as int, greaterThan(added['revision'] as int));
+    service.remove('files');
+    final removed = (await McpInventoryPublisher(service, state).snapshot())!;
+    expect(removed['revision'] as int, greaterThan(added['revision'] as int));
   });
 
   test('an unreadable registry publishes nothing instead of an empty list',

@@ -690,33 +690,24 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           ),
         );
       }
-      // MCP servers (ADR-028): only servers bound to this Worker type, and
-      // only if consented, enabled and unchanged. A Profile that cannot pass
-      // them fails clearly instead of running without them.
+      // MCP servers (ADR-028): every enabled, consented server, for the
+      // Workspace owner's own work only. Anything left out is reported and the
+      // run continues without it.
       var mcpServers = const <McpServerLaunch>[];
       if (!isPluginWorker) {
-        try {
-          mcpServers = await mcpLaunchesForExecution(
-            mcpSubsystem.service,
-            worker.workerTypeId,
-            release?.profile ?? const <String, Object?>{},
-            selectedServerIds: assignmentMcpServerIds(payload),
-            onRegistryUnreadable: (message) => stderr.writeln(
-              'MCP: $message Running ${worker.workerTypeId} without MCP '
-              'servers.',
-            ),
-          );
-        } on McpPolicyException catch (error) {
-          throw AssignmentExecutionFailure(
-            code: 'worker_not_ready',
-            message: error.message,
-            localDiagnostic: _runtimeFailureDiagnostic(
-              'mcp_servers',
-              'worker_not_ready',
-              detail: error.code,
-            ),
-          );
-        }
+        mcpServers = await mcpLaunchesForExecution(
+          mcpSubsystem.service,
+          release?.profile ?? const <String, Object?>{},
+          requestedByOwner: assignmentRequestedByOwner(
+            payload,
+            WorkspaceRegistrationStore(effectiveConfig.dataDirectory)
+                .readSync()
+                ?.ownerUserId,
+          ),
+          onSkipped: (message) => stderr.writeln(
+            'MCP: $message Running ${worker.workerTypeId} without it.',
+          ),
+        );
       }
       final profileFile = plan?.profileFile;
       // T7: Profile resolved and its execution file located.

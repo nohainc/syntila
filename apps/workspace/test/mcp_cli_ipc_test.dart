@@ -129,29 +129,6 @@ void main() {
     expect('$err', contains('mcp_not_consented'));
   });
 
-  test('bind sends the server and Worker type; list shows bindings', () async {
-    var code = await run(
-      ['mcp', 'bind', 'files', 'chatgpt'],
-      (_, __) =>
-          {'workerTypeId': 'chatgpt', 'serverId': 'files', 'bound': true},
-    );
-    expect(code, 0);
-    expect(sent.single.$1, 'mcp.bind');
-    expect(sent.single.$2, {'serverId': 'files', 'workerTypeId': 'chatgpt'});
-    out.clear();
-    code = await run(
-      ['mcp', 'list'],
-      (_, __) => {
-        'servers': <Object?>[],
-        'bindings': {
-          'chatgpt': ['files'],
-        },
-      },
-    );
-    expect(code, 0);
-    expect('$out', contains('Worker chatgpt may use: files'));
-  });
-
   test('add-remote sends the URL, the variable name and the loopback flag',
       () async {
     final code = await run(

@@ -258,7 +258,6 @@ export async function resolveWorkflowExecutionBindings(
       reasoningEffort?: string;
       additionalInstructions?: string;
       catalogRevision?: string;
-      mcpTools?: string[];
     }
   > = {};
   let pinnedWorkspace: string | null = null;
@@ -322,7 +321,6 @@ export async function resolveWorkflowExecutionBindings(
       ...(selection.model ? { model: selection.model } : {}),
       ...(selection.effort ? { reasoningEffort: selection.effort } : {}),
       ...(instructions ? { additionalInstructions: instructions } : {}),
-      ...(selection.mcpTools ? { mcpTools: [...selection.mcpTools] } : {}),
     };
     requested[id] = value;
     if (value.workerId) {

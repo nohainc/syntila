@@ -34,24 +34,6 @@ class McpActionHandler {
           outcome = _service.disable(serverId);
         case 'remove':
           outcome = _service.remove(serverId);
-        case 'bind':
-          final workerTypeId = payload['workerTypeId'];
-          if (workerTypeId is! String) {
-            throw const McpPolicyException(
-              'invalid_request',
-              'workerTypeId is required for bind.',
-            );
-          }
-          outcome = _service.bind(workerTypeId, serverId);
-        case 'unbind':
-          final workerTypeId = payload['workerTypeId'];
-          if (workerTypeId is! String) {
-            throw const McpPolicyException(
-              'invalid_request',
-              'workerTypeId is required for unbind.',
-            );
-          }
-          outcome = _service.unbind(workerTypeId, serverId);
         case 'consent':
           final acceptHash = payload['acceptHash'];
           outcome = await _service.consent(
@@ -60,22 +42,6 @@ class McpActionHandler {
           );
         case 'test':
           outcome = await _service.test(serverId);
-        case 'addRemote':
-          final displayName = payload['displayName'];
-          final endpoint = payload['endpoint'];
-          if (displayName is! String || endpoint is! String) {
-            throw const McpPolicyException(
-              'invalid_request',
-              'displayName and endpoint are required for addRemote.',
-            );
-          }
-          outcome = _service.addRemote(
-            serverId: serverId,
-            displayName: displayName,
-            endpoint: endpoint,
-            tokenEnv: payload['tokenEnv'] as String?,
-            insecureLoopback: payload['insecureLoopback'] == true,
-          );
         default:
           throw McpPolicyException(
             'unsupported_action',

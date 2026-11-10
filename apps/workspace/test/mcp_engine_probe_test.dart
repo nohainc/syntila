@@ -55,7 +55,7 @@ void main() {
     ]);
     await service.consent('echo', acceptHash: shown['documentHash']! as String);
     service.enable('echo');
-    final launch = (await service.resolveLaunches(['echo'])).single;
+    final launch = (await service.launchesForOwnerExecution()).single;
     expect(launch.name, 'echo');
   });
 

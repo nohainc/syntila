@@ -19,14 +19,12 @@ class AxMcpServer {
     required this.availability,
     required this.diagnostic,
     required this.tools,
-    required this.boundWorkerTypes,
   });
 
   final String serverId, displayName, transport, availability;
   final String? diagnostic;
   final bool consented, enabled;
   final List<AxMcpTool> tools;
-  final List<String> boundWorkerTypes;
 
   bool get isRemote => transport == 'remote';
 
@@ -42,7 +40,6 @@ class AxMcpServer {
       return 'Not supported by the selected Worker';
     }
     if (availability == 'unavailable') return 'Not reachable';
-    if (boundWorkerTypes.isEmpty) return 'Not bound to any Worker';
     return null;
   }
 
@@ -61,8 +58,6 @@ class AxMcpServer {
               definitionHash: tool['definitionHash'] as String,
             ),
         ],
-        boundWorkerTypes:
-            (json['boundWorkerTypes'] as List).cast<String>().toList(),
       );
 }
 

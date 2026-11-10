@@ -264,12 +264,12 @@ void main() {
       addAcme();
       await consentFully();
       service.enable('acme');
-      expect(() => service.bind('chatgpt', 'acme'),
-          throwsA(_code('mcp_remote_unsupported')));
-      await expectLater(
-        service.resolveLaunches(['acme']),
-        throwsA(_code('mcp_remote_unsupported')),
+      final skipped = <String>[];
+      expect(
+        await service.launchesForOwnerExecution(onSkipped: skipped.add),
+        isEmpty,
       );
+      expect(skipped.single, contains('remote'));
     });
 
     test('local servers still work next to remote ones', () async {
