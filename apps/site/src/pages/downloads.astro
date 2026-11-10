@@ -9,26 +9,26 @@ import { workspaceRelease } from "../data/workspace-release";
 
 <SiteLayout
   title="Downloads — Syntila"
-  description="Download Syntila Workspace for macOS, Windows, or Linux to connect your machine and AI Workers to shared Syntila Spaces."
+  description="Access Syntila on Web, iOS, and Android, or download Syntila Workspace for macOS, Windows, or Linux to connect your machine and AI Workers to shared Spaces."
 >
   <Section>
     <Container>
       <SectionHeader
         eyebrow="Downloads"
         title="Run Syntila Workers on your computer."
-        description="People collaborate in Spaces and Threads in the browser, while every AI Worker runs on a member's connected Syntila Workspace. Choose whether you are joining an existing Space or connecting a machine to power AI Workers."
+        description="People collaborate in Spaces and Threads in the Syntila app across web, iOS, and Android, while every AI Worker runs on a member's connected Syntila Workspace. Choose whether you are joining a Space in the Syntila app or connecting a computer to power AI Workers."
         headingLevel={1}
       />
 
       <div class="downloads-paths-grid">
         <div class="downloads-path-card">
-          <span class="eyebrow">Path 1 · Browser Collaboration</span>
-          <h2>Joining an existing Space?</h2>
+          <span class="eyebrow">Path 1 · Syntila Application</span>
+          <h2>Collaborating in a Space?</h2>
           <p>
-            If a Space owner or teammate has already connected a Syntila Workspace and granted AI Workers to the Space, you do not need to install anything on your device. Open Syntila in your browser to join Threads and prompt authorized Workers.
+            If a Space owner or teammate has already connected a Syntila Workspace and granted AI Workers to the Space, you do not need to install Workspace software on your device. Open the Syntila web app on desktop or mobile—or use the upcoming iOS and Android apps—to join Threads and prompt authorized Workers.
           </p>
           <div class="actions actions--compact">
-            <Button href="https://syntila.app" label="Open Syntila in Browser →" variant="secondary" event="cta.open_app" />
+            <Button href="https://syntila.app" label="Open Syntila App →" variant="secondary" event="cta.open_app" />
           </div>
         </div>
 
@@ -41,22 +41,80 @@ import { workspaceRelease } from "../data/workspace-release";
         </div>
       </div>
 
-      <div class="downloads-grid" data-downloads-platforms>
-        {workspaceRelease.targets.map((target) => (
-          <article class="downloads-card" data-platform={target.platform}>
+      <div class="section-block-gap-lg">
+        <SectionHeader
+          eyebrow="Syntila Application · Web, iOS & Android"
+          title="Collaborate from any device."
+          description="Use the Syntila web application immediately on desktop and mobile devices. Native iOS and Android applications are in progress and will be published on the Apple App Store and Google Play."
+        />
+        <div class="downloads-grid">
+          <article class="downloads-card downloads-card--recommended">
             <div class="downloads-card__header">
               <div>
-                <h2>{workspaceRelease.productName}</h2>
-                <p>{target.label}</p>
+                <h2>Syntila Web App</h2>
+                <p>Desktop &amp; Mobile Web</p>
               </div>
-              <span class="badge downloads-card__recommended" hidden>Recommended for this device</span>
+              <span class="worker-status-badge">Available now</span>
             </div>
-            <p class="downloads-card__version">Version {workspaceRelease.version}</p>
-            <p class="downloads-card__architecture">{target.architectures.join(" / ")}</p>
-            <p class="downloads-card__architecture">{target.installSummary}</p>
-            <a class="button button--primary" href={target.downloadUrl} target="_blank" rel="noreferrer">Download <span aria-hidden="true">↗</span></a>
+            <p class="downloads-card__version">Application · <code>syntila.app</code></p>
+            <p class="downloads-card__architecture">Works across desktop, iOS, and Android devices</p>
+            <p class="downloads-card__architecture">Create Spaces, invite people, participate in Threads, and run authorized AI Workers with zero local setup.</p>
+            <a class="button button--primary" href="https://syntila.app" data-site-event="cta.open_app">Open Syntila <span aria-hidden="true">→</span></a>
           </article>
-        ))}
+
+          <article class="downloads-card">
+            <div class="downloads-card__header">
+              <div>
+                <h2>Syntila for iOS</h2>
+                <p>iPhone &amp; iPad</p>
+              </div>
+              <span class="worker-status-badge worker-status-badge--testing">In progress</span>
+            </div>
+            <p class="downloads-card__version">Apple App Store · Coming soon</p>
+            <p class="downloads-card__architecture">iOS &amp; iPadOS</p>
+            <p class="downloads-card__architecture">Native iOS experience is in development. Until release on the Apple App Store, use the mobile web app at <code>syntila.app</code>.</p>
+            <a class="button button--secondary" href="https://syntila.app" data-site-event="cta.open_app">Use Web App on iOS <span aria-hidden="true">→</span></a>
+          </article>
+
+          <article class="downloads-card">
+            <div class="downloads-card__header">
+              <div>
+                <h2>Syntila for Android</h2>
+                <p>Phones &amp; Tablets</p>
+              </div>
+              <span class="worker-status-badge worker-status-badge--testing">In progress</span>
+            </div>
+            <p class="downloads-card__version">Google Play · Coming soon</p>
+            <p class="downloads-card__architecture">Android</p>
+            <p class="downloads-card__architecture">Native Android experience is in development. Until release on Google Play, use the mobile web app at <code>syntila.app</code>.</p>
+            <a class="button button--secondary" href="https://syntila.app" data-site-event="cta.open_app">Use Web App on Android <span aria-hidden="true">→</span></a>
+          </article>
+        </div>
+      </div>
+
+      <div class="section-block-gap-lg">
+        <SectionHeader
+          eyebrow="Syntila Workspace · Desktop & Server Runtime"
+          title="Connect your computer to power AI Workers."
+          description="Install Syntila Workspace on macOS, Windows, or Linux to supervise local provider CLIs (ChatGPT Codex, Claude Code, Google Gemini Antigravity) and share selected Workers with your Spaces."
+        />
+        <div class="downloads-grid" data-downloads-platforms>
+          {workspaceRelease.targets.map((target) => (
+            <article class="downloads-card" data-platform={target.platform}>
+              <div class="downloads-card__header">
+                <div>
+                  <h2>{workspaceRelease.productName}</h2>
+                  <p>{target.label}</p>
+                </div>
+                <span class="badge downloads-card__recommended" hidden>Recommended for this device</span>
+              </div>
+              <p class="downloads-card__version">Version {workspaceRelease.version}</p>
+              <p class="downloads-card__architecture">{target.architectures.join(" / ")}</p>
+              <p class="downloads-card__architecture">{target.installSummary}</p>
+              <a class="button button--primary" href={target.downloadUrl} target="_blank" rel="noreferrer">Download <span aria-hidden="true">↗</span></a>
+            </article>
+          ))}
+        </div>
       </div>
 
       <div class="downloads-cli-section">

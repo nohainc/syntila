@@ -15,8 +15,11 @@ Thread, Workspace, or Worker state.
 | `syntila.app` | Authenticated Syntila application | Better Auth |
 
 The public site links to `https://syntila.app`. It does not proxy or
-embed the application. Syntila Cloud provides application APIs, authentication,
-authorization, and orchestration. Syntila Workspace is the local desktop
+embed the application. People collaborate in Spaces and Threads in the Syntila
+application on Web, iOS, and Android (with the web app available now on desktop
+and mobile, and native iOS/Android apps in progress for the Apple App Store and
+Google Play). Syntila Cloud provides application APIs, authentication,
+authorization, and orchestration. Syntila Workspace is the local desktop/server
 runtime that supervises provider CLI execution.
 
 ## Visitor outcomes
