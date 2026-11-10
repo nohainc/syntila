@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../ax/ax_data.dart';
+import '../profile/account_plan.dart';
 
 /// "3 members · 1 pending invitation · 4 people allowed." for a Space, with the
 /// reason a Free-owned Space cannot take more people. Cloud enforces the
@@ -102,6 +103,7 @@ class _SpaceMemberUsageNoteState extends State<SpaceMemberUsageNote> {
                   : 'Free includes up to ${usage.limit} people in each Space, including the owner. The Space owner needs to upgrade or free a slot.',
               style: TextStyle(fontSize: 13, color: muted),
             ),
+          if (atLimit && widget.isOwner) const ViewPlansLink(),
         ],
       ),
     );

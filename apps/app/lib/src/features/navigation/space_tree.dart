@@ -880,12 +880,14 @@ class SpaceTree extends StatelessWidget {
               onPressed: () => onNavigateTo(AxNavigation.space(space.id)),
               child: const Text('Open Space'),
             ),
-          MenuItemButton(
-            style: itemStyle(),
-            leadingIcon: Icon(Icons.edit_outlined, size: 16, color: iconColor),
-            onPressed: () => select('edit'),
-            child: Text(space.isDirect ? 'Rename Space' : 'Edit Space'),
-          ),
+          if (!space.isSupport)
+            MenuItemButton(
+              style: itemStyle(),
+              leadingIcon:
+                  Icon(Icons.edit_outlined, size: 16, color: iconColor),
+              onPressed: () => select('edit'),
+              child: Text(space.isDirect ? 'Rename Space' : 'Edit Space'),
+            ),
           MenuItemButton(
             style: itemStyle(),
             leadingIcon:

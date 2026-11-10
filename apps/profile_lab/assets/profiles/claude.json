@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "profileDefinitionId": "claude-code",
-  "releaseVersion": 4,
+  "releaseVersion": 5,
   "logicalWorkerTypeId": "claude",
   "engineFamily": "cli",
   "engineCompatibility": {
@@ -207,32 +207,14 @@
   "model": {
     "supported": true,
     "arguments": ["--model", "{{model}}"],
-    "unknownModelPolicy": "profile_allowlist",
-    "allowlist": ["opus", "sonnet", "haiku"],
-    "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
-    "catalog": [
-      {
-        "id": "opus",
-        "name": "Claude Opus",
-        "badge": "Frontier",
-        "description": "Latest Opus model for the most demanding work",
-        "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
-      },
-      {
-        "id": "sonnet",
-        "name": "Claude Sonnet",
-        "badge": "Workhorse",
-        "description": "Latest Sonnet model for coding and everyday work",
-        "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
-      },
-      {
-        "id": "haiku",
-        "name": "Claude Haiku",
-        "badge": "Fast",
-        "description": "Latest Haiku model for quick, lightweight tasks",
-        "supportedReasoningEfforts": ["low", "medium"]
-      }
-    ]
+    "unknownModelPolicy": "pass_through",
+    "discovery": {
+      "schemaVersion": 1,
+      "arguments": ["models"],
+      "timeoutMs": 10000,
+      "format": "claude_models_api",
+      "idPrefix": "claude-"
+    }
   },
   "progress": [
     {

@@ -292,10 +292,8 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
   static int _stepCount(AxBuiltinWorkflow definition) =>
       definition.id == 'plan_implement' ? 3 : definition.steps.length;
 
-  Widget _card(
-      AxBuiltinWorkflow definition,
-      AxUserWorkflowConfiguration configuration,
-      List<AxWorker> workers) {
+  Widget _card(AxBuiltinWorkflow definition,
+      AxUserWorkflowConfiguration configuration, List<AxWorker> workers) {
     final selection = _singleStep(definition)
         ? configuration.selectionFor(definition.steps.first.kind)
         : configuration.defaults;
@@ -361,6 +359,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
           updated = AxUserWorkflowConfiguration(
             workflowId: definition.id,
             enabled: configuration.enabled,
+            researcherCount: configuration.researcherCount,
             defaults: preserveTools(configuration.defaults.mcpTools),
             stepOverrides: overrides,
           );
@@ -368,6 +367,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
           updated = AxUserWorkflowConfiguration(
             workflowId: definition.id,
             enabled: configuration.enabled,
+            researcherCount: configuration.researcherCount,
             defaults: preserveTools(configuration.defaults.mcpTools),
             stepOverrides: configuration.stepOverrides,
           );
@@ -428,6 +428,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
                                   .save(AxUserWorkflowConfiguration(
                                 workflowId: configuration.workflowId,
                                 enabled: value,
+                                researcherCount: configuration.researcherCount,
                                 defaults: configuration.defaults,
                                 stepOverrides: configuration.stepOverrides,
                               ));

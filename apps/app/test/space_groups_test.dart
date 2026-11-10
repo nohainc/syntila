@@ -158,11 +158,19 @@ void main() {
   });
 
   testWidgets(
-      'direct space context menu matches a regular space: Edit, Archive and Delete',
+      'support space context menu hides rename while keeping archive and delete',
       (tester) async {
+    const support = AxSpace(
+      id: 'support-1',
+      name: 'Support',
+      branch: '',
+      lastActivity: '',
+      kind: 'direct',
+      isSupport: true,
+    );
     final context = const AxShellContext(
-      navigation: AxNavigation.space('direct-1'),
-      spaces: [direct],
+      navigation: AxNavigation.space('support-1'),
+      spaces: [support],
     );
 
     await tester.pumpWidget(MaterialApp(
@@ -180,13 +188,14 @@ void main() {
 
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await mouse.addPointer(location: Offset.zero);
-    await mouse.moveTo(tester.getCenter(find.text(direct.name)));
+    await mouse.moveTo(tester.getCenter(find.text(support.name)));
     await tester.pump();
 
     await tester.tap(find.byTooltip('Space menu'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Edit Space'), findsOneWidget);
+    expect(find.text('Rename Space'), findsNothing);
+    expect(find.text('Edit Space'), findsNothing);
     expect(find.text('Archive Space'), findsOneWidget);
     expect(find.text('Delete Space'), findsOneWidget);
   });

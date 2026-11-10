@@ -5,35 +5,29 @@ import 'package:syntila_app/src/features/workflows/workflow_visibility.dart';
 void main() {
   const preview = workflowPreviewAccountEmail;
 
-  test('Research stays hidden from everyone but preview until release', () {
-    expect(releasedPlusWorkflowIds, isEmpty);
-    // A Plus plan never exposes an unfinished workflow.
-    expect(workflowAccess('research', viewerEmail: 'p@x.test', hasPlus: true),
-        WorkflowAccess.hidden);
-    expect(workflowAccess('research', viewerEmail: 'f@x.test', hasPlus: false),
-        WorkflowAccess.hidden);
-  });
-
-  test('preview shows Research but never bypasses the Plus requirement', () {
-    expect(workflowAccess('research', viewerEmail: preview, hasPlus: false),
-        WorkflowAccess.locked);
-    expect(workflowAccess('research', viewerEmail: preview, hasPlus: true),
-        WorkflowAccess.available);
-  });
-
-  test('Chat, Work, and Implement stay available on Free', () {
-    for (final id in ['chat', 'direct', 'plan_implement']) {
+  test('Research and Implement are shown to everyone and need Plus to run', () {
+    for (final id in ['research', 'plan_implement']) {
       expect(workflowAccess(id, viewerEmail: 'f@x.test', hasPlus: false),
+          WorkflowAccess.locked);
+      expect(workflowAccess(id, viewerEmail: 'p@x.test', hasPlus: true),
           WorkflowAccess.available);
+      expect(lockedWorkflowExplanation(id), contains('Syntila Plus'));
     }
   });
 
-  test('a locked Research explains the Plus benefit', () {
-    expect(
-        lockedWorkflowExplanation('research'),
-        'Research compares independent investigations from different models '
-        'and combines them into one outcome. Available with Syntila Plus.');
-    expect(lockedWorkflowExplanation('chat'), isNull);
+  test('Chat and Work stay available on Free', () {
+    for (final id in ['chat', 'direct']) {
+      expect(workflowAccess(id, viewerEmail: 'f@x.test', hasPlus: false),
+          WorkflowAccess.available);
+      expect(lockedWorkflowExplanation(id), isNull);
+    }
+  });
+
+  test('unreleased workflows stay hidden from everyone but preview', () {
+    expect(workflowAccess('full_cycle', viewerEmail: 'p@x.test', hasPlus: true),
+        WorkflowAccess.hidden);
+    expect(workflowAccess('full_cycle', viewerEmail: preview, hasPlus: true),
+        WorkflowAccess.available);
   });
 
   test('the plan cache follows the server plan (upgrade and downgrade)', () {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   BUILTIN_WORKFLOWS,
   BUILTIN_WORKFLOW_CATALOG,
+  researchWorkflowV2,
   type BuiltinWorkflowDefinition,
 } from "@syntila/core";
 
@@ -608,6 +609,50 @@ describe("Work v1 acceptance through the shared assignment dispatcher", () => {
           values.includes("task-request-v8-acceptance-research-1"),
       ),
     ).toBe(true);
+  });
+
+  it("retries only the selected researcher when another researcher also failed", async () => {
+    const definition = researchWorkflowV2(3);
+    const { instance, step, gatewayCalls } = createAcceptanceRun(definition, {
+      persistedTasks: [
+        { kind: "research-1", status: "failed", attempt: 1, outputJson: null },
+        { kind: "research-2", status: "failed", attempt: 1, outputJson: null },
+        {
+          kind: "research-3",
+          status: "completed",
+          attempt: 1,
+          outputJson: JSON.stringify({
+            text: "Report",
+            status: "completed",
+            startedAt: "s",
+            completedAt: "c",
+          }),
+        },
+        { kind: "synthesis", status: "queued", attempt: 0, outputJson: null },
+      ],
+    });
+    const result = await instance.run(
+      {
+        payload: {
+          runId: "run-targeted",
+          goalId: "goal-v8-acceptance",
+          idempotencyKey: "key-targeted",
+          workRequestId: "request-v8-acceptance",
+          organizationId: "workspace-fixture",
+          builtinWorkflow: definition,
+          retryStepKind: "research-1",
+        },
+      } as never,
+      step,
+    );
+    expect(result.status).toBe("failed");
+    expect(gatewayCalls).toHaveLength(1);
+    expect(
+      String(
+        (gatewayCalls[0]!.payload as { snapshot: Record<string, unknown> })
+          .snapshot.taskId,
+      ),
+    ).toMatch(/-research-1$/);
   });
 
   it("synthesizes only the successful reports on a user-requested partial synthesis, and names what is missing", async () => {

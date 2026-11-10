@@ -70,7 +70,7 @@ void main() {
         status: 'active',
         currentPeriodEnd: DateTime.utc(2026, 11, 30, 12)));
     expect(find.text(paidPlanName), findsOneWidget);
-    expect(find.textContaining('Renews'), findsOneWidget);
+    expect(find.textContaining('Active until'), findsOneWidget);
   });
 
   test('parses the Workspace allowance, with null meaning unlimited', () {

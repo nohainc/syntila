@@ -293,6 +293,52 @@ void main() {
     expect(saved.stepOverrides['implement']!.mcpTools, isEmpty);
   });
 
+  testWidgets('research card saves preserve researcher count and overrides',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final source = WorkflowSource()
+      ..workers = [worker('a')]
+      ..scopedValues['ws'] = [
+        AxUserWorkflowConfiguration(
+          workflowId: 'research',
+          researcherCount: 3,
+          stepOverrides: {
+            'research-3': const AxWorkflowSelection(model: 'analysis'),
+          },
+        )
+      ];
+    final engine = AxSyncEngine();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: WorkflowsPage(
+                    workspaceId: 'ws',
+                    catalogs: AxSessionCatalogs(source, engine: engine),
+                    configurations:
+                        AxWorkflowConfigurations(source, engine: engine)
+                            .forWorkspace('ws'))))));
+    await tester.pumpAndSettle();
+    final choice = find.byKey(const ValueKey('workflow-worker-research-a'));
+    await tester.ensureVisible(choice);
+    await tester.tap(choice);
+    await tester.pumpAndSettle();
+    var saved = source.scopedValues['ws']!.single;
+    expect(saved.toJson()['schemaVersion'], 2);
+    expect(saved.researcherCount, 3);
+    expect(saved.defaults.worker, 'a');
+    expect(saved.stepOverrides['research-3']?.model, 'analysis');
+
+    final card = find.byKey(const ValueKey('workflow-research'));
+    await tester.tap(find.descendant(of: card, matching: find.byType(Switch)));
+    await tester.pumpAndSettle();
+    saved = source.scopedValues['ws']!.single;
+    expect(saved.enabled, isFalse);
+    expect(saved.toJson()['schemaVersion'], 2);
+    expect(saved.researcherCount, 3);
+    expect(saved.stepOverrides['research-3']?.model, 'analysis');
+  });
+
   testWidgets('disabled workflow remains configurable without enabling it',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 1600));

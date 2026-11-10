@@ -133,6 +133,7 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
   String? _editColor;
   bool _editing = false;
   bool _showArchivedThreads = false;
+  bool _showAllThreads = false;
   bool _savingEdits = false;
   String? _editError;
   bool get isOwner => widget.space.role == 'owner';
@@ -300,10 +301,13 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                                         child: widget.space.avatarUrl == null ||
                                                 widget.space.avatarUrl!.isEmpty
                                             ? Text(
-                                                widget.space.name.isNotEmpty
-                                                    ? widget.space.name[0]
-                                                        .toUpperCase()
-                                                    : 'P',
+                                                widget.space.isSupport
+                                                    ? 'S'
+                                                    : (widget.space.name
+                                                            .isNotEmpty
+                                                        ? widget.space.name[0]
+                                                            .toUpperCase()
+                                                        : 'P'),
                                                 style: TextStyle(
                                                   fontSize: 16,
                                                   fontWeight: FontWeight.w600,
@@ -322,9 +326,12 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Text(
-                                              widget.space.name.isNotEmpty
-                                                  ? widget.space.name
-                                                  : 'Personal connection',
+                                              widget.space.isSupport
+                                                  ? 'Syntila'
+                                                  : (widget
+                                                          .space.name.isNotEmpty
+                                                      ? widget.space.name
+                                                      : 'Personal connection'),
                                               textAlign: TextAlign.start,
                                               style: const TextStyle(
                                                 fontSize: 20,
@@ -411,23 +418,24 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                                           }
                                         },
                                         itemBuilder: (context) => [
-                                          PopupMenuItem(
-                                            height: 36,
-                                            textStyle:
-                                                SyntilaMenuStyle.popupTextStyle(
-                                                    _isDark),
-                                            value: 'edit',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.edit_outlined,
-                                                    color: SyntilaColors
-                                                        .textSecondary(_isDark),
-                                                    size: 18),
-                                                const SizedBox(width: 8),
-                                                const Text('Edit'),
-                                              ],
+                                          if (!widget.space.isSupport)
+                                            PopupMenuItem(
+                                              height: 36,
+                                              textStyle: SyntilaMenuStyle
+                                                  .popupTextStyle(_isDark),
+                                              value: 'edit',
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.edit_outlined,
+                                                      color: SyntilaColors
+                                                          .textSecondary(
+                                                              _isDark),
+                                                      size: 18),
+                                                  const SizedBox(width: 8),
+                                                  const Text('Edit'),
+                                                ],
+                                              ),
                                             ),
-                                          ),
                                           PopupMenuItem(
                                             height: 36,
                                             textStyle:

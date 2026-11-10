@@ -76,6 +76,8 @@ extension _AxAppRunDetails on _AxAppStateMixin {
                   workers: workers.data ?? const [],
                   preferences: _viewPreferences,
                   onChanged: _setViewPreferences,
+                  themeMode: _themeMode,
+                  onThemeModeChanged: _setThemeMode,
                   workspaceId: executionWorkspaceId ??
                       (workspaces.isNotEmpty ? workspaces.first.id : null),
                   workspaces: workspaces,

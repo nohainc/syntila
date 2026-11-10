@@ -266,6 +266,8 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
                   size: 16, color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(width: 6),
               Text(paidPlanName, style: muted),
+              const SizedBox(width: 8),
+              ViewPlansLink(plan: _plan?.plan),
             ]),
           );
     final body = <Widget>[
@@ -431,7 +433,9 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontWeight: FontWeight.w600)),
                       Text(person.email,
-                          maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: muted),
                     ])),
                 if (person.active)
                   TextButton(

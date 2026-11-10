@@ -99,7 +99,8 @@ a researcher's model, never its session. All executions are read-only.
   per-account and Workspace capacity still apply, and a branch waiting for
   capacity reports its own queued reason. Every branch outcome is persisted
   before a failure ends the run, so a successful researcher's report survives
-  a sibling failing; synthesis is then blocked, never run on a partial set.
+  a sibling failing; synthesis is blocked unless the user explicitly chooses
+  to continue with the available reports after the batch settles.
   At dispatch, the scheduler resolves frozen `stepExecutionConfigs` by the
   accepted instance binding (`research-1`, `research-2`, `synthesis`), not the
   semantic `research` kind. Work retains its `direct` binding and `implement`
@@ -125,7 +126,10 @@ a researcher's model, never its session. All executions are read-only.
 - **Retry**: `POST /work-requests/:id/retry` accepts `stepId` (defaults to the
   kind for older clients) and re-queues only that instance; completed sibling
   results are preloaded and not rerun, and a synthesis retry reuses the
-  accepted researcher reports.
+  accepted researcher reports. Other failed researchers remain failed. Once
+  all researchers settle, the user may instead skip all remaining failures and
+  synthesize the successful reports; at least one report is required. The
+  answer identifies missing perspectives and is marked as completed with gaps.
 - Research v2 runs end to end in the Workspace Gateway acceptance harness
   (two researchers dispatched together on different models, then synthesis).
 - Phase 3 made `research:v2` the current Research version.

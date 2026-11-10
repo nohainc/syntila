@@ -90,7 +90,7 @@ void main() {
       await tester.tap(
           find.descendant(of: row, matching: find.byTooltip('Space menu')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Edit Space'));
+      await tester.tap(find.text('Rename Space'));
       await tester.pumpAndSettle();
     }
 
@@ -106,7 +106,7 @@ void main() {
     expect(find.text('Alex at work'), findsWidgets);
 
     await openEditor();
-    await tester.tap(find.text('Reset to person’s name'));
+    await tester.tap(find.text('Reset'));
     await tester.pumpAndSettle();
     expect(source.updates.last, {'personalName': null});
     expect(find.text('Alex'), findsWidgets);
@@ -252,12 +252,12 @@ void main() {
           of: find.byWidgetPredicate((widget) => widget is AppTopHud),
           matching: find.text('Authentication')));
       await tester.pumpAndSettle();
-      expect(find.byType(SpacePage), findsNothing);
-      expect(
-          find.byKey(const PageStorageKey('mobile-space-threads-space-auth')),
-          findsOneWidget);
-      expect(
-          find.byKey(const ValueKey('sidebar-space-row-atlas')), findsNothing);
+      expect(find.byType(NewThreadPage), findsOneWidget);
+      expect(find.byKey(const ValueKey('space-landing-name')), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
+      expect(find.byType(ThreadPage), findsNothing);
+      await tester.tap(find.byTooltip('Syntila — Spaces'));
+      await tester.pumpAndSettle();
       expect(thread, findsOneWidget);
       await tester.tap(thread);
       await tester.pumpAndSettle();

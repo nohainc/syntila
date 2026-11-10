@@ -179,7 +179,7 @@ void main() {
     expect(tester.getRect(selector).bottom,
         lessThan(tester.getRect(find.text('Members')).top));
     expect(tester.getRect(find.text('Members')).bottom,
-        lessThan(tester.getRect(find.text('Archived Threads')).top));
+        lessThan(tester.getRect(find.text('Active')).top));
 
     expect(find.text('No Workspace'), findsOneWidget);
     expect(find.text('Choose a Workspace to run Work in this Space.'),
@@ -220,7 +220,7 @@ void main() {
     expect(tester.getRect(find.text('Settings')).bottom,
         lessThan(tester.getRect(find.text('Members')).top));
     expect(tester.getRect(find.text('Members')).bottom,
-        lessThan(tester.getRect(find.text('Archived Threads')).top));
+        lessThan(tester.getRect(find.text('Active')).top));
     expect(tester.takeException(), isNull);
   });
 

@@ -22,6 +22,58 @@ import 'package:syntila_app/src/features/common/markdown_composer.dart';
 
 void main() {
   tearDown(ThreadPage.resetWorkQueues);
+  testWidgets('Embedded Space lists active Threads and opens the selected one',
+      (tester) async {
+    String? opened;
+    final threads = [
+      for (var i = 0; i < 11; i++)
+        AxThread(
+            id: 't-$i',
+            spaceId: 'p-1',
+            name: 'Thread $i',
+            lead: '',
+            status: 'active',
+            brief: '',
+            primaryWorkspace: '',
+            queueStatus: ''),
+      const AxThread(
+          id: 'archived',
+          spaceId: 'p-1',
+          name: 'Old Thread',
+          lead: '',
+          status: 'archived',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: ''),
+    ];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+      child: SpacePage(
+          embedded: true,
+          space: const AxSpace(
+              id: 'p-1', name: 'Space', branch: '', lastActivity: ''),
+          dataSource: _SpaceStreamsSource(threads),
+          onOpenThread: (id) => opened = id,
+          onArchive: () {},
+          onDelete: () {}),
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text('Thread 0'), findsOneWidget);
+    expect(find.text('Old Thread'), findsNothing);
+    expect(find.byKey(const ValueKey('space-new-thread')), findsNothing);
+    await tester.tap(find.text('Thread 0'));
+    expect(opened, 't-0');
+    await tester.ensureVisible(find.text('Show all'));
+    await tester.tap(find.text('Show all'));
+    await tester.pumpAndSettle();
+    expect(find.text('Thread 10'), findsOneWidget);
+    await tester.ensureVisible(find.text('Archived'));
+    await tester.tap(find.text('Archived'));
+    await tester.pumpAndSettle();
+    expect(find.text('Old Thread'), findsOneWidget);
+    expect(find.text('Thread 0'), findsNothing);
+  });
   for (final workflow in [
     ('chat', 1, 'chat', 0),
     ('direct', 2, 'implement', 1)
@@ -66,9 +118,7 @@ void main() {
       expect(find.text('Active Thread'), findsOneWidget);
       expect(find.text('Archived Thread'), findsNothing);
       expect(find.text('Restore'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('space-thread-filter')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Archived').last);
+      await tester.tap(find.text('Archived'));
       await tester.pumpAndSettle();
       expect(find.text('Active Thread'), findsNothing);
       expect(find.text('Archived Thread'), findsOneWidget);
@@ -83,9 +133,7 @@ void main() {
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byKey(const ValueKey('space-thread-filter')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Active').last);
+      await tester.tap(find.text('Active'));
       await tester.pumpAndSettle();
       expect(find.text('Active Thread'), findsOneWidget);
       expect(find.text('Archived Thread'), findsNothing);
@@ -840,8 +888,60 @@ void main() {
     expect(colors, hasLength(1));
     expect(tester.takeException(), isNull);
   });
+  testWidgets('picking a Plus workflow on Free opens Plans & subscription',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      initialTab: 1,
+      viewerEmail: 'free@x.test',
+      space: const AxSpace(
+          id: 'space-1',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      thread: const AxThread(
+          id: 'stream-1',
+          spaceId: 'space-1',
+          name: 'Stream',
+          lead: '',
+          status: 'active',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: ''),
+      dataSource: _CurrentWorkflowUiDataSource(),
+      onBackToSpace: _noop,
+      onArchive: _noop,
+      onRunWork: (_, __, ___, ____) async => '',
+    ))));
+    await tester.pumpAndSettle();
+    await _askAi(tester);
+    await tester.tap(find.byKey(const ValueKey('work-choose-workflow')));
+    await tester.pumpAndSettle();
+    // Implement is offered, not hidden or disabled.
+    await tester.tap(find.descendant(
+        of: find.byType(SyntilaMenuEntry<String>),
+        matching: find.text('Implement')));
+    await tester.pumpAndSettle();
+    expect(find.text('Plans & subscription'), findsOneWidget);
+    expect(find.text('Compare plans'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    // The workflow was not selected.
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('work-choose-workflow')),
+            matching: find.text('Implement')),
+        findsNothing);
+  });
+
   testWidgets('Chat Work and More switch workflows and submit Markdown',
       (tester) async {
+    AxAccountPlanCache.instance.plan = const AxAccountPlan(isPaid: true);
+    addTearDown(() => AxAccountPlanCache.instance.plan = AxAccountPlan.free);
     await tester.binding.setSurfaceSize(const Size(900, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final data = _CurrentWorkflowUiDataSource();
@@ -2952,7 +3052,9 @@ void main() {
     expect(find.byKey(const ValueKey('space-edit-form')), findsNothing);
 
     expect(find.byType(TabBar), findsNothing);
-    expect(find.text('Threads'), findsOneWidget);
+    expect(find.text('Threads'), findsNothing);
+    expect(find.text('Active'), findsOneWidget);
+    expect(find.text('Archived'), findsOneWidget);
     expect(find.byTooltip('Create Thread'), findsOneWidget);
 
     await tester.binding.setSurfaceSize(null);
@@ -4620,13 +4722,13 @@ void main() {
     expect(find.byType(DropdownButton<String>), findsNothing);
   });
 
-  testWidgets(
-      'Direct Space header menu reuses standard space menu (Edit, Archive, Delete)',
+  testWidgets('Direct Space header has a fixed Syntila name and no edit menu',
       (tester) async {
     const space = AxSpace(
       id: 'space-direct-1',
       name: 'Julia Roberts',
       kind: 'direct',
+      isSupport: true,
       branch: '',
       lastActivity: '',
     );
@@ -4660,7 +4762,7 @@ void main() {
     await tester.tap(find.byTooltip('Space actions'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Edit'), findsNothing);
     expect(find.text('Archive'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
 

@@ -685,6 +685,11 @@ class CliWorkerEngine {
               timeout:
                   timeout ?? Duration(milliseconds: _int(spec['timeoutMs'])),
             )
+          : format == 'claude_models_api'
+          ? await _discoverClaudeModels(
+              spec,
+              timeout ?? Duration(milliseconds: _int(spec['timeoutMs'])),
+            )
           : format == 'copilot_sdk_rpc'
           ? await _discoverCopilotModels(
               executable,
@@ -749,6 +754,26 @@ class CliWorkerEngine {
       throw const FormatException('Model discovery failed');
     }
     return parseDiscoveredModels(result.stdout, _string(spec['idPrefix']));
+  }
+
+  Future<List<DiscoveredModel>> _discoverClaudeModels(
+    Map<String, Object?> spec,
+    Duration timeout,
+  ) async {
+    try {
+      return await discoverClaudeApiModels(
+        idPrefix: _string(spec['idPrefix']),
+        excludeIds: spec['excludeIds'] == null
+            ? const {}
+            : _stringList(spec['excludeIds']).toSet(),
+        timeout: timeout,
+      );
+    } on ProviderNotAuthenticatedException catch (error) {
+      throw EngineProviderException(
+        WorkerIssueCode.providerAuthenticationRequired,
+        error.message,
+      );
+    }
   }
 
   Future<List<DiscoveredModel>> _discoverCopilotModels(

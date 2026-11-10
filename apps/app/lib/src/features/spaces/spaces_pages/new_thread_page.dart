@@ -324,27 +324,24 @@ class _NewThreadPageState extends State<NewThreadPage> {
                         onDelete: () {},
                       ),
                     ),
-                  _SpaceLandingSection(
-                    title: 'Archived Threads',
-                    arrowKey: const ValueKey('space-archived-arrow'),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: SpacePage(
-                          key: const ValueKey('space-landing-threads'),
-                          embedded: true,
-                          section: SpacePageSection.threads,
-                          space: widget.space,
-                          dataSource: widget.dataSource,
-                          spaceThreads: widget.spaceThreads,
-                          tabQueries: widget.tabQueries,
-                          mutations: widget.mutations,
-                          viewerEmail: widget.viewerEmail,
-                          onOpenThread: (id) => widget.onOpenThreadId?.call(id),
-                          onArchive: () {},
-                          onDelete: () {},
-                        ),
+                  const SizedBox(height: 24),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: SpacePage(
+                        key: const ValueKey('space-landing-threads'),
+                        embedded: true,
+                        section: SpacePageSection.threads,
+                        space: widget.space,
+                        dataSource: widget.dataSource,
+                        spaceThreads: widget.spaceThreads,
+                        tabQueries: widget.tabQueries,
+                        mutations: widget.mutations,
+                        viewerEmail: widget.viewerEmail,
+                        onOpenThread: (id) => widget.onOpenThreadId?.call(id),
+                        onArchive: () {},
+                        onDelete: () {},
                       ),
                     ),
                   ),
@@ -430,8 +427,11 @@ class _SpaceLandingSectionState extends State<_SpaceLandingSection> {
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(widget.title,
-                  style: Theme.of(context).textTheme.titleMedium),
+              Flexible(
+                child: Text(widget.title,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium),
+              ),
               const SizedBox(width: 4),
               Icon(
                 _expanded ? Icons.expand_less : Icons.expand_more,

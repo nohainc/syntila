@@ -115,6 +115,24 @@ The package intentionally has no native desktop targets. Desktop execution is
 provided by Syntila Workspace; Syntila communicates with Cloud through
 the Human Product Protocol and realtime event stream.
 
+An iOS target lives in `ios/` and is built with `pnpm app:build:ios`
+(`scripts/build-app-ios.sh`; see `--help`). The default is an unsigned release
+build against `https://syntila.app/api`; `--simulator`, `--local`, `--sign` and
+`--ipa` select Simulator, local-Cloud, signed and IPA builds. Artifacts are
+written to `dist/syntila-app/ios`. Browser-only features (realtime
+notifications, file pickers, dictation, alerts and persisted preferences) use
+their non-web stubs on iOS. Native email sign-in keeps the session cookie
+in memory for the current app process; signing in again is required after a restart.
+
+An Android target lives in `android/` and is built with
+`pnpm app:build:android` (`scripts/build-app-android.sh`; see `--help`). The
+default is a universal release APK against `https://syntila.app/api`; `--local`,
+`--aab` and `--split-per-abi` select local-Cloud (emulator host alias
+`10.0.2.2`), Play App Bundle and per-ABI builds. Release builds are signed with
+`android/key.properties` when present, otherwise with the debug keys. Artifacts
+are written to `dist/syntila-app/android`. It needs a JDK 17+ and the Android
+SDK (`ANDROID_HOME`), and uses the same non-web stubs as iOS.
+
 If live data cannot load, the recovery screen shows the failing resource,
 HTTP status, and Cloud's JSON error detail when available. **Copy error**
 copies that message with recovery context; **Try again** reloads the data.

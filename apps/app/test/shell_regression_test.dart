@@ -239,8 +239,10 @@ void main() {
 
   group('Phase 13: Global Application Menu Regressions', () {
     testWidgets(
-        'menu contains Workspaces, Archived Spaces, Appearance, Downloads, Documentation, About Syntila, Log out in correct order',
+        'application menu groups destinations, preferences, help, and logout',
         (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       AxNavigation? navigated;
       bool aboutOpened = false;
       Uri? openedUrl;
@@ -258,6 +260,7 @@ void main() {
                 onOpenAbout: () => aboutOpened = true,
                 onOpenExternal: (uri) => openedUrl = uri,
                 onOpenArchivedSpaces: () => archivedSpacesOpened = true,
+                onMessageSupport: () {},
               ),
             ],
           ),
@@ -272,11 +275,32 @@ void main() {
       // Verify all required items are present in the menu
       expect(find.text('Workspaces'), findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
-      expect(find.text('Appearance'), findsOneWidget);
+      expect(find.text('Appearance'), findsNothing);
       expect(find.text('Downloads'), findsOneWidget);
       expect(find.text('Documentation'), findsOneWidget);
       expect(find.text('About Syntila'), findsOneWidget);
       expect(find.text('Log out'), findsOneWidget);
+
+      final labels = [
+        'People',
+        'My Files',
+        'My Notes',
+        'Workspaces',
+        'Archived Spaces',
+        'Settings',
+        'Documentation',
+        'Message Syntila',
+        'Downloads',
+        'About Syntila',
+        'Log out',
+      ];
+      final positions = [
+        for (final label in labels) tester.getTopLeft(find.text(label)).dy,
+      ];
+      for (var i = 1; i < positions.length; i++) {
+        expect(positions[i], greaterThan(positions[i - 1]));
+      }
+      expect(find.byType(Divider), findsNWidgets(2));
 
       // Verify removed items are NOT present
       expect(find.text('Usage'), findsNothing);
@@ -323,60 +347,6 @@ void main() {
       await tester.tap(find.text('Log out'));
       await tester.pumpAndSettle();
       expect(loggedOut, isTrue);
-    });
-
-    testWidgets('appearance submenu switches System, Light, and Dark modes',
-        (tester) async {
-      ThemeMode? chosenMode;
-
-      await tester.pumpWidget(
-        wrapWithMaterial(
-          Row(
-            children: [
-              GlobalAppMenu(
-                shellContext: baseShellContext,
-                onNavigateTo: (_) {},
-                onSetThemeMode: (mode) => chosenMode = mode,
-                onLogout: () {},
-                onOpenAbout: () {},
-                onOpenExternal: (_) {},
-                onOpenArchivedSpaces: () {},
-              ),
-            ],
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // 1. Switch to Light
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Appearance'));
-      await tester.pumpAndSettle();
-      expect(find.text('Light'), findsOneWidget);
-      expect(find.text('Dark'), findsOneWidget);
-      expect(find.text('System'), findsOneWidget);
-      await tester.tap(find.text('Light'));
-      await tester.pumpAndSettle();
-      expect(chosenMode, ThemeMode.light);
-
-      // 2. Switch to Dark
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Appearance'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Dark'));
-      await tester.pumpAndSettle();
-      expect(chosenMode, ThemeMode.dark);
-
-      // 3. Switch to System
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Appearance'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('System'));
-      await tester.pumpAndSettle();
-      expect(chosenMode, ThemeMode.system);
     });
   });
 

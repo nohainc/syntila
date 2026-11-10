@@ -18,9 +18,14 @@ extension _AxAppShellViews on _AxAppStateMixin {
           data: media.copyWith(
               textScaler: TextScaler.linear(
                   (system * _viewPreferences.textSize.scale).clamp(1.0, 1.6))),
-          child: PageWidth(
-            textSize: _viewPreferences.textSize,
-            child: child ?? const SizedBox.shrink(),
+          child: ColoredBox(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: SafeArea(
+              child: PageWidth(
+                textSize: _viewPreferences.textSize,
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
           ),
         );
       },
@@ -886,6 +891,9 @@ extension _AxAppShellViews on _AxAppStateMixin {
         child: SpaceTree(
           pageLayout: true,
           spaceIdFilter: spaceId,
+          showRecentThreads:
+              spaceId == null && _viewPreferences.showRecentThreads,
+          recentThreadsCount: _viewPreferences.recentThreadsCount,
           shellContext: _shellContext,
           onNavigateTo: _navigateTo,
           onToggleSpaceExpanded: (spaceId) {
@@ -929,7 +937,9 @@ extension _AxAppShellViews on _AxAppStateMixin {
                     builder: (context, _) => AxTopBar(
                           shellContext: _shellContext,
                           onNavigateTo: (next) {
-                            if (compact && next.kind == AxRouteKind.space) {
+                            if (compact &&
+                                next.kind == AxRouteKind.space &&
+                                navigation.kind != AxRouteKind.thread) {
                               _updateState(() {
                                 _mobileSpaceFilter = next.spaceId;
                                 selectedSpaceId = next.spaceId;

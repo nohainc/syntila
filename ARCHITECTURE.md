@@ -228,6 +228,13 @@ Healthy sockets disable Work polling; a fifteen-second fallback runs during
 outages and stops after scoped recovery. The shell has no five-second snapshot
 polling: Run/execution signals reconcile identified Work Requests and never
 reload bootstrap, Spaces, Workspaces, or session data.
+Browser addresses omit Space, Thread, Run, and Workspace IDs. Each history
+entry retains its internal route so Back, Forward, and refresh restore the
+selected resource; a clean detail address without that state opens its parent
+section. Older ID-bearing links remain supported and are replaced with clean
+addresses on entry. OAuth return navigation uses same-tab session storage to
+restore the selected resource across the external sign-in redirect. IDs remain
+visible to browser tools and API requests and do not confer authorization.
 An optional, user-scoped IndexedDB read cache restores allowlisted server data
 after Cloud authentication, renders it as stale, and revalidates in the background.
 Logout clears memory and that user's persisted data; credentials and pending

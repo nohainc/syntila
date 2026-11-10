@@ -1,4 +1,4 @@
-import { requirePaidFeature } from "../account-plan.js";
+import { requirePaidFeature, type PaidFeature } from "../account-plan.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
   SPACE_MEMBER_PERMISSION_KEYS,
@@ -106,11 +106,18 @@ export async function requireSpaceOwner(
   return policy;
 }
 
+/** Built-in workflows that need the requester's Syntila Plus. */
+const PLUS_WORKFLOW_FEATURES: Readonly<Record<string, PaidFeature>> = {
+  research: "workflow.research",
+  plan_implement: "workflow.implement",
+};
+
 /**
  * Plan admission for a workflow, for the *requesting* account only: a Space
- * owner's, Workspace owner's or another member's plan never grants it. Only
- * the standalone Research workflow (every version) is gated; workflows that
- * merely contain a research step, such as Full Cycle, are not. Called before
+ * owner's, Workspace owner's or another member's plan never grants it. The
+ * standalone Research and Implement workflows (every version) are gated; Chat
+ * and Work are not, nor are workflows that merely contain a research step,
+ * such as Full Cycle. Called before
  * any request, execution record, capacity reservation or dispatch exists, and
  * again for user-triggered retries. Automatic recovery of accepted work never
  * calls it, so an accepted run finishes after a plan lapses.
@@ -120,12 +127,8 @@ export async function requireWorkflowEntitlement(
   userId: string,
   workflowId: string,
 ): Promise<void> {
-  if (workflowId === "research")
-    await requirePaidFeature(
-      env as unknown as Env,
-      userId,
-      "workflow.research",
-    );
+  const feature = PLUS_WORKFLOW_FEATURES[workflowId];
+  if (feature) await requirePaidFeature(env as unknown as Env, userId, feature);
 }
 
 export async function requireWorkflowPermission(

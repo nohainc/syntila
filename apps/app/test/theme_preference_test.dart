@@ -30,7 +30,7 @@ void main() {
         services: const DefaultPlatformServices(),
         dataSource: const AxFixtureDataSource(),
         realtimeClient: TestRealtime(),
-        initialUri: Uri.parse('/'),
+        initialUri: Uri.parse('/settings'),
         themePreference: preference(),
       ));
       await tester.pumpAndSettle();
@@ -40,10 +40,6 @@ void main() {
     expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
         ThemeMode.system);
     for (final mode in [ThemeMode.light, ThemeMode.dark, ThemeMode.system]) {
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Appearance'));
-      await tester.pumpAndSettle();
       await tester.tap(find.text(switch (mode) {
         ThemeMode.light => 'Light',
         ThemeMode.dark => 'Dark',

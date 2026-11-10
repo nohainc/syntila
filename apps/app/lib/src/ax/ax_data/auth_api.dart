@@ -34,7 +34,7 @@ mixin _AuthApi on _AxApiClientCore {
             'users/${supplied.path.split('/')[3]}/avatar${supplied.hasQuery ? '?${supplied.query}' : ''}')
         : supplied;
     final response = await client.get(target, headers: {
-      ..._headers(),
+      if (target.origin == Uri.parse(baseUrl).origin) ..._headers(),
       'accept': 'image/*',
     });
     if (response.statusCode == 404) return null;
@@ -108,6 +108,7 @@ mixin _AuthApi on _AxApiClientCore {
       throw AxApiException('Logout failed (${response.statusCode})',
           statusCode: response.statusCode);
     }
+    _nativeSessionCookie = null;
     sessionToken = null;
   }
 
@@ -115,6 +116,7 @@ mixin _AuthApi on _AxApiClientCore {
   Future<void> deleteAccount({required String confirmEmail}) async {
     await _postAuth('/auth/delete-user', {'confirmEmail': confirmEmail});
     clearConditionalReads();
+    _nativeSessionCookie = null;
     sessionToken = null;
   }
 
@@ -174,32 +176,20 @@ mixin _AuthApi on _AxApiClientCore {
       }
       throw AxApiException(message, statusCode: response.statusCode);
     }
-    try {
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map) {
-        if (decoded['token'] is String) {
-          sessionToken = decoded['token'] as String;
-        } else if (decoded['session'] is Map &&
-            decoded['session']['token'] is String) {
-          sessionToken = decoded['session']['token'] as String;
-        }
-      }
-    } catch (_) {
-      // Non-JSON response
-    }
-    try {
+    // Native HTTP clients do not maintain a browser cookie jar. Preserve the
+    // signed session cookie exactly as issued; the JSON token is not a bearer
+    // credential accepted by the Cloud identity service.
+    if (platform.managesNativeSessionCookie &&
+        (path == '/auth/sign-in/email' || path == '/auth/sign-up/email')) {
       final setCookie = response.headers['set-cookie'];
-      if (setCookie != null &&
-          (sessionToken == null || sessionToken!.isEmpty)) {
-        final match = RegExp(
-                r'(?:better-auth\.session_token|__Secure-better-auth\.session_token)=([^;]+)')
-            .firstMatch(setCookie);
-        if (match != null) {
-          sessionToken = match.group(1);
-        }
-      }
-    } catch (_) {
-      // Ignored
+      final match = setCookie == null
+          ? null
+          : RegExp(
+                  r'(?:^|,\s*)((?:__Secure-)?better-auth\.session_token=[^;,]+)')
+              .firstMatch(setCookie);
+      _nativeSessionCookie = match?.group(1);
+      sessionToken = null;
+      clearConditionalReads();
     }
   }
 

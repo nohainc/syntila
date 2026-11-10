@@ -809,6 +809,15 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           missingStepIds.push(stepInstanceId(task.step));
           return { ...task, status: "completed" as const };
         }
+        // Retrying one researcher must not silently rerun failed siblings.
+        if (
+          definition.id === "research" &&
+          definition.version === 2 &&
+          task.step.kind === "research" &&
+          persisted?.status === "failed"
+        ) {
+          return { ...task, status: "failed" as const };
+        }
         if (persisted?.status !== "completed") return task;
         const output = parseWorkflowStepResult(persisted.outputJson);
         if (!output) {

@@ -64,15 +64,16 @@ Future<void> pump(WidgetTester tester,
 }
 
 void main() {
-  testWidgets('Space landing shows only archived Threads in a collapsed area',
+  testWidgets(
+      'Space landing shows active and archived tabs directly without a collapsed header',
       (tester) async {
     await pump(tester, create: (_) async => thread, open: (_) {});
-    final title = find.text('Archived Threads');
+    expect(find.text('Threads'), findsNothing);
     expect(tester.getRect(find.text('Members')).bottom,
-        lessThan(tester.getRect(title).top));
+        lessThan(tester.getRect(find.text('Active')).top));
     expect(find.byKey(const ValueKey('space-thread-filter')), findsNothing);
     expect(find.text('Existing'), findsNothing);
-    await tester.tap(title);
+    await tester.tap(find.text('Archived'));
     await tester.pumpAndSettle();
     expect(find.text('Existing'), findsOneWidget);
     expect(

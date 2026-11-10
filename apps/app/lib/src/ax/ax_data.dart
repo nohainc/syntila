@@ -75,6 +75,7 @@ abstract class _AxApiClientCore
   final http.Client client;
   // Transport references are separate from immutable authored request inputs.
   final _uploadedWorkFiles = <String, String>{};
+  String? _nativeSessionCookie;
   String? _sessionToken;
   String? get sessionToken => _sessionToken;
   set sessionToken(String? value) {
@@ -105,6 +106,10 @@ abstract class _AxApiClientCore
   Map<String, String> _headers({String? contentType}) => {
         'accept': 'application/json',
         if (contentType != null) 'content-type': contentType,
+        if (_nativeSessionCookie != null) ...{
+          'cookie': _nativeSessionCookie!,
+          'origin': Uri.parse(baseUrl).origin,
+        },
         if (sessionToken != null && sessionToken!.isNotEmpty)
           'authorization': 'Bearer $sessionToken',
       };

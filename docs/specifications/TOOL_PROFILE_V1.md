@@ -1093,6 +1093,17 @@ explicit discovered IDs and per-model efforts are checked locally and by Cloud
 with no substitution. The app-server protocol is used only for discovery;
 execution remains generic CLI Worker Engine behavior.
 
+`format: "claude_models_api"` (starter Claude Profile; `arguments` is required
+by the schema but unused) calls the Anthropic Models API (`GET /v1/models`)
+because the Claude CLI has no list command. The credential is
+`ANTHROPIC_API_KEY` or the Claude Code sign-in (macOS keychain or
+`~/.claude/.credentials.json`), sent only to `api.anthropic.com`. The full
+`id` is the execution value, `display_name` the shown name, and
+`capabilities.effort` the efforts; retired models are skipped and `idPrefix`
+filters IDs. A missing or rejected sign-in fails with
+`provider_authentication_required`. The Profile carries no catalog or effort
+rules for this format.
+
 Optional `probe.live.requiredForReadiness` binds scheduling readiness to a
 successful explicit live test for the current Profile digest and CLI version.
 Passive discovery does not authenticate the account. See

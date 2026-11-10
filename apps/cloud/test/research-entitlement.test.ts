@@ -22,7 +22,7 @@ function fixture() {
   return { sqlite, env };
 }
 
-it("requires the requester's own Syntila Plus for Research, not the Space owner's", async () => {
+it("requires the requester's own Syntila Plus for Research and Implement, not the Space owner's", async () => {
   const { env, sqlite } = fixture();
   await expect(
     requireWorkflowPermission(env, "owner", "S", "research"),
@@ -31,6 +31,13 @@ it("requires the requester's own Syntila Plus for Research, not the Space owner'
   await expect(
     requireWorkflowPermission(env, "member", "S", "research"),
   ).rejects.toMatchObject({ status: 402, code: "paid_plan_required" });
+  // ...nor Implement...
+  await expect(
+    requireWorkflowPermission(env, "member", "S", "plan_implement"),
+  ).rejects.toMatchObject({ status: 402, code: "paid_plan_required" });
+  await expect(
+    requireWorkflowPermission(env, "owner", "S", "plan_implement"),
+  ).resolves.toBeTruthy();
   // ...but keeps Chat and Work.
   await expect(
     requireWorkflowPermission(env, "member", "S", "chat"),

@@ -8,14 +8,18 @@ const implementedWorkflowIds = <String>{
   'plan_implement',
 };
 
-/// Workflows that need the requester's Syntila Plus. Cloud enforces this; the
-/// app only shows the lock.
-const plusWorkflowIds = <String>{'research'};
+/// Workflows that need the requester's Syntila Plus. Cloud enforces this; on
+/// Free the app still offers them and opens Plans & subscription when picked.
+const plusWorkflowIds = <String>{'research', 'plan_implement'};
 
-/// Plus workflows that passed release acceptance and may be shown, locked, to
-/// Free users. Research joins this set only once its release gates close
-/// (ADR-026); until then a Plus plan never exposes it.
-const releasedPlusWorkflowIds = <String>{};
+/// Plus workflows that are not in [implementedWorkflowIds] but are released
+/// and shown to everyone.
+const releasedPlusWorkflowIds = <String>{'research'};
+
+/// Shown on a locked Implement workflow.
+const implementPlusExplanation =
+    'Implement plans the work in phases and carries them out step by step '
+    'with verification. Available with Syntila Plus.';
 
 /// Shown on a locked Research workflow.
 const researchPlusExplanation =
@@ -50,8 +54,11 @@ WorkflowAccess workflowAccess(
 }
 
 /// Explanation for a locked workflow, or null when it is not Plus-gated.
-String? lockedWorkflowExplanation(String workflowId) =>
-    workflowId == 'research' ? researchPlusExplanation : null;
+String? lockedWorkflowExplanation(String workflowId) => switch (workflowId) {
+      'research' => researchPlusExplanation,
+      'plan_implement' => implementPlusExplanation,
+      _ => null,
+    };
 
 List<AxBuiltinWorkflow> visibleWorkflowDefinitions(
   Iterable<AxBuiltinWorkflow> definitions, {

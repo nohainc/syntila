@@ -1026,7 +1026,7 @@ void main() {
               matching: find.text('Workspaces')),
           findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
-      expect(find.text('Appearance'), findsOneWidget);
+      expect(find.text('Appearance'), findsNothing);
       expect(find.text('Documentation'), findsOneWidget);
       expect(find.text('About Syntila'), findsOneWidget);
       expect(find.text('Log out'), findsOneWidget);
@@ -1106,7 +1106,7 @@ void main() {
               matching: find.text('Workspaces')),
           findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
-      expect(find.text('Appearance'), findsOneWidget);
+      expect(find.text('Appearance'), findsNothing);
       expect(find.text('Documentation'), findsOneWidget);
       expect(find.text('About Syntila'), findsOneWidget);
       expect(find.text('Log out'), findsOneWidget);
@@ -1116,9 +1116,8 @@ void main() {
     });
 
     testWidgets(
-        'Phase 3: Global application menu actions (destinations, appearance submenu, product info, session logout)',
+        'Phase 3: Global application menu actions (destinations, product info, session logout)',
         (tester) async {
-      ThemeMode? selectedThemeMode;
       var logoutTriggered = false;
       var aboutTriggered = false;
       Uri? openedExternalUri;
@@ -1140,7 +1139,6 @@ void main() {
               onNavigateTo: (_) {},
               onToggleSpaceExpanded: (_) {},
               onCreateSpace: () {},
-              onSetThemeMode: (mode) => selectedThemeMode = mode,
               onLogout: () => logoutTriggered = true,
               onOpenAbout: () => aboutTriggered = true,
               onOpenExternal: (uri) => openedExternalUri = uri,
@@ -1161,21 +1159,6 @@ void main() {
               ?.backgroundColor
               ?.resolve({}),
           SyntilaColors.navigationBackgroundDark);
-
-      // Test 1: Appearance Submenu
-      await tester.tap(find.text('Appearance'));
-      await tester.pumpAndSettle();
-      expect(find.text('System'), findsOneWidget);
-      expect(find.text('Light'), findsOneWidget);
-      expect(find.text('Dark'), findsOneWidget);
-
-      await tester.tap(find.text('Dark'));
-      await tester.pumpAndSettle();
-      expect(selectedThemeMode, ThemeMode.dark);
-
-      // Re-open menu
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
 
       // Test 2: Documentation
       await tester.tap(find.text('Documentation'));
@@ -1206,7 +1189,6 @@ void main() {
         'Phase 3: AxIconRail includes global application menu with destinations and actions',
         (tester) async {
       AxNavigation? navigatedTo;
-      ThemeMode? selectedThemeMode;
       var logoutTriggered = false;
       var aboutTriggered = false;
       Uri? openedExternalUri;
@@ -1227,7 +1209,6 @@ void main() {
               shellContext: shellContext,
               onNavigateTo: (nav) => navigatedTo = nav,
               onOpenDrawer: () {},
-              onSetThemeMode: (mode) => selectedThemeMode = mode,
               onLogout: () => logoutTriggered = true,
               onOpenAbout: () => aboutTriggered = true,
               onOpenExternal: (uri) => openedExternalUri = uri,
@@ -1244,7 +1225,7 @@ void main() {
       // Check items exist
       expect(find.text('Workspaces'), findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
-      expect(find.text('Appearance'), findsOneWidget);
+      expect(find.text('Appearance'), findsNothing);
       expect(find.text('Documentation'), findsOneWidget);
       expect(find.text('About Syntila'), findsOneWidget);
       expect(find.text('Log out'), findsOneWidget);
@@ -1256,15 +1237,6 @@ void main() {
       await tester.tap(find.text('Workspaces'));
       await tester.pumpAndSettle();
       expect(navigatedTo?.kind, AxRouteKind.workspaces);
-
-      // Reopen and check Appearance -> System
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Appearance'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('System'));
-      await tester.pumpAndSettle();
-      expect(selectedThemeMode, ThemeMode.system);
 
       // Reopen and check Documentation
       await tester.tap(find.byTooltip('Application menu'));

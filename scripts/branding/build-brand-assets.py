@@ -1,5 +1,6 @@
 """Generate branding from the approved transparent raster, without redrawing it."""
 import base64
+import json
 import pathlib
 import subprocess
 import sys
@@ -28,6 +29,34 @@ def render(size, maskable=False, source=SOURCE):
                         '-background', '#121217' if maskable else 'none', '-gravity', 'center',
                         '-extent', f'{size}x{size}', '-strip', '-define', 'png:color-type=6', str(output)], check=True)
         return output.read_bytes()
+
+def render_ios(size):
+    with tempfile.TemporaryDirectory() as tmp:
+        output = pathlib.Path(tmp) / 'icon.png'
+        inset = round(size * 0.90)
+        subprocess.run(['magick', str(SOURCE), '-filter', 'Lanczos', '-resize', f'{inset}x{inset}',
+                        '-background', '#121217', '-gravity', 'center', '-extent', f'{size}x{size}',
+                        '-alpha', 'remove', '-alpha', 'off', '-strip',
+                        '-define', 'png:color-type=2', str(output)], check=True)
+        return output.read_bytes()
+
+# The asset catalog declares point sizes and scales; generate each unique PNG.
+catalog = pathlib.Path('apps/app/ios/Runner/Assets.xcassets/AppIcon.appiconset')
+if (ROOT / catalog / 'Contents.json').exists():
+    entries = json.loads((ROOT / catalog / 'Contents.json').read_text())['images']
+    generated = {}
+    for entry in entries:
+        filename = entry.get('filename')
+        if filename:
+            pixels = round(float(entry['size'].split('x')[0]) * int(entry['scale'][0]))
+            if pixels not in generated:
+                generated[pixels] = render_ios(pixels)
+            put(catalog / filename, generated[pixels])
+if '--ios-only' in sys.argv:
+    if errors:
+        sys.exit('Branding drift: ' + ', '.join(errors))
+    print('iOS icons verified.' if CHECK else 'iOS icons generated.')
+    sys.exit(0)
 
 payload = base64.b64encode(SOURCE.read_bytes()).decode()
 payload_dark = base64.b64encode((SOURCE_DARK if SOURCE_DARK.exists() else SOURCE).read_bytes()).decode()

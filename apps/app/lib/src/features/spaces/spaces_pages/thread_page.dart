@@ -840,15 +840,23 @@ class _ThreadPageState extends State<ThreadPage>
   List<AxBuiltinWorkflow> _workflowCatalog = const [];
   List<AxBuiltinWorkflow> get _currentWorkflows =>
       _currentWorkflowVersions(_availableWorkflows);
-  List<AxBuiltinWorkflow> get _availableWorkflows => _workflowCatalog
-      .where((workflow) => !widget.space.isDirect || workflow.id == 'chat')
-      // Only runnable workflows are offered: hidden (unreleased) and locked
-      // (Plus required) ones are not. Cloud still enforces both.
+  WorkflowAccess _workflowAccess(String workflowId) =>
+      workflowAccess(workflowId,
+          viewerEmail: widget.viewerEmail,
+          hasPlus: AxAccountPlanCache.instance.plan.isPaid);
+
+  /// Workflows this viewer can run now. Cloud still enforces the plan.
+  List<AxBuiltinWorkflow> get _availableWorkflows => _offeredWorkflows
       .where((workflow) =>
-          workflowAccess(workflow.id,
-              viewerEmail: widget.viewerEmail,
-              hasPlus: AxAccountPlanCache.instance.has('workflow.research')) ==
-          WorkflowAccess.available)
+          _workflowAccess(workflow.id) == WorkflowAccess.available)
+      .toList();
+
+  /// Workflows the composer shows: the runnable ones plus those that need
+  /// Syntila Plus, which open Plans & subscription when picked on Free.
+  List<AxBuiltinWorkflow> get _offeredWorkflows => _workflowCatalog
+      .where((workflow) => !widget.space.isDirect || workflow.id == 'chat')
+      .where(
+          (workflow) => _workflowAccess(workflow.id) != WorkflowAccess.hidden)
       // Workflows disabled in the configuration are not offered; Chat can
       // never be disabled.
       .where((workflow) =>
@@ -2913,7 +2921,7 @@ class _ThreadPageState extends State<ThreadPage>
         currentUserName: widget.currentUserName,
         workflow: _effectiveWorkflow,
         hideWorkflowSelection: widget.space.isDirect,
-        workflowCatalog: _availableWorkflows,
+        workflowCatalog: _offeredWorkflows,
         workConfig: _composerWorkConfig,
         researchConfiguration: _userWorkflowConfigurations
             .where((configuration) => configuration.workflowId == 'research')
@@ -2937,6 +2945,7 @@ class _ThreadPageState extends State<ThreadPage>
         loadingTimeline: _loadingWorkTimeline,
         timelineError: _workTimelineError,
         submitError: _workSubmitError,
+        onDismissSubmitError: () => _updateState(() => _workSubmitError = null),
         submitting: _submittingWork,
         attachments: _workAttachments,
         replyTarget: _replyTarget,
@@ -2986,6 +2995,13 @@ class _ThreadPageState extends State<ThreadPage>
         onHistorySelected: _selectHistoryPrompt,
         onHistoryClosed: _closeRequestHistory,
         onWorkflowChanged: (value) {
+          if (_workflowAccess(value.split(':').first) ==
+              WorkflowAccess.locked) {
+            unawaited(Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) =>
+                    SubscriptionPage(plan: AxAccountPlanCache.instance.plan))));
+            return;
+          }
           _updateState(() {
             _markSelectionChangedByUser();
             _workflow = value;

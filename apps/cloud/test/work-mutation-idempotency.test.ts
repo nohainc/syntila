@@ -665,7 +665,7 @@ describe("Research plan admission", () => {
     }
   });
 
-  it("does not gate Chat, Work or workflows that only contain a research step", async () => {
+  it("gates Implement for a Free requester but not Chat or Work", async () => {
     const f = fixture();
     try {
       expect(
@@ -674,11 +674,13 @@ describe("Research plan admission", () => {
       expect(
         (await f.submit("Do", "research-work-00000001", "direct")).status,
       ).toBe(202);
-      const implementPlan = await f
-        .submit("All", "research-plan-00000001", "plan_implement")
-        .then((r) => r.status)
-        .catch((e: { status?: number; code?: string }) => e.code ?? e.status);
-      expect(implementPlan).not.toBe("paid_plan_required");
+      await expect(
+        f.submit("All", "research-plan-00000001", "plan_implement"),
+      ).rejects.toMatchObject({
+        status: 402,
+        code: "paid_plan_required",
+        feature: "workflow.implement",
+      });
     } finally {
       f.sqlite.close();
     }
@@ -758,7 +760,12 @@ describe("Research plan admission", () => {
           f.env,
           "R",
         );
-      // One successful report is not a comparison.
+      // Continuing without any successful report is not allowed.
+      f.sqlite
+        .prepare(
+          "UPDATE workflow_tasks SET status = 'failed' WHERE id = 't-research-1'",
+        )
+        .run();
       await expect(
         retry({ stepKind: "synthesis", stepId: "synthesis", partial: true }),
       ).rejects.toMatchObject({ status: 409 });
@@ -803,11 +810,17 @@ describe("Research gap read model", () => {
       completedWithGaps: false,
       researchReports: { succeeded: 2, failed: 1, total: 3 },
     });
-    // One report left: nothing to compare.
+    // One report is enough to continue with a clearly identified gap.
     expect(
       researchGapFields(
         row("failed"),
         steps("completed", "failed", "failed", "queued"),
+      ),
+    ).toMatchObject({ partialSynthesisAvailable: true });
+    expect(
+      researchGapFields(
+        row("failed"),
+        steps("failed", "failed", "failed", "queued"),
       ),
     ).toMatchObject({ partialSynthesisAvailable: false });
     // Cancelled or running requests never offer it.

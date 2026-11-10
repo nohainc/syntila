@@ -1,92 +1,141 @@
 part of '../spaces_pages.dart';
 
 extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
-  Widget _threadsTab() => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!widget.embedded) ...[
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                runSpacing: 8,
+  Widget _threadsTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    Widget tab(bool active, Widget button) => Semantics(
+          selected: active,
+          container: true,
+          child: Container(
+            height: 46,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: active
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+            ),
+            child: button,
+          ),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 8,
+            children: [
+              Row(
+                key: const ValueKey('space-thread-tabs'),
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Text('Threads',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 12),
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<bool>(
-                        key: const ValueKey('space-thread-filter'),
-                        value: _showArchivedThreads,
-                        isDense: true,
-                        borderRadius: BorderRadius.circular(8),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  tab(
+                    !_showArchivedThreads,
+                    TextButton(
+                      key: const ValueKey('space-threads-tab-active'),
+                      onPressed: () => _updateState(() {
+                        _showArchivedThreads = false;
+                        _showAllThreads = false;
+                      }),
+                      style: TextButton.styleFrom(
+                        foregroundColor: SyntilaColors.textPrimary(isDark),
+                        textStyle: TextStyle(
+                          fontWeight: !_showArchivedThreads
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
-                        items: const [
-                          DropdownMenuItem(value: false, child: Text('Active')),
-                          DropdownMenuItem(
-                              value: true, child: Text('Archived')),
-                        ],
-                        onChanged: (value) => _updateState(
-                            () => _showArchivedThreads = value ?? false),
                       ),
+                      child: const Text('Active'),
                     ),
-                  ]),
-                  if (canManage)
-                    Tooltip(
-                      message: 'Create Thread',
-                      child: FilledButton.icon(
-                        key: const ValueKey('space-new-thread'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: SyntilaColors.primary,
-                          foregroundColor: Colors.white,
-                          visualDensity: VisualDensity.compact,
+                  ),
+                  tab(
+                    _showArchivedThreads,
+                    TextButton(
+                      key: const ValueKey('space-threads-tab-archived'),
+                      onPressed: () => _updateState(() {
+                        _showArchivedThreads = true;
+                        _showAllThreads = false;
+                      }),
+                      style: TextButton.styleFrom(
+                        foregroundColor: SyntilaColors.textPrimary(isDark),
+                        textStyle: TextStyle(
+                          fontWeight: _showArchivedThreads
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('New Thread'),
-                        onPressed: _createThread,
                       ),
+                      child: const Text('Archived'),
                     ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              const Divider(height: 1),
+              if (!widget.embedded && canManage)
+                Tooltip(
+                  message: 'Create Thread',
+                  child: FilledButton.icon(
+                    key: const ValueKey('space-new-thread'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: SyntilaColors.primary,
+                      foregroundColor: Colors.white,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('New Thread'),
+                    onPressed: _createThread,
+                  ),
+                ),
             ],
-            const SizedBox(height: 8),
-            if (threadsError != null)
-              TextButton(
-                  onPressed: () {
-                    unawaited(_streams.refresh(widget.space.id).then<void>(
-                        (_) {},
-                        onError: (Object _, StackTrace __) {}));
-                  },
-                  child: const Text('Retry Threads')),
-            if (threadsLoading)
-              const LinearProgressIndicator()
-            else if (_filteredThreads.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                    _archivedOnly ? 'No archived threads.' : 'No threads yet.'),
-              )
-            else
-              ..._filteredThreads.map(_threadListTile),
-          ],
-        ),
-      );
+          ),
+          const Divider(height: 1, thickness: 1),
+          const SizedBox(height: 8),
+          if (threadsError != null)
+            TextButton(
+                onPressed: () {
+                  unawaited(_streams.refresh(widget.space.id).then<void>((_) {},
+                      onError: (Object _, StackTrace __) {}));
+                },
+                child: const Text('Retry Threads')),
+          if (threadsLoading)
+            const LinearProgressIndicator()
+          else if (_filteredThreads.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                  _archivedOnly ? 'No archived threads.' : 'No threads yet.'),
+            )
+          else
+            ...(_showAllThreads || !widget.embedded
+                    ? _filteredThreads
+                    : _filteredThreads.take(10))
+                .map(_threadListTile),
+          if (widget.embedded &&
+              !_showAllThreads &&
+              _filteredThreads.length > 10)
+            TextButton(
+              onPressed: () => _updateState(() => _showAllThreads = true),
+              child: const Text('Show all'),
+            ),
+        ],
+      ),
+    );
+  }
 
-  Iterable<AxThread> get _filteredThreads =>
-      sortAxThreadsByLastUpdate(threads).where((thread) =>
-          (thread.archived || thread.status.toLowerCase() == 'archived') ==
-          _archivedOnly);
+  List<AxThread> get _filteredThreads =>
+      applyAxThreadPins(sortAxThreadsByLastUpdate(threads))
+          .where((thread) =>
+              (thread.archived || thread.status.toLowerCase() == 'archived') ==
+              _archivedOnly)
+          .toList();
 
-  // Embedded on the Space landing, active Threads live in the sidebar.
-  bool get _archivedOnly => widget.embedded || _showArchivedThreads;
+  bool get _archivedOnly => _showArchivedThreads;
 
   Widget _threadListTile(AxThread thread) {
     final archived =
@@ -95,6 +144,19 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
     final pending = thread.id.startsWith('local-thread-');
     return ListTile(
       contentPadding: EdgeInsets.zero,
+      leading: !archived && (thread.hasActiveWork || thread.hasUnread)
+          ? Tooltip(
+              message: thread.hasActiveWork ? 'Running' : 'Unread messages',
+              child: Semantics(
+                label: thread.hasActiveWork ? 'Running' : 'Unread messages',
+                child: Icon(Icons.circle,
+                    size: 9,
+                    color: thread.hasActiveWork
+                        ? SyntilaColors.primaryRunningIndicator
+                        : SyntilaBrand.accent),
+              ),
+            )
+          : null,
       title: thread.isGeneral
           ? Row(
               mainAxisSize: MainAxisSize.min,

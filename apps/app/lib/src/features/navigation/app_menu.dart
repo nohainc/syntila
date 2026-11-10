@@ -41,7 +41,6 @@ class GlobalAppMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeThemeMode = shellContext.themeMode;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final menuStyle = SyntilaMenuStyle.surface(isDark);
@@ -155,9 +154,6 @@ class GlobalAppMenu extends StatelessWidget {
             style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
           ),
         ),
-        divider(),
-
-        // 2. Preferences
         MenuItemButton(
           key: const ValueKey('menu-settings'),
           style: itemStyle(),
@@ -169,87 +165,19 @@ class GlobalAppMenu extends StatelessWidget {
           child: const Text('Settings',
               style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500)),
         ),
-        SubmenuButton(
+        divider(),
+
+        // 2. Help and product information
+        MenuItemButton(
           style: itemStyle(),
-          menuStyle: menuStyle,
           leadingIcon: Icon(
-            Icons.contrast_rounded,
+            Icons.menu_book_rounded,
             size: 16,
             color: menuIconColor,
           ),
-          menuChildren: [
-            MenuItemButton(
-              style: itemStyle(),
-              leadingIcon: Icon(
-                activeThemeMode == ThemeMode.system
-                    ? Icons.check_circle_rounded
-                    : Icons.circle_outlined,
-                size: 15,
-                color: activeThemeMode == ThemeMode.system
-                    ? (SyntilaColors.textPrimary(isDark))
-                    : (SyntilaColors.neutral),
-              ),
-              onPressed: () {
-                if (onSetThemeMode != null) {
-                  onSetThemeMode!(ThemeMode.system);
-                } else {
-                  onToggleTheme?.call();
-                }
-              },
-              child: const Text(
-                'System',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
-              ),
-            ),
-            MenuItemButton(
-              style: itemStyle(),
-              leadingIcon: Icon(
-                activeThemeMode == ThemeMode.light
-                    ? Icons.check_circle_rounded
-                    : Icons.circle_outlined,
-                size: 15,
-                color: activeThemeMode == ThemeMode.light
-                    ? (SyntilaColors.textPrimary(isDark))
-                    : (SyntilaColors.neutral),
-              ),
-              onPressed: () {
-                if (onSetThemeMode != null) {
-                  onSetThemeMode!(ThemeMode.light);
-                } else if (shellContext.isDarkTheme) {
-                  onToggleTheme?.call();
-                }
-              },
-              child: const Text(
-                'Light',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
-              ),
-            ),
-            MenuItemButton(
-              style: itemStyle(),
-              leadingIcon: Icon(
-                activeThemeMode == ThemeMode.dark
-                    ? Icons.check_circle_rounded
-                    : Icons.circle_outlined,
-                size: 15,
-                color: activeThemeMode == ThemeMode.dark
-                    ? (SyntilaColors.textPrimary(isDark))
-                    : (SyntilaColors.neutral),
-              ),
-              onPressed: () {
-                if (onSetThemeMode != null) {
-                  onSetThemeMode!(ThemeMode.dark);
-                } else if (!shellContext.isDarkTheme) {
-                  onToggleTheme?.call();
-                }
-              },
-              child: const Text(
-                'Dark',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
-              ),
-            ),
-          ],
+          onPressed: () => onOpenExternal(Uri.parse(syntilaDocumentationUrl)),
           child: const Text(
-            'Appearance',
+            'Documentation',
             style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
           ),
         ),
@@ -281,19 +209,6 @@ class GlobalAppMenu extends StatelessWidget {
           onPressed: () => onOpenExternal(Uri.parse(syntilaDownloadsUrl)),
           child: const Text(
             'Downloads',
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
-          ),
-        ),
-        MenuItemButton(
-          style: itemStyle(),
-          leadingIcon: Icon(
-            Icons.menu_book_rounded,
-            size: 16,
-            color: menuIconColor,
-          ),
-          onPressed: () => onOpenExternal(Uri.parse(syntilaDocumentationUrl)),
-          child: const Text(
-            'Documentation',
             style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
           ),
         ),

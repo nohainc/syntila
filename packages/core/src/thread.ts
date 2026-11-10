@@ -369,11 +369,10 @@ export const RESEARCH_SYNTHESIS_STEP_ID = "synthesis";
 
 /**
  * A failed researcher need not end the request: after the failure the user may
- * explicitly ask for a synthesis of the reports that succeeded. One report is
- * not a comparison, so at least this many must have succeeded. The result is
- * always labelled as completed with gaps.
+ * explicitly ask for a synthesis of the reports that succeeded. At least one
+ * report is required, and the result is always labelled as completed with gaps.
  */
-export const RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS = 2;
+export const RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS = 1;
 
 /**
  * Research v2: independent researchers that share no session or output,

@@ -102,6 +102,7 @@ class ProfileExecutionOptions {
             'codex_app_server',
             'clap_possible_values',
             'copilot_sdk_rpc',
+            'claude_models_api',
             'indented_list'
           }.contains(discovery['format']) ||
           (discovery['excludeIds'] != null &&

@@ -41,6 +41,27 @@ class AccountPlanController extends ChangeNotifier {
   }
 }
 
+/// Opens the plan comparison from a place where a Free limit or a Plus-only
+/// feature stops the viewer. Uses the plan Cloud last reported when the caller
+/// has none at hand.
+class ViewPlansLink extends StatelessWidget {
+  const ViewPlansLink({super.key, this.plan, this.label = 'View plans'});
+
+  final AxAccountPlan? plan;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+        style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            tapTargetSize: MaterialTapTargetSize.padded),
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => SubscriptionPage(
+                plan: plan ?? AxAccountPlanCache.instance.plan))),
+        child: Text(label),
+      );
+}
+
 /// Shows [child] when the plan includes [feature], otherwise [locked].
 class PaidFeatureGate extends StatelessWidget {
   const PaidFeatureGate({
@@ -119,8 +140,9 @@ class _AccountPlanSummaryState extends State<AccountPlanSummary> {
                     'Could not load your plan. Please try again later.')
                 : plan.isPaid && end != null
                     ? Text(plan.status == 'past_due'
-                        ? 'Access until ${MaterialLocalizations.of(context).formatMediumDate(end.toLocal())}'
-                        : 'Renews ${MaterialLocalizations.of(context).formatMediumDate(end.toLocal())}')
+                        ? 'Access until ${MaterialLocalizations.of(context).formatShortDate(end.toLocal())}'
+                        // Nothing renews until billing exists.
+                        : 'Active until ${MaterialLocalizations.of(context).formatShortDate(end.toLocal())}')
                     : _controller.loaded && !plan.isPaid
                         // Free runs one AI task at a time; Plus runs them in parallel.
                         ? const Text('$paidPlanName: Run AI tasks in parallel.')
@@ -179,6 +201,7 @@ class _WorkspaceAllowanceNoteState extends State<WorkspaceAllowanceNote> {
                 if (atLimit)
                   const Text(
                       'Free includes one personal Workspace. Upgrade to $paidPlanName to connect more machines.'),
+                if (atLimit) ViewPlansLink(plan: plan),
               ],
             ),
           );

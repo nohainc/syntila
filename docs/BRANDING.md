@@ -20,7 +20,8 @@ retain light/dark text colors and incorporate the new artwork.
 
 Outputs cover Flutter app asset bundles, website marks and wordmarks, PNG/SVG/ICO
 favicons, web manifest icons, social preview artwork, and Workspace/Profile Lab
-macOS icons at 16–1024px. Maskable icons use an opaque dark background and a
+macOS icons at 16–1024px, and iOS app icons with an opaque dark background.
+Run `scripts/branding/build-brand-assets.sh --ios-only` to regenerate just the iOS icons. Maskable icons use an opaque dark background and a
 centered mark occupying 60% of the square to stay inside the circular safe zone.
 
 ## Verification

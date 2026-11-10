@@ -798,6 +798,8 @@ const profileSchema = z
             // CLI prints when a value-taking flag is passed without a value.
             // copilot_sdk_rpc asks the CLI's SDK server (Content-Length
             // JSON-RPC) for the signed-in account's models and efforts.
+            // claude_models_api lists the signed-in Claude account's models
+            // from the Anthropic Models API; `arguments` is unused for it.
             // indented_list reads one model per indented line, optionally
             // bulleted and followed by a "(note)" (`grok models`).
             format: z.enum([
@@ -805,6 +807,7 @@ const profileSchema = z
               "codex_app_server",
               "clap_possible_values",
               "copilot_sdk_rpc",
+              "claude_models_api",
               "indented_list",
             ]),
             // Empty means that the provider command is already scoped to

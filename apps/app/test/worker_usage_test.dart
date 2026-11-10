@@ -62,6 +62,90 @@ const _claudeUsage = 'Current session: 6% used\n'
     'Current week (all models): 21% used\n';
 
 void main() {
+  testWidgets('request error stays open inside and closes on outside tap',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    String? copied;
+    tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copied = (call.arguments as Map)['text'] as String;
+      }
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          height: 700,
+          child: ThreadPage(
+            space: const AxSpace(
+              id: 'space-1',
+              name: 'Space',
+              branch: '',
+              lastActivity: '',
+              role: 'owner',
+            ),
+            thread: const AxThread(
+              id: 'thread-1',
+              spaceId: 'space-1',
+              name: 'Thread',
+              lead: '',
+              status: 'active',
+              brief: '',
+              primaryWorkspace: '',
+              queueStatus: '',
+              canExecuteWork: true,
+            ),
+            dataSource: _UsageDataSource(),
+            onBackToSpace: () {},
+            onArchive: () {},
+            initialTab: 1,
+            isDraft: true,
+            onSendDraftDiscussion: (_) async {},
+            onRunWorkWithSelection: (_, __, ___, ____, _____) async =>
+                throw StateError('Could not send the request'),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Run this request');
+    await tester.tap(find.byKey(const ValueKey('composer-send-Send request')));
+    await tester.pumpAndSettle();
+
+    final error = find.byKey(const ValueKey('request-error-panel'));
+    expect(error, findsOneWidget);
+    final layer = tester
+        .getRect(find.byKey(const ValueKey('request-error-layer-background')));
+    final input = tester.getRect(find.byType(MarkdownComposer));
+    expect(layer.left, input.left);
+    expect(layer.right, input.right);
+    expect(layer.bottom, input.top + 10);
+    await tester.tap(error);
+    await tester.pump();
+    expect(error, findsOneWidget);
+    await tester.tap(find.byTooltip('Copy request error'));
+    await tester.pumpAndSettle();
+    expect(copied, contains('Could not send the request'));
+    expect(error, findsOneWidget);
+
+    await tester.tapAt(const Offset(850, 900));
+    await tester.pumpAndSettle();
+    expect(error, findsNothing);
+    expect(find.text('Run this request'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('composer-send-Send request')));
+    await tester.pumpAndSettle();
+    expect(error, findsOneWidget);
+    await tester.showKeyboard(find.byType(TextField).last);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(error, findsNothing);
+  });
+
   testWidgets('usage label column fits the widest label of each report',
       (tester) async {
     Future<double> labelWidth(String output) async {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../ax/attachment_limits.dart';
 import '../../ax/ax_data.dart';
+import '../profile/account_plan.dart';
 
 /// My Files: every file the signed-in user uploaded, with storage usage
 /// against their quota. Deleting a file frees its space.
@@ -195,6 +196,9 @@ class _FilesPageState extends State<FilesPage> {
               style: TextStyle(color: theme.colorScheme.error),
             ),
           ],
+          if ((usage.isFull || usage.nearLimit) &&
+              !AxAccountPlanCache.instance.plan.isPaid)
+            const ViewPlansLink(),
           const SizedBox(height: 16),
         ],
         if (_syncStatus != null) ...[

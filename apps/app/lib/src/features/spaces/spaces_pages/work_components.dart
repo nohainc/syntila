@@ -168,6 +168,7 @@ class _WorkComposer extends StatelessWidget {
     required this.loadingTimeline,
     required this.timelineError,
     required this.submitError,
+    required this.onDismissSubmitError,
     required this.submitting,
     required this.attachments,
     required this.onAddFiles,
@@ -254,6 +255,7 @@ class _WorkComposer extends StatelessWidget {
   final bool loadingTimeline;
   final String? timelineError;
   final String? submitError;
+  final VoidCallback onDismissSubmitError;
   final bool submitting;
   final List<Map<String, dynamic>> attachments;
   final Future<void> Function() onAddFiles;
@@ -1004,6 +1006,12 @@ class _WorkComposer extends StatelessWidget {
       onKeyEvent: (_, event) {
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.escape &&
+            submitError != null) {
+          onDismissSubmitError();
+          return KeyEventResult.handled;
+        }
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.escape &&
             (usageController?.visible ?? false)) {
           usageController!.dismiss();
           return KeyEventResult.handled;
@@ -1052,39 +1060,47 @@ class _WorkComposer extends StatelessWidget {
               ),
             ),
           if (submitError != null)
-            _ComposerPanelLayer(
-              backgroundKey: const ValueKey('request-error-layer-background'),
-              horizontalInset: 0,
-              background: SyntilaColors.composerBackground(isDark),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: SelectableText(
-                        submitError!,
-                        key: const ValueKey('request-error-panel'),
-                        style: SyntilaMessageTypography.fromTheme(
-                          Theme.of(context),
-                        ).copyWith(color: colors.error),
+            TapRegion(
+              onTapOutside: (_) => onDismissSubmitError(),
+              child: _ComposerPanelLayer(
+                backgroundKey: const ValueKey('request-error-layer-background'),
+                horizontalInset: 0,
+                background: SyntilaColors.composerBackground(isDark),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 180),
+                          child: SingleChildScrollView(
+                            child: SelectableText(
+                              submitError!,
+                              key: const ValueKey('request-error-panel'),
+                              style: SyntilaMessageTypography.fromTheme(
+                                Theme.of(context),
+                              ).copyWith(color: colors.error),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: 'Copy request error',
-                      icon: const Icon(Icons.copy_outlined, size: 16),
-                      onPressed: () async {
-                        await Clipboard.setData(
-                            ClipboardData(text: submitError!));
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showNotice(
-                            const SnackBar(
-                                content: Text('Request error copied')),
-                          );
-                        }
-                      },
-                    ),
-                  ],
+                      IconButton(
+                        tooltip: 'Copy request error',
+                        icon: const Icon(Icons.copy_outlined, size: 16),
+                        onPressed: () async {
+                          await Clipboard.setData(
+                              ClipboardData(text: submitError!));
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showNotice(
+                              const SnackBar(
+                                  content: Text('Request error copied')),
+                            );
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -2578,7 +2594,12 @@ class AxResearchStepCards extends StatelessWidget {
     final succeeded = steps.where((s) => s.status == 'completed').length;
     final running = steps.where((s) => s.status == 'running').length;
     final scheme = Theme.of(context).colorScheme;
-    final canRetry = onRetryStep != null;
+    final canRetry = onRetryStep != null &&
+        (request.status == 'failed' ||
+            (request.status == 'completed' && request.completedWithGaps));
+    final waitingForResearchers =
+        !const {'completed', 'failed', 'cancelled'}.contains(request.status);
+    final failed = steps.where((step) => step.status == 'failed').length;
     return Padding(
       key: const ValueKey('research-step-cards'),
       padding: const EdgeInsets.only(top: 8),
@@ -2661,14 +2682,14 @@ class AxResearchStepCards extends StatelessWidget {
                             style: TextStyle(fontSize: 12, color: color),
                           ),
                         ),
-                      if (step.status == 'failed' &&
-                          canRetry &&
-                          step.retryAllowed)
+                      if (step.status == 'failed' && onRetryStep != null)
                         Align(
                           alignment: Alignment.centerLeft,
                           child: TextButton.icon(
                             key: ValueKey('research-retry-${step.id}'),
-                            onPressed: () => onRetryStep!(request.id, step),
+                            onPressed: canRetry && step.retryAllowed
+                                ? () => onRetryStep!(request.id, step)
+                                : null,
                             icon: const Icon(Icons.refresh_rounded, size: 16),
                             label: Text('Retry ${_label(step)}'),
                           ),
@@ -2685,7 +2706,25 @@ class AxResearchStepCards extends StatelessWidget {
                 key: const ValueKey('research-partial-synthesis'),
                 onPressed: () => onSynthesizePartial!(request.id),
                 icon: const Icon(Icons.auto_awesome_outlined, size: 16),
-                label: Text('Synthesize with $succeeded reports'),
+                label: Text(failed == 1
+                    ? 'Skip failed researcher and continue'
+                    : 'Skip $failed failed researchers and continue'),
+              ),
+            ),
+          if (failed > 0 && waitingForResearchers)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Retry or skip after the other researchers finish.',
+                style: TextStyle(fontSize: 12, color: color),
+              ),
+            ),
+          if (failed > 0 && request.status == 'failed' && succeeded == 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Retry a researcher to get a report before continuing.',
+                style: TextStyle(fontSize: 12, color: color),
               ),
             ),
         ],

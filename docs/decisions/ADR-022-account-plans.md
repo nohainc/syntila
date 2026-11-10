@@ -93,8 +93,25 @@ without migrations.
 
 ### Plan overview
 
-The Profile plan summary links to a Free and Syntila Plus comparison. It shows
-weekly, monthly and yearly purchase periods as unavailable while Syntila has no
-configured checkout or approved prices; Aliolo's prices are not Syntila prices.
-The current account tier comes from the existing account-plan endpoint. The
-comparison describes the existing limits and does not expose unreleased Research.
+The Profile plan summary links to the Plans & subscription page
+(`subscription_page.dart`). It shows the viewer's plan with the limits Cloud
+reports for it, the approved Syntila Plus prices (1 month $9, 1 year $81;
+`plusPrices`) and a Free and Plus comparison that names whose plan decides
+each limit. No billing provider is chosen, so the page has no purchase or
+manage action and says so; a period end reads "Active until", not "Renews".
+Places where a Free limit or a Plus-only feature stops the viewer (Workspace
+sharing, the personal Workspace allowance, a full Space, full storage) link to
+the page with `ViewPlansLink`. Cloud remains the only enforcement. The
+comparison does not expose custom Worker plugins.
+
+### Plus workflows
+
+Research (`workflow.research`) and Implement (`plan_implement`,
+`workflow.implement`) need the requester's Syntila Plus; Chat and Work stay
+Free. `requireWorkflowEntitlement` enforces both for submission, the Thread
+request queue and user-triggered retries, with `402 paid_plan_required`. The
+app shows both workflows to everyone: on Free, picking one in the composer
+opens Plans & subscription instead of selecting it (`workflowAccess`,
+`_offeredWorkflows`). Research is shown to all accounts by owner decision,
+superseding the preview-only visibility in ADR-026. Rollout: grant Plus to
+accounts that should keep Implement before deploying Cloud.

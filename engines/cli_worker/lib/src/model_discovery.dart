@@ -556,6 +556,145 @@ List<DiscoveredModel> parseCopilotSdkModels(
   return models;
 }
 
+/// Lists the models the signed-in Claude account may use through the
+/// Anthropic Models API (`GET /v1/models`). The Claude CLI has no list command.
+/// The credential is the Claude Code sign-in (macOS keychain or
+/// `~/.claude/.credentials.json`) or `ANTHROPIC_API_KEY`; it is only sent to
+/// `api.anthropic.com` and never logged or stored. The full model ID is the
+/// execution value, so a selection stays pinned to that model.
+Future<List<DiscoveredModel>> discoverClaudeApiModels({
+  required String idPrefix,
+  Set<String> excludeIds = const {},
+  Duration timeout = const Duration(seconds: 10),
+  Map<String, String>? environment,
+  Future<Map<String, String>?> Function()? credentialReader,
+  HttpClient Function()? clientFactory,
+}) async {
+  final headers = await (credentialReader ?? readClaudeApiCredential)(
+    environment ?? Platform.environment,
+  );
+  if (headers == null) {
+    throw ProviderNotAuthenticatedException(
+      'Claude is not signed in. Run `claude` and sign in, then refresh.',
+    );
+  }
+  final client = (clientFactory ?? HttpClient.new)()
+    ..connectionTimeout = timeout;
+  try {
+    final request = await client
+        .getUrl(Uri.https('api.anthropic.com', '/v1/models', {'limit': '100'}))
+        .timeout(timeout);
+    request.headers.set('anthropic-version', '2023-06-01');
+    headers.forEach(request.headers.set);
+    final response = await request.close().timeout(timeout);
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      await response.drain<void>();
+      throw ProviderNotAuthenticatedException(
+        'Claude sign-in was rejected. Run `claude` and sign in again, then refresh.',
+      );
+    }
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(timeout);
+    if (response.statusCode != 200 || body.length > 1024 * 1024) {
+      throw const FormatException('Claude model list failed');
+    }
+    return parseClaudeApiModels(
+      jsonDecode(body),
+      idPrefix,
+      excludeIds: excludeIds,
+    );
+  } finally {
+    client.close(force: true);
+  }
+}
+
+/// Headers that authenticate a Models API call, or null when not signed in.
+Future<Map<String, String>?> readClaudeApiCredential(
+  Map<String, String> environment,
+) async {
+  final key = environment['ANTHROPIC_API_KEY'];
+  if (key != null && key.isNotEmpty) return {'x-api-key': key};
+  String? raw;
+  if (Platform.isMacOS) {
+    final result = await Process.run('security', [
+      'find-generic-password',
+      '-s',
+      'Claude Code-credentials',
+      '-w',
+    ]);
+    if (result.exitCode == 0) raw = '${result.stdout}'.trim();
+  }
+  if (raw == null || raw.isEmpty) {
+    final home = environment['HOME'] ?? environment['USERPROFILE'];
+    if (home != null) {
+      final file = File('$home/.claude/.credentials.json');
+      if (await file.exists()) raw = await file.readAsString();
+    }
+  }
+  if (raw == null || raw.isEmpty) return null;
+  try {
+    final oauth = (jsonDecode(raw) as Map)['claudeAiOauth'];
+    final token = oauth is Map ? oauth['accessToken'] : null;
+    if (token is! String || token.isEmpty) return null;
+    return {
+      'authorization': 'Bearer $token',
+      'anthropic-beta': 'oauth-2025-04-20',
+    };
+  } on Object {
+    return null;
+  }
+}
+
+/// Maps a Models API response. `id` is the execution value and `display_name`
+/// the shown name. Efforts come from `capabilities.effort`; retired models
+/// are not selectable.
+List<DiscoveredModel> parseClaudeApiModels(
+  Object? response,
+  String idPrefix, {
+  Set<String> excludeIds = const {},
+}) {
+  final list = response is Map ? response['data'] : null;
+  if (list is! List) throw const FormatException('Claude model list is invalid');
+  const order = ['low', 'medium', 'high', 'xhigh', 'max'];
+  final models = <DiscoveredModel>[];
+  final ids = <String>{};
+  for (final raw in list) {
+    if (raw is! Map) throw const FormatException('Claude model is invalid');
+    final id = raw['id'];
+    if (id is! String ||
+        !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$').hasMatch(id)) {
+      throw const FormatException('Claude model ID is invalid');
+    }
+    if (excludeIds.contains(id)) continue;
+    if (idPrefix.isNotEmpty && !id.startsWith(idPrefix)) continue;
+    if (raw['lifecycle'] == 'retired') continue;
+    if (!ids.add(id)) continue;
+    final capability = raw['capabilities'];
+    final effort = capability is Map ? capability['effort'] : null;
+    final efforts = [
+      if (effort is Map && effort['supported'] == true)
+        for (final level in order)
+          if (effort[level] is Map && effort[level]['supported'] == true) level,
+    ];
+    final name = raw['display_name'];
+    models.add(
+      DiscoveredModel(
+        id: id,
+        name: name is String && name.trim().isNotEmpty
+            ? name.trim()
+            : readableModelName(id),
+        supportedReasoningEfforts: efforts,
+      ),
+    );
+    if (models.length > 128) {
+      throw const FormatException('Model catalog exceeds limit');
+    }
+  }
+  return models;
+}
+
 Future<void> _sendAppServerRequest(IOSink sink, Map<String, Object?> request) {
   sink.writeln(jsonEncode(request));
   return sink.flush();

@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:html' as html;
 
+import 'ax_browser_route.dart';
 import 'ax_browser_navigation_stub.dart';
 
 export 'ax_browser_navigation_stub.dart'
@@ -26,7 +27,48 @@ final class _WebAxBrowserNavigation
   bool get online => html.window.navigator.onLine ?? true;
   @override
   Stream<bool> get connectivityChanges => _connectivity.stream;
-  Uri _current() => Uri.parse(html.window.location.href);
+  static const _statePrefix = 'syntila-route-v1:';
+  static const _oauthReturnKey = 'syntila-oauth-return-v1';
+
+  Uri _current() {
+    final location = Uri.parse(html.window.location.href);
+    final address = Uri(
+        path: location.path,
+        query: location.hasQuery ? location.query : null,
+        fragment: location.hasFragment ? location.fragment : null);
+    final state = html.window.history.state;
+    final stored = state is String && state.startsWith(_statePrefix)
+        ? state.substring(_statePrefix.length)
+        : null;
+    var internal = AxBrowserRoute.restore(address, stored);
+    // OAuth leaves this document; sessionStorage survives the same-tab return.
+    try {
+      final pending = html.window.sessionStorage[_oauthReturnKey];
+      if (pending != null) {
+        final target = Uri.tryParse(pending);
+        if (target != null && AxBrowserRoute.visible(target) == address) {
+          internal = target;
+          html.window.sessionStorage.remove(_oauthReturnKey);
+        } else if (target != null &&
+            address.path == '/login' &&
+            address.queryParameters.containsKey('error')) {
+          internal = address.replace(queryParameters: {
+            ...address.queryParameters,
+            'returnTo': target.toString(),
+          });
+          html.window.sessionStorage.remove(_oauthReturnKey);
+        }
+      }
+    } catch (_) {
+      // Storage can be unavailable in restricted browser contexts.
+    }
+    // Convert old deep links on entry, and persist restored OAuth state.
+    if (AxBrowserRoute.visible(internal) != address ||
+        (stored == null && internal != address)) {
+      replace(internal);
+    }
+    return internal;
+  }
 
   @override
   Uri get current => _current();
@@ -40,11 +82,12 @@ final class _WebAxBrowserNavigation
       .map((_) {});
 
   @override
-  void push(Uri uri) => html.window.history.pushState(null, '', uri.toString());
+  void push(Uri uri) => html.window.history.pushState(
+      '$_statePrefix$uri', '', AxBrowserRoute.visible(uri).toString());
 
   @override
-  void replace(Uri uri) =>
-      html.window.history.replaceState(null, '', uri.toString());
+  void replace(Uri uri) => html.window.history.replaceState(
+      '$_statePrefix$uri', '', AxBrowserRoute.visible(uri).toString());
 
   @override
   void replaceWithLogin(Uri returnTo) {
@@ -70,8 +113,17 @@ final class _WebAxBrowserNavigation
     // this app; Cloud accepts only its own or the configured app origin.
     const configuredApi = String.fromEnvironment('SYNTILA_API_URL');
     final apiBase = configuredApi.isNotEmpty ? configuredApi : '/api';
+    var visibleReturn = returnTo;
+    try {
+      html.window.sessionStorage[_oauthReturnKey] = returnTo.toString();
+      visibleReturn = AxBrowserRoute.visible(returnTo);
+    } catch (_) {
+      // Preserve login return behavior when browser storage is unavailable.
+    }
     final uri = Uri.parse('$apiBase/auth/sign-in/$provider').replace(
-      queryParameters: {'returnTo': Uri.base.resolveUri(returnTo).toString()},
+      queryParameters: {
+        'returnTo': Uri.base.resolveUri(visibleReturn).toString()
+      },
     );
     html.window.location.assign(uri.toString());
   }

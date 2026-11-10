@@ -42,7 +42,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Authentication'), findsOneWidget);
-    expect(find.text('Threads'), findsOneWidget);
+    expect(find.text('Threads'), findsNothing);
+    expect(find.text('Active'), findsOneWidget);
+    expect(find.text('Archived'), findsOneWidget);
     expect(find.text('Workspaces'), findsNothing);
     expect(find.text('Workflows'), findsNothing);
     expect(find.text('Members'), findsNothing);

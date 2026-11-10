@@ -5,3 +5,5 @@ http.Client createPlatformHttpClient() =>
     BrowserClient()..withCredentials = true;
 
 String defaultAxApiBaseUrl() => '/api';
+
+bool get managesNativeSessionCookie => false;
