@@ -20,7 +20,7 @@ if (toggle && navigation) {
     .querySelectorAll("a")
     .forEach((link) => link.addEventListener("click", closeMenu));
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
+    if (event.key === "Escape" && navigation.hasAttribute("data-open")) {
       closeMenu();
       toggle.focus();
     }

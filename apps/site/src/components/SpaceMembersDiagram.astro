@@ -1,20 +1,20 @@
 ---
 // Component: SpaceMembersDiagram
-// Visualizes members bringing different AI Workers into a shared Syntila space
+// Visualizes members bringing connected Workspaces & AI Workers into a shared Syntila Space
 ---
 
 <div class="space-members-diagram">
   <div class="mental-model-grid">
     <!-- Left: Members & their contributed AI Workers -->
     <div class="contributor-column">
-      <div class="column-header">Your People & AI</div>
+      <div class="column-header">Members & Connected Workspaces</div>
 
       <div class="contributor-card">
         <div class="contributor-person">
           <span class="avatar avatar--vitalii">V</span>
           <div class="person-info">
             <strong>Vitalii</strong>
-            <small>Member</small>
+            <small>Owner · Connected Workspace</small>
           </div>
         </div>
         <div class="contributed-connector" aria-hidden="true">
@@ -31,7 +31,7 @@
           <span class="avatar avatar--julia">J</span>
           <div class="person-info">
             <strong>Julia</strong>
-            <small>Member</small>
+            <small>Collaborator · Connected Workspace</small>
           </div>
         </div>
         <div class="contributed-connector" aria-hidden="true">
@@ -48,7 +48,7 @@
           <span class="avatar avatar--alex">A</span>
           <div class="person-info">
             <strong>Alex</strong>
-            <small>Member</small>
+            <small>Collaborator · Browser Member</small>
           </div>
         </div>
         <div class="contributed-connector" aria-hidden="true">
@@ -56,7 +56,7 @@
         </div>
         <div class="contributed-ai ai-pill--claude">
           <span class="ai-dot ai-dot--claude"></span>
-          <span>Claude / Local AI</span>
+          <span>Uses Space Workers</span>
         </div>
       </div>
     </div>
@@ -66,11 +66,11 @@
       <div class="hub-box">
         <div class="hub-badge">Shared Space</div>
         <strong class="hub-title">Family or Team Space</strong>
-        <p class="hub-desc">Unified Context · Group Collaboration</p>
+        <p class="hub-desc">Browser Collaboration · Local Execution</p>
         <div class="hub-perks">
-          <span>✓ Everyone sees the conversation</span>
-          <span>✓ Any member can query authorized AI</span>
-          <span>✓ Credentials never leave owner</span>
+          <span>✓ Everyone collaborates in the browser</span>
+          <span>✓ Authorized Workers run on owner Workspaces</span>
+          <span>✓ Provider credentials stay on owner machines</span>
         </div>
       </div>
     </div>
@@ -78,7 +78,7 @@
     <!-- Right: Threads branch -->
     <div class="threads-column">
       <div class="column-header">Active Threads</div>
-      
+
       <div class="thread-branch-card">
         <span class="ws-mini-icon" aria-hidden="true">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -112,6 +112,6 @@
   </div>
 
   <div class="diagram-footer-rule">
-    <p><strong>Everyone collaborates in the space.</strong> AI access can be shared. Credentials cannot.</p>
+    <p><strong>Everyone collaborates in the Space.</strong> AI access is granted per Space; provider credentials stay on the Workspace host.</p>
   </div>
 </div>

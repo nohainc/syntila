@@ -12,8 +12,38 @@ import Container from "../components/Container.astro";
     <section class="section">
       <div class="eyebrow">404</div>
       <h1>That page is not here.</h1>
-      <p class="section-intro">The link may be outdated, or the page may have moved.</p>
-      <div class="actions"><Button href="/" label="Back to Syntila" /></div>
+      <p class="section-intro">The link may be outdated, or the page may have moved. Choose a destination below to continue exploring Syntila.</p>
+      <div class="actions">
+        <Button href="/" label="Back to Syntila Home" />
+        <Button href="https://syntila.app" label="Open Syntila App" variant="secondary" event="cta.open_app" />
+      </div>
+
+      <div class="not-found-grid" role="navigation" aria-label="Popular pages">
+        <a class="not-found-link-card" href="/how-it-works/">
+          <strong>How it works</strong>
+          <span>See how Spaces, Threads, connected Workspaces, and multi-step workflows fit together.</span>
+        </a>
+        <a class="not-found-link-card" href="/workers/">
+          <strong>AI &amp; Workers</strong>
+          <span>Explore supported Worker Profiles for ChatGPT, Claude, Google Gemini, and coding agents.</span>
+        </a>
+        <a class="not-found-link-card" href="/use-cases/">
+          <strong>Use cases</strong>
+          <span>Learn how families, product teams, and engineering groups collaborate in Syntila.</span>
+        </a>
+        <a class="not-found-link-card" href="/security/">
+          <strong>Security</strong>
+          <span>Understand how Space grants, local CLI credentials, and Workspace boundaries work.</span>
+        </a>
+        <a class="not-found-link-card" href="/downloads/">
+          <strong>Downloads</strong>
+          <span>Install Syntila Workspace for macOS, Windows, or Linux to connect your machine.</span>
+        </a>
+        <a class="not-found-link-card" href="/privacy/">
+          <strong>Privacy &amp; Terms</strong>
+          <span>Read how Syntila handles identity, Workspace execution, and AI Account privacy.</span>
+        </a>
+      </div>
     </section>
   </Container>
 </SiteLayout>

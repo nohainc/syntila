@@ -1,4 +1,5 @@
 ---
+import Button from "../components/Button.astro";
 import Container from "../components/Container.astro";
 import Section from "../components/Section.astro";
 import SectionHeader from "../components/SectionHeader.astro";
@@ -8,25 +9,39 @@ import { workspaceRelease } from "../data/workspace-release";
 
 <SiteLayout
   title="Downloads — Syntila"
-  description="Download Syntila Workspace for macOS, Windows, or Linux to connect local tools and machines."
+  description="Download Syntila Workspace for macOS, Windows, or Linux to connect your machine and AI Workers to shared Syntila Spaces."
 >
   <Section>
     <Container>
       <SectionHeader
         eyebrow="Downloads"
         title="Run Syntila Workers on your computer."
-        description="Syntila runs directly in your web browser. If you want to connect your local development environment, repositories, and command-line coding agents, install Syntila Workspace on your machine."
+        description="People collaborate in Spaces and Threads in the browser, while every AI Worker runs on a member's connected Syntila Workspace. Choose whether you are joining an existing Space or connecting a machine to power AI Workers."
         headingLevel={1}
       />
 
-      <div class="downloads-intro-note">
-        <div class="note-pill">Web App</div>
-        <p>
-          For general team chat, shared spaces, and API-backed AI models, you don't need to install anything. Simply <a href="https://syntila.app" class="link-inline" data-site-event="cta.open_app">open Syntila in your browser →</a>
-        </p>
+      <div class="downloads-paths-grid">
+        <div class="downloads-path-card">
+          <span class="eyebrow">Path 1 · Browser Collaboration</span>
+          <h2>Joining an existing Space?</h2>
+          <p>
+            If a Space owner or teammate has already connected a Syntila Workspace and granted AI Workers to the Space, you do not need to install anything on your device. Open Syntila in your browser to join Threads and prompt authorized Workers.
+          </p>
+          <div class="actions actions--compact">
+            <Button href="https://syntila.app" label="Open Syntila in Browser →" variant="secondary" event="cta.open_app" />
+          </div>
+        </div>
+
+        <div class="downloads-path-card downloads-path-card--highlight">
+          <span class="eyebrow">Path 2 · Workspace Host</span>
+          <h2>Powering AI Workers for a Space?</h2>
+          <p>
+            To use your own ChatGPT, Claude, or Gemini subscriptions—or to run coding agents in local repositories—install <strong>Syntila Workspace</strong> on macOS, Windows, or Linux and grant selected Workers to your Space.
+          </p>
+        </div>
       </div>
 
-      <div class="downloads-grid" data-downloads-platforms style="margin-top: var(--space-8);">
+      <div class="downloads-grid" data-downloads-platforms>
         {workspaceRelease.targets.map((target) => (
           <article class="downloads-card" data-platform={target.platform}>
             <div class="downloads-card__header">
@@ -38,9 +53,36 @@ import { workspaceRelease } from "../data/workspace-release";
             </div>
             <p class="downloads-card__version">Version {workspaceRelease.version}</p>
             <p class="downloads-card__architecture">{target.architectures.join(" / ")}</p>
+            <p class="downloads-card__architecture">{target.installSummary}</p>
             <a class="button button--primary" href={target.downloadUrl} target="_blank" rel="noreferrer">Download <span aria-hidden="true">↗</span></a>
           </article>
         ))}
+      </div>
+
+      <div class="downloads-cli-section">
+        <SectionHeader
+          eyebrow="CLI Quickstart"
+          title="Set up and manage your Workspace with the syntila CLI"
+          description="Syntila Workspace runs as a headless background service managed through the unified syntila command-line client."
+        />
+        <div class="downloads-cli-grid">
+          <div class="downloads-cli-box">
+            <h3>1. Connect &amp; verify your Workspace</h3>
+            <p>After installing the release package or Homebrew cask, run interactive setup to pair your machine and inspect registered Workers:</p>
+            <pre><code>syntila setup
+syntila status
+syntila workers</code></pre>
+          </div>
+          <div class="downloads-cli-box">
+            <h3>2. Package manager install options</h3>
+            <p>On macOS with Homebrew, or Debian/Ubuntu via the signed APT repository, you can install and upgrade directly from your terminal:</p>
+            <pre><code># macOS (Homebrew cask)
+brew install --cask nohainc/tap/syntila-workspace
+
+# Debian / Ubuntu (signed APT package)
+sudo apt install syntila</code></pre>
+          </div>
+        </div>
       </div>
     </Container>
   </Section>

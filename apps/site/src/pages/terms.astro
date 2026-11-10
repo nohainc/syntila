@@ -9,27 +9,47 @@ import SiteLayout from "../layouts/SiteLayout.astro";
   <Section>
     <Container>
       <SectionHeader eyebrow="Terms" title="Terms of Service" description="General terms governing access to Syntila, connected execution environments, third-party AI providers, and the public website." headingLevel={1} />
-      <div class="legal-content">
-        <h2>1. Service overview</h2>
-        <p>Syntila provides software for coordinating people, AI models, tools, execution environments, workflows, and verification around Spaces and Threads.</p>
+      <div class="legal-layout">
+        <nav class="legal-toc" aria-label="On this page">
+          <span class="legal-toc__title">Contents</span>
+          <ul>
+            <li><a href="#service-overview">1. Service overview</a></li>
+            <li><a href="#account-activity">2. Account &amp; Space activity</a></li>
+            <li><a href="#connected-workspaces">3. Connected Workspaces</a></li>
+            <li><a href="#third-party-providers">4. Third-party AI providers</a></li>
+            <li><a href="#work-outputs">5. Work outputs</a></li>
+            <li><a href="#public-website">6. Public website</a></li>
+            <li><a href="#service-changes">7. Service changes</a></li>
+          </ul>
+          <span class="legal-toc__title section-block-gap">Related</span>
+          <ul>
+            <li><a href="/privacy/">Privacy Policy</a></li>
+            <li><a href="/security/">Security Overview</a></li>
+          </ul>
+        </nav>
 
-        <h2>2. Your account and Space activity</h2>
-        <p>You are responsible for protecting your authentication credentials and for actions taken through authorized sessions. Space owners and collaborators are responsible for granting appropriate access to Space content and execution capabilities.</p>
+        <div class="legal-content">
+          <h2 id="service-overview">1. Service overview</h2>
+          <p>Syntila provides software for coordinating people, AI models, tools, execution environments, workflows, and verification around Spaces and Threads.</p>
 
-        <h2>3. Connected Workspaces</h2>
-        <p>When you connect a machine as a Workspace, you authorize Syntila to dispatch work that is permitted by the Workspace's active Space grants and local execution policy. Workspace owners remain responsible for the machine, local repositories, installed software, and revoking access when appropriate.</p>
+          <h2 id="account-activity">2. Your account and Space activity</h2>
+          <p>You are responsible for protecting your authentication credentials and for actions taken through authorized sessions. Space owners and collaborators are responsible for granting appropriate access to Space content and execution capabilities.</p>
 
-        <h2>4. Third-party AI providers</h2>
-        <p>Syntila can use third-party AI services through configured AI Accounts. You are responsible for complying with the terms, acceptable-use requirements, subscription conditions, and usage charges of those providers.</p>
+          <h2 id="connected-workspaces">3. Connected Workspaces</h2>
+          <p>When you connect a machine as a Workspace, you authorize Syntila to dispatch work that is permitted by the Workspace's active Space grants and local execution policy. Workspace owners remain responsible for the machine, local repositories, installed software, and revoking access when appropriate.</p>
 
-        <h2>5. Work outputs</h2>
-        <p>AI-generated code, analysis, reviews, tests, and other outputs may be incomplete or incorrect. You are responsible for reviewing outputs and deciding whether they are appropriate to use, merge, publish, or deploy.</p>
+          <h2 id="third-party-providers">4. Third-party AI providers</h2>
+          <p>Syntila can use third-party AI services through configured AI Accounts. You are responsible for complying with the terms, acceptable-use requirements, subscription conditions, and usage charges of those providers.</p>
 
-        <h2>6. Public website</h2>
-        <p>The public website is provided for product information. Do not submit passwords, API keys, private source code, or other confidential execution material through unauthenticated public-site channels.</p>
+          <h2 id="work-outputs">5. Work outputs</h2>
+          <p>AI-generated code, analysis, reviews, tests, and other outputs may be incomplete or incorrect. You are responsible for reviewing outputs and deciding whether they are appropriate to use, merge, publish, or deploy.</p>
 
-        <h2>7. Service changes and availability</h2>
-        <p>Syntila may change as capabilities are improved, added, or removed. Availability may be interrupted for maintenance, provider outages, security work, or infrastructure changes.</p>
+          <h2 id="public-website">6. Public website</h2>
+          <p>The public website is provided for product information. Do not submit passwords, API keys, private source code, or other confidential execution material through unauthenticated public-site channels.</p>
+
+          <h2 id="service-changes">7. Service changes and availability</h2>
+          <p>Syntila may change as capabilities are improved, added, or removed. Availability may be interrupted for maintenance, provider outages, security work, or infrastructure changes.</p>
+        </div>
       </div>
     </Container>
   </Section>

@@ -1,30 +1,30 @@
 ---
 // Component: WorkflowShowcase
-// Visualizes multi-step AI orchestration pipelines for research/knowledge and engineering
+// Visualizes multi-step AI orchestration pipelines for research/synthesis and engineering
 ---
 
 <div class="workflow-showcase-container">
   <div class="workflow-tabs-header">
     <div class="workflow-intro-text">
-      <strong>Orchestrate multiple steps with automated verification</strong>
-      <span>Move seamlessly from simple conversations to structured multi-step execution whenever a problem demands deep rigor.</span>
+      <strong>Choose Chat for direct answers, or structured Work presets for multi-step execution</strong>
+      <span>Syntila coordinates each step across authorized Space Workers and records every intermediate result in the Thread.</span>
     </div>
   </div>
 
   <div class="workflow-pipeline-grid">
-    <!-- Pipeline 1: Knowledge & Strategy Workflow -->
+    <!-- Pipeline 1: Research & Synthesis Workflow -->
     <div class="pipeline-card">
       <div class="pipeline-card-header">
-        <span class="pipeline-tag pipeline-tag--general">Strategy & Research Pipeline</span>
-        <h3>Competitive Product Assessment</h3>
+        <span class="pipeline-tag pipeline-tag--general">Research Workflow Preset</span>
+        <h3>Multi-Worker Research & Synthesis</h3>
       </div>
       <div class="pipeline-steps">
         <div class="pipe-step">
           <div class="pipe-step-number">01</div>
           <div class="pipe-step-content">
-            <strong>Deep Research & Extraction</strong>
-            <span class="pipe-worker">Worker: Claude 3.5 Sonnet</span>
-            <p>Scans competitor whitepapers, pricing tiers, and public API specs.</p>
+            <strong>Parallel Research</strong>
+            <span class="pipe-worker">Workers: Claude & Google Gemini</span>
+            <p>Each selected research Worker independently investigates the topic, gathers evidence, and structures findings.</p>
           </div>
         </div>
 
@@ -33,9 +33,9 @@
         <div class="pipe-step">
           <div class="pipe-step-number">02</div>
           <div class="pipe-step-content">
-            <strong>Data Synthesis & Matrix Creation</strong>
-            <span class="pipe-worker">Worker: Gemini Pro</span>
-            <p>Constructs structured comparison matrices and highlights feature trade-offs.</p>
+            <strong>Cross-Perspective Comparison</strong>
+            <span class="pipe-worker">Shared Thread Context</span>
+            <p>Syntila collects the prerequisite research outputs and assembles the full context package for synthesis.</p>
           </div>
         </div>
 
@@ -44,32 +44,32 @@
         <div class="pipe-step">
           <div class="pipe-step-number">03</div>
           <div class="pipe-step-content">
-            <strong>Executive Review & Recommendations</strong>
-            <span class="pipe-worker">Worker: GPT-4o</span>
-            <p>Delivers strategic action items with verified citations and team takeaways.</p>
+            <strong>Unified Synthesis</strong>
+            <span class="pipe-worker">Worker: ChatGPT</span>
+            <p>Combines findings into a single structured summary with trade-offs, open questions, and recommended decisions.</p>
           </div>
         </div>
       </div>
       <div class="pipe-summary-footer">
-        <span>✓ 14 sources analyzed</span>
-        <span>✓ 0 manual copy-pastes</span>
-        <span>✓ Verified artifact saved</span>
+        <span>✓ Parallel Worker perspectives</span>
+        <span>✓ Shared Thread context</span>
+        <span>✓ Inspectable step outputs</span>
       </div>
     </div>
 
-    <!-- Pipeline 2: Technical & Engineering Workflow -->
+    <!-- Pipeline 2: Full Cycle Engineering Workflow -->
     <div class="pipeline-card">
       <div class="pipeline-card-header">
-        <span class="pipeline-tag pipeline-tag--dev">Engineering & Quality Pipeline</span>
-        <h3>Feature Implementation & Verification</h3>
+        <span class="pipeline-tag pipeline-tag--dev">Full Cycle Workflow Preset</span>
+        <h3>Plan, Implement, Test & Verify</h3>
       </div>
       <div class="pipeline-steps">
         <div class="pipe-step">
           <div class="pipe-step-number">01</div>
           <div class="pipe-step-content">
-            <strong>Code Implementation</strong>
-            <span class="pipe-worker">Worker: Codex / Claude Code CLI</span>
-            <p>Edits source files in the Space directory on a connected Workspace with an exclusive mutation lease.</p>
+            <strong>Plan & Implement</strong>
+            <span class="pipe-worker">Worker: Coding Agents (Codex / Claude Code CLI)</span>
+            <p>Designs the change and edits files inside the Space Work Directory under an exclusive Thread mutation lease.</p>
           </div>
         </div>
 
@@ -78,9 +78,9 @@
         <div class="pipe-step">
           <div class="pipe-step-number">02</div>
           <div class="pipe-step-content">
-            <strong>Automated Test Execution</strong>
-            <span class="pipe-worker">Worker: Local Workspace Runtime</span>
-            <p>Executes integration test suite and collects exit codes and stack traces.</p>
+            <strong>Test Execution</strong>
+            <span class="pipe-worker">Worker: Connected Syntila Workspace</span>
+            <p>Runs the relevant test suite locally on the Workspace host and captures command output and exit status.</p>
           </div>
         </div>
 
@@ -89,16 +89,16 @@
         <div class="pipe-step">
           <div class="pipe-step-number">03</div>
           <div class="pipe-step-content">
-            <strong>Independent Security & Quality Review</strong>
-            <span class="pipe-worker">Worker: Review Specialist Model</span>
-            <p>Validates regression safety, boundary conditions, and code quality before merge.</p>
+            <strong>Independent Verification</strong>
+            <span class="pipe-worker">Worker: Verification Worker</span>
+            <p>Reviews the implementation and test evidence against the original request before reporting completion to the Thread.</p>
           </div>
         </div>
       </div>
       <div class="pipe-summary-footer">
-        <span>✓ 42 tests passing</span>
-        <span>✓ 0 regressions</span>
-        <span>✓ Inspectable diff artifact</span>
+        <span>✓ Coordinated Thread lease</span>
+        <span>✓ Executable test evidence</span>
+        <span>✓ Independent verification step</span>
       </div>
     </div>
   </div>

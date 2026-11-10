@@ -27,8 +27,12 @@ for (const file of await htmlFiles(dist)) {
   }
   if (/\bon[a-z]+\s*=/i.test(source))
     throw new Error(`${file}: inline event handler detected`);
+  if (/\bstyle\s*=/i.test(source))
+    throw new Error(
+      `${file}: inline style attribute detected (violates style-src 'self' CSP)`,
+    );
 }
 
 console.log(
-  "Public-site security checks passed: same-origin scripts only and no inline event handlers.",
+  "Public-site security checks passed: same-origin scripts only, no inline event handlers, and no inline style attributes.",
 );

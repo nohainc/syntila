@@ -4,27 +4,28 @@ import Button from "./Button.astro";
 
 <div class="workspace-quickstart-card">
   <div class="workspace-quickstart-header">
-    <strong>Bring a machine into Syntila without turning it into a team container.</strong>
+    <strong>How a connected Syntila Workspace powers a Space:</strong> every AI Worker executes locally through the headless <code>syntila</code> service and CLI Worker Engine on a machine controlled by a Space member.
   </div>
   <ol class="workspace-quickstart-steps" role="list">
     <li class="workspace-quickstart-step">
       <span class="workspace-step-num" aria-hidden="true">1</span>
-      <div><strong>Open Syntila</strong><p>Sign in and open Workspaces under execution resources.</p></div>
+      <div><strong>Install Workspace</strong><p>Install the Syntila Workspace service and <code>syntila</code> CLI on macOS, Windows, or Linux.</p></div>
     </li>
     <li class="workspace-quickstart-step">
       <span class="workspace-step-num" aria-hidden="true">2</span>
-      <div><strong>Add a Workspace</strong><p>Create an execution environment for a machine you control.</p></div>
+      <div><strong>Run <code>syntila setup</code></strong><p>Link your machine to your Syntila account and detect installed provider CLIs.</p></div>
     </li>
     <li class="workspace-quickstart-step">
       <span class="workspace-step-num" aria-hidden="true">3</span>
-      <div><strong>Pair the machine</strong><p>Connect the Workspace runtime securely and choose the Workers you want available.</p></div>
+      <div><strong>Grant to a Space</strong><p>Choose which Spaces can use your Workspace and which AI Workers are enabled.</p></div>
     </li>
     <li class="workspace-quickstart-step">
       <span class="workspace-step-num" aria-hidden="true">4</span>
-      <div><strong>Grant it to a Space</strong><p>Spaces can use the Workspace after its owner grants access. Work runs in the Space directory under coordinated Thread leases.</p></div>
+      <div><strong>Collaborate in Browser</strong><p>Everyone in the Space can now prompt those Workers in shared Threads at <code>syntila.app</code>.</p></div>
     </li>
   </ol>
   <div class="workspace-quickstart-cta">
-    <Button href="https://syntila.app" label="Open Syntila →" event="cta.open_app" />
+    <Button href="/downloads/" label="Download Syntila Workspace →" variant="secondary" />
+    <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
   </div>
 </div>

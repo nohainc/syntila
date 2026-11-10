@@ -134,10 +134,7 @@ from asset responses. Analytics endpoints must be same-origin.
 
 ## Visual system
 
-Use the established Syntila visual system: warm neutral surfaces, ink text,
-muted purple accents, crisp borders, and compact monospace details. Prefer
-existing tokens and Astro components over one-off section styles. Do not rely
-on decorative gradients, robot imagery, or animation to explain the product.
+Use the established Syntila brand system (`docs/design/SYNTILA_BRAND_SYSTEM.md`): dark slate canvas (`#121217`), elevated layered surfaces (`#18181f`, `#20202a`), high-contrast off-white ink text (`#f3f3f7`), Precision Indigo (`#6366f1`) accents and focus rings, crisp subtle borders, and compact system monospace details. Prefer existing tokens and Astro components over one-off section styles. Do not rely on decorative gradients, radial glows, robot imagery, or animation to explain the product.
 
 ## Acceptance checklist
 

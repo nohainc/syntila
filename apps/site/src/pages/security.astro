@@ -17,48 +17,49 @@ import SiteLayout from "../layouts/SiteLayout.astro";
       <SectionHeader
         eyebrow="Security & Privacy"
         title="Share AI access without sharing your secrets."
-        description="Syntila is architected so people can collaborate with AI together without exposing API keys, personal login credentials, or unrestricted machine access."
+        description="Syntila separates browser collaboration in Syntila Cloud from local CLI execution on your Syntila Workspace, so collaborators can use authorized AI Workers without seeing your API keys or provider logins."
         headingLevel={1}
       />
 
-      <div class="security-overview" style="margin-top: var(--space-8);">
+      <div class="section-block-gap">
         <CredentialPrivacyDiagram />
       </div>
 
-      <div style="margin-top: var(--space-16);">
+      <div class="section-block-gap-lg">
         <SectionHeader
           eyebrow="Authorization Boundaries"
           title="Strict separation between people, spaces, and AI."
-          description="Every layer in Syntila has an independent permission boundary so access can only get narrower."
+          description="Every layer in Syntila enforces an explicit boundary between Space membership, Workspace grants, and local filesystem state."
         />
 
-        <div class="cards security-detail-cards">
+        <div class="security-boundaries">
           <FeatureCard title="Space Membership" headingLevel={2}>
-            <p>Defines who can collaborate, participate in thread chats, and trigger AI runs. Joining a space never automatically grants access to anyone's personal AI accounts or local machines.</p>
+            <p>Defines who can view Threads (<strong>Viewer</strong>), participate and run authorized AI Workers (<strong>Collaborator</strong>), or manage members and Space grants (<strong>Owner</strong>). Joining a Space never grants direct access to anyone's personal AI accounts or machines.</p>
           </FeatureCard>
 
           <FeatureCard title="AI Account Privacy" headingLevel={2}>
-            <p>Provider credentials remain local to the owner's machine and CLI environment. Granting a Worker to a space authorizes eligible members to run queries; it never reveals the underlying secret.</p>
+            <p>Provider credentials remain in the local CLI environment on the owner's Workspace host. Granting a Worker to a Space authorizes eligible members to submit requests through Syntila; it never transmits the underlying API key or session token to browsers.</p>
           </FeatureCard>
 
           <FeatureCard title="Workspace Isolation" headingLevel={2}>
-            <p>For technical teams running code or CLI tools, work executes in the Space Work Directory on the authorized host machine with isolated Thread sessions and mutation lease serialization.</p>
+            <p>Each Space runs inside its own Space Work Directory under the Workspace's configured Work Root, with optional Allowed Folders per Space and exclusive Thread mutation leases to serialize file-modifying steps.</p>
           </FeatureCard>
 
           <FeatureCard title="Audit & Attribution" headingLevel={2}>
-            <p>Execution records can attribute requests to the requester, Worker, model and available usage metadata, giving owners visibility over space activity.</p>
+            <p>The Workspace Service verifies Ed25519 signatures on Worker Profiles before executing provider CLIs, and execution records attribute every run to the requesting user, Workspace, Worker, and model.</p>
           </FeatureCard>
         </div>
       </div>
 
-      <div class="security-callout" style="margin-top: var(--space-12);">
-        <strong>Instant revocation with zero password churn.</strong>
-        <span>Revoking a Workspace or Worker grant or removing a space collaborator immediately cuts off AI access without requiring you to regenerate API keys or reset passwords.</span>
+      <div class="security-callout">
+        <strong>Revocable Space grants without credential rotation.</strong>
+        <span>Revoking a Workspace or Worker grant—or removing a member from a Space—stops Syntila Cloud from admitting new assignments for that Space or member without requiring you to rotate local provider API keys or logins.</span>
       </div>
 
-      <div class="actions" style="justify-content: center; margin-top: var(--space-12);">
+      <div class="actions actions--center section-block-gap-lg">
         <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
         <Button href="/privacy/" label="Read privacy policy" variant="secondary" />
+        <Button href="/terms/" label="Read terms of service" variant="secondary" />
       </div>
     </Container>
   </Section>

@@ -60,6 +60,9 @@ describe("public site Worker", () => {
       "script-src 'self'",
     );
     expect(response.headers.get("content-security-policy")).toContain(
+      "style-src 'self'",
+    );
+    expect(response.headers.get("content-security-policy")).toContain(
       "frame-ancestors 'none'",
     );
     expect(response.headers.get("referrer-policy")).toBe(

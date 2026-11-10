@@ -1,7 +1,6 @@
 ---
 import Button from "../components/Button.astro";
 import Container from "../components/Container.astro";
-import FeatureCard from "../components/FeatureCard.astro";
 import Section from "../components/Section.astro";
 import SectionHeader from "../components/SectionHeader.astro";
 import SiteLayout from "../layouts/SiteLayout.astro";
@@ -10,55 +9,133 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
 
 <SiteLayout
   title="AI & Workers — Syntila"
-  description="Connect ChatGPT, Claude, Gemini, DeepSeek, local LLMs, and coding agents to your shared Syntila spaces."
+  description="Connect ChatGPT, Claude, Google Gemini, and coding agents to your shared Syntila Spaces through signed Worker Profiles and the local CLI Worker Engine."
 >
   <Section>
     <Container>
       <SectionHeader
         eyebrow="AI & Workers"
         title="Connect and share your favorite AI models."
-        description="Syntila lets team members contribute their preferred AI models and tools to shared spaces. Use any model directly in team conversations or orchestrate them across automated workflows."
+        description="In Syntila, logical AI Workers resolve through signed Worker Profiles to official provider CLIs running under the local CLI Worker Engine on a member's connected Workspace."
         headingLevel={1}
       />
 
       <div class="cards worker-catalog" data-site-event="section.workers_reached">
-        <FeatureCard title="ChatGPT & OpenAI (Supported)" headingLevel={2}>
-          <p>Connect your OpenAI account for structured reasoning, synthesis, brainstorming, and general knowledge tasks in shared spaces.</p>
-        </FeatureCard>
+        <article class="worker-card">
+          <div class="worker-card__top">
+            <h2>ChatGPT &amp; OpenAI</h2>
+            <span class="worker-status-badge">Supported</span>
+          </div>
+          <p>Runs OpenAI's Codex CLI on your connected Workspace for structured reasoning, synthesis, code generation, and collaborative problem-solving in shared Threads.</p>
+          <div class="worker-card__meta">
+            <span>Profile: <code>chatgpt-codex</code></span>
+            <span>CLI: <code>codex</code></span>
+          </div>
+        </article>
 
-        <FeatureCard title="Google Gemini (Supported)" headingLevel={2}>
-          <p>Connect Google AI accounts for massive context window analysis, high-speed research synthesis, and multimodal processing.</p>
-        </FeatureCard>
+        <article class="worker-card">
+          <div class="worker-card__top">
+            <h2>Claude &amp; Anthropic</h2>
+            <span class="worker-status-badge">Supported</span>
+          </div>
+          <p>Runs Anthropic's Claude Code CLI on your connected Workspace for deep document analysis, architectural planning, code implementation, and verification.</p>
+          <div class="worker-card__meta">
+            <span>Profile: <code>claude-code</code></span>
+            <span>CLI: <code>claude</code></span>
+          </div>
+        </article>
 
-        <FeatureCard title="Coding Agents (Supported CLI Engine)" headingLevel={2}>
-          <p>Run Codex CLI through your connected Workspace for direct repository implementation and automated testing on your hardware.</p>
-        </FeatureCard>
+        <article class="worker-card">
+          <div class="worker-card__top">
+            <h2>Google Gemini</h2>
+            <span class="worker-status-badge">Supported</span>
+          </div>
+          <p>Runs Google's Antigravity CLI on your connected Workspace for fast research synthesis, large-context analysis, and multi-perspective comparison.</p>
+          <div class="worker-card__meta">
+            <span>Profile: <code>gemini-antigravity</code></span>
+            <span>CLI: <code>agy</code></span>
+          </div>
+        </article>
 
-        <FeatureCard title="Claude & Anthropic (Planned)" headingLevel={2}>
-          <p>Planned support for Anthropic accounts for deep document analysis, strategic nuance, and comprehensive code review.</p>
-        </FeatureCard>
+        <article class="worker-card">
+          <div class="worker-card__top">
+            <h2>Coding Agents &amp; CLI Engine</h2>
+            <span class="worker-status-badge">Supported</span>
+          </div>
+          <p>Syntila's generic CLI Worker Engine supervises local CLI sessions inside the Space Work Directory, streaming structured progress and results back to the Thread.</p>
+          <div class="worker-card__meta">
+            <span>Runtime: <code>syntila</code></span>
+            <span>Signed Profiles</span>
+          </div>
+        </article>
 
-        <FeatureCard title="DeepSeek & Open Models (Planned)" headingLevel={2}>
-          <p>Planned support for DeepSeek and open-weights models for math, logic, rapid prototyping, and specialized coding benchmarks.</p>
-        </FeatureCard>
+        <article class="worker-card">
+          <div class="worker-card__top">
+            <h2>GitHub Copilot CLI</h2>
+            <span class="worker-status-badge worker-status-badge--testing">Testing</span>
+          </div>
+          <p>Catalog Worker Profile for GitHub Copilot's agentic CLI, enabling repository-aware assistance and terminal workflows on connected Workspaces.</p>
+          <div class="worker-card__meta">
+            <span>Profile: <code>copilot-cli</code></span>
+            <span>CLI: <code>copilot</code></span>
+          </div>
+        </article>
 
-        <FeatureCard title="Local & Private LLMs (Planned)" headingLevel={2}>
-          <p>Planned support for Ollama and local LLM instances running on your own hardware for private, offline execution.</p>
-        </FeatureCard>
+        <article class="worker-card">
+          <div class="worker-card__top">
+            <h2>Grok Build CLI</h2>
+            <span class="worker-status-badge worker-status-badge--testing">Testing</span>
+          </div>
+          <p>Catalog Worker Profile for xAI's Grok Build CLI, supporting interactive reasoning and coding tasks on connected Workspaces.</p>
+          <div class="worker-card__meta">
+            <span>Profile: <code>grok-cli</code></span>
+            <span>CLI: <code>grok</code></span>
+          </div>
+        </article>
       </div>
 
-      <div style="margin-top: var(--space-16);">
+      <div class="section-block-gap-lg">
+        <SectionHeader
+          eyebrow="How Worker Profiles Work"
+          title="One generic engine. Signed Worker Profiles."
+          description="Syntila does not store provider API keys in Cloud databases or ship provider-specific binaries. Instead, the Workspace Service downloads Ed25519-signed Worker Profiles that describe how the generic CLI Worker Engine should invoke and parse each installed provider CLI."
+        />
+        <div class="execution-path-strip">
+          <div class="execution-path-step">
+            <span>01 · Local Auth</span>
+            <strong>Sign in to your CLI</strong>
+            <p>Authenticate directly in <code>codex</code>, <code>claude</code>, or <code>agy</code> on your machine using your existing subscription or API account.</p>
+          </div>
+          <div class="execution-path-step">
+            <span>02 · Profile Sync</span>
+            <strong>Verify signed Profile</strong>
+            <p>Syntila Workspace verifies the Ed25519 signature on each published Worker Profile before activating it locally.</p>
+          </div>
+          <div class="execution-path-step">
+            <span>03 · Space Grant</span>
+            <strong>Enable for a Space</strong>
+            <p>Choose which Spaces can use each ready Worker and configure model or effort defaults as needed.</p>
+          </div>
+          <div class="execution-path-step">
+            <span>04 · Thread Run</span>
+            <strong>Execute &amp; attribute</strong>
+            <p>Collaborators select the Worker in the Thread composer; the local CLI executes the turn and streams the response back.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-block-gap-lg">
         <SectionHeader
           eyebrow="Security & Sharing"
           title="Share AI access without sharing your secrets."
-          description="Every AI account remains owned and controlled by the person who connected it. When you share an AI worker with a space, collaborators can prompt the model, but they can never view your API keys or passwords."
+          description="Every AI account remains owned and controlled on the machine where it is authenticated. When you grant a Worker to a Space, collaborators can prompt the model, but they never receive your API keys or login tokens."
         />
         <CredentialPrivacyDiagram />
       </div>
 
-      <div class="actions" style="justify-content: center; margin-top: var(--space-16);">
+      <div class="actions actions--center section-block-gap-lg">
         <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
-        <Button href="/downloads/" label="Download Workspace for local tools" variant="secondary" />
+        <Button href="/downloads/" label="Download Syntila Workspace" variant="secondary" />
       </div>
     </Container>
   </Section>

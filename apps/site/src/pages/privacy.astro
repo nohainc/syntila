@@ -9,21 +9,39 @@ import SiteLayout from "../layouts/SiteLayout.astro";
   <Section>
     <Container>
       <SectionHeader eyebrow="Privacy" title="Privacy follows the same boundaries as the product." description="Syntila is designed so collaboration, execution capacity, and external AI credentials can be authorized independently." headingLevel={1} />
-      <div class="legal-content">
-        <h2>Human identity and Spaces</h2>
-        <p>Syntila Cloud authenticates people and applies Space membership and role checks to shared collaboration data such as Threads, discussions, Runs, artifacts, and Space settings. Joining a Space does not make another person's execution Workspace or private AI Accounts generally available.</p>
+      <div class="legal-layout">
+        <nav class="legal-toc" aria-label="On this page">
+          <span class="legal-toc__title">Contents</span>
+          <ul>
+            <li><a href="#human-identity">Human identity &amp; Spaces</a></li>
+            <li><a href="#workspaces-execution">Workspaces &amp; execution</a></li>
+            <li><a href="#ai-accounts">AI Accounts</a></li>
+            <li><a href="#assignment-data">Workers &amp; assignment data</a></li>
+            <li><a href="#public-website">Public website</a></li>
+          </ul>
+          <span class="legal-toc__title section-block-gap">Related</span>
+          <ul>
+            <li><a href="/security/">Security Overview</a></li>
+            <li><a href="/terms/">Terms of Service</a></li>
+          </ul>
+        </nav>
 
-        <h2>Workspaces and local execution</h2>
-        <p>A Workspace represents an execution environment controlled by its owner. A Space can use that environment only through an explicit Workspace grant. Work runs in the Space Work Directory under coordinated Thread mutation leases, and local repository access and Worker processes remain subject to Workspace runtime controls.</p>
+        <div class="legal-content">
+          <h2 id="human-identity">Human identity and Spaces</h2>
+          <p>Syntila Cloud authenticates people and applies Space membership and role checks to shared collaboration data such as Threads, discussions, Runs, artifacts, and Space settings. Joining a Space does not make another person's execution Workspace or private AI Accounts generally available.</p>
 
-        <h2>AI Accounts</h2>
-        <p>AI Accounts represent external provider identities authenticated locally on the owner's Workspace. They are private by default and never enter Cloud APIs in plaintext. Granting a Worker to a Space authorizes eligible use; it does not expose underlying credentials to Space collaborators.</p>
+          <h2 id="workspaces-execution">Workspaces and local execution</h2>
+          <p>A Workspace represents an execution environment controlled by its owner. A Space can use that environment only through an explicit Workspace grant. Work runs in the Space Work Directory under coordinated Thread mutation leases, and local repository access and Worker processes remain subject to Workspace runtime controls.</p>
 
-        <h2>Workers and assignment data</h2>
-        <p>Workers receive scoped assignment context needed for their task rather than Syntila user sessions or unrestricted machine credentials. Execution history may include task metadata, results, artifacts, findings, usage, and evidence needed to operate and audit the workflow.</p>
+          <h2 id="ai-accounts">AI Accounts</h2>
+          <p>AI Accounts represent external provider identities authenticated locally on the owner's Workspace. They are private by default and never enter Cloud APIs in plaintext. Granting a Worker to a Space authorizes eligible use; it does not expose underlying credentials to Space collaborators.</p>
 
-        <h2>Public website</h2>
-        <p>This public website uses minimal, same-origin operational telemetry and does not provide a place to submit AI credentials, private repository content, or Workspace secrets.</p>
+          <h2 id="assignment-data">Workers and assignment data</h2>
+          <p>Workers receive scoped assignment context needed for their task rather than Syntila user sessions or unrestricted machine credentials. Execution history may include task metadata, results, artifacts, findings, usage, and evidence needed to operate and audit the workflow.</p>
+
+          <h2 id="public-website">Public website</h2>
+          <p>This public website uses minimal, same-origin operational telemetry and does not provide a place to submit AI credentials, private repository content, or Workspace secrets.</p>
+        </div>
       </div>
     </Container>
   </Section>
