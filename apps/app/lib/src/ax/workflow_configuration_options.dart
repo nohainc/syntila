@@ -85,6 +85,9 @@ WorkerSelectionCapability capabilityForWorker(AxWorker worker) {
           options.catalogStale ? CapabilityState.stale : CapabilityState.ready,
       modelSupported: options.modelSelectionSupported,
       allowsCustomModel: options.allowsCustomModel,
+      // The Ollama adapter can choose a model implicitly only if exactly one
+      // is installed; require an explicit selection that remains stable.
+      autoModelSupported: worker.providerToolName != 'ollama-mcp',
       allowedModelIds: options.allowedModelIds,
       defaultModelId: options.defaultModelId,
       catalogRevision: options.catalogRevision,

@@ -1149,6 +1149,14 @@ class _ThreadPageState extends State<ThreadPage>
         !_catalogs.engine.peek(_catalogs.workers).hasData) {
       return;
     }
+    // Wait until Workspace membership is known before resolving a saved
+    // selection; otherwise the empty intermediate list loses its type hint.
+    if (saved.workerId != null &&
+        !widget.space.isDirect &&
+        _workflowConfigurations != null &&
+        !_workflowWorkspaceLoaded) {
+      return;
+    }
     // Match the exact reference first, then the same workflow code at its
     // current version so a version bump keeps the stored choice.
     final savedId = saved.workflowReference?.split(':').first;
@@ -1167,7 +1175,7 @@ class _ThreadPageState extends State<ThreadPage>
     var workerId = saved.workerId;
     var catalogRevision = saved.catalogRevision;
     final knownWorkers = [..._spaceWorkers, ..._ownChatWorkers];
-    if (workerId != null && _spaceWorkers.isNotEmpty) {
+    if (workerId != null && knownWorkers.isNotEmpty) {
       // Worker IDs can change when a Worker is rebuilt or re-registered; the
       // Worker type code does not. Re-bind by code when the ID is gone. The
       // viewer's own Workers count too, so a saved own Worker is never
@@ -1591,7 +1599,10 @@ class _ThreadPageState extends State<ThreadPage>
     _cancelWorkers = _catalogs.engine.watch(_catalogs.workers, (state) {
       if (!mounted) return;
       if (state.hasData) {
-        _updateComposerState(() => _applyWorkers(state.data!));
+        _updateComposerState(() {
+          _applyWorkers(state.data!);
+          _reconcilePendingThreadViewState();
+        });
       }
     }, fireImmediately: false);
   }

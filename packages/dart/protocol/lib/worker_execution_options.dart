@@ -64,12 +64,13 @@ class WorkerSelectionCapability {
       this.globalEfforts = const [],
       this.allowedModelIds,
       this.allowsCustomModel = false,
+      this.autoModelSupported = true,
       this.availabilityMessage,
       this.catalogRevision});
   final String id, name;
   final List<ExecutionModelCapability> models;
   final CapabilityState state;
-  final bool modelSupported, allowsCustomModel;
+  final bool modelSupported, allowsCustomModel, autoModelSupported;
   final String? defaultModelId, availabilityMessage, catalogRevision;
   final List<String> globalEfforts;
   final List<String>? allowedModelIds;
@@ -125,6 +126,7 @@ class WorkerSelectionCapability {
   }
 
   bool get allowsAutoModel =>
+      autoModelSupported &&
       models.every((value) => value.selectionMode != 'combined');
 
   bool allowsAutoEffort(String? id) {
