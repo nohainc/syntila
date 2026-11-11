@@ -187,6 +187,7 @@ class _WorkComposer extends StatelessWidget {
     this.onSynthesizePartial,
     this.onApprovePlan,
     this.onRevisePlan,
+    this.onPhaseReply,
     required this.onWorkflowChanged,
     required this.onRun,
     this.selectionMissing = false,
@@ -285,6 +286,8 @@ class _WorkComposer extends StatelessWidget {
 
   /// Implement workflow: ask the AI to update the plan with extra guidance.
   final Future<bool> Function(String requestId, String prompt)? onRevisePlan;
+  final Future<bool> Function(AxWorkRequest request, String prompt)?
+      onPhaseReply;
   final ValueChanged<String> onWorkflowChanged;
 
   final Future<void> Function() onRun;
@@ -489,6 +492,8 @@ class _WorkComposer extends StatelessWidget {
               localWorkProgress.containsKey(request.id) ? null : onApprovePlan,
           onRevisePlan:
               localWorkProgress.containsKey(request.id) ? null : onRevisePlan,
+          onPhaseReply:
+              localWorkProgress.containsKey(request.id) ? null : onPhaseReply,
           // Members cancel only their own requests.
           onCancelRun: localWorkProgress.containsKey(request.id) ||
                   (currentUserId != null &&
@@ -1275,7 +1280,8 @@ class AxWorkerUsagePanel extends StatelessWidget {
               : report.isOk
                   ? report.displayText
                   : report.status == 'unavailable'
-                      ? 'This Worker does not provide a usage report.'
+                      ? (report.errorMessage ??
+                          'This Worker does not provide a usage report.')
                       : (report.errorMessage ?? 'Usage could not be read.');
           final parsed = report != null && report.isOk
               ? parseWorkerUsage(report.output, now: report.fetchedAt)
@@ -1701,6 +1707,7 @@ class _WorkTimelineCard extends StatelessWidget {
     this.onSynthesizePartial,
     this.onApprovePlan,
     this.onRevisePlan,
+    this.onPhaseReply,
     this.onReply,
     this.onSelectExecutionParameters,
   });
@@ -1750,6 +1757,8 @@ class _WorkTimelineCard extends StatelessWidget {
 
   /// Implement workflow: ask the AI to update the plan with extra guidance.
   final Future<bool> Function(String requestId, String prompt)? onRevisePlan;
+  final Future<bool> Function(AxWorkRequest request, String prompt)?
+      onPhaseReply;
 
   String get _workflowName =>
       request.workflowName ??
@@ -2494,6 +2503,18 @@ class _WorkTimelineCard extends StatelessWidget {
                                     onSynthesizePartial: onSynthesizePartial,
                                     color: metaColor,
                                   ),
+                                if (request.isPhased &&
+                                    request.status == 'completed' &&
+                                    message != null &&
+                                    RegExp(r'STATUS:\s*(NEEDS_INPUT|BLOCKED)',
+                                            caseSensitive: false)
+                                        .hasMatch(message) &&
+                                    onPhaseReply != null)
+                                  _PhaseReplyCard(
+                                    key: ValueKey('phase-reply-${request.id}'),
+                                    request: request,
+                                    onSend: onPhaseReply!,
+                                  ),
                                 if (request.workflowId == 'plan_implement' &&
                                     request.status == 'completed')
                                   Padding(
@@ -2851,6 +2872,75 @@ class AxToolCallStepCards extends StatelessWidget {
 
 /// Displays verification mode options and an approve action that enqueues
 /// phases into the Thread Request Queue.
+class _PhaseReplyCard extends StatefulWidget {
+  const _PhaseReplyCard(
+      {super.key, required this.request, required this.onSend});
+  final AxWorkRequest request;
+  final Future<bool> Function(AxWorkRequest, String) onSend;
+
+  @override
+  State<_PhaseReplyCard> createState() => _PhaseReplyCardState();
+}
+
+class _PhaseReplyCardState extends State<_PhaseReplyCard> {
+  final _controller = TextEditingController();
+  bool _sending = false;
+  bool _sent = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _sending || _sent) return;
+    setState(() => _sending = true);
+    final sent = await widget.onSend(widget.request, text);
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      _sent = sent;
+    });
+    if (sent) _controller.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_sent) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 12),
+        child:
+            Text('Reply sent. Review the response before resuming the queue.'),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Reply to worker'),
+        const SizedBox(height: 4),
+        const Text('Sent now. Paused requests stay paused.'),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _controller,
+          enabled: !_sending,
+          minLines: 1,
+          maxLines: 4,
+          decoration: InputDecoration(
+            hintText: 'Enter the requested information',
+            suffixIcon: IconButton(
+              tooltip: 'Send reply now',
+              onPressed: _sending ? null : _send,
+              icon: const Icon(Icons.send_outlined),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
 class AxPlanApprovalCard extends StatefulWidget {
   const AxPlanApprovalCard({
     super.key,

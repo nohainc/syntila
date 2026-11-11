@@ -35,7 +35,7 @@ Of these, `chat`, `direct`, and `research` were implemented and active. The rema
      - Approve / Reject the plan.
      - Select verification policy: `none` (no verification), `per_phase` (verify after each phase), or `final` (verify once after all phases).
    - **Step 3 (Phased Queue Execution)**: Upon approval, the phases are enqueued into the `thread_request_queue` as special locked batch items. They cannot be edited or forced out of order, but remaining phases can be removed/cancelled.
-   - **Step 4 (Completion Evaluation & Auto-Pause)**: Each phase reports a standardized completion status (`STATUS: COMPLETED` vs `STATUS: BLOCKED / NEEDS_INPUT`). If incomplete or if user input is needed, the queue pauses automatically and waits for user guidance in the Thread.
+   - **Step 4 (Completion Evaluation & Auto-Pause)**: Each phase reports a standardized completion status (`STATUS: COMPLETED` vs `STATUS: BLOCKED / NEEDS_INPUT`). If incomplete or if user input is needed, the queue pauses automatically and waits for user guidance in the Thread. When a completed phase requests input, the response offers an inline reply. It submits a normal Work request directly using the responding Worker selection, while the remaining queue stays paused. The user reviews the reply and resumes the queue explicitly. This does not formally reopen the original phase; session continuity follows the normal Thread Work session rules and depends on the Worker and Profile remaining available. The main composer retains its existing queue behavior.
 
 3. **Phase-by-Phase Rollout Plan**:
    - **Phase 1**: Core domain types, catalog consolidation, prompt profiles (`plan:v2`, `implement:v2`, `verify:v2`), and test updates.

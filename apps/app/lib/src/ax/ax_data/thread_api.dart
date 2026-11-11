@@ -907,6 +907,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
           : null,
       threadId: (requestMap['threadId']) as String?,
       status: requestMap['status']?.toString() ?? 'unknown',
+      isPhased: requestMap['isPhased'] == true,
       text: resultMap['text']?.toString(),
       errorCode: body['errorCode']?.toString(),
       errorMessage: body['errorMessage']?.toString(),

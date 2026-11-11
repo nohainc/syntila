@@ -389,8 +389,10 @@ class AxWorkRequestStatus {
     this.steps = const [],
     this.activityHistory = const [],
     this.executionPhase,
+    this.isPhased = false,
   });
 
+  final bool isPhased;
   final String? id;
   final String? conversationId;
   final List<AxWorkAttachment> attachments;
@@ -654,6 +656,7 @@ class AxWorkRequest {
     this.replyTo,
     this.completedWithGaps = false,
     this.partialSynthesisAvailable = false,
+    this.isPhased = false,
   });
 
   /// Research v2 only: the synthesis completed although a researcher failed.
@@ -662,6 +665,7 @@ class AxWorkRequest {
   /// Research v2 only: the request failed after enough researchers succeeded
   /// that the user may ask for a synthesis of the available reports.
   final bool partialSynthesisAvailable;
+  final bool isPhased;
 
   final String id;
   final String? conversationId;
@@ -717,6 +721,7 @@ class AxWorkRequest {
           replyTo: replyTo ?? this.replyTo,
           completedWithGaps: completedWithGaps,
           partialSynthesisAvailable: partialSynthesisAvailable,
+          isPhased: isPhased,
           // A terminal status forces the terminal phase so a request that
           // finished can never render as still executing.
           executionPhase: status != null && AxExecutionPhase.isTerminal(status)
@@ -836,6 +841,7 @@ class AxWorkRequest {
       replyTo: AxReplyReference.fromJson(json['replyTo']),
       completedWithGaps: json['completedWithGaps'] == true,
       partialSynthesisAvailable: json['partialSynthesisAvailable'] == true,
+      isPhased: json['isPhased'] == true,
     );
   }
 }

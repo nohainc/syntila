@@ -123,6 +123,7 @@ class AxReadCacheCodec {
         'workflowId': value.workflowId,
         'workflowVersion': value.workflowVersion,
         'workflowName': value.workflowName,
+        'isPhased': value.isPhased,
         'status': value.status,
         'createdAt': value.createdAt,
         'finalText': value.finalText,

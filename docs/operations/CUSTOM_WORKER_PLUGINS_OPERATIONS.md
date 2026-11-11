@@ -84,3 +84,10 @@ operations even when an oversized data directory prevents execution. Do not
 raise limits or delete user work automatically. Manifest memory requests do not
 raise the fixed host ceiling. These limits do not enforce filesystem/network
 isolation or make a plugin safe.
+
+### Usage reports
+
+External Workers currently do not expose account usage reports through the
+MCP Worker profile. The Usage action reports this as unavailable; it does not
+mean the Worker is offline. Disabled or missing Workers report an error.
+Per-request model metrics and account quota are separate features.

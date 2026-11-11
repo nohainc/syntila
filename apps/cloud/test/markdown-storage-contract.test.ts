@@ -110,7 +110,10 @@ it.each(
         definition.version,
         JSON.stringify({ ...definition, name: snapshotName }),
         "{}",
-        JSON.stringify({ originalRequest: source }),
+        JSON.stringify({
+          originalRequest: source,
+          isPhased: definition.id === "direct" && definition.version === 2,
+        }),
         "completed",
         "2026-10-06T00:00:00Z",
         "2026-10-06T00:00:01Z",
@@ -161,6 +164,7 @@ it.each(
       const body = (await response.json()) as {
         workRequests: {
           prompt: string;
+          isPhased: boolean;
           finalText: string;
           workflowName: string;
           workflowVersion: number;
@@ -168,6 +172,9 @@ it.each(
         }[];
       };
       expect(body.workRequests[0]?.prompt).toBe(source);
+      expect(body.workRequests[0]?.isPhased).toBe(
+        definition.id === "direct" && definition.version === 2,
+      );
       expect(body.workRequests[0]?.finalText).toBe(result);
       expect(body.workRequests[0]?.workflowName).toBe(definition.name);
       expect(body.workRequests[0]?.workflowVersion).toBe(definition.version);
@@ -181,12 +188,16 @@ it.each(
       const detailBody = (await detail.json()) as {
         workRequest: {
           originalRequest: string;
+          isPhased: boolean;
           workflowName: string;
           workflowVersion: number;
         };
         steps: { resultText: string }[];
       };
       expect(detailBody.workRequest.originalRequest).toBe(source);
+      expect(detailBody.workRequest.isPhased).toBe(
+        definition.id === "direct" && definition.version === 2,
+      );
       expect(detailBody.workRequest.workflowName).toBe(definition.name);
       expect(detailBody.workRequest.workflowVersion).toBe(definition.version);
       expect(detailBody.steps[0]?.resultText).toBe(result);

@@ -996,6 +996,7 @@ export async function handleGetWorkRequest(
         row.workflowVersion,
       ),
       replyTo: storedReplyReference(input.replyTo),
+      isPhased: input.isPhased === true,
       attachments: workRequestFileMetadata(withInputFacts(input, inputRows)),
       originalRequest: String(
         row.canonicalUserText ?? input.originalRequest ?? input.request ?? "",
@@ -1464,6 +1465,7 @@ export async function handleListWorkRequests(
       workflowRun: workflowRunsByRequest.get(id) ?? null,
       executionConfig: snapshot.turnExecutionConfig ?? null,
       replyTo: storedReplyReference(input.replyTo),
+      isPhased: input.isPhased === true,
       attachments: workRequestFileMetadata(
         withInputFacts(input, inputsByRequest.get(id)),
       ),

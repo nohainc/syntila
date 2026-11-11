@@ -56,8 +56,14 @@ AxParsedUsage? parseWorkerUsage(String output, {DateTime? now}) {
       final json = jsonDecode(text);
       if (json is Map &&
           json['config'] is Map &&
-          (json['config'] as Map).containsKey('creditUsagePercent')) {
-        return _parseGrok(json['config'] as Map);
+          ((json['config'] as Map).containsKey('creditUsagePercent') ||
+              (json['config'] as Map).containsKey('currentPeriod') ||
+              (json['config'] as Map).containsKey('billingPeriodEnd') ||
+              (json['config'] as Map).containsKey('billingPeriodStart') ||
+              (json['config'] as Map).containsKey('prepaidBalance') ||
+              (json['config'] as Map).containsKey('isUnifiedBillingUser') ||
+              json.containsKey('subscription_tier'))) {
+        return _parseGrok(json);
       }
       return text.contains('"quotaSnapshots"')
           ? _parseCopilot(text, now ?? DateTime.now())
@@ -148,10 +154,16 @@ AxParsedUsage? _parseCodex(String text) {
 }
 
 /// Grok ACP billing reports the percentage already consumed, not remaining.
+/// When creditUsagePercent is omitted (e.g. Free subscription tier), it defaults
+/// to 0% used if period metadata is present.
 /// Keep monetary balances in the original output: their units are unspecified.
-AxParsedUsage? _parseGrok(Map config) {
-  final used = config['creditUsagePercent'];
-  if (used is! num || !_validPercent(used)) return null;
+AxParsedUsage? _parseGrok(Map json) {
+  final config = json['config'] is Map ? json['config'] as Map : json;
+  final hasCreditUsage = config.containsKey('creditUsagePercent');
+  final rawUsed = config['creditUsagePercent'];
+  if (hasCreditUsage) {
+    if (rawUsed is! num || !_validPercent(rawUsed)) return null;
+  }
   final period = config['currentPeriod'];
   if (period != null && period is! Map) return null;
   final type = period is Map ? period['type'] : null;
@@ -165,13 +177,25 @@ AxParsedUsage? _parseGrok(Map config) {
       (period is Map ? period['end'] : null) ?? config['billingPeriodEnd'];
   final reset = end is String ? DateTime.tryParse(end) : null;
   if (end != null && reset == null) return null;
-  return AxParsedUsage(windows: [
-    AxUsageWindow(
-      label: label,
-      usedPercent: used.toDouble(),
-      resetsAt: reset?.toUtc(),
-    ),
-  ]);
+  if (!hasCreditUsage && period == null && config['billingPeriodEnd'] == null) {
+    return null;
+  }
+  final used = (rawUsed as num?)?.toDouble() ?? 0.0;
+  final notes = <String>[];
+  final tier = json['subscription_tier'];
+  if (tier is String && tier.trim().isNotEmpty) {
+    notes.add('Plan: $tier');
+  }
+  return AxParsedUsage(
+    windows: [
+      AxUsageWindow(
+        label: label,
+        usedPercent: used,
+        resetsAt: reset?.toUtc(),
+      ),
+    ],
+    notes: notes,
+  );
 }
 
 const _copilotQuotas = {

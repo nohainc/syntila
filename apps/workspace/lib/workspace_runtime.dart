@@ -954,6 +954,40 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           workerUsageProvider: (workerId) async {
             final supervisor = cliWorkerEngineSupervisor;
             final worker = await localWorkerRegistry.find(workerId);
+            // External Workers are registered separately from official Tool
+            // Profiles. Recognize their unsupported usage capability before
+            // looking up a Profile descriptor.
+            final external = worker == null
+                ? null
+                : await externalWorkers.registry.findByRef(worker.workerTypeId);
+            if (external != null) {
+              if (worker!.activationState ==
+                      LocalWorkerActivationState.disabled ||
+                  !await externalWorkers.runtime
+                      .isEffectivelyEnabled(worker.workerTypeId)) {
+                return const {
+                  'status': 'error',
+                  'errorCode': 'worker_not_ready',
+                  'errorMessage':
+                      'The External Worker is disabled on this Workspace.',
+                };
+              }
+              if (supervisor == null ||
+                  worker.readinessState != WorkerReadinessState.ready) {
+                return const {
+                  'status': 'error',
+                  'errorCode': 'worker_not_ready',
+                  'errorMessage':
+                      'The External Worker is not ready on this Workspace.',
+                };
+              }
+              return const {
+                'status': 'unavailable',
+                'errorCode': 'usage_not_configured',
+                'errorMessage':
+                    'This External Worker does not provide a usage report.',
+              };
+            }
             final descriptor = worker == null
                 ? null
                 : workerCatalogCoordinator?.entryForWorker(worker.workerTypeId);

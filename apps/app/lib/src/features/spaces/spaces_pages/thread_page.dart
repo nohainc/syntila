@@ -2994,6 +2994,8 @@ class _ThreadPageState extends State<ThreadPage>
             widget.dataSource == null ? null : _synthesizePartialResearch,
         onApprovePlan: widget.dataSource == null ? null : _approvePlan,
         onRevisePlan: widget.dataSource == null ? null : _revisePlan,
+        onPhaseReply:
+            widget.dataSource == null || !_canExecute ? null : _replyToPhase,
         onHistoryNavigate: _openRequestHistory,
         historyPrompts: _requestHistoryOpen ? _requestHistoryPrompts : null,
         historyOpenDirection: _requestHistoryDirection,

@@ -86,13 +86,44 @@ const _grok = {
   'subscription_tier': 'Free',
 };
 
+const _grokFreeTierNoCreditUsage = {
+  'config': {
+    'currentPeriod': {
+      'type': 'USAGE_PERIOD_TYPE_WEEKLY',
+      'start': '2026-11-06T21:07:15.175+00:00',
+      'end': '2026-11-13T21:07:15.175+00:00',
+    },
+    'prepaidBalance': {
+      'val': 0,
+    },
+    'isUnifiedBillingUser': true,
+    'billingPeriodStart': '2026-11-06T21:07:15.175+00:00',
+    'billingPeriodEnd': '2026-11-13T21:07:15.175+00:00',
+  },
+  'subscription_tier': 'Free',
+};
+
 void main() {
   test('Grok billing uses the common weekly usage window', () {
-    final window = parseWorkerUsage(jsonEncode(_grok))!.windows.single;
+    final parsed = parseWorkerUsage(jsonEncode(_grok))!;
+    final window = parsed.windows.single;
     expect(window.label, 'Week');
     expect(window.usedPercent, 69);
     expect(window.remainingPercent, 31);
     expect(window.resetsAt, DateTime.parse('2026-10-30T21:07:15.175Z'));
+    expect(parsed.notes, ['Plan: Free']);
+  });
+
+  test('Grok parses report without creditUsagePercent (defaults to 0% used)',
+      () {
+    final parsed =
+        parseWorkerUsage(jsonEncode(_grokFreeTierNoCreditUsage))!;
+    final window = parsed.windows.single;
+    expect(window.label, 'Week');
+    expect(window.usedPercent, 0.0);
+    expect(window.remainingPercent, 100.0);
+    expect(window.resetsAt, DateTime.parse('2026-11-13T21:07:15.175Z'));
+    expect(parsed.notes, ['Plan: Free']);
   });
 
   test('Grok validates percentages and preserves raw fallback on bad reports',

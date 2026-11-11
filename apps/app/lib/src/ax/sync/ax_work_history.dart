@@ -776,6 +776,7 @@ class AxWorkHistoryCache {
                   detail.workflowVersion ?? previous!.workflowVersion,
               workflowName: detail.workflowName ?? previous?.workflowName,
               status: detail.status,
+              isPhased: detail.isPhased,
               createdAt: detail.createdAt ?? previous!.createdAt,
               steps: List.unmodifiable(detail.steps),
               finalText: detail.text,

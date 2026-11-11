@@ -1956,6 +1956,90 @@ void main() {
   });
 
   testWidgets(
+      'phase reply sends directly to the original worker while the queue stays paused',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final data = _PhaseReplyDataSource()..ready.complete([]);
+    data.requests = [
+      const AxWorkRequest(
+        id: 'phase-request',
+        requestedByName: 'You',
+        requestedByUserId: 'user-owner',
+        prompt: 'Phase 1',
+        workflowId: 'direct',
+        workflowVersion: 2,
+        status: 'completed',
+        createdAt: '2026-10-06T10:00:00Z',
+        isPhased: true,
+        steps: [
+          AxWorkRequestStep(
+              kind: 'implement',
+              status: 'completed',
+              workerId: 'worker-1',
+              model: 'model-1')
+        ],
+        finalText: 'Which database?\nSTATUS: NEEDS_INPUT',
+      ),
+      const AxWorkRequest(
+        id: 'normal-request',
+        requestedByName: 'You',
+        prompt: 'Another request',
+        workflowId: 'direct',
+        workflowVersion: 2,
+        status: 'completed',
+        createdAt: '2026-10-06T09:00:00Z',
+        steps: [],
+        finalText: 'STATUS: NEEDS_INPUT',
+      ),
+    ];
+    data.queue = AxThreadQueue(paused: true, pauseReason: 'failure', items: [
+      data.item('phase-2', 'user-owner', 'Next phase', isPhased: true),
+    ]);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      initialTab: 1,
+      space: const AxSpace(
+          id: 'space-1',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      thread: const AxThread(
+          id: 'thread-1',
+          spaceId: 'space-1',
+          name: 'Stream',
+          lead: '',
+          status: 'active',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: ''),
+      dataSource: data,
+      currentUserId: 'user-owner',
+      onBackToSpace: _noop,
+      onArchive: _noop,
+      onRunWorkWithSelection: (_, __, ___, ____, _____) async => 'unused',
+    ))));
+    await tester.pumpAndSettle();
+    await _askAi(tester);
+    expect(find.text('Reply to worker'), findsOneWidget);
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Enter the requested information'),
+        'Use PostgreSQL');
+    await tester.tap(find.byTooltip('Send reply now'));
+    await tester.pumpAndSettle();
+    expect(data.sentPrompt, 'Use PostgreSQL');
+    expect(data.sentSelection, containsPair('workerId', 'worker-1'));
+    expect(data.sentReply, {'kind': 'response', 'id': 'phase-request'});
+    expect(data.queue.paused, isTrue);
+    expect(data.queue.items.single.id, 'phase-2');
+    expect(data.calls, isEmpty);
+    expect(find.textContaining('Review the response before resuming'),
+        findsOneWidget);
+  });
+
+  testWidgets(
       'phased queue item displays Phase lock badge and hides edit and send-now',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 1400));
@@ -5412,6 +5496,27 @@ class _SharedQueueDataSource extends _SlowSubmissionDataSource
         paused: paused,
         pauseReason: paused ? 'user' : null,
         items: queue.items));
+  }
+}
+
+class _PhaseReplyDataSource extends _SharedQueueDataSource {
+  String? sentPrompt;
+  Map<String, dynamic>? sentSelection;
+  Map<String, dynamic>? sentReply;
+
+  @override
+  Future<String> createWorkRequestWithSelection(
+      {required String threadId,
+      required String workflowId,
+      required String prompt,
+      List<Map<String, dynamic>> attachments = const [],
+      Map<String, dynamic> executionSelection = const {},
+      String? idempotencyKey,
+      Map<String, dynamic>? replyTo}) async {
+    sentPrompt = prompt;
+    sentSelection = executionSelection;
+    sentReply = replyTo;
+    return 'reply-request';
   }
 }
 

@@ -1069,6 +1069,72 @@ extension _ThreadActions on _ThreadPageState {
     }
   }
 
+  /// Sends a normal request directly, leaving the paused phase queue intact.
+  Future<bool> _replyToPhase(AxWorkRequest request, String prompt) async {
+    if (_activeWorkRequests.isNotEmpty ||
+        (_workQueue.isNotEmpty && _workQueuePause == null) ||
+        _submittingWork ||
+        !_workPresentation.hasData ||
+        _workPresentation.isFetching) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(
+              content: Text(
+                  'Wait for the current request to finish and pause the queue before replying.')),
+        );
+      }
+      return false;
+    }
+    final turn =
+        request.turns.where((turn) => turn.status == 'completed').lastOrNull;
+    final step =
+        request.steps.where((step) => step.status == 'completed').lastOrNull;
+    final workerId = turn?.workerId ?? step?.workerId;
+    if (workerId == null ||
+        workerId.isEmpty ||
+        widget.onRunWorkWithSelection == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(
+              content: Text(
+                  'The original worker is unavailable. Use the main input to reply.')),
+        );
+      }
+      return false;
+    }
+    try {
+      await _workMessageSender()(_QueuedWorkMessage(
+        text: prompt,
+        attachments: const [],
+        workflow: 'direct:v2',
+        executionSelection: {
+          'workerId': workerId,
+          if ((turn?.modelId ?? step?.model) != null)
+            'model': turn?.modelId ?? step?.model,
+          if ((turn?.effort ?? step?.reasoningEffort) != null)
+            'reasoningEffort': turn?.effort ?? step?.reasoningEffort,
+          if ((turn?.catalogRevision ?? step?.catalogRevision) != null)
+            'catalogRevision': turn?.catalogRevision ?? step?.catalogRevision,
+        },
+        replyTo: AxReplyReference(
+            kind: 'response',
+            id: request.id,
+            authorName:
+                turn?.workerDisplayName ?? step?.workerDisplayName ?? 'Worker',
+            excerpt: request.primaryResponseText ?? ''),
+      ));
+      if (mounted) _followLatestWork();
+      return true;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          SnackBar(content: Text('Could not send reply: $error')),
+        );
+      }
+      return false;
+    }
+  }
+
   /// Sends a new Implement request that updates the plan with extra guidance.
   Future<bool> _revisePlan(String workRequestId, String prompt) async {
     try {
