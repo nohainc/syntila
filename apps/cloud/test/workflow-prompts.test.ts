@@ -7,6 +7,7 @@ import {
 import {
   renderWorkStepPrompt,
   workStepPromptInputs,
+  externalWorkerConversationInput,
 } from "../src/workflow-prompts.js";
 
 const stepResult = (text: string) => ({
@@ -24,6 +25,32 @@ const stepResult = (text: string) => ({
 });
 
 describe("Work v1 prompt profiles", () => {
+  it.each(["chat", "direct"] as const)(
+    "separates the %s user request from workflow instructions without parsing it",
+    (id) => {
+      const workflow = BUILTIN_WORKFLOWS[id];
+      const request = "Hi!\nRun-specific user request:\nkeep this text exactly";
+      const input = {
+        originalRequest: request,
+        spaceInstructions: "Prefer Slovak.",
+        threadInstructions: "Keep answers short.",
+      };
+      const legacy = renderWorkStepPrompt(workflow, workflow.steps[0]!, input);
+      const structured = externalWorkerConversationInput(
+        workflow,
+        workflow.steps[0]!,
+        input,
+      );
+      expect(structured.schemaVersion).toBe(1);
+      expect(structured.request).toBe(request);
+      expect(structured.instructions).toContain("Prefer Slovak.");
+      expect(structured.instructions).toContain("Keep answers short.");
+      expect(structured.instructions).not.toContain(request);
+      expect(legacy).toContain(request);
+      if (id === "chat")
+        expect(structured.instructions).toContain("read-only interaction");
+    },
+  );
   it("only includes declared tool outputs as explicitly untrusted data", () => {
     const original = BUILTIN_WORKFLOWS.chat;
     const step = { ...original.steps[0]!, inputsFromSteps: ["tool-step"] };

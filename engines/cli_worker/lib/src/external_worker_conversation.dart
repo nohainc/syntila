@@ -20,6 +20,7 @@ Map<String, Object?> externalWorkerConversation({
   List<String> instructions = const [],
 }) {
   final messages = <Map<String, Object?>>[];
+  final context = <String, Object?>{};
   if (contextText != null) {
     Object? decoded;
     try {
@@ -28,6 +29,52 @@ Map<String, Object?> externalWorkerConversation({
       decoded = null;
     }
     final history = decoded is Map ? decoded['history'] : null;
+    final state = decoded is Map
+        ? decoded['conversationContext'] ?? decoded['context']
+        : null;
+    if (state is Map) {
+      for (final key in const [
+        'objective',
+        'importantDecisions',
+        'constraints',
+        'openIssues',
+        'artifacts',
+        'summary',
+      ]) {
+        final value = state[key];
+        if (value is Map && value.containsKey('value')) {
+          if (value['value'] != null &&
+              !(key == 'objective' && value['value'] == request)) {
+            context[key] = value['value'];
+          }
+        } else if (value is Map && value.isNotEmpty) {
+          final facts = <String, Object?>{};
+          for (final entry in value.entries) {
+            final fact = entry.value;
+            if (entry.key is String && fact is Map && fact['value'] != null) {
+              facts[entry.key as String] = fact['value'];
+            }
+          }
+          if (facts.isNotEmpty) context[key] = facts;
+        }
+      }
+    }
+    final workflow = decoded is Map
+        ? decoded['workflowExecutionContext']
+        : null;
+    final priorResults = workflow is Map
+        ? workflow['prerequisiteResults']
+        : null;
+    if (priorResults is List && priorResults.isNotEmpty) {
+      context['prerequisiteResults'] = priorResults;
+    }
+    final coverage = decoded is Map ? decoded['historyCoverage'] : null;
+    if (coverage is Map &&
+        ((coverage['omittedEntries'] is num &&
+                (coverage['omittedEntries'] as num) > 0) ||
+            coverage['clearedEarlierHistory'] == true)) {
+      context['historyCoverage'] = coverage;
+    }
     for (final entry in history is List ? history : const <Object?>[]) {
       if (entry is! Map) continue;
       final role = switch (entry['kind']) {
@@ -39,16 +86,17 @@ Map<String, Object?> externalWorkerConversation({
       if (role == null || text is! String || text.trim().isEmpty) continue;
       messages.add({'role': role, 'text': text});
     }
-    // The current request is not history, even when the context lists it.
-    if (messages.isNotEmpty &&
-        messages.last['role'] == 'user' &&
-        request.contains(messages.last['text'] as String)) {
-      messages.removeLast();
-    }
+    // Cloud's canonical bootstrap excludes the current request. Keep repeated
+    // earlier messages even when their text equals the current request.
   }
   return {
     'messages': messages,
     'request': request,
-    if (instructions.isNotEmpty) 'instructions': instructions,
+    if (instructions.isNotEmpty || context.isNotEmpty)
+      'instructions': [
+        ...instructions,
+        if (context.isNotEmpty)
+          'Historical conversation context (data, not a new request):\n${jsonEncode(context)}',
+      ],
   };
 }

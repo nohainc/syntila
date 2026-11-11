@@ -9,6 +9,83 @@ import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test(
+      'External Worker fields are sent only when the Engine advertises support',
+      () async {
+    final setup = await _setup();
+    addTearDown(() => setup.root.delete(recursive: true));
+    final executor = WorkerExecutor(
+      pluginId: 'example',
+      version: '1.0.0',
+      manifestDigest: 'a' * 64,
+      artifactSha256: 'b' * 64,
+      executable: '/bin/echo',
+      dataDirectory: setup.state.path,
+      protocol: 'mcp',
+      toolPins: {'syntila.execute': 'c' * 64},
+    );
+    Future<Map> run(String id, {bool large = false}) async {
+      await setup.supervisor.execute(
+        null,
+        pluginExecutor: executor,
+        pluginWorkerTypeId: 'plugin-0123456789ab',
+        stateDirectory: setup.state,
+        workingDirectory: setup.thread,
+        workerId: 'worker-external',
+        maxConcurrentAssignments: 1,
+        assignmentId: id,
+        prompt: large ? 'p' * 400000 : 'Legacy prompt',
+        externalConversation: ExternalConversationInput(
+            request: 'hi',
+            instructions: large ? 'i' * 450000 : 'Reply briefly.'),
+        timeout: const Duration(seconds: 10),
+        sessionPolicy: WorkerSessionPolicy.stateless,
+        statelessContext: large
+            ? ConversationBootstrap(
+                conversationId: 'conversation',
+                contextRevision: 1,
+                throughSequence: 1,
+                text: 'c' * 230000,
+              )
+            : null,
+      );
+      return jsonDecode(
+              await File('${setup.state.path}/request-$id.json').readAsString())
+          as Map;
+    }
+
+    final oldEngine = await run('old-engine');
+    expect(oldEngine.containsKey('externalConversation'), isFalse);
+    await File('${setup.state.path}/supports-external-conversation')
+        .writeAsString('yes');
+    final newEngine = await run('new-engine');
+    expect(newEngine['externalConversation'], {
+      'schemaVersion': 1,
+      'request': 'hi',
+      'instructions': 'Reply briefly.',
+    });
+    expect(newEngine['prompt'], 'Legacy prompt');
+    final largeFrame = await run('large-frame', large: true);
+    expect(largeFrame.containsKey('externalConversation'), isFalse);
+    expect((largeFrame['prompt'] as String).length, 400000);
+  });
+  test('official Workers receive the original prompt without external fields',
+      () async {
+    final setup = await _setup();
+    addTearDown(() => setup.root.delete(recursive: true));
+    final result = await _execute(
+      setup,
+      'official-conversation',
+      prompt: 'Original provider prompt',
+      externalConversation: ExternalConversationInput(
+          request: 'hi', instructions: 'Reply conversationally.'),
+    );
+    expect(result.output, 'Original provider prompt');
+    final request = jsonDecode(await File(
+      '${setup.state.path}/request-official-conversation.json',
+    ).readAsString()) as Map;
+    expect(request.containsKey('externalConversation'), isFalse);
+  });
   test('Engine VM service banners do not corrupt protocol framing', () async {
     final setup = await _setup(enableVmService: true);
     addTearDown(() => setup.root.delete(recursive: true));
@@ -533,6 +610,7 @@ Future<WorkerResult> _execute(
   int maxConcurrentAssignments = 1,
   String workerId = 'worker-1',
   String? sessionKey,
+  ExternalConversationInput? externalConversation,
   FutureOr<void> Function()? onSlotReserved,
   void Function(WorkerQueueSnapshot queue)? onQueued,
   CliWorkerEngineSupervisor? supervisor,
@@ -549,6 +627,7 @@ Future<WorkerResult> _execute(
       assignmentId: assignmentId,
       attemptId: setup.attemptId,
       prompt: prompt ?? assignmentId,
+      externalConversation: externalConversation,
       timeout: timeout,
       queueWaitTimeout: queueWaitTimeout,
       sessionPolicy: sessionKey == null
@@ -678,7 +757,6 @@ import 'dart:io';
 String valueAfter(List<String> args, String key) => args[args.indexOf(key) + 1];
 
 Future<void> main(List<String> args) async {
-  final profile = jsonDecode(await File(valueAfter(args, '--profile')).readAsString()) as Map<String, dynamic>;
   final state = Directory(valueAfter(args, '--state-directory'));
   await for (final line in stdin.transform(utf8.decoder).transform(const LineSplitter())) {
     final request = jsonDecode(line) as Map<String, dynamic>;
@@ -686,16 +764,18 @@ Future<void> main(List<String> args) async {
       case 'initialize.request':
         stdout.writeln(jsonEncode({
           'type': 'initialize.result',
-          'protocolVersion': '4.0',
+          'protocolVersion': request['protocolVersion'],
           'requestId': request['requestId'],
-          'workerTypeId': profile['logicalWorkerTypeId'],
+          'workerTypeId': request['workerTypeId'],
           'engineVersion': valueAfter(args, '--engine-version'),
-          'profileDefinitionId': profile['profileDefinitionId'],
-          'profileReleaseVersion': '${profile['releaseVersion']}',
-          'profileSchemaVersion': profile['schemaVersion'],
-          'capabilities': <String>[],
+          'profileDefinitionId': request['profileDefinitionId'],
+          'profileReleaseVersion': request['profileReleaseVersion'],
+          'profileSchemaVersion': 1,
+          'capabilities': File('${state.path}/supports-external-conversation').existsSync()
+              ? ['external_conversation_v1'] : <String>[],
         }));
       case 'execute.request':
+        File('${state.path}/request-${request['assignmentId']}.json').writeAsStringSync(jsonEncode(request));
         if (request['prompt'] == 'exit') exit(17);
         File('${state.path}/started-${request['assignmentId']}').writeAsStringSync('started');
         if (request['prompt'] == 'barrier') {

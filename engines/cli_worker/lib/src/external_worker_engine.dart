@@ -224,7 +224,10 @@ class ExternalWorkerEngine {
         profileDefinitionId: request.profileDefinitionId,
         profileReleaseVersion: request.profileReleaseVersion,
         profileSchemaVersion: 1,
-        capabilities: const [],
+        capabilities: const [
+          'external_conversation_v1',
+          'external_execution_v1',
+        ],
       ),
     );
   }
@@ -535,10 +538,34 @@ class ExternalWorkerEngine {
               ? '$externalWorkerReadOnlyInstruction\n\n${plan.prompt}'
               : plan.prompt,
           conversation: externalWorkerConversation(
-            request: request.prompt,
+            request: request.externalConversation?.request ?? request.prompt,
             contextText: plan.contextText,
-            instructions: [if (readOnly) externalWorkerReadOnlyInstruction],
+            instructions: [
+              if (request.externalConversation != null)
+                request.externalConversation!.instructions,
+              if (readOnly) externalWorkerReadOnlyInstruction,
+            ],
           ),
+          execution: {
+            'schemaVersion': 1,
+            if (request.externalConversation?.workflowId != null)
+              'workflow': {
+                'id': request.externalConversation!.workflowId,
+                'version': request.externalConversation!.workflowVersion,
+                'step': request.externalConversation!.stepKind,
+              },
+            'access': readOnly ? 'restricted' : 'work',
+            'sessionPolicy': durable ? 'durable_session' : 'stateless',
+            'context': switch (plan.action) {
+              ConversationExecutionAction.bootstrapSession =>
+                plan.contextText == null ? 'none' : 'bootstrap',
+              ConversationExecutionAction.reconstructSession => 'rebuild',
+              ConversationExecutionAction.syncAndContinue => 'delta',
+              ConversationExecutionAction.continueSession => 'none',
+              ConversationExecutionAction.statelessExecution =>
+                plan.contextText == null ? 'none' : 'bootstrap',
+            },
+          },
           access: readOnly ? 'read_only' : 'read_write',
           deadline: Duration(
             milliseconds: (request.timeoutMs - clock.elapsedMilliseconds).clamp(

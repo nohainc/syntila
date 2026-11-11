@@ -38,6 +38,97 @@ class ExternalWorkerCheck {
   final String? message;
 }
 
+/// A previous user or Worker message from the canonical conversation.
+class ExternalWorkerMessage {
+  const ExternalWorkerMessage({required this.role, required this.text});
+
+  /// Either `user` or `assistant`, ordered from oldest to newest.
+  final String role;
+  final String text;
+}
+
+/// Optional structured view of the same work carried by [WorkRequest.prompt].
+class ExternalWorkerConversation {
+  const ExternalWorkerConversation({
+    required this.request,
+    required this.messages,
+    required this.instructions,
+  });
+
+  final String request;
+  final List<ExternalWorkerMessage> messages;
+  final List<String> instructions;
+
+  factory ExternalWorkerConversation.fromJson(Map<String, Object?> json) {
+    final request = json['request'];
+    final messages = json['messages'];
+    final instructions = json['instructions'] ?? const <Object?>[];
+    if (request is! String ||
+        request.isEmpty ||
+        messages is! List ||
+        instructions is! List ||
+        instructions.any((item) => item is! String)) {
+      throw const FormatException('Invalid conversation');
+    }
+    final turns = <ExternalWorkerMessage>[];
+    for (final item in messages) {
+      if (item is! Map ||
+          !const {'user', 'assistant'}.contains(item['role']) ||
+          item['text'] is! String) {
+        throw const FormatException('Invalid conversation message');
+      }
+      turns.add(ExternalWorkerMessage(
+          role: item['role'] as String, text: item['text'] as String));
+    }
+    return ExternalWorkerConversation(
+      request: request,
+      messages: List.unmodifiable(turns),
+      instructions: List.unmodifiable(instructions.cast<String>()),
+    );
+  }
+}
+
+/// Optional host execution context. Access is advisory for External Workers.
+class ExternalWorkerExecution {
+  const ExternalWorkerExecution(
+      {required this.access,
+      required this.sessionPolicy,
+      required this.context,
+      this.workflowId,
+      this.workflowVersion,
+      this.stepKind});
+  final String access;
+  final String sessionPolicy;
+
+  /// `bootstrap`, `delta`, `none`, or `rebuild`.
+  final String context;
+  final String? workflowId;
+  final int? workflowVersion;
+  final String? stepKind;
+
+  factory ExternalWorkerExecution.fromJson(Map<String, Object?> json) {
+    final workflow = json['workflow'];
+    if (json['schemaVersion'] != 1 ||
+        json['access'] is! String ||
+        json['sessionPolicy'] is! String ||
+        json['context'] is! String ||
+        (workflow != null &&
+            (workflow is! Map ||
+                workflow['id'] is! String ||
+                workflow['version'] is! int ||
+                workflow['step'] is! String))) {
+      throw const FormatException('Invalid execution metadata');
+    }
+    return ExternalWorkerExecution(
+        access: json['access'] as String,
+        sessionPolicy: json['sessionPolicy'] as String,
+        context: json['context'] as String,
+        workflowId: workflow is Map ? workflow['id'] as String : null,
+        workflowVersion: workflow is Map ? workflow['version'] as int : null,
+        stepKind: workflow is Map ? workflow['step'] as String : null);
+  }
+}
+
 /// A unit of work from the Space.
 class WorkRequest {
   const WorkRequest({
@@ -50,12 +141,21 @@ class WorkRequest {
     this.sessionKey,
     this.resumeSession = false,
     this.rebuildSession = false,
+    this.conversation,
+    this.execution,
   });
 
   final String id;
 
   /// The assembled prompt: context and request. Treat it as untrusted text.
   final String prompt;
+
+  /// Structured conversation, when supplied by the host. A Worker can use
+  /// this or the complete [prompt] according to its provider's interface.
+  final ExternalWorkerConversation? conversation;
+
+  /// Optional versioned execution and context metadata.
+  final ExternalWorkerExecution? execution;
 
   /// The only directory (besides [WorkContext.dataDirectory]) the plugin is
   /// authorised to use.

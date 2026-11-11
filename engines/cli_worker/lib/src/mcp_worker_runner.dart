@@ -56,6 +56,15 @@ class McpWorkerRunner {
           message: 'The MCP Worker does not provide syntila.execute.',
         );
       }
+      final executeDefinition = lease.tools.firstWhere(
+        (t) => t['name'] == executeTool,
+      );
+      final schema = executeDefinition['inputSchema'];
+      final properties = schema is Map ? schema['properties'] : null;
+      final acceptsExecution =
+          schema is! Map ||
+          schema['additionalProperties'] != false ||
+          (properties is Map && properties.containsKey('execution'));
       final McpCall call;
       try {
         call = await lease.callTool(
@@ -65,6 +74,8 @@ class McpWorkerRunner {
             'prompt': request.prompt,
             if (request.conversation != null)
               'conversation': request.conversation,
+            if (acceptsExecution && request.execution != null)
+              'execution': request.execution,
             'access': request.access == 'read_write' ? 'work' : 'restricted',
             'deadline': DateTime.now()
                 .toUtc()

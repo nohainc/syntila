@@ -4,6 +4,7 @@
 //   FAIL  -> throws a retryable ExternalWorkerFailure(rate_limited)
 //   DATA  -> answers with the data directory the Engine gave it
 //   other -> reports progress, then echoes the prompt and confirms the session
+import 'dart:convert';
 import 'package:syntila_external_worker_sdk/syntila_external_worker_sdk.dart';
 
 class SdkEchoWorker extends ExternalWorker {
@@ -32,6 +33,25 @@ class SdkEchoWorker extends ExternalWorker {
 
   @override
   Future<WorkResult> execute(WorkRequest request, WorkContext context) async {
+    if (request.prompt.contains('REPORT_CONVERSATION')) {
+      final conversation = request.conversation;
+      return WorkResult(jsonEncode({
+        if (request.execution != null)
+          'execution': {
+            'workflowId': request.execution!.workflowId,
+            'workflowVersion': request.execution!.workflowVersion,
+            'stepKind': request.execution!.stepKind,
+            'access': request.execution!.access,
+            'sessionPolicy': request.execution!.sessionPolicy,
+            'context': request.execution!.context,
+          },
+        'request': conversation?.request,
+        'instructions': conversation?.instructions,
+        'messages': conversation?.messages
+            .map((m) => {'role': m.role, 'text': m.text})
+            .toList(),
+      }));
+    }
     if (request.prompt.contains('WAIT')) {
       await context.cancelled;
       return const WorkResult('stopped');

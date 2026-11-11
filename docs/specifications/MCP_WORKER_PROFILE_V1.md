@@ -24,6 +24,7 @@ Input:
     "request": "string",
     "instructions": ["string"]
   },
+  "execution": { "schemaVersion": 1, "workflow": { "id": "string", "version": 1, "step": "string" }, "access": "work | restricted", "sessionPolicy": "stateless | durable_session", "context": "bootstrap | delta | none | rebuild" },
   "workingDirectory": "string?",
   "access": "work | restricted",
   "model": "string?",
@@ -45,14 +46,39 @@ Output (`structuredContent`; text content mirrors `text`):
   directory; never to remote servers.
 - A call has one terminal outcome. Conformance checks a sampled exchange; it
   does not establish enforcement of every possible duplicate response.
-- `conversation` is optional and carries the same exchange as `prompt` as
-  separate turns: `messages` are the earlier user and assistant turns from the
-  canonical history (oldest first; empty when the Worker's own session holds
-  them), `request` is the current request without the context envelope, and
-  `instructions` are host instructions. `prompt` always stays complete, so a
-  Worker may ignore `conversation`. A Worker that wraps a plain chat model
-  should use it: such a model answers the envelope in `prompt` as if the user
-  had written it.
+- `conversation` is optional and follows this profile's version 1. `messages` contains
+  earlier user and assistant turns in canonical order, excluding the current
+  request. `request` contains the current user text, bounded by the Work
+  prompt's request limit, when Cloud supplied the separate representation.
+  `instructions` contains the separately rendered
+  Workflow, Space, Thread, and host instructions. When available, historical
+  objective, decisions, constraints, open issues, artifacts, summary, and
+  completed prerequisite results and notices about omitted or cleared history
+  are included as explicitly labelled historical data in `instructions`.
+  `prompt` remains the complete assembled prompt and may be used by an agent
+  Worker. If the separate representation is unavailable, `request` falls back
+  to the assembled request; Workers must continue to support `prompt` alone.
+  On the Workspace-to-Engine connection, the extra input is sent only when the
+  External Worker Engine advertises `external_conversation_v1` at initialize
+  and the combined frame fits the protocol limit. Oversize frames retain the
+  complete assembled prompt and use the existing request fallback.
+  The Dart SDK exposes this optional view as `WorkRequest.conversation`;
+  `WorkRequest.prompt` remains available for agent-style Workers.
+- `execution` is optional version 1 metadata. `workflow` is optional and identifies
+  the actual workflow and step; it must not be inferred from access. `access`
+  mirrors the advisory top-level access. Workflow identity is unavailable if
+  the optional structured input is omitted to meet frame limits. `sessionPolicy` is Syntila's logical
+  session policy. `context` describes the context supplied with this call:
+  `bootstrap` is available initial history, `delta` is context to synchronize
+  with a resumed session, `none` supplies no historical context, and `rebuild`
+  supplies available context for reconstructing a session. Context may be
+  bounded or summarized; none of these values promises a complete transcript.
+  A history-replay Worker consumes the available context on every call. A
+  native-session Worker uses the session key and mode and applies a delta on
+  resume; Syntila decides when synchronization or reconstruction is needed.
+  The Engine omits `execution` when a Worker's tool schema disallows it.
+  The Workspace omits workflow metadata when the Engine does not advertise
+  `external_execution_v1`; older Workers retain their existing prompt.
 - `access: restricted` is advisory to the server; Syntila does not claim
   enforcement (ADR-027 §3). A read-only Step is still scheduled on an External
   Worker: the Engine sends `access: restricted` and a read-only instruction, at
@@ -109,3 +135,5 @@ the consent record. The Engine launches the server with the same digest pin,
 limits and tree cleanup as an NDJSON plugin, requires the Worker-profile
 marker, refuses any tool whose definition differs from its pin, and maps results
 and errors onto the existing stable issue codes. MCP conformance is available through the package runner described above; it does not yet cover the full NDJSON suite.
+
+The assembled prompt may differ from the prompt used by an official Worker due to session synchronization, advisory read-only instructions, or output-image guidance. Workers should choose the representation appropriate for their provider; neither representation grants extra permissions.

@@ -55,6 +55,31 @@ export interface WorkStepPromptInputs {
   readonly isVerification?: boolean;
 }
 
+/** Structured input for External Workers; rendered from the same frozen
+ * Workflow inputs so accepted instructions and step evidence are retained. */
+export function externalWorkerConversationInput(
+  workflow: BuiltinWorkflowDefinition,
+  step: BuiltinWorkflowStep,
+  inputs: WorkStepPromptInputs,
+): { schemaVersion: 1; request: string; instructions: string } {
+  const instructionsInput = {
+    ...inputs,
+    originalRequest:
+      "The current user request is supplied in a separate message.",
+  };
+  return {
+    schemaVersion: 1,
+    request:
+      inputs.originalRequest.length > 20_000
+        ? boundedText(inputs.originalRequest, 20_000)
+        : inputs.originalRequest,
+    instructions:
+      workflow.id === "research" && workflow.version === 2
+        ? renderResearchV2Prompt(workflow, step, instructionsInput)
+        : renderWorkStepPrompt(workflow, step, instructionsInput),
+  };
+}
+
 /**
  * Research v2 researcher profile. Every researcher receives the same request
  * and accepted context, in its own fresh session, and never sees another

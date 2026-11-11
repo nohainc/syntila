@@ -710,6 +710,28 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
         );
       }
       final profileFile = plan?.profileFile;
+      final rawConversation = isExternalWorker && input is Map
+          ? input['externalWorkerConversation']
+          : null;
+      final conversationInput = rawConversation is Map
+          ? ExternalConversationInput.fromJson(
+              Map<String, Object?>.from(rawConversation))
+          : null;
+      final externalConversation = conversationInput == null
+          ? null
+          : ExternalConversationInput(
+              request: conversationInput.request,
+              workflowId: conversationInput.workflowId,
+              workflowVersion: conversationInput.workflowVersion,
+              stepKind: conversationInput.stepKind,
+              instructions: promptWithAdditionalFolders(
+                externalExecution?.writesWorkingDirectory == false
+                    ? conversationInput.instructions
+                    : promptWithOutputImages(
+                        conversationInput.instructions, context.assignmentId),
+                additionalDirectories,
+              ),
+            );
       // T7: Profile resolved and its execution file located.
       connection?.traceAssignmentStage(context, 'profile_resolved');
       try {
@@ -741,6 +763,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
                 : promptWithOutputImages(prompt, context.assignmentId),
             additionalDirectories,
           ),
+          externalConversation: externalConversation,
           timeout: Duration(milliseconds: timeoutValue),
           queueWaitTimeout: queueWaitTimeout,
           sessionPolicy: sessionPolicyValue == 'durable_session'

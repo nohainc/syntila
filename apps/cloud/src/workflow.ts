@@ -21,6 +21,7 @@ import {
 import {
   renderWorkStepPrompt,
   renderResearchV2Prompt,
+  externalWorkerConversationInput,
   ResearchContextOverflowError,
   workStepPromptInputs,
 } from "./workflow-prompts.js";
@@ -1268,6 +1269,30 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 },
               });
               if (!prompt.trim()) throw new Error("Work Step prompt is empty");
+              // Render the same workflow context with the request supplied
+              // separately. Do not split the finished prompt on user-visible
+              // markers: user text and workflow templates can contain them.
+              let conversationInput:
+                ReturnType<typeof externalWorkerConversationInput> | undefined;
+              try {
+                conversationInput = externalWorkerConversationInput(
+                  definition,
+                  task.step,
+                  {
+                    ...promptInputs,
+                    stepInstructions: {
+                      ...promptInputs.stepInstructions,
+                      ...(mergedInstructions
+                        ? { [task.step.kind]: mergedInstructions }
+                        : {}),
+                    },
+                  },
+                );
+              } catch {
+                // The legacy prompt has already been rendered successfully.
+                // In particular, a near-limit Research prompt may not have
+                // room for the additional structured representation.
+              }
               const context = await db
                 .prepare(
                   `SELECT wr.thread_id AS threadId,
@@ -1305,6 +1330,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
               const {
                 workConfig: _workConfig,
                 workRequestSnapshot: _snapshot,
+                externalWorkerConversation: _externalWorkerConversation,
                 ...workerInput
               } = promptInput;
               const execution = prepareWorkerStepExecution({
@@ -1313,7 +1339,12 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 bindingId,
                 binding: stepBinding,
                 prompt,
-                workerInput,
+                workerInput: {
+                  ...workerInput,
+                  ...(conversationInput
+                    ? { externalWorkerConversation: { ...conversationInput, workflow: { id: definition.id, version: definition.version, step: task.step.kind } } }
+                    : {}),
+                },
                 scope: {
                   spaceId: context.spaceId,
                   spaceName: context.spaceName,

@@ -201,9 +201,33 @@ class _McpRunner {
     }
     final session = args['session'];
     final mode = session is Map ? session['mode'] : null;
+    ExternalWorkerConversation? conversation;
+    if (args['conversation'] != null) {
+      try {
+        final raw = args['conversation'];
+        if (raw is! Map) throw const FormatException('Invalid conversation');
+        conversation =
+            ExternalWorkerConversation.fromJson(Map<String, Object?>.from(raw));
+      } on FormatException {
+        return _failure('invalid_request', 'Invalid conversation');
+      } on TypeError {
+        return _failure('invalid_request', 'Invalid conversation');
+      }
+    }
+    ExternalWorkerExecution? execution;
+    if (args['execution'] != null) {
+      try {
+        execution = ExternalWorkerExecution.fromJson(
+            Map<String, Object?>.from(args['execution'] as Map));
+      } on Object {
+        return _failure('invalid_request', 'Invalid execution metadata');
+      }
+    }
     final request = WorkRequest(
+      execution: execution,
       id: '${call.id}',
       prompt: prompt,
+      conversation: conversation,
       workingDirectory:
           args['workingDirectory'] as String? ?? Directory.current.path,
       readOnly: args['access'] == 'restricted',

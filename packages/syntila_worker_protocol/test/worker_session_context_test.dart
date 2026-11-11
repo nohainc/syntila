@@ -3,6 +3,49 @@ import 'package:test/test.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 void main() {
+  test('external conversation input round trips and remains optional', () {
+    ExecuteRequest frame({ExternalConversationInput? conversation}) =>
+        ExecuteRequest(
+          requestId: 'req-1',
+          assignmentId: 'asg-1',
+          prompt: 'Legacy prompt',
+          timeoutMs: 1000,
+          sessionPolicy: WorkerSessionPolicy.stateless,
+          externalConversation: conversation,
+        );
+    final oldFrame = frame().toJson();
+    expect(oldFrame.containsKey('externalConversation'), isFalse);
+    final encoded = frame(
+            conversation: ExternalConversationInput(
+                request: 'hi',
+                instructions: 'Reply briefly.',
+                workflowId: 'chat',
+                workflowVersion: 1,
+                stepKind: 'chat'))
+        .toJson();
+    final decoded = ExecuteRequest.fromJson(encoded);
+    expect(decoded.externalConversation?.request, 'hi');
+    expect(decoded.externalConversation?.instructions, 'Reply briefly.');
+    expect(decoded.prompt, 'Legacy prompt');
+    expect(decoded.externalConversation?.workflowId, 'chat');
+    expect(decoded.externalConversation?.workflowVersion, 1);
+    expect(decoded.externalConversation?.stepKind, 'chat');
+    expect(
+        decoded.externalConversation!
+            .withoutWorkflow()
+            .toJson()
+            .containsKey('workflow'),
+        isFalse);
+    final invalid = {
+      ...encoded,
+      'externalConversation': {
+        'schemaVersion': 2,
+        'request': 'hi',
+        'instructions': 'x',
+      }
+    };
+    expect(() => ExecuteRequest.fromJson(invalid), throwsFormatException);
+  });
   test('Work execution context refreshes independently of history revisions',
       () {
     ConversationBootstrap context(String workflowId) => ConversationBootstrap(

@@ -572,6 +572,7 @@ final class CliWorkerEngineSupervisor {
     String? sessionKey,
     WorkerSessionContext? workerSession,
     ConversationBootstrap? statelessContext,
+    ExternalConversationInput? externalConversation,
     String? model,
     String? reasoningEffort,
     String? catalogRevision,
@@ -785,26 +786,47 @@ final class CliWorkerEngineSupervisor {
       launchStage = 'provider_execution';
       processRecord = await pendingProcessRecord;
       pendingProcessRecord = null;
+      final executeRequestId =
+          'engine-exec-${DateTime.now().microsecondsSinceEpoch}';
+      ExecuteRequest buildExecuteRequest(
+        ExternalConversationInput? conversation,
+      ) => ExecuteRequest(
+        requestId: executeRequestId,
+        assignmentId: assignmentId,
+        prompt: prompt,
+        externalConversation: conversation,
+        timeoutMs: boundedEngineTimeout.inMilliseconds,
+        sessionPolicy: sessionPolicy,
+        sessionKey: sessionKey,
+        workerSession: workerSession,
+        statelessContext: statelessContext,
+        model: model,
+        reasoningEffort: reasoningEffort,
+        catalogRevision: catalogRevision,
+        executionPolicy: executionPolicy,
+        additionalDirectories: additionalDirectories,
+        mcpServers: mcpServers,
+        compactContext: compactContext,
+        executor: identity.executor,
+        protocolVersion: identity.protocolVersion,
+      );
+      final structured =
+          identity.executor != null &&
+              initialized.capabilities.contains('external_conversation_v1')
+          ? (initialized.capabilities.contains('external_execution_v1')
+                ? externalConversation
+                : externalConversation?.withoutWorkflow())
+          : null;
+      var executeRequest = buildExecuteRequest(structured);
+      // Preserve the complete existing prompt when a duplicate structured
+      // representation would exceed the protocol's bounded frame size.
+      if (structured != null &&
+          utf8.encode(jsonEncode(executeRequest.toJson())).length >
+              WorkerProtocolLimits.maxFrameBytes) {
+        executeRequest = buildExecuteRequest(null);
+      }
       final result = await channel.exchangeUntilTerminal(
-        ExecuteRequest(
-          requestId: 'engine-exec-${DateTime.now().microsecondsSinceEpoch}',
-          assignmentId: assignmentId,
-          prompt: prompt,
-          timeoutMs: boundedEngineTimeout.inMilliseconds,
-          sessionPolicy: sessionPolicy,
-          sessionKey: sessionKey,
-          workerSession: workerSession,
-          statelessContext: statelessContext,
-          model: model,
-          reasoningEffort: reasoningEffort,
-          catalogRevision: catalogRevision,
-          executionPolicy: executionPolicy,
-          additionalDirectories: additionalDirectories,
-          mcpServers: mcpServers,
-          compactContext: compactContext,
-          executor: identity.executor,
-          protocolVersion: identity.protocolVersion,
-        ),
+        executeRequest,
 
         _remaining(boundedTimeout, timer),
         onProgress: (progress) {

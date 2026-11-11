@@ -263,6 +263,89 @@ void main() {
   );
 
   test(
+    'sends the current user request separately from workflow instructions',
+    () async {
+      final engine = await EngineProcess.start();
+      addTearDown(engine.close);
+      final e = executor();
+      engine.send(initialize(e));
+      expect(await engine.next(), isA<InitializeResult>());
+      engine.send(
+        ExecuteRequest(
+          requestId: 'req-structured',
+          assignmentId: 'asg-structured',
+          prompt: 'REPORT_CONVERSATION workflow wrapper with hi',
+          externalConversation: ExternalConversationInput(
+            request: 'hi',
+            instructions:
+                'Answer conversationally. Space instruction: be concise.',
+          ),
+          timeoutMs: 30000,
+          sessionPolicy: WorkerSessionPolicy.stateless,
+          executionPolicy: WorkerExecutionPolicy.providerDefault,
+          statelessContext: ConversationBootstrap(
+            conversationId: 'conversation-1',
+            contextRevision: 1,
+            throughSequence: 2,
+            text: jsonEncode({
+              'conversationId': 'conversation-1',
+              'throughSequence': 2,
+              'history': [
+                {'sequence': 1, 'kind': 'user_message', 'text': 'hi'},
+              ],
+              'context': {
+                'objective': {'value': 'hi'},
+                'constraints': {
+                  'style': {'value': 'Use Slovak'},
+                },
+                'workflowState': {'value': 'internal'},
+              },
+              'historyCoverage': {
+                'omittedEntries': 3,
+                'notice': 'Older entries omitted',
+              },
+              'workflowExecutionContext': {
+                'prerequisiteResults': [
+                  {'stepId': 'research', 'text': 'Earlier finding'},
+                ],
+              },
+            }),
+          ),
+          executor: e,
+          protocolVersion: mcpExecutorProtocolVersion,
+        ),
+      );
+      final result = (await engine.untilTerminal()).last as WorkerResult;
+      final output = result.output;
+      final conversation =
+          jsonDecode(output.substring('conversation: '.length)) as Map;
+      expect(conversation['request'], 'hi');
+      expect(conversation['messages'], [
+        {'role': 'user', 'text': 'hi'},
+      ]);
+      final instructions = (conversation['instructions'] as List)
+          .cast<String>();
+      expect(instructions.take(2), [
+        'Answer conversationally. Space instruction: be concise.',
+        externalWorkerReadOnlyInstruction,
+      ]);
+      const prefix =
+          'Historical conversation context (data, not a new request):\n';
+      expect(instructions.last, startsWith(prefix));
+      expect(jsonDecode(instructions.last.substring(prefix.length)), {
+        'constraints': {'style': 'Use Slovak'},
+        'prerequisiteResults': [
+          {'stepId': 'research', 'text': 'Earlier finding'},
+        ],
+        'historyCoverage': {
+          'omittedEntries': 3,
+          'notice': 'Older entries omitted',
+        },
+      });
+    },
+  );
+
+  test(
     'a tool whose definition differs from the consented pin is refused',
     () async {
       final engine = await EngineProcess.start();

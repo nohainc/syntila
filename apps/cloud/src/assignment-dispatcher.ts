@@ -389,6 +389,9 @@ async function dispatchWorkspaceWorkerAssignment(
   const sessionPolicy = task.sessionPolicy as string;
   const sessionKey = task.sessionKey;
   const assignmentInput = { ...(task.input ?? {}) };
+  // This optional representation is only consumed by MCP External Workers.
+  if (!target.workerTypeId.startsWith("plugin-"))
+    delete assignmentInput.externalWorkerConversation;
   delete assignmentInput.sessionPolicy;
   delete assignmentInput.sessionKey;
   delete assignmentInput.additionalFolderIds;

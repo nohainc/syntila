@@ -773,6 +773,68 @@ final class McpServerLaunch {
   }
 }
 
+/// Separately rendered workflow instructions and the user's current request.
+final class ExternalConversationInput {
+  ExternalConversationInput(
+      {required this.request,
+      required this.instructions,
+      this.workflowId,
+      this.workflowVersion,
+      this.stepKind}) {
+    if (request.trim().isEmpty ||
+        instructions.isEmpty ||
+        utf8.encode(request).length > WorkerProtocolLimits.maxPromptBytes ||
+        utf8.encode(instructions).length >
+            WorkerProtocolLimits.maxPromptBytes) {
+      throw const FormatException('Invalid external conversation input');
+    }
+  }
+
+  final String request;
+  final String instructions;
+  final String? workflowId;
+  final int? workflowVersion;
+  final String? stepKind;
+
+  Map<String, Object?> toJson() => {
+        'schemaVersion': 1,
+        'request': request,
+        'instructions': instructions,
+        if (workflowId != null && workflowVersion != null && stepKind != null)
+          'workflow': {
+            'id': workflowId,
+            'version': workflowVersion,
+            'step': stepKind
+          },
+      };
+
+  ExternalConversationInput withoutWorkflow() =>
+      ExternalConversationInput(request: request, instructions: instructions);
+
+  factory ExternalConversationInput.fromJson(Map<String, Object?> json) {
+    _expectKeys(
+        json, const {'schemaVersion', 'request', 'instructions', 'workflow'});
+    if (json['schemaVersion'] != 1) {
+      throw const FormatException('Unsupported external conversation version');
+    }
+    final workflow = json['workflow'];
+    if (workflow != null &&
+        (workflow is! Map ||
+            workflow['id'] is! String ||
+            workflow['version'] is! int ||
+            workflow['step'] is! String)) {
+      throw const FormatException('Invalid external workflow metadata');
+    }
+    return ExternalConversationInput(
+      workflowId: workflow is Map ? workflow['id'] as String : null,
+      workflowVersion: workflow is Map ? workflow['version'] as int : null,
+      stepKind: workflow is Map ? workflow['step'] as String : null,
+      request: _requiredString(json, 'request'),
+      instructions: _requiredString(json, 'instructions'),
+    );
+  }
+}
+
 final class ExecuteRequest extends WorkerFrame {
   ExecuteRequest({
     required super.requestId,
@@ -787,6 +849,7 @@ final class ExecuteRequest extends WorkerFrame {
     this.sessionKey,
     this.workerSession,
     this.statelessContext,
+    this.externalConversation,
     this.additionalDirectories = const [],
     this.mcpServers = const [],
     this.compactContext = false,
@@ -898,6 +961,7 @@ final class ExecuteRequest extends WorkerFrame {
   final String? sessionKey;
   final WorkerSessionContext? workerSession;
   final ConversationBootstrap? statelessContext;
+  final ExternalConversationInput? externalConversation;
 
   /// Workspace-verified absolute folders the provider CLI may use besides the
   /// working directory. The Profile decides how they become CLI arguments.
@@ -927,6 +991,8 @@ final class ExecuteRequest extends WorkerFrame {
         'requestId': requestId,
         'assignmentId': assignmentId,
         'prompt': prompt,
+        if (externalConversation != null)
+          'externalConversation': externalConversation!.toJson(),
         'model': model,
         if (reasoningEffort != null) 'reasoningEffort': reasoningEffort,
         if (catalogRevision != null) 'catalogRevision': catalogRevision,
@@ -954,6 +1020,7 @@ final class ExecuteRequest extends WorkerFrame {
       'requestId',
       'assignmentId',
       'prompt',
+      'externalConversation',
       'model',
       'reasoningEffort',
       'catalogRevision',
@@ -998,6 +1065,10 @@ final class ExecuteRequest extends WorkerFrame {
     if (json['workerSession'] != null && json['workerSession'] is! Map) {
       throw const FormatException('workerSession must be an object');
     }
+    if (json['externalConversation'] != null &&
+        json['externalConversation'] is! Map) {
+      throw const FormatException('Invalid external conversation input');
+    }
     final timeout = json['timeoutMs'];
     if (timeout is! int)
       throw const FormatException('timeoutMs must be an integer');
@@ -1027,6 +1098,10 @@ final class ExecuteRequest extends WorkerFrame {
         WorkerProtocolLimits.maxRequestIdLength,
       ),
       prompt: _requiredString(json, 'prompt'),
+      externalConversation: json['externalConversation'] == null
+          ? null
+          : ExternalConversationInput.fromJson(
+              Map<String, Object?>.from(json['externalConversation'] as Map)),
       model: model as String?,
       reasoningEffort: reasoningEffort as String?,
       catalogRevision: _optionalString(json, 'catalogRevision'),

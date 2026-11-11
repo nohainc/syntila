@@ -88,6 +88,52 @@ void main() {
   });
 
   test(
+    'SDK exposes structured conversation while preserving the full prompt',
+    () async {
+      final outcome =
+          await runner.run(
+                await consented(),
+                ExternalWorkerRunRequest(
+                  executeId: 'e-conversation',
+                  prompt: 'REPORT_CONVERSATION full agent prompt',
+                  access: 'read_only',
+                  deadline: const Duration(seconds: 60),
+                  execution: {
+                    'schemaVersion': 1,
+                    'workflow': {'id': 'chat', 'version': 1, 'step': 'chat'},
+                    'access': 'restricted',
+                    'sessionPolicy': 'durable_session',
+                    'context': 'delta',
+                  },
+                  conversation: {
+                    'request': 'hi',
+                    'instructions': ['Respond conversationally.'],
+                    'messages': [
+                      {'role': 'user', 'text': 'Previous request'},
+                    ],
+                  },
+                ),
+              )
+              as ExternalWorkerRunSuccess;
+      expect(jsonDecode(outcome.output), {
+        'execution': {
+          'workflowId': 'chat',
+          'workflowVersion': 1,
+          'stepKind': 'chat',
+          'access': 'restricted',
+          'sessionPolicy': 'durable_session',
+          'context': 'delta',
+        },
+        'request': 'hi',
+        'instructions': ['Respond conversationally.'],
+        'messages': [
+          {'role': 'user', 'text': 'Previous request'},
+        ],
+      });
+    },
+  );
+
+  test(
     'execute: progress with percentages, model, read-only and session',
     () async {
       final s = await consented();
