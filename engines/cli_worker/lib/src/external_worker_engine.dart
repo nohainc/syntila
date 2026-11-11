@@ -6,6 +6,7 @@ import 'package:syntila_external_worker_protocol/syntila_external_worker_protoco
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 import 'conversation_execution_router.dart';
+import 'external_worker_conversation.dart';
 import 'model_discovery.dart';
 import 'engine_session_store.dart';
 import 'worker_session.dart';
@@ -516,17 +517,29 @@ class ExternalWorkerEngine {
       );
       final remaining = request.timeoutMs - clock.elapsedMilliseconds;
       if (remaining <= 0) throw const ExternalWorkerFailureDeadline();
+      // `assignmentExecutionPolicy` maps read-only Steps (`readOnly: true` /
+      // `stateless_read`) to `providerDefault`, and writable Work Steps to
+      // `restricted` or `fullAccess`.
+      final readOnly =
+          request.executionPolicy == WorkerExecutionPolicy.providerDefault;
       Future<ExternalWorkerRunOutcome> invoke(
-        String prompt,
+        ConversationExecutionPlan plan,
         String mode,
       ) => _host.run(
         _launch(executor),
         ExternalWorkerRunRequest(
           executeId: request.requestId,
-          prompt: prompt,
-          access: request.executionPolicy == WorkerExecutionPolicy.restricted
-              ? 'read_only'
-              : 'read_write',
+          // Read-only is not enforceable here, so it is also stated in words
+          // for Workers that only read `prompt`.
+          prompt: readOnly
+              ? '$externalWorkerReadOnlyInstruction\n\n${plan.prompt}'
+              : plan.prompt,
+          conversation: externalWorkerConversation(
+            request: request.prompt,
+            contextText: plan.contextText,
+            instructions: [if (readOnly) externalWorkerReadOnlyInstruction],
+          ),
+          access: readOnly ? 'read_only' : 'read_write',
           deadline: Duration(
             milliseconds: (request.timeoutMs - clock.elapsedMilliseconds).clamp(
               1,
@@ -565,7 +578,7 @@ class ExternalWorkerEngine {
       );
       var resumed = prior != null;
       var outcome = await invoke(
-        plan.prompt,
+        plan,
         resumed
             ? 'resume'
             : stored != null
@@ -587,7 +600,7 @@ class ExternalWorkerEngine {
         );
         plan = _router.prepare(request, reconstruct: true);
         resumed = false;
-        outcome = await invoke(plan.prompt, 'rebuild');
+        outcome = await invoke(plan, 'rebuild');
       }
       switch (outcome) {
         case ExternalWorkerRunSuccess():

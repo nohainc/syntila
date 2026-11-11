@@ -38,30 +38,43 @@ extension _ExternalWorkerCli on WorkspaceCli {
   /// The External Worker ID for [type], or null when [type] is not one. Any
   /// failure falls back to the catalog path, which reports it.
   Future<String?> _externalWorkerIdFor(String? dataDir, String type) async {
-    try {
-      final result = await _send(dataDir, 'externalWorkers.list', {});
-      if (result is! Map || result['plugins'] is! List) return null;
-      for (final item in (result['plugins'] as List).whereType<Map>()) {
-        if (item['pluginId'] == type || item['pluginRef'] == type) {
-          return item['pluginId'] as String?;
-        }
-      }
-    } on Object {
-      return null;
+    final refs = await _externalWorkerRefs(dataDir);
+    for (final entry in refs.entries) {
+      if (entry.key == type || entry.value == type) return entry.value;
     }
     return null;
   }
 
-  bool _printExternalWorkerResult(String command, Object? result) {
+  Future<Map<String, String>> _externalWorkerRefs(String? dataDir) async {
+    try {
+      final result = await _send(dataDir, 'externalWorkers.list', {});
+      if (result is! Map || result['plugins'] is! List) return {};
+      final refs = <String, String>{};
+      for (final item in (result['plugins'] as List).whereType<Map>()) {
+        if (item['pluginId'] is String && item['pluginRef'] is String) {
+          refs[item['pluginRef'] as String] = item['pluginId'] as String;
+        } else if (item['pluginId'] is String) {
+          refs[item['pluginId'] as String] = item['pluginId'] as String;
+        }
+      }
+      return refs;
+    } on Object {
+      return {};
+    }
+  }
+
+  bool _printExternalWorkerResult(
+      String command, Object? result, Map<String, Object?> payload) {
     if (result is! Map) return false;
     try {
-      return _renderExternalWorkerResult(command, result);
+      return _renderExternalWorkerResult(command, result, payload);
     } on Object {
       return false;
     }
   }
 
-  bool _renderExternalWorkerResult(String command, Map result) {
+  bool _renderExternalWorkerResult(
+      String command, Map result, Map<String, Object?> payload) {
     if (result['consentRequired'] == true) {
       _printExternalWorkerConsent(command, result);
       return true;
@@ -95,6 +108,16 @@ extension _ExternalWorkerCli on WorkspaceCli {
         );
         out.writeln('Next: syntila workers inspect ${result['pluginId']}');
         return true;
+      case 'externalWorkers.show':
+        _printFields({
+          'ID': result['pluginId'],
+          'Name': result['displayName'],
+          if (result['workspace'] != null) 'Workspace': result['workspace'],
+          if (result['versions'] != null) 'Versions': result['versions'],
+          if (result['selected'] != null)
+            'Selected version': result['selected'],
+        });
+        return true;
       case 'externalWorkers.test':
         final cases = (result['cases'] as List).whereType<Map>();
         for (final c in cases) {
@@ -109,10 +132,12 @@ extension _ExternalWorkerCli on WorkspaceCli {
         out.writeln('${result['disclaimer']}');
         return true;
       case 'externalWorkers.register':
-        out.writeln('Registered ${result['pluginRef']} ${result['version']}.');
+        out.writeln(
+            'Registered ${payload['externalWorkerId']} ${result['version']}.');
         return true;
       case 'externalWorkers.enable':
-        out.writeln('Enabled ${result['pluginRef']} ${result['version']}.');
+        out.writeln(
+            'Enabled ${payload['externalWorkerId']} ${result['version']}.');
         out.writeln('It now appears in: syntila workers list');
         return true;
       case 'externalWorkers.disable':

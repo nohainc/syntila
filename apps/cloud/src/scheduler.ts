@@ -610,14 +610,10 @@ export async function selectSpaceExecutionTarget(
             number(row.plugin_pin_shareable) !== 1
           )
             return "plugin_not_shareable";
-          // Read-only is honored only where a tier proved it; otherwise the
-          // plugin is skipped for read-only Steps, never run with write access.
-          if (
-            (executionClass === "stateless_read" ||
-              request.readOnly === true) &&
-            !reported.isolation.readOnlyEnforced
-          )
-            return "plugin_read_only_unenforceable";
+          // No isolation tier proves read-only for an External Worker yet. A
+          // read-only Step still runs on one: the Engine passes
+          // `access: restricted` and states it in the request (simulated,
+          // not enforced), which the owner accepted in the consent document.
           return null;
         })();
         if (pluginRejection || !reported) {

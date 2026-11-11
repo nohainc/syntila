@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:syntila_cli_worker_engine/src/external_worker_conversation.dart';
 import 'package:syntila_cli_worker_engine/src/external_worker_process_host.dart';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
@@ -106,7 +107,7 @@ ExecuteRequest execute(WorkerExecutor e, {String prompt = 'hi'}) =>
       prompt: prompt,
       timeoutMs: 30000,
       sessionPolicy: WorkerSessionPolicy.stateless,
-      executionPolicy: WorkerExecutionPolicy.providerDefault,
+      executionPolicy: WorkerExecutionPolicy.restricted,
       executor: e,
       protocolVersion: mcpExecutorProtocolVersion,
     );
@@ -206,6 +207,60 @@ void main() {
       ['echo-small', 'echo-large'],
     );
   });
+
+  test(
+    'a read-only request sends the conversation as turns and says so',
+    () async {
+      final engine = await EngineProcess.start();
+      addTearDown(engine.close);
+      final e = executor();
+      engine.send(initialize(e));
+      expect(await engine.next(), isA<InitializeResult>());
+      engine.send(
+        ExecuteRequest(
+          requestId: 'req-1',
+          assignmentId: 'asg-1',
+          prompt: 'REPORT_CONVERSATION and you?',
+          timeoutMs: 30000,
+          sessionPolicy: WorkerSessionPolicy.stateless,
+          executionPolicy: WorkerExecutionPolicy.providerDefault,
+          statelessContext: ConversationBootstrap(
+            conversationId: 'conversation-1',
+            contextRevision: 2,
+            throughSequence: 9,
+            text: jsonEncode({
+              'conversationId': 'conversation-1',
+              'throughSequence': 9,
+              'history': [
+                {'sequence': 1, 'kind': 'workflow_event', 'text': null},
+                {'sequence': 2, 'kind': 'user_message', 'text': 'hi'},
+                {'sequence': 5, 'kind': 'worker_response', 'text': 'Hello!'},
+              ],
+              'workflowExecutionContext': {'status': 'running'},
+            }),
+          ),
+          executor: e,
+          protocolVersion: mcpExecutorProtocolVersion,
+        ),
+      );
+      final last = (await engine.untilTerminal()).last;
+      expect(
+        last,
+        isA<WorkerResult>(),
+        reason: last is WorkerErrorFrame ? '${last.code}: ${last.message}' : '',
+      );
+      final output = (last as WorkerResult).output;
+      expect(output, startsWith('conversation: '));
+      expect(jsonDecode(output.substring('conversation: '.length)), {
+        'messages': [
+          {'role': 'user', 'text': 'hi'},
+          {'role': 'assistant', 'text': 'Hello!'},
+        ],
+        'request': 'REPORT_CONVERSATION and you?',
+        'instructions': [externalWorkerReadOnlyInstruction],
+      });
+    },
+  );
 
   test(
     'a tool whose definition differs from the consented pin is refused',

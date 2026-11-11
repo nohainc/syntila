@@ -658,7 +658,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           if (isExternalWorker) {
             throw const AllowedFolderViolation(
               'plugin_unsupported',
-              'Plugins cannot use additional folders yet. Detach the '
+              'External Workers cannot use additional folders yet. Detach the '
                   "Space's additional folders or choose another Worker.",
             );
           }
@@ -719,26 +719,9 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
             message: 'The assignment was cancelled before Engine launch.',
           );
         }
-        // Plugins cannot be made read-only by Syntila today (no isolation
-        // tier proves it), so a read-only request is refused rather than
-        // silently run with write access.
-        final executionPolicy = assignmentExecutionPolicy(
-          context.payload,
-          fullAccessAuthorized: worker.fullLocalAccessAuthorized,
-        );
-        if (isExternalWorker &&
-            executionPolicy == WorkerExecutionPolicy.restricted &&
-            !externalExecution!.readOnlyEnforced) {
-          throw AssignmentExecutionFailure(
-            code: 'permission_denied',
-            message: executionErrorMessage('permission_denied'),
-            localDiagnostic: _runtimeFailureDiagnostic(
-              'plugin_preparation',
-              'permission_denied',
-              detail: 'plugin_read_only_unenforceable',
-            ),
-          );
-        }
+        // Syntila cannot enforce read-only on an External Worker (no
+        // isolation tier proves it). A read-only Step still runs: the Engine
+        // passes `access: restricted` and says so in the request.
         return await supervisor.execute(
           release,
           profileFile: profileFile,
@@ -752,7 +735,10 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           attemptId: context.attemptId,
           executionId: context.executionId,
           prompt: promptWithAdditionalFolders(
-            promptWithOutputImages(prompt, context.assignmentId),
+            // A Worker without the working directory cannot save images.
+            externalExecution?.writesWorkingDirectory == false
+                ? prompt
+                : promptWithOutputImages(prompt, context.assignmentId),
             additionalDirectories,
           ),
           timeout: Duration(milliseconds: timeoutValue),

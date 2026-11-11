@@ -17,9 +17,14 @@ class ConversationExecutionPlan {
     required this.action,
     required this.prompt,
     required this.bootstrap,
+    this.contextText,
   });
   final ConversationExecutionAction action;
   final String prompt;
+
+  /// The canonical context inside [prompt], or null when it is the bare
+  /// request.
+  final String? contextText;
   final ConversationBootstrap? bootstrap;
 }
 
@@ -80,6 +85,7 @@ class ConversationExecutionRouter {
       action: action,
       prompt: prompt,
       bootstrap: bootstrap,
+      contextText: contextText,
     );
   }
 }

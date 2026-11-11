@@ -19,6 +19,11 @@ Input:
 {
   "protocol": "syntila.worker/1",
   "prompt": "string",
+  "conversation": {
+    "messages": [{ "role": "user | assistant", "text": "string" }],
+    "request": "string",
+    "instructions": ["string"]
+  },
   "workingDirectory": "string?",
   "access": "work | restricted",
   "model": "string?",
@@ -40,9 +45,19 @@ Output (`structuredContent`; text content mirrors `text`):
   directory; never to remote servers.
 - A call has one terminal outcome. Conformance checks a sampled exchange; it
   does not establish enforcement of every possible duplicate response.
+- `conversation` is optional and carries the same exchange as `prompt` as
+  separate turns: `messages` are the earlier user and assistant turns from the
+  canonical history (oldest first; empty when the Worker's own session holds
+  them), `request` is the current request without the context envelope, and
+  `instructions` are host instructions. `prompt` always stays complete, so a
+  Worker may ignore `conversation`. A Worker that wraps a plain chat model
+  should use it: such a model answers the envelope in `prompt` as if the user
+  had written it.
 - `access: restricted` is advisory to the server; Syntila does not claim
-  enforcement (ADR-027 §3). Read-only scheduling is allowed only where the host
-  reports an enforced isolation tier (none today).
+  enforcement (ADR-027 §3). A read-only Step is still scheduled on an External
+  Worker: the Engine sends `access: restricted` and a read-only instruction, at
+  the start of `prompt` and in `conversation.instructions` (simulated
+  read-only, since 2026-11-11).
 
 ### `syntila.probe` (required)
 

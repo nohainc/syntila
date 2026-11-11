@@ -63,6 +63,8 @@ class McpWorkerRunner {
           {
             'protocol': protocolTag,
             'prompt': request.prompt,
+            if (request.conversation != null)
+              'conversation': request.conversation,
             'access': request.access == 'read_write' ? 'work' : 'restricted',
             'deadline': DateTime.now()
                 .toUtc()

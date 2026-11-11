@@ -8,10 +8,13 @@
 // Tools: syntila.execute (streams /api/chat, reports progress, honours
 // cancellation and the deadline), syntila.probe (readiness) and syntila.models
 // (installed models). Conversation continuity is `history_replay`: Syntila
-// replays the history inside the prompt, so no session is kept here.
+// sends the earlier turns with every request (`conversation`), so no session
+// is kept here.
 //
 // Configuration: OLLAMA_BASE_URL (default http://127.0.0.1:11434). Only loopback
 // addresses are accepted so a prompt can never leave the machine by accident.
+// OLLAMA_NUM_CTX (default 8192) is the context window requested from Ollama;
+// older turns are dropped to fit it, because Ollama truncates silently.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -32,10 +35,16 @@ class Issue implements Exception {
   final String message;
 }
 
+const defaultContextTokens = 8192;
+const systemPrompt =
+    'You are a helpful assistant in a Syntila conversation. Reply directly '
+    "to the user's latest message.";
+
 class Config {
-  Config(this.base);
+  Config(this.base, [this.contextTokens = defaultContextTokens]);
 
   final Uri base;
+  final int contextTokens;
 
   static Config fromEnvironment() {
     final raw =
@@ -50,8 +59,55 @@ class Config {
         'OLLAMA_BASE_URL must be an http(s) loopback address.',
       );
     }
-    return Config(uri);
+    final tokens = int.tryParse(Platform.environment['OLLAMA_NUM_CTX'] ?? '');
+    return Config(
+      uri,
+      tokens != null && tokens >= 1024 && tokens <= 1024 * 1024
+          ? tokens
+          : defaultContextTokens,
+    );
   }
+}
+
+/// The Ollama chat messages for one `syntila.execute` call. With a
+/// `conversation` the turns keep their roles and the oldest are dropped until
+/// they fit [contextTokens]; without one (an older host) the whole prompt is
+/// the user message.
+List<Map<String, String>> chatMessages(
+  Map<String, Object?> args,
+  int contextTokens,
+) {
+  final conversation = args['conversation'];
+  final request = conversation is Map ? conversation['request'] : null;
+  if (conversation is! Map || request is! String || request.isEmpty) {
+    return [
+      {'role': 'user', 'content': args['prompt'] as String},
+    ];
+  }
+  final instructions = [
+    for (final line in conversation['instructions'] as List? ?? const [])
+      if (line is String && line.isNotEmpty) line,
+  ];
+  final system = [systemPrompt, ...instructions].join('\n\n');
+  final history = <Map<String, String>>[
+    for (final turn in conversation['messages'] as List? ?? const [])
+      if (turn is Map &&
+          const {'user', 'assistant'}.contains(turn['role']) &&
+          turn['text'] is String)
+        {'role': turn['role'] as String, 'content': turn['text'] as String},
+  ];
+  // About 3 characters per token, keeping a quarter of the window for the
+  // answer. An estimate: exact counts need the model's tokenizer.
+  final budget = contextTokens * 3 * 3 ~/ 4 - system.length - request.length;
+  var used = history.fold<int>(0, (sum, m) => sum + m['content']!.length);
+  while (history.isNotEmpty && used > budget) {
+    used -= history.removeAt(0)['content']!.length;
+  }
+  return [
+    {'role': 'system', 'content': system},
+    ...history,
+    {'role': 'user', 'content': request},
+  ];
 }
 
 /// Thin Ollama client. [abort] force-closes the connection to cancel.
@@ -109,7 +165,7 @@ class Ollama {
   /// Streams /api/chat, calling [onChunk] with each text delta.
   Future<String> chat(
     String model,
-    String prompt, {
+    List<Map<String, String>> messages, {
     required void Function(String delta) onChunk,
   }) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
@@ -121,9 +177,8 @@ class Ollama {
         jsonEncode({
           'model': model,
           'stream': true,
-          'messages': [
-            {'role': 'user', 'content': prompt},
-          ],
+          'messages': messages,
+          'options': {'num_ctx': config.contextTokens},
         }),
       );
       // An explicit length keeps the request simple for any server in front.
@@ -330,7 +385,7 @@ Future<Map<String, Object?>> execute(
     var lastProgress = DateTime.fromMillisecondsSinceEpoch(0);
     final text = await ollama.chat(
       native,
-      prompt,
+      chatMessages(args, config.contextTokens),
       onChunk: (delta) {
         chars += delta.length;
         chunks++;
@@ -424,7 +479,7 @@ Future<void> main() async {
           'result': {
             'protocolVersion': params['protocolVersion'],
             'capabilities': {'tools': {}},
-            'serverInfo': {'name': 'ollama-worker', 'version': '1.0.0'},
+            'serverInfo': {'name': 'ollama-worker', 'version': '1.1.0'},
             '_meta': {'syntila.worker': '1'},
           },
         });

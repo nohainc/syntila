@@ -29,6 +29,8 @@ class FakeOllama {
   bool truncate = false;
   String? lastModel;
   String? lastPrompt;
+  List<Map<String, Object?>> lastMessages = const [];
+  Map<String, Object?>? lastOptions;
   var aborted = Completer<void>();
 
   String get base => 'http://127.0.0.1:${server.port}';
@@ -116,8 +118,12 @@ class FakeOllama {
       } else if (method == 'POST' && path == '/api/chat') {
         final decoded = jsonDecode(body) as Map<String, Object?>;
         lastModel = decoded['model'] as String?;
-        lastPrompt =
-            ((decoded['messages'] as List).first as Map)['content'] as String?;
+        lastMessages = [
+          for (final m in decoded['messages'] as List)
+            (m as Map).cast<String, Object?>(),
+        ];
+        lastOptions = (decoded['options'] as Map?)?.cast<String, Object?>();
+        lastPrompt = lastMessages.last['content'] as String?;
         if (chatStatus != 200) {
           _json(socket, chatStatus, {'error': chatError ?? 'failure'});
         } else {
@@ -251,6 +257,46 @@ void main() {
       );
     },
   );
+
+  test('a conversation becomes chat turns that fit the context', () async {
+    final outcome = await runner.run(
+      await consented(),
+      ExternalWorkerRunRequest(
+        executeId: 'e1',
+        prompt: 'Canonical Syntila conversation context: {...} and you?',
+        access: 'read_only',
+        deadline: const Duration(seconds: 30),
+        model: 'tiny:latest',
+        conversation: {
+          'messages': [
+            {'role': 'user', 'text': 'x' * 20000},
+            {'role': 'user', 'text': 'hi'},
+            {'role': 'assistant', 'text': 'Hello!'},
+          ],
+          'request': 'and you?',
+          'instructions': ['This request is read-only.'],
+        },
+      ),
+    );
+    expect(outcome, isA<ExternalWorkerRunSuccess>());
+    final messages = ollama.lastMessages;
+    expect(messages.first['role'], 'system');
+    expect(messages.first['content'], contains('This request is read-only.'));
+    // The oldest turn does not fit the default 8192-token window.
+    expect(messages.skip(1), [
+      {'role': 'user', 'content': 'hi'},
+      {'role': 'assistant', 'content': 'Hello!'},
+      {'role': 'user', 'content': 'and you?'},
+    ]);
+    expect(ollama.lastOptions, {'num_ctx': 8192});
+  });
+
+  test('without a conversation the prompt is the user message', () async {
+    await runner.run(await consented(), request('hi', model: 'tiny:latest'));
+    expect(ollama.lastMessages, [
+      {'role': 'user', 'content': 'hi'},
+    ]);
+  });
 
   test('an unreachable Ollama is unavailable, not a crash', () async {
     final dead = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

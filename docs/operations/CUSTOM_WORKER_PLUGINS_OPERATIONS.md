@@ -49,7 +49,7 @@ Evaluated live from the Workspace **owner's** plan; no event is needed.
 | --- | --- |
 | Enabled plugin Worker never scheduled, rejection `plugin_entitlement_required` | Owner has no active Plus row (or `current_period_end` passed). |
 | Plugin Worker never scheduled, rejection `plugin_digest_not_pinned` | The Workspace reports a different digest than the pin, usually after an update; run `plugins enable <id> --version <v>` again. |
-| `plugin_read_only_unenforceable` | The step is read-only (Chat, Research, Plan, Test, Verify). No isolation tier proves read-only yet, so plugins run Work only. |
+| `plugin_read_only_unenforceable` | Retired 2026-11-11. Read-only Steps (Chat, Research, Plan, Test, Verify) now run on External Workers with read-only simulated: the Engine sends `access: restricted` and a read-only instruction, which the Worker is trusted to follow. |
 | `plugin_digest_mismatch` at launch | Files in the store changed after consent. Re-import; the store is read-only for a reason. |
 
 Local state lives under `<Application Support>/Plugins/`: `store/` (immutable,
@@ -59,8 +59,8 @@ be deleted.
 
 ## 5. Not yet covered (known gaps)
 
-- **Filesystem/network isolation.** Production isolation remains `none` and
-  read-only Steps remain ineligible. Resource limits are implemented; see the
+- **Filesystem/network isolation.** Production isolation remains `none`;
+  read-only Steps run with read-only simulated, not enforced. Resource limits are implemented; see the
   [acceptance record](../acceptance/PLUGIN_RESOURCE_LIMITS.md) for native versus
   sampled limits and hosted Linux/Windows evidence.
 - **Installed release acceptance.** Hosted tests do not establish signed release,

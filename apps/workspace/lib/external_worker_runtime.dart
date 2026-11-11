@@ -33,8 +33,13 @@ class ExternalWorkerExecution {
   final InstalledExternalWorker plugin;
 
   /// True only when an isolation tier proved read-only on this host. Today no
-  /// tier does, so read-only Steps are refused for plugins (the honest rule).
+  /// tier does, so a read-only Step is requested of the Worker, not enforced.
   final bool readOnlyEnforced;
+
+  /// False when the manifest declares no working directory access
+  /// (`access.workRoot: "none"`), e.g. a Worker that only calls a model.
+  bool get writesWorkingDirectory =>
+      (plugin.manifest.raw['access'] as Map?)?['workRoot'] != 'none';
 }
 
 /// Everything the Service does for an enabled plugin Worker: readiness,
@@ -79,7 +84,7 @@ class ExternalWorkerRuntime {
     if (pinned == null) {
       throw const ExternalWorkerException(
         'plugin_not_enabled',
-        'This plugin is not enabled on this Workspace.',
+        'This External Worker is not enabled on this Workspace.',
       );
     }
     final version = pinned.record.versions[pinned.pin.version];
@@ -152,7 +157,8 @@ class ExternalWorkerRuntime {
       return WorkerReadinessAssessment(
         WorkerReadinessState.runtimeUnavailable,
         issueCode: code,
-        diagnosticDetails: 'The plugin could not complete its readiness probe.',
+        diagnosticDetails:
+            'The External Worker could not complete its readiness probe.',
       );
     }
   }
@@ -262,7 +268,7 @@ class ExternalWorkerRuntime {
       WorkerDescriptor(
         workerTypeId: pluginRef,
         displayName: displayName,
-        description: 'Custom plugin $pluginId',
+        description: 'External Worker $pluginId',
         engineFamily: 'cli',
         profileDefinitionId: 'plugin-$pluginId',
         providerToolName: pluginId,

@@ -192,6 +192,8 @@ Future<void> main(List<String> args) async {
             ? 'é' * (300 * 1024)
             : prompt == 'REPORT_WORKING_DIRECTORY'
             ? 'workingDirectory: ${a['workingDirectory']}'
+            : prompt.contains('REPORT_CONVERSATION')
+            ? 'conversation: ${jsonEncode(a['conversation'])}'
             : prompt.contains('BIGTEXT')
             ? 'x' * (900 * 1024)
             : 'echo: $prompt | access: ${a['access']} | model: ${a['model']}';

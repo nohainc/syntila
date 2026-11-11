@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "mcp",
   "pluginId": "ollama-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "Ollama (MCP Worker)",
   "description": "Runs assignments on a local Ollama model through its HTTP API.",
   "author": { "name": "Syntila" },
@@ -20,7 +20,7 @@
     "workRoot": "none",
     "network": { "mode": "declared", "hosts": ["127.0.0.1"] },
     "subprocess": false,
-    "env": ["OLLAMA_BASE_URL"]
+    "env": ["OLLAMA_BASE_URL", "OLLAMA_NUM_CTX"]
   },
   "license": "Apache-2.0"
 }

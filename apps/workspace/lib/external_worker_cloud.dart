@@ -79,11 +79,11 @@ class HttpExternalWorkerCloud implements ExternalWorkerCloudPort {
           ),
         402 => const ExternalWorkerCloudException(
             'paid_plan_required',
-            'Custom Worker plugins require Syntila Plus.',
+            'External Workers require Syntila Plus.',
           ),
         404 => const ExternalWorkerCloudException(
             'plugin_not_found',
-            'Cloud does not know that plugin.',
+            'Cloud does not know that External Worker.',
           ),
         409 => ExternalWorkerCloudException(
             code ?? 'plugin_version_conflict',
@@ -132,7 +132,7 @@ class HttpExternalWorkerCloud implements ExternalWorkerCloudPort {
     if (ref is! String || !RegExp(r'^plugin-[0-9a-f]{12}$').hasMatch(ref)) {
       throw const ExternalWorkerCloudException(
         'cloud_unavailable',
-        'Cloud returned an invalid plugin reference.',
+        'Cloud returned an invalid External Worker reference.',
       );
     }
     return ref;

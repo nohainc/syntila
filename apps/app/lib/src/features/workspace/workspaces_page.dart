@@ -537,12 +537,11 @@ class _WorkerCard extends StatelessWidget {
             color: worker.isReady ? null : SyntilaColors.warningText(isDark),
           );
 
-    // Plugin Workers have no model catalog; the plugin chooses its own model.
-    final isPlugin = worker.workerTypeId.startsWith('plugin-');
+    final isExternalWorker = worker.workerTypeId.startsWith('plugin-');
     final modelsText = models.isNotEmpty
         ? models.join(' · ')
-        : isPlugin
-            ? 'Custom plugin · model set by the plugin'
+        : isExternalWorker
+            ? 'External Worker · model set by the Worker'
             : 'Unavailable';
 
     return Card(

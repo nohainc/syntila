@@ -185,6 +185,15 @@ void main() {
               'pluginRef': 'plugin-abc',
               'version': '1.0.0',
             };
+          case 'externalWorkers.register':
+            return {'pluginRef': 'plugin-abc', 'version': '1.0.0'};
+          case 'externalWorkers.show':
+            return {
+              'pluginId': 'ollama-mcp',
+              'pluginRef': 'plugin-abc',
+              'displayName': 'Ollama',
+              'versions': [],
+            };
         }
         return {'schemaVersion': 1};
       },
@@ -197,9 +206,12 @@ void main() {
       await cli.run(['workers', 'enable', 'plugin-abc', '--accept', 'h1']),
       0,
     );
-    expect(out.toString(), contains('Enabled plugin-abc 1.0.0.'));
+    expect(out.toString(), contains('Enabled ollama-mcp 1.0.0.'));
     expect(await cli.run(['workers', 'inspect', 'ollama-mcp']), 0);
     expect(await cli.run(['workers', 'register', 'ollama-mcp']), 0);
+    expect(out.toString(), contains('Registered ollama-mcp 1.0.0.'));
+    expect(await cli.run(['workers', 'show', 'ollama-mcp']), 0);
+    expect(out.toString(), isNot(contains('plugin-abc')));
     expect(await cli.run(['workers', 'import', '/tmp/pkg']), 0);
     expect(calls, [
       'externalWorkers.list {}',
@@ -208,8 +220,53 @@ void main() {
       'externalWorkers.enable {externalWorkerId: ollama-mcp, acceptHash: h1}',
       'externalWorkers.test {externalWorkerId: ollama-mcp}',
       'externalWorkers.register {externalWorkerId: ollama-mcp}',
+      'externalWorkers.show {externalWorkerId: ollama-mcp}',
       'externalWorkers.import {path: /tmp/pkg}',
     ]);
+  });
+
+  test('lists and checks an External Worker by its package ID', () async {
+    final out = StringBuffer();
+    final calls = <String>[];
+    final cli = WorkspaceCli(
+      out: out,
+      err: StringBuffer(),
+      request: (command, payload) async {
+        calls.add('$command $payload');
+        if (command == 'externalWorkers.list') {
+          return {
+            'plugins': [
+              {'pluginId': 'ollama-mcp', 'pluginRef': 'plugin-abc'},
+            ],
+          };
+        }
+        final worker = {
+          'workerId': 'w-1',
+          'productWorkerTypeId': 'plugin-abc',
+          'activationState': 'enabled',
+          'readinessState': 'ready',
+        };
+        if (command == 'workers.list') return [worker];
+        if (command == 'workers.checkReadiness') {
+          return {
+            'workers': [worker]
+          };
+        }
+        if (command == 'workers.testWorker') {
+          return {...worker, 'lastLiveTestPassed': true};
+        }
+        return {};
+      },
+    );
+    expect(await cli.run(['workers', 'list']), 0);
+    expect(await cli.run(['workers', 'check', 'ollama-mcp']), 0);
+    expect(await cli.run(['workers', 'test', 'ollama-mcp']), 0);
+    expect(out.toString(), contains('ollama-mcp\tenabled\tready'));
+    expect(out.toString(), contains('ollama-mcp: Passed'));
+    expect(out.toString(), isNot(contains('plugin-abc')));
+    expect(
+        calls, contains('workers.checkReadiness {workerTypeId: plugin-abc}'));
+    expect(calls, contains('workers.testWorker {workerId: w-1}'));
   });
 
   test('action summaries preserve JSON and hide worker IDs', () async {

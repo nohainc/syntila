@@ -145,6 +145,18 @@ class WorkspaceCli {
   }) async {
     var call = (command, payload);
     try {
+      Map<String, String> refs = {};
+      if (command == 'workers.checkReadiness' &&
+          payload['workerTypeId'] is String) {
+        refs = await _externalWorkerRefs(dataDir);
+        final requested = payload['workerTypeId'];
+        for (final entry in refs.entries) {
+          if (entry.value == requested) {
+            call = (command, {...payload, 'workerTypeId': entry.key});
+            break;
+          }
+        }
+      }
       if (workerType != null) {
         final workerId = await _workerIdForType(dataDir, workerType);
         if (workerId == null) {
@@ -195,7 +207,21 @@ class WorkspaceCli {
         _print(result, true);
         return 3;
       }
-      if (!json && _printServiceResult(call.$1, result, call.$2)) {
+      final displayedWorkers = call.$1 == 'workers.list' && result is List
+          ? result
+          : call.$1 == 'workers.checkReadiness' && result is Map
+              ? result['workers'] as List? ?? const []
+              : call.$1 == 'workers.testWorker' && result is Map
+                  ? [result]
+                  : const [];
+      if (!json &&
+          displayedWorkers.whereType<Map>().any((worker) =>
+              worker['productWorkerTypeId'] is String &&
+              (worker['productWorkerTypeId'] as String)
+                  .startsWith('plugin-'))) {
+        refs = await _externalWorkerRefs(dataDir);
+      }
+      if (!json && _printServiceResult(call.$1, result, call.$2, refs)) {
         return consentPending ? 3 : 0;
       }
       if (!json && result is Map<String, Object?>) {
@@ -268,7 +294,10 @@ class WorkspaceCli {
       _print(result, json);
       return 0;
     } on WorkspaceManagerProtocolException catch (error) {
-      err.writeln('syntila: ${error.message} (${error.code})');
+      final code = error.code;
+      err.writeln(code.startsWith('plugin_')
+          ? 'syntila: ${error.message}'
+          : 'syntila: ${error.message} ($code)');
       return 1;
     } on TimeoutException {
       err.writeln('syntila: service request timed out.');
@@ -299,13 +328,13 @@ class WorkspaceCli {
     return result;
   }
 
-  bool _printServiceResult(
-      String command, Object? result, Map<String, Object?> payload) {
+  bool _printServiceResult(String command, Object? result,
+      Map<String, Object?> payload, Map<String, String> externalRefs) {
     if (command.startsWith('mcp.') && _printMcpResult(command, result)) {
       return true;
     }
     if (command.startsWith('externalWorkers.') &&
-        _printExternalWorkerResult(command, result)) {
+        _printExternalWorkerResult(command, result, payload)) {
       return true;
     }
     if (command == 'diagnostics.getLogs' &&
@@ -317,21 +346,27 @@ class WorkspaceCli {
       return true;
     }
     if (command == 'workers.list' && result is List) {
-      _printWorkers(result);
+      _printWorkers(result, externalRefs);
       return true;
     }
     if (command == 'workers.checkReadiness' && result is Map) {
       final workers = (result['workers'] as List?) ?? const [];
       final requested = payload['workerTypeId'];
-      _printWorkers(workers
-          .where((worker) =>
-              requested == null ||
-              (worker is Map && worker['productWorkerTypeId'] == requested))
-          .toList());
+      _printWorkers(
+          workers
+              .where((worker) =>
+                  requested == null ||
+                  (worker is Map && worker['productWorkerTypeId'] == requested))
+              .toList(),
+          externalRefs);
       return true;
     }
     if (command == 'workers.testWorker' && result is Map) {
-      final type = result['productWorkerTypeId'] ?? 'Worker';
+      final type = payload['workerId'] != null &&
+              result['productWorkerTypeId']?.toString().startsWith('plugin-') ==
+                  true
+          ? externalRefs[result['productWorkerTypeId']] ?? 'External Worker'
+          : result['productWorkerTypeId'] ?? 'Worker';
       final passed = result['lastLiveTestPassed'];
       out.writeln(
           '$type: ${passed == true ? 'Passed' : passed == false ? 'Failed' : 'Test result unavailable'}');
@@ -409,18 +444,23 @@ class WorkspaceCli {
     return false;
   }
 
-  void _printWorkers(List workers) {
+  void _printWorkers(List workers, Map<String, String> externalRefs) {
     if (workers.isEmpty) {
       out.writeln('No workers configured.');
       return;
     }
     for (final worker in workers.whereType<Map>()) {
-      final type = worker['productWorkerTypeId'] ?? 'Unknown worker';
+      final rawType = worker['productWorkerTypeId'];
+      final type = rawType is String && rawType.startsWith('plugin-')
+          ? externalRefs[rawType] ?? 'External Worker'
+          : rawType ?? 'Unknown worker';
       final state = worker['activationState'] ?? 'unknown';
       final readiness = worker['readinessState'] ?? 'unknown';
       out.writeln('$type\t$state\t$readiness');
       if (worker['readinessIssueCode'] != null) {
-        out.writeln('  Issue: ${worker['readinessIssueCode']}');
+        final issue = worker['readinessIssueCode'].toString();
+        out.writeln(
+            '  Issue: ${issue.startsWith('plugin_') ? 'External Worker: ${issue.substring(7).replaceAll('_', ' ')}' : issue}');
       }
     }
   }
@@ -981,6 +1021,13 @@ class WorkspaceCli {
     }
     for (final item in list.whereType<Map>()) {
       if (item['workerId'] == type) return type;
+    }
+    final refs = await _externalWorkerRefs(dataDir);
+    for (final item in list.whereType<Map>()) {
+      if (refs[item['productWorkerTypeId']] == type &&
+          item['workerId'] is String) {
+        return item['workerId'] as String;
+      }
     }
     return null;
   }

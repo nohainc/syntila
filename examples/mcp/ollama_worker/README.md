@@ -10,8 +10,11 @@ that runs assignments on a local [Ollama](https://ollama.com) daemon through its
 | `syntila.probe` | `passive`: Ollama reachable (`/api/version`). `live`: also at least one installed model |
 | `syntila.models` | Installed models (`/api/tags`); `:cloud` entries and `syntila-session-*` snapshots are skipped |
 
-Continuity is `history_replay`: Syntila replays history inside the prompt, so the
-Worker keeps no session. Ollama errors map to stable codes (`context_limit_exceeded`,
+Continuity is `history_replay`: Syntila sends the earlier turns with every request
+(`conversation`), and the Worker maps them to Ollama `system` / `user` /
+`assistant` messages and keeps no session. It asks Ollama for an 8,192-token
+context (`OLLAMA_NUM_CTX` overrides it) and drops the oldest turns that do not
+fit, because Ollama truncates an oversized prompt without an error. Ollama errors map to stable codes (`context_limit_exceeded`,
 `model_unavailable`, `not_ready`, `timeout`, `cancelled`, `output_too_large`).
 
 ## Safety notes
@@ -38,6 +41,9 @@ syntila workers enable ollama-mcp              # shows the consent document
 syntila workers enable ollama-mcp --accept HASH
 syntila workers check ollama-mcp
 ```
+
+The Worker list displays the package ID (`ollama-mcp`). Use that ID with
+`check`, `test`, `enable`, `disable`, and `remove`.
 
 The build requires Dart; pass an optional output directory to the script to
 choose another location. Registering and enabling talk to Cloud. The server

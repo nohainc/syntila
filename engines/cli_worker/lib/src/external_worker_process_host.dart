@@ -56,6 +56,7 @@ class ExternalWorkerRunRequest {
     this.model,
     this.sessionKey,
     this.sessionMode = 'new',
+    this.conversation,
   }) : probeMode = null,
        discoverModels = false;
 
@@ -69,6 +70,7 @@ class ExternalWorkerRunRequest {
        model = null,
        sessionKey = null,
        sessionMode = 'new',
+       conversation = null,
        probeMode = mode,
        discoverModels = false;
 
@@ -80,6 +82,7 @@ class ExternalWorkerRunRequest {
        model = null,
        sessionKey = null,
        sessionMode = 'new',
+       conversation = null,
        probeMode = null,
        discoverModels = true;
 
@@ -97,6 +100,10 @@ class ExternalWorkerRunRequest {
   final String? model;
   final String? sessionKey;
   final String sessionMode;
+
+  /// The exchange [prompt] carries, as separate turns (see
+  /// `externalWorkerConversation`).
+  final Map<String, Object?>? conversation;
 }
 
 sealed class ExternalWorkerRunOutcome {

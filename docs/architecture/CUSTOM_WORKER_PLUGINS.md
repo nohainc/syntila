@@ -405,7 +405,7 @@ POSIX RSS and descendant count are sampled, and the data directory is checked
 before launch and sampled on every platform. These are **observed limits**:
 short-lived spikes and reparented descendants can escape a sample. Inspection
 failure stops the run. Limits do not grant filesystem/network isolation; the
-reported tier remains `none` and read-only Steps remain ineligible.
+reported tier remains `none`; read-only Steps run with read-only simulated.
 
 The table includes remaining target requirements explicitly:
 
@@ -455,12 +455,13 @@ Per-platform facilities (all require device evidence before any claim):
 
 Consequences built into the design:
 
-- **Read-only is only scheduled where enforced.** Chat/Research/Plan/Test/Verify
-  steps carry a read-only policy. A plugin receives that policy but Syntila
-  cannot make it true unless the tier is `enforced` with
-  `readOnlyEnforced: true`. Otherwise the scheduler rejects the plugin for those
-  Steps with `plugin_read_only_unenforceable`; the plugin remains eligible for
-  Work (writable) Steps, for which the user consented to write access.
+- **Read-only is simulated, not enforced (since 2026-11-11).**
+  Chat/Research/Plan/Test/Verify steps carry a read-only policy. Syntila cannot
+  make it true unless the tier is `enforced` with `readOnlyEnforced: true`
+  (none today), so the Engine sends `access: restricted` and a read-only
+  instruction and the External Worker is trusted to follow them. The consent
+  document says so. Before this, the scheduler rejected such Steps with
+  `plugin_read_only_unenforceable`, which left chat unusable for these Workers.
 - `additionalFolderIds` are not passed to plugins in v1
   (`plugin_additional_folders_unsupported`).
 - The network declaration is documentation until an `enforced` network tier

@@ -375,7 +375,7 @@ class ExternalWorkerService {
     if (selected.registeredAt == null || record.pluginRef == null) {
       throw const ExternalWorkerException(
         'plugin_conformance_required',
-        'Register this plugin version before enabling it.',
+        'Register this External Worker version before enabling it.',
       );
     }
     final installed = await _load(selected, pluginId);
@@ -438,7 +438,7 @@ class ExternalWorkerService {
     if (pin == null) {
       throw const ExternalWorkerException(
         'plugin_not_enabled',
-        'This plugin is not enabled on this Workspace.',
+        'This External Worker is not enabled on this Workspace.',
       );
     }
     await registry
@@ -476,14 +476,14 @@ class ExternalWorkerService {
     if (record.pin?.enabled == true) {
       throw const ExternalWorkerException(
         'plugin_in_use',
-        'Disable this plugin before removing it.',
+        'Disable this External Worker before removing it.',
       );
     }
     final ref = record.pluginRef;
     if (ref != null && await activeAssignments(ref) > 0) {
       throw const ExternalWorkerException(
         'plugin_in_use',
-        'This plugin still has running work. Remove it when that finishes.',
+        'This External Worker still has running work. Remove it when that finishes.',
       );
     }
     if (ref != null) {
@@ -519,7 +519,7 @@ class ExternalWorkerService {
     if (record == null) {
       throw const ExternalWorkerException(
         'plugin_not_found',
-        'No such plugin on this Workspace.',
+        'No such External Worker on this Workspace.',
       );
     }
     return record;
@@ -532,7 +532,7 @@ class ExternalWorkerService {
       if (found == null) {
         throw const ExternalWorkerException(
           'plugin_not_found',
-          'No such plugin version on this Workspace.',
+          'No such External Worker version on this Workspace.',
         );
       }
       return found;
@@ -541,7 +541,7 @@ class ExternalWorkerService {
     if (latest == null) {
       throw const ExternalWorkerException(
         'plugin_not_found',
-        'No such plugin on this Workspace.',
+        'No such External Worker on this Workspace.',
       );
     }
     return latest;
@@ -625,7 +625,8 @@ class ExternalWorkerService {
       },
       'requestedAccess': {
         ...access,
-        'note': 'Declared by the plugin. Not enforced: the plugin runs as you.',
+        'note':
+            'Declared by the External Worker. Not enforced: the Worker runs as you.',
       },
       'capabilities': manifest['capabilities'],
       'mcp': {
@@ -639,7 +640,8 @@ class ExternalWorkerService {
       'isolation': {
         'tier': 'none',
         'readOnlyEnforced': false,
-        'note': 'A process boundary only; no filesystem or network sandbox.',
+        'note': 'A process boundary only; no filesystem or network sandbox. '
+            'Read-only requests are asked of the Worker, not enforced.',
       },
       'signature': installed.signer == null
           ? {'status': 'unsigned'}

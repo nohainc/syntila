@@ -277,7 +277,7 @@ class ExternalWorkerStore {
       if (entity is Link) {
         throw const ExternalWorkerException(
           'plugin_package_invalid',
-          'Symbolic links are not allowed in a plugin package.',
+          'Symbolic links are not allowed in an External Worker package.',
         );
       }
       if (entity is! File) continue;
@@ -391,7 +391,7 @@ class ExternalWorkerStore {
     if (negotiateExternalWorkerProtocol(manifest) == null) {
       throw const ExternalWorkerException(
         'plugin_protocol_unsupported',
-        'This plugin supports no protocol version the Workspace offers.',
+        'This External Worker supports no protocol version the Workspace offers.',
       );
     }
     final platformKey = hostPlatform;
@@ -400,7 +400,7 @@ class ExternalWorkerStore {
     if (artifact == null) {
       throw ExternalWorkerException(
         'plugin_platform_unsupported',
-        'This plugin has no build for $platformKey.',
+        'This External Worker has no build for $platformKey.',
       );
     }
     // Every artifact that is present must match its pinned hash and size.
@@ -542,7 +542,7 @@ class ExternalWorkerStore {
     if (!directory.existsSync()) {
       throw const ExternalWorkerException(
         'plugin_not_found',
-        'That plugin version is not installed on this Workspace.',
+        'That External Worker version is not installed on this Workspace.',
       );
     }
     final installed = await _verifyStaged(

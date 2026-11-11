@@ -625,7 +625,7 @@ class WorkspaceManagerService {
         if (isExternalWorkerType(workerTypeId)) {
           throw const WorkspaceManagerProtocolException(
             'plugin_managed_via_mcp',
-            'Custom plugins are managed via MCP.',
+            'External Workers are managed via MCP.',
           );
         }
         final coordinator = workspace.workerCatalogCoordinator;
@@ -692,7 +692,7 @@ class WorkspaceManagerService {
             isExternalWorkerType(removeTarget.workerTypeId)) {
           throw const WorkspaceManagerProtocolException(
             'plugin_managed_via_mcp',
-            'Custom plugins are managed via MCP.',
+            'External Workers are managed via MCP.',
           );
         }
         var removed = false;
@@ -982,7 +982,7 @@ class WorkspaceManagerService {
     if (subsystem == null) {
       throw const WorkspaceManagerProtocolException(
         'unsupported_command',
-        'Plugins are not available on this Workspace.',
+        'External Workers are not available on this Workspace.',
       );
     }
     return _externalWorkerCommands ??= WorkspaceExternalWorkerCommands(
