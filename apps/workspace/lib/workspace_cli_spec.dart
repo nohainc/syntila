@@ -123,7 +123,14 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
       label: 'Server ID',
     ),
   ];
-  const mcpAcceptConsent = GuiParameter(
+  const externalWorkerId = GuiParameter(
+    name: 'id',
+    kind: GuiParamKind.positional,
+    type: GuiParamType.string,
+    required: true,
+    label: 'External Worker ID',
+  );
+  const acceptConsent = GuiParameter(
     name: 'accept',
     kind: GuiParamKind.option,
     type: GuiParamType.string,
@@ -394,13 +401,16 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             parameters: const [workerType],
             inGroup: true,
           ),
-          workerAction(
+          command(
             icon: GuiIcons.trash,
             'remove',
             'Remove Worker',
-            'Remove a configured Worker',
-            'workers.removeWorker',
+            'Remove a configured Worker or an External Worker package',
+            (run) => cli._runWorkerLifecycle(
+                dataDir(run), json(run), 'remove', run.positional('type')!),
+            parameters: const [workerType],
             destructive: true,
+            inGroup: true,
           ),
           command(
             icon: GuiIcons.check,
@@ -428,19 +438,102 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             'workers.testWorker',
             longRunning: true,
           ),
-          workerAction(
+          command(
             icon: GuiIcons.power,
             'enable',
             'Enable Worker',
-            'Enable a Worker',
-            'workers.enableWorker',
+            'Enable a Worker; an External Worker shows a consent document first',
+            (run) => cli._runWorkerLifecycle(
+              dataDir(run),
+              json(run),
+              'enable',
+              run.positional('type')!,
+              acceptHash: run.option('accept'),
+            ),
+            parameters: const [workerType, acceptConsent],
+            inGroup: true,
           ),
-          workerAction(
+          command(
             icon: GuiIcons.stop,
             'disable',
             'Disable Worker',
             'Disable a Worker',
-            'workers.disableWorker',
+            (run) => cli._runWorkerLifecycle(
+                dataDir(run), json(run), 'disable', run.positional('type')!),
+            parameters: const [workerType],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.server,
+            info: true,
+            'external',
+            'External Workers',
+            'List imported External Worker packages and their state',
+            service('externalWorkers.list'),
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.package,
+            'import',
+            'Import External Worker',
+            'Import an External Worker package (directory or .zip); nothing runs yet',
+            service(
+              'externalWorkers.import',
+              payload: (run) =>
+                  {'path': File(run.positional('path')!).absolute.path},
+            ),
+            parameters: const [
+              GuiParameter(
+                name: 'path',
+                kind: GuiParamKind.positional,
+                type: GuiParamType.path,
+                required: true,
+                label: 'Package directory or .zip',
+              ),
+            ],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.test,
+            'inspect',
+            'Inspect External Worker',
+            'Start the package, check its MCP Worker tools and pin their definitions',
+            service(
+              'externalWorkers.test',
+              payload: (run) => {'externalWorkerId': run.positional('id')},
+            ),
+            parameters: const [externalWorkerId],
+            longRunning: true,
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.shield,
+            'register',
+            'Register External Worker',
+            'Show the consent document; accept with --accept to register with Cloud',
+            service(
+              'externalWorkers.register',
+              payload: (run) => {
+                'externalWorkerId': run.positional('id'),
+                if (run.option('accept') != null)
+                  'acceptHash': run.option('accept'),
+              },
+            ),
+            parameters: const [externalWorkerId, acceptConsent],
+            inGroup: true,
+          ),
+          command(
+            icon: GuiIcons.list,
+            info: true,
+            'show',
+            'External Worker details',
+            'Show an External Worker package: versions, digests and state',
+            service(
+              'externalWorkers.show',
+              payload: (run) => {'externalWorkerId': run.positional('id')},
+            ),
+            parameters: const [externalWorkerId],
+            inGroup: true,
           ),
         ],
       ),
@@ -671,7 +764,7 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
                   'acceptHash': run.option('accept'),
               },
             ),
-            parameters: mcpServerId + [mcpAcceptConsent],
+            parameters: mcpServerId + [acceptConsent],
             inGroup: true,
           ),
           command(

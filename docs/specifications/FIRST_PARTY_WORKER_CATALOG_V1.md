@@ -361,3 +361,7 @@ unseen until a successful sync. A retirement made while offline also leaves
 the last-known-good Worker runnable; after Cloud reconnects and confirms the
 retirement, inventory omits it and new assignments are rejected. Reactivation
 reuses the existing local Worker record.
+
+## Demo setup
+
+The [Northstar demo guide](../demo/README.md#separate-demo-workspace-and-worker-setup) records the current V9 Profile and readiness prerequisites, provider-owned sign-ins, model selection and fallback. Catalog presence alone does not establish readiness or read-only Chat eligibility.

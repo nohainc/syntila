@@ -8,9 +8,9 @@ import 'dart:typed_data';
 
 import 'package:syntila_cli_worker_engine/src/mcp_host.dart';
 import 'package:syntila_cli_worker_engine/src/mcp_worker_runner.dart';
-import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
+import 'package:syntila_cli_worker_engine/src/external_worker_process_host.dart';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
-import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
+import 'package:syntila_external_worker_protocol/syntila_external_worker_protocol.dart';
 import 'package:test/test.dart';
 
 const workerPath = '../../examples/mcp/ollama_worker/ollama_worker.dart';
@@ -26,6 +26,7 @@ class FakeOllama {
   List<String> chunks = ['Hel', 'lo ', 'world'];
   Duration chunkDelay = Duration.zero;
   bool hang = false;
+  bool truncate = false;
   String? lastModel;
   String? lastPrompt;
   var aborted = Completer<void>();
@@ -142,7 +143,7 @@ class FakeOllama {
             }
             return;
           }
-          _chunk(socket, {'done': true});
+          if (!truncate) _chunk(socket, {'done': true});
           socket.add(latin1.encode('0\r\n\r\n'));
         }
       } else {
@@ -163,14 +164,14 @@ class FakeOllama {
 
 late String dartDigest;
 late Directory root;
-final plugins = PluginHost();
+final plugins = ExternalWorkerProcessHost();
 
 McpServerSpec spec(String baseUrl, {ToolPins? pins}) => McpServerSpec(
   serverId: 'ollama-worker',
   workspaceId: 'ws1',
   requireWorkerProfile: true,
   pins: pins,
-  launch: PluginLaunch(
+  launch: ExternalWorkerLaunch(
     executable: Platform.resolvedExecutable,
     arguments: [File(workerPath).absolute.path],
     artifactSha256: dartDigest,
@@ -178,16 +179,19 @@ McpServerSpec spec(String baseUrl, {ToolPins? pins}) => McpServerSpec(
     version: '1.0.0',
     dataDirectory: root.path,
     workingDirectory: root.path,
-    environment: {...PluginHost.buildEnvironment(), 'OLLAMA_BASE_URL': baseUrl},
+    environment: {
+      ...ExternalWorkerProcessHost.buildEnvironment(),
+      'OLLAMA_BASE_URL': baseUrl,
+    },
     hostVersion: '1.4.0',
   ),
 );
 
-PluginRunRequest request(
+ExternalWorkerRunRequest request(
   String prompt, {
   String? model,
   Duration deadline = const Duration(seconds: 30),
-}) => PluginRunRequest(
+}) => ExternalWorkerRunRequest(
   executeId: 'e1',
   prompt: prompt,
   access: 'read_write',
@@ -228,7 +232,8 @@ void main() {
     'passive probe reaches Ollama; live also requires an installed model',
     () async {
       final s = await consented();
-      final passive = await runner.probe(s, 'passive') as PluginProbeSuccess;
+      final passive =
+          await runner.probe(s, 'passive') as ExternalWorkerProbeSuccess;
       expect(passive.state, 'ready');
       expect(passive.checks.single['message'], contains('0.0.0-fake'));
       expect(
@@ -236,12 +241,12 @@ void main() {
         'history_replay',
       );
       ollama.models = [];
-      final live = await runner.probe(s, 'live') as PluginProbeSuccess;
+      final live = await runner.probe(s, 'live') as ExternalWorkerProbeSuccess;
       expect(live.state, 'setup_required');
       expect(live.issueCode, 'ollama_model_missing');
       ollama.models = ['tiny:latest'];
       expect(
-        (await runner.probe(s, 'live') as PluginProbeSuccess).state,
+        (await runner.probe(s, 'live') as ExternalWorkerProbeSuccess).state,
         'ready',
       );
     },
@@ -252,17 +257,18 @@ void main() {
     final url = 'http://127.0.0.1:${dead.port}';
     await dead.close(force: true);
     final s = await consented(url);
-    final probe = await runner.probe(s, 'passive') as PluginProbeSuccess;
+    final probe =
+        await runner.probe(s, 'passive') as ExternalWorkerProbeSuccess;
     expect(probe.state, 'unavailable');
     expect(probe.issueCode, 'ollama_unavailable');
-    final run = await runner.run(s, request('hi')) as PluginRunFailure;
+    final run = await runner.run(s, request('hi')) as ExternalWorkerRunFailure;
     expect(run.code, 'not_ready');
     expect(run.fromPlugin, isTrue);
   });
 
   test('a non-loopback OLLAMA_BASE_URL is refused', () async {
     final s = await consented('http://example.com:11434');
-    final run = await runner.run(s, request('hi')) as PluginRunFailure;
+    final run = await runner.run(s, request('hi')) as ExternalWorkerRunFailure;
     expect(run.code, 'not_ready');
     expect(run.message, contains('loopback'));
   });
@@ -276,15 +282,15 @@ void main() {
     ];
     final outcome = await runner.run(
       await consented(),
-      PluginRunRequest.models(
+      ExternalWorkerRunRequest.models(
         executeId: 'm',
         deadline: const Duration(seconds: 10),
       ),
     );
     // The routing host handles `models`; the runner exposes it directly.
-    expect(outcome, isA<PluginRunFailure>());
+    expect(outcome, isA<ExternalWorkerRunFailure>());
     final models =
-        await runner.models(await consented()) as PluginModelsSuccess;
+        await runner.models(await consented()) as ExternalWorkerModelsSuccess;
     expect([for (final m in models.models) m['id']], ['llama3.1:8b']);
   });
 
@@ -299,7 +305,7 @@ void main() {
                 request('say hello', model: 'tiny:latest'),
                 onProgress: (_, m) => progress.add(m),
               )
-              as PluginRunSuccess;
+              as ExternalWorkerRunSuccess;
       expect(outcome.output, 'Hello world');
       expect(ollama.lastModel, 'tiny:latest');
       expect(ollama.lastPrompt, 'say hello');
@@ -312,20 +318,29 @@ void main() {
     'model selection: single installed model is automatic, else explicit',
     () async {
       final s = await consented();
-      final ambiguous = await runner.run(s, request('hi')) as PluginRunFailure;
+      final ambiguous =
+          await runner.run(s, request('hi')) as ExternalWorkerRunFailure;
       expect(ambiguous.code, 'model_unavailable');
       final missing =
           await runner.run(s, request('hi', model: 'nope:1b'))
-              as PluginRunFailure;
+              as ExternalWorkerRunFailure;
       expect(missing.code, 'model_unavailable');
       ollama.models = ['only:latest'];
       expect(
-        (await runner.run(s, request('hi')) as PluginRunSuccess).output,
+        (await runner.run(s, request('hi')) as ExternalWorkerRunSuccess).output,
         'Hello world',
       );
       expect(ollama.lastModel, 'only:latest');
     },
   );
+
+  test('an incomplete Ollama stream is not a successful answer', () async {
+    ollama.models = ['m:1'];
+    ollama.truncate = true;
+    final result = await runner.run(await consented(), request('hello'));
+    expect(result, isA<ExternalWorkerRunFailure>());
+    expect((result as ExternalWorkerRunFailure).code, 'not_ready');
+  });
 
   test('Ollama errors map to stable codes', () async {
     ollama.models = ['m:1'];
@@ -333,19 +348,19 @@ void main() {
     ollama.chatStatus = 400;
     ollama.chatError = 'the input length exceeds the context window';
     expect(
-      ((await runner.run(s, request('hi'))) as PluginRunFailure).code,
+      ((await runner.run(s, request('hi'))) as ExternalWorkerRunFailure).code,
       'context_limit_exceeded',
     );
     ollama.chatStatus = 404;
     ollama.chatError = 'model "m:1" not found';
     expect(
-      ((await runner.run(s, request('hi'))) as PluginRunFailure).code,
+      ((await runner.run(s, request('hi'))) as ExternalWorkerRunFailure).code,
       'model_unavailable',
     );
     ollama.chatStatus = 500;
     ollama.chatError = 'boom';
     expect(
-      ((await runner.run(s, request('hi'))) as PluginRunFailure).code,
+      ((await runner.run(s, request('hi'))) as ExternalWorkerRunFailure).code,
       'not_ready',
     );
   });
@@ -359,7 +374,7 @@ void main() {
     final running = runner.run(s, request('long'), cancel: cancel.future);
     await Future<void>.delayed(const Duration(seconds: 2));
     cancel.complete();
-    final outcome = await running as PluginRunFailure;
+    final outcome = await running as ExternalWorkerRunFailure;
     expect(outcome.code, 'cancelled');
     expect(
       clock.elapsed,
@@ -376,7 +391,7 @@ void main() {
               await consented(),
               request('long', deadline: const Duration(seconds: 3)),
             )
-            as PluginRunFailure;
+            as ExternalWorkerRunFailure;
     expect(outcome.code, 'timeout');
     expect(
       ollama.lastPrompt,
@@ -396,7 +411,7 @@ void main() {
           .replaceAll('__SHA256__', 'a' * 64)
           .replaceAll('__SIZE__', '1234'),
     );
-    final validation = validatePluginManifest(manifest);
+    final validation = validateExternalWorkerManifest(manifest);
     expect(validation.issues, isEmpty);
     expect(validation.manifest!.isMcp, isTrue);
   });

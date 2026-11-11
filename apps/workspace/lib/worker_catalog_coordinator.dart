@@ -7,7 +7,7 @@ import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart'
 
 import 'cli_worker_engine_supervisor.dart';
 import 'local_worker_registry.dart';
-import 'plugin_executor.dart' show isPluginWorkerType;
+import 'external_worker_executor.dart' show isExternalWorkerType;
 import 'tool_profile_catalog.dart';
 import 'worker_profile_store.dart';
 import 'tool_profile_release_verifier.dart';
@@ -64,7 +64,8 @@ abstract interface class WorkspaceWorkerCatalogClient {
 
 /// Owns the Workspace catalog -> Profile -> readiness synchronization pipeline.
 /// Projects a plugin Worker for Cloud inventory, or null to omit it.
-typedef PluginInventoryProjection = Future<Map<String, Object?>?> Function(
+typedef ExternalWorkerInventoryProjection = Future<Map<String, Object?>?>
+    Function(
   LocalWorker worker, {
   required String engineVersion,
   required String lastSeenAt,
@@ -140,15 +141,15 @@ class WorkerCatalogCoordinator extends WorkspaceNotifier
     Iterable<LocalWorker> workers, {
     required String engineVersion,
     required bool engineAvailable,
-    PluginInventoryProjection? pluginInventory,
+    ExternalWorkerInventoryProjection? externalWorkerInventory,
   }) async {
     final lastSeenAt = DateTime.now().toUtc().toIso8601String();
     final projected = await Future.wait(workers.map((worker) async {
-      if (isPluginWorkerType(worker.workerTypeId)) {
+      if (isExternalWorkerType(worker.workerTypeId)) {
         // Plugin Workers have no catalog entry or Profile. They are projected
         // only when the caller (a Cloud that announced plugin support) asks.
         return engineAvailable
-            ? await pluginInventory?.call(
+            ? await externalWorkerInventory?.call(
                 worker,
                 engineVersion: engineVersion,
                 lastSeenAt: lastSeenAt,
@@ -244,7 +245,7 @@ class WorkerCatalogCoordinator extends WorkspaceNotifier
       for (final worker in _localWorkers.where(
         (worker) =>
             !currentTypes.contains(worker.workerTypeId) &&
-            !isPluginWorkerType(worker.workerTypeId),
+            !isExternalWorkerType(worker.workerTypeId),
       )) {
         views.add(WorkerCatalogWorkerState(
           descriptor: null,

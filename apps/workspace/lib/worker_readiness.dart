@@ -9,7 +9,7 @@ import 'package:syntila_tool_profile_v1/tool_profile_v1.dart'
     show ToolProfileResolution;
 
 import 'local_worker_registry.dart';
-import 'plugin_executor.dart' show isPluginWorkerType;
+import 'external_worker_executor.dart' show isExternalWorkerType;
 import 'cli_worker_engine_supervisor.dart';
 import 'worker_profile_store.dart';
 import 'tool_profile_release_verifier.dart';
@@ -60,7 +60,7 @@ class WorkerReadinessMonitor extends WorkspaceNotifier {
     this.workerStateDirectory,
     this.profileDiagnosticStoreForWorker,
     this.assessWorker,
-    this.pluginAssessor,
+    this.externalWorkerAssessor,
     this.refreshInterval = const Duration(minutes: 1),
   });
 
@@ -79,12 +79,13 @@ class WorkerReadinessMonitor extends WorkspaceNotifier {
   final Future<WorkerReadinessAssessment> Function(
     LocalWorker worker,
     LocalWorkerProbeMode mode,
-  )? pluginAssessor;
+  )? externalWorkerAssessor;
   final Duration refreshInterval;
   Timer? _refreshTimer;
 
-  bool _isPlugin(LocalWorker worker) =>
-      pluginAssessor != null && isPluginWorkerType(worker.workerTypeId);
+  bool _isExternalWorker(LocalWorker worker) =>
+      externalWorkerAssessor != null &&
+      isExternalWorkerType(worker.workerTypeId);
   bool _disposed = false;
   bool _started = false;
   ({LocalWorkerProbeMode mode, String? type, bool disabled})? _activeScope;
@@ -329,7 +330,7 @@ class WorkerReadinessMonitor extends WorkspaceNotifier {
           worker.status == LocalWorkerStatus.removed) {
         continue;
       }
-      if (!_isPlugin(worker) &&
+      if (!_isExternalWorker(worker) &&
           workerCatalogCoordinator != null &&
           _profileDefinitionFor(worker.workerTypeId) == null) {
         continue;
@@ -373,8 +374,8 @@ class WorkerReadinessMonitor extends WorkspaceNotifier {
       if (assessWorker != null) {
         _progress(worker.workerTypeId, mode, WorkerCheckPhase.probe);
       }
-      assessment = _isPlugin(worker)
-          ? await pluginAssessor!(worker, mode)
+      assessment = _isExternalWorker(worker)
+          ? await externalWorkerAssessor!(worker, mode)
           : assessWorker != null
               ? await assessWorker!(worker)
               : await _assess(worker, mode: mode);

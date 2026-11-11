@@ -1,6 +1,6 @@
-import 'plugin_executor.dart' show isPluginWorkerType;
+import 'external_worker_executor.dart' show isExternalWorkerType;
 import 'workspace_manager_mcp.dart';
-import 'workspace_manager_plugins.dart';
+import 'workspace_manager_external_workers.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -52,7 +52,7 @@ class WorkspaceManagerService {
   WorkerCatalogCoordinator? _observedCatalog;
   WorkerReadinessMonitor? _observedReadiness;
   AllowedFolderRegistry? _allowedFolderRegistry;
-  WorkspacePluginCommands? _pluginCommands;
+  WorkspaceExternalWorkerCommands? _externalWorkerCommands;
   WorkspaceMcpCommands? _mcpCommands;
 
   Future<void> start() async {
@@ -437,8 +437,8 @@ class WorkspaceManagerService {
     final connection = workspace.cloudConnection;
     final registry = workspace.localWorkerRegistry;
     final workerSubsystem = workspace.workerSubsystem;
-    if (WorkspacePluginCommands.handles(command)) {
-      return _plugins().handle(command, payload);
+    if (WorkspaceExternalWorkerCommands.handles(command)) {
+      return _externalWorkers().handle(command, payload);
     }
     if (WorkspaceMcpCommands.handles(command)) {
       return _mcp().handle(command, payload);
@@ -622,7 +622,7 @@ class WorkspaceManagerService {
             'workerTypeId is required.',
           );
         }
-        if (isPluginWorkerType(workerTypeId)) {
+        if (isExternalWorkerType(workerTypeId)) {
           throw const WorkspaceManagerProtocolException(
             'plugin_managed_via_mcp',
             'Custom plugins are managed via MCP.',
@@ -689,7 +689,7 @@ class WorkspaceManagerService {
         }
         final removeTarget = await registry?.find(removeId);
         if (removeTarget != null &&
-            isPluginWorkerType(removeTarget.workerTypeId)) {
+            isExternalWorkerType(removeTarget.workerTypeId)) {
           throw const WorkspaceManagerProtocolException(
             'plugin_managed_via_mcp',
             'Custom plugins are managed via MCP.',
@@ -977,15 +977,15 @@ class WorkspaceManagerService {
 
   /// Plugin management (ADR-027) over the Workspace's shared plugin
   /// subsystem; the CLI only sends requests and prints results.
-  WorkspacePluginCommands _plugins() {
-    final subsystem = workspace.pluginSubsystem;
+  WorkspaceExternalWorkerCommands _externalWorkers() {
+    final subsystem = workspace.externalWorkers;
     if (subsystem == null) {
       throw const WorkspaceManagerProtocolException(
         'unsupported_command',
         'Plugins are not available on this Workspace.',
       );
     }
-    return _pluginCommands ??= WorkspacePluginCommands(
+    return _externalWorkerCommands ??= WorkspaceExternalWorkerCommands(
       subsystem.service,
       publish: _events.add,
     );

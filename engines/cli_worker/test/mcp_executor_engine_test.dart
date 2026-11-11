@@ -5,12 +5,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
+import 'package:syntila_cli_worker_engine/src/external_worker_process_host.dart';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:test/test.dart';
 
-import 'support/plugin_test_binaries.dart';
+import 'support/external_worker_test_binaries.dart';
 
 const workerPath = '../../examples/mcp/echo_worker/echo_worker.dart';
 
@@ -114,8 +114,10 @@ ExecuteRequest execute(WorkerExecutor e, {String prompt = 'hi'}) =>
 void main() {
   setUpAll(() async {
     root = Directory.systemTemp.createTempSync('mcp-executor');
-    dartDigest = await PluginHost().sha256OfFile(Platform.resolvedExecutable);
-    engineBinary = (await PluginTestBinaries.ensure()).engine;
+    dartDigest = await ExternalWorkerProcessHost().sha256OfFile(
+      Platform.resolvedExecutable,
+    );
+    engineBinary = (await ExternalWorkerTestBinaries.ensure()).engine;
   });
   tearDownAll(() => root.deleteSync(recursive: true));
 
@@ -174,6 +176,36 @@ void main() {
       expect(messages, contains('working'));
     },
   );
+
+  test('a probe publishes the models an MCP Worker discovers', () async {
+    final engine = await EngineProcess.start();
+    addTearDown(engine.close);
+    final e = executor(
+      mode: 'models',
+      toolPins: {
+        ...pins(),
+        'syntila.models': toolDefinitionHash({
+          'name': 'syntila.models',
+          'description': 'Syntila Worker tool syntila.models',
+          'inputSchema': {'type': 'object'},
+        }),
+      },
+    );
+    engine.send(initialize(e));
+    expect(await engine.next(), isA<InitializeResult>());
+    engine.send(ProbeRequest(requestId: 'probe-1', mode: WorkerProbeMode.live));
+    final result = await engine.next();
+    expect(result, isA<ProbeResult>(), reason: '${result.toJson()}');
+    final probe = result as ProbeResult;
+    expect(probe.ready, isTrue, reason: '${probe.toJson()}');
+    final catalog = probe.modelCatalog!;
+    expect(catalog.profileDigest, e.manifestDigest);
+    expect(catalog.providerToolVersion, e.version);
+    expect(
+      [for (final m in catalog.models) m.id],
+      ['echo-small', 'echo-large'],
+    );
+  });
 
   test(
     'a tool whose definition differs from the consented pin is refused',

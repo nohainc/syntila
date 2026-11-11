@@ -1,5 +1,9 @@
 # Worker Plugin Protocol v1 (draft)
 
+> **Removed (2026-11-11).** Hosts no longer speak this NDJSON protocol; only
+> `kind: "mcp"` External Workers run ([MCP Worker profile](MCP_WORKER_PROFILE_V1.md)).
+> The manifest (`plugin.json`) rules and limits below still apply.
+
 **Contract ID:** `workerPluginProtocol: 1.0`
 **Status:** Phase 0 draft. Normative for plugin authors once ADR-027 is accepted.
 **Decision:** [ADR-027](../decisions/ADR-027-custom-worker-plugins.md)

@@ -5,9 +5,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 engine_packages=(
   packages/syntila_worker_protocol
-  packages/syntila_plugin_protocol
-  packages/syntila_plugin_conformance
-  packages/syntila_plugin_sdk
+  packages/syntila_external_worker_protocol
+  packages/syntila_external_worker_conformance
+  packages/syntila_external_worker_sdk
   packages/syntila_mcp_protocol
   packages/tool_profile_v1
   packages/syntila_cli_worker_runtime
@@ -27,10 +27,10 @@ for pkg in "${engine_packages[@]}"; do
       dart format --output=none --set-exit-if-changed "${FORMAT_TARGETS[@]}"
     fi
     dart analyze
-    if [[ -f tool/prepare_plugin_test_binaries.dart ]]; then
+    if [[ -f tool/prepare_external_worker_test_binaries.dart ]]; then
       # Compile the shared plugin test binaries serially, before the tests
       # start, so process-spawning tests are not starved of CPU.
-      dart run tool/prepare_plugin_test_binaries.dart
+      dart run tool/prepare_external_worker_test_binaries.dart
     fi
     if [[ -d test ]] && find test -name "*_test.dart" -print -quit | grep -q .; then
       if [[ "$pkg" == engines/cli_worker ]]; then

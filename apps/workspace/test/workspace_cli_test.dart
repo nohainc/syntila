@@ -124,8 +124,92 @@ void main() {
       },
     );
     expect(await cli.run(['workers', 'disable', 'gemini']), 0);
-    expect(calls, ['workers.list {}', 'workers.disableWorker {workerId: w-1}']);
+    expect(calls, [
+      'externalWorkers.list {}',
+      'workers.list {}',
+      'workers.disableWorker {workerId: w-1}',
+    ]);
     expect(await cli.run(['workers', 'test', 'codex']), 66);
+  });
+
+  test('routes External Workers through the workers commands', () async {
+    final calls = <String>[];
+    final out = StringBuffer();
+    final cli = WorkspaceCli(
+      out: out,
+      err: StringBuffer(),
+      request: (command, payload) async {
+        calls.add('$command $payload');
+        switch (command) {
+          case 'externalWorkers.list':
+            return {
+              'schemaVersion': 1,
+              'plugins': [
+                {'pluginId': 'ollama-mcp', 'pluginRef': 'plugin-abc'},
+              ],
+            };
+          case 'externalWorkers.enable' when payload['acceptHash'] == null:
+            return {
+              'schemaVersion': 1,
+              'consentRequired': true,
+              'documentHash': 'h1',
+              'document': {
+                'plugin': {
+                  'id': 'ollama-mcp',
+                  'version': '1.0.0',
+                  'displayName': 'Ollama',
+                  'author': 'Syntila',
+                },
+                'digest': {
+                  'manifest': 'm',
+                  'artifact': 'a',
+                  'platform': 'macos-arm64',
+                },
+                'requestedAccess': {
+                  'subprocess': false,
+                  'note': 'Not enforced.'
+                },
+                'signature': {'status': 'unsigned'},
+                'mcp': {
+                  'tools': [
+                    {'name': 'syntila.execute', 'description': 'Run'},
+                  ],
+                },
+                'statement': 'Runs as you.',
+              },
+            };
+          case 'externalWorkers.enable':
+            return {
+              'schemaVersion': 1,
+              'enabled': true,
+              'pluginRef': 'plugin-abc',
+              'version': '1.0.0',
+            };
+        }
+        return {'schemaVersion': 1};
+      },
+    );
+
+    expect(await cli.run(['workers', 'enable', 'ollama-mcp']), 3);
+    expect(out.toString(), contains('syntila.execute: Run'));
+    expect(out.toString(), contains('--accept h1'));
+    expect(
+      await cli.run(['workers', 'enable', 'plugin-abc', '--accept', 'h1']),
+      0,
+    );
+    expect(out.toString(), contains('Enabled plugin-abc 1.0.0.'));
+    expect(await cli.run(['workers', 'inspect', 'ollama-mcp']), 0);
+    expect(await cli.run(['workers', 'register', 'ollama-mcp']), 0);
+    expect(await cli.run(['workers', 'import', '/tmp/pkg']), 0);
+    expect(calls, [
+      'externalWorkers.list {}',
+      'externalWorkers.enable {externalWorkerId: ollama-mcp}',
+      'externalWorkers.list {}',
+      'externalWorkers.enable {externalWorkerId: ollama-mcp, acceptHash: h1}',
+      'externalWorkers.test {externalWorkerId: ollama-mcp}',
+      'externalWorkers.register {externalWorkerId: ollama-mcp}',
+      'externalWorkers.import {path: /tmp/pkg}',
+    ]);
   });
 
   test('action summaries preserve JSON and hide worker IDs', () async {
@@ -332,6 +416,7 @@ void main() {
       'workers.configureWorker {workerTypeId: gemini}',
     ]);
     expect((await run(['workers', 'remove', 'w1'])).$4, [
+      'externalWorkers.list {}',
       'workers.list {}',
       'workers.removeWorker {workerId: w1}',
     ]);

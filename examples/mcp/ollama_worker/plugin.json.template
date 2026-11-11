@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "displayName": "Ollama (MCP Worker)",
   "description": "Runs assignments on a local Ollama model through its HTTP API.",
-  "author": { "name": "Your name" },
+  "author": { "name": "Syntila" },
   "protocol": { "min": "1.0", "max": "1.0" },
   "artifacts": {
     "__PLATFORM__": {

@@ -17,9 +17,9 @@ const detector = resolve(
   "detect-changes.sh",
 );
 for (const path of [
-  "packages/syntila_plugin_protocol/lib/frames.dart",
-  "packages/syntila_plugin_conformance/lib/runner.dart",
-  "packages/syntila_plugin_sdk/lib/run_plugin.dart",
+  "packages/syntila_external_worker_protocol/lib/manifest.dart",
+  "packages/syntila_external_worker_conformance/lib/mcp_runner.dart",
+  "packages/syntila_external_worker_sdk/lib/run_mcp_worker.dart",
   "examples/mcp/echo_worker/echo_worker.dart",
 ]) {
   test(`plugin change selects Dart and Engine checks: ${path}`, () => {

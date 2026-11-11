@@ -1,0 +1,23 @@
+name: syntila_external_worker_sdk
+description: Write a Syntila Worker plugin in Dart. Handles the protocol so you write only the work.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  crypto: ^3.0.6
+  syntila_external_worker_protocol:
+    path: ../syntila_external_worker_protocol
+  syntila_mcp_protocol:
+    path: ../syntila_mcp_protocol
+
+dev_dependencies:
+  syntila_external_worker_conformance:
+    path: ../syntila_external_worker_conformance
+  test: ^1.25.0
+
+executables:
+  pack:
+  init:

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gui_manifest_flutter/gui_manifest_flutter.dart';
 import 'package:syntila_design/syntila_design.dart';
 
+import 'src/external_workers_page.dart';
 import 'src/status_page.dart';
 import 'src/syntila_cli_location.dart';
 import 'src/syntila_themes.dart';
@@ -17,6 +18,8 @@ void main() {
       preferencesStore: ViewPreferencesStore.forApp('Syntila Workspace'),
       commandPages: {
         'status': (context, command, runner) => StatusPage(runner: runner),
+        'workers.external': (context, command, runner) =>
+            ExternalWorkersPage(runner: runner),
       },
     ),
   );

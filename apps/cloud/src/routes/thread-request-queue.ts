@@ -216,6 +216,60 @@ async function errorMessageOf(response: Response) {
  * finished failed: like the composer's own queue, that pauses the queue so
  * people decide whether to continue.
  */
+const APPROVED_PLAN_HEADING = "Approved plan (prepared by the planning step):";
+
+/**
+ * Phases of an approved Implement plan run as separate requests. Each one is
+ * sent with the full plan, overview included, so a phase never depends on AI
+ * history that may be trimmed or cleared. Added at send time so phases queued
+ * before this existed get it too.
+ */
+async function withApprovedPlan(
+  db: D1Database,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const input = body.input as Record<string, unknown> | undefined;
+  const planId = body.planWorkRequestId;
+  const request = input?.originalRequest;
+  if (
+    typeof planId !== "string" ||
+    typeof request !== "string" ||
+    request.includes(APPROVED_PLAN_HEADING)
+  )
+    return body;
+  const plan = await db
+    .prepare(
+      `SELECT output_json AS outputJson FROM workflow_tasks
+        WHERE work_request_id = ?1 AND step_kind = 'plan' AND status = 'completed'
+        ORDER BY attempt DESC LIMIT 1`,
+    )
+    .bind(planId)
+    .first<{ outputJson: string | null }>();
+  let planText = plan?.outputJson ?? "";
+  try {
+    const parsed = JSON.parse(planText) as unknown;
+    const record = parsed as { text?: unknown; output?: { text?: unknown } };
+    planText =
+      typeof parsed === "string"
+        ? parsed
+        : typeof record?.text === "string"
+          ? record.text
+          : typeof record?.output?.text === "string"
+            ? record.output.text
+            : planText;
+  } catch {
+    // Not JSON: use the stored text as is.
+  }
+  if (!planText.trim()) return body;
+  return {
+    ...body,
+    input: {
+      ...input,
+      originalRequest: `${request}\n\n${APPROVED_PLAN_HEADING}\n${planText.trim()}`,
+    },
+  };
+}
+
 export async function advanceThreadQueue(
   env: SecurityEnv,
   threadId: string,
@@ -292,7 +346,10 @@ export async function advanceThreadQueue(
       userId: head.authorUserId,
       spaceId: access.spaceId,
       threadId,
-      body: JSON.parse(head.requestJson) as Record<string, unknown>,
+      body: await withApprovedPlan(
+        db,
+        JSON.parse(head.requestJson) as Record<string, unknown>,
+      ),
       submissionId: head.id,
     });
     if (response.status < 200 || response.status >= 300)

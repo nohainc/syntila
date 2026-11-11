@@ -2,21 +2,21 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
-import 'package:syntila_plugin_conformance/syntila_plugin_conformance.dart'
-    show PluginConnection, PluginExited;
+import 'package:syntila_external_worker_conformance/syntila_external_worker_conformance.dart'
+    show ExternalWorkerConnection, ExternalWorkerExited;
 
 import 'mcp_http_transport.dart';
-import 'plugin_host.dart';
+import 'external_worker_process_host.dart';
 
-/// Adapts a supervised [PluginConnection] (digest-checked, limited, process
+/// Adapts a supervised [ExternalWorkerConnection] (digest-checked, limited, process
 /// tree cleanup) to the MCP client's line transport. Frames are capped at the
 /// connection's 1 MiB line limit, which is above the 1 MiB result limit.
-class PluginConnectionTransport implements McpTransport {
-  PluginConnectionTransport(this._connection) {
+class ExternalWorkerConnectionTransport implements McpTransport {
+  ExternalWorkerConnectionTransport(this._connection) {
     unawaited(_pump());
   }
 
-  final PluginConnection _connection;
+  final ExternalWorkerConnection _connection;
   final _controller = StreamController<String>();
   var _closed = false;
 
@@ -38,7 +38,7 @@ class PluginConnectionTransport implements McpTransport {
         final line = await _connection.readLine(const Duration(seconds: 1));
         if (line != null && !_controller.isClosed) _controller.add(line);
       }
-    } on PluginExited {
+    } on ExternalWorkerExited {
       // Stream end is observed by the client as a crash.
     } finally {
       if (!_controller.isClosed) await _controller.close();
@@ -88,7 +88,7 @@ class McpServerSpec {
 
   final String serverId;
   final String workspaceId;
-  final PluginLaunch? launch;
+  final ExternalWorkerLaunch? launch;
   final McpRemote? remote;
 
   /// Worker-class servers must advertise `_meta["syntila.worker"]`.
@@ -135,7 +135,7 @@ class _Entry {
   /// process stays the same.
   McpServerSpec spec;
   McpClient? client;
-  PluginConnection? connection;
+  ExternalWorkerConnection? connection;
   List<Map<String, Object?>> tools = const [];
   var busy = 0;
   var failures = 0;
@@ -149,12 +149,12 @@ class _Entry {
 /// [idleTtl], restarted with backoff when they crash.
 class McpHost {
   McpHost({
-    PluginHost? pluginHost,
+    ExternalWorkerProcessHost? pluginHost,
     this.idleTtl = McpLimits.idleServerTtl,
     this.maxRestartDelay = const Duration(seconds: 5),
-  }) : _plugins = pluginHost ?? PluginHost();
+  }) : _plugins = pluginHost ?? ExternalWorkerProcessHost();
 
-  final PluginHost _plugins;
+  final ExternalWorkerProcessHost _plugins;
   final Duration idleTtl;
   final Duration maxRestartDelay;
   final _entries = <String, _Entry>{};
@@ -221,7 +221,7 @@ class McpHost {
         );
       } else {
         final connection = await _plugins.connect(e.spec.launch!);
-        client = McpClient(PluginConnectionTransport(connection));
+        client = McpClient(ExternalWorkerConnectionTransport(connection));
         e.connection = connection;
       }
       e.client = client;

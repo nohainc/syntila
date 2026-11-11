@@ -2,6 +2,7 @@
 
 **Status:** Accepted for implementation (2026-11-03, owner approval in-thread: decisions D1-D4 and D13 follow the recommendations in the plan; implementation and acceptance evidence tracked in the plan)
 **Date:** 2026-11-03
+**Amended:** 2026-11-11. Plugins are now **External Workers**: MCP Worker packages only (`kind: "mcp"`, [ADR-028](ADR-028-mcp-integration.md), [MCP Worker profile](../specifications/MCP_WORKER_PROFILE_V1.md)); the NDJSON protocol is unsupported. The CLI is `syntila workers import|inspect|register|enable|disable|remove|show` over the `externalWorkers.*` management IPC. Package export and local signer recognition were removed; signature verification at import remains. Wire names (`pluginId`, `pluginRef`, `plugin-` Worker types, `/api/me/worker-plugins`, `plugin.json`) are unchanged.
 **Amends:** [Architecture v8](../architecture/ARCHITECTURE_V8.md#architecture-contract) execution path and the `provider_specific_worker_executable` exclusion
 **Builds on:** [ADR-018](ADR-018-generic-cli-worker-engine-and-tool-profiles.md), [ADR-021](ADR-021-workspace-service-linux-windows.md), [ADR-022](ADR-022-account-plans.md)
 **Details:** [Architecture](../architecture/CUSTOM_WORKER_PLUGINS.md), [Plugin protocol](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md), [Management IPC](../specifications/WORKER_PLUGIN_MANAGEMENT_IPC_V1.md), [Plan and open decisions](../roadmaps/CUSTOM_WORKER_PLUGINS_PLAN.md)

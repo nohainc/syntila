@@ -73,7 +73,7 @@ Output model list in the shape of plugin protocol 1.1 model discovery
 
 ## 4. Conformance
 
-Conformance runs through `syntila_plugin_conformance`: `McpConformanceRunner`
+Conformance runs through `syntila_external_worker_conformance`: `McpConformanceRunner`
 (selected when the manifest says `kind: "mcp"`) implements the cases below
 over MCP stdio; definition drift and oversize results are not covered yet. The current suite covers host-compatible version selection and fallback from an
 unknown version, advertisement, required tools, tool definition shape and uniqueness, ping, probe and execute

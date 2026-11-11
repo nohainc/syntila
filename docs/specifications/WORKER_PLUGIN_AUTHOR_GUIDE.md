@@ -77,18 +77,18 @@ The SDK is currently repository-local, not published. Create a local project
 from a checkout:
 
 ```sh
-cd packages/syntila_plugin_sdk
-dart run syntila_plugin_sdk:init /path/to/my-plugin my-plugin
+cd packages/syntila_external_worker_sdk
+dart run syntila_external_worker_sdk:init /path/to/my-plugin my-plugin
 ```
 
 The destination must be empty. The generated README contains build and pack
 commands; the SDK dependency points to this checkout.
 
-`packages/syntila_plugin_sdk` implements the protocol for you. Subclass
-`PluginWorker`, implement `execute`, and call `runPlugin`:
+`packages/syntila_external_worker_sdk` implements the protocol for you. Subclass
+`ExternalWorker`, implement `execute`, and call `runMcpWorker`:
 
 ```dart
-class MyPlugin extends PluginWorker {
+class MyWorker extends ExternalWorker {
   @override
   String get id => 'my-plugin';
   @override
@@ -100,7 +100,7 @@ class MyPlugin extends PluginWorker {
   }
 }
 
-Future<void> main() => runPlugin(MyPlugin());
+Future<void> main() => runMcpWorker(MyWorker());
 ```
 
 `examples/mcp/echo_worker` is a complete worker that also supports session
@@ -109,7 +109,7 @@ standalone and through the Engine host. After
 `dart compile exe`, fill the hashes with:
 
 ```sh
-dart run syntila_plugin_sdk:pack ./my-plugin     # writes sha256/size, prints the manifest digest
+dart run syntila_external_worker_sdk:pack ./my-plugin     # writes sha256/size, prints the manifest digest
 ```
 
 Dart is single-threaded per isolate. A long synchronous loop stops heartbeats
@@ -120,12 +120,8 @@ path), and redirects `print` to stderr.
 
 ## 1b. Dart: run the same Worker over MCP (ADR-028)
 
-The SDK can serve your `PluginWorker` as a Syntila MCP Worker instead of the NDJSON
-plugin protocol. Change only the entry point:
-
-```dart
-Future<void> main() => runMcpWorker(MyWorker()); // instead of runPlugin(MyWorker())
-```
+`runMcpWorker` is the only entry point: the NDJSON plugin protocol was removed
+(ADR-027, amended 2026-11-11).
 
 `runMcpWorker` answers `syntila.execute`, `syntila.probe` and (when you declare
 `modelDiscovery: true`) `syntila.models` as described in
@@ -180,11 +176,11 @@ MCP one.
 ## 3. Check it
 
 ```sh
-dart run syntila_plugin_conformance -- ./my-plugin       # author tool, any language
+dart run syntila_external_worker_conformance -- ./my-plugin       # author tool, any language
 ```
 
 This starts your plugin directly and runs the same 21 cases the Workspace runs
-(`packages/syntila_plugin_conformance`). It is free and needs no Syntila
+(`packages/syntila_external_worker_conformance`). It is free and needs no Syntila
 account. A pass means **your plugin speaks the protocol**. It does not mean the
 plugin is safe, truthful about its access list or free of malicious behaviour,
 and users are never shown it as a security rating.

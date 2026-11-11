@@ -7,27 +7,27 @@ import 'dart:io';
 
 import 'package:syntila_cli_worker_engine/src/mcp_host.dart';
 import 'package:syntila_cli_worker_engine/src/mcp_worker_runner.dart';
-import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
+import 'package:syntila_cli_worker_engine/src/external_worker_process_host.dart';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:test/test.dart';
 
-import 'support/plugin_test_binaries.dart';
+import 'support/external_worker_test_binaries.dart';
 
 const workerPath =
-    '../../packages/syntila_plugin_sdk/test/fixtures/sdk_mcp_worker.dart';
+    '../../packages/syntila_external_worker_sdk/test/fixtures/sdk_mcp_worker.dart';
 
 late String dartDigest;
 late String engineBinary;
 late Directory root;
-final plugins = PluginHost();
+final plugins = ExternalWorkerProcessHost();
 
 McpServerSpec spec({ToolPins? pins}) => McpServerSpec(
   serverId: 'sdk-echo',
   workspaceId: 'ws1',
   requireWorkerProfile: true,
   pins: pins,
-  launch: PluginLaunch(
+  launch: ExternalWorkerLaunch(
     executable: Platform.resolvedExecutable,
     arguments: [File(workerPath).absolute.path],
     artifactSha256: dartDigest,
@@ -35,16 +35,16 @@ McpServerSpec spec({ToolPins? pins}) => McpServerSpec(
     version: '1.0.0',
     dataDirectory: root.path,
     workingDirectory: root.path,
-    environment: PluginHost.buildEnvironment(),
+    environment: ExternalWorkerProcessHost.buildEnvironment(),
     hostVersion: '1.4.0',
   ),
 );
 
-PluginRunRequest request(
+ExternalWorkerRunRequest request(
   String prompt, {
   String? sessionKey,
   String mode = 'new',
-}) => PluginRunRequest(
+}) => ExternalWorkerRunRequest(
   executeId: 'e1',
   prompt: prompt,
   access: 'read_only',
@@ -68,7 +68,7 @@ void main() {
   setUpAll(() async {
     root = Directory.systemTemp.createTempSync('mcp-sdk-worker');
     dartDigest = await plugins.sha256OfFile(Platform.resolvedExecutable);
-    engineBinary = (await PluginTestBinaries.ensure()).engine;
+    engineBinary = (await ExternalWorkerTestBinaries.ensure()).engine;
   });
   tearDownAll(() => root.deleteSync(recursive: true));
   setUp(() {
@@ -79,11 +79,11 @@ void main() {
 
   test('an SDK Worker passes the profile checks end to end', () async {
     final s = await consented();
-    final ready = await runner.probe(s, 'live') as PluginProbeSuccess;
+    final ready = await runner.probe(s, 'live') as ExternalWorkerProbeSuccess;
     expect(ready.state, 'ready');
     expect(ready.checks.single['message'], 'live check');
     expect(ready.capabilities['modelDiscovery'], isTrue);
-    final models = await runner.models(s) as PluginModelsSuccess;
+    final models = await runner.models(s) as ExternalWorkerModelsSuccess;
     expect(models.models.single['id'], 'echo:1');
   });
 
@@ -98,7 +98,7 @@ void main() {
                 request('hello', sessionKey: 's1'),
                 onProgress: (p, m) => progress.add((p, m)),
               )
-              as PluginRunSuccess;
+              as ExternalWorkerRunSuccess;
       expect(created.output, contains('sdk echo: hello'));
       expect(created.output, contains('model echo:1'));
       expect(created.output, contains('readOnly true'));
@@ -110,7 +110,7 @@ void main() {
                 s,
                 request('again', sessionKey: 's1', mode: 'resume'),
               )
-              as PluginRunSuccess;
+              as ExternalWorkerRunSuccess;
       expect(resumed.sessionState, 'resumed');
     },
   );
@@ -122,7 +122,7 @@ void main() {
     final running = runner.run(s, request('WAIT'), cancel: cancel.future);
     await Future<void>.delayed(const Duration(milliseconds: 800));
     cancel.complete();
-    final outcome = await running as PluginRunFailure;
+    final outcome = await running as ExternalWorkerRunFailure;
     expect(outcome.code, 'cancelled');
     // Far below the 5 s grace: the Worker answered the cancel itself.
     expect(
@@ -135,10 +135,10 @@ void main() {
     );
   });
 
-  test('a PluginFailure keeps its code and retryable flag', () async {
+  test('a ExternalWorkerFailure keeps its code and retryable flag', () async {
     final failure =
         await runner.run(await consented(), request('FAIL'))
-            as PluginRunFailure;
+            as ExternalWorkerRunFailure;
     expect(failure.code, 'rate_limited');
     expect(failure.retryable, isTrue);
     expect(failure.fromPlugin, isTrue);

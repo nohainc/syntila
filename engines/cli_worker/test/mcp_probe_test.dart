@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:syntila_cli_worker_engine/src/mcp_probe.dart';
-import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
+import 'package:syntila_cli_worker_engine/src/external_worker_process_host.dart';
 import 'package:test/test.dart';
 
 const fixturePath =
@@ -26,7 +26,9 @@ Map<String, Object?> probeRequest({String? sha, String mode = 'normal'}) => {
 
 void main() {
   setUpAll(() async {
-    dartDigest = await PluginHost().sha256OfFile(Platform.resolvedExecutable);
+    dartDigest = await ExternalWorkerProcessHost().sha256OfFile(
+      Platform.resolvedExecutable,
+    );
   });
 
   test('lists tools of a healthy server without calling any', () async {

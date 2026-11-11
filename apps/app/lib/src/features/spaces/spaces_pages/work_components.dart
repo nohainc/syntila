@@ -2946,7 +2946,7 @@ class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Review the plan above. Select how you would like phases to be verified, then approve to enqueue implementation steps.',
+            'Review the plan above, choose how each phase is checked, then start. Phases run one at a time in this Thread.',
             style: TextStyle(
               fontSize: 12,
               color: colors.onSurfaceVariant,
@@ -2954,7 +2954,7 @@ class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Verification Mode',
+            'Verification',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
@@ -2968,57 +2968,59 @@ class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
             children: [
               _buildChoiceChip(
                 key: ValueKey('verify-mode-per-phase-${widget.requestId}'),
-                label: 'Verify after each phase (Recommended)',
+                label: 'After each phase',
                 value: 'per_phase',
                 colors: colors,
               ),
               _buildChoiceChip(
                 key: ValueKey('verify-mode-final-${widget.requestId}'),
-                label: 'Final verification only',
+                label: 'Once at the end',
                 value: 'final',
                 colors: colors,
               ),
               _buildChoiceChip(
                 key: ValueKey('verify-mode-none-${widget.requestId}'),
-                label: 'No verification',
+                label: 'Skip',
                 value: 'none',
                 colors: colors,
               ),
             ],
           ),
+          const SizedBox(height: 6),
+          Text(
+            _verificationHint,
+            key: ValueKey('verify-mode-hint-${widget.requestId}'),
+            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+          ),
           const SizedBox(height: 14),
           if (widget.onRevise != null) ...[
-            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(
-                child: TextField(
-                  key: ValueKey('revise-plan-field-${widget.requestId}'),
-                  controller: _revisionController,
-                  enabled: !_revising && !_submitting,
-                  minLines: 1,
-                  maxLines: 4,
-                  style: const TextStyle(fontSize: 12),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                    hintText: 'Ask the AI to update the plan…',
-                  ),
-                  onSubmitted: (_) => _revise(),
+            TextField(
+              key: ValueKey('revise-plan-field-${widget.requestId}'),
+              controller: _revisionController,
+              enabled: !_revising && !_submitting,
+              minLines: 1,
+              maxLines: 4,
+              style: const TextStyle(fontSize: 12),
+              decoration: InputDecoration(
+                isDense: true,
+                border: const OutlineInputBorder(),
+                hintText: 'Want changes first? Ask the AI to update the plan…',
+                // A quiet send keeps Start as the card's only primary action.
+                suffixIcon: IconButton(
+                  key: ValueKey('revise-plan-send-${widget.requestId}'),
+                  tooltip: 'Send to update the plan',
+                  onPressed: _revising || _submitting ? null : _revise,
+                  icon: _revising
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.send_rounded, size: 16),
                 ),
               ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                key: ValueKey('revise-plan-send-${widget.requestId}'),
-                tooltip: 'Send to update the plan',
-                onPressed: _revising || _submitting ? null : _revise,
-                icon: _revising
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.send_rounded, size: 16),
-              ),
-            ]),
-            const SizedBox(height: 10),
+              onSubmitted: (_) => _revise(),
+            ),
+            const SizedBox(height: 12),
           ],
           Row(children: [
             FilledButton.icon(
@@ -3046,21 +3048,32 @@ class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
                     )
                   : const Icon(Icons.play_arrow_rounded, size: 16),
               label: Text(
-                _submitting ? 'Enqueuing phases...' : 'Approve & Start Phases',
+                _submitting ? 'Starting phases…' : 'Approve & start',
                 style: const TextStyle(fontSize: 12),
               ),
             ),
             const SizedBox(width: 8),
-            TextButton(
-              key: ValueKey('cancel-plan-button-${widget.requestId}'),
-              onPressed: _submitting ? null : _decide,
-              child: const Text('Cancel', style: TextStyle(fontSize: 12)),
+            Tooltip(
+              message: 'Close this card without starting the plan',
+              child: TextButton(
+                key: ValueKey('cancel-plan-button-${widget.requestId}'),
+                onPressed: _submitting ? null : _decide,
+                child: const Text('Dismiss', style: TextStyle(fontSize: 12)),
+              ),
             ),
           ]),
         ],
       ),
     );
   }
+
+  String get _verificationHint => switch (_verificationMode) {
+        'per_phase' =>
+          'Recommended. A verifier checks every phase before the next one starts.',
+        'final' =>
+          'One verifier run checks the whole result after the last phase.',
+        _ => 'Phases run without an independent check.',
+      };
 
   Widget _buildChoiceChip({
     required Key key,

@@ -1,5 +1,5 @@
 import 'mcp_subsystem.dart';
-import 'plugin_subsystem.dart';
+import 'external_worker_subsystem.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -168,7 +168,7 @@ class WorkspaceRuntime {
     this.toolProfileCatalog,
     this.workerCatalogCoordinator,
     this.workerSubsystem,
-    this.pluginSubsystem,
+    this.externalWorkers,
     this.mcpSubsystem,
     LocalWorkerRegistry? localWorkerRegistry,
     this.workerReadinessMonitor,
@@ -213,7 +213,7 @@ class WorkspaceRuntime {
   final WorkspaceWorkerSubsystem? workerSubsystem;
 
   /// Custom Worker plugins (ADR-027): store, registry, lease and runtime.
-  final PluginSubsystem? pluginSubsystem;
+  final ExternalWorkerSubsystem? externalWorkers;
 
   /// MCP server registry and consent (ADR-028).
   final McpSubsystem? mcpSubsystem;

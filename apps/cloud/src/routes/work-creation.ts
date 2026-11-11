@@ -685,7 +685,11 @@ export async function createWorkRequestForUser(
         // anchor accepts only chat/work. The request and Workflow Run retain
         // their actual Research identity and version.
         CONVERSATION_WORKFLOWS.chat!
-      : null);
+      : // The Implement planner must see the Thread's earlier discussion, and
+        // its plan must stay in AI history for the phases it queues.
+        workflowId === "plan_implement" && workflowVersion === 2
+        ? CONVERSATION_WORKFLOWS.work!
+        : null);
   const selectedConversationId = conversationWorkflow
     ? await resolveThreadConversationId(env.SYNTILA_DB, threadId)
     : undefined;

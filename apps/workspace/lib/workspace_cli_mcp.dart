@@ -1,6 +1,6 @@
 part of 'workspace_cli.dart';
 
-/// Rendering for `syntila mcp ...`. Like plugins, the CLI never starts a
+/// Rendering for `syntila mcp ...`. Like External Workers, the CLI never starts a
 /// server and never reads one's files; it prints what the Service returned. A
 /// consent document is shown in full, including every tool definition, and
 /// accepting it means rerunning the command with `--accept <documentHash>`.

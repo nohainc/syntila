@@ -4,7 +4,7 @@ library;
 import 'dart:io';
 
 import 'package:syntila_cli_worker_engine/src/mcp_host.dart';
-import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
+import 'package:syntila_cli_worker_engine/src/external_worker_process_host.dart';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:test/test.dart';
 
@@ -13,7 +13,7 @@ const fixturePath =
 
 late String dartDigest;
 late Directory root;
-final plugins = PluginHost();
+final plugins = ExternalWorkerProcessHost();
 
 McpServerSpec spec(String mode, {ToolPins? pins, bool worker = false}) =>
     McpServerSpec(
@@ -21,7 +21,7 @@ McpServerSpec spec(String mode, {ToolPins? pins, bool worker = false}) =>
       workspaceId: 'ws1',
       requireWorkerProfile: worker,
       pins: pins,
-      launch: PluginLaunch(
+      launch: ExternalWorkerLaunch(
         executable: Platform.resolvedExecutable,
         arguments: [File(fixturePath).absolute.path, mode],
         artifactSha256: dartDigest,
@@ -29,7 +29,7 @@ McpServerSpec spec(String mode, {ToolPins? pins, bool worker = false}) =>
         version: '1.0.0',
         dataDirectory: root.path,
         workingDirectory: root.path,
-        environment: PluginHost.buildEnvironment(),
+        environment: ExternalWorkerProcessHost.buildEnvironment(),
         hostVersion: '1.4.0',
       ),
     );
@@ -141,7 +141,7 @@ void main() {
     final bad = McpServerSpec(
       serverId: good.serverId,
       workspaceId: good.workspaceId,
-      launch: PluginLaunch(
+      launch: ExternalWorkerLaunch(
         executable: good.launch!.executable,
         arguments: good.launch!.arguments,
         artifactSha256: '0' * 64,
@@ -153,7 +153,10 @@ void main() {
         hostVersion: good.launch!.hostVersion,
       ),
     );
-    await expectLater(host.acquire(bad), throwsA(isA<PluginLaunchException>()));
+    await expectLater(
+      host.acquire(bad),
+      throwsA(isA<ExternalWorkerLaunchException>()),
+    );
   });
 
   test('closes idle servers after the TTL', () async {

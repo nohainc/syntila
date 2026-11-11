@@ -586,11 +586,13 @@ export async function routeWorkerRequest(
     if (request.method === "GET" && url.pathname === "/api/workers/catalog") {
       return await handlers.handleListWorkerCatalog!(request, env, ctx);
     }
-    if (url.pathname === "/api/me/worker-plugins") {
+    // `/external-workers` is the current name; `/worker-plugins` stays for
+    // Workspaces released before the rename.
+    if (/^\/api\/me\/(?:external-workers|worker-plugins)$/.test(url.pathname)) {
       return await handlePluginLibrary(request, env, undefined, ctx);
     }
     const libraryPluginMatch = url.pathname.match(
-      /^\/api\/me\/worker-plugins\/([^/]+)$/,
+      /^\/api\/me\/(?:external-workers|worker-plugins)\/([^/]+)$/,
     );
     if (libraryPluginMatch?.[1]) {
       return await handlePluginLibrary(
@@ -638,7 +640,7 @@ export async function routeWorkerRequest(
       );
     }
     const workspacePluginMatch = url.pathname.match(
-      /^\/api\/workspaces\/([^/]+)\/worker-plugins\/([^/]+)$/,
+      /^\/api\/workspaces\/([^/]+)\/(?:external-workers|worker-plugins)\/([^/]+)$/,
     );
     if (workspacePluginMatch?.[1] && workspacePluginMatch[2]) {
       return await handleWorkspacePluginPin(

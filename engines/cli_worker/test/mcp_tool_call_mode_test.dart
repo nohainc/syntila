@@ -2,12 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:syntila_cli_worker_engine/src/mcp_tool_call_mode.dart';
-import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
+import 'package:syntila_cli_worker_engine/src/external_worker_process_host.dart';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:test/test.dart';
 
 import 'support/fake_mcp_http.dart';
-import 'support/plugin_test_binaries.dart';
+import 'support/external_worker_test_binaries.dart';
 
 void main() {
   late FakeMcpHttp fake;
@@ -95,11 +95,13 @@ void main() {
   });
 
   test('compiled Engine supervises a local pinned server', () async {
-    final engine = (await PluginTestBinaries.ensure()).engine;
+    final engine = (await ExternalWorkerTestBinaries.ensure()).engine;
     final server = File(
       '../../packages/syntila_mcp_protocol/test/fixtures/echo_server.dart',
     ).absolute.path;
-    final sha = await PluginHost().sha256OfFile(Platform.resolvedExecutable);
+    final sha = await ExternalWorkerProcessHost().sha256OfFile(
+      Platform.resolvedExecutable,
+    );
     final local = request()
       ..remove('remote')
       ..['server'] = {

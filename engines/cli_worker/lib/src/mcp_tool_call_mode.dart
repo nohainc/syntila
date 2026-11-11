@@ -8,8 +8,8 @@ import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 import 'mcp_host.dart';
 import 'mcp_tool_call_runner.dart';
-import 'plugin_host.dart';
-import 'plugin_process_limits.dart';
+import 'external_worker_process_host.dart';
+import 'external_worker_process_limits.dart';
 
 const mcpToolCallFlag = '--mcp-tool-call';
 
@@ -17,11 +17,15 @@ const mcpToolCallFlag = '--mcp-tool-call';
 /// the Workspace, operation, consent and pins; this is not a management API.
 Future<Map<String, Object?>> runMcpToolCall(
   Map<String, Object?> request, {
-  PluginHost? pluginHost,
+  ExternalWorkerProcessHost? pluginHost,
   Future<void>? cancel,
 }) async {
   final host = McpHost(
-    pluginHost: pluginHost ?? PluginHost(supervisor: LimitedPluginSupervisor()),
+    pluginHost:
+        pluginHost ??
+        ExternalWorkerProcessHost(
+          supervisor: LimitedExternalWorkerSupervisor(),
+        ),
   );
   Directory? data;
   var invocationStarted = false;
@@ -94,7 +98,7 @@ Future<Map<String, Object?>> runMcpToolCall(
         serverId: server.name,
         workspaceId: 'engine',
         pins: ToolPins(pins),
-        launch: PluginLaunch(
+        launch: ExternalWorkerLaunch(
           executable: server.command,
           arguments: server.arguments,
           artifactSha256: sha,
@@ -103,7 +107,7 @@ Future<Map<String, Object?>> runMcpToolCall(
           dataDirectory: data.path,
           workingDirectory: cwd,
           environment: {
-            ...PluginHost.buildEnvironment(),
+            ...ExternalWorkerProcessHost.buildEnvironment(),
             ...server.environment,
           },
           hostVersion: '0',

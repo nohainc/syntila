@@ -1,0 +1,10 @@
+name: syntila_external_worker_protocol
+description: Worker Plugin Protocol 1.0 frames, manifest validation and host session rules (ADR-027).
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dev_dependencies:
+  test: ^1.25.0

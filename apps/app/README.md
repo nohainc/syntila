@@ -160,3 +160,12 @@ and message copying. Cloud contract tests exercise SQLite-backed Chat storage
 and Work history/details with Markdown delimiters and fenced code. Work
 execution regression tests also forward the original Markdown prompt unchanged.
 Chat validates nonblank content without trimming its stored source.
+
+
+## Demo capture
+
+The [Northstar capture guide](../../docs/demo/README.md#capture-and-refresh-guide)
+contains device and build checks, store specification links, privacy review, and
+[scene refresh recipes](../../docs/demo/scenes.md#refresh-and-capture-recipes).
+Check the current store requirements and verify the actual build and device at
+capture time; the existence of native targets does not establish readiness.

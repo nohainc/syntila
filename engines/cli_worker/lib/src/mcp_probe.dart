@@ -7,7 +7,7 @@ import 'package:syntila_worker_protocol/syntila_worker_protocol.dart'
     show McpServerLaunch;
 
 import 'mcp_host.dart';
-import 'plugin_host.dart';
+import 'external_worker_process_host.dart';
 
 /// One-shot `--mcp-probe` mode: lists a server's tools through the Engine's
 /// [McpHost] so the Service never starts an MCP server itself.
@@ -25,10 +25,10 @@ const mcpProbeDeadline = Duration(seconds: 30);
 
 Future<Map<String, Object?>> runMcpProbe(
   Map<String, Object?> request, {
-  PluginHost? pluginHost,
+  ExternalWorkerProcessHost? pluginHost,
   Duration deadline = mcpProbeDeadline,
 }) async {
-  final plugins = pluginHost ?? PluginHost();
+  final plugins = pluginHost ?? ExternalWorkerProcessHost();
   final host = McpHost(pluginHost: plugins);
   final data = await Directory.systemTemp.createTemp('syntila-mcp-probe-');
   try {
@@ -64,7 +64,7 @@ Future<Map<String, Object?>> runMcpProbe(
         serverId: server.name,
         workspaceId: 'probe',
         requireWorkerProfile: request['requireWorkerProfile'] == true,
-        launch: PluginLaunch(
+        launch: ExternalWorkerLaunch(
           executable: server.command,
           arguments: server.arguments,
           artifactSha256: sha,
@@ -73,7 +73,7 @@ Future<Map<String, Object?>> runMcpProbe(
           dataDirectory: data.path,
           workingDirectory: cwd,
           environment: {
-            ...PluginHost.buildEnvironment(),
+            ...ExternalWorkerProcessHost.buildEnvironment(),
             ...server.environment,
           },
           hostVersion: '0',
@@ -92,7 +92,7 @@ Future<Map<String, Object?>> runMcpProbe(
     };
   } on McpException catch (error) {
     return {'ok': false, 'code': error.code, 'message': error.message};
-  } on PluginLaunchException catch (error) {
+  } on ExternalWorkerLaunchException catch (error) {
     return {'ok': false, 'code': error.code, 'message': error.message};
   } on FormatException catch (error) {
     return {'ok': false, 'code': 'invalid_request', 'message': error.message};

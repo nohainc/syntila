@@ -12,7 +12,7 @@ const workspaceManagerProtocolVersion = 1;
 
 /// Optional command groups this build serves (see
 /// `docs/specifications/WORKER_PLUGIN_MANAGEMENT_IPC_V1.md`).
-const workspaceManagerCapabilities = <String>['plugins.v1'];
+const workspaceManagerCapabilities = <String>['externalWorkers.v1'];
 const _maxFrameBytes = 1024 * 1024;
 const _handshakeTimeout = Duration(seconds: 5);
 

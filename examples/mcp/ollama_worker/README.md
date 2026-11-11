@@ -21,23 +21,34 @@ Worker keeps no session. Ollama errors map to stable codes (`context_limit_excee
 - A listed model is not proof that inference will work (memory, task fit, or an
   alias that forwards to a cloud model). Keep Ollama's cloud features disabled
   when local-only execution matters.
-- Like every plugin, it runs as you. Consent shows the full tool definitions.
+- The server runs as you. Consent shows the full tool definitions.
 
-## Package and use it
+## Run it as an External Worker
+
+Package it and attach it to the Workspace as a Worker. Once enabled it is an
+ordinary local Worker: it is listed, checked and scheduled like any other.
 
 ```sh
-cd examples/mcp/ollama_worker
-dart compile exe ollama_worker.dart -o package/bin/run
-# Fill plugin.json.template: __PLATFORM__ (for example darwin-arm64),
-# __SHA256__ and __SIZE__ of package/bin/run, then save it as package/plugin.json.
-syntila plugins import ./package
-syntila plugins test ollama-mcp        # starts it in the Engine, pins its tools
-syntila plugins register ollama-mcp    # repeat with --accept <hash>
-syntila plugins enable ollama-mcp      # repeat with --accept <hash>
+./scripts/package-ollama-worker.sh             # → dist/workers/ollama-mcp/
+syntila workers import "$PWD/dist/workers/ollama-mcp"
+syntila workers inspect ollama-mcp             # checks and pins the MCP tools
+syntila workers register ollama-mcp            # shows the consent document
+syntila workers register ollama-mcp --accept HASH
+syntila workers enable ollama-mcp              # shows the consent document
+syntila workers enable ollama-mcp --accept HASH
+syntila workers check ollama-mcp
 ```
 
-Then pick an installed model in the normal Worker model selector. With exactly
-one installed model, Auto uses it; with several, an explicit choice is required.
+The build requires Dart; pass an optional output directory to the script to
+choose another location. Registering and enabling talk to Cloud. The server
+defaults to `http://127.0.0.1:11434`. Start Ollama and install a model before
+using it. A rebuilt binary has a new digest, so import, inspect, register and
+enable the new package again.
+
+`./scripts/build-ollama-macos.sh` builds only the bare executable. Adding that
+with `syntila mcp add` registers an MCP *tool server* for other Workers, not a
+Worker. The executable runs as the local user; process isolation is not a
+filesystem sandbox.
 
 Tests: `engines/cli_worker/test/mcp_ollama_worker_test.dart` (against a scripted
 fake Ollama, including disconnect on cancel and deadline).

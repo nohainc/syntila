@@ -2,15 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
-import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
+import 'package:syntila_external_worker_protocol/syntila_external_worker_protocol.dart';
 
 import 'mcp_host.dart';
-import 'plugin_host.dart';
-import 'plugin_redactor.dart';
+import 'external_worker_process_host.dart';
+import 'external_worker_redactor.dart';
 
 /// Executes one assignment on an MCP Worker (`MCP_WORKER_PROFILE_V1.md`):
 /// `syntila.execute` for work and `syntila.probe` for readiness, through the
-/// Engine's [McpHost]. Results use the same [PluginRunOutcome] types as the
+/// Engine's [McpHost]. Results use the same [ExternalWorkerRunOutcome] types as the
 /// NDJSON plugin host so callers handle both executors identically.
 ///
 /// The server must be a Worker-class server (`McpServerSpec.requireWorkerProfile`)
@@ -29,9 +29,9 @@ class McpWorkerRunner {
   /// [cancel] completing requests cooperative cancellation; after
   /// [McpLimits.cancelGrace] the server is killed. [onProgress] receives
   /// percentage (when the server reports a total) and message.
-  Future<PluginRunOutcome> run(
+  Future<ExternalWorkerRunOutcome> run(
     McpServerSpec spec,
-    PluginRunRequest request, {
+    ExternalWorkerRunRequest request, {
     Future<void>? cancel,
     void Function(int? percentage, String message)? onProgress,
     String? workingDirectory,
@@ -41,18 +41,18 @@ class McpWorkerRunner {
       lease = await _host.acquire(spec);
     } on McpException catch (error) {
       return _failure(error);
-    } on PluginLaunchException catch (error) {
-      return PluginRunFailure(code: error.code, message: error.message);
+    } on ExternalWorkerLaunchException catch (error) {
+      return ExternalWorkerRunFailure(code: error.code, message: error.message);
     }
 
-    final redactor = PluginRedactor(secrets: spec.secrets);
+    final redactor = ExternalWorkerRedactor(secrets: spec.secrets);
     var cancelled = false;
     var finished = false;
     try {
       if (!lease.tools.any((t) => t['name'] == executeTool)) {
         await lease.discard();
-        return const PluginRunFailure(
-          code: PluginHostFailure.protocolViolation,
+        return const ExternalWorkerRunFailure(
+          code: ExternalWorkerHostFailure.protocolViolation,
           message: 'The MCP Worker does not provide syntila.execute.',
         );
       }
@@ -86,7 +86,7 @@ class McpWorkerRunner {
                       : null,
                   _bounded(
                     redactor.redact(message ?? ''),
-                    PluginProtocolLimits.maxProgressMessageLength,
+                    ExternalWorkerLimits.maxProgressMessageLength,
                   ),
                 ),
         );
@@ -132,26 +132,29 @@ class McpWorkerRunner {
 
   /// Readiness (`syntila.probe`). A server without the tool is reported as
   /// `unavailable` with a stable issue code rather than throwing.
-  Future<PluginRunOutcome> probe(McpServerSpec spec, String mode) async {
+  Future<ExternalWorkerRunOutcome> probe(
+    McpServerSpec spec,
+    String mode,
+  ) async {
     final McpLease lease;
     try {
       lease = await _host.acquire(spec);
     } on McpException catch (error) {
       return _failure(error);
-    } on PluginLaunchException catch (error) {
-      return PluginRunFailure(code: error.code, message: error.message);
+    } on ExternalWorkerLaunchException catch (error) {
+      return ExternalWorkerRunFailure(code: error.code, message: error.message);
     }
     try {
       if (!lease.tools.any((t) => t['name'] == probeTool)) {
-        return const PluginProbeSuccess(
+        return const ExternalWorkerProbeSuccess(
           state: 'unavailable',
-          issueCode: PluginHostFailure.protocolViolation,
+          issueCode: ExternalWorkerHostFailure.protocolViolation,
           checks: [],
         );
       }
       final result = await (await lease.callTool(probeTool, {
         'mode': mode,
-      }, timeout: PluginProtocolLimits.handshakeTimeout * 3)).result;
+      }, timeout: ExternalWorkerLimits.handshakeTimeout * 3)).result;
       final data = _structured(result);
       const states = {
         'ready',
@@ -162,16 +165,16 @@ class McpWorkerRunner {
       };
       final state = data['state'];
       if (state is! String || !states.contains(state)) {
-        return const PluginRunFailure(
-          code: PluginHostFailure.protocolViolation,
+        return const ExternalWorkerRunFailure(
+          code: ExternalWorkerHostFailure.protocolViolation,
           message: 'syntila.probe returned an unknown state.',
         );
       }
       // Same shape and bounds as the NDJSON probe: {code, ok, message}.
-      final redactor = PluginRedactor(secrets: spec.secrets);
+      final redactor = ExternalWorkerRedactor(secrets: spec.secrets);
       final rawChecks = data['checks'] ?? const <Object?>[];
       if (rawChecks is! List ||
-          rawChecks.length > PluginProtocolLimits.maxChecks) {
+          rawChecks.length > ExternalWorkerLimits.maxChecks) {
         return _badChecks();
       }
       final checks = <Map<String, Object?>>[];
@@ -184,7 +187,7 @@ class McpWorkerRunner {
             c['message'] is! String ||
             (c['message'] as String).isEmpty ||
             (c['message'] as String).length >
-                PluginProtocolLimits.maxCheckMessageLength) {
+                ExternalWorkerLimits.maxCheckMessageLength) {
           return _badChecks();
         }
         checks.add({
@@ -193,7 +196,7 @@ class McpWorkerRunner {
           'message': redactor.redact(c['message'] as String),
         });
       }
-      return PluginProbeSuccess(
+      return ExternalWorkerProbeSuccess(
         state: state,
         issueCode: data['issueCode'] as String?,
         checks: checks,
@@ -211,18 +214,18 @@ class McpWorkerRunner {
 
   /// Model discovery (`syntila.models`, optional). A server without the tool
   /// has no discoverable models, which is not an error.
-  Future<PluginRunOutcome> models(McpServerSpec spec) async {
+  Future<ExternalWorkerRunOutcome> models(McpServerSpec spec) async {
     final McpLease lease;
     try {
       lease = await _host.acquire(spec);
     } on McpException catch (error) {
       return _failure(error);
-    } on PluginLaunchException catch (error) {
-      return PluginRunFailure(code: error.code, message: error.message);
+    } on ExternalWorkerLaunchException catch (error) {
+      return ExternalWorkerRunFailure(code: error.code, message: error.message);
     }
     try {
       if (!lease.tools.any((t) => t['name'] == modelsTool)) {
-        return const PluginModelsSuccess([]);
+        return const ExternalWorkerModelsSuccess([]);
       }
       final result = await (await lease.callTool(
         modelsTool,
@@ -230,9 +233,9 @@ class McpWorkerRunner {
         timeout: const Duration(seconds: 8),
       )).result;
       final raw = _structured(result)['models'];
-      return PluginModelsSuccess([
+      return ExternalWorkerModelsSuccess([
         if (raw is List)
-          for (final m in raw.take(PluginProtocolLimits.maxModels))
+          for (final m in raw.take(ExternalWorkerLimits.maxModels))
             if (m is Map) Map<String, Object?>.from(m),
       ]);
     } on McpException catch (error) {
@@ -243,30 +246,32 @@ class McpWorkerRunner {
     }
   }
 
-  PluginRunFailure _badChecks() => const PluginRunFailure(
-    code: PluginHostFailure.protocolViolation,
+  ExternalWorkerRunFailure _badChecks() => const ExternalWorkerRunFailure(
+    code: ExternalWorkerHostFailure.protocolViolation,
     message: 'syntila.probe returned a malformed check.',
   );
 
   static String _bounded(String text, int max) =>
       text.length > max ? text.substring(0, max) : text;
 
-  PluginRunOutcome _cancelled() => const PluginRunFailure(
+  ExternalWorkerRunOutcome _cancelled() => const ExternalWorkerRunFailure(
     code: 'cancelled',
     message: 'The assignment was cancelled.',
   );
 
-  PluginRunFailure _failure(McpException error) {
+  ExternalWorkerRunFailure _failure(McpException error) {
     final code = switch (error.code) {
-      McpFailure.versionUnsupported => PluginHostFailure.protocolUnsupported,
-      McpFailure.serverCrashed => PluginHostFailure.crashed,
+      McpFailure.versionUnsupported =>
+        ExternalWorkerHostFailure.protocolUnsupported,
+      McpFailure.serverCrashed => ExternalWorkerHostFailure.crashed,
       McpFailure.timeout => 'timeout',
       McpFailure.resultTooLarge => 'output_too_large',
-      McpFailure.definitionChanged => PluginHostFailure.identityMismatch,
+      McpFailure.definitionChanged =>
+        ExternalWorkerHostFailure.identityMismatch,
       McpFailure.authRequired => 'sign_in_required',
-      _ => PluginHostFailure.protocolViolation,
+      _ => ExternalWorkerHostFailure.protocolViolation,
     };
-    return PluginRunFailure(
+    return ExternalWorkerRunFailure(
       code: code,
       message: error.message,
       retryable: error.code == McpFailure.timeout,
@@ -279,24 +284,25 @@ class McpWorkerRunner {
     return const {};
   }
 
-  PluginRunOutcome _outcome(
+  ExternalWorkerRunOutcome _outcome(
     Map<String, Object?> result,
-    PluginRedactor redactor,
+    ExternalWorkerRedactor redactor,
   ) {
     final data = _structured(result);
     if (result['isError'] == true) {
       final issue = data['issue'];
       final issueMap = issue is Map ? issue : const {};
       final rawCode = issueMap['code'];
-      final code = rawCode is String && pluginErrorCodes.contains(rawCode)
+      final code =
+          rawCode is String && externalWorkerErrorCodes.contains(rawCode)
           ? rawCode
           : 'internal';
       final message = issueMap['message'] is String
           ? redactor.redact(issueMap['message'] as String)
           : 'The MCP Worker reported an error.';
-      return PluginRunFailure(
+      return ExternalWorkerRunFailure(
         code: code,
-        message: _bounded(message, PluginProtocolLimits.maxErrorMessageLength),
+        message: _bounded(message, ExternalWorkerLimits.maxErrorMessageLength),
         retryable:
             issueMap['retryable'] == true ||
             code == 'rate_limited' ||
@@ -313,13 +319,13 @@ class McpWorkerRunner {
       }
     }
     if (text is! String) {
-      return const PluginRunFailure(
-        code: PluginHostFailure.protocolViolation,
+      return const ExternalWorkerRunFailure(
+        code: ExternalWorkerHostFailure.protocolViolation,
         message: 'The MCP Worker returned no text result.',
       );
     }
-    if (utf8.encode(text).length > PluginProtocolLimits.maxOutputBytes) {
-      return const PluginRunFailure(
+    if (utf8.encode(text).length > ExternalWorkerLimits.maxOutputBytes) {
+      return const ExternalWorkerRunFailure(
         code: 'output_too_large',
         message: 'The MCP Worker output exceeded the limit.',
       );
@@ -327,22 +333,22 @@ class McpWorkerRunner {
     final artifacts = <String>[];
     final raw = data['artifacts'];
     if (raw != null) {
-      if (raw is! List || raw.length > PluginProtocolLimits.maxArtifacts) {
-        return const PluginRunFailure(
-          code: PluginHostFailure.artifactPathInvalid,
+      if (raw is! List || raw.length > ExternalWorkerLimits.maxArtifacts) {
+        return const ExternalWorkerRunFailure(
+          code: ExternalWorkerHostFailure.artifactPathInvalid,
           message: 'The MCP Worker returned invalid artifacts.',
         );
       }
       for (final a in raw) {
         if (a is! String ||
             a.isEmpty ||
-            a.length > PluginProtocolLimits.maxPathLength ||
+            a.length > ExternalWorkerLimits.maxPathLength ||
             a.startsWith('/') ||
             RegExp(r'^[A-Za-z]:[\\/]').hasMatch(a) ||
             a.split(RegExp(r'[\\/]')).contains('..') ||
             a.contains('\u0000')) {
-          return const PluginRunFailure(
-            code: PluginHostFailure.artifactPathInvalid,
+          return const ExternalWorkerRunFailure(
+            code: ExternalWorkerHostFailure.artifactPathInvalid,
             message: 'An artifact path is not a safe relative path.',
           );
         }
@@ -353,7 +359,7 @@ class McpWorkerRunner {
     // (`created`, `resumed` or `unavailable`), as for NDJSON plugins.
     final session = data['session'];
     final state = session is Map ? session['state'] : null;
-    return PluginRunSuccess(
+    return ExternalWorkerRunSuccess(
       output: text,
       artifacts: artifacts,
       sessionState:

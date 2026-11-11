@@ -131,7 +131,7 @@ class WorkspacePaths {
   Directory get workspaceDirectory => applicationSupportDirectory;
 
   /// Immutable plugin store, registry, plugin data and entitlement lease.
-  Directory get pluginsDirectory =>
+  Directory get externalWorkersDirectory =>
       Directory('${applicationSupportDirectory.path}/Plugins');
 
   /// MCP server registry (ADR-028). Holds no secrets: only environment names.

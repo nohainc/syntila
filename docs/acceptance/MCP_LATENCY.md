@@ -1,5 +1,8 @@
 # MCP Worker latency (ADR-028, plan phase M4)
 
+> Historical. The benchmark compared NDJSON plugins with MCP Workers and was
+> removed with the NDJSON protocol on 2026-11-11 (it remains in git history).
+
 Measured with `engines/cli_worker/tool/mcp_latency_benchmark.dart`
 (`cd engines/cli_worker && dart run tool/mcp_latency_benchmark.dart`; `--quick` for a short
 run, `--phases` for the cold-start breakdown). It compiles the Engine, an NDJSON fixture plugin, the MCP echo Worker and

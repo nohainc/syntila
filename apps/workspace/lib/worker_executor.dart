@@ -1,4 +1,4 @@
-import 'plugin_executor.dart' show isPluginWorkerType;
+import 'external_worker_executor.dart' show isExternalWorkerType;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -497,7 +497,7 @@ class WorkerAssignmentHandler {
     // exact identity through any Space-lock or Worker-slot wait.
     final planResolver = resolveLaunchPlan;
     // Plugin Workers have no Tool Profile; their identity is verified at launch.
-    if (planResolver != null && !isPluginWorkerType(worker.workerTypeId)) {
+    if (planResolver != null && !isExternalWorkerType(worker.workerTypeId)) {
       final plan = await planResolver(worker);
       _pinnedLaunchPlans[context.assignmentId] = plan;
       _startup(context, AssignmentStartupStage.profileReady, {

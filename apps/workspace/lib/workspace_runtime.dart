@@ -21,15 +21,15 @@ import 'package:syntila_workspace/secure_credentials.dart';
 import 'package:syntila_workspace/workspace_registration.dart';
 import 'package:syntila_workspace/workspace_transport.dart';
 import 'package:syntila_workspace/worker_readiness.dart';
-import 'package:syntila_workspace/plugin_executor.dart';
-import 'package:syntila_workspace/plugin_store.dart'
-    show PluginServiceException;
+import 'package:syntila_workspace/external_worker_executor.dart';
+import 'package:syntila_workspace/external_worker_store.dart'
+    show ExternalWorkerException;
 import 'package:syntila_workspace/mcp_action_handler.dart';
 import 'package:syntila_workspace/mcp_inventory_publisher.dart';
 import 'package:syntila_workspace/mcp_service.dart';
 import 'package:syntila_workspace/mcp_subsystem.dart';
-import 'package:syntila_workspace/plugin_subsystem.dart';
-import 'package:syntila_workspace/plugin_worker_runtime.dart';
+import 'package:syntila_workspace/external_worker_subsystem.dart';
+import 'package:syntila_workspace/external_worker_runtime.dart';
 import 'package:syntila_workspace/bundled_cli_worker_engine_loader.dart';
 import 'package:syntila_workspace/cli_worker_engine_supervisor.dart';
 import 'package:syntila_workspace/mcp_tool_call_executor.dart';
@@ -182,7 +182,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
               Directory('${workspacePaths.mcpDirectory.path}/work'),
         );
   final mcpActionHandler = McpActionHandler(mcpSubsystem.service);
-  final pluginSubsystem = PluginSubsystem.build(
+  final externalWorkers = ExternalWorkerSubsystem.build(
     config: effectiveConfig,
     credentialStore: secureCredentialStore,
     engineSupervisor: () => cliWorkerEngineSupervisor,
@@ -367,9 +367,9 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       final catalogEntry = catalogCoordinator?.entryForWorker(
         worker.workerTypeId,
       );
-      final isPlugin = isPluginWorkerType(worker.workerTypeId);
+      final isExternal = isExternalWorkerType(worker.workerTypeId);
       final catalogAvailable =
-          isPlugin || catalogCoordinator == null || catalogEntry != null;
+          isExternal || catalogCoordinator == null || catalogEntry != null;
       final catalogConfirmed =
           catalogCoordinator?.snapshot.catalogConfirmed ?? true;
       if (!catalogAvailable && !catalogConfirmed) {
@@ -380,8 +380,8 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
         workerTypeId: worker.workerTypeId,
         enabled: catalogAvailable &&
             worker.activationState == LocalWorkerActivationState.enabled &&
-            (!isPlugin ||
-                await pluginSubsystem.runtime.isEffectivelyEnabled(
+            (!isExternal ||
+                await externalWorkers.runtime.isEffectivelyEnabled(
                   worker.workerTypeId,
                 )),
         ready: catalogAvailable && worker.status == LocalWorkerStatus.ready,
@@ -528,16 +528,16 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
         );
       }
 
-      final isPluginWorker = isPluginWorkerType(worker.workerTypeId);
-      PluginExecution? pluginExecution;
-      if (isPluginWorker) {
+      final isExternalWorker = isExternalWorkerType(worker.workerTypeId);
+      ExternalWorkerExecution? externalExecution;
+      if (isExternalWorker) {
         // Entitlement, enablement and every byte of the pinned artifact are
         // verified now, before a process can exist (ADR-027).
         try {
-          pluginExecution = await pluginSubsystem.runtime.prepareExecution(
+          externalExecution = await externalWorkers.runtime.prepareExecution(
             worker.workerTypeId,
           );
-        } on PluginServiceException catch (error) {
+        } on ExternalWorkerException catch (error) {
           throw AssignmentExecutionFailure(
             code: 'worker_not_ready',
             message: executionErrorMessage('worker_not_ready'),
@@ -554,7 +554,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
         final frozen = selection is Map ? selection['executor'] : null;
         if (frozen is Map &&
             frozen['manifestDigest'] !=
-                pluginExecution.executor.manifestDigest) {
+                externalExecution.executor.manifestDigest) {
           throw AssignmentExecutionFailure(
             code: 'worker_not_ready',
             message: executionErrorMessage('worker_not_ready'),
@@ -566,7 +566,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           );
         }
       }
-      final plan = isPluginWorker
+      final plan = isExternalWorker
           ? null
           : (workerHandler.pinnedLaunchPlan(context.assignmentId) ??
               await unpinnedPlan());
@@ -655,7 +655,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       try {
         final folderIds = assignmentAdditionalFolderIds(payload);
         if (folderIds.isNotEmpty) {
-          if (isPluginWorker) {
+          if (isExternalWorker) {
             throw const AllowedFolderViolation(
               'plugin_unsupported',
               'Plugins cannot use additional folders yet. Detach the '
@@ -694,7 +694,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       // Workspace owner's own work only. Anything left out is reported and the
       // run continues without it.
       var mcpServers = const <McpServerLaunch>[];
-      if (!isPluginWorker) {
+      if (!isExternalWorker) {
         mcpServers = await mcpLaunchesForExecution(
           mcpSubsystem.service,
           release?.profile ?? const <String, Object?>{},
@@ -726,9 +726,9 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           context.payload,
           fullAccessAuthorized: worker.fullLocalAccessAuthorized,
         );
-        if (isPluginWorker &&
+        if (isExternalWorker &&
             executionPolicy == WorkerExecutionPolicy.restricted &&
-            !pluginExecution!.readOnlyEnforced) {
+            !externalExecution!.readOnlyEnforced) {
           throw AssignmentExecutionFailure(
             code: 'permission_denied',
             message: executionErrorMessage('permission_denied'),
@@ -742,8 +742,8 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
         return await supervisor.execute(
           release,
           profileFile: profileFile,
-          pluginExecutor: pluginExecution?.executor,
-          pluginWorkerTypeId: isPluginWorker ? worker.workerTypeId : null,
+          pluginExecutor: externalExecution?.executor,
+          pluginWorkerTypeId: isExternalWorker ? worker.workerTypeId : null,
           stateDirectory: workspacePaths.workerStateDirectory(worker.id),
           workingDirectory: workingDirectory,
           workerId: worker.id,
@@ -926,9 +926,9 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
                   engineAvailable: cliWorkerEngineSupervisor != null,
                   // Plugin Workers are reported only to a Cloud that announced
                   // `workspace.worker_plugins.v1`.
-                  pluginInventory:
-                      connection?.cloudAcceptsPluginExecutors == true
-                          ? pluginSubsystem.runtime.inventoryFor
+                  externalWorkerInventory:
+                      connection?.cloudAcceptsExternalWorkers == true
+                          ? externalWorkers.runtime.inventoryFor
                           : null,
                 ) ??
                 const <Map<String, Object?>>[];
@@ -1043,7 +1043,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
     cliWorkerEngineSupervisor: cliWorkerEngineSupervisor,
     workerStateDirectory: workspacePaths.workerStateDirectory,
     profileDiagnosticStoreForWorker: diagnosticStoreForWorkerType,
-    pluginAssessor: pluginSubsystem.runtime.assess,
+    externalWorkerAssessor: externalWorkers.runtime.assess,
   );
   workerSubsystem = WorkspaceWorkerSubsystem(
     registry: localWorkerRegistry,
@@ -1063,7 +1063,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
     localWorkerRegistry: localWorkerRegistry,
     workerReadinessMonitor: readinessMonitor,
     workerSubsystem: workerSubsystem,
-    pluginSubsystem: pluginSubsystem,
+    externalWorkers: externalWorkers,
     mcpSubsystem: mcpSubsystem,
     workerShutdownHandler: () async {
       await workerSubsystem.shutdown();

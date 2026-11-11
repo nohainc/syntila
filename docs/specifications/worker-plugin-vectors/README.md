@@ -19,7 +19,7 @@ without the conformance runner. They test framing and ordering only, not safety.
 A `kind: "mcp"` manifest (ADR-028) and its expected pin. The same manifest without the
 `kind` key has the long-standing NDJSON digest `1bb61d41...`, so this vector proves the new
 key is part of the canonical form. Cloud (`apps/cloud/test/worker-plugins.test.ts`), the Dart SDK
-(`packages/syntila_plugin_sdk/test/manifest_digest_vector_test.dart`) and the Workspace
+(`packages/syntila_external_worker_sdk/test/manifest_digest_vector_test.dart`) and the Workspace
 (`apps/workspace/test/plugin_manifest_digest_vector_test.dart`) each compute the digest and
 must equal the file.
 

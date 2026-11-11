@@ -225,3 +225,8 @@ side, each with its own state directory, installation lock, IPC socket and
 LaunchAgent label.
 
 Reset reports an incomplete result if Cloud release or local cleanup fails. If Cloud release fails, the local registration is retained; sign in and unregister before retrying. `reset --json` reports `{"reset": true}` on success.
+
+## Demo isolation
+
+For a separate demo installation, provider sign-ins, Work Root and readiness
+checks, see the [Northstar demo setup guide](../../docs/demo/README.md#separate-demo-workspace-and-worker-setup). Do not reuse or reset a personal installation.

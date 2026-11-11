@@ -72,7 +72,8 @@ function requireRef(value: string | undefined): string {
 }
 
 /**
- * `GET|POST /api/me/worker-plugins` and `DELETE /api/me/worker-plugins/:ref`.
+ * `GET|POST /api/me/external-workers` and `DELETE /api/me/external-workers/:ref`
+ * (also served under the pre-rename `/api/me/worker-plugins`).
  */
 export async function handlePluginLibrary(
   request: Request,
@@ -361,7 +362,8 @@ async function removeFromLibrary(
 }
 
 /**
- * `PUT|DELETE /api/workspaces/:workspaceId/worker-plugins/:pluginRef`.
+ * `PUT|DELETE /api/workspaces/:workspaceId/external-workers/:pluginRef`
+ * (also `/worker-plugins/`).
  * Pins one library version on one Workspace the caller owns.
  */
 export async function handleWorkspacePluginPin(

@@ -8,9 +8,9 @@ cd "$ROOT"
 dart_packages=(
   packages/dart/protocol
   packages/syntila_worker_protocol
-  packages/syntila_plugin_protocol
-  packages/syntila_plugin_conformance
-  packages/syntila_plugin_sdk
+  packages/syntila_external_worker_protocol
+  packages/syntila_external_worker_conformance
+  packages/syntila_external_worker_sdk
   packages/syntila_cli_worker_runtime
   packages/tool_profile_v1
   engines/cli_worker
@@ -55,7 +55,7 @@ check_dart_package() {
     dart analyze
     if [[ -d test ]] && find test -name "*_test.dart" -print -quit | grep -q .; then
       if [[ "$package_path" == engines/cli_worker ]]; then
-        dart run tool/prepare_plugin_test_binaries.dart
+        dart run tool/prepare_external_worker_test_binaries.dart
         dart test --concurrency=1
       else
         dart test

@@ -589,3 +589,7 @@ The Windows package reuses canonical Engine/service builds. CI qualifies native
 primitives and compiled-service lifecycle. Signed releases, logon/reboot
 and real published Profile execution need target-device evidence. See the
 [Windows operations guide](../operations/WORKSPACE_WINDOWS_PREVIEW.md).
+
+## Separate demo installation
+
+The [Northstar demo guide](../demo/README.md#separate-demo-workspace-and-worker-setup) describes isolation of the service, state, credentials and Work Root, the owner-controlled sign-ins and Space Workflow selection, and a non-secret comparison to protect an existing personal installation. It does not change the lifecycle or authorization contracts above.

@@ -86,7 +86,7 @@ class McpService {
   static final _envPattern = RegExp(r'^[A-Za-z_][A-Za-z0-9_]{0,127}$');
 
   Future<String> _sha256OfFile(String path) async {
-    // Raw bytes: this must equal the Engine's PluginHost.sha256OfFile.
+    // Raw bytes: this must equal the Engine's ExternalWorkerProcessHost.sha256OfFile.
     return (await crypto.sha256.bind(File(path).openRead()).first).toString();
   }
 

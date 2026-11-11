@@ -64,7 +64,7 @@ void main() {
 
   test('handles only mcp.* commands', () {
     expect(WorkspaceMcpCommands.handles('mcp.list'), isTrue);
-    expect(WorkspaceMcpCommands.handles('plugins.list'), isFalse);
+    expect(WorkspaceMcpCommands.handles('externalWorkers.list'), isFalse);
   });
 
   test('add, consent by hash, enable, list and remove', () async {

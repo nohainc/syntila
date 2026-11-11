@@ -4,14 +4,14 @@ import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
 import '../lib/src/cli_worker_engine.dart';
 import '../lib/src/mcp_probe.dart';
 import '../lib/src/mcp_tool_call_mode.dart';
-import '../lib/src/plugin_engine.dart';
-import '../lib/src/plugin_process_limits.dart';
+import '../lib/src/external_worker_engine.dart';
+import '../lib/src/external_worker_process_limits.dart';
 
 Future<void> main(List<String> arguments) async {
   setCurrentProcessName('syntila-agent');
   try {
     if (arguments.isNotEmpty && arguments.first == '--plugin-child') {
-      await runLimitedPluginChild(arguments);
+      await runLimitedExternalWorkerChild(arguments);
       return;
     }
     if (arguments.isNotEmpty && arguments.first == mcpProbeFlag) {
@@ -26,8 +26,10 @@ Future<void> main(List<String> arguments) async {
       await runMcpToolCallMode();
       return;
     }
-    if (PluginEngineOptions.isPluginMode(arguments)) {
-      await PluginEngine(options: PluginEngineOptions.parse(arguments)).run();
+    if (ExternalWorkerEngineOptions.isExternalWorkerMode(arguments)) {
+      await ExternalWorkerEngine(
+        options: ExternalWorkerEngineOptions.parse(arguments),
+      ).run();
       return;
     }
     final options = EngineOptions.parse(arguments);

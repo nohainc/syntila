@@ -36,6 +36,7 @@ import 'package:gui_manifest/gui_manifest.dart'
 
 part 'workspace_cli_spec.dart';
 part 'workspace_cli_mcp.dart';
+part 'workspace_cli_external_workers.dart';
 
 typedef WorkspaceCliRequest = Future<Object?> Function(
     String command, Map<String, Object?> payload);
@@ -184,9 +185,10 @@ class WorkspaceCli {
         }
         return 1;
       }
-      // A plugin consent document is a valid answer that still needs the
-      // person's explicit acceptance, so it exits 3 instead of 0.
-      final consentPending = call.$1.startsWith('mcp.') &&
+      // A consent document is a valid answer that still needs the person's
+      // explicit acceptance, so it exits 3 instead of 0.
+      final consentPending = (call.$1.startsWith('mcp.') ||
+              call.$1.startsWith('externalWorkers.')) &&
           result is Map &&
           result['consentRequired'] == true;
       if (json && consentPending) {
@@ -300,6 +302,10 @@ class WorkspaceCli {
   bool _printServiceResult(
       String command, Object? result, Map<String, Object?> payload) {
     if (command.startsWith('mcp.') && _printMcpResult(command, result)) {
+      return true;
+    }
+    if (command.startsWith('externalWorkers.') &&
+        _printExternalWorkerResult(command, result)) {
       return true;
     }
     if (command == 'diagnostics.getLogs' &&

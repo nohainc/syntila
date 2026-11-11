@@ -593,10 +593,7 @@ Future<List<DiscoveredModel>> discoverClaudeApiModels({
         'Claude sign-in was rejected. Run `claude` and sign in again, then refresh.',
       );
     }
-    final body = await response
-        .transform(utf8.decoder)
-        .join()
-        .timeout(timeout);
+    final body = await response.transform(utf8.decoder).join().timeout(timeout);
     if (response.statusCode != 200 || body.length > 1024 * 1024) {
       throw const FormatException('Claude model list failed');
     }
@@ -656,7 +653,8 @@ List<DiscoveredModel> parseClaudeApiModels(
   Set<String> excludeIds = const {},
 }) {
   final list = response is Map ? response['data'] : null;
-  if (list is! List) throw const FormatException('Claude model list is invalid');
+  if (list is! List)
+    throw const FormatException('Claude model list is invalid');
   const order = ['low', 'medium', 'high', 'xhigh', 'max'];
   final models = <DiscoveredModel>[];
   final ids = <String>{};

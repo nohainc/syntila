@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 # Resolve and validate the protocol and its direct MCP consumers.
-for pkg in packages/syntila_mcp_protocol packages/syntila_worker_protocol packages/syntila_cli_worker_runtime packages/syntila_plugin_conformance engines/cli_worker; do
+for pkg in packages/syntila_mcp_protocol packages/syntila_worker_protocol packages/syntila_cli_worker_runtime packages/syntila_external_worker_conformance engines/cli_worker; do
   (
     cd "$pkg"
     dart pub get
@@ -12,15 +12,15 @@ for pkg in packages/syntila_mcp_protocol packages/syntila_worker_protocol packag
       packages/syntila_mcp_protocol) dart test ;;
       packages/syntila_worker_protocol) dart test test/execute_mcp_servers_test.dart ;;
       packages/syntila_cli_worker_runtime) dart test test/mcp_tool_call_supervisor_test.dart ;;
-      packages/syntila_plugin_conformance) ;;
+      packages/syntila_external_worker_conformance) ;;
       engines/cli_worker)
-        dart run tool/prepare_plugin_test_binaries.dart
+        dart run tool/prepare_external_worker_test_binaries.dart
         dart test --concurrency=1 test/mcp*_test.dart test/engine_mcp_config_test.dart ;;
     esac
   )
 done
 (
-  cd packages/syntila_plugin_sdk
+  cd packages/syntila_external_worker_sdk
   dart pub get
   dart analyze
 )

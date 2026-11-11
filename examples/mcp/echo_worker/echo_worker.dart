@@ -82,6 +82,7 @@ Future<void> main(List<String> args) async {
                   tool('syntila.execute'),
               if (mode == 'duplicate_tool') tool('syntila.execute'),
               tool('syntila.probe'),
+              if (mode == 'models') tool('syntila.models'),
             ],
           },
         });
@@ -98,6 +99,7 @@ Future<void> main(List<String> args) async {
               'content': [],
               'structuredContent': {
                 'state': mode == 'badprobe' ? 'bogus' : 'ready',
+                if (mode == 'models') 'capabilities': {'modelDiscovery': true},
                 'checks': [
                   if (mode == 'badcheck')
                     {'name': 'echo', 'passed': true}
@@ -107,6 +109,22 @@ Future<void> main(List<String> args) async {
                       'ok': true,
                       'message': 'echo worker ready',
                     },
+                ],
+              },
+            },
+          });
+          break;
+        }
+        if (name == 'syntila.models') {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'result': {
+              'content': [],
+              'structuredContent': {
+                'models': [
+                  {'id': 'echo-small', 'name': 'Echo Small'},
+                  {'id': 'echo-large', 'name': 'Echo Large'},
                 ],
               },
             },

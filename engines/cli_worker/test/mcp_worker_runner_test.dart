@@ -6,16 +6,16 @@ import 'dart:io';
 
 import 'package:syntila_cli_worker_engine/src/mcp_host.dart';
 import 'package:syntila_cli_worker_engine/src/mcp_worker_runner.dart';
-import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
+import 'package:syntila_cli_worker_engine/src/external_worker_process_host.dart';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
-import 'package:syntila_plugin_protocol/syntila_plugin_protocol.dart';
+import 'package:syntila_external_worker_protocol/syntila_external_worker_protocol.dart';
 import 'package:test/test.dart';
 
 const workerPath = '../../examples/mcp/echo_worker/echo_worker.dart';
 
 late String dartDigest;
 late Directory root;
-final plugins = PluginHost();
+final plugins = ExternalWorkerProcessHost();
 
 McpServerSpec spec(String mode, {ToolPins? pins, bool secret = false}) =>
     McpServerSpec(
@@ -23,7 +23,7 @@ McpServerSpec spec(String mode, {ToolPins? pins, bool secret = false}) =>
       workspaceId: 'ws1',
       requireWorkerProfile: true,
       pins: pins,
-      launch: PluginLaunch(
+      launch: ExternalWorkerLaunch(
         executable: Platform.resolvedExecutable,
         arguments: [File(workerPath).absolute.path, mode],
         artifactSha256: dartDigest,
@@ -32,18 +32,18 @@ McpServerSpec spec(String mode, {ToolPins? pins, bool secret = false}) =>
         dataDirectory: root.path,
         workingDirectory: root.path,
         environment: {
-          ...PluginHost.buildEnvironment(),
+          ...ExternalWorkerProcessHost.buildEnvironment(),
           if (secret) 'SECRET_TOKEN': 'sup3r-s3cret-value',
         },
         hostVersion: '1.4.0',
       ),
     );
 
-PluginRunRequest request(
+ExternalWorkerRunRequest request(
   String prompt, {
   String access = 'read_write',
   Duration deadline = const Duration(seconds: 20),
-}) => PluginRunRequest(
+}) => ExternalWorkerRunRequest(
   executeId: 'e1',
   prompt: prompt,
   access: access,
@@ -84,7 +84,7 @@ void main() {
         request('hi'),
         onProgress: (p, m) => progress.add((p, m)),
       );
-      final ok = outcome as PluginRunSuccess;
+      final ok = outcome as ExternalWorkerRunSuccess;
       expect(ok.output, 'echo: hi | access: work | model: m1');
       // request() asks to resume a session; the Worker confirms it.
       expect(ok.sessionState, 'resumed');
@@ -98,7 +98,7 @@ void main() {
       request('hi', access: 'read_only'),
     );
     expect(
-      (outcome as PluginRunSuccess).output,
+      (outcome as ExternalWorkerRunSuccess).output,
       contains('access: restricted'),
     );
   });
@@ -107,23 +107,26 @@ void main() {
     'worker-reported errors keep known codes and normalise unknown ones',
     () async {
       final s = await consented('normal');
-      final known = await runner.run(s, request('FAIL')) as PluginRunFailure;
+      final known =
+          await runner.run(s, request('FAIL')) as ExternalWorkerRunFailure;
       expect(known.code, 'rate_limited');
       expect(known.fromPlugin, isTrue);
       expect(known.retryable, isTrue);
       expect(known.message, 'worker said no');
       final unknown =
-          await runner.run(s, request('BADCODE')) as PluginRunFailure;
+          await runner.run(s, request('BADCODE')) as ExternalWorkerRunFailure;
       expect(unknown.code, 'internal');
     },
   );
 
   test('artifacts must be safe relative paths', () async {
     final s = await consented('normal');
-    final good = await runner.run(s, request('ART')) as PluginRunSuccess;
+    final good =
+        await runner.run(s, request('ART')) as ExternalWorkerRunSuccess;
     expect(good.artifacts, ['out/report.md']);
-    final bad = await runner.run(s, request('BADART')) as PluginRunFailure;
-    expect(bad.code, PluginHostFailure.artifactPathInvalid);
+    final bad =
+        await runner.run(s, request('BADART')) as ExternalWorkerRunFailure;
+    expect(bad.code, ExternalWorkerHostFailure.artifactPathInvalid);
   });
 
   test('oversize output is rejected', () async {
@@ -131,27 +134,29 @@ void main() {
       await consented('normal'),
       request('BIGTEXT'),
     );
-    expect(outcome, isA<PluginRunFailure>());
+    expect(outcome, isA<ExternalWorkerRunFailure>());
     expect(
-      (outcome as PluginRunFailure).code,
-      anyOf('output_too_large', PluginHostFailure.protocolViolation),
+      (outcome as ExternalWorkerRunFailure).code,
+      anyOf('output_too_large', ExternalWorkerHostFailure.protocolViolation),
     );
   });
 
   test('enforces the output limit in UTF-8 bytes', () async {
     final s = await consented('normal');
     final within = await runner.run(s, request('MULTIBYTE_WITHIN_LIMIT'));
-    expect(within, isA<PluginRunSuccess>());
+    expect(within, isA<ExternalWorkerRunSuccess>());
     final over = await runner.run(s, request('MULTIBYTE_OVER_LIMIT'));
-    expect(over, isA<PluginRunFailure>());
-    expect((over as PluginRunFailure).code, 'output_too_large');
+    expect(over, isA<ExternalWorkerRunFailure>());
+    expect((over as ExternalWorkerRunFailure).code, 'output_too_large');
   });
 
   test('a crash is reported and the next run starts a fresh server', () async {
     final s = await consented('normal');
-    final crashed = await runner.run(s, request('CRASH')) as PluginRunFailure;
-    expect(crashed.code, PluginHostFailure.crashed);
-    final again = await runner.run(s, request('after')) as PluginRunSuccess;
+    final crashed =
+        await runner.run(s, request('CRASH')) as ExternalWorkerRunFailure;
+    expect(crashed.code, ExternalWorkerHostFailure.crashed);
+    final again =
+        await runner.run(s, request('after')) as ExternalWorkerRunSuccess;
     expect(again.output, contains('echo: after'));
   });
 
@@ -161,7 +166,7 @@ void main() {
               await consented('normal'),
               request('SLOW', deadline: const Duration(milliseconds: 500)),
             )
-            as PluginRunFailure;
+            as ExternalWorkerRunFailure;
     expect(outcome.code, 'timeout');
     expect(outcome.retryable, isTrue);
   });
@@ -175,7 +180,7 @@ void main() {
       final running = runner.run(s, request('SLOW'), cancel: cancel.future);
       await Future<void>.delayed(const Duration(milliseconds: 400));
       cancel.complete();
-      final outcome = await running as PluginRunFailure;
+      final outcome = await running as ExternalWorkerRunFailure;
       expect(outcome.code, 'cancelled');
       // The echo worker never answers a cancel, so the grace period elapsed.
       expect(clock.elapsed, greaterThan(McpLimits.cancelGrace));
@@ -186,22 +191,22 @@ void main() {
   test('without consent (no pins) nothing is executed', () async {
     final outcome = await runner.run(spec('normal'), request('hi'));
     expect(
-      (outcome as PluginRunFailure).code,
-      PluginHostFailure.identityMismatch,
+      (outcome as ExternalWorkerRunFailure).code,
+      ExternalWorkerHostFailure.identityMismatch,
     );
   });
 
   test('a server without syntila.execute is refused and discarded', () async {
     final outcome =
         await runner.run(await consented('noexecute'), request('hi'))
-            as PluginRunFailure;
-    expect(outcome.code, PluginHostFailure.protocolViolation);
+            as ExternalWorkerRunFailure;
+    expect(outcome.code, ExternalWorkerHostFailure.protocolViolation);
     expect(host.warmSessions, 0);
   });
 
   test('probe maps the worker state and rejects unknown ones', () async {
     final ready = await runner.probe(await consented('normal'), 'passive');
-    expect((ready as PluginProbeSuccess).state, 'ready');
+    expect((ready as ExternalWorkerProbeSuccess).state, 'ready');
     expect(ready.checks.single, {
       'code': 'echo',
       'ok': true,
@@ -209,16 +214,16 @@ void main() {
     });
     final bogus = await runner.probe(await consented('badprobe'), 'passive');
     expect(
-      (bogus as PluginRunFailure).code,
-      PluginHostFailure.protocolViolation,
+      (bogus as ExternalWorkerRunFailure).code,
+      ExternalWorkerHostFailure.protocolViolation,
     );
   });
 
   test('a malformed probe check is a protocol violation', () async {
     final outcome = await runner.probe(await consented('badcheck'), 'passive');
     expect(
-      (outcome as PluginRunFailure).code,
-      PluginHostFailure.protocolViolation,
+      (outcome as ExternalWorkerRunFailure).code,
+      ExternalWorkerHostFailure.protocolViolation,
     );
   });
 
@@ -230,7 +235,7 @@ void main() {
                 await consented('normal', secret: true),
                 request('LEAK'),
               )
-              as PluginRunFailure;
+              as ExternalWorkerRunFailure;
       expect(outcome.message, isNot(contains('sup3r-s3cret-value')));
       expect(outcome.message, contains('<redacted>'));
     },

@@ -4,7 +4,7 @@ library;
 import 'package:syntila_cli_worker_engine/src/mcp_host.dart';
 import 'package:syntila_cli_worker_engine/src/mcp_probe.dart';
 import 'package:syntila_cli_worker_engine/src/mcp_worker_runner.dart';
-import 'package:syntila_cli_worker_engine/src/plugin_host.dart';
+import 'package:syntila_cli_worker_engine/src/external_worker_process_host.dart';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart';
 import 'package:test/test.dart';
 
@@ -43,7 +43,7 @@ void main() {
   setUp(() async {
     fake = FakeMcpHttp();
     await fake.start();
-    host = McpHost(pluginHost: PluginHost());
+    host = McpHost(pluginHost: ExternalWorkerProcessHost());
     runner = McpWorkerRunner(host);
   });
   tearDown(() async {
@@ -145,15 +145,16 @@ void main() {
     final s = await consented(worker: true);
     final outcome = await runner.run(
       s,
-      PluginRunRequest(
+      ExternalWorkerRunRequest(
         executeId: 'e',
         prompt: 'hello',
         access: 'read_only',
         deadline: const Duration(seconds: 30),
       ),
     );
-    expect((outcome as PluginRunSuccess).output, 'remote echo: hello');
-    final probe = await runner.probe(s, 'passive') as PluginProbeSuccess;
+    expect((outcome as ExternalWorkerRunSuccess).output, 'remote echo: hello');
+    final probe =
+        await runner.probe(s, 'passive') as ExternalWorkerProbeSuccess;
     expect(probe.state, 'ready');
     expect(probe.checks.single['code'], 'remote');
   });
@@ -164,7 +165,7 @@ void main() {
       fake.worker = true;
       final outcome = await runner.run(
         await consented(worker: true),
-        PluginRunRequest(
+        ExternalWorkerRunRequest(
           executeId: 'e',
           prompt: 'hello',
           access: 'read_only',
@@ -172,7 +173,7 @@ void main() {
         ),
         workingDirectory: '/local/private/path',
       );
-      expect(outcome, isA<PluginRunSuccess>());
+      expect(outcome, isA<ExternalWorkerRunSuccess>());
       final call = fake.seen.lastWhere(
         (s) => s.body?['method'] == 'tools/call',
       );
@@ -189,14 +190,14 @@ void main() {
     () async {
       final outcome = await runner.run(
         spec(worker: true),
-        PluginRunRequest(
+        ExternalWorkerRunRequest(
           executeId: 'e',
           prompt: 'x',
           access: 'read_only',
           deadline: const Duration(seconds: 10),
         ),
       );
-      expect(outcome, isA<PluginRunFailure>());
+      expect(outcome, isA<ExternalWorkerRunFailure>());
       expect(host.warmSessions, 0);
     },
   );
@@ -210,14 +211,14 @@ void main() {
     final outcome =
         await runner.run(
               s,
-              PluginRunRequest(
+              ExternalWorkerRunRequest(
                 executeId: 'e',
                 prompt: 'x',
                 access: 'read_only',
                 deadline: const Duration(seconds: 10),
               ),
             )
-            as PluginRunFailure;
+            as ExternalWorkerRunFailure;
     expect(outcome.message, isNot(contains('tok-abcdef123456')));
     expect(outcome.message, contains('<redacted>'));
   });

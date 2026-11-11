@@ -16,7 +16,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-const maxOutputChars = 700 * 1024;
+const maxOutputBytes = 700 * 1024;
 final _contextError = RegExp(
   r'context (?:window|length|size).*(?:exceed|too (?:long|large)|limit)|'
   r'(?:exceed|too (?:long|large)).*context (?:window|length|size)',
@@ -134,6 +134,8 @@ class Ollama {
         throw _fromBody(response.statusCode, await utf8.decodeStream(response));
       }
       final text = StringBuffer();
+      var outputBytes = 0;
+      var completed = false;
       await for (final line
           in response.transform(utf8.decoder).transform(const LineSplitter())) {
         if (line.trim().isEmpty) continue;
@@ -142,12 +144,22 @@ class Ollama {
         final delta = (chunk['message'] as Map?)?['content'];
         if (delta is String && delta.isNotEmpty) {
           text.write(delta);
-          if (text.length > maxOutputChars) {
+          outputBytes += utf8.encode(delta).length;
+          if (outputBytes > maxOutputBytes) {
             throw Issue('output_too_large', 'The model output is too large.');
           }
           onChunk(delta);
         }
-        if (chunk['done'] == true) break;
+        if (chunk['done'] == true) {
+          completed = true;
+          break;
+        }
+      }
+      if (!completed) {
+        throw Issue(
+          'not_ready',
+          'Ollama ended the response before completion.',
+        );
       }
       return text.toString().trim();
     } on SocketException {
@@ -280,24 +292,6 @@ Future<Map<String, Object?>> execute(
     throw Issue('invalid_request', 'The prompt is empty.');
   }
   final ollama = call.ollama;
-  final installed = await ollama.models();
-  final requested = args['model'];
-  final String native;
-  if (requested is String && requested.isNotEmpty) {
-    final found = installed[requested];
-    if (found == null) {
-      throw Issue(
-        'model_unavailable',
-        'The selected model is no longer installed.',
-      );
-    }
-    native = found;
-  } else if (installed.length == 1) {
-    native = installed.values.single;
-  } else {
-    throw Issue('model_unavailable', 'Select an installed Ollama model.');
-  }
-
   Timer? deadlineTimer;
   var timedOut = false;
   final deadline = DateTime.tryParse('${args['deadline']}');
@@ -312,10 +306,28 @@ Future<Map<String, Object?>> execute(
     });
   }
 
-  var chars = 0;
-  var chunks = 0;
-  var lastProgress = DateTime.fromMillisecondsSinceEpoch(0);
   try {
+    final installed = await ollama.models();
+    final requested = args['model'];
+    final String native;
+    if (requested is String && requested.isNotEmpty) {
+      final found = installed[requested];
+      if (found == null) {
+        throw Issue(
+          'model_unavailable',
+          'The selected model is no longer installed.',
+        );
+      }
+      native = found;
+    } else if (installed.length == 1) {
+      native = installed.values.single;
+    } else {
+      throw Issue('model_unavailable', 'Select an installed Ollama model.');
+    }
+
+    var chars = 0;
+    var chunks = 0;
+    var lastProgress = DateTime.fromMillisecondsSinceEpoch(0);
     final text = await ollama.chat(
       native,
       prompt,
@@ -330,7 +342,7 @@ Future<Map<String, Object?>> execute(
       },
     );
     return okResult({'text': text}, text);
-  } on Issue {
+  } catch (_) {
     if (call.cancelled)
       throw Issue('cancelled', 'The assignment was cancelled.');
     if (timedOut) throw Issue('timeout', 'Ollama timed out.');
@@ -448,6 +460,14 @@ Future<void> main() async {
       case 'tools/call':
         // Not awaited: the loop must keep reading so a cancel can arrive.
         unawaited(handleCall(id!, params));
+      default:
+        if (id != null) {
+          send({
+            'jsonrpc': '2.0',
+            'id': id,
+            'error': {'code': -32601, 'message': 'Method not found'},
+          });
+        }
     }
   }
   for (final call in inFlight.values) {

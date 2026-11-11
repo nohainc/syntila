@@ -17,8 +17,8 @@ dependencies:
     path: ../../packages/tool_profile_v1
   syntila_cli_worker_runtime:
     path: ../../packages/syntila_cli_worker_runtime
-  syntila_plugin_protocol:
-    path: ../../packages/syntila_plugin_protocol
+  syntila_external_worker_protocol:
+    path: ../../packages/syntila_external_worker_protocol
   syntila_mcp_protocol:
     path: ../../packages/syntila_mcp_protocol
   cryptography: ^2.9.0

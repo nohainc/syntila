@@ -18,7 +18,7 @@
 | P2 Local execution, entitlement-gated | Execution path and resource limits implemented; platform acceptance remains open | `pnpm validate:engine` (plugin host, 4.2, plugin-mode Engine, conformance), `pnpm validate:workspace` (store, registry, IPC, CLI, runtime, end-to-end test) |
 | P3 Cloud library, catalog, eligibility | Done | `pnpm validate:cloud` (library, pins, scheduler and eligibility against real SQL, atomic admission, list isolation) |
 | P4 Export and multi-Workspace distribution | Done for the product path: `export` writes a credential-free bundle, `import` accepts it, each Workspace pins independently, updates show a consent diff. **Open:** per-platform isolation evidence | store and service tests |
-| P5 SDK and docs | Implemented locally: `packages/syntila_plugin_sdk` (`runPlugin`, `PluginWorker`, `SessionStore`, `pack`, `init`), `examples/plugins/echo_dart` (passes all 21 conformance cases), [author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md), [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md), [user security guide](../security/CUSTOM_WORKER_PLUGINS.md), key tool. Python reference example and offline `scripts/sign-plugin.mjs` available. Standalone author-kit archive and checksum built by `scripts/build-plugin-author-kit.mjs`, retained by Engine CI. **Open:** package-registry publication | SDK tests incl. standalone conformance of both examples; Engine conformance test for the Dart example; Node signing verification test |
+| P5 SDK and docs | Implemented locally: `packages/syntila_external_worker_sdk` (`runPlugin`, `PluginWorker`, `SessionStore`, `pack`, `init`), `examples/plugins/echo_dart` (passes all 21 conformance cases), [author guide](../specifications/WORKER_PLUGIN_AUTHOR_GUIDE.md), [operations runbook](../operations/CUSTOM_WORKER_PLUGINS_OPERATIONS.md), [user security guide](../security/CUSTOM_WORKER_PLUGINS.md), key tool. Python reference example and offline `scripts/sign-plugin.mjs` available. Standalone author-kit archive and checksum built by `scripts/build-plugin-author-kit.mjs`, retained by Engine CI. **Open:** package-registry publication | SDK tests incl. standalone conformance of both examples; Engine conformance test for the Dart example; Node signing verification test |
 
 A [macOS isolation facility check](../acceptance/PLUGIN_ISOLATION.md) now verifies
 specific write and loopback denials on the development host; it is not integrated
@@ -46,11 +46,11 @@ conformance suite.
 
 | Package | Location | Depends on | Purpose |
 | --- | --- | --- | --- |
-| `syntila_plugin_protocol` | `packages/syntila_plugin_protocol` | `dart:core` only | Frame types, NDJSON codec, limits, manifest model and validator, error codes, canonical manifest digest. **No Syntila, Cloud, Space or Thread imports.** This is the single source for manifest validation: the Service's `plugins.validate` and the SDK call the same code, so a plugin that validates for the author validates in the Service. Mirrors the shape of `syntila_worker_protocol`. |
-| `syntila_plugin_sdk` | `packages/syntila_plugin_sdk` | `syntila_plugin_protocol` | `abstract class PluginWorker { Future<Readiness> probe(ProbeMode); Future<WorkResult> execute(WorkRequest, WorkContext); }`, `runPlugin(plugin)` (stdin/stdout loop, handshake, ping/pong on its own timer, one-terminal-frame guarantee, frame-size guard, stdout purity: `print` is rerouted to stderr), `WorkContext.progress()/activity()`, `CancellationToken`, session store helper rooted at `dataDir`. |
-| `syntila_plugin_conformance` | `packages/syntila_plugin_conformance` | `syntila_plugin_protocol` | The case set and a `PluginLauncher` interface. Two launchers (§3). |
+| `syntila_external_worker_protocol` | `packages/syntila_external_worker_protocol` | `dart:core` only | Frame types, NDJSON codec, limits, manifest model and validator, error codes, canonical manifest digest. **No Syntila, Cloud, Space or Thread imports.** This is the single source for manifest validation: the Service's `plugins.validate` and the SDK call the same code, so a plugin that validates for the author validates in the Service. Mirrors the shape of `syntila_worker_protocol`. |
+| `syntila_external_worker_sdk` | `packages/syntila_external_worker_sdk` | `syntila_external_worker_protocol` | `abstract class PluginWorker { Future<Readiness> probe(ProbeMode); Future<WorkResult> execute(WorkRequest, WorkContext); }`, `runPlugin(plugin)` (stdin/stdout loop, handshake, ping/pong on its own timer, one-terminal-frame guarantee, frame-size guard, stdout purity: `print` is rerouted to stderr), `WorkContext.progress()/activity()`, `CancellationToken`, session store helper rooted at `dataDir`. |
+| `syntila_external_worker_conformance` | `packages/syntila_external_worker_conformance` | `syntila_external_worker_protocol` | The case set and a `PluginLauncher` interface. Two launchers (§3). |
 
-The Engine's plugin host reuses `syntila_plugin_protocol` for frames, so the
+The Engine's plugin host reuses `syntila_external_worker_protocol` for frames, so the
 host and every plugin use one codec. The Engine continues to have no Cloud,
 Space, Thread, Workflow, D1 or UI dependency.
 
@@ -62,10 +62,10 @@ isolates. The conformance case `heartbeat.during_work` catches the failure.
 ### 1.2 Authoring flow
 
 ```text
-dart create -t console my_plugin           # or: dart run syntila_plugin_sdk:init
+dart create -t console my_plugin           # or: dart run syntila_external_worker_sdk:init
 dart compile exe bin/my_plugin.dart -o build/linux-x64/my_plugin
-dart run syntila_plugin_sdk:pack            # writes plugin.json with artifact digests
-dart run syntila_plugin_conformance -- ./build   # author-side check, no Syntila install needed
+dart run syntila_external_worker_sdk:pack            # writes plugin.json with artifact digests
+dart run syntila_external_worker_conformance -- ./build   # author-side check, no Syntila install needed
 syntila plugins import ./build              # Plus: Service-side import, validate, test, register
 ```
 
@@ -134,7 +134,7 @@ One case set, two launchers:
 | Launcher | Used by | Spawns the plugin via |
 | --- | --- | --- |
 | `EngineHostLauncher` | The Service for `plugins.test`, `register` and `enable` gating (`syntila plugins test`) | Service → Engine plugin host → plugin. Same isolation, limits and redaction as production. Result is stored against `manifestDigest`; only this result satisfies the `plugin_conformance_required` gate. |
-| `DirectProcessLauncher` | `dart run syntila_plugin_conformance -- <path>` (standalone binary also published for non-Dart authors) | `Process.start` of the plugin directly. Author tooling only: it is a separate package, never part of the `syntila` binary, cannot register or enable anything, and does not apply Engine limits or isolation. Free (no Plus) so third parties can build and verify plugins. |
+| `DirectProcessLauncher` | `dart run syntila_external_worker_conformance -- <path>` (standalone binary also published for non-Dart authors) | `Process.start` of the plugin directly. Author tooling only: it is a separate package, never part of the `syntila` binary, cannot register or enable anything, and does not apply Engine limits or isolation. Free (no Plus) so third parties can build and verify plugins. |
 
 An architecture test asserts `apps/workspace` and `engines/cli_worker` do not
 import `DirectProcessLauncher`, and that the `syntila` CLI package does not
@@ -175,13 +175,13 @@ builds run only when the phase touches them.
   `apps/cloud/src/plugin-entitlement-lease.ts`; golden vectors in
   `docs/specifications/worker-plugin-vectors/`. **The new tests were written
   without a Node toolchain and have not been run.** Frame schemas stay
-  Dart-owned (P2, `syntila_plugin_protocol`); the vectors are their contract.
+  Dart-owned (P2, `syntila_external_worker_protocol`); the vectors are their contract.
 - **Exit:** ADR accepted by the owners; open decisions D1-D4 and D13 resolved;
   guards green; no code path can execute a plugin.
 
 ### P2: Local single-Workspace execution, entitlement-gated
 
-- **Scope:** `syntila_plugin_protocol`; Engine 1.4.0 plugin host (spawn from the
+- **Scope:** `syntila_external_worker_protocol`; Engine 1.4.0 plugin host (spawn from the
   read-only store path, digest re-check, no shell, built environment, limits §4.3,
   heartbeat, cancel, redaction, tree kill, Windows Job Object); Local Worker
   Protocol 4.2; Service plugin store, registry and lock-protected writes;
@@ -194,12 +194,12 @@ builds run only when the phase touches them.
   `plugins test --live` and Service-internal execute.
 - **Status (2026-11-03, partial; verified with `dart analyze`/`dart test`,
   `pnpm validate:engine` and `pnpm validate:cloud`):**
-  - Done: `packages/syntila_plugin_protocol` (limits, frame codec,
+  - Done: `packages/syntila_external_worker_protocol` (limits, frame codec,
     `PluginHostSession`, strict manifest validator, golden-vector replay);
     Cloud lease endpoint `POST /api/workspace-runtime/worker-plugins/entitlement`
     (optional secrets `SYNTILA_ENTITLEMENT_SIGNING_KEY` and
     `SYNTILA_ENTITLEMENT_KEY_ID`; 503 until configured);
-    `engines/cli_worker/lib/src/plugin_host.dart` and `plugin_redactor.dart`:
+    `engines/cli_worker/lib/src/external_worker_process_host.dart` and `external_worker_redactor.dart`:
     digest re-check before spawn, built environment (no `SYNTILA_*`), handshake,
     heartbeat, cancel (including a cancel requested before `execute`), deadline,
     5 s cancel grace then tree kill, stderr and message redaction, artifact path
@@ -207,7 +207,7 @@ builds run only when the phase touches them.
     (`test/fixtures/plugin_fixture.dart`) as real child processes.
   - Also done: Local Worker Protocol 4.2 (`WorkerExecutor` on `initialize.request`
     and `execute.request`; 4.0/4.1 frames unchanged); plugin-mode Engine
-    (`syntila-agent --plugin`, `plugin_engine.dart`) with probe, execute,
+    (`syntila-agent --plugin`, `external_worker_engine.dart`) with probe, execute,
     progress, result and error mapping onto existing stable issue codes (no new
     wire codes); profile-mode Engine rejects an executor; Engine 1.4.0. Proven
     end to end against the compiled Engine binary and the fixture plugin.
@@ -283,7 +283,7 @@ builds run only when the phase touches them.
 
 ### P5: SDK and documentation
 
-- **Scope:** publish `syntila_plugin_sdk`, `syntila_plugin_conformance` (and the
+- **Scope:** publish `syntila_external_worker_sdk`, `syntila_external_worker_conformance` (and the
   standalone runner); `pack`/`init` tools; `echo_python`; author guide, security
   guide for users, deprecation policy page, changelog; `docs/` site updates
   (`pnpm validate:site` if the public site changes).

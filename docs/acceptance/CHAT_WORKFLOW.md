@@ -135,3 +135,15 @@ Timeline footer controls use circular hover/pressed effects. When exactly one
 action is available, its labeled icon runs it directly (for example, Copy)
 instead of opening a one-item menu. Multiple actions retain the horizontal ⋯
 menu. The centered alignment and 48 px mobile targets are retained.
+
+## Northstar Studio demo rehearsal
+
+The [demo script](../demo/scenes.md) exercises human discussion, two Chat
+workflow requests, and a separate Work execution. It is a manual scene plan,
+not acceptance evidence. Rehearse on an isolated local backend with a separate
+demo Workspace; record the actual Worker/model readiness and observed outcomes.
+Chat is read-only; the checklist execution uses Work. Review generated content
+for fictional consistency and accuracy, and defer unavailable or unsuccessful
+scenes rather than implying success. Production accounts, Workspace preparation,
+requests, and captures require the explicit approval described in the
+[demo guide](../demo/README.md).

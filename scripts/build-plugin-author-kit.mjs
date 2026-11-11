@@ -42,16 +42,16 @@ export function buildPluginAuthorKit(outputDirectory) {
   }
   try {
     for (const pkg of [
-      "syntila_plugin_protocol",
+      "syntila_external_worker_protocol",
       "syntila_mcp_protocol",
-      "syntila_plugin_conformance",
-      "syntila_plugin_sdk",
+      "syntila_external_worker_conformance",
+      "syntila_external_worker_sdk",
     ]) {
       const base = `packages/${pkg}`;
       copy(`${base}/pubspec.yaml`);
       copy(`${base}/pubspec.lock`);
       dartTree(`${base}/lib`);
-      if (pkg === "syntila_plugin_conformance" || pkg === "syntila_plugin_sdk")
+      if (pkg === "syntila_external_worker_conformance" || pkg === "syntila_external_worker_sdk")
         dartTree(`${base}/bin`);
     }
     for (const relative of [
@@ -79,16 +79,16 @@ and Node for optional signing.
 From the extracted kit root:
 
 \`\`\`sh
-cd packages/syntila_plugin_sdk
+cd packages/syntila_external_worker_sdk
 dart pub get
-dart run syntila_plugin_sdk:init ../../my-plugin my-plugin
+dart run syntila_external_worker_sdk:init ../../my-plugin my-plugin
 cd ../../my-plugin
 dart pub get
 dart compile exe bin/main.dart -o bin/plugin
-dart run syntila_plugin_sdk:pack .
-cd ../packages/syntila_plugin_conformance
+dart run syntila_external_worker_sdk:pack .
+cd ../packages/syntila_external_worker_conformance
 dart pub get
-dart run bin/syntila_plugin_conformance.dart ../../my-plugin
+dart run bin/syntila_external_worker_conformance.dart ../../my-plugin
 \`\`\`
 
 On Windows use bin/plugin.exe as the compiler output (the generated manifest
