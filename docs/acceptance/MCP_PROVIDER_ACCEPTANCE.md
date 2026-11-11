@@ -61,6 +61,22 @@ that defines an `ambient` server.
 Consequence, approved by the owner: this Profile ignores the user's whole Codex
 `config.toml` on every execution. Auth still comes from `CODEX_HOME`.
 
+## Copilot (Profile release 11)
+
+Copilot CLI 1.0.109 accepts the generated MCP JSON via
+`--additional-mcp-config @<path>`. A model-free `copilot mcp list --json`
+check confirmed that the generated stdio server is loaded. The profile grants
+permission to each supplied server with `--allow-tool <server>`. A live model
+call and session resume have not been verified. Copilot merges its own user,
+project, plugin and built-in servers; Syntila does not isolate those separately
+configured servers. Syntila's servers are supplied only to owner-authorized runs.
+
+## Grok (no slot; unsupported)
+
+The installed Grok Build CLI 1.0.67 exposes persistent MCP configuration but
+no per-run MCP configuration argument. Syntila does not inject its servers
+into Grok or modify the user's configuration.
+
 ## agy / Gemini (no slot; unsupported)
 
 `--settings` rejects `mcpServers`, `mcp`, `mcpConfig`, `mcp_servers`,

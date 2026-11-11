@@ -241,15 +241,20 @@ void main() {
     expect(find.text('Retry request'), findsOneWidget);
     expect(
         find.textContaining(
-            'The provider’s usage limit has been reached. You can retry this request with the currently selected model'),
+            'The provider’s usage limit has been reached. The selected model is'),
         findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Resume previous session'),
         findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Start fresh'), findsOneWidget);
-    expect(
-        find.widgetWithText(
-            FilledButton, 'Retry with selected model · Recommended'),
+    expect(find.widgetWithText(FilledButton, 'Retry with selected model'),
         findsOneWidget);
+    expect(find.textContaining('same limit'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('Retry with selected model')).dy,
+        lessThan(tester.getTopLeft(find.text('Resume previous session')).dy));
+    expect(tester.getTopLeft(find.text('Resume previous session')).dy,
+        lessThan(tester.getTopLeft(find.text('Start fresh')).dy));
+    expect(tester.getTopLeft(find.text('Start fresh')).dy,
+        lessThan(tester.getTopLeft(find.text('Cancel')).dy));
 
     // Cancel does nothing
     await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
@@ -257,11 +262,11 @@ void main() {
     expect(submittedPrompts, isEmpty);
     expect(source.strategies, isEmpty);
 
-    // Reopen and tap "Retry with selected model · Recommended"
+    // Reopen and retry with the selected model.
     await tester.tap(find.byTooltip('Retry').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(
-        FilledButton, 'Retry with selected model · Recommended'));
+    await tester
+        .tap(find.widgetWithText(FilledButton, 'Retry with selected model'));
     await tester.pumpAndSettle();
 
     expect(submittedPrompts, ['Verify changes']);

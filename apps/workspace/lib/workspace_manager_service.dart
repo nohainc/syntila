@@ -972,8 +972,7 @@ class WorkspaceManagerService {
         'MCP servers are not available on this Workspace.',
       );
     }
-    return _mcpCommands ??=
-        WorkspaceMcpCommands(subsystem.service, fence: subsystem.fence);
+    return _mcpCommands ??= WorkspaceMcpCommands(subsystem.service);
   }
 
   /// Plugin management (ADR-027) over the Workspace's shared plugin

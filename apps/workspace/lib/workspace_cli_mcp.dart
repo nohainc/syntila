@@ -54,19 +54,6 @@ extension _McpOutput on WorkspaceCli {
       case 'mcp.remove':
         out.writeln('Removed ${result['serverId']}.');
         return true;
-      case 'mcp.toolCallStatus':
-        final status = result['status'];
-        out.writeln('Task:         ${result['taskId']}');
-        out.writeln('Dispatch key: ${result['dispatchKey']}');
-        out.writeln('Fence status: $status');
-        if (status == 'recorded') {
-          out.writeln('State:        ${result['state']}');
-          out.writeln('Code:         ${result['code']}');
-          if (result['result'] != null) {
-            out.writeln('Result:       ${jsonEncode(result['result'])}');
-          }
-        }
-        return true;
     }
     return false;
   }

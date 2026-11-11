@@ -346,10 +346,11 @@ void main() {
         jsonDecode(File('../profile_lab/assets/profiles/$name.json')
             .readAsStringSync()) as Map<String, Object?>;
 
-    test('Claude and Codex carry the MCP slot in every vector; others refuse',
-        () {
+    test('supported profiles carry the MCP slot in every vector', () {
       expect(profileSupportsMcpServers(asset('claude')), isTrue);
       expect(profileSupportsMcpServers(asset('chatgpt')), isTrue);
+      expect(profileSupportsMcpServers(asset('copilot')), isTrue);
+      expect(profileSupportsMcpServers(asset('grok')), isFalse);
       // agy has no session-only MCP setting (`--settings` rejects mcpServers),
       // so Gemini stays unsupported rather than falling back to global config.
       expect(profileSupportsMcpServers(asset('gemini')), isFalse);
@@ -364,6 +365,21 @@ void main() {
             'forEachMcpServer': ['--allowedTools', 'mcp__{{mcpServer}}'],
           },
         ],
+      );
+    });
+
+    test('Copilot loads and authorizes the supplied server names', () {
+      final execution = asset('copilot')['execution'] as Map;
+      final args = execution['arguments'] as List;
+      expect(
+        args.whereType<Map>().singleWhere((part) =>
+            part.containsKey('mcpConfigArguments'))['mcpConfigArguments'],
+        ['--additional-mcp-config', '@{{mcpConfigPath}}'],
+      );
+      expect(
+        args.whereType<Map>().singleWhere(
+            (part) => part.containsKey('forEachMcpServer'))['forEachMcpServer'],
+        ['--allow-tool', '{{mcpServer}}'],
       );
     });
 

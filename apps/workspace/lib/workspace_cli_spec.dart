@@ -711,27 +711,6 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
             destructive: true,
             inGroup: true,
           ),
-          command(
-            icon: GuiIcons.pulse,
-            info: true,
-            'tool-call-status',
-            'MCP tool-call status',
-            'Show the local fence and journal outcome for a task ID',
-            service(
-              'mcp.toolCallStatus',
-              payload: (run) => {'taskId': run.positional('id')},
-            ),
-            parameters: const [
-              GuiParameter(
-                name: 'id',
-                kind: GuiParamKind.positional,
-                type: GuiParamType.string,
-                required: true,
-                label: 'Task ID',
-              ),
-            ],
-            inGroup: true,
-          ),
         ],
       ),
       command(

@@ -760,32 +760,54 @@ extension _ThreadActions on _ThreadPageState {
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('Retry request'),
-          content: Text(
-            'The provider’s usage limit has been reached. You can retry this request with the currently selected model ($selectionDesc), wait for the limit to reset and resume, or start fresh.',
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                    'The provider’s usage limit has been reached. The selected '
+                    'model is $selectionDesc. If it uses the same limit, choose '
+                    'another model or wait for the limit to reset.'),
+                const SizedBox(height: 20),
+                FilledButton(
+                  key: const ValueKey('retry-with-selected-model'),
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, 'selected_model'),
+                  child: const Text('Retry with selected model'),
+                ),
+                if (step.kind == 'implement') ...[
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, 'resume'),
+                    child: const Text('Resume previous session'),
+                  ),
+                  Text(
+                      'Continue the previous Worker session after the limit resets.',
+                      style: Theme.of(dialogContext).textTheme.bodySmall),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, 'fresh'),
+                    child: const Text('Start fresh'),
+                  ),
+                  Text('Retry using a new Worker session.',
+                      style: Theme.of(dialogContext).textTheme.bodySmall),
+                ] else ...[
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, 'existing'),
+                    child: const Text('Retry with existing worker'),
+                  ),
+                  Text('Retry with the previous Worker after the limit resets.',
+                      style: Theme.of(dialogContext).textTheme.bodySmall),
+                ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
-            ),
-            if (step.kind == 'implement') ...[
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, 'resume'),
-                child: const Text('Resume previous session'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, 'fresh'),
-                child: const Text('Start fresh'),
-              ),
-            ] else
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, 'existing'),
-                child: const Text('Retry with existing worker'),
-              ),
-            FilledButton(
-              key: const ValueKey('retry-with-selected-model'),
-              onPressed: () => Navigator.pop(dialogContext, 'selected_model'),
-              child: const Text('Retry with selected model · Recommended'),
             ),
           ],
         ),

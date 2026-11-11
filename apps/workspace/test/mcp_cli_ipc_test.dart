@@ -211,28 +211,4 @@ void main() {
     );
     expect('$out', contains('remote https://mcp.acme.example/mcp'));
   });
-
-  test('tool-call-status sends taskId and renders status and outcome',
-      () async {
-    final code = await run(
-      ['mcp', 'tool-call-status', 'task-999'],
-      (name, payload) {
-        expect(name, 'mcp.toolCallStatus');
-        expect(payload, {'taskId': 'task-999'});
-        return {
-          'taskId': 'task-999',
-          'dispatchKey': 'mcp-tool-v1:task-999',
-          'status': 'recorded',
-          'state': 'completed',
-          'code': 'completed',
-          'result': {'output': 'ok'},
-        };
-      },
-    );
-    expect(code, 0);
-    expect('$out', contains('Task:         task-999'));
-    expect('$out', contains('Fence status: recorded'));
-    expect('$out', contains('State:        completed'));
-    expect('$out', contains('Result:       {"output":"ok"}'));
-  });
 }
