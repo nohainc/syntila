@@ -66,12 +66,13 @@ browser login and upgrades. Provider CLIs and their logins are separate.
 Use the focused tests and component validation commands in [AGENTS.md](AGENTS.md) for the area changed. `pnpm check` is a broad repository check reserved for cases that require that scope.
 
 `./scripts/start-local.sh` starts the Syntila frontend on `http://localhost:3000`
-and a local API gateway on `http://localhost:8787`. By default the gateway
-forwards HTTP and WebSocket requests to production Cloud, using existing
-accounts, remote data and Workspace connections. Actions affect live data.
-Authentication cookies are adapted to localhost while retaining HttpOnly;
-production authentication secrets stay on Cloud. This mode tests local Syntila UI
-changes against deployed Cloud behavior, rather than executing local backend changes.
+and a local API gateway on `http://localhost:8787`. By default the gateway runs the isolated local backend and local v8 D1 database.
+Local state and browser profiles may persist between runs; isolation from production
+does not mean a fresh database or browser session. To forward HTTP and WebSocket
+requests to production Cloud instead, explicitly use `--proxy`: actions in that
+mode affect live accounts, remote data and Workspace connections. Authentication
+cookies are adapted to localhost while retaining HttpOnly; production authentication
+secrets stay on Cloud.
 Stop previous frontend/backend processes before restarting the launcher.
 
 For browser acceptance testing, use `./scripts/start-local.sh --web-release`.
@@ -83,7 +84,7 @@ stale view and report “Trying to render a disposed EngineFlutterView”; a fre
 release session helps distinguish that engine failure from application updates.
 See [Flutter's tracked web restart issue](https://github.com/flutter/flutter/issues/182377).
 
-Use `./scripts/start-local.sh --isolated` to test local backend changes with
+Use `./scripts/start-local.sh --isolated` (the default) to test local backend changes with
 the local v8 D1 database and separate accounts. In this mode the launcher
 generates a persistent local authentication secret in the ignored
 `apps/cloud/.dev.vars` file, preserving existing settings and limiting file access

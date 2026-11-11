@@ -182,3 +182,12 @@ AX together because the upload request now requires both multipart files.
 Apply migration 0106 (three Space member rights) before deploying the matching Cloud and AX changes; it removes the derived `useOwnWorkers` key from member and invitation snapshots.
 
 Connected people can use **Open Space** to create or reopen their personal Space, including after it was deleted. This does not create or select a Thread. `POST /api/people/connections/:userId/space` requires an active connection and rejects blocks in either direction.
+
+## Fictional demo identities
+
+The [Northstar Studio demo](../demo/README.md) uses three fictional display
+identities with ordinary accounts and invitations. It does not change the People
+contract: Space invitations remain pending until accepted, and shared Group
+membership establishes collaborators rather than personal connections. Actual
+addresses must be supplied and controlled by the user; production accounts,
+invitations, and avatar uploads require explicit approval of their exact targets.
