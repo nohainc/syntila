@@ -1,6 +1,39 @@
 part of '../ax_data.dart';
 
 mixin _WorkspaceApi on _AxApiClientCore {
+  Future<AxWorkerVisibility> _workerVisibilityRequest(
+      String workspaceId, String method,
+      [AxWorkerVisibility? value]) async {
+    final uri = Uri.parse(
+        '$baseUrl/workspaces/${Uri.encodeComponent(workspaceId)}/worker-preferences');
+    final headers = _headers(contentType: 'application/json');
+    final response = method == 'GET'
+        ? await client.get(uri, headers: headers)
+        : method == 'PUT'
+            ? await client.put(uri,
+                headers: headers, body: jsonEncode(value!.toJson()))
+            : await client.delete(uri, headers: headers);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+          'Worker visibility request failed (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+    final body = jsonDecode(response.body);
+    if (body is! Map || body['preferences'] is! Map) {
+      throw const AxApiException('Worker visibility response malformed');
+    }
+    return AxWorkerVisibility.fromJson(
+        Map<String, dynamic>.from(body['preferences'] as Map));
+  }
+
+  Future<AxWorkerVisibility> loadWorkerVisibility(String workspaceId) =>
+      _workerVisibilityRequest(workspaceId, 'GET');
+  Future<AxWorkerVisibility> saveWorkerVisibility(
+          String workspaceId, AxWorkerVisibility preferences) =>
+      _workerVisibilityRequest(workspaceId, 'PUT', preferences);
+  Future<AxWorkerVisibility> resetWorkerVisibility(String workspaceId) =>
+      _workerVisibilityRequest(workspaceId, 'DELETE');
+
   @override
   Future<List<AxWorkspace>> loadWorkspaces() async {
     final response =

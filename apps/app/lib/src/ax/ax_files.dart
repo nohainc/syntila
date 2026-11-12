@@ -107,6 +107,9 @@ class AxUserFilesPage {
 abstract interface class AxUserFilesDataSource {
   Future<AxUserFilesPage> loadUserFiles({String? before});
 
+  /// Retrieves the original bytes of an uploaded file.
+  Future<List<int>> downloadUserFile(String fileId);
+
   Future<void> syncUserFiles();
 
   /// Deletes the file's bytes and returns the updated usage.

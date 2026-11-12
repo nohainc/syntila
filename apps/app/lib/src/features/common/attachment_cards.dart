@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:syntila_design/syntila_design.dart';
 
@@ -8,16 +10,27 @@ import '../../ax/work_request_file_picker_stub.dart'
     as work_request_files;
 
 /// Bounded plain-text previews. Never interprets attached HTML or Markdown.
+bool attachmentIsText(String name, String mediaType) {
+  final type = mediaType.toLowerCase();
+  return type.startsWith('text/') ||
+      const {
+        'application/json',
+        'application/xml',
+        'application/javascript',
+        'application/x-yaml',
+        'application/toml'
+      }.contains(type) ||
+      RegExp(r'\.(txt|md|csv|json|jsonl|yaml|yml|xml|toml|dart|ts|tsx|js|jsx|py|log|html|css|sql|sh|rs|go|java|c|h|cpp)$',
+              caseSensitive: false)
+          .hasMatch(name);
+}
+
+bool _attachmentIsText(Map<String, dynamic> file) => attachmentIsText(
+    file['name']?.toString() ?? '', file['mediaType']?.toString() ?? '');
+
 String? attachmentTextPreview(Map<String, dynamic> file) {
   if (file['previewText'] is String) return file['previewText'] as String;
-  final type = file['mediaType']?.toString() ?? '';
-  final name = file['name']?.toString() ?? '';
-  if (!type.startsWith('text/') &&
-      !RegExp(r'\.(txt|md|csv|json|yaml|yml|dart|ts|js|py|log)$',
-              caseSensitive: false)
-          .hasMatch(name)) {
-    return null;
-  }
+  if (!_attachmentIsText(file)) return null;
   final encoded = file['contentBase64'];
   if (encoded is! String) return null;
   try {
@@ -112,33 +125,46 @@ class _AttachmentCardState extends State<AttachmentCard> {
         final bytes = await _bytes(scope);
         final name = widget.file['name']?.toString() ?? 'Attachment';
         if (!attachmentIsImage(widget.file)) {
-          (scope?.open ?? defaultAttachmentOpener)(
-              bytes, name, widget.file['mediaType']?.toString() ?? '');
+          if (_attachmentIsText(widget.file)) {
+            if (!mounted) return;
+            const limit = 1024 * 1024;
+            final text = utf8
+                .decode(bytes.take(limit).toList(), allowMalformed: true)
+                .replaceAll('\u0000', '');
+            await showDialog<void>(
+                context: context,
+                builder: (context) => TextFileViewerDialog(
+                      name: name,
+                      text: text,
+                      truncated: bytes.length > limit,
+                      onDownload:
+                          scope == null || widget.file['fileId'] is! String
+                              ? null
+                              : () async {
+                                  try {
+                                    await scope.download(widget.file, bytes);
+                                  } catch (error) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(SnackBar(
+                                              content: Text(
+                                                  'Could not download file: $error')));
+                                    }
+                                  }
+                                },
+                    ));
+          } else {
+            (scope?.open ?? defaultAttachmentOpener)(
+                bytes, name, widget.file['mediaType']?.toString() ?? '');
+          }
           return;
         }
         if (!mounted) return;
         await showDialog<void>(
           context: context,
-          builder: (context) => Dialog(
-            key: const ValueKey('attachment-image-viewer'),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(children: [
-              InteractiveViewer(
-                maxScale: 8,
-                child: Image.memory(Uint8List.fromList(bytes),
-                    fit: BoxFit.contain),
-              ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: _OverlayIconButton(
-                  tooltip: 'Close preview',
-                  icon: Icons.close,
-                  size: 28,
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-            ]),
+          builder: (context) => ImageViewerDialog(
+            bytes: Uint8List.fromList(bytes),
+            dialogKey: const ValueKey('attachment-image-viewer'),
           ),
         );
       }, 'Could not open file');
@@ -233,6 +259,60 @@ class _AttachmentCardState extends State<AttachmentCard> {
   }
 }
 
+class TextFileViewerDialog extends StatelessWidget {
+  const TextFileViewerDialog(
+      {super.key,
+      required this.name,
+      required this.text,
+      required this.truncated,
+      this.onDownload});
+  final String name;
+  final String text;
+  final bool truncated;
+  final Future<void> Function()? onDownload;
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+        key: const ValueKey('attachment-text-viewer'),
+        constraints: const BoxConstraints(),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+            width: double.infinity,
+            height: double.infinity,
+            child: Column(children: [
+              Row(children: [
+                const SizedBox(width: 16),
+                Expanded(
+                    child: Text(name,
+                        maxLines: 1, overflow: TextOverflow.ellipsis)),
+                if (onDownload != null)
+                  IconButton(
+                      tooltip: 'Download file',
+                      onPressed: onDownload,
+                      icon: const Icon(Icons.download)),
+                IconButton(
+                    tooltip: 'Close preview',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close)),
+              ]),
+              if (truncated)
+                const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                        'Showing the first 1 MiB. Download the file to view it all.')),
+              const Divider(height: 1),
+              Expanded(
+                  child: Scrollbar(
+                      child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(16),
+                          child: SizedBox(
+                              width: double.infinity,
+                              child: SelectableText(text,
+                                  style: SyntilaTypography.monoSmall))))),
+            ])),
+      );
+}
+
 /// Control on a translucent dark backdrop, legible over any image.
 class _OverlayIconButton extends StatelessWidget {
   const _OverlayIconButton(
@@ -288,7 +368,111 @@ class AttachmentDownloadScope extends InheritedWidget {
       open != oldWidget.open;
 }
 
+/// Base64 JPEG preview budget for Worker output images; Cloud and the
+/// Workspace enforce the same value.
+const maxResponseImagePreviewChars = 48000;
+
 /// Images a Worker attached to its answer, shown inline below the text.
+class ImageViewerDialog extends StatefulWidget {
+  const ImageViewerDialog(
+      {super.key, required this.bytes, required this.dialogKey});
+  final Uint8List bytes;
+  final Key dialogKey;
+
+  @override
+  State<ImageViewerDialog> createState() => _ImageViewerDialogState();
+}
+
+class _ImageViewerDialogState extends State<ImageViewerDialog> {
+  late final Future<Size> _imageSize = _decodeSize();
+
+  Future<Size> _decodeSize() {
+    final completer = Completer<Size>();
+    final stream = MemoryImage(widget.bytes).resolve(ImageConfiguration.empty);
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener((info, _) {
+      if (!completer.isCompleted) {
+        completer.complete(
+            Size(info.image.width.toDouble(), info.image.height.toDouble()));
+      }
+      info.dispose();
+      stream.removeListener(listener);
+    }, onError: (Object error, StackTrace? stack) {
+      if (!completer.isCompleted) completer.completeError(error, stack);
+      stream.removeListener(listener);
+    });
+    stream.addListener(listener);
+    return completer.future;
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, bounds) => FutureBuilder<Size>(
+          future: _imageSize,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return AlertDialog(
+                content: const Text('Could not open image'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'))
+                ],
+              );
+            }
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final imageSize = snapshot.data!;
+            // Dialog's default inset is 40 horizontally and 24 vertically.
+            final insets = MediaQuery.viewInsetsOf(context);
+            final availableWidth =
+                math.max(0.0, bounds.maxWidth - 80 - insets.horizontal);
+            final availableHeight =
+                math.max(0.0, bounds.maxHeight - 48 - insets.vertical);
+            final scale = math.min(
+                1.0,
+                math.min(
+                  availableWidth / imageSize.width,
+                  availableHeight / imageSize.height,
+                ));
+            // Keep the close control usable even for very small images.
+            final width = math.min(
+                availableWidth, math.max(44.0, imageSize.width * scale));
+            final height = math.min(
+                availableHeight, math.max(44.0, imageSize.height * scale));
+            return Dialog(
+              key: widget.dialogKey,
+              constraints: const BoxConstraints(),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                key: const ValueKey('image-viewer-content'),
+                width: width,
+                height: height,
+                child: Stack(children: [
+                  Positioned.fill(
+                      child: InteractiveViewer(
+                    maxScale: 8,
+                    child: Image.memory(widget.bytes, fit: BoxFit.scaleDown),
+                  )),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: _OverlayIconButton(
+                      tooltip: 'Close preview',
+                      icon: Icons.close,
+                      size: 28,
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ]),
+              ),
+            );
+          },
+        ),
+      );
+}
+
 class ResponseImages extends StatelessWidget {
   const ResponseImages({super.key, required this.files});
   final List<Map<String, dynamic>> files;
@@ -319,10 +503,55 @@ class _ResponseImageState extends State<ResponseImage> {
   static final _cache = <String, Future<Uint8List>>{};
   Future<Uint8List>? _bytes;
 
+  /// Inline size: the Workspace's small JPEG preview, when present. The
+  /// original is then loaded only to zoom or download.
+  Uint8List? _preview;
+  bool _previewDecoded = false;
+  bool _busy = false;
+
+  Uint8List? get _previewBytes {
+    if (!_previewDecoded) {
+      _previewDecoded = true;
+      final encoded = widget.file['previewImage'];
+      if (encoded is String &&
+          encoded.length <= maxResponseImagePreviewChars &&
+          encoded.startsWith('/9j/')) {
+        try {
+          _preview = base64Decode(encoded);
+        } on FormatException {
+          _preview = null;
+        }
+      }
+    }
+    return _preview;
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_previewBytes == null) _bytes ??= _load();
+  }
+
+  /// Loads the original for [action], keeping the preview on screen.
+  Future<void> _withOriginal(Future<void> Function(Uint8List) action) async {
+    if (_busy) return;
     _bytes ??= _load();
+    final future = _bytes;
+    if (future == null) return;
+    setState(() => _busy = true);
+    try {
+      final bytes = await future;
+      if (bytes.isEmpty) throw StateError('Image unavailable');
+      if (mounted) await action(bytes);
+    } catch (error) {
+      _bytes = null; // Retry on the next tap.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not load image: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<Uint8List>? _load() {
@@ -345,25 +574,9 @@ class _ResponseImageState extends State<ResponseImage> {
 
   Future<void> _view(Uint8List bytes) => showDialog<void>(
         context: context,
-        builder: (context) => Dialog(
-          key: const ValueKey('response-image-viewer'),
-          clipBehavior: Clip.antiAlias,
-          child: Stack(children: [
-            InteractiveViewer(
-              maxScale: 8,
-              child: Image.memory(bytes, fit: BoxFit.contain),
-            ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: _OverlayIconButton(
-                tooltip: 'Close preview',
-                icon: Icons.close,
-                size: 28,
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-          ]),
+        builder: (context) => ImageViewerDialog(
+          bytes: bytes,
+          dialogKey: const ValueKey('response-image-viewer'),
         ),
       );
 
@@ -395,6 +608,24 @@ class _ResponseImageState extends State<ResponseImage> {
           ),
           child: child,
         );
+    final preview = _previewBytes;
+    if (preview != null) {
+      return Semantics(
+        label: name,
+        image: true,
+        child: _frame(
+          image: Image.memory(
+            preview,
+            gaplessPlayback: true,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) =>
+                placeholder(const Icon(Icons.broken_image_outlined)),
+          ),
+          onOpen: () => _withOriginal(_view),
+          onDownload: () => _withOriginal(_download),
+        ),
+      );
+    }
     return Semantics(
       label: name,
       image: true,
@@ -422,40 +653,59 @@ class _ResponseImageState extends State<ResponseImage> {
                 dimension: 20,
                 child: CircularProgressIndicator(strokeWidth: 2)));
           }
-          return ConstrainedBox(
-            constraints:
-                const BoxConstraints(maxWidth: _maxSize, maxHeight: _maxSize),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Stack(children: [
-                Material(
-                  type: MaterialType.transparency,
-                  child: InkWell(
-                    key: const ValueKey('response-image-open'),
-                    onTap: () => _view(bytes),
-                    child: Image.memory(
-                      bytes,
-                      gaplessPlayback: true,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) =>
-                          placeholder(const Icon(Icons.broken_image_outlined)),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: _OverlayIconButton(
-                    tooltip: 'Download image',
-                    icon: Icons.download_outlined,
-                    onPressed: () => _download(bytes),
-                  ),
-                ),
-              ]),
+          return _frame(
+            image: Image.memory(
+              bytes,
+              gaplessPlayback: true,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) =>
+                  placeholder(const Icon(Icons.broken_image_outlined)),
             ),
+            onOpen: () => _view(bytes),
+            onDownload: () => _download(bytes),
           );
         },
       ),
     );
   }
+
+  Widget _frame({
+    required Widget image,
+    required VoidCallback onOpen,
+    required VoidCallback onDownload,
+  }) =>
+      ConstrainedBox(
+        constraints:
+            const BoxConstraints(maxWidth: _maxSize, maxHeight: _maxSize),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Stack(children: [
+            Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                key: const ValueKey('response-image-open'),
+                onTap: _busy ? null : onOpen,
+                child: image,
+              ),
+            ),
+            if (_busy)
+              const Positioned.fill(
+                child: Center(
+                  child: SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              ),
+            Positioned(
+              top: 6,
+              right: 6,
+              child: _OverlayIconButton(
+                tooltip: 'Download image',
+                icon: Icons.download_outlined,
+                onPressed: _busy ? null : onDownload,
+              ),
+            ),
+          ]),
+        ),
+      );
 }

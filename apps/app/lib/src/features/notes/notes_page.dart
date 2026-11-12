@@ -58,8 +58,8 @@ class _NotesPageState extends State<NotesPage> {
     setState(() => _selected = null);
     await _reload();
     // Existing notes left completely empty are removed.
-    final empty = (_notes ?? const <AxNote>[]).where(
-        (n) => n.title.trim().isEmpty && n.body.trim().isEmpty);
+    final empty = (_notes ?? const <AxNote>[])
+        .where((n) => n.title.trim().isEmpty && n.body.trim().isEmpty);
     if (empty.isNotEmpty) {
       for (final note in empty) {
         try {
@@ -230,8 +230,7 @@ class _NotesPageState extends State<NotesPage> {
     }
     final id = _storedId;
     if (id == null) {
-      final created =
-          await widget.source.createNote(title: title, body: body);
+      final created = await widget.source.createNote(title: title, body: body);
       _storedId = created.id;
       if (mounted && _selected == null) unawaited(_reload());
       return created;

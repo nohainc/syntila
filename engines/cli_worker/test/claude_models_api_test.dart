@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:syntila_cli_worker_engine/src/model_discovery.dart';
 import 'package:test/test.dart';
 
@@ -32,5 +34,47 @@ void main() {
       'high',
       'max',
     ]);
+  });
+
+  group('rejected credential', () {
+    late HttpServer server;
+    setUp(() async {
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) {
+        request.response
+          ..statusCode = 401
+          ..close();
+      });
+    });
+    tearDown(() => server.close(force: true));
+
+    Uri local() => Uri.http('127.0.0.1:${server.port}', '/v1/models');
+
+    test('an expired Claude Code sign-in token is not a sign-in problem', () {
+      expect(
+        discoverClaudeApiModels(
+          idPrefix: 'claude-',
+          environment: const {},
+          credentialReader: (_) async => {
+            'authorization': 'Bearer expired',
+            'anthropic-beta': 'oauth-2025-04-20',
+          },
+          endpoint: local(),
+        ),
+        throwsA(isA<ClaudeSignInTokenNeedsRefreshException>()),
+      );
+    });
+
+    test('a rejected API key still asks the user to sign in', () {
+      expect(
+        discoverClaudeApiModels(
+          idPrefix: 'claude-',
+          environment: const {},
+          credentialReader: (_) async => {'x-api-key': 'bad'},
+          endpoint: local(),
+        ),
+        throwsA(isA<ProviderNotAuthenticatedException>()),
+      );
+    });
   });
 }

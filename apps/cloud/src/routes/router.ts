@@ -28,6 +28,7 @@ import { handleWorkspaceMcpToolCallStatus } from "./mcp-tool-call.js";
 import { handleSpaceAdditionalFolders } from "./space-additional-folders.js";
 import { handleWorkflowConfigurations } from "./workflow-configurations.js";
 import { handleWorkflowDefault } from "./workflow-default.js";
+import { handleWorkspaceWorkerPreferences } from "./workspace-worker-preferences.js";
 import { handleWorkspaceMemberAccess } from "./workspace-member-access.js";
 import { handlePeopleWithAccess } from "./workspace-people-with-access.js";
 import {
@@ -421,6 +422,16 @@ export async function routeWorkerRequest(
     if (request.method === "GET" && url.pathname === "/api/workspaces") {
       return await handlers.handleListWorkspaces!(request, env, ctx);
     }
+    const workerPreferencesMatch = url.pathname.match(
+      /^\/api\/workspaces\/([^/]+)\/worker-preferences$/,
+    );
+    if (workerPreferencesMatch)
+      return await handleWorkspaceWorkerPreferences(
+        request,
+        env,
+        decodeURIComponent(workerPreferencesMatch[1]!),
+        ctx,
+      );
     const memberAccessMatch = url.pathname.match(
       /^\/api\/workspaces\/([^/]+)\/member-access(?:\/people\/([^/]+))?$/,
     );
@@ -1096,6 +1107,13 @@ export async function routeWorkerRequest(
     if (url.pathname === "/api/files/sync" && request.method === "POST")
       return await handlers.handleSyncUserFiles!(request, env, ctx);
     const userFileMatch = url.pathname.match(/^\/api\/files\/([^/]+)$/);
+    if (userFileMatch?.[1] && request.method === "GET")
+      return await handlers.handleDownloadUserFile!(
+        request,
+        env,
+        decodeURIComponent(userFileMatch[1]),
+        ctx,
+      );
     if (userFileMatch?.[1] && request.method === "DELETE")
       return await handlers.handleDeleteUserFile!(
         request,

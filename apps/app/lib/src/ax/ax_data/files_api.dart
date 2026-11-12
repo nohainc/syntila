@@ -18,6 +18,19 @@ mixin _FilesApi on _AxApiClientCore implements AxUserFilesDataSource {
   }
 
   @override
+  Future<List<int>> downloadUserFile(String fileId) async {
+    final response = await client.get(
+      Uri.parse('$baseUrl/files/${Uri.encodeComponent(fileId)}'),
+      headers: _headers(),
+    );
+    if (response.statusCode != 200) {
+      throw AxApiException('Downloading the file failed',
+          statusCode: response.statusCode);
+    }
+    return response.bodyBytes;
+  }
+
+  @override
   Future<void> syncUserFiles() async {
     Map<String, String>? params;
     do {

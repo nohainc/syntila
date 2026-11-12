@@ -71,6 +71,51 @@ export async function handleListUserFiles(
   });
 }
 
+/** GET /api/files/:fileId — stream an upload only to its owner. */
+export async function handleDownloadUserFile(
+  request: Request,
+  env: SecurityEnv,
+  fileId: string,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  const context = await authorizeRequest(
+    request,
+    env,
+    "spaces:read",
+    undefined,
+    accessContext,
+  );
+  if (!isWorkRequestFileId(fileId)) throw new HttpError(404, "File not found");
+  const file = await env.SYNTILA_DB.prepare(
+    `SELECT name, media_type FROM user_files WHERE id = ?1 AND user_id = ?2`,
+  )
+    .bind(fileId, context.userId)
+    .first<{ name: string; media_type: string }>();
+  if (!file) throw new HttpError(404, "File not found");
+  const object = await env.SYNTILA_ARTIFACTS?.get(workRequestFileKey(fileId));
+  if (!object) throw new HttpError(404, "File not found");
+  // Keep the quoted fallback ASCII-only and prevent header injection. The
+  // UTF-8 filename parameter preserves the original name for modern clients.
+  const filename = file.name.replace(/[^\x20-\x7e]|["\\]/g, "_") || "download";
+  const encodedName = encodeURIComponent(
+    new TextDecoder().decode(new TextEncoder().encode(file.name)),
+  ).replace(
+    /['()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return new Response(object.body, {
+    headers: {
+      "Content-Type":
+        object.httpMetadata?.contentType ||
+        file.media_type ||
+        "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${filename}"; filename*=UTF-8''${encodedName}`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 /**
  * DELETE /api/files/:fileId — owner only, and allowed at any quota. Removes the
  * stored bytes first and the accounting row only after storage confirms, so

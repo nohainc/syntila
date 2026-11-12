@@ -97,14 +97,29 @@ class SyntilaSyntaxHighlighter extends SyntaxHighlighter {
 }
 
 class SyntilaCodeBlock extends StatelessWidget {
-  const SyntilaCodeBlock({super.key, required this.code, this.language = ''});
+  const SyntilaCodeBlock(
+      {super.key, required this.code, this.language = '', this.wordWrap});
   final String code;
   final String language;
+
+  /// Whether code lines should wrap or scroll horizontally.
+  /// When not explicitly specified, languages like 'status' default to word wrapping.
+  final bool? wordWrap;
+
+  bool get _shouldWrap {
+    if (wordWrap != null) return wordWrap!;
+    return language.trim().toLowerCase() == 'status';
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final textWidget = Text.rich(
+      SyntilaSyntaxHighlighter(theme, language: language).format(code),
+      softWrap: _shouldWrap,
+    );
+
     return Container(
       decoration: BoxDecoration(
           color: SyntilaColors.codeBackground(isDark),
@@ -136,11 +151,16 @@ class SyntilaCodeBlock extends StatelessWidget {
                         }
                       }),
                 ]))),
-        SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+        if (_shouldWrap)
+          Padding(
             padding: const EdgeInsets.all(12),
-            child: Text.rich(SyntilaSyntaxHighlighter(theme, language: language)
-                .format(code))),
+            child: textWidget,
+          )
+        else
+          SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.all(12),
+              child: textWidget),
       ]),
     );
   }

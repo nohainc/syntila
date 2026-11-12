@@ -1,17 +1,30 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../ax/attachment_limits.dart';
 import '../../ax/ax_data.dart';
 import '../profile/account_plan.dart';
+import '../common/attachment_cards.dart';
+import '../../ax/work_request_file_picker_stub.dart'
+    if (dart.library.html) '../../ax/work_request_file_picker_web.dart'
+    as work_request_files;
 
 /// My Files: every file the signed-in user uploaded, with storage usage
 /// against their quota. Deleting a file frees its space.
 class FilesPage extends StatefulWidget {
-  const FilesPage({super.key, required this.source, this.onOpenThread});
+  const FilesPage(
+      {super.key,
+      required this.source,
+      this.onOpenThread,
+      this.saveFile,
+      this.openFile});
 
   final AxUserFilesDataSource source;
+  final void Function(List<int>, String)? saveFile;
+  final void Function(List<int>, String, String)? openFile;
   final void Function(String spaceId, String threadId)? onOpenThread;
 
   @override
@@ -26,6 +39,7 @@ class _FilesPageState extends State<FilesPage> {
   bool _loadingMore = false;
   bool _syncing = false;
   String? _syncStatus;
+  final Set<String> _busyFiles = {};
 
   @override
   void initState() {
@@ -89,6 +103,74 @@ class _FilesPageState extends State<FilesPage> {
       if (mounted) setState(() => _error = 'More files could not be loaded.');
     } finally {
       if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<List<int>?> _fetchFile(AxUserFile file, String action) async {
+    if (_busyFiles.contains(file.fileId)) return null;
+    setState(() => _busyFiles.add(file.fileId));
+    try {
+      return await widget.source.downloadUserFile(file.fileId);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not $action file: $error')),
+        );
+      }
+      return null;
+    } finally {
+      if (mounted) setState(() => _busyFiles.remove(file.fileId));
+    }
+  }
+
+  Future<void> _downloadFile(AxUserFile file) async {
+    final bytes = await _fetchFile(file, 'download');
+    if (bytes == null || !mounted) return;
+    try {
+      (widget.saveFile ?? work_request_files.saveThreadFile)(bytes, file.name);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not download file: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _previewFile(AxUserFile file) async {
+    final bytes = await _fetchFile(file, 'preview');
+    if (bytes == null || !mounted) return;
+    try {
+      if (attachmentIsImage({'name': file.name, 'mediaType': file.mediaType})) {
+        await showDialog<void>(
+            context: context,
+            builder: (_) => ImageViewerDialog(
+                  bytes: Uint8List.fromList(bytes),
+                  dialogKey: const ValueKey('attachment-image-viewer'),
+                ));
+      } else if (attachmentIsText(file.name, file.mediaType)) {
+        const limit = 1024 * 1024;
+        final text = utf8
+            .decode(bytes.take(limit).toList(), allowMalformed: true)
+            .replaceAll('\u0000', '');
+        await showDialog<void>(
+            context: context,
+            builder: (_) => TextFileViewerDialog(
+                  name: file.name,
+                  text: text,
+                  truncated: bytes.length > limit,
+                  onDownload: () => _downloadFile(file),
+                ));
+      } else {
+        (widget.openFile ?? work_request_files.openThreadFile)(
+            bytes, file.name, file.mediaType);
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not preview file: $error')),
+        );
+      }
     }
   }
 
@@ -222,28 +304,33 @@ class _FilesPageState extends State<FilesPage> {
                 padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
                 child: Row(children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(file.name,
+                    child: InkWell(
+                      onTap: _busyFiles.contains(file.fileId)
+                          ? null
+                          : () => unawaited(_previewFile(file)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(file.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 2),
+                          Text(
+                            [
+                              formatFileSize(file.sizeBytes),
+                              _date(file.createdAt),
+                              file.path ?? 'Thread no longer available',
+                              if (file.inUse) 'In use',
+                            ].where((part) => part.isNotEmpty).join(' · '),
+                            key: ValueKey('file-meta-${file.fileId}'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 2),
-                        Text(
-                          [
-                            formatFileSize(file.sizeBytes),
-                            _date(file.createdAt),
-                            file.path ?? 'Thread no longer available',
-                            if (file.inUse) 'In use',
-                          ].where((part) => part.isNotEmpty).join(' · '),
-                          key: ValueKey('file-meta-${file.fileId}'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: muted),
-                        ),
-                      ],
+                            style: TextStyle(fontSize: 12, color: muted),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   if (file.threadId != null &&
@@ -253,6 +340,26 @@ class _FilesPageState extends State<FilesPage> {
                         onPressed: () =>
                             widget.onOpenThread!(file.spaceId!, file.threadId!),
                         child: const Text('Open Thread')),
+                  IconButton(
+                    key: ValueKey('preview-file-${file.fileId}'),
+                    tooltip: 'Preview file',
+                    icon: _busyFiles.contains(file.fileId)
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.visibility_outlined, size: 18),
+                    onPressed: _busyFiles.contains(file.fileId)
+                        ? null
+                        : () => unawaited(_previewFile(file)),
+                  ),
+                  IconButton(
+                    key: ValueKey('download-file-${file.fileId}'),
+                    tooltip: 'Download file',
+                    icon: const Icon(Icons.download_rounded, size: 18),
+                    onPressed: _busyFiles.contains(file.fileId)
+                        ? null
+                        : () => unawaited(_downloadFile(file)),
+                  ),
                   IconButton(
                     key: ValueKey('delete-file-${file.fileId}'),
                     tooltip: 'Delete file',

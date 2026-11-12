@@ -1,5 +1,6 @@
 import 'package:syntila_protocol/syntila_protocol.dart';
 import 'ax_models.dart';
+import 'ax_worker_visibility.dart';
 import 'ax_workflow_configuration.dart';
 
 /// Capability projection for configuration, independent of execution readiness.
@@ -17,6 +18,11 @@ class AxWorkflowSelectionOptions {
   ExecutionSelectionCatalog get sharedCatalog => ExecutionSelectionCatalog([
         for (final value in workers) capabilityForWorker(value),
       ]);
+
+  AxWorkerVisibilityProjection displayProjection(AxWorkerVisibility preferences,
+          {ExecutionSelection selected = const ExecutionSelection()}) =>
+      AxWorkerVisibilityProjection(sharedCatalog, preferences,
+          selected: selected);
 
   Map<String, String> models(String? workerId) {
     final selected = sharedCatalog.worker(workerId);

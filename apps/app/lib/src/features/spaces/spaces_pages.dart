@@ -18,7 +18,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:flutter/rendering.dart' show RenderProxyBox, ScrollDirection;
 import 'package:flutter/services.dart';
 
 import '../../ax/ax_data.dart';
@@ -36,6 +36,7 @@ import '../../ax/sync/ax_work_history.dart';
 import '../../ax/sync/ax_work_realtime_sync.dart';
 import '../../ax/sync/ax_session_catalogs.dart';
 import '../../ax/sync/ax_workflow_configurations.dart';
+import '../../ax/sync/ax_worker_visibility_preferences.dart';
 import '../../ax/sync/ax_query_builder.dart';
 import '../../ax/sync/ax_space_tab_queries.dart';
 import '../../ax/sync/ax_sync_engine.dart';

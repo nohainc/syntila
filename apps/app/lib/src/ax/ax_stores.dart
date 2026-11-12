@@ -1,3 +1,4 @@
+import 'sync/ax_worker_visibility_preferences.dart';
 import 'sync/ax_people.dart';
 import 'sync/ax_archived_spaces.dart';
 import 'sync/ax_workflow_configurations.dart';
@@ -482,6 +483,7 @@ class AxStore {
     persistence.dispose();
     threadViewState.dispose();
     workflowConfigurations.clear();
+    workerVisibilityPreferences.clear();
     people.clear();
     archivedSpaces.clear();
     mcpInventories.clear();
@@ -506,6 +508,8 @@ class AxStore {
       UserInvitationsStore(dataSource, engine: syncEngine);
   late final people = AxPeople(dataSource, engine: syncEngine);
   late final archivedSpaces = AxArchivedSpaces(dataSource, engine: syncEngine);
+  late final workerVisibilityPreferences =
+      AxWorkerVisibilityPreferences(dataSource, engine: syncEngine);
   late final workflowConfigurations =
       AxWorkflowConfigurations(dataSource, engine: syncEngine);
   late final AxMcpInventories mcpInventories =
@@ -587,6 +591,7 @@ class AxStore {
     }
     lifecycle.reset();
     workflowConfigurations.clear();
+    workerVisibilityPreferences.clear();
     people.clear();
     archivedSpaces.clear();
     mcpInventories.clear();

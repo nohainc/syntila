@@ -1,3 +1,5 @@
+import '../../ax/sync/ax_worker_visibility_preferences.dart';
+import 'workspace_worker_visibility_section.dart';
 import 'package:syntila_design/syntila_design.dart';
 import '../../ax/ax_people.dart';
 import '../../ax/ax_data.dart' show AxAccountPlanDataSource;
@@ -30,6 +32,7 @@ class WorkspacesPage extends StatefulWidget {
     this.initialWorkspaceId,
     this.workflowCatalogs,
     this.workflowConfigurations,
+    this.workerVisibilityPreferences,
     this.viewerEmail,
     this.memberAccessSource,
     this.sharingSource,
@@ -62,6 +65,7 @@ class WorkspacesPage extends StatefulWidget {
   /// Workflow inputs. When either is null the Workflows section is hidden.
   final AxSessionCatalogs? workflowCatalogs;
   final AxWorkflowConfigurations? workflowConfigurations;
+  final AxWorkerVisibilityPreferences? workerVisibilityPreferences;
   final String? viewerEmail;
 
   /// Enables the owner's "Member access" section of each Workspace tab.
@@ -279,12 +283,26 @@ class _WorkspacesPageState extends State<WorkspacesPage>
               workspace.role == 'owner' ? widget.workerUsageSource : null,
           online: workspace.status.toLowerCase() == 'online',
         ),
+        if (!workspace.shared &&
+            widget.workerVisibilityPreferences != null) ...[
+          const SizedBox(height: 24),
+          WorkspaceWorkerVisibilitySection(
+            key: ValueKey('workspace-personal-workers-${workspace.id}'),
+            workspaceId: workspace.id,
+            workers: workers,
+            preferences:
+                widget.workerVisibilityPreferences!.forWorkspace(workspace.id),
+          ),
+        ],
         if (catalogs != null && configurations != null) ...[
           const SizedBox(height: 24),
           WorkflowsPage(
             key: ValueKey('workspace-workflows-${workspace.id}'),
             catalogs: catalogs,
             configurations: configurations.forWorkspace(workspace.id),
+            visibility: !workspace.shared && workspace.role == 'owner'
+                ? widget.workerVisibilityPreferences?.forWorkspace(workspace.id)
+                : null,
             viewerEmail: widget.viewerEmail,
             workspaceId: workspace.id,
             showWorkspaceAction: false,

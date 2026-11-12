@@ -319,35 +319,34 @@ extension _AxAppController on _AxAppStateMixin {
             ),
             const SizedBox(width: 12),
             Builder(builder: (context) {
-                final dark = Theme.of(context).brightness == Brightness.dark;
-                final foreground = SyntilaColors.primaryForeground(dark);
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: SyntilaColors.primarySoftColor(dark),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.verified_outlined,
-                          size: 14, color: foreground),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          'Version $syntilaAppVersion',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: foreground,
-                          ),
+              final dark = Theme.of(context).brightness == Brightness.dark;
+              final foreground = SyntilaColors.primaryForeground(dark);
+              return Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: SyntilaColors.primarySoftColor(dark),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.verified_outlined, size: 14, color: foreground),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Version $syntilaAppVersion',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: foreground,
                         ),
                       ),
-                    ],
-                  ),
-                );
-              }),
+                    ),
+                  ],
+                ),
+              );
+            }),
           ],
         ),
         content: ConstrainedBox(
@@ -996,7 +995,8 @@ extension _AxAppController on _AxAppStateMixin {
                         Navigator.of(context).pop();
                       },
                       tooltip: 'Mark all as read',
-                      icon: const Icon(Icons.done_all_rounded, size: composerIconSize),
+                      icon: const Icon(Icons.done_all_rounded,
+                          size: composerIconSize),
                     ),
                   if (browserAlerts.supported)
                     IconButton(
@@ -1027,12 +1027,13 @@ extension _AxAppController on _AxAppStateMixin {
                           size: composerIconSize),
                     ),
                   IconButton(
-                      padding: EdgeInsets.zero,
-                      constraints: composerButtonConstraints,
-                      style: composerIconButtonStyle(),
+                    padding: EdgeInsets.zero,
+                    constraints: composerButtonConstraints,
+                    style: composerIconButtonStyle(),
                     onPressed: () => Navigator.of(context).pop(),
                     tooltip: 'Close',
-                    icon: const Icon(Icons.close_rounded, size: composerIconSize),
+                    icon:
+                        const Icon(Icons.close_rounded, size: composerIconSize),
                   ),
                 ],
               ),

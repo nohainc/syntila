@@ -690,10 +690,10 @@ describe("Implement workflow: hardening", () => {
     ).rejects.toMatchObject({ status: 409 });
   });
 
-  it("pauses when a phase or verification reports no status marker", async () => {
-    for (const [isVerification, kind] of [
-      [false, "implement"],
-      [true, "verify"],
+  it("pauses when a phase, or a status follow-up, reports no status marker", async () => {
+    for (const [isVerification, kind, isStatusFollowUp] of [
+      [false, "implement", false],
+      [true, "verify", true],
     ] as const) {
       const { sqlite, env } = fixture();
       sqlite
@@ -707,6 +707,7 @@ describe("Implement workflow: hardening", () => {
             phaseIndex: 1,
             phaseTitle: "P",
             isVerification,
+            ...(isStatusFollowUp ? { isStatusFollowUp: true } : {}),
           }),
         );
       sqlite
@@ -723,6 +724,84 @@ describe("Implement workflow: hardening", () => {
       );
       expect(result.paused).toBe(true);
     }
+  });
+
+  it("asks the same verifier once for a missing status block", async () => {
+    const { sqlite, env } = fixture();
+    sqlite
+      .prepare(
+        `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
+         VALUES('trq-next','T','owner','{}',5,'queued','now','now')`,
+      )
+      .run();
+    // Held by the user, so the follow-up stays in the queue to inspect.
+    sqlite
+      .prepare(
+        `INSERT INTO thread_request_queue_state(thread_id,paused_reason,paused_by_user_id,failure_message,updated_at)
+         VALUES('T','user','owner',NULL,'now')`,
+      )
+      .run();
+    sqlite
+      .prepare(
+        `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
+         VALUES('wr-v','T','owner','stateful','direct',2,'{}',?,'completed',?,'now','now')`,
+      )
+      .run(
+        JSON.stringify({
+          turnExecutionConfig: {
+            workerId: "w-gemini",
+            modelId: "gemini-3.8-flash",
+            effort: "low",
+          },
+        }),
+        JSON.stringify({
+          isPhased: true,
+          planWorkRequestId: "wr-plan",
+          phaseIndex: 4,
+          totalPhases: 4,
+          phaseTitle: "Final Verification",
+          isVerification: true,
+          isFinalVerification: true,
+        }),
+      );
+    sqlite
+      .prepare(
+        `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
+         VALUES('task-v','wr-v','implement','stateful_thread',60000,'implement:v1','completed',?,'now','now')`,
+      )
+      .run(JSON.stringify({ text: "# Report\nAll criteria met." }));
+
+    const result = await evaluatePhaseCompletionAndAdvanceQueue(
+      env,
+      "T",
+      "wr-v",
+      "work_request.completed",
+    );
+
+    expect(result.paused).toBe(false);
+    const wr = sqlite
+      .prepare("SELECT status FROM work_requests WHERE id = 'wr-v'")
+      .get() as { status: string };
+    expect(wr.status).toBe("completed");
+    const rows = sqlite
+      .prepare(
+        "SELECT id, request_json AS requestJson FROM thread_request_queue WHERE thread_id = 'T' ORDER BY position",
+      )
+      .all() as { id: string; requestJson: string }[];
+    const followUp = rows.find((r) => r.id.startsWith("trq-verify-status-"));
+    expect(followUp).toBeDefined();
+    const request = JSON.parse(followUp!.requestJson);
+    expect(request.executionSelection).toEqual({
+      workerId: "w-gemini",
+      model: "gemini-3.8-flash",
+      reasoningEffort: "low",
+    });
+    expect(request.input.isStatusFollowUp).toBe(true);
+    expect(request.input.isFinalVerification).toBe(true);
+    expect(request.input.originalRequest).toContain("All criteria met.");
+    expect(request.input.originalRequest).toContain("STATUS: PASSED");
+    // It runs before the rest of the queue.
+    expect(rows[0]!.id).toBe(followUp!.id);
   });
 
   it("marks the verified phase failed when its verification fails", async () => {

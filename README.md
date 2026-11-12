@@ -5,6 +5,14 @@ delegate, build, review, test, and iterate toward verified outcomes.**
 
 Application: **https://syntila.app** · Public website: **https://conclaveax.com**
 
+## License
+
+Syntila is proprietary software. This repository is publicly visible, but that
+does not grant permission to use, copy, modify, or distribute its source code.
+See [LICENSE](LICENSE) for details and exceptions, including applicable
+third-party licenses. Product and service access is governed by the applicable
+agreement or terms of service.
+
 ## Architecture
 
 Architecture v9 is the current design target; the v8 implementation remains the baseline where v9 work is not yet complete. See the [architecture](ARCHITECTURE.md) and [roadmap](ROADMAP.md) for current contracts and implementation status.

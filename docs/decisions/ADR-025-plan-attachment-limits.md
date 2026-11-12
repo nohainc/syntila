@@ -25,6 +25,15 @@ limits. `GET /api/me/plan` returns `attachments { maxFiles, maxFileBytes,
 storageBytes }` and `GET /api/files` returns `usage { usedBytes, fileCount,
 reservedBytes, quotaBytes, maxFileBytes }`; the web app loads limits from them.
 
+Generated files collected from an assignment's output directory use the same
+storage and per-file limits, reservations, My Files records, sync and deletion
+as request attachments. Their owner and quota account are the Space owner,
+including when another member requested the work or another Workspace ran it.
+The Workspace collects at most ten non-empty regular files per assignment;
+files rejected by storage limits are not attached. Images retain inline previews
+and other files appear as downloadable attachment cards. Existing generated
+images stored before this policy are not automatically imported.
+
 ## Accounting
 - Usage is the sum of the uploader's `user_files` rows: actual retained bytes,
   wherever the file lives (archived Spaces and Threads included).

@@ -1612,6 +1612,7 @@ class CliWorkerEngine {
     final executionClock = Stopwatch()..start();
     var reconstructed = false;
     var emptyRetried = false;
+    var deniedRetried = false;
     var providerStarted = false;
     var acceptingProviderEvents = true;
     try {
@@ -1722,6 +1723,8 @@ class CliWorkerEngine {
           execution,
           priorSession: priorSession,
           durable: request.sessionPolicy == WorkerSessionPolicy.durableSession,
+          readOnly:
+              request.executionPolicy == WorkerExecutionPolicy.providerDefault,
         );
         final capturedImages = await _captureProviderImages(
           stdout.toString(),
@@ -1753,6 +1756,39 @@ class CliWorkerEngine {
               processExitCode: result.exitCode,
             ),
           );
+        }
+        if (interpreted.deniedActions.isNotEmpty) {
+          _logger.log(
+            'warning',
+            interpreted.issueCode == null
+                ? 'engine.assignment.denied_actions_with_answer'
+                : 'engine.assignment.denied_actions_without_answer',
+            context: _diagnosticContext(
+              requestId: request.requestId,
+              assignmentId: request.assignmentId,
+              errorCode: 'provider_denied_actions',
+              failureLayer: 'provider_tool',
+              processExitCode: result.exitCode,
+            ),
+          );
+        }
+        if (interpreted.issueCode == WorkerIssueCode.permissionDenied &&
+            interpreted.deniedActions.isNotEmpty &&
+            !deniedRetried &&
+            request.executionPolicy == WorkerExecutionPolicy.providerDefault) {
+          // A read-only step whose provider stopped without an answer after a
+          // denied action. Nothing was changed, so one more run is safe; tell
+          // the provider to finish without the denied actions.
+          deniedRetried = true;
+          context['prompt'] =
+              '${context['prompt']}\n\n'
+              'Note from Syntila: in a previous attempt these actions were '
+              'denied by the local sandbox and did not run: '
+              '${interpreted.deniedActions.join(', ')}. Do not try them again. '
+              'Use the built-in file-reading tools and simple read-only '
+              'commands only, and return your complete answer as text even '
+              'if some information is unavailable.';
+          continue;
         }
         if (interpreted.emptyResponse && !emptyRetried && !toolSeen) {
           // The provider said "success" but answered with nothing, and it did
@@ -2702,6 +2738,7 @@ class CliWorkerEngine {
     Map<String, Object?> execution, {
     String? priorSession,
     bool durable = false,
+    bool readOnly = false,
   }) {
     final mode = _string(_map(execution['output'])['mode']);
     if (mode == 'plain_text')
@@ -2744,6 +2781,10 @@ class CliWorkerEngine {
     var markedFailure = false;
     var providerError = false;
     var providerErrorText = '';
+    // Set when the provider reported an error other than a list of denied
+    // actions; only denied actions can be forgiven when an answer exists.
+    var otherProviderError = false;
+    final deniedActions = <String>[];
     var terminalObserved = false;
     for (final event in events) {
       if (event is! Map) continue;
@@ -2826,6 +2867,7 @@ class CliWorkerEngine {
             if (value.isNotEmpty) {
               providerError = true;
               final names = _deniedActionNames(value);
+              deniedActions.addAll(names.isEmpty ? const ['action'] : names);
               providerErrorText =
                   'Permission denied for: '
                   '${names.isEmpty ? 'an action' : names.join(', ')}';
@@ -2835,6 +2877,7 @@ class CliWorkerEngine {
               value != false &&
               value != '') {
             providerError = true;
+            otherProviderError = true;
             providerErrorText = value is String
                 ? value.substring(0, value.length.clamp(0, 4096))
                 : 'provider error';
@@ -2868,10 +2911,31 @@ class CliWorkerEngine {
         ? finalText
         : null;
     final implicitTextSuccess = mode == 'plain_text' && exitCode == 0;
+    // Headless providers (agy) soft-deny actions they cannot get approved and
+    // keep going. When the provider still produced an answer, keep it: the
+    // denied actions are reported as a warning instead of failing the step.
+    final deniedOnly = providerError && !otherProviderError;
+    // Only read-only steps: a write step whose command (a test run, say) was
+    // denied may claim work it could not finish, so it still fails.
+    // A denied write means the provider tried to put its work (often the
+    // answer itself) into a file, so the text it returned is not trusted.
+    final deniedWrite = deniedActions.any(
+      (name) => RegExp(
+        r'write|edit|create|delete|remove|move|rename|replace|action$',
+        caseSensitive: false,
+      ).hasMatch(name),
+    );
+    final answerDespiteDenied =
+        readOnly &&
+        deniedOnly &&
+        !deniedWrite &&
+        text != null &&
+        text.trim().isNotEmpty;
+    final blockingProviderError = providerError && !answerDespiteDenied;
     final successful =
         exitCode == 0 &&
         !markedFailure &&
-        !providerError &&
+        !blockingProviderError &&
         (markedSuccess || implicitTextSuccess) &&
         text != null &&
         text.isNotEmpty;
@@ -2897,6 +2961,26 @@ class CliWorkerEngine {
         sessionId,
         null,
         terminalObserved: terminalObserved,
+        deniedActions: providerError ? deniedActions : const [],
+      );
+    }
+    if (readOnly && deniedOnly && exitCode == 0 && !markedFailure) {
+      // Every problem the provider reported is a denied action and it gave no
+      // usable answer: the run can be retried with guidance to work without
+      // them and to answer as text.
+      return _InterpretedOutput(
+        null,
+        null,
+        WorkerIssueCode.permissionDenied,
+        providerFailed: true,
+        terminalObserved: terminalObserved,
+        deniedActions: deniedActions,
+        reason: [
+          'exit=$exitCode',
+          'denied actions without a usable answer: ${deniedActions.join(', ')}',
+          if (terminalStatus != null) 'status=$terminalStatus',
+          _eventShape(events),
+        ].join(', '),
       );
     }
 
@@ -3295,7 +3379,12 @@ class _InterpretedOutput {
     this.reason,
     this.emptyResponse = false,
     this.providerFailed = false,
+    this.deniedActions = const [],
   });
+
+  /// Actions the provider refused to run (for example agy's soft-denied
+  /// terminal commands). Non-empty on a success means a warning only.
+  final List<String> deniedActions;
 
   /// The provider reported success with no answer text and no error.
   final bool emptyResponse;

@@ -9,6 +9,8 @@ environment:
 dependencies:
   crypto: ^3.0.0
   archive: ^4.3.0
+  image: ^4.8.0
+  mime: ^2.0.0
   syntila_protocol:
     path: ../../packages/dart/protocol
   syntila_worker_protocol:

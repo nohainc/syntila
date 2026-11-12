@@ -1156,7 +1156,7 @@ nothing is lost.
 
 - `GET /api/notes`, `POST /api/notes`, and `GET`/`PUT`/`DELETE
   /api/notes/:id` serve the caller's own notes (My Notes, `/notes`).
-- `GET /api/files` and `DELETE /api/files/:fileId` serve the caller's own
+- `GET /api/files`, `GET /api/files/:fileId`, and `DELETE /api/files/:fileId` serve the caller's own
   uploads and storage quota (My Files, `/files`); see
   `docs/specifications/WORK_V1_CONTRACT.md`.
 - `GET`/`PUT /api/threads/:id/note` serve the caller's single note for a

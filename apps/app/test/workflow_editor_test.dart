@@ -5,6 +5,7 @@ import 'package:syntila_app/src/ax/ax_models.dart';
 import 'package:syntila_app/src/ax/sync/ax_sync_engine.dart';
 import 'package:syntila_app/src/ax/sync/ax_session_catalogs.dart';
 import 'package:syntila_app/src/ax/sync/ax_workflow_configurations.dart';
+import 'package:syntila_app/src/ax/sync/ax_worker_visibility_preferences.dart';
 import 'package:syntila_app/src/ax/workflow_configuration_options.dart';
 import 'package:syntila_app/src/features/workflows/workflow_editor.dart';
 import 'workflows_page_test.dart' show WorkflowSource, workflow;
@@ -95,7 +96,8 @@ Future<WorkflowSource> mount(
     AxBuiltinWorkflow? definition,
     WorkflowSource? fixture,
     String? workspaceId,
-    bool stepsOnly = false}) async {
+    bool stepsOnly = false,
+    AxWorkerVisibilityPreferences? visibility}) async {
   tester.view.physicalSize = const Size(1000, 1200);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -116,6 +118,7 @@ Future<WorkflowSource> mount(
                       context,
                       WorkflowEditor(
                         stepsOnly: stepsOnly,
+                        visibility: visibility,
                         workspaceId: workspaceId,
                         definition: definition ??
                             workflow('plan_implement', 'Implement',
@@ -138,7 +141,50 @@ Future<void> openStep(WidgetTester tester, String id) async {
   await tester.pumpAndSettle();
 }
 
+class VisibilityFixture extends WorkflowSource
+    implements AxWorkerVisibilityDataSource {
+  AxWorkerVisibility value = AxWorkerVisibility();
+  @override
+  Future<AxWorkerVisibility> loadWorkerVisibility(String id) async => value;
+  @override
+  Future<AxWorkerVisibility> saveWorkerVisibility(
+          String id, AxWorkerVisibility v) async =>
+      value = v;
+  @override
+  Future<AxWorkerVisibility> resetWorkerVisibility(String id) async =>
+      value = AxWorkerVisibility();
+}
+
 void main() {
+  testWidgets(
+      'personal visibility refreshes choices while retaining saved values',
+      (tester) async {
+    final source = VisibilityFixture();
+    final visibility =
+        AxWorkerVisibilityPreferences(source, engine: AxSyncEngine())
+            .forWorkspace('ws');
+    await mount(tester, configuration(), visibility: visibility);
+    expect(choices(tester, 'defaults', 'Model'), contains('review'));
+    await visibility.save(AxWorkerVisibility(hiddenWorkers: [
+      'b'
+    ], hiddenModels: {
+      'a': ['analysis', 'review']
+    }, hiddenEfforts: {
+      'a': {
+        'analysis': ['low', 'high']
+      }
+    }));
+    await tester.pumpAndSettle();
+    expect(choices(tester, 'defaults', 'Worker'), isNot(contains('b')));
+    expect(choices(tester, 'defaults', 'Model'), contains('analysis'));
+    expect(choices(tester, 'defaults', 'Model'), isNot(contains('review')));
+    expect(choices(tester, 'defaults', 'Effort'), contains('low'));
+    expect(choices(tester, 'defaults', 'Effort'), isNot(contains('high')));
+    expect(find.textContaining('Hidden in Workers for me'), findsWidgets);
+    await visibility.reset();
+    await tester.pumpAndSettle();
+    expect(choices(tester, 'defaults', 'Model'), contains('review'));
+  });
   test('MCP selections round-trip and an empty override disables inheritance',
       () {
     final saved = AxUserWorkflowConfiguration.fromJson({

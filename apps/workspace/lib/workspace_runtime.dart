@@ -452,14 +452,28 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
         ?.traceAssignmentStage(context, stage.wireName, extra: detail),
     publishOutputImages: outputImageCloud == null
         ? null
-        : (context, workingDirectory) => publishWorkerOutputImages(
+        : (context, workingDirectory) async {
+            var additionalDirectories = const <String>[];
+            try {
+              final folderIds = assignmentAdditionalFolderIds(context.payload);
+              if (folderIds.isNotEmpty) {
+                additionalDirectories =
+                    await allowedFolders.resolveForExecution(folderIds);
+              }
+            } on Object {
+              // Fall back to the Space working directory if attached folders
+              // cannot be resolved at completion time.
+            }
+            return publishWorkerOutputImages(
               cloud: outputImageCloud,
               workingDirectory: workingDirectory,
               assignmentId: context.assignmentId,
+              additionalDirectories: additionalDirectories,
               onError: (error) => stderr.writeln(
                 'Worker output image upload failed: ${error.runtimeType}',
               ),
-            ),
+            );
+          },
     onExecutionStarted: (context) async {
       await connection?.reportWorkerStarted(context);
     },
@@ -728,7 +742,10 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
                 externalExecution?.writesWorkingDirectory == false
                     ? conversationInput.instructions
                     : promptWithOutputImages(
-                        conversationInput.instructions, context.assignmentId),
+                        conversationInput.instructions,
+                        context.assignmentId,
+                        workingDirectoryPath: workingDirectory.path,
+                      ),
                 additionalDirectories,
               ),
             );
@@ -760,7 +777,11 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
             // A Worker without the working directory cannot save images.
             externalExecution?.writesWorkingDirectory == false
                 ? prompt
-                : promptWithOutputImages(prompt, context.assignmentId),
+                : promptWithOutputImages(
+                    prompt,
+                    context.assignmentId,
+                    workingDirectoryPath: workingDirectory.path,
+                  ),
             additionalDirectories,
           ),
           externalConversation: externalConversation,

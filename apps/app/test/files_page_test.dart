@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
@@ -13,6 +16,19 @@ class _FakeFiles implements AxUserFilesDataSource {
   final deleted = <String>[];
   bool failSync = false;
   int syncCount = 0;
+
+  @override
+  Future<List<int>> downloadUserFile(String fileId) async {
+    downloads.add(fileId);
+    if (pending != null) return pending!.future;
+    if (failDownload) throw Exception('offline');
+    return contents[fileId] ?? [];
+  }
+
+  final downloads = <String>[];
+  final contents = <String, List<int>>{};
+  bool failDownload = false;
+  Completer<List<int>>? pending;
 
   @override
   Future<void> syncUserFiles() async {
@@ -47,6 +63,133 @@ class _FakeFiles implements AxUserFilesDataSource {
 }
 
 void main() {
+  const textFile = AxUserFile(
+      fileId: 'text',
+      name: 'note.txt',
+      mediaType: 'text/plain',
+      sizeBytes: 5,
+      createdAt: '');
+  const imageFile = AxUserFile(
+      fileId: 'image',
+      name: 'image.png',
+      mediaType: 'image/png',
+      sizeBytes: 1,
+      createdAt: '');
+  const pdfFile = AxUserFile(
+      fileId: 'pdf',
+      name: 'file.pdf',
+      mediaType: 'application/pdf',
+      sizeBytes: 1,
+      createdAt: '');
+
+  testWidgets('downloads bytes and shows per-file loading', (tester) async {
+    final source = _FakeFiles([textFile, pdfFile])
+      ..pending = Completer<List<int>>();
+    final saved = <Object>[];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: FilesPage(
+                source: source,
+                saveFile: (bytes, name) => saved.add([bytes, name])))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('download-file-text')));
+    await tester.pump();
+    expect(source.downloads, ['text']);
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('preview-file-text')),
+            matching: find.byType(CircularProgressIndicator)),
+        findsOneWidget);
+    expect(
+        tester
+            .widget<IconButton>(find.byKey(const ValueKey('download-file-pdf')))
+            .onPressed,
+        isNotNull);
+    source.pending!.complete([1, 2]);
+    await tester.pumpAndSettle();
+    expect(saved, [
+      [
+        [1, 2],
+        'note.txt'
+      ]
+    ]);
+  });
+
+  testWidgets('tapping a text file previews it and downloads from the dialog',
+      (tester) async {
+    final source = _FakeFiles([textFile])
+      ..contents['text'] = utf8.encode('Hello preview');
+    final saved = <Object>[];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: FilesPage(
+                source: source,
+                saveFile: (bytes, name) => saved.add([bytes, name])))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('note.txt'));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('attachment-text-viewer')), findsOneWidget);
+    expect(find.text('Hello preview'), findsOneWidget);
+    await tester.tap(find.byTooltip('Download file').last);
+    await tester.pumpAndSettle();
+    expect(saved, [
+      [utf8.encode('Hello preview'), 'note.txt']
+    ]);
+  });
+
+  testWidgets('previews images and opens other formats', (tester) async {
+    const png =
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==';
+    final source = _FakeFiles([imageFile, pdfFile])
+      ..contents['image'] = base64Decode(png)
+      ..contents['pdf'] = [3];
+    final opened = <Object>[];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: FilesPage(
+                source: source,
+                openFile: (bytes, name, type) =>
+                    opened.add([bytes, name, type])))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('preview-file-image')));
+    await tester.pump();
+    await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('attachment-image-viewer')), findsOneWidget);
+    await tester.tap(find.byTooltip('Close preview'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('preview-file-pdf')));
+    await tester.pumpAndSettle();
+    expect(opened, [
+      [
+        [3],
+        'file.pdf',
+        'application/pdf'
+      ]
+    ]);
+  });
+
+  testWidgets('reports preview and download errors', (tester) async {
+    final source = _FakeFiles([textFile])..failDownload = true;
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: FilesPage(source: source))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('preview-file-text')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Could not preview file: Exception: offline'),
+        findsOneWidget);
+    ScaffoldMessenger.of(tester.element(find.byType(FilesPage)))
+        .hideCurrentSnackBar();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('download-file-text')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Could not download file: Exception: offline'),
+        findsOneWidget);
+  });
+
   test('My Files has its own route', () {
     final route = AxNavigation.fromUri(Uri(path: '/files'));
     expect(route.kind, AxRouteKind.files);

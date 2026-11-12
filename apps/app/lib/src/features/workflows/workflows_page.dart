@@ -9,6 +9,7 @@ import '../../ax/ax_workflow_configuration.dart';
 import '../../ax/sync/ax_session_catalogs.dart';
 import '../../ax/sync/ax_workflow_configurations.dart';
 import '../../ax/sync/ax_query_builder.dart';
+import '../../ax/sync/ax_worker_visibility_preferences.dart';
 import '../../ax/sync/ax_sync_engine.dart';
 import 'workflow_editor.dart';
 import 'workflow_visibility.dart';
@@ -19,9 +20,11 @@ class WorkflowsPage extends StatefulWidget {
       required this.catalogs,
       required this.configurations,
       this.viewerEmail,
+      this.visibility,
       required this.workspaceId,
       this.canEdit = true,
       this.showWorkspaceAction = true});
+  final AxWorkerVisibilityPreferences? visibility;
   final bool canEdit;
   final bool showWorkspaceAction;
 
@@ -857,6 +860,7 @@ class _WorkflowsPageState extends State<WorkflowsPage> {
           catalogs: widget.catalogs,
           workspaceId: widget.workspaceId,
           cache: widget.configurations,
+          visibility: widget.canEdit ? widget.visibility : null,
         ));
   }
 }

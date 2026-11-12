@@ -116,8 +116,7 @@ void main() {
 
   test('Grok parses report without creditUsagePercent (defaults to 0% used)',
       () {
-    final parsed =
-        parseWorkerUsage(jsonEncode(_grokFreeTierNoCreditUsage))!;
+    final parsed = parseWorkerUsage(jsonEncode(_grokFreeTierNoCreditUsage))!;
     final window = parsed.windows.single;
     expect(window.label, 'Week');
     expect(window.usedPercent, 0.0);

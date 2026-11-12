@@ -1,3 +1,5 @@
+import 'ax_worker_visibility.dart';
+export 'ax_worker_visibility.dart';
 import 'ax_people.dart';
 import 'sync/ax_support.dart';
 export 'sync/ax_support.dart';
@@ -336,6 +338,7 @@ class AxApiClient extends _AxApiClientCore
         _NotesApi,
         _FilesApi
     implements
+        AxWorkerVisibilityDataSource,
         AxWorkflowConfigurationDataSource,
         AxMcpInventoryDataSource,
         AxSpaceWorkflowConfigurationDataSource,

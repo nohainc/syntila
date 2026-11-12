@@ -449,6 +449,16 @@ class ContentLengthRpcClient {
   }
 }
 
+/// The Claude Code sign-in token in the keychain was rejected, most often
+/// because it expired. Only the Claude CLI refreshes that token, and it does
+/// so on its next run, so this is not a reason to ask the user to sign in.
+class ClaudeSignInTokenNeedsRefreshException implements Exception {
+  const ClaudeSignInTokenNeedsRefreshException();
+  @override
+  String toString() =>
+      'Claude sign-in token needs a refresh by the Claude CLI';
+}
+
 /// Thrown when the provider reports that no account is signed in.
 class ProviderNotAuthenticatedException implements Exception {
   const ProviderNotAuthenticatedException(this.message);
@@ -567,8 +577,11 @@ Future<List<DiscoveredModel>> discoverClaudeApiModels({
   Set<String> excludeIds = const {},
   Duration timeout = const Duration(seconds: 10),
   Map<String, String>? environment,
-  Future<Map<String, String>?> Function()? credentialReader,
+  Future<Map<String, String>?> Function(Map<String, String> environment)?
+  credentialReader,
   HttpClient Function()? clientFactory,
+  /// Tests only: replaces the Anthropic Models API address.
+  Uri? endpoint,
 }) async {
   final headers = await (credentialReader ?? readClaudeApiCredential)(
     environment ?? Platform.environment,
@@ -582,13 +595,21 @@ Future<List<DiscoveredModel>> discoverClaudeApiModels({
     ..connectionTimeout = timeout;
   try {
     final request = await client
-        .getUrl(Uri.https('api.anthropic.com', '/v1/models', {'limit': '100'}))
+        .getUrl(
+          endpoint ??
+              Uri.https('api.anthropic.com', '/v1/models', {'limit': '100'}),
+        )
         .timeout(timeout);
     request.headers.set('anthropic-version', '2023-06-01');
     headers.forEach(request.headers.set);
     final response = await request.close().timeout(timeout);
     if (response.statusCode == 401 || response.statusCode == 403) {
       await response.drain<void>();
+      if (headers.containsKey('authorization')) {
+        // A Claude Code sign-in token: the CLI refreshes it when it runs, so
+        // keep the last model list instead of reporting a sign-in problem.
+        throw const ClaudeSignInTokenNeedsRefreshException();
+      }
       throw ProviderNotAuthenticatedException(
         'Claude sign-in was rejected. Run `claude` and sign in again, then refresh.',
       );

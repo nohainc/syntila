@@ -21,6 +21,7 @@ import {
 } from "../src/routes/work-request-files.js";
 import {
   handleDeleteUserFile,
+  handleDownloadUserFile,
   handleSyncUserFiles,
   handleListUserFiles,
   pruneOrphanUserFiles,
@@ -88,6 +89,15 @@ function fixture() {
     }
   >();
   const bucket = {
+    async get(key: string) {
+      const value = objects.get(key);
+      return value
+        ? {
+            body: new Blob([new Uint8Array(value)]).stream(),
+            ...metadata.get(key),
+          }
+        : null;
+    },
     async head(key: string) {
       const value = objects.get(key);
       return value
@@ -295,6 +305,46 @@ describe("My Files", () => {
     });
     expect(objects.size).toBe(0);
     expect((await upload("abcd")).status).toBe(201);
+  });
+
+  it("downloads owned bytes with safe attachment headers and hides unavailable files", async () => {
+    const { upload, env, objects, sqlite } = fixture();
+    const { file } = (await (await upload("hello")).json()) as {
+      file: { fileId: string };
+    };
+    sqlite
+      .prepare("UPDATE user_files SET name = ? WHERE id = ?")
+      .run('a"\r\né.txt', file.fileId);
+    const download = (id = file.fileId) =>
+      handleDownloadUserFile(
+        new Request(`https://test/api/files/${id}`),
+        env,
+        id,
+      );
+    const response = await download();
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("hello");
+    expect(response.headers.get("content-type")).toBe(
+      "application/octet-stream",
+    );
+    expect(response.headers.get("content-disposition")).toBe(
+      "attachment; filename=\"a____.txt\"; filename*=UTF-8''a%22%0D%0A%C3%A9.txt",
+    );
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    userId = "other";
+    await expect(download()).rejects.toMatchObject({ status: 404 });
+    userId = "owner";
+    await expect(download("invalid")).rejects.toMatchObject({ status: 404 });
+    sqlite.prepare("DELETE FROM user_files WHERE id = ?").run(file.fileId);
+    await expect(download()).rejects.toMatchObject({ status: 404 });
+    sqlite
+      .prepare(
+        "INSERT INTO user_files VALUES (?, 'owner', 'thread', 'space', 'a', 'text/plain', 5, '2026-01-01')",
+      )
+      .run(file.fileId);
+    objects.delete(workRequestFileKey(file.fileId));
+    await expect(download()).rejects.toMatchObject({ status: 404 });
   });
 
   it("lets only the owner delete a file, freeing its bytes and quota", async () => {

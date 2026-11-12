@@ -64,8 +64,7 @@ class _PeoplePageState extends State<PeoplePage> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('People',
-                  style: Theme.of(context).textTheme.headlineMedium),
+              Text('People', style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -74,23 +73,23 @@ class _PeoplePageState extends State<PeoplePage> {
                         ? SizedBox(
                             height: 36,
                             child: TextField(
-                            expands: true,
-                            maxLines: null,
-                            minLines: null,
-                            textAlignVertical: TextAlignVertical.center,
-                            key: const ValueKey('people-search-field'),
-                            decoration: InputDecoration(
-                              hintText: 'Search people',
-                              prefixIcon: const Icon(Icons.search, size: 20),
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12),
-                              border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8)),
-                            ),
-                            onChanged: (val) =>
-                                setState(() => _searchQuery = val),
-                          ))
+                              expands: true,
+                              maxLines: null,
+                              minLines: null,
+                              textAlignVertical: TextAlignVertical.center,
+                              key: const ValueKey('people-search-field'),
+                              decoration: InputDecoration(
+                                hintText: 'Search people',
+                                prefixIcon: const Icon(Icons.search, size: 20),
+                                isDense: true,
+                                contentPadding:
+                                    const EdgeInsets.symmetric(horizontal: 12),
+                                border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onChanged: (val) =>
+                                  setState(() => _searchQuery = val),
+                            ))
                         : const SizedBox.shrink(),
                   ),
                   const SizedBox(width: 12),
@@ -232,8 +231,9 @@ class _PeoplePageState extends State<PeoplePage> {
                       _expanded.remove(person.userId);
                     }
                   }),
-                  icon: Icon(
-                      expanded ? Icons.keyboard_double_arrow_down : Icons.keyboard_double_arrow_right),
+                  icon: Icon(expanded
+                      ? Icons.keyboard_double_arrow_down
+                      : Icons.keyboard_double_arrow_right),
                 ),
               ],
             ),

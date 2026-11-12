@@ -268,6 +268,8 @@ export async function storeWorkRequestFile(
     name: string;
     upload: WorkRequestFileUpload;
     workRequestId?: string;
+    /** Set for a file a Worker produced for the user in this assignment. */
+    assignmentId?: string;
   },
 ): Promise<{
   digest: string;
@@ -292,6 +294,9 @@ export async function storeWorkRequestFile(
       userId: input.userId,
       name: input.name,
       ...(input.workRequestId ? { workRequestId: input.workRequestId } : {}),
+      ...(input.assignmentId
+        ? { assignmentId: input.assignmentId, source: "worker_output" }
+        : {}),
     };
     let digest: string;
     let head: Uint8Array;
@@ -561,12 +566,17 @@ export async function handleDownloadThreadFile(
     UNION ALL SELECT 1 AS present FROM work_requests wr, json_each(wr.input_json, '$.attachments') f
     WHERE wr.thread_id = ?1 AND json_extract(f.value, '$.fileId') = ?2
     UNION ALL SELECT 1 AS present FROM worker_assignments wa, json_each(wa.output_json, '$.output.images') f
-    WHERE wa.thread_id = ?1 AND wa.status = 'completed' AND json_extract(f.value, '$.fileId') = ?2 LIMIT 1`,
+    WHERE wa.status = 'completed' AND json_extract(f.value, '$.fileId') = ?2
+    UNION ALL SELECT 1 AS present FROM worker_assignments wa, json_each(wa.output_json, '$.output.files') f
+    WHERE wa.status = 'completed' AND json_extract(f.value, '$.fileId') = ?2 LIMIT 1`,
   )
     .bind(threadId, fileId)
     .first();
   if (!reference) throw new HttpError(404, "File not found");
   const object = await env.SYNTILA_ARTIFACTS?.get(workRequestFileKey(fileId));
+  // Worker outputs are referenced by a completed assignment whose own
+  // `thread_id` may be empty (workflow dispatch); the object's Thread binding,
+  // written at upload from the assignment's Work Request, scopes them.
   if (!object || object.customMetadata?.threadId !== threadId)
     throw new HttpError(404, "File not found");
   return new Response(object.body, {

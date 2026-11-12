@@ -162,6 +162,7 @@ export const routeHandlers = {
   handleSetPin: handlers.handleSetPin,
   handleSetPinOrder: handlers.handleSetPinOrder,
   handleListUserFiles: handlers.handleListUserFiles,
+  handleDownloadUserFile: handlers.handleDownloadUserFile,
   handleSyncUserFiles: handlers.handleSyncUserFiles,
   handleDeleteUserFile: handlers.handleDeleteUserFile,
   handleListNotes: handlers.handleListNotes,

@@ -6,6 +6,8 @@ import '../../ax/ax_models.dart';
 import '../../ax/ax_workflow_configuration.dart';
 import '../../ax/workflow_configuration_options.dart';
 import '../../ax/sync/ax_query_builder.dart';
+import '../../ax/sync/ax_worker_visibility_preferences.dart';
+import '../../ax/ax_worker_visibility.dart';
 import '../../ax/sync/ax_session_catalogs.dart';
 import '../../ax/sync/ax_workflow_configurations.dart';
 
@@ -22,7 +24,9 @@ class WorkflowEditor extends StatefulWidget {
       required this.catalogs,
       required this.cache,
       this.workspaceId,
+      this.visibility,
       this.stepsOnly = false});
+  final AxWorkerVisibilityPreferences? visibility;
   final bool stepsOnly;
   final String? workspaceId;
   final AxBuiltinWorkflow definition;
@@ -182,147 +186,153 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-        canPop: !busy,
-        child: AxQueryBuilder(
-          engine: widget.catalogs.engine,
-          query: widget.catalogs.workers,
-          ensure: false,
-          builder: (context, state) {
-            final options = AxWorkflowSelectionOptions(
-                (state.data ?? const <AxWorker>[])
-                    .where((worker) =>
-                        widget.workspaceId == null ||
-                        worker.workspaceId == widget.workspaceId)
-                    .toList());
-            final issues = _issues(options);
-            final visibleIssues = issues.entries
-                .where((entry) => !_hideValidationMessage(entry.value))
-                .toList();
-            return Scaffold(
-              appBar: AppBar(
-                title: Text(widget.definition.name),
-                leading: IconButton(
-                    tooltip: 'Back',
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: busy ? null : () => Navigator.pop(context)),
-              ),
-              body: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                          maxWidth: PageWidth.of(context).pageWidth),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (!widget.stepsOnly) ...[
-                            SwitchListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: const Text('Enabled'),
-                                value: enabled,
-                                subtitle: widget.definition.id == 'chat'
-                                    ? const Text('Chat is always available.')
-                                    : null,
-                                onChanged:
-                                    busy || widget.definition.id == 'chat'
-                                        ? null
-                                        : (value) =>
-                                            setState(() => enabled = value)),
-                            Text('Default execution',
-                                style: Theme.of(context).textTheme.titleSmall),
-                            const SizedBox(height: 12),
-                            _selection(
-                                'defaults',
-                                defaults,
-                                const AxWorkflowSelection(),
-                                options,
-                                (value) => defaults = value),
-                            if (issues['defaults'] != null &&
-                                !_hideValidationMessage(issues['defaults']))
-                              _notice(issues['defaults']!, error: true),
-                            const SizedBox(height: 8),
-                          ],
-                          if (widget.stepsOnly) ...[
-                            Text('Workflow steps',
-                                style: Theme.of(context).textTheme.titleSmall),
-                            const SizedBox(height: 8),
-                            if (_research) _researcherCountControl(),
-                            for (var index = 0; index < steps.length; index++)
-                              _step(index, steps[index], options,
-                                  issues[steps[index].instanceId]),
-                          ] else
-                            ExpansionTile(
-                              key: const ValueKey('workflow-advanced'),
-                              tilePadding: EdgeInsets.zero,
-                              title: const Text('Advanced'),
-                              children: [
-                                const Divider(),
-                                const Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text('Workflow steps',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.w600))),
-                                const SizedBox(height: 8),
-                                if (_research) _researcherCountControl(),
-                                for (var index = 0;
-                                    index < steps.length;
-                                    index++)
-                                  _step(index, steps[index], options,
-                                      issues[steps[index].instanceId]),
-                              ],
-                            ),
-                          if (visibleIssues.isNotEmpty)
-                            _notice(
-                                'Resolve incompatible choices before saving.\n${visibleIssues.where((entry) => entry.key != 'defaults').map((entry) => '${_title(entry.key)}: ${entry.value}').join('\n')}',
-                                error: true),
-                          if (state.error != null)
-                            _notice(
-                                'Worker details could not be refreshed. Saved selections are retained.'),
-                          if (error != null) _notice(error!, error: true),
+  Widget build(BuildContext context) {
+    final visibility = widget.visibility;
+    if (visibility == null) return _editor(context, null);
+    return AxQueryBuilder<AxWorkerVisibility>(
+        engine: visibility.engine,
+        query: visibility.query,
+        builder: (context, state) => _editor(context, state.data));
+  }
+
+  AxWorkerVisibility? _visibility;
+  Widget _editor(BuildContext context, AxWorkerVisibility? visibility) {
+    _visibility = visibility;
+    return PopScope(
+      canPop: !busy,
+      child: AxQueryBuilder(
+        engine: widget.catalogs.engine,
+        query: widget.catalogs.workers,
+        ensure: false,
+        builder: (context, state) {
+          final options = AxWorkflowSelectionOptions(
+              (state.data ?? const <AxWorker>[])
+                  .where((worker) =>
+                      widget.workspaceId == null ||
+                      worker.workspaceId == widget.workspaceId)
+                  .toList());
+          final issues = _issues(options);
+          final visibleIssues = issues.entries
+              .where((entry) => !_hideValidationMessage(entry.value))
+              .toList();
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(widget.definition.name),
+              leading: IconButton(
+                  tooltip: 'Back',
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: busy ? null : () => Navigator.pop(context)),
+            ),
+            body: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                        maxWidth: PageWidth.of(context).pageWidth),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!widget.stepsOnly) ...[
+                          SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Enabled'),
+                              value: enabled,
+                              subtitle: widget.definition.id == 'chat'
+                                  ? const Text('Chat is always available.')
+                                  : null,
+                              onChanged: busy || widget.definition.id == 'chat'
+                                  ? null
+                                  : (value) => setState(() => enabled = value)),
+                          Text('Default execution',
+                              style: Theme.of(context).textTheme.titleSmall),
+                          const SizedBox(height: 12),
+                          _selection(
+                              'defaults',
+                              defaults,
+                              const AxWorkflowSelection(),
+                              options,
+                              (value) => defaults = value),
+                          if (issues['defaults'] != null &&
+                              !_hideValidationMessage(issues['defaults']))
+                            _notice(issues['defaults']!, error: true),
                           const SizedBox(height: 8),
-                          Wrap(
-                              alignment: WrapAlignment.end,
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                if (!widget.stepsOnly)
-                                  TextButton(
-                                      key: const ValueKey('reset-workflow'),
-                                      onPressed: busy
-                                          ? null
-                                          : () => _save(reset: true),
-                                      child: Text(
-                                          widget.cache.spaceId == null ||
-                                                  widget.cache.engine
-                                                          .peek(widget.cache
-                                                              .workspaceQuery)
-                                                          .data
-                                                          ?.inherited ==
-                                                      false
-                                              ? 'Reset'
-                                              : 'Use global defaults')),
-                                TextButton(
-                                    onPressed: busy
-                                        ? null
-                                        : () => Navigator.pop(context),
-                                    child: const Text('Cancel')),
-                                FilledButton(
-                                    key: const ValueKey('save-workflow'),
-                                    onPressed: busy || issues.isNotEmpty
-                                        ? null
-                                        : _save,
-                                    child: Text(busy ? 'Saving…' : 'Save')),
-                              ]),
                         ],
-                      ),
+                        if (widget.stepsOnly) ...[
+                          Text('Workflow steps',
+                              style: Theme.of(context).textTheme.titleSmall),
+                          const SizedBox(height: 8),
+                          if (_research) _researcherCountControl(),
+                          for (var index = 0; index < steps.length; index++)
+                            _step(index, steps[index], options,
+                                issues[steps[index].instanceId]),
+                        ] else
+                          ExpansionTile(
+                            key: const ValueKey('workflow-advanced'),
+                            tilePadding: EdgeInsets.zero,
+                            title: const Text('Advanced'),
+                            children: [
+                              const Divider(),
+                              const Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text('Workflow steps',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w600))),
+                              const SizedBox(height: 8),
+                              if (_research) _researcherCountControl(),
+                              for (var index = 0; index < steps.length; index++)
+                                _step(index, steps[index], options,
+                                    issues[steps[index].instanceId]),
+                            ],
+                          ),
+                        if (visibleIssues.isNotEmpty)
+                          _notice(
+                              'Resolve incompatible choices before saving.\n${visibleIssues.where((entry) => entry.key != 'defaults').map((entry) => '${_title(entry.key)}: ${entry.value}').join('\n')}',
+                              error: true),
+                        if (state.error != null)
+                          _notice(
+                              'Worker details could not be refreshed. Saved selections are retained.'),
+                        if (error != null) _notice(error!, error: true),
+                        const SizedBox(height: 8),
+                        Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (!widget.stepsOnly)
+                                TextButton(
+                                    key: const ValueKey('reset-workflow'),
+                                    onPressed:
+                                        busy ? null : () => _save(reset: true),
+                                    child: Text(widget.cache.spaceId == null ||
+                                            widget.cache.engine
+                                                    .peek(widget
+                                                        .cache.workspaceQuery)
+                                                    .data
+                                                    ?.inherited ==
+                                                false
+                                        ? 'Reset'
+                                        : 'Use global defaults')),
+                              TextButton(
+                                  onPressed: busy
+                                      ? null
+                                      : () => Navigator.pop(context),
+                                  child: const Text('Cancel')),
+                              FilledButton(
+                                  key: const ValueKey('save-workflow'),
+                                  onPressed:
+                                      busy || issues.isNotEmpty ? null : _save,
+                                  child: Text(busy ? 'Saving…' : 'Save')),
+                            ]),
+                      ],
                     ),
-                  )),
-            );
-          },
-        ),
-      );
+                  ),
+                )),
+          );
+        },
+      ),
+    );
+  }
 
   Widget _researcherCountControl() => Row(children: [
         const Text('Researchers'),
@@ -451,7 +461,31 @@ class _WorkflowEditorState extends State<WorkflowEditor> {
       AxWorkflowSelection base,
       AxWorkflowSelectionOptions options,
       ValueChanged<AxWorkflowSelection> update) {
+    final preferences = _visibility;
+    AxWorkerVisibilityProjection project(ExecutionSelection selection) =>
+        options.displayProjection(preferences!, selected: selection);
     return ModelEffortSelector(
+      displayWorkers: preferences == null
+          ? null
+          : (s) => {
+                for (final w in project(s).workers)
+                  w.id: project(s).workerLabel(w)
+              },
+      displayModels:
+          preferences == null ? null : (s) => project(s).models(s.worker ?? ''),
+      displayEfforts: preferences == null
+          ? null
+          : (s) => {
+                for (final e in project(s).efforts(s.worker ?? '', s.model))
+                  e: project(s).effortLabel(
+                      s.worker ?? '',
+                      s.model ??
+                          options.sharedCatalog
+                              .worker(s.worker)
+                              ?.defaultModelId ??
+                          '',
+                      e)
+              },
       scope: scope,
       catalog: options.sharedCatalog,
       value: ExecutionSelection(

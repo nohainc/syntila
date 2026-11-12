@@ -745,7 +745,9 @@ or expiry. `GET /api/files` lists the
 caller's files newest first (100 per page, `?before=<createdAt>` for more) with
 `usage { usedBytes, fileCount, reservedBytes, quotaBytes, maxFileBytes }`, the Thread/Space names while the
 caller can still open the Thread, and `inUse` when a discussion message or
-Work Request cites the file. `DELETE /api/files/{fileId}` is owner-only: it
+Work Request cites the file. `GET /api/files/{fileId}` streams the owner's file bytes as an attachment with its media type, private no-store caching,
+and nosniff protection; invalid, missing, and non-owned files return 404.
+`DELETE /api/files/{fileId}` is owner-only: it
 removes the R2 object and its preview and frees the quota only once storage
 confirms (references never own bytes, so citing a file twice or removing one
 citation cannot change usage). History that cited

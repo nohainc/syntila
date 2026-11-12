@@ -1958,7 +1958,7 @@ void main() {
   testWidgets(
       'phase reply sends directly to the original worker while the queue stays paused',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 1400));
+    await tester.binding.setSurfaceSize(const Size(1000, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final data = _PhaseReplyDataSource()..ready.complete([]);
     data.requests = [
@@ -2024,9 +2024,20 @@ void main() {
     await tester.pumpAndSettle();
     await _askAi(tester);
     expect(find.text('Reply to worker'), findsOneWidget);
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Enter the requested information'),
-        'Use PostgreSQL');
+    expect(
+        find.text(
+            'Replies send immediately. The request queue remains paused.'),
+        findsOneWidget);
+    final fieldFinder =
+        find.widgetWithText(TextField, 'Enter the requested information');
+    final queueFinder = find.byKey(const ValueKey('work-queue-panel'));
+    await tester.tap(fieldFinder);
+    await tester.pumpAndSettle();
+    await tester.enterText(fieldFinder, 'Use PostgreSQL');
+    await tester.pumpAndSettle();
+    // The field must not scroll under or behind the queue panel
+    expect(tester.getRect(fieldFinder).bottom,
+        lessThanOrEqualTo(tester.getRect(queueFinder).top));
     await tester.tap(find.byTooltip('Send reply now'));
     await tester.pumpAndSettle();
     expect(data.sentPrompt, 'Use PostgreSQL');
@@ -2172,9 +2183,16 @@ void main() {
         findsOneWidget);
     expect(find.text('Implementation Plan Ready'), findsOneWidget);
 
-    // Select final verification
+    // Verify "want changes first" control is displayed ABOVE verification options
+    final reviseField =
+        find.byKey(const ValueKey('revise-plan-field-wr-plan-1'));
     final finalChip = find.byKey(const ValueKey('verify-mode-final-wr-plan-1'));
+    expect(reviseField, findsOneWidget);
     expect(finalChip, findsOneWidget);
+    expect(tester.getRect(reviseField).bottom,
+        lessThan(tester.getRect(finalChip).top));
+
+    // Select final verification
     await tester.tap(finalChip);
     await tester.pumpAndSettle();
 

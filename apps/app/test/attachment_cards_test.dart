@@ -7,6 +7,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_design/syntila_design.dart';
 
 void main() {
+  test('public text detection accepts names and media types', () {
+    expect(attachmentIsText('README.MD', ''), isTrue);
+    expect(attachmentIsText('data', 'APPLICATION/JSON'), isTrue);
+    expect(attachmentIsText('image.png', 'image/png'), isFalse);
+  });
+
+  testWidgets('public text viewer displays content and downloads',
+      (tester) async {
+    var downloads = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: Builder(
+      builder: (context) => TextButton(
+        onPressed: () => showDialog<void>(
+          context: context,
+          builder: (_) => TextFileViewerDialog(
+            name: 'note.txt',
+            text: 'hello',
+            truncated: true,
+            onDownload: () async {
+              downloads++;
+            },
+          ),
+        ),
+        child: const Text('Open'),
+      ),
+    ))));
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('attachment-text-viewer')), findsOneWidget);
+    expect(find.text('hello'), findsOneWidget);
+    expect(find.textContaining('first 1 MiB'), findsOneWidget);
+    await tester.tap(find.byTooltip('Download file'));
+    expect(downloads, 1);
+  });
+
   test('text preview is bounded, plain source and tolerates unknown files', () {
     expect(
         attachmentTextPreview({
@@ -63,7 +100,7 @@ void main() {
   testWidgets('thumbnail is center-cropped; tap opens original in a popup',
       (tester) async {
     const png =
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=';
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==';
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(
           body: AttachmentCard(file: {
@@ -87,6 +124,9 @@ void main() {
     await mouse.removePointer();
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('attachment-open')));
+    await tester.pump();
+    await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 100)));
     await tester.pumpAndSettle();
     expect(
         find.byKey(const ValueKey('attachment-image-viewer')), findsOneWidget);
@@ -124,5 +164,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(downloaded, [1, 2, 3]);
     await mouse.removePointer();
+  });
+
+  testWidgets('text files open as plain text and can be downloaded',
+      (tester) async {
+    final bytes = utf8.encode('<b>hello</b>\nsecond line');
+    List<int>? downloaded;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: AttachmentDownloadScope(
+      load: (_) async => bytes,
+      download: (_, value) async => downloaded = value,
+      child: const AttachmentCard(file: {
+        'name': 'report.json',
+        'mediaType': 'application/json',
+        'fileId': 'report'
+      }),
+    ))));
+    await tester.tap(find.byKey(const ValueKey('attachment-open')));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('attachment-text-viewer')), findsOneWidget);
+    expect(find.text('<b>hello</b>\nsecond line'), findsOneWidget);
+    await tester.tap(find.byTooltip('Download file'));
+    await tester.pumpAndSettle();
+    expect(downloaded, bytes);
+    await tester.tap(find.byTooltip('Close preview'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('attachment-text-viewer')), findsNothing);
   });
 }

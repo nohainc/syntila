@@ -156,6 +156,8 @@ class _WorkComposer extends StatelessWidget {
     this.implementConfiguration,
     this.spaceWorkers = const <AxWorker>[],
     this.eligibleWorkers = const <AxWorker>[],
+    this.visibilityByWorkspace = const {},
+    this.onManageVisibility,
     required this.loadingWorkflows,
     required this.workflowCatalogError,
     required this.canExecute,
@@ -241,6 +243,8 @@ class _WorkComposer extends StatelessWidget {
   final AxUserWorkflowConfiguration? implementConfiguration;
   final List<AxWorker> spaceWorkers;
   final List<AxWorker> eligibleWorkers;
+  final Map<String, AxWorkerVisibility> visibilityByWorkspace;
+  final ValueChanged<String?>? onManageVisibility;
   final bool loadingWorkflows;
   final String? workflowCatalogError;
   final bool canExecute;
@@ -884,6 +888,16 @@ class _WorkComposer extends StatelessWidget {
               ),
               child: ModelEffortSelector(
                 scope: 'work-composer',
+                onManageVisibility: onManageVisibility == null
+                    ? null
+                    : () {
+                        final worker = eligibleWorkers
+                                .where((w) =>
+                                    w.id == selectedWorkerId && !w.shared)
+                                .firstOrNull ??
+                            eligibleWorkers.where((w) => !w.shared).firstOrNull;
+                        onManageVisibility!(worker?.workspaceId);
+                      },
                 immediatePopup: true,
                 workerIconBuilder: (capability) {
                   final worker = eligibleWorkers
@@ -939,6 +953,56 @@ class _WorkComposer extends StatelessWidget {
                 allowEffortChange: policy.userSelectsEffort,
                 catalog:
                     AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog,
+                displayWorkers: (selection) => {
+                  for (final worker in eligibleWorkers)
+                    if (worker.shared ||
+                        !(visibilityByWorkspace[worker.workspaceId]
+                                ?.workerHidden(worker.id) ??
+                            false) ||
+                        selection.worker == worker.id)
+                      worker.id:
+                          '${worker.displayName}${!worker.shared && (visibilityByWorkspace[worker.workspaceId]?.workerHidden(worker.id) ?? false) ? ' · Hidden in Workers for me' : ''}'
+                },
+                displayModels: (selection) {
+                  final catalog =
+                      AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog;
+                  final worker = eligibleWorkers
+                      .where((w) => w.id == selection.worker)
+                      .firstOrNull;
+                  if (worker == null) return {};
+                  final preferences = worker.shared
+                      ? AxWorkerVisibility()
+                      : visibilityByWorkspace[worker.workspaceId] ??
+                          AxWorkerVisibility();
+                  return AxWorkerVisibilityProjection(catalog, preferences,
+                          selected: selection)
+                      .models(worker.id);
+                },
+                displayEfforts: (selection) {
+                  final catalog =
+                      AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog;
+                  final worker = eligibleWorkers
+                      .where((w) => w.id == selection.worker)
+                      .firstOrNull;
+                  if (worker == null) return {};
+                  final preferences = worker.shared
+                      ? AxWorkerVisibility()
+                      : visibilityByWorkspace[worker.workspaceId] ??
+                          AxWorkerVisibility();
+                  final projection = AxWorkerVisibilityProjection(
+                      catalog, preferences,
+                      selected: selection);
+                  return {
+                    for (final e
+                        in projection.efforts(worker.id, selection.model))
+                      e: projection.effortLabel(
+                          worker.id,
+                          selection.model ??
+                              catalog.worker(worker.id)?.defaultModelId ??
+                              '',
+                          e)
+                  };
+                },
                 value: ExecutionSelection(
                     worker: selectedWorkerId,
                     catalogRevision: (executionSelection['catalogRevision'] ??
@@ -2457,11 +2521,23 @@ class _WorkTimelineCard extends StatelessWidget {
                                     ],
                                   ],
                                 ));
+                            final hasPhaseReply = request.isPhased &&
+                                request.status == 'completed' &&
+                                message != null &&
+                                RegExp(r'STATUS:\s*(NEEDS_INPUT|BLOCKED)',
+                                        caseSensitive: false)
+                                    .hasMatch(message) &&
+                                onPhaseReply != null;
+                            final hasPlanApproval =
+                                request.workflowId == 'plan_implement' &&
+                                    request.status == 'completed';
                             // Finished answers carry their time and actions
                             // over the last text row; live ones stay in flow.
                             final overlayFooter = message != null &&
                                 const {'completed', 'cancelled'}
-                                    .contains(request.status);
+                                    .contains(request.status) &&
+                                !hasPhaseReply &&
+                                !hasPlanApproval;
                             final body = Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
@@ -2481,11 +2557,25 @@ class _WorkTimelineCard extends StatelessWidget {
                                 if (request.responseImages.isNotEmpty)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 8),
-                                    child: ResponseImages(files: [
-                                      for (final image
-                                          in request.responseImages)
-                                        image.toJson(),
-                                    ]),
+                                    child: Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          ResponseImages(files: [
+                                            for (final file
+                                                in request.responseImages)
+                                              if (attachmentIsImage(
+                                                  file.toJson()))
+                                                file.toJson(),
+                                          ]),
+                                          AttachmentCards(files: [
+                                            for (final file
+                                                in request.responseImages)
+                                              if (!attachmentIsImage(
+                                                  file.toJson()))
+                                                file.toJson(),
+                                          ]),
+                                        ]),
                                   ),
                                 if (request.steps
                                     .any((step) => step.kind == 'tool_call'))
@@ -2503,20 +2593,13 @@ class _WorkTimelineCard extends StatelessWidget {
                                     onSynthesizePartial: onSynthesizePartial,
                                     color: metaColor,
                                   ),
-                                if (request.isPhased &&
-                                    request.status == 'completed' &&
-                                    message != null &&
-                                    RegExp(r'STATUS:\s*(NEEDS_INPUT|BLOCKED)',
-                                            caseSensitive: false)
-                                        .hasMatch(message) &&
-                                    onPhaseReply != null)
+                                if (hasPhaseReply)
                                   _PhaseReplyCard(
                                     key: ValueKey('phase-reply-${request.id}'),
                                     request: request,
                                     onSend: onPhaseReply!,
                                   ),
-                                if (request.workflowId == 'plan_implement' &&
-                                    request.status == 'completed')
+                                if (hasPlanApproval)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 12),
                                     child: AxPlanApprovalCard(
@@ -2526,7 +2609,11 @@ class _WorkTimelineCard extends StatelessWidget {
                                       color: metaColor,
                                     ),
                                   ),
-                                if (!overlayFooter) footer,
+                                if (!overlayFooter)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: footer,
+                                  ),
                                 if (reportedIssue != null) ...[
                                   const SizedBox(height: 4),
                                   Text(
@@ -2870,6 +2957,24 @@ class AxToolCallStepCards extends StatelessWidget {
   }
 }
 
+class _IgnoreShowOnScreen extends SingleChildRenderObjectWidget {
+  const _IgnoreShowOnScreen({required Widget child}) : super(child: child);
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderIgnoreShowOnScreen();
+}
+
+class _RenderIgnoreShowOnScreen extends RenderProxyBox {
+  @override
+  void showOnScreen({
+    RenderObject? descendant,
+    Rect? rect,
+    Duration duration = Duration.zero,
+    Curve curve = Curves.ease,
+  }) {}
+}
+
 /// Displays verification mode options and an approve action that enqueues
 /// phases into the Thread Request Queue.
 class _PhaseReplyCard extends StatefulWidget {
@@ -2908,32 +3013,51 @@ class _PhaseReplyCardState extends State<_PhaseReplyCard> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     if (_sent) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 12),
-        child:
-            Text('Reply sent. Review the response before resuming the queue.'),
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Text(
+          'Reply sent. Review the response before resuming the queue.',
+          style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+        ),
       );
     }
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Reply to worker'),
-        const SizedBox(height: 4),
-        const Text('Sent now. Paused requests stay paused.'),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _controller,
-          enabled: !_sending,
-          minLines: 1,
-          maxLines: 4,
-          decoration: InputDecoration(
-            hintText: 'Enter the requested information',
-            suffixIcon: IconButton(
-              tooltip: 'Send reply now',
-              onPressed: _sending ? null : _send,
-              icon: const Icon(Icons.send_outlined),
+        Text(
+          'Reply to worker',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: colors.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _IgnoreShowOnScreen(
+          child: TextField(
+            scrollPadding: EdgeInsets.zero,
+            controller: _controller,
+            enabled: !_sending,
+            minLines: 1,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'Enter the requested information',
+              suffixIcon: IconButton(
+                tooltip: 'Send reply now',
+                onPressed: _sending ? null : _send,
+                icon: const Icon(Icons.send_outlined),
+              ),
             ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Replies send immediately. The request queue remains paused.',
+          style: TextStyle(
+            fontSize: 11,
+            color: colors.onSurfaceVariant,
           ),
         ),
       ]),
@@ -3042,6 +3166,39 @@ class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
               color: colors.onSurfaceVariant,
             ),
           ),
+          if (widget.onRevise != null) ...[
+            const SizedBox(height: 12),
+            _IgnoreShowOnScreen(
+              child: TextField(
+                key: ValueKey('revise-plan-field-${widget.requestId}'),
+                scrollPadding: EdgeInsets.zero,
+                controller: _revisionController,
+                enabled: !_revising && !_submitting,
+                minLines: 1,
+                maxLines: 4,
+                style: const TextStyle(fontSize: 12),
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: const OutlineInputBorder(),
+                  hintText:
+                      'Want changes first? Ask the AI to update the plan…',
+                  // A quiet send keeps Start as the card's only primary action.
+                  suffixIcon: IconButton(
+                    key: ValueKey('revise-plan-send-${widget.requestId}'),
+                    tooltip: 'Send to update the plan',
+                    onPressed: _revising || _submitting ? null : _revise,
+                    icon: _revising
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.send_rounded, size: 16),
+                  ),
+                ),
+                onSubmitted: (_) => _revise(),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             'Verification',
@@ -3083,35 +3240,6 @@ class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
             style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
           ),
           const SizedBox(height: 14),
-          if (widget.onRevise != null) ...[
-            TextField(
-              key: ValueKey('revise-plan-field-${widget.requestId}'),
-              controller: _revisionController,
-              enabled: !_revising && !_submitting,
-              minLines: 1,
-              maxLines: 4,
-              style: const TextStyle(fontSize: 12),
-              decoration: InputDecoration(
-                isDense: true,
-                border: const OutlineInputBorder(),
-                hintText: 'Want changes first? Ask the AI to update the plan…',
-                // A quiet send keeps Start as the card's only primary action.
-                suffixIcon: IconButton(
-                  key: ValueKey('revise-plan-send-${widget.requestId}'),
-                  tooltip: 'Send to update the plan',
-                  onPressed: _revising || _submitting ? null : _revise,
-                  icon: _revising
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.send_rounded, size: 16),
-                ),
-              ),
-              onSubmitted: (_) => _revise(),
-            ),
-            const SizedBox(height: 12),
-          ],
           Row(children: [
             FilledButton.icon(
               key: ValueKey('approve-plan-button-${widget.requestId}'),

@@ -5,25 +5,20 @@ import type { SecurityEnv } from "./handlers.js";
 import { requireRuntime } from "./work-request-inputs.js";
 import {
   isWorkRequestFileId,
-  workRequestFileKey,
   workRequestFileName,
+  readWorkRequestFileUpload,
+  storeWorkRequestFile,
 } from "./work-request-files.js";
+import { getAttachmentLimits } from "../account-plan.js";
 
 /**
- * Worker output images: pictures a Worker produced for the user. The
+ * Worker output files: files a Worker produced for the user. The
  * Workspace uploads each one while its assignment is still open and lists
  * the returned descriptors in the result's `output.images`; the AI message
  * shows them and the Thread file download serves them.
  */
 
 export const MAX_WORKER_OUTPUT_IMAGES = 10;
-export const MAX_WORKER_OUTPUT_IMAGE_BYTES = 20 * 1024 * 1024;
-const IMAGE_MEDIA_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-]);
 
 export interface WorkerOutputImage {
   readonly kind: "file";
@@ -31,11 +26,25 @@ export interface WorkerOutputImage {
   readonly name: string;
   readonly mediaType: string;
   readonly sizeBytes: number;
+  /** Small base64 JPEG for inline display; the file is the original. */
+  readonly previewImage?: string;
+}
+
+/** Base64 JPEG preview budget; the Workspace and app enforce the same value. */
+export const MAX_WORKER_OUTPUT_PREVIEW_CHARS = 48000;
+
+function previewImage(value: unknown): string | undefined {
+  return typeof value === "string" &&
+    value.length <= MAX_WORKER_OUTPUT_PREVIEW_CHARS &&
+    value.startsWith("/9j/") &&
+    /^[A-Za-z0-9+/]*={0,2}$/.test(value)
+    ? value
+    : undefined;
 }
 
 /**
  * `POST /api/workspace-runtime/outputs?assignmentId=…&name=…` — stores one
- * image for an assignment that runs on the calling Workspace.
+ * file for an assignment that runs on the calling Workspace.
  */
 export async function handleUploadWorkerOutputImage(
   request: Request,
@@ -45,46 +54,54 @@ export async function handleUploadWorkerOutputImage(
   const url = new URL(request.url);
   const assignmentId = url.searchParams.get("assignmentId");
   if (!assignmentId) throw new HttpError(400, "assignmentId is required");
+  // Workflow-dispatched assignments leave `thread_id` empty; their Thread
+  // comes from the Work Request of the assignment's conversation turn.
   const assignment = await env.SYNTILA_DB.prepare(
-    `SELECT thread_id AS threadId, status FROM worker_assignments
-      WHERE id = ?1 AND execution_workspace_id = ?2`,
+    `SELECT COALESCE(NULLIF(wa.thread_id, ''), wr.thread_id) AS threadId,
+            wa.status, t.space_id AS spaceId, s.owner_user_id AS ownerUserId
+       FROM worker_assignments wa
+       LEFT JOIN conversation_turns ct ON ct.assignment_id = wa.id
+       LEFT JOIN work_requests wr
+         ON wr.id = COALESCE(NULLIF(wa.work_request_id, ''), ct.work_request_id)
+       JOIN threads t ON t.id = COALESCE(NULLIF(wa.thread_id, ''), wr.thread_id)
+       JOIN spaces s ON s.id = t.space_id
+      WHERE wa.id = ?1 AND wa.execution_workspace_id = ?2
+      LIMIT 1`,
   )
     .bind(assignmentId, workspaceId)
-    .first<{ threadId: string | null; status: string }>();
+    .first<{
+      threadId: string | null;
+      status: string;
+      spaceId: string;
+      ownerUserId: string;
+    }>();
   if (!assignment?.threadId) throw new HttpError(404, "Assignment not found");
   if (
     isTerminalAssignmentStatus(assignment.status as AssignmentLifecycleStatus)
   )
     throw new HttpError(409, "Assignment has already finished");
-  const mediaType =
-    request.headers.get("content-type")?.split(";", 1)[0]?.trim() ?? "";
-  if (!IMAGE_MEDIA_TYPES.has(mediaType))
-    throw new HttpError(
-      415,
-      "Only PNG, JPEG, GIF and WebP images are accepted",
-    );
-  const body = await request.arrayBuffer();
-  if (body.byteLength === 0 || body.byteLength > MAX_WORKER_OUTPUT_IMAGE_BYTES)
-    throw new HttpError(413, "Image exceeds the 20 MiB limit");
-  const bucket = env.SYNTILA_ARTIFACTS;
-  if (!bucket) throw new HttpError(503, "File storage is not configured");
+  const limits = await getAttachmentLimits(
+    env as unknown as Env,
+    assignment.ownerUserId,
+  );
+  const upload = await readWorkRequestFileUpload(request, limits);
   const fileId = `wrf-${crypto.randomUUID()}`;
   const name = workRequestFileName(url.searchParams.get("name"));
-  await bucket.put(workRequestFileKey(fileId), body, {
-    httpMetadata: { contentType: mediaType },
-    customMetadata: {
-      threadId: assignment.threadId,
-      assignmentId,
-      name,
-      source: "worker_output",
-    },
+  const stored = await storeWorkRequestFile(env, {
+    fileId,
+    name,
+    upload,
+    assignmentId,
+    threadId: assignment.threadId,
+    spaceId: assignment.spaceId,
+    userId: assignment.ownerUserId,
   });
   const image: WorkerOutputImage = {
     kind: "file",
     fileId,
     name,
-    mediaType,
-    sizeBytes: body.byteLength,
+    mediaType: upload.mediaType,
+    sizeBytes: stored.sizeBytes,
   };
   return json({ image }, { status: 201 });
 }
@@ -106,10 +123,14 @@ export function workerOutputImages(raw: unknown): WorkerOutputImage[] {
     if (
       !isWorkRequestFileId(image.fileId) ||
       typeof image.mediaType !== "string" ||
-      !IMAGE_MEDIA_TYPES.has(image.mediaType) ||
-      typeof image.sizeBytes !== "number"
+      image.mediaType.length === 0 ||
+      image.mediaType.length > 128 ||
+      typeof image.sizeBytes !== "number" ||
+      !Number.isSafeInteger(image.sizeBytes) ||
+      image.sizeBytes < 0
     )
       return [];
+    const preview = previewImage(image.previewImage);
     return [
       {
         kind: "file" as const,
@@ -117,6 +138,7 @@ export function workerOutputImages(raw: unknown): WorkerOutputImage[] {
         name: workRequestFileName(image.name),
         mediaType: image.mediaType,
         sizeBytes: image.sizeBytes,
+        ...(preview ? { previewImage: preview } : {}),
       },
     ];
   });

@@ -19,6 +19,8 @@ class ThreadPage extends StatefulWidget {
     this.threadViewStateStore,
     this.catalogs,
     this.workflowConfigurations,
+    this.workerVisibilityPreferences,
+    this.onManageWorkerVisibility,
     this.currentUserId,
     this.currentUserName,
     this.viewerEmail,
@@ -49,6 +51,8 @@ class ThreadPage extends StatefulWidget {
   final AxThreadViewStateStore? threadViewStateStore;
   final AxSessionCatalogs? catalogs;
   final AxWorkflowConfigurations? workflowConfigurations;
+  final AxWorkerVisibilityPreferences? workerVisibilityPreferences;
+  final void Function(String?)? onManageWorkerVisibility;
   final String? currentUserId;
   final String? currentUserName;
   final String? viewerEmail;
@@ -832,6 +836,7 @@ class _ThreadPageState extends State<ThreadPage>
   final _discussionController = TextEditingController();
   late AxSessionCatalogs _catalogs;
   void Function()? _cancelWorkflowWorkspace;
+  final _visibilitySubscriptions = <String, void Function()>{};
   void Function()? _cancelWorkflows;
   void Function()? _cancelWorkers;
   String? _selectedWorkflowWorkspaceId;
@@ -1531,7 +1536,38 @@ class _ThreadPageState extends State<ThreadPage>
     _watchReadStates();
   }
 
+  void _syncVisibility(List<AxWorker> workers) {
+    final root = widget.workerVisibilityPreferences;
+    if (root == null) return;
+    final ids =
+        workers.where((w) => !w.shared).map((w) => w.workspaceId).toSet();
+    for (final id in _visibilitySubscriptions.keys.toList()) {
+      if (!ids.contains(id)) _visibilitySubscriptions.remove(id)?.call();
+    }
+    for (final id in ids) {
+      if (_visibilitySubscriptions.containsKey(id)) continue;
+      final scoped = root.forWorkspace(id);
+      _visibilitySubscriptions[id] = scoped.engine.watch(scoped.query, (_) {
+        if (mounted) _updateState(() {});
+      }, fireImmediately: false);
+      unawaited(scoped
+          .ensure()
+          .then<void>((_) {}, onError: (Object _, StackTrace __) {}));
+    }
+  }
+
+  Map<String, AxWorkerVisibility> get _visibilityByWorkspace {
+    final root = widget.workerVisibilityPreferences;
+    if (root == null) return {};
+    return {
+      for (final id in _visibilitySubscriptions.keys)
+        if (root.engine.peek(root.forWorkspace(id).query).data != null)
+          id: root.engine.peek(root.forWorkspace(id).query).data!
+    };
+  }
+
   void _applyWorkers(List<AxWorker> workers) {
+    _syncVisibility(workers);
     _spaceWorkers = workers
         .where((worker) => worker.workspaceId == _selectedWorkflowWorkspaceId)
         .toList();
@@ -1725,6 +1761,15 @@ class _ThreadPageState extends State<ThreadPage>
   @override
   void didUpdateWidget(ThreadPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.workerVisibilityPreferences !=
+        widget.workerVisibilityPreferences) {
+      for (final cancel in _visibilitySubscriptions.values) {
+        cancel();
+      }
+      _visibilitySubscriptions.clear();
+      _syncVisibility(
+          _catalogs.engine.peek(_catalogs.workers).data ?? const []);
+    }
     if (oldWidget.showAiHistory && !widget.showAiHistory) {
       _aiHistoryOpen = false;
       _aiHistoryMounted = false;
@@ -1995,6 +2040,10 @@ class _ThreadPageState extends State<ThreadPage>
     _cancelWorkflows?.call();
     _cancelWorkers?.call();
     _cancelWorkflowWorkspace?.call();
+    for (final cancel in _visibilitySubscriptions.values) {
+      cancel();
+    }
+    _visibilitySubscriptions.clear();
     _cancelWorkRealtime?.call();
     _workEventSubscription?.cancel();
     _cancelTerminalActivityChecks();
@@ -2943,6 +2992,8 @@ class _ThreadPageState extends State<ThreadPage>
             .firstOrNull,
         spaceWorkers: _composerWorkers,
         eligibleWorkers: _composerEligibleWorkers,
+        visibilityByWorkspace: _visibilityByWorkspace,
+        onManageVisibility: widget.onManageWorkerVisibility,
         loadingWorkflows: _loadingWorkflows,
         workflowCatalogError: _workflowCatalogError,
         canExecute: _canExecute,

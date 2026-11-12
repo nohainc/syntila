@@ -41,8 +41,16 @@ class ModelEffortSelector extends StatefulWidget {
       this.showModelEffortGuidance = true,
       this.showWorkerInCompactSummary = true,
       this.compactHeight,
-      this.compactIconSize = 18});
+      this.compactIconSize = 18,
+      this.displayWorkers,
+      this.displayModels,
+      this.displayEfforts,
+      this.onManageVisibility});
   final ExecutionSelectionCatalog catalog;
+  final VoidCallback? onManageVisibility;
+  final Map<String, String> Function(ExecutionSelection)? displayWorkers;
+  final Map<String, String> Function(ExecutionSelection)? displayModels;
+  final Map<String, String> Function(ExecutionSelection)? displayEfforts;
   final ExecutionSelection value, inherited;
   final ValueChanged<ExecutionSelection>? onChanged;
   final bool showWorker, showModel, showEffort, readOnly, loading, compact;
@@ -102,6 +110,18 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
               ? widget.compactModelLabelBuilder!(effective.model!, rawModelName)
               : rawModelName;
 
+      final hasHiddenSelection = (widget.displayWorkers
+                  ?.call(effective)[effective.worker]
+                  ?.contains('Hidden in Workers for me') ??
+              false) ||
+          (widget.displayModels
+                  ?.call(effective)[effective.model]
+                  ?.contains('Hidden in Workers for me') ??
+              false) ||
+          (widget.displayEfforts
+                  ?.call(effective)[effective.effort]
+                  ?.contains('Hidden in Workers for me') ??
+              false);
       final label = worker == null && !widget.showWorkerInCompactSummary
           ? 'Select a Worker'
           : [
@@ -135,6 +155,8 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                 'Loading…',
               if (worker?.state == CapabilityState.stale) 'Stale',
             ].join(' · ');
+      final visibleLabel =
+          '$label${hasHiddenSelection ? ' · Hidden in Workers for me' : ''}';
 
       final modelIconWidget = widget.modelIconBuilder != null
           ? widget.modelIconBuilder!(
@@ -209,7 +231,8 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                   ),
                   const SizedBox(width: 6),
                 ],
-                Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+                Flexible(
+                    child: Text(visibleLabel, overflow: TextOverflow.ellipsis)),
               ])),
         ),
       );
@@ -218,19 +241,25 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
     final enabled =
         !widget.readOnly && !widget.loading && widget.onChanged != null;
     final canSelect = enabled && worker?.state != CapabilityState.loading;
-    final models = {
-      for (final m in worker?.models ?? const <ExecutionModelCapability>[])
-        m.id: '${m.name}${m.available ? '' : ' · Unavailable'}'
-    };
-    if (widget.value.model != null &&
+    final models = widget.displayModels?.call(effective) ??
+        {
+          for (final m in worker?.models ?? const <ExecutionModelCapability>[])
+            m.id: '${m.name}${m.available ? '' : ' · Unavailable'}'
+        };
+    if (widget.displayModels == null &&
+        widget.value.model != null &&
         worker?.supportsModel(widget.value.model) == true) {
       models.putIfAbsent(widget.value.model!, () => widget.value.model!);
     }
-    for (final id in worker?.allowedModelIds ?? const <String>[]) {
-      models.putIfAbsent(id, () => id);
+    if (widget.displayModels == null) {
+      for (final id in worker?.allowedModelIds ?? const <String>[]) {
+        models.putIfAbsent(id, () => id);
+      }
     }
-    final efforts =
-        worker?.effortsForModel(effective.model) ?? const <String>[];
+    final effortChoices = widget.displayEfforts?.call(effective);
+    final efforts = effortChoices?.keys.toList() ??
+        worker?.effortsForModel(effective.model) ??
+        const <String>[];
     final issue = widget.validationMessage ??
         (effective.worker == null
             ? 'Select a Worker.'
@@ -250,7 +279,8 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
               'Worker',
               widget.value.worker,
               widget.inherited.worker,
-              {for (final w in widget.catalog.workers) w.id: w.name},
+              widget.displayWorkers?.call(effective) ??
+                  {for (final w in widget.catalog.workers) w.id: w.name},
               (_) => true,
               enabled && widget.allowWorkerChange,
               true, (id) {
@@ -293,7 +323,10 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
               'Effort',
               widget.value.effort,
               widget.inherited.effort,
-              {for (final id in efforts) id: executionEffortDisplayName(id)},
+              effortChoices ??
+                  {
+                    for (final id in efforts) id: executionEffortDisplayName(id)
+                  },
               (_) => true,
               canSelect &&
                   widget.allowEffortChange &&
@@ -486,8 +519,10 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
         final ready = worker != null &&
             worker.state != CapabilityState.loading &&
             worker.state != CapabilityState.unavailable;
-        final efforts =
-            worker?.effortsForModel(effective.model) ?? const <String>[];
+        final effortChoices = widget.displayEfforts?.call(effective);
+        final efforts = effortChoices?.keys.toList() ??
+            worker?.effortsForModel(effective.model) ??
+            const <String>[];
         final levels = <String?>[
           if (worker?.allowsAutoEffort(effective.model) ?? true) null,
           ...efforts,
@@ -501,7 +536,11 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
         void changeModel(String? id) {
           final next = widget.catalog
               .changeModel(value, id, inherited: widget.inherited);
-          final choices = worker?.effortsForModel(id) ?? const <String>[];
+          final candidate = widget.inherited.overlay(next);
+          final choices =
+              widget.displayEfforts?.call(candidate).keys.toList() ??
+                  worker?.effortsForModel(id) ??
+                  const <String>[];
           change(id != null &&
                   widget.allowEffortChange &&
                   next.effort == null &&
@@ -514,13 +553,14 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
               : next);
         }
 
-        final models = <String, String>{
-          for (final model
-              in worker?.models ?? const <ExecutionModelCapability>[])
-            model.id: model.name,
-          for (final id in worker?.allowedModelIds ?? const <String>[])
-            id: worker?.model(id)?.name ?? id,
-        };
+        final models = widget.displayModels?.call(effective) ??
+            <String, String>{
+              for (final model
+                  in worker?.models ?? const <ExecutionModelCapability>[])
+                model.id: model.name,
+              for (final id in worker?.allowedModelIds ?? const <String>[])
+                id: worker?.model(id)?.name ?? id,
+            };
         return CustomSingleChildLayout(
           delegate: _ExecutionPopupLayout(anchor),
           child: Material(
@@ -541,7 +581,7 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                     Padding(
                         padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
                         child: Text(
-                            'Effort · ${index < 0 ? 'Select effort' : levels[index] == null ? 'Auto' : executionEffortDisplayName(levels[index])}',
+                            'Effort · ${index < 0 ? 'Select effort' : levels[index] == null ? 'Auto' : effortChoices?[levels[index]] ?? executionEffortDisplayName(levels[index])}',
                             style: SyntilaMenuStyle.textStyle)),
                     Slider(
                       key: ValueKey(
@@ -616,6 +656,24 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                           padding: EdgeInsets.all(10),
                           child: Text('No models available')),
                   ],
+                  if ((widget.displayWorkers != null &&
+                          widget.catalog.workers.isNotEmpty &&
+                          widget.displayWorkers!(effective).values.every(
+                              (name) =>
+                                  name.contains('Hidden in Workers for me'))) ||
+                      (widget.displayModels != null &&
+                          worker != null &&
+                          worker.models.isNotEmpty &&
+                          models.isEmpty)) ...[
+                    _message('Choices are hidden in Workers for me.'),
+                    if (widget.onManageVisibility != null)
+                      TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            widget.onManageVisibility!();
+                          },
+                          child: const Text('Open Workers for me')),
+                  ],
                   if (widget.helperMessage != null)
                     _message(widget.helperMessage!),
                   if (widget.showWorker) const SizedBox(height: 8),
@@ -625,6 +683,10 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                     const separatorWidth = 12.0;
                     final candidates = widget.showWorker
                         ? widget.catalog.workers
+                            .where((w) => (widget.displayWorkers
+                                    ?.call(effective)
+                                    .containsKey(w.id) ??
+                                true))
                             .where((w) =>
                                 w.state == CapabilityState.ready ||
                                 w.state == CapabilityState.stale)
@@ -805,6 +867,10 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                     ModelEffortSelector(
                       menuPickers: true,
                       catalog: widget.catalog,
+                      displayWorkers: widget.displayWorkers,
+                      displayModels: widget.displayModels,
+                      displayEfforts: widget.displayEfforts,
+                      onManageVisibility: widget.onManageVisibility,
                       value: value,
                       inherited: widget.inherited,
                       scope: widget.scope,

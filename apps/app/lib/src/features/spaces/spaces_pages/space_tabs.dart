@@ -144,19 +144,6 @@ extension _SpaceWorkspaceTabs on _SpaceWorkspaceState {
     final pending = thread.id.startsWith('local-thread-');
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: !archived && (thread.hasActiveWork || thread.hasUnread)
-          ? Tooltip(
-              message: thread.hasActiveWork ? 'Running' : 'Unread messages',
-              child: Semantics(
-                label: thread.hasActiveWork ? 'Running' : 'Unread messages',
-                child: Icon(Icons.circle,
-                    size: 9,
-                    color: thread.hasActiveWork
-                        ? SyntilaColors.primaryRunningIndicator
-                        : SyntilaBrand.accent),
-              ),
-            )
-          : null,
       title: thread.isGeneral
           ? Row(
               mainAxisSize: MainAxisSize.min,

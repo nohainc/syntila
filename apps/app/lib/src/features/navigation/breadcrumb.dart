@@ -143,8 +143,8 @@ class AppBreadcrumb extends StatelessWidget {
           _divider(),
           Flexible(
               flex: 2,
-              child: _breadcrumbText(thread?.title ?? 'Thread',
-                  isCurrent: true)),
+              child:
+                  _breadcrumbText(thread?.title ?? 'Thread', isCurrent: true)),
         ],
       );
     }

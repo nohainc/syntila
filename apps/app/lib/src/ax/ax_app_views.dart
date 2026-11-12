@@ -245,6 +245,12 @@ extension _AxAppViews on _AxAppStateMixin {
                       : 'Loading Thread…'));
         }
         return ThreadPage(
+          onManageWorkerVisibility: (workspaceId) =>
+              _navigateTo(AxNavigation.workspaces(workspaceId: workspaceId)),
+          workerVisibilityPreferences:
+              widget.dataSource is AxWorkerVisibilityDataSource
+                  ? store.workerVisibilityPreferences
+                  : null,
           catalogs: store.catalogs,
           workflowConfigurations: AxWorkflowConfigurations(widget.dataSource,
               engine: store.syncEngine, spaceId: space.id),
@@ -413,6 +419,10 @@ extension _AxAppViews on _AxAppStateMixin {
                     initialWorkspaceId: navigation.workspaceId,
                     workflowCatalogs: store.catalogs,
                     workflowConfigurations: store.workflowConfigurations,
+                    workerVisibilityPreferences:
+                        widget.dataSource is AxWorkerVisibilityDataSource
+                            ? store.workerVisibilityPreferences
+                            : null,
                     viewerEmail: store.auth.viewer?.email,
                     memberAccessSource: widget.dataSource
                             is AxWorkspaceMemberAccessDataSource
@@ -813,11 +823,11 @@ extension _AxAppViews on _AxAppStateMixin {
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 8, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: SyntilaColors
-                                                .primarySoftColor(Theme.of(
-                                                            context)
-                                                        .brightness ==
-                                                    Brightness.dark),
+                                            color:
+                                                SyntilaColors.primarySoftColor(
+                                                    Theme.of(context)
+                                                            .brightness ==
+                                                        Brightness.dark),
                                             borderRadius:
                                                 BorderRadius.circular(10),
                                           ),
@@ -826,10 +836,11 @@ extension _AxAppViews on _AxAppStateMixin {
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.w600,
                                                   color: SyntilaColors
-                                                      .primaryForeground(Theme
-                                                                  .of(context)
-                                                              .brightness ==
-                                                          Brightness.dark))),
+                                                      .primaryForeground(
+                                                          Theme.of(context)
+                                                                  .brightness ==
+                                                              Brightness
+                                                                  .dark))),
                                         ),
                                       ],
                                     ],

@@ -67,4 +67,27 @@ void main() {
     expect(copied, code);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('status code block wraps text without horizontal scrolling',
+      (tester) async {
+    const statusText =
+        'STATUS: PASSED\nSUMMARY: Very long text line that should wrap into multiple lines rather than requiring horizontal scrolling.';
+    await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 320,
+                child: SyntilaMarkdownBody(
+                    data: '```status\n$statusText\n```')))));
+    final block =
+        tester.widget<SyntilaCodeBlock>(find.byType(SyntilaCodeBlock));
+    expect(block.language, 'status');
+    expect(
+        find.byWidgetPredicate((widget) =>
+            widget is SingleChildScrollView &&
+            widget.scrollDirection == Axis.horizontal),
+        findsNothing);
+    final textFinder = find.byWidgetPredicate(
+        (widget) => widget is Text && widget.softWrap == true);
+    expect(textFinder, findsOneWidget);
+  });
 }

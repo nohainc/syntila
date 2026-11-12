@@ -650,9 +650,35 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
 
       // Check if verification step failed
       if (isVerification) {
-        const failedMatch =
-          outputText.match(/STATUS:\s*FAILED/i) ??
-          (/STATUS:\s*PASSED/i.test(outputText) ? null : [""]);
+        const reportedFailed = /STATUS:\s*FAILED/i.test(outputText);
+        const reportedPassed = /STATUS:\s*PASSED/i.test(outputText);
+        // A verifier that wrote its report but left out the status block is
+        // asked once, by the same Worker, for the verdict on that report.
+        if (
+          !reportedFailed &&
+          !reportedPassed &&
+          !inputData?.isStatusFollowUp &&
+          outputText.trim().length > 0
+        ) {
+          const queued = await enqueueVerificationStatusFollowUp(
+            env,
+            threadId,
+            workRequestId,
+            inputData ?? {},
+            outputText,
+          );
+          if (queued) {
+            await advanceThreadQueueSafely(env, threadId, {
+              failedRequest: false,
+            });
+            return { paused: false };
+          }
+        }
+        const failedMatch = reportedFailed
+          ? [""]
+          : reportedPassed
+            ? null
+            : [""];
         if (failedMatch) {
           const reasonMatch = outputText.match(/REASON:\s*([^\n`]+)/i);
           const reason = reasonMatch
@@ -711,4 +737,106 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
     });
     return { paused: type === "work_request.failed" };
   }
+}
+
+const STATUS_FOLLOW_UP_REPORT_CHARS = 16_000;
+
+/**
+ * Queues, at the front of the Thread queue, a short request that asks the
+ * verifying Worker for the missing `STATUS: PASSED|FAILED` block of its own
+ * report. Returns false when the request cannot be built, so the caller falls
+ * back to failing the verification.
+ */
+async function enqueueVerificationStatusFollowUp(
+  env: SecurityEnv,
+  threadId: string,
+  workRequestId: string,
+  inputData: Record<string, unknown>,
+  report: string,
+): Promise<boolean> {
+  const db = env.SYNTILA_DB;
+  if (!db) return false;
+  const row = await db
+    .prepare(
+      `SELECT requested_by_user_id AS userId, snapshot_json AS snapshotJson
+         FROM work_requests WHERE id = ?1`,
+    )
+    .bind(workRequestId)
+    .first<{ userId: string | null; snapshotJson: string | null }>();
+  if (!row?.userId) return false;
+  let selection: Record<string, string> | undefined;
+  try {
+    const snapshot = row.snapshotJson ? JSON.parse(row.snapshotJson) : null;
+    const config = snapshot?.turnExecutionConfig;
+    if (config && typeof config.workerId === "string") {
+      selection = { workerId: config.workerId };
+      if (typeof config.modelId === "string") selection.model = config.modelId;
+      if (typeof config.effort === "string")
+        selection.reasoningEffort = config.effort;
+    }
+  } catch {
+    // Without the original selection the Thread default Worker answers.
+  }
+  const phaseTitle = String(inputData.phaseTitle ?? "Verification");
+  const boundedReport =
+    report.length > STATUS_FOLLOW_UP_REPORT_CHARS
+      ? `${report.slice(0, STATUS_FOLLOW_UP_REPORT_CHARS)}\n[Report truncated.]`
+      : report;
+  const prompt = [
+    `${phaseTitle}: status block missing`,
+    "",
+    "Your verification report below did not end with the required status block, so Syntila cannot tell whether verification passed.",
+    "Do not inspect the repository again and do not change anything. Decide only from the report.",
+    "Reply with only the status block: STATUS: PASSED with a one-line SUMMARY, or STATUS: FAILED with a one-line REASON.",
+    "",
+    "Your report:",
+    boundedReport,
+  ].join("\n");
+  const input = {
+    originalRequest: prompt,
+    isPhased: true,
+    planWorkRequestId: inputData.planWorkRequestId,
+    phaseIndex: inputData.phaseIndex,
+    totalPhases: inputData.totalPhases,
+    phaseTitle,
+    isVerification: true,
+    ...(inputData.isFinalVerification ? { isFinalVerification: true } : {}),
+    isStatusFollowUp: true,
+    statusFollowUpFor: workRequestId,
+  };
+  const request = {
+    workflowId: "direct",
+    ...(selection ? { executionSelection: selection } : {}),
+    input,
+    isPhased: true,
+    planWorkRequestId: inputData.planWorkRequestId,
+    phaseIndex: inputData.phaseIndex,
+    totalPhases: inputData.totalPhases,
+    phaseTitle,
+    isVerification: true,
+    ...(inputData.isFinalVerification ? { isFinalVerification: true } : {}),
+  };
+  const first = await db
+    .prepare(
+      "SELECT MIN(position) AS position FROM thread_request_queue WHERE thread_id = ?1",
+    )
+    .bind(threadId)
+    .first<{ position: number | null }>();
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO thread_request_queue
+         (id, thread_id, author_user_id, request_json, position, status, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6, ?6)`,
+    )
+    .bind(
+      `trq-verify-status-${crypto.randomUUID()}`,
+      threadId,
+      row.userId,
+      JSON.stringify(request),
+      (first?.position ?? 1) - 1,
+      now,
+    )
+    .run();
+  return true;
 }

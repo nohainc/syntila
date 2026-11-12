@@ -75,6 +75,7 @@ export {
 export { handleSetPin, handleSetPinOrder } from "./pins.js";
 export {
   handleListUserFiles,
+  handleDownloadUserFile,
   handleDeleteUserFile,
   handleSyncUserFiles,
 } from "./user-files.js";

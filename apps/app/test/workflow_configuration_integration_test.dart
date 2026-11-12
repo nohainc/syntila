@@ -8,6 +8,7 @@ import 'package:syntila_app/src/ax/sync/ax_session_catalogs.dart';
 import 'package:syntila_app/src/ax/sync/ax_discussion_cache.dart';
 import 'package:syntila_app/src/ax/sync/ax_sync_engine.dart';
 import 'package:syntila_app/src/ax/sync/ax_workflow_configurations.dart';
+import 'package:syntila_app/src/ax/sync/ax_worker_visibility_preferences.dart';
 import 'package:syntila_app/src/ax/sync/ax_work_history.dart';
 import 'package:syntila_app/src/ax/sync/persistence/ax_thread_view_state.dart';
 import 'package:syntila_app/src/ax/sync/persistence/ax_thread_view_state_store.dart';
@@ -79,6 +80,20 @@ class IntegrationSource extends WorkflowSource
       ];
 }
 
+class VisibilityIntegrationSource extends IntegrationSource
+    implements AxWorkerVisibilityDataSource {
+  AxWorkerVisibility value = AxWorkerVisibility();
+  @override
+  Future<AxWorkerVisibility> loadWorkerVisibility(String id) async => value;
+  @override
+  Future<AxWorkerVisibility> saveWorkerVisibility(
+          String id, AxWorkerVisibility value) async =>
+      this.value = value;
+  @override
+  Future<AxWorkerVisibility> resetWorkerVisibility(String id) async =>
+      value = AxWorkerVisibility();
+}
+
 class _SlowWorkersSource extends IntegrationSource {
   final workersReady = Completer<void>();
   @override
@@ -110,6 +125,66 @@ class _ResearchSource extends IntegrationSource {
 }
 
 void main() {
+  testWidgets('composer refreshes personal Worker visibility after save',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final source = VisibilityIntegrationSource()
+      ..defaultWorkflow = 'direct'
+      ..workers = [worker('a'), worker('b')];
+    final engine = AxSyncEngine();
+    final visibility = AxWorkerVisibilityPreferences(source, engine: engine);
+    var viewWrites = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      initialTab: 1,
+      space: const AxSpace(
+          id: 's', name: 'Space', branch: '', lastActivity: '', role: 'owner'),
+      thread: const AxThread(
+          id: 't',
+          spaceId: 's',
+          name: 'Thread',
+          lead: '',
+          status: 'active',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: '',
+          canExecuteWork: true),
+      dataSource: source,
+      catalogs: AxSessionCatalogs(source, engine: engine),
+      workflowConfigurations: AxWorkflowConfigurations(source, engine: engine),
+      workerVisibilityPreferences: visibility,
+      onViewStateChanged: (_) async {
+        viewWrites++;
+      },
+      workHistoryCache: AxWorkHistoryCache(source, engine: engine),
+      onBackToSpace: () {},
+      onArchive: () {},
+    ))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('work-composer-open')));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('work-composer-worker-b')), findsOneWidget);
+    Navigator.of(
+            tester.element(find.byKey(const ValueKey('work-composer-popup'))))
+        .pop();
+    await tester.pumpAndSettle();
+    final beforeWrites = viewWrites;
+    await visibility
+        .forWorkspace('ws')
+        .save(AxWorkerVisibility(hiddenWorkers: ['b']));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('work-composer-open')));
+    await tester.pumpAndSettle();
+    expect(viewWrites, beforeWrites);
+    expect(find.byKey(const ValueKey('work-composer-worker-b')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('work-composer-worker-a')), findsOneWidget);
+  });
   testWidgets('personal Space settings hide Workspace and folder selection',
       (tester) async {
     final source = IntegrationSource();

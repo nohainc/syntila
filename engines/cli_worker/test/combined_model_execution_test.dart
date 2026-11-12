@@ -38,6 +38,15 @@ Future<void> main(List<String> args) async {
     stdout.writeln(jsonEncode({'event':'result','result':{'status':'SUCCESS','response':'I will create the files.','conversation_id':'fixture','denied_actions':[{'action':'write_file','display_name':'WriteToFile'}]}}));
     return;
   }
+  if (input.contains('deny-command-answer')) {
+    stdout.writeln(jsonEncode({'event':'result','result':{'status':'SUCCESS','response':'plan from read_file','conversation_id':'fixture','denied_actions':[{'action':'run_command'}]}}));
+    return;
+  }
+  if (input.contains('deny-command-empty')) {
+    final retry = input.contains('Note from Syntila');
+    stdout.writeln(jsonEncode({'event':'result','result':{'status':'SUCCESS','response': retry ? 'answered without rg' : '','conversation_id':'fixture','denied_actions': retry ? [] : [{'action':'run_command'}]}}));
+    return;
+  }
   if (input.contains('empty-once')) {
     final marker = File('${Platform.script.toFilePath()}.empty-seen');
     final first = !marker.existsSync();
@@ -251,6 +260,48 @@ Future<void> main(List<String> args) async {
         (denied as WorkerErrorFrame).code,
         WorkerIssueCode.permissionDenied,
       );
+      // Read-only: a denied command with a real answer keeps the answer.
+      final commandDenied = await exchange(
+        ExecuteRequest(
+          requestId: 'deny-command-answer',
+          assignmentId: 'assignment',
+          prompt: 'deny-command-answer',
+          model: 'gemini-3.8-flash',
+          reasoningEffort: 'low',
+          sessionPolicy: WorkerSessionPolicy.stateless,
+          timeoutMs: 10000,
+          executionPolicy: WorkerExecutionPolicy.providerDefault,
+        ),
+      );
+      expect(commandDenied, isA<WorkerResult>());
+      // Read-only: a denied command with no answer is retried once with a note.
+      final commandDeniedEmpty = await exchange(
+        ExecuteRequest(
+          requestId: 'deny-command-empty',
+          assignmentId: 'assignment',
+          prompt: 'deny-command-empty',
+          model: 'gemini-3.8-flash',
+          reasoningEffort: 'low',
+          sessionPolicy: WorkerSessionPolicy.stateless,
+          timeoutMs: 20000,
+          executionPolicy: WorkerExecutionPolicy.providerDefault,
+        ),
+      );
+      expect(commandDeniedEmpty, isA<WorkerResult>());
+      // Write steps are not forgiven: the denied command may hide unfinished work.
+      final writeStepDenied = await exchange(
+        ExecuteRequest(
+          requestId: 'deny-command-answer-write',
+          assignmentId: 'assignment',
+          prompt: 'deny-command-answer',
+          model: 'gemini-3.8-flash',
+          reasoningEffort: 'low',
+          sessionPolicy: WorkerSessionPolicy.stateless,
+          timeoutMs: 10000,
+          executionPolicy: WorkerExecutionPolicy.restricted,
+        ),
+      );
+      expect(writeStepDenied, isA<WorkerErrorFrame>());
       final emptyDenied = await exchange(
         ExecuteRequest(
           requestId: 'empty-denied',

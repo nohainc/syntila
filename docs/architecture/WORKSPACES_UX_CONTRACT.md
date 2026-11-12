@@ -102,3 +102,13 @@ Cloud checks a Thread's Space membership, the Workflow-selected Workspace grant,
 ## Connection display
 
 Connection mode is informational. The UI may distinguish WebSocket from HTTPS fallback while work remains available. It does not offer transport selection or imply that a human management session is valid.
+
+### Personal Worker visibility
+
+A Workspace owner may store personal display preferences per authenticated user and Workspace. The version 1 document contains `hiddenWorkers` (Worker IDs), `hiddenModels` (Worker ID to model IDs), and `hiddenEfforts` (Worker ID to model ID to effort IDs). `GET`, `PUT`, and `DELETE` on `/api/workspaces/{id}/worker-preferences` read, replace, and reset this document; responses wrap it in `preferences`. Only the current owner can access it. Deleting the user or Workspace deletes the preference row.
+
+A missing or reset document hides nothing. Unlisted and newly discovered options are visible by default, subject to the existing authorized capability catalog. Preferences are display filters only: they do not modify sharing, member policies, inventory, execution admission, accepted work, or saved Workflow selections. A saved selection that becomes hidden must remain intact and understandable until deliberately replaced.
+
+The app keeps these preferences in a session-scoped, Workspace-keyed query and clears it on sign-out. Its display projection filters the authorized capability catalog without changing validation or catalog metadata. A hidden saved option remains available in the projection with a personal-visibility label; unsupported or unauthorized options are not added.
+
+The owner’s Workspace tab provides a collapsed “Workers for me” editor. It uses the Workspace inventory, including offline Workers, and saves personal visibility independently of sharing. Cancel restores the last saved document; Reset removes its exclusions. Composer and editable Workflow selectors apply the personal visibility projection while retaining saved hidden selections and leaving authorization and execution records unchanged.

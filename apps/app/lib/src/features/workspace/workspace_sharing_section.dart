@@ -445,8 +445,8 @@ class _WorkspaceSharingSectionState extends State<WorkspaceSharingSection> {
                 else
                   Text('Access revoked', style: muted),
               ]),
-              Text('Workflows',
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              const Text('Workflows',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
               Text(
                   '$mode · ${usage.requests} request${usage.requests == 1 ? '' : 's'} · about ${_duration(usage.approxSeconds)}'
                   '${usage.lastUsedAt == null ? '' : ' · last used ${usage.lastUsedAt}'}',
