@@ -60,14 +60,4 @@ export class WorkspaceRuntimeSessionStore {
       .bind(at, sessionId)
       .run();
   }
-
-  async lastHeartbeat(sessionId: string): Promise<string | null> {
-    const row = await this.db
-      .prepare(
-        "SELECT last_heartbeat_at AS lastActivityAt FROM workspace_sessions WHERE id = ?1",
-      )
-      .bind(sessionId)
-      .first<{ lastActivityAt: string }>();
-    return row?.lastActivityAt ?? null;
-  }
 }

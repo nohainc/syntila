@@ -198,6 +198,83 @@ describe("durable stream delivery", () => {
     await handle.call(gateway, "client", JSON.stringify(subscribe));
     expect(frames.filter((frame) => frame.type === "event")).toHaveLength(2);
   });
+  it("resumes a hibernated connection with its subscriptions and cursors", async () => {
+    const frames: Record<string, unknown>[] = [];
+    const socket = {
+      readyState: 1,
+      bufferedAmount: 0,
+      send: (text: string) => frames.push(JSON.parse(text)),
+      close() {},
+      deserializeAttachment: () => ({
+        connectionId: "c1",
+        identity: { userId: "owner" },
+      }),
+    };
+    const stored = new Map<string, unknown>([
+      [
+        "connection:c1",
+        {
+          subscriptions: [{ kind: "user" }],
+          cursors: [['["execution_workspace","same"]', 4]],
+        },
+      ],
+      ["connection:gone", { subscriptions: [], cursors: [] }],
+    ]);
+    const state = {
+      getWebSockets: () => [socket],
+      storage: {
+        list: async () => new Map(stored),
+        put: async (key: string, value: unknown) => void stored.set(key, value),
+        delete: async (keys: string | string[]) =>
+          void [keys].flat().forEach((key) => stored.delete(key)),
+      },
+    };
+    const db = {
+      prepare: (query: string) => ({
+        bind() {
+          return this;
+        },
+        first: async () =>
+          query.includes("FROM users") ? { status: "active" } : null,
+        all: async () => ({ results: [] }),
+      }),
+    };
+    // A woken Durable Object starts with no memory of its connections.
+    const gateway = new RealtimeGateway(
+      state as never,
+      { SYNTILA_DB: db } as never,
+    );
+    const publish = (sequence: number) =>
+      gateway.fetch(
+        new Request("https://realtime.internal/publish", {
+          method: "POST",
+          body: JSON.stringify({
+            eventId: `event-${sequence}`,
+            timestamp: "2026-10-06T00:00:00.000Z",
+            sequence,
+            payload: { entityId: "same" },
+            type: "run.completed",
+            version: "1.0",
+            workspaceId: "same",
+          }),
+        }),
+      );
+
+    await publish(4);
+    expect(frames).toHaveLength(0);
+    await publish(5);
+    expect(frames).toHaveLength(1);
+    expect(frames[0]).toMatchObject({ type: "event", event: { sequence: 5 } });
+    expect(stored.get("connection:c1")).toMatchObject({
+      cursors: [['["execution_workspace","same"]', 5]],
+    });
+    expect(stored.has("connection:gone")).toBe(false);
+
+    await gateway.webSocketClose(socket as never);
+    expect(stored.has("connection:c1")).toBe(false);
+    await publish(6);
+    expect(frames).toHaveLength(1);
+  });
   it("does not deliver a live Space signal to a removed member on user scope", async () => {
     const f = harness(false);
     await f.publish(f.event("space", 1));

@@ -51,6 +51,14 @@ final class MonotonicCloudClock {
     return upper.add(age).add(const Duration(milliseconds: 1));
   }
 
+  /// Age of the current sample, or null when there is none.
+  Duration? get sampleAge {
+    final received = _receivedAt;
+    if (received == null) return null;
+    final age = _monotonicNow() - received;
+    return age.isNegative ? null : age;
+  }
+
   void reset() {
     _serverUpperBound = null;
     _receivedAt = null;

@@ -375,6 +375,17 @@ it does not trust a stale database online flag. The Durable Object restores
 hibernated sockets from its accepted WebSocket attachments before answering
 status or dispatch requests.
 
+Both Gateways are built so an idle connection costs no Durable Object duration.
+The Realtime Gateway accepts App sockets with the WebSocket Hibernation API,
+keeps each connection's identity in the socket attachment and its subscriptions
+and stream cursors in Durable Object storage, and lets the runtime answer the
+App's `{"type":"ping"}` by WebSocket auto-response. The Workspace Gateway does
+the same for the Service's idle ping. Do not add `accept()`-style sockets,
+standing timers, or per-ping work to either object: each one bills the object
+for the whole time a tab or Service stays connected. Authorization is checked
+on every publish and every client message, so a revoked user receives nothing
+on a socket that is still open.
+
 The app Worker runs durable realtime event cleanup hourly. Event records and
 their idempotency keys are retained for 90 days, with up to 10,000 expired
 records deleted per run; per-Workspace sequence cursors are retained

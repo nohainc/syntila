@@ -28,6 +28,9 @@ import {
   WORKSPACE_RUNTIME_PROTOCOL_NAME,
   WORKSPACE_RUNTIME_PROTOCOL_VERSION,
   ALLOWED_FOLDERS_CAPABILITY,
+  IDLE_PING_CAPABILITY,
+  WORKSPACE_IDLE_PING_FRAME,
+  WORKSPACE_IDLE_PONG_FRAME,
   WORKER_PLUGINS_CAPABILITY,
   ASSIGNMENT_STARTUP_CAPABILITY,
   SERVICE_MCP_TOOL_CALL_CAPABILITY,
@@ -236,6 +239,17 @@ export class WorkspaceGateway implements DurableObject {
   private static readonly MAX_TRACKED_COMMANDS = 256;
   private socket: WebSocket | null = null;
   private socketConnectedAt: string | null = null;
+  /**
+   * Last heartbeat handled on the socket. Kept in memory and in the socket
+   * attachment so liveness needs no database read and survives hibernation.
+   */
+  private socketLastHeartbeatAt: string | null = null;
+  /** When `workspace_sessions.last_heartbeat_at` was last written. */
+  private heartbeatProjectedAt: string | null = null;
+  // The session row is audit history; liveness never reads it.
+  private static readonly HEARTBEAT_PROJECTION_INTERVAL_MS = 5 * 60_000;
+  // How often an idle Service that sends idle pings still sends a heartbeat.
+  private static readonly IDLE_HEARTBEAT_INTERVAL_MS = 120_000;
   private executionWorkspaceId: string | null = null;
   private workspaceRuntimeId: string | null = null;
   private sessionId: string | null = null;
@@ -277,6 +291,16 @@ export class WorkspaceGateway implements DurableObject {
       env.SYNTILA_DB,
     );
     this.sessionStore = new WorkspaceRuntimeSessionStore(env.SYNTILA_DB);
+    // The runtime answers idle pings itself, so they neither wake this object
+    // nor count as activity that keeps it in memory.
+    if (typeof WebSocketRequestResponsePair !== "undefined") {
+      this.state.setWebSocketAutoResponse?.(
+        new WebSocketRequestResponsePair(
+          WORKSPACE_IDLE_PING_FRAME,
+          WORKSPACE_IDLE_PONG_FRAME,
+        ),
+      );
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -623,12 +647,68 @@ export class WorkspaceGateway implements DurableObject {
 
   private async lastRuntimeActivityAt(): Promise<string | null> {
     if (this.socket && this.sessionId) {
-      return (
-        (await this.sessionStore.lastHeartbeat(this.sessionId)) ??
-        this.socketConnectedAt
+      // Idle pings are answered while this object sleeps; the runtime records
+      // when it last answered one.
+      const answeredAt =
+        this.state
+          .getWebSocketAutoResponseTimestamp?.(this.socket)
+          ?.toISOString() ?? null;
+      return [this.socketLastHeartbeatAt, answeredAt].reduce(
+        (latest, candidate) =>
+          candidate && (!latest || Date.parse(candidate) > Date.parse(latest))
+            ? candidate
+            : latest,
+        this.socketConnectedAt,
       );
     }
     return this.sessionId ? this.httpLastActivityAt : null;
+  }
+
+  /**
+   * Records a heartbeat as live transport state and, at a low rate, in the
+   * session's audit row.
+   */
+  private recordHeartbeat(sessionId: string, now: string): void {
+    if (this.socket) this.socketLastHeartbeatAt = now;
+    const projectedAt = this.heartbeatProjectedAt
+      ? Date.parse(this.heartbeatProjectedAt)
+      : Number.NaN;
+    if (
+      !Number.isFinite(projectedAt) ||
+      Date.parse(now) - projectedAt >=
+        WorkspaceGateway.HEARTBEAT_PROJECTION_INTERVAL_MS
+    ) {
+      this.heartbeatProjectedAt = now;
+      this.queueProjectionWrite(
+        () => this.sessionStore.touch(sessionId, now),
+        "session_heartbeat_update_failed",
+        {
+          requestId: this.correlationId ?? undefined,
+          runtimeId: this.workspaceRuntimeId ?? undefined,
+          workspaceId: this.executionWorkspaceId ?? undefined,
+        },
+      );
+    }
+    this.persistSocketLiveness();
+  }
+
+  private persistSocketLiveness(): void {
+    const socket = this.socket;
+    if (!socket) return;
+    try {
+      const attachment = socket.deserializeAttachment() as Record<
+        string,
+        unknown
+      > | null;
+      if (!attachment) return;
+      socket.serializeAttachment({
+        ...attachment,
+        lastHeartbeatAt: this.socketLastHeartbeatAt,
+        heartbeatProjectedAt: this.heartbeatProjectedAt,
+      });
+    } catch {
+      // A closing socket cannot take an attachment; its liveness is moot.
+    }
   }
 
   private async isRuntimeLive(): Promise<boolean> {
@@ -669,6 +749,8 @@ export class WorkspaceGateway implements DurableObject {
         workspaceRuntimeId?: string;
         correlationId?: string;
         connectedAt?: string;
+        lastHeartbeatAt?: string | null;
+        heartbeatProjectedAt?: string | null;
       } | null;
       if (
         !attachment?.sessionId ||
@@ -684,6 +766,8 @@ export class WorkspaceGateway implements DurableObject {
       this.workspaceRuntimeId = attachment.workspaceRuntimeId;
       this.correlationId = attachment.correlationId ?? null;
       this.socketConnectedAt = attachment.connectedAt ?? null;
+      this.socketLastHeartbeatAt = attachment.lastHeartbeatAt ?? null;
+      this.heartbeatProjectedAt = attachment.heartbeatProjectedAt ?? null;
       return;
     }
   }
@@ -833,6 +917,9 @@ export class WorkspaceGateway implements DurableObject {
     });
     this.socket = server;
     this.socketConnectedAt = now;
+    this.socketLastHeartbeatAt = null;
+    // Opening the session row below also writes its first heartbeat time.
+    this.heartbeatProjectedAt = now;
     this.executionWorkspaceId = runtimeIdentity.executionWorkspaceId;
     this.workspaceRuntimeId = workspaceRuntimeId;
     this.sessionId = sessionId;
@@ -890,13 +977,29 @@ export class WorkspaceGateway implements DurableObject {
       executionWorkspaceId: string;
       workspaceRuntimeId: string;
       correlationId?: string;
+      connectedAt?: string;
+      lastHeartbeatAt?: string | null;
+      heartbeatProjectedAt?: string | null;
     } | null;
     if (!attachment) return;
+    if (this.socket !== socket) {
+      // Woken from hibernation: liveness travels with the socket.
+      this.socketConnectedAt = attachment.connectedAt ?? this.socketConnectedAt;
+      this.socketLastHeartbeatAt = attachment.lastHeartbeatAt ?? null;
+      this.heartbeatProjectedAt = attachment.heartbeatProjectedAt ?? null;
+    }
     this.socket = socket;
     this.sessionId = attachment.sessionId;
     this.executionWorkspaceId = attachment.executionWorkspaceId;
     this.workspaceRuntimeId = attachment.workspaceRuntimeId;
     this.correlationId = attachment.correlationId ?? this.correlationId;
+    if (data === WORKSPACE_IDLE_PING_FRAME) {
+      // Normally answered by the runtime before it reaches this object.
+      this.socketLastHeartbeatAt = new Date().toISOString();
+      this.persistSocketLiveness();
+      socket.send(WORKSPACE_IDLE_PONG_FRAME);
+      return;
+    }
     void this.handleMessage(data, attachment.sessionId);
   }
 
@@ -1105,6 +1208,8 @@ export class WorkspaceGateway implements DurableObject {
           payload: {
             sessionId,
             heartbeatIntervalMs: 15000,
+            idleHeartbeatIntervalMs:
+              WorkspaceGateway.IDLE_HEARTBEAT_INTERVAL_MS,
             serverTime: now,
             // Lets a Service know it may publish `workspace.readiness` and
             // `assignment.startup`.
@@ -1113,6 +1218,8 @@ export class WorkspaceGateway implements DurableObject {
               ASSIGNMENT_STARTUP_CAPABILITY,
               ALLOWED_FOLDERS_CAPABILITY,
               WORKER_PLUGINS_CAPABILITY,
+              // Only a WebSocket can be answered while this object sleeps.
+              ...(this.socket ? [IDLE_PING_CAPABILITY] : []),
             ],
           },
         });
@@ -1129,6 +1236,7 @@ export class WorkspaceGateway implements DurableObject {
         return;
       case "workspace.heartbeat":
         if (message.payload && typeof message.payload === "object") {
+          this.recordHeartbeat(sessionId, now);
           // The heartbeat repeats the Service's readiness so a lost or
           // reordered `workspace.readiness`, or a Durable Object that lost its
           // state, heals within one heartbeat interval.
@@ -1143,15 +1251,6 @@ export class WorkspaceGateway implements DurableObject {
             );
           }
           await this.applyEngineLiveness(message.payload, now);
-          this.queueProjectionWrite(
-            () => this.sessionStore.touch(sessionId, now),
-            "session_heartbeat_update_failed",
-            {
-              requestId: this.correlationId ?? undefined,
-              runtimeId: this.workspaceRuntimeId ?? undefined,
-              workspaceId: this.executionWorkspaceId ?? undefined,
-            },
-          );
         }
         await this.send({
           protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,

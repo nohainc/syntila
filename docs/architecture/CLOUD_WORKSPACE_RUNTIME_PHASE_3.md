@@ -56,7 +56,10 @@ in-memory session binding
 ```
 
 `workspace_sessions` is an audit/history projection. `WorkspaceRuntimeSessionStore`
-owns opening, closing, heartbeat updates, and heartbeat reads. D1 is not used
+owns opening, closing, and heartbeat updates. The heartbeat column is written
+at most every five minutes and is never read for liveness: the Gateway derives
+it from the last heartbeat kept in the socket attachment and the time the
+runtime last answered an idle ping. D1 is not used
 as the live socket queue or transport authority. The Gateway remains the
 authority for fencing the current socket/session and for live event delivery.
 

@@ -150,6 +150,15 @@ const externalWorkersCapability = 'workspace.worker_plugins.v1';
 /// Service omits the list until this is announced.
 const allowedFoldersCapability = 'workspace.allowed_folders.v1';
 
+/// Capability Cloud announces in `hello.ack` when an idle WebSocket Service may
+/// send [workspaceIdlePingFrame] in place of most heartbeats. Cloud answers the
+/// ping without running the Gateway, so an idle connection costs it nothing.
+const idlePingCapability = 'workspace.idle_ping.v1';
+
+/// Exact frames; Cloud matches the ping byte for byte.
+const workspaceIdlePingFrame = '{"type":"workspace.ping"}';
+const workspaceIdlePongFrame = '{"type":"workspace.pong"}';
+
 class WorkspaceConnectionPreflightException implements Exception {
   const WorkspaceConnectionPreflightException(this.message);
 
@@ -446,6 +455,30 @@ class WorkspaceCloudConnection {
   /// announcement; the heartbeat carries readiness either way.
   bool _cloudAcceptsReadiness = false;
 
+  /// Whether this Cloud announced `workspace.idle_ping.v1`. An older Cloud
+  /// would reject the ping frame, so every tick stays a full heartbeat.
+  bool _cloudAcceptsIdlePing = false;
+
+  /// How often an idle Service still sends a full heartbeat. Cloud may set it
+  /// in `hello.ack`.
+  Duration _idleHeartbeatInterval = const Duration(minutes: 2);
+
+  /// Acknowledged heartbeats that must repeat an unchanged readiness before
+  /// ticks may become idle pings, so a report lost around a transition or a
+  /// reconnect is still healed by the heartbeats that follow it.
+  static const _idleStableHeartbeats = 3;
+  String? _heartbeatReadiness;
+  String? _heartbeatMessageId;
+  int _stableHeartbeatAcks = 0;
+  DateTime? _lastFullHeartbeatAt;
+  Completer<void>? _clockSampleWaiter;
+  String? _inventorySignature;
+  DateTime? _inventorySentAt;
+
+  /// An unchanged inventory is still repeated this often.
+  static const _inventoryRepeatInterval = Duration(minutes: 10);
+  static const _clockRefreshTimeout = Duration(seconds: 2);
+
   /// Whether this Cloud announced `assignment.startup.v1`. Startup progress is
   /// only sent after the announcement; an older Cloud would reject it.
   bool _cloudAcceptsStartup = false;
@@ -680,6 +713,8 @@ class WorkspaceCloudConnection {
         serverTimeUtc: parsed.toUtc(),
       );
       startPermitClock.addSample(serverTimeUtc: parsed, roundTrip: roundTrip);
+      _clockSampleWaiter?.complete();
+      _clockSampleWaiter = null;
     } on Object {
       // Invalid samples must not disrupt transport. Permit expiry fails
       // closed until a usable clock estimate is available.
@@ -892,7 +927,11 @@ class WorkspaceCloudConnection {
     });
   }
 
-  Future<void> _reportCurrentWorkerInventory() async {
+  /// [onlyIfChanged] is the periodic repeat: an inventory equal to the last
+  /// one sent is skipped, apart from an occasional repeat that heals a loss.
+  Future<void> _reportCurrentWorkerInventory({
+    bool onlyIfChanged = false,
+  }) async {
     final provider = workerInventoryProvider;
     if (provider == null) {
       _workerInventorySent = true;
@@ -911,7 +950,18 @@ class WorkspaceCloudConnection {
         // keeps Cloud's last known folders instead of clearing them.
         folders = null;
       }
-      reportWorkerInventory(await provider(), allowedFolders: folders);
+      final workers = await provider();
+      final signature = jsonEncode([workers, folders]);
+      final sentAt = _inventorySentAt;
+      if (onlyIfChanged &&
+          signature == _inventorySignature &&
+          sentAt != null &&
+          DateTime.now().difference(sentAt) < _inventoryRepeatInterval) {
+        return;
+      }
+      reportWorkerInventory(workers, allowedFolders: folders);
+      _inventorySignature = signature;
+      _inventorySentAt = DateTime.now();
       lastInventorySyncAt = DateTime.now().toUtc();
       _workerInventorySent = true;
       _completeSynchronizationWhenReady();
@@ -952,6 +1002,7 @@ class WorkspaceCloudConnection {
   Future<bool> requestStartPermit(WorkspaceAssignmentContext context) async {
     final startPermit = context.payload['startPermit'];
     if (startPermit is! Map || startPermit['required'] != true) return true;
+    _refreshCloudClockIfStale();
     // A permit requested at admission saves the round trip here, but only
     // while it is still valid by Cloud's clock; otherwise ask again.
     final prefetched = _prefetchedStartPermits.remove(context.assignmentId);
@@ -980,6 +1031,7 @@ class WorkspaceCloudConnection {
   void prefetchStartPermit(WorkspaceAssignmentContext context) {
     final startPermit = context.payload['startPermit'];
     if (startPermit is! Map || startPermit['required'] != true) return;
+    _refreshCloudClockIfStale();
     final expiresAt = _requestStartPermitExpiry(context);
     _prefetchedStartPermits[context.assignmentId] =
         _PrefetchedStartPermit(context, expiresAt);
@@ -1076,12 +1128,24 @@ class WorkspaceCloudConnection {
     final expiry = payload['expiresAt'];
     final expiresAt = expiry is String ? DateTime.tryParse(expiry) : null;
     final permitId = payload['permitId'];
-    completer.complete(payload['granted'] == true &&
-            permitId is String &&
-            permitId.isNotEmpty &&
-            _startPermitStillValid(expiresAt)
-        ? expiresAt
-        : null);
+    void decide() {
+      if (completer.isCompleted) return;
+      completer.complete(payload['granted'] == true &&
+              permitId is String &&
+              permitId.isNotEmpty &&
+              _startPermitStillValid(expiresAt)
+          ? expiresAt
+          : null);
+    }
+
+    // The expiry is only ever judged against a current clock sample; when one
+    // is on its way, wait for it instead of denying a valid grant.
+    final refresh = _clockSampleWaiter;
+    if (refresh == null) {
+      decide();
+    } else {
+      unawaited(refresh.future.whenComplete(decide));
+    }
   }
 
   /// Records and reports the first evidence that the Engine and provider
@@ -1481,6 +1545,15 @@ class WorkspaceCloudConnection {
     _cloudAcceptsStartup = false;
     _cloudAcceptsAllowedFolders = false;
     _cloudAcceptsExternalWorkers = false;
+    _cloudAcceptsIdlePing = false;
+    _heartbeatReadiness = null;
+    _heartbeatMessageId = null;
+    _stableHeartbeatAcks = 0;
+    _lastFullHeartbeatAt = null;
+    _inventorySignature = null;
+    _inventorySentAt = null;
+    _clockSampleWaiter?.complete();
+    _clockSampleWaiter = null;
     _readyCallbackSessionId = null;
     late final WorkspaceTransport socket;
     var selectedWebSocket = false;
@@ -1634,19 +1707,45 @@ class WorkspaceCloudConnection {
       _handleTransportEnd();
     });
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(heartbeat, (_) {
-      final currentSessionId = sessionId;
-      if (currentSessionId == null) return;
-      _heartbeatTimeoutTimer ??= Timer(heartbeat * 2, () {
-        _heartbeatTimeoutTimer = null;
-        lastConnectionError = 'Cloud heartbeat acknowledgement timed out.';
-        if (_pendingTransportMode == 'websocket') {
-          lastWebSocketFailure = lastConnectionError;
-          lastWebSocketFailureAt = DateTime.now().toUtc();
-        }
-        connectionStage = WorkspaceConnectionStage.reconnecting;
-        _handleTransportEnd();
-      });
+    _heartbeatTimer = Timer.periodic(heartbeat, (_) => _heartbeatTick(socket));
+  }
+
+  /// Whether this tick may be an idle ping instead of a full heartbeat: the
+  /// Service has no work, and Cloud has acknowledged its current readiness
+  /// often and recently enough.
+  bool _idlePingAllowed(String readiness) {
+    final lastFull = _lastFullHeartbeatAt;
+    return _cloudAcceptsIdlePing &&
+        (_pendingTransportMode ?? activeTransportMode) == 'websocket' &&
+        _activeAssignments.isEmpty &&
+        _pendingStartPermits.isEmpty &&
+        _pendingTerminalIds.isEmpty &&
+        _stableHeartbeatAcks >= _idleStableHeartbeats &&
+        readiness == _heartbeatReadiness &&
+        lastFull != null &&
+        DateTime.now().difference(lastFull) < _idleHeartbeatInterval;
+  }
+
+  void _heartbeatTick(WorkspaceTransport socket, {bool forceFull = false}) {
+    final currentSessionId = sessionId;
+    if (currentSessionId == null) return;
+    _heartbeatTimeoutTimer ??= Timer(heartbeat * 2, () {
+      _heartbeatTimeoutTimer = null;
+      lastConnectionError = 'Cloud heartbeat acknowledgement timed out.';
+      if (_pendingTransportMode == 'websocket') {
+        lastWebSocketFailure = lastConnectionError;
+        lastWebSocketFailureAt = DateTime.now().toUtc();
+      }
+      connectionStage = WorkspaceConnectionStage.reconnecting;
+      _handleTransportEnd();
+    });
+    unawaited(_refreshPendingTerminalIds());
+    unawaited(_publishMcpInventory());
+    final readinessPayload = _readinessPayload();
+    final readiness = jsonEncode(readinessPayload);
+    if (!forceFull && _idlePingAllowed(readiness)) {
+      socket.send(workspaceIdlePingFrame);
+    } else {
       final heartbeatMessage = _envelope('workspace.heartbeat', {
         'workspaceRuntimeId': workspaceRuntimeId,
         'executionWorkspaceId': workspaceId,
@@ -1654,18 +1753,48 @@ class WorkspaceCloudConnection {
         'status': 'online',
         'activeWorkers': activeWorkerIds.length,
         'activeAssignments': _activeAssignments.length,
-        'readiness': _readinessPayload(),
+        'readiness': readinessPayload,
         ..._livenessPayload(),
       });
-      unawaited(_refreshPendingTerminalIds());
-      unawaited(_publishMcpInventory());
-      _rememberClockProbe(heartbeatMessage['messageId'] as String);
-      socket.send(jsonEncode(heartbeatMessage));
-      _heartbeatCount++;
-      if (_heartbeatCount >= 4) {
-        _heartbeatCount = 0;
-        unawaited(_reportCurrentWorkerInventory());
+      if (readiness != _heartbeatReadiness) {
+        _heartbeatReadiness = readiness;
+        _stableHeartbeatAcks = 0;
       }
+      _heartbeatMessageId = heartbeatMessage['messageId'] as String;
+      _lastFullHeartbeatAt = DateTime.now();
+      _rememberClockProbe(_heartbeatMessageId!);
+      socket.send(jsonEncode(heartbeatMessage));
+    }
+    if (forceFull) return;
+    _heartbeatCount++;
+    if (_heartbeatCount >= 4) {
+      _heartbeatCount = 0;
+      unawaited(_reportCurrentWorkerInventory(onlyIfChanged: true));
+    }
+  }
+
+  /// Start permits are checked against Cloud's clock, which only heartbeat
+  /// acknowledgements sample. After idle pings the last sample can be too old
+  /// to authorize a launch, so a heartbeat is sent for a fresh one. A grant
+  /// that arrives first waits for it in [_handleStartPermitGrant].
+  void _refreshCloudClockIfStale() {
+    final age = startPermitClock.sampleAge;
+    if (age != null && age < heartbeat) return;
+    final socket = _transport;
+    if (socket == null || sessionId == null || _clockSampleWaiter != null) {
+      return;
+    }
+    final waiter = _clockSampleWaiter = Completer<void>();
+    try {
+      _heartbeatTick(socket, forceFull: true);
+    } on Object {
+      _clockSampleWaiter = null;
+      return;
+    }
+    Timer(_clockRefreshTimeout, () {
+      if (!identical(_clockSampleWaiter, waiter)) return;
+      _clockSampleWaiter = null;
+      waiter.complete();
     });
   }
 
@@ -1720,6 +1849,11 @@ class WorkspaceCloudConnection {
 
   void _handleMessage(Object? raw) {
     if (raw is! String) return;
+    if (raw == workspaceIdlePongFrame) {
+      _heartbeatTimeoutTimer?.cancel();
+      _heartbeatTimeoutTimer = null;
+      return;
+    }
     dynamic decoded;
     try {
       decoded = jsonDecode(raw);
@@ -1771,6 +1905,14 @@ class WorkspaceCloudConnection {
             cloudCapabilities.contains(allowedFoldersCapability);
         _cloudAcceptsExternalWorkers = cloudCapabilities is List &&
             cloudCapabilities.contains(externalWorkersCapability);
+        _cloudAcceptsIdlePing = cloudCapabilities is List &&
+            cloudCapabilities.contains(idlePingCapability);
+        final idleHeartbeatMs = payload['idleHeartbeatIntervalMs'];
+        if (idleHeartbeatMs is int &&
+            idleHeartbeatMs >= 30000 &&
+            idleHeartbeatMs <= 900000) {
+          _idleHeartbeatInterval = Duration(milliseconds: idleHeartbeatMs);
+        }
         connectionStage = WorkspaceConnectionStage.synchronizing;
         sessionId = payload['sessionId'] as String;
         unawaited(_drainActivityEvents());
@@ -1835,6 +1977,10 @@ class WorkspaceCloudConnection {
     } else if (decoded['type'] == 'workspace.heartbeat.ack') {
       _heartbeatTimeoutTimer?.cancel();
       _heartbeatTimeoutTimer = null;
+      if (decoded['correlationId'] == _heartbeatMessageId) {
+        _heartbeatMessageId = null;
+        _stableHeartbeatAcks++;
+      }
     } else if (decoded['type'] == 'thread.status') {
       // Runtime readiness is currently informational. The payload is not
       // persisted here and contains no local path.

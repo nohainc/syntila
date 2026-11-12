@@ -1122,6 +1122,103 @@ void main() {
       expect(readiness['syncGeneration'], 1);
       await connection.close();
     });
+
+    test(
+        'an idle Service sends idle pings once Cloud has acknowledged its '
+        'readiness', () async {
+      final socket = FakeSocket();
+      final connection =
+          newConnection(socket, heartbeat: const Duration(milliseconds: 40));
+      await connection.connect();
+      Map<String, Object?> fromCloud(String type, Map<String, Object?> payload,
+              {String? correlationId}) =>
+          {
+            'protocol': 'syntila.workspace-runtime-protocol',
+            'protocolVersion': workspaceRuntimeProtocolVersion,
+            'messageId': 'server-${DateTime.now().microsecondsSinceEpoch}',
+            if (correlationId != null) 'correlationId': correlationId,
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+            'workspaceRuntimeId': 'runtime-1',
+            'executionWorkspaceId': 'workspace-1',
+            'type': type,
+            'payload': payload,
+          };
+      socket.controller.add(jsonEncode(fromCloud('workspace.hello.ack', {
+        'sessionId': 'session-1',
+        'heartbeatIntervalMs': 15000,
+        'serverTime': DateTime.now().toUtc().toIso8601String(),
+        'cloudCapabilities': [idlePingCapability],
+      })));
+
+      var answered = 0;
+      // Cloud acknowledges heartbeats and answers idle pings.
+      bool answer() {
+        for (final message in socket.sent.skip(answered)) {
+          if (message == workspaceIdlePingFrame) {
+            socket.controller.add(workspaceIdlePongFrame);
+            continue;
+          }
+          final decoded = jsonDecode(message as String) as Map<String, dynamic>;
+          if (decoded['type'] != 'workspace.heartbeat') continue;
+          socket.controller.add(jsonEncode(fromCloud(
+            'workspace.heartbeat.ack',
+            {
+              'acknowledged': true,
+              'serverTime': DateTime.now().toUtc().toIso8601String(),
+            },
+            correlationId: decoded['messageId'] as String,
+          )));
+        }
+        answered = socket.sent.length;
+        return socket.sent.contains(workspaceIdlePingFrame);
+      }
+
+      await waitFor(answer);
+      final heartbeats = sentOfType(socket, 'workspace.heartbeat').length;
+      expect(heartbeats, greaterThanOrEqualTo(3));
+
+      // Several intervals of pings alone keep the connection up: an answered
+      // ping counts as an acknowledgement, and no heartbeat is needed.
+      final pings =
+          socket.sent.where((m) => m == workspaceIdlePingFrame).length;
+      await waitFor(() {
+        answer();
+        return socket.sent.where((m) => m == workspaceIdlePingFrame).length >=
+            pings + 5;
+      });
+      expect(sentOfType(socket, 'workspace.heartbeat'), hasLength(heartbeats));
+      expect(connection.reconnectCount, 0);
+      await connection.close();
+    });
+
+    test('keeps sending heartbeats to a Cloud that did not announce idle pings',
+        () async {
+      final socket = FakeSocket();
+      final connection =
+          newConnection(socket, heartbeat: const Duration(milliseconds: 40));
+      await connection.connect();
+      await completeHandshake(connection, socket);
+      var acknowledged = 0;
+      await waitFor(() {
+        final heartbeats = sentOfType(socket, 'workspace.heartbeat');
+        for (final heartbeat in heartbeats.skip(acknowledged)) {
+          socket.controller.add(jsonEncode({
+            'protocol': 'syntila.workspace-runtime-protocol',
+            'protocolVersion': workspaceRuntimeProtocolVersion,
+            'messageId': 'ack-${heartbeat['messageId']}',
+            'correlationId': heartbeat['messageId'],
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+            'type': 'workspace.heartbeat.ack',
+            'payload': {'acknowledged': true},
+          }));
+        }
+        acknowledged = heartbeats.length;
+        return heartbeats.length >= 6;
+      });
+      expect(socket.sent, isNot(contains(workspaceIdlePingFrame)));
+      expect(connection.reconnectCount, 0);
+      await connection.close();
+    });
   });
 
   test('reconnects after a dropped socket', () async {

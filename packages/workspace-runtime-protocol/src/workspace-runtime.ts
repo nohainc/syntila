@@ -119,6 +119,18 @@ export const ALLOWED_FOLDERS_CAPABILITY = "workspace.allowed_folders.v1";
 export const WORKER_PLUGINS_CAPABILITY = "workspace.worker_plugins.v1";
 
 /**
+ * Capability Cloud announces in `hello.ack` when an idle WebSocket Service may
+ * replace most heartbeats with `WORKSPACE_IDLE_PING_FRAME`. Cloud answers the
+ * ping without running the Gateway, so an idle connection stays hibernated.
+ * Older Cloud rejects the frame, so Services wait for the announcement.
+ */
+export const IDLE_PING_CAPABILITY = "workspace.idle_ping.v1";
+
+/** Exact frames; the runtime matches the ping byte for byte. */
+export const WORKSPACE_IDLE_PING_FRAME = '{"type":"workspace.ping"}';
+export const WORKSPACE_IDLE_PONG_FRAME = '{"type":"workspace.pong"}';
+
+/**
  * What a Service reports about a plugin Worker. Cloud freezes the digests into
  * the assignment snapshot and requires them to equal the Workspace pin.
  */

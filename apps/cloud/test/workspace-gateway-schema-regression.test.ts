@@ -214,6 +214,7 @@ describe("Workspace Gateway active-schema regression", () => {
     });
 
     let acceptedSocket: TestSocket | undefined;
+    let idlePingAnsweredAt: Date | null = null;
     const runtimeStorage = new Map<string, unknown>();
     const gateway = new WorkspaceGateway(
       {
@@ -229,9 +230,18 @@ describe("Workspace Gateway active-schema regression", () => {
         acceptWebSocket(socket: unknown) {
           acceptedSocket = socket as TestSocket;
         },
+        getWebSocketAutoResponseTimestamp: () => idlePingAnsweredAt,
       } as never,
       { SYNTILA_DB: new LocalD1(database) as never },
     );
+    const online = async () =>
+      (
+        (
+          (await gateway.fetch(
+            new Request("https://app.syntila.test/status"),
+          )) as unknown as TestResponse
+        ).value as { online: boolean }
+      ).online;
     const response = (await gateway.fetch(
       new Request(
         `https://app.syntila.test/api/workspace-gateway/connect?workspaceRuntimeId=${runtimeId}`,
@@ -271,7 +281,10 @@ describe("Workspace Gateway active-schema regression", () => {
       disconnected_at: null,
     });
 
-    vi.setSystemTime(new Date("2026-09-27T10:00:15.000Z"));
+    expect(await online()).toBe(true);
+    // The session row is audit history, so heartbeats reach it at a low rate.
+    vi.setSystemTime(new Date("2026-09-27T10:05:00.000Z"));
+    expect(await online()).toBe(false);
     gateway.webSocketMessage(
       acceptedSocket as unknown as WebSocket,
       JSON.stringify({
@@ -293,10 +306,21 @@ describe("Workspace Gateway active-schema regression", () => {
               "SELECT last_heartbeat_at FROM workspace_sessions WHERE id = ?",
             )
             .get(sessionId) as { last_heartbeat_at: string }
-        ).last_heartbeat_at === "2026-09-27T10:00:15.000Z",
+        ).last_heartbeat_at === "2026-09-27T10:05:00.000Z",
     );
 
-    vi.setSystemTime(new Date("2026-09-27T10:01:00.000Z"));
+    // Liveness follows the heartbeat itself and, between heartbeats, the idle
+    // pings the runtime answers while the Gateway sleeps.
+    expect(await online()).toBe(true);
+    expect(acceptedSocket?.attachment).toMatchObject({
+      lastHeartbeatAt: "2026-09-27T10:05:00.000Z",
+    });
+    vi.setSystemTime(new Date("2026-09-27T10:06:30.000Z"));
+    expect(await online()).toBe(false);
+    idlePingAnsweredAt = new Date("2026-09-27T10:06:20.000Z");
+    expect(await online()).toBe(true);
+
+    vi.setSystemTime(new Date("2026-09-27T10:07:00.000Z"));
     gateway.webSocketClose(acceptedSocket as unknown as WebSocket);
     await waitFor(
       () =>
@@ -306,7 +330,7 @@ describe("Workspace Gateway active-schema regression", () => {
               "SELECT disconnected_at FROM workspace_sessions WHERE id = ?",
             )
             .get(sessionId) as { disconnected_at: string | null }
-        ).disconnected_at === "2026-09-27T10:01:00.000Z",
+        ).disconnected_at === "2026-09-27T10:07:00.000Z",
     );
     expect(
       (

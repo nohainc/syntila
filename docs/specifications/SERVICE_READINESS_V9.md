@@ -20,6 +20,13 @@ connection. Only `ready` has `readyForAssignments = true`.
 - Readiness is published immediately on sync complete, pause/resume, drain,
   shutdown and connection replacement. Heartbeats piggyback readiness so a lost
   message self-heals.
+- When Cloud announces `workspace.idle_ping.v1`, a WebSocket Service with no
+  active assignment, pending start permit or unacknowledged outcome replaces
+  heartbeats with idle pings once three consecutive heartbeats carrying its
+  current readiness were acknowledged. It still sends a full heartbeat every
+  `hello.ack.idleHeartbeatIntervalMs` (default two minutes), returns to full
+  heartbeats as soon as readiness or work changes, and sends one immediately
+  before a start permit is judged so the permit clock sample is current.
 - A Service without the capability is inferred ready only after Cloud answered
   its sync request and received inventory.
 

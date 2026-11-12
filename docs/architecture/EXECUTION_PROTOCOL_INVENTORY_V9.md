@@ -43,6 +43,7 @@ while terminal assignment lifecycle events are durable Cloud events.
 | --- | --- | --- | --- |
 | `workspace.hello` / `workspace.hello.ack` | Service / Cloud Gateway | Authenticates one runtime session and fences the previous session | Session handshake |
 | `workspace.heartbeat` / `.ack` | Both | Liveness and transport state | Ephemeral |
+| `{"type":"workspace.ping"}` / `{"type":"workspace.pong"}` | Service / Cloudflare runtime | Idle WebSocket keep-alive after `hello.ack` announces `workspace.idle_ping.v1`; answered by WebSocket auto-response without waking the Gateway. Bare frames, not protocol envelopes | Ephemeral |
 | `workspace.sync.request` / `.result` | Service / Cloud Gateway | Reconciles active assignments and recent terminal states | Replay/recovery command; bounded terminal window |
 | `assignment.start` | Cloud Gateway dispatch route | Validates full assignment correlation, journals before launch, admits or rejects | Acknowledged command; idempotency key and assignment identity |
 | `assignment.cancel` | Cloud cancellation route | Stops queued/active local work and confirms process cancellation | Acknowledged command; Cloud remains lifecycle authority |

@@ -49,6 +49,20 @@ interface ConnectedClient {
   readonly lastDurableSequences: Map<string, number>;
   readonly queue: BoundedRealtimeQueue;
   flushScheduled: boolean;
+  /** Last subscriptions and cursors written to storage; skips equal writes. */
+  persisted?: string;
+}
+
+/** Travels with the hibernated socket; small and fixed for the connection. */
+interface ConnectionAttachment {
+  readonly connectionId: string;
+  readonly identity: AuthenticatedIdentity;
+}
+
+/** Per-connection state that changes, kept in storage across hibernation. */
+interface PersistedConnection {
+  readonly subscriptions: RealtimeScope[];
+  readonly cursors: Array<[string, number]>;
 }
 
 export interface RealtimeGatewayMetrics {
@@ -64,6 +78,11 @@ export interface RealtimeGatewayMetrics {
 
 const MAX_SOCKET_BUFFERED_BYTES = 256 * 1024;
 const MAX_REPLAY_EVENTS = 256;
+const CONNECTION_STORAGE_PREFIX = "connection:";
+// Answered by the runtime without waking the Durable Object, so an idle
+// connection costs no duration. Must match the App's ping frame exactly.
+const PING_FRAME = JSON.stringify({ type: "ping" });
+const PONG_FRAME = JSON.stringify({ type: "realtime.pong" });
 
 export function scopeKey(scope: RealtimeScope): string {
   if (scope.kind) {
@@ -369,8 +388,16 @@ export async function isRealtimeIdentityAuthorized(
   return true;
 }
 
+function serializeConnection(connected: ConnectedClient): string {
+  return JSON.stringify({
+    subscriptions: [...connected.subscriptions.values()],
+    cursors: [...connected.lastDurableSequences],
+  } satisfies PersistedConnection);
+}
+
 export class RealtimeGateway implements DurableObject {
   private readonly clients = new Map<string, ConnectedClient>();
+  private restored: Promise<void> | null = null;
   private readonly metrics: RealtimeGatewayMetrics = {
     activeAppSockets: 0,
     publishedEvents: 0,
@@ -386,11 +413,16 @@ export class RealtimeGateway implements DurableObject {
     private readonly state: DurableObjectState,
     private readonly env: RealtimeGatewayEnv,
   ) {
-    void state;
+    if (typeof WebSocketRequestResponsePair !== "undefined") {
+      this.state.setWebSocketAutoResponse?.(
+        new WebSocketRequestResponsePair(PING_FRAME, PONG_FRAME),
+      );
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    await this.restoreClients();
     if (request.method === "POST" && url.pathname === "/publish") {
       return this.publish(request);
     }
@@ -442,22 +474,130 @@ export class RealtimeGateway implements DurableObject {
     };
     this.clients.set(connectionId, connected);
     this.metrics.activeAppSockets = this.clients.size;
-    server.accept();
+    // Hibernatable: the Durable Object is evicted while the socket is idle and
+    // restored from the attachment and storage when a message or event arrives.
+    server.serializeAttachment({
+      connectionId,
+      identity,
+    } satisfies ConnectionAttachment);
+    this.state.acceptWebSocket(server);
     this.sendRaw(server, {
       type: "realtime.ready",
       connectionId,
       eventVersion: "1.1",
     });
-    server.addEventListener("message", (event) => {
-      void this.handleClientMessage(connectionId, event.data);
-    });
-    const remove = () => {
-      this.clients.delete(connectionId);
-      this.metrics.activeAppSockets = this.clients.size;
-    };
-    server.addEventListener("close", remove);
-    server.addEventListener("error", remove);
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(
+    socket: WebSocket,
+    data: string | ArrayBuffer,
+  ): Promise<void> {
+    const connectionId = this.connectionIdOf(socket);
+    if (!connectionId) return;
+    await this.restoreClients();
+    await this.handleClientMessage(connectionId, data);
+  }
+
+  async webSocketClose(socket: WebSocket): Promise<void> {
+    try {
+      socket.close(1000, "Closing");
+    } catch {
+      // The runtime may already have completed the closing handshake.
+    }
+    await this.endSocket(socket);
+  }
+
+  async webSocketError(socket: WebSocket): Promise<void> {
+    await this.endSocket(socket);
+  }
+
+  private async endSocket(socket: WebSocket): Promise<void> {
+    const connectionId = this.connectionIdOf(socket);
+    if (!connectionId) return;
+    await this.removeClient(connectionId);
+  }
+
+  private connectionIdOf(socket: WebSocket): string | null {
+    const attachment =
+      socket.deserializeAttachment() as ConnectionAttachment | null;
+    return attachment?.connectionId ?? null;
+  }
+
+  private get storage(): DurableObjectStorage | undefined {
+    return (this.state as Partial<DurableObjectState>).storage;
+  }
+
+  /**
+   * Rebuilds the connection map after hibernation, which discards memory but
+   * keeps the sockets. Runs once per wake.
+   */
+  private restoreClients(): Promise<void> {
+    return (this.restored ??= this.loadClients().catch((error: unknown) => {
+      this.restored = null;
+      throw error;
+    }));
+  }
+
+  private async loadClients(): Promise<void> {
+    const sockets = this.state.getWebSockets?.() ?? [];
+    const stored =
+      (await this.storage?.list<PersistedConnection>({
+        prefix: CONNECTION_STORAGE_PREFIX,
+      })) ?? new Map<string, PersistedConnection>();
+    const live = new Set<string>();
+    for (const socket of sockets) {
+      const attachment =
+        socket.deserializeAttachment() as ConnectionAttachment | null;
+      if (!attachment?.connectionId) continue;
+      live.add(attachment.connectionId);
+      if (this.clients.has(attachment.connectionId)) continue;
+      const persisted = stored.get(
+        CONNECTION_STORAGE_PREFIX + attachment.connectionId,
+      );
+      const connected: ConnectedClient = {
+        socket,
+        identity: attachment.identity,
+        subscriptions: new Map(
+          (persisted?.subscriptions ?? []).map((scope) => [
+            scopeKey(scope),
+            scope,
+          ]),
+        ),
+        lastDurableSequences: new Map(persisted?.cursors ?? []),
+        queue: new BoundedRealtimeQueue(),
+        flushScheduled: false,
+      };
+      connected.persisted = serializeConnection(connected);
+      this.clients.set(attachment.connectionId, connected);
+    }
+    // A close that never reached this object leaves its state behind.
+    const orphaned = [...stored.keys()].filter(
+      (key) => !live.has(key.slice(CONNECTION_STORAGE_PREFIX.length)),
+    );
+    if (orphaned.length > 0) await this.storage?.delete(orphaned);
+    this.metrics.activeAppSockets = this.clients.size;
+  }
+
+  /** Writes subscriptions and cursors when they changed since the last write. */
+  private async persistClient(
+    connectionId: string,
+    connected: ConnectedClient,
+  ): Promise<void> {
+    if (this.clients.get(connectionId) !== connected) return;
+    const serialized = serializeConnection(connected);
+    if (serialized === connected.persisted) return;
+    connected.persisted = serialized;
+    await this.storage?.put(
+      CONNECTION_STORAGE_PREFIX + connectionId,
+      JSON.parse(serialized) as PersistedConnection,
+    );
+  }
+
+  private async removeClient(connectionId: string): Promise<void> {
+    this.clients.delete(connectionId);
+    this.metrics.activeAppSockets = this.clients.size;
+    await this.storage?.delete(CONNECTION_STORAGE_PREFIX + connectionId);
   }
 
   private async handleClientMessage(
@@ -475,8 +615,7 @@ export class RealtimeGateway implements DurableObject {
         ))
       ) {
         connected.socket.close(1008, "Realtime authorization revoked");
-        this.clients.delete(connectionId);
-        this.metrics.activeAppSockets = this.clients.size;
+        await this.removeClient(connectionId);
         return;
       }
       const input = JSON.parse(
@@ -546,6 +685,8 @@ export class RealtimeGateway implements DurableObject {
         reason:
           error instanceof Error ? error.message : "Malformed realtime message",
       });
+    } finally {
+      await this.persistClient(connectionId, connected);
     }
   }
 
@@ -555,117 +696,9 @@ export class RealtimeGateway implements DurableObject {
       this.metrics.publishedEvents += 1;
       const stream = realtimeEventStream(event);
       const streamKey = realtimeStreamKey(stream);
-      for (const connected of this.clients.values()) {
-        // Deletion removes memberships. Deliver its ID-only signal to the
-        // captured audience without keeping now-invalid focused subscriptions.
-        if (event.type === "space.deleted") {
-          for (const [key, scope] of connected.subscriptions) {
-            if (
-              scope.spaceId === event.spaceId ||
-              ((scope.kind === "thread" || scope.kind === "run") &&
-                !(
-                  await authorizeRealtimeScope(
-                    this.env.SYNTILA_DB,
-                    connected.identity.userId,
-                    scope,
-                  )
-                ).allowed)
-            ) {
-              connected.subscriptions.delete(key);
-            }
-          }
-        }
-        if (
-          !(await isRealtimeIdentityAuthorized(
-            this.env.SYNTILA_DB,
-            connected.identity.userId,
-            [...connected.subscriptions.values()],
-          ))
-        ) {
-          connected.socket.close(1008, "Realtime authorization revoked");
-          for (const [connectionId, candidate] of this.clients.entries()) {
-            if (candidate === connected) {
-              this.clients.delete(connectionId);
-              break;
-            }
-          }
-          this.metrics.activeAppSockets = this.clients.size;
-          continue;
-        }
-        if (stream.kind === "user" && stream.id !== connected.identity.userId)
-          continue;
-        if (stream.kind === "space" && event.type !== "space.deleted") {
-          const member = await authorizeRealtimeScope(
-            this.env.SYNTILA_DB,
-            connected.identity.userId,
-            { kind: "space", spaceId: stream.id },
-          );
-          if (!member.allowed) {
-            const owner =
-              event.type === "workspace_space_grant.updated"
-                ? await this.env.SYNTILA_DB.prepare(
-                    "SELECT 1 AS owner FROM workspace_space_grants WHERE id = ?1 AND space_id = ?2 AND granted_by_user_id = ?3",
-                  )
-                    .bind(
-                      event.payload.entityId,
-                      stream.id,
-                      connected.identity.userId,
-                    )
-                    .first()
-                : null;
-            if (!owner) continue;
-          }
-        }
-        const matchingScopes = [...connected.subscriptions.values()].filter(
-          (scope) => eventMatchesScope(event, scope),
-        );
-        if (matchingScopes.length === 0) continue;
-        const replayable = isReplayableRealtimeEvent(event);
-        const lastSequence = connected.lastDurableSequences.get(streamKey);
-        if (
-          replayable &&
-          lastSequence !== undefined &&
-          event.sequence <= lastSequence
-        ) {
-          continue;
-        }
-        const gapScope = replayable
-          ? matchingScopes.find((_scope) =>
-              requiresRealtimeReconnect(lastSequence ?? null, event.sequence),
-            )
-          : undefined;
-        if (gapScope) {
-          this.metrics.reconnects += 1;
-          const recoveryScope =
-            stream.kind === "space"
-              ? { kind: "space" as const, spaceId: stream.id }
-              : stream.kind === "user"
-                ? { kind: "user" as const }
-                : gapScope;
-          await this.replayScope(connected, recoveryScope, event);
-          if (
-            connected.lastDurableSequences.get(streamKey) ===
-            event.sequence - 1
-          ) {
-            const result = this.enqueueEvent(connected, event);
-            this.recordQueueResult(result);
-            if (result !== "resync-required") {
-              connected.lastDurableSequences.set(streamKey, event.sequence);
-            }
-          }
-          continue;
-        }
-        const result = this.enqueueEvent(connected, event);
-        this.recordQueueResult(result);
-        if (replayable) {
-          connected.lastDurableSequences.set(
-            streamKey,
-            Math.max(
-              connected.lastDurableSequences.get(streamKey) ?? 0,
-              event.sequence,
-            ),
-          );
-        }
+      for (const [connectionId, connected] of [...this.clients.entries()]) {
+        await this.publishTo(connectionId, connected, event, stream, streamKey);
+        await this.persistClient(connectionId, connected);
       }
       return Response.json({ delivered: true });
     } catch (error) {
@@ -675,6 +708,119 @@ export class RealtimeGateway implements DurableObject {
             error instanceof Error ? error.message : "Invalid realtime event",
         },
         { status: 400 },
+      );
+    }
+  }
+
+  private async publishTo(
+    connectionId: string,
+    connected: ConnectedClient,
+    event: RealtimeEventEnvelope,
+    stream: RealtimeStream,
+    streamKey: string,
+  ): Promise<void> {
+    // Deletion removes memberships. Deliver its ID-only signal to the
+    // captured audience without keeping now-invalid focused subscriptions.
+    if (event.type === "space.deleted") {
+      for (const [key, scope] of connected.subscriptions) {
+        if (
+          scope.spaceId === event.spaceId ||
+          ((scope.kind === "thread" || scope.kind === "run") &&
+            !(
+              await authorizeRealtimeScope(
+                this.env.SYNTILA_DB,
+                connected.identity.userId,
+                scope,
+              )
+            ).allowed)
+        ) {
+          connected.subscriptions.delete(key);
+        }
+      }
+    }
+    if (
+      !(await isRealtimeIdentityAuthorized(
+        this.env.SYNTILA_DB,
+        connected.identity.userId,
+        [...connected.subscriptions.values()],
+      ))
+    ) {
+      connected.socket.close(1008, "Realtime authorization revoked");
+      await this.removeClient(connectionId);
+      return;
+    }
+    if (stream.kind === "user" && stream.id !== connected.identity.userId)
+      return;
+    if (stream.kind === "space" && event.type !== "space.deleted") {
+      const member = await authorizeRealtimeScope(
+        this.env.SYNTILA_DB,
+        connected.identity.userId,
+        { kind: "space", spaceId: stream.id },
+      );
+      if (!member.allowed) {
+        const owner =
+          event.type === "workspace_space_grant.updated"
+            ? await this.env.SYNTILA_DB.prepare(
+                "SELECT 1 AS owner FROM workspace_space_grants WHERE id = ?1 AND space_id = ?2 AND granted_by_user_id = ?3",
+              )
+                .bind(
+                  event.payload.entityId,
+                  stream.id,
+                  connected.identity.userId,
+                )
+                .first()
+            : null;
+        if (!owner) return;
+      }
+    }
+    const matchingScopes = [...connected.subscriptions.values()].filter(
+      (scope) => eventMatchesScope(event, scope),
+    );
+    if (matchingScopes.length === 0) return;
+    const replayable = isReplayableRealtimeEvent(event);
+    const lastSequence = connected.lastDurableSequences.get(streamKey);
+    if (
+      replayable &&
+      lastSequence !== undefined &&
+      event.sequence <= lastSequence
+    ) {
+      return;
+    }
+    const gapScope = replayable
+      ? matchingScopes.find((_scope) =>
+          requiresRealtimeReconnect(lastSequence ?? null, event.sequence),
+        )
+      : undefined;
+    if (gapScope) {
+      this.metrics.reconnects += 1;
+      const recoveryScope =
+        stream.kind === "space"
+          ? { kind: "space" as const, spaceId: stream.id }
+          : stream.kind === "user"
+            ? { kind: "user" as const }
+            : gapScope;
+      await this.replayScope(connected, recoveryScope, event);
+      if (
+        connected.lastDurableSequences.get(streamKey) ===
+        event.sequence - 1
+      ) {
+        const result = this.enqueueEvent(connected, event);
+        this.recordQueueResult(result);
+        if (result !== "resync-required") {
+          connected.lastDurableSequences.set(streamKey, event.sequence);
+        }
+      }
+      return;
+    }
+    const result = this.enqueueEvent(connected, event);
+    this.recordQueueResult(result);
+    if (replayable) {
+      connected.lastDurableSequences.set(
+        streamKey,
+        Math.max(
+          connected.lastDurableSequences.get(streamKey) ?? 0,
+          event.sequence,
+        ),
       );
     }
   }
