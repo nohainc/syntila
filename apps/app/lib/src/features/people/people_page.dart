@@ -6,6 +6,7 @@ import '../../ax/sync/ax_people.dart';
 import '../../ax/sync/ax_query_builder.dart';
 import '../../ax/sync/ax_sync_engine.dart';
 import '../common/quiet_notices.dart';
+import '../invitations/space_invitation_dialog.dart';
 
 class PeoplePage extends StatefulWidget {
   const PeoplePage({
@@ -25,7 +26,6 @@ class PeoplePage extends StatefulWidget {
 
 class _PeoplePageState extends State<PeoplePage> {
   String _searchQuery = '';
-  final Set<String> _expanded = {};
 
   @override
   void initState() {
@@ -64,39 +64,13 @@ class _PeoplePageState extends State<PeoplePage> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('People', style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
-                    child: allPeople.isNotEmpty
-                        ? SizedBox(
-                            height: 36,
-                            child: TextField(
-                              expands: true,
-                              maxLines: null,
-                              minLines: null,
-                              textAlignVertical: TextAlignVertical.center,
-                              key: const ValueKey('people-search-field'),
-                              decoration: InputDecoration(
-                                hintText: 'Search people',
-                                prefixIcon: const Icon(Icons.search, size: 20),
-                                isDense: true,
-                                contentPadding:
-                                    const EdgeInsets.symmetric(horizontal: 12),
-                                border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onChanged: (val) =>
-                                  setState(() => _searchQuery = val),
-                            ))
-                        : const SizedBox.shrink(),
+                    child: Text('People',
+                        style: Theme.of(context).textTheme.headlineMedium),
                   ),
-                  const SizedBox(width: 12),
                   FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                        minimumSize: const Size(0, 36),
-                        fixedSize: const Size.fromHeight(36)),
                     key: const ValueKey('add-person-button'),
                     onPressed: _showAddPersonDialog,
                     icon: const Icon(Icons.person_add_outlined, size: 18),
@@ -104,7 +78,26 @@ class _PeoplePageState extends State<PeoplePage> {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              const Text(
+                  'People you collaborate with will appear here after they accept a Space invitation.'),
               const SizedBox(height: 16),
+              if (allPeople.isNotEmpty) ...[
+                TextField(
+                  key: const ValueKey('people-search-field'),
+                  decoration: InputDecoration(
+                    hintText: 'Search people by name or email...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onChanged: (val) => setState(() => _searchQuery = val),
+                ),
+                const SizedBox(height: 16),
+              ],
               _PeopleReadStatus(people: widget.people, state: state),
               if (allPeople.isEmpty && !state.isFetching)
                 _emptyState()
@@ -167,7 +160,6 @@ class _PeoplePageState extends State<PeoplePage> {
     final sharedCount =
         '${person.sharedSpaceCount} shared ${person.sharedSpaceCount == 1 ? 'Space' : 'Spaces'}';
 
-    final expanded = _expanded.contains(person.userId);
     return Card(
       key: ValueKey('person-${person.userId}'),
       margin: EdgeInsets.zero,
@@ -211,44 +203,32 @@ class _PeoplePageState extends State<PeoplePage> {
             ),
             const SizedBox(height: 10),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: _actionButtons(person)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(sharedCount),
+                      if (person.sharedSpaces.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          person.sharedSpaces.map((s) => s.name).join(', '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 8),
-                IconButton(
-                  key: ValueKey('expand-spaces-${person.userId}'),
-                  padding: EdgeInsets.zero,
-                  iconSize: 18,
-                  visualDensity: VisualDensity.compact,
-                  constraints:
-                      const BoxConstraints.tightFor(width: 28, height: 28),
-                  tooltip: expanded ? 'Hide shared Spaces' : sharedCount,
-                  onPressed: () => setState(() {
-                    if (!_expanded.add(person.userId)) {
-                      _expanded.remove(person.userId);
-                    }
-                  }),
-                  icon: Icon(expanded
-                      ? Icons.keyboard_double_arrow_down
-                      : Icons.keyboard_double_arrow_right),
-                ),
+                _actionButtons(person),
               ],
             ),
-            if (expanded) ...[
-              const SizedBox(height: 4),
-              Text(sharedCount),
-              for (final space in person.sharedSpaces)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(space.name,
-                      style: TextStyle(
-                          color:
-                              Theme.of(context).colorScheme.onSurfaceVariant)),
-                ),
-            ],
           ],
         ),
       ),
@@ -320,15 +300,27 @@ class _PeoplePageState extends State<PeoplePage> {
               icon: const Icon(Icons.chat_bubble_outline, size: 16),
               label: const Text('Open Space'),
             ),
-            OutlinedButton(
-              key: ValueKey('disconnect-${person.userId}'),
-              onPressed: () => _disconnect(person.userId),
-              child: const Text('Disconnect'),
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
             ),
-            OutlinedButton(
-              key: ValueKey('block-${person.userId}'),
-              onPressed: () => _block(person.userId),
-              child: const Text('Block'),
+            PopupMenuButton<String>(
+              key: ValueKey('person-menu-${person.userId}'),
+              onSelected: (val) {
+                if (val == 'disconnect') _disconnect(person.userId);
+                if (val == 'block') _block(person.userId);
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'disconnect',
+                  child: Text('Remove connection'),
+                ),
+                const PopupMenuItem(
+                  value: 'block',
+                  child: Text('Block'),
+                ),
+              ],
             ),
           ],
         );
@@ -336,12 +328,24 @@ class _PeoplePageState extends State<PeoplePage> {
       case 'invitation_sent':
         return Wrap(
           spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Text('Pending',
+                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+            ),
             if (person.invitationId != null)
               OutlinedButton(
                 key: ValueKey('cancel-invitation-${person.userId}'),
                 onPressed: () => _cancelInvitation(person.invitationId!),
                 child: const Text('Cancel'),
+              ),
+            if (!person.userId.startsWith('email:'))
+              TextButton(
+                key: ValueKey('add-to-space-${person.userId}'),
+                onPressed: () => _addToSpace(person.userId),
+                child: const Text('Add to Space'),
               ),
           ],
         );
@@ -362,29 +366,64 @@ class _PeoplePageState extends State<PeoplePage> {
                 child: const Text('Decline'),
               ),
             ],
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
+            ),
+          ],
+        );
+
+      case 'disconnected':
+        return Wrap(
+          spacing: 8,
+          children: [
+            FilledButton(
+              key: ValueKey('reconnect-${person.userId}'),
+              onPressed: () => _connect(person.userId),
+              child: const Text('Reconnect'),
+            ),
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
+            ),
           ],
         );
 
       case 'blocked':
-        return OutlinedButton(
-          key: ValueKey('unblock-${person.userId}'),
-          onPressed: () => _unblock(person.userId),
-          child: const Text('Unblock'),
-        );
-
-      case 'disconnected':
-        return FilledButton(
-          key: ValueKey('reconnect-${person.userId}'),
-          onPressed: () => _connect(person.userId),
-          child: const Text('Connect'),
+        return Wrap(
+          spacing: 8,
+          children: [
+            OutlinedButton(
+              key: ValueKey('unblock-${person.userId}'),
+              onPressed: () => _unblock(person.userId),
+              child: const Text('Unblock'),
+            ),
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
+            ),
+          ],
         );
 
       case 'collaborator':
       default:
-        return FilledButton(
-          key: ValueKey('connect-${person.userId}'),
-          onPressed: () => _connect(person.userId),
-          child: const Text('Connect'),
+        return Wrap(
+          spacing: 8,
+          children: [
+            FilledButton(
+              key: ValueKey('connect-${person.userId}'),
+              onPressed: () => _connect(person.userId),
+              child: const Text('Connect'),
+            ),
+            TextButton(
+              key: ValueKey('add-to-space-${person.userId}'),
+              onPressed: () => _addToSpace(person.userId),
+              child: const Text('Add to Space'),
+            ),
+          ],
         );
     }
   }
@@ -535,6 +574,17 @@ class _PeoplePageState extends State<PeoplePage> {
       context: context,
       builder: (_) => _AddPersonDialog(people: widget.people),
     );
+  }
+
+  Future<void> _addToSpace(String userId) async {
+    final sent = await showDialog<bool>(
+        context: context,
+        builder: (_) =>
+            SpaceInvitationDialog(people: widget.people, personId: userId));
+    if (sent == true && mounted) {
+      ScaffoldMessenger.of(context)
+          .showNotice(const SnackBar(content: Text('Space invitation sent.')));
+    }
   }
 }
 

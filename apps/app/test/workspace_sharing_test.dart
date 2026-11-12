@@ -253,9 +253,10 @@ void main() {
             'sharedSpaceCount': 1
           })
         ]));
-    expect(find.textContaining('Guest · guest@test'), findsOneWidget);
+    expect(find.text('Guest'), findsOneWidget);
+    expect(find.text('guest@test'), findsOneWidget);
     expect(find.textContaining('2 requests'), findsOneWidget);
-    expect(find.textContaining('Chat only (custom)'), findsOneWidget);
+    expect(find.textContaining('Chat · 2 requests'), findsOneWidget);
     expect(
         tester
             .widget<IconButton>(find.byKey(const ValueKey('sharing-invite')))

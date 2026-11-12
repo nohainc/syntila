@@ -80,6 +80,7 @@ void main(List<String> args) {
         'run',
         providerPath,
       ];
+      (profile['model']! as Map<String, Object?>).remove('discovery');
       final bytes = utf8.encode(jsonEncode(profile));
       final profileFile = File('${root.path}/profile.json');
       await profileFile.writeAsBytes(bytes);

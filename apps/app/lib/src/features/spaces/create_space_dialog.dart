@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:syntila_design/syntila_design.dart';
 
 import '../../ax/ax_workflow_configuration.dart';
 
@@ -79,62 +78,45 @@ class _CreateSpaceDialogState extends State<_CreateSpaceDialog> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Builder(builder: (context) {
-                      final dark = theme.brightness == Brightness.dark;
-                      final selected = workspaces
-                          .where((w) => w.id == _workspaceId)
-                          .firstOrNull;
-                      return PopupMenuButton<String>(
-                        key: const ValueKey('create-space-workspace'),
-                        enabled: snapshot.hasData,
-                        tooltip: 'Choose Workspace',
-                        color: SyntilaColors.composerBackground(dark),
-                        surfaceTintColor: Colors.transparent,
-                        elevation: 12,
-                        shadowColor: SyntilaMenuStyle.shadow(dark),
-                        shape: SyntilaMenuStyle.shape(dark),
-                        menuPadding: SyntilaMenuStyle.padding,
-                        itemBuilder: (context) => [
-                          for (final choice in <String, String>{
-                            '': 'No Workspace',
-                            for (final w in workspaces) w.id: w.name,
-                          }.entries)
-                            SyntilaMenuEntry<String>(
-                              value: choice.key,
-                              child: MenuItemButton(
-                                style: SyntilaMenuStyle.item(dark),
-                                leadingIcon: Icon(
-                                  choice.key == (_workspaceId ?? '')
-                                      ? Icons.check_circle_rounded
-                                      : Icons.circle_outlined,
-                                  size: 15,
-                                ),
-                                onPressed: () =>
-                                    Navigator.pop(context, choice.key),
-                                child: Text(choice.value,
-                                    style: SyntilaMenuStyle.textStyle),
-                              ),
-                            ),
-                        ],
-                        onSelected: (value) => setState(
-                            () => _workspaceId = value.isEmpty ? null : value),
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                              labelText: 'Workspace',
-                              suffixIcon: Icon(Icons.expand_more)),
-                          child: Text(selected?.name ?? 'No Workspace',
-                              overflow: TextOverflow.ellipsis),
+                    DropdownButtonFormField<String?>(
+                      key: const ValueKey('create-space-workspace'),
+                      initialValue: _workspaceId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Workspace'),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('No Workspace'),
                         ),
-                      );
-                    }),
-                    if (snapshot.hasError)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          'Workspaces could not be loaded. You can choose one later in Space settings.',
-                          style: theme.textTheme.bodySmall,
-                        ),
+                        for (final workspace in workspaces)
+                          DropdownMenuItem<String?>(
+                            value: workspace.id,
+                            child: Text(workspace.name,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                      onChanged: snapshot.hasData
+                          ? (value) => setState(() => _workspaceId = value)
+                          : null,
+                    ),
+                    if (workspaces.length == 1 && _workspaceId == null)
+                      TextButton(
+                        key: const ValueKey('create-space-use-only-workspace'),
+                        onPressed: () =>
+                            setState(() => _workspaceId = workspaces.single.id),
+                        child: Text('Use ${workspaces.single.name}'),
                       ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        snapshot.hasError
+                            ? 'Workspaces could not be loaded. You can choose one later in Space settings.'
+                            : _workspaceId == null
+                                ? 'Work cannot run in this Space until you choose a Workspace.'
+                                : 'Work in this Space will run on this Workspace.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
                   ],
                 );
               },

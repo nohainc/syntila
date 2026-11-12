@@ -963,7 +963,12 @@ void main() {
       expect(source.openedPersonId, 'user-eva');
 
       // Test Remove connection via popup menu
-      final removeMenuItem = find.byKey(const ValueKey('disconnect-user-eva'));
+      final menuBtn = find.byKey(const ValueKey('person-menu-user-eva'));
+      expect(menuBtn, findsOneWidget);
+      await tester.tap(menuBtn);
+      await tester.pumpAndSettle();
+
+      final removeMenuItem = find.text('Remove connection');
       expect(removeMenuItem, findsOneWidget);
       await tester.tap(removeMenuItem);
       await tester.pumpAndSettle();
@@ -1050,7 +1055,12 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      final blockMenuItem = find.byKey(const ValueKey('block-user-blockee'));
+      final menuBtn = find.byKey(const ValueKey('person-menu-user-blockee'));
+      expect(menuBtn, findsOneWidget);
+      await tester.tap(menuBtn);
+      await tester.pumpAndSettle();
+
+      final blockMenuItem = find.text('Block');
       expect(blockMenuItem, findsOneWidget);
       await tester.tap(blockMenuItem);
       await tester.pumpAndSettle();
