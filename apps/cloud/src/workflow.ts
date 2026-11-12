@@ -1342,7 +1342,16 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 workerInput: {
                   ...workerInput,
                   ...(conversationInput
-                    ? { externalWorkerConversation: { ...conversationInput, workflow: { id: definition.id, version: definition.version, step: task.step.kind } } }
+                    ? {
+                        externalWorkerConversation: {
+                          ...conversationInput,
+                          workflow: {
+                            id: definition.id,
+                            version: definition.version,
+                            step: task.step.kind,
+                          },
+                        },
+                      }
                     : {}),
                 },
                 scope: {

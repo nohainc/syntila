@@ -51,7 +51,10 @@ export function buildPluginAuthorKit(outputDirectory) {
       copy(`${base}/pubspec.yaml`);
       copy(`${base}/pubspec.lock`);
       dartTree(`${base}/lib`);
-      if (pkg === "syntila_external_worker_conformance" || pkg === "syntila_external_worker_sdk")
+      if (
+        pkg === "syntila_external_worker_conformance" ||
+        pkg === "syntila_external_worker_sdk"
+      )
         dartTree(`${base}/bin`);
     }
     for (const relative of [

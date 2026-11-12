@@ -11,8 +11,9 @@ curl --fail --silent --show-error --location --retry 3 \
 read -r VERSION REVISION < <(python3 - "$MANIFEST" <<'PY'
 import json, re, sys
 manifest = json.load(open(sys.argv[1]))
-revision = manifest['current_release']['stable']
-release = next(item for item in manifest['releases'] if item['hash'] == revision and item['channel'] == 'stable')
+target_version = '3.47.9'
+release = next(item for item in manifest['releases'] if item['version'] == target_version and item['channel'] == 'stable')
+revision = release['hash']
 version = release['version']
 assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version)
 assert re.fullmatch(r'[0-9a-f]{40}', revision)

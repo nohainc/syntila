@@ -12,15 +12,13 @@ const templates = new URL(
 const migrations = new URL("../migrations-v8/", import.meta.url);
 const read = (url: URL) => readFileSync(url, "utf8");
 
-it("publishes Claude effort choices with a matching invocation slot", () => {
+it("Claude authoring templates derive models via discovery with a matching invocation slot", () => {
   const payload = read(new URL("claude.json", templates));
   const profile = parseProfile(JSON.parse(payload)).profile;
+  expect(profile.model.discovery?.format).toBe("claude_models_api");
+  expect(profile.model.unknownModelPolicy).toBe("pass_through");
   const options = spaceModelOptions(payload, "2.1.287")!;
-  expect(options.catalog.map((m) => m.supportedReasoningEfforts)).toEqual([
-    ["low", "medium", "high", "xhigh", "max"],
-    ["low", "medium", "high", "xhigh", "max"],
-    ["low", "medium"],
-  ]);
+  expect(options.catalog).toEqual([]);
   expect(profile.execution.arguments).toContainEqual({
     ifPresent: "reasoningEffort",
     values: ["--effort", "{{reasoningEffort}}"],

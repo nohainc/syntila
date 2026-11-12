@@ -455,8 +455,7 @@ class ContentLengthRpcClient {
 class ClaudeSignInTokenNeedsRefreshException implements Exception {
   const ClaudeSignInTokenNeedsRefreshException();
   @override
-  String toString() =>
-      'Claude sign-in token needs a refresh by the Claude CLI';
+  String toString() => 'Claude sign-in token needs a refresh by the Claude CLI';
 }
 
 /// Thrown when the provider reports that no account is signed in.
@@ -580,6 +579,7 @@ Future<List<DiscoveredModel>> discoverClaudeApiModels({
   Future<Map<String, String>?> Function(Map<String, String> environment)?
   credentialReader,
   HttpClient Function()? clientFactory,
+
   /// Tests only: replaces the Anthropic Models API address.
   Uri? endpoint,
 }) async {
