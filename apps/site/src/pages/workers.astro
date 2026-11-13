@@ -4,7 +4,6 @@ import Container from "../components/Container.astro";
 import Section from "../components/Section.astro";
 import SectionHeader from "../components/SectionHeader.astro";
 import SiteLayout from "../layouts/SiteLayout.astro";
-import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.astro";
 ---
 
 <SiteLayout
@@ -27,10 +26,6 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
             <span class="worker-status-badge">Supported</span>
           </div>
           <p>Runs OpenAI's Codex CLI on your connected Workspace for structured reasoning, synthesis, code generation, and collaborative problem-solving in shared Threads.</p>
-          <div class="worker-card__meta">
-            <span>Profile: <code>chatgpt-codex</code></span>
-            <span>CLI: <code>codex</code></span>
-          </div>
         </article>
 
         <article class="worker-card">
@@ -39,10 +34,6 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
             <span class="worker-status-badge">Supported</span>
           </div>
           <p>Runs Anthropic's Claude Code CLI on your connected Workspace for deep document analysis, architectural planning, code implementation, and verification.</p>
-          <div class="worker-card__meta">
-            <span>Profile: <code>claude-code</code></span>
-            <span>CLI: <code>claude</code></span>
-          </div>
         </article>
 
         <article class="worker-card">
@@ -51,10 +42,6 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
             <span class="worker-status-badge">Supported</span>
           </div>
           <p>Runs Google's Antigravity CLI on your connected Workspace for fast research synthesis, large-context analysis, and multi-perspective comparison.</p>
-          <div class="worker-card__meta">
-            <span>Profile: <code>gemini-antigravity</code></span>
-            <span>CLI: <code>agy</code></span>
-          </div>
         </article>
 
         <article class="worker-card">
@@ -63,10 +50,6 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
             <span class="worker-status-badge worker-status-badge--testing">Testing</span>
           </div>
           <p>Catalog Worker Profile for GitHub Copilot's agentic CLI, enabling repository-aware assistance and terminal workflows on connected Workspaces.</p>
-          <div class="worker-card__meta">
-            <span>Profile: <code>copilot-cli</code></span>
-            <span>CLI: <code>copilot</code></span>
-          </div>
         </article>
 
         <article class="worker-card">
@@ -75,10 +58,6 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
             <span class="worker-status-badge worker-status-badge--testing">Testing</span>
           </div>
           <p>Catalog Worker Profile for xAI's Grok Build CLI, supporting interactive reasoning and coding tasks on connected Workspaces.</p>
-          <div class="worker-card__meta">
-            <span>Profile: <code>grok-cli</code></span>
-            <span>CLI: <code>grok</code></span>
-          </div>
         </article>
 
         <article class="worker-card">
@@ -87,10 +66,6 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
             <span class="worker-status-badge">Supported</span>
           </div>
           <p>Connect local models (such as Ollama) or custom domain agents as first-class Workers using the Syntila MCP Worker profile over local stdio or Streamable HTTP.</p>
-          <div class="worker-card__meta">
-            <span>Protocol: <code>MCP</code></span>
-            <span>SDK: <code>syntila_external_worker_sdk</code></span>
-          </div>
         </article>
       </div>
 
@@ -122,47 +97,6 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
             <p>Approved MCP servers run under your Workspace owner boundary with bounded outputs, redaction, and process-tree cleanup.</p>
           </div>
         </div>
-        <pre class="section-block-gap"><code>syntila mcp add &lt;id&gt; &lt;command&gt;
-syntila mcp add-remote &lt;id&gt; &lt;https-url&gt;</code></pre>
-      </div>
-
-      <div class="section-block-gap-lg">
-        <SectionHeader
-          eyebrow="How Worker Profiles Work"
-          title="One generic engine. Signed Worker Profiles."
-          description="Syntila does not store provider API keys in Cloud databases or ship provider-specific binaries. Instead, the Workspace Service downloads Ed25519-signed Worker Profiles that describe how the generic CLI Worker Engine should invoke and parse each installed provider CLI."
-        />
-        <div class="execution-path-strip">
-          <div class="execution-path-step">
-            <span>01 · Local Auth</span>
-            <strong>Sign in to your CLI</strong>
-            <p>Authenticate directly in <code>codex</code>, <code>claude</code>, or <code>agy</code> on your machine using your existing subscription or API account.</p>
-          </div>
-          <div class="execution-path-step">
-            <span>02 · Profile Sync</span>
-            <strong>Verify signed Profile</strong>
-            <p>Syntila Workspace verifies the Ed25519 signature on each published Worker Profile before activating it locally.</p>
-          </div>
-          <div class="execution-path-step">
-            <span>03 · Space Grant</span>
-            <strong>Enable for a Space</strong>
-            <p>Choose which Spaces can use each ready Worker and configure model or effort defaults as needed.</p>
-          </div>
-          <div class="execution-path-step">
-            <span>04 · Thread Run</span>
-            <strong>Execute &amp; attribute</strong>
-            <p>Collaborators select the Worker in the Thread composer; the local CLI executes the turn and streams the response back.</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="section-block-gap-lg">
-        <SectionHeader
-          eyebrow="Security & Sharing"
-          title="Share AI access without sharing your secrets."
-          description="Every AI account remains owned and controlled on the machine where it is authenticated. When you grant a Worker to a Space, collaborators can prompt the model, but they never receive your API keys or login tokens."
-        />
-        <CredentialPrivacyDiagram />
       </div>
 
       <div class="actions actions--center section-block-gap-lg">
