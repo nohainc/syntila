@@ -71,7 +71,6 @@ for (const file of await htmlFiles(dist)) {
 const home = await readFile(join(dist, "index.html"), "utf8");
 const requiredHomepageContent = [
   "Bring your people and AI together.",
-  "SHARED AI WORKSPACE",
   "Threads",
   "One conversation. Everyone stays in context.",
   "Open Syntila",

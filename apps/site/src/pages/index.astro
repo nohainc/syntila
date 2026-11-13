@@ -19,7 +19,6 @@ import AudienceCards from "../components/AudienceCards.astro";
   <Container>
     <section class="hero" id="product">
       <div>
-        <div class="eyebrow">SHARED AI WORKSPACE</div>
         <h1>Bring your people and AI together.</h1>
         <p class="lede">
           Collaborate with family, friends, and teammates in shared Spaces and Threads in the Syntila app. Members connect a Syntila Workspace to make their AI Workers available to the group while keeping provider credentials private on their own machines.
@@ -28,45 +27,20 @@ import AudienceCards from "../components/AudienceCards.astro";
           <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
           <Button href="/how-it-works/" label="See how it works" variant="secondary" event="navigation.how_it_works" />
         </div>
+      </div>
 
-        <ul class="trust-value-strip" role="list">
-          <li class="trust-item">
-            <span class="trust-icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </span>
-            <span>Shared Spaces & Threads</span>
-          </li>
-          <li class="trust-item">
-            <span class="trust-icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/></svg>
-            </span>
-            <span>Shared AI access</span>
-          </li>
-          <li class="trust-item">
-            <span class="trust-icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            </span>
-            <span>Private local credentials</span>
-          </li>
-          <li class="trust-item">
-            <span class="trust-icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            </span>
-            <span>Message or Ask AI</span>
-          </li>
-          <li class="trust-item">
-            <span class="trust-icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            </span>
-            <span>Choose any authorized Worker</span>
-          </li>
-          <li class="trust-item">
-            <span class="trust-icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
-            </span>
-            <span>Multi-step Work presets</span>
-          </li>
-        </ul>
+      <div class="hero-vision" role="img" aria-label="Syntila connects people in shared Spaces with AI Workers running on a member's private Workspace">
+        <div class="hero-vision__node">
+          <span class="hero-vision__label">Your People</span>
+          <strong>Shared Spaces &amp; Threads</strong>
+          <p>Collaborate together in one place</p>
+        </div>
+        <div class="hero-vision__connector" aria-hidden="true">+</div>
+        <div class="hero-vision__node">
+          <span class="hero-vision__label">Connected Workspace</span>
+          <strong>Authorized AI Workers</strong>
+          <p>Credentials stay private on your host</p>
+        </div>
       </div>
     </section>
   </Container>
@@ -162,3 +136,51 @@ import AudienceCards from "../components/AudienceCards.astro";
     </Container>
   </Section>
 </SiteLayout>
+
+<style>
+  .hero-vision {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    border-radius: 16px;
+    border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.2));
+    background: var(--surface-elevated, rgba(128, 128, 128, 0.04));
+  }
+
+  .hero-vision__node {
+    padding: 1rem 1.25rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.2));
+    background: var(--surface-card, rgba(255, 255, 255, 0.02));
+  }
+
+  .hero-vision__label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.7;
+    margin-bottom: 0.25rem;
+  }
+
+  .hero-vision__node strong {
+    display: block;
+    font-size: 1.05rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .hero-vision__node p {
+    margin: 0;
+    font-size: 0.9rem;
+    opacity: 0.8;
+  }
+
+  .hero-vision__connector {
+    text-align: center;
+    font-weight: 700;
+    font-size: 1.1rem;
+    opacity: 0.6;
+  }
+</style>

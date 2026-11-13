@@ -31,7 +31,6 @@ const expected = {
     title: "Syntila — Bring your people and AI together",
     heading: "Bring your people and AI together.",
     content: [
-      "SHARED AI WORKSPACE",
       "Threads",
       "ONE SPACE. PEOPLE + AI.",
       "One conversation. Everyone stays in context.",
