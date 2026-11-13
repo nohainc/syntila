@@ -12,11 +12,8 @@
   },
   "dependencies": {
     "@better-auth/passkey": "^1.7.5",
-    "@syntila/workspace-runtime-protocol": "workspace:*",
-    "@syntila/core": "workspace:*",
     "@syntila/protocol": "workspace:*",
     "@syntila/security": "workspace:*",
-    "@syntila/tool-profile": "workspace:*",
     "better-auth": "^1.7.5"
   }
 }

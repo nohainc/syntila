@@ -1,0 +1,8 @@
+[Unit]
+Description=Syntila health monitor
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/syntila/syntila-monitor.py
+TimeoutStartSec=120

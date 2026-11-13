@@ -157,9 +157,18 @@ void main() {
       normalizeWorkspaceCloudOrigin(configured),
       'https://syntila.app',
     );
+    // Service calls go to the backend; desktop sign-in stays on the Worker.
     expect(
       workspaceCloudApiUri(configured, '/api/workspace-runtime/register'),
-      Uri.parse('https://syntila.app/api/workspace-runtime/register'),
+      Uri.parse('https://api.syntila.app/api/workspace-runtime/register'),
+    );
+    expect(
+      workspaceCloudApiUri(configured, '/api/desktop-auth/session'),
+      Uri.parse('https://syntila.app/api/desktop-auth/session'),
+    );
+    expect(
+      workspaceCloudApiUri('https://cloud.example.test', '/api/workspace-runtime/register'),
+      Uri.parse('https://cloud.example.test/api/workspace-runtime/register'),
     );
   });
 

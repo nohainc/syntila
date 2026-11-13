@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly Syntila database dump (before the Hetzner backup window)
+
+[Timer]
+OnCalendar=*-*-* 01:15:00 UTC
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

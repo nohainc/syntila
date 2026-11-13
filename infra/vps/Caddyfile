@@ -1,0 +1,30 @@
+# Syntila public edge: TLS (automatic Let's Encrypt), HTTP/1.1+2+3, WebSockets.
+# Cloudflare DNS for api.syntila.app must be "DNS only" (grey cloud).
+{
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+api.syntila.app {
+	request_body {
+		max_size 2MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:3000 {
+		# Keep open WebSockets alive across `systemctl reload caddy`.
+		stream_close_delay 10m
+	}
+	log {
+		output file /var/log/caddy/api.syntila.app.log {
+			roll_size 50MiB
+			roll_keep 5
+		}
+		format json
+	}
+}

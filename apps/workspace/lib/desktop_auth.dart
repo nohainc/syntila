@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'secure_credentials.dart';
+import 'workspace_registration_models.dart' show workspaceAuthOrigin;
 
 const desktopHumanCredentialKey = 'desktop-human-session';
 const desktopAuthIntentContractVersion = '1.1';
@@ -302,7 +303,9 @@ class DesktopPasswordSignInException implements Exception {
 
 class DesktopAuthClient {
   DesktopAuthClient({required String cloudUrl, HttpClient? httpClient})
-      : _cloudOrigin = _normalizeOrigin(cloudUrl),
+      // Desktop sign-in is served by the auth Worker, even when handed the
+      // backend origin (e.g. one derived from a saved gateway URL).
+      : _cloudOrigin = _normalizeOrigin(workspaceAuthOrigin(cloudUrl)),
         _http = httpClient ?? HttpClient();
 
   final Uri _cloudOrigin;

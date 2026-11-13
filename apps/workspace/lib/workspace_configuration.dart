@@ -6,6 +6,7 @@ import 'secure_credentials.dart';
 import 'workspace_paths.dart';
 import 'platform_runtime.dart';
 import 'workspace_settings.dart';
+import 'workspace_registration_models.dart' show workspaceAuthOrigin, workspaceBackendOrigin;
 
 /// The inputs consumed by the headless Workspace Service. These values are
 /// resolved once at process startup instead of being reread independently by
@@ -130,7 +131,10 @@ class WorkspaceConfigurationResolver {
         : Directory(path);
   }
 
-  static String cloudHttpOrigin(Uri gateway) => Uri(
+  /// The auth (`cloudUrl`) origin for a gateway URI on the backend.
+  static String cloudHttpOrigin(Uri gateway) => workspaceAuthOrigin(_gatewayHttpOrigin(gateway));
+
+  static String _gatewayHttpOrigin(Uri gateway) => Uri(
         scheme: switch (gateway.scheme) {
           'wss' || 'https' => 'https',
           'ws' || 'http' => 'http',
@@ -141,7 +145,21 @@ class WorkspaceConfigurationResolver {
       ).toString();
 
   static Uri? workspaceGatewayUri(String value, {String? workspaceRuntimeId}) {
-    final uri = Uri.tryParse(value);
+    var uri = Uri.tryParse(value);
+    // An HTTP(S) Cloud origin is the auth Worker; the gateway runs on the backend.
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https') &&
+        (uri.path.isEmpty || uri.path == '/')) {
+      try {
+        final backend = Uri.parse(workspaceBackendOrigin(value));
+        uri = uri.replace(
+          scheme: backend.scheme,
+          host: backend.host,
+          port: backend.hasPort ? backend.port : null,
+        );
+      } on ArgumentError {
+        // Leave malformed values to the checks below.
+      }
+    }
     if (uri == null) return null;
     final socketScheme = switch (uri.scheme) {
       'https' => 'wss',

@@ -2,7 +2,7 @@ import 'realtime_client_stub.dart'
     if (dart.library.html) 'realtime_client_web.dart' as implementation;
 import 'realtime_client_stub.dart' show RealtimeClient;
 
-export 'realtime_client_stub.dart' show RealtimeClient;
+export 'realtime_client_stub.dart' show RealtimeClient, realtimeTicketProvider;
 
 RealtimeClient createRealtimeClient() => implementation.createRealtimeClient();
 

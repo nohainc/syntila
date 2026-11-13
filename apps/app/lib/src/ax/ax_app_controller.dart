@@ -1306,10 +1306,16 @@ extension _AxAppController on _AxAppStateMixin {
     final workspaceId = executionWorkspaceId;
     if (!realtimeStarted) {
       realtimeStarted = true;
-      final apiBaseUrl =
+      final authApiUrl =
           const String.fromEnvironment('SYNTILA_API_URL').isNotEmpty
               ? const String.fromEnvironment('SYNTILA_API_URL')
               : '/api';
+      // Realtime is served by the backend; with the production API client
+      // each (re)connect redeems a single-use ticket.
+      final source = widget.dataSource;
+      final apiBaseUrl =
+          source is AxApiClient ? source.backendBaseUrl : authApiUrl;
+      if (source is AxApiClient) realtimeTicketProvider = source.realtimeTicket;
       unawaited(
         realtimeClient.connect(
           realtimeEndpointForApi(apiBaseUrl),

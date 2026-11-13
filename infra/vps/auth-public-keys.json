@@ -1,0 +1,14 @@
+[
+  {
+    "key_ops": [
+      "verify"
+    ],
+    "ext": true,
+    "alg": "EdDSA",
+    "crv": "Ed25519",
+    "x": "NPFkWwn4bn8RLkOOYl-eBv3y3m_2z5g5YmJm2upDDuw",
+    "kty": "OKP",
+    "kid": "syntila-2026-11-12-e5676ebd",
+    "use": "sig"
+  }
+]

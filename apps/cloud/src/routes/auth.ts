@@ -13,9 +13,20 @@ import {
   extractBearerToken,
   hashToken,
 } from "@syntila/security";
-import { HttpError, json, recordAudit, securityContext } from "./handlers.js";
-import { avatarUrlFor } from "./profile.js";
-import type { SecurityEnv } from "./handlers.js";
+import { HttpError, json, securityContext } from "./http-security.js";
+import type { SecurityEnv } from "./http-security.js";
+import { backendUrl } from "../backend-token.js";
+
+/** Stored avatars (`r2://…`) are served by the VPS backend. */
+function avatarUrlFor(env: SecurityEnv, userId: string, value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (!value.startsWith("r2://")) return value;
+  const key = value.slice("r2://".length);
+  const version = (key.split("/").pop() ?? key).replace(/-thumbnail$/, "");
+  const url = new URL(`/api/users/${encodeURIComponent(userId)}/avatar`, `${backendUrl(env)}/`);
+  url.searchParams.set("v", version);
+  return url.toString();
+}
 
 export async function handleSession(
   request: Request,
@@ -24,7 +35,7 @@ export async function handleSession(
 ): Promise<Response> {
   const context = await securityContext(request, env, accessContext);
   const avatarUrl = avatarUrlFor(
-    request,
+    env,
     context.user.id,
     context.user.avatarUrl,
   );
@@ -147,7 +158,12 @@ export async function handleSessionLogout(
   });
   const response = await handleBetterAuthRequest(authRequest, env);
   if (response.ok && env.SYNTILA_DB) {
-    await recordAudit(env, context, "logout", "session", context.sessionId);
+    await recordAuthAuditEvent(env.SYNTILA_DB, {
+      action: "auth.logout",
+      outcome: "success",
+      userId: context.userId,
+      sessionId: context.sessionId,
+    });
   }
   return response;
 }

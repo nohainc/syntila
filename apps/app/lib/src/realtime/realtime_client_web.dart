@@ -78,9 +78,25 @@ class _BrowserRealtimeClient implements RealtimeClient {
     }
   }
 
-  void _open() {
-    final endpoint = _endpoint;
+  void _open() => unawaited(_openWithTicket());
+
+  Future<void> _openWithTicket() async {
+    var endpoint = _endpoint;
     if (_closed || endpoint == null) return;
+    final tickets = realtimeTicketProvider;
+    if (tickets != null) {
+      try {
+        final ticket = await tickets();
+        if (_closed || !identical(_endpoint, endpoint)) return;
+        endpoint = endpoint.replace(queryParameters: {
+          ...endpoint.queryParameters,
+          'ticket': ticket,
+        });
+      } catch (_) {
+        _scheduleReconnect();
+        return;
+      }
+    }
     final socket = html.WebSocket(endpoint.toString());
     _socket = socket;
     // Cloud sends realtime.ready on accept and again after hello; both mean

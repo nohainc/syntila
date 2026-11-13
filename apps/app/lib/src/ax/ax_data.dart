@@ -29,6 +29,7 @@ import 'package:http_parser/http_parser.dart';
 
 import '../platform/http_client_stub.dart'
     if (dart.library.html) '../platform/http_client_web.dart' as platform;
+import 'ax_backend_routing.dart';
 import 'ax_models.dart';
 import 'ax_work_models.dart';
 import 'ax_work_latency_trace.dart';
@@ -66,15 +67,66 @@ abstract interface class AxConditionalReadCache {
 
 abstract class _AxApiClientCore
     implements AxDataSource, AxConditionalReadCache {
-  _AxApiClientCore({String? baseUrl, http.Client? client})
+  _AxApiClientCore({String? baseUrl, http.Client? client, String? backendBaseUrl})
       : baseUrl = baseUrl ??
             (const String.fromEnvironment('SYNTILA_API_URL').isNotEmpty
                 ? const String.fromEnvironment('SYNTILA_API_URL')
                 : platform.defaultAxApiBaseUrl()),
-        client = client ?? platform.createPlatformHttpClient();
+        _injectedClient = client,
+        _backendBaseUrl = backendBaseUrl;
 
   final String baseUrl;
-  final http.Client client;
+  final http.Client? _injectedClient;
+  final String? _backendBaseUrl;
+
+  /// Talks to the auth Worker directly (sign-in, sessions, backend tokens).
+  late final http.Client authClient =
+      _injectedClient ?? platform.createPlatformHttpClient();
+
+  /// Backend URL for product API calls and realtime.
+  late final String backendBaseUrl =
+      _backendBaseUrl ?? defaultBackendApiUrl(baseUrl);
+
+  /// Short-lived backend tokens issued by the auth Worker for this session.
+  late final backendTokens = AxBackendTokenSource(() async {
+    final response = await authClient.post(Uri.parse('$baseUrl/backend-token'),
+        headers: _headers(contentType: 'application/json'), body: '{}');
+    // Signed out (or session expired): no token; the backend answers 401.
+    if (response.statusCode == 401 || response.statusCode == 403) return null;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+          'Backend token request failed (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+    return AxBackendTokenSource.parse(response.body);
+  });
+
+  /// Every API call goes through here. An injected client (tests) is used
+  /// as-is; production routes non-auth calls to the backend.
+  late final http.Client client = _injectedClient != null && _backendBaseUrl == null
+      ? _injectedClient
+      : AxBackendRoutingClient(
+          inner: authClient,
+          authBaseUrl: baseUrl,
+          backendBaseUrl: backendBaseUrl,
+          tokens: backendTokens,
+        );
+
+  /// Single-use ticket for the backend realtime WebSocket (browsers cannot
+  /// send an Authorization header on a WebSocket upgrade).
+  Future<String> realtimeTicket() async {
+    final response = await client.post(Uri.parse('$baseUrl/realtime/tickets'),
+        headers: _headers(contentType: 'application/json'), body: '{}');
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException('Realtime ticket request failed (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['ticket'] is! String) {
+      throw const AxApiException('Realtime ticket response is malformed');
+    }
+    return decoded['ticket'] as String;
+  }
   // Transport references are separate from immutable authored request inputs.
   final _uploadedWorkFiles = <String, String>{};
   String? _nativeSessionCookie;
@@ -98,6 +150,8 @@ abstract class _AxApiClientCore
   void clearConditionalReads() {
     _readGeneration++;
     _conditionalReads.clear();
+    // A session change (sign-in, sign-out, account switch) needs a new token.
+    backendTokens.clear();
   }
 
   void _bindReadUser(String? id) {
@@ -362,7 +416,7 @@ class AxApiClient extends _AxApiClientCore
         AxNotesDataSource,
         AxUserFilesDataSource,
         AxThreadQueueDataSource {
-  AxApiClient({super.baseUrl, super.client});
+  AxApiClient({super.baseUrl, super.client, super.backendBaseUrl});
 }
 
 /// A keyed mutation is safe to resend: the server replays the first result.

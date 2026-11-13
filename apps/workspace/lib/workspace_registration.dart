@@ -27,10 +27,11 @@ class WorkspaceRegistrationClient {
       cloudUrl,
       '/api/workspace-runtime/register',
     );
+    final bearer = await backendBearerForHumanSession(cloudUrl, credential,
+        client: _client, timeout: timeout);
     final request = await _client.postUrl(uri).timeout(timeout);
     request.headers.contentType = ContentType.json;
-    request.headers
-        .set(HttpHeaders.authorizationHeader, 'Bearer ${credential.trim()}');
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
     final payload = facts.toRegistrationJson();
     payload['contractVersion'] = '1.0';
     payload['proposedWorkspaceName'] = payload.remove('name');

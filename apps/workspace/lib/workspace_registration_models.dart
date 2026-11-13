@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 const syntilaProductionCloudUrl = 'https://syntila.app';
@@ -39,12 +40,90 @@ String normalizeWorkspaceCloudOrigin(String cloudUrl) {
   ).toString();
 }
 
+/// Syntila runs as two services: the Cloudflare auth Worker (`cloudUrl`,
+/// e.g. https://syntila.app) for sign-in and desktop sessions, and the VPS
+/// backend (e.g. https://api.syntila.app) for everything a Workspace does.
+/// `SYNTILA_BACKEND_URL` overrides the backend origin.
+const _knownBackendOrigins = {
+  'https://syntila.app': 'https://api.syntila.app',
+  'http://localhost:8787': 'http://localhost:3000',
+  'http://127.0.0.1:8787': 'http://127.0.0.1:3000',
+};
+
+/// Backend origin for an auth (`cloudUrl`) origin; unknown origins (tests,
+/// single-origin setups) are their own backend.
+String workspaceBackendOrigin(String cloudUrl) {
+  final override = Platform.environment['SYNTILA_BACKEND_URL'];
+  if (override != null && override.trim().isNotEmpty) {
+    return normalizeWorkspaceCloudOrigin(override);
+  }
+  final origin = normalizeWorkspaceCloudOrigin(cloudUrl);
+  return _knownBackendOrigins[origin] ?? origin;
+}
+
+/// Auth origin for a backend origin (the inverse of [workspaceBackendOrigin]).
+String workspaceAuthOrigin(String origin) {
+  final normalized = normalizeWorkspaceCloudOrigin(origin);
+  for (final entry in _knownBackendOrigins.entries) {
+    if (entry.value == normalized) return entry.key;
+  }
+  return normalized;
+}
+
+/// API paths served by the auth Worker; everything else goes to the backend.
+bool isWorkspaceAuthApiPath(String apiPath) => const [
+      '/api/desktop-auth',
+      '/api/auth',
+      '/api/session',
+      '/api/backend-token',
+    ].any((prefix) => apiPath == prefix || apiPath.startsWith('$prefix/'));
+
 Uri workspaceCloudApiUri(String cloudUrl, String apiPath) {
   if (!apiPath.startsWith('/api/')) {
     throw ArgumentError.value(apiPath, 'apiPath', 'Must start with /api/.');
   }
-  return Uri.parse(normalizeWorkspaceCloudOrigin(cloudUrl))
-      .replace(path: apiPath);
+  final origin = isWorkspaceAuthApiPath(apiPath)
+      ? workspaceAuthOrigin(cloudUrl)
+      : workspaceBackendOrigin(workspaceAuthOrigin(cloudUrl));
+  return Uri.parse(origin).replace(path: apiPath);
+}
+
+/// Exchanges a desktop human session (`syntila_dhs_…`, issued by the auth
+/// Worker) for a short-lived backend token. Other credentials (tests, runtime
+/// credentials) are returned unchanged, as are single-origin deployments.
+Future<String> backendBearerForHumanSession(
+  String cloudUrl,
+  String credential, {
+  HttpClient? client,
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final trimmed = credential.trim();
+  final auth = workspaceAuthOrigin(cloudUrl);
+  if (!trimmed.startsWith('syntila_dhs_') || workspaceBackendOrigin(auth) == auth) {
+    return trimmed;
+  }
+  final http = client ?? HttpClient();
+  try {
+    final request = await http
+        .postUrl(Uri.parse(auth).replace(path: '/api/backend-token'))
+        .timeout(timeout);
+    request.headers
+      ..set(HttpHeaders.authorizationHeader, 'Bearer $trimmed')
+      ..contentType = ContentType.json;
+    request.write('{}');
+    final response = await request.close().timeout(timeout);
+    final body = await utf8.decoder.bind(response).join().timeout(timeout);
+    if (response.statusCode != HttpStatus.ok) {
+      throw HttpException('Backend token request failed (${response.statusCode})');
+    }
+    final decoded = jsonDecode(body);
+    if (decoded is! Map || decoded['token'] is! String) {
+      throw const FormatException('Backend token response is malformed');
+    }
+    return decoded['token'] as String;
+  } finally {
+    if (client == null) http.close();
+  }
 }
 
 class WorkspaceRegistrationResult {

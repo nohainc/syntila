@@ -1,11 +1,14 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Syntila auth Worker: Better Auth, desktop sign-in, backend tokens and the
+  // email relay. The product API runs on the VPS backend (SYNTILA_BACKEND_URL).
   "name": "syntila-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat"],
   "triggers": {
-    "crons": ["*/5 * * * *", "17 3 * * *"],
+    // Daily: prune ended auth sessions.
+    "crons": ["17 3 * * *"],
   },
   "observability": {
     "enabled": true,
@@ -18,9 +21,9 @@
     },
   ],
   "vars": {
-    "SYNTILA_SUPPORT_ACCOUNT_EMAIL": "syntila@nohainc.com",
     "SYNTILA_PROFILE_LAB_OWNER_EMAIL": "vitalii@nohainc.com",
     "SYNTILA_ENVIRONMENT": "development",
+    "SYNTILA_BACKEND_URL": "https://api.syntila.app",
     // Optional social sign-in; empty disables a provider. Declared here so
     // wrangler loads overrides from .dev.vars (with `secrets` configured it
     // only loads .dev.vars keys that are declared vars or required secrets).
@@ -28,53 +31,25 @@
     "SYNTILA_AUTH_GITHUB_CLIENT_SECRET": "",
     "SYNTILA_AUTH_GOOGLE_CLIENT_ID": "",
     "SYNTILA_AUTH_GOOGLE_CLIENT_SECRET": "",
-    // Temporary local diagnostics; set REALTIME_DIAGNOSTICS=1 in .dev.vars.
-    "REALTIME_DIAGNOSTICS": "",
   },
   "secrets": {
     "required": [
-      "SYNTILA_RELEASE_PUBLISHER",
-      "SYNTILA_RELEASE_TRUST_KEYS_JSON",
       "BETTER_AUTH_SECRET",
+      // Private Ed25519 JWK; the VPS holds the public half in /etc/syntila/auth-public-keys.
+      "SYNTILA_BACKEND_SIGNING_KEY",
+      // Shared with the backend (EMAIL_RELAY_SECRET in /etc/syntila/backend.env).
+      "EMAIL_RELAY_SECRET",
     ],
   },
   "d1_databases": [
     {
       "binding": "SYNTILA_DB",
-      "database_name": "syntila-development",
+      // Auth-only database; product data lives in the backend's PostgreSQL.
+      "database_name": "syntila-auth-development",
       "database_id": "local",
-      "migrations_dir": "migrations-v8",
+      "migrations_dir": "migrations",
     },
   ],
-  "r2_buckets": [
-    {
-      "binding": "SYNTILA_ARTIFACTS",
-      "bucket_name": "syntila-artifacts-development",
-    },
-  ],
-  "workflows": [
-    {
-      "name": "syntila-run",
-      "binding": "SYNTILA_RUN_WORKFLOW",
-      "class_name": "SyntilaRunWorkflow",
-    },
-  ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "SYNTILA_WORKSPACE_GATEWAY",
-        "class_name": "WorkspaceGateway",
-      },
-      {
-        "name": "SYNTILA_REALTIME_GATEWAY",
-        "class_name": "RealtimeGateway",
-      },
-      {
-        "name": "SYNTILA_THREAD_COORDINATOR",
-        "class_name": "ThreadExecutionCoordinator",
-      },
-    ],
-  },
   "migrations": [
     {
       "tag": "v3-workspace-gateway",
@@ -87,6 +62,11 @@
     {
       "tag": "v6-thread-coordinator",
       "new_sqlite_classes": ["ThreadExecutionCoordinator"],
+    },
+    {
+      // The gateways and coordinator now run in the VPS backend.
+      "tag": "v7-moved-to-vps",
+      "deleted_classes": ["WorkspaceGateway", "RealtimeGateway", "ThreadExecutionCoordinator"],
     },
   ],
 }

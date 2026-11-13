@@ -34,7 +34,8 @@ class HttpExternalWorkerCloud implements ExternalWorkerCloudPort {
         'Sign in first: syntila login',
       );
     }
-    return session.credential;
+    return backendBearerForHumanSession(cloudUrl, session.credential,
+        client: _client, timeout: timeout);
   }
 
   Future<Map<String, Object?>> _send(

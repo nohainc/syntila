@@ -14,6 +14,11 @@ void main() {
         WorkspaceConfigurationResolver.cloudHttpOrigin(
             Uri.parse('ws://127.0.0.1:9/api/workspace-gateway/connect')),
         'http://127.0.0.1:9');
+    // A backend gateway maps back to its auth (desktop sign-in) origin.
+    expect(
+        WorkspaceConfigurationResolver.cloudHttpOrigin(
+            Uri.parse('wss://api.syntila.app/api/workspace-gateway/connect')),
+        'https://syntila.app');
   });
   Uri configFor(String cloudUrl) =>
       WorkspaceConfigurationResolver.workspaceGatewayUri(
@@ -25,7 +30,8 @@ void main() {
     final uri = configFor('https://syntila.app/#discard-me');
 
     expect(uri.scheme, 'wss');
-    expect(uri.host, 'syntila.app');
+    // The gateway runs on the backend; syntila.app is the auth Worker.
+    expect(uri.host, 'api.syntila.app');
     expect(uri.port, 443);
     expect(uri.path, '/api/workspace-gateway/connect');
     expect(uri.queryParameters['workspaceRuntimeId'], 'runtime-test');
@@ -53,13 +59,17 @@ void main() {
     expect(uri.queryParameters.containsKey('api_key'), isFalse);
   });
 
-  test('local HTTP origin keeps its explicit development port', () {
+  test('local auth origin maps to the local backend port', () {
     final uri = configFor('http://127.0.0.1:8787');
 
     expect(uri.scheme, 'ws');
     expect(uri.host, '127.0.0.1');
-    expect(uri.port, 8787);
+    expect(uri.port, 3000);
     expect(uri.path, '/api/workspace-gateway/connect');
+  });
+
+  test('other local origins keep their explicit development port', () {
+    expect(configFor('http://127.0.0.1:8899').port, 8899);
   });
 
   test('an explicit WSS endpoint gets a port without losing its path/query',

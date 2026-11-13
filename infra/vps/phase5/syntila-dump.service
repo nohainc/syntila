@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly Syntila database dump
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/bin/bash /usr/local/lib/syntila/syntila-dump.sh

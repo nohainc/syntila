@@ -1,11 +1,15 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Production auth Worker on syntila.app: Better Auth, desktop sign-in,
+  // backend tokens, the email relay and the web app. The product API runs on
+  // the VPS backend (SYNTILA_BACKEND_URL).
   "name": "syntila-app",
   "main": "../../apps/cloud/src/index.ts",
   "compatibility_date": "2026-09-21",
   "compatibility_flags": ["nodejs_compat"],
   "triggers": {
-    "crons": ["*/5 * * * *", "17 3 * * *"],
+    // Daily: prune ended auth sessions.
+    "crons": ["17 3 * * *"],
   },
   "observability": {
     "enabled": true,
@@ -23,55 +27,27 @@
     },
   ],
   "vars": {
-    "SYNTILA_SUPPORT_ACCOUNT_EMAIL": "syntila@nohainc.com",
     "SYNTILA_PROFILE_LAB_OWNER_EMAIL": "vitalii@nohainc.com",
     "SYNTILA_ENVIRONMENT": "production",
     "BETTER_AUTH_URL": "https://syntila.app",
     "SYNTILA_APP_URL": "https://syntila.app",
+    "SYNTILA_BACKEND_URL": "https://api.syntila.app",
     "SYNTILA_EMAIL_FROM": "syntila@conclaveax.com",
     "SYNTILA_EMAIL_FALLBACK_FROM": "vitalii@conclaveax.com",
     "SYNTILA_EMAIL_FROM_NAME": "Syntila",
   },
   "secrets": {
-    "required": ["BETTER_AUTH_SECRET"],
+    "required": ["BETTER_AUTH_SECRET", "SYNTILA_BACKEND_SIGNING_KEY", "EMAIL_RELAY_SECRET"],
   },
   "d1_databases": [
     {
       "binding": "SYNTILA_DB",
-      "database_name": "syntila",
-      "database_id": "6130c425-59e2-4ec7-b7bd-d3fe8a8ea6a7",
-      "migrations_dir": "../../apps/cloud/migrations-v8",
+      // Auth-only database (accounts and sign-in state). Created for Phase 8.
+      "database_name": "syntila-auth",
+      "database_id": "ced1ca95-bd74-4ae3-9e65-2ccaddc0f3ce",
+      "migrations_dir": "../../apps/cloud/migrations",
     },
   ],
-  "r2_buckets": [
-    {
-      "binding": "SYNTILA_ARTIFACTS",
-      "bucket_name": "syntila-artifacts-production",
-    },
-  ],
-  "workflows": [
-    {
-      "name": "syntila-run",
-      "binding": "SYNTILA_RUN_WORKFLOW",
-      "class_name": "SyntilaRunWorkflow",
-    },
-  ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "SYNTILA_WORKSPACE_GATEWAY",
-        "class_name": "WorkspaceGateway",
-      },
-      {
-        "name": "SYNTILA_REALTIME_GATEWAY",
-        "class_name": "RealtimeGateway",
-      },
-      {
-        "name": "SYNTILA_THREAD_COORDINATOR",
-        "class_name": "ThreadExecutionCoordinator",
-      },
-    ],
-  },
   "migrations": [
     {
       "tag": "v1-runtime-connection",
@@ -100,6 +76,11 @@
           "to": "ThreadExecutionCoordinator",
         },
       ],
+    },
+    {
+      // The gateways and coordinator now run in the VPS backend.
+      "tag": "v10-moved-to-vps",
+      "deleted_classes": ["WorkspaceGateway", "RealtimeGateway", "ThreadExecutionCoordinator"],
     },
   ],
   "routes": [

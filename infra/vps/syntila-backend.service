@@ -1,0 +1,34 @@
+[Unit]
+Description=Syntila Bun backend
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+# Wants (not Requires): a PostgreSQL restart must not take the backend down;
+# the connection pool reconnects on its own.
+
+[Service]
+Type=simple
+User=syntila
+Group=syntila
+WorkingDirectory=/opt/syntila/current
+EnvironmentFile=/etc/syntila/backend.env
+LoadCredential=postgres-password:/etc/syntila/postgres-password
+LoadCredential=auth-public-keys:/etc/syntila/auth-public-keys
+# Forward-only migrations run under an advisory lock before every start.
+ExecStartPre=/home/syntila/.bun/bin/bun /opt/syntila/current/dist/migrate.js
+ExecStart=/home/syntila/.bun/bin/bun /opt/syntila/current/dist/server.js
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+LimitNOFILE=262144
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

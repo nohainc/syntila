@@ -1,33 +1,15 @@
-import {
-  hasProfileLabPermission,
-  isProfileLabOwner,
-} from "./profile-lab-policy.js";
+/**
+ * Request security for the auth Worker. The Worker resolves who is signed in
+ * (Better Auth cookie/bearer session or a desktop human session) from its D1
+ * users table; Space and Workspace authorization lives in the VPS backend.
+ */
+import { isProfileLabOwner } from "./profile-lab-policy.js";
 import { isTrustedOrigin } from "../observability.js";
-import {
-  identityService,
-  provisionSyntilaUser,
-  hasRecentStepUp,
-  recordAuthAuditEvent,
-  type SensitiveOperation,
-} from "../auth/index.js";
-import {
-  authorize,
-  AuthorizationError,
-  hashToken,
-  resolveSpaceSecurityContextFromIdentity,
-  authorizeSpaceMembership,
-  authorizeWorkspaceOwner,
-  authorizeSpaceOwner,
-  type Permission,
-  type SecurityContext,
-} from "@syntila/security";
+import { identityService, provisionSyntilaUser } from "../auth/index.js";
+import { hashToken, type SecurityContext } from "@syntila/security";
 
-export function parseJson<T = Record<string, unknown>>(
-  value: unknown,
-  defaultValue: T = {} as T,
-): T {
-  if (typeof value !== "string" || value.trim().length === 0)
-    return defaultValue;
+export function parseJson<T = Record<string, unknown>>(value: unknown, defaultValue: T = {} as T): T {
+  if (typeof value !== "string" || value.trim().length === 0) return defaultValue;
   try {
     return JSON.parse(value) as T;
   } catch {
@@ -38,104 +20,12 @@ export function parseJson<T = Record<string, unknown>>(
 export function json(data: unknown, init?: ResponseInit): Response {
   return Response.json(data, {
     ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...init?.headers,
-    },
+    headers: { "content-type": "application/json; charset=utf-8", ...init?.headers },
   });
 }
 
-export async function recordAudit(
-  env: SecurityEnv,
-  context: SecurityContext,
-  action: string,
-  targetType: string,
-  targetId: string,
-  details: Record<string, unknown> = {},
-  resourceWorkspaceId?: string,
-): Promise<void> {
-  const auditWorkspaceId = resourceWorkspaceId;
-  if (!auditWorkspaceId) {
-    const spaceId =
-      typeof details.spaceId === "string" ? details.spaceId : null;
-    if (!spaceId) return;
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO space_audit_log
-         (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-       VALUES (?1, ?2, 'user', ?3, ?4, ?5, ?6, ?7, ?8)`,
-    )
-      .bind(
-        `audit-${crypto.randomUUID()}`,
-        spaceId,
-        context.userId,
-        action,
-        targetType,
-        targetId,
-        JSON.stringify(details),
-        new Date().toISOString(),
-      )
-      .run();
-    return;
-  }
-  const values = [
-    `audit-${crypto.randomUUID()}`,
-    auditWorkspaceId,
-    context.userId,
-    action,
-    targetType,
-    targetId,
-    JSON.stringify(details),
-    new Date().toISOString(),
-  ] as const;
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO workspace_audit_log
-       (id, workspace_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-     VALUES (?1, ?2, 'user', ?3, ?4, ?5, ?6, ?7, ?8)`,
-  )
-    .bind(...values)
-    .run();
-}
-
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Workflow operation failed";
-}
-
-export function requiredString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${field} is required`);
-  }
-  return value;
-}
-
-export function workflowInstanceId(idempotencyKey: string): string {
-  return `workflow-${idempotencyKey}`;
-}
-
-export async function resolveWorkflowInstanceId(
-  env: Env,
-  runId: string,
-  idempotencyKey?: string,
-): Promise<string> {
-  const run = await env.SYNTILA_DB.prepare(
-    "SELECT workflow_instance_id FROM runs WHERE id = ?1",
-  )
-    .bind(runId)
-    .first<{ workflow_instance_id?: string | null }>();
-  if (run?.workflow_instance_id) return run.workflow_instance_id;
-  if (!idempotencyKey) return workflowInstanceId(runId);
-  const candidate = workflowInstanceId(idempotencyKey);
-  const now = new Date().toISOString();
-  await env.SYNTILA_DB.prepare(
-    "UPDATE runs SET workflow_instance_id = COALESCE(workflow_instance_id, ?1), updated_at = ?2 WHERE id = ?3",
-  )
-    .bind(candidate, now, runId)
-    .run();
-  const stored = await env.SYNTILA_DB.prepare(
-    "SELECT workflow_instance_id FROM runs WHERE id = ?1",
-  )
-    .bind(runId)
-    .first<{ workflow_instance_id?: string | null }>();
-  return stored?.workflow_instance_id ?? candidate;
+  return error instanceof Error ? error.message : "Request failed";
 }
 
 export class HttpError extends Error {
@@ -148,37 +38,27 @@ export class HttpError extends Error {
 }
 
 export type SecurityEnv = Env & {
-  /** Comma-separated user IDs permitted to administer catalog entries and drafts. */
   readonly SYNTILA_PROFILE_ADMIN_USER_IDS?: string;
   readonly SYNTILA_PROFILE_LAB_OWNER_EMAIL?: string;
   readonly SYNTILA_PROFILE_RELEASE_MANAGER_USER_IDS?: string;
-  readonly SYNTILA_ISSUE_SUPPORT_USER_IDS?: string;
-  /** Email of the active Syntila account that staffs personal support Spaces. */
-  readonly SYNTILA_SUPPORT_ACCOUNT_EMAIL?: string;
   readonly BETTER_AUTH_SECRET?: string;
   readonly BETTER_AUTH_URL?: string;
   readonly SYNTILA_AUTH_GITHUB_CLIENT_ID?: string;
   readonly SYNTILA_AUTH_GITHUB_CLIENT_SECRET?: string;
   readonly SYNTILA_AUTH_GOOGLE_CLIENT_ID?: string;
   readonly SYNTILA_AUTH_GOOGLE_CLIENT_SECRET?: string;
-  readonly TEST_AUTHENTICATION?: (
-    request: Request,
-    env: Env,
-  ) => Promise<SecurityContext>;
+  readonly TEST_AUTHENTICATION?: (request: Request, env: Env) => Promise<SecurityContext>;
   readonly SYNTILA_APP_URL?: string;
   readonly SYNTILA_EMAIL_FROM?: string;
   readonly SYNTILA_EMAIL_FALLBACK_FROM?: string;
   readonly SYNTILA_EMAIL_FROM_NAME?: string;
-  readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
-  readonly SYNTILA_REALTIME_GATEWAY?: DurableObjectNamespace;
-  readonly SYNTILA_THREAD_COORDINATOR?: DurableObjectNamespace;
+  readonly SYNTILA_BACKEND_SIGNING_KEY?: string;
+  readonly SYNTILA_BACKEND_URL?: string;
+  readonly EMAIL_RELAY_SECRET?: string;
 };
 
 export function testAuthenticationEnabled(env: Env): boolean {
-  return (
-    env.SYNTILA_ENVIRONMENT === "development" &&
-    typeof (env as SecurityEnv).TEST_AUTHENTICATION === "function"
-  );
+  return env.SYNTILA_ENVIRONMENT === "development" && typeof (env as SecurityEnv).TEST_AUTHENTICATION === "function";
 }
 
 export function bearer(request: Request): string | null {
@@ -188,29 +68,44 @@ export function bearer(request: Request): string | null {
 
 export function requireSameOriginForCookieMutation(request: Request): void {
   if (!request.headers.get("cookie") || bearer(request)) return;
-
   const requestOrigin = new URL(request.url).origin;
   const origin = request.headers.get("origin");
   if (origin === requestOrigin || (origin && isTrustedOrigin(request))) return;
-
   const referer = request.headers.get("referer");
   if (origin === null && referer) {
     try {
-      if (new URL(referer).origin === requestOrigin) return;
       const refUrl = new URL(referer);
-      if (
-        refUrl.hostname === "localhost" ||
-        refUrl.hostname === "127.0.0.1" ||
-        refUrl.hostname === "[::1]"
-      ) {
-        return;
-      }
+      if (refUrl.origin === requestOrigin) return;
+      if (refUrl.hostname === "localhost" || refUrl.hostname === "127.0.0.1" || refUrl.hostname === "[::1]") return;
     } catch {
       // Treat malformed referers as untrusted.
     }
   }
-
   throw new HttpError(403, "Same-origin request required for cookie session");
+}
+
+/** The signed-in user's context (no Space roles: those are the backend's concern). */
+async function userContext(
+  env: SecurityEnv,
+  identity: { userId: string; sessionId: string },
+  clientType: "web" | "desktop" = "web",
+  audience?: string,
+): Promise<SecurityContext> {
+  const row = await env.SYNTILA_DB.prepare(
+    "SELECT id, email, display_name, avatar_url, status FROM users WHERE id = ?1",
+  )
+    .bind(identity.userId)
+    .first<{ id: string; email: string; display_name: string; avatar_url: string | null; status: string }>();
+  if (!row) throw new HttpError(401, "Syntila user not found");
+  if (row.status !== "active") throw new HttpError(403, `User account is ${row.status}`);
+  return {
+    userId: row.id,
+    user: { id: row.id, email: row.email, displayName: row.display_name, avatarUrl: row.avatar_url, status: "active" },
+    spaceRoles: {},
+    sessionId: identity.sessionId,
+    clientType,
+    ...(audience ? { audience } : {}),
+  };
 }
 
 export async function securityContext(
@@ -218,274 +113,37 @@ export async function securityContext(
   env: SecurityEnv,
   accessContext?: ExecutionContext,
 ): Promise<SecurityContext> {
-  // Preserve the route-handler context contract for callers that also use it
-  // for non-authentication infrastructure; human identity never comes from it.
   void accessContext;
-  const testAuthentication = env.TEST_AUTHENTICATION;
-  if (
-    env.SYNTILA_ENVIRONMENT === "development" &&
-    typeof testAuthentication === "function"
-  ) {
-    return testAuthentication(request, env);
-  }
+  if (testAuthenticationEnabled(env)) return env.TEST_AUTHENTICATION!(request, env);
 
   const token = bearer(request);
   if (token && token.startsWith("syntila_dhs_")) {
-    const tokenHash = await hashToken(token);
     const now = new Date().toISOString();
     const session = await env.SYNTILA_DB.prepare(
-      `SELECT s.id AS sessionId, s.user_id AS userId, s.audience, s.created_at AS createdAt,
-              s.expires_at AS expiresAt,
-              u.email, u.display_name AS displayName, u.status AS userStatus
+      `SELECT s.id AS sessionId, s.user_id AS userId, s.audience
          FROM desktop_human_sessions s JOIN users u ON u.id = s.user_id
-        WHERE s.token_hash = ?1 AND s.revoked_at IS NULL
-          AND s.expires_at > ?2 AND u.status = 'active'`,
+        WHERE s.token_hash = ?1 AND s.revoked_at IS NULL AND s.expires_at > ?2 AND u.status = 'active'`,
     )
-      .bind(tokenHash, now)
-      .first<{
-        sessionId: string;
-        userId: string;
-        audience: string;
-        createdAt: string;
-        expiresAt: string;
-        email: string;
-        displayName: string;
-        userStatus: string;
-      }>();
-    if (!session) {
-      throw new HttpError(
-        401,
-        "Desktop human session is invalid, expired, or revoked",
-      );
-    }
+      .bind(await hashToken(token), now)
+      .first<{ sessionId: string; userId: string; audience: string }>();
+    if (!session) throw new HttpError(401, "Desktop human session is invalid, expired, or revoked");
     if (
       session.audience === "syntila.profile-lab.management" &&
       env.SYNTILA_PROFILE_LAB_OWNER_EMAIL !== undefined &&
       !(await isProfileLabOwner(env, session.userId))
-    ) {
-      throw new HttpError(
-        403,
-        "Profile Lab is restricted to its verified owner account",
-      );
-    }
-    await env.SYNTILA_DB.prepare(
-      "UPDATE desktop_human_sessions SET last_used_at = ?1 WHERE id = ?2",
     )
+      throw new HttpError(403, "Profile Lab is restricted to its verified owner account");
+    await env.SYNTILA_DB.prepare("UPDATE desktop_human_sessions SET last_used_at = ?1 WHERE id = ?2")
       .bind(now, session.sessionId)
       .run();
-
-    return await resolveSpaceSecurityContextFromIdentity(
-      env.SYNTILA_DB,
-      {
-        userId: session.userId,
-        email: session.email,
-        name: session.displayName,
-        sessionId: session.sessionId,
-      },
-      "desktop",
-      session.audience,
-    );
+    return userContext(env, session, "desktop", session.audience);
   }
 
   if (env.BETTER_AUTH_SECRET) {
     const identity = await identityService.resolve(request, env);
     if (!identity) throw new HttpError(401, "Authentication required");
-    try {
-      await provisionSyntilaUser(env.SYNTILA_DB, identity);
-      return await resolveSpaceSecurityContextFromIdentity(
-        env.SYNTILA_DB,
-        identity,
-      );
-    } catch (err: unknown) {
-      if (
-        err instanceof Error &&
-        "code" in err &&
-        (err as { code: string }).code === "UNAUTHORIZED"
-      ) {
-        throw new HttpError(401, err.message);
-      }
-      if (
-        err instanceof Error &&
-        "code" in err &&
-        (err as { code: string }).code === "FORBIDDEN"
-      ) {
-        throw new HttpError(403, err.message);
-      }
-      throw err;
-    }
+    await provisionSyntilaUser(env.SYNTILA_DB, identity);
+    return userContext(env, identity);
   }
-
   throw new HttpError(401, "Better Auth authentication required");
 }
-
-export async function authorizeRequest(
-  request: Request,
-  env: SecurityEnv,
-  permission: Permission,
-  spaceId?: string,
-  accessContext?: ExecutionContext,
-): Promise<SecurityContext> {
-  const context = await securityContext(request, env, accessContext);
-  if (
-    permission === "profiles:admin" ||
-    permission === "profiles:release:manage"
-  ) {
-    if (!(await hasProfileLabPermission(env, context, permission))) {
-      throw new HttpError(
-        403,
-        "Profile administrator authorization is required",
-      );
-    }
-  }
-  if (spaceId && !testAuthenticationEnabled(env)) {
-    try {
-      await authorizeSpaceMembership(
-        env.SYNTILA_DB,
-        context,
-        spaceId,
-        permission,
-      );
-    } catch (error) {
-      if (!(error instanceof AuthorizationError)) throw error;
-      throw new HttpError(404, "Resource not found");
-    }
-  }
-  try {
-    if (
-      !testAuthenticationEnabled(env) &&
-      (spaceId ||
-        permission === "spaces:read" ||
-        permission === "spaces:manage")
-    ) {
-      authorize(context, permission, spaceId);
-    }
-  } catch (error) {
-    await recordAuthAuditEvent(env.SYNTILA_DB, {
-      action: "auth.authorization.denied",
-      outcome: "denied",
-      userId: context.userId,
-      sessionId: context.sessionId,
-      workspaceId: null,
-      reason: "not_authorized",
-      operation: permission,
-    });
-    throw new HttpError(
-      403,
-      error instanceof Error ? error.message : "Forbidden",
-    );
-  }
-  return context;
-}
-
-export async function requireWorkspaceContext(
-  context: SecurityContext,
-  env: SecurityEnv,
-  workspaceId: string,
-): Promise<void> {
-  try {
-    await authorizeWorkspaceOwner(env.SYNTILA_DB, context, workspaceId);
-  } catch {
-    if (!testAuthenticationEnabled(env))
-      throw new HttpError(404, "Resource not found");
-  }
-}
-
-export async function requireRecentStepUp(
-  env: SecurityEnv,
-  context: SecurityContext,
-  operation: SensitiveOperation,
-): Promise<void> {
-  const satisfied = await hasRecentStepUp(
-    env.SYNTILA_DB,
-    context.userId,
-    context.sessionId,
-    operation,
-  );
-  if (!satisfied) {
-    throw new HttpError(428, "Fresh strong authentication required");
-  }
-}
-
-export const MAX_ARTIFACT_UPLOAD_BYTES = 64 * 1024 * 1024;
-
-export function artifactName(value: string | null): string {
-  const normalized = (value ?? "artifact").replace(/[^a-zA-Z0-9._-]/g, "_");
-  return normalized.slice(0, 160) || "artifact";
-}
-
-export function artifactMetadata(
-  row: Record<string, unknown>,
-): Record<string, unknown> {
-  const provenance = parseJson<Record<string, unknown>>(
-    row.provenance_json,
-    {},
-  );
-  return {
-    id: String(row.id),
-    workspaceId: String(row.workspace_id),
-    spaceId: String(row.space_id),
-    runId: String(row.run_id),
-    ...(row.task_id ? { taskId: String(row.task_id) } : {}),
-    ...(row.attempt_id ? { attemptId: String(row.attempt_id) } : {}),
-    mediaType: String(row.media_type),
-    contentDigest: String(row.content_digest),
-    sizeBytes: Number(row.size_bytes),
-    name: artifactName(
-      typeof provenance.name === "string" ? provenance.name : null,
-    ),
-    storage: "artifact-service",
-    downloadUrl: `/api/artifacts/${encodeURIComponent(String(row.id))}?workspaceId=${encodeURIComponent(String(row.workspace_id))}`,
-    createdAt: String(row.created_at),
-  };
-}
-
-export async function workspaceOwnerContext(
-  request: Request,
-  env: SecurityEnv,
-  workspaceId: string,
-  permission: Permission,
-  accessContext?: ExecutionContext,
-): Promise<SecurityContext> {
-  const context = await securityContext(request, env, accessContext);
-  try {
-    await authorizeWorkspaceOwner(
-      env.SYNTILA_DB,
-      context,
-      workspaceId,
-      permission,
-    );
-  } catch {
-    if (testAuthenticationEnabled(env)) return context;
-    throw new HttpError(404, "Workspace not found");
-  }
-  return context;
-}
-
-export function securityEnv(env: Env): SecurityEnv {
-  return env as SecurityEnv;
-}
-
-export async function authorizeSpaceOwnerOrThrow(
-  request: Request,
-  env: SecurityEnv,
-  spaceId: string,
-  accessContext?: ExecutionContext,
-): Promise<SecurityContext> {
-  const context = await authorizeRequest(
-    request,
-    env,
-    "spaces:read",
-    spaceId,
-    accessContext,
-  );
-  try {
-    await authorizeSpaceOwner(env.SYNTILA_DB, context, spaceId);
-  } catch {
-    throw new HttpError(403, "Only the Space owner can manage collaboration");
-  }
-  return context;
-}
-
-// =========================================================================
-// Thread Discuss / Work API
-// =========================================================================

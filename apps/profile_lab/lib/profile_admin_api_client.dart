@@ -24,11 +24,58 @@ class ProfileAdminApiClient {
   final ProfileLabSession? session;
   final HttpClient _http;
 
+  /// The admin API runs on the backend; `baseUrl` is the auth Worker origin
+  /// (sign-in). Unknown origins are treated as a single-origin deployment.
+  static const _backendOrigins = {
+    'https://syntila.app': 'https://api.syntila.app',
+    'http://localhost:8787': 'http://localhost:3000',
+    'http://127.0.0.1:8787': 'http://127.0.0.1:3000',
+  };
+  static const _backendOverride = String.fromEnvironment('SYNTILA_BACKEND_URL');
+
+  String get backendUrl {
+    final origin = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    if (_backendOverride.isNotEmpty) return _backendOverride.replaceFirst(RegExp(r'/$'), '');
+    return _backendOrigins[origin] ?? origin;
+  }
+
+  String? _backendToken;
+  DateTime _backendTokenExpiresAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Exchanges the Profile Lab desktop session for a short-lived backend token.
+  Future<String?> _bearer() async {
+    final current = session;
+    if (current == null || current.isExpired) return null;
+    final origin = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    if (backendUrl == origin) return current.credential; // single-origin deployment
+    if (_backendToken != null &&
+        DateTime.now().isBefore(_backendTokenExpiresAt.subtract(const Duration(seconds: 60)))) {
+      return _backendToken;
+    }
+    final request = await _http
+        .postUrl(Uri.parse('$origin/api/backend-token'))
+        .timeout(const Duration(seconds: 15));
+    request.headers
+      ..set(HttpHeaders.authorizationHeader, 'Bearer ${current.credential}')
+      ..contentType = ContentType.json;
+    request.write('{}');
+    final response = await request.close().timeout(const Duration(seconds: 15));
+    final text = await utf8.decoder.bind(response).join().timeout(const Duration(seconds: 15));
+    if (response.statusCode == HttpStatus.unauthorized || response.statusCode == HttpStatus.forbidden) {
+      throw ProfileAdminUnauthorizedException('Sign in to Profile Lab again');
+    }
+    final decoded = response.statusCode == HttpStatus.ok ? jsonDecode(text) : null;
+    if (decoded is! Map || decoded['token'] is! String) {
+      throw StateError('Backend token request failed (${response.statusCode})');
+    }
+    _backendToken = decoded['token'] as String;
+    _backendTokenExpiresAt = DateTime.tryParse('${decoded['expiresAt']}') ??
+        DateTime.now().add(const Duration(minutes: 5));
+    return _backendToken;
+  }
+
   Uri _api(String path, [Map<String, String>? queryParams]) {
-    final cleanedBase = baseUrl.endsWith('/')
-        ? baseUrl.substring(0, baseUrl.length - 1)
-        : baseUrl;
-    final uri = Uri.parse('$cleanedBase$path');
+    final uri = Uri.parse('$backendUrl$path');
     if (queryParams != null && queryParams.isNotEmpty) {
       return uri.replace(queryParameters: queryParams);
     }
@@ -41,13 +88,11 @@ class ProfileAdminApiClient {
     Object? body,
     Map<String, String>? headers,
   }) async {
+    final bearer = await _bearer();
     final request =
         await _http.openUrl(method, uri).timeout(const Duration(seconds: 15));
-    if (session != null && !session!.isExpired) {
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${session!.credential}',
-      );
+    if (bearer != null) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
     }
     headers?.forEach(request.headers.set);
     if (body != null) {
