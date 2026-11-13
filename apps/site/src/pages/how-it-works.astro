@@ -5,7 +5,6 @@ import Section from "../components/Section.astro";
 import SectionHeader from "../components/SectionHeader.astro";
 import SiteLayout from "../layouts/SiteLayout.astro";
 import WorkflowStep from "../components/WorkflowStep.astro";
-import SpaceThreadShowcase from "../components/SpaceThreadShowcase.astro";
 import InteractiveWorkflow from "../components/InteractiveWorkflow.astro";
 ---
 
@@ -49,7 +48,7 @@ import InteractiveWorkflow from "../components/InteractiveWorkflow.astro";
           </WorkflowStep>
 
           <WorkflowStep number="06" title="Run Workflows when needed">
-            <p>When a single prompt isn't enough, choose a structured <strong>Work</strong> preset—such as Research, Plan &amp; Implement, or Full Cycle—to coordinate multiple steps and Workers in one run.</p>
+            <p>Choose from four built-in workflows—<strong>Chat</strong>, <strong>Work</strong>, <strong>Research</strong>, or <strong>Implement</strong>—to coordinate single turns or multi-step runs in one Thread.</p>
           </WorkflowStep>
         </ol>
       </div>
@@ -90,15 +89,6 @@ import InteractiveWorkflow from "../components/InteractiveWorkflow.astro";
           description="Explore how a team moves from human discussion to an explicit multi-step workflow run."
         />
         <InteractiveWorkflow />
-      </div>
-
-      <div class="section-block-gap-lg">
-        <SectionHeader
-          eyebrow="Practical examples"
-          title="See how spaces and threads stay organized"
-          description="Keep your conversations structured whether you are planning with family or shipping software."
-        />
-        <SpaceThreadShowcase />
       </div>
 
       <div class="actions actions--center section-block-gap-lg">
