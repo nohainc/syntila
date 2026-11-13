@@ -36,8 +36,12 @@ async function verify(secret: string, timestamp: string, body: string, signature
   return constantTimeEqual(expected, fromBase64Url(signature));
 }
 
-export async function handleEmailRelay(request: Request, env: RelayEnv, now = Date.now()): Promise<Response> {
-  if (!env.EMAIL_RELAY_SECRET) return json({ error: "Email relay is not configured", code: "configuration_error" }, 503);
+/**
+ * Verifies a backend → Worker call (HMAC over `${timestamp}.${body}` with
+ * EMAIL_RELAY_SECRET, five-minute window). Returns the body or an error response.
+ */
+export async function verifyBackendRequest(request: Request, env: RelayEnv, now = Date.now()): Promise<string | Response> {
+  if (!env.EMAIL_RELAY_SECRET) return json({ error: "Internal endpoint is not configured", code: "configuration_error" }, 503);
   const timestamp = request.headers.get("x-syntila-timestamp") ?? "";
   const signature = request.headers.get("x-syntila-signature") ?? "";
   if (!/^\d{1,12}$/.test(timestamp) || Math.abs(now / 1000 - Number(timestamp)) > WINDOW_SECONDS)
@@ -46,6 +50,30 @@ export async function handleEmailRelay(request: Request, env: RelayEnv, now = Da
   if (body.length > MAX_BODY_BYTES) return json({ error: "Message too large" }, 413);
   if (!signature || !(await verify(env.EMAIL_RELAY_SECRET, timestamp, body, signature)))
     return json({ error: "Invalid signature" }, 401);
+  return body;
+}
+
+/** POST /api/internal/profile-avatar — the backend stored (or cleared) a user's avatar. */
+export async function handleProfileAvatarSync(request: Request, env: RelayEnv & { SYNTILA_DB: D1Database }, now = Date.now()): Promise<Response> {
+  const verified = await verifyBackendRequest(request, env, now);
+  if (verified instanceof Response) return verified;
+  let input: { userId?: unknown; avatarUrl?: unknown };
+  try { input = JSON.parse(verified); } catch { return json({ error: "Invalid JSON" }, 400); }
+  const userId = typeof input.userId === "string" ? input.userId : "";
+  const avatarUrl = input.avatarUrl === null ? null : typeof input.avatarUrl === "string" ? input.avatarUrl : undefined;
+  // Only references into this user's own avatar folder are accepted.
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(userId) || avatarUrl === undefined ||
+      (avatarUrl !== null && !avatarUrl.startsWith(`r2://user-avatars/${userId}/`)))
+    return json({ error: "userId and avatarUrl are required" }, 400);
+  const result = await env.SYNTILA_DB.prepare("UPDATE users SET avatar_url = ?1, updated_at = ?2 WHERE id = ?3")
+    .bind(avatarUrl, new Date(now).toISOString(), userId).run();
+  return json({ ok: true, updated: Number(result.meta?.changes ?? 0) > 0 });
+}
+
+export async function handleEmailRelay(request: Request, env: RelayEnv, now = Date.now()): Promise<Response> {
+  const verified = await verifyBackendRequest(request, env, now);
+  if (verified instanceof Response) return verified;
+  const body = verified;
 
   let message: { to?: unknown; subject?: unknown; text?: unknown; html?: unknown; templateId?: unknown };
   try { message = JSON.parse(body); } catch { return json({ error: "Invalid JSON", code: "invalid_request" }, 400); }

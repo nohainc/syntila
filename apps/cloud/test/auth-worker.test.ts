@@ -108,3 +108,40 @@ describe("auth Worker routing", () => {
     expect(await page.text()).toBe("<html>app</html>");
   });
 });
+
+describe("profile avatar sync from the backend", () => {
+  function db() {
+    const updates: unknown[][] = [];
+    return {
+      updates,
+      prepare: () => ({ bind: (...args: unknown[]) => ({ run: async () => { updates.push(args); return { meta: { changes: 1 } }; } }) }),
+    };
+  }
+  it("accepts a signed update for the user's own avatar and rejects others", async () => {
+    const { handleProfileAvatarSync } = await import("../src/email-relay.js");
+    const sign = async (payload: unknown, secret = SECRET) => {
+      const body = JSON.stringify(payload);
+      const ts = Math.floor(Date.now() / 1000);
+      return new Request("https://syntila.app/api/internal/profile-avatar", {
+        method: "POST",
+        headers: { "x-syntila-timestamp": String(ts), "x-syntila-signature": await sign_(body, ts, secret) },
+        body,
+      });
+    };
+    const sign_ = (body: string, ts: number, secret: string) => sign2(body, ts, secret);
+    const d = db();
+    const env = { EMAIL_RELAY_SECRET: SECRET, SYNTILA_DB: d } as never;
+    const ok = await handleProfileAvatarSync(await sign({ userId: "u1", avatarUrl: "r2://user-avatars/u1/v1-thumbnail" }), env);
+    expect(ok.status).toBe(200);
+    expect(d.updates[0]?.[0]).toBe("r2://user-avatars/u1/v1-thumbnail");
+    expect((await handleProfileAvatarSync(await sign({ userId: "u1", avatarUrl: null }), env)).status).toBe(200);
+    expect((await handleProfileAvatarSync(await sign({ userId: "u1", avatarUrl: "r2://user-avatars/u2/x" }), env)).status).toBe(400);
+    expect((await handleProfileAvatarSync(await sign({ userId: "u1", avatarUrl: "https://evil.test/a.png" }), env)).status).toBe(400);
+    expect((await handleProfileAvatarSync(await sign({ userId: "u1", avatarUrl: null }, "wrong"), env)).status).toBe(401);
+  });
+});
+async function sign2(body: string, ts: number, secret: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${ts}.${body}`)));
+  return btoa(String.fromCharCode(...sig)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}

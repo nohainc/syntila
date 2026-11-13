@@ -8,7 +8,7 @@ import { loadConfig } from "./config";
 import { health } from "./health";
 import { pendingMigrations } from "./migrate";
 import { backgroundTaskCount, drainBackgroundTasks, executionContext } from "./platform/background";
-import { EmailOutbox, EmailRelay } from "./platform/email";
+import { AuthWorkerSync, EmailOutbox, EmailRelay } from "./platform/email";
 import { PgD1Database } from "./platform/pg-d1";
 import { S3R2Bucket, unconfiguredBucket } from "./platform/r2";
 import { configureIdentityVerifier } from "./domain/auth/identity-service";
@@ -55,6 +55,9 @@ const runtime = createRuntime(sql, db, {
   SYNTILA_EMAIL_FALLBACK_FROM: process.env.SYNTILA_EMAIL_FALLBACK_FROM,
   SYNTILA_EMAIL_FROM_NAME: process.env.SYNTILA_EMAIL_FROM_NAME ?? "Syntila",
   SYNTILA_EMAIL: emailOutbox ?? undefined,
+  // The relay URL's origin is the auth Worker; it also takes avatar updates.
+  SYNTILA_AUTH_SYNC: process.env.EMAIL_RELAY_URL && process.env.EMAIL_RELAY_SECRET
+    ? new AuthWorkerSync(new URL(process.env.EMAIL_RELAY_URL).origin, process.env.EMAIL_RELAY_SECRET) : undefined,
   SYNTILA_ARTIFACTS: process.env.R2_ACCOUNT_ID
     ? new S3R2Bucket({ accountId: process.env.R2_ACCOUNT_ID, bucket: process.env.R2_BUCKET ?? "syntila-artifacts",
         accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "", secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "" })

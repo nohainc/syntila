@@ -126,6 +126,9 @@ export async function handleUploadAvatar(
     if (updated.meta.changes !== 1)
       throw new HttpError(409, "Profile changed; retry the upload");
     await publishPeopleProfileChanged(env, context.userId);
+    // The signed-in session (served by the auth Worker) shows the avatar.
+    await (env as { SYNTILA_AUTH_SYNC?: { avatarChanged(userId: string, avatarUrl: string | null): Promise<void> } })
+      .SYNTILA_AUTH_SYNC?.avatarChanged(context.userId, storedValue);
   } catch (error) {
     await bucket.delete([key, originalKey]).catch(() => undefined);
     throw error;

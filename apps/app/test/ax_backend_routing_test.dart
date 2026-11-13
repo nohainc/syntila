@@ -89,6 +89,25 @@ void main() {
     expect(seen.last.toString(), 'https://api.syntila.app/api/spaces');
   });
 
+  test('multipart uploads keep their content-type boundary and body', () async {
+    http.Request? seen;
+    final inner = MockClient((request) async {
+      if (request.url.path.endsWith('/backend-token')) {
+        return http.Response(jsonEncode({'token': 't', 'expiresAt': DateTime.now().add(const Duration(minutes: 15)).toIso8601String()}), 200);
+      }
+      seen = request;
+      return http.Response('{}', 200);
+    });
+    final tokens = AxBackendTokenSource(() async => AxBackendTokenSource.parse((await inner.post(Uri.parse('https://syntila.app/api/backend-token'))).body));
+    final client = AxBackendRoutingClient(inner: inner, authBaseUrl: 'https://syntila.app/api', backendBaseUrl: 'https://api.syntila.app/api', tokens: tokens);
+    final upload = http.MultipartRequest('PUT', Uri.parse('https://syntila.app/api/profile/avatar'))
+      ..files.add(http.MultipartFile.fromBytes('original', [1, 2, 3], filename: 'a.png'));
+    await client.send(upload);
+    expect(seen!.url.toString(), 'https://api.syntila.app/api/profile/avatar');
+    expect(seen!.headers['content-type'], startsWith('multipart/form-data; boundary='));
+    expect(utf8.decode(seen!.bodyBytes, allowMalformed: true), contains('name="original"'));
+  });
+
   test('a 401 from the backend drops the cached token', () async {
     var issued = 0;
     var calls = 0;

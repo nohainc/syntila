@@ -107,11 +107,15 @@ class AxBackendRoutingClient extends http.BaseClient {
     final target = backendUrlFor(request.url);
     if (target == null) return inner.send(request);
     final token = await tokens.token();
+    // Finalize first: a MultipartRequest sets its content-type (with the
+    // boundary) and length only when its body is finalized.
+    final body = request.finalize();
     final routed = http.StreamedRequest(request.method, target)
       ..followRedirects = request.followRedirects
       ..maxRedirects = request.maxRedirects
       ..persistentConnection = request.persistentConnection
       ..contentLength = request.contentLength;
+    // (contentLength above is read after finalize, so multipart sizes are known.)
     request.headers.forEach((name, value) {
       final lower = name.toLowerCase();
       // Auth-Worker credentials never travel to the backend.
@@ -120,7 +124,7 @@ class AxBackendRoutingClient extends http.BaseClient {
     });
     if (token != null) routed.headers['authorization'] = 'Bearer $token';
     // Forward the body as it streams; pipe closes the routed sink when done.
-    unawaited(request.finalize().pipe(routed.sink).catchError((Object _) {}));
+    unawaited(body.pipe(routed.sink).catchError((Object _) {}));
     final response = await inner.send(routed);
     if (response.statusCode == 401) tokens.clear();
     return response;

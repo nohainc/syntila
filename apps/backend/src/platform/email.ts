@@ -4,17 +4,47 @@
  * calls its own `send_email` binding. Authenticated with HMAC-SHA256 over the
  * body and a timestamp (5-minute window) to prevent replay.
  */
+/** HMAC headers for a call to the auth Worker's /api/internal/* endpoints. */
+export async function signedWorkerHeaders(secret: string, body: string): Promise<Record<string, string>> {
+  const ts = Math.floor(Date.now() / 1000).toString();
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = Buffer.from(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${ts}.${body}`))).toString("base64url");
+  return { "content-type": "application/json", "x-syntila-timestamp": ts, "x-syntila-signature": sig };
+}
+
+/**
+ * Keeps the auth Worker's account record in step with profile data the
+ * backend owns (the avatar): `/api/session` on the Worker shows it.
+ */
+export class AuthWorkerSync {
+  constructor(private origin: string, private secret: string) {}
+
+  async avatarChanged(userId: string, avatarUrl: string | null): Promise<void> {
+    const body = JSON.stringify({ userId, avatarUrl });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`${this.origin}/api/internal/profile-avatar`, {
+          method: "POST", headers: await signedWorkerHeaders(this.secret, body), body, signal: AbortSignal.timeout(10_000),
+        });
+        if (res.ok) return;
+        if (res.status < 500) break;
+      } catch {
+        // retried below
+      }
+      await Bun.sleep(250 * 2 ** attempt);
+    }
+    console.warn(JSON.stringify({ level: "warn", message: "auth_worker.avatar_sync_failed", userId }));
+  }
+}
+
 export class EmailRelay {
   constructor(private url: string, private secret: string) {}
 
   async send(message: unknown): Promise<{ messageId?: string }> {
     const body = JSON.stringify(message);
-    const ts = Math.floor(Date.now() / 1000).toString();
-    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(this.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const sig = Buffer.from(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${ts}.${body}`))).toString("base64url");
     const res = await fetch(this.url, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-syntila-timestamp": ts, "x-syntila-signature": sig },
+      headers: await signedWorkerHeaders(this.secret, body),
       body,
       signal: AbortSignal.timeout(15_000),
     });

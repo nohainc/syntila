@@ -12,7 +12,7 @@
 import { handleBetterAuthRequest } from "./auth/index.js";
 import { pruneEndedAuthSessions } from "./auth/session-retention.js";
 import { handleUserBackendToken } from "./backend-token.js";
-import { handleEmailRelay } from "./email-relay.js";
+import { handleEmailRelay, handleProfileAvatarSync } from "./email-relay.js";
 import { isTrustedOrigin, logStructured, requestIdFor, withRequestId } from "./observability.js";
 import {
   handleApproveDesktopAuthIntent,
@@ -61,6 +61,7 @@ async function route(request: Request, env: SecurityEnv, ctx: ExecutionContext |
 
   // Server-to-server (HMAC-authenticated); no cookies involved.
   if (method === "POST" && pathname === "/api/internal/email") return handleEmailRelay(request, env);
+  if (method === "POST" && pathname === "/api/internal/profile-avatar") return handleProfileAvatarSync(request, env);
 
   if (method === "POST" && pathname === "/api/auth/step-up/passkey/complete") {
     requireSameOriginForCookieMutation(request);
