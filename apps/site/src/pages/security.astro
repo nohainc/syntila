@@ -42,7 +42,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           </FeatureCard>
 
           <FeatureCard title="Workspace Isolation" headingLevel={2}>
-            <p>Each Space runs inside its own Space Work Directory under the Workspace's configured Work Root, with optional Allowed Folders per Space and exclusive Thread mutation leases to serialize file-modifying steps.</p>
+            <p>Each Space runs inside its own Space Work Directory under your Workspace's Work Root, with optional Allowed Folders and exclusive Thread mutation leases. Source files and local repositories stay on your host; Cloud only coordinates Thread messages, assignments, and metadata.</p>
           </FeatureCard>
 
           <FeatureCard title="Audit & Attribution" headingLevel={2}>
@@ -52,19 +52,44 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           <FeatureCard title="MCP Tool Pinning &amp; Consent" headingLevel={2}>
             <p>Every local or remote MCP server requires explicit owner consent before use. Syntila pins SHA-256 hashes of tool definitions, blocks execution on definition drift, and keeps server tokens and environment variables local to the Workspace.</p>
           </FeatureCard>
+
+          <FeatureCard title="Transport &amp; Secret Storage" headingLevel={2}>
+            <p>Cloud-to-Workspace communication uses encrypted, authenticated transport with per-runtime credentials. Local <code>syntila</code> CLI commands talk to the Workspace Service over authenticated local IPC, with runtime secrets stored in OS-native secret storage.</p>
+          </FeatureCard>
         </div>
       </div>
 
-      <div class="security-callout">
+      <div class="section-block-gap-lg">
+        <SectionHeader
+          eyebrow="Common Questions"
+          title="Practical answers on data and access."
+        />
+
+        <div class="security-boundaries">
+          <FeatureCard title="Can collaborators read my .env or SSH keys?" headingLevel={3}>
+            <p>No. Workers execute inside Space Work Directories and owner-configured Allowed Folders. Collaborators can submit tasks to authorized Workers, but they cannot browse your host filesystem or read your personal credentials.</p>
+          </FeatureCard>
+
+          <FeatureCard title="What if an MCP server changes its tools?" headingLevel={3}>
+            <p>Syntila computes a SHA-256 hash of every approved tool definition. If a local or remote MCP server alters a tool's schema or description, execution is blocked until you review and re-consent.</p>
+          </FeatureCard>
+        </div>
+      </div>
+
+      <div class="security-callout section-block-gap-lg">
         <strong>Revocable Space grants without credential rotation.</strong>
         <span>Revoking a Workspace or Worker grant—or removing a member from a Space—stops Syntila Cloud from admitting new assignments for that Space or member without requiring you to rotate local provider API keys or logins.</span>
       </div>
 
       <div class="actions actions--center section-block-gap-lg">
         <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
-        <Button href="/privacy/" label="Read privacy policy" variant="secondary" />
-        <Button href="/terms/" label="Read terms of service" variant="secondary" />
+        <Button href="/privacy/" label="Privacy policy" variant="secondary" />
+        <Button href="/terms/" label="Terms of service" variant="secondary" />
       </div>
+
+      <p class="section-block-gap" style="text-align: center; font-size: 0.9rem; opacity: 0.8;">
+        Security questions or vulnerability reports? Contact <a href="mailto:security@syntila.app">security@syntila.app</a>.
+      </p>
     </Container>
   </Section>
 </SiteLayout>
