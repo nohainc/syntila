@@ -19,6 +19,12 @@ import SiteLayout from "../layouts/SiteLayout.astro";
         headingLevel={1}
       />
 
+      <nav class="usecase-jump-links" aria-label="Jump to use case">
+        <a href="#family">Friends &amp; Family</a>
+        <a href="#teams">Teams &amp; Companies</a>
+        <a href="#engineering">Software &amp; Engineering</a>
+      </nav>
+
       <!-- Section 1: Friends & Family -->
       <div id="family" class="usecase-detail-section">
         <div class="usecase-detail-header">
@@ -58,8 +64,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
             <span class="usecase-card-icon" aria-hidden="true">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>
             </span>
-            <h3>Share Authorized AI Capability Safely</h3>
-            <p>Space members can make supported AI Workers available to the group through their connected Workspace without sharing login passwords or API keys.</p>
+            <h3>Share AI access without sharing passwords</h3>
+            <p>One member connects their AI subscription through Syntila Workspace so the whole group can use it in the Space—without sharing login passwords or API keys.</p>
           </div>
         </div>
       </div>
@@ -96,7 +102,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
             </span>
             <h3>Multi-Worker Deliberation</h3>
-            <p>Select ChatGPT, Claude, or Google Gemini per request while Syntila's Context Engine preserves Thread history and decisions across turns.</p>
+            <p>Compare answers from ChatGPT, Claude, and Google Gemini in the same Thread without losing context or repeating your prompt.</p>
           </div>
 
           <div class="usecase-card">
@@ -125,7 +131,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
             </span>
             <h3>Coding Agent Orchestration</h3>
-            <p>Dispatch programming tasks to Codex CLI, Claude Code, or Antigravity CLI running on an authorized Workspace with explicit Allowed Folders.</p>
+            <p>Dispatch programming tasks to Codex CLI, Claude Code, Antigravity CLI, or custom MCP Workers running on an authorized Workspace with explicit Allowed Folders and pinned MCP tool servers.</p>
           </div>
 
           <div class="usecase-card">
@@ -157,8 +163,35 @@ import SiteLayout from "../layouts/SiteLayout.astro";
       <!-- Bottom Action -->
       <div class="actions actions--center section-block-gap-lg">
         <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
+        <Button href="/workers/" label="Explore AI &amp; Workers" variant="secondary" />
         <Button href="/how-it-works/" label="See how it works" variant="secondary" event="navigation.how_it_works" />
       </div>
     </Container>
   </Section>
 </SiteLayout>
+
+<style>
+  .usecase-jump-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+
+  .usecase-jump-links a {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .usecase-jump-links a:hover {
+    border-color: currentColor;
+  }
+</style>
