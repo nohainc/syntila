@@ -85,3 +85,25 @@ describe("email outbox", () => {
     expect(row.status).toBe("failed");
   });
 });
+
+describe("account admin endpoints", () => {
+  test("stats, plan grant/revoke and status mirror", async () => {
+    const user = await sign({ sub: "ops-user", typ: "user", email: "ops@test", name: "Ops" });
+    await fetch(`${base}/api/spaces`, { method: "POST", headers: { authorization: `Bearer ${user}`, "content-type": "application/json", origin: "https://syntila.app" }, body: JSON.stringify({ name: "Ops" }) });
+    const stats = await call(await internalToken(), "/internal/admin/accounts/stats", { ids: ["ops-user", "missing"] });
+    expect(stats.status).toBe(200);
+    expect(stats.body.stats["ops-user"]).toMatchObject({ spaces: 1, plan: "free" });
+    expect(stats.body.stats.missing).toBeUndefined();
+
+    expect((await call(await internalToken(), "/internal/admin/accounts/ops-user/plan", { action: "grant_paid", email: "nobody@test" })).status).toBe(409);
+    expect((await call(await internalToken(), "/internal/admin/accounts/ops-user/plan", { action: "grant_paid", email: "ops@test" })).body).toEqual({ ok: true, plan: "paid" });
+    expect((await call(await internalToken(), "/internal/admin/accounts/new-user/plan", { action: "grant_paid", email: "new@test" })).body.plan).toBe("paid");
+    expect((await call(await internalToken(), "/internal/admin/accounts/ops-user/plan", { action: "revoke_paid", email: "ops@test" })).body.plan).toBe("free");
+
+    expect((await call(await internalToken(), "/internal/admin/accounts/ops-user/status", { status: "suspended" })).body).toEqual({ ok: true, updated: true });
+    const blocked = await fetch(`${base}/api/spaces`, { headers: { authorization: `Bearer ${user}` } });
+    expect(blocked.status).toBeGreaterThanOrEqual(401);
+    expect((await call(await internalToken(), "/internal/admin/accounts/ops-user/status", { status: "active" })).body.updated).toBe(true);
+    expect((await fetch(`${base}/api/spaces`, { headers: { authorization: `Bearer ${user}` } })).status).toBe(200);
+  });
+});

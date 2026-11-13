@@ -2,9 +2,11 @@
 # ==============================================================================
 # Syntila - Local Stack Launcher
 # ==============================================================================
-# Launches 2 dedicated terminal windows in parallel:
-#   1. Backend API: Cloudflare Wrangler with the local v8 D1 database
-#   2. AX web app: Flutter run with Hot Reload ('r'/'R') + Google Chrome
+# Launches dedicated terminal windows in parallel:
+#   1. Backend: Bun + local PostgreSQL on :8788 (product API, realtime, Workspaces)
+#   2. Auth: Cloudflare Wrangler (Better Auth, desktop sign-in, backend tokens,
+#      email relay) with the local auth-only D1 database on :8787
+#   3. AX web app: Flutter run with Hot Reload ('r'/'R') + Google Chrome
 #
 # Prints 2 concise status lines on the main terminal and exits immediately.
 #
@@ -32,6 +34,7 @@ IP="${IP:-127.0.0.1}"
 API_HOST="${API_HOST:-localhost}"
 DEVICE="${DEVICE:-chrome}"
 WEB_PORT="${WEB_PORT:-3000}"
+BACKEND_PORT="${BACKEND_PORT:-8788}"
 ISOLATED=true
 WEB_BUILD_MODE=debug
 
@@ -104,6 +107,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 API_URL="http://${API_HOST}:${PORT}"
+BACKEND_URL="http://${API_HOST}:${BACKEND_PORT}"
 EXTRA_DART_DEFINE_FLAGS=""
 for define in ${EXTRA_DART_DEFINES:-}; do
   if [[ "${define}" != *=* ]]; then
@@ -139,11 +143,15 @@ if [[ "$ISOLATED" == true ]]; then
       echo "Note: ${label} sign-in is not configured for this local backend (see docs/deployment/CLOUDFLARE.md#${label}-sign-in)."
     fi
   done
+  node "$ROOT_DIR/scripts/setup-local-backend.mjs"
+  bash "$ROOT_DIR/scripts/migrate-local-d1.sh" >/dev/null
   API_CONFIG="$ROOT_DIR/apps/cloud/wrangler.jsonc"
-  API_MODE="isolated local v8 D1"
+  API_MODE="local auth (D1) + local backend (PostgreSQL)"
 else
   API_CONFIG="$ROOT_DIR/scripts/local-cloud-proxy.wrangler.jsonc"
   API_MODE="production Cloud gateway — live accounts and data"
+  # Production backend; it must list http://localhost:${WEB_PORT} in ALLOWED_ORIGINS.
+  BACKEND_URL="https://api.syntila.app"
 fi
 
 # 1. Runner Script for Backend API
@@ -159,6 +167,7 @@ pnpm exec wrangler dev \\
   --ip "${IP}" \\
   --var "BETTER_AUTH_URL:${API_URL}" \\
   --var "SYNTILA_APP_URL:${WEB_URL}" \\
+  --var "SYNTILA_BACKEND_URL:${BACKEND_URL}" \\
   --var "BETTER_AUTH_TRUSTED_ORIGINS:${API_URL},${WEB_URL},http://localhost:${PORT},http://127.0.0.1:${PORT},https://syntila.app"${API_LOG_PIPE}
 EOF
 chmod +x "${RUNNER_API}"
@@ -186,7 +195,7 @@ set -euo pipefail
 cd "${ROOT_DIR}/apps/app"
 echo -e "\033[1m\033[0;32m[Syntila Flutter Web]\033[0m ${WEB_CONTROLS}\n"
 export FLUTTER_PREBUILT_ENGINE_VERSION="${FLUTTER_ENGINE_VERSION}"
-"${FLUTTER_BIN}" run --${WEB_BUILD_MODE} -d "${DEVICE}" --web-port="${WEB_PORT}" ${WEB_BROWSER_FLAGS} --dart-define="SYNTILA_API_URL=${API_URL}/api"${EXTRA_DART_DEFINE_FLAGS}${WEB_LOG_PIPE}
+"${FLUTTER_BIN}" run --${WEB_BUILD_MODE} -d "${DEVICE}" --web-port="${WEB_PORT}" ${WEB_BROWSER_FLAGS} --dart-define="SYNTILA_API_URL=${API_URL}/api" --dart-define="SYNTILA_BACKEND_API_URL=${BACKEND_URL}/api"${EXTRA_DART_DEFINE_FLAGS}${WEB_LOG_PIPE}
 EOF
 chmod +x "${RUNNER_FLUTTER}"
 
@@ -212,10 +221,16 @@ spawn_terminal() {
   fi
 }
 
-# Launch both terminals in parallel
-spawn_terminal "${RUNNER_API}" "Syntila - API Backend"
+# Launch the terminals in parallel
+if [[ "$ISOLATED" == true ]]; then
+  RUNNER_BACKEND="/tmp/syntila-backend-dev-${BACKEND_PORT}.sh"
+  printf '#!/usr/bin/env bash\nBACKEND_PORT=%q AUTH_PORT=%q WEB_PORT=%q exec bash %q\n' \
+    "${BACKEND_PORT}" "${PORT}" "${WEB_PORT}" "${ROOT_DIR}/scripts/start-local-backend.sh" > "${RUNNER_BACKEND}"
+  chmod +x "${RUNNER_BACKEND}"
+  spawn_terminal "${RUNNER_BACKEND}" "Syntila - Backend"
+fi
+spawn_terminal "${RUNNER_API}" "Syntila - Auth"
 spawn_terminal "${RUNNER_FLUTTER}" "Syntila - Web App"
 
-# Print exactly 2 concise lines and exit immediately
-echo -e "${GREEN}✓ Syntila started in 2 new terminals (Backend & Frontend in parallel).${RESET}"
-echo -e "${CYAN}• Web App:${RESET} ${BOLD}${WEB_URL}${RESET} | ${CYAN}API:${RESET} ${BOLD}${API_URL}${RESET} (${API_MODE})"
+echo -e "${GREEN}✓ Syntila started in new terminals (Backend, Auth & Web App in parallel).${RESET}"
+echo -e "${CYAN}• Web App:${RESET} ${BOLD}${WEB_URL}${RESET} | ${CYAN}Auth:${RESET} ${BOLD}${API_URL}${RESET} | ${CYAN}Backend:${RESET} ${BOLD}${BACKEND_URL}${RESET} (${API_MODE})"

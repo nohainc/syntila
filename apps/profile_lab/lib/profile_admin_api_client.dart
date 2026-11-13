@@ -28,8 +28,8 @@ class ProfileAdminApiClient {
   /// (sign-in). Unknown origins are treated as a single-origin deployment.
   static const _backendOrigins = {
     'https://syntila.app': 'https://api.syntila.app',
-    'http://localhost:8787': 'http://localhost:3000',
-    'http://127.0.0.1:8787': 'http://127.0.0.1:3000',
+    'http://localhost:8787': 'http://localhost:8788',
+    'http://127.0.0.1:8787': 'http://127.0.0.1:8788',
   };
   static const _backendOverride = String.fromEnvironment('SYNTILA_BACKEND_URL');
 

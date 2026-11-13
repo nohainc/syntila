@@ -25,7 +25,7 @@ String defaultBackendApiUrl(String authBaseUrl) {
   if (auth.host == 'syntila.app' || auth.host.endsWith('.syntila.app')) {
     return 'https://api.syntila.app/api';
   }
-  return 'http://localhost:3000/api';
+  return 'http://localhost:8788/api';
 }
 
 class AxBackendToken {

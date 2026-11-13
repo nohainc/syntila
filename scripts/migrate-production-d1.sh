@@ -1,71 +1,21 @@
 #!/usr/bin/env bash
+# Applies the auth Worker's D1 migrations to the production auth database
+# (syntila-auth). Product data migrations run on the VPS backend at deploy.
 set -euo pipefail
-
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-database_name="${SYNTILA_PRODUCTION_D1_NAME:-syntila}"
+database_name="${SYNTILA_PRODUCTION_D1_NAME:-syntila-auth}"
 wrangler_config="${SYNTILA_WRANGLER_CONFIG:-${repo_root}/infra/cloudflare/app.wrangler.jsonc}"
 
 if [[ "${CONFIRM_PRODUCTION_MIGRATION:-}" != "YES" ]]; then
-  cat >&2 <<'EOF'
+  cat >&2 <<'MSG'
 Refusing to migrate production without explicit confirmation.
-
 Review the pending migrations, then rerun with:
   CONFIRM_PRODUCTION_MIGRATION=YES ./scripts/migrate-production-d1.sh
-EOF
+MSG
+  pnpm exec wrangler d1 migrations list "$database_name" --remote --config "$wrangler_config" || true
   exit 2
 fi
-
-if [[ ! -f "$wrangler_config" ]]; then
-  echo "Wrangler config not found: $wrangler_config" >&2
-  exit 1
-fi
-
 cd "$repo_root"
-
-echo "Checking pending migrations for remote D1 database: $database_name"
-pnpm exec wrangler d1 migrations list "$database_name" \
-  --remote \
-  --config "$wrangler_config"
-
-echo "Inspecting schema before migration: $database_name"
-prepared_dir="$(mktemp -d "${TMPDIR:-/tmp}/syntila-d1-migration.XXXXXX")"
-trap 'rm -rf "$prepared_dir"' EXIT
-pnpm exec wrangler d1 execute "$database_name" \
-  --remote --config "$wrangler_config" --json \
-  --command "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY type,name; SELECT name FROM d1_migrations WHERE name = '0006_chat_workflow_admission.sql';" \
-  > "$prepared_dir/schema.json"
-if ! node scripts/space-thread-schema-preflight.mjs "$prepared_dir/schema.json"; then
-  if [[ "${CONFIRM_SPACE_THREAD_CUTOVER:-}" != "YES" || ! -s "${SYNTILA_CUTOVER_BACKUP_FILE:-}" ]]; then
-    cat >&2 <<'EOF'
-The existing database needs a data-preserving cutover, not a reset.
-Create a private D1 backup and rehearse the cutover before proceeding.
-Then rerun with CONFIRM_PRODUCTION_MIGRATION=YES,
-CONFIRM_SPACE_THREAD_CUTOVER=YES, and SYNTILA_CUTOVER_BACKUP_FILE
-pointing to the verified, nonempty backup. No remote data has changed.
-EOF
-    exit 2
-  fi
-  node scripts/prepare-space-thread-cutover.mjs \
-    "$prepared_dir/schema.json" "$wrangler_config" "$prepared_dir/cutover"
-  echo "Applying separately confirmed Space/Thread cutover: $database_name"
-  pnpm exec wrangler d1 migrations apply "$database_name" \
-    --remote --config "$prepared_dir/cutover/wrangler.json"
-  pnpm exec wrangler d1 execute "$database_name" \
-    --remote --config "$wrangler_config" --json \
-    --command "SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY type,name; SELECT name FROM d1_migrations WHERE name = '0006_chat_workflow_admission.sql';" \
-    > "$prepared_dir/schema.json"
-  node scripts/space-thread-schema-preflight.mjs "$prepared_dir/schema.json"
-fi
-node scripts/prepare-chat-workflow-migration.mjs \
-  "$prepared_dir/schema.json" "$wrangler_config" "$prepared_dir"
-echo "Applying remaining pending migrations: $database_name"
-pnpm exec wrangler d1 migrations apply "$database_name" \
-  --remote \
-  --config "$prepared_dir/wrangler.json"
-
-echo "Verifying migration state for remote D1 database: $database_name"
-pnpm exec wrangler d1 migrations list "$database_name" \
-  --remote \
-  --config "$wrangler_config"
-
+pnpm exec wrangler d1 migrations apply "$database_name" --remote --config "$wrangler_config"
+pnpm exec wrangler d1 migrations list "$database_name" --remote --config "$wrangler_config"
 echo "Production D1 migration complete."

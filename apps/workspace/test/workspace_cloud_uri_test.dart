@@ -64,7 +64,7 @@ void main() {
 
     expect(uri.scheme, 'ws');
     expect(uri.host, '127.0.0.1');
-    expect(uri.port, 3000);
+    expect(uri.port, 8788);
     expect(uri.path, '/api/workspace-gateway/connect');
   });
 
