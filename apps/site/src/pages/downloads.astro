@@ -36,7 +36,7 @@ import { workspaceRelease } from "../data/workspace-release";
           <span class="eyebrow">Path 2 · Workspace Host</span>
           <h2>Powering AI Workers for a Space?</h2>
           <p>
-            To use your own ChatGPT, Claude, or Gemini subscriptions—or to run coding agents in local repositories—install <strong>Syntila Workspace</strong> on macOS, Windows, or Linux and grant selected Workers to your Space.
+            To use your own ChatGPT, Claude, or Gemini subscriptions—or to run coding agents, custom MCP Workers, and MCP tool servers in local repositories—install <strong>Syntila Workspace</strong> on macOS, Windows, or Linux and grant selected Workers to your Space.
           </p>
         </div>
       </div>
@@ -72,7 +72,7 @@ import { workspaceRelease } from "../data/workspace-release";
             </div>
             <p class="downloads-card__version">Apple App Store · Coming soon</p>
             <p class="downloads-card__architecture">iOS &amp; iPadOS</p>
-            <p class="downloads-card__architecture">Native iOS experience is in development. Until release on the Apple App Store, use the mobile web app at <code>syntila.app</code>.</p>
+            <p class="downloads-card__architecture">Native iOS app in development. Use the Web App at <code>syntila.app</code> today.</p>
             <a class="button button--secondary" href="https://syntila.app" data-site-event="cta.open_app">Use Web App on iOS <span aria-hidden="true">→</span></a>
           </article>
 
@@ -86,7 +86,7 @@ import { workspaceRelease } from "../data/workspace-release";
             </div>
             <p class="downloads-card__version">Google Play · Coming soon</p>
             <p class="downloads-card__architecture">Android</p>
-            <p class="downloads-card__architecture">Native Android experience is in development. Until release on Google Play, use the mobile web app at <code>syntila.app</code>.</p>
+            <p class="downloads-card__architecture">Native Android app in development. Use the Web App at <code>syntila.app</code> today.</p>
             <a class="button button--secondary" href="https://syntila.app" data-site-event="cta.open_app">Use Web App on Android <span aria-hidden="true">→</span></a>
           </article>
         </div>
@@ -96,7 +96,7 @@ import { workspaceRelease } from "../data/workspace-release";
         <SectionHeader
           eyebrow="Syntila Workspace · Desktop & Server Runtime"
           title="Connect your computer to power AI Workers."
-          description="Install Syntila Workspace on macOS, Windows, or Linux to supervise local provider CLIs (ChatGPT Codex, Claude Code, Google Gemini Antigravity) and share selected Workers with your Spaces."
+          description="Install Syntila Workspace on macOS, Windows, or Linux to supervise local provider CLIs (ChatGPT Codex, Claude Code, Google Gemini Antigravity), custom MCP Workers, and consented MCP tool servers."
         />
         <div class="downloads-grid" data-downloads-platforms>
           {workspaceRelease.targets.map((target) => (
@@ -134,7 +134,7 @@ syntila mcp list</code></pre>
           </div>
           <div class="downloads-cli-box">
             <h3>2. Package manager install options</h3>
-            <p>On macOS with Homebrew, or Debian/Ubuntu via the signed APT repository, you can install and upgrade directly from your terminal:</p>
+            <p>On macOS with Homebrew, or Debian/Ubuntu via the signed APT repository, you can install directly from your terminal (on Windows, download the release archive above and add <code>syntila.exe</code> to your PATH):</p>
             <pre><code># macOS (Homebrew cask)
 brew install --cask nohainc/tap/syntila-workspace
 
