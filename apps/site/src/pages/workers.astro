@@ -16,7 +16,7 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
       <SectionHeader
         eyebrow="AI & Workers"
         title="Connect and share your favorite AI models."
-        description="In Syntila, logical AI Workers resolve through signed Worker Profiles to official provider CLIs running under the local CLI Worker Engine on a member's connected Workspace."
+        description="Connect your existing ChatGPT, Claude, Gemini, or custom MCP Workers from your local machine and share them safely with your Spaces."
         headingLevel={1}
       />
 
@@ -54,18 +54,6 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
           <div class="worker-card__meta">
             <span>Profile: <code>gemini-antigravity</code></span>
             <span>CLI: <code>agy</code></span>
-          </div>
-        </article>
-
-        <article class="worker-card">
-          <div class="worker-card__top">
-            <h2>Coding Agents &amp; CLI Engine</h2>
-            <span class="worker-status-badge">Supported</span>
-          </div>
-          <p>Syntila's generic CLI Worker Engine supervises local CLI sessions inside the Space Work Directory, streaming structured progress and results back to the Thread.</p>
-          <div class="worker-card__meta">
-            <span>Runtime: <code>syntila</code></span>
-            <span>Signed Profiles</span>
           </div>
         </article>
 
@@ -134,6 +122,8 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
             <p>Approved MCP servers run under your Workspace owner boundary with bounded outputs, redaction, and process-tree cleanup.</p>
           </div>
         </div>
+        <pre class="section-block-gap"><code>syntila mcp add &lt;id&gt; &lt;command&gt;
+syntila mcp add-remote &lt;id&gt; &lt;https-url&gt;</code></pre>
       </div>
 
       <div class="section-block-gap-lg">

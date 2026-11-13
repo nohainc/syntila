@@ -60,7 +60,6 @@ const expected = {
       "ChatGPT",
       "Claude",
       "Google Gemini",
-      "Coding Agents",
       "Custom MCP Workers",
       "MCP Servers",
     ],
