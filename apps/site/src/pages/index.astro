@@ -8,7 +8,6 @@ import HeroSharedSpace from "../components/HeroSharedSpace.astro";
 import SpaceMembersDiagram from "../components/SpaceMembersDiagram.astro";
 import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.astro";
 import ConversationContinuity from "../components/ConversationContinuity.astro";
-import SpaceThreadShowcase from "../components/SpaceThreadShowcase.astro";
 import ComparisonTable from "../components/ComparisonTable.astro";
 import WorkflowShowcase from "../components/WorkflowShowcase.astro";
 import AudienceCards from "../components/AudienceCards.astro";
@@ -101,7 +100,7 @@ import WorkspaceQuickstart from "../components/WorkspaceQuickstart.astro";
           <ul class="feature-bullets" role="list">
             <li class="bullet-item">
               <strong>Choose the right Worker per request</strong>
-              <p>Select ChatGPT, Claude, Gemini, or a coding agent for the next turn in the same Thread. Syntila's Context Engine carries the conversation history forward automatically.</p>
+              <p>Select ChatGPT, Claude, Gemini, or a coding agent for the next turn in the same Thread. Syntila carries the conversation history forward automatically.</p>
             </li>
             <li class="bullet-item">
               <strong>Shared turn history</strong>
@@ -126,18 +125,6 @@ import WorkspaceQuickstart from "../components/WorkspaceQuickstart.astro";
     </Container>
   </Section>
 
-  <!-- Section 4: Spaces & Threads -->
-  <Section id="threads">
-    <Container>
-      <SectionHeader
-        eyebrow="ORGANIZATION"
-        title="Keep every conversation focused."
-        description="Separate major efforts into Spaces, and divide specific topics into Threads. Keep family trip planning separate from household budgets, or product discovery separate from engineering implementation."
-      />
-      <SpaceThreadShowcase />
-    </Container>
-  </Section>
-
   <!-- Section 5: Comparison - Why not normal AI chat? -->
   <Section>
     <Container>
@@ -156,7 +143,7 @@ import WorkspaceQuickstart from "../components/WorkspaceQuickstart.astro";
       <SectionHeader
         eyebrow="ADVANCED WORKFLOWS"
         title="When a chat isn't enough: Turn a question into a workflow."
-        description="When a task needs more than a single reply, switch from Chat to a structured Work preset. Coordinate multiple AI Workers to research, synthesize, plan, implement, test, and verify findings in one Thread."
+        description="When a task needs more than a single Chat reply, choose Work, Research, or Implement to coordinate multiple AI Workers, plan steps, and verify findings in one Thread."
       />
       <WorkflowShowcase />
     </Container>
@@ -181,7 +168,7 @@ import WorkspaceQuickstart from "../components/WorkspaceQuickstart.astro";
         <SectionHeader
           eyebrow="SYNTILA WORKSPACE RUNTIME"
           title="Collaborate in Syntila. Execute on connected Workspaces."
-          description="People join Spaces and Threads in the Syntila app at syntila.app across desktop and mobile web, with native iOS and Android apps in progress. To power AI Workers in a Space, at least one member connects Syntila Workspace on macOS, Windows, or Linux and grants selected Workers to that Space."
+          description="People join Spaces and Threads in the Syntila app at syntila.app across web, iOS, and Android. To power AI Workers in a Space, at least one member connects Syntila Workspace on macOS, Windows, or Linux and grants selected Workers to that Space."
         />
         <div class="section-block-gap">
           <WorkspaceQuickstart />
