@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:syntila_cli_worker_engine/src/mcp_config.dart';
@@ -79,6 +80,43 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('remote server keeps bearer token in env, not on command line', () {
+    final toml = McpInlineToml.build([
+      McpServerLaunch(
+        name: 'acme-api',
+        url: 'https://mcp.example.com/mcp',
+        headers: {'Authorization': 'Bearer super-secret'},
+      ),
+    ]);
+    expect(toml.servers, contains('url="https://mcp.example.com/mcp"'));
+    expect(
+      toml.servers,
+      contains('bearer_token_env_var="SYNTILA_MCP_TOKEN_ACME_API"'),
+    );
+    expect(toml.servers, isNot(contains('super-secret')));
+    expect(toml.environment, {'SYNTILA_MCP_TOKEN_ACME_API': 'super-secret'});
+  });
+
+  test('McpConfigFile.write emits http url and headers for remote servers',
+      () async {
+    final cfg = await McpConfigFile.write([
+      McpServerLaunch(
+        name: 'acme',
+        url: 'https://mcp.example.com/mcp',
+        headers: {'Authorization': 'Bearer tok'},
+      ),
+    ]);
+    addTearDown(cfg.delete);
+    final decoded =
+        jsonDecode(await File(cfg.path).readAsString()) as Map<String, Object?>;
+    final servers = decoded['mcpServers'] as Map<String, Object?>;
+    expect(servers['acme'], {
+      'type': 'http',
+      'url': 'https://mcp.example.com/mcp',
+      'headers': {'Authorization': 'Bearer tok'},
+    });
   });
 }
 

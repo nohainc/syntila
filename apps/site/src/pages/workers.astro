@@ -92,6 +92,48 @@ import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.ast
             <span>CLI: <code>grok</code></span>
           </div>
         </article>
+
+        <article class="worker-card">
+          <div class="worker-card__top">
+            <h2>Custom MCP Workers</h2>
+            <span class="worker-status-badge">Supported</span>
+          </div>
+          <p>Connect local models (such as Ollama) or custom domain agents as first-class Workers using the Syntila MCP Worker profile over local stdio or Streamable HTTP.</p>
+          <div class="worker-card__meta">
+            <span>Protocol: <code>MCP</code></span>
+            <span>SDK: <code>syntila_external_worker_sdk</code></span>
+          </div>
+        </article>
+      </div>
+
+      <div class="section-block-gap-lg">
+        <SectionHeader
+          eyebrow="MCP Servers &amp; Tools"
+          title="Extend Workers with local and remote MCP servers."
+          description="Connect standard Model Context Protocol (MCP) servers on your Workspace to give official Workers access to approved tools or run direct tool steps—without mutating your global CLI configuration or exposing secrets to Cloud."
+        />
+        <div class="execution-path-strip">
+          <div class="execution-path-step">
+            <span>01 · Register</span>
+            <strong>Add local or remote servers</strong>
+            <p>Register local <code>stdio</code> servers with <code>syntila mcp add</code> or remote HTTPS servers with <code>syntila mcp add-remote</code>.</p>
+          </div>
+          <div class="execution-path-step">
+            <span>02 · Pin &amp; Consent</span>
+            <strong>Hash every tool definition</strong>
+            <p>Syntila computes a SHA-256 pin for every tool definition; any unexpected drift blocks calls until you review and re-consent.</p>
+          </div>
+          <div class="execution-path-step">
+            <span>03 · Isolate</span>
+            <strong>Per-execution private config</strong>
+            <p>Each run receives an isolated, temporary MCP config on your Workspace host; credentials and environment variables never leave your machine.</p>
+          </div>
+          <div class="execution-path-step">
+            <span>04 · Execute</span>
+            <strong>Owner-scoped tool access</strong>
+            <p>Approved MCP servers run under your Workspace owner boundary with bounded outputs, redaction, and process-tree cleanup.</p>
+          </div>
+        </div>
       </div>
 
       <div class="section-block-gap-lg">

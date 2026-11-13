@@ -321,10 +321,21 @@ class McpService {
     for (final server in servers) {
       if (!server.enabled || !server.consented) continue;
       if (server.isRemote) {
-        onSkipped?.call(
-          'MCP server "${server.serverId}" is remote; Workers cannot use '
-          'remote servers yet.',
-        );
+        try {
+          final target = _remoteTargetFor(server);
+          launches.add(
+            McpServerLaunch(
+              name: server.serverId,
+              url: target.endpoint.toString(),
+              headers: {
+                if (target.bearerToken != null)
+                  'Authorization': 'Bearer ${target.bearerToken}',
+              },
+            ),
+          );
+        } on McpPolicyException catch (error) {
+          onSkipped?.call(error.message);
+        }
         continue;
       }
       try {

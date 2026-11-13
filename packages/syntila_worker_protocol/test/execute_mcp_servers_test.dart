@@ -79,4 +79,42 @@ void main() {
       );
     }
   });
+
+  test('round-trips remote HTTPS and loopback HTTP servers', () {
+    final decoded = decodeWorkerFrame(
+      request([
+        McpServerLaunch(
+          name: 'remote',
+          url: 'https://mcp.example.com/sse',
+          headers: {'Authorization': 'Bearer tok'},
+        ),
+        McpServerLaunch(
+          name: 'local_http',
+          url: 'http://127.0.0.1:8080/mcp',
+        ),
+      ]).encode(),
+    ) as ExecuteRequest;
+    expect(decoded.mcpServers, hasLength(2));
+    expect(decoded.mcpServers[0].isRemote, isTrue);
+    expect(decoded.mcpServers[0].url, 'https://mcp.example.com/sse');
+    expect(decoded.mcpServers[0].headers, {'Authorization': 'Bearer tok'});
+    expect(decoded.mcpServers[1].url, 'http://127.0.0.1:8080/mcp');
+  });
+
+  test('rejects invalid remote MCP server configurations', () {
+    final bad = <McpServerLaunch Function()>[
+      () => McpServerLaunch(name: 'both', command: '/bin/x', url: 'https://a.test'),
+      () => McpServerLaunch(name: 'neither'),
+      () => McpServerLaunch(name: 'http', url: 'http://example.com/mcp'),
+      () => McpServerLaunch(name: 'creds', url: 'https://u:p@example.com/mcp'),
+      () => McpServerLaunch(
+            name: 'hdr',
+            url: 'https://example.com/mcp',
+            headers: {'X-Bad': 'a\nb'},
+          ),
+    ];
+    for (final make in bad) {
+      expect(make, throwsFormatException);
+    }
+  });
 }

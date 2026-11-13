@@ -45,6 +45,8 @@ class McpConformanceRunner {
       'mcp.id_correlation': _idCorrelation,
       'mcp.blank_lines_tolerated': _blankLinesTolerated,
       'mcp.unknown_method_errors': _unknownMethod,
+      'mcp.unknown_tool_errors': _unknownTool,
+      'mcp.execute_restricted_access': _executeRestrictedAccess,
     };
     final results = <ConformanceCase>[];
     for (final entry in cases.entries) {
@@ -325,6 +327,43 @@ class McpConformanceRunner {
     final error = await w.rawRequest('syntila/unknown', {});
     if (error['error'] is! Map) {
       throw _Failure('an unknown method did not return a JSON-RPC error.');
+    }
+  }
+
+  Future<void> _unknownTool(_McpWire w) async {
+    await w.initialize();
+    final response = await w.rawRequest('tools/call', {
+      'name': 'syntila.nonexistent_tool',
+      'arguments': <String, Object?>{},
+    });
+    final isJsonRpcError = response['error'] is Map;
+    final result = response['result'];
+    final isToolError = result is Map && result['isError'] == true;
+    if (!isJsonRpcError && !isToolError) {
+      throw _Failure(
+          'calling an unknown tool did not return an error response.');
+    }
+  }
+
+  Future<void> _executeRestrictedAccess(_McpWire w) async {
+    await w.initialize();
+    final result = await w.request('tools/call', {
+      'name': 'syntila.execute',
+      'arguments': {
+        'protocol': 'syntila.worker/1',
+        'prompt': 'Conformance restricted-access probe.',
+        'access': 'restricted',
+        'session': {'key': 'conformance-restricted', 'mode': 'new'},
+        'deadline': DateTime.now()
+            .toUtc()
+            .add(const Duration(minutes: 1))
+            .toIso8601String(),
+      },
+    });
+    final structured = result['structuredContent'];
+    if (structured is! Map || structured['text'] is! String) {
+      throw _Failure(
+          'syntila.execute with restricted access did not return valid structuredContent.');
     }
   }
 }

@@ -99,7 +99,7 @@ Future<Map<String, Object?>> runMcpToolCall(
         workspaceId: 'engine',
         pins: ToolPins(pins),
         launch: ExternalWorkerLaunch(
-          executable: server.command,
+          executable: server.command!,
           arguments: server.arguments,
           artifactSha256: sha,
           pluginId: server.name,

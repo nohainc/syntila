@@ -56,7 +56,14 @@ const expected = {
   "/workers/": {
     title: "AI & Workers — Syntila",
     heading: "Connect and share your favorite AI models.",
-    content: ["ChatGPT", "Claude", "Google Gemini", "Coding Agents"],
+    content: [
+      "ChatGPT",
+      "Claude",
+      "Google Gemini",
+      "Coding Agents",
+      "Custom MCP Workers",
+      "MCP Servers",
+    ],
   },
   "/use-cases/": {
     title: "Use Cases — Syntila",
@@ -170,7 +177,7 @@ for (const [route, source] of sources) {
     route === "/downloads/" &&
     githubLinks.length > 0 &&
     githubLinks.every(
-      (link) => link === "https://github.com/nohainc/conclave/releases/latest",
+      (link) => link === "https://github.com/nohainc/syntila/releases/latest",
     );
   if (githubLinks.length > 0 && !approvedDownloads)
     errors.push(`${route}: public GitHub repository link must not be present`);

@@ -61,7 +61,7 @@ for (const file of await htmlFiles(dist)) {
     relative === "downloads/index.html" &&
     githubLinks.length > 0 &&
     githubLinks.every(
-      (link) => link === "https://github.com/nohainc/conclave/releases/latest",
+      (link) => link === "https://github.com/nohainc/syntila/releases/latest",
     );
   if (githubLinks.length > 0 && !approvedDownloads) {
     errors.push(`${relative}: public GitHub repository link found`);

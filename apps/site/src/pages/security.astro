@@ -48,6 +48,10 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           <FeatureCard title="Audit & Attribution" headingLevel={2}>
             <p>The Workspace Service verifies Ed25519 signatures on Worker Profiles before executing provider CLIs, and execution records attribute every run to the requesting user, Workspace, Worker, and model.</p>
           </FeatureCard>
+
+          <FeatureCard title="MCP Tool Pinning &amp; Consent" headingLevel={2}>
+            <p>Every local or remote MCP server requires explicit owner consent before use. Syntila pins SHA-256 hashes of tool definitions, blocks execution on definition drift, and keeps server tokens and environment variables local to the Workspace.</p>
+          </FeatureCard>
         </div>
       </div>
 

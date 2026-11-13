@@ -26,14 +26,14 @@ export const workspaceRelease: WorkspaceReleaseManifest = {
       architectures: ["Apple Silicon", "Intel"],
       installSummary:
         "Signed release bundle or Homebrew cask (brew install --cask nohainc/tap/syntila-workspace)",
-      downloadUrl: "https://github.com/nohainc/conclave/releases/latest",
+      downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
     {
       platform: "windows",
       label: "Windows",
       architectures: ["x64"],
       installSummary: "Per-user logon service and syntila CLI release archive",
-      downloadUrl: "https://github.com/nohainc/conclave/releases/latest",
+      downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
     {
       platform: "linux",
@@ -41,7 +41,7 @@ export const workspaceRelease: WorkspaceReleaseManifest = {
       architectures: ["x64", "arm64"],
       installSummary:
         "Signed APT repository (syntila) or standalone release archive",
-      downloadUrl: "https://github.com/nohainc/conclave/releases/latest",
+      downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
   ],
 };

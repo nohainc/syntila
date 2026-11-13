@@ -260,16 +260,38 @@ void main() {
       expect(service.pinsFor('acme').hashes.keys, ['search']);
     });
 
-    test('official Workers cannot be given a remote server', () async {
+    test('official Workers receive enabled, consented remote servers with token',
+        () async {
       addAcme();
       await consentFully();
       service.enable('acme');
       final skipped = <String>[];
+      final launches =
+          await service.launchesForOwnerExecution(onSkipped: skipped.add);
+      expect(skipped, isEmpty);
+      expect(launches, hasLength(1));
+      expect(launches.single.name, 'acme');
+      expect(launches.single.isRemote, isTrue);
+      expect(launches.single.url, 'https://mcp.acme.example/v1/mcp');
+      expect(launches.single.headers['Authorization'], 'Bearer $token');
+    });
+
+    test('remote server with missing token env is skipped without failing run',
+        () async {
+      addAcme();
+      await consentFully();
+      service.enable('acme');
+      final noToken = McpService(
+        McpRegistry(File('${root.path}/mcp.json')),
+        probe,
+        environment: const {},
+      );
+      final skipped = <String>[];
       expect(
-        await service.launchesForOwnerExecution(onSkipped: skipped.add),
+        await noToken.launchesForOwnerExecution(onSkipped: skipped.add),
         isEmpty,
       );
-      expect(skipped.single, contains('remote'));
+      expect(skipped.single, contains('ACME_MCP_TOKEN'));
     });
 
     test('local servers still work next to remote ones', () async {

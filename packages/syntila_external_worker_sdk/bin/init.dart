@@ -4,7 +4,8 @@ import 'dart:isolate';
 import 'package:syntila_external_worker_sdk/syntila_external_worker_sdk.dart';
 
 Future<void> main(List<String> arguments) async {
-  final mcp = arguments.contains('--mcp');
+  // MCP (`kind: "mcp"`) is the canonical custom Worker protocol; `--mcp` is
+  // accepted as an optional no-op for backward CLI compatibility.
   final positional = arguments.where((a) => a != '--mcp').toList();
   if (positional.length != 2 || arguments.length - positional.length > 1) {
     stderr.writeln(
@@ -17,7 +18,7 @@ Future<void> main(List<String> arguments) async {
         'package:syntila_external_worker_sdk/syntila_external_worker_sdk.dart'));
     if (library == null) throw const FormatException('SDK path unavailable');
     initializeExternalWorkerDirectory(positional[0], positional[1],
-        sdkPath: File.fromUri(library).parent.parent.path, mcp: mcp);
+        sdkPath: File.fromUri(library).parent.parent.path, mcp: true);
     stdout.writeln(
         'Created ${positional[1]} in ${positional[0]}. See README.md to build and pack.');
   } on FormatException catch (error) {

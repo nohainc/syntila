@@ -708,67 +708,128 @@ final class WorkerSessionContext {
 final class McpServerLaunch {
   McpServerLaunch({
     required this.name,
-    required this.command,
+    this.command,
     this.arguments = const [],
     this.environment = const {},
+    this.url,
+    this.headers = const {},
   }) {
     if (!RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(name)) {
       throw const FormatException('mcp server name is invalid');
     }
-    if (command.isEmpty ||
-        command.length > 4096 ||
-        command.contains('\x00') ||
-        !(command.startsWith('/') ||
-            RegExp(r'^[A-Za-z]:[\\/]').hasMatch(command))) {
-      throw const FormatException('mcp server command must be absolute');
+    final hasCommand = command != null && command!.isNotEmpty;
+    final hasUrl = url != null && url!.isNotEmpty;
+    if (hasCommand == hasUrl) {
+      throw const FormatException(
+          'mcp server must specify either command or url');
     }
-    if (arguments.length > WorkerProtocolLimits.maxMcpServerArguments ||
-        arguments.any((a) => a.length > 4096 || a.contains('\x00'))) {
-      throw const FormatException('mcp server arguments exceed limits');
-    }
-    if (environment.length > WorkerProtocolLimits.maxMcpServerEnvironment ||
-        environment.entries.any((e) =>
-            !RegExp(r'^[A-Za-z_][A-Za-z0-9_]{0,127}$').hasMatch(e.key) ||
-            e.key.startsWith('SYNTILA_') ||
-            e.value.length > 4096 ||
-            e.value.contains('\x00'))) {
-      throw const FormatException('mcp server environment exceeds limits');
+    if (hasCommand) {
+      final cmd = command!;
+      if (cmd.length > 4096 ||
+          cmd.contains('\x00') ||
+          !(cmd.startsWith('/') || RegExp(r'^[A-Za-z]:[\\/]').hasMatch(cmd))) {
+        throw const FormatException('mcp server command must be absolute');
+      }
+      if (arguments.length > WorkerProtocolLimits.maxMcpServerArguments ||
+          arguments.any((a) => a.length > 4096 || a.contains('\x00'))) {
+        throw const FormatException('mcp server arguments exceed limits');
+      }
+      if (environment.length > WorkerProtocolLimits.maxMcpServerEnvironment ||
+          environment.entries.any((e) =>
+              !RegExp(r'^[A-Za-z_][A-Za-z0-9_]{0,127}$').hasMatch(e.key) ||
+              e.key.startsWith('SYNTILA_') ||
+              e.value.length > 4096 ||
+              e.value.contains('\x00'))) {
+        throw const FormatException('mcp server environment exceeds limits');
+      }
+      if (headers.isNotEmpty) {
+        throw const FormatException('stdio mcp server cannot set headers');
+      }
+    } else {
+      final rawUrl = url!;
+      final uri = Uri.tryParse(rawUrl);
+      const loopback = {'127.0.0.1', 'localhost', '::1', '[::1]'};
+      final secure = uri != null && uri.scheme == 'https';
+      final plainLoopback =
+          uri != null && uri.scheme == 'http' && loopback.contains(uri.host);
+      if (rawUrl.length > 2048 ||
+          uri == null ||
+          !uri.hasAuthority ||
+          uri.host.isEmpty ||
+          uri.userInfo.isNotEmpty ||
+          uri.hasFragment ||
+          !(secure || plainLoopback)) {
+        throw const FormatException('mcp server url must be https');
+      }
+      if (arguments.isNotEmpty || environment.isNotEmpty) {
+        throw const FormatException(
+            'remote mcp server cannot set arguments or environment');
+      }
+      if (headers.length > 32 ||
+          headers.entries.any((e) =>
+              e.key.isEmpty ||
+              e.key.length > 128 ||
+              e.key.contains('\r') ||
+              e.key.contains('\n') ||
+              e.key.contains('\x00') ||
+              e.value.length > 4096 ||
+              e.value.contains('\r') ||
+              e.value.contains('\n') ||
+              e.value.contains('\x00'))) {
+        throw const FormatException('mcp server headers exceed limits');
+      }
     }
   }
 
   final String name;
-  final String command;
+  final String? command;
   final List<String> arguments;
   final Map<String, String> environment;
+  final String? url;
+  final Map<String, String> headers;
+
+  bool get isRemote => url != null;
 
   Map<String, Object?> toJson() => {
         'name': name,
-        'command': command,
+        if (command != null) 'command': command,
         if (arguments.isNotEmpty) 'arguments': arguments,
         if (environment.isNotEmpty) 'environment': environment,
+        if (url != null) 'url': url,
+        if (headers.isNotEmpty) 'headers': headers,
       };
 
   factory McpServerLaunch.fromJson(Map<String, Object?> json) {
-    _expectKeys(json, const {'name', 'command', 'arguments', 'environment'});
+    _expectKeys(
+        json, const {'name', 'command', 'arguments', 'environment', 'url', 'headers'});
     final name = json['name'];
     final command = json['command'];
     final arguments = json['arguments'] ?? const <Object?>[];
     final environment = json['environment'] ?? const <String, Object?>{};
+    final url = json['url'];
+    final headers = json['headers'] ?? const <String, Object?>{};
     if (name is! String ||
-        command is! String ||
+        (command != null && command is! String) ||
+        (url != null && url is! String) ||
         arguments is! List ||
         arguments.any((a) => a is! String) ||
         environment is! Map ||
         environment.values.any((v) => v is! String) ||
-        environment.keys.any((k) => k is! String)) {
+        environment.keys.any((k) => k is! String) ||
+        headers is! Map ||
+        headers.values.any((v) => v is! String) ||
+        headers.keys.any((k) => k is! String)) {
       throw const FormatException('invalid mcp server');
     }
     return McpServerLaunch(
       name: name,
-      command: command,
+      command: command as String?,
       arguments: List<String>.unmodifiable(arguments),
       environment: Map<String, String>.unmodifiable(
           environment.map((k, v) => MapEntry(k as String, v as String))),
+      url: url as String?,
+      headers: Map<String, String>.unmodifiable(
+          headers.map((k, v) => MapEntry(k as String, v as String))),
     );
   }
 }

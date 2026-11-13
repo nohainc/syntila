@@ -301,9 +301,29 @@ class _McpManagementViewState extends State<McpManagementView> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Add MCP servers in the Workspace app on this machine. Once consented and enabled, they work for every Worker and Workflow you run on this Workspace.',
+                      'Register local or remote MCP servers on this machine using the syntila CLI. Once consented and enabled, they work for every Worker and Workflow you run on this Workspace.',
                       style: TextStyle(fontSize: 12.5, color: muted),
                       textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.04)
+                            : Colors.black.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: SelectableText(
+                        'syntila mcp add <id> <command>\nsyntila mcp add-remote <id> <https-url>',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                          color: SyntilaColors.textPrimary(isDark),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                   ],
                 ),

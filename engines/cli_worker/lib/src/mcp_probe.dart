@@ -65,7 +65,7 @@ Future<Map<String, Object?>> runMcpProbe(
         workspaceId: 'probe',
         requireWorkerProfile: request['requireWorkerProfile'] == true,
         launch: ExternalWorkerLaunch(
-          executable: server.command,
+          executable: server.command!,
           arguments: server.arguments,
           artifactSha256: sha,
           pluginId: server.name,

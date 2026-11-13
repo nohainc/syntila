@@ -56,11 +56,17 @@ class McpConfigFile {
       jsonEncode({
         'mcpServers': {
           for (final server in servers)
-            server.name: {
-              'command': server.command,
-              'args': server.arguments,
-              if (server.environment.isNotEmpty) 'env': server.environment,
-            },
+            server.name: server.isRemote
+                ? {
+                    'type': 'http',
+                    'url': server.url,
+                    if (server.headers.isNotEmpty) 'headers': server.headers,
+                  }
+                : {
+                    'command': server.command,
+                    'args': server.arguments,
+                    if (server.environment.isNotEmpty) 'env': server.environment,
+                  },
         },
       }),
       flush: true,
@@ -100,6 +106,22 @@ class McpInlineToml {
     final environment = <String, String>{};
     final entries = <String>[];
     for (final server in launches) {
+      if (server.isRemote) {
+        final fields = <String>[
+          'url=${_string(server.url!)}',
+          'default_tools_approval_mode="approve"',
+        ];
+        final auth = server.headers['Authorization'] ??
+            server.headers['authorization'];
+        if (auth != null && auth.startsWith('Bearer ')) {
+          final tokenVar =
+              'SYNTILA_MCP_TOKEN_${server.name.toUpperCase().replaceAll('-', '_')}';
+          environment[tokenVar] = auth.substring('Bearer '.length);
+          fields.add('bearer_token_env_var=${_string(tokenVar)}');
+        }
+        entries.add('${_string(server.name)}={${fields.join(',')}}');
+        continue;
+      }
       for (final entry in server.environment.entries) {
         final existing = environment[entry.key];
         if (existing != null && existing != entry.value) {
@@ -110,7 +132,7 @@ class McpInlineToml {
         environment[entry.key] = entry.value;
       }
       final fields = <String>[
-        'command=${_string(server.command)}',
+        'command=${_string(server.command!)}',
         // Selecting the server on the Step is the approval; the CLI's own
         // approval policy is `never` in non-interactive runs, which would
         // otherwise refuse every call.
