@@ -18,6 +18,12 @@ export interface R2ObjectBodyLike extends R2ObjectLike {
 }
 
 const META_PREFIX = "x-amz-meta-";
+const toHex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+const sha256Hex = async (s: string) => toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+async function hmac(key: ArrayBuffer | Uint8Array, data: string) {
+  const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data));
+}
 
 export class S3R2Bucket {
   private client: S3Client;
@@ -52,10 +58,30 @@ export class S3R2Bucket {
     };
   }
 
-  /** Signed request with Bun's presigner (keeps us on the built-in client, no SDK). */
+  /**
+   * SigV4 header-signed request (UNSIGNED-PAYLOAD). Every header we send —
+   * including x-amz-meta-* — is signed; R2 rejects unsigned x-amz-* headers.
+   */
   private async request(method: string, key: string, init: { body?: BodyInit | null; headers?: Record<string, string> } = {}) {
-    const url = this.client.presign(key, { method: method as any, expiresIn: 300 });
-    return fetch(url, { method, body: init.body ?? undefined, headers: init.headers });
+    const url = new URL(this.endpoint(key));
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+    const day = amzDate.slice(0, 8);
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries(init.headers ?? {})) headers[k.toLowerCase()] = String(v).trim();
+    headers["host"] = url.host;
+    headers["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD";
+    headers["x-amz-date"] = amzDate;
+    const names = Object.keys(headers).sort();
+    const canonical = [method, url.pathname, "", names.map((n) => `${n}:${headers[n]}`).join("\n") + "\n", names.join(";"), "UNSIGNED-PAYLOAD"].join("\n");
+    const scope = `${day}/auto/s3/aws4_request`;
+    const toSign = ["AWS4-HMAC-SHA256", amzDate, scope, await sha256Hex(canonical)].join("\n");
+    let k: ArrayBuffer = await hmac(new TextEncoder().encode("AWS4" + this.cfg.secretAccessKey), day);
+    for (const part of ["auto", "s3", "aws4_request"]) k = await hmac(k, part);
+    const signature = toHex(await hmac(k, toSign));
+    headers["authorization"] = `AWS4-HMAC-SHA256 Credential=${this.cfg.accessKeyId}/${scope}, SignedHeaders=${names.join(";")}, Signature=${signature}`;
+    delete headers["host"];
+    return fetch(url, { method, body: init.body ?? undefined, headers });
   }
 
   async head(key: string): Promise<R2ObjectLike | null> {
