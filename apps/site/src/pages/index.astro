@@ -4,14 +4,11 @@ import Button from "../components/Button.astro";
 import Container from "../components/Container.astro";
 import Section from "../components/Section.astro";
 import SectionHeader from "../components/SectionHeader.astro";
-import HeroSharedSpace from "../components/HeroSharedSpace.astro";
 import SpaceMembersDiagram from "../components/SpaceMembersDiagram.astro";
-import CredentialPrivacyDiagram from "../components/CredentialPrivacyDiagram.astro";
 import ConversationContinuity from "../components/ConversationContinuity.astro";
 import ComparisonTable from "../components/ComparisonTable.astro";
 import WorkflowShowcase from "../components/WorkflowShowcase.astro";
 import AudienceCards from "../components/AudienceCards.astro";
-import WorkspaceQuickstart from "../components/WorkspaceQuickstart.astro";
 ---
 
 <SiteLayout
@@ -71,7 +68,6 @@ import WorkspaceQuickstart from "../components/WorkspaceQuickstart.astro";
           </li>
         </ul>
       </div>
-      <HeroSharedSpace />
     </section>
   </Container>
 
@@ -113,19 +109,7 @@ import WorkspaceQuickstart from "../components/WorkspaceQuickstart.astro";
     </Container>
   </Section>
 
-  <!-- Section 3: Share Access. Keep Credentials Private -->
-  <Section>
-    <Container>
-      <SectionHeader
-        eyebrow="CREDENTIALS STAY PRIVATE"
-        title="Share access. Keep credentials private."
-        description="When you grant a Workspace and its AI Workers to a Space, members can run requests through those Workers for Space work, while your provider logins and API keys stay inside the local CLI on your machine."
-      />
-      <CredentialPrivacyDiagram />
-    </Container>
-  </Section>
-
-  <!-- Section 5: Comparison - Why not normal AI chat? -->
+  <!-- Section 3: Comparison - Why not normal AI chat? -->
   <Section>
     <Container>
       <SectionHeader
@@ -143,7 +127,7 @@ import WorkspaceQuickstart from "../components/WorkspaceQuickstart.astro";
       <SectionHeader
         eyebrow="ADVANCED WORKFLOWS"
         title="When a chat isn't enough: Turn a question into a workflow."
-        description="When a task needs more than a single Chat reply, choose Work, Research, or Implement to coordinate multiple AI Workers, plan steps, and verify findings in one Thread."
+        description="For tasks that go beyond Chat or Work, Syntila provides two advanced multi-step workflows: Research (parallel investigation and synthesis) and Implement (plan, implement, test, and verify)."
       />
       <WorkflowShowcase />
     </Container>
@@ -158,22 +142,6 @@ import WorkspaceQuickstart from "../components/WorkspaceQuickstart.astro";
         description="Whether you're organizing a family trip, leading product decisions with your team, or shipping verified code, Syntila brings people and AI into one shared workspace."
       />
       <AudienceCards />
-    </Container>
-  </Section>
-
-  <!-- Section 8: Syntila Workspace Execution Model -->
-  <Section>
-    <Container>
-      <div data-site-event="section.workspace_reached">
-        <SectionHeader
-          eyebrow="SYNTILA WORKSPACE RUNTIME"
-          title="Collaborate in Syntila. Execute on connected Workspaces."
-          description="People join Spaces and Threads in the Syntila app at syntila.app. To power AI Workers in a Space, at least one member connects Syntila Workspace on macOS, Windows, or Linux and grants selected Workers to that Space."
-        />
-        <div class="section-block-gap">
-          <WorkspaceQuickstart />
-        </div>
-      </div>
     </Container>
   </Section>
 

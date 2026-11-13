@@ -1,117 +1,17 @@
----
-// Component: SpaceMembersDiagram
-// Visualizes members bringing connected Workspaces & AI Workers into a shared Syntila Space
----
-
-<div class="space-members-diagram">
-  <div class="mental-model-grid">
-    <!-- Left: Members & their contributed AI Workers -->
-    <div class="contributor-column">
-      <div class="column-header">Members & Connected Workspaces</div>
-
-      <div class="contributor-card">
-        <div class="contributor-person">
-          <span class="avatar avatar--vitalii">V</span>
-          <div class="person-info">
-            <strong>Vitalii</strong>
-            <small>Owner · Connected Workspace</small>
-          </div>
-        </div>
-        <div class="contributed-connector" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </div>
-        <div class="contributed-ai ai-pill--chatgpt">
-          <span class="ai-dot ai-dot--chatgpt"></span>
-          <span>ChatGPT Worker</span>
-        </div>
-      </div>
-
-      <div class="contributor-card">
-        <div class="contributor-person">
-          <span class="avatar avatar--julia">J</span>
-          <div class="person-info">
-            <strong>Julia</strong>
-            <small>Collaborator · Connected Workspace</small>
-          </div>
-        </div>
-        <div class="contributed-connector" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </div>
-        <div class="contributed-ai ai-pill--gemini">
-          <span class="ai-dot ai-dot--gemini"></span>
-          <span>Gemini Worker</span>
-        </div>
-      </div>
-
-      <div class="contributor-card">
-        <div class="contributor-person">
-          <span class="avatar avatar--alex">A</span>
-          <div class="person-info">
-            <strong>Alex</strong>
-            <small>Collaborator · Syntila App</small>
-          </div>
-        </div>
-        <div class="contributed-connector" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </div>
-        <div class="contributed-ai ai-pill--claude">
-          <span class="ai-dot ai-dot--claude"></span>
-          <span>Uses Space Workers</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Center: Shared Space Hub -->
-    <div class="diagram-hub">
-      <div class="hub-box">
-        <div class="hub-badge">Shared Space</div>
-        <strong class="hub-title">Family or Team Space</strong>
-        <p class="hub-desc">Web, iOS &amp; Android · Local Execution</p>
-        <div class="hub-perks">
-          <span>✓ Everyone collaborates in the Syntila app</span>
-          <span>✓ Authorized Workers run on owner Workspaces</span>
-          <span>✓ Provider credentials stay on owner machines</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Right: Threads branch -->
-    <div class="threads-column">
-      <div class="column-header">Active Threads</div>
-
-      <div class="thread-branch-card">
-        <span class="ws-mini-icon" aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        </span>
-        <div class="ws-branch-info">
-          <strong>Travel & Research</strong>
-          <small>Compare destinations & itineraries</small>
-        </div>
-      </div>
-
-      <div class="thread-branch-card">
-        <span class="ws-mini-icon" aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        </span>
-        <div class="ws-branch-info">
-          <strong>Budget & Logistics</strong>
-          <small>Track expenses & schedules</small>
-        </div>
-      </div>
-
-      <div class="thread-branch-card">
-        <span class="ws-mini-icon" aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        </span>
-        <div class="ws-branch-info">
-          <strong>Key Decisions</strong>
-          <small>Agreed actions & summary notes</small>
-        </div>
-      </div>
-    </div>
+<div class="execution-path-strip" role="region" aria-label="Space members and connected Workspaces">
+  <div class="execution-path-step">
+    <span>01 · People</span>
+    <strong>Owner, Collaborator, Viewer</strong>
+    <p>Invited members join the Space in Syntila to discuss, prompt authorized AI Workers, or review results.</p>
   </div>
-
-  <div class="diagram-footer-rule">
-    <p><strong>Everyone collaborates in the Space.</strong> AI access is granted per Space; provider credentials stay on the Workspace host.</p>
+  <div class="execution-path-step">
+    <span>02 · Shared Space</span>
+    <strong>Threads &amp; Grants</strong>
+    <p>Space grants control which connected Workspaces and AI Workers members can use—without exposing credentials.</p>
+  </div>
+  <div class="execution-path-step">
+    <span>03 · Connected Workspaces</span>
+    <strong>Local AI Workers</strong>
+    <p>One or more members run Syntila Workspace on their machines to power ChatGPT, Claude, Gemini, or custom MCP Workers.</p>
   </div>
 </div>

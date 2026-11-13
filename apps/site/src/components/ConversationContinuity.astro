@@ -1,79 +1,17 @@
----
-// Component: ConversationContinuity
-// Demonstrates multi-member and multi-model conversation continuity
----
-
-<div class="conversation-continuity-card">
-  <div class="conversation-card-header">
-    <div class="conversation-topic">
-      <span class="topic-tag">Thread</span>
-      <strong>Product strategy & competitive analysis</strong>
-    </div>
-    <div class="model-switch-badge">
-      <span class="switch-icon">⇄</span>
-      <span>Continuous Context across 3 AI Models</span>
-    </div>
+<div class="execution-path-strip" role="region" aria-label="Shared Thread context flow">
+  <div class="execution-path-step">
+    <span>Turn 01 · Message</span>
+    <strong>Human alignment</strong>
+    <p>Teammates or family members discuss goals and constraints directly in the Thread.</p>
   </div>
-
-  <div class="timeline-chat">
-    <!-- Turn 1: Team question -->
-    <div class="chat-row chat-row--user">
-      <div class="chat-author">
-        <span class="avatar avatar--vitalii avatar--small">V</span>
-        <strong>Vitalii</strong>
-      </div>
-      <div class="chat-bubble-body">
-        <p>Can you draft a value proposition for our new shared AI workspace targeting small agencies?</p>
-      </div>
-    </div>
-
-    <!-- Turn 2: Claude response -->
-    <div class="chat-row chat-row--ai">
-      <div class="chat-author">
-        <span class="ai-tag ai-tag--claude">✦ Claude</span>
-        <span class="turn-note">via Alex's Worker</span>
-      </div>
-      <div class="chat-bubble-body">
-        <p><strong>Core Value:</strong> "One shared workspace where clients and team members collaborate with best-in-class AI models without sharing sensitive API keys." Emphasize shared context, role-based workflows, and client privacy.</p>
-      </div>
-    </div>
-
-    <!-- Turn 3: Julia switches model to ChatGPT to critique -->
-    <div class="chat-row chat-row--user">
-      <div class="chat-author">
-        <span class="avatar avatar--julia avatar--small">J</span>
-        <strong>Julia</strong>
-      </div>
-      <div class="chat-bubble-body">
-        <p>Let's have <strong>ChatGPT</strong> critique Claude's draft and suggest 3 high-converting hero headlines.</p>
-      </div>
-    </div>
-
-    <!-- Turn 4: ChatGPT response with inherited context -->
-    <div class="chat-row chat-row--ai">
-      <div class="chat-author">
-        <span class="ai-tag ai-tag--chatgpt">◉ ChatGPT</span>
-        <span class="turn-note">inheriting Claude's turn & context</span>
-      </div>
-      <div class="chat-bubble-body">
-        <p>Building directly on Claude's positioning for agencies:</p>
-        <ol class="chat-list">
-          <li><strong>"Stop screenshotting ChatGPT. Bring your agency and AI together."</strong> (Direct pain point)</li>
-          <li><strong>"The shared AI workspace for creative and technical teams."</strong> (Clear category)</li>
-          <li><strong>"Collaborate with your clients, your team, and your AI — in one place."</strong> (Collaboration focus)</li>
-        </ol>
-      </div>
-    </div>
+  <div class="execution-path-step">
+    <span>Turn 02 · Ask AI</span>
+    <strong>Worker A (e.g., Claude)</strong>
+    <p>Reads the shared Thread context and drafts a structured analysis or plan.</p>
   </div>
-
-  <div class="conversation-card-footer">
-    <div class="footer-feature">
-      <span class="feature-bullet">✓</span>
-      <span><strong>Zero context loss:</strong> Every model sees prior discussion, attachments, and decisions.</span>
-    </div>
-    <div class="footer-feature">
-      <span class="feature-bullet">✓</span>
-      <span><strong>No copy-pasting:</strong> No more shuttling prompts between separate chat sessions.</span>
-    </div>
+  <div class="execution-path-step">
+    <span>Turn 03 · Ask AI</span>
+    <strong>Worker B (e.g., ChatGPT)</strong>
+    <p>Continues from the exact same Thread history for a second opinion or next step.</p>
   </div>
 </div>

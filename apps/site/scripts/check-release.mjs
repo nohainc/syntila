@@ -73,7 +73,6 @@ const requiredHomepageContent = [
   "Bring your people and AI together.",
   "SHARED AI WORKSPACE",
   "Threads",
-  "Share access. Keep credentials private.",
   "One conversation. Everyone stays in context.",
   "Open Syntila",
 ];

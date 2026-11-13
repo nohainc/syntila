@@ -34,7 +34,6 @@ const expected = {
       "SHARED AI WORKSPACE",
       "Threads",
       "ONE SPACE. PEOPLE + AI.",
-      "Share access. Keep credentials private.",
       "One conversation. Everyone stays in context.",
       "When a chat isn't enough",
       "Designed for how people actually collaborate.",
