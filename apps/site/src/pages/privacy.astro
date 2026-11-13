@@ -35,6 +35,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
           <h2 id="ai-accounts">AI Accounts</h2>
           <p>AI Accounts represent external provider identities authenticated locally on the owner's Workspace. They are private by default and never enter Cloud APIs in plaintext. Granting a Worker to a Space authorizes eligible use; it does not expose underlying credentials to Space collaborators.</p>
+          <p>When a Space member submits a request through an authorized AI Worker or MCP server, scoped prompt context is sent to that third-party provider or MCP server under the Workspace owner's configured account. Those third-party services operate under their own privacy policies and data-retention terms; Syntila does not control how external providers process or store data sent through your local CLI.</p>
 
           <h2 id="assignment-data">Workers and assignment data</h2>
           <p>Workers receive scoped assignment context needed for their task rather than Syntila user sessions or unrestricted machine credentials. Execution history may include task metadata, results, artifacts, findings, usage, and evidence needed to operate and audit the workflow.</p>
