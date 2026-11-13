@@ -146,13 +146,19 @@ class WorkspaceConfigurationResolver {
 
   static Uri? workspaceGatewayUri(String value, {String? workspaceRuntimeId}) {
     var uri = Uri.tryParse(value);
-    // An HTTP(S) Cloud origin is the auth Worker; the gateway runs on the backend.
-    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https') &&
-        (uri.path.isEmpty || uri.path == '/')) {
+    // The auth Worker's origin (syntila.app) in any form — https origin or a
+    // saved wss gateway URL — maps to the backend, where the gateway runs.
+    if (uri != null && uri.host.isNotEmpty &&
+        const {'http', 'https', 'ws', 'wss'}.contains(uri.scheme)) {
       try {
-        final backend = Uri.parse(workspaceBackendOrigin(value));
+        final secure = uri.scheme == 'https' || uri.scheme == 'wss';
+        final httpOrigin = Uri(
+          scheme: secure ? 'https' : 'http',
+          host: uri.host,
+          port: uri.hasPort ? uri.port : null,
+        ).toString();
+        final backend = Uri.parse(workspaceBackendOrigin(httpOrigin));
         uri = uri.replace(
-          scheme: backend.scheme,
           host: backend.host,
           port: backend.hasPort ? backend.port : null,
         );

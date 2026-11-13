@@ -313,7 +313,7 @@ export async function handleCheckWorkspaceOwnership(
        FROM workspace_audit_log
       WHERE action = 'workspace.ownership.released'
         AND CASE
-              WHEN json_valid(details_json) = 1
+              WHEN details_json IS JSON
               THEN (details_json::jsonb #>> '{installationId}')
               ELSE NULL
             END = ?1
@@ -419,7 +419,7 @@ export async function handleReconcileWorkspaceOwnership(
     `SELECT 1 AS released
        FROM workspace_audit_log
       WHERE action = 'workspace.ownership.released'
-        AND CASE WHEN json_valid(details_json) = 1
+        AND CASE WHEN details_json IS JSON
           THEN (details_json::jsonb #>> '{installationId}') ELSE NULL END = ?1
       LIMIT 1`,
   )
@@ -437,7 +437,7 @@ export async function handleReconcileWorkspaceOwnership(
                 AND a.target_type = 'workspace_runtime'
                 AND a.target_id = i.id
                 AND a.action IN ('workspace.registered', 'workspace.recovered')
-                AND CASE WHEN json_valid(a.details_json) = 1
+                AND CASE WHEN a.details_json IS JSON
                   THEN (a.details_json::jsonb #>> '{installationId}')
                   ELSE NULL END = ?3) AS auditBinding
        FROM workspace_runtime_identities i

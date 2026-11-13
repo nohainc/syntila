@@ -79,6 +79,12 @@ describe("runtime", () => {
     const reg = await api(desktop, "POST", "/api/workspace-runtime/register", body);
     if (reg.status >= 300) console.log("REG", JSON.stringify(reg.body));
     expect(reg.status).toBeLessThan(300);
+    // The Workspace app checks ownership before (re)registering.
+    const unbound = await api(desktop, "POST", "/api/workspace-runtime/ownership", { contractVersion: "1.0", installationId: `install_${crypto.randomUUID()}` });
+    expect(unbound.status).toBe(200);
+    expect(unbound.body.state).toBe("unbound");
+    const owned = await api(desktop, "POST", "/api/workspace-runtime/ownership", { contractVersion: "1.0", installationId: body.installationId, workspaceId: reg.body.workspaceId, runtimeId: reg.body.workspaceRuntimeId });
+    expect(owned.status).toBe(200);
     const runtimeId = reg.body.workspaceRuntimeId ?? reg.body.runtime?.id ?? reg.body.workspaceRuntime?.id;
     const credential = reg.body.runtimeCredential;
     expect(typeof runtimeId).toBe("string");

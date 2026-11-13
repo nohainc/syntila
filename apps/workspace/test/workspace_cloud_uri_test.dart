@@ -72,6 +72,13 @@ void main() {
     expect(configFor('http://127.0.0.1:8899').port, 8899);
   });
 
+  test('a saved syntila.app gateway URL is moved to the backend', () {
+    final uri = configFor('wss://syntila.app/api/workspace-gateway/connect?source=desktop');
+    expect(uri.host, 'api.syntila.app');
+    expect(uri.path, '/api/workspace-gateway/connect');
+    expect(uri.queryParameters['source'], 'desktop');
+  });
+
   test('an explicit WSS endpoint gets a port without losing its path/query',
       () {
     final uri = configFor(
