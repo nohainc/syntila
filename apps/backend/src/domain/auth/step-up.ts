@@ -64,28 +64,3 @@ export function isStepUpSatisfied(
     current < expiresAt
   );
 }
-
-export async function hasRecentStepUp(
-  db: {
-    prepare(query: string): {
-      bind(...values: unknown[]): {
-        first<T>(): Promise<T | null>;
-      };
-    };
-  },
-  userId: string,
-  sessionId: string,
-  operation: SensitiveOperation,
-  now = new Date(),
-): Promise<boolean> {
-  const record = await db
-    .prepare(
-      `SELECT user_id, session_id, method, authenticated_at, expires_at
-       FROM auth_step_up_sessions
-       WHERE user_id = ?1 AND session_id = ?2
-       ORDER BY authenticated_at DESC LIMIT 1`,
-    )
-    .bind(userId, sessionId)
-    .first<StepUpRecord>();
-  return isStepUpSatisfied(record, operation, now);
-}

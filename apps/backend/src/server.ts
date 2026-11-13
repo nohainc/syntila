@@ -15,6 +15,15 @@ import { configureIdentityVerifier } from "./domain/auth/identity-service";
 import worker from "./domain/index";
 import { createRuntime } from "./runtime";
 
+// A failed background task must never take down the process (and with it
+// every open WebSocket and in-flight request): log it and keep serving.
+process.on("unhandledRejection", (reason) => {
+  console.error(JSON.stringify({ level: "error", message: "process.unhandled_rejection", error: String((reason as Error)?.stack ?? reason) }));
+});
+process.on("uncaughtException", (error) => {
+  console.error(JSON.stringify({ level: "error", message: "process.uncaught_exception", error: String(error?.stack ?? error) }));
+});
+
 const config = await loadConfig();
 const sql = new SQL({
   hostname: config.db.hostname, port: config.db.port, username: config.db.username,

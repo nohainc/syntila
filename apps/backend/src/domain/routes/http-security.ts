@@ -6,9 +6,7 @@ import { isTrustedOrigin } from "../observability.js";
 import {
   identityService,
   provisionSyntilaUser,
-  hasRecentStepUp,
   recordAuthAuditEvent,
-  type SensitiveOperation,
 } from "../auth/index.js";
 import {
   authorize,
@@ -339,21 +337,6 @@ export async function requireWorkspaceContext(
   }
 }
 
-export async function requireRecentStepUp(
-  env: SecurityEnv,
-  context: SecurityContext,
-  operation: SensitiveOperation,
-): Promise<void> {
-  const satisfied = await hasRecentStepUp(
-    env.SYNTILA_DB,
-    context.userId,
-    context.sessionId,
-    operation,
-  );
-  if (!satisfied) {
-    throw new HttpError(428, "Fresh strong authentication required");
-  }
-}
 
 export const MAX_ARTIFACT_UPLOAD_BYTES = 64 * 1024 * 1024;
 

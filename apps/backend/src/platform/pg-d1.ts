@@ -10,7 +10,7 @@
  *  - `?N` / `?` placeholders (translated to `$N`), `undefined` bindings rejected.
  *  - Single statements are atomic; `batch()` runs all statements in one
  *    transaction. D1 has one writer, so writes and batches run SERIALIZABLE
- *    here and are retried on serialization failures/deadlocks.
+ *    here, serialized behind a global writer lock like D1, and retried on deadlocks.
  *  - Row values: int8 → number, boolean → 1/0, timestamptz → ISO-8601 string (`toISOString`),
  *    bytea → ArrayBuffer.
  *  - Results: `{ success, results, meta: { changes, rows_read, rows_written, duration } }`.
@@ -30,6 +30,8 @@ export interface D1Result<T = Record<string, unknown>> {
 
 const RETRYABLE = new Set(["40001", "40P01"]); // serialization_failure, deadlock_detected
 const MAX_ATTEMPTS = 25;
+/** Advisory lock key for the global writer lock ("syntila.writer"). */
+const WRITER_LOCK = 0x5359_4e57;
 const translated = new Map<string, string>();
 
 /**
@@ -215,17 +217,28 @@ export class PgD1Database {
     return { count: query.split(";").filter((s) => s.trim()).length, duration: performance.now() - started };
   }
 
+  /**
+   * D1's write model: write transactions run one at a time. Each takes a
+   * transaction-scoped global writer lock first and then runs READ COMMITTED,
+   * so every statement sees all earlier writes (SERIALIZABLE would freeze its
+   * snapshot while waiting for the lock and compute stale sequence numbers).
+   * Reads never wait. Deadlocks with writers outside this adapter are retried.
+   */
   private async serializable<R>(fn: (tx: Sql) => Promise<R>): Promise<R> {
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.sql.begin("ISOLATION LEVEL SERIALIZABLE", (tx) => fn(tx as unknown as Sql)) as R;
+        return await this.sql.begin(async (tx) => {
+          await (tx as unknown as Sql).unsafe("SELECT pg_advisory_xact_lock($1)", [WRITER_LOCK]);
+          return fn(tx as unknown as Sql);
+        }) as R;
       } catch (e: any) {
         const code = e?.errno ?? e?.code;
         if (!RETRYABLE.has(code) || attempt >= MAX_ATTEMPTS) throw e;
-        await Bun.sleep(Math.random() * Math.min(100, 2 ** attempt));
+        await Bun.sleep(Math.random() * Math.min(500, 5 * 2 ** attempt));
       }
     }
   }
+
 }
 
 function toResult<T>(result: any, duration: number): D1Result<T> {

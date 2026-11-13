@@ -14,7 +14,6 @@ export {
 export {
   SENSITIVE_OPERATIONS,
   STEP_UP_REQUIREMENTS,
-  hasRecentStepUp,
   isStepUpSatisfied,
   type SensitiveOperation,
   type StepUpMethod,

@@ -141,20 +141,6 @@ describe("Worker smoke tests", () => {
     },
   );
 
-  it("fails closed when step-up completion has no passkey ceremony", async () => {
-    const response = await worker.fetch(
-      new Request("https://syntila.test/api/auth/step-up/passkey/complete", {
-        method: "POST",
-        headers: { origin: "https://syntila.test" },
-        body: "{}",
-      }),
-      env,
-    );
-    expect(response.status).toBe(428);
-    expect(await response.json()).toEqual({
-      error: "No recent strong authentication ceremony is available",
-    });
-  });
 
   it("fails closed when production authentication is missing", async () => {
     const productionEnv = {

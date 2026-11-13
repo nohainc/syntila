@@ -119,56 +119,5 @@ describe("Workspace runtime lifecycle routes", () => {
     expect(sameOrigin).not.toHaveBeenCalled();
   });
 
-  it("requires same-origin protection for browser-cookie desktop approval", async () => {
-    const sameOrigin = vi.fn();
-    const approve = vi.fn(async () => Response.json({ approved: true }));
-    const response = await routeWorkerRequest(
-      new Request(
-        "https://syntila.app/api/desktop-auth/intents/intent-1/approve",
-        {
-          method: "POST",
-          headers: {
-            cookie: "better-auth-session=opaque",
-            origin: "https://syntila.app",
-            "content-type": "application/json",
-          },
-          body: "{}",
-        },
-      ),
-      {} as Env,
-      undefined,
-      { handleApproveDesktopAuthIntent: approve },
-      dependencies(sameOrigin),
-    );
 
-    expect(response.status).toBe(200);
-    expect(approve).toHaveBeenCalledOnce();
-    expect(sameOrigin).toHaveBeenCalledOnce();
-  });
-
-  it("routes poller cancellation without cookie same-origin requirements", async () => {
-    const sameOrigin = vi.fn();
-    const cancel = vi.fn(async () => Response.json({ cancelled: true }));
-    const response = await routeWorkerRequest(
-      new Request(
-        "https://syntila.app/api/desktop-auth/intents/intent-1/cancel",
-        {
-          method: "POST",
-          headers: {
-            authorization: "Bearer poll-secret",
-            "content-type": "application/json",
-          },
-          body: "{}",
-        },
-      ),
-      {} as Env,
-      undefined,
-      { handleCancelDesktopAuthIntent: cancel },
-      dependencies(sameOrigin),
-    );
-
-    expect(response.status).toBe(200);
-    expect(cancel).toHaveBeenCalledOnce();
-    expect(sameOrigin).not.toHaveBeenCalled();
-  });
 });

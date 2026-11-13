@@ -122,10 +122,19 @@ export class WorkflowHost {
         WHERE lease_owner = $1 AND status = 'running'`, [this.owner]).catch(() => {});
   }
 
+  private pokedDuringKick = false;
+
   poke() {
-    if (this.stopped || this.kick) return;
+    if (this.stopped) return;
+    // A poke during a claim (e.g. an event that just woke an instance) must
+    // not wait for the next poll: run one more claim right after this one.
+    if (this.kick) { this.pokedDuringKick = true; return; }
+    this.pokedDuringKick = false;
     this.kick = this.claimAndRun().catch((e) => console.error(JSON.stringify({ level: "error", message: "workflow.poll_failed", error: String(e?.stack ?? e) })))
-      .finally(() => { this.kick = null; });
+      .finally(() => {
+        this.kick = null;
+        if (this.pokedDuringKick) this.poke();
+      });
   }
 
   private async claimAndRun() {

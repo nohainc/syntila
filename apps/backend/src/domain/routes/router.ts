@@ -141,95 +141,6 @@ export async function routeWorkerRequest(
     if (workspaceRuntimeTransport) {
       return await handlers.handleWorkspaceRuntimeTransport!(request, env);
     }
-    if (
-      request.method === "POST" &&
-      url.pathname === "/api/desktop-auth/intents"
-    ) {
-      return await handlers.handleCreateDesktopAuthIntent!(request, env);
-    }
-    if (
-      request.method === "POST" &&
-      url.pathname === "/api/desktop-auth/password"
-    ) {
-      return await handlers.handleDesktopPasswordSignIn!(request, env);
-    }
-    if (
-      request.method === "GET" &&
-      url.pathname === "/api/desktop-auth/session"
-    ) {
-      return await handlers.handleGetDesktopHumanSession!(request, env);
-    }
-    const desktopIntentMatch = url.pathname.match(
-      /^\/api\/desktop-auth\/intents\/([^/]+)(?:\/(approve|claim|cancel|deny|browser-status))?$/,
-    );
-    if (desktopIntentMatch?.[1]) {
-      const intentId = decodeURIComponent(desktopIntentMatch[1]);
-      if (request.method === "GET" && !desktopIntentMatch[2]) {
-        return await handlers.handleDesktopAuthIntentStatus!(
-          request,
-          env,
-          intentId,
-        );
-      }
-      if (
-        request.method === "GET" &&
-        desktopIntentMatch[2] === "browser-status"
-      ) {
-        return await handlers.handleDesktopAuthIntentBrowserStatus!(
-          request,
-          env,
-          intentId,
-        );
-      }
-      if (request.method === "POST" && desktopIntentMatch[2] === "cancel") {
-        return await handlers.handleCancelDesktopAuthIntent!(
-          request,
-          env,
-          intentId,
-        );
-      }
-      if (request.method === "POST" && desktopIntentMatch[2] === "deny") {
-        return await handlers.handleDenyDesktopAuthIntent!(
-          request,
-          env,
-          intentId,
-        );
-      }
-      if (request.method === "POST" && desktopIntentMatch[2] === "approve") {
-        return await handlers.handleApproveDesktopAuthIntent!(
-          request,
-          env,
-          intentId,
-        );
-      }
-      if (request.method === "POST" && desktopIntentMatch[2] === "claim") {
-        return await handlers.handleClaimDesktopAuthIntent!(
-          request,
-          env,
-          intentId,
-        );
-      }
-    }
-    const desktopSessionRevokeMatch = url.pathname.match(
-      /^\/api\/desktop-auth\/sessions\/([^/]+)\/revoke$/,
-    );
-    if (request.method === "POST" && desktopSessionRevokeMatch?.[1]) {
-      return await handlers.handleRevokeDesktopHumanSession!(
-        request,
-        env,
-        decodeURIComponent(desktopSessionRevokeMatch[1]),
-      );
-    }
-    const desktopSessionRotateMatch = url.pathname.match(
-      /^\/api\/desktop-auth\/sessions\/([^/]+)\/rotate$/,
-    );
-    if (request.method === "POST" && desktopSessionRotateMatch?.[1]) {
-      return await handlers.handleRotateDesktopHumanSession!(
-        request,
-        env,
-        decodeURIComponent(desktopSessionRotateMatch[1]),
-      );
-    }
     if (url.pathname === "/api/people/support")
       return await handleEnsureSupportSpace(request, env, ctx);
     if (url.pathname === "/api/people")
@@ -415,9 +326,6 @@ export async function routeWorkerRequest(
         decodeURIComponent(adminIssueReportMatch[1]),
         ctx,
       );
-    }
-    if (request.method === "POST" && url.pathname === "/api/session/logout") {
-      return await handlers.handleSessionLogout!(request, env, ctx);
     }
     if (request.method === "GET" && url.pathname === "/api/workspaces") {
       return await handlers.handleListWorkspaces!(request, env, ctx);

@@ -19,20 +19,6 @@ export { handleGetAvatar, handleUploadAvatar } from "./profile.js";
 
 export {
   handleSession,
-  handleCompleteStepUp,
-  handleCompleteProfileLabStepUp,
-  handleSessionLogout,
-  handleCreateDesktopAuthIntent,
-  handleDesktopPasswordSignIn,
-  handleDesktopAuthIntentStatus,
-  handleDesktopAuthIntentBrowserStatus,
-  handleCancelDesktopAuthIntent,
-  handleDenyDesktopAuthIntent,
-  handleApproveDesktopAuthIntent,
-  handleClaimDesktopAuthIntent,
-  handleRevokeDesktopHumanSession,
-  handleGetDesktopHumanSession,
-  handleRotateDesktopHumanSession,
   findDesktopHumanSession,
 } from "./auth.js";
 export {

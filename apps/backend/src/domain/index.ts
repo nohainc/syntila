@@ -37,7 +37,7 @@ import { sweepExpiredUploadReservations } from "./attachment-storage.js";
 import { sweepStaleExecutionWaiters } from "./account-execution-slots.js";
 import { sweepUnsignaledTerminals } from "./assignment-workflow-signal.js";
 import * as handlers from "./routes/handlers.js";
-import { handleBetterAuthRequest, identityService } from "./auth/index.js";
+import { identityService } from "./auth/index.js";
 import { issueRealtimeTicket } from "./auth/identity-service.js";
 import {
   routeWorkerRequest,
@@ -96,26 +96,12 @@ export const routeHandlers = {
   handleGetAdminIssueReportGroup,
   handleProfileLabAccess: handlers.handleProfileLabAccess,
   handleSession: handlers.handleSession,
-  handleSessionLogout: handlers.handleSessionLogout,
-  handleCreateDesktopAuthIntent: handlers.handleCreateDesktopAuthIntent,
-  handleDesktopPasswordSignIn: handlers.handleDesktopPasswordSignIn,
-  handleDesktopAuthIntentStatus: handlers.handleDesktopAuthIntentStatus,
-  handleDesktopAuthIntentBrowserStatus:
-    handlers.handleDesktopAuthIntentBrowserStatus,
-  handleCancelDesktopAuthIntent: handlers.handleCancelDesktopAuthIntent,
-  handleDenyDesktopAuthIntent: handlers.handleDenyDesktopAuthIntent,
-  handleApproveDesktopAuthIntent: handlers.handleApproveDesktopAuthIntent,
-  handleClaimDesktopAuthIntent: handlers.handleClaimDesktopAuthIntent,
-  handleRevokeDesktopHumanSession: handlers.handleRevokeDesktopHumanSession,
-  handleGetDesktopHumanSession: handlers.handleGetDesktopHumanSession,
   handleCheckWorkspaceOwnership: handlers.handleCheckWorkspaceOwnership,
   handleReconcileWorkspaceOwnership: handlers.handleReconcileWorkspaceOwnership,
   handleDisconnectDesktopWorkspace: handlers.handleDisconnectDesktopWorkspace,
   handleReleaseDesktopWorkspace: handlers.handleReleaseDesktopWorkspace,
   handleRegisterWorkspaceFromDesktop:
     handlers.handleRegisterWorkspaceFromDesktop,
-  handleRotateDesktopHumanSession: handlers.handleRotateDesktopHumanSession,
-  handleCompleteStepUp: handlers.handleCompleteStepUp,
   handleListWorkspaces: handlers.handleListWorkspaces,
   handleUploadArtifact: handlers.handleUploadArtifact,
   handleGetArtifact: handlers.handleGetArtifact,
@@ -361,25 +347,6 @@ export default {
         const signInUrl = new URL(`/api/auth/sign-in/${provider}`, request.url);
         signInUrl.searchParams.set("returnTo", returnTo);
         return Response.redirect(signInUrl.toString(), 302);
-      }
-      if (
-        request.method === "POST" &&
-        url.pathname === "/api/auth/step-up/passkey/complete"
-      ) {
-        handlers.requireSameOriginForCookieMutation(request);
-        return handlers.handleCompleteStepUp(request, env, ctx);
-      }
-      if (
-        request.method === "POST" &&
-        url.pathname === "/api/desktop-auth/profile-lab/step-up/complete"
-      ) {
-        return handlers.handleCompleteProfileLabStepUp(request, env, ctx);
-      }
-      if (
-        url.pathname === "/api/auth" ||
-        url.pathname.startsWith("/api/auth/")
-      ) {
-        return handleBetterAuthRequest(request, env);
       }
       if (request.method === "POST" && url.pathname === "/api/realtime/tickets") {
         const identity = await identityService.resolve(request, env);
