@@ -22,54 +22,66 @@ import InteractiveWorkflow from "../components/InteractiveWorkflow.astro";
         headingLevel={1}
       />
 
-      <div class="execution-path-strip" role="region" aria-label="Syntila architecture flow">
-        <div class="execution-path-step">
-          <span>Layer 01 · Syntila App</span>
-          <strong>Spaces &amp; Threads</strong>
-          <p>People join Spaces, discuss in Threads, and submit Chat or multi-step Work requests in Syntila (<code>syntila.app</code> on web, iOS, and Android).</p>
-        </div>
-        <div class="execution-path-step">
-          <span>Layer 02 · Syntila Cloud</span>
-          <strong>Context &amp; Scheduling</strong>
-          <p>Maintains canonical Thread history, enforces Space role and grant permissions, and dispatches assignments.</p>
-        </div>
-        <div class="execution-path-step">
-          <span>Layer 03 · Syntila Workspace</span>
-          <strong>Local Service &amp; CLI Engine</strong>
-          <p>Headless <code>syntila</code> background service supervises the generic CLI Worker Engine and local Space Work Directories.</p>
-        </div>
-        <div class="execution-path-step">
-          <span>Layer 04 · Provider CLI &amp; MCP</span>
-          <strong>Profiles &amp; MCP Servers</strong>
-          <p>Invokes installed provider CLIs (ChatGPT Codex, Claude Code, Gemini Antigravity), custom MCP Workers, and consented MCP tool servers using local host credentials.</p>
-        </div>
+      <div class="section-block-gap">
+        <SectionHeader
+          eyebrow="Getting Started"
+          title="Six steps from signup to shared AI."
+        />
+        <ol class="workflow-steps" role="list">
+          <WorkflowStep number="01" title="Create a Space">
+            <p>Set up a shared Space in Syntila for your family, product team, or engineering group with explicit <strong>Owner</strong>, <strong>Collaborator</strong>, and <strong>Viewer</strong> roles.</p>
+          </WorkflowStep>
+
+          <WorkflowStep number="02" title="Invite your people">
+            <p>Invite collaborators via email or link. Invited members join directly in Syntila on web, iOS, or Android and can use the Space's authorized AI Workers without installing Workspace software themselves or seeing owner credentials.</p>
+          </WorkflowStep>
+
+          <WorkflowStep number="03" title="Connect & share AI">
+            <p>At least one Space member installs Syntila Workspace on macOS, Windows, or Linux, runs <code>syntila setup</code>, and grants the Workspace and selected AI Workers to the Space.</p>
+          </WorkflowStep>
+
+          <WorkflowStep number="04" title="Open a Thread">
+            <p>Organize work into focused Threads—such as trip planning, product strategy, or feature implementation—so each topic keeps its own clean context.</p>
+          </WorkflowStep>
+
+          <WorkflowStep number="05" title="Collaborate in context">
+            <p>Use <strong>Message</strong> mode to talk with teammates, or switch to <strong>Ask AI</strong> to prompt any authorized Worker. Syntila carries Thread history across turns and Workers automatically.</p>
+          </WorkflowStep>
+
+          <WorkflowStep number="06" title="Run Workflows when needed">
+            <p>When a single prompt isn't enough, choose a structured <strong>Work</strong> preset—such as Research, Plan &amp; Implement, or Full Cycle—to coordinate multiple steps and Workers in one run.</p>
+          </WorkflowStep>
+        </ol>
       </div>
 
-      <ol class="workflow-steps" role="list">
-        <WorkflowStep number="01" title="Create a Space">
-          <p>Set up a shared Space in Syntila for your family, product team, or engineering group with explicit <strong>Owner</strong>, <strong>Collaborator</strong>, and <strong>Viewer</strong> roles.</p>
-        </WorkflowStep>
-
-        <WorkflowStep number="02" title="Invite your people">
-          <p>Invite collaborators via email or link. Invited members join directly in Syntila on web, iOS, or Android and can use the Space's authorized AI Workers without installing Workspace software themselves or seeing owner credentials.</p>
-        </WorkflowStep>
-
-        <WorkflowStep number="03" title="Connect & share AI">
-          <p>At least one Space member installs Syntila Workspace on macOS, Windows, or Linux, runs <code>syntila setup</code>, and grants the Workspace and selected AI Workers to the Space.</p>
-        </WorkflowStep>
-
-        <WorkflowStep number="04" title="Open a Thread">
-          <p>Organize work into focused Threads—such as trip planning, product strategy, or feature implementation—so each topic keeps its own clean context.</p>
-        </WorkflowStep>
-
-        <WorkflowStep number="05" title="Collaborate in context">
-          <p>Use <strong>Message</strong> mode to talk with teammates, or switch to <strong>Ask AI</strong> to prompt any authorized Worker. Syntila's Context Engine carries Thread history across turns and Workers automatically.</p>
-        </WorkflowStep>
-
-        <WorkflowStep number="06" title="Run Workflows when needed">
-          <p>When a single prompt isn't enough, choose a structured <strong>Work</strong> preset—such as Research, Plan &amp; Implement, or Full Cycle—to coordinate multiple steps and Workers in one run.</p>
-        </WorkflowStep>
-      </ol>
+      <div class="section-block-gap-lg">
+        <SectionHeader
+          eyebrow="Architecture"
+          title="Four layers from conversation to local execution."
+        />
+        <div class="execution-path-strip" role="region" aria-label="Syntila architecture flow">
+          <div class="execution-path-step">
+            <span>Layer 01 · Syntila App</span>
+            <strong>Spaces &amp; Threads</strong>
+            <p>People join Spaces, discuss in Threads, and submit Chat or multi-step Work requests in Syntila (<code>syntila.app</code> on web, iOS, and Android).</p>
+          </div>
+          <div class="execution-path-step">
+            <span>Layer 02 · Syntila Cloud</span>
+            <strong>Context &amp; Scheduling</strong>
+            <p>Maintains canonical Thread history, enforces Space role and grant permissions, and dispatches assignments.</p>
+          </div>
+          <div class="execution-path-step">
+            <span>Layer 03 · Syntila Workspace</span>
+            <strong>Local Service &amp; CLI Engine</strong>
+            <p>Headless <code>syntila</code> background service supervises the generic CLI Worker Engine and local Space Work Directories.</p>
+          </div>
+          <div class="execution-path-step">
+            <span>Layer 04 · Provider CLI &amp; MCP</span>
+            <strong>Profiles &amp; MCP Servers</strong>
+            <p>Invokes installed provider CLIs (ChatGPT Codex, Claude Code, Gemini Antigravity), custom MCP Workers, and consented MCP tool servers using local host credentials.</p>
+          </div>
+        </div>
+      </div>
 
       <div class="section-block-gap-lg">
         <SectionHeader
