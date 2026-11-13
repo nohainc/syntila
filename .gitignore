@@ -37,3 +37,7 @@ apps/workspace/macos/Flutter/ephemeral/
 
 # Local gui-manifest checkout (see apps/workspace_gui/README.md).
 apps/workspace_gui/pubspec_overrides.yaml
+
+# Local migration scratch
+_debug/
+.sync/

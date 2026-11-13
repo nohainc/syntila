@@ -60,6 +60,8 @@
     "validate:app": "bash scripts/check-flutter-app.sh app",
     "validate:workspace": "bash scripts/check-flutter-app.sh workspace",
     "validate:profile-lab": "bash scripts/check-flutter-app.sh profile_lab",
+    "validate:backend": "pnpm --dir apps/backend test",
+    "backend:build": "pnpm --dir apps/backend build",
     "validate:cloud": "pnpm --dir apps/cloud types:check && tsc -p packages/protocol/tsconfig.json && tsc -p packages/workspace-runtime-protocol/tsconfig.json && tsc -p packages/security/tsconfig.json && tsc -p packages/core/tsconfig.json && tsc -p packages/tool-profile/tsconfig.json && tsc -p apps/cloud/tsconfig.json && vitest run packages/protocol/test packages/workspace-runtime-protocol/test packages/security/test packages/core/test packages/tool-profile/test apps/cloud/test",
     "validate:site": "pnpm site:check && pnpm site:build && pnpm site:test",
     "validate:engine": "bash scripts/validate-engine.sh",
