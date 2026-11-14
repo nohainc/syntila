@@ -32,10 +32,6 @@
 .section {
   position: relative;
   padding-block: var(--space-22);
-  border-top: var(--border-thin);
-}
-.section:first-child {
-  border-top: 0;
 }
 .section-header {
   max-width: var(--content-reading);
