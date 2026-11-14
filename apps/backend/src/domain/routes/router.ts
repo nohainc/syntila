@@ -42,6 +42,7 @@ import {
 import { handleThreadRequestQueue } from "./thread-request-queue.js";
 import { handleApprovePlan } from "./implement-plan.js";
 import { conditionalJson } from "./conditional-read.js";
+import { isDatabaseError } from "./api-contract.js";
 import { BUILTIN_WORKFLOWS, workflowCatalogEntry } from "@syntila/core";
 
 export type RouteHandler = (...args: unknown[]) => Promise<Response>;
@@ -1352,6 +1353,12 @@ export async function routeWorkerRequest(
         }),
       );
     }
+    // A database failure names tables and constraints: never send it out.
+    if (!(error instanceof deps.HttpError) && isDatabaseError(error))
+      return deps.json(
+        { error: "Something went wrong on our side.", code: "internal_error" },
+        { status: 500 },
+      );
     // Only HttpErrors expose a stable code; driver error codes stay internal.
     const code =
       error instanceof deps.HttpError &&

@@ -52,6 +52,13 @@ import {
   withRequestId,
 } from "./observability.js";
 import { pruneExpiredRealtimeEvents } from "./realtime-retention.js";
+import {
+  enforceRateLimit,
+  rateLimitConfig,
+  RateLimiter,
+  withApiVersion,
+  withErrorEnvelope,
+} from "./routes/api-contract.js";
 import { pruneWorkerActivityHistory } from "./worker-activity-history.js";
 import { recoverStaleAssignments } from "./assignment-dispatcher.js";
 import { pruneExpiredIssueReports } from "./issue-report-retention.js";
@@ -67,6 +74,8 @@ import {
   handleCreateAdminIssueReportGroup,
   handleGetAdminIssueReportGroup,
 } from "./routes/issue-reports.js";
+
+const rateLimiter = new RateLimiter();
 
 function applyCorsHeaders(
   response: Response,
@@ -313,6 +322,16 @@ export default {
     }
 
     const response = await (async (): Promise<Response> => {
+      const limited = await enforceRateLimit(
+        rateLimiter,
+        rateLimitConfig(env as unknown as Parameters<typeof rateLimitConfig>[0]),
+        request,
+        url.pathname,
+      );
+      if (limited) {
+        logStructured("warn", "http.rate_limited", { requestId }, { method: request.method, path: url.pathname });
+        return limited;
+      }
       const staticAssets = (env as Env & StaticAssetEnvironment).ASSETS;
       if (
         staticAssets &&
@@ -383,7 +402,9 @@ export default {
     })();
 
     return applyCorsHeaders(
-      withRequestId(response, requestId),
+      withApiVersion(
+        withRequestId(await withErrorEnvelope(response, requestId), requestId),
+      ),
       origin,
       isTrusted,
     );

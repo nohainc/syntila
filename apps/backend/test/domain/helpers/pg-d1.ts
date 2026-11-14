@@ -1,6 +1,6 @@
 /**
  * Test database helper: every call returns a fresh PostgreSQL database cloned
- * from a template built from apps/backend/schema/0001_initial.sql.
+ * from a template built from every file in apps/backend/migrations.
  *   const { db, sqlite } = pgD1();
  *   db     — D1-compatible async API (production adapter)
  *   sqlite — synchronous fixture API: exec(sql) / prepare(sql).run|get|all(...)
@@ -16,7 +16,10 @@ const BASE_URL = process.env.TEST_DATABASE_URL ?? "postgres://syntila_app:devpas
 // Every migration in order, exactly as the deploy applies them.
 const MIGRATIONS = new URL("../../../migrations/", import.meta.url);
 const schema = readdirSync(MIGRATIONS).filter((f) => /^\d{4}_[a-z0-9_]+\.sql$/.test(f)).sort()
-  .map((f) => readFileSync(new URL(f, MIGRATIONS), "utf8")).join("\n");
+  .map((f) => readFileSync(new URL(f, MIGRATIONS), "utf8")).join("\n")
+  // The template is built in one implicit transaction; a plain index build
+  // produces the same schema as the CONCURRENTLY one used in production.
+  .replace(/\bCONCURRENTLY /g, "");
 const TEMPLATE = `syntila_tpl_${createHash("sha256").update(schema).digest("hex").slice(0, 12)}`;
 const urlFor = (db: string) => { const u = new URL(BASE_URL); u.pathname = `/${db}`; return u.toString(); };
 

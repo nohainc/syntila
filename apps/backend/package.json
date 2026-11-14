@@ -7,6 +7,10 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "migrate": "bun run src/migrate.ts",
+    "migrate:status": "bun run src/migrate.ts --dry-run",
+    "schema:verify": "bun run src/migrate.ts --verify",
+    "schema:lock": "bun run src/migrate.ts --print-lock > migrations/schema.lock",
+    "routes": "bun scripts/routes.ts --write",
     "build": "bash scripts/build.sh",
     "test": "bun scripts/test.ts"
   },

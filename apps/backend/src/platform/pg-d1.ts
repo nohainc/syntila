@@ -99,6 +99,44 @@ function findQuoteEnd(sql: string, start: number, quote: string): number {
   return sql.length;
 }
 
+/* ------------------------------------------------------- writer-lock metrics */
+
+export interface WriterLockStat { label: string; count: number; waitMs: number; holdMs: number; maxHoldMs: number }
+const lockStats = new Map<string, WriterLockStat>();
+const SLOW_WRITE_MS = Number(process.env.PG_SLOW_WRITE_MS ?? 250);
+
+/** "insert realtime_events", "update worker_assignments", … for one statement. */
+export function statementLabel(sql: string): string {
+  const m = /^\s*(?:\/\*[\s\S]*?\*\/\s*)?(?:with\b[\s\S]*?\)\s*)?(insert\s+into|update|delete\s+from)\s+"?([a-z_][a-z0-9_]*)/i.exec(sql);
+  return m ? `${m[1]!.toLowerCase().split(/\s+/)[0]} ${m[2]!.toLowerCase()}` : "other";
+}
+
+function recordWrite(label: string, waitMs: number, holdMs: number): void {
+  let stat = lockStats.get(label);
+  if (!stat) {
+    if (lockStats.size >= 500) return; // labels are a closed set in practice; never grow unbounded
+    stat = { label, count: 0, waitMs: 0, holdMs: 0, maxHoldMs: 0 };
+    lockStats.set(label, stat);
+  }
+  stat.count++; stat.waitMs += waitMs; stat.holdMs += holdMs;
+  if (holdMs > stat.maxHoldMs) stat.maxHoldMs = holdMs;
+  if (SLOW_WRITE_MS > 0 && holdMs >= SLOW_WRITE_MS)
+    console.warn(JSON.stringify({ level: "warn", message: "db.slow_write", details: { label, holdMs: Math.round(holdMs), waitMs: Math.round(waitMs) } }));
+}
+
+/**
+ * What held the global writer lock since the last call, heaviest first.
+ * `waitMs` is time spent queueing for the lock (plus BEGIN); `holdMs` is the
+ * time every other writer in the system was blocked.
+ */
+export function drainWriterLockStats(): WriterLockStat[] {
+  const out = [...lockStats.values()]
+    .map((s) => ({ ...s, waitMs: Math.round(s.waitMs), holdMs: Math.round(s.holdMs), maxHoldMs: Math.round(s.maxHoldMs) }))
+    .sort((a, b) => b.holdMs - a.holdMs);
+  lockStats.clear();
+  return out;
+}
+
 const isRead = (sql: string) => /^\s*(select|with\s+[\s\S]*?\)\s*select|show|explain)\b/i.test(sql) && !/\b(insert|update|delete)\b/i.test(sql);
 
 function normalizeValue(v: unknown): unknown {
@@ -187,7 +225,7 @@ export class PgD1Database {
     try {
       if (tx) result = await runOn(tx);
       else if (isRead(text)) result = await runOn(this.sql);
-      else result = await this.serializable((t) => runOn(t));
+      else result = await this.serializable((t) => runOn(t), statementLabel(text));
     } catch (e) {
       throw e instanceof PgD1Error ? e : new PgD1Error(e);
     }
@@ -197,14 +235,24 @@ export class PgD1Database {
   async batch<T = Record<string, unknown>>(statements: PgD1PreparedStatement[]): Promise<D1Result<T>[]> {
     if (statements.length === 0) return [];
     try {
+      const label = `batch(${statements.length}) ${statementLabel(statements[0]!.sql)}`;
       return await this.serializable(async (tx) => {
+        // The statements of a batch do not depend on each other's results, so
+        // they are sent together (pipelined, in order, on the one transaction
+        // connection) instead of waiting a network round trip for each. This
+        // is what keeps the global writer lock short. The first failure in
+        // statement order is the one reported, as with sequential execution.
+        const started = performance.now();
+        const settled = await Promise.allSettled(
+          statements.map((s) => tx.unsafe(translatePlaceholders(s.sql), s.values as Value[])));
+        const duration = (performance.now() - started) / statements.length;
         const out: D1Result<T>[] = [];
-        for (const s of statements) {
-          const started = performance.now();
-          out.push(toResult<T>(await tx.unsafe(translatePlaceholders(s.sql), s.values as Value[]), performance.now() - started));
+        for (const result of settled) {
+          if (result.status === "rejected") throw result.reason;
+          out.push(toResult<T>(result.value, duration));
         }
         return out;
-      });
+      }, label);
     } catch (e) {
       throw e instanceof PgD1Error ? e : new PgD1Error(e);
     }
@@ -224,14 +272,21 @@ export class PgD1Database {
    * snapshot while waiting for the lock and compute stale sequence numbers).
    * Reads never wait. Deadlocks with writers outside this adapter are retried.
    */
-  private async serializable<R>(fn: (tx: Sql) => Promise<R>): Promise<R> {
+  private async serializable<R>(fn: (tx: Sql) => Promise<R>, label = "other"): Promise<R> {
     for (let attempt = 1; ; attempt++) {
+      const queued = performance.now();
+      let locked = 0;
       try {
-        return await this.sql.begin(async (tx) => {
+        const result = await this.sql.begin(async (tx) => {
           await (tx as unknown as Sql).unsafe("SELECT pg_advisory_xact_lock($1)", [WRITER_LOCK]);
+          locked = performance.now();
           return fn(tx as unknown as Sql);
         }) as R;
+        // The lock is released by COMMIT, so the hold time includes it.
+        recordWrite(label, locked - queued, performance.now() - locked);
+        return result;
       } catch (e: any) {
+        if (locked) recordWrite(label, locked - queued, performance.now() - locked);
         const code = e?.errno ?? e?.code;
         if (!RETRYABLE.has(code) || attempt >= MAX_ATTEMPTS) throw e;
         await Bun.sleep(Math.random() * Math.min(500, 5 * 2 ** attempt));

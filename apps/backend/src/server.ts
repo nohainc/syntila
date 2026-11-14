@@ -7,9 +7,10 @@ import { TokenVerifier } from "./auth";
 import { loadConfig } from "./config";
 import { health } from "./health";
 import { pendingMigrations } from "./migrate";
+import { pruneOperationalTables } from "./retention";
 import { backgroundTaskCount, drainBackgroundTasks, executionContext } from "./platform/background";
 import { AuthWorkerSync, EmailOutbox, EmailRelay } from "./platform/email";
-import { PgD1Database } from "./platform/pg-d1";
+import { drainWriterLockStats, PgD1Database } from "./platform/pg-d1";
 import { S3R2Bucket, unconfiguredBucket } from "./platform/r2";
 import { configureIdentityVerifier } from "./domain/auth/identity-service";
 import worker from "./domain/index";
@@ -110,7 +111,14 @@ async function runScheduled(cron: string) {
     reserved.release();
   }
 }
-const every5 = setInterval(() => void runScheduled("*/5 * * * *"), 5 * 60_000);
+function logWriterLock() {
+  const stats = drainWriterLockStats();
+  if (!stats.length) return;
+  const total = stats.reduce((sum, s) => ({ count: sum.count + s.count, waitMs: sum.waitMs + s.waitMs, holdMs: sum.holdMs + s.holdMs }), { count: 0, waitMs: 0, holdMs: 0 });
+  // holdMs / 300000 is the share of the last five minutes the lock was taken.
+  console.log(JSON.stringify({ level: "info", message: "db.writer_lock", details: { ...total, top: stats.slice(0, 12) } }));
+}
+const every5 = setInterval(() => { void runScheduled("*/5 * * * *"); logWriterLock(); }, 5 * 60_000);
 let lastDaily = "";
 const daily = setInterval(() => {
   const now = new Date();
@@ -118,7 +126,9 @@ const daily = setInterval(() => {
   if (now.getUTCHours() === 3 && now.getUTCMinutes() >= 17 && lastDaily !== day) {
     lastDaily = day;
     void runScheduled("17 3 * * *");
-    void sql`DELETE FROM email_outbox WHERE status <> 'pending' AND created_at < now() - interval '30 days'`.catch(() => {});
+    void pruneOperationalTables(sql as any)
+      .then((deleted) => console.log(JSON.stringify({ level: "info", message: "retention.complete", deleted })))
+      .catch((e) => console.error(JSON.stringify({ level: "error", message: "retention.failed", error: String((e as Error)?.stack ?? e) })));
   }
 }, 60_000);
 
@@ -130,6 +140,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     stopping = true;
     console.log(`${signal}: draining (${backgroundTaskCount()} background tasks)`);
     clearInterval(every5); clearInterval(daily);
+    logWriterLock();
     // Stop accepting; in-flight HTTP requests get a short drain. Open
     // WebSockets never finish on their own, so they are closed after that and
     // clients reconnect to the next process.

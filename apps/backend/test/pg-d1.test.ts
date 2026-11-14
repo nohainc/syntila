@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
-import { PgD1Database, PgD1Error, translatePlaceholders } from "../src/platform/pg-d1";
+import { drainWriterLockStats, PgD1Database, PgD1Error, statementLabel, translatePlaceholders } from "../src/platform/pg-d1";
 import { pgD1 } from "./domain/helpers/pg-d1";
 
 let sql: InstanceType<typeof SQL>;
@@ -90,5 +90,58 @@ describe("D1 API on PostgreSQL", () => {
     await db.prepare("UPDATE d1t SET data = ? WHERE id = 'a'").bind(bytes).run();
     const got = await db.prepare("SELECT data FROM d1t WHERE id = 'a'").first<ArrayBuffer>("data");
     expect(new Uint8Array(got!)).toEqual(new Uint8Array([1, 2, 3]));
+  });
+});
+
+describe("pipelined batch", () => {
+  test("statements run in order: a later statement sees an earlier one", async () => {
+    const results = await db.batch([
+      db.prepare("INSERT INTO d1t (id, n) VALUES ('p1', 1)"),
+      db.prepare("UPDATE d1t SET n = n + 10 WHERE id = 'p1'"),
+      db.prepare("INSERT INTO d1t (id, n) SELECT 'p2', n * 2 FROM d1t WHERE id = 'p1'"),
+      db.prepare("SELECT id, n FROM d1t WHERE id IN ('p1', 'p2') ORDER BY id"),
+    ]);
+    expect(results.map((r) => r.meta.changes)).toEqual([1, 1, 1, 0]);
+    expect(results[3]!.results).toEqual([{ id: "p1", n: 11 }, { id: "p2", n: 22 }]);
+  });
+
+  test("the first failing statement is the reported error and nothing is kept", async () => {
+    const attempt = db.batch([
+      db.prepare("INSERT INTO d1t (id) VALUES ('q1')"),
+      db.prepare("INSERT INTO d1t (id) VALUES ('q1')"), // unique violation
+      db.prepare("INSERT INTO d1t (id) VALUES ('q2')"), // would fail only because the transaction is aborted
+    ]);
+    await expect(attempt).rejects.toThrow(/UNIQUE constraint failed/);
+    const { results } = await db.prepare("SELECT id FROM d1t WHERE id IN ('q1', 'q2')").all();
+    expect(results).toEqual([]);
+  });
+
+  test("many concurrent batches keep their statements together", async () => {
+    await Promise.all(Array.from({ length: 40 }, (_, i) => db.batch([
+      db.prepare("INSERT INTO d1t (id, n) VALUES (?1, 0)").bind(`pipe-${i}`),
+      db.prepare("UPDATE d1t SET n = (SELECT count(*) FROM d1t WHERE id LIKE 'pipe-%') WHERE id = ?1").bind(`pipe-${i}`),
+    ])));
+    const { results } = await db.prepare("SELECT n FROM d1t WHERE id LIKE 'pipe-%' ORDER BY n").all<{ n: number }>();
+    // Under the writer lock each batch saw exactly the batches before it.
+    expect(results.map((r) => r.n)).toEqual(Array.from({ length: 40 }, (_, i) => i + 1));
+  });
+});
+
+describe("writer-lock metrics", () => {
+  test("labels name the verb and table", () => {
+    expect(statementLabel("INSERT INTO realtime_events (a) VALUES ($1)")).toBe("insert realtime_events");
+    expect(statementLabel("  update worker_assignments SET x = 1")).toBe("update worker_assignments");
+    expect(statementLabel("DELETE FROM user_notes WHERE id = $1")).toBe("delete user_notes");
+    expect(statementLabel("WITH due AS (SELECT 1) UPDATE email_outbox SET attempts = 1")).toBe("update email_outbox");
+    expect(statementLabel("SELECT set_config('x', 'y', true)")).toBe("other");
+  });
+  test("writes are counted per label and drained", async () => {
+    drainWriterLockStats();
+    await db.prepare("INSERT INTO d1t (id) VALUES ('m1')").run();
+    await db.batch([db.prepare("UPDATE d1t SET n = 1 WHERE id = 'm1'"), db.prepare("UPDATE d1t SET n = 2 WHERE id = 'm1'")]);
+    await db.prepare("SELECT 1").all(); // reads never take the lock
+    const stats = drainWriterLockStats();
+    expect(stats.map((s) => [s.label, s.count]).sort()).toEqual([["batch(2) update d1t", 1], ["insert d1t", 1]]);
+    expect(drainWriterLockStats()).toEqual([]);
   });
 });

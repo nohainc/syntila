@@ -16,11 +16,27 @@ psql_pg -c "ALTER DATABASE syntila OWNER TO syntila_app; ALTER SCHEMA public OWN
 
 # One-time pre-production reset: the Phase 3 prototype schema (0001_core.sql)
 # is replaced by the ported schema (0001_initial.sql). No production data exists.
-if [ "$(psql_pg -c "SELECT to_regclass('schema_migrations') IS NOT NULL AND EXISTS (SELECT 1 FROM schema_migrations WHERE version = '0001_core.sql')")" = "t" ]; then
-  echo '== Resetting prototype schema (0001_core.sql -> 0001_initial.sql)'
-  systemctl stop syntila-backend || true
-  /usr/local/lib/syntila/syntila-dump.sh >/dev/null 2>&1 || true   # keep a last copy of the prototype data
-  psql_pg -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION syntila_app; REVOKE CREATE ON SCHEMA public FROM PUBLIC;"
+# A schema change cannot be undone by switching the code back, so take a
+# verified dump before any release that carries new migrations.
+applied=$(psql_pg -c "SELECT CASE WHEN to_regclass('schema_migrations') IS NULL THEN '' ELSE (SELECT COALESCE(string_agg(version, ' '), '') FROM schema_migrations) END")
+pending=
+for file in "$stage"/backend/migrations/[0-9][0-9][0-9][0-9]_*.sql; do
+  name=$(basename "$file")
+  case " $applied " in *" $name "*) ;; *) pending="$pending $name";; esac
+done
+if [ -n "$pending" ]; then
+  echo "== Pending migrations:$pending"
+  if [ -n "$applied" ]; then
+    if [ -x /usr/local/lib/syntila/syntila-dump.sh ]; then
+      echo '== Pre-migration dump'
+      /usr/local/lib/syntila/syntila-dump.sh || { echo 'Pre-migration dump failed; not deploying.' >&2; exit 1; }
+      echo "   Restore with: sudo -u postgres pg_restore --clean --if-exists -d syntila $(ls -1t /var/backups/syntila/syntila-*.dump | head -1)"
+    elif [ "${ALLOW_MIGRATION_WITHOUT_DUMP:-}" = 1 ]; then
+      echo 'WARNING: migrating without a dump (ALLOW_MIGRATION_WITHOUT_DUMP=1).' >&2
+    else
+      echo 'The dump tool is not installed (infra/vps/phase5). Install it, or set ALLOW_MIGRATION_WITHOUT_DUMP=1.' >&2; exit 1
+    fi
+  fi
 fi
 
 echo '== Environment'
@@ -57,6 +73,10 @@ if [ -z "$ready" ]; then
   exit 1
 fi
 echo "Ready: $(curl -fsS http://127.0.0.1:3000/health/ready)"
+if sudo -u syntila env $(grep -E '^(PGHOST|PGPORT|PGUSER|PGDATABASE)=' /etc/syntila/backend.env | xargs) PGPASSWORD="$(cat /etc/syntila/postgres-password)" \
+     "$bun" "$release/dist/migrate.js" --verify; then :; else
+  echo 'WARNING: the live schema differs from migrations/schema.lock (see above). The release is running; investigate the drift.' >&2
+fi
 echo "Unauthenticated API check: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/session) (expected 401)"
 ls -1dt /opt/syntila/releases/* | tail -n +6 | xargs -r rm -rf
 echo "Deployed $release"
