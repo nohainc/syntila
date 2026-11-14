@@ -1,15 +1,20 @@
 ---
 interface Props {
-  number: string;
+  visual: "space" | "invite" | "connect" | "collaborate";
   title: string;
 }
 
-const { number, title } = Astro.props;
+const { visual, title } = Astro.props;
 ---
 
 <li class="workflow-step">
-  <div class="workflow-step__number">{number}</div>
-  <div>
+  <div class:list={["workflow-step__visual", `workflow-step__visual--${visual}`]} aria-hidden="true">
+    {visual === "space" && <div class="step-space"><span class="step-space__spark">✳</span><span class="step-space__line"></span><span class="step-space__line short"></span><div class="step-space__thread"># &nbsp; Thread</div><div class="step-avatars"><i>A</i><i>B</i><i>C</i></div></div>}
+    {visual === "invite" && <div class="step-invite"><div class="step-person">A</div><div class="step-invite__line">······ <span>→</span> ······</div><div class="step-person step-person--outline">+</div></div>}
+    {visual === "connect" && <div class="step-connect"><div class="step-computer"><span>›_</span></div><div class="step-connect__line">······</div><div class="step-ai">✳</div></div>}
+    {visual === "collaborate" && <div class="step-collaborate"><div class="step-chat"><div class="step-chat__message">•••</div><div class="step-chat__answer"><span>✳</span><i></i><i></i></div></div><div class="step-modes"><span>Chat</span><span>Work</span><span>Research</span><span>Implement</span></div></div>}
+  </div>
+  <div class="workflow-step__content">
     <h2>{title}</h2>
     <slot />
   </div>

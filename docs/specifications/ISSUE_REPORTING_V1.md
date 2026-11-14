@@ -131,6 +131,6 @@ under a private `issue-reports/<report-id>/` key and are never returned to the
 browser. Reporter deletion nulls the reporter reference while retaining the
 execution evidence required for support audit; report and attachment retention
 and account-erasure jobs apply the product's configured retention policy. The
-Cloud scheduled retention task removes reports older than one year and deletes
+Cloud scheduled retention task removes reports older than 30 days and deletes
 their private R2 attachment first; if the attachment cannot be removed, the
 report is retained for a later retry.

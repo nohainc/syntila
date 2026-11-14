@@ -9,7 +9,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
   <Section>
     <Container>
       <SectionHeader eyebrow="Privacy Policy" title="Privacy follows the same boundaries as the product." description="What Syntila collects, what stays on your computer, who can see your content, and how to exercise your rights." headingLevel={1} />
-      <p class="legal-meta">Effective date: [EFFECTIVE DATE]</p>
+      <p class="legal-meta">Effective date: 1 December 2026</p>
       <div class="legal-layout">
         <nav class="legal-toc" aria-label="On this page">
           <span class="legal-toc__title">Contents</span>
@@ -38,7 +38,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
         <div class="legal-content">
           <h2 id="who-we-are">1. Who we are</h2>
-          <p>Syntila is operated by Vitalii Noha, a sole trader (živnostník) with his place of business at [PLACE OF BUSINESS ADDRESS], Slovak Republic, company ID (IČO) [IČO], registered in the Trade Register of the District Office [DISTRICT OFFICE] ("Syntila", "we"). We are the controller of the personal data described in this policy. Contact: <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>.</p>
+          <p>Syntila is operated by Vitalii Noha, a foreign person’s enterprise registered in Slovakia, with its place of business at Agátová 3460/7F, 841 01 Bratislava-Dúbravka, Slovak Republic, company ID (IČO) 57 874 956, registered in the Trade Register of the District Office Bratislava under number 110-371284 ("Syntila", "we"). We are the controller of the personal data described in this policy. Contact: <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>.</p>
 
           <h2 id="data-we-collect">2. Data we collect</h2>
           <ul>
@@ -48,28 +48,29 @@ import SiteLayout from "../layouts/SiteLayout.astro";
             <li><strong>Execution records:</strong> who sent a request, which Workspace, Worker, and model handled it, timing, results, and usage reported by the provider.</li>
             <li><strong>Technical data:</strong> diagnostic logs and security events needed to run and protect the service.</li>
           </ul>
-          <p>We do not collect your AI provider passwords, API keys, or provider sessions. We do not collect files on a connected computer unless a run attaches them to a Thread.</p>
+          <p>We do not collect your AI provider passwords, API keys, or provider sessions. Content sent in requests, results, or attachments may include information from files on a connected computer.</p>
 
           <h2 id="human-identity">3. Human identity and Spaces</h2>
-          <p>Syntila Cloud signs people in and applies Space membership and role checks to shared content. Everything posted in a Space, including prompts and AI answers, is visible to the members of that Space according to their role. Joining a Space does not give another member access to your connected computer or your AI Accounts.</p>
+          <p>Syntila Cloud signs people in and applies Space membership and role checks to shared content. Access to content depends on its sharing settings and the member’s role. Joining a Space does not give another member access to your connected computer or your AI Accounts.</p>
+          <p>If you choose Google or GitHub sign-in when available, the selected provider processes your sign-in and shares account information with Syntila. See the <a href="https://policies.google.com/privacy">Google Privacy Policy</a> and <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.</p>
 
           <h2 id="workspaces-execution">4. Workspaces and local execution</h2>
-          <p>A Workspace is a computer that its owner has connected. A Space can use it only when the owner allows it. Work runs on that computer, in a folder for the Space. Files there stay on the computer unless a run attaches them to a Thread, in which case they are stored as Space content.</p>
+          <p>A Workspace is a computer that its owner has connected. A Space can use it only when the owner allows it. Work runs on that computer, in a folder for the Space. A Worker can access files under the host user’s permissions; information it includes in requests, results, or attachments may be sent to providers or stored as content.</p>
 
           <h2 id="ai-accounts">5. AI Accounts</h2>
           <p>AI Accounts are your accounts with external AI providers. You sign in to them on your own computer, in the provider's own tool. The credentials stay there and are not sent to Syntila Cloud or to other members. Allowing a Space to use a Worker lets its members send requests; it does not reveal your credentials.</p>
 
           <h2 id="third-parties">6. AI providers and MCP servers</h2>
-          <p>When a member sends a request to a Worker, the request and the Thread context it needs are sent from the host computer to the AI provider or MCP server behind that Worker, under the host's account. Those services process the data under their own terms and privacy policies. Syntila does not control how they use or retain it.</p>
+          <p>When a member sends a request to a Worker, the request and the Thread context it needs are sent from the host computer to the AI provider or MCP server behind that Worker, under the host's account. The host chooses and connects these third-party services; Syntila does not provide them. They process data under their own terms and privacy policies, and Syntila does not control how they use or retain it.</p>
 
           <h2 id="how-we-use">7. How we use data</h2>
-          <p>We use personal data to provide the service (to perform our contract with you), to keep it secure and prevent abuse (our legitimate interests), to send service messages such as invitations and sign-in emails, and to meet legal obligations. We do not sell personal data and do not use Space content for advertising. [CONFIRM: Syntila does not use Space content to train AI models.]</p>
+          <p>We use personal data to provide the service (to perform our contract with you), to keep it secure and prevent abuse (our legitimate interests), to send service messages such as invitations and sign-in emails, and to meet legal obligations. We do not sell personal data and do not use Space content for advertising. We do not use Space content to train AI models.</p>
 
           <h2 id="storage">8. Storage and service providers</h2>
-          <p>Account data, Space content, and execution records are stored in Syntila Cloud, in data centres operated by our hosting providers, primarily in the European Economic Area (EEA). We use service providers for hosting, content delivery, and email delivery. They process data on our instructions and under a data processing agreement. Where personal data is processed outside the EEA, we rely on an adequacy decision of the European Commission or on the EU Standard Contractual Clauses. You can ask us for the current list of service providers at the contact address below.</p>
+          <p>Account data, Space content, and execution records are stored in Syntila Cloud. We use Hetzner Online GmbH for hosting on a server in Nuremberg, Germany, and Cloudflare, Inc. for services including content delivery and email delivery. Hetzner’s data-protection contact is <a href="mailto:data-protection@hetzner.com">data-protection@hetzner.com</a>; Cloudflare’s is <a href="mailto:dpo@cloudflare.com">dpo@cloudflare.com</a>. For questions about Syntila’s processing, contact us below. [OTHER PRODUCTION PROVIDERS, PROCESSING LOCATIONS, AND INTERNATIONAL-TRANSFER SAFEGUARDS REQUIRE CONFIRMATION BEFORE PUBLICATION.]</p>
 
           <h2 id="retention">9. Retention and deletion</h2>
-          <p>We keep account data while your account exists, and Space content until it is deleted by a member who is allowed to delete it or until the Space is deleted. After deletion, data is removed from active systems within [RETENTION PERIOD]. Security and audit records are kept for [AUDIT RETENTION PERIOD]. To delete your account, write to the contact address below.</p>
+          <p>We keep account data while your account exists, and Space content until it is deleted by someone permitted to do so or the Space is deleted. When an account is deleted, shared Spaces and their history may be preserved for other participants. Some security and Workspace ownership records are retained for service operation and recovery. We do not currently maintain backups. [DELETION TIMING AND SECURITY AND AUDIT RETENTION REQUIRE CONFIRMATION BEFORE PUBLICATION.] To request account deletion, contact us below.</p>
 
           <h2 id="your-rights">10. Your rights</h2>
           <p>Depending on where you live, you may have the right to access, correct, delete, or export your personal data, to restrict or object to its processing, and to withdraw consent where we rely on it. If you are in the European Economic Area or the United Kingdom, you can also complain to your data protection authority. To exercise these rights, write to <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>.</p>
@@ -78,7 +79,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           <p>Syntila is not intended for children under 16. Do not create an account for, or invite, a person below that age.</p>
 
           <h2 id="public-website">12. Public website</h2>
-          <p>This website sets no cookies and loads no third-party scripts. If enabled, it records only an event name, the public page path, and a timestamp, with no identifier for the visitor. It does not provide a place to submit AI credentials, private repository content, or Workspace secrets.</p>
+          <p>This website sets no cookies and loads no third-party scripts. If enabled, it records only an event name, the public page path, and a timestamp, without a visitor identifier in the event payload; hosting providers may receive technical data such as IP addresses. It does not provide a place to submit AI credentials, private repository content, or Workspace secrets.</p>
 
           <h2 id="changes">13. Changes to this policy</h2>
           <p>We may update this policy as the service changes. We will change the effective date above and, for significant changes, tell you in the app or by email.</p>

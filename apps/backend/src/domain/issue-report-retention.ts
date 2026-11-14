@@ -1,8 +1,8 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_REPORTS_PER_RUN = 100;
 
-/** Diagnostic reports are retained for support investigation for one year. */
-export const ISSUE_REPORT_RETENTION_DAYS = 365;
+/** Diagnostic reports are retained for support investigation for 30 days. */
+export const ISSUE_REPORT_RETENTION_DAYS = 30;
 
 export async function pruneExpiredIssueReports(
   db: D1Database,

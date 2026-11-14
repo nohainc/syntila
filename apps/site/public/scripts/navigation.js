@@ -19,6 +19,12 @@ if (toggle && navigation) {
   navigation
     .querySelectorAll("a")
     .forEach((link) => link.addEventListener("click", closeMenu));
+  document.addEventListener("click", (event) => {
+    if (event.target instanceof Node && !navigation.contains(event.target) && !toggle.contains(event.target)) closeMenu();
+  });
+  window.matchMedia("(min-width: 901px)").addEventListener("change", (event) => {
+    if (event.matches) closeMenu();
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && navigation.hasAttribute("data-open")) {
       closeMenu();

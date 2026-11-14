@@ -19,8 +19,13 @@ import SiteLayout from "../layouts/SiteLayout.astro";
         headingLevel={1}
       />
 
+      <nav class="usecase-jump-links" aria-label="FAQ topics">
+        <a href="#getting-started">Getting started</a>
+        <a href="#plans-ai">Plans &amp; AI</a>
+        <a href="#privacy-safety">Privacy &amp; safety</a>
+      </nav>
       <div class="faq-list">
-        <h2 class="faq-group">Getting started</h2>
+        <h2 class="faq-group" id="getting-started">Getting started</h2>
 
         <article class="faq-item" id="what-is-syntila">
           <h3>What is Syntila?</h3>
@@ -29,7 +34,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
         <article class="faq-item" id="what-do-i-need">
           <h3>What do I need to install?</h3>
-          <p>If you are joining a Space: nothing, only a browser. If you are the one powering the AI: Syntila Workspace, plus at least one provider tool such as Codex CLI, Claude Code, or Antigravity CLI, installed and signed in. See <a href="/how-it-works/#host-needs">what the host needs</a> and <a href="/downloads/">Downloads</a>.</p>
+          <p>To join a Space, use Syntila on the web or mobile. If you are the one powering the AI: Syntila Workspace, plus at least one provider tool such as Codex CLI, Claude Code, or Antigravity CLI, installed and signed in. See <a href="/how-it-works/#host-needs">what the host needs</a> and <a href="/downloads/">Install</a>.</p>
         </article>
 
         <article class="faq-item" id="technical">
@@ -44,19 +49,19 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
         <article class="faq-item" id="mobile">
           <h3>Is there a mobile app?</h3>
-          <p>Syntila works in the browser on phones and tablets today. Native iOS and Android apps are in progress.</p>
+          <p>Yes. Syntila is available on iOS and Android, as well as in a browser.</p>
         </article>
 
-        <h2 class="faq-group">Plans and AI subscriptions</h2>
+        <h2 class="faq-group" id="plans-ai">Plans and AI subscriptions</h2>
 
         <article class="faq-item" id="cost">
           <h3>What does Syntila cost?</h3>
-          <p>Syntila is free to start: up to 4 people per Space, one connected computer, and one AI request at a time. A paid plan, Syntila Plus, is planned for larger groups; its price is not announced yet. See <a href="/#plans">Plans</a>. What you pay your AI provider is separate.</p>
+          <p>Syntila is free to start: up to 4 people per Space, one connected computer, and one AI request at a time. Syntila Plus includes Research and Implement and is planned at $9 per month or $81 per year; purchasing is not available yet. See <a href="/#plans">Plans</a>. What you pay your AI provider is separate.</p>
         </article>
 
         <article class="faq-item" id="sharing-subscriptions">
           <h3>Can other people use my AI subscription through Syntila?</h3>
-          <p>That depends on your provider and your plan, and it is your responsibility to check. As a rule of thumb:</p>
+          <p>It depends on your provider’s terms and your plan. Check them before sharing a Worker.</p>
           <ul>
             <li><strong>Your own requests:</strong> using your own subscription for yourself through Syntila is the normal case.</li>
             <li><strong>Requests from other people:</strong> many personal subscriptions are licensed to one person and do not allow shared use. Access billed through a provider's API, or a team or business plan, is usually the right fit when family members or teammates will use the Worker.</li>
@@ -71,10 +76,10 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
         <article class="faq-item" id="which-ai">
           <h3>Which AI tools are supported?</h3>
-          <p>ChatGPT through Codex CLI, Claude through Claude Code, Gemini through Antigravity CLI, and custom or local models through MCP. GitHub Copilot CLI and Grok Build CLI are in testing. See <a href="/workers/">AI &amp; Workers</a>.</p>
+          <p>ChatGPT through Codex CLI, Claude through Claude Code, Gemini through Antigravity CLI, Copilot CLI, Grok Build CLI, and custom or local models through MCP. See <a href="/workers/">AI &amp; Workers</a>.</p>
         </article>
 
-        <h2 class="faq-group">Privacy and safety</h2>
+        <h2 class="faq-group" id="privacy-safety">Privacy and safety</h2>
 
         <article class="faq-item" id="credentials">
           <h3>Does Syntila see my AI provider password or API key?</h3>
@@ -83,7 +88,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
         <article class="faq-item" id="what-is-stored">
           <h3>What does Syntila store?</h3>
-          <p>Your account details and the content of your Spaces: Threads, messages, prompts, AI answers, and attached files. These are stored in Syntila Cloud so every member of the Space can see them. See the <a href="/privacy/">Privacy Policy</a>.</p>
+          <p>Your account details and the content of your Spaces: Threads, messages, prompts, AI answers, and attached files. These are stored in Syntila Cloud. See the <a href="/privacy/">Privacy Policy</a>.</p>
         </article>
 
         <article class="faq-item" id="host-risk">
@@ -96,7 +101,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           <p>Treat them as drafts. AI output can be wrong or incomplete. Syntila records what was asked and what came back so your group can review it, but it does not guarantee that a result is correct.</p>
         </article>
 
-        <article class="faq-item" id="contact">
+        <article class="faq-item faq-contact" id="contact">
           <h3>How do I get help or report a problem?</h3>
           <p>Write to <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>, including for security reports.</p>
         </article>

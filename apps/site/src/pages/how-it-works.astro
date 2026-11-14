@@ -22,35 +22,20 @@ import WorkflowShowcase from "../components/WorkflowShowcase.astro";
       />
 
       <div class="section-block-gap">
-        <SectionHeader
-          eyebrow="Getting Started"
-          title="Six steps from signup to shared AI."
-        />
-        <ol class="workflow-steps" role="list">
-          <WorkflowStep number="01" title="Create a Space">
-            <p>Create a Space in Syntila for your family, team, or project. Each member is an <strong>Owner</strong>, a <strong>Collaborator</strong>, or a <strong>Viewer</strong>.</p>
+        <ul class="workflow-steps" role="list">
+          <WorkflowStep visual="space" title="Create a Space and open a Thread">
+            <p>Bring your people together in a Space, then start a Thread for each topic to keep its conversation and history together.</p>
           </WorkflowStep>
-
-          <WorkflowStep number="02" title="Invite your people">
-            <p>Invite people by email or link. They join in the browser and need no software and no AI account of their own.</p>
+          <WorkflowStep visual="invite" title="Invite your people">
+            <p>Share an invite by email or link. People can join in their browser, without their own AI account.</p>
           </WorkflowStep>
-
-          <WorkflowStep number="03" title="Connect & share AI">
-            <p>One member installs Syntila Workspace on a Mac, Windows, or Linux computer, signs in, and chooses which AI Workers the Space may use. This is the only technical step; see <a href="#host-needs">what the host needs</a> below.</p>
+          <WorkflowStep visual="connect" title="Connect & share AI">
+            <p>One member connects a computer with Syntila Workspace and chooses which AI Workers to share. See <a href="#host-needs">what the host needs</a>.</p>
           </WorkflowStep>
-
-          <WorkflowStep number="04" title="Open a Thread">
-            <p>Give each topic its own Thread, such as a trip, a product decision, or a feature, so its history stays separate and easy to follow.</p>
+          <WorkflowStep visual="collaborate" title="Collaborate and choose a Workflow">
+            <p>Message your people or ask a Worker with the Thread as context. Choose Chat, Work, Research, or Implement to match the task.</p>
           </WorkflowStep>
-
-          <WorkflowStep number="05" title="Collaborate in context">
-            <p>Use <strong>Message</strong> to talk with people, or <strong>Ask AI</strong> to put a question to one of the Space's Workers. The Worker receives the Thread so far, so you do not repeat the background.</p>
-          </WorkflowStep>
-
-          <WorkflowStep number="06" title="Run Workflows when needed">
-            <p>Choose <strong>Chat</strong>, <strong>Work</strong>, <strong>Research</strong>, or <strong>Implement</strong> depending on how much you want the AI to do. Each is explained below.</p>
-          </WorkflowStep>
-        </ol>
+        </ul>
       </div>
 
       <div class="section-block-gap-lg" id="host-needs">
@@ -59,22 +44,22 @@ import WorkflowShowcase from "../components/WorkflowShowcase.astro";
           title="What the person who connects a computer needs."
           description="Only the member who powers the AI needs any of this. Everyone else needs a browser."
         />
-        <div class="security-boundaries">
-          <article class="feature-card">
-            <h3>An AI tool installed and signed in</h3>
-            <p>Workers use command-line tools from the AI providers, such as Codex CLI, Claude Code, or Antigravity CLI. Install the ones you want and sign in to them first, with your own account.</p>
+        <div class="host-requirements">
+          <article class="host-requirement">
+            <div class="host-requirement__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="7" y="10" width="34" height="28" rx="5"/><path d="m14 19 5 5-5 5m9 0h10"/></svg></div>
+            <div><h3>An AI tool, signed in</h3><p>Install and sign in to the AI command-line tools you want to share, such as Codex CLI, Claude Code, or Antigravity CLI.</p></div>
           </article>
-          <article class="feature-card">
-            <h3>Syntila Workspace</h3>
-            <p>A small background service with a desktop app and a <code>syntila</code> command. It links the computer to your Syntila account and finds the AI tools installed there. <a href="/downloads/">Download it here</a>.</p>
+          <article class="host-requirement">
+            <div class="host-requirement__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="6" y="9" width="36" height="25" rx="4"/><path d="M18 40h12m-6-6v6m-7-19h14m-7-7v14"/></svg></div>
+            <div><h3>Syntila Workspace</h3><p>Connect your computer to Syntila and make its AI tools available to your Space. <a href="/downloads/">Download Workspace</a>.</p></div>
           </article>
-          <article class="feature-card">
-            <h3>A computer that stays on</h3>
-            <p>Workers can answer only while the host computer is on, awake, and online. When it is off, people can still read and write messages, but its Workers cannot answer until it is back.</p>
+          <article class="host-requirement">
+            <div class="host-requirement__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M24 7v17m-8-13a16 16 0 1 0 16 0"/><circle cx="36" cy="35" r="5" fill="currentColor" stroke="none"/></svg></div>
+            <div><h3>A computer that stays on</h3><p>Keep it awake and online for its Workers to answer. When it is off, people can still read and write messages.</p></div>
           </article>
-          <article class="feature-card">
-            <h3>A plan that allows sharing</h3>
-            <p>Using your own AI subscription for your own requests is the normal case. Before other people use a Worker you connected, <a href="/faq/#sharing-subscriptions">check your provider's rules</a>.</p>
+          <article class="host-requirement">
+            <div class="host-requirement__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M24 6 38 12v10c0 9-5 15-14 20-9-5-14-11-14-20V12L24 6Z"/><path d="m17 24 5 5 9-10"/></svg></div>
+            <div><h3>A plan that allows sharing</h3><p>Before others use a Worker you connected, <a href="/faq/#sharing-subscriptions">check your AI provider’s sharing rules</a>.</p></div>
           </article>
         </div>
       </div>
@@ -84,7 +69,7 @@ import WorkflowShowcase from "../components/WorkflowShowcase.astro";
           eyebrow="Workflows"
           title="Four ways to ask."
         />
-        <WorkflowShowcase />
+        <WorkflowShowcase illustrated />
       </div>
 
       <div class="section-block-gap-lg">
@@ -92,24 +77,24 @@ import WorkflowShowcase from "../components/WorkflowShowcase.astro";
           eyebrow="Architecture"
           title="Four layers from conversation to local execution."
         />
-        <div class="execution-path-strip" role="region" aria-label="Syntila architecture flow">
-          <div class="execution-path-step">
-            <span>Layer 01 · Syntila app</span>
+        <div class="execution-path-strip architecture-flow" role="region" aria-label="Syntila architecture flow">
+          <div class="execution-path-step"><div class="architecture-flow__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="6" y="8" width="36" height="29" rx="4"/><path d="M6 16h36M13 12h.1M18 12h.1M13 23h12m-12 6h19"/></svg></div>
+            <span>Syntila app</span>
             <strong>Spaces &amp; Threads</strong>
             <p>People join Spaces, talk in Threads, and send requests to Workers at <code>syntila.app</code>.</p>
           </div>
-          <div class="execution-path-step">
-            <span>Layer 02 · Syntila Cloud</span>
+          <div class="execution-path-step"><div class="architecture-flow__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M15 34H11a8 8 0 0 1-1-16 14 14 0 0 1 27 2 7 7 0 0 1 0 14h-4"/><rect x="17" y="26" width="14" height="13" rx="2"/><path d="M20 26v-3a4 4 0 0 1 8 0v3"/></svg></div>
+            <span>Syntila Cloud</span>
             <strong>History &amp; permissions</strong>
             <p>Stores Thread history, checks each member's role and the Space's permissions, and passes requests to the right computer.</p>
           </div>
-          <div class="execution-path-step">
-            <span>Layer 03 · Syntila Workspace</span>
+          <div class="execution-path-step"><div class="architecture-flow__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="6" y="9" width="36" height="26" rx="3"/><path d="M18 40h12m-6-5v5M13 18h22m-22 7h14"/></svg></div>
+            <span>Syntila Workspace</span>
             <strong>The host computer</strong>
             <p>A background service on the member's computer receives the request and starts the right AI tool.</p>
           </div>
-          <div class="execution-path-step">
-            <span>Layer 04 · AI tools</span>
+          <div class="execution-path-step"><div class="architecture-flow__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="7" y="9" width="34" height="30" rx="4"/><path d="m15 19 5 5-5 5m10 0h9"/></svg></div>
+            <span>AI tools</span>
             <strong>Provider CLIs &amp; MCP</strong>
             <p>Codex CLI, Claude Code, Antigravity CLI, or a custom MCP Worker does the work, signed in with the host's own account.</p>
           </div>

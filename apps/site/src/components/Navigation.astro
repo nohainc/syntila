@@ -6,6 +6,18 @@ interface Props {
 const { currentPath = "/" } = Astro.props;
 const normalize = (path: string) => (path.endsWith("/") ? path : `${path}/`);
 const activePath = normalize(currentPath);
+const pageLabels: Record<string, string> = {
+  "/": "Home",
+  "/how-it-works/": "How it works",
+  "/use-cases/": "Use cases",
+  "/workers/": "AI & Workers",
+  "/security/": "Security",
+  "/downloads/": "Install",
+  "/faq/": "FAQ",
+  "/privacy/": "Privacy",
+  "/terms/": "Terms",
+};
+const pageLabel = pageLabels[activePath];
 ---
 
 <header class="site-header">
@@ -13,6 +25,7 @@ const activePath = normalize(currentPath);
     <img class="brand-mark" src="/syntila_logo_dark_64.png" alt="" width="32" height="32" fetchpriority="high" aria-hidden="true" />
     <span>Syntila</span>
   </a>
+  {pageLabel && <span class="site-header__current" aria-hidden="true">{pageLabel}</span>}
   <button class="menu-toggle" type="button" aria-controls="site-navigation" aria-expanded="false">
     <span class="menu-toggle__label">Menu</span>
     <span class="menu-toggle__icon" aria-hidden="true"><span></span><span></span><span></span></span>
@@ -23,9 +36,9 @@ const activePath = normalize(currentPath);
     <a href="/workers/" aria-current={activePath === "/workers/" ? "page" : undefined}>AI & Workers</a>
     <a href="/security/" aria-current={activePath === "/security/" ? "page" : undefined}>Security</a>
     <a href="/#plans">Plans</a>
-    <a href="/downloads/" aria-current={activePath === "/downloads/" ? "page" : undefined} data-site-event="navigation.downloads">Downloads</a>
-    <a class="button button--primary nav-cta" href="https://syntila.app" data-site-event="cta.open_app">Open Syntila <span aria-hidden="true">→</span></a>
+    <a href="/downloads/" aria-current={activePath === "/downloads/" ? "page" : undefined} data-site-event="navigation.downloads">Install</a>
   </nav>
+  <a class="button button--primary nav-cta" href="https://syntila.app" data-site-event="cta.open_app">Open Syntila <span aria-hidden="true">→</span></a>
 </header>
 
 <script is:inline src="/scripts/navigation.js" defer></script>

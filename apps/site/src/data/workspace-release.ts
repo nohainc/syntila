@@ -25,7 +25,7 @@ export const workspaceRelease: WorkspaceReleaseManifest = {
       label: "macOS",
       architectures: ["Apple Silicon", "Intel"],
       installSummary:
-        "Signed release bundle with the desktop app, or the Homebrew cask",
+        "Signed release bundle with the service and syntila command, or the Homebrew cask",
       downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
     {

@@ -7,101 +7,93 @@ import { workspaceRelease } from "../data/workspace-release";
 ---
 
 <SiteLayout
-  title="Downloads — Syntila"
-  description="Download Syntila Workspace for macOS, Windows, or Linux to connect your computer and its AI tools to a Syntila Space. Members who only join a Space need just a browser."
+  title="Install — Syntila"
+  description="Download Syntila Workspace for macOS, Windows, or Linux to connect your computer and its AI tools to a Syntila Space. Members can join a Space on the web or mobile."
 >
   <Section>
     <Container>
       <SectionHeader
-        eyebrow="Downloads"
+        eyebrow="Install"
         title="Run Syntila Workers on your computer."
         description="Syntila Workspace connects your computer and the AI tools installed on it to your Spaces. Install it only if you are the one powering the AI."
         headingLevel={1}
       />
 
-      <div class="security-callout">
+      <div class="security-callout downloads-joining">
         <strong>Just joining a Space? You do not need to install anything.</strong>
-        <span>Open <a href="https://syntila.app" data-site-event="cta.open_app">syntila.app</a> in a browser on your computer or phone. Native iOS and Android apps are in progress.</span>
+        <span>Open <a href="https://syntila.app" data-site-event="cta.open_app">syntila.app</a> in a browser or use the iOS or Android app.</span>
       </div>
 
+      <p class="downloads-release-version">{workspaceRelease.productName} {workspaceRelease.version}</p>
       <div class="downloads-grid" data-downloads-platforms data-site-event="section.workspace_reached">
         {workspaceRelease.targets.map((target) => (
           <article class="downloads-card" data-platform={target.platform}>
             <div class="downloads-card__header">
-              <div>
-                <h2>{target.label}</h2>
-                <p>{target.architectures.join(" / ")}</p>
+              <div class="downloads-card__identity">
+                <span class="downloads-platform-icon" aria-hidden="true">
+                  <img src={`/icons/platforms/${target.platform}.svg`} alt="" />
+                </span>
+                <div><h2>{target.label}</h2>
+                <p>{target.architectures.join(" / ")}</p></div>
               </div>
               <span class="badge downloads-card__recommended" hidden>Your system</span>
             </div>
-            <p class="downloads-card__version">{workspaceRelease.productName} {workspaceRelease.version}</p>
-            <p class="downloads-card__architecture">{target.installSummary}</p>
+            {target.platform === "macos" && <div class="downloads-install"><span>Install with Homebrew</span><pre><code>brew install --cask nohainc/tap/syntila-workspace</code></pre></div>}
+            {target.platform === "linux" && <div class="downloads-install"><span>Install with APT</span><pre><code>{`(
+set -e
+APT_URL=https://nohainc.github.io/syntila
+curl --fail --location "$APT_URL/syntila-archive-keyring.gpg" -o /tmp/syntila-archive-keyring.gpg
+gpg --show-keys --with-colons /tmp/syntila-archive-keyring.gpg | grep -q '^fpr:::::::::6EA013D12EF79CBDC34D66058182CCCFCF4175F2:'
+sudo install -D -m 644 /tmp/syntila-archive-keyring.gpg /etc/apt/keyrings/syntila-archive-keyring.gpg
+printf 'Types: deb\nURIs: %s\nSuites: stable\nComponents: main\nSigned-By: /etc/apt/keyrings/syntila-archive-keyring.gpg\n' "$APT_URL" | sudo tee /etc/apt/sources.list.d/syntila.sources >/dev/null
+sudo apt update
+sudo apt install syntila
+)`}</code></pre></div>}
+            {target.platform === "windows" && <p class="downloads-install">Package manager installation is not yet available.</p>}
             <a class="button button--primary" href={target.downloadUrl} target="_blank" rel="noreferrer" data-site-event="cta.download">Download for {target.label} <span aria-hidden="true">↗</span></a>
           </article>
         ))}
-      </div>
-
-      <div class="section-block-gap-lg">
-        <SectionHeader
-          eyebrow="Before you install"
-          title="What you need."
-        />
-        <div class="security-boundaries">
-          <article class="feature-card">
-            <h3>An AI tool, installed and signed in</h3>
-            <p>Install at least one provider tool, such as Codex CLI, Claude Code, or Antigravity CLI, and sign in to it with your own account. Syntila Workspace does not install these or handle their logins. See <a href="/workers/">AI &amp; Workers</a>.</p>
-          </article>
-          <article class="feature-card">
-            <h3>A supported computer</h3>
-            <p>macOS on Apple Silicon or Intel, Windows on x64, or Linux on x64 or arm64 (Ubuntu 22.04 or newer for the APT package). Workers answer only while this computer is on and online.</p>
-          </article>
-          <article class="feature-card">
-            <h3>A Syntila account</h3>
-            <p>Create one at <a href="https://syntila.app" data-site-event="cta.open_app">syntila.app</a>. The Free plan includes one connected computer.</p>
-          </article>
-          <article class="feature-card">
-            <h3>Trust in the people you share with</h3>
-            <p>Workers act on your computer with your user's access. Read the <a href="/security/#host-trust">note for hosts</a> and <a href="/faq/#sharing-subscriptions">check your AI plan</a> before you share a Worker with others.</p>
-          </article>
-        </div>
       </div>
 
       <div class="downloads-cli-section">
         <SectionHeader
           eyebrow="Setup"
           title="Connect your computer."
-          description="Syntila Workspace is a background service with a syntila command and a desktop app for the same settings. The steps below use the command."
+          description="After installation, connect this computer using the syntila command or the Workspace app where available."
         />
         <div class="downloads-cli-grid">
           <div class="downloads-cli-box">
-            <h3>1. Connect and check</h3>
-            <p>Setup links this computer to your Syntila account and finds the AI tools installed on it:</p>
-            <pre><code>syntila setup
-syntila status
-syntila workers</code></pre>
-            <p>Then open your Space in Syntila and choose which Workers it may use.</p>
+            <h3>Connect your Workspace</h3>
+            <p>Sign in and register this computer. Setup offers to install and start the Workspace service.</p>
+            <pre><code>syntila setup</code></pre>
+            <p>If you skipped starting it, install the service and start it when you are ready:</p>
+            <pre><code>syntila service install</code></pre>
+            <pre><code>syntila service start</code></pre>
           </div>
           <div class="downloads-cli-box">
-            <h3>2. Or install with a package manager</h3>
-            <p>macOS with Homebrew:</p>
-            <pre><code>brew install --cask nohainc/tap/syntila-workspace</code></pre>
-            <p>Debian or Ubuntu, once the signed APT repository is added:</p>
-            <pre><code>sudo apt update &amp;&amp; sudo apt install syntila</code></pre>
-            <p>Add the repository first by following the steps at <a href="https://nohainc.github.io/syntila/" target="_blank" rel="noreferrer">nohainc.github.io/syntila</a>, which also shows the signing key fingerprint to check.</p>
-            <p>On Windows, download the release archive above and add <code>syntila.exe</code> to your PATH.</p>
+            <h3>Check status</h3>
+            <p>Check the Workspace status:</p>
+            <pre><code>syntila status</code></pre>
+            <p>Check the service status:</p>
+            <pre><code>syntila service status</code></pre>
+            <p>List the Workers configured on this computer:</p>
+            <pre><code>syntila workers</code></pre>
           </div>
           <div class="downloads-cli-box">
-            <h3>3. Update</h3>
+            <h3>Add a Worker</h3>
+            <p>Install and sign in to the provider’s CLI first. Browse the available Worker types:</p>
+            <pre><code>syntila workers catalog</code></pre>
+            <p>For example, add ChatGPT:</p>
+            <pre><code>syntila workers add chatgpt</code></pre>
+            <p>Other types include claude, copilot, gemini, and grok. Then choose which Workers your Space may use.</p>
+          </div>
+          <div class="downloads-cli-box">
+            <h3>Update</h3>
             <p>Wait for running work to finish, stop the service, update, and start it again. Your settings, sign-ins, and work files are kept.</p>
             <pre><code>syntila service stop
 # then: brew upgrade --cask syntila-workspace
 #   or: sudo apt update &amp;&amp; sudo apt install --only-upgrade syntila
 syntila service start</code></pre>
-          </div>
-          <div class="downloads-cli-box">
-            <h3>4. Remove</h3>
-            <p>Unregister the background service, then uninstall the package or delete the app. Your provider sign-ins and project files are not touched.</p>
-            <pre><code>syntila service uninstall</code></pre>
           </div>
         </div>
       </div>
@@ -110,3 +102,4 @@ syntila service start</code></pre>
 </SiteLayout>
 
 <script src="/scripts/downloads-platform.js" defer></script>
+<script src="/scripts/copy-commands.js" defer></script>

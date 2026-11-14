@@ -25,7 +25,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
         <CredentialPrivacyDiagram />
       </div>
 
-      <div class="security-callout section-block-gap-lg" id="host-trust">
+      <div class="security-callout security-trust section-block-gap-lg" id="host-trust">
+        <span class="security-trust__icon" aria-hidden="true">!</span>
         <strong>Sharing a Worker means trusting the people you share it with.</strong>
         <span>A Worker is an AI agent running on your computer under your user account. To be useful it can read and change files, run commands, and use the network there, and it is not confined to one folder. Members cannot browse your computer or see your credentials in Syntila, but a request they send is carried out by that agent. Grant Workers only to people you would trust with that, and for wider groups consider a separate computer or user account that holds nothing private.</span>
       </div>
@@ -37,37 +38,29 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           description="Membership, Worker permissions, and local execution are separate decisions, each made by the person who owns that part."
         />
 
-        <div class="security-boundaries">
-          <FeatureCard title="Space Membership" headingLevel={2}>
+        <div class="security-boundaries security-boundaries--visual">
+          <FeatureCard title="Space Membership" headingLevel={2} icon="♙">
             <p>A <strong>Viewer</strong> can read Threads. A <strong>Collaborator</strong> can take part and send requests to the Space's Workers. An <strong>Owner</strong> manages members and permissions. Joining a Space does not give anyone access to another member's AI accounts.</p>
           </FeatureCard>
 
-          <FeatureCard title="AI Account Privacy" headingLevel={2}>
-            <p>Provider logins and API keys stay with the provider's own tool on the host computer. Granting a Worker to a Space lets eligible members send it requests; it does not send your key or session to Syntila Cloud or to anyone's device.</p>
+          <FeatureCard title="Local execution, not a sandbox" headingLevel={2} icon="⌂">
+            <p>Each Space gets its own working folder on the host computer. This helps organize work, but is not a security boundary: Workers run with the host user's own access. Concurrent runs can change the same files.</p>
           </FeatureCard>
 
-          <FeatureCard title="Local execution, not a sandbox" headingLevel={2}>
-            <p>Each Space gets its own working folder on the host computer, and Syntila queues tasks that change files so two runs do not edit it at once. This keeps work organized. It is not a security boundary: Workers run with the host user's own access.</p>
-          </FeatureCard>
-
-          <FeatureCard title="Read-only Chat" headingLevel={2}>
+          <FeatureCard title="Read-only Chat" headingLevel={2} icon="◉">
             <p>Chat requests are sent to the Worker as read-only. Workflows that do work, such as Work and Implement, can change files and run commands. How strictly read-only is enforced depends on the provider's tool.</p>
           </FeatureCard>
 
-          <FeatureCard title="Audit & Attribution" headingLevel={2}>
-            <p>Every run is recorded with who asked, which computer and Worker handled it, and which model answered. Syntila Workspace checks the signature on a Worker Profile before it runs a provider tool.</p>
-          </FeatureCard>
-
-          <FeatureCard title="MCP tool approval" headingLevel={2}>
+          <FeatureCard title="MCP tool approval" headingLevel={2} icon="◇">
             <p>Every MCP server needs the host's approval before use. Syntila records each tool's definition and blocks calls if it changes until the host reviews it again. Server tokens and environment variables stay on the host computer.</p>
           </FeatureCard>
 
-          <FeatureCard title="Transport &amp; secret storage" headingLevel={2}>
+          <FeatureCard title="Transport &amp; secret storage" headingLevel={2} icon="◈">
             <p>Syntila Cloud and Syntila Workspace talk over an encrypted, authenticated connection with credentials unique to each installation. On the host, those credentials are kept in the operating system's secret storage.</p>
           </FeatureCard>
 
-          <FeatureCard title="What Syntila Cloud stores" headingLevel={2}>
-            <p>Thread content, including messages, prompts, AI answers, and attached files, is stored in Syntila Cloud so every member can see it. Files in the host's project folders stay on the host unless a run attaches them to a Thread.</p>
+          <FeatureCard title="What Syntila Cloud stores" headingLevel={2} icon="▤">
+            <p>Thread content, including messages, prompts, AI answers, and attached files, is stored in Syntila Cloud.</p>
           </FeatureCard>
         </div>
       </div>
@@ -78,7 +71,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
           title="Practical answers on data and access."
         />
 
-        <div class="security-boundaries">
+        <div class="security-boundaries security-questions">
           <FeatureCard title="Can collaborators read my files or keys?" headingLevel={3}>
             <p>They cannot browse your computer, and Syntila never shows them your credentials. But the agent that carries out their request runs with your user's access, so a determined collaborator could ask it to read files. Share Workers with people you trust, or host them on a computer that holds nothing private.</p>
           </FeatureCard>

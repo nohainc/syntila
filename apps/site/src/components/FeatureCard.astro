@@ -2,12 +2,14 @@
 interface Props {
   title: string;
   headingLevel?: 2 | 3;
+  icon?: string;
 }
 
-const { title, headingLevel = 3 } = Astro.props;
+const { title, headingLevel = 3, icon } = Astro.props;
 ---
 
 <article class="feature-card">
+  {icon && <span class="feature-card__icon" aria-hidden="true">{icon}</span>}
   {headingLevel === 2 ? <h2>{title}</h2> : <h3>{title}</h3>}
   <slot />
 </article>

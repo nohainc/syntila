@@ -4,10 +4,7 @@ import Button from "../components/Button.astro";
 import Container from "../components/Container.astro";
 import Section from "../components/Section.astro";
 import SectionHeader from "../components/SectionHeader.astro";
-import HeroSharedSpace from "../components/HeroSharedSpace.astro";
 import SpaceMembersDiagram from "../components/SpaceMembersDiagram.astro";
-import ConversationContinuity from "../components/ConversationContinuity.astro";
-import ComparisonTable from "../components/ComparisonTable.astro";
 import WorkflowShowcase from "../components/WorkflowShowcase.astro";
 import AudienceCards from "../components/AudienceCards.astro";
 import PlansOverview from "../components/PlansOverview.astro";
@@ -23,20 +20,21 @@ import PlansOverview from "../components/PlansOverview.astro";
       <div class="hero__copy">
         <h1>Bring your people and AI together.</h1>
         <p class="lede">
-          Syntila is a shared space where family, friends, and teammates talk with each other and with AI in the same conversation. One person connects a computer and the AI tools already on it. Everyone else just opens the app.
+          Bring family, friends, teammates, and AI into one shared conversation. One member connects their AI tools; everyone else joins on the web or mobile.
         </p>
-        <div class="actions">
-          <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
-          <Button href="/how-it-works/" label="See how it works" variant="secondary" event="navigation.how_it_works" />
-        </div>
       </div>
 
-      <figure class="hero-visual">
-        <div class="hero-visual__frame" role="img" aria-label="Illustration of a Syntila Space called Family Vacation: three members discuss a trip in a shared Thread and get answers from ChatGPT and Gemini, each running on a member's own computer.">
-          <HeroSharedSpace />
+      <div class="final-cta hero-cta">
+        <SectionHeader
+          eyebrow="AI IS BETTER TOGETHER"
+          title="Start with one Space."
+          description="Open Syntila, create a Space, invite your people, and connect a computer to power its AI Workers."
+        />
+        <div class="final-cta__actions">
+          <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
+          <Button href="/downloads/" label="Install Workspace" variant="secondary" event="navigation.downloads" />
         </div>
-        <figcaption>Illustration of a shared Thread. Names and content are examples.</figcaption>
-      </figure>
+      </div>
     </section>
   </Container>
 
@@ -45,48 +43,10 @@ import PlansOverview from "../components/PlansOverview.astro";
     <Container>
       <SectionHeader
         eyebrow="ONE SPACE. PEOPLE + AI."
-        title="One space. Your people. Their AI."
-        description="One member sets things up: they install Syntila Workspace on their computer and choose which AI Workers the Space may use. Everyone else joins from a browser, with nothing to install and no AI account of their own."
+        title="Your people and AI, in one shared Space."
+        description="People discuss each topic in a Thread and ask AI Workers with the conversation as context. A member’s connected computer powers the Workers they choose to share."
       />
       <SpaceMembersDiagram />
-    </Container>
-  </Section>
-
-  <!-- Collaborative conversations -->
-  <Section>
-    <Container>
-      <div class="split-section split-section--reversed">
-        <div>
-          <SectionHeader
-            eyebrow="COLLABORATION IN CONTEXT"
-            title="One conversation. Everyone stays in context."
-            description="Everyone in the Space sees the discussion, the question put to the AI, the answer, and what the group decided. Nobody has to forward screenshots."
-          />
-          <ul class="feature-bullets" role="list">
-            <li class="bullet-item">
-              <strong>Pick the Worker for each request</strong>
-              <p>Ask ChatGPT, then Claude, then Gemini in the same Thread. Syntila carries the conversation forward, so nobody repeats the background.</p>
-            </li>
-            <li class="bullet-item">
-              <strong>Shared history</strong>
-              <p>Every turn shows who asked, which Worker answered, and what came back.</p>
-            </li>
-          </ul>
-        </div>
-        <ConversationContinuity />
-      </div>
-    </Container>
-  </Section>
-
-  <!-- Comparison -->
-  <Section>
-    <Container>
-      <SectionHeader
-        eyebrow="THE DIFFERENCE"
-        title="Several AI tools, one shared conversation."
-        description="AI chat apps are good at what they do. Syntila is for the moments when more than one person, or more than one AI provider, needs to be in the same conversation."
-      />
-      <ComparisonTable />
     </Container>
   </Section>
 
@@ -98,7 +58,7 @@ import PlansOverview from "../components/PlansOverview.astro";
         title="When a chat isn't enough: turn a question into a workflow."
         description="Most requests are a quick Chat. When you need more, choose a workflow that does the work, splits it across Workers, or checks its own result."
       />
-      <WorkflowShowcase />
+      <WorkflowShowcase illustrated />
     </Container>
   </Section>
 
@@ -126,20 +86,5 @@ import PlansOverview from "../components/PlansOverview.astro";
     </Container>
   </Section>
 
-  <!-- Final CTA -->
-  <Section class="final-cta-section">
-    <Container>
-      <div class="final-cta">
-        <SectionHeader
-          eyebrow="AI IS BETTER TOGETHER"
-          title="Start with one Space."
-          description="Open Syntila, create a Space, invite your people, and connect a computer to power its AI Workers."
-        />
-        <div class="final-cta__actions">
-          <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
-          <Button href="/downloads/" label="Download Workspace" variant="secondary" event="navigation.downloads" />
-        </div>
-      </div>
-    </Container>
-  </Section>
+
 </SiteLayout>
