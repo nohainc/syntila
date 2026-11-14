@@ -2,6 +2,7 @@
   "name": "@syntila/workspace-runtime-protocol",
   "version": "2.0.0",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

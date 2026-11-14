@@ -1,6 +1,7 @@
 {
   "name": "syntila",
   "private": true,
+  "license": "UNLICENSED",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "test:execution-acceptance": "node scripts/execution-acceptance.mjs",

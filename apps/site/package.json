@@ -1,6 +1,7 @@
 {
   "name": "@syntila/site",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "astro dev",

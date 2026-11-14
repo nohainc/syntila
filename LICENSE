@@ -1,19 +1,65 @@
-Syntila Proprietary Software Notice
+Syntila Proprietary Software License
 
-Copyright (c) 2026 the respective copyright holders. All rights reserved.
+Copyright (c) 2026 Vitalii Noha. All rights reserved.
 
-The Syntila source code and other materials in this repository are proprietary,
-except where a file or component states that different license terms apply.
-Public availability of this repository does not grant a license to use, copy,
-modify, distribute, or create derivative works from those materials. Such
-activities require prior written permission from the applicable rights holder
-or a separate agreement granting the relevant rights, except as permitted by
-applicable law or the terms of the hosting service.
+1. Ownership
+   The Syntila source code, documentation, designs, brand assets, and other
+   materials in this repository (the "Materials") are proprietary
+   works owned by Vitalii Noha (the "Owner"), except for
+   third-party materials described in section 6.
 
-Access to or use of a Syntila product or service is governed by the applicable
-agreement or terms of service. A subscription or service account does not, by
-itself, grant rights to this repository's source code.
+2. No license granted
+   No license or other right to the Materials is granted to you, whether
+   expressly, by implication, by estoppel, or otherwise. Access to this
+   repository, including any public availability of it, does not grant a
+   license. This is not open-source software.
 
-Third-party materials included in this repository remain subject to their own
-applicable licenses and notices. This notice does not limit rights granted by
-those licenses.
+3. Restrictions
+   Without the Owner's prior written permission, you may not:
+   a. copy, reproduce, or download the Materials, other than the transient
+      copies needed to view them where the Owner has made them available;
+   b. modify, translate, adapt, or create derivative works from them;
+   c. distribute, publish, sublicense, sell, rent, or otherwise make them
+      available to any third party;
+   d. use them to build, run, host, or offer any product or service,
+      whether commercial or not;
+   e. use them, in whole or in part, to train, fine-tune, or evaluate
+      machine-learning or AI models, or include them in a dataset;
+   f. remove or alter any copyright, trademark, or other notice.
+
+4. Released software and services
+   Compiled applications and hosted services that the Owner distributes or
+   operates under the Syntila name are governed by the applicable terms of
+   service or separate agreement. A subscription or account does not, by
+   itself, grant any right to the source code.
+
+5. Trademarks
+   "Syntila" and the Syntila logos are marks of the Owner. Nothing here
+   grants a right to use them.
+
+6. Exceptions and third-party materials
+   Where a file or directory states that different license terms apply,
+   those terms govern that file or directory. Third-party materials remain
+   subject to their own licenses and notices, and this license does not
+   limit rights granted by them. Rights that cannot be excluded under
+   applicable law, or that the terms of the hosting service grant for
+   viewing the repository on that service, are not affected.
+
+7. Contributions
+   Unless a separate written agreement says otherwise, anything you submit
+   to this repository is submitted for the Owner to use, modify, and
+   distribute without restriction or payment.
+
+8. Termination
+   Any permission the Owner gives ends automatically if you breach its
+   terms or this license. You must then stop all use and destroy any copies.
+
+9. No warranty; liability
+   The Materials are provided "as is", without warranty of any kind. To the
+   maximum extent permitted by law, the Owner is not liable for any claim,
+   damages, or other liability arising from the Materials or their use.
+
+10. Governing law
+    This license is governed by the laws of the Slovak Republic.
+
+Permission requests: syntila@nohainc.com
