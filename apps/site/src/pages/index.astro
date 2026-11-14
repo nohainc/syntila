@@ -4,24 +4,26 @@ import Button from "../components/Button.astro";
 import Container from "../components/Container.astro";
 import Section from "../components/Section.astro";
 import SectionHeader from "../components/SectionHeader.astro";
+import HeroSharedSpace from "../components/HeroSharedSpace.astro";
 import SpaceMembersDiagram from "../components/SpaceMembersDiagram.astro";
 import ConversationContinuity from "../components/ConversationContinuity.astro";
 import ComparisonTable from "../components/ComparisonTable.astro";
 import WorkflowShowcase from "../components/WorkflowShowcase.astro";
 import AudienceCards from "../components/AudienceCards.astro";
+import PlansOverview from "../components/PlansOverview.astro";
 ---
 
 <SiteLayout
   title="Syntila — Bring your people and AI together"
-  description="Syntila gives families, friends, and teams one shared place to collaborate with AI. Create spaces, share AI access without sharing credentials, and keep conversations in context."
+  description="Syntila gives families, friends, and teams one shared place to talk with each other and with AI. Create Spaces, invite your people, and keep every conversation in context."
 >
-  <!-- Hero Section -->
+  <!-- Hero -->
   <Container>
-    <section class="hero" id="product">
-      <div>
+    <section class="hero hero--stacked">
+      <div class="hero__copy">
         <h1>Bring your people and AI together.</h1>
         <p class="lede">
-          Collaborate with family, friends, and teammates in shared Spaces and Threads in the Syntila app. Members connect a Syntila Workspace to make their AI Workers available to the group while keeping provider credentials private on their own machines.
+          Syntila is a shared space where family, friends, and teammates talk with each other and with AI in the same conversation. One person connects a computer and the AI tools already on it. Everyone else just opens the app.
         </p>
         <div class="actions">
           <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
@@ -29,35 +31,28 @@ import AudienceCards from "../components/AudienceCards.astro";
         </div>
       </div>
 
-      <div class="hero-vision" role="img" aria-label="Syntila connects people in shared Spaces with AI Workers running on a member's private Workspace">
-        <div class="hero-vision__node">
-          <span class="hero-vision__label">Your People</span>
-          <strong>Shared Spaces &amp; Threads</strong>
-          <p>Collaborate together in one place</p>
+      <figure class="hero-visual">
+        <div class="hero-visual__frame" role="img" aria-label="Illustration of a Syntila Space called Family Vacation: three members discuss a trip in a shared Thread and get answers from ChatGPT and Gemini, each running on a member's own computer.">
+          <HeroSharedSpace />
         </div>
-        <div class="hero-vision__connector" aria-hidden="true">+</div>
-        <div class="hero-vision__node">
-          <span class="hero-vision__label">Connected Workspace</span>
-          <strong>Authorized AI Workers</strong>
-          <p>Credentials stay private on your host</p>
-        </div>
-      </div>
+        <figcaption>Illustration of a shared Thread. Names and content are examples.</figcaption>
+      </figure>
     </section>
   </Container>
 
-  <!-- Section 1: Mental Model - One space. Your people. Their AI. -->
+  <!-- How the pieces fit -->
   <Section>
     <Container>
       <SectionHeader
         eyebrow="ONE SPACE. PEOPLE + AI."
         title="One space. Your people. Their AI."
-        description="Not everyone needs to install tools or manage subscriptions. One or more members connect a Syntila Workspace and grant selected AI Workers to the Space, so every invited member can collaborate in Syntila."
+        description="One member sets things up: they install Syntila Workspace on their computer and choose which AI Workers the Space may use. Everyone else joins from a browser, with nothing to install and no AI account of their own."
       />
       <SpaceMembersDiagram />
     </Container>
   </Section>
 
-  <!-- Section 2: Collaborative Conversations -->
+  <!-- Collaborative conversations -->
   <Section>
     <Container>
       <div class="split-section split-section--reversed">
@@ -65,16 +60,16 @@ import AudienceCards from "../components/AudienceCards.astro";
           <SectionHeader
             eyebrow="COLLABORATION IN CONTEXT"
             title="One conversation. Everyone stays in context."
-            description="AI stops being an isolated chat between one person and a bot. In Syntila, everyone in the Space sees the human discussion, the AI prompt, the response, and the decisions being made."
+            description="Everyone in the Space sees the discussion, the question put to the AI, the answer, and what the group decided. Nobody has to forward screenshots."
           />
           <ul class="feature-bullets" role="list">
             <li class="bullet-item">
-              <strong>Choose the right Worker per request</strong>
-              <p>Select ChatGPT, Claude, Gemini, or a coding agent for the next turn in the same Thread. Syntila carries the conversation history forward automatically.</p>
+              <strong>Pick the Worker for each request</strong>
+              <p>Ask ChatGPT, then Claude, then Gemini in the same Thread. Syntila carries the conversation forward, so nobody repeats the background.</p>
             </li>
             <li class="bullet-item">
-              <strong>Shared turn history</strong>
-              <p>Every turn retains attribution, structured outputs, code blocks, and decisions so your group iterates together without copy-pasting between separate chat apps.</p>
+              <strong>Shared history</strong>
+              <p>Every turn shows who asked, which Worker answered, and what came back.</p>
             </li>
           </ul>
         </div>
@@ -83,104 +78,68 @@ import AudienceCards from "../components/AudienceCards.astro";
     </Container>
   </Section>
 
-  <!-- Section 3: Comparison - Why not normal AI chat? -->
+  <!-- Comparison -->
   <Section>
     <Container>
       <SectionHeader
-        eyebrow="THE COLLABORATION DIFFERENCE"
-        title="AI chat was designed for one person. Syntila is designed for a group."
-        description="Traditional AI chatbots trap prompts, answers, and subscriptions in isolated solo sessions. Syntila creates a shared collaboration layer where groups think, execute, and decide together."
+        eyebrow="THE DIFFERENCE"
+        title="Several AI tools, one shared conversation."
+        description="AI chat apps are good at what they do. Syntila is for the moments when more than one person, or more than one AI provider, needs to be in the same conversation."
       />
       <ComparisonTable />
     </Container>
   </Section>
 
-  <!-- Section 6: Advanced Workflows -->
+  <!-- Workflows -->
   <Section>
     <Container>
       <SectionHeader
-        eyebrow="ADVANCED WORKFLOWS"
-        title="When a chat isn't enough: Turn a question into a workflow."
-        description="For tasks that go beyond Chat or Work, Syntila provides two advanced multi-step workflows: Research (parallel investigation and synthesis) and Implement (plan, implement, test, and verify)."
+        eyebrow="FOUR WAYS TO ASK"
+        title="When a chat isn't enough: turn a question into a workflow."
+        description="Most requests are a quick Chat. When you need more, choose a workflow that does the work, splits it across Workers, or checks its own result."
       />
       <WorkflowShowcase />
     </Container>
   </Section>
 
-  <!-- Section 7: Who It's For -->
+  <!-- Audiences -->
   <Section id="use-cases">
     <Container>
       <SectionHeader
         eyebrow="BUILT FOR EVERY GROUP"
         title="Designed for how people actually collaborate."
-        description="Whether you're organizing a family trip, leading product decisions with your team, or shipping verified code, Syntila brings people and AI into one shared workspace."
+        description="Plan a family trip, make a product decision with your team, or ship reviewed code."
       />
       <AudienceCards />
     </Container>
   </Section>
 
-  <!-- Final CTA Section -->
+  <!-- Plans -->
+  <Section id="plans">
+    <Container>
+      <SectionHeader
+        eyebrow="PLANS"
+        title="Free to start."
+        description="Syntila does not sell AI usage. Workers run on AI tools that members already have, so what you pay your AI provider stays between you and them."
+      />
+      <PlansOverview />
+    </Container>
+  </Section>
+
+  <!-- Final CTA -->
   <Section class="final-cta-section">
     <Container>
       <div class="final-cta">
         <SectionHeader
           eyebrow="AI IS BETTER TOGETHER"
-          title="Bring your people and AI together."
-          description="Open Syntila, create a Space, and connect a Syntila Workspace to start collaborating with your people and AI."
+          title="Start with one Space."
+          description="Open Syntila, create a Space, invite your people, and connect a computer to power its AI Workers."
         />
         <div class="final-cta__actions">
           <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
-          <Button href="/downloads/" label="Download Workspace" variant="secondary" />
+          <Button href="/downloads/" label="Download Workspace" variant="secondary" event="navigation.downloads" />
         </div>
       </div>
     </Container>
   </Section>
 </SiteLayout>
-
-<style>
-  .hero-vision {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 1.5rem;
-    border-radius: 16px;
-    border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.2));
-    background: var(--surface-elevated, rgba(128, 128, 128, 0.04));
-  }
-
-  .hero-vision__node {
-    padding: 1rem 1.25rem;
-    border-radius: 12px;
-    border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.2));
-    background: var(--surface-card, rgba(255, 255, 255, 0.02));
-  }
-
-  .hero-vision__label {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    opacity: 0.7;
-    margin-bottom: 0.25rem;
-  }
-
-  .hero-vision__node strong {
-    display: block;
-    font-size: 1.05rem;
-    margin-bottom: 0.2rem;
-  }
-
-  .hero-vision__node p {
-    margin: 0;
-    font-size: 0.9rem;
-    opacity: 0.8;
-  }
-
-  .hero-vision__connector {
-    text-align: center;
-    font-weight: 700;
-    font-size: 1.1rem;
-    opacity: 0.6;
-  }
-</style>

@@ -12,6 +12,7 @@ const requiredFiles = [
   "privacy/index.html",
   "terms/index.html",
   "downloads/index.html",
+  "faq/index.html",
   "favicon.svg",
   "social-preview.svg",
   "social-preview.png",

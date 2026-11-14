@@ -5,19 +5,29 @@ import SectionHeader from "../components/SectionHeader.astro";
 import SiteLayout from "../layouts/SiteLayout.astro";
 ---
 
-<SiteLayout title="Privacy — Syntila" description="How Syntila separates identity, Space collaboration, local execution, AI Accounts, and public-site telemetry.">
+<SiteLayout title="Privacy — Syntila" description="What data Syntila collects, where it is stored, who can see it, what stays on your own computer, and the rights you have.">
   <Section>
     <Container>
-      <SectionHeader eyebrow="Privacy" title="Privacy follows the same boundaries as the product." description="Syntila is designed so collaboration, execution capacity, and external AI credentials can be authorized independently." headingLevel={1} />
+      <SectionHeader eyebrow="Privacy Policy" title="Privacy follows the same boundaries as the product." description="What Syntila collects, what stays on your computer, who can see your content, and how to exercise your rights." headingLevel={1} />
+      <p class="legal-meta">Effective date: [EFFECTIVE DATE]</p>
       <div class="legal-layout">
         <nav class="legal-toc" aria-label="On this page">
           <span class="legal-toc__title">Contents</span>
           <ul>
-            <li><a href="#human-identity">Human identity &amp; Spaces</a></li>
-            <li><a href="#workspaces-execution">Workspaces &amp; execution</a></li>
-            <li><a href="#ai-accounts">AI Accounts</a></li>
-            <li><a href="#assignment-data">Workers &amp; assignment data</a></li>
-            <li><a href="#public-website">Public website</a></li>
+            <li><a href="#who-we-are">1. Who we are</a></li>
+            <li><a href="#data-we-collect">2. Data we collect</a></li>
+            <li><a href="#human-identity">3. Human identity &amp; Spaces</a></li>
+            <li><a href="#workspaces-execution">4. Workspaces &amp; execution</a></li>
+            <li><a href="#ai-accounts">5. AI Accounts</a></li>
+            <li><a href="#third-parties">6. AI providers &amp; MCP servers</a></li>
+            <li><a href="#how-we-use">7. How we use data</a></li>
+            <li><a href="#storage">8. Storage &amp; service providers</a></li>
+            <li><a href="#retention">9. Retention &amp; deletion</a></li>
+            <li><a href="#your-rights">10. Your rights</a></li>
+            <li><a href="#children">11. Children</a></li>
+            <li><a href="#public-website">12. Public website</a></li>
+            <li><a href="#changes">13. Changes</a></li>
+            <li><a href="#contact">14. Contact</a></li>
           </ul>
           <span class="legal-toc__title section-block-gap">Related</span>
           <ul>
@@ -27,21 +37,54 @@ import SiteLayout from "../layouts/SiteLayout.astro";
         </nav>
 
         <div class="legal-content">
-          <h2 id="human-identity">Human identity and Spaces</h2>
-          <p>Syntila Cloud authenticates people and applies Space membership and role checks to shared collaboration data such as Threads, discussions, Runs, artifacts, and Space settings. Joining a Space does not make another person's execution Workspace or private AI Accounts generally available.</p>
+          <h2 id="who-we-are">1. Who we are</h2>
+          <p>Syntila is operated by [COMPANY LEGAL NAME], [REGISTERED ADDRESS] ("Syntila", "we"). We are the controller of the personal data described in this policy. Contact: <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>.</p>
 
-          <h2 id="workspaces-execution">Workspaces and local execution</h2>
-          <p>A Workspace represents an execution environment controlled by its owner. A Space can use that environment only through an explicit Workspace grant. Work runs in the Space Work Directory under coordinated Thread mutation leases, and local repository access and Worker processes remain subject to Workspace runtime controls.</p>
+          <h2 id="data-we-collect">2. Data we collect</h2>
+          <ul>
+            <li><strong>Account data:</strong> your email address, display name, sign-in and session records, and your plan.</li>
+            <li><strong>Space content:</strong> Spaces, Threads, messages, prompts, AI answers, attached and generated files, and Space settings that you or other members create.</li>
+            <li><strong>Workspace data:</strong> the name and status of computers you connect, the Workers available on them, and the permissions you give to Spaces.</li>
+            <li><strong>Execution records:</strong> who sent a request, which Workspace, Worker, and model handled it, timing, results, and usage reported by the provider.</li>
+            <li><strong>Technical data:</strong> diagnostic logs and security events needed to run and protect the service.</li>
+          </ul>
+          <p>We do not collect your AI provider passwords, API keys, or provider sessions. We do not collect files on a connected computer unless a run attaches them to a Thread.</p>
 
-          <h2 id="ai-accounts">AI Accounts</h2>
-          <p>AI Accounts represent external provider identities authenticated locally on the owner's Workspace. They are private by default and never enter Cloud APIs in plaintext. Granting a Worker to a Space authorizes eligible use; it does not expose underlying credentials to Space collaborators.</p>
-          <p>When a Space member submits a request through an authorized AI Worker or MCP server, scoped prompt context is sent to that third-party provider or MCP server under the Workspace owner's configured account. Those third-party services operate under their own privacy policies and data-retention terms; Syntila does not control how external providers process or store data sent through your local CLI.</p>
+          <h2 id="human-identity">3. Human identity and Spaces</h2>
+          <p>Syntila Cloud signs people in and applies Space membership and role checks to shared content. Everything posted in a Space, including prompts and AI answers, is visible to the members of that Space according to their role. Joining a Space does not give another member access to your connected computer or your AI Accounts.</p>
 
-          <h2 id="assignment-data">Workers and assignment data</h2>
-          <p>Workers receive scoped assignment context needed for their task rather than Syntila user sessions or unrestricted machine credentials. Execution history may include task metadata, results, artifacts, findings, usage, and evidence needed to operate and audit the workflow.</p>
+          <h2 id="workspaces-execution">4. Workspaces and local execution</h2>
+          <p>A Workspace is a computer that its owner has connected. A Space can use it only when the owner allows it. Work runs on that computer, in a folder for the Space. Files there stay on the computer unless a run attaches them to a Thread, in which case they are stored as Space content.</p>
 
-          <h2 id="public-website">Public website</h2>
-          <p>This public website uses minimal, same-origin operational telemetry and does not provide a place to submit AI credentials, private repository content, or Workspace secrets.</p>
+          <h2 id="ai-accounts">5. AI Accounts</h2>
+          <p>AI Accounts are your accounts with external AI providers. You sign in to them on your own computer, in the provider's own tool. The credentials stay there and are not sent to Syntila Cloud or to other members. Allowing a Space to use a Worker lets its members send requests; it does not reveal your credentials.</p>
+
+          <h2 id="third-parties">6. AI providers and MCP servers</h2>
+          <p>When a member sends a request to a Worker, the request and the Thread context it needs are sent from the host computer to the AI provider or MCP server behind that Worker, under the host's account. Those services process the data under their own terms and privacy policies. Syntila does not control how they use or retain it.</p>
+
+          <h2 id="how-we-use">7. How we use data</h2>
+          <p>We use personal data to provide the service (to perform our contract with you), to keep it secure and prevent abuse (our legitimate interests), to send service messages such as invitations and sign-in emails, and to meet legal obligations. We do not sell personal data and do not use Space content for advertising. [CONFIRM: Syntila does not use Space content to train AI models.]</p>
+
+          <h2 id="storage">8. Storage and service providers</h2>
+          <p>Account data, Space content, and execution records are stored in Syntila Cloud, hosted in [HOSTING REGION]. We use service providers for hosting, content delivery, and email delivery: [LIST OF SERVICE PROVIDERS]. They process data on our instructions. Where data is transferred outside [REGION], we rely on [TRANSFER MECHANISM].</p>
+
+          <h2 id="retention">9. Retention and deletion</h2>
+          <p>We keep account data while your account exists, and Space content until it is deleted by a member who is allowed to delete it or until the Space is deleted. After deletion, data is removed from active systems within [RETENTION PERIOD]. Security and audit records are kept for [AUDIT RETENTION PERIOD]. To delete your account, write to the contact address below.</p>
+
+          <h2 id="your-rights">10. Your rights</h2>
+          <p>Depending on where you live, you may have the right to access, correct, delete, or export your personal data, to restrict or object to its processing, and to withdraw consent where we rely on it. If you are in the European Economic Area or the United Kingdom, you can also complain to your data protection authority. To exercise these rights, write to <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>.</p>
+
+          <h2 id="children">11. Children</h2>
+          <p>Syntila is not intended for children under [MINIMUM AGE]. Do not create an account for, or invite, a person below that age.</p>
+
+          <h2 id="public-website">12. Public website</h2>
+          <p>This website sets no cookies and loads no third-party scripts. If enabled, it records only an event name, the public page path, and a timestamp, with no identifier for the visitor. It does not provide a place to submit AI credentials, private repository content, or Workspace secrets.</p>
+
+          <h2 id="changes">13. Changes to this policy</h2>
+          <p>We may update this policy as the service changes. We will change the effective date above and, for significant changes, tell you in the app or by email.</p>
+
+          <h2 id="contact">14. Contact</h2>
+          <p>Questions about privacy: <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>.</p>
         </div>
       </div>
     </Container>

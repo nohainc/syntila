@@ -1,7 +1,7 @@
 {
   "name": "Syntila",
   "short_name": "Syntila",
-  "description": "Syntila gives families, friends, and teams one shared place to collaborate with AI. Create spaces, share AI access without sharing credentials, and keep conversations in context.",
+  "description": "Syntila gives families, friends, and teams one shared place to collaborate with AI. Create Spaces, invite your people, and keep every conversation with AI in shared context.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -9,14 +9,14 @@
   "theme_color": "#121217",
   "icons": [
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/syntila_logo_192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/syntila_logo.png",
-      "sizes": "1024x1024",
+      "src": "/syntila_logo_512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },

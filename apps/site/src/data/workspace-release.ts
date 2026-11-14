@@ -25,22 +25,22 @@ export const workspaceRelease: WorkspaceReleaseManifest = {
       label: "macOS",
       architectures: ["Apple Silicon", "Intel"],
       installSummary:
-        "Signed release bundle or Homebrew cask (brew install --cask nohainc/tap/syntila-workspace)",
+        "Signed release bundle with the desktop app, or the Homebrew cask",
       downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
     {
       platform: "windows",
       label: "Windows",
       architectures: ["x64"],
-      installSummary: "Per-user logon service and syntila CLI release archive",
+      installSummary:
+        "Release archive with the service and the syntila command",
       downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
     {
       platform: "linux",
       label: "Linux",
       architectures: ["x64", "arm64"],
-      installSummary:
-        "Signed APT repository (syntila) or standalone release archive",
+      installSummary: "Signed APT package, or a standalone release archive",
       downloadUrl: "https://github.com/nohainc/syntila/releases/latest",
     },
   ],

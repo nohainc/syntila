@@ -10,14 +10,14 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
 <SiteLayout
   title="Security — Syntila"
-  description="Syntila separates Space collaboration, AI Account authorization, and Workspace execution to keep your secrets private."
+  description="How Syntila keeps AI provider logins on the host computer, what members of a Space can and cannot do, and what a host should know before sharing a Worker."
 >
   <Section>
     <Container>
       <SectionHeader
         eyebrow="Security & Privacy"
         title="Share AI access without sharing your secrets."
-        description="Syntila separates Space collaboration in the Syntila app and Syntila Cloud from local CLI execution on your Syntila Workspace, so collaborators can use authorized AI Workers without seeing your API keys or provider logins."
+        description="Your AI provider logins and API keys stay on your own computer. Members of a Space send requests through Syntila; they never receive your credentials. This page explains what that does and does not protect."
         headingLevel={1}
       />
 
@@ -25,36 +25,49 @@ import SiteLayout from "../layouts/SiteLayout.astro";
         <CredentialPrivacyDiagram />
       </div>
 
+      <div class="security-callout section-block-gap-lg" id="host-trust">
+        <strong>Sharing a Worker means trusting the people you share it with.</strong>
+        <span>A Worker is an AI agent running on your computer under your user account. To be useful it can read and change files, run commands, and use the network there, and it is not confined to one folder. Members cannot browse your computer or see your credentials in Syntila, but a request they send is carried out by that agent. Grant Workers only to people you would trust with that, and for wider groups consider a separate computer or user account that holds nothing private.</span>
+      </div>
+
       <div class="section-block-gap-lg">
         <SectionHeader
           eyebrow="Authorization Boundaries"
-          title="Strict separation between people, spaces, and AI."
-          description="Every layer in Syntila enforces an explicit boundary between Space membership, Workspace grants, and local filesystem state."
+          title="Who can do what."
+          description="Membership, Worker permissions, and local execution are separate decisions, each made by the person who owns that part."
         />
 
         <div class="security-boundaries">
           <FeatureCard title="Space Membership" headingLevel={2}>
-            <p>Defines who can view Threads (<strong>Viewer</strong>), participate and run authorized AI Workers (<strong>Collaborator</strong>), or manage members and Space grants (<strong>Owner</strong>). Joining a Space never grants direct access to anyone's personal AI accounts or machines.</p>
+            <p>A <strong>Viewer</strong> can read Threads. A <strong>Collaborator</strong> can take part and send requests to the Space's Workers. An <strong>Owner</strong> manages members and permissions. Joining a Space does not give anyone access to another member's AI accounts.</p>
           </FeatureCard>
 
           <FeatureCard title="AI Account Privacy" headingLevel={2}>
-            <p>Provider credentials remain in the local CLI environment on the owner's Workspace host. Granting a Worker to a Space authorizes eligible members to submit requests through Syntila; it never transmits the underlying API key or session token to client apps or devices.</p>
+            <p>Provider logins and API keys stay with the provider's own tool on the host computer. Granting a Worker to a Space lets eligible members send it requests; it does not send your key or session to Syntila Cloud or to anyone's device.</p>
           </FeatureCard>
 
-          <FeatureCard title="Workspace Isolation" headingLevel={2}>
-            <p>Each Space runs inside its own Space Work Directory under your Workspace's Work Root, with optional Allowed Folders and exclusive Thread mutation leases. Source files and local repositories stay on your host; Cloud only coordinates Thread messages, assignments, and metadata.</p>
+          <FeatureCard title="Local execution, not a sandbox" headingLevel={2}>
+            <p>Each Space gets its own working folder on the host computer, and Syntila queues tasks that change files so two runs do not edit it at once. This keeps work organized. It is not a security boundary: Workers run with the host user's own access.</p>
+          </FeatureCard>
+
+          <FeatureCard title="Read-only Chat" headingLevel={2}>
+            <p>Chat requests are sent to the Worker as read-only. Workflows that do work, such as Work and Implement, can change files and run commands. How strictly read-only is enforced depends on the provider's tool.</p>
           </FeatureCard>
 
           <FeatureCard title="Audit & Attribution" headingLevel={2}>
-            <p>The Workspace Service verifies Ed25519 signatures on Worker Profiles before executing provider CLIs, and execution records attribute every run to the requesting user, Workspace, Worker, and model.</p>
+            <p>Every run is recorded with who asked, which computer and Worker handled it, and which model answered. Syntila Workspace checks the signature on a Worker Profile before it runs a provider tool.</p>
           </FeatureCard>
 
-          <FeatureCard title="MCP Tool Pinning &amp; Consent" headingLevel={2}>
-            <p>Every local or remote MCP server requires explicit owner consent before use. Syntila pins SHA-256 hashes of tool definitions, blocks execution on definition drift, and keeps server tokens and environment variables local to the Workspace.</p>
+          <FeatureCard title="MCP tool approval" headingLevel={2}>
+            <p>Every MCP server needs the host's approval before use. Syntila records each tool's definition and blocks calls if it changes until the host reviews it again. Server tokens and environment variables stay on the host computer.</p>
           </FeatureCard>
 
-          <FeatureCard title="Transport &amp; Secret Storage" headingLevel={2}>
-            <p>Cloud-to-Workspace communication uses encrypted, authenticated transport with per-runtime credentials. Local <code>syntila</code> CLI commands talk to the Workspace Service over authenticated local IPC, with runtime secrets stored in OS-native secret storage.</p>
+          <FeatureCard title="Transport &amp; secret storage" headingLevel={2}>
+            <p>Syntila Cloud and Syntila Workspace talk over an encrypted, authenticated connection with credentials unique to each installation. On the host, those credentials are kept in the operating system's secret storage.</p>
+          </FeatureCard>
+
+          <FeatureCard title="What Syntila Cloud stores" headingLevel={2}>
+            <p>Thread content, including messages, prompts, AI answers, and attached files, is stored in Syntila Cloud so every member can see it. Files in the host's project folders stay on the host unless a run attaches them to a Thread.</p>
           </FeatureCard>
         </div>
       </div>
@@ -66,19 +79,22 @@ import SiteLayout from "../layouts/SiteLayout.astro";
         />
 
         <div class="security-boundaries">
-          <FeatureCard title="Can collaborators read my .env or SSH keys?" headingLevel={3}>
-            <p>No. Workers execute inside Space Work Directories and owner-configured Allowed Folders. Collaborators can submit tasks to authorized Workers, but they cannot browse your host filesystem or read your personal credentials.</p>
+          <FeatureCard title="Can collaborators read my files or keys?" headingLevel={3}>
+            <p>They cannot browse your computer, and Syntila never shows them your credentials. But the agent that carries out their request runs with your user's access, so a determined collaborator could ask it to read files. Share Workers with people you trust, or host them on a computer that holds nothing private.</p>
           </FeatureCard>
 
           <FeatureCard title="What if an MCP server changes its tools?" headingLevel={3}>
-            <p>Syntila computes a SHA-256 hash of every approved tool definition. If a local or remote MCP server alters a tool's schema or description, execution is blocked until you review and re-consent.</p>
+            <p>Syntila compares each tool with the definition you approved. If a server changes a tool's description or inputs, calls to it are blocked until you review and approve it again.</p>
+          </FeatureCard>
+
+          <FeatureCard title="How do I stop sharing?" headingLevel={3}>
+            <p>Remove the Worker or Workspace permission from the Space, or remove the member. New requests stop being accepted straight away, and you do not need to change your provider password or API key.</p>
+          </FeatureCard>
+
+          <FeatureCard title="Does my prompt go to the AI provider?" headingLevel={3}>
+            <p>Yes. A request and the Thread context it needs are sent to the provider behind the Worker, under the host's account, and are handled under that provider's own terms and privacy policy.</p>
           </FeatureCard>
         </div>
-      </div>
-
-      <div class="security-callout section-block-gap-lg">
-        <strong>Revocable Space grants without credential rotation.</strong>
-        <span>Revoking a Workspace or Worker grant—or removing a member from a Space—stops Syntila Cloud from admitting new assignments for that Space or member without requiring you to rotate local provider API keys or logins.</span>
       </div>
 
       <div class="actions actions--center section-block-gap-lg">
@@ -88,16 +104,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
       </div>
 
       <p class="section-block-gap security-contact">
-        Security questions or vulnerability reports? Contact <a href="mailto:security@syntila.app">security@syntila.app</a>.
+        Security questions or vulnerability reports? Contact <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>.
       </p>
     </Container>
   </Section>
 </SiteLayout>
-
-<style>
-  .security-contact {
-    text-align: center;
-    font-size: 0.9rem;
-    opacity: 0.8;
-  }
-</style>

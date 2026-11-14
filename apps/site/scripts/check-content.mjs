@@ -10,6 +10,7 @@ const routes = new Map([
   ["/privacy/", "privacy/index.html"],
   ["/terms/", "terms/index.html"],
   ["/downloads/", "downloads/index.html"],
+  ["/faq/", "faq/index.html"],
 ]);
 
 /** @param {string | undefined} [str] @returns {string} */
@@ -36,11 +37,12 @@ const expected = {
       "One conversation. Everyone stays in context.",
       "When a chat isn't enough",
       "Designed for how people actually collaborate.",
+      "Free to start.",
       "Open Syntila",
     ],
   },
   "/how-it-works/": {
-    title: "How Syntila works — Shared AI Workspace",
+    title: "How Syntila works — Shared Spaces for people and AI",
     heading: "From shared ideas to verified results.",
     content: [
       "Create a Space",
@@ -49,6 +51,7 @@ const expected = {
       "Open a Thread",
       "Collaborate in context",
       "Run Workflows when needed",
+      "What the person who connects a computer needs.",
     ],
   },
   "/workers/": {
@@ -60,6 +63,7 @@ const expected = {
       "Google Gemini",
       "Custom MCP Workers",
       "MCP Servers",
+      "Check your plan before you share a Worker.",
     ],
   },
   "/use-cases/": {
@@ -77,8 +81,9 @@ const expected = {
     content: [
       "Space Membership",
       "AI Account Privacy",
-      "Workspace Isolation",
+      "Local execution, not a sandbox",
       "Audit & Attribution",
+      "Sharing a Worker means trusting the people you share it with.",
     ],
   },
   "/privacy/": {
@@ -88,12 +93,23 @@ const expected = {
       "Human identity and Spaces",
       "Workspaces and local execution",
       "AI Accounts",
+      "Data we collect",
+      "Your rights",
     ],
   },
   "/downloads/": {
     title: "Downloads — Syntila",
     heading: "Run Syntila Workers on your computer.",
     content: ["Syntila Workspace", "Download", "macOS", "Windows", "Linux"],
+  },
+  "/faq/": {
+    title: "FAQ — Syntila",
+    heading: "Questions people ask first.",
+    content: [
+      "Can other people use my AI subscription through Syntila?",
+      "What happens when the host computer is off or asleep?",
+      "What does Syntila cost?",
+    ],
   },
   "/terms/": {
     title: "Terms — Syntila",
@@ -102,6 +118,7 @@ const expected = {
       "Connected Workspaces",
       "Third-party AI providers",
       "Work outputs",
+      "Governing law",
     ],
   },
 };
@@ -153,6 +170,8 @@ for (const [route, file] of routes) {
     if (!visibleText.includes(phrase))
       errors.push(`${route}: required content missing: ${phrase}`);
   }
+  if (/conclave/i.test(visibleText))
+    errors.push(`${route}: the hosting domain must not appear in visible copy`);
   if (/secure vault/i.test(visibleText))
     errors.push(
       `${route}: must not claim Syntila stores provider credentials in a central vault`,
@@ -163,8 +182,8 @@ const home = sources.get("/");
 const appLinks = [...home.matchAll(/href="(https:\/\/syntila\.app[^"]*)"/g)];
 if (appLinks.length < 3)
   errors.push("homepage: expected at least three direct Open Syntila links");
-if (!home.includes('href="/#product"'))
-  errors.push("homepage: Product navigation anchor is missing");
+if (!home.includes('id="plans"'))
+  errors.push("homepage: Plans section anchor is missing");
 
 for (const [route, source] of sources) {
   const githubLinks = [

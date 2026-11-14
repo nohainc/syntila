@@ -5,22 +5,31 @@ import SectionHeader from "../components/SectionHeader.astro";
 import SiteLayout from "../layouts/SiteLayout.astro";
 ---
 
-<SiteLayout title="Terms — Syntila" description="Terms for using Syntila, connected Workspaces, AI Workers, Accounts, and the public website.">
+<SiteLayout title="Terms — Syntila" description="Terms for using Syntila, connected Workspaces, AI Workers, third-party AI providers, and the public website.">
   <Section>
     <Container>
-      <SectionHeader eyebrow="Terms" title="Terms of Service" description="General terms governing access to Syntila, connected execution environments, third-party AI providers, and the public website." headingLevel={1} />
+      <SectionHeader eyebrow="Terms" title="Terms of Service" description="The terms that apply when you use Syntila, connect a computer, share AI Workers, or visit this website." headingLevel={1} />
+      <p class="legal-meta">Effective date: [EFFECTIVE DATE]</p>
       <div class="legal-layout">
         <nav class="legal-toc" aria-label="On this page">
           <span class="legal-toc__title">Contents</span>
           <ul>
             <li><a href="#service-overview">1. Service overview</a></li>
-            <li><a href="#account-activity">2. Account &amp; Space activity</a></li>
-            <li><a href="#connected-workspaces">3. Connected Workspaces</a></li>
-            <li><a href="#third-party-providers">4. Third-party AI providers</a></li>
-            <li><a href="#work-outputs">5. Work outputs</a></li>
-            <li><a href="#public-website">6. Public website</a></li>
-            <li><a href="#service-changes">7. Service changes</a></li>
-            <li><a href="#liability">8. Disclaimers &amp; liability</a></li>
+            <li><a href="#eligibility">2. Eligibility &amp; accounts</a></li>
+            <li><a href="#account-activity">3. Account &amp; Space activity</a></li>
+            <li><a href="#acceptable-use">4. Acceptable use</a></li>
+            <li><a href="#connected-workspaces">5. Connected Workspaces</a></li>
+            <li><a href="#third-party-providers">6. Third-party AI providers</a></li>
+            <li><a href="#your-content">7. Your content</a></li>
+            <li><a href="#work-outputs">8. Work outputs</a></li>
+            <li><a href="#plans">9. Plans &amp; fees</a></li>
+            <li><a href="#public-website">10. Public website</a></li>
+            <li><a href="#service-changes">11. Service changes</a></li>
+            <li><a href="#termination">12. Suspension &amp; termination</a></li>
+            <li><a href="#liability">13. Disclaimers &amp; liability</a></li>
+            <li><a href="#governing-law">14. Governing law</a></li>
+            <li><a href="#changes">15. Changes to these terms</a></li>
+            <li><a href="#contact">16. Contact</a></li>
           </ul>
           <span class="legal-toc__title section-block-gap">Related</span>
           <ul>
@@ -31,29 +40,53 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
         <div class="legal-content">
           <h2 id="service-overview">1. Service overview</h2>
-          <p>Syntila provides software for coordinating people, AI models, tools, execution environments, workflows, and verification around Spaces and Threads.</p>
+          <p>Syntila is provided by [COMPANY LEGAL NAME], [REGISTERED ADDRESS] ("Syntila", "we"). It is software for bringing people, AI models, and tools together in Spaces and Threads, with AI Workers that run on computers connected by their owners. By creating an account or using Syntila you agree to these terms.</p>
 
-          <h2 id="account-activity">2. Your account and Space activity</h2>
-          <p>You are responsible for protecting your authentication credentials and for actions taken through authorized sessions. Space owners and collaborators are responsible for granting appropriate access to Space content and execution capabilities.</p>
+          <h2 id="eligibility">2. Eligibility and accounts</h2>
+          <p>You must be at least [MINIMUM AGE] years old and able to enter into a binding agreement. Give accurate account information and keep it up to date. One person per account; do not share your Syntila sign-in.</p>
 
-          <h2 id="connected-workspaces">3. Connected Workspaces</h2>
-          <p>When you connect a machine as a Workspace, you authorize Syntila to dispatch work that is permitted by the Workspace's active Space grants and local execution policy. Workspace owners remain responsible for the machine, local repositories, installed software, and revoking access when appropriate.</p>
+          <h2 id="account-activity">3. Your account and Space activity</h2>
+          <p>You are responsible for protecting your sign-in and for actions taken through your sessions. Space owners and collaborators are responsible for whom they invite and for the access to content and Workers they give.</p>
 
-          <h2 id="third-party-providers">4. Third-party AI providers &amp; sharing responsibility</h2>
-          <p>Syntila enables you to connect and share third-party AI services (such as OpenAI, Anthropic, Google, GitHub Copilot, xAI, or local and custom MCP models and tools) through your own configured Workspace. You are solely responsible for verifying that your subscription, license, and applicable law permit multi-user, family, team, commercial, or automated CLI use, and for complying with all terms, acceptable-use policies, and usage charges of those providers.</p>
-          <p>Syntila is not a party to your agreements with third-party AI providers or MCP server operators, does not grant any third-party AI licenses, and is not responsible for what users configure, share, or run—nor for any provider account suspension, rate limits, billing, or legal compliance issues arising from sharing access in a Space.</p>
+          <h2 id="acceptable-use">4. Acceptable use</h2>
+          <p>Do not use Syntila to break the law, to infringe the rights of others, to send malware or spam, to gain access to systems or data you are not allowed to use, to get around plan limits or security controls, or to make a Worker act on someone else's computer in a way its owner has not agreed to.</p>
 
-          <h2 id="work-outputs">5. Work outputs</h2>
+          <h2 id="connected-workspaces">5. Connected Workspaces</h2>
+          <p>When you connect a computer as a Workspace, you authorize Syntila to pass it requests that your permissions allow. Workers run on that computer with the access of the user account they run under, and can read and change files, run commands, and use the network there. You remain responsible for the computer, its contents and installed software, for deciding who may use its Workers, and for removing access when appropriate.</p>
+
+          <h2 id="third-party-providers">6. Third-party AI providers &amp; sharing responsibility</h2>
+          <p>Syntila lets you connect third-party AI services (such as those of OpenAI, Anthropic, Google, GitHub, or xAI, or local and custom MCP models and tools) through your own computer and your own account with them. Using your own subscription for your own requests is the ordinary case. If other people will use a Worker you connected, you are solely responsible for checking first that your subscription, license, and applicable law permit that use, whether shared, family, team, commercial, or automated, and for complying with the provider's terms, acceptable-use policies, and charges. Many personal subscriptions do not permit shared use.</p>
+          <p>Syntila is not a party to your agreements with third-party AI providers or MCP server operators, does not grant any license to their services, and is not responsible for what users configure, share, or run, nor for any provider account suspension, rate limit, charge, or compliance issue that results from sharing access in a Space.</p>
+
+          <h2 id="your-content">7. Your content</h2>
+          <p>You keep the rights you have in the content you put into Syntila. You give us permission to store, process, and display it as needed to provide the service to you and to the members of your Spaces. You are responsible for having the right to share that content.</p>
+
+          <h2 id="work-outputs">8. Work outputs</h2>
           <p>AI-generated code, analysis, reviews, tests, and other outputs may be incomplete or incorrect. You are responsible for reviewing outputs and deciding whether they are appropriate to use, merge, publish, or deploy.</p>
 
-          <h2 id="public-website">6. Public website</h2>
-          <p>The public website is provided for product information. Do not submit passwords, API keys, private source code, or other confidential execution material through unauthenticated public-site channels.</p>
+          <h2 id="plans">9. Plans and fees</h2>
+          <p>Syntila offers a Free plan with limits shown in the app and on this website. Paid plans, when offered, will be described with their price and terms before you buy. Charges from your AI providers are separate and are yours to pay.</p>
 
-          <h2 id="service-changes">7. Service changes and availability</h2>
-          <p>Syntila may change as capabilities are improved, added, or removed. Availability may be interrupted for maintenance, provider outages, security work, or infrastructure changes.</p>
+          <h2 id="public-website">10. Public website</h2>
+          <p>The public website is provided for product information. Do not send passwords, API keys, private source code, or other confidential material through public-site channels.</p>
 
-          <h2 id="liability">8. Disclaimers and limitation of liability</h2>
-          <p>Syntila is provided on an "as is" and "as available" basis without warranties of any kind. To the maximum extent permitted by law, Syntila is not liable for third-party AI provider outages, model outputs, user-configured sharing or MCP integrations, or any indirect, incidental, or consequential damages.</p>
+          <h2 id="service-changes">11. Service changes and availability</h2>
+          <p>Syntila may change as capabilities are improved, added, or removed. Availability may be interrupted for maintenance, provider outages, security work, or infrastructure changes. AI Workers are available only while the computer that hosts them is on and online.</p>
+
+          <h2 id="termination">12. Suspension and termination</h2>
+          <p>You may stop using Syntila and ask us to delete your account at any time. We may suspend or end access if you break these terms, if your use creates a security or legal risk, or if we stop offering the service; where reasonable, we will tell you first.</p>
+
+          <h2 id="liability">13. Disclaimers and limitation of liability</h2>
+          <p>Syntila is provided on an "as is" and "as available" basis without warranties of any kind. To the maximum extent permitted by law, Syntila is not liable for third-party AI provider outages, model outputs, actions taken by Workers on a connected computer, user-configured sharing or MCP integrations, or any indirect, incidental, or consequential damages. Nothing in these terms limits rights that the law does not allow to be limited, including mandatory consumer rights.</p>
+
+          <h2 id="governing-law">14. Governing law</h2>
+          <p>These terms are governed by the laws of [GOVERNING LAW], and disputes are subject to the courts of [JURISDICTION], unless mandatory law where you live says otherwise.</p>
+
+          <h2 id="changes">15. Changes to these terms</h2>
+          <p>We may update these terms. We will change the effective date above and, for significant changes, tell you in the app or by email before they apply.</p>
+
+          <h2 id="contact">16. Contact</h2>
+          <p>Questions about these terms: <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>.</p>
         </div>
       </div>
     </Container>

@@ -1,0 +1,111 @@
+---
+import Button from "../components/Button.astro";
+import Container from "../components/Container.astro";
+import Section from "../components/Section.astro";
+import SectionHeader from "../components/SectionHeader.astro";
+import SiteLayout from "../layouts/SiteLayout.astro";
+---
+
+<SiteLayout
+  title="FAQ — Syntila"
+  description="Short answers about setting up Syntila, plans, sharing AI subscriptions, privacy, and what happens when the host computer is offline."
+>
+  <Section>
+    <Container>
+      <SectionHeader
+        eyebrow="FAQ"
+        title="Questions people ask first."
+        description="Short answers. Follow the links for detail."
+        headingLevel={1}
+      />
+
+      <div class="faq-list">
+        <h2 class="faq-group">Getting started</h2>
+
+        <article class="faq-item" id="what-is-syntila">
+          <h3>What is Syntila?</h3>
+          <p>A shared space where a group of people talk with each other and with AI in the same conversation. The AI runs on a computer that one of the members has connected, using AI tools that member already has.</p>
+        </article>
+
+        <article class="faq-item" id="what-do-i-need">
+          <h3>What do I need to install?</h3>
+          <p>If you are joining a Space: nothing, only a browser. If you are the one powering the AI: Syntila Workspace, plus at least one provider tool such as Codex CLI, Claude Code, or Antigravity CLI, installed and signed in. See <a href="/how-it-works/#host-needs">what the host needs</a> and <a href="/downloads/">Downloads</a>.</p>
+        </article>
+
+        <article class="faq-item" id="technical">
+          <h3>Do I need to be technical?</h3>
+          <p>Members do not. The host should be comfortable installing an app and a command-line tool and signing in to it. After that, day-to-day use happens in the Syntila app.</p>
+        </article>
+
+        <article class="faq-item" id="host-offline">
+          <h3>What happens when the host computer is off or asleep?</h3>
+          <p>Its Workers cannot answer until it is on and online again. The Space, its Threads, and messages between people keep working. If the AI should be available around the clock, host it on a computer that stays on, or have a second member connect theirs.</p>
+        </article>
+
+        <article class="faq-item" id="mobile">
+          <h3>Is there a mobile app?</h3>
+          <p>Syntila works in the browser on phones and tablets today. Native iOS and Android apps are in progress.</p>
+        </article>
+
+        <h2 class="faq-group">Plans and AI subscriptions</h2>
+
+        <article class="faq-item" id="cost">
+          <h3>What does Syntila cost?</h3>
+          <p>Syntila is free to start: up to 4 people per Space, one connected computer, and one AI request at a time. A paid plan, Syntila Plus, is planned for larger groups; its price is not announced yet. See <a href="/#plans">Plans</a>. What you pay your AI provider is separate.</p>
+        </article>
+
+        <article class="faq-item" id="sharing-subscriptions">
+          <h3>Can other people use my AI subscription through Syntila?</h3>
+          <p>That depends on your provider and your plan, and it is your responsibility to check. As a rule of thumb:</p>
+          <ul>
+            <li><strong>Your own requests:</strong> using your own subscription for yourself through Syntila is the normal case.</li>
+            <li><strong>Requests from other people:</strong> many personal subscriptions are licensed to one person and do not allow shared use. Access billed through a provider's API, or a team or business plan, is usually the right fit when family members or teammates will use the Worker.</li>
+          </ul>
+          <p>Rules differ between providers and change over time. Read the terms of your own plan before you share a Worker. Syntila does not grant any rights to third-party AI services; see the <a href="/terms/#third-party-providers">Terms</a>.</p>
+        </article>
+
+        <article class="faq-item" id="who-pays">
+          <h3>Who pays for the AI usage?</h3>
+          <p>The host. Every request to a Worker runs under the host's provider account and counts against that account's limits or usage charges, whoever in the Space sent it.</p>
+        </article>
+
+        <article class="faq-item" id="which-ai">
+          <h3>Which AI tools are supported?</h3>
+          <p>ChatGPT through Codex CLI, Claude through Claude Code, Gemini through Antigravity CLI, and custom or local models through MCP. GitHub Copilot CLI and Grok Build CLI are in testing. See <a href="/workers/">AI &amp; Workers</a>.</p>
+        </article>
+
+        <h2 class="faq-group">Privacy and safety</h2>
+
+        <article class="faq-item" id="credentials">
+          <h3>Does Syntila see my AI provider password or API key?</h3>
+          <p>No. You sign in to the provider's own tool on your computer, and the login stays there. It is not sent to Syntila Cloud or to other members.</p>
+        </article>
+
+        <article class="faq-item" id="what-is-stored">
+          <h3>What does Syntila store?</h3>
+          <p>Your account details and the content of your Spaces: Threads, messages, prompts, AI answers, and attached files. These are stored in Syntila Cloud so every member of the Space can see them. See the <a href="/privacy/">Privacy Policy</a>.</p>
+        </article>
+
+        <article class="faq-item" id="host-risk">
+          <h3>Is it safe to let others use a Worker on my computer?</h3>
+          <p>Only with people you trust. A Worker is an AI agent with your user's access on that computer: it can read and change files and run commands. Members cannot browse your computer, but the agent acts on their requests. For wider groups, use a separate computer or user account. See <a href="/security/#host-trust">Security</a>.</p>
+        </article>
+
+        <article class="faq-item" id="ai-accuracy">
+          <h3>Can I rely on the AI's answers?</h3>
+          <p>Treat them as drafts. AI output can be wrong or incomplete. Syntila records what was asked and what came back so your group can review it, but it does not guarantee that a result is correct.</p>
+        </article>
+
+        <article class="faq-item" id="contact">
+          <h3>How do I get help or report a problem?</h3>
+          <p>Write to <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a>, including for security reports.</p>
+        </article>
+      </div>
+
+      <div class="actions actions--center section-block-gap-lg">
+        <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
+        <Button href="/how-it-works/" label="See how it works" variant="secondary" event="navigation.how_it_works" />
+      </div>
+    </Container>
+  </Section>
+</SiteLayout>

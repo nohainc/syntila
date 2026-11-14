@@ -23,8 +23,9 @@ const imageUrl = new URL(image, Astro.site ?? "https://conclaveax.com").href;
     <meta name="description" content={description} />
     <meta name="theme-color" content="#121217" />
     <link rel="canonical" href={canonicalUrl} />
-    <link rel="icon" href="/favicon.svg?v=precision-indigo-20261029" type="image/svg+xml" />
-    <link rel="icon" href="/favicon.png?v=precision-indigo-20261029" type="image/png" />
+    <link rel="icon" href="/favicon.ico?v=precision-indigo-20261029" sizes="32x32" />
+    <link rel="icon" href="/syntila_logo_192.png?v=precision-indigo-20261029" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/syntila_logo_192.png?v=precision-indigo-20261029" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Syntila" />
@@ -34,7 +35,7 @@ const imageUrl = new URL(image, Astro.site ?? "https://conclaveax.com").href;
     <meta property="og:image" content={imageUrl} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Syntila — Bring your people and AI together in one shared workspace." />
+    <meta property="og:image:alt" content="Syntila — Bring your people and AI together in one shared space." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
@@ -49,6 +50,5 @@ const imageUrl = new URL(image, Astro.site ?? "https://conclaveax.com").href;
     </main>
     <Footer />
     <SiteAnalytics />
-    <script is:inline src="/scripts/site-interactive.js" defer></script>
   </body>
 </html>

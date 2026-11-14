@@ -2,6 +2,8 @@ const endpoint = document.body.dataset.siteAnalyticsEndpoint || "";
 const allowedEvents = new Set([
   "landing.page_view",
   "cta.open_app",
+  "cta.download",
+  "navigation.downloads",
   "navigation.how_it_works",
   "section.workspace_reached",
   "section.workers_reached",

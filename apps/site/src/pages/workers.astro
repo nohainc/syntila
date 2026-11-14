@@ -8,32 +8,34 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
 <SiteLayout
   title="AI & Workers — Syntila"
-  description="Connect ChatGPT, Claude, Google Gemini, and coding agents to your shared Syntila Spaces through signed Worker Profiles and the local CLI Worker Engine."
+  description="Connect ChatGPT, Claude, Gemini, coding agents, and local models to your Syntila Spaces. Workers run on your own computer with the AI tools you already use."
 >
   <Section>
     <Container>
       <SectionHeader
         eyebrow="AI & Workers"
         title="Connect and share your favorite AI models."
-        description="Connect your existing ChatGPT, Claude, Gemini, or custom MCP Workers from your local machine and share them safely with your Spaces."
+        description="A Worker is an AI tool on your computer that a Space is allowed to use. You install the tool and sign in with your own account; Syntila Workspace runs it when someone in the Space asks."
         headingLevel={1}
       />
 
       <div class="cards worker-catalog" data-site-event="section.workers_reached">
         <article class="worker-card">
           <div class="worker-card__top">
-            <h2>ChatGPT &amp; OpenAI</h2>
+            <h2>ChatGPT</h2>
             <span class="worker-status-badge">Supported</span>
           </div>
-          <p>Runs OpenAI's Codex CLI on your connected Workspace for structured reasoning, synthesis, code generation, and collaborative problem-solving in shared Threads.</p>
+          <p>Runs through OpenAI's Codex CLI. Good for reasoning, writing, summaries, and code.</p>
+          <p class="worker-card__needs"><strong>You need:</strong> Codex CLI installed and signed in.</p>
         </article>
 
         <article class="worker-card">
           <div class="worker-card__top">
-            <h2>Claude &amp; Anthropic</h2>
+            <h2>Claude</h2>
             <span class="worker-status-badge">Supported</span>
           </div>
-          <p>Runs Anthropic's Claude Code CLI on your connected Workspace for deep document analysis, architectural planning, code implementation, and verification.</p>
+          <p>Runs through Anthropic's Claude Code. Good for long documents, planning, code changes, and review.</p>
+          <p class="worker-card__needs"><strong>You need:</strong> Claude Code installed and signed in.</p>
         </article>
 
         <article class="worker-card">
@@ -41,7 +43,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
             <h2>Google Gemini</h2>
             <span class="worker-status-badge">Supported</span>
           </div>
-          <p>Runs Google's Antigravity CLI on your connected Workspace for fast research synthesis, large-context analysis, and multi-perspective comparison.</p>
+          <p>Runs through Google's Antigravity CLI. Good for fast research, large inputs, and a second point of view.</p>
+          <p class="worker-card__needs"><strong>You need:</strong> Antigravity CLI installed and signed in.</p>
         </article>
 
         <article class="worker-card">
@@ -49,7 +52,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
             <h2>GitHub Copilot CLI</h2>
             <span class="worker-status-badge worker-status-badge--testing">Testing</span>
           </div>
-          <p>Catalog Worker Profile for GitHub Copilot's agentic CLI, enabling repository-aware assistance and terminal workflows on connected Workspaces.</p>
+          <p>Repository-aware help and terminal tasks through GitHub Copilot's command-line agent.</p>
+          <p class="worker-card__needs"><strong>You need:</strong> Copilot CLI installed and signed in.</p>
         </article>
 
         <article class="worker-card">
@@ -57,7 +61,8 @@ import SiteLayout from "../layouts/SiteLayout.astro";
             <h2>Grok Build CLI</h2>
             <span class="worker-status-badge worker-status-badge--testing">Testing</span>
           </div>
-          <p>Catalog Worker Profile for xAI's Grok Build CLI, supporting interactive reasoning and coding tasks on connected Workspaces.</p>
+          <p>Reasoning and coding tasks through xAI's Grok Build command-line agent.</p>
+          <p class="worker-card__needs"><strong>You need:</strong> Grok Build CLI installed and signed in.</p>
         </article>
 
         <article class="worker-card">
@@ -65,43 +70,53 @@ import SiteLayout from "../layouts/SiteLayout.astro";
             <h2>Custom MCP Workers</h2>
             <span class="worker-status-badge">Supported</span>
           </div>
-          <p>Connect local models (such as Ollama) or custom domain agents as first-class Workers using the Syntila MCP Worker profile over local stdio or Streamable HTTP.</p>
+          <p>Connect a local model, such as one served by Ollama, or your own agent as a Worker over the Model Context Protocol (MCP).</p>
+          <p class="worker-card__needs"><strong>You need:</strong> an MCP server that speaks stdio or Streamable HTTP.</p>
         </article>
+      </div>
+
+      <p class="status-legend">
+        <strong>Supported</strong> Workers are the ones we test and maintain. <strong>Testing</strong> Workers run today but are still being qualified, so expect rough edges.
+      </p>
+
+      <div class="security-callout section-block-gap-lg" id="sharing">
+        <strong>Check your plan before you share a Worker.</strong>
+        <span>Using your own AI subscription for your own requests is the normal case. When other people in a Space use a Worker you connected, your provider's terms decide whether that is allowed. Many personal subscriptions are for one person only; access billed through a provider's API, or a team or business plan, is usually the right fit for shared use. Rules differ between providers and change over time, so read the terms of your own plan first. <a href="/faq/#sharing-subscriptions">More in the FAQ</a></span>
       </div>
 
       <div class="section-block-gap-lg">
         <SectionHeader
           eyebrow="MCP Servers &amp; Tools"
-          title="Extend Workers with local and remote MCP servers."
-          description="Connect standard Model Context Protocol (MCP) servers on your Workspace to give official Workers access to approved tools or run direct tool steps—without mutating your global CLI configuration or exposing secrets to Cloud."
+          title="Give Workers extra tools with MCP servers."
+          description="Model Context Protocol (MCP) servers add tools, such as a database or an issue tracker, that a Worker can call. You register them on your own computer and approve what they offer before any Worker can use them."
         />
         <div class="execution-path-strip">
           <div class="execution-path-step">
             <span>01 · Register</span>
             <strong>Add local or remote servers</strong>
-            <p>Register local <code>stdio</code> servers with <code>syntila mcp add</code> or remote HTTPS servers with <code>syntila mcp add-remote</code>.</p>
+            <p>Use <code>syntila mcp add</code> for a server on your computer or <code>syntila mcp add-remote</code> for one reached over HTTPS.</p>
           </div>
           <div class="execution-path-step">
-            <span>02 · Pin &amp; Consent</span>
-            <strong>Hash every tool definition</strong>
-            <p>Syntila computes a SHA-256 pin for every tool definition; any unexpected drift blocks calls until you review and re-consent.</p>
+            <span>02 · Approve</span>
+            <strong>Review each tool once</strong>
+            <p>Syntila records exactly what each tool says it does. If a server later changes a tool, calls are blocked until you review it again.</p>
           </div>
           <div class="execution-path-step">
-            <span>03 · Isolate</span>
-            <strong>Per-execution private config</strong>
-            <p>Each run receives an isolated, temporary MCP config on your Workspace host; credentials and environment variables never leave your machine.</p>
+            <span>03 · Keep it local</span>
+            <strong>Separate settings per run</strong>
+            <p>Each run gets its own temporary MCP settings. Your normal CLI configuration is not changed, and server tokens stay on your computer.</p>
           </div>
           <div class="execution-path-step">
-            <span>04 · Execute</span>
-            <strong>Owner-scoped tool access</strong>
-            <p>Approved MCP servers run under your Workspace owner boundary with bounded outputs, redaction, and process-tree cleanup.</p>
+            <span>04 · Run</span>
+            <strong>Under your account</strong>
+            <p>Approved servers run as you, on your computer, with output size limits and cleanup when the run ends.</p>
           </div>
         </div>
       </div>
 
       <div class="actions actions--center section-block-gap-lg">
         <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
-        <Button href="/downloads/" label="Download Syntila Workspace" variant="secondary" />
+        <Button href="/downloads/" label="Download Syntila Workspace" variant="secondary" event="navigation.downloads" />
       </div>
     </Container>
   </Section>

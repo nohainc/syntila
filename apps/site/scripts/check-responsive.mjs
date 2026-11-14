@@ -16,10 +16,9 @@ if (!primitives.includes("@media (max-width: 800px)"))
   errors.push("primitives do not share the 800px breakpoint");
 if (!css.includes(".site-nav[data-open]"))
   errors.push("mobile navigation drawer state is missing");
-if (!css.includes(".mental-model-grid {"))
-  errors.push("mental model grid layout is missing");
-if (!css.includes(".workflow-pipeline-grid {"))
-  errors.push("workflow pipeline grid layout is missing");
+if (!css.includes(".plans-grid {")) errors.push("plans grid layout is missing");
+if (!css.includes(".workflow-cards {"))
+  errors.push("workflow cards grid layout is missing");
 if (!css.includes(".worker-catalog {\n    grid-template-columns: 1fr;"))
   errors.push("Worker catalog does not collapse to one column");
 if (!css.includes(".cards {\n    grid-template-columns: 1fr;"))
