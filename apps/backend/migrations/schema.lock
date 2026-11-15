@@ -27,15 +27,6 @@ column account_worker_plugins.owner_user_id text not-null
 column account_worker_plugins.plugin_id text not-null
 column account_worker_plugins.plugin_ref text not-null
 column account_worker_plugins.updated_at timestamptz not-null default
-column artifacts.assignment_id text
-column artifacts.content_digest text not-null
-column artifacts.created_at timestamptz not-null default
-column artifacts.id text not-null
-column artifacts.run_id text
-column artifacts.space_id text not-null
-column artifacts.storage_key text not-null
-column artifacts.thread_id text
-column artifacts.work_request_id text
 column auth_audit_events.action text not-null
 column auth_audit_events.created_at timestamptz not-null default
 column auth_audit_events.details_json jsonb not-null default
@@ -575,13 +566,6 @@ column worker_scheduling.state text not-null default
 column worker_scheduling.updated_at timestamptz not-null default
 column worker_scheduling.updated_by_user_id text
 column worker_scheduling.worker_id text not-null
-column worker_scheduling_audit.action text not-null
-column worker_scheduling_audit.actor_user_id text
-column worker_scheduling_audit.completed_at timestamptz
-column worker_scheduling_audit.details_json jsonb not-null default
-column worker_scheduling_audit.id text not-null
-column worker_scheduling_audit.requested_at timestamptz not-null
-column worker_scheduling_audit.worker_id text not-null
 column workflow_events.consumed_by text
 column workflow_events.created_at timestamptz not-null default
 column workflow_events.id int8 not-null identity
@@ -702,15 +686,6 @@ column workspace_runtime_identities.id text not-null
 column workspace_runtime_identities.installation_id text
 column workspace_runtime_identities.revoked_at timestamptz
 column workspace_runtime_identities.workspace_id text not-null
-column workspace_service_readiness.ready_for_assignments int8 not-null default
-column workspace_service_readiness.reason text
-column workspace_service_readiness.runtime_identity_id text not-null
-column workspace_service_readiness.session_id text not-null
-column workspace_service_readiness.source text not-null default
-column workspace_service_readiness.state text not-null
-column workspace_service_readiness.sync_generation int8 not-null default
-column workspace_service_readiness.updated_at timestamptz not-null default
-column workspace_service_readiness.workspace_id text not-null
 column workspace_sessions.client_version text not-null
 column workspace_sessions.connected_at timestamptz not-null
 column workspace_sessions.disconnected_at timestamptz
@@ -788,12 +763,6 @@ constraint account_worker_plugins.account_worker_plugins_owner_user_id_fkey fore
 constraint account_worker_plugins.account_worker_plugins_owner_user_id_plugin_id_key unique
 constraint account_worker_plugins.account_worker_plugins_pkey primary-key
 constraint account_worker_plugins.account_worker_plugins_plugin_id_check check
-constraint artifacts.artifacts_assignment_id_fkey foreign-key -> worker_assignments on-delete-set-null
-constraint artifacts.artifacts_pkey primary-key
-constraint artifacts.artifacts_run_id_fkey foreign-key -> runs on-delete-set-null
-constraint artifacts.artifacts_space_id_fkey foreign-key -> spaces on-delete-cascade
-constraint artifacts.artifacts_thread_id_fkey foreign-key -> threads on-delete-set-null
-constraint artifacts.artifacts_work_request_id_fkey foreign-key -> work_requests on-delete-set-null
 constraint auth_audit_events.auth_audit_events_outcome_check check
 constraint auth_audit_events.auth_audit_events_pkey primary-key
 constraint auth_audit_events.auth_audit_events_user_id_fkey foreign-key -> users on-delete-set-null
@@ -817,6 +786,7 @@ constraint conversation_turns.conversation_turns_conversation_id_fkey foreign-ke
 constraint conversation_turns.conversation_turns_pkey primary-key
 constraint conversation_turns.conversation_turns_profile_version_check check
 constraint conversation_turns.conversation_turns_status_check check
+constraint conversation_turns.conversation_turns_task_id_fkey foreign-key -> workflow_tasks on-delete-cascade
 constraint conversation_turns.conversation_turns_user_message_id_conversation_id_fkey foreign-key -> conversation_user_messages on-delete-cascade
 constraint conversation_turns.conversation_turns_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
 constraint conversation_turns.conversation_turns_workflow_run_id_fkey foreign-key -> conversation_workflow_runs on-delete-cascade
@@ -855,7 +825,7 @@ constraint direct_space_user_state.direct_space_user_state_pkey primary-key
 constraint direct_space_user_state.direct_space_user_state_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint direct_space_user_state.direct_space_user_state_user_id_fkey foreign-key -> users on-delete-cascade
 constraint direct_spaces.direct_spaces_check check
-constraint direct_spaces.direct_spaces_general_thread_id_fkey foreign-key -> threads on-delete-restrict
+constraint direct_spaces.direct_spaces_general_thread_id_fkey foreign-key -> threads on-delete-no-action
 constraint direct_spaces.direct_spaces_pkey primary-key
 constraint direct_spaces.direct_spaces_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint direct_spaces.direct_spaces_user_high_id_fkey foreign-key -> users on-delete-cascade
@@ -939,8 +909,8 @@ constraint runs.runs_pkey primary-key
 constraint runs.runs_policy_snapshot_json_is_json check
 constraint runs.runs_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint runs.runs_status_check check
-constraint runs.runs_thread_id_fkey foreign-key -> threads on-delete-set-null
-constraint runs.runs_work_request_id_fkey foreign-key -> work_requests on-delete-set-null
+constraint runs.runs_thread_id_fkey foreign-key -> threads on-delete-cascade
+constraint runs.runs_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
 constraint space_additional_folders.space_additional_folders_pkey primary-key
 constraint space_additional_folders.space_additional_folders_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint space_additional_folders.space_additional_folders_workspace_id_folder_id_fkey foreign-key -> workspace_allowed_folders on-delete-cascade
@@ -1087,12 +1057,13 @@ constraint worker_assignments.worker_assignments_output_json_is_json check
 constraint worker_assignments.worker_assignments_permission_snapshot_json_is_json check
 constraint worker_assignments.worker_assignments_pkey primary-key
 constraint worker_assignments.worker_assignments_requested_by_user_id_fkey foreign-key -> users on-delete-set-null
-constraint worker_assignments.worker_assignments_run_id_fkey foreign-key -> runs on-delete-set-null
+constraint worker_assignments.worker_assignments_run_id_fkey foreign-key -> runs on-delete-cascade
 constraint worker_assignments.worker_assignments_runtime_identity_id_fkey foreign-key -> workspace_runtime_identities on-delete-restrict
 constraint worker_assignments.worker_assignments_session_policy_check check
 constraint worker_assignments.worker_assignments_space_id_fkey foreign-key -> spaces on-delete-cascade
-constraint worker_assignments.worker_assignments_thread_id_fkey foreign-key -> threads on-delete-set-null
-constraint worker_assignments.worker_assignments_work_request_id_fkey foreign-key -> work_requests on-delete-set-null
+constraint worker_assignments.worker_assignments_task_id_fkey foreign-key -> workflow_tasks on-delete-cascade
+constraint worker_assignments.worker_assignments_thread_id_fkey foreign-key -> threads on-delete-cascade
+constraint worker_assignments.worker_assignments_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
 constraint worker_assignments.worker_assignments_worker_type_id_fkey foreign-key -> worker_catalog on-delete-restrict
 constraint worker_assignments.worker_assignments_workspace_space_grant_id_fkey foreign-key -> workspace_space_grants on-delete-set-null
 constraint worker_catalog.worker_catalog_display_name_check check
@@ -1127,10 +1098,6 @@ constraint worker_scheduling.worker_scheduling_pkey primary-key
 constraint worker_scheduling.worker_scheduling_state_check check
 constraint worker_scheduling.worker_scheduling_updated_by_user_id_fkey foreign-key -> users on-delete-set-null
 constraint worker_scheduling.worker_scheduling_worker_id_fkey foreign-key -> workspace_worker_inventory on-delete-cascade
-constraint worker_scheduling_audit.worker_scheduling_audit_action_check check
-constraint worker_scheduling_audit.worker_scheduling_audit_actor_user_id_fkey foreign-key -> users on-delete-set-null
-constraint worker_scheduling_audit.worker_scheduling_audit_pkey primary-key
-constraint worker_scheduling_audit.worker_scheduling_audit_worker_id_fkey foreign-key -> workspace_worker_inventory on-delete-cascade
 constraint workflow_events.workflow_events_instance_id_fkey foreign-key -> workflow_instances on-delete-cascade
 constraint workflow_events.workflow_events_pkey primary-key
 constraint workflow_instances.workflow_instances_pkey primary-key
@@ -1141,7 +1108,7 @@ constraint workflow_steps.workflow_steps_instance_id_fkey foreign-key -> workflo
 constraint workflow_steps.workflow_steps_outcome_check check
 constraint workflow_steps.workflow_steps_pkey primary-key
 constraint workflow_task_dependencies.workflow_task_dependencies_check check
-constraint workflow_task_dependencies.workflow_task_dependencies_depends_on_task_id_fkey foreign-key -> workflow_tasks on-delete-restrict
+constraint workflow_task_dependencies.workflow_task_dependencies_depends_on_task_id_fkey foreign-key -> workflow_tasks on-delete-cascade
 constraint workflow_task_dependencies.workflow_task_dependencies_pkey primary-key
 constraint workflow_task_dependencies.workflow_task_dependencies_task_id_fkey foreign-key -> workflow_tasks on-delete-cascade
 constraint workflow_tasks.workflow_tasks_attempt_check check
@@ -1197,9 +1164,6 @@ constraint workspace_runtime_facts.workspace_runtime_facts_workspace_id_fkey for
 constraint workspace_runtime_identities.workspace_runtime_identities_check check
 constraint workspace_runtime_identities.workspace_runtime_identities_pkey primary-key
 constraint workspace_runtime_identities.workspace_runtime_identities_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
-constraint workspace_service_readiness.workspace_service_readiness_pkey primary-key
-constraint workspace_service_readiness.workspace_service_readiness_runtime_identity_id_fkey foreign-key -> workspace_runtime_identities on-delete-cascade
-constraint workspace_service_readiness.workspace_service_readiness_session_id_fkey foreign-key -> workspace_sessions on-delete-no-action
 constraint workspace_sessions.workspace_sessions_pkey primary-key
 constraint workspace_sessions.workspace_sessions_runtime_identity_id_fkey foreign-key -> workspace_runtime_identities on-delete-cascade
 constraint workspace_sessions.workspace_sessions_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
@@ -1269,8 +1233,6 @@ function trg_conversation_user_message_insert_fn/0
 function trg_conversation_workflow_run_immutable_fn/0
 function trg_conversation_workflow_run_message_insert_fn/0
 function trg_conversation_workflow_run_scope_insert_fn/0
-function trg_history_artifact_created_fn/0
-function trg_history_artifact_removed_fn/0
 function trg_history_context_revision_fn/0
 function trg_history_execution_created_fn/0
 function trg_history_execution_status_fn/0
@@ -1306,12 +1268,6 @@ index account_worker_plugin_versions.account_worker_plugin_versions_pkey (plugin
 index account_worker_plugins.account_worker_plugins_owner_user_id_plugin_id_key (owner_user_id,plugin_id) unique
 index account_worker_plugins.account_worker_plugins_pkey (plugin_ref) unique
 index account_worker_plugins.idx_account_worker_plugins_owner (owner_user_id,created_at)
-index artifacts.artifacts_assignment_id_fkidx (assignment_id)
-index artifacts.artifacts_pkey (id) unique
-index artifacts.artifacts_run_id_fkidx (run_id)
-index artifacts.artifacts_space_id_fkidx (space_id)
-index artifacts.artifacts_thread_id_fkidx (thread_id)
-index artifacts.idx_artifacts_work_request (work_request_id,created_at)
 index auth_audit_events.auth_audit_events_pkey (id) unique
 index auth_audit_events.auth_audit_events_user_id_fkidx (user_id)
 index conversation_history_entries.conversation_history_entries_conversation_id_deduplication__key (conversation_id,deduplication_key) unique
@@ -1321,6 +1277,7 @@ index conversation_history_entries.idx_conversation_history_request (work_reques
 index conversation_history_entries.idx_conversation_history_turn (turn_id,kind)
 index conversation_turns.conversation_turns_assignment_id_key (assignment_id) unique
 index conversation_turns.conversation_turns_pkey (id) unique
+index conversation_turns.conversation_turns_task_id_fkidx (task_id)
 index conversation_turns.conversation_turns_user_message_id_conversation_id_fkidx (user_message_id,conversation_id)
 index conversation_turns.idx_conversation_turns_history (conversation_id,created_at,id)
 index conversation_turns.idx_conversation_turns_request (work_request_id,created_at,id)
@@ -1497,6 +1454,7 @@ index worker_assignments.worker_assignments_pkey (id) unique
 index worker_assignments.worker_assignments_run_id_fkidx (run_id)
 index worker_assignments.worker_assignments_runtime_identity_id_fkidx (runtime_identity_id)
 index worker_assignments.worker_assignments_space_id_fkidx (space_id)
+index worker_assignments.worker_assignments_task_id_fkidx (task_id)
 index worker_assignments.worker_assignments_thread_id_fkidx (thread_id)
 index worker_assignments.worker_assignments_worker_type_id_fkidx (worker_type_id)
 index worker_assignments.worker_assignments_workspace_space_grant_id_fkidx (workspace_space_grant_id)
@@ -1511,9 +1469,6 @@ index worker_profiles.worker_profiles_worker_type_id_revision_key (worker_type_i
 index worker_scheduling.worker_scheduling_drain_requested_by_user_id_fkidx (drain_requested_by_user_id)
 index worker_scheduling.worker_scheduling_pkey (worker_id) unique
 index worker_scheduling.worker_scheduling_updated_by_user_id_fkidx (updated_by_user_id)
-index worker_scheduling_audit.idx_worker_scheduling_audit_worker (worker_id,requested_at)
-index worker_scheduling_audit.worker_scheduling_audit_actor_user_id_fkidx (actor_user_id)
-index worker_scheduling_audit.worker_scheduling_audit_pkey (id) unique
 index workflow_events.workflow_events_instance_id_fkidx (instance_id)
 index workflow_events.workflow_events_pending_idx (instance_id,type,id) partial
 index workflow_events.workflow_events_pkey (id) unique
@@ -1553,9 +1508,6 @@ index workspace_runtime_identities.idx_workspace_runtime_active (workspace_id,re
 index workspace_runtime_identities.idx_workspace_runtime_identities_active_workspace (workspace_id) unique partial
 index workspace_runtime_identities.idx_workspace_runtime_token_hash (credential_token_hash) unique
 index workspace_runtime_identities.workspace_runtime_identities_pkey (id) unique
-index workspace_service_readiness.workspace_service_readiness_pkey (workspace_id) unique
-index workspace_service_readiness.workspace_service_readiness_runtime_identity_id_fkidx (runtime_identity_id)
-index workspace_service_readiness.workspace_service_readiness_session_id_fkidx (session_id)
 index workspace_sessions.idx_workspace_sessions_workspace (workspace_id)
 index workspace_sessions.workspace_sessions_pkey (id) unique
 index workspace_sessions.workspace_sessions_runtime_identity_id_fkidx (runtime_identity_id)
@@ -1572,8 +1524,6 @@ index workspace_worker_plugin_enablements.workspace_worker_plugin_enablements_pl
 index workspace_worker_plugin_enablements.workspace_worker_plugin_enablements_plugin_ref_version_fkidx (plugin_ref,version)
 index workspace_worker_preferences.workspace_worker_preferences_pkey (user_id,workspace_id) unique
 index workspace_worker_preferences.workspace_worker_preferences_workspace_id_fkidx (workspace_id)
-trigger artifacts.trg_history_artifact_created -> trg_history_artifact_created_fn
-trigger artifacts.trg_history_artifact_removed -> trg_history_artifact_removed_fn
 trigger conversation_history_entries.trg_conversation_history_immutable -> trg_conversation_history_immutable_fn
 trigger conversation_history_entries.trg_conversation_history_no_delete -> trg_conversation_history_no_delete_fn
 trigger conversation_turns.trg_conversation_turn_context_boundary_insert -> trg_conversation_turn_context_boundary_insert_fn

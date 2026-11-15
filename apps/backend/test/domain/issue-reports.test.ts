@@ -3,8 +3,6 @@ import {
   handleCreateIssueReport,
   handleCreateAdminIssueReportGroup,
   handleGetAdminIssueReport,
-  handleGetAdminIssueReportGroup,
-  handleGetIssueReport,
   handleGetIssueReportForRequest,
   handleListAdminIssueReportGroups,
   handleListAdminIssueReports,
@@ -41,6 +39,10 @@ function seedExecution(sqlite: ReturnType<typeof sqliteD1>["sqlite"]) {
     );
     INSERT INTO runs(id,space_id,thread_id,work_request_id,status,created_at,updated_at)
       VALUES ('run-1','space-1','thread-1','request-1','failed','now','now');
+    INSERT INTO workflow_tasks(id,work_request_id,step_instance_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
+      VALUES ('task-1','request-1','step-1','plan','stateless_read',1000,'plan:v1','failed','now','now'),
+             ('task-2','request-1','step-2','plan','stateless_read',1000,'plan:v1','failed','now','now'),
+             ('task-rate','request-1','step-rate','plan','stateless_read',1000,'plan:v1','failed','now','now');
     INSERT INTO worker_assignments(
       id,space_id,run_id,thread_id,work_request_id,execution_workspace_id,
       runtime_identity_id,worker_type_id,status,created_at,updated_at,
@@ -277,14 +279,7 @@ describe("issue reports", () => {
       }),
       envFor(fixture.db, "owner"),
     );
-    const ownerBody = (await ownerReport.json()) as { report: { id: string } };
-    await expect(
-      handleGetIssueReport(
-        new Request("https://syntila.test/api/issue-reports/x"),
-        outsiderEnv,
-        ownerBody.report.id,
-      ),
-    ).rejects.toMatchObject({ status: 403 });
+    expect(ownerReport.status).toBe(201);
   });
 
   it("keeps report diagnostics private and records support status changes", async () => {
@@ -461,15 +456,6 @@ describe("issue reports", () => {
       reportCount: 1,
       affectedWorkerTypes: ["gemini"],
     });
-    const groupDetail = await handleGetAdminIssueReportGroup(
-      new Request("https://syntila.test/api/admin/issue-reports/groups/x"),
-      support,
-      groupId,
-    );
-    expect(
-      ((await groupDetail.json()) as { group: { reports: unknown[] } }).group
-        .reports,
-    ).toHaveLength(1);
     await expect(
       handlePatchAdminIssueReport(
         new Request("https://syntila.test/api/admin/issue-reports/x", {

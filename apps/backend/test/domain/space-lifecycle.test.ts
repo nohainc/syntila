@@ -83,21 +83,16 @@ describe("Space lifecycle integrity", () => {
     expect(all).toContain("This Space already has a Thread with this name");
   });
 
-  it("cleans restrictive Thread dependencies before deleting a Space", () => {
+  it("deletes a Space with one cascading statement", () => {
     const start = spaces.indexOf("async function handleDeleteSpace");
     const end = spaces.indexOf(
       "async function authorizeSpaceOwnerOrThrow",
       start,
     );
     const body = spaces.slice(start, end);
-
-    expect(body).toContain("DELETE FROM runs WHERE space_id = ?1");
-    expect(body).toContain("DELETE FROM work_requests");
-    expect(body).toContain("DELETE FROM threads");
-    expect(body).toContain(
-      "DELETE FROM workspace_space_grants WHERE space_id = ?1",
-    );
-    expect(body).toContain("mutations: cleanupStatements.map");
-    expect(body).toContain("DELETE FROM spaces WHERE id = ?1");
+    // Children are removed by foreign-key cascades (see
+    // test/domain/history-cascade.test.ts), not by hand-ordered deletes.
+    expect(body).toContain('prepare("DELETE FROM spaces WHERE id = ?1")');
+    expect(body).not.toContain("DELETE FROM runs");
   });
 });

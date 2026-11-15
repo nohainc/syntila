@@ -1,3 +1,4 @@
+import { spaceMembership } from "../queries.js";
 import {
   RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS,
   RESEARCH_SYNTHESIS_STEP_ID,
@@ -167,11 +168,7 @@ export async function handleRetryWorkRequest(
     "execute",
     accessContext,
   );
-  const membership = await env.SYNTILA_DB.prepare(
-    "SELECT role FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-  )
-    .bind(spaceId, context.userId)
-    .first<{ role: string }>();
+  const membership = await spaceMembership(env.SYNTILA_DB, spaceId, context.userId);
   if (!membership || membership.role === "viewer")
     throw new HttpError(
       403,

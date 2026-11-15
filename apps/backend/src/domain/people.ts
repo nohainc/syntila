@@ -1,3 +1,4 @@
+import { usersBlocked } from "./queries.js";
 import {
   createEventPublisher,
   type EventPublisherEnv,
@@ -16,20 +17,6 @@ export async function peoplePeers(
     UNION SELECT user_low_id AS userId FROM people_relationships WHERE user_high_id=?1
     UNION SELECT user_high_id AS userId FROM person_connections WHERE user_low_id=?1 AND status='connected'
     UNION SELECT user_low_id AS userId FROM person_connections WHERE user_high_id=?1 AND status='connected'`,
-  )
-    .bind(userId)
-    .all<{ userId: string }>();
-  return rows.results.map((row) => row.userId);
-}
-
-/** Read IDs only from the authenticated user's approved 1:1 connections. */
-export async function connectedPeers(
-  env: Pick<EventPublisherEnv, "SYNTILA_DB">,
-  userId: string,
-) {
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT user_high_id AS userId FROM person_connections WHERE user_low_id=?1 AND status='connected'
-    UNION ALL SELECT user_low_id AS userId FROM person_connections WHERE user_high_id=?1 AND status='connected'`,
   )
     .bind(userId)
     .all<{ userId: string }>();
@@ -88,13 +75,7 @@ export async function ensureSupportSpace(
       "The support account has no support Space",
     );
 
-  const blocked = await env.SYNTILA_DB.prepare(
-    `SELECT 1 FROM user_blocks
-     WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2)
-        OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
-  )
-    .bind(userId, support.id)
-    .first();
+  const blocked = await usersBlocked(env.SYNTILA_DB, userId, support.id);
   if (blocked) throw new SupportSpaceError(403, "Support is unavailable");
 
   const lookup = async () => {

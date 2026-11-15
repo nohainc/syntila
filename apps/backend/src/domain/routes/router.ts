@@ -24,7 +24,6 @@ import {
 } from "./worker-plugins.js";
 import { handleWorkspaceMcpInventory } from "./mcp-inventory.js";
 import { handleWorkspaceMcpAction } from "./mcp-action.js";
-import { handleWorkspaceMcpToolCallStatus } from "./mcp-tool-call.js";
 import { handleSpaceAdditionalFolders } from "./space-additional-folders.js";
 import { handleWorkflowConfigurations } from "./workflow-configurations.js";
 import { handleWorkflowDefault } from "./workflow-default.js";
@@ -225,19 +224,6 @@ export async function routeWorkerRequest(
         );
       }
     }
-    const personConnectionActionMatch = url.pathname.match(
-      /^\/api\/people\/connections\/([^/]+)\/(block|unblock)$/,
-    );
-    if (personConnectionActionMatch && request.method === "POST") {
-      const targetUserId = decodeURIComponent(personConnectionActionMatch[1]!);
-      const action = personConnectionActionMatch[2];
-      if (action === "block") {
-        return await handleBlockPerson(request, env, targetUserId, ctx);
-      }
-      if (action === "unblock") {
-        return await handleUnblockPerson(request, env, targetUserId, ctx);
-      }
-    }
     if (request.method === "PUT" && url.pathname === "/api/profile/avatar")
       return await handleUploadAvatar(request, env, ctx);
     if (url.pathname === "/api/me/privacy")
@@ -260,17 +246,6 @@ export async function routeWorkerRequest(
     }
     if (request.method === "GET" && url.pathname === "/api/issue-reports") {
       return await handlers.handleGetIssueReportForRequest!(request, env, ctx);
-    }
-    const issueReportMatch = url.pathname.match(
-      /^\/api\/issue-reports\/([^/]+)$/,
-    );
-    if (request.method === "GET" && issueReportMatch?.[1]) {
-      return await handlers.handleGetIssueReport!(
-        request,
-        env,
-        decodeURIComponent(issueReportMatch[1]),
-        ctx,
-      );
     }
     if (
       request.method === "GET" &&
@@ -295,17 +270,6 @@ export async function routeWorkerRequest(
       return await handlers.handleCreateAdminIssueReportGroup!(
         request,
         env,
-        ctx,
-      );
-    }
-    const adminIssueReportGroupMatch = url.pathname.match(
-      /^\/api\/admin\/issue-reports\/groups\/([^/]+)$/,
-    );
-    if (adminIssueReportGroupMatch?.[1] && request.method === "GET") {
-      return await handlers.handleGetAdminIssueReportGroup!(
-        request,
-        env,
-        decodeURIComponent(adminIssueReportGroupMatch[1]),
         ctx,
       );
     }
@@ -544,21 +508,6 @@ export async function routeWorkerRequest(
         ctx,
       );
     }
-    const workspaceMcpToolCallStatusMatch = url.pathname.match(
-      /^\/api\/workspaces\/([^/]+)\/mcp-tool-calls\/([^/]+)\/status$/,
-    );
-    if (
-      workspaceMcpToolCallStatusMatch?.[1] &&
-      workspaceMcpToolCallStatusMatch[2]
-    ) {
-      return await handleWorkspaceMcpToolCallStatus(
-        request,
-        env,
-        decodeURIComponent(workspaceMcpToolCallStatusMatch[1]),
-        decodeURIComponent(workspaceMcpToolCallStatusMatch[2]),
-        ctx,
-      );
-    }
     const workspacePluginMatch = url.pathname.match(
       /^\/api\/workspaces\/([^/]+)\/(?:external-workers|worker-plugins)\/([^/]+)$/,
     );
@@ -676,26 +625,14 @@ export async function routeWorkerRequest(
         decodeURIComponent(v9WorkspaceWorkerProfileMatch[1]),
       );
     }
-    const artifactUploadMatch = url.pathname.match(
-      /^\/api\/workspaces\/([^/]+)\/artifacts$/,
+    const workspaceProbeMatch = url.pathname.match(
+      /^\/api\/workspaces\/([^/]+)\/delivery-probe$/,
     );
-    if (request.method === "POST" && artifactUploadMatch?.[1]) {
-      return await handlers.handleUploadArtifact!(
+    if (request.method === "POST" && workspaceProbeMatch?.[1]) {
+      return await handlers.handleWorkspaceDeliveryProbe!(
         request,
         env,
-        artifactUploadMatch[1],
-        ctx,
-      );
-    }
-    const artifactMatch = url.pathname.match(/^\/api\/artifacts\/([^/]+)$/);
-    if (
-      (request.method === "GET" || request.method === "HEAD") &&
-      artifactMatch?.[1]
-    ) {
-      return await handlers.handleGetArtifact!(
-        request,
-        env,
-        artifactMatch[1],
+        workspaceProbeMatch[1],
         ctx,
       );
     }
@@ -762,17 +699,6 @@ export async function routeWorkerRequest(
       );
     }
 
-    const workspaceProbeMatch = url.pathname.match(
-      /^\/api\/workspaces\/([^/]+)\/delivery-probe$/,
-    );
-    if (request.method === "POST" && workspaceProbeMatch?.[1]) {
-      return await handlers.handleWorkspaceDeliveryProbe!(
-        request,
-        env,
-        workspaceProbeMatch[1],
-        ctx,
-      );
-    }
 
     const workerUsageMatch = url.pathname.match(
       /^\/api\/workspaces\/([^/]+)\/workers\/([^/]+)\/usage$/,
@@ -1187,17 +1113,6 @@ export async function routeWorkerRequest(
         env,
         conversationHistoryMatch[1],
         conversationHistoryMatch[2],
-        ctx,
-      );
-    }
-    const conversationsMatch = url.pathname.match(
-      /^\/api\/threads\/([^/]+)\/conversations$/,
-    );
-    if (request.method === "GET" && conversationsMatch?.[1]) {
-      return await handlers.handleListConversations!(
-        request,
-        env,
-        conversationsMatch[1],
         ctx,
       );
     }

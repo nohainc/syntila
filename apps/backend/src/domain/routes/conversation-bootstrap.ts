@@ -192,14 +192,6 @@ export async function loadConversationBootstrap(
     throw new Error("Receiving Workflow step is outside this request");
   const selectedStepId =
     activeStepId ?? (taskRows.length === 1 ? taskRows[0]!.id : undefined);
-  const artifacts = await db
-    .prepare(
-      `SELECT id, content_digest AS contentDigest FROM artifacts WHERE work_request_id = ?1 AND space_id = ?2 ORDER BY id LIMIT 1001`,
-    )
-    .bind(workRequestId, current.spaceId)
-    .all<{ id: string; contentDigest: string }>();
-  if ((artifacts.results?.length ?? 0) > 1000)
-    throw new Error("Workflow artifact limit exceeded");
   const bindings = snapshot.resolvedBindings as
     Record<string, { workerId?: string }> | undefined;
   const workflowExecution: WorkflowExecutionContext | undefined = selectedStepId
@@ -254,8 +246,7 @@ export async function loadConversationBootstrap(
                     ? snapshot.threadInstructions
                     : "",
               },
-        artifacts:
-          current.workflowId === "chat" ? [] : (artifacts.results ?? []),
+        artifacts: [],
       }
     : undefined;
   const engine = new ContextEngine();

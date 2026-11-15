@@ -2597,46 +2597,10 @@ export class WorkspaceGateway implements DurableObject {
     return result.readiness;
   }
 
-  /** Publishes a readiness change to D1 and realtime subscribers at once. */
+  /** Publishes a readiness change to realtime subscribers. */
   private async publishReadiness(readiness: ServiceReadiness): Promise<void> {
     const workspaceId = this.executionWorkspaceId;
     if (!workspaceId) return;
-    try {
-      await this.env.SYNTILA_DB.prepare(
-        `INSERT INTO workspace_service_readiness
-           (workspace_id, runtime_identity_id, session_id, sync_generation,
-            state, ready_for_assignments, source, reason, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-         ON CONFLICT(workspace_id) DO UPDATE SET
-           runtime_identity_id = excluded.runtime_identity_id,
-           session_id = excluded.session_id,
-           sync_generation = excluded.sync_generation,
-           state = excluded.state,
-           ready_for_assignments = excluded.ready_for_assignments,
-           source = excluded.source,
-           reason = excluded.reason,
-           updated_at = excluded.updated_at`,
-      )
-        .bind(
-          workspaceId,
-          readiness.workspaceRuntimeId,
-          readiness.sessionId,
-          readiness.syncGeneration,
-          readiness.state,
-          readiness.readyForAssignments ? 1 : 0,
-          readiness.source,
-          readiness.reason ?? null,
-          readiness.updatedAt,
-        )
-        .run();
-    } catch (error) {
-      logStructured(
-        "warn",
-        "workspace_readiness_projection_failed",
-        { workspaceId },
-        { error: error instanceof Error ? error.message : String(error) },
-      );
-    }
     await createEventPublisher(this.env)
       .publish({
         type: "workspace.readiness.updated",

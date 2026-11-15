@@ -192,8 +192,7 @@ it("assembles Work environment and scoped prerequisite results for the receiving
       ('IMPLEMENT','RW','implement','stateful_thread',1000,'implement:v1','completed',1,'{"text":"Implementation result","workerId":"ChatGPT"}','now','now'),
       ('VERIFY','RW','verify','stateless_read',1000,'verify:v1','queued',0,NULL,'now','now'),
       ('TEST','RW','test','stateless_read',1000,'test:v1','completed',1,'{"text":"Unrelated test output"}','now','now');
-      INSERT INTO workflow_task_dependencies(task_id,depends_on_task_id) VALUES('VERIFY','IMPLEMENT');
-      INSERT INTO artifacts(id,space_id,thread_id,work_request_id,content_digest,storage_key,created_at) VALUES('AR','P','W','RW','digest','secret-storage-key','now');`);
+      INSERT INTO workflow_task_dependencies(task_id,depends_on_task_id) VALUES('VERIFY','IMPLEMENT');`);
     const row = { id: threadConversationId("W") };
     const result = await loadConversationBootstrap(
       f.db as unknown as D1Database,
@@ -213,7 +212,7 @@ it("assembles Work environment and scoped prerequisite results for the receiving
         workspaceId: "WS",
         spaceInstructions: "Space rules",
       },
-      artifacts: [{ id: "AR", contentDigest: "digest" }],
+      artifacts: [],
       prerequisiteResults: [
         {
           stepId: "IMPLEMENT",

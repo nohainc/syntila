@@ -345,32 +345,6 @@ export function artifactName(value: string | null): string {
   return normalized.slice(0, 160) || "artifact";
 }
 
-export function artifactMetadata(
-  row: Record<string, unknown>,
-): Record<string, unknown> {
-  const provenance = parseJson<Record<string, unknown>>(
-    row.provenance_json,
-    {},
-  );
-  return {
-    id: String(row.id),
-    workspaceId: String(row.workspace_id),
-    spaceId: String(row.space_id),
-    runId: String(row.run_id),
-    ...(row.task_id ? { taskId: String(row.task_id) } : {}),
-    ...(row.attempt_id ? { attemptId: String(row.attempt_id) } : {}),
-    mediaType: String(row.media_type),
-    contentDigest: String(row.content_digest),
-    sizeBytes: Number(row.size_bytes),
-    name: artifactName(
-      typeof provenance.name === "string" ? provenance.name : null,
-    ),
-    storage: "artifact-service",
-    downloadUrl: `/api/artifacts/${encodeURIComponent(String(row.id))}?workspaceId=${encodeURIComponent(String(row.workspace_id))}`,
-    createdAt: String(row.created_at),
-  };
-}
-
 export async function workspaceOwnerContext(
   request: Request,
   env: SecurityEnv,

@@ -1,3 +1,4 @@
+import { ownsActiveWorkspace } from "../queries.js";
 import { McpInventorySchema } from "@syntila/workspace-runtime-protocol";
 import { getWorkspaceGatewayStatus } from "./workspace-access.js";
 import { HttpError, json, securityContext } from "./http-security.js";
@@ -24,11 +25,7 @@ export async function handleWorkspaceMcpInventory(
 ): Promise<Response> {
   if (request.method !== "GET") throw new HttpError(405, "Unsupported method");
   const context = await securityContext(request, env, ctx);
-  const owned = await env.SYNTILA_DB.prepare(
-    "SELECT 1 AS ok FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status != 'revoked'",
-  )
-    .bind(workspaceId, context.userId)
-    .first();
+  const owned = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
   if (!owned) throw new HttpError(404, "Workspace not found");
 
   const gateway = env.SYNTILA_WORKSPACE_GATEWAY;

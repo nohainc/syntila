@@ -1,3 +1,4 @@
+import { spaceKind } from "../queries.js";
 import { paidOwnerSql } from "../account-plan.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import {
@@ -223,11 +224,7 @@ export async function handleWorkflowWorkspace(
   const current =
     spaceId &&
     (
-      await env.SYNTILA_DB.prepare(
-        "SELECT COALESCE(kind, 'group') AS kind FROM spaces WHERE id = ?1",
-      )
-        .bind(spaceId)
-        .first<{ kind: string }>()
+      await spaceKind(env.SYNTILA_DB, spaceId)
     )?.kind === "direct"
       ? await loadWorkflowWorkspace(env, ownerUserId)
       : await loadWorkflowWorkspace(env, ownerUserId, spaceId);

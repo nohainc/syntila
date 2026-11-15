@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import type { Conversation, WorkflowDefinition } from "@syntila/core";
-import { authorizeThreadAccess, json, type SecurityEnv } from "./handlers.js";
 
 /**
  * One canonical Conversation per Thread, shared by every manual workflow
@@ -63,23 +62,4 @@ export function conversationSubmissionStatements(
       )
       .bind(id, workRequestId),
   ];
-}
-
-export async function handleListConversations(
-  request: Request,
-  env: SecurityEnv,
-  threadId: string,
-  accessContext?: ExecutionContext,
-): Promise<Response> {
-  await authorizeThreadAccess(request, env, threadId, "view", accessContext);
-  const result = await env.SYNTILA_DB.prepare(
-    `SELECT id, thread_id AS threadId,
-    workflow_id AS workflowId, workflow_version AS workflowVersion,
-    conversation_revision AS conversationRevision, context_revision AS contextRevision,
-    created_at AS createdAt, updated_at AS updatedAt
-    FROM conversations WHERE thread_id = ?1 ORDER BY created_at, id`,
-  )
-    .bind(threadId)
-    .all<Conversation>();
-  return json({ conversations: result.results ?? [] });
 }

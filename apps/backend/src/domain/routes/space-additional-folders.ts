@@ -1,3 +1,4 @@
+import { ownsActiveWorkspace } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import {
   securityContext,
@@ -43,11 +44,7 @@ async function eligibility(
     return { eligible: false, workspaceId, reason: "not_space_owner" };
   if (!workspaceId)
     return { eligible: false, workspaceId: null, reason: "no_workspace" };
-  const owned = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status != 'revoked'",
-  )
-    .bind(workspaceId, userId)
-    .first();
+  const owned = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, userId);
   return owned
     ? { eligible: true, workspaceId }
     : { eligible: false, workspaceId, reason: "not_workspace_owner" };

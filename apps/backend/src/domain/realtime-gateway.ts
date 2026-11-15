@@ -1,3 +1,4 @@
+import { userAccount } from "./queries.js";
 import {
   isReplayableRealtimeEvent,
   parseRealtimeEvent,
@@ -376,10 +377,7 @@ export async function isRealtimeIdentityAuthorized(
   userId: string,
   scopes: readonly RealtimeScope[],
 ): Promise<boolean> {
-  const user = await db
-    .prepare("SELECT status FROM users WHERE id = ?1")
-    .bind(userId)
-    .first<{ status: string }>();
+  const user = await userAccount(db, userId);
   if (!user || user.status !== "active") return false;
   for (const scope of scopes) {
     const result = await authorizeRealtimeScope(db, userId, scope);
@@ -450,11 +448,7 @@ export class RealtimeGateway implements DurableObject {
         { status: 401 },
       );
     }
-    const user = await this.env.SYNTILA_DB.prepare(
-      "SELECT status FROM users WHERE id = ?1",
-    )
-      .bind(identity.userId)
-      .first<{ status?: string | null }>();
+    const user = await userAccount(this.env.SYNTILA_DB, identity.userId);
     const accountError = realtimeAuthenticationError(identity, user?.status);
     if (accountError) {
       return Response.json({ error: accountError }, { status: 403 });

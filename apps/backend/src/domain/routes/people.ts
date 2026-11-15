@@ -1,3 +1,4 @@
+import { usersBlocked } from "../queries.js";
 import {
   spaceMemberPermissions,
   type SpaceMemberPermissions,
@@ -312,13 +313,7 @@ async function provisionDirectConnection(
   recipientUserId: string,
   invitationId: string | null,
 ): Promise<{ directSpaceId: string; userLowId: string; userHighId: string }> {
-  const isBlocked = await env.SYNTILA_DB.prepare(
-    `SELECT 1 FROM user_blocks
-     WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2)
-        OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
-  )
-    .bind(inviterUserId, recipientUserId)
-    .first();
+  const isBlocked = await usersBlocked(env.SYNTILA_DB, inviterUserId, recipientUserId);
   if (isBlocked) {
     throw new HttpError(403, "Cannot accept invitation from a blocked user");
   }
@@ -578,13 +573,7 @@ export async function handleCreatePersonInvitation(
 
   // Check if blocked
   if (inviteeUserId) {
-    const isBlocked = await env.SYNTILA_DB.prepare(
-      `SELECT 1 FROM user_blocks
-       WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2)
-          OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
-    )
-      .bind(context.userId, inviteeUserId)
-      .first();
+    const isBlocked = await usersBlocked(env.SYNTILA_DB, context.userId, inviteeUserId);
     if (isBlocked) {
       throw new HttpError(403, "Cannot send invitation to a blocked user");
     }

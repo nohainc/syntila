@@ -65,14 +65,12 @@ import { pruneExpiredIssueReports } from "./issue-report-retention.js";
 import { pruneOrphanUserFiles } from "./routes/user-files.js";
 import {
   handleCreateIssueReport,
-  handleGetIssueReport,
   handleGetIssueReportForRequest,
   handleListAdminIssueReports,
   handleGetAdminIssueReport,
   handlePatchAdminIssueReport,
   handleListAdminIssueReportGroups,
   handleCreateAdminIssueReportGroup,
-  handleGetAdminIssueReportGroup,
 } from "./routes/issue-reports.js";
 
 const rateLimiter = new RateLimiter();
@@ -95,14 +93,12 @@ function applyCorsHeaders(
 
 export const routeHandlers = {
   handleCreateIssueReport,
-  handleGetIssueReport,
   handleGetIssueReportForRequest,
   handleListAdminIssueReports,
   handleGetAdminIssueReport,
   handlePatchAdminIssueReport,
   handleListAdminIssueReportGroups,
   handleCreateAdminIssueReportGroup,
-  handleGetAdminIssueReportGroup,
   handleProfileLabAccess: handlers.handleProfileLabAccess,
   handleSession: handlers.handleSession,
   handleCheckWorkspaceOwnership: handlers.handleCheckWorkspaceOwnership,
@@ -112,8 +108,6 @@ export const routeHandlers = {
   handleRegisterWorkspaceFromDesktop:
     handlers.handleRegisterWorkspaceFromDesktop,
   handleListWorkspaces: handlers.handleListWorkspaces,
-  handleUploadArtifact: handlers.handleUploadArtifact,
-  handleGetArtifact: handlers.handleGetArtifact,
   handleExportWorkspaceAudit: handlers.handleExportWorkspaceAudit,
   handleWorkspaceGatewayConnect: handlers.handleWorkspaceGatewayConnect,
   handleWorkspaceRuntimeTransport: handlers.handleWorkspaceRuntimeTransport,
@@ -130,8 +124,8 @@ export const routeHandlers = {
   handleGetWorkspaceRelease: handlers.handleGetWorkspaceRelease,
   handleGetWorkspace: handlers.handleGetWorkspace,
   handleUpdateWorkspace: handlers.handleUpdateWorkspace,
-  handleWorkspaceDeliveryProbe: handlers.handleWorkspaceDeliveryProbe,
   handleWorkerUsage: handlers.handleWorkerUsage,
+  handleWorkspaceDeliveryProbe: handlers.handleWorkspaceDeliveryProbe,
   handleRevokeWorkspace: handlers.handleRevokeWorkspace,
   handleListSpaces: handlers.handleListSpaces,
   handleCreateSpace: handlers.handleCreateSpace,
@@ -188,7 +182,6 @@ export const routeHandlers = {
   handleClearWorkHistory: handlers.handleClearWorkHistory,
   handleGetWorkRequest: handlers.handleGetWorkRequest,
   handleListWorkRequests: handlers.handleListWorkRequests,
-  handleListConversations: handlers.handleListConversations,
   handleListConversationHistory: handlers.handleListConversationHistory,
   handleListV9WorkerProfiles: handlers.handleListV9WorkerProfiles,
   handleGetV9WorkerProfile: handlers.handleGetV9WorkerProfile,

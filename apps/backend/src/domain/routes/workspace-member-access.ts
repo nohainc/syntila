@@ -1,3 +1,4 @@
+import { ownsActiveWorkspace } from "../queries.js";
 import {
   HttpError,
   json,
@@ -301,11 +302,7 @@ export async function handleWorkspaceMemberAccess(
   personId?: string,
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
-  const workspace = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status != 'revoked'",
-  )
-    .bind(workspaceId, context.userId)
-    .first();
+  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   if (personId !== undefined)
     return handlePersonOverride(request, env, workspaceId, personId);

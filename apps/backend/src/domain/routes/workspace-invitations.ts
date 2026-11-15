@@ -1,3 +1,4 @@
+import { ownsActiveWorkspace } from "../queries.js";
 import { hashToken } from "@syntila/security";
 import { hasPaidFeature, requirePaidFeature } from "../account-plan.js";
 import { createEventPublisher } from "../event-publisher.js";
@@ -68,11 +69,7 @@ async function ownedWorkspace(
   workspaceId: string,
   userId: string,
 ) {
-  const workspace = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status != 'revoked'",
-  )
-    .bind(workspaceId, userId)
-    .first();
+  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
 }
 

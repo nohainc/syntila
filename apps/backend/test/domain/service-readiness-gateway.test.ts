@@ -374,20 +374,6 @@ describe("Gateway Service readiness", () => {
     });
   });
 
-  it("publishes readiness to D1 as it changes", async () => {
-    const f = await gatewayFixture("created");
-    const row = f.sqlite
-      .prepare(
-        "SELECT state, ready_for_assignments AS ready, sync_generation AS generation, runtime_identity_id AS runtime FROM workspace_service_readiness WHERE workspace_id = 'WS'",
-      )
-      .get() as Record<string, unknown>;
-    expect(row).toMatchObject({
-      state: "ready",
-      ready: 1,
-      generation: 1,
-      runtime: "RT",
-    });
-  });
   describe("long-poll fallback", () => {
     const pollRaw = (
       f: Awaited<ReturnType<typeof gatewayFixture>>,

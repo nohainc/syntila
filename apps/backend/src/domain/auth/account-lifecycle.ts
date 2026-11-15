@@ -1,3 +1,4 @@
+import { userAccount } from "../queries.js";
 /**
  * Account lifecycle effects owned by the backend. The auth Worker owns the
  * Better Auth account itself and notifies the backend (internal endpoint)
@@ -39,10 +40,7 @@ export async function handleAccountDeletionCleanup(
     .all<{ space_id: string; peer_user_id: string }>();
 
   for (const row of ownedDirectSpaces.results ?? []) {
-    const peer = await db
-      .prepare("SELECT status FROM users WHERE id = ?1")
-      .bind(row.peer_user_id)
-      .first<{ status: string }>();
+    const peer = await userAccount(db, row.peer_user_id);
 
     if (peer && peer.status === "active") {
       await db

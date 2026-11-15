@@ -1,3 +1,4 @@
+import { isSpaceMember } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { HttpError, authorizeThreadAccess, json } from "./handlers.js";
 import { authorizeRequest } from "./http-security.js";
@@ -28,11 +29,7 @@ export async function handleSetPin(
     );
     userId = context.userId;
     spaceId = targetId;
-    const member = await env.SYNTILA_DB.prepare(
-      "SELECT 1 AS ok FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-    )
-      .bind(targetId, userId)
-      .first<{ ok: number }>();
+    const member = await isSpaceMember(env.SYNTILA_DB, targetId, userId);
     if (!member) throw new HttpError(404, "Space not found");
   } else {
     const access = await authorizeThreadAccess(
@@ -106,11 +103,7 @@ export async function handleSetPinOrder(
     spaceId,
     accessContext,
   );
-  const member = await env.SYNTILA_DB.prepare(
-    "SELECT 1 AS ok FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-  )
-    .bind(spaceId, context.userId)
-    .first<{ ok: number }>();
+  const member = await isSpaceMember(env.SYNTILA_DB, spaceId, context.userId);
   if (!member) throw new HttpError(404, "Space not found");
   const mutations = ids.map((id, index) =>
     env.SYNTILA_DB.prepare(

@@ -14,7 +14,6 @@ import {
   conversationSubmissionStatements,
   resolveThreadConversationId,
   threadConversationId,
-  handleListConversations,
 } from "../../src/domain/routes/conversations.js";
 
 it("shares one Thread Conversation across workflows, preserves context revision, and gates Conversation reads", async () => {
@@ -64,30 +63,6 @@ it("shares one Thread Conversation across workflows, preserves context revision,
   expect(
     await resolveThreadConversationId(db as unknown as D1Database, "W"),
   ).toBe(id);
-  const request = new Request("https://cloud.test/api/threads/W/conversations");
-  const env = { SYNTILA_DB: db } as unknown as SecurityEnv;
-  const response = await handleListConversations(request, env, "W");
-  expect(await response.json()).toEqual({
-    conversations: [
-      {
-        id,
-        threadId: "W",
-        workflowId: "work",
-        workflowVersion: 1,
-        conversationRevision: 1,
-        contextRevision: 1,
-        createdAt: "2030-01-01T00:00:00.000Z",
-        updatedAt: "2030-01-01T00:00:00.000Z",
-      },
-    ],
-  });
-  expect(authorize).toHaveBeenLastCalledWith(
-    request,
-    env,
-    "W",
-    "view",
-    undefined,
-  );
   // Receipt/request failure rolls back both the counter and association.
   await expect(
     db.batch([
@@ -109,7 +84,6 @@ it("shares one Thread Conversation across workflows, preserves context revision,
       .prepare("SELECT count(*) AS n FROM conversation_work_requests")
       .get(),
   ).toEqual({ n: 1 });
-  authorize.mockRejectedValueOnce(new Error("access denied"));
   expect(() =>
     sqlite.exec("UPDATE conversations SET workflow_id = 'chat'"),
   ).toThrow(/immutable/);
@@ -124,9 +98,6 @@ it("shares one Thread Conversation across workflows, preserves context revision,
       "UPDATE conversation_work_requests SET conversation_revision = 2",
     ),
   ).toThrow(/immutable/);
-  await expect(handleListConversations(request, env, "W")).rejects.toThrow(
-    "access denied",
-  );
   sqlite.close();
 });
 

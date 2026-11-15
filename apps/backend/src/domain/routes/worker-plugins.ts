@@ -1,3 +1,4 @@
+import { ownsActiveWorkspace } from "../queries.js";
 import { PluginManifestSchema } from "@syntila/workspace-runtime-protocol";
 import { pluginManifestDigest } from "../plugin-manifest-digest.js";
 import { HttpError, json, securityContext } from "./http-security.js";
@@ -377,12 +378,7 @@ export async function handleWorkspacePluginPin(
   const userId = context.userId;
   const db = env.SYNTILA_DB;
   const ref = requireRef(pluginRef);
-  const workspace = await db
-    .prepare(
-      "SELECT 1 AS ok FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status != 'revoked'",
-    )
-    .bind(workspaceId, userId)
-    .first();
+  const workspace = await ownsActiveWorkspace(db, workspaceId, userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   const owned = await db
     .prepare(

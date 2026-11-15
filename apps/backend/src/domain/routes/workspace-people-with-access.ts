@@ -1,3 +1,4 @@
+import { ownsActiveWorkspace } from "../queries.js";
 import {
   HttpError,
   json,
@@ -22,11 +23,7 @@ export async function handlePeopleWithAccess(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   if (request.method !== "GET") throw new HttpError(405, "Unsupported method");
-  const workspace = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status != 'revoked'",
-  )
-    .bind(workspaceId, context.userId)
-    .first();
+  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   const grants = await env.SYNTILA_DB.prepare(
     `SELECT g.user_id AS userId, u.display_name AS displayName, u.email, g.status,

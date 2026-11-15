@@ -1,3 +1,4 @@
+import { spaceKind, usersBlocked } from "../queries.js";
 import {
   resolveReplyReference,
   storedReplyReference,
@@ -212,13 +213,7 @@ export async function handleCreateThread(
     }>()
     .catch(() => null);
   if (directSpace) {
-    const isBlocked = await env.SYNTILA_DB.prepare(
-      `SELECT 1 FROM user_blocks
-       WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2)
-          OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
-    )
-      .bind(directSpace.userLowId, directSpace.userHighId)
-      .first();
+    const isBlocked = await usersBlocked(env.SYNTILA_DB, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }
@@ -352,11 +347,7 @@ export async function handleUpdateThread(
     }
   }
 
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT COALESCE(kind, 'group') AS kind FROM spaces WHERE id = ?1",
-  )
-    .bind(thread.spaceId)
-    .first<{ kind: string }>();
+  const space = await spaceKind(env.SYNTILA_DB, thread.spaceId);
   if (space?.kind === "direct" && !isDirectGeneral) {
     if (thread.lead.userId !== context.userId) {
       throw new HttpError(
@@ -586,18 +577,10 @@ export async function handleDeleteThread(
       409,
       "Cancel active requests before deleting this Thread",
     );
-  const workflowTaskFilter = `SELECT id FROM workflow_tasks WHERE work_request_id IN (SELECT id FROM work_requests WHERE thread_id = ?1)`;
+  // Everything that belongs to the Thread (Work Requests, tasks, Worker
+  // assignments, Runs, conversations, messages) is removed by cascade.
   const mutations = [
     destructiveThreadGuard(env, threadId, context.userId),
-    env.SYNTILA_DB.prepare(
-      `DELETE FROM workflow_task_dependencies
-       WHERE task_id IN (${workflowTaskFilter})
-          OR depends_on_task_id IN (${workflowTaskFilter})`,
-    ).bind(threadId),
-    env.SYNTILA_DB.prepare(
-      `DELETE FROM workflow_tasks
-       WHERE work_request_id IN (SELECT id FROM work_requests WHERE thread_id = ?1)`,
-    ).bind(threadId),
     env.SYNTILA_DB.prepare("DELETE FROM threads WHERE id = ?1").bind(threadId),
   ];
   await publishCollaborationEvent(env, "thread.deleted", spaceId, threadId, {
@@ -739,13 +722,7 @@ export async function handleCreateDiscussionMessage(
     }>()
     .catch(() => null);
   if (directSpace) {
-    const isBlocked = await env.SYNTILA_DB.prepare(
-      `SELECT 1 FROM user_blocks
-       WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2)
-          OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
-    )
-      .bind(directSpace.userLowId, directSpace.userHighId)
-      .first();
+    const isBlocked = await usersBlocked(env.SYNTILA_DB, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }
@@ -978,11 +955,7 @@ export async function handleDeleteDiscussionMessage(
     accessContext,
   );
   const policy = await loadSpacePermissions(env, context.userId, spaceId);
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT COALESCE(kind, 'group') AS kind FROM spaces WHERE id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ kind: string }>();
+  const space = await spaceKind(env.SYNTILA_DB, spaceId);
 
   if (space?.kind === "direct") {
     if (String(message.authorUserId) !== context.userId) {
@@ -1050,26 +1023,14 @@ export async function handleClearChatHistory(
   // Request with its answers and diagnostics, and Worker session continuity.
   // Deleting the owning Conversations lets canonical history cascade legally.
   const now = new Date().toISOString();
-  const workflowTaskFilter = `SELECT id FROM workflow_tasks WHERE work_request_id IN (SELECT id FROM work_requests WHERE thread_id = ?1)`;
+  // Deleting the Work Requests removes their tasks, Worker assignments and
+  // Runs by cascade.
   const mutations = [
     destructiveThreadGuard(env, threadId, context.userId),
     db
       .prepare("DELETE FROM discussion_messages WHERE thread_id = ?1")
       .bind(threadId),
     db.prepare("DELETE FROM conversations WHERE thread_id = ?1").bind(threadId),
-    db
-      .prepare(
-        `DELETE FROM workflow_task_dependencies
-         WHERE task_id IN (${workflowTaskFilter})
-            OR depends_on_task_id IN (${workflowTaskFilter})`,
-      )
-      .bind(threadId),
-    db
-      .prepare(
-        `DELETE FROM workflow_tasks
-         WHERE work_request_id IN (SELECT id FROM work_requests WHERE thread_id = ?1)`,
-      )
-      .bind(threadId),
     db.prepare("DELETE FROM work_requests WHERE thread_id = ?1").bind(threadId),
     db
       .prepare(

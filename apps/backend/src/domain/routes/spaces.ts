@@ -1,3 +1,4 @@
+import { isSpaceMember, spaceKind, spaceMembership } from "../queries.js";
 import {
   SpaceMemberLimitError,
   getSpaceMemberUsage,
@@ -592,11 +593,7 @@ export async function handleUpdateSpace(
     ) {
       throw new HttpError(403, "Only personal archive state can be changed");
     }
-    const membership = await env.SYNTILA_DB.prepare(
-      "SELECT role FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-    )
-      .bind(spaceId, context.userId)
-      .first<{ role: string }>();
+    const membership = await spaceMembership(env.SYNTILA_DB, spaceId, context.userId);
     if (!membership) throw new HttpError(403, "Forbidden");
     const now = new Date().toISOString();
     // This existing per-user state table also stores shared Space visibility;
@@ -680,11 +677,7 @@ export async function handleUpdateSpace(
 
   await authorizeRequest(request, env, "spaces:write", spaceId, accessContext);
   if (isDirect) {
-    const membership = await env.SYNTILA_DB.prepare(
-      "SELECT role FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-    )
-      .bind(spaceId, context.userId)
-      .first<{ role: string }>();
+    const membership = await spaceMembership(env.SYNTILA_DB, spaceId, context.userId);
     if (!membership) throw new HttpError(403, "Forbidden");
   } else if (context.userId !== existing.ownerUserId) {
     throw new HttpError(403, "Only the Space owner can update Space settings");
@@ -884,19 +877,11 @@ export async function handleDeleteSpace(
     accessContext,
   );
   {
-    const space = await env.SYNTILA_DB.prepare(
-      "SELECT COALESCE(kind, 'group') AS kind FROM spaces WHERE id = ?1",
-    )
-      .bind(spaceId)
-      .first<{ kind: string }>();
+    const space = await spaceKind(env.SYNTILA_DB, spaceId);
     if (space?.kind === "direct") {
       // Either participant may delete a personal Space; the connection stays
       // and messaging again creates a fresh one.
-      const member = await env.SYNTILA_DB.prepare(
-        "SELECT 1 AS ok FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-      )
-        .bind(spaceId, context.userId)
-        .first();
+      const member = await isSpaceMember(env.SYNTILA_DB, spaceId, context.userId);
       if (!member) throw new HttpError(403, "Forbidden");
     } else {
       try {
@@ -918,40 +903,14 @@ export async function handleDeleteSpace(
     )
       .bind(spaceId)
       .all<{ user_id: string }>();
-    const threadFilter = "SELECT id FROM threads WHERE space_id = ?1";
-    const workRequestFilter = `SELECT id FROM work_requests WHERE thread_id IN (${threadFilter})`;
-    const workflowTaskFilter = `SELECT id FROM workflow_tasks WHERE work_request_id IN (${workRequestFilter})`;
-    // Ordered transactional cleanup removes children before their parents and
-    // commits the deletion signal with the mutation.
-    const cleanupStatements = [
-      `DELETE FROM workflow_task_dependencies
-       WHERE task_id IN (${workflowTaskFilter})
-          OR depends_on_task_id IN (${workflowTaskFilter})`,
-      `DELETE FROM workflow_tasks
-       WHERE work_request_id IN (${workRequestFilter})`,
-      "DELETE FROM worker_assignments WHERE space_id = ?1",
-      "DELETE FROM runs WHERE space_id = ?1",
-      `DELETE FROM work_requests
-       WHERE thread_id IN (${threadFilter})`,
-      `DELETE FROM thread_execution_policies
-       WHERE thread_id IN (${threadFilter})`,
-      `DELETE FROM discussion_messages
-       WHERE thread_id IN (${threadFilter})`,
-      "DELETE FROM direct_space_user_state WHERE space_id = ?1",
-      "DELETE FROM direct_spaces WHERE space_id = ?1",
-      "DELETE FROM threads WHERE space_id = ?1",
-      "DELETE FROM workspace_space_grants WHERE space_id = ?1",
-      "DELETE FROM space_invitations WHERE space_id = ?1",
-      "DELETE FROM space_audit_log WHERE space_id = ?1",
-      "DELETE FROM space_memberships WHERE space_id = ?1",
-      "DELETE FROM artifacts WHERE space_id = ?1",
-      "DELETE FROM spaces WHERE id = ?1",
-    ];
+    // Every row that belongs to the Space (Threads with their Work history,
+    // members, invitations, grants, audit, artifacts) is removed by cascade,
+    // committed together with the deletion event.
     await publishCollaborationEvent(env, "space.deleted", spaceId, spaceId, {
       recipientUserIds: (audience.results ?? []).map((row) => row.user_id),
-      mutations: cleanupStatements.map((sql) =>
-        env.SYNTILA_DB.prepare(sql).bind(spaceId),
-      ),
+      mutations: [
+        env.SYNTILA_DB.prepare("DELETE FROM spaces WHERE id = ?1").bind(spaceId),
+      ],
     });
     return json({ spaceId, deleted: true });
   }
@@ -1054,11 +1013,7 @@ export async function handleCreateSpaceInvitation(
     spaceId,
     accessContext,
   );
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT kind FROM spaces WHERE id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ kind: string }>();
+  const space = await spaceKind(env.SYNTILA_DB, spaceId);
   if (space?.kind === "direct") {
     throw new HttpError(403, "Direct Spaces cannot have additional members");
   }
@@ -1301,11 +1256,7 @@ export async function handleChangeSpaceMemberRole(
     spaceId,
     accessContext,
   );
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT kind FROM spaces WHERE id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ kind: string }>();
+  const space = await spaceKind(env.SYNTILA_DB, spaceId);
   if (space?.kind === "direct") {
     throw new HttpError(
       403,
@@ -1326,11 +1277,7 @@ export async function handleChangeSpaceMemberRole(
       : null;
   if (!role)
     throw new HttpError(400, "Space role or member permissions are required");
-  const member = await env.SYNTILA_DB.prepare(
-    "SELECT role FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-  )
-    .bind(spaceId, userId)
-    .first<{ role: string }>();
+  const member = await spaceMembership(env.SYNTILA_DB, spaceId, userId);
   if (!member) throw new HttpError(404, "Space member not found");
   if (member.role === "owner")
     throw new HttpError(403, "Owner permissions cannot be changed");
@@ -1387,11 +1334,7 @@ export async function handleRemoveSpaceMember(
     spaceId,
     accessContext,
   );
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT kind FROM spaces WHERE id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ kind: string }>();
+  const space = await spaceKind(env.SYNTILA_DB, spaceId);
   if (space?.kind === "direct") {
     throw new HttpError(
       403,

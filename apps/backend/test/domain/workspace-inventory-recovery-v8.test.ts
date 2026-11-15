@@ -154,13 +154,6 @@ describe("v8 Workspace inventory recovery", () => {
       readiness_state: "setup_required",
       readiness_issue_code: "setup_required",
     });
-    database
-      .prepare(
-        `INSERT INTO worker_scheduling_audit
-           (id, worker_id, action, requested_at)
-         VALUES ('audit-unready', 'worker-needs-setup', 'disabled', '2026-01-01')`,
-      )
-      .run();
 
     await fullSnapshot([worker]);
     await fullSnapshot([worker]);
@@ -169,11 +162,6 @@ describe("v8 Workspace inventory recovery", () => {
         .prepare("SELECT COUNT(*) AS count FROM workspace_worker_inventory")
         .get(),
     ).toMatchObject({ count: 1 });
-    expect(
-      database
-        .prepare("SELECT COUNT(*) AS count FROM worker_scheduling_audit")
-        .get(),
-    ).toMatchObject({ count: 0 });
 
     // Reconnecting recreates a deleted slot with Cloud scheduling disabled.
     await fullSnapshot([]);

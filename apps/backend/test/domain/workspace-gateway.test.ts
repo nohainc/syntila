@@ -178,8 +178,8 @@ describe("Workspace runtime Gateway", () => {
       cursor: string;
     };
     expect(created.cursor).toBe("0");
-    // closeForRuntime, session open, workspace online, readiness projection.
-    expect(values).toHaveLength(4);
+    // closeForRuntime, session open, workspace online.
+    expect(values).toHaveLength(3);
     const status = await gateway.fetch(
       new Request("https://gateway.internal/status"),
     );

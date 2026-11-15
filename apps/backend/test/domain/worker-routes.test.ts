@@ -84,19 +84,6 @@ describe("Worker API routes", () => {
     );
     expect(handler).toHaveBeenCalledWith(req, env, "W", "C", undefined);
   });
-  it("routes Conversation reads through scoped authorization", async () => {
-    const handler = vi.fn(async () => new Response("{}"));
-    const req = request("/api/threads/W/conversations");
-    const env = {} as Env;
-    await routeWorkerRequest(
-      req,
-      env,
-      undefined,
-      { handleListConversations: handler },
-      dependencies,
-    );
-    expect(handler).toHaveBeenCalledWith(req, env, "W", undefined);
-  });
   it("serves the shared core Workflow catalog to AX", async () => {
     const response = await routeWorkerRequest(
       request("/api/workflows/catalog"),

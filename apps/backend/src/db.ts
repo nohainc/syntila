@@ -17,9 +17,3 @@ export function createDb(config: Config["db"], applicationName = "syntila-backen
   });
 }
 
-/** Encode a value for a `${json(x)}::text::jsonb` parameter. */
-export const json = (value: unknown): string => JSON.stringify(value ?? null);
-
-export function pgCode(error: unknown): string | undefined {
-  return (error as { errno?: string } | null)?.errno;
-}

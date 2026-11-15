@@ -1,3 +1,4 @@
+import { usersBlocked } from "../queries.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
   FileTooLargeError,
@@ -234,13 +235,7 @@ export async function createWorkRequestForUser(
     .first<{ status: string | null; userLowId: string; userHighId: string }>()
     .catch(() => null);
   if (directSpace) {
-    const isBlocked = await env.SYNTILA_DB.prepare(
-      `SELECT 1 FROM user_blocks
-       WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2)
-          OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
-    )
-      .bind(directSpace.userLowId, directSpace.userHighId)
-      .first();
+    const isBlocked = await usersBlocked(env.SYNTILA_DB, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }

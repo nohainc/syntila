@@ -1,3 +1,4 @@
+import { spaceMembership } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import {
   authorizeWorkspaceOwner,
@@ -197,11 +198,7 @@ export async function createWorkspaceSpaceGrant(
       "Only the Workspace owner can grant this Workspace",
     );
   }
-  const rawMembership = await env.SYNTILA_DB.prepare(
-    "SELECT role FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-  )
-    .bind(spaceId, context.userId)
-    .first<{ role: string }>();
+  const rawMembership = await spaceMembership(env.SYNTILA_DB, spaceId, context.userId);
   const membership = rawMembership;
   if (!membership && body.confirmContribution !== true) {
     throw new HttpError(

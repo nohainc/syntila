@@ -12,7 +12,7 @@ vi.mock("../../src/domain/routes/thread-policy.js", async (original) => ({
 import { handleListConversationHistory } from "../../src/domain/routes/conversation-history.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 
-it("records all six canonical fact kinds atomically and preserves exact response text once", async () => {
+it("records all five canonical fact kinds atomically and preserves exact response text once", async () => {
   const f = await conversationFixture();
   f.assign("A");
   f.start("A");
@@ -35,8 +35,7 @@ it("records all six canonical fact kinds atomically and preserves exact response
     completedAt: "2030-01-01T00:00:00.000Z",
   });
   f.sqlite
-    .exec(`INSERT INTO artifacts(id,space_id,assignment_id,content_digest,storage_key,created_at) VALUES('ART','P','A','digest','private-storage-key','now');
- UPDATE conversations SET conversation_revision = 2, context_revision = 2;`);
+    .exec(`UPDATE conversations SET conversation_revision = 2, context_revision = 2;`);
   const rows = f.sqlite
     .prepare(
       "SELECT sequence,kind,text,metadata_json FROM conversation_history_entries WHERE conversation_id=? ORDER BY sequence",
@@ -48,7 +47,6 @@ it("records all six canonical fact kinds atomically and preserves exact response
       "worker_response",
       "workflow_event",
       "execution_event",
-      "artifact_event",
       "context_event",
     ]),
   );

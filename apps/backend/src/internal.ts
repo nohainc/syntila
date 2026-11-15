@@ -1,3 +1,4 @@
+import { userAccount } from "./domain/queries.js";
 /**
  * Server-to-server endpoints for the Cloudflare auth Worker, which owns the
  * Better Auth accounts. Authenticated with an EdDSA token (`typ: "internal"`)
@@ -42,7 +43,7 @@ export async function handleInternal(request: Request, env: Env, verifier: Token
 
   if (action === "deletion") {
     // Idempotent: the Worker retries until this succeeds, then deletes the account.
-    const user = await env.SYNTILA_DB.prepare("SELECT status FROM users WHERE id = ?1").bind(userId).first<{ status: string }>();
+    const user = await userAccount(env.SYNTILA_DB, userId);
     if (user) {
       await prepareAccountDeletion(env, userId);
       // Authored content stays (RESTRICT foreign keys), attributed to an

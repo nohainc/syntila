@@ -1,3 +1,4 @@
+import { ownsActiveWorkspace } from "../queries.js";
 import { HttpError, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
 
@@ -17,11 +18,7 @@ export async function handleWorkspaceMcpAction(
 ): Promise<Response> {
   if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
   const context = await securityContext(request, env, ctx);
-  const owned = await env.SYNTILA_DB.prepare(
-    "SELECT 1 AS ok FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status != 'revoked'",
-  )
-    .bind(workspaceId, context.userId)
-    .first();
+  const owned = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
   if (!owned) throw new HttpError(404, "Workspace not found");
 
   const gateway = env.SYNTILA_WORKSPACE_GATEWAY;

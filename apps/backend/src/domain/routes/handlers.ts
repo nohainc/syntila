@@ -12,7 +12,6 @@ export {
 
 export * from "./http-security.js";
 export * from "./thread-policy.js";
-export { handleListConversations } from "./conversations.js";
 export * from "./workspace-access.js";
 export * from "./profile-admin.js";
 export { handleGetAvatar, handleUploadAvatar } from "./profile.js";
@@ -51,8 +50,6 @@ export {
   handleWorkerUsage,
   handleRevokeWorkspace,
   handleExportWorkspaceAudit,
-  handleUploadArtifact,
-  handleGetArtifact,
   handleListWorkspaceSpaceGrants,
   handleCreateWorkspaceSpaceGrant,
   handleUpdateWorkspaceSpaceGrant,

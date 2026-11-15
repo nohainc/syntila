@@ -761,39 +761,6 @@ export async function handleCreateIssueReport(
   return json(userReportResponse(row), { status: 201 });
 }
 
-export async function handleGetIssueReport(
-  request: Request,
-  env: SecurityEnv,
-  reportId: string,
-  ctx?: ExecutionContext,
-): Promise<Response> {
-  const actor = await securityContext(request, env, ctx);
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT id, public_reference AS publicReference,
-            reporter_user_id AS reporterUserId, workspace_id AS workspaceId,
-            request_id AS requestId, assignment_id AS assignmentId,
-            component, error_code AS errorCode, failure_stage AS failureStage,
-            fingerprint, status, diagnostic_state AS diagnosticState,
-            created_at AS createdAt, updated_at AS updatedAt
-       FROM issue_reports WHERE id = ?1`,
-  )
-    .bind(reportId)
-    .first<Record<string, unknown>>();
-  if (!row) throw new HttpError(404, "Issue report not found");
-  const report = reportRow(row);
-  if (report.reporterUserId !== actor.userId) {
-    const requestRow = await env.SYNTILA_DB.prepare(
-      "SELECT thread_id AS threadId FROM work_requests WHERE id = ?1",
-    )
-      .bind(report.requestId)
-      .first<{ threadId: string }>();
-    if (!requestRow) throw new HttpError(404, "Issue report not found");
-    await authorizeThreadAccess(request, env, requestRow.threadId, "view", ctx);
-  }
-  await recordEvent(env, report.id, actor.userId, "report.viewed");
-  return json(userReportResponse(report));
-}
-
 /** Returns the reporter's latest report for a Work request, if one exists. */
 export async function handleGetIssueReportForRequest(
   request: Request,
@@ -1316,35 +1283,3 @@ export async function handleCreateAdminIssueReportGroup(
   );
 }
 
-export async function handleGetAdminIssueReportGroup(
-  request: Request,
-  env: SecurityEnv,
-  groupId: string,
-  ctx?: ExecutionContext,
-): Promise<Response> {
-  await issueSupportContext(request, env, ctx);
-  const group = await env.SYNTILA_DB.prepare(
-    `SELECT id, public_reference AS publicReference, label, fingerprint,
-            created_at AS createdAt, updated_at AS updatedAt
-       FROM issue_report_groups WHERE id = ?1`,
-  )
-    .bind(groupId)
-    .first<Record<string, unknown>>();
-  if (!group) throw new HttpError(404, "Incident group not found");
-  const reports = await env.SYNTILA_DB.prepare(
-    `${reportSelect()} WHERE ir.incident_group_id = ?1 ORDER BY ir.created_at DESC, ir.id DESC`,
-  )
-    .bind(groupId)
-    .all<Record<string, unknown>>();
-  return json({
-    group: {
-      id: String(group.id),
-      publicReference: String(group.publicReference),
-      label: String(group.label),
-      fingerprint: group.fingerprint == null ? null : String(group.fingerprint),
-      createdAt: String(group.createdAt),
-      updatedAt: String(group.updatedAt),
-      reports: (reports.results ?? []).map(reportRow).map(adminReportResponse),
-    },
-  });
-}
