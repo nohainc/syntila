@@ -649,7 +649,7 @@ void main() {
         threadId: 'w', limit: 30, before: 'cursor+/=');
     expect(client.lastRequest!.url.path, '/api/threads/w/discussion-messages');
     expect(client.lastRequest!.url.queryParameters,
-        {'limit': '30', 'before': 'cursor+/='});
+        {'limit': '30', 'cursor': 'cursor+/='});
     expect(page.messages.single.body, '  **source**\n');
     expect(page.nextCursor, 'older');
     expect(page.newestCursor, 'newest');

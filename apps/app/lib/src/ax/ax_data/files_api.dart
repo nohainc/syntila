@@ -4,7 +4,7 @@ mixin _FilesApi on _AxApiClientCore implements AxUserFilesDataSource {
   @override
   Future<AxUserFilesPage> loadUserFiles({String? before}) async {
     final body = await _getJson(Uri.parse('$baseUrl/files')
-        .replace(queryParameters: before == null ? null : {'before': before}));
+        .replace(queryParameters: before == null ? null : {'cursor': before}));
     final usage = body['usage'];
     return AxUserFilesPage(
       files: (body['files'] as List? ?? const [])

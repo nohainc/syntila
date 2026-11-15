@@ -1,3 +1,4 @@
+import { afterCursorSql, cursorOrderSql, decodeCursor, encodeCursor, type PagePosition } from "./pagination.js";
 import { HttpError, json } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 import { authorizeRequest } from "./http-security.js";
@@ -33,7 +34,14 @@ export async function handleListUserFiles(
     undefined,
     accessContext,
   );
-  const before = new URL(request.url).searchParams.get("before");
+  const params = new URL(request.url).searchParams;
+  // `before` (a bare timestamp) is the old name of `cursor`.
+  const raw = params.get("cursor") ?? params.get("before");
+  const after: PagePosition | null = !raw
+    ? null
+    : !Number.isNaN(Date.parse(raw)) && !raw.includes("[")
+      ? { at: new Date(raw).toISOString(), id: "" }
+      : decodeCursor(raw);
   const rows = await env.SYNTILA_DB.prepare(
     `SELECT f.id AS fileId, f.name, f.media_type AS mediaType,
         f.size_bytes AS sizeBytes, f.created_at AS createdAt,
@@ -45,10 +53,10 @@ export async function handleListUserFiles(
       LEFT JOIN threads t ON t.id = f.thread_id
       LEFT JOIN space_memberships m ON m.space_id = t.space_id AND m.user_id = f.user_id
       LEFT JOIN spaces s ON s.id = t.space_id
-      WHERE f.user_id = ?1 AND (?2::timestamptz IS NULL OR f.created_at < ?2)
-      ORDER BY f.created_at DESC, f.id DESC LIMIT ?3`,
+      WHERE f.user_id = ?1 AND (?2::text IS NULL OR ${afterCursorSql("f.created_at", "f.id", 2, 3)})
+      ORDER BY ${cursorOrderSql("f.created_at", "f.id")} LIMIT ?4`,
   )
-    .bind(context.userId, before, PAGE_SIZE + 1)
+    .bind(context.userId, after?.at ?? null, after?.id ?? null, PAGE_SIZE + 1)
     .all<Record<string, unknown>>();
   const results = rows.results ?? [];
   const page = results.slice(0, PAGE_SIZE);
@@ -66,7 +74,9 @@ export async function handleListUserFiles(
       inUse: row.inUse === 1,
     })),
     nextCursor:
-      results.length > PAGE_SIZE ? String(page.at(-1)!.createdAt) : null,
+      results.length > PAGE_SIZE
+        ? encodeCursor({ at: String(page.at(-1)!.createdAt), id: String(page.at(-1)!.fileId) })
+        : null,
     usage: await userStorageUsage(env, context.userId),
   });
 }

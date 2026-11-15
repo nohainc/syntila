@@ -110,11 +110,15 @@ List endpoints that can grow without bound use one shape:
 | --- | --- |
 | `GET /api/notes` | 500 / 500 |
 | `GET /api/spaces/:spaceId/audit` | 100 / 200 |
+| `GET /api/files` | 100 (fixed) |
 
-These lists paginate with their own, older parameters and are to be moved
-to `cursor` together with the app: discussion messages (`before`/`after`),
-Work Requests (`beforeCreatedAt`/`beforeId`), conversation history
-(`afterSequence`) and files (`before`). They already return `nextCursor`.
+Discussion messages take `cursor` for older pages; `after` (a message id)
+still fetches newer messages. Files and discussion messages still accept
+their old `before` parameter until the app release that sends `cursor` is
+everywhere; it will then be removed. Work Requests
+(`beforeCreatedAt`/`beforeId`) and conversation history (`afterSequence`)
+keep their own parameters for now, because the app stores those positions
+in its offline cache.
 Lists bounded by what one person can see (Spaces, Threads, members,
 Workspaces, people) are returned whole. Notifications are a bounded feed.
 

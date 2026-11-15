@@ -133,19 +133,24 @@ mixin _CatalogApi on _AxApiClientCore {
   }
 
   Future<void> sendPersonInvitation({String? email, String? userId}) async {
-    final response = await client.post(
-      Uri.parse('$baseUrl/people/invitations'),
-      headers: _headers(contentType: 'application/json'),
-      body: jsonEncode({
-        if (email != null) 'email': email,
-        if (userId != null) 'userId': userId,
-      }),
+    final idempotencyKey = newAxIdempotencyKey();
+    final response = await _retryOnceWithKey(
+      idempotencyKey,
+      () => client.post(
+        Uri.parse('$baseUrl/people/invitations'),
+        headers: {
+          ..._headers(contentType: 'application/json'),
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: jsonEncode({
+          if (email != null) 'email': email,
+          if (userId != null) 'userId': userId,
+        }),
+      ),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException(
-        'Failed to send personal invitation (${response.statusCode}): ${response.body}',
-        statusCode: response.statusCode,
-      );
+      throw axApiErrorFrom(
+          'Sending the invitation', response.statusCode, response.body);
     }
   }
 

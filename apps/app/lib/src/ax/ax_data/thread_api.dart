@@ -1125,7 +1125,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     final uri = Uri.parse('$baseUrl/threads/$threadId/discussion-messages')
         .replace(queryParameters: {
       'limit': '$limit',
-      if (before != null) 'before': before,
+      if (before != null) 'cursor': before,
       if (after != null) 'after': after
     });
     final body = await _getJson(uri);

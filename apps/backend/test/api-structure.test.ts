@@ -162,3 +162,30 @@ describe("cursor pagination", () => {
     expect(bad.body.code).toBe("invalid_cursor");
   });
 });
+
+describe("older lists accept cursor", () => {
+  test("files page with an opaque cursor; the old timestamp form still works", async () => {
+    const token = await mint("files-a");
+    expect((await call(token, "GET", "/api/files")).status).toBe(200);
+    const rows = Array.from({ length: 103 }, (_, i) => {
+      const id = `f-${String(i).padStart(3, "0")}`;
+      // Three files share one timestamp to exercise the id tie-break.
+      const at = i < 3 ? "'2026-01-01T00:00:00.5Z'" : `now() - make_interval(secs => ${i})`;
+      return `('${id}', 'files-a', 'f${i}.txt', 'text/plain', 1, ${at})`;
+    });
+    await sql.unsafe(`INSERT INTO user_files (id, user_id, name, media_type, size_bytes, created_at) VALUES ${rows.join(",")}`);
+    const first = await call(token, "GET", "/api/files");
+    expect(first.status).toBe(200);
+    expect(first.body.files.length).toBe(100);
+    const second = await call(token, "GET", `/api/files?cursor=${encodeURIComponent(first.body.nextCursor)}`);
+    expect(second.status).toBe(200);
+    expect(second.body.files.length).toBe(3);
+    expect(second.body.nextCursor).toBeNull();
+    const ids = [...first.body.files, ...second.body.files].map((f: { fileId: string }) => f.fileId);
+    expect(new Set(ids).size).toBe(103);
+    const legacy = await call(token, "GET", `/api/files?before=${encodeURIComponent("2026-01-01T00:00:01Z")}`);
+    expect(legacy.body.files.map((f: { fileId: string }) => f.fileId).sort()).toEqual(["f-000", "f-001", "f-002"]);
+    const exact = await call(token, "GET", `/api/files?before=${encodeURIComponent("2026-01-01T00:00:00.5Z")}`);
+    expect(exact.body.files).toEqual([]);
+  });
+});

@@ -50,14 +50,68 @@ part 'ax_data/files_api.dart';
 const paidPlanRequiredCode = 'paid_plan_required';
 
 class AxApiException implements Exception {
-  const AxApiException(this.message, {this.statusCode, this.code});
+  const AxApiException(this.message,
+      {this.statusCode, this.code, this.details = const []});
   final String message;
   final int? statusCode;
 
   /// Stable Cloud error code, such as [paidPlanRequiredCode].
   final String? code;
+
+  /// Every problem the server found in a rejected request body
+  /// (`invalid_request`); empty for other errors.
+  final List<AxApiFieldError> details;
   @override
   String toString() => message;
+}
+
+/// One problem in a rejected request body, such as `name: Required`.
+class AxApiFieldError {
+  const AxApiFieldError(this.path, this.message);
+
+  /// Dotted location in the request body; empty for the body as a whole.
+  final String path;
+  final String message;
+  @override
+  String toString() => path.isEmpty ? message : '$path: $message';
+}
+
+/// The one reading of the Cloud error envelope `{error, code, details?}`.
+/// The message is `<action> failed (<status>)` followed by the server's
+/// explanation, listing every problem when a body was rejected.
+AxApiException axApiErrorFrom(String action, int statusCode, String body) {
+  String? error;
+  String? code;
+  var details = const <AxApiFieldError>[];
+  try {
+    final decoded = jsonDecode(body);
+    if (decoded is Map) {
+      if (decoded['error'] is String) error = decoded['error'] as String;
+      if (decoded['code'] is String) code = decoded['code'] as String;
+      final raw = decoded['details'];
+      if (raw is List) {
+        details = List.unmodifiable([
+          for (final item in raw)
+            if (item is Map && item['message'] is String)
+              AxApiFieldError(
+                  item['path'] is String ? item['path'] as String : '',
+                  item['message'] as String),
+        ]);
+      }
+    }
+  } on FormatException {
+    // Non-JSON responses (such as proxy pages) are not diagnostic data.
+  }
+  final explanation = details.length > 1
+      ? details.join('; ')
+      : details.length == 1
+          ? details.single.toString()
+          : error;
+  return AxApiException(
+      '$action failed ($statusCode)${explanation == null ? '' : ': $explanation'}',
+      statusCode: statusCode,
+      code: code,
+      details: details);
 }
 
 /// Session-bound transport validators for stable read resources only.

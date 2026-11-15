@@ -3,8 +3,7 @@ part of '../ax_data.dart';
 mixin _NotesApi on _AxApiClientCore implements AxNotesDataSource {
   AxNote _noteFrom(http.Response response, String action) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException('$action failed (${response.statusCode})',
-          statusCode: response.statusCode);
+      throw axApiErrorFrom(action, response.statusCode, response.body);
     }
     final body = jsonDecode(response.body);
     final note = body is Map ? body['note'] : null;
@@ -14,11 +13,23 @@ mixin _NotesApi on _AxApiClientCore implements AxNotesDataSource {
 
   @override
   Future<List<AxNote>> loadNotes() async {
-    final body = await _getJson(Uri.parse('$baseUrl/notes'));
-    return (body['notes'] as List? ?? const [])
-        .whereType<Map>()
-        .map((item) => AxNote.fromJson(Map<String, dynamic>.from(item)))
-        .toList();
+    final notes = <AxNote>[];
+    String? cursor;
+    // Follow `nextCursor` (500 per page); the cap bounds a runaway loop.
+    for (var page = 0; page < 20; page++) {
+      final body = await _getJson(Uri.parse('$baseUrl/notes').replace(
+          queryParameters: {
+            'limit': '500',
+            if (cursor != null) 'cursor': cursor,
+          }));
+      notes.addAll((body['notes'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => AxNote.fromJson(Map<String, dynamic>.from(item))));
+      final next = body['nextCursor'];
+      if (next is! String || next.isEmpty) break;
+      cursor = next;
+    }
+    return notes;
   }
 
   @override
@@ -31,12 +42,19 @@ mixin _NotesApi on _AxApiClientCore implements AxNotesDataSource {
   }
 
   @override
-  Future<AxNote> createNote({String title = '', String body = ''}) async =>
-      _noteFrom(
-          await client.post(Uri.parse('$baseUrl/notes'),
-              headers: _headers(contentType: 'application/json'),
-              body: jsonEncode({'title': title, 'body': body})),
-          'Creating the note');
+  Future<AxNote> createNote({String title = '', String body = ''}) async {
+    final idempotencyKey = newAxIdempotencyKey();
+    return _noteFrom(
+        await _retryOnceWithKey(
+            idempotencyKey,
+            () => client.post(Uri.parse('$baseUrl/notes'),
+                headers: {
+                  ..._headers(contentType: 'application/json'),
+                  'Idempotency-Key': idempotencyKey,
+                },
+                body: jsonEncode({'title': title, 'body': body}))),
+        'Creating the note');
+  }
 
   @override
   Future<AxNote> updateNote(String id,

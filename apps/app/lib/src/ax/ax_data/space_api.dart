@@ -1,6 +1,8 @@
 part of '../ax_data.dart';
 
 mixin _SpaceApi on _AxApiClientCore {
+  static const _maxAuditPages = 10;
+
   @override
   Future<AxSpace> loadSpace({required String spaceId}) async {
     final response = await _getJson(Uri.parse('$baseUrl/spaces/$spaceId'),
@@ -23,32 +25,30 @@ mixin _SpaceApi on _AxApiClientCore {
     String? instructions,
     String? workspaceId,
   }) async {
-    final response = await client.post(
-      Uri.parse('$baseUrl/spaces'),
-      headers: _headers(contentType: 'application/json'),
-      body: jsonEncode({
-        'name': name,
-        if (description != null && description.trim().isNotEmpty)
-          'description': description.trim(),
-        if (instructions != null && instructions.trim().isNotEmpty)
-          'settings': {'instructions': instructions.trim()},
-        if (workspaceId != null) 'workspaceId': workspaceId,
-      }),
+    // One key per attempt to create: a lost response retried once cannot
+    // make a second Space.
+    final idempotencyKey = newAxIdempotencyKey();
+    final response = await _retryOnceWithKey(
+      idempotencyKey,
+      () => client.post(
+        Uri.parse('$baseUrl/spaces'),
+        headers: {
+          ..._headers(contentType: 'application/json'),
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: jsonEncode({
+          'name': name,
+          if (description != null && description.trim().isNotEmpty)
+            'description': description.trim(),
+          if (instructions != null && instructions.trim().isNotEmpty)
+            'settings': {'instructions': instructions.trim()},
+          if (workspaceId != null) 'workspaceId': workspaceId,
+        }),
+      ),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      var detail = '';
-      try {
-        final body = jsonDecode(response.body);
-        if (body is Map && body['error'] is String) {
-          detail = ': ${body['error']}';
-        }
-      } on Object {
-        // Keep the status useful even when the server response is not JSON.
-      }
-      throw AxApiException(
-        'Space creation failed (${response.statusCode})$detail',
-        statusCode: response.statusCode,
-      );
+      throw axApiErrorFrom(
+          'Space creation', response.statusCode, response.body);
     }
     final body = jsonDecode(response.body);
     final space = body is Map ? (body['space']) : null;
@@ -254,11 +254,25 @@ mixin _SpaceApi on _AxApiClientCore {
   Future<List<AxAuditEntry>> loadSpaceAudit({
     required String spaceId,
   }) async {
-    final body = await _spaceJson(Uri.parse('$baseUrl/spaces/$spaceId/audit'));
-    return (body['entries'] as List? ?? const [])
-        .whereType<Map>()
-        .map((item) => AxAuditEntry.fromJson(Map<String, dynamic>.from(item)))
-        .toList();
+    final entries = <AxAuditEntry>[];
+    String? cursor;
+    // Follow `nextCursor`; the cap keeps a very long history from loading
+    // without end (newest entries come first).
+    for (var page = 0; page < _maxAuditPages; page++) {
+      final body = await _spaceJson(Uri.parse('$baseUrl/spaces/$spaceId/audit')
+          .replace(queryParameters: {
+        'limit': '200',
+        if (cursor != null) 'cursor': cursor,
+      }));
+      entries.addAll((body['entries'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) =>
+              AxAuditEntry.fromJson(Map<String, dynamic>.from(item))));
+      final next = body['nextCursor'];
+      if (next is! String || next.isEmpty) break;
+      cursor = next;
+    }
+    return entries;
   }
 
   Future<void> _spaceMutation(Uri uri, Map<String, dynamic> body,
