@@ -17,8 +17,8 @@ class PlusPrice {
 }
 
 const plusPrices = [
-  PlusPrice('1 month', 'month', 9),
-  PlusPrice('1 year', 'year', 81),
+  PlusPrice('Monthly', 'month', 9),
+  PlusPrice('Yearly', 'year', 81),
 ];
 
 /// Whole-percent saving of the yearly price against twelve monthly payments.
@@ -50,37 +50,36 @@ const _benefitGroups = <(String, List<_Benefit>)>[
     [
       _Benefit('Chat & Work', _included, _included),
       _Benefit('Research', _notIncluded, _included,
-          'Independent investigations by different models, combined into one answer. The person sending the request needs Plus.'),
+          'Combines independent investigations. The requester needs Plus.'),
       _Benefit('Implement', _notIncluded, _included,
-          'Work planned in phases and carried out step by step with verification. The person sending the request needs Plus.'),
+          'Plans and verifies work in phases. The requester needs Plus.'),
       _Benefit('AI tasks running at once', '1', _noPlanLimit,
-          'Counts the tasks you start, in every Space. Your Workspace\'s parallel slots and your AI provider\'s limits still apply.'),
+          'Across all Spaces. Workspace and provider limits still apply.'),
     ]
   ),
   (
     'Workspaces',
     [
       _Benefit('Personal Workspaces', '1', _noPlanLimit,
-          'The machines you connect to run AI work.'),
+          'Machines connected to run AI work.'),
       _Benefit('Share Workers with Space members', _included, _included,
-          'Let the members of your Spaces use your Workspace\'s Workers for Chat and Work in those Spaces.'),
+          'Space members can use your Workers for Chat and Work in those Spaces.'),
       _Benefit('Share a Workspace with a person', _notIncluded, _included,
-          'Invite someone to use your whole Workspace as their own, in any of their Spaces. Only you need Plus; the people you invite can be on Free.'),
+          'Invite someone to use your Workspace in any of their Spaces. Only you need Plus.'),
     ]
   ),
   (
     'Collaboration',
     [
       _Benefit('People per Space', '4', _noPlanLimit,
-          'Including the owner. Pending invitations count. The Space owner\'s plan decides.'),
+          'Includes the owner and pending invitations. The Space owner\'s plan decides.'),
     ]
   ),
   (
     'Files',
     [
-      _Benefit('Upload storage', '1 GB', '25 GB',
-          'Counts the files you upload, in every Space.'),
-      _Benefit('Size of one file', '25 MB', '100 MB'),
+      _Benefit('Upload storage', '1 GB', '20 GB', 'Across all Spaces.'),
+      _Benefit('Size of one file', '10 MB', '100 MB'),
     ]
   ),
 ];
@@ -96,7 +95,6 @@ class SubscriptionPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final text = theme.textTheme;
-    final muted = theme.colorScheme.onSurfaceVariant;
     final sandboxCheckout = kDebugMode &&
         kIsWeb &&
         {'localhost', '127.0.0.1', '::1'}.contains(Uri.base.host);
@@ -116,15 +114,8 @@ class SubscriptionPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _CurrentPlanCard(plan: plan),
-                  const SizedBox(height: SyntilaSpacing.xxl),
-                  _Heading(_plusName, style: text.titleLarge),
-                  const SizedBox(height: SyntilaSpacing.xs),
-                  Text(
-                      'Use Research and Implement, run AI tasks in parallel, connect more machines, share your Workspace and bring more people and files into your Spaces.',
-                      style: text.bodyMedium?.copyWith(color: muted)),
-                  const SizedBox(height: SyntilaSpacing.lg),
-                  _Prices(wide: wide, sandboxCheckout: sandboxCheckout),
+                  _Prices(
+                      wide: wide, sandboxCheckout: sandboxCheckout, plan: plan),
                   const SizedBox(height: SyntilaSpacing.md),
                   _BillingNotice(
                       isPaid: plan.isPaid, sandboxCheckout: sandboxCheckout),
@@ -132,13 +123,6 @@ class SubscriptionPage extends StatelessWidget {
                   _Heading('Compare plans', style: text.titleLarge),
                   const SizedBox(height: SyntilaSpacing.md),
                   _Comparison(wide: wide),
-                  const SizedBox(height: SyntilaSpacing.xxl),
-                  _Heading('If your plan changes', style: text.titleMedium),
-                  const SizedBox(height: SyntilaSpacing.sm),
-                  Text(
-                      'Moving from Plus to Free never deletes anything. Your Workspaces, Space members and files stay, and running AI tasks finish. '
-                      'You can\'t add more until you are within the Free limits, and people you shared a Workspace with can\'t use it until you return to Plus.',
-                      style: text.bodyMedium?.copyWith(color: muted)),
                 ],
               ),
             ),
@@ -185,168 +169,155 @@ class _Panel extends StatelessWidget {
   }
 }
 
-class _CurrentPlanCard extends StatelessWidget {
-  const _CurrentPlanCard({required this.plan});
+class _Prices extends StatelessWidget {
+  const _Prices(
+      {required this.wide, required this.sandboxCheckout, required this.plan});
 
+  final bool wide;
+  final bool sandboxCheckout;
   final AxAccountPlan plan;
-
-  String? _status(BuildContext context) {
-    if (!plan.isPaid) return null;
-    final end = plan.currentPeriodEnd;
-    if (end == null) return 'Active';
-    final date =
-        MaterialLocalizations.of(context).formatShortDate(end.toLocal());
-    return switch (plan.status) {
-      'past_due' => 'Payment needs attention. Access until $date',
-      'trialing' => 'Trial until $date',
-      _ => 'Active until $date',
-    };
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
-    final status = _status(context);
-    final owned = plan.ownedWorkspaces;
-    final limit = plan.workspaceLimit;
-    final storage = plan.attachmentStorageBytes;
-    final fileSize = plan.attachmentMaxFileBytes;
-    final facts = [
-      if (owned != null)
-        limit == null
-            ? '$owned personal Workspace${owned == 1 ? '' : 's'}'
-            : '$owned of $limit personal Workspace${limit == 1 ? '' : 's'} used',
-      if (storage != null) '${formatFileSize(storage)} upload storage',
-      if (fileSize != null) 'Files up to ${formatFileSize(fileSize)}',
-    ];
-    return _Panel(
-      highlighted: plan.isPaid,
-      padding: const EdgeInsets.all(SyntilaSpacing.xl),
-      child: Column(
-        key: const ValueKey('subscription-current-plan'),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Your plan',
-              style: theme.textTheme.labelLarge?.copyWith(color: muted)),
-          const SizedBox(height: SyntilaSpacing.xs),
-          _Heading(plan.isPaid ? _plusName : 'Free',
-              style: theme.textTheme.headlineMedium),
-          if (status != null) ...[
-            const SizedBox(height: SyntilaSpacing.xs),
-            Text(status, style: theme.textTheme.bodyMedium),
-          ],
-          if (facts.isNotEmpty) ...[
-            const SizedBox(height: SyntilaSpacing.md),
-            for (final fact in facts)
-              Padding(
-                padding: const EdgeInsets.only(top: SyntilaSpacing.xs),
-                child: Text(fact,
-                    style: theme.textTheme.bodyMedium?.copyWith(color: muted)),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _Prices extends StatelessWidget {
-  const _Prices({required this.wide, required this.sandboxCheckout});
-
-  final bool wide;
-  final bool sandboxCheckout;
-
-  @override
-  Widget build(BuildContext context) {
+    final colors = theme.colorScheme;
+    final isPastDue = plan.status == 'past_due';
+    final status = plan.isPaid && plan.currentPeriodEnd != null
+        ? '${isPastDue ? 'Payment needs attention. Access until' : plan.status == 'trialing' ? 'Trial until' : 'Active until'} ${MaterialLocalizations.of(context).formatShortDate(plan.currentPeriodEnd!.toLocal())}'
+        : plan.isPaid
+            ? 'Active'
+            : null;
     final cards = [
       for (final price in plusPrices)
         _PriceCard(
-            price: price,
-            sandboxCheckout: sandboxCheckout,
-            saving: price.unit == 'year'
-                ? 'Save $plusYearlySavingPercent% compared with paying monthly'
-                : null),
+          price: price,
+          sandboxCheckout: sandboxCheckout,
+          saving: price.unit == 'year'
+              ? 'Save $plusYearlySavingPercent%'
+              : 'Recommended',
+          savingLabel: price.unit == 'year'
+              ? 'Save $plusYearlySavingPercent% compared with paying monthly'
+              : 'Recommended',
+        ),
     ];
-    if (!wide) {
-      return Column(children: [
-        for (final (index, card) in cards.indexed) ...[
-          if (index > 0) const SizedBox(height: SyntilaSpacing.sm),
-          card,
+    final options = !wide
+        ? Column(children: [
+            for (final (index, card) in cards.indexed) ...[
+              if (index > 0) const SizedBox(height: SyntilaSpacing.sm),
+              card,
+            ],
+          ])
+        : IntrinsicHeight(
+            child:
+                Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (final (index, card) in cards.indexed) ...[
+              if (index > 0) const SizedBox(width: SyntilaSpacing.md),
+              Expanded(child: card),
+            ],
+          ]));
+    return Column(
+      key: const ValueKey('subscription-current-plan'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Heading(_plusName, style: theme.textTheme.titleLarge),
+        if (plan.isPaid && status != null) ...[
+          const SizedBox(height: SyntilaSpacing.xs),
+          Text(
+            'Current plan: $status',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: isPastDue ? colors.error : colors.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
-      ]);
-    }
-    return IntrinsicHeight(
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (final (index, card) in cards.indexed) ...[
-          if (index > 0) const SizedBox(width: SyntilaSpacing.md),
-          Expanded(child: card),
-        ],
-      ]),
+        const SizedBox(height: SyntilaSpacing.md),
+        options,
+      ],
     );
   }
 }
 
 class _PriceCard extends StatelessWidget {
-  const _PriceCard(
-      {required this.price, required this.sandboxCheckout, this.saving});
+  const _PriceCard({
+    required this.price,
+    required this.sandboxCheckout,
+    this.saving,
+    this.savingLabel,
+  });
 
   final PlusPrice price;
   final bool sandboxCheckout;
   final String? saving;
+  final String? savingLabel;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
-    return _Panel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Semantics(
-            container: true,
-            label: '${price.period}: ${price.dollars} US dollars'
-                '${saving == null ? '' : '. $saving'}',
-            child: ExcludeSemantics(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final colors = theme.colorScheme;
+    final content = Padding(
+      padding: const EdgeInsets.all(SyntilaSpacing.xl),
+      child: Semantics(
+        button: sandboxCheckout,
+        container: true,
+        label: '${price.period}: ${price.dollars} US dollars'
+            '${savingLabel == null ? '' : '. $savingLabel'}',
+        child: ExcludeSemantics(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: SyntilaSpacing.sm,
+                runSpacing: SyntilaSpacing.xs,
                 children: [
                   Text(price.period,
-                      style:
-                          theme.textTheme.labelLarge?.copyWith(color: muted)),
-                  const SizedBox(height: SyntilaSpacing.xs),
-                  Text.rich(TextSpan(children: [
-                    TextSpan(
-                        text: '\$${price.dollars}',
-                        style: theme.textTheme.headlineMedium),
-                    TextSpan(
-                        text: ' / ${price.unit}',
-                        style:
-                            theme.textTheme.bodyMedium?.copyWith(color: muted)),
-                  ])),
-                  if (saving != null) ...[
-                    const SizedBox(height: SyntilaSpacing.xs),
-                    Text(saving!,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.colorScheme.primary)),
-                  ],
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600)),
+                  if (saving != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: SyntilaSpacing.sm,
+                          vertical: SyntilaSpacing.xs),
+                      decoration: BoxDecoration(
+                          color: colors.secondaryContainer,
+                          borderRadius: SyntilaRadius.radiusLg),
+                      child: Text(saving!,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                              color: colors.onSecondaryContainer,
+                              fontWeight: FontWeight.w600)),
+                    ),
                 ],
               ),
-            ),
+              const SizedBox(height: SyntilaSpacing.lg),
+              Center(
+                child: Text('\$${price.dollars}',
+                    style: theme.textTheme.headlineMedium
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+            ],
           ),
-          if (sandboxCheckout) ...[
-            const SizedBox(height: SyntilaSpacing.md),
-            FilledButton(
-              onPressed: () => launchUrl(
+        ),
+      ),
+    );
+    return Material(
+      color: colors.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: SyntilaRadius.radiusLg,
+        side: BorderSide(
+          color: sandboxCheckout ? colors.outline : colors.outlineVariant,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: sandboxCheckout
+          ? InkWell(
+              onTap: () => launchUrl(
                 Uri.base.resolve('/paddle-sandbox.html?plan=${price.unit}'),
                 webOnlyWindowName: '_blank',
               ),
-              child: Text(
-                  'Test ${price.unit == 'month' ? 'monthly' : 'annual'} checkout'),
-            ),
-          ],
-        ],
-      ),
+              child: content,
+            )
+          : content,
     );
   }
 }
@@ -411,9 +382,22 @@ class _Comparison extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(SyntilaSpacing.lg,
                   SyntilaSpacing.lg, SyntilaSpacing.lg, SyntilaSpacing.xs),
-              child: _Heading(title,
-                  style: theme.textTheme.labelLarge
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              child: Row(children: [
+                Icon(
+                    switch (title) {
+                      'AI work' => Icons.auto_awesome_outlined,
+                      'Workspaces' => Icons.devices_outlined,
+                      'Collaboration' => Icons.groups_outlined,
+                      _ => Icons.folder_outlined,
+                    },
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: SyntilaSpacing.sm),
+                Expanded(
+                    child: _Heading(title,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant))),
+              ]),
             ),
             for (final benefit in benefits)
               _BenefitRow(benefit: benefit, wide: wide),
@@ -434,6 +418,14 @@ class _Comparison extends StatelessWidget {
                         ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
               ],
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                SyntilaSpacing.lg, 0, SyntilaSpacing.lg, SyntilaSpacing.lg),
+            child: Text(
+                'Need more than 20 GB of upload storage? Contact support to discuss your options.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           ),
         ],
       ),

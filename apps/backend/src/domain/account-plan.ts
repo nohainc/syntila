@@ -252,8 +252,8 @@ export async function getSpaceMemberUsage(
  * and the 10-attachments-per-submission cap is a separate, plan-free limit.
  */
 export const ATTACHMENT_LIMITS = {
-  free: { storageBytes: 1_000_000_000, fileBytes: 25_000_000 },
-  paid: { storageBytes: 25_000_000_000, fileBytes: 100_000_000 },
+  free: { storageBytes: 1_000_000_000, fileBytes: 10_000_000 },
+  paid: { storageBytes: 20_000_000_000, fileBytes: 100_000_000 },
 } as const satisfies Record<
   AccountTier,
   { storageBytes: number; fileBytes: number }

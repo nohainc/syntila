@@ -698,41 +698,87 @@ extension _AxAppViews on _AxAppStateMixin {
             child: Center(child: CircularProgressIndicator()),
           )
         else ...[
-          for (final provider in ['google', 'github']) ...[
-            Builder(builder: (context) {
-              final isLinked = linkedProviders.contains(provider);
-              final account = isLinked
-                  ? linkedAccounts
-                      .firstWhere((a) => a.providerId.toLowerCase() == provider)
-                  : null;
-              final isUnlinking =
-                  account != null && unlinkingAccountIds.contains(account.id);
-              final isUnlinkBusy = unlinkingAccountIds.isNotEmpty;
-              final label = _providerLabel(provider);
-
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: _accountProviderIcon(context, provider),
-                title: Text(label),
-                trailing: isLinked
-                    ? _profileIconButton(
-                        context,
-                        label: isUnlinking ? 'Unlinking…' : 'Unlink $label',
-                        icon: Icons.link_off,
-                        busy: isUnlinking,
-                        onPressed: isUnlinkBusy
+          Row(
+            children: [
+              for (final (index, provider) in ['google', 'github'].indexed) ...[
+                if (index > 0) const SizedBox(width: 12),
+                Expanded(
+                  child: Builder(builder: (context) {
+                    final theme = Theme.of(context);
+                    final colors = theme.colorScheme;
+                    final isLinked = linkedProviders.contains(provider);
+                    final account = isLinked
+                        ? linkedAccounts.firstWhere(
+                            (a) => a.providerId.toLowerCase() == provider)
+                        : null;
+                    final isUnlinking = account != null &&
+                        unlinkingAccountIds.contains(account.id);
+                    final isUnlinkBusy = unlinkingAccountIds.isNotEmpty;
+                    final label = _providerLabel(provider);
+                    final onTap = isLinked
+                        ? (isUnlinkBusy
                             ? null
-                            : () => _unlinkAccountProvider(account!),
-                      )
-                    : _profileIconButton(
-                        context,
-                        label: 'Link $label',
-                        icon: Icons.link,
-                        onPressed: () => _linkAccountProvider(provider),
+                            : () => _unlinkAccountProvider(account!))
+                        : () => _linkAccountProvider(provider);
+                    final badgeText = isUnlinking
+                        ? 'Unlinking…'
+                        : isLinked
+                            ? 'Linked'
+                            : 'Not linked';
+                    return Material(
+                      color: colors.surfaceContainerLow,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: SyntilaRadius.radiusLg,
+                        side: BorderSide(color: colors.outlineVariant),
                       ),
-              );
-            }),
-          ],
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: onTap,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          child: Row(
+                            children: [
+                              _accountProviderIcon(context, provider),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  label,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: isLinked
+                                      ? colors.primaryContainer
+                                      : colors.surfaceContainerHighest,
+                                  borderRadius: SyntilaRadius.radiusLg,
+                                ),
+                                child: Text(
+                                  badgeText,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: isLinked
+                                        ? colors.onPrimaryContainer
+                                        : colors.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ],
+          ),
           ...linkedAccounts
               .where((a) =>
                   !['google', 'github'].contains(a.providerId.toLowerCase()))
@@ -749,8 +795,8 @@ extension _AxAppViews on _AxAppStateMixin {
         ],
         const SizedBox(height: 24),
         if (widget.dataSource is AxAccountPlanDataSource)
-          _profileSection(
-            title: 'Plan',
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24),
             child: AccountPlanSummary(
                 source: widget.dataSource as AxAccountPlanDataSource),
           ),

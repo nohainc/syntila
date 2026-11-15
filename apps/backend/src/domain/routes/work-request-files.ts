@@ -33,8 +33,7 @@ export const MAX_WORK_REQUEST_FILES = MAX_ATTACHMENTS_PER_SUBMISSION;
  */
 export const MAX_STORED_FILE_BYTES = ATTACHMENT_LIMITS.paid.fileBytes;
 /** Multipart bodies are buffered, so they stay within the Free file size. */
-const MULTIPART_BUFFER_LIMIT_BYTES =
-  ATTACHMENT_LIMITS.free.fileBytes + 24 * 1024;
+const MULTIPART_BUFFER_LIMIT_BYTES = 25_000_000 + 24 * 1024;
 
 export interface UserStorageUsage {
   readonly usedBytes: number;

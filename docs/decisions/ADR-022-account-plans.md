@@ -119,8 +119,7 @@ without migrations.
 ### Plan overview
 
 The Profile plan summary links to the Plans & subscription page
-(`subscription_page.dart`). It shows the viewer's plan with the limits Cloud
-reports for it, the approved Syntila Plus prices (1 month $9, 1 year $81;
+(`subscription_page.dart`). It shows the viewer's current plan and status above the approved Syntila Plus prices (1 month $9, 1 year $81;
 `plusPrices`) and a Free and Plus comparison that names whose plan decides
 each limit. No billing provider is chosen, so the page has no purchase or
 manage action and says so; a period end reads "Active until", not "Renews".

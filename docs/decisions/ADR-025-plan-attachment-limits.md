@@ -6,14 +6,14 @@ Status: accepted. Extends [ADR-022](ADR-022-account-plans.md).
 
 |                        | Free              | Syntila Plus        |
 | ---------------------- | ----------------- | ------------------- |
-| Total uploaded storage | 1 GB (1,000,000,000)  | 25 GB (25,000,000,000) |
-| Individual file size   | 25 MB (25,000,000)    | 100 MB (100,000,000)   |
+| Total uploaded storage | 1 GB (1,000,000,000)  | 20 GB (20,000,000,000) |
+| Individual file size   | 10 MB (10,000,000)    | 100 MB (100,000,000)   |
 
 **Unit change.** The earlier limits were binary: 1 GiB (1,073,741,824 bytes)
 total and 10 MiB (10,485,760 bytes) per file. Free's total is therefore about
 7% *smaller* than before (a Free account that used between 1,000,000,000 and
 1,073,741,824 bytes is now over quota and is treated as an existing over-quota
-account, below) and its file limit is larger. UI sizes use decimal units too
+account, below) and the file limit is now 10 MB. UI sizes use decimal units too
 (`formatFileSize`: kB, MB, GB). The 10-attachments-per-submission cap and the
 separate Worker artifact-upload limits are unchanged.
 
@@ -71,7 +71,9 @@ per-file size and the total early (non-binding); the upload reserves atomically.
 Referencing a file that is already stored is never limited by the current plan
 or quota: a downgraded or over-quota account keeps every file, its downloads
 and its deletion, and nothing is deleted automatically. Only new uploads are
-refused.
+refused. The 10 MB Free file limit applies to future uploads; existing larger
+files remain accessible. Plus accounts already above 20 GB retain their files
+but cannot upload more until they are under quota.
 
 ## Large-file delivery
 The previous path buffered the body (`arrayBuffer`, `formData`) and the digest
@@ -82,8 +84,7 @@ input, which does not fit a 128 MB Worker for a 100 MB file. Now:
   chunks. The digest of a streamed object is known only afterwards, so it is
   kept in a small `<key>/meta` sidecar (older objects keep it in R2 metadata);
   `storedFileDigest` reads either.
-- **Multipart bodies are buffered**, so they are accepted only up to the Free
-  file size (25 MB); larger files must be raw (413 `upload_requires_raw_body`)
+- **Multipart bodies are buffered**, so they are accepted only up to 25 MB of file data; larger files must be raw (413 `upload_requires_raw_body`)
   and carry no preview image. Text previews are taken from the first bytes.
 - The Workspace stages downloads by streaming (`stageStream`) and now copies the
   verified staged file into the execution directory by streaming

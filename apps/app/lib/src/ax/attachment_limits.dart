@@ -13,7 +13,7 @@ class AxAttachmentPolicy {
 
   static final AxAttachmentPolicy instance = AxAttachmentPolicy._();
 
-  static const freeFileBytes = 25000000;
+  static const freeFileBytes = 10000000;
   static const freeStorageBytes = 1000000000;
 
   int maxFileBytes = freeFileBytes;

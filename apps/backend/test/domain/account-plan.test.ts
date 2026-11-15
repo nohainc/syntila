@@ -76,7 +76,7 @@ it("reports the caller's plan and defaults people without a row to free", async 
     workspaces: { owned: 0, limit: 1 },
     attachments: {
       maxFiles: 10,
-      maxFileBytes: 25_000_000,
+      maxFileBytes: 10_000_000,
       storageBytes: 1_000_000_000,
     },
   });
@@ -87,7 +87,7 @@ it("reports the caller's plan and defaults people without a row to free", async 
     attachments: {
       maxFiles: 10,
       maxFileBytes: 100_000_000,
-      storageBytes: 25_000_000_000,
+      storageBytes: 20_000_000_000,
     },
   });
   await expect(

@@ -127,10 +127,10 @@ describe("plan-based attachment limits", () => {
   it("states the policy in decimal bytes", () => {
     expect(ATTACHMENT_LIMITS.free).toEqual({
       storageBytes: 1_000_000_000,
-      fileBytes: 25_000_000,
+      fileBytes: 10_000_000,
     });
     expect(ATTACHMENT_LIMITS.paid).toEqual({
-      storageBytes: 25_000_000_000,
+      storageBytes: 20_000_000_000,
       fileBytes: 100_000_000,
     });
     expect(attachmentLimits("free").tier).toBe("free");
@@ -141,7 +141,7 @@ describe("plan-based attachment limits", () => {
   });
 
   it.each([
-    ["free", 25_000_000],
+    ["free", 10_000_000],
     ["plus", 100_000_000],
   ])(
     "%s: the exact file limit fits and one byte more is file_too_large",
@@ -161,11 +161,11 @@ describe("plan-based attachment limits", () => {
   it("charges the uploader's plan whatever plan owns the Space", async () => {
     const f = fixture();
     // 'member' is Free in a Plus-owned Space: still the Free file limit.
-    await expect(reserve(f, "member", 1, 25_000_001)).rejects.toMatchObject({
+    await expect(reserve(f, "member", 1, 10_000_001)).rejects.toMatchObject({
       code: "file_too_large",
     });
     expect((await getAttachmentLimits(f.env, "member")).fileBytes).toBe(
-      25_000_000,
+      10_000_000,
     );
     // A Plus uploader in a Free-owned Space keeps Plus limits.
     expect((await getAttachmentLimits(f.env, "plus")).fileBytes).toBe(
@@ -183,16 +183,23 @@ describe("plan-based attachment limits", () => {
     await expect(reserve(f, "free", 2, 1)).rejects.toMatchObject({
       code: "storage_quota_exceeded",
     });
-    // Plus has 25 GB, so the same account state fits.
+    // Plus has 20 GB, so the same account state fits.
     f.addFile("b", "plus", GB - 10);
     await reserve(f, "plus", 3, 10_000_000);
   });
 
+  it("enforces the Plus storage boundary while retaining over-quota files", async () => {
+    const f = fixture();
+    f.addFile("existing", "plus", 20 * GB - 1);
+    await reserve(f, "plus", 1, 1);
+    await expect(reserve(f, "plus", 2, 1)).rejects.toBeInstanceOf(StorageQuotaExceededError);
+  });
+
   it("counts in-flight reservations and lets only what fits win a race", async () => {
     const f = fixture();
-    f.addFile("a", "free", GB - 30_000_000);
+    f.addFile("a", "free", GB - 15_000_000);
     const results = await Promise.allSettled(
-      [1, 2, 3, 4].map((n) => reserve(f, "free", n, 20_000_000)),
+      [1, 2, 3, 4].map((n) => reserve(f, "free", n, 10_000_000)),
     );
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(
@@ -205,34 +212,34 @@ describe("plan-based attachment limits", () => {
         ),
     ).toBe(true);
     const usage = await loadStorageUsage(f.db as never, "free");
-    expect(usage.reservedBytes).toBe(20_000_000);
+    expect(usage.reservedBytes).toBe(10_000_000);
   });
 
   it("makes retries idempotent and does not double count a file's own reservation", async () => {
     const f = fixture();
-    f.addFile("a", "free", GB - 20_000_000);
-    await reserve(f, "free", 1, 20_000_000);
-    await reserve(f, "free", 1, 20_000_000); // a retry of the same upload
-    await reserve(f, "free", 1, 20_000_000); // and a finalization recheck
+    f.addFile("a", "free", GB - 10_000_000);
+    await reserve(f, "free", 1, 10_000_000);
+    await reserve(f, "free", 1, 10_000_000); // a retry of the same upload
+    await reserve(f, "free", 1, 10_000_000); // and a finalization recheck
     expect((await loadStorageUsage(f.db as never, "free")).reservedBytes).toBe(
-      20_000_000,
+      10_000_000,
     );
     // A restarted upload of an already stored id replaces it, not adds to it.
     f.addFile(fid(9), "free", 0);
     f.sqlite.exec(
-      `UPDATE user_files SET size_bytes = 20000000 WHERE id='${fid(9)}'`,
+      `UPDATE user_files SET size_bytes = 10000000 WHERE id='${fid(9)}'`,
     );
     f.sqlite.exec("DELETE FROM user_file_reservations");
     f.sqlite.exec("DELETE FROM user_files WHERE id = 'a'");
-    f.addFile("b", "free", GB - 40_000_000);
-    await reserve(f, "free", 9, 20_000_000);
+    f.addFile("b", "free", GB - 20_000_000);
+    await reserve(f, "free", 9, 10_000_000);
   });
 
   it("frees abandoned and expired reservations", async () => {
     const f = fixture();
     const now = new Date("2026-11-01T00:00:00Z");
-    f.addFile("a", "free", GB - 25_000_000);
-    await reserve(f, "free", 1, 25_000_000, now);
+    f.addFile("a", "free", GB - 10_000_000);
+    await reserve(f, "free", 1, 10_000_000, now);
     await expect(reserve(f, "free", 2, 1, now)).rejects.toBeInstanceOf(
       StorageQuotaExceededError,
     );

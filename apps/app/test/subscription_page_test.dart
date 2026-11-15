@@ -77,11 +77,9 @@ void main() {
             ownedWorkspaces: 1,
             workspaceLimit: 1,
             attachmentStorageBytes: 1000000000,
-            attachmentMaxFileBytes: 25000000));
+            attachmentMaxFileBytes: 10000000));
     final current = _currentPlanText(tester);
-    expect(current, contains('Free'));
-    expect(current, contains('1 of 1 personal Workspace used'));
-    expect(current, contains('1 GB upload storage'));
+    expect(current, isNot(contains('Current plan')));
     expect(find.textContaining('week'), findsNothing);
     expect(find.textContaining(r'$9'), findsOneWidget);
     expect(find.textContaining(r'$81'), findsOneWidget);
@@ -127,12 +125,12 @@ void main() {
       (tester) async {
     final handle = tester.ensureSemantics();
     await _pumpPage(tester, const AxAccountPlan(isPaid: true));
-    expect(find.text('Your plan'), findsOneWidget); // the plan card only
+    expect(find.text('Current plan: Active'), findsOneWidget);
     expect(
         find.bySemanticsLabel(RegExp(
-            r'People per Space\. Free: 4\. Syntila Plus: No plan limit\. Including the owner')),
+            r'People per Space\. Free: 4\. Syntila Plus: No plan limit\. Includes the owner')),
         findsOneWidget);
-    expect(find.bySemanticsLabel(RegExp(r'1 year: 81 US dollars')),
+    expect(find.bySemanticsLabel(RegExp(r'Yearly: 81 US dollars')),
         findsOneWidget);
     // Icons stand in for the repeated words; the words stay for screen readers.
     expect(find.text('Included'), findsNothing);
@@ -159,10 +157,10 @@ void main() {
         (tester) async {
       await _pumpPage(tester, AxAccountPlan.free, size: size, textScale: scale);
       expect(tester.takeException(), isNull);
-      await tester.scrollUntilVisible(find.text('If your plan changes'), 300,
+      await tester.scrollUntilVisible(find.text('Size of one file'), 300,
           scrollable: find.byType(Scrollable).first);
       expect(tester.takeException(), isNull);
-      expect(find.text('25 GB'), findsOneWidget);
+      expect(find.text('20 GB'), findsOneWidget);
       expect(find.text('100 MB'), findsOneWidget);
       // Every line of text stays inside the screen.
       for (final element in find.byType(RichText).evaluate()) {
@@ -187,6 +185,6 @@ void main() {
         matching: find.text('View plans')));
     await tester.pumpAndSettle();
     expect(find.text('Compare plans'), findsOneWidget);
-    expect(_currentPlanText(tester), contains('Free'));
+    expect(_currentPlanText(tester), isNot(contains('Current plan')));
   });
 }

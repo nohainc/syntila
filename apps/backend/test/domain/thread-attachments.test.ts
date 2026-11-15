@@ -151,7 +151,7 @@ beforeEach(() => authorize.mockClear());
 
 describe("Thread attachments", () => {
   it.each([
-    ["Free", null, 25_000_000],
+    ["Free", null, 10_000_000],
     ["Plus", "paid", 100_000_000],
   ])(
     "%s accepts exactly its file limit and rejects one byte more with file_too_large",

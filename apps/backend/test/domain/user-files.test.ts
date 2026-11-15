@@ -249,7 +249,7 @@ describe("My Files", () => {
       fileCount: 2,
       reservedBytes: 0,
       quotaBytes: 1_000_000_000,
-      maxFileBytes: 25_000_000,
+      maxFileBytes: 10_000_000,
     });
     expect(mine.files.map((file) => file.sizeBytes).sort()).toEqual([3, 5]);
     expect(mine.files[0]!.threadName).toBe("Plan");

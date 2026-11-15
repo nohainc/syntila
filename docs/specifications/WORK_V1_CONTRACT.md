@@ -719,8 +719,8 @@ authorization tokens. AX downloads through its authenticated API client.
 Attachments are inputs to a Work Request, not Workflow definitions. A request
 may include local files and `http`/`https` references. The v1 composer accepts
 up to 10 attachments. The per-file and total-storage limits depend on the
-**uploader's** plan, in decimal bytes (see ADR-025): Free 25 MB per file and
-1 GB total; Syntila Plus 100 MB per file and 25 GB total. The file dialog
+**uploader's** plan, in decimal bytes (see ADR-025): Free 10 MB per file and
+1 GB total; Syntila Plus 100 MB per file and 20 GB total. The file dialog
 allows multi-selection in both Ask AI and Message modes. Each selected file is
 admitted in order: files over the plan's file limit, files that no longer fit
 the remaining storage, and files beyond the remaining slots are skipped

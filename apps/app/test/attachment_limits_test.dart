@@ -5,7 +5,7 @@ void main() {
   test('admits every file within the count and size limits', () {
     final admission = admitAttachments(existing: 0, candidates: [
       (name: 'a.txt', sizeBytes: 1),
-      (name: 'b.png', sizeBytes: 25000000),
+      (name: 'b.png', sizeBytes: 10000000),
     ]);
     expect(admission.accepted, [0, 1]);
     expect(admission.notice, isNull);
@@ -13,18 +13,18 @@ void main() {
 
   test('skips files over the plan limit individually and keeps the rest', () {
     final admission = admitAttachments(existing: 0, candidates: [
-      (name: 'big.mov', sizeBytes: 25000001),
+      (name: 'big.mov', sizeBytes: 10000001),
       (name: 'ok.txt', sizeBytes: 5),
     ]);
     expect(admission.accepted, [1]);
     expect(admission.notice,
-        'Skipped 1 file: "big.mov" is too large (over 25 MB per file).');
+        'Skipped 1 file: "big.mov" is too large (over 10 MB per file).');
   });
 
   test('the per-file limit comes from the account, in decimal units', () {
     final policy = AxAttachmentPolicy.instance..reset();
     addTearDown(policy.reset);
-    expect(policy.maxFileBytes, 25000000);
+    expect(policy.maxFileBytes, 10000000);
     policy.maxFileBytes = 100000000; // as Cloud reports for Syntila Plus
     final admission = admitAttachments(existing: 0, candidates: [
       (name: 'exact', sizeBytes: 100000000),
