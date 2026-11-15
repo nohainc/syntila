@@ -435,7 +435,7 @@ async function ensureOwnChatWorkspaceGrant(
   }
   await env.SYNTILA_DB.batch([
     env.SYNTILA_DB.prepare(
-      "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(?1,?2,?3,?4,'active','[\"repository:read\"]','{\"maxConcurrentAssignments\":1}',?5,?5)",
+      "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(?1,?2,?3,?4,'active','[\"repository:read\"]','{\"maxConcurrentAssignments\":1}',?5,?5) ON CONFLICT DO NOTHING",
     ).bind(crypto.randomUUID(), spaceId, workspaceId, userId, now),
     env.SYNTILA_DB.prepare(
       "INSERT INTO space_audit_log(id,space_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at) VALUES(?1,?2,'user',?3,'chat.own_workspace.authorized','execution_workspace',?4,?5,?6)",

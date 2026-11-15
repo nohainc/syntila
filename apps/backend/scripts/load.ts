@@ -4,16 +4,33 @@
 // (post → event on the socket) and throughput. With a published ChatGPT Tool
 // Profile, it also runs C concurrent Chat requests through one Workspace.
 //
-// bun scripts/load.ts <baseUrl> <privateJwkFile> [users=50] [messages=20] [chats=20]
+// A mixed phase follows: every user at once creates Threads and notes,
+// renames, edits, and reads (Spaces, messages, notes, notifications).
+// Afterwards, with PGHOST or DATABASE_URL set, scripts/check-invariants.sql
+// runs against the database and any violation fails the load test.
+//
+// bun scripts/load.ts <baseUrl> <privateJwkFile> [users=50] [messages=20] [chats=20] [mixed=10]
 import { FakeWorkspace, User, completeWith, publishedChatgptProfile, tokenMinter, waitFor, type Jwk } from "./lib/clients";
 
-const [base, jwkFile, usersArg, messagesArg, chatsArg] = Bun.argv.slice(2);
+const [base, jwkFile, usersArg, messagesArg, chatsArg, mixedArg] = Bun.argv.slice(2);
 if (!base || !jwkFile) { console.error("usage: bun scripts/load.ts <baseUrl> <privateJwkFile> [users] [messages] [chats]"); process.exit(2); }
-const USERS = Number(usersArg ?? 50), MESSAGES = Number(messagesArg ?? 20), CHATS = Number(chatsArg ?? 20);
+const USERS = Number(usersArg ?? 50), MESSAGES = Number(messagesArg ?? 20), CHATS = Number(chatsArg ?? 20), MIXED = Number(mixedArg ?? 10);
 const mint = tokenMinter(JSON.parse(await Bun.file(jwkFile).text()) as Jwk);
 const run = Date.now().toString(36);
 const pct = (xs: number[], p: number) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))]! : NaN; };
 const report = (label: string, xs: number[]) => console.log(`${label.padEnd(28)} n=${String(xs.length).padStart(5)}  p50=${pct(xs, 50).toFixed(0).padStart(5)}ms  p95=${pct(xs, 95).toFixed(0).padStart(5)}ms  p99=${pct(xs, 99).toFixed(0).padStart(5)}ms  max=${Math.max(...xs).toFixed(0).padStart(5)}ms`);
+
+/** scripts/check-invariants.sql against the backend's database; null when not configured. */
+async function brokenInvariants(): Promise<string[] | null> {
+  if (!process.env.PGHOST && !process.env.DATABASE_URL) return null;
+  const { SQL } = await import("bun");
+  const sql = process.env.DATABASE_URL ? new SQL(process.env.DATABASE_URL) : new SQL({});
+  try {
+    const rows: { invariant: string; violations: number | bigint }[] =
+      await sql.unsafe(await Bun.file(new URL("./check-invariants.sql", import.meta.url)).text());
+    return rows.filter((r) => Number(r.violations) > 0).map((r) => `${r.invariant}: ${r.violations}`);
+  } finally { await sql.close(); }
+}
 
 type Client = { user: User; spaceId: string; threadId: string; live: ReturnType<User["realtime"]> };
 const clients: Client[] = [];
@@ -54,6 +71,40 @@ try {
   console.log(`throughput ${(rest.length / seconds).toFixed(0)} messages/s, errors ${errors}`);
   if (errors) failed = true;
 
+  if (MIXED > 0) {
+    console.log(`mixed: ${USERS} users × ${MIXED} rounds of writes and reads, concurrently`);
+    const writes: number[] = [], reads: number[] = [];
+    let mixedErrors = 0;
+    const timed = async (into: number[], send: () => Promise<{ status: number; body: any }>) => {
+      const start = performance.now();
+      const r = await send();
+      into.push(performance.now() - start);
+      if (r.status >= 300) { mixedErrors++; if (mixedErrors <= 5) console.error(`mixed: ${r.status} ${JSON.stringify(r.body).slice(0, 160)}`); }
+      return r;
+    };
+    const t1 = performance.now();
+    await Promise.all(clients.map(async (c, i) => {
+      for (let round = 0; round < MIXED; round++) {
+        const thread = await timed(writes, () => c.user.api("POST", `/api/spaces/${c.spaceId}/threads`, { name: `Mixed ${round}` }));
+        const threadId = thread.body?.thread?.id ?? thread.body?.id;
+        const note = await timed(writes, () => c.user.api("POST", "/api/notes", { title: `Note ${round}`, body: "draft" }));
+        await Promise.all([
+          threadId && timed(writes, () => c.user.api("PATCH", `/api/threads/${threadId}`, { name: `Mixed ${round} renamed` })),
+          note.body?.note && timed(writes, () => c.user.api("PUT", `/api/notes/${note.body.note.id}`, { body: `edited ${i}`, revision: note.body.note.revision })),
+          timed(reads, () => c.user.api("GET", "/api/spaces")),
+          timed(reads, () => c.user.api("GET", `/api/threads/${c.threadId}/discussion-messages?limit=50`)),
+          timed(reads, () => c.user.api("GET", "/api/notes?limit=50")),
+          timed(reads, () => c.user.api("GET", "/api/notifications")),
+        ]);
+      }
+    }));
+    const mixedSeconds = (performance.now() - t1) / 1000;
+    report("mixed writes", writes);
+    report("mixed reads", reads);
+    console.log(`throughput ${((writes.length + reads.length) / mixedSeconds).toFixed(0)} requests/s, errors ${mixedErrors}`);
+    if (mixedErrors) failed = true;
+  }
+
   const profile = await publishedChatgptProfile();
   if (!profile || CHATS <= 0) console.log("skip chat load (no ChatGPT Tool Profile published, or chats=0)");
   else {
@@ -85,6 +136,10 @@ try {
     console.log(`chat errors ${chatErrors}`);
     if (chatErrors) failed = true;
   }
+  const broken = await brokenInvariants();
+  if (broken === null) console.log("invariants: skipped (set PGHOST or DATABASE_URL to check them)");
+  else if (broken.length) { console.error(`invariants BROKEN: ${broken.join("; ")}`); failed = true; }
+  else console.log("invariants: all hold");
   console.log(failed ? "LOAD FINISHED WITH ERRORS" : "LOAD PASSED");
 } catch (error) {
   console.error(`FAIL ${(error as Error).message}`);

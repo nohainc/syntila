@@ -1,3 +1,4 @@
+import { appendToQueue, lockQueue, prependToQueue } from "./queue-positions.js";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
 import { authorizeThreadAccess } from "./thread-policy.js";
 import { advanceThreadQueueSafely } from "./thread-request-queue.js";
@@ -351,14 +352,8 @@ export async function handleApprovePlan(
       verifierOverride?.reasoningEffort ?? effective.steps.verify?.effort,
   });
 
-  const lastPos = await db
-    .prepare(
-      "SELECT MAX(position) AS position FROM thread_request_queue WHERE thread_id = ?1",
-    )
-    .bind(workRequest.threadId)
-    .first<{ position: number | null }>();
-
-  let currentPosition = (lastPos?.position ?? 0) + 1;
+  // Order of the phases; the positions themselves are taken at insert time.
+  let currentPosition = 1;
   const now = new Date().toISOString();
   const queueInserts: Array<{
     id: string;
@@ -498,25 +493,21 @@ export async function handleApprovePlan(
     });
   }
 
-  // Insert all batch items atomically
-  const statements = queueInserts.map((item) =>
-    db
-      .prepare(
-        `INSERT INTO thread_request_queue
-           (id, thread_id, author_user_id, request_json, position, status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6, ?6)`,
-      )
-      .bind(
-        item.id,
-        item.threadId,
-        item.userId,
-        item.requestJson,
-        item.position,
-        now,
+  // All phases at the end of the queue, in order, in one transaction.
+  await db.batch([
+    lockQueue(db, workRequest.threadId),
+    ...[...queueInserts]
+      .sort((a, b) => a.position - b.position)
+      .map((item) =>
+        appendToQueue(db, {
+          id: item.id,
+          threadId: item.threadId,
+          authorUserId: item.userId,
+          requestJson: item.requestJson,
+          now,
+        }),
       ),
-  );
-
-  await db.batch(statements);
+  ]);
 
   // Trigger safe advance so Phase 1 starts immediately if nothing is running
   await advanceThreadQueueSafely(env, workRequest.threadId);
@@ -816,27 +807,15 @@ async function enqueueVerificationStatusFollowUp(
     isVerification: true,
     ...(inputData.isFinalVerification ? { isFinalVerification: true } : {}),
   };
-  const first = await db
-    .prepare(
-      "SELECT MIN(position) AS position FROM thread_request_queue WHERE thread_id = ?1",
-    )
-    .bind(threadId)
-    .first<{ position: number | null }>();
-  const now = new Date().toISOString();
-  await db
-    .prepare(
-      `INSERT INTO thread_request_queue
-         (id, thread_id, author_user_id, request_json, position, status, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6, ?6)`,
-    )
-    .bind(
-      `trq-verify-status-${crypto.randomUUID()}`,
+  await db.batch([
+    lockQueue(db, threadId),
+    prependToQueue(db, {
+      id: `trq-verify-status-${crypto.randomUUID()}`,
       threadId,
-      row.userId,
-      JSON.stringify(request),
-      (first?.position ?? 1) - 1,
-      now,
-    )
-    .run();
+      authorUserId: row.userId,
+      requestJson: JSON.stringify(request),
+      now: new Date().toISOString(),
+    }),
+  ]);
   return true;
 }

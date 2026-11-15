@@ -241,8 +241,20 @@ export class PgD1PreparedStatement {
   }
 }
 
+export interface PgD1Options {
+  /**
+   * Take the global writer lock before every write (D1's single-writer model).
+   * Default on. Off only in the concurrency tests, which prove which write
+   * paths are already safe without it (claude/concurrency-plan.md).
+   */
+  writerLock?: boolean;
+}
+
 export class PgD1Database {
-  constructor(readonly sql: Sql) {}
+  readonly writerLock: boolean;
+  constructor(readonly sql: Sql, options: PgD1Options = {}) {
+    this.writerLock = options.writerLock ?? true;
+  }
 
   private readonly kinds = new Map<string, Promise<ParamKinds>>();
 
@@ -372,7 +384,7 @@ export class PgD1Database {
       let locked = 0;
       try {
         const result = await this.sql.begin(async (tx) => {
-          await (tx as unknown as Sql).unsafe("SELECT pg_advisory_xact_lock($1)", [WRITER_LOCK]);
+          if (this.writerLock) await (tx as unknown as Sql).unsafe("SELECT pg_advisory_xact_lock($1)", [WRITER_LOCK]);
           locked = performance.now();
           return fn(tx as unknown as Sql);
         }) as R;

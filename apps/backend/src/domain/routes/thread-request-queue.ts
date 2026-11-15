@@ -1,3 +1,4 @@
+import { appendToQueue, enqueueBeforePhases, lockQueue, moveToFront } from "./queue-positions.js";
 import { threadSpace } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
@@ -464,60 +465,37 @@ export async function handleThreadRequestQueue(
       String(body.workflowId),
     );
     const last = await db
-      .prepare(
-        "SELECT MAX(position) AS position, COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1")
       .bind(threadId)
-      .first<{ position: number | null; n: number }>();
+      .first<{ n: number }>();
     // A pause belongs to the requests it held; a new queue starts running.
     if (!last?.n) await resume(env, threadId);
     // People's requests run between implementation phases instead of after
-    // the whole plan: they go after earlier requests but before the next phase.
-    const nextPhase = body.isPhased
-      ? null
-      : await db
-          .prepare(
-            `SELECT MIN(position) AS position FROM thread_request_queue
-              WHERE thread_id = ?1 AND (request_json::jsonb #>> '{isPhased}') IN ('true', '1')`,
-          )
-          .bind(threadId)
-          .first<{ position: number | null }>();
-    let position = (last?.position ?? 0) + 1;
-    if (nextPhase?.position != null) {
-      const before = await db
-        .prepare(
-          "SELECT MAX(position) AS position FROM thread_request_queue WHERE thread_id = ?1 AND position < ?2",
-        )
-        .bind(threadId, nextPhase.position)
-        .first<{ position: number | null }>();
-      position =
-        ((before?.position ?? nextPhase.position - 1) + nextPhase.position) / 2;
-    }
-    // A plan paused for input waits for this reply: it is sent right away and
-    // the remaining phases stay paused until someone resumes them.
+    // the whole plan (enqueueBeforePhases). A plan paused for input waits for
+    // this reply: it is sent right away and the remaining phases stay paused
+    // until someone resumes them.
     const planPaused =
-      nextPhase?.position != null &&
+      !body.isPhased &&
       !!(await db
         .prepare(
-          "SELECT 1 AS found FROM thread_request_queue_state WHERE thread_id = ?1",
+          `SELECT 1 AS found FROM thread_request_queue_state s
+            WHERE s.thread_id = ?1 AND EXISTS (
+              SELECT 1 FROM thread_request_queue q WHERE q.thread_id = ?1
+                 AND (q.request_json::jsonb #>> '{isPhased}') IN ('true', '1'))`,
         )
         .bind(threadId)
         .first());
-    await db
-      .prepare(
-        `INSERT INTO thread_request_queue
-           (id, thread_id, author_user_id, request_json, position, status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6, ?6)`,
-      )
-      .bind(
-        `trq-${crypto.randomUUID()}`,
-        threadId,
-        context.userId,
-        JSON.stringify(body),
-        position,
-        now,
-      )
-      .run();
+    const item = {
+      id: `trq-${crypto.randomUUID()}`,
+      threadId,
+      authorUserId: context.userId,
+      requestJson: JSON.stringify(body),
+      now,
+    };
+    await db.batch([
+      lockQueue(db, threadId),
+      body.isPhased ? appendToQueue(db, item) : enqueueBeforePhases(db, item),
+    ]);
     await advanceThreadQueueSafely(env, threadId, { forceHead: planPaused });
     await publishQueueUpdated(env, threadId, spaceId);
     return queueResponse(await loadQueue(env, threadId), 201);
@@ -630,18 +608,10 @@ export async function handleThreadRequestQueue(
     }
     // First in line and running again. Requests still processing finish
     // first: members cannot cancel each other's requests.
-    const first = await db
-      .prepare(
-        "SELECT MIN(position) AS position FROM thread_request_queue WHERE thread_id = ?1",
-      )
-      .bind(threadId)
-      .first<{ position: number | null }>();
-    await db
-      .prepare(
-        "UPDATE thread_request_queue SET position = ?1, updated_at = ?2 WHERE id = ?3",
-      )
-      .bind((first?.position ?? 0) - 1, now, itemId)
-      .run();
+    await db.batch([
+      lockQueue(db, threadId),
+      moveToFront(db, threadId, itemId, now),
+    ]);
     // A paused queue (for example after a failed phase) stays paused: only
     // this request is sent, the remaining phases wait for an explicit resume.
     await advanceThreadQueueSafely(env, threadId, { forceHead: true });

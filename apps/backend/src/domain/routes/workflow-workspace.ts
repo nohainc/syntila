@@ -126,7 +126,7 @@ export async function prepareWorkflowWorkspaceGrant(
     if (existing) return [];
     return [
       env.SYNTILA_DB.prepare(
-        "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(?1,?2,?3,?4,'active',?5,'{\"maxConcurrentAssignments\":1}',?6,?6)",
+        "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(?1,?2,?3,?4,'active',?5,'{\"maxConcurrentAssignments\":1}',?6,?6) ON CONFLICT DO NOTHING",
       ).bind(
         crypto.randomUUID(),
         spaceId,
@@ -166,7 +166,7 @@ export async function prepareWorkflowWorkspaceGrant(
   if (existing) return statements;
   statements.push(
     env.SYNTILA_DB.prepare(
-      "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(?1,?2,?3,?4,'active',?5,'{\"maxConcurrentAssignments\":3}',?6,?6)",
+      "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(?1,?2,?3,?4,'active',?5,'{\"maxConcurrentAssignments\":3}',?6,?6) ON CONFLICT DO NOTHING",
     ).bind(
       crypto.randomUUID(),
       spaceId,

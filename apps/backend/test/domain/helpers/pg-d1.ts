@@ -59,12 +59,19 @@ function ensureTemplate(a: SyncPostgres) {
   }
 }
 
-export function pgD1() {
+export interface PgD1TestOptions {
+  /** Global writer lock (default on, like production); off in concurrency tests. */
+  writerLock?: boolean;
+  /** Pool size (default 3); concurrency tests need real parallel connections. */
+  max?: number;
+}
+
+export function pgD1(options: PgD1TestOptions = {}) {
   if (!admin) { admin = new SyncPostgres(BASE_URL); dropStale(admin); }
   ensureTemplate(admin);
   const name = `syntila_t_${process.pid}_${created.length}_${Math.random().toString(36).slice(2, 8)}`;
   admin.exec(`CREATE DATABASE ${name} TEMPLATE ${TEMPLATE}`);
-  const sql = new SQL(urlFor(name), { bigint: true, max: 3, idleTimeout: 2 });
+  const sql = new SQL(urlFor(name), { bigint: true, max: options.max ?? 3, idleTimeout: 2 });
   const sync = new SyncPostgres(urlFor(name));
   created.push({ name, sync, sql });
   // Keep connection usage bounded: databases from earlier tests are closed
@@ -73,7 +80,7 @@ export function pgD1() {
   for (const old of live.slice(0, Math.max(0, live.length - LIVE_LIMIT))) {
     old.closed = true; old.sync.close(); void old.sql.close({ timeout: 0 }).catch(() => {});
   }
-  return { db: new PgD1Database(sql) as unknown as D1Database, sqlite: sync, sql };
+  return { db: new PgD1Database(sql, { writerLock: options.writerLock }) as unknown as D1Database, sqlite: sync, sql, url: urlFor(name) };
 }
 
 /** Drops databases created by this process (call from afterAll or rely on exit hook). */

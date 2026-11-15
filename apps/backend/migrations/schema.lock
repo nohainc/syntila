@@ -105,6 +105,7 @@ column conversations.context_floor_sequence int8 not-null default
 column conversations.context_revision int8 not-null default
 column conversations.conversation_revision int8 not-null default
 column conversations.created_at timestamptz not-null default
+column conversations.history_sequence int8 not-null default
 column conversations.id text not-null
 column conversations.thread_id text not-null
 column conversations.updated_at timestamptz not-null default
@@ -822,6 +823,7 @@ constraint conversation_workflow_step_runs.conversation_workflow_step_runs_workf
 constraint conversation_workflow_step_runs.conversation_workflow_step_runs_workflow_run_id_step_id_key unique
 constraint conversations.conversations_check check
 constraint conversations.conversations_conversation_revision_check check
+constraint conversations.conversations_history_sequence_check check
 constraint conversations.conversations_pkey primary-key
 constraint conversations.conversations_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint conversations.conversations_thread_id_workflow_id_key unique
@@ -1221,6 +1223,7 @@ function syntila_json_remove/2
 function syntila_json_set/3
 function syntila_json_set/3
 function syntila_jsonb_merge_patch/2
+function syntila_next_history_sequence/1
 function trg_assignment_context_snapshot_immutable_fn/0
 function trg_assignment_execution_selection_immutable_fn/0
 function trg_conversation_history_immutable_fn/0
@@ -1405,9 +1408,9 @@ index thread_execution_policies.thread_execution_policies_pkey (thread_id) uniqu
 index thread_execution_policies.thread_execution_policies_primary_workspace_id_fkidx (primary_workspace_id)
 index thread_read_states.thread_read_states_pkey (thread_id,user_id) unique
 index thread_read_states.thread_read_states_user_id_fkidx (user_id)
-index thread_request_queue.idx_thread_request_queue_thread (thread_id,position)
 index thread_request_queue.thread_request_queue_author_user_id_fkidx (author_user_id)
 index thread_request_queue.thread_request_queue_pkey (id) unique
+index thread_request_queue.thread_request_queue_thread_position_key (thread_id,position) unique
 index thread_request_queue_state.thread_request_queue_state_paused_by_user_id_fkidx (paused_by_user_id)
 index thread_request_queue_state.thread_request_queue_state_pkey (thread_id) unique
 index thread_runtime_leases.idx_thread_one_active_runtime_lease (thread_id) unique partial
@@ -1524,6 +1527,7 @@ index workspace_sessions.workspace_sessions_pkey (id) unique
 index workspace_sessions.workspace_sessions_runtime_identity_id_fkidx (runtime_identity_id)
 index workspace_space_grants.idx_workspace_space_grants_space (space_id,status)
 index workspace_space_grants.workspace_space_grants_id_space_id_workspace_id_key (id,space_id,workspace_id) unique
+index workspace_space_grants.workspace_space_grants_one_live (space_id,workspace_id) unique partial
 index workspace_space_grants.workspace_space_grants_pkey (id) unique
 index workspace_space_grants.workspace_space_grants_workspace_id_granted_by_user_id_fkidx (workspace_id,granted_by_user_id)
 index workspace_worker_inventory.idx_workspace_worker_inventory_owner (owner_user_id,updated_at)

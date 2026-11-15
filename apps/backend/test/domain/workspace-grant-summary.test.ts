@@ -82,7 +82,7 @@ describe("Workspace aggregate", () => {
         f.space(id);
       f.space("archived", true);
       f.grant("g1", "active");
-      f.grant("duplicate", "active");
+      // A second live grant for the same Space is impossible (unique index).
       f.grant("g2", "suspended", "suspended");
       f.grant("g3", "revoked", "revoked");
       f.grant("g4", "expired", "expired");

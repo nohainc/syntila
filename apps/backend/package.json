@@ -11,6 +11,7 @@
     "schema:verify": "bun run src/migrate.ts --verify",
     "schema:lock": "bun run src/migrate.ts --print-lock > migrations/schema.lock",
     "routes": "bun scripts/routes.ts --write",
+    "write-paths": "bun scripts/write-paths.ts --write",
     "build": "bash scripts/build.sh",
     "test": "bun scripts/test.ts"
   },

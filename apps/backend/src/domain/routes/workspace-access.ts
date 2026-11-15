@@ -277,14 +277,14 @@ export async function createWorkspaceSpaceGrant(
   const concurrency = JSON.stringify(concurrencyValue);
   const expiresAt = grantExpiry(body.expiresAt, new Date(now));
   const id = `workspace-space-grant-${crypto.randomUUID().slice(0, 16)}`;
-  await env.SYNTILA_DB.prepare(
+  const inserted = await env.SYNTILA_DB.prepare(
     `INSERT INTO workspace_space_grants
        (id, space_id, workspace_id, granted_by_user_id, status,
         allowed_worker_ids_json, allowed_permissions_json,
         network_policy_json, concurrency_json,
         expires_at, created_at, updated_at)
      VALUES (?1, ?2, ?3, ?4, 'active', ?5, ?6, ?7, ?8, ?9, ?10, ?10)
-     ON CONFLICT(id, space_id, workspace_id) DO NOTHING`,
+     ON CONFLICT DO NOTHING`,
   )
     .bind(
       id,
@@ -299,6 +299,9 @@ export async function createWorkspaceSpaceGrant(
       now,
     )
     .run();
+  // A parallel request connected the same Workspace first.
+  if (inserted?.meta?.changes === 0)
+    throw new HttpError(409, "This Workspace is already connected to the Space");
   await recordAudit(
     env,
     context,

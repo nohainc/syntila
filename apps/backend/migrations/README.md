@@ -59,6 +59,23 @@ createdb syntila_lock && PGDATABASE=syntila_lock bun run migrate \
   && PGDATABASE=syntila_lock bun run schema:lock && dropdb syntila_lock
 ```
 
+## Writes that run in parallel
+
+The backend is moving off its global writer lock (project doc
+`claude/concurrency-plan.md`). Schema rules that keep parallel writes correct:
+
+- **Every invariant is a constraint.** If two rows must never coexist, add a
+  unique (or partial unique) index; a race then fails loudly instead of
+  leaving bad data. Add the matching check to `scripts/check-invariants.sql`.
+- **Number children from a counter on the parent row**, never with
+  `MAX(...) + 1`. Conversation history uses
+  `syntila_next_history_sequence(conversation_id)`; any new history trigger
+  must call it.
+- **Positions in a Thread's request queue** are taken only through
+  `src/domain/routes/queue-positions.ts` (a per-Thread lock, then SQL).
+- Prove a new write path with a scenario in `test/concurrency.test.ts`, which
+  runs without the writer lock.
+
 ## Commands
 
 | Command | What it does |
