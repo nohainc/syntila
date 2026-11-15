@@ -116,6 +116,18 @@ describe("schema lock", () => {
     expect(await schemaLock(sql as any)).toBe(await Bun.file(lockPath).text());
   });
 
+  test("objects of installed extensions (pg_stat_statements) are not schema drift", async () => {
+    const sql = await emptyDatabase();
+    await migrate(sql as any);
+    try {
+      await sql.unsafe("CREATE EXTENSION IF NOT EXISTS pg_stat_statements");
+    } catch {
+      return; // not installed here, or the test role may not create extensions
+    }
+    const lockPath = join(import.meta.dir, "..", "migrations", "schema.lock");
+    expect(await verifySchemaLock(sql as any, lockPath)).toEqual([]);
+  });
+
   test("every foreign key has an index that starts with its columns", async () => {
     const sql = await emptyDatabase();
     await migrate(sql as any);

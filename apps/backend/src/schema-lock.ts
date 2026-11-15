@@ -43,7 +43,10 @@ export async function schemaLock(db: Db): Promise<string> {
     WHERE NOT g.tgisinternal AND t.relnamespace = 'public'::regnamespace`;
   for (const g of triggers) lines.push(`trigger ${g.table_name}.${g.tgname} -> ${g.proname}`);
   const functions: any[] = await db`
-    SELECT p.proname, p.pronargs FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace`;
+    SELECT p.proname, p.pronargs FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+      -- Functions of installed extensions (pg_stat_statements) are not ours.
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass
+                         AND d.objid = p.oid AND d.deptype = 'e')`;
   for (const f of functions) lines.push(`function ${f.proname}/${f.pronargs}`);
   return lines.sort().join("\n") + "\n";
 }
