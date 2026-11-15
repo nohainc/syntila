@@ -3,6 +3,23 @@
 ## Status
 Accepted (foundation). Billing-provider integration is not yet implemented.
 
+### Local Paddle sandbox groundwork
+
+The backend has development-only endpoints for sandbox checkout configuration
+and Paddle subscription notifications. The checkout configuration issues a
+server-signed account reference; notifications verify both the Paddle signature
+and that reference. Subscription snapshots are kept in PostgreSQL in
+`paddle_sandbox_subscriptions`; older deliveries cannot overwrite newer ones.
+They may update provider-sourced `account_plans`, but never replace a manual
+grant. The endpoints return 404 outside the development environment. The
+reference secret, webhook secret, client token and two sandbox price IDs must
+be configured separately. A local-only checkout page displays Paddle's price
+previews and passes the signed reference to a sandbox overlay. Local settings
+can be stored in `.development/local-backend/paddle.env`; keep its reference
+secret stable so later subscription events can be verified. No live billing is
+enabled. A functioning default payment link, notification destination, customer
+portal and end-to-end sandbox test are still outstanding.
+
 ## Context
 Some web-app features will be available only to subscribers. We want one
 paid tier, a server-enforced gate, and freedom to rename or reprice the tier

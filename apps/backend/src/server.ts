@@ -26,6 +26,18 @@ process.on("uncaughtException", (error) => {
 });
 
 const config = await loadConfig();
+// Local-only sandbox settings live outside the repository and are read again
+// on development reload. Nonempty environment variables take precedence.
+const localPaddle: Record<string, string> = {};
+if (process.env.SYNTILA_ENVIRONMENT === 'development') {
+  const file = Bun.file('../../.development/local-backend/paddle.env');
+  if (await file.exists()) {
+    for (const line of (await file.text()).split(/\r?\n/)) {
+      const match = line.match(/^(PADDLE_SANDBOX_(?:CLIENT_TOKEN|MONTHLY_PRICE_ID|ANNUAL_PRICE_ID|REFERENCE_SECRET|WEBHOOK_SECRET))=(.*)$/);
+      if (match) localPaddle[match[1]!] = match[2]!;
+    }
+  }
+}
 const sql = new SQL({
   hostname: config.db.hostname, port: config.db.port, username: config.db.username,
   database: config.db.database, password: config.db.password, max: config.db.max,
@@ -45,6 +57,11 @@ if (!emailOutbox) console.warn("EMAIL_RELAY_URL / EMAIL_RELAY_SECRET are not con
 
 const runtime = createRuntime(sql, db, {
   SYNTILA_ENVIRONMENT: process.env.SYNTILA_ENVIRONMENT ?? "production",
+  PADDLE_SANDBOX_CLIENT_TOKEN: process.env.PADDLE_SANDBOX_CLIENT_TOKEN || localPaddle.PADDLE_SANDBOX_CLIENT_TOKEN,
+  PADDLE_SANDBOX_MONTHLY_PRICE_ID: process.env.PADDLE_SANDBOX_MONTHLY_PRICE_ID || localPaddle.PADDLE_SANDBOX_MONTHLY_PRICE_ID,
+  PADDLE_SANDBOX_ANNUAL_PRICE_ID: process.env.PADDLE_SANDBOX_ANNUAL_PRICE_ID || localPaddle.PADDLE_SANDBOX_ANNUAL_PRICE_ID,
+  PADDLE_SANDBOX_REFERENCE_SECRET: process.env.PADDLE_SANDBOX_REFERENCE_SECRET || localPaddle.PADDLE_SANDBOX_REFERENCE_SECRET,
+  PADDLE_SANDBOX_WEBHOOK_SECRET: process.env.PADDLE_SANDBOX_WEBHOOK_SECRET || localPaddle.PADDLE_SANDBOX_WEBHOOK_SECRET,
   SYNTILA_APP_URL: process.env.SYNTILA_APP_URL ?? "https://app.syntila.app",
   BETTER_AUTH_URL: process.env.SYNTILA_APP_URL ?? "https://app.syntila.app",
   BETTER_AUTH_TRUSTED_ORIGINS: config.allowedOrigins.join(","),

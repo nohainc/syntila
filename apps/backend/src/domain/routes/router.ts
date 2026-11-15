@@ -41,6 +41,7 @@ import {
 import { handleThreadRequestQueue } from "./thread-request-queue.js";
 import { handleApprovePlan } from "./implement-plan.js";
 import { conditionalJson } from "./conditional-read.js";
+import { handleSandboxCheckoutConfig, handleSandboxWebhook } from "./paddle-sandbox.js";
 import { isDatabaseError } from "./api-contract.js";
 import { BUILTIN_WORKFLOWS, workflowCatalogEntry } from "@syntila/core";
 
@@ -230,6 +231,10 @@ export async function routeWorkerRequest(
       return await handleReadReceiptPrivacy(request, env, ctx);
     if (url.pathname === "/api/me/plan")
       return await handleAccountPlan(request, env, ctx);
+    if (url.pathname === "/api/billing/sandbox/checkout-config")
+      return await handleSandboxCheckoutConfig(request, env, ctx);
+    if (url.pathname === "/api/billing/sandbox/webhook")
+      return await handleSandboxWebhook(request, env);
     const avatarMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/avatar$/);
     if (request.method === "GET" && avatarMatch?.[1])
       return await handleGetAvatar(

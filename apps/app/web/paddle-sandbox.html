@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Syntila Plus sandbox checkout</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; max-width: 48rem; margin: 3rem auto; padding: 0 1.2rem; color: #202239; }
+    .plans { display: flex; flex-wrap: wrap; gap: 1rem; }
+    article { flex: 1 1 14rem; border: 1px solid #c9cbd8; border-radius: .75rem; padding: 1.3rem; }
+    button { padding: .7rem 1rem; border: 0; border-radius: .4rem; background: #514ec4; color: white; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: default; }
+    #status { min-height: 3em; }
+  </style>
+</head>
+<body>
+  <h1>Syntila Plus sandbox</h1>
+  <p>Test checkout only. No real payment will be taken.</p>
+  <p id="status" role="status" aria-live="polite">Loading sandbox prices…</p>
+  <div class="plans">
+    <article><h2>Monthly</h2><p id="monthly-price">Loading…</p><button id="monthly" disabled>Test monthly checkout</button></article>
+    <article><h2>Annual</h2><p id="annual-price">Loading…</p><button id="annual" disabled>Test annual checkout</button></article>
+  </div>
+  <p><a href="/">Return to Syntila</a></p>
+  <script src="paddle-sandbox.js" defer></script>
+</body>
+</html>

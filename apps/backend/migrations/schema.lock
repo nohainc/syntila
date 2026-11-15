@@ -221,6 +221,12 @@ column mutation_receipts.response_json text not-null
 column mutation_receipts.response_status int8 not-null
 column mutation_receipts.scope text not-null
 column mutation_receipts.user_id text not-null
+column paddle_sandbox_subscriptions.current_period_end timestamptz
+column paddle_sandbox_subscriptions.customer_id text not-null
+column paddle_sandbox_subscriptions.occurred_at timestamptz not-null
+column paddle_sandbox_subscriptions.status text not-null
+column paddle_sandbox_subscriptions.subscription_id text not-null
+column paddle_sandbox_subscriptions.user_id text not-null
 column people_relationships.established_at timestamptz not-null
 column people_relationships.user_high_id text not-null
 column people_relationships.user_low_id text not-null
@@ -878,6 +884,9 @@ constraint mutation_receipts.mutation_receipts_pkey primary-key
 constraint mutation_receipts.mutation_receipts_response_json_is_json check
 constraint mutation_receipts.mutation_receipts_response_status_check check
 constraint mutation_receipts.mutation_receipts_user_id_fkey foreign-key -> users on-delete-cascade
+constraint paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_pkey primary-key
+constraint paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_status_check check
+constraint paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_user_id_fkey foreign-key -> users on-delete-cascade
 constraint people_relationships.people_relationships_check check
 constraint people_relationships.people_relationships_pkey primary-key
 constraint people_relationships.people_relationships_user_high_id_fkey foreign-key -> users on-delete-cascade
@@ -1339,6 +1348,8 @@ index mcp_tool_calls.mcp_tool_calls_dispatch_key_key (dispatch_key) unique
 index mcp_tool_calls.mcp_tool_calls_pkey (task_id) unique
 index mcp_tool_calls.mcp_tool_calls_workspace_id_fkidx (workspace_id)
 index mutation_receipts.mutation_receipts_pkey (user_id,scope,idempotency_key) unique
+index paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_pkey (subscription_id) unique
+index paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_user_id_idx (user_id)
 index people_relationships.idx_people_relationships_high (user_high_id,user_low_id)
 index people_relationships.people_relationships_pkey (user_low_id,user_high_id) unique
 index person_connections.idx_person_connections_high (user_high_id,user_low_id)

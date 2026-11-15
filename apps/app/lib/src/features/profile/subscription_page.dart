@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../ax/ax_data.dart';
 import '../../brand.dart';
@@ -123,6 +125,19 @@ class SubscriptionPage extends StatelessWidget {
                   _Prices(wide: wide),
                   const SizedBox(height: SyntilaSpacing.md),
                   _BillingNotice(isPaid: plan.isPaid),
+                  if (kDebugMode &&
+                      kIsWeb &&
+                      {'localhost', '127.0.0.1', '::1'}
+                          .contains(Uri.base.host)) ...[
+                    const SizedBox(height: SyntilaSpacing.sm),
+                    TextButton(
+                      onPressed: () => launchUrl(
+                        Uri.base.resolve('/paddle-sandbox.html'),
+                        webOnlyWindowName: '_blank',
+                      ),
+                      child: const Text('Open sandbox checkout'),
+                    ),
+                  ],
                   const SizedBox(height: SyntilaSpacing.xxl),
                   _Heading('Compare plans', style: text.titleLarge),
                   const SizedBox(height: SyntilaSpacing.md),
