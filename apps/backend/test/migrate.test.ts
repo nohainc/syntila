@@ -147,6 +147,35 @@ describe("schema lock", () => {
     await insert('{"ok":true}');
   });
 
+  test("event cursors have a primary key and one row per stream", async () => {
+    const sql = await emptyDatabase();
+    await migrate(sql as any);
+    const [{ pk }] = await sql`SELECT count(*)::int AS pk FROM pg_constraint WHERE conrelid = 'realtime_event_cursors'::regclass AND contype = 'p'`;
+    expect(pk).toBe(1);
+    await sql`INSERT INTO realtime_event_cursors (stream_kind, stream_id, next_sequence) VALUES ('space', 's1', 1)`;
+    await sql`INSERT INTO realtime_event_cursors (stream_kind, workspace_id, next_sequence) VALUES ('execution_workspace', 'w1', 1)`;
+    await sql`INSERT INTO realtime_event_cursors (stream_kind, stream_id, next_sequence) VALUES ('space', 's1', 9) ON CONFLICT DO NOTHING`;
+    const rows = await sql`SELECT stream_kind, stream_key, next_sequence::int AS n FROM realtime_event_cursors ORDER BY stream_kind`;
+    expect(rows.map((r: any) => [r.stream_kind, r.stream_key, r.n])).toEqual([["execution_workspace", "w1", 1], ["space", "s1", 1]]);
+  });
+
+  test("author and actor columns that hold a user id reference users", async () => {
+    const sql = await emptyDatabase();
+    await migrate(sql as any);
+    const rows: { col: string }[] = await sql.unsafe(`
+      SELECT c.conrelid::regclass::text || '.' || a.attname AS col FROM pg_constraint c
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+      WHERE c.contype = 'f' AND c.confrelid = 'users'::regclass AND c.conrelid::regclass::text IN
+        ('conversation_user_messages', 'thread_request_queue', 'thread_request_queue_state', 'work_request_inputs')
+      ORDER BY 1`);
+    expect(rows.map((r) => r.col)).toEqual([
+      "conversation_user_messages.author_user_id",
+      "thread_request_queue.author_user_id",
+      "thread_request_queue_state.paused_by_user_id",
+      "work_request_inputs.user_id",
+    ]);
+  });
+
   test("drift is reported line by line", async () => {
     const sql = await emptyDatabase();
     await migrate(sql as any);

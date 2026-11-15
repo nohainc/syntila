@@ -1,0 +1,77 @@
+-- 1. JSON validity: production was checked on 2026-11-15 and holds no
+--    malformed rows, so the NOT VALID checks of 0006 become fully validated.
+--    VALIDATE only reads; it does not block reads or writes.
+ALTER TABLE account_worker_plugin_versions VALIDATE CONSTRAINT account_worker_plugin_versions_manifest_json_is_json;
+ALTER TABLE account_worker_plugin_versions VALIDATE CONSTRAINT account_worker_plugin_versions_origin_json_is_json;
+ALTER TABLE account_worker_plugin_versions VALIDATE CONSTRAINT account_worker_plugin_versions_signer_json_is_json;
+ALTER TABLE auth_audit_events VALIDATE CONSTRAINT auth_audit_events_details_json_is_json;
+ALTER TABLE conversation_history_entries VALIDATE CONSTRAINT conversation_history_entries_metadata_json_is_json;
+ALTER TABLE discussion_messages VALIDATE CONSTRAINT discussion_messages_attachments_json_is_json;
+ALTER TABLE discussion_messages VALIDATE CONSTRAINT discussion_messages_references_json_is_json;
+ALTER TABLE discussion_messages VALIDATE CONSTRAINT discussion_messages_reply_to_json_is_json;
+ALTER TABLE issue_report_diagnostics VALIDATE CONSTRAINT issue_report_diagnostics_diagnostic_json_is_json;
+ALTER TABLE issue_report_events VALIDATE CONSTRAINT issue_report_events_details_json_is_json;
+ALTER TABLE mcp_tool_calls VALIDATE CONSTRAINT mcp_tool_calls_result_json_is_json;
+ALTER TABLE mutation_receipts VALIDATE CONSTRAINT mutation_receipts_response_json_is_json;
+ALTER TABLE realtime_events VALIDATE CONSTRAINT realtime_events_payload_json_is_json;
+ALTER TABLE runs VALIDATE CONSTRAINT runs_policy_snapshot_json_is_json;
+ALTER TABLE space_audit_log VALIDATE CONSTRAINT space_audit_log_details_json_is_json;
+ALTER TABLE space_workflow_configurations VALIDATE CONSTRAINT space_workflow_configurations_configuration_json_is_json;
+ALTER TABLE spaces VALIDATE CONSTRAINT spaces_settings_json_is_json;
+ALTER TABLE thread_execution_policies VALIDATE CONSTRAINT thread_execution_policies_allowed_models_json_is_json;
+ALTER TABLE thread_execution_policies VALIDATE CONSTRAINT thread_execution_policies_allowed_worker_type_ids_js_is_json;
+ALTER TABLE thread_request_queue VALIDATE CONSTRAINT thread_request_queue_request_json_is_json;
+ALTER TABLE thread_work_configs VALIDATE CONSTRAINT thread_work_configs_config_json_is_json;
+ALTER TABLE threads VALIDATE CONSTRAINT threads_access_policy_json_is_json;
+ALTER TABLE threads VALIDATE CONSTRAINT threads_metadata_json_is_json;
+ALTER TABLE user_workflow_configurations VALIDATE CONSTRAINT user_workflow_configurations_configuration_json_is_json;
+ALTER TABLE work_requests VALIDATE CONSTRAINT work_requests_input_json_is_json;
+ALTER TABLE work_requests VALIDATE CONSTRAINT work_requests_snapshot_json_is_json;
+ALTER TABLE work_requests VALIDATE CONSTRAINT work_requests_workflow_snapshot_json_is_json;
+ALTER TABLE worker_activity_history VALIDATE CONSTRAINT worker_activity_history_details_json_is_json;
+ALTER TABLE worker_assignments VALIDATE CONSTRAINT worker_assignments_command_payload_json_is_json;
+ALTER TABLE worker_assignments VALIDATE CONSTRAINT worker_assignments_config_json_is_json;
+ALTER TABLE worker_assignments VALIDATE CONSTRAINT worker_assignments_effective_permissions_json_is_json;
+ALTER TABLE worker_assignments VALIDATE CONSTRAINT worker_assignments_error_json_is_json;
+ALTER TABLE worker_assignments VALIDATE CONSTRAINT worker_assignments_input_json_is_json;
+ALTER TABLE worker_assignments VALIDATE CONSTRAINT worker_assignments_output_json_is_json;
+ALTER TABLE worker_assignments VALIDATE CONSTRAINT worker_assignments_permission_snapshot_json_is_json;
+ALTER TABLE worker_assignments VALIDATE CONSTRAINT worker_assignments_startup_detail_json_is_json;
+ALTER TABLE worker_profile_history VALIDATE CONSTRAINT worker_profile_history_profile_json_is_json;
+ALTER TABLE worker_profiles VALIDATE CONSTRAINT worker_profiles_profile_json_is_json;
+ALTER TABLE worker_scheduling_audit VALIDATE CONSTRAINT worker_scheduling_audit_details_json_is_json;
+ALTER TABLE workflow_tasks VALIDATE CONSTRAINT workflow_tasks_output_json_is_json;
+ALTER TABLE workspace_audit_log VALIDATE CONSTRAINT workspace_audit_log_details_json_is_json;
+ALTER TABLE workspace_member_access VALIDATE CONSTRAINT workspace_member_access_policy_json_is_json;
+ALTER TABLE workspace_member_overrides VALIDATE CONSTRAINT workspace_member_overrides_policy_json_is_json;
+ALTER TABLE workspace_releases VALIDATE CONSTRAINT workspace_releases_supported_arch_json_is_json;
+ALTER TABLE workspace_releases VALIDATE CONSTRAINT workspace_releases_supported_os_json_is_json;
+ALTER TABLE workspace_runtime_facts VALIDATE CONSTRAINT workspace_runtime_facts_runtime_capabilities_json_is_json;
+ALTER TABLE workspace_space_grants VALIDATE CONSTRAINT workspace_space_grants_allowed_permissions_json_is_json;
+ALTER TABLE workspace_space_grants VALIDATE CONSTRAINT workspace_space_grants_allowed_worker_ids_json_is_json;
+ALTER TABLE workspace_space_grants VALIDATE CONSTRAINT workspace_space_grants_concurrency_json_is_json;
+ALTER TABLE workspace_space_grants VALIDATE CONSTRAINT workspace_space_grants_network_policy_json_is_json;
+ALTER TABLE workspace_worker_inventory VALIDATE CONSTRAINT workspace_worker_inventory_executor_json_is_json;
+ALTER TABLE workspace_worker_inventory VALIDATE CONSTRAINT workspace_worker_inventory_model_catalog_json_is_json;
+ALTER TABLE workspace_worker_preferences VALIDATE CONSTRAINT workspace_worker_preferences_preferences_json_is_json;
+
+-- 2. A real primary key for realtime_event_cursors. A stream is identified by
+--    its kind and COALESCE(stream_id, workspace_id); a primary key cannot be
+--    an expression, so the key is materialised as a generated column. The
+--    existing unique expression index stays: the publisher's queries use it.
+ALTER TABLE realtime_event_cursors
+  ADD COLUMN stream_key text GENERATED ALWAYS AS (COALESCE(stream_id, workspace_id)) STORED;
+ALTER TABLE realtime_event_cursors
+  ADD CONSTRAINT realtime_event_cursors_pkey PRIMARY KEY (stream_kind, stream_key);
+
+-- 3. References to users that were plain text columns. User rows are never
+--    deleted (accounts are deactivated), so these keys cannot block a delete.
+--    NOT VALID: enforced for new rows; existing rows are validated later.
+ALTER TABLE conversation_user_messages
+  ADD CONSTRAINT conversation_user_messages_author_user_id_fkey FOREIGN KEY (author_user_id) REFERENCES users(id) NOT VALID;
+ALTER TABLE thread_request_queue
+  ADD CONSTRAINT thread_request_queue_author_user_id_fkey FOREIGN KEY (author_user_id) REFERENCES users(id) NOT VALID;
+ALTER TABLE thread_request_queue_state
+  ADD CONSTRAINT thread_request_queue_state_paused_by_user_id_fkey FOREIGN KEY (paused_by_user_id) REFERENCES users(id) NOT VALID;
+ALTER TABLE work_request_inputs
+  ADD CONSTRAINT work_request_inputs_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) NOT VALID;

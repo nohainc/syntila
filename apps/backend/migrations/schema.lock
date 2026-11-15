@@ -250,6 +250,7 @@ column person_invitations.status text not-null
 column person_invitations.updated_at timestamptz not-null default
 column realtime_event_cursors.next_sequence int8 not-null default
 column realtime_event_cursors.stream_id text
+column realtime_event_cursors.stream_key text not-null
 column realtime_event_cursors.stream_kind text not-null default
 column realtime_event_cursors.workspace_id text
 column realtime_events.assignment_id text
@@ -821,6 +822,7 @@ constraint conversation_turns.conversation_turns_work_request_id_fkey foreign-ke
 constraint conversation_turns.conversation_turns_workflow_run_id_fkey foreign-key -> conversation_workflow_runs on-delete-cascade
 constraint conversation_turns.conversation_turns_workflow_step_run_id_fkey foreign-key -> conversation_workflow_step_runs on-delete-cascade
 constraint conversation_turns.conversation_turns_workflow_version_check check
+constraint conversation_user_messages.conversation_user_messages_author_user_id_fkey foreign-key -> users on-delete-no-action
 constraint conversation_user_messages.conversation_user_messages_conversation_id_fkey foreign-key -> conversations on-delete-cascade
 constraint conversation_user_messages.conversation_user_messages_id_conversation_id_key unique
 constraint conversation_user_messages.conversation_user_messages_pkey primary-key
@@ -928,6 +930,7 @@ constraint person_invitations.person_invitations_inviter_user_id_fkey foreign-ke
 constraint person_invitations.person_invitations_pkey primary-key
 constraint person_invitations.person_invitations_status_check check
 constraint realtime_event_cursors.realtime_event_cursors_check check
+constraint realtime_event_cursors.realtime_event_cursors_pkey primary-key
 constraint realtime_event_cursors.realtime_event_cursors_stream_kind_check check
 constraint realtime_events.realtime_events_check check
 constraint realtime_events.realtime_events_check1 check
@@ -991,10 +994,12 @@ constraint thread_execution_policies.thread_execution_policies_thread_id_fkey fo
 constraint thread_read_states.thread_read_states_pkey primary-key
 constraint thread_read_states.thread_read_states_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint thread_read_states.thread_read_states_user_id_fkey foreign-key -> users on-delete-cascade
+constraint thread_request_queue.thread_request_queue_author_user_id_fkey foreign-key -> users on-delete-no-action
 constraint thread_request_queue.thread_request_queue_pkey primary-key
 constraint thread_request_queue.thread_request_queue_request_json_is_json check
 constraint thread_request_queue.thread_request_queue_status_check check
 constraint thread_request_queue.thread_request_queue_thread_id_fkey foreign-key -> threads on-delete-cascade
+constraint thread_request_queue_state.thread_request_queue_state_paused_by_user_id_fkey foreign-key -> users on-delete-no-action
 constraint thread_request_queue_state.thread_request_queue_state_paused_reason_check check
 constraint thread_request_queue_state.thread_request_queue_state_pkey primary-key
 constraint thread_request_queue_state.thread_request_queue_state_thread_id_fkey foreign-key -> threads on-delete-cascade
@@ -1057,6 +1062,7 @@ constraint work_request_inputs.work_request_inputs_pkey primary-key
 constraint work_request_inputs.work_request_inputs_position_check check
 constraint work_request_inputs.work_request_inputs_size_bytes_check check
 constraint work_request_inputs.work_request_inputs_state_check check
+constraint work_request_inputs.work_request_inputs_user_id_fkey foreign-key -> users on-delete-no-action
 constraint work_request_inputs.work_request_inputs_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
 constraint work_request_inputs.work_request_inputs_work_request_id_position_key unique
 constraint work_requests.work_requests_input_json_is_json check
@@ -1327,6 +1333,7 @@ index conversation_turns.idx_conversation_turns_history (conversation_id,created
 index conversation_turns.idx_conversation_turns_request (work_request_id,created_at,id)
 index conversation_turns.idx_conversation_turns_step_run (workflow_step_run_id,created_at,id)
 index conversation_turns.idx_conversation_turns_workflow_run (workflow_run_id,created_at,id)
+index conversation_user_messages.conversation_user_messages_author_user_id_fkidx (author_user_id)
 index conversation_user_messages.conversation_user_messages_conversation_id_fkidx (conversation_id)
 index conversation_user_messages.conversation_user_messages_id_conversation_id_key (id,conversation_id) unique
 index conversation_user_messages.conversation_user_messages_pkey (id) unique
@@ -1393,6 +1400,7 @@ index person_invitations.idx_person_invitations_pending_pair ((expr),(expr)) uni
 index person_invitations.person_invitations_accepted_by_user_id_fkidx (accepted_by_user_id)
 index person_invitations.person_invitations_pkey (id) unique
 index realtime_event_cursors.idx_realtime_event_cursors_stream (stream_kind,(expr)) unique
+index realtime_event_cursors.realtime_event_cursors_pkey (stream_kind,stream_key) unique
 index realtime_events.idx_realtime_events_assignment_activity (assignment_id,event_type,occurred_at,sequence)
 index realtime_events.idx_realtime_events_stream_idempotency (stream_kind,(expr),idempotency_key) unique
 index realtime_events.idx_realtime_events_stream_seq (stream_kind,(expr),sequence) unique
@@ -1436,7 +1444,9 @@ index thread_execution_policies.thread_execution_policies_primary_workspace_id_f
 index thread_read_states.thread_read_states_pkey (thread_id,user_id) unique
 index thread_read_states.thread_read_states_user_id_fkidx (user_id)
 index thread_request_queue.idx_thread_request_queue_thread (thread_id,position)
+index thread_request_queue.thread_request_queue_author_user_id_fkidx (author_user_id)
 index thread_request_queue.thread_request_queue_pkey (id) unique
+index thread_request_queue_state.thread_request_queue_state_paused_by_user_id_fkidx (paused_by_user_id)
 index thread_request_queue_state.thread_request_queue_state_pkey (thread_id) unique
 index thread_runtime_leases.idx_thread_one_active_runtime_lease (thread_id) unique partial
 index thread_runtime_leases.idx_thread_runtime_lease_request (work_request_id,status)
@@ -1470,6 +1480,7 @@ index users.users_email_key (email) unique
 index users.users_pkey (id) unique
 index work_request_inputs.idx_work_request_inputs_workspace (workspace_id,state,created_at)
 index work_request_inputs.work_request_inputs_pkey (id) unique
+index work_request_inputs.work_request_inputs_user_id_fkidx (user_id)
 index work_request_inputs.work_request_inputs_work_request_id_position_key (work_request_id,position) unique
 index work_requests.idx_work_requests_thread (thread_id,status,created_at)
 index work_requests.work_requests_pkey (id) unique
