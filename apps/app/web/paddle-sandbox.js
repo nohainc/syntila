@@ -69,6 +69,10 @@
       button.disabled = false;
     }
     status.textContent = 'Prices are localized by Paddle. Select a billing period to start a test checkout.';
+    const selectedPlan = new URLSearchParams(location.search).get('plan');
+    if (selectedPlan === 'month' || selectedPlan === 'year') {
+      document.querySelector(selectedPlan === 'month' ? '#monthly' : '#annual').onclick();
+    }
   } catch (error) {
     fail(error instanceof Error ? error.message : 'Unable to start sandbox checkout.');
   }

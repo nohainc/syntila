@@ -7,8 +7,7 @@ import '../../brand.dart';
 
 const _plusName = 'Syntila Plus';
 
-/// Approved Syntila Plus prices in whole US dollars. There is no checkout yet,
-/// so the page shows them without a purchase action.
+/// Approved Syntila Plus prices in whole US dollars.
 class PlusPrice {
   const PlusPrice(this.period, this.unit, this.dollars);
 
@@ -87,7 +86,7 @@ const _benefitGroups = <(String, List<_Benefit>)>[
 ];
 
 /// The viewer's plan, the Plus prices and the Free and Plus comparison.
-/// Purchases are not possible yet, so the page offers no purchase action.
+/// The local development build can open the separate sandbox checkout.
 class SubscriptionPage extends StatelessWidget {
   const SubscriptionPage({super.key, required this.plan});
 
@@ -98,6 +97,9 @@ class SubscriptionPage extends StatelessWidget {
     final theme = Theme.of(context);
     final text = theme.textTheme;
     final muted = theme.colorScheme.onSurfaceVariant;
+    final sandboxCheckout = kDebugMode &&
+        kIsWeb &&
+        {'localhost', '127.0.0.1', '::1'}.contains(Uri.base.host);
     return Scaffold(
       appBar: AppBar(title: const Text('Plans & subscription')),
       body: LayoutBuilder(builder: (context, constraints) {
@@ -122,22 +124,10 @@ class SubscriptionPage extends StatelessWidget {
                       'Use Research and Implement, run AI tasks in parallel, connect more machines, share your Workspace and bring more people and files into your Spaces.',
                       style: text.bodyMedium?.copyWith(color: muted)),
                   const SizedBox(height: SyntilaSpacing.lg),
-                  _Prices(wide: wide),
+                  _Prices(wide: wide, sandboxCheckout: sandboxCheckout),
                   const SizedBox(height: SyntilaSpacing.md),
-                  _BillingNotice(isPaid: plan.isPaid),
-                  if (kDebugMode &&
-                      kIsWeb &&
-                      {'localhost', '127.0.0.1', '::1'}
-                          .contains(Uri.base.host)) ...[
-                    const SizedBox(height: SyntilaSpacing.sm),
-                    TextButton(
-                      onPressed: () => launchUrl(
-                        Uri.base.resolve('/paddle-sandbox.html'),
-                        webOnlyWindowName: '_blank',
-                      ),
-                      child: const Text('Open sandbox checkout'),
-                    ),
-                  ],
+                  _BillingNotice(
+                      isPaid: plan.isPaid, sandboxCheckout: sandboxCheckout),
                   const SizedBox(height: SyntilaSpacing.xxl),
                   _Heading('Compare plans', style: text.titleLarge),
                   const SizedBox(height: SyntilaSpacing.md),
@@ -262,9 +252,10 @@ class _CurrentPlanCard extends StatelessWidget {
 }
 
 class _Prices extends StatelessWidget {
-  const _Prices({required this.wide});
+  const _Prices({required this.wide, required this.sandboxCheckout});
 
   final bool wide;
+  final bool sandboxCheckout;
 
   @override
   Widget build(BuildContext context) {
@@ -272,6 +263,7 @@ class _Prices extends StatelessWidget {
       for (final price in plusPrices)
         _PriceCard(
             price: price,
+            sandboxCheckout: sandboxCheckout,
             saving: price.unit == 'year'
                 ? 'Save $plusYearlySavingPercent% compared with paying monthly'
                 : null),
@@ -296,53 +288,74 @@ class _Prices extends StatelessWidget {
 }
 
 class _PriceCard extends StatelessWidget {
-  const _PriceCard({required this.price, this.saving});
+  const _PriceCard(
+      {required this.price, required this.sandboxCheckout, this.saving});
 
   final PlusPrice price;
+  final bool sandboxCheckout;
   final String? saving;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
-    return Semantics(
-      container: true,
-      label: '${price.period}: ${price.dollars} US dollars'
-          '${saving == null ? '' : '. $saving'}',
-      child: ExcludeSemantics(
-        child: _Panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(price.period,
-                  style: theme.textTheme.labelLarge?.copyWith(color: muted)),
-              const SizedBox(height: SyntilaSpacing.xs),
-              Text.rich(TextSpan(children: [
-                TextSpan(
-                    text: '\$${price.dollars}',
-                    style: theme.textTheme.headlineMedium),
-                TextSpan(
-                    text: ' / ${price.unit}',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: muted)),
-              ])),
-              if (saving != null) ...[
-                const SizedBox(height: SyntilaSpacing.xs),
-                Text(saving!,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.primary)),
-              ],
-            ],
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            container: true,
+            label: '${price.period}: ${price.dollars} US dollars'
+                '${saving == null ? '' : '. $saving'}',
+            child: ExcludeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(price.period,
+                      style:
+                          theme.textTheme.labelLarge?.copyWith(color: muted)),
+                  const SizedBox(height: SyntilaSpacing.xs),
+                  Text.rich(TextSpan(children: [
+                    TextSpan(
+                        text: '\$${price.dollars}',
+                        style: theme.textTheme.headlineMedium),
+                    TextSpan(
+                        text: ' / ${price.unit}',
+                        style:
+                            theme.textTheme.bodyMedium?.copyWith(color: muted)),
+                  ])),
+                  if (saving != null) ...[
+                    const SizedBox(height: SyntilaSpacing.xs),
+                    Text(saving!,
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.primary)),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ),
+          if (sandboxCheckout) ...[
+            const SizedBox(height: SyntilaSpacing.md),
+            FilledButton(
+              onPressed: () => launchUrl(
+                Uri.base.resolve('/paddle-sandbox.html?plan=${price.unit}'),
+                webOnlyWindowName: '_blank',
+              ),
+              child: Text(
+                  'Test ${price.unit == 'month' ? 'monthly' : 'annual'} checkout'),
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
 class _BillingNotice extends StatelessWidget {
-  const _BillingNotice({required this.isPaid});
+  const _BillingNotice({required this.isPaid, required this.sandboxCheckout});
 
   final bool isPaid;
+  final bool sandboxCheckout;
 
   @override
   Widget build(BuildContext context) {
@@ -359,9 +372,11 @@ class _BillingNotice extends StatelessWidget {
         const SizedBox(width: SyntilaSpacing.sm),
         Expanded(
           child: Text(
-              isPaid
-                  ? 'Your account has $_plusName. Managing a subscription in the app is not available yet.'
-                  : 'Buying $_plusName in the app is not available yet. Nothing on this page charges you; billing terms will be shown before any purchase.',
+              sandboxCheckout
+                  ? 'Sandbox test mode: no real payment will be taken.'
+                  : isPaid
+                      ? 'Your account has $_plusName. Managing a subscription in the app is not available yet.'
+                      : 'Buying $_plusName in the app is not available yet. Nothing on this page charges you; billing terms will be shown before any purchase.',
               style: theme.textTheme.bodySmall?.copyWith(color: muted)),
         ),
       ],
