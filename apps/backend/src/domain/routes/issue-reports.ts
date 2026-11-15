@@ -1,3 +1,4 @@
+import { batchAlone, inTransaction, writeAlone } from "../../platform/tx-env.js";
 import { createHash } from "node:crypto";
 import type { SecurityContext } from "@syntila/security";
 import {
@@ -566,7 +567,7 @@ async function recordEvent(
   status: { from?: string; to?: string } = {},
 ): Promise<void> {
   try {
-    await env.SYNTILA_DB.prepare(
+    await writeAlone(env, "issue_report.event", (db) => db.prepare(
       `INSERT INTO issue_report_events
          (id, report_id, actor_user_id, event_type, from_status, to_status, details_json, created_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
@@ -580,8 +581,8 @@ async function recordEvent(
         status.to ?? null,
         JSON.stringify(details),
         new Date().toISOString(),
-      )
-      .run();
+      ),
+    );
   } catch {
     // Report reads remain available if an audit write is temporarily degraded.
   }
@@ -696,7 +697,7 @@ export async function handleCreateIssueReport(
     ),
   ];
   try {
-    await env.SYNTILA_DB.batch(statements);
+    await batchAlone(env, "issue_report.create", statements);
   } catch {
     const duplicate = await existingReport(env, actor.userId, attemptKey);
     if (duplicate) return json(userReportResponse(duplicate), { status: 200 });
@@ -713,12 +714,14 @@ export async function handleCreateIssueReport(
       });
       const digest = createHash("sha256").update(body).digest("hex");
       try {
-        await env.SYNTILA_DB.prepare(
-          `UPDATE issue_report_diagnostics
-              SET bundle_key = ?1, bundle_sha256 = ?2 WHERE report_id = ?3`,
-        )
-          .bind(key, digest, reportId)
-          .run();
+        await writeAlone(env, "issue_report.bundle", (db) =>
+          db
+            .prepare(
+              `UPDATE issue_report_diagnostics
+                  SET bundle_key = ?1, bundle_sha256 = ?2 WHERE report_id = ?3`,
+            )
+            .bind(key, digest, reportId),
+        );
       } catch {
         await bucket.delete(key).catch(() => {});
       }
@@ -1081,8 +1084,10 @@ export async function handlePatchAdminIssueReport(
       : boundedToken(value.groupId, 128);
   if (groupWasSupplied && !requestedGroupId)
     throw new HttpError(400, "Invalid incident group");
-  const existing = await env.SYNTILA_DB.prepare(
-    "SELECT status, incident_group_id AS incidentGroupId FROM issue_reports WHERE id = ?1",
+  await inTransaction(env, "issue_report.update", async (txEnv) => {
+  const existing = await txEnv.SYNTILA_DB.prepare(
+    // Locked: two support people changing one report cannot skip a transition.
+    "SELECT status, incident_group_id AS incidentGroupId FROM issue_reports WHERE id = ?1 FOR UPDATE",
   )
     .bind(reportId)
     .first<{ status: ReportStatus; incidentGroupId: string | null }>();
@@ -1103,7 +1108,7 @@ export async function handlePatchAdminIssueReport(
       `Cannot change issue status from ${currentStatus} to ${nextStatus}`,
     );
   if (requestedGroupId != null) {
-    const group = await env.SYNTILA_DB.prepare(
+    const group = await txEnv.SYNTILA_DB.prepare(
       "SELECT id FROM issue_report_groups WHERE id = ?1",
     )
       .bind(requestedGroupId)
@@ -1112,7 +1117,7 @@ export async function handlePatchAdminIssueReport(
   }
   const now = new Date().toISOString();
   const statements = [
-    env.SYNTILA_DB.prepare(
+    txEnv.SYNTILA_DB.prepare(
       "UPDATE issue_reports SET status = ?1, incident_group_id = ?2, updated_at = ?3 WHERE id = ?4",
     ).bind(
       nextStatus,
@@ -1122,7 +1127,7 @@ export async function handlePatchAdminIssueReport(
       now,
       reportId,
     ),
-    env.SYNTILA_DB.prepare(
+    txEnv.SYNTILA_DB.prepare(
       `INSERT INTO issue_report_events
          (id, report_id, actor_user_id, event_type, from_status, to_status, details_json, created_at)
        VALUES (?1, ?2, ?3, 'report.status_changed', ?4, ?5, ?6, ?7)`,
@@ -1142,7 +1147,7 @@ export async function handlePatchAdminIssueReport(
       : requestedGroupId;
   if (existing.incidentGroupId !== nextGroupId) {
     statements.push(
-      env.SYNTILA_DB.prepare(
+      txEnv.SYNTILA_DB.prepare(
         `INSERT INTO issue_report_events
            (id, report_id, actor_user_id, event_type, details_json, created_at)
          VALUES (?1, ?2, ?3, 'report.group_changed', ?4, ?5)`,
@@ -1160,14 +1165,15 @@ export async function handlePatchAdminIssueReport(
     for (const groupId of [existing.incidentGroupId, nextGroupId]) {
       if (groupId != null) {
         statements.push(
-          env.SYNTILA_DB.prepare(
+          txEnv.SYNTILA_DB.prepare(
             "UPDATE issue_report_groups SET updated_at = ?1 WHERE id = ?2",
           ).bind(now, groupId),
         );
       }
     }
   }
-  await env.SYNTILA_DB.batch(statements);
+  await txEnv.SYNTILA_DB.batch(statements);
+  });
   const updated = await env.SYNTILA_DB.prepare(
     `${reportSelect()} WHERE ir.id = ?1`,
   )
@@ -1261,12 +1267,14 @@ export async function handleCreateAdminIssueReportGroup(
   const id = `issue-group-${crypto.randomUUID()}`;
   const now = new Date().toISOString();
   const reference = groupReference();
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO issue_report_groups (id, public_reference, label, fingerprint, created_by_user_id, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)`,
-  )
-    .bind(id, reference, label, fingerprint, actor.userId, now)
-    .run();
+  await writeAlone(env, "issue_report.group", (db) =>
+    db
+      .prepare(
+        `INSERT INTO issue_report_groups (id, public_reference, label, fingerprint, created_by_user_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)`,
+      )
+      .bind(id, reference, label, fingerprint, actor.userId, now),
+  );
   return json(
     {
       group: {

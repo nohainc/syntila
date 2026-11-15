@@ -71,6 +71,8 @@ export interface Tx extends Query {
   lock(scope: string, id: string): Promise<void>;
   /** Runs `fn` once the transaction committed; never on rollback or retry. */
   afterCommit(fn: () => unknown): void;
+  /** The transaction's connection, for `PgD1Database.within` (tx-env.ts). */
+  readonly connection: Sql;
 }
 
 /** SQL expression for the lock key of `tx.lock(scope, id)`. */
@@ -188,6 +190,7 @@ export class Data {
           const q = queryOn(conn as unknown as Sql);
           const tx: Tx = {
             ...q,
+            connection: conn as unknown as Sql,
             async lock(scope, id) {
               await (conn as unknown as Sql).unsafe(`SELECT pg_advisory_xact_lock(${lockKeySql(scope, "$1")})`, [id]);
             },
@@ -211,6 +214,22 @@ export class Data {
         await Bun.sleep(Math.random() * Math.min(200, 5 * 2 ** attempt));
       }
     }
+  }
+}
+
+/**
+ * The data layer of code that already runs inside a transaction: `read`
+ * queries see the transaction's own writes, and `tx()` joins the open
+ * transaction instead of starting another one.
+ */
+export class JoinedData extends Data {
+  override readonly read: Query;
+  constructor(private readonly open: Tx) {
+    super(open.connection);
+    this.read = open;
+  }
+  override tx<T>(_label: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return fn(this.open);
   }
 }
 

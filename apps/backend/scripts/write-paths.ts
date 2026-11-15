@@ -99,7 +99,7 @@ export async function collectWritePaths(): Promise<Path[]> {
       const body = sliceOf(text, fns, entry.fn);
       entry.batch ||= /\.batch\s*\(/.test(body);
       entry.adapter ||= /\.prepare\s*\(/.test(body);
-      entry.data ||= /\bdataOf\s*\(|\.tx\s*\(|\b(?:q|tx)\.(?:rows|row|run)`/.test(body);
+      entry.data ||= /\bdataOf\s*\(|\.tx\s*\(|\b(?:q|tx)\.(?:rows|row|run)`|\b(?:inTransaction|writeAlone|batchAlone)\s*\(/.test(body);
     }
   }
   return [...paths.values()].filter((p) => p.statements.length > 0);
@@ -123,13 +123,13 @@ export function renderWritePaths(paths: Path[]): string {
     "- **numbering**: `MAX(...) + 1` numbering; races once writes run in parallel.",
     "- **read-write**: the function reads before it writes (check-then-act); needs a row lock or a constraint.",
     "- **guarded**: every write carries its own condition (`NOT EXISTS`, `ON CONFLICT`, a status/version check).",
-    "- **adapter**: still uses the D1-style adapter (`prepare`/`batch`), so it still takes the global writer lock.",
-    "- **data**: uses the data layer (`src/platform/data.ts`): no global lock.",
+    "- **lock**: writes through the adapter outside a data-layer transaction, so it still takes the global writer lock.",
+    "- **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.",
     "",
     `Totals: ${paths.length} write paths, ${tables.size} tables; ` +
       `${count((p) => p.statements.some((s) => s.numbering))} numbering, ` +
       `${count((p) => p.reads && !p.statements.every((s) => s.guarded))} unguarded read-write, ` +
-      `${count((p) => p.adapter)} on the adapter, ${count((p) => p.data && !p.adapter)} on the data layer.`,
+      `${count((p) => p.adapter && !p.data)} still on the global lock, ${count((p) => p.data)} in data-layer transactions.`,
     "",
   ];
   const areas = [...new Set(paths.map((p) => p.area))].sort();
@@ -142,7 +142,7 @@ export function renderWritePaths(paths: Path[]): string {
         p.reads && "read-write",
         p.statements.every((s) => s.guarded) && "guarded",
         p.batch && "batch",
-        p.adapter && "adapter",
+        p.adapter && !p.data && "lock",
         p.data && "data",
       ].filter(Boolean).join(", ");
       lines.push(`| \`${p.file}\` | \`${p.fn}\` | ${writes} | ${flags} |`);

@@ -1,3 +1,4 @@
+import { writeAlone } from "../platform/tx-env.js";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_REPORTS_PER_RUN = 100;
 
@@ -35,10 +36,9 @@ export async function pruneExpiredIssueReports(
         continue;
       }
     }
-    const result = await db
-      .prepare("DELETE FROM issue_reports WHERE id = ?1")
-      .bind(row.id)
-      .run();
+    const result = await writeAlone({ SYNTILA_DB: db }, "issue_report.prune", (tx) =>
+      tx.prepare("DELETE FROM issue_reports WHERE id = ?1").bind(row.id),
+    );
     deleted += Number(result.meta.changes ?? 0);
   }
   return deleted;

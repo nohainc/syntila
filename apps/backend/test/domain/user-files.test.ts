@@ -30,7 +30,8 @@ import {
 } from "../../src/domain/routes/user-files.js";
 
 function fixture() {
-  const sqlite = (pgD1().sqlite as unknown as DatabaseSync);
+  const { sqlite: fixtureSqlite, db: fixtureDb } = pgD1();
+  const sqlite = fixtureSqlite as unknown as DatabaseSync;
   sqlite.exec([user("owner"), user("other"), basicThread({ user: "owner", space: "space", thread: "thread", spaceName: "Team", threadName: "Plan" })].join("\n"));
   sqlite.exec(
     "" /* D1 migration: schema is final in PostgreSQL */,
@@ -42,31 +43,8 @@ function fixture() {
     sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-  const db = {
-    async batch(statements: { run(): Promise<unknown> }[]) {
-      const results = [];
-      for (const statement of statements) results.push(await statement.run());
-      return results;
-    },
-    prepare(sql: string) {
-      let values: unknown[] = [];
-      return {
-        bind(...args: unknown[]) {
-          values = args;
-          return this;
-        },
-        async run() {
-          return sqlite.prepare(sql).run(...(values as []));
-        },
-        async first() {
-          return sqlite.prepare(sql).get(...(values as [])) ?? null;
-        },
-        async all() {
-          return { results: sqlite.prepare(sql).all(...(values as [])) };
-        },
-      };
-    },
-  };
+  // The real adapter: writes run in data-layer transactions (tx-env.ts).
+  const db = fixtureDb;
   const objects = new Map<string, Uint8Array>();
   const metadata = new Map<
     string,

@@ -3,6 +3,14 @@ import { publishCollaborationEvent } from "../collaboration-events.js";
 import { HttpError, authorizeThreadAccess, json } from "./handlers.js";
 import { authorizeRequest } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
+import { inTransaction } from "../../platform/tx-env.js";
+
+/** Pins of one user and kind are written under a per-user lock (no global
+ * writer lock): positions are computed from the user's current pins. */
+const lockPins = (
+  tx: { lock(scope: string, id: string): Promise<void> },
+  userId: string,
+) => tx.lock("syntila.pins", userId);
 
 /** Pin or unpin a Space or Thread for the caller only. Both operations are
  * idempotent. Other sessions of the same user learn through a
@@ -43,29 +51,32 @@ export async function handleSetPin(
     spaceId = access.spaceId;
   }
   const pinnedAt = new Date().toISOString();
-  const mutation = pinned
-    ? env.SYNTILA_DB.prepare(
-        // A new pin goes to the top of the user's pins of that kind.
-        `INSERT INTO user_pins (user_id, kind, target_id, pinned_at, position)
+  await inTransaction(env, "pin.set", async (txEnv, tx) => {
+    await lockPins(tx, userId);
+    const mutation = pinned
+      ? txEnv.SYNTILA_DB.prepare(
+          // A new pin goes to the top of the user's pins of that kind.
+          `INSERT INTO user_pins (user_id, kind, target_id, pinned_at, position)
          VALUES (?1, ?2, ?3, ?4,
            COALESCE((SELECT MIN(position) FROM user_pins
                       WHERE user_id = ?1 AND kind = ?2), 0) - 1)
          ON CONFLICT DO NOTHING`,
-      ).bind(userId, kind, targetId, pinnedAt)
-    : env.SYNTILA_DB.prepare(
-        `DELETE FROM user_pins WHERE user_id = ?1 AND kind = ?2 AND target_id = ?3`,
-      ).bind(userId, kind, targetId);
-  await publishCollaborationEvent(
-    env,
-    kind === "space" ? "space.updated" : "thread.updated",
-    spaceId,
-    targetId,
-    {
-      ...(kind === "thread" ? { threadId: targetId } : {}),
-      recipientUserIds: [userId],
-      mutations: [mutation],
-    },
-  );
+        ).bind(userId, kind, targetId, pinnedAt)
+      : txEnv.SYNTILA_DB.prepare(
+          `DELETE FROM user_pins WHERE user_id = ?1 AND kind = ?2 AND target_id = ?3`,
+        ).bind(userId, kind, targetId);
+    await publishCollaborationEvent(
+      txEnv,
+      kind === "space" ? "space.updated" : "thread.updated",
+      spaceId,
+      targetId,
+      {
+        ...(kind === "thread" ? { threadId: targetId } : {}),
+        recipientUserIds: [userId],
+        mutations: [mutation],
+      },
+    );
+  });
   return json({ kind, id: targetId, pinned });
 }
 
@@ -105,22 +116,25 @@ export async function handleSetPinOrder(
   );
   const member = await isSpaceMember(env.SYNTILA_DB, spaceId, context.userId);
   if (!member) throw new HttpError(404, "Space not found");
-  const mutations = ids.map((id, index) =>
-    env.SYNTILA_DB.prepare(
-      `UPDATE user_pins SET position = ?1
+  await inTransaction(env, "pin.order", async (txEnv, tx) => {
+    await lockPins(tx, context.userId);
+    const mutations = ids.map((id, index) =>
+      txEnv.SYNTILA_DB.prepare(
+        `UPDATE user_pins SET position = ?1
         WHERE user_id = ?2 AND kind = ?3 AND target_id = ?4`,
-    ).bind(index, context.userId, kind, id),
-  );
-  await publishCollaborationEvent(
-    env,
-    kind === "space" ? "space.updated" : "thread.updated",
-    spaceId,
-    kind === "space" ? spaceId : ids[0]!,
-    {
-      ...(kind === "thread" ? { threadId: ids[0]! } : {}),
-      recipientUserIds: [context.userId],
-      mutations,
-    },
-  );
+      ).bind(index, context.userId, kind, id),
+    );
+    await publishCollaborationEvent(
+      txEnv,
+      kind === "space" ? "space.updated" : "thread.updated",
+      spaceId,
+      kind === "space" ? spaceId : ids[0]!,
+      {
+        ...(kind === "thread" ? { threadId: ids[0]! } : {}),
+        recipientUserIds: [context.userId],
+        mutations,
+      },
+    );
+  });
   return json({ kind, ids });
 }

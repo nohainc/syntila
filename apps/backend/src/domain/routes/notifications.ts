@@ -1,3 +1,4 @@
+import { inTransaction } from "../../platform/tx-env.js";
 import { json, parseJson } from "./handlers.js";
 import { authorizeRequest } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
@@ -90,19 +91,22 @@ export async function handleMarkNotificationsRead(
        JOIN threads t ON t.id = w.thread_id
        JOIN space_memberships m ON m.space_id = t.space_id AND m.user_id = ?1
       WHERE w.status IN ('completed', 'failed')`;
-  const statement =
-    ids === null
-      ? env.SYNTILA_DB.prepare(
-          `INSERT INTO user_notification_reads (user_id, work_request_id, read_at)
+  // One self-contained, conflict-safe statement: no global writer lock.
+  await inTransaction(env, "notifications.read", async (txEnv) => {
+    const statement =
+      ids === null
+        ? txEnv.SYNTILA_DB.prepare(
+            `INSERT INTO user_notification_reads (user_id, work_request_id, read_at)
            SELECT ?1, w.id, ?2 ${scope}
            ON CONFLICT DO NOTHING`,
-        ).bind(context.userId, readAt)
-      : env.SYNTILA_DB.prepare(
-          `INSERT INTO user_notification_reads (user_id, work_request_id, read_at)
+          ).bind(context.userId, readAt)
+        : txEnv.SYNTILA_DB.prepare(
+            `INSERT INTO user_notification_reads (user_id, work_request_id, read_at)
            SELECT ?1, w.id, ?2 ${scope}
               AND w.id IN (SELECT jsonb_array_elements_text(?3::jsonb))
            ON CONFLICT DO NOTHING`,
-        ).bind(context.userId, readAt, JSON.stringify(ids));
-  await statement.run();
+          ).bind(context.userId, readAt, JSON.stringify(ids));
+    await statement.run();
+  });
   return json({ readAt });
 }

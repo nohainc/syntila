@@ -6,6 +6,8 @@ import {
   getAttachmentLimits,
 } from "./account-plan.js";
 
+import { inTransaction, writeAlone } from "../platform/tx-env.js";
+
 /**
  * A reservation outlives the slowest permitted upload (100 MB on a poor
  * connection) but not by much; once expired it counts for nothing.
@@ -44,10 +46,12 @@ export async function loadStorageUsage(
 /**
  * Atomically reserves `sizeBytes` of the uploader's storage for `fileId`.
  *
- * The check and the write are one statement: the row is inserted only when
- * the size is within the uploader's per-file limit and retained bytes, other
- * live reservations and this file all fit the total allowance, so concurrent
- * uploads cannot exceed it. The file's own earlier row/reservation (a retried
+ * The check and the write are one statement, run under a per-user storage
+ * lock: the row is inserted only when the size is within the uploader's
+ * per-file limit and retained bytes, other live reservations and this file
+ * all fit the total allowance. The lock is what keeps concurrent uploads
+ * from both passing the sum (each statement alone would see the other's
+ * reservation only after it committed). The file's own earlier row/reservation (a retried
  * or restarted upload of the same id) is excluded, which makes retries
  * idempotent and keeps a finalization recheck from counting itself twice.
  */
@@ -61,8 +65,10 @@ export async function reserveUpload(
   },
 ): Promise<void> {
   const now = input.now ?? new Date();
-  const row = await env.SYNTILA_DB.prepare(
-    `INSERT INTO user_file_reservations (id, user_id, size_bytes, created_at, expires_at)
+  const row = await inTransaction(env, "files.reserve", async (txEnv, tx) => {
+    await tx.lock("syntila.storage", input.userId);
+    return txEnv.SYNTILA_DB.prepare(
+      `INSERT INTO user_file_reservations (id, user_id, size_bytes, created_at, expires_at)
      SELECT ?1, ?2, ?3, ?4, ?5
       WHERE ?3 <= ${attachmentFileLimitSql("?2")}
         AND (SELECT COALESCE(SUM(size_bytes), 0) FROM user_files
@@ -74,15 +80,16 @@ export async function reserveUpload(
        created_at = excluded.created_at, expires_at = excluded.expires_at
        WHERE user_file_reservations.user_id = excluded.user_id
      RETURNING id`,
-  )
-    .bind(
-      input.fileId,
-      input.userId,
-      input.sizeBytes,
-      now.toISOString(),
-      new Date(now.getTime() + UPLOAD_RESERVATION_TTL_MS).toISOString(),
     )
-    .first<{ id: string }>();
+      .bind(
+        input.fileId,
+        input.userId,
+        input.sizeBytes,
+        now.toISOString(),
+        new Date(now.getTime() + UPLOAD_RESERVATION_TTL_MS).toISOString(),
+      )
+      .first<{ id: string }>();
+  });
   if (row?.id === input.fileId) return;
   // Refused: say which allowance, so "file too large" never reads as "full".
   const limits = await getAttachmentLimits(env, input.userId, now);
@@ -95,12 +102,13 @@ export async function releaseUpload(
   fileId: string,
   userId: string,
 ): Promise<void> {
-  await db
-    .prepare(
-      "DELETE FROM user_file_reservations WHERE id = ?1 AND user_id = ?2",
-    )
-    .bind(fileId, userId)
-    .run();
+  await writeAlone({ SYNTILA_DB: db }, "files.release", (tx) =>
+    tx
+      .prepare(
+        "DELETE FROM user_file_reservations WHERE id = ?1 AND user_id = ?2",
+      )
+      .bind(fileId, userId),
+  );
 }
 
 /** Drops expired reservations (they already count for nothing). */
@@ -108,8 +116,9 @@ export async function sweepExpiredUploadReservations(
   db: D1Database,
   now: Date = new Date(),
 ): Promise<void> {
-  await db
-    .prepare("DELETE FROM user_file_reservations WHERE expires_at <= ?1")
-    .bind(now.toISOString())
-    .run();
+  await writeAlone({ SYNTILA_DB: db }, "files.sweep_reservations", (tx) =>
+    tx
+      .prepare("DELETE FROM user_file_reservations WHERE expires_at <= ?1")
+      .bind(now.toISOString()),
+  );
 }

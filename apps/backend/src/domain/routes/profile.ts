@@ -1,3 +1,4 @@
+import { writeAlone } from "../../platform/tx-env.js";
 import { parseMultipart } from "../../platform/multipart";
 import { getAccountPlan } from "../account-plan.js";
 import { avatarObjectKeys } from "../avatar-storage.js";
@@ -67,7 +68,10 @@ export async function handleUploadAvatar(
   }
   let form: FormData;
   try {
-    form = await parseMultipart(bytes, request.headers.get("content-type") ?? "");
+    form = await parseMultipart(
+      bytes,
+      request.headers.get("content-type") ?? "",
+    );
   } catch {
     throw new HttpError(400, "Upload original and thumbnail image files");
   }
@@ -113,22 +117,33 @@ export async function handleUploadAvatar(
       httpMetadata: { contentType: thumbnail.type },
       customMetadata: { userId: context.userId },
     });
-    const updated = await env.SYNTILA_DB.prepare(
-      "UPDATE users SET avatar_url = ?1, updated_at = ?2 WHERE id = ?3 AND status = 'active' AND avatar_url IS NOT DISTINCT FROM ?4",
-    )
-      .bind(
-        storedValue,
-        new Date().toISOString(),
-        context.userId,
-        old.avatarUrl,
-      )
-      .run();
+    // Compare-and-set on the previous avatar: safe without the writer lock.
+    const updated = await writeAlone(env, "profile.avatar", (db) =>
+      db
+        .prepare(
+          "UPDATE users SET avatar_url = ?1, updated_at = ?2 WHERE id = ?3 AND status = 'active' AND avatar_url IS NOT DISTINCT FROM ?4",
+        )
+        .bind(
+          storedValue,
+          new Date().toISOString(),
+          context.userId,
+          old.avatarUrl,
+        ),
+    );
     if (updated.meta.changes !== 1)
       throw new HttpError(409, "Profile changed; retry the upload");
     await publishPeopleProfileChanged(env, context.userId);
     // The signed-in session (served by the auth Worker) shows the avatar.
-    await (env as { SYNTILA_AUTH_SYNC?: { avatarChanged(userId: string, avatarUrl: string | null): Promise<void> } })
-      .SYNTILA_AUTH_SYNC?.avatarChanged(context.userId, storedValue);
+    await (
+      env as {
+        SYNTILA_AUTH_SYNC?: {
+          avatarChanged(
+            userId: string,
+            avatarUrl: string | null,
+          ): Promise<void>;
+        };
+      }
+    ).SYNTILA_AUTH_SYNC?.avatarChanged(context.userId, storedValue);
   } catch (error) {
     await bucket.delete([key, originalKey]).catch(() => undefined);
     throw error;
@@ -204,15 +219,17 @@ export async function handleReadReceiptPrivacy(
       Object.keys(body).some((key) => key !== "shareReadReceipts")
     )
       throw new HttpError(400, "shareReadReceipts must be true or false");
-    await env.SYNTILA_DB.prepare(
-      "UPDATE users SET share_read_receipts = ?1::int::boolean, updated_at = ?2 WHERE id = ?3",
-    )
-      .bind(
-        body.shareReadReceipts ? 1 : 0,
-        new Date().toISOString(),
-        context.userId,
-      )
-      .run();
+    await writeAlone(env, "profile.read_receipts", (db) =>
+      db
+        .prepare(
+          "UPDATE users SET share_read_receipts = ?1::int::boolean, updated_at = ?2 WHERE id = ?3",
+        )
+        .bind(
+          body.shareReadReceipts ? 1 : 0,
+          new Date().toISOString(),
+          context.userId,
+        ),
+    );
     return json({ shareReadReceipts: body.shareReadReceipts });
   }
   if (request.method !== "GET") throw new HttpError(405, "Unsupported method");

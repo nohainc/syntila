@@ -7,6 +7,8 @@ import {
   type RealtimeEventPayload,
 } from "@syntila/protocol";
 
+import { afterCommit, inOpenTransaction, rootEnv } from "../platform/tx-env.js";
+
 export interface EventPublisherEnv {
   readonly SYNTILA_DB: D1Database;
   readonly SYNTILA_REALTIME_GATEWAY?: DurableObjectNamespace;
@@ -125,6 +127,14 @@ export class CloudEventPublisher implements EventPublisher {
       });
     }
 
+    // Inside a data-layer transaction the event row commits with the domain
+    // writes; subscribers hear about it only after that commit.
+    if (inOpenTransaction(this.env)) {
+      const root = new CloudEventPublisher(rootEnv(this.env));
+      afterCommit(this.env, () =>
+        root.fanout(event, input.recipientUserIds, input.additionalRecipientUserIds));
+      return { event, persisted, deliveredSubscribers: 0 };
+    }
     const deliveredSubscribers = await this.fanout(
       event,
       input.recipientUserIds,

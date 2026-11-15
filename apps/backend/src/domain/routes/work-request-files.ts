@@ -1,3 +1,4 @@
+import { inTransaction } from "../../platform/tx-env.js";
 import { computePackageDigest } from "@syntila/security";
 import { HttpError } from "./http-security.js";
 import { artifactName, authorizeThreadAccess, json } from "./handlers.js";
@@ -366,8 +367,9 @@ export async function storeWorkRequestFile(
       userId: input.userId,
       sizeBytes: stored.size,
     });
-    await env.SYNTILA_DB.batch([
-      env.SYNTILA_DB.prepare(
+    // The reservation becomes the file in one transaction (quota-neutral).
+    await inTransaction(env, "files.finalize", (txEnv) => txEnv.SYNTILA_DB.batch([
+      txEnv.SYNTILA_DB.prepare(
         `INSERT INTO user_files
           (id, user_id, thread_id, space_id, name, media_type, size_bytes, created_at)
           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -384,10 +386,10 @@ export async function storeWorkRequestFile(
         stored.size,
         new Date().toISOString(),
       ),
-      env.SYNTILA_DB.prepare(
+      txEnv.SYNTILA_DB.prepare(
         "DELETE FROM user_file_reservations WHERE id = ?1 AND user_id = ?2",
       ).bind(input.fileId, input.userId),
-    ]);
+    ]));
     return {
       digest,
       sizeBytes: stored.size,

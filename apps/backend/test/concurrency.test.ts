@@ -169,3 +169,19 @@ describe("first requests of a new user", () => {
     expect(row.n).toBe(5);
   });
 });
+
+describe("storage quota", () => {
+  test("parallel upload reservations never exceed the allowance", async () => {
+    const { reserveUpload } = await import("../src/domain/attachment-storage");
+    await sql`INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('conc-quota', 'q@test', 'q', now(), now())`;
+    // 980 MB used of the free 1 GB: room for exactly two 10 MB uploads.
+    await sql`INSERT INTO user_files (id, user_id, name, media_type, size_bytes, created_at)
+              VALUES ('wrf-used', 'conc-quota', 'big', 'application/octet-stream', 980000000, now())`;
+    const env = { SYNTILA_DB: new PgD1Database(sql, { writerLock: false }) } as any;
+    const results = await Promise.allSettled(Array.from({ length: 10 }, (_, i) =>
+      reserveUpload(env, { fileId: `wrf-q${i}`, userId: "conc-quota", sizeBytes: 10_000_000 })));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    const [row] = await sql`SELECT COALESCE(sum(size_bytes), 0)::int8 AS reserved FROM user_file_reservations WHERE user_id = 'conc-quota'`;
+    expect(Number(row.reserved)).toBe(20_000_000);
+  });
+});

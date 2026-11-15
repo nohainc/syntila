@@ -168,6 +168,15 @@ interface ParamKinds { json: number[]; bool: number[] }
 const NO_KINDS: ParamKinds = { json: [], bool: [] };
 let describeCounter = 0;
 
+function kindsOf(types: string[]): ParamKinds {
+  const kinds: ParamKinds = { json: [], bool: [] };
+  types.forEach((type, i) => {
+    if (type === "jsonb" || type === "json") kinds.json.push(i);
+    else if (type === "boolean") kinds.bool.push(i);
+  });
+  return kinds;
+}
+
 /**
  * Adapts D1-style values to PostgreSQL parameter types:
  *  - a JSON *string* bound to a json/jsonb parameter is parsed first (the
@@ -263,15 +272,40 @@ export class PgD1Database {
    * boolean. Done once per statement text (PREPARE on a spare connection,
    * never executed) and cached for the life of the process.
    */
-  private paramKinds(text: string): Promise<ParamKinds> {
+  private paramKinds(text: string, tx?: Sql): Promise<ParamKinds> {
     if (!text.includes("$")) return Promise.resolve(NO_KINDS);
     let known = this.kinds.get(text);
     if (!known) {
       if (this.kinds.size > 5000) this.kinds.clear();
-      known = this.describe(text);
+      known = tx ? this.describeWithin(text, tx) : this.describe(text);
       this.kinds.set(text, known);
     }
     return known;
+  }
+
+  /**
+   * The same probe on a transaction's own connection, inside a savepoint.
+   * A transaction must never wait for a second pool connection: with every
+   * connection held by transactions waiting on each other's locks, that wait
+   * would never end (pool exhaustion deadlock).
+   */
+  private async describeWithin(text: string, tx: Sql): Promise<ParamKinds> {
+    const name = `syntila_describe_${process.pid}_${++describeCounter}`;
+    await tx.unsafe("SAVEPOINT syntila_describe");
+    try {
+      await tx.unsafe(`PREPARE ${name} AS ${text}`);
+      const rows: { types: string[] }[] = await tx.unsafe(
+        "SELECT parameter_types::text[] AS types FROM pg_prepared_statements WHERE name = $1", [name]);
+      await tx.unsafe(`DEALLOCATE ${name}`);
+      await tx.unsafe("RELEASE SAVEPOINT syntila_describe");
+      return kindsOf(rows[0]?.types ?? []);
+    } catch {
+      // Any further error would abort the transaction: only clean up what exists.
+      await tx.unsafe("ROLLBACK TO SAVEPOINT syntila_describe");
+      const left = await tx.unsafe("SELECT 1 FROM pg_prepared_statements WHERE name = $1", [name]);
+      if (left.length) await tx.unsafe(`DEALLOCATE ${name}`);
+      return NO_KINDS;
+    }
   }
 
   private async describe(text: string): Promise<ParamKinds> {
@@ -281,13 +315,7 @@ export class PgD1Database {
       await conn.unsafe(`PREPARE ${name} AS ${text}`);
       const rows: { types: string[] }[] = await conn.unsafe(
         "SELECT parameter_types::text[] AS types FROM pg_prepared_statements WHERE name = $1", [name]);
-      const types = rows[0]?.types ?? [];
-      const kinds: ParamKinds = { json: [], bool: [] };
-      types.forEach((type, i) => {
-        if (type === "jsonb" || type === "json") kinds.json.push(i);
-        else if (type === "boolean") kinds.bool.push(i);
-      });
-      return kinds;
+      return kindsOf(rows[0]?.types ?? []);
     } catch {
       // Not preparable as written (the real execution reports why).
       return NO_KINDS;
@@ -301,10 +329,21 @@ export class PgD1Database {
     return new PgD1PreparedStatement(this, query);
   }
 
+  /**
+   * The adapter's statement API inside an open data-layer transaction
+   * (`src/platform/tx-env.ts`): statements and batches run on that
+   * transaction's connection, without the global writer lock and without a
+   * transaction of their own. Lets existing helpers join a transaction while
+   * their module moves to the data layer.
+   */
+  within(tx: Sql): PgD1Database {
+    return new PgD1TxDatabase(this, tx);
+  }
+
   /** @internal */
   async execute<T>(stmt: PgD1PreparedStatement, tx?: Sql): Promise<D1Result<T>> {
     const text = translatePlaceholders(stmt.sql);
-    const values = stmt.values.length ? coerceValues(stmt.values, await this.paramKinds(text)) : stmt.values;
+    const values = stmt.values.length ? coerceValues(stmt.values, await this.paramKinds(text, tx)) : stmt.values;
     const started = performance.now();
     const runOn = (conn: Sql) => conn.unsafe(text, values as Value[]);
     let result: any;
@@ -411,4 +450,26 @@ function toResult<T>(result: any, duration: number): D1Result<T> {
     results: rows,
     meta: { changes, rows_read: rows.length, rows_written: changes, duration, last_row_id: null },
   };
+}
+
+/** See `PgD1Database.within`. */
+class PgD1TxDatabase extends PgD1Database {
+  constructor(private readonly base: PgD1Database, private readonly tx: Sql) {
+    super(base.sql, { writerLock: false });
+  }
+
+  override execute<T>(stmt: PgD1PreparedStatement): Promise<D1Result<T>> {
+    return this.base.execute<T>(stmt, this.tx);
+  }
+
+  /** Already inside a transaction: the statements run in order on it. */
+  override async batch<T = Record<string, unknown>>(statements: PgD1PreparedStatement[]): Promise<D1Result<T>[]> {
+    const out: D1Result<T>[] = [];
+    for (const statement of statements) out.push(await this.base.execute<T>(statement, this.tx));
+    return out;
+  }
+
+  override within(tx: Sql): PgD1Database {
+    return tx === this.tx ? this : this.base.within(tx);
+  }
 }

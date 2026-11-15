@@ -1,4 +1,11 @@
-import { afterCursorSql, cursorOrderSql, decodeCursor, encodeCursor, type PagePosition } from "./pagination.js";
+import { writeAlone } from "../../platform/tx-env.js";
+import {
+  afterCursorSql,
+  cursorOrderSql,
+  decodeCursor,
+  encodeCursor,
+  type PagePosition,
+} from "./pagination.js";
 import { HttpError, json } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 import { authorizeRequest } from "./http-security.js";
@@ -69,7 +76,10 @@ export async function handleListUserFiles(
     })),
     nextCursor:
       results.length > PAGE_SIZE
-        ? encodeCursor({ at: String(page.at(-1)!.createdAt), id: String(page.at(-1)!.fileId) })
+        ? encodeCursor({
+            at: String(page.at(-1)!.createdAt),
+            id: String(page.at(-1)!.fileId),
+          })
         : null,
     usage: await userStorageUsage(env, context.userId),
   });
@@ -148,9 +158,11 @@ export async function handleDeleteUserFile(
     .first();
   if (!owned) throw new HttpError(404, "File not found");
   await deleteFileObjects(env, [fileId]);
-  await env.SYNTILA_DB.prepare(`DELETE FROM user_files WHERE id = ?1`)
-    .bind(fileId)
-    .run();
+  await writeAlone(env, "files.delete", (db) =>
+    db
+      .prepare(`DELETE FROM user_files WHERE id = ?1 AND user_id = ?2`)
+      .bind(fileId, context.userId),
+  );
   return json({ usage: await userStorageUsage(env, context.userId) });
 }
 
@@ -199,25 +211,27 @@ export async function handleSyncUserFiles(
       )
         .bind(meta.threadId)
         .first<{ space_id: string }>();
-      await env.SYNTILA_DB.prepare(
-        `INSERT INTO user_files
+      await writeAlone(env, "files.sync_import", (db) =>
+        db
+          .prepare(
+            `INSERT INTO user_files
         (id, user_id, thread_id, space_id, name, media_type, size_bytes, created_at)
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         ON CONFLICT(id) DO UPDATE SET name = excluded.name,
           media_type = excluded.media_type, size_bytes = excluded.size_bytes
         WHERE user_files.user_id = excluded.user_id`,
-      )
-        .bind(
-          id,
-          context.userId,
-          meta.threadId,
-          thread?.space_id ?? null,
-          meta.name || "Attachment",
-          object.httpMetadata?.contentType || "application/octet-stream",
-          object.size,
-          object.uploaded.toISOString(),
-        )
-        .run();
+          )
+          .bind(
+            id,
+            context.userId,
+            meta.threadId,
+            thread?.space_id ?? null,
+            meta.name || "Attachment",
+            object.httpMetadata?.contentType || "application/octet-stream",
+            object.size,
+            object.uploaded.toISOString(),
+          ),
+      );
     }
     next = page.truncated
       ? { phase, cursor: page.cursor }
@@ -232,17 +246,19 @@ export async function handleSyncUserFiles(
     for (const row of page.results) {
       const object = await bucket.head(workRequestFileKey(row.id));
       if (!object) {
-        await env.SYNTILA_DB.prepare(
-          "DELETE FROM user_files WHERE id = ?1 AND user_id = ?2",
-        )
-          .bind(row.id, context.userId)
-          .run();
+        await writeAlone(env, "files.sync_drop", (db) =>
+          db
+            .prepare("DELETE FROM user_files WHERE id = ?1 AND user_id = ?2")
+            .bind(row.id, context.userId),
+        );
       } else if (object.customMetadata?.userId === context.userId) {
-        await env.SYNTILA_DB.prepare(
-          "UPDATE user_files SET size_bytes = ?1 WHERE id = ?2 AND user_id = ?3",
-        )
-          .bind(object.size, row.id, context.userId)
-          .run();
+        await writeAlone(env, "files.sync_size", (db) =>
+          db
+            .prepare(
+              "UPDATE user_files SET size_bytes = ?1 WHERE id = ?2 AND user_id = ?3",
+            )
+            .bind(object.size, row.id, context.userId),
+        );
       }
     }
     if (page.results.length === 50)
@@ -263,14 +279,23 @@ export async function pruneOrphanUserFiles(
   )
     .bind(cutoff, ORPHAN_BATCH)
     .all<{ id: string }>();
-  const ids = (rows.results ?? []).map((row) => row.id);
-  if (ids.length === 0) return 0;
-  await deleteFileObjects(env, ids);
-  await env.SYNTILA_DB.prepare(
-    `DELETE FROM user_files WHERE id IN (SELECT jsonb_array_elements_text(?1::jsonb))`,
-  )
-    .bind(JSON.stringify(ids))
-    .run();
+  const candidates = (rows.results ?? []).map((row) => row.id);
+  if (candidates.length === 0) return 0;
+  // Rows first, re-checking the rule in the same statement: a file attached
+  // since the read above stays. Only the bytes of rows actually removed are
+  // deleted (the old order could delete the bytes of a file just attached).
+  const removed = await writeAlone(env, "files.prune_orphans", (db) =>
+    db
+      .prepare(
+        `DELETE FROM user_files f
+          WHERE f.id IN (SELECT jsonb_array_elements_text(?1::jsonb))
+            AND f.created_at < ?2 AND NOT ${FILE_REFERENCED}
+         RETURNING f.id`,
+      )
+      .bind(JSON.stringify(candidates), cutoff),
+  );
+  const ids = (removed.results as { id: string }[]).map((row) => row.id);
+  if (ids.length) await deleteFileObjects(env, ids);
   return ids.length;
 }
 
