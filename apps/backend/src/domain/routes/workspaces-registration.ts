@@ -1,3 +1,4 @@
+import { lockStatement } from "../../platform/tx-env.js";
 import { activeRuntimeIdentityCount } from "../queries.js";
 import { DESKTOP_WORKSPACE_AUDIENCE, hashToken } from "@syntila/security";
 
@@ -1055,10 +1056,16 @@ export async function handleRegisterWorkspaceFromDesktop(
     ),
   );
   try {
-    const results = await env.SYNTILA_DB.batch(statements);
+    // A new Workspace counts against the owner's allowance: one admission at
+    // a time per owner, or two parallel registrations could both fit.
+    const results = await env.SYNTILA_DB.batch(
+      existing
+        ? statements
+        : [lockStatement(env.SYNTILA_DB, "syntila.workspaces_of", session.userId), ...statements],
+    );
     if (!existing) {
-      // The Workspace INSERT is always the first statement.
-      if ((results[0]?.meta?.changes ?? 0) !== 1) {
+      // The Workspace INSERT is the first statement after the lock.
+      if ((results[1]?.meta?.changes ?? 0) !== 1) {
         const limit = new PersonalWorkspaceLimitError();
         return json(
           { error: limit.message, code: limit.code },

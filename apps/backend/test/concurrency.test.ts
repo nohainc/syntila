@@ -23,7 +23,7 @@ export async function brokenInvariants(sql: Sql): Promise<string[]> {
   return rows.filter((r) => Number(r.violations) > 0).map((r) => `${r.invariant}: ${r.violations}`);
 }
 
-let sql: Sql, base = "", stop = async () => {}, mint: (sub: string) => Promise<string>;
+let sql: Sql, base = "", stop = async () => {}, mint: (sub: string, extra?: Record<string, unknown>) => Promise<string>;
 beforeAll(async () => {
   const db = pgD1({ writerLock: false, max: 24 });
   sql = db.sql;
@@ -32,7 +32,7 @@ beforeAll(async () => {
   const priv = { ...(await crypto.subtle.exportKey("jwk", pair.privateKey)), kid: "k" } as JsonWebKey & { kid: string };
   configureIdentityVerifier(new TokenVerifier([pub], "https://syntila.app", "syntila-backend"));
   const now = Math.floor(Date.now() / 1000);
-  mint = (sub) => signToken(priv, { iss: "https://syntila.app", aud: "syntila-backend", sub, typ: "user", email: `${sub}@test`, name: sub, iat: now, exp: now + 600, sid: `s-${sub}`, client: "web" });
+  mint = (sub, extra = {}) => signToken(priv, { iss: "https://syntila.app", aud: "syntila-backend", sub, typ: "user", email: `${sub}@test`, name: sub, iat: now, exp: now + 600, sid: `s-${sub}`, client: "web", ...extra });
   const runtime = createRuntime(sql, new PgD1Database(sql, { writerLock: false }), {
     SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app",
     SYNTILA_RATE_LIMIT_PER_MINUTE: "0", SYNTILA_MUTATION_RATE_LIMIT_PER_MINUTE: "0",
@@ -183,5 +183,39 @@ describe("storage quota", () => {
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
     const [row] = await sql`SELECT COALESCE(sum(size_bytes), 0)::int8 AS reserved FROM user_file_reservations WHERE user_id = 'conc-quota'`;
     expect(Number(row.reserved)).toBe(20_000_000);
+  });
+});
+
+describe("plan limits", () => {
+  test("parallel invitations never take more than the free member slots of a Space", async () => {
+    const token = await mint("conc-owner");
+    const space = await call(token, "POST", "/api/spaces", { name: "Limits" });
+    expect(space.status).toBe(201);
+    const spaceId = space.body.space.id;
+    // Free: 4 people including the owner, so 3 invitations fit.
+    const results = await Promise.all(Array.from({ length: 10 }, (_, i) =>
+      call(token, "POST", `/api/spaces/${spaceId}/invitations`, { email: `invitee-${i}@test`, role: "collaborator" })));
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((s) => s === 201)).toHaveLength(3);
+    expect(statuses.filter((s) => s !== 201 && s !== 402)).toEqual([]);
+    const [row] = await sql`SELECT count(*)::int AS n FROM space_invitations WHERE space_id = ${spaceId} AND status = 'pending'`;
+    expect(row.n).toBe(3);
+  });
+
+  test("parallel Workspace registrations never exceed the free Workspace allowance", async () => {
+    const desktop = await mint("conc-ws", { client: "desktop", client_aud: "syntila.desktop.management" });
+    const register = (i: number) => fetch(`${base}/api/workspace-runtime/register`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${desktop}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        contractVersion: "1.0", installationId: `install_${crypto.randomUUID()}`, proposedWorkspaceName: `Mac ${i}`,
+        hostname: `mac-${i}`, platform: "macos", architecture: "arm64", appVersion: "1.0.0",
+        runtimeCapabilities: { os: "macos", arch: "arm64", appVersion: "1.0.0", supportedRuntimes: ["cli"], maxConcurrentWorkers: 2 },
+      }),
+    }).then((r) => r.status);
+    const statuses = await Promise.all(Array.from({ length: 6 }, (_, i) => register(i)));
+    expect(statuses.filter((s) => s < 300)).toHaveLength(1);
+    const [row] = await sql`SELECT count(*)::int AS n FROM execution_workspaces WHERE owner_user_id = 'conc-ws' AND status <> 'revoked'`;
+    expect(row.n).toBe(1);
   });
 });

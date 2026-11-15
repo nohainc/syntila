@@ -1,3 +1,4 @@
+import { inTransaction } from "../platform/tx-env.js";
 import { assignmentProgress, assignmentStatus } from "./queries.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
 import { createHash } from "node:crypto";
@@ -452,7 +453,12 @@ async function dispatchWorkspaceWorkerAssignment(
       sessionKey,
     ),
   };
-  const insertion = await env.SYNTILA_DB.prepare(
+  // The Free concurrency limit counts the requester's live assignments:
+  // admissions of one requester run one at a time (lock first, same
+  // transaction), or two parallel dispatches could both take the last slot.
+  const insertion = await inTransaction(env, "assignment.admit", async (txEnv, tx) => {
+    await tx.lock("syntila.execution_slots", task.requestedByUserId ?? "");
+    return txEnv.SYNTILA_DB.prepare(
     `INSERT INTO worker_assignments
        (id, space_id, execution_workspace_id, workspace_space_grant_id,
         run_id, task_id, attempt_id, requested_by_user_id, runtime_identity_id,
@@ -493,6 +499,7 @@ async function dispatchWorkspaceWorkerAssignment(
       waiterCutoff(),
     )
     .first<{ id: string }>();
+  });
   // D1 meta.changes includes writes made by triggers. Only the row returned
   // by this INSERT proves admission; an ignored/rejected insert returns none.
   if (

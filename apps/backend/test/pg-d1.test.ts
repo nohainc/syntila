@@ -7,7 +7,7 @@ let sql: InstanceType<typeof SQL>;
 let db: PgD1Database;
 beforeAll(async () => {
   sql = pgD1().sql;
-  db = new PgD1Database(sql);
+  db = new PgD1Database(sql, { writerLock: true }); // these tests describe the lock itself
   await sql.unsafe(`DROP TABLE IF EXISTS d1t_child, d1t;
     CREATE TABLE d1t (id text PRIMARY KEY, n bigint NOT NULL DEFAULT 0, flag smallint NOT NULL DEFAULT 0 CHECK (flag IN (0,1)),
       at timestamptz, body text, data bytea);

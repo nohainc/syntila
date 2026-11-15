@@ -6,10 +6,10 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **numbering**: `MAX(...) + 1` numbering; races once writes run in parallel.
 - **read-write**: the function reads before it writes (check-then-act); needs a row lock or a constraint.
 - **guarded**: every write carries its own condition (`NOT EXISTS`, `ON CONFLICT`, a status/version check).
-- **lock**: writes through the adapter outside a data-layer transaction, so it still takes the global writer lock.
+- **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; the global writer lock applies only with SYNTILA_DB_WRITER_LOCK=on).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 136 still on the global lock, 21 in data-layer transactions.
+Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 134 adapter-only, 23 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -95,7 +95,7 @@ Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 136 st
 | `domain/routes/space-additional-folders.ts` | `handleSpaceAdditionalFolders` | DELETE space_additional_folders, INSERT space_additional_folders | batch, lock |
 | `domain/routes/spaces.ts` | `handleAcceptSpaceInvitation` | INSERT space_audit_log, INSERT space_memberships, UPDATE space_invitations, UPDATE spaces | read-write, batch, lock |
 | `domain/routes/spaces.ts` | `handleChangeSpaceMemberRole` | INSERT space_audit_log, UPDATE space_memberships, UPDATE spaces | batch, lock |
-| `domain/routes/spaces.ts` | `handleCreateSpace` | INSERT space_memberships, INSERT space_workflow_settings, INSERT spaces | read-write, lock |
+| `domain/routes/spaces.ts` | `handleCreateSpace` | INSERT space_memberships, INSERT space_workflow_settings, INSERT spaces | read-write, data |
 | `domain/routes/spaces.ts` | `handleCreateSpaceInvitation` | UPDATE space_invitations | read-write, guarded, lock |
 | `domain/routes/spaces.ts` | `handleDeclineSpaceInvitation` | INSERT space_audit_log, UPDATE space_invitations, UPDATE spaces | read-write, batch, lock |
 | `domain/routes/spaces.ts` | `handleDeleteSpace` | DELETE spaces | read-write, lock |
@@ -159,7 +159,7 @@ Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 136 st
 | --- | --- | --- | --- |
 | `domain/assignment-delivery.ts` | `recordCloudQueueNotReady` | UPDATE worker_assignments | guarded, lock |
 | `domain/assignment-delivery.ts` | `recordCloudQueueReason` | UPDATE worker_assignments | guarded, lock |
-| `domain/assignment-dispatcher.ts` | `dispatchWorkspaceWorkerAssignment` | INSERT worker_assignments, UPDATE worker_assignments | read-write, lock |
+| `domain/assignment-dispatcher.ts` | `dispatchWorkspaceWorkerAssignment` | INSERT worker_assignments, UPDATE worker_assignments | read-write, data |
 | `domain/assignment-dispatcher.ts` | `recordAssignmentCancelled` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, lock |
 | `domain/assignment-dispatcher.ts` | `recordAssignmentError` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, lock |
 | `domain/assignment-dispatcher.ts` | `recordAssignmentResult` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, lock |

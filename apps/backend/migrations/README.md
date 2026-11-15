@@ -61,8 +61,9 @@ createdb syntila_lock && PGDATABASE=syntila_lock bun run migrate \
 
 ## Writes that run in parallel
 
-The backend is moving off its global writer lock (project doc
-`claude/concurrency-plan.md`). Schema rules that keep parallel writes correct:
+The backend runs without a global writer lock (project doc
+`claude/concurrency-plan.md`; `SYNTILA_DB_WRITER_LOCK=on` is the emergency
+fallback). Rules that keep parallel writes correct:
 
 - **Every invariant is a constraint.** If two rows must never coexist, add a
   unique (or partial unique) index; a race then fails loudly instead of
@@ -73,8 +74,15 @@ The backend is moving off its global writer lock (project doc
   must call it.
 - **Positions in a Thread's request queue** are taken only through
   `src/domain/routes/queue-positions.ts` (a per-Thread lock, then SQL).
-- Prove a new write path with a scenario in `test/concurrency.test.ts`, which
-  runs without the writer lock.
+- **A write whose condition counts or sums other rows** (plan limits,
+  quotas) takes a lock on what it counts first, in the same transaction:
+  `tx.lock(scope, id)` or `lockStatement(db, scope, id)` as the first
+  statement of a batch (`src/platform/tx-env.ts`). Existing scopes:
+  `syntila.space_members`, `syntila.workspaces_of`, `syntila.execution_slots`,
+  `syntila.storage`, `syntila.spaces_of`, `syntila.pins`, `syntila.user`,
+  `syntila.queue`.
+- Prove a new write path with a scenario in `test/concurrency.test.ts`, run
+  it many times, and check it fails without the lock it relies on.
 
 ## Commands
 

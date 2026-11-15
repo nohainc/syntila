@@ -1,3 +1,4 @@
+import { inTransaction, lockStatement } from "../../platform/tx-env.js";
 import { afterCursorSql, cursorOrderSql, pageOf, pageRequest } from "./pagination.js";
 import { CreateSpaceSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
@@ -260,7 +261,10 @@ export async function handleCreateSpace(
   const now = new Date().toISOString();
   const id = `space-${crypto.randomUUID()}`;
 
-  {
+  // Per-owner lock: the duplicate-name check and the insert cannot interleave
+  // with another create by the same person.
+  return inTransaction(env, "space.create", async (env, tx) => {
+    await tx.lock("syntila.spaces_of", context.userId);
     const duplicate = await env.SYNTILA_DB.prepare(
       `SELECT id FROM spaces
        WHERE owner_user_id = ?1 AND LOWER(TRIM(name)) = LOWER(TRIM(?2))
@@ -325,7 +329,7 @@ export async function handleCreateSpace(
       },
       { status: 201 },
     );
-  }
+  });
 }
 
 export async function handleGetSpace(
@@ -1125,6 +1129,9 @@ export async function handleCreateSpaceInvitation(
     // The stored replay omits the secret token; it is shown only once.
     const write = (receipts: D1PreparedStatement[]) =>
       env.SYNTILA_DB.batch([
+        // The member limit counts members and pending invitations: one
+        // admission at a time per Space, or two could take the last slot.
+        lockStatement(env.SYNTILA_DB, "syntila.space_members", spaceId),
         ...receipts,
         env.SYNTILA_DB.prepare(
           // A refused reservation writes a NULL into the NOT NULL token_hash,
@@ -1548,6 +1555,7 @@ export async function handleAcceptSpaceInvitation(
   let acceptance;
   try {
     acceptance = await env.SYNTILA_DB.batch([
+      lockStatement(env.SYNTILA_DB, "syntila.space_members", invitation.spaceId),
       env.SYNTILA_DB.prepare(
         `UPDATE space_invitations SET status = CASE WHEN ${spaceMemberAdmissionSql("?4", "?3")} THEN 'accepted' ELSE NULL END, invitee_user_id = COALESCE(invitee_user_id, ?1), accepted_by_user_id = ?1, accepted_at = ?2, updated_at = ?2 WHERE id = ?3 AND status = 'pending' AND expires_at > ?2`,
       ).bind(context.userId, now, invitation.id, invitation.spaceId),
@@ -1593,7 +1601,7 @@ export async function handleAcceptSpaceInvitation(
       throw new SpaceMemberLimitError("member");
     throw error;
   }
-  if (acceptance[0]?.meta?.changes === 0)
+  if (acceptance[1]?.meta?.changes === 0)
     throw new HttpError(409, "Invitation changed before acceptance");
   await publishCollaborationEvent(
     env,

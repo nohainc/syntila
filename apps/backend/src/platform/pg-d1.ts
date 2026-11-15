@@ -253,8 +253,10 @@ export class PgD1PreparedStatement {
 export interface PgD1Options {
   /**
    * Take the global writer lock before every write (D1's single-writer model).
-   * Default on. Off only in the concurrency tests, which prove which write
-   * paths are already safe without it (claude/concurrency-plan.md).
+   * Default off since the concurrency plan's audit (claude/concurrency-plan.md):
+   * every write that depends on other rows locks exactly what it needs.
+   * The server can turn it back on with SYNTILA_DB_WRITER_LOCK=on as an
+   * emergency fallback, without a deploy.
    */
   writerLock?: boolean;
 }
@@ -262,7 +264,7 @@ export interface PgD1Options {
 export class PgD1Database {
   readonly writerLock: boolean;
   constructor(readonly sql: Sql, options: PgD1Options = {}) {
-    this.writerLock = options.writerLock ?? true;
+    this.writerLock = options.writerLock ?? false;
   }
 
   private readonly kinds = new Map<string, Promise<ParamKinds>>();
