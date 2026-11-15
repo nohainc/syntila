@@ -1,0 +1,36 @@
+---
+import Container from "../components/Container.astro";
+import Section from "../components/Section.astro";
+import SectionHeader from "../components/SectionHeader.astro";
+import SiteLayout from "../layouts/SiteLayout.astro";
+---
+
+<SiteLayout title="Refund Policy — Syntila" description="How to request a refund or cancel a Syntila Plus subscription.">
+  <Section>
+    <Container>
+      <SectionHeader eyebrow="Refunds" title="Refund Policy" description="Refunds and cancellation for Syntila Plus subscriptions." headingLevel={1} />
+      <div class="legal-layout section-block-gap">
+        <nav class="legal-toc" aria-label="On this page">
+          <span class="legal-toc__title">Contents</span>
+          <ul>
+            <li><a href="#first-payment">First payment</a></li>
+            <li><a href="#cancellation">Cancellation</a></li>
+            <li><a href="#other-requests">Other requests</a></li>
+            <li><a href="#other-purchases">Other purchases</a></li>
+          </ul>
+        </nav>
+        <div class="legal-content">
+          <h2 id="first-payment">First payment</h2>
+          <p>You may request a full refund of your first Syntila Plus payment within 14 days of purchase. Contact us at <a href="mailto:syntila@nohainc.com">syntila@nohainc.com</a> and include the email address used for the purchase and, if available, your order number.</p>
+          <h2 id="cancellation">Cancellation</h2>
+          <p>You can cancel your subscription at any time. Cancellation stops future renewals; your Plus access continues until the end of the paid billing period unless a refund or another applicable rule ends it earlier.</p>
+          <h2 id="other-requests">Other refund requests</h2>
+          <p>For renewal payments, accidental purchases, duplicate charges, or other payment problems, contact us and we will review your request. This policy does not limit any rights you have under applicable consumer law.</p>
+          <p>If you purchased through Paddle, you may also request help with your order or a refund through <a href="https://paddle.net/">Paddle's order support</a>.</p>
+          <h2 id="other-purchases">App stores and AI providers</h2>
+          <p>Purchases made through an app store may be subject to that store's payment and refund process. Charges from third-party AI providers are separate from Syntila Plus and are handled under those providers' terms.</p>
+        </div>
+      </div>
+    </Container>
+  </Section>
+</SiteLayout>

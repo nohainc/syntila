@@ -9,6 +9,7 @@ const routes = new Map([
   ["/security/", "security/index.html"],
   ["/privacy/", "privacy/index.html"],
   ["/terms/", "terms/index.html"],
+  ["/refunds/", "refunds/index.html"],
   ["/downloads/", "downloads/index.html"],
   ["/faq/", "faq/index.html"],
 ]);
@@ -28,6 +29,11 @@ function decodeHtml(str) {
 
 /** @type {Record<string, {title: string, heading: string, content: string[]}>} */
 const expected = {
+  "/refunds/": {
+    title: "Refund Policy — Syntila",
+    heading: "Refund Policy",
+    content: ["14 days", "Cancellation", "Paddle"],
+  },
   "/": {
     title: "Syntila — Bring your projects, people, and AI together",
     heading: "Bring your projects, people, and AI together.",
