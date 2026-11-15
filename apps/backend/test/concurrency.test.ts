@@ -157,3 +157,15 @@ describe("HTTP write paths without the writer lock", () => {
     expect(row.revision).toBe(revision + 1);
   });
 });
+
+describe("first requests of a new user", () => {
+  test("many parallel first requests provision the user once, without errors", async () => {
+    for (let round = 0; round < 5; round++) {
+      const token = await mint(`conc-new-${round}`);
+      const results = await Promise.all(Array.from({ length: 12 }, () => call(token, "GET", "/api/spaces")));
+      expect(results.map((r) => r.status).filter((s) => s !== 200)).toEqual([]);
+    }
+    const [row] = await sql`SELECT count(*)::int AS n FROM users WHERE id LIKE 'conc-new-%'`;
+    expect(row.n).toBe(5);
+  });
+});
