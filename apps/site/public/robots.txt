@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://conclaveax.com/sitemap.xml
+Sitemap: https://syntila.app/sitemap.xml

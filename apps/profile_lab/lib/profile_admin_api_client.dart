@@ -27,6 +27,7 @@ class ProfileAdminApiClient {
   /// The admin API runs on the backend; `baseUrl` is the auth Worker origin
   /// (sign-in). Unknown origins are treated as a single-origin deployment.
   static const _backendOrigins = {
+    'https://app.syntila.app': 'https://api.syntila.app',
     'https://syntila.app': 'https://api.syntila.app',
     'http://localhost:8787': 'http://localhost:8788',
     'http://127.0.0.1:8787': 'http://127.0.0.1:8788',

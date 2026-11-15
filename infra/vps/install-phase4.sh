@@ -35,7 +35,7 @@ bash "$stage/vps/install-phase3.sh"
 
 echo '== Production auth keys'
 install -m 0600 -o root -g root "$stage/vps/auth-public-keys.json" /etc/syntila/auth-public-keys
-sed -i 's#^AUTH_JWT_ISSUER=.*#AUTH_JWT_ISSUER=https://syntila.app#; s#^ALLOWED_ORIGINS=.*#ALLOWED_ORIGINS=https://syntila.app#' /etc/syntila/backend.env
+sed -i 's#^AUTH_JWT_ISSUER=.*#AUTH_JWT_ISSUER=https://syntila.app#; s#^ALLOWED_ORIGINS=.*#ALLOWED_ORIGINS=https://syntila.app,https://app.syntila.app#' /etc/syntila/backend.env
 if [ -d /home/syntila/dev-auth ]; then
   shred -u /home/syntila/dev-auth/* 2>/dev/null || rm -f /home/syntila/dev-auth/*
   rmdir /home/syntila/dev-auth

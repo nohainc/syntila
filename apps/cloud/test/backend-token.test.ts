@@ -54,6 +54,20 @@ describe("backend tokens", () => {
     expect(await crypto.subtle.verify({ name: "Ed25519" }, publicKey, sig, new TextEncoder().encode(input))).toBe(true);
   });
 
+  it("preserves the configured backend issuer when the web origin changes", async () => {
+    const { secret, publicKey } = await keyPair();
+    const env = {
+      SYNTILA_ENVIRONMENT: "development", TEST_AUTHENTICATION: authenticated(), SYNTILA_BACKEND_SIGNING_KEY: secret,
+      BETTER_AUTH_URL: "https://app.syntila.app", SYNTILA_BACKEND_TOKEN_ISSUER: "https://syntila.app",
+      SYNTILA_DB: fakeDb({ "FROM users": { emailVerified: 1 } }),
+    } as never;
+    const response = await handleUserBackendToken(new Request("https://app.syntila.app/api/backend-token", { method: "POST" }), env);
+    const { token } = await response.json() as { token: string };
+    const { claims, input, sig } = decode(token);
+    expect(claims.iss).toBe("https://syntila.app");
+    expect(await crypto.subtle.verify({ name: "Ed25519" }, publicKey, sig, new TextEncoder().encode(input))).toBe(true);
+  });
+
   it("refuses inactive users and unconfigured deployments", async () => {
     const { secret } = await keyPair();
     const req = () => new Request("https://syntila.app/api/backend-token", { method: "POST" });

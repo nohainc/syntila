@@ -11,8 +11,8 @@ interface Props {
 }
 
 const { title, description, image = "/social-preview.png" } = Astro.props;
-const canonicalUrl = new URL(Astro.url.pathname, Astro.site ?? "https://conclaveax.com").href;
-const imageUrl = new URL(image, Astro.site ?? "https://conclaveax.com").href;
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site ?? "https://syntila.app").href;
+const imageUrl = new URL(image, Astro.site ?? "https://syntila.app").href;
 ---
 
 <!doctype html>

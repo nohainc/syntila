@@ -213,7 +213,7 @@ A Workspace build targets exactly one Cloud; there is no runtime switch.
 
 | Command | Cloud API | State directory (macOS) |
 | --- | --- | --- |
-| `pnpm workspace:build:macos:prod` (default) | `https://syntila.app` | `~/Library/Application Support/Syntila` |
+| `pnpm workspace:build:macos:prod` (default) | `https://app.syntila.app` | `~/Library/Application Support/Syntila` |
 | `pnpm workspace:build:macos:local` | `http://localhost:8787` | `~/Library/Application Support/Syntila Local` |
 
 Local builds are compiled with `SYNTILA_WORKSPACE_ENVIRONMENT=local`, ignore

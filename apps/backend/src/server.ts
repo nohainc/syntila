@@ -45,8 +45,8 @@ if (!emailOutbox) console.warn("EMAIL_RELAY_URL / EMAIL_RELAY_SECRET are not con
 
 const runtime = createRuntime(sql, db, {
   SYNTILA_ENVIRONMENT: process.env.SYNTILA_ENVIRONMENT ?? "production",
-  SYNTILA_APP_URL: process.env.SYNTILA_APP_URL ?? "https://syntila.app",
-  BETTER_AUTH_URL: process.env.SYNTILA_APP_URL ?? "https://syntila.app",
+  SYNTILA_APP_URL: process.env.SYNTILA_APP_URL ?? "https://app.syntila.app",
+  BETTER_AUTH_URL: process.env.SYNTILA_APP_URL ?? "https://app.syntila.app",
   BETTER_AUTH_TRUSTED_ORIGINS: config.allowedOrigins.join(","),
   SYNTILA_SUPPORT_ACCOUNT_EMAIL: process.env.SYNTILA_SUPPORT_ACCOUNT_EMAIL,
   SYNTILA_PROFILE_LAB_OWNER_EMAIL: process.env.SYNTILA_PROFILE_LAB_OWNER_EMAIL,

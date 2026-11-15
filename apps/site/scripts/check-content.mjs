@@ -29,14 +29,14 @@ function decodeHtml(str) {
 /** @type {Record<string, {title: string, heading: string, content: string[]}>} */
 const expected = {
   "/": {
-    title: "Syntila — Bring your people and AI together",
-    heading: "Bring your people and AI together.",
+    title: "Syntila — Bring your projects, people, and AI together",
+    heading: "Bring your projects, people, and AI together.",
     content: [
       "Threads",
       "ONE SPACE. PEOPLE + AI.",
-      "Your people and AI, in one shared Space.",
+      "Your projects and AI, together in one Space.",
       "When a chat isn't enough",
-      "Designed for how people actually collaborate.",
+      "Made for your projects and your people.",
       "Free to start.",
       "Open Syntila",
     ],
@@ -46,7 +46,7 @@ const expected = {
     heading: "From shared ideas to verified results.",
     content: [
       "Create a Space",
-      "Invite your people",
+      "Invite others when you want",
       "Connect & share AI",
       "open a Thread",
       "Collaborate and choose a Workflow",
@@ -67,7 +67,7 @@ const expected = {
   },
   "/use-cases/": {
     title: "Use Cases — Syntila",
-    heading: "AI is better when you can use it together.",
+    heading: "Make progress with AI, on your own or together.",
     content: [
       "Friends & Family",
       "Teams & Companies",
@@ -154,11 +154,11 @@ for (const [route, file] of routes) {
       `${route}: title changed or missing (found: "${title}", expected: "${contract.title}")`,
     );
   if (!description?.trim()) errors.push(`${route}: description missing`);
-  if (!canonical?.startsWith("https://conclaveax.com/"))
+  if (!canonical?.startsWith("https://syntila.app/"))
     errors.push(`${route}: canonical URL is malformed`);
-  if (ogImage !== "https://conclaveax.com/social-preview.png")
+  if (ogImage !== "https://syntila.app/social-preview.png")
     errors.push(
-      `${route}: OpenGraph image URL must use https://conclaveax.com/social-preview.png (found: "${ogImage}")`,
+      `${route}: OpenGraph image URL must use https://syntila.app/social-preview.png (found: "${ogImage}")`,
     );
   if (!heading?.includes(contract.heading))
     errors.push(
@@ -177,7 +177,7 @@ for (const [route, file] of routes) {
 }
 
 const home = sources.get("/");
-const appLinks = [...home.matchAll(/href="(https:\/\/syntila\.app[^"]*)"/g)];
+const appLinks = [...home.matchAll(/href="(https:\/\/app\.syntila\.app[^"]*)"/g)];
 if (appLinks.length < 3)
   errors.push("homepage: expected at least three direct Open Syntila links");
 if (!home.includes('id="plans"'))

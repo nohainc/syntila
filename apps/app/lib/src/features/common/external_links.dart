@@ -1,3 +1,3 @@
 /// Canonical public destinations shared by contextual product surfaces.
-const syntilaDownloadsUrl = 'https://conclaveax.com/downloads/';
-const syntilaDocumentationUrl = 'https://conclaveax.com/how-it-works/';
+const syntilaDownloadsUrl = 'https://syntila.app/downloads/';
+const syntilaDocumentationUrl = 'https://syntila.app/how-it-works/';

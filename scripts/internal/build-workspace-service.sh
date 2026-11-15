@@ -23,7 +23,7 @@ Builds the unified Syntila Workspace service and bundled CLI Worker Engine.
 Options:
   --local       Build for local Cloud development (http://localhost:8787).
                 Can also be set via SYNTILA_WORKSPACE_ENVIRONMENT=local.
-  --production  Build for production Cloud (https://syntila.app) [default].
+  --production  Build for production Cloud (https://app.syntila.app) [default].
                 Can also be set via SYNTILA_WORKSPACE_ENVIRONMENT=production.
 USAGE
       exit 0

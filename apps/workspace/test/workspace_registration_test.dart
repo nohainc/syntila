@@ -172,6 +172,15 @@ void main() {
     );
   });
 
+  test('old and new production auth origins reach the same backend', () {
+    for (final origin in ['https://syntila.app', 'https://app.syntila.app']) {
+      expect(workspaceBackendOrigin(origin), 'https://api.syntila.app');
+      expect(workspaceCloudApiUri(origin, '/api/desktop-auth/session'),
+          Uri.parse('$origin/api/desktop-auth/session'));
+    }
+    expect(workspaceAuthOrigin('https://api.syntila.app'), 'https://app.syntila.app');
+  });
+
   test('desktop ownership check uses the authenticated human session',
       () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

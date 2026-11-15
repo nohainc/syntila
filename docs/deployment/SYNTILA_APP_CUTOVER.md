@@ -54,3 +54,34 @@ use Syntila; existing local Conclave state is not copied by this cutover.
 Email/password registration uses the existing authorized conclaveax.com email
 senders. No test email was sent. GitHub and Google sign-in remain disabled until
 new-origin OAuth callbacks and the corresponding Worker secrets are configured.
+
+## Planned root-site / app-subdomain transition
+
+The public site is being prepared for `https://syntila.app`, and the web app
+for `https://app.syntila.app`. The app Worker must retain the root domain until
+legacy auth and Workspace clients have a verified path; do not transfer the
+root hostname to the site before that compatibility is in place and tested.
+The Worker now has both domains attached. The stable backend-token issuer is
+configured separately as `SYNTILA_BACKEND_TOKEN_ISSUER=https://syntila.app`;
+changing `BETTER_AUTH_URL` must not silently change the issuer expected by the
+VPS. Set and validate the passkey relying-party ID and permitted origins so
+existing passkeys remain usable. Update Google and GitHub OAuth callback URLs,
+verify sign-in and desktop authorization, and plan reauthentication for
+host-only browser cookies. Preserve existing Workspace installation and
+runtime identity, and verify existing saved root-domain Cloud URLs before
+cutover. Redirect legacy website paths to their matching new URLs. The Privacy
+Policy contains outstanding disclosure placeholders and must be completed
+before publishing the revised site.
+
+Cutover preparation in this checkout preserves `https://syntila.app` as the
+backend JWT issuer while allowing `https://app.syntila.app` as the auth origin.
+The public-site Worker is configured to run before static assets and forward
+root-domain `/api/*` and `/health` requests to the auth Worker through its
+`LEGACY_AUTH` service binding. It redirects known old app paths to the app
+subdomain and redirects the old public-site hostnames to the matching new site
+paths. These are staged changes, not proof that existing desktop clients,
+passkeys, or cookies work after deployment. Keep the old and new browser origins
+in the VPS `ALLOWED_ORIGINS` setting until the transition is complete; retain
+existing persisted Workspace and Profile Lab Cloud origins. Verify old desktop
+sessions, Workspace recovery, both OAuth providers, and passkeys against the
+actual deployed services before declaring cutover complete.

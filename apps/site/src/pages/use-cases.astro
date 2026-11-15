@@ -8,22 +8,53 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
 <SiteLayout
   title="Use Cases — Syntila"
-  description="See how families, collaborative teams, and software engineers use Syntila to bring people and AI together."
+  description="See how people use Syntila for personal projects, family plans, team work, and software development."
 >
   <Section>
     <Container>
       <SectionHeader
         eyebrow="Use cases"
-        title="AI is better when you can use it together."
-        description="Whether you're planning a family trip, analyzing market data with your team, or shipping code with coding agents, Syntila brings people and AI into one shared space."
+        title="Make progress with AI, on your own or together."
+        description="Build a personal project, plan a family trip, or work through a team decision with your AI tools and conversations in one place."
         headingLevel={1}
       />
 
       <nav class="usecase-jump-links" aria-label="Jump to use case">
+        <a href="#personal">Personal Projects</a>
         <a href="#family">Friends &amp; Family</a>
         <a href="#teams">Teams &amp; Companies</a>
         <a href="#engineering">Software &amp; Engineering</a>
       </nav>
+
+      <div id="personal" class="usecase-detail-section">
+        <div class="usecase-detail-header">
+          <span class="usecase-badge usecase-badge--dev">Personal Projects</span>
+          <h2>Make space for your own ideas.</h2>
+          <p class="usecase-intro">Create a Space for yourself and work with your AI tools across projects and everyday tasks. Invite others whenever you want their input.</p>
+        </div>
+        <div class="usecase-grid">
+          <div class="usecase-card">
+            <span class="usecase-card-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+            <h3>Build a project</h3>
+            <p>Develop an app or website with coding tools on your connected computer.</p>
+          </div>
+          <div class="usecase-card">
+            <span class="usecase-card-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span>
+            <h3>Research and learn</h3>
+            <p>Explore a topic and keep questions, answers, and findings together in a Thread.</p>
+          </div>
+          <div class="usecase-card">
+            <span class="usecase-card-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18m-13 5 2 2 4-4"/></svg></span>
+            <h3>Plan and organize</h3>
+            <p>Work through a trip, home project, or important decision with AI at hand.</p>
+          </div>
+          <div class="usecase-card">
+            <span class="usecase-card-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg></span>
+            <h3>Continue on the go</h3>
+            <p>Read progress and send requests from the web or mobile while your connected computer is awake and online.</p>
+          </div>
+        </div>
+      </div>
 
       <!-- Section 1: Friends & Family -->
       <div id="family" class="usecase-detail-section">
@@ -171,7 +202,7 @@ import SiteLayout from "../layouts/SiteLayout.astro";
 
       <!-- Bottom Action -->
       <div class="actions actions--center section-block-gap-lg">
-        <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
+        <Button href="https://app.syntila.app" label="Open Syntila" event="cta.open_app" />
         <Button href="/workers/" label="Explore AI &amp; Workers" variant="secondary" />
         <Button href="/how-it-works/" label="See how it works" variant="secondary" event="navigation.how_it_works" />
       </div>

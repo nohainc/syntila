@@ -18,7 +18,7 @@ void main() {
     expect(
         WorkspaceConfigurationResolver.cloudHttpOrigin(
             Uri.parse('wss://api.syntila.app/api/workspace-gateway/connect')),
-        'https://syntila.app');
+        'https://app.syntila.app');
   });
   Uri configFor(String cloudUrl) =>
       WorkspaceConfigurationResolver.workspaceGatewayUri(

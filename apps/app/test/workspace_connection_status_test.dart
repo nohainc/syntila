@@ -123,7 +123,7 @@ void main() {
       await tester.tap(find.text('Documentation'));
       await tester.pumpAndSettle();
       expect(
-          openedExternalUri, Uri.parse('https://conclaveax.com/how-it-works/'));
+          openedExternalUri, Uri.parse('https://syntila.app/how-it-works/'));
     });
 
     testWidgets('Platform reporting maps runtime OS and architectures cleanly',

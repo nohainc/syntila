@@ -377,7 +377,7 @@ remain restart-applied as before.
     service..
         enabled true
     cloud..
-        url https://syntila.app
+        url https://app.syntila.app
         connect_on_start true
     workspace..
         name My Workspace

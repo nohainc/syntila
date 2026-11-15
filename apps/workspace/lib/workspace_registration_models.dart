@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-const syntilaProductionCloudUrl = 'https://syntila.app';
+const syntilaProductionCloudUrl = 'https://app.syntila.app';
 const syntilaLocalCloudUrl = 'http://localhost:8787';
 
 /// Build-time target environment, set by the build scripts with
@@ -41,10 +41,11 @@ String normalizeWorkspaceCloudOrigin(String cloudUrl) {
 }
 
 /// Syntila runs as two services: the Cloudflare auth Worker (`cloudUrl`,
-/// e.g. https://syntila.app) for sign-in and desktop sessions, and the VPS
+/// e.g. https://app.syntila.app) for sign-in and desktop sessions, and the VPS
 /// backend (e.g. https://api.syntila.app) for everything a Workspace does.
 /// `SYNTILA_BACKEND_URL` overrides the backend origin.
 const _knownBackendOrigins = {
+  'https://app.syntila.app': 'https://api.syntila.app',
   'https://syntila.app': 'https://api.syntila.app',
   'http://localhost:8787': 'http://localhost:8788',
   'http://127.0.0.1:8787': 'http://127.0.0.1:8788',

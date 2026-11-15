@@ -381,7 +381,7 @@ extension _AxAppController on _AxAppStateMixin {
             onPressed: () {
               Navigator.of(dialogContext).pop();
               browserNavigation
-                  .openExternal(Uri.parse('https://conclaveax.com'));
+                  .openExternal(Uri.parse('https://syntila.app'));
             },
             child: const Text('Visit website'),
           ),

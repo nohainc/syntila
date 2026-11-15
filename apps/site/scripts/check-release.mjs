@@ -71,16 +71,16 @@ for (const file of await htmlFiles(dist)) {
 
 const home = await readFile(join(dist, "index.html"), "utf8");
 const requiredHomepageContent = [
-  "Bring your people and AI together.",
+  "Bring your projects, people, and AI together.",
   "Threads",
-  "One conversation. Everyone stays in context.",
+  "Your projects and AI, together in one Space.",
   "Open Syntila",
 ];
 for (const content of requiredHomepageContent) {
   if (!home.includes(content))
     errors.push(`homepage: missing release content: ${content}`);
 }
-if ((home.match(/href="https:\/\/syntila\.app/g) ?? []).length < 3) {
+if ((home.match(/href="https:\/\/app\.syntila\.app/g) ?? []).length < 3) {
   errors.push("homepage: expected direct app CTA links");
 }
 for (const link of ["/privacy/", "/terms/", "/security/", "/use-cases/"]) {

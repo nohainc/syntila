@@ -96,7 +96,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --debug              Build in debug mode"
       echo "  --simulator          Build for the iOS Simulator (always debug mode)"
       echo "  --local              Local development build: talks to http://localhost:8787/api"
-      echo "  --prod               Production build (default): talks to https://syntila.app/api"
+      echo "  --prod               Production build (default): talks to https://app.syntila.app/api"
       echo "  --api-url URL        Override the Cloud API base URL"
       echo "  --version, -v VER    Override app version"
       echo "  --unsigned           Skip code signing (default); not installable on devices"
@@ -128,7 +128,7 @@ if [[ -z "$API_URL" ]]; then
   if [[ "$TARGET_ENV" == "local" ]]; then
     API_URL="http://localhost:8787/api"
   else
-    API_URL="https://syntila.app/api"
+    API_URL="https://app.syntila.app/api"
   fi
 fi
 

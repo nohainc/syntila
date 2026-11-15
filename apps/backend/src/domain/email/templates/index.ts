@@ -25,6 +25,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_TEMPLATE_FIELD_LENGTH = 4096;
 export const DEFAULT_APPROVED_EMAIL_ORIGINS = Object.freeze([
   "https://syntila.app",
+  "https://app.syntila.app",
   "http://localhost:3000",
   "http://localhost:8080",
   "http://localhost:8787",

@@ -7,6 +7,7 @@
  * Secrets/vars (all optional until the VPS backend is enabled):
  *   SYNTILA_BACKEND_SIGNING_KEY  private Ed25519 JWK (JSON, with kid) — secret
  *   SYNTILA_BACKEND_URL          default https://api.syntila.app
+ *   SYNTILA_BACKEND_TOKEN_ISSUER  stable token issuer (independent of web origin)
  */
 import { HttpError, json, securityContext, type SecurityEnv } from "./routes/http-security.js";
 
@@ -16,6 +17,7 @@ export const USER_TOKEN_TTL_SECONDS = 15 * 60;
 type BackendEnv = SecurityEnv & {
   readonly SYNTILA_BACKEND_SIGNING_KEY?: string;
   readonly SYNTILA_BACKEND_URL?: string;
+  readonly SYNTILA_BACKEND_TOKEN_ISSUER?: string;
 };
 
 interface SigningKey { key: CryptoKey; kid: string }
@@ -40,7 +42,7 @@ function signingKey(env: BackendEnv): Promise<SigningKey> {
 }
 
 export function backendIssuer(env: BackendEnv): string {
-  return new URL(env.BETTER_AUTH_URL ?? env.SYNTILA_APP_URL ?? "https://syntila.app").origin;
+  return new URL(env.SYNTILA_BACKEND_TOKEN_ISSUER ?? env.BETTER_AUTH_URL ?? env.SYNTILA_APP_URL ?? "https://syntila.app").origin;
 }
 
 export function backendUrl(env: BackendEnv): string {

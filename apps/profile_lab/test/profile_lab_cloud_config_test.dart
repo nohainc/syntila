@@ -1,4 +1,5 @@
 import 'package:syntila_profile_lab/profile_lab_cloud_config.dart';
+import 'package:syntila_profile_lab/profile_admin_api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -8,6 +9,13 @@ void main() {
         ProfileLabCloudConfig.buildDefaultOrigin,
         profileLabProductionCloudOrigin,
       );
+    });
+
+    test('old and new production origins use the same backend', () {
+      for (final origin in ['https://syntila.app', 'https://app.syntila.app']) {
+        expect(ProfileAdminApiClient(baseUrl: origin).backendUrl,
+            'https://api.syntila.app');
+      }
     });
 
     test('normalizes secure origins and development loopback', () {

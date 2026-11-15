@@ -1,6 +1,6 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  // Production auth Worker on syntila.app: Better Auth, desktop sign-in,
+  // Production auth Worker on app.syntila.app: Better Auth, desktop sign-in,
   // backend tokens, the email relay and the web app. The product API runs on
   // the VPS backend (SYNTILA_BACKEND_URL).
   "name": "syntila-app",
@@ -29,9 +29,12 @@
   "vars": {
     "SYNTILA_PROFILE_LAB_OWNER_EMAIL": "vitalii@nohainc.com",
     "SYNTILA_ENVIRONMENT": "production",
-    "BETTER_AUTH_URL": "https://syntila.app",
-    "SYNTILA_APP_URL": "https://syntila.app",
+    "BETTER_AUTH_URL": "https://app.syntila.app",
+    "SYNTILA_APP_URL": "https://app.syntila.app",
+    "BETTER_AUTH_RP_ID": "syntila.app",
+    "BETTER_AUTH_ORIGIN": "https://app.syntila.app",
     "SYNTILA_BACKEND_URL": "https://api.syntila.app",
+    "SYNTILA_BACKEND_TOKEN_ISSUER": "https://syntila.app",
     "SYNTILA_EMAIL_FROM": "syntila@conclaveax.com",
     "SYNTILA_EMAIL_FALLBACK_FROM": "vitalii@conclaveax.com",
     "SYNTILA_EMAIL_FROM_NAME": "Syntila",
@@ -85,7 +88,7 @@
   ],
   "routes": [
     {
-      "pattern": "syntila.app",
+      "pattern": "app.syntila.app",
       "custom_domain": true,
     },
   ],

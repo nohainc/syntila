@@ -1164,7 +1164,7 @@ void main() {
       await tester.tap(find.text('Documentation'));
       await tester.pumpAndSettle();
       expect(
-          openedExternalUri, Uri.parse('https://conclaveax.com/how-it-works/'));
+          openedExternalUri, Uri.parse('https://syntila.app/how-it-works/'));
 
       // Re-open menu
       await tester.tap(find.byTooltip('Application menu'));
@@ -1244,7 +1244,7 @@ void main() {
       await tester.tap(find.text('Documentation'));
       await tester.pumpAndSettle();
       expect(
-          openedExternalUri, Uri.parse('https://conclaveax.com/how-it-works/'));
+          openedExternalUri, Uri.parse('https://syntila.app/how-it-works/'));
 
       // Reopen and check About Syntila
       await tester.tap(find.byTooltip('Application menu'));

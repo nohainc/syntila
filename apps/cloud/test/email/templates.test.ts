@@ -91,7 +91,7 @@ describe("email template architecture", () => {
       expect(rendered.html).toContain("<!doctype html>");
       expect(rendered.html).toContain("Syntila");
       expect(rendered.html).toContain(
-        "https://syntila.app/assets/assets/branding/syntila_email_logo.png?v=precision-indigo-20261029",
+        "https://app.syntila.app/assets/assets/branding/syntila_email_logo.png?v=precision-indigo-20261029",
       );
       expect(rendered.html).toContain(
         "@media only screen and (max-width:620px)",

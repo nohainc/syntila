@@ -76,7 +76,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --debug              Build in debug mode"
       echo "  --local              Local development build: talks to http://10.0.2.2:8787/api"
       echo "                       (the Android emulator's alias for the host's localhost)"
-      echo "  --prod               Production build (default): talks to https://syntila.app/api"
+      echo "  --prod               Production build (default): talks to https://app.syntila.app/api"
       echo "  --api-url URL        Override the Cloud API base URL"
       echo "  --version, -v VER    Override app version"
       echo "  --apk                Build an installable universal APK (default)"
@@ -111,7 +111,7 @@ if [[ -z "$API_URL" ]]; then
   if [[ "$TARGET_ENV" == "local" ]]; then
     API_URL="http://10.0.2.2:8787/api"
   else
-    API_URL="https://syntila.app/api"
+    API_URL="https://app.syntila.app/api"
   fi
 fi
 if [[ "$BUILD_AAB" == "1" && "$SPLIT_PER_ABI" == "1" ]]; then

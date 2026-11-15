@@ -13,7 +13,7 @@ export function resolveAppUrl(request: Request, env: SecurityEnv): string {
     const url = new URL(request.url);
     return `${url.protocol}//${url.host}`;
   } catch {
-    return "https://conclaveax.com";
+    return "https://app.syntila.app";
   }
 }
 

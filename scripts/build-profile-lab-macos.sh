@@ -76,7 +76,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --debug            Build in debug mode"
       echo "  --local            Local development build: talks to http://localhost:8787,"
       echo "                     uses separate local state, shows a LOCAL banner"
-      echo "  --prod             Production build (default): talks to https://syntila.app"
+      echo "  --prod             Production build (default): talks to https://app.syntila.app"
       echo "  --version, -v VER  Override Profile Lab version"
       echo "  --unsigned         Skip Developer ID signing and notarization (default)"
       echo "  --sign IDENTITY    Developer ID signing identity"

@@ -7,7 +7,7 @@ import { escapeHtml } from "./email-escaping.js";
 const PRODUCT_NAME = "Syntila";
 const PRODUCT_TAGLINE = "AI collaboration and execution";
 export const EMAIL_LOGO_URL =
-  "https://syntila.app/assets/assets/branding/syntila_email_logo.png?v=precision-indigo-20261029";
+  "https://app.syntila.app/assets/assets/branding/syntila_email_logo.png?v=precision-indigo-20261029";
 
 export interface EmailLayoutInput {
   readonly templateId: RenderedEmailContent["templateId"];

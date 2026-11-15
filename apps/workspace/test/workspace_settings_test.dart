@@ -89,7 +89,7 @@ void main() {
       final store = WorkspaceSettingsStore(state);
       final generated = await store.ensureDefaults();
 
-      expect(generated.cloudUrl, 'https://syntila.app');
+      expect(generated.cloudUrl, 'https://app.syntila.app');
       // A new file is named after this machine.
       expect(generated.workspaceName, isNotEmpty);
       expect(generated.workspaceName.length, lessThanOrEqualTo(120));

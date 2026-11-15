@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --debug            Ad-hoc signed build; never uses an Apple identity"
       echo "  --local            Local development build: talks to http://localhost:8787 and"
       echo "                     uses separate local state"
-      echo "  --prod             Production build (default): talks to https://syntila.app"
+      echo "  --prod             Production build (default): talks to https://app.syntila.app"
       echo "  --version, -v VER  Override workspace version"
       echo "  --sign IDENTITY    Apple signing identity (an unavailable identity is an error)"
       echo "  --all              Build the production bundle, then the local one"

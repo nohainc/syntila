@@ -17,23 +17,23 @@ import WorkflowShowcase from "../components/WorkflowShowcase.astro";
       <SectionHeader
         eyebrow="How it works"
         title="From shared ideas to verified results."
-        description="People talk in Spaces and Threads in the Syntila app. The AI runs on a computer that one of the members has connected."
+        description="Create a Space for yourself or a group, and use Threads to keep each topic together. Your AI tools run on a connected computer."
         headingLevel={1}
       />
 
       <div class="section-block-gap">
         <ul class="workflow-steps" role="list">
           <WorkflowStep visual="space" title="Create a Space and open a Thread">
-            <p>Bring your people together in a Space, then start a Thread for each topic to keep its conversation and history together.</p>
+            <p>Create a Space for your project or your group, then start a Thread for each topic to keep its conversation and history together.</p>
           </WorkflowStep>
-          <WorkflowStep visual="invite" title="Invite your people">
-            <p>Share an invite by email or link. People can join in their browser, without their own AI account.</p>
+          <WorkflowStep visual="invite" title="Invite others when you want">
+            <p>Work on your own, or share an invite by email or link. Others can join on the web or mobile without their own AI account.</p>
           </WorkflowStep>
           <WorkflowStep visual="connect" title="Connect & share AI">
             <p>One member connects a computer with Syntila Workspace and chooses which AI Workers to share. See <a href="#host-needs">what the host needs</a>.</p>
           </WorkflowStep>
           <WorkflowStep visual="collaborate" title="Collaborate and choose a Workflow">
-            <p>Message your people or ask a Worker with the Thread as context. Choose Chat, Work, Research, or Implement to match the task.</p>
+            <p>Ask a Worker with the Thread as context, or discuss the task with others. Choose Chat, Work, Research, or Implement to match the task.</p>
           </WorkflowStep>
         </ul>
       </div>
@@ -42,7 +42,7 @@ import WorkflowShowcase from "../components/WorkflowShowcase.astro";
         <SectionHeader
           eyebrow="For the host"
           title="What the person who connects a computer needs."
-          description="Only the member who powers the AI needs any of this. Everyone else needs a browser."
+          description="Install Workspace on the computer that powers the AI. Access your Spaces from the web or mobile, including when you are away from that computer."
         />
         <div class="host-requirements">
           <article class="host-requirement">
@@ -81,7 +81,7 @@ import WorkflowShowcase from "../components/WorkflowShowcase.astro";
           <div class="execution-path-step"><div class="architecture-flow__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="6" y="8" width="36" height="29" rx="4"/><path d="M6 16h36M13 12h.1M18 12h.1M13 23h12m-12 6h19"/></svg></div>
             <span>Syntila app</span>
             <strong>Spaces &amp; Threads</strong>
-            <p>People join Spaces, talk in Threads, and send requests to Workers at <code>syntila.app</code>.</p>
+            <p>People join Spaces, talk in Threads, and send requests to Workers at <code>app.syntila.app</code>.</p>
           </div>
           <div class="execution-path-step"><div class="architecture-flow__icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M15 34H11a8 8 0 0 1-1-16 14 14 0 0 1 27 2 7 7 0 0 1 0 14h-4"/><rect x="17" y="26" width="14" height="13" rx="2"/><path d="M20 26v-3a4 4 0 0 1 8 0v3"/></svg></div>
             <span>Syntila Cloud</span>
@@ -102,7 +102,7 @@ import WorkflowShowcase from "../components/WorkflowShowcase.astro";
       </div>
 
       <div class="actions actions--center section-block-gap-lg">
-        <Button href="https://syntila.app" label="Open Syntila" event="cta.open_app" />
+        <Button href="https://app.syntila.app" label="Open Syntila" event="cta.open_app" />
         <Button href="/workers/" label="Explore AI & Workers" variant="secondary" />
         <Button href="/downloads/" label="Download Workspace" variant="secondary" event="navigation.downloads" />
       </div>
