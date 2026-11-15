@@ -16,6 +16,13 @@ psql_pg -c "ALTER DATABASE syntila OWNER TO syntila_app; ALTER SCHEMA public OWN
 
 # One-time pre-production reset: the Phase 3 prototype schema (0001_core.sql)
 # is replaced by the ported schema (0001_initial.sql). No production data exists.
+# Migration 0006 uses IS JSON, which needs PostgreSQL 16. Refuse early rather
+# than fail half-way through the pending migrations.
+pg_version=$(psql_pg -c "SHOW server_version_num")
+if [ "$pg_version" -lt 160000 ]; then
+  echo "PostgreSQL $pg_version is too old: the backend migrations need version 16 or newer. Not deploying." >&2; exit 1
+fi
+
 # A schema change cannot be undone by switching the code back, so take a
 # verified dump before any release that carries new migrations.
 applied=$(psql_pg -c "SELECT CASE WHEN to_regclass('schema_migrations') IS NULL THEN '' ELSE (SELECT COALESCE(string_agg(version, ' '), '') FROM schema_migrations) END")
