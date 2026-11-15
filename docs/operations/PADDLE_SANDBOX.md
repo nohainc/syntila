@@ -26,9 +26,10 @@ webhook path above to the tunnel URL in the existing sandbox destination.
 Sign in locally, open the sandbox checkout, and use Paddle's published test
 card. Confirm the transaction succeeds and a verified notification updates
 the corresponding local account. Do not infer access from the browser's
-checkout completion event. The sandbox default payment link must eventually
-point to a page on an owned domain that initializes Paddle.js; a temporary
-homepage setting does not provide working emailed payment links.
+checkout completion event. The sandbox default payment link is
+`https://sandbox.syntila.app/checkout/`, a separate sandbox-only Worker that
+initializes Paddle.js for transaction links. See
+`infra/paddle-sandbox-payment/README.md` for deployment instructions.
 
 The local sandbox page can open Paddle's customer portal for the authenticated
 account. Production billing is not implemented. Live deployments must not use

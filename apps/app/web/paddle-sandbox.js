@@ -64,7 +64,12 @@
         items: [{ priceId, quantity: 1 }],
         customData: { syntila_checkout_reference: config.checkoutReference },
         ...(session.user?.email ? { customer: { email: session.user.email } } : {}),
-        settings: { displayMode: 'overlay', variant: 'one-page' },
+        settings: {
+          displayMode: 'overlay',
+          variant: 'one-page',
+          theme: document.documentElement?.dataset.theme ||
+            (typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+        },
       });
       button.disabled = false;
     }

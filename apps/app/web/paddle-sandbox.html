@@ -4,25 +4,63 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Syntila Plus sandbox checkout</title>
+  <link rel="icon" type="image/svg+xml" href="syntila_logo.svg">
+  <script>
+    try {
+      const theme = localStorage.getItem('syntila-theme-v1');
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    } catch (_) { /* Use the system theme when storage is unavailable. */ }
+  </script>
   <style>
-    body { font: 16px system-ui, sans-serif; max-width: 48rem; margin: 3rem auto; padding: 0 1.2rem; color: #202239; }
-    .plans { display: flex; flex-wrap: wrap; gap: 1rem; }
-    article { flex: 1 1 14rem; border: 1px solid #c9cbd8; border-radius: .75rem; padding: 1.3rem; }
-    button { padding: .7rem 1rem; border: 0; border-radius: .4rem; background: #514ec4; color: white; cursor: pointer; }
-    button:disabled { opacity: .45; cursor: default; }
-    #status { min-height: 3em; }
+    @font-face { font-family: Inter; src: url('assets/assets/fonts/Inter-Regular.ttf'); font-weight: 400; font-display: swap; }
+    @font-face { font-family: Inter; src: url('assets/assets/fonts/Inter-SemiBold.ttf'); font-weight: 600; font-display: swap; }
+    @font-face { font-family: Inter; src: url('assets/assets/fonts/Inter-Bold.ttf'); font-weight: 700; font-display: swap; }
+    :root { color-scheme: light; --canvas: #f1f2f4; --surface: #fbfcfd; --border: #d3d5d7; --text: #17181a; --muted: #434547; --accent: #4338ca; --accent-text: #fff; --soft: #e0e7ff; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) { color-scheme: dark; --canvas: #17181a; --surface: #1e2021; --border: #2d2e30; --text: #f1f2f4; --muted: #b6b8ba; --accent: #6366f1; --accent-text: #111; --soft: #1e1b4b; }
+    }
+    :root[data-theme='dark'] { color-scheme: dark; --canvas: #17181a; --surface: #1e2021; --border: #2d2e30; --text: #f1f2f4; --muted: #b6b8ba; --accent: #6366f1; --accent-text: #111; --soft: #1e1b4b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: var(--text); font: 14px/1.45 Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    header { border-bottom: 1px solid var(--border); background: var(--surface); }
+    .header-inner { max-width: 900px; margin: auto; padding: 16px 24px; display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+    .header-inner img { width: 28px; height: 28px; }
+    main { max-width: 760px; margin: 0 auto; padding: 48px 24px 64px; }
+    h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.25; letter-spacing: -.02em; }
+    h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    p { margin: 0; }
+    .intro { color: var(--muted); }
+    .notice { margin-top: 24px; padding: 14px 16px; border-radius: 10px; background: var(--soft); }
+    .notice strong { display: block; margin-bottom: 3px; }
+    #status { margin: 20px 0 16px; color: var(--muted); min-height: 1.45em; }
+    .plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    article { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+    .price { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+    button, .back { font: 600 13px/1.4 Inter, -apple-system, sans-serif; }
+    button { min-height: 42px; padding: 10px 16px; border: 1px solid transparent; border-radius: 6px; background: var(--accent); color: var(--accent-text); cursor: pointer; }
+    button:hover:not(:disabled) { filter: brightness(.92); }
+    button:disabled { opacity: .5; cursor: default; }
+    button:focus-visible, a:focus-visible { outline: 3px solid #818cf8; outline-offset: 3px; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 24px; }
+    .secondary { color: var(--text); background: var(--surface); border-color: var(--border); }
+    .back { color: var(--text); text-decoration: none; }
+    .back:hover { text-decoration: underline; }
+    @media (max-width: 599px) { main { padding-top: 32px; } .plans { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <h1>Syntila Plus sandbox</h1>
-  <p>Test checkout only. No real payment will be taken.</p>
-  <p id="status" role="status" aria-live="polite">Loading sandbox prices…</p>
-  <div class="plans">
-    <article><h2>Monthly</h2><p id="monthly-price">Loading…</p><button id="monthly" disabled>Test monthly checkout</button></article>
-    <article><h2>Annual</h2><p id="annual-price">Loading…</p><button id="annual" disabled>Test annual checkout</button></article>
-  </div>
-  <p><button id="portal" disabled>Manage test subscription</button></p>
-  <p><a href="/">Return to Syntila</a></p>
+  <header><div class="header-inner"><img src="syntila_logo.svg" alt=""><span>Syntila</span></div></header>
+  <main>
+    <h1>Syntila Plus sandbox</h1>
+    <p class="intro">Explore a test checkout for Syntila Plus.</p>
+    <div class="notice"><strong>Sandbox test mode</strong><span>No real payment will be taken.</span></div>
+    <p id="status" role="status" aria-live="polite">Loading sandbox prices…</p>
+    <div class="plans">
+      <article><h2>Monthly</h2><p class="price" id="monthly-price">Loading…</p><button id="monthly" disabled>Test monthly checkout</button></article>
+      <article><h2>Annual</h2><p class="price" id="annual-price">Loading…</p><button id="annual" disabled>Test annual checkout</button></article>
+    </div>
+    <div class="actions"><button class="secondary" id="portal" disabled>Manage test subscription</button><a class="back" href="/">← Return to Syntila</a></div>
+  </main>
   <script src="paddle-sandbox.js" defer></script>
 </body>
 </html>

@@ -1,0 +1,10 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "syntila-paddle-sandbox-payment",
+  "main": "./worker.mjs",
+  "compatibility_date": "2026-11-15",
+  "vars": { "PADDLE_SANDBOX_CLIENT_TOKEN": "" },
+  "workers_dev": false,
+  "routes": [{ "pattern": "sandbox.syntila.app", "custom_domain": true }],
+  "observability": { "enabled": true }
+}

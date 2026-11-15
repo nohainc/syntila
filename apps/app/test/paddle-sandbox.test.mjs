@@ -5,10 +5,11 @@ import { runInNewContext } from 'node:vm';
 
 const script = await readFile(new URL('../web/paddle-sandbox.js', import.meta.url), 'utf8');
 
-function harness(host = 'localhost', search = '') {
+function harness(host = 'localhost', search = '', theme = '') {
   const elements = Object.fromEntries(['status', 'monthly-price', 'annual-price', 'monthly', 'annual', 'portal'].map((id) => [id, { textContent: '', disabled: true }]));
   const calls = [];
   const document = {
+    documentElement: { dataset: { theme } },
     querySelector: (selector) => elements[selector.slice(1)],
     createElement: () => ({}),
     head: { appendChild: (element) => element.onload() },
@@ -44,7 +45,15 @@ test('shows Paddle prices and opens the selected sandbox price for the signed-in
   assert.equal(checkout.customData.syntila_checkout_reference, 'signed-reference');
   assert.equal(checkout.customer.email, 'alice@example.test');
   assert.equal(checkout.settings.displayMode, 'overlay');
+  assert.equal(checkout.settings.theme, 'light');
   assert.equal(calls.find(([name]) => name === 'environment')[1], 'sandbox');
+});
+
+test('opens the checkout using the app theme', async () => {
+  const { elements, calls } = harness('localhost', '', 'dark');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  elements.monthly.onclick();
+  assert.equal(calls.find(([name]) => name === 'checkout')[1].settings.theme, 'dark');
 });
 
 test('opens a server-issued portal link using the authenticated backend session', async () => {
