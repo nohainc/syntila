@@ -145,10 +145,9 @@ class _Heading extends StatelessWidget {
 }
 
 class _Panel extends StatelessWidget {
-  const _Panel({required this.child, this.highlighted = false, this.padding});
+  const _Panel({required this.child, this.padding});
 
   final Widget child;
-  final bool highlighted;
   final EdgeInsetsGeometry? padding;
 
   @override
@@ -160,9 +159,7 @@ class _Panel extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: SyntilaRadius.radiusLg,
-        border: Border.all(
-            color: highlighted ? colors.primary : colors.outlineVariant,
-            width: highlighted ? 1.5 : 1),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: child,
     );
