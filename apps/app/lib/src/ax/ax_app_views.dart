@@ -698,12 +698,13 @@ extension _AxAppViews on _AxAppStateMixin {
             child: Center(child: CircularProgressIndicator()),
           )
         else ...[
-          Row(
-            children: [
-              for (final (index, provider) in ['google', 'github'].indexed) ...[
-                if (index > 0) const SizedBox(width: 12),
-                Expanded(
-                  child: Builder(builder: (context) {
+          LayoutBuilder(builder: (context, constraints) {
+            // Side by side when there is room; stacked on phones, where two
+            // cards would leave too little width for name and status.
+            final stacked = constraints.maxWidth < 420;
+            final cards = [
+              for (final provider in ['google', 'github'])
+                Builder(builder: (context) {
                     final theme = Theme.of(context);
                     final colors = theme.colorScheme;
                     final isLinked = linkedProviders.contains(provider);
@@ -725,7 +726,16 @@ extension _AxAppViews on _AxAppStateMixin {
                         : isLinked
                             ? 'Linked'
                             : 'Not linked';
-                    return Material(
+                    // The tooltip names the action for screen readers,
+                    // hover and tests: "Link Google", "Unlink GitHub".
+                    final action = isUnlinking
+                        ? 'Unlinking…'
+                        : isLinked
+                            ? 'Unlink $label'
+                            : 'Link $label';
+                    return Tooltip(
+                      message: action,
+                      child: Material(
                       color: colors.surfaceContainerLow,
                       shape: RoundedRectangleBorder(
                         borderRadius: SyntilaRadius.radiusLg,
@@ -750,7 +760,10 @@ extension _AxAppViews on _AxAppStateMixin {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              Container(
+                              // Shrinks (with an ellipsis) before the row
+                              // can overflow on narrow screens.
+                              Flexible(
+                                child: Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
@@ -761,6 +774,8 @@ extension _AxAppViews on _AxAppStateMixin {
                                 ),
                                 child: Text(
                                   badgeText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.labelSmall?.copyWith(
                                     color: isLinked
                                         ? colors.onPrimaryContainer
@@ -769,16 +784,29 @@ extension _AxAppViews on _AxAppStateMixin {
                                   ),
                                 ),
                               ),
+                              ),
                             ],
                           ),
                         ),
                       ),
+                    ),
                     );
-                  }),
-                ),
-              ],
-            ],
-          ),
+                }),
+            ];
+            return stacked
+                ? Column(children: [
+                    for (final (index, card) in cards.indexed) ...[
+                      if (index > 0) const SizedBox(height: 12),
+                      card,
+                    ],
+                  ])
+                : Row(children: [
+                    for (final (index, card) in cards.indexed) ...[
+                      if (index > 0) const SizedBox(width: 12),
+                      Expanded(child: card),
+                    ],
+                  ]);
+          }),
           ...linkedAccounts
               .where((a) =>
                   !['google', 'github'].contains(a.providerId.toLowerCase()))

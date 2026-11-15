@@ -386,15 +386,16 @@ void main() {
       await tester.pump();
       expect(find.byTooltip('Unlinking…'), findsOneWidget);
       if (label == 'Google') {
-        final button = tester.widget<IconButton>(
+        // While one unlink runs, the other provider card does nothing.
+        final card = tester.widget<InkWell>(
           find
-              .ancestor(
+              .descendant(
                 of: find.byTooltip('Unlink GitHub'),
-                matching: find.byType(IconButton),
+                matching: find.byType(InkWell),
               )
               .first,
         );
-        expect(button.onPressed, isNull);
+        expect(card.onTap, isNull);
       }
       pending.complete();
       await tester.pumpAndSettle();
@@ -446,21 +447,17 @@ void main() {
             (widget.image as AssetImage).assetName ==
                 'assets/auth/$provider.png'));
         expect(icon.width, 24);
-        final action = find.ancestor(
-            of: find.byTooltip('${linked ? 'Unlink' : 'Link'} $label'),
-            matching: find.byType(IconButton));
-        expect(action, findsOneWidget);
-        final button = tester.widget<IconButton>(action);
-        expect(button.color, SyntilaColors.textPrimary(false));
-        expect(button.iconSize, 20);
-        expect(tester.getSize(action), const Size(48, 48));
-        final deleteAction =
-            find.byKey(const ValueKey('profile-delete-account'));
-        expect(tester.widget<IconButton>(deleteAction).iconSize, 20);
+        // Each provider is one tappable card: icon, name and its status.
+        final card = find.byTooltip('${linked ? 'Unlink' : 'Link'} $label');
+        final tap = find.descendant(of: card, matching: find.byType(InkWell));
+        expect(tap, findsOneWidget);
+        expect(tester.widget<InkWell>(tap).onTap, isNotNull);
         expect(
-            tester.getTopRight(action).dx, tester.getTopRight(deleteAction).dx);
-        expect(
-            (button.icon as Icon).icon, linked ? Icons.link_off : Icons.link);
+            find.descendant(
+                of: card, matching: find.text(linked ? 'Linked' : 'Not linked')),
+            findsOneWidget);
+        expect(find.descendant(of: card, matching: find.text(label)),
+            findsOneWidget);
       }
       expect(
           find.byKey(const ValueKey('profile-delete-account')), findsOneWidget);
