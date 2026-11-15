@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
-import 'package:syntila_app/src/ax/ax_workflow_configuration.dart';
 import 'package:syntila_app/src/features/spaces/create_space_dialog.dart';
 
 Future<CreateSpaceRequest?> Function() _open(

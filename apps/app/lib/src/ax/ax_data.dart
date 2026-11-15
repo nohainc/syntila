@@ -485,16 +485,19 @@ class AxApiClient extends _AxApiClientCore
 /// item another request was changing; or briefly unavailable).
 Future<T> _retryOnceWithKey<T>(
     String? idempotencyKey, Future<T> Function() send) async {
+  final T first;
   try {
-    final first = await send();
-    if (idempotencyKey == null || !_isBusy(first)) return first;
-    await _releaseBody(first);
-    await Future<void>.delayed(axBusyRetryDelay);
-    return send();
+    first = await send();
   } on http.ClientException {
     if (idempotencyKey == null) rethrow;
     return send();
   }
+  // Outside the try: a network failure of the resend is reported, not
+  // resent a third time.
+  if (idempotencyKey == null || !_isBusy(first)) return first;
+  await _releaseBody(first);
+  await Future<void>.delayed(axBusyRetryDelay);
+  return send();
 }
 
 /// One automatic retry of a `503` answer for a keyed request whose network
