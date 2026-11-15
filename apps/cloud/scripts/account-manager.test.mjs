@@ -49,17 +49,22 @@ test("list merges usage and plans from the backend, and degrades without it", as
   const backend = async (_config, path, body) => {
     assert.equal(path, "/internal/admin/accounts/stats");
     assert.deepEqual(body.ids.sort(), ["one", "two"]);
-    return { stats: { one: { spaces: 2, requests: 5, plan: "paid" } } };
+    return { stats: { one: { spaces: 2, requests: 5, plan: "paid", plan_management: "provider" } } };
   };
   const { users, warning } = await handle({ environment: "local", action: "list" }, sqliteQuery(db), fetch, backend);
   const one = users.find((u) => u.id === "one");
   assert.equal(one.spaces, 2);
   assert.equal(one.plan, "paid");
+  assert.equal(one.plan_management, "provider");
   assert.equal(one.email, "one@example.com");
   assert.equal(users.find((u) => u.id === "two").plan, "free");
+  assert.equal(users.find((u) => u.id === "two").plan_management, "manual");
   assert.equal(warning, undefined);
   const offline = await handle({ environment: "local", action: "list" }, sqliteQuery(db), fetch, async () => { throw new Error("HTTP 503"); });
   assert.equal(offline.users.length, 2);
+  assert.equal(offline.users[0].plan_management, null);
+  const malformed = await handle({ environment: "local", action: "list" }, sqliteQuery(db), fetch, async () => ({}));
+  assert.equal(malformed.users[0].plan_management, null);
   assert.match(offline.warning, /unavailable/);
   db.close();
 });

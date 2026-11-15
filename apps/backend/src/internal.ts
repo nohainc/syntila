@@ -93,6 +93,9 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
          (SELECT max(m.created_at) FROM discussion_messages m WHERE m.author_user_id = u.id) AS last_message_at,
          CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = u.id AND ${PAID}) THEN 'paid' ELSE 'free' END AS plan,
          (SELECT source FROM account_plans ap WHERE ap.user_id = u.id) AS plan_source,
+         CASE WHEN EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = u.id)
+           OR EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = u.id AND (ap.source = 'provider' OR ap.provider_customer_id IS NOT NULL OR ap.provider_subscription_id IS NOT NULL))
+           THEN 'provider' ELSE 'manual' END AS plan_management,
          (SELECT current_period_end FROM account_plans ap WHERE ap.user_id = u.id) AS plan_period_end
        FROM users u WHERE u.id IN (${ids.map((_, i) => `?${i + 1}`).join(",")})`,
     ).bind(...ids).all<Record<string, unknown> & { id: string }>();
@@ -122,12 +125,17 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
   ).bind(userId, email, email.split("@")[0], now).run();
   const owner = await env.SYNTILA_DB.prepare("SELECT email FROM users WHERE id = ?1").bind(userId).first<{ email: string }>();
   if (owner?.email.toLowerCase() !== email) return json({ error: "Account email does not match" }, 409);
-  await env.SYNTILA_DB.prepare(
+  const changed = await env.SYNTILA_DB.prepare(
     `INSERT INTO account_plans (user_id, tier, status, source, current_period_end, created_at, updated_at)
-       VALUES (?1, ?2, ?3, 'manual', NULL, ?4, ?4)
+       SELECT ?1, ?2, ?3, 'manual', NULL, ?4, ?4
+       WHERE NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ?1)
      ON CONFLICT (user_id) DO UPDATE SET tier = excluded.tier, status = excluded.status, source = 'manual',
-       current_period_end = NULL, updated_at = excluded.updated_at`,
+       current_period_end = NULL, updated_at = excluded.updated_at
+     WHERE account_plans.source = 'manual' AND account_plans.provider_customer_id IS NULL AND account_plans.provider_subscription_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ?1)`,
   ).bind(userId, grant ? "paid" : "free", grant ? "active" : "canceled", now).run();
+  if (Number(changed.meta?.changes ?? 0) !== 1)
+    return json({ error: "This account has a provider-linked subscription. Manage it through the payment provider.", code: "provider_subscription_managed" }, 409);
   const plan = await env.SYNTILA_DB.prepare(
     `SELECT CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = ?1 AND ${PAID}) THEN 'paid' ELSE 'free' END AS plan`,
   ).bind(userId).first<{ plan: string }>();

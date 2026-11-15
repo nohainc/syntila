@@ -11,7 +11,8 @@ server-signed account reference; notifications verify both the Paddle signature
 and that reference. Subscription snapshots are kept in PostgreSQL in
 `paddle_sandbox_subscriptions`; older deliveries cannot overwrite newer ones.
 They may update provider-sourced `account_plans`, but never replace a manual
-grant. The endpoints return 404 outside the development environment. The
+grant, but records the provider link alongside it. A verified sandbox purchase
+reconciles a previous manual Free override. The endpoints return 404 outside the development environment. The
 reference secret, webhook secret, client token and two sandbox price IDs must
 be configured separately. A local-only checkout page displays Paddle's price
 previews and passes the signed reference to a sandbox overlay. Local settings
@@ -34,6 +35,11 @@ without migrations.
 - **Storage:** `account_plans` (migration `0094_account_plans.sql`). A missing
   row means Free. `source` is `manual` (grants) or `provider` (future billing
   webhooks). The client never writes plans.
+- **Operator protection:** the Accounts app may change manual grants only.
+  The backend atomically refuses grant and revoke when a plan is provider-sourced
+  or retains a provider customer or subscription ID, including records previously
+  overwritten by an operator. Provider-linked billing is managed at the payment
+  provider. The app disables plan controls when management status is unknown.
 - **Effective tier** (`apps/cloud/src/account-plan.ts`): Paid only when
   `tier = 'paid'`, status is `active`, `trialing` or `past_due`, and
   `current_period_end` is absent (open-ended grant) or in the future.

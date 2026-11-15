@@ -102,7 +102,12 @@ export async function callBackend(config, path, body, fetcher = fetch) {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(30000),
   });
-  if (!response.ok) throw new Error(`Backend request failed (HTTP ${response.status}).`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    if (response.status === 409 && body?.code === "provider_subscription_managed")
+      throw new Error("This account has a provider-linked subscription. Manage it through the payment provider.");
+    throw new Error(`Backend request failed (HTTP ${response.status}).`);
+  }
   return response.json();
 }
 export async function executeSQL(config, sql) {
@@ -131,7 +136,7 @@ export async function executeSQL(config, sql) {
     throw new Error("Database operation failed.");
   return result.flatMap((r) => r.results ?? []);
 }
-const EMPTY_STATS = { spaces: 0, workspaces: 0, requests: 0, failed_requests: 0, last_request_at: null, messages: 0, last_message_at: null, plan: "free", plan_source: null, plan_period_end: null };
+const EMPTY_STATS = { spaces: 0, workspaces: 0, requests: 0, failed_requests: 0, last_request_at: null, messages: 0, last_message_at: null, plan: "free", plan_source: null, plan_management: null, plan_period_end: null };
 export async function handle(input, query = executeSQL, fetcher = fetch, backend = callBackend) {
   const config = environment(input.environment);
   if (input.action === "list") {
@@ -139,12 +144,15 @@ export async function handle(input, query = executeSQL, fetcher = fetch, backend
     let stats = {};
     let statsError;
     try {
-      stats = (await backend(config, "/internal/admin/accounts/stats", { ids: users.map((u) => u.id) }, fetcher)).stats ?? {};
+      const reply = await backend(config, "/internal/admin/accounts/stats", { ids: users.map((u) => u.id) }, fetcher);
+      if (!reply?.stats || typeof reply.stats !== "object" || Array.isArray(reply.stats))
+        throw new Error("Backend returned invalid account statistics.");
+      stats = reply.stats;
     } catch (error) {
       statsError = error instanceof Error ? error.message : "Backend unavailable.";
     }
     return {
-      users: users.map((u) => ({ ...EMPTY_STATS, ...(stats[u.id] ?? {}), ...u })),
+      users: users.map((u) => ({ ...EMPTY_STATS, ...(stats[u.id] ?? (statsError ? {} : { plan_management: "manual" })), ...u })),
       ...(statsError ? { warning: `Usage and plans are unavailable: ${statsError}` } : {}),
     };
   }

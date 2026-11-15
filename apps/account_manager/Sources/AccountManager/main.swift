@@ -17,8 +17,10 @@ struct Account: Decodable, Identifiable, Hashable {
     let last_message_at: String?
     let plan: String?
     let plan_source: String?
+    let plan_management: String?
     let plan_period_end: String?
     var isPaid: Bool { plan == "paid" }
+    var canChangeManualPlan: Bool { plan_management == "manual" }
 }
 struct Reply: Decodable {
     let users: [Account]?
@@ -164,8 +166,12 @@ struct ContentView: View {
                             .disabled(model.busy || account.status == "deactivated")
                         Button("Send password reset email") { prepare("reset", account) }
                             .disabled(model.busy || account.status != "active")
-                        Button(account.isPaid ? "Disable paid membership" : "Enable paid membership") { prepare(account.isPaid ? "revoke_paid" : "grant_paid", account) }
-                            .disabled(model.busy)
+                        Button(account.isPaid ? "Remove manual Plus grant" : "Grant Plus manually") { prepare(account.isPaid ? "revoke_paid" : "grant_paid", account) }
+                            .disabled(model.busy || !account.canChangeManualPlan)
+                    }
+                    if !account.canChangeManualPlan {
+                        Text(account.plan_management == "provider" ? "A subscription is linked to this account. Manage it through the payment provider." : "Plan management is unavailable. Refresh after connecting to the backend.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                 } else {
@@ -207,8 +213,9 @@ struct ContentView: View {
     }
     private func prepare(_ action: String, _ account: Account) { target = account; confirmation = ""; pending = action }
     private func planText(_ account: Account) -> String {
+        if account.plan_management == "provider" && !account.isPaid { return "Free · subscription linked" }
         guard account.isPaid else { return account.plan_source == nil ? "Free" : "Free (paid membership ended)" }
-        let source = account.plan_source == "manual" ? "manual grant" : "subscription"
+        let source = account.plan_management == "provider" ? "subscription linked" : "manual grant"
         return "Paid · \(source)" + (account.plan_period_end.map { " · until \($0)" } ?? "")
     }
     private func actionTitle(_ action: String?) -> String {
@@ -221,8 +228,8 @@ struct ContentView: View {
     private func actionDetail(_ action: String?) -> String {
         switch action {
         case "reset": return "Request an email containing a time-limited password reset link. Email delivery is not guaranteed by the request response."
-        case "grant_paid": return "Grants Syntila Plus with no end date until disabled here. This replaces any existing subscription record for this user."
-        case "revoke_paid": return "Moves the user to Free. Paid features stop and Workspaces they share are paused for other people; existing grants return if re-enabled. Running work is not cancelled."
+        case "grant_paid": return "Grants Syntila Plus with no end date until the manual grant is removed. Provider-linked subscriptions cannot be changed here."
+        case "revoke_paid": return "Removes the manual Plus grant. Paid features stop and shared Workspace access is paused; running work is not cancelled. Provider-linked subscriptions cannot be changed here."
         default: return "This changes access to Syntila. Locking revokes human sessions; work already running is not cancelled."
         }
     }

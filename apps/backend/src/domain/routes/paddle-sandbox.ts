@@ -99,8 +99,15 @@ export async function handleSandboxWebhook(request: Request, env: SandboxEnv): P
       SELECT user_id,'paid',status,'provider',current_period_end,customer_id,subscription_id,now(),now()
       FROM paddle_sandbox_subscriptions WHERE user_id=?1
       ORDER BY (status IN ('active','trialing','past_due') AND current_period_end > now()) DESC, current_period_end DESC NULLS LAST, occurred_at DESC LIMIT 1
-      ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier,status=excluded.status,current_period_end=excluded.current_period_end,provider_customer_id=excluded.provider_customer_id,provider_subscription_id=excluded.provider_subscription_id,updated_at=excluded.updated_at
-      WHERE account_plans.source='provider'`).bind(userId),
+      ON CONFLICT(user_id) DO UPDATE SET
+        tier=CASE WHEN account_plans.source='manual' AND account_plans.tier='paid' AND account_plans.status='active' THEN account_plans.tier ELSE excluded.tier END,
+        status=CASE WHEN account_plans.source='manual' AND account_plans.tier='paid' AND account_plans.status='active' THEN account_plans.status ELSE excluded.status END,
+        source=CASE WHEN account_plans.source='manual' AND account_plans.tier='paid' AND account_plans.status='active' THEN account_plans.source ELSE excluded.source END,
+        current_period_end=CASE WHEN account_plans.source='manual' AND account_plans.tier='paid' AND account_plans.status='active' THEN account_plans.current_period_end ELSE excluded.current_period_end END,
+        provider_customer_id=excluded.provider_customer_id,provider_subscription_id=excluded.provider_subscription_id,updated_at=excluded.updated_at
+      WHERE account_plans.source='provider'
+         OR (account_plans.source='manual' AND ((account_plans.tier='free' AND account_plans.status='canceled')
+             OR (account_plans.tier='paid' AND account_plans.status='active')))`).bind(userId),
   ]);
   return json({ ok: true });
 }

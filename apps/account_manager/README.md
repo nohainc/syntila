@@ -80,8 +80,12 @@ and a Paid tag in the list. **Enable paid membership** writes an open-ended
 **Disable paid membership** sets that row to tier `free`, status `canceled`.
 Both use a confirmation dialog without email retyping, recheck user ID and email,
 and write an `account.admin.grant_paid` / `account.admin.revoke_paid` audit event.
-The displayed plan uses the same rule as Cloud's `paidOwnerSql`. Enabling
-overrides an existing provider subscription row. Disabling pauses Workspace
+The displayed plan uses the same rule as the backend's `paidOwnerSql`. Accounts
+with a provider-linked subscription cannot be changed here, even when a prior
+manual override left them Free: the backend rejects both grant and revoke and
+the app disables those actions. Use the payment provider to manage billing.
+When plan status cannot be loaded, the app disables plan changes until refresh.
+Removing a manual grant pauses Workspace
 sharing for people the user shared with (see ADR-022). Requires migration
 `0094_account_plans.sql` in the selected database.
 

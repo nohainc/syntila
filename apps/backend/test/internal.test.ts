@@ -87,12 +87,50 @@ describe("email outbox", () => {
 });
 
 describe("account admin endpoints", () => {
+  test("refuses manual plan changes for provider-linked subscriptions", async () => {
+    await sql`INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES
+      ('provider-user','provider@test','Provider','active',now(),now()),
+      ('overridden-user','overridden@test','Overridden','active',now(),now()),
+      ('customer-user','customer@test','Customer','active',now(),now()),
+      ('sandbox-user','sandbox@test','Sandbox','active',now(),now()),
+      ('sandbox-no-plan','no-plan@test','No plan','active',now(),now())`;
+    await sql`INSERT INTO account_plans(user_id,tier,status,source,provider_customer_id,provider_subscription_id,created_at,updated_at) VALUES
+      ('provider-user','paid','active','provider','ctm_test','sub_test',now(),now()),
+      ('overridden-user','free','canceled','manual','ctm_old','sub_old',now(),now()),
+      ('customer-user','free','canceled','manual','ctm_only',NULL,now(),now()),
+      ('sandbox-user','paid','active','manual',NULL,NULL,now(),now())`;
+    await sql`INSERT INTO paddle_sandbox_subscriptions(subscription_id,user_id,customer_id,status,occurred_at) VALUES('sub_sandbox','sandbox-user','ctm_sandbox','active',now()),('sub_no_plan','sandbox-no-plan','ctm_no_plan','active',now())`;
+    const token = await internalToken();
+    for (const [id, email] of [['provider-user', 'provider@test'], ['overridden-user', 'overridden@test'], ['customer-user', 'customer@test'], ['sandbox-user', 'sandbox@test'], ['sandbox-no-plan', 'no-plan@test']]) {
+      for (const action of ['grant_paid', 'revoke_paid']) {
+        const result = await call(token, `/internal/admin/accounts/${id}/plan`, { action, email });
+        expect(result.status).toBe(409);
+        expect(result.body.code).toBe('provider_subscription_managed');
+      }
+    }
+    const rows = await sql`SELECT user_id,tier,status,source,provider_subscription_id FROM account_plans WHERE user_id IN ('provider-user','overridden-user','customer-user','sandbox-user') ORDER BY user_id`;
+    expect(rows).toEqual([
+      { user_id: 'customer-user', tier: 'free', status: 'canceled', source: 'manual', provider_subscription_id: null },
+      { user_id: 'overridden-user', tier: 'free', status: 'canceled', source: 'manual', provider_subscription_id: 'sub_old' },
+      { user_id: 'provider-user', tier: 'paid', status: 'active', source: 'provider', provider_subscription_id: 'sub_test' },
+      { user_id: 'sandbox-user', tier: 'paid', status: 'active', source: 'manual', provider_subscription_id: null },
+    ]);
+    expect(Number((await sql`SELECT count(*) AS n FROM account_plans WHERE user_id='sandbox-no-plan'`)[0].n)).toBe(0);
+    const stats = await call(token, '/internal/admin/accounts/stats', { ids: ['provider-user', 'overridden-user', 'customer-user', 'sandbox-user', 'sandbox-no-plan'] });
+    expect(stats.body.stats['provider-user'].plan_management).toBe('provider');
+    expect(stats.body.stats['overridden-user'].plan_management).toBe('provider');
+    expect(stats.body.stats['customer-user'].plan_management).toBe('provider');
+    expect(stats.body.stats['sandbox-user'].plan_management).toBe('provider');
+    expect(stats.body.stats['sandbox-no-plan'].plan_management).toBe('provider');
+  });
+
   test("stats, plan grant/revoke and status mirror", async () => {
     const user = await sign({ sub: "ops-user", typ: "user", email: "ops@test", name: "Ops" });
     await fetch(`${base}/api/spaces`, { method: "POST", headers: { authorization: `Bearer ${user}`, "content-type": "application/json", origin: "https://syntila.app" }, body: JSON.stringify({ name: "Ops" }) });
     const stats = await call(await internalToken(), "/internal/admin/accounts/stats", { ids: ["ops-user", "missing"] });
     expect(stats.status).toBe(200);
     expect(stats.body.stats["ops-user"]).toMatchObject({ spaces: 1, plan: "free" });
+    expect(stats.body.stats["ops-user"].plan_management).toBe("manual");
     expect(stats.body.stats.missing).toBeUndefined();
 
     expect((await call(await internalToken(), "/internal/admin/accounts/ops-user/plan", { action: "grant_paid", email: "nobody@test" })).status).toBe(409);
