@@ -799,6 +799,36 @@ export async function handleCreatePersonInvitation(
           { status: 201 },
         );
       }
+    } else {
+      // A parallel request invited the same address first: answer like the
+      // pre-check above would have, instead of a unique-index error.
+      const racingEmail = await env.SYNTILA_DB.prepare(
+        `SELECT id, inviter_user_id, email, expires_at, created_at
+         FROM person_invitations
+         WHERE inviter_user_id = ?1 AND LOWER(email) = ?2 AND status = 'pending' AND expires_at > ?3`,
+      )
+        .bind(context.userId, targetEmail.toLowerCase(), now)
+        .first<{
+          id: string;
+          inviter_user_id: string;
+          email: string;
+          expires_at: string;
+          created_at: string;
+        }>();
+      if (racingEmail)
+        return json({
+          status: "pending",
+          invitation: {
+            id: racingEmail.id,
+            inviterUserId: racingEmail.inviter_user_id,
+            inviteeUserId: null,
+            email: racingEmail.email,
+            status: "pending",
+            createdAt: racingEmail.created_at,
+            expiresAt: racingEmail.expires_at,
+          },
+          emailDelivered: true,
+        });
     }
     throw err;
   }

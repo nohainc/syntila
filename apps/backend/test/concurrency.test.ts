@@ -219,3 +219,123 @@ describe("plan limits", () => {
     expect(row.n).toBe(1);
   });
 });
+
+/** Statuses other than the expected ones; a 5xx in a race is always a bug. */
+const unexpected = (results: { status: number }[], allowed: number[]) =>
+  results.map((r) => r.status).filter((s) => !allowed.includes(s));
+
+describe("races on shared actions", () => {
+  test("accepting one Space invitation from several devices at once", async () => {
+    const owner = await mint("race-owner-1");
+    const guest = await mint("race-guest-1");
+    await call(guest, "GET", "/api/spaces"); // the invitee exists
+    const space = await call(owner, "POST", "/api/spaces", { name: "Accept race" });
+    const invite = await call(owner, "POST", `/api/spaces/${space.body.space.id}/invitations`, { email: "race-guest-1@test", role: "collaborator" });
+    expect(invite.status).toBe(201);
+    const id = invite.body.invitation.id;
+    const results = await Promise.all(Array.from({ length: 6 }, () => call(guest, "POST", `/api/space-invitations/${id}/accept`, {})));
+    expect(unexpected(results, [200, 201, 409])).toEqual([]);
+    expect(results.some((r) => r.status < 300)).toBe(true);
+    const [row] = await sql`SELECT count(*)::int AS n FROM space_memberships WHERE space_id = ${space.body.space.id} AND user_id = 'race-guest-1'`;
+    expect(row.n).toBe(1);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+
+  test("accepting and declining one Space invitation at the same moment", async () => {
+    const owner = await mint("race-owner-2");
+    const guest = await mint("race-guest-2");
+    await call(guest, "GET", "/api/spaces");
+    const space = await call(owner, "POST", "/api/spaces", { name: "Decide race" });
+    const invite = await call(owner, "POST", `/api/spaces/${space.body.space.id}/invitations`, { email: "race-guest-2@test", role: "collaborator" });
+    const id = invite.body.invitation.id;
+    const results = await Promise.all([
+      call(guest, "POST", `/api/space-invitations/${id}/accept`, {}),
+      call(guest, "POST", `/api/space-invitations/${id}/decline`, {}),
+      call(owner, "POST", `/api/spaces/${space.body.space.id}/invitations/${id}/expire`, {}),
+    ]);
+    expect(unexpected(results, [200, 201, 404, 405, 409])).toEqual([]);
+    const [inv] = await sql`SELECT status FROM space_invitations WHERE id = ${id}`;
+    const [m] = await sql`SELECT count(*)::int AS n FROM space_memberships WHERE space_id = ${space.body.space.id} AND user_id = 'race-guest-2'`;
+    // A member exactly when the invitation ended accepted.
+    expect(m.n).toBe(inv.status === "accepted" ? 1 : 0);
+  });
+
+  test("parallel person invitations to one person", async () => {
+    const a = await mint("race-person-a");
+    const b = await mint("race-person-b");
+    await call(b, "GET", "/api/spaces");
+    const results = await Promise.all(Array.from({ length: 6 }, () => call(a, "POST", "/api/people/invitations", { email: "race-person-b@example.com" })));
+    expect(unexpected(results, [200, 201, 409])).toEqual([]);
+    const [row] = await sql`SELECT count(*)::int AS n FROM person_invitations WHERE inviter_user_id = 'race-person-a' AND status = 'pending'`;
+    expect(row.n).toBe(1);
+  });
+
+  test("editing and deleting one message at the same moment", async () => {
+    const token = await mint("race-msg");
+    const { threadId } = await spaceWithThread(token, "Edit race");
+    const sent = await call(token, "POST", `/api/threads/${threadId}/discussion-messages`, { body: "v0" });
+    const id = sent.body.message?.id ?? sent.body.id;
+    const results = await Promise.all([
+      ...Array.from({ length: 4 }, (_, i) => call(token, "PATCH", `/api/discussion-messages/${id}`, { body: `v${i + 1}` })),
+      call(token, "DELETE", `/api/discussion-messages/${id}`),
+    ]);
+    expect(unexpected(results, [200, 204, 404, 409])).toEqual([]);
+  });
+
+  test("changing and removing one member at the same moment", async () => {
+    const owner = await mint("race-owner-3");
+    const guest = await mint("race-guest-3");
+    await call(guest, "GET", "/api/spaces");
+    const space = await call(owner, "POST", "/api/spaces", { name: "Member race" });
+    const spaceId = space.body.space.id;
+    const invite = await call(owner, "POST", `/api/spaces/${spaceId}/invitations`, { email: "race-guest-3@test", role: "collaborator" });
+    expect((await call(guest, "POST", `/api/space-invitations/${invite.body.invitation.id}/accept`, {})).status).toBeLessThan(300);
+    const results = await Promise.all([
+      call(owner, "PATCH", `/api/spaces/${spaceId}/members/race-guest-3/role`, { role: "viewer" }),
+      call(owner, "POST", `/api/spaces/${spaceId}/members/race-guest-3/remove`, {}),
+      call(owner, "PATCH", `/api/spaces/${spaceId}/members/race-guest-3/role`, { role: "collaborator" }),
+    ]);
+    expect(unexpected(results, [200, 204, 404, 409])).toEqual([]);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+
+  test("deleting one Space twice at once, while people post in it", async () => {
+    const token = await mint("race-delete");
+    const { spaceId, threadId } = await spaceWithThread(token, "Delete race");
+    const results = await Promise.all([
+      call(token, "DELETE", `/api/spaces/${spaceId}`),
+      call(token, "DELETE", `/api/spaces/${spaceId}`),
+      ...Array.from({ length: 5 }, (_, i) => call(token, "POST", `/api/threads/${threadId}/discussion-messages`, { body: `m${i}` })),
+      call(token, "POST", `/api/spaces/${spaceId}/threads`, { name: "late" }),
+    ]);
+    expect(unexpected(results, [200, 201, 204, 403, 404, 409])).toEqual([]);
+    const [row] = await sql`SELECT count(*)::int AS n FROM spaces WHERE id = ${spaceId}`;
+    expect(row.n).toBe(0);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+
+  test("deleting a Thread while people post and clear it", async () => {
+    const token = await mint("race-thread");
+    const { threadId } = await spaceWithThread(token, "Thread race");
+    const results = await Promise.all([
+      ...Array.from({ length: 4 }, (_, i) => call(token, "POST", `/api/threads/${threadId}/discussion-messages`, { body: `m${i}` })),
+      call(token, "POST", `/api/threads/${threadId}/chat/clear`, {}),
+      call(token, "POST", `/api/threads/${threadId}/chat/clear`, {}),
+      call(token, "DELETE", `/api/threads/${threadId}`),
+      call(token, "PATCH", `/api/threads/${threadId}`, { name: "renamed" }),
+    ]);
+    expect(unexpected(results, [200, 201, 204, 403, 404, 409])).toEqual([]);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+
+  test("renaming and archiving one Space at once", async () => {
+    const token = await mint("race-rename");
+    const { spaceId } = await spaceWithThread(token, "Rename race");
+    const results = await Promise.all([
+      ...Array.from({ length: 4 }, (_, i) => call(token, "PATCH", `/api/spaces/${spaceId}`, { name: `Renamed ${i}` })),
+      call(token, "PATCH", `/api/spaces/${spaceId}`, { archived: true }),
+      call(token, "PATCH", `/api/spaces/${spaceId}`, { description: "d" }),
+    ]);
+    expect(unexpected(results, [200, 409])).toEqual([]);
+  });
+});

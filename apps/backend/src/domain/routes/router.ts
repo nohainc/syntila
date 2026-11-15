@@ -78,6 +78,32 @@ export async function routeWorkerRequest(
         { error: "Request body must be valid JSON", code: "invalid_json" },
         { status: 400 },
       );
+    // Concurrency outcomes are answered as such: the client can retry or
+    // reload. A unique violation means a parallel request created the same
+    // thing first; a foreign-key violation that what it belongs to was just
+    // deleted; a lock or serialization timeout that it waited too long.
+    const sqlState = databaseErrorCode(error);
+    if (sqlState === "23505" || sqlState === "23503" || sqlState === "40001" || sqlState === "40P01" || sqlState === "55P03") {
+      const conflict = sqlState === "23505" || sqlState === "23503";
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          message: conflict ? "http.concurrent_conflict" : "http.concurrent_timeout",
+          details: {
+            method: request.method,
+            path: url.pathname,
+            sqlState,
+            constraint: (error as { constraint?: string }).constraint,
+          },
+        }),
+      );
+      return deps.json(
+        conflict
+          ? { error: "This changed at the same time elsewhere. Reload and try again.", code: "conflict" }
+          : { error: "The server is busy with the same item. Try again.", code: "busy" },
+        { status: conflict ? 409 : 503 },
+      );
+    }
     // Anything else is a fault on our side. Its message may name tables,
     // files or internals, so it goes to the log and never to the client.
     console.error(
@@ -100,4 +126,13 @@ export async function routeWorkerRequest(
   }
 
   return deps.json({ error: "not_found" }, { status: 404 });
+}
+
+/** SQLSTATE of a PostgreSQL error, through the adapter's wrapper too. */
+function databaseErrorCode(error: unknown): string | undefined {
+  for (let e: any = error, depth = 0; e && depth < 3; e = e.cause, depth++) {
+    const code = e.errno ?? e.code;
+    if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return code;
+  }
+  return undefined;
 }

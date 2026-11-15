@@ -7,6 +7,7 @@
 #   scripts/backend-logs.sh slow           # single writes that held the lock 250 ms or more
 #   scripts/backend-logs.sh db             # database health: lock waits, deadlocks, transactions
 #   scripts/backend-logs.sh lockwaits      # lock waits and deadlocks PostgreSQL itself logged
+#   scripts/backend-logs.sh conflicts      # parallel requests answered 409 conflict / 503 busy
 #   scripts/backend-logs.sh limited        # requests refused by the rate limiter
 #   scripts/backend-logs.sh retention      # nightly pruning results
 #   scripts/backend-logs.sh all 2d         # everything above, last 2 days
@@ -47,6 +48,7 @@ case "$topic" in
     ssh "$host" "sudo journalctl -u 'postgresql*' --since '$since' --no-pager -o cat | grep -E 'still waiting for|deadlock detected|acquired .* after' | tail -n $lines" || true
     ssh "$host" "sudo sh -c 'grep -hE \"still waiting for|deadlock detected\" /var/log/postgresql/*.log 2>/dev/null | tail -n $lines'" || true
     echo;;
+  conflicts) show "concurrent conflicts (409)" '"http.concurrent_conflict"'; show "concurrent timeouts (503)" '"http.concurrent_timeout"';;
   limited)   show "rate limited" '"http.rate_limited"';;
   retention) show "retention" '"retention.';;
   all)
@@ -58,5 +60,5 @@ case "$topic" in
     show "retention" '"retention.'
     show "writer lock" '"db.writer_lock"';;
   follow)    exec ssh -t "$host" "journalctl -u syntila-backend -f -o cat";;
-  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;
+  *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;
 esac

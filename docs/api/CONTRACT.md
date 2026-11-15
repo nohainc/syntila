@@ -33,9 +33,13 @@ Otherwise the code follows the status:
 
 Only deliberate errors reach the client with their own text: a handler
 throws `HttpError(status, message)` (optionally with a `code`). A body that
-is not JSON is answered with `400 invalid_json`. Every other exception,
-database failures included, is answered with `500 internal_error` and a
-generic message; the real error and its stack are in the server log as
+is not JSON is answered with `400 invalid_json`. Two database outcomes of
+parallel requests are answered as such, without internals: a unique
+violation (something was created at the same moment) or a foreign-key
+violation (what it belongs to was just deleted) is `409 conflict`, and
+a lock, deadlock or serialization timeout is `503 busy` (retry). Every other
+exception, database failures included, is answered with `500 internal_error`
+and a generic message; the real error and its stack are in the server log as
 `http.unhandled_error`, findable by `requestId`.
 
 A handler that wants the client to see a validation message must therefore

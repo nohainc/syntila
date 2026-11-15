@@ -136,4 +136,24 @@ describe("router error handling", () => {
     expect(response.status).toBe(400);
     expect((await response.json()).code).toBe("invalid_json");
   });
+  test("a unique violation from a parallel request is a 409 conflict, without internals", async () => {
+    const unique = Object.assign(new Error('UNIQUE constraint failed: users_email_key (duplicate key)'), { code: "23505", constraint: "users_email_key" });
+    const response = await call(unique);
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.code).toBe("conflict");
+    expect(JSON.stringify(body)).not.toContain("users_email_key");
+  });
+  test("a foreign-key violation (the parent was just deleted) is a 409 conflict", async () => {
+    const response = await call(Object.assign(new Error("FOREIGN KEY constraint failed"), { code: "23503" }));
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("conflict");
+  });
+  test("a lock or deadlock timeout is a retryable 503", async () => {
+    for (const code of ["40P01", "40001", "55P03"]) {
+      const response = await call(Object.assign(new Error("timeout"), { code }));
+      expect(response.status).toBe(503);
+      expect((await response.json()).code).toBe("busy");
+    }
+  });
 });
