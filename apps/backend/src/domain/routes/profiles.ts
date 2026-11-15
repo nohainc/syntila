@@ -77,7 +77,7 @@ export async function handleListWorkspaceWorkerInventory(
           AND i.owner_user_id <> ?1
           -- A custom plugin is shared only when its owner opted in (ADR-027).
           AND (COALESCE(catalog.origin, 'official') <> 'plugin'
-               OR pe.shareable = 1)
+               OR pe.shareable)
           AND (?2::text IS NULL OR i.workspace_id = ?2)
           AND (EXISTS (
             SELECT 1

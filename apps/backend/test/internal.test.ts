@@ -50,7 +50,7 @@ describe("internal account endpoints", () => {
     const profile = await call(await internalToken(), "/internal/accounts/dora/profile", { name: "Dora N", email: "Dora.New@Test", image: null, emailVerified: true });
     expect(profile).toEqual({ status: 200, body: { ok: true, updated: true } });
     const [row] = await sql`SELECT email, display_name, email_verified, status FROM users WHERE id = 'dora'`;
-    expect(row).toEqual({ email: "dora.new@test", display_name: "Dora N", email_verified: 1, status: "active" });
+    expect(row).toEqual({ email: "dora.new@test", display_name: "Dora N", email_verified: true, status: "active" });
     expect((await call(await internalToken(), "/internal/accounts/nobody/profile", { name: "X" })).body).toEqual({ ok: true, updated: false });
 
     for (let i = 0; i < 2; i++) expect((await call(await internalToken(), "/internal/accounts/dora/deletion")).status).toBe(200);

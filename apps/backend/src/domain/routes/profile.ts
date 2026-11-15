@@ -205,7 +205,7 @@ export async function handleReadReceiptPrivacy(
     )
       throw new HttpError(400, "shareReadReceipts must be true or false");
     await env.SYNTILA_DB.prepare(
-      "UPDATE users SET share_read_receipts = ?1, updated_at = ?2 WHERE id = ?3",
+      "UPDATE users SET share_read_receipts = ?1::int::boolean, updated_at = ?2 WHERE id = ?3",
     )
       .bind(
         body.shareReadReceipts ? 1 : 0,

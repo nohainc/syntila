@@ -1,3 +1,4 @@
+import { HttpError } from "./routes/http-security.js";
 import {
   type WorkerExecutionOptions,
   validateWorkerExecutionSelection,
@@ -56,13 +57,13 @@ export function resolveExecutionSelectionSnapshot(
     selection.effort,
     selection.catalogRevision,
   );
-  if (requestedError) throw new Error(requestedError);
+  if (requestedError) throw new HttpError(400, requestedError);
   const modelId = selection.modelId ?? options.models.defaultModelId;
   const effort =
     selection.effort ??
     workerEffortOptionsForModel(options, modelId).defaultValue;
   const error = validateWorkerExecutionSelection(options, modelId, effort);
-  if (error) throw new Error(error);
+  if (error) throw new HttpError(400, error);
   return Object.freeze({
     schemaVersion: 1 as const,
     ...worker,

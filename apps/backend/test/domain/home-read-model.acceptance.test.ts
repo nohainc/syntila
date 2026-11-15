@@ -32,7 +32,7 @@ it("spaces authorized Home read model with attention, running, recentWork, produ
       CREATE TABLE conversation_work_requests (work_request_id TEXT, conversation_id TEXT, thread_id TEXT);
       CREATE TABLE user_pins (user_id TEXT, kind TEXT, target_id TEXT, pinned_at TIMESTAMPTZ, position INTEGER);
       CREATE TABLE direct_spaces (space_id TEXT, user_low_id TEXT, user_high_id TEXT, general_thread_id TEXT);
-      CREATE TABLE direct_space_user_state (space_id TEXT, user_id TEXT, hidden INTEGER, last_opened_at TIMESTAMPTZ, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ, personal_name TEXT);
+      CREATE TABLE direct_space_user_state (space_id TEXT, user_id TEXT, hidden BOOLEAN, last_opened_at TIMESTAMPTZ, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ, personal_name TEXT);
 
       -- Users
       INSERT INTO users VALUES ('user-123', 'vitalii@nohainc.com', 'Vitalii', 'active');

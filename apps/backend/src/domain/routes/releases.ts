@@ -33,7 +33,7 @@ export async function handleGetLatestWorkspaceRelease(
             signature, signing_key_id as signingKeyId, release_notes as releaseNotes, is_revoked as isRevoked,
             created_at as createdAt
      FROM workspace_releases
-     WHERE channel = ?1 AND is_revoked = 0 AND signing_key_id IS NOT NULL
+     WHERE channel = ?1 AND NOT is_revoked AND signing_key_id IS NOT NULL
        AND NOT EXISTS (
          SELECT 1 FROM release_signing_key_revocations revoked
          WHERE revoked.key_id = workspace_releases.signing_key_id
@@ -448,7 +448,7 @@ export async function handlePublishWorkspaceRelease(
        version, channel, min_supported_workspace_version, supported_os_json,
        supported_arch_json, package_digest, package_r2_key, signature, signing_key_id,
        release_notes, is_revoked, created_at
-     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, ?11)`,
+     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, FALSE, ?11)`,
   )
     .bind(
       version,
@@ -494,7 +494,7 @@ export async function handleRevokeWorkspaceRelease(
 
   await env.SYNTILA_DB.prepare(
     `UPDATE workspace_releases
-     SET is_revoked = 1, revoked_at = ?1, revocation_reason = ?2
+     SET is_revoked = TRUE, revoked_at = ?1, revocation_reason = ?2
      WHERE version = ?3`,
   )
     .bind(now, reason, version)
@@ -516,7 +516,7 @@ export async function handleGetReleaseTrustState(
       "SELECT key_id FROM release_signing_key_revocations ORDER BY key_id",
     ).all<{ key_id: string }>(),
     env.SYNTILA_DB.prepare(
-      "SELECT version, package_digest FROM workspace_releases WHERE is_revoked = 1",
+      "SELECT version, package_digest FROM workspace_releases WHERE is_revoked",
     ).all<{ version: string; package_digest: string }>(),
   ]);
   return json({

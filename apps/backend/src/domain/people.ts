@@ -151,12 +151,12 @@ export async function ensureSupportSpace(
       .bind(spaceId, userLowId, userHighId, now),
     db
       .prepare(
-        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, 1, ?3, ?3)",
+        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, TRUE, ?3, ?3)",
       )
       .bind(spaceId, userId, now),
     db
       .prepare(
-        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, 0, ?3, ?3)",
+        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3)",
       )
       .bind(spaceId, support.id, now),
     db

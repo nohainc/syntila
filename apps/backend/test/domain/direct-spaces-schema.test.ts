@@ -171,8 +171,8 @@ describe("Direct Spaces and Personal Connections Schema (Phase 1)", () => {
         VALUES ('u1', 'u2', 'connected', 'now', 'ds1');
 
         INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES
-          ('ds1', 'u1', 0, 'now', 'now'),
-          ('ds1', 'u2', 1, 'now', 'now');
+          ('ds1', 'u1', FALSE, 'now', 'now'),
+          ('ds1', 'u2', TRUE, 'now', 'now');
       `);
 
       const connection = sqlite

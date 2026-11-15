@@ -100,7 +100,7 @@ export function errorMessage(error: unknown): string {
 
 export function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${field} is required`);
+    throw new HttpError(400, `${field} is required`);
   }
   return value;
 }

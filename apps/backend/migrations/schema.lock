@@ -120,7 +120,7 @@ column conversations.updated_at timestamptz not-null default
 column conversations.workflow_id text not-null
 column conversations.workflow_version int8 not-null
 column direct_space_user_state.created_at timestamptz not-null default
-column direct_space_user_state.hidden int2 not-null default
+column direct_space_user_state.hidden bool not-null default
 column direct_space_user_state.last_opened_at timestamptz
 column direct_space_user_state.personal_name text
 column direct_space_user_state.space_id text not-null
@@ -166,8 +166,8 @@ column execution_workspaces.id text not-null
 column execution_workspaces.name text not-null
 column execution_workspaces.owner_user_id text not-null
 column execution_workspaces.parallel_slots int8
-column execution_workspaces.space_ai_chat int2 not-null default
-column execution_workspaces.space_ai_work int2 not-null default
+column execution_workspaces.space_ai_chat bool not-null default
+column execution_workspaces.space_ai_work bool not-null default
 column execution_workspaces.status text not-null default
 column execution_workspaces.updated_at timestamptz not-null default
 column issue_report_diagnostics.bundle_key text
@@ -377,9 +377,9 @@ column threads.access_policy_json text not-null default
 column threads.ai_context_generation int8 not-null default
 column threads.ai_history_cleared_at timestamptz
 column threads.created_at timestamptz not-null default
-column threads.has_other_contributions int2 not-null default
+column threads.has_other_contributions bool not-null default
 column threads.id text not-null
-column threads.is_general int2 not-null default
+column threads.is_general bool not-null default
 column threads.lead_user_id text not-null
 column threads.lease_fence_counter int8 not-null default
 column threads.metadata_json text not-null default
@@ -440,9 +440,9 @@ column users.avatar_url text
 column users.created_at timestamptz not-null default
 column users.display_name text not-null
 column users.email text not-null
-column users.email_verified int2 not-null default
+column users.email_verified bool not-null default
 column users.id text not-null
-column users.share_read_receipts int2 not-null default
+column users.share_read_receipts bool not-null default
 column users.status text not-null default
 column users.updated_at timestamptz not-null default
 column work_request_inputs.content_digest text
@@ -677,7 +677,7 @@ column workspace_person_grants.user_id text not-null
 column workspace_person_grants.workspace_id text not-null
 column workspace_releases.channel text not-null default
 column workspace_releases.created_at timestamptz not-null default
-column workspace_releases.is_revoked int2 not-null default
+column workspace_releases.is_revoked bool not-null default
 column workspace_releases.min_supported_workspace_version text
 column workspace_releases.package_digest text not-null
 column workspace_releases.package_r2_key text not-null
@@ -755,7 +755,7 @@ column workspace_worker_plugin_enablements.consent_hash text not-null
 column workspace_worker_plugin_enablements.intent text not-null
 column workspace_worker_plugin_enablements.manifest_digest text not-null
 column workspace_worker_plugin_enablements.plugin_ref text not-null
-column workspace_worker_plugin_enablements.shareable int2 not-null default
+column workspace_worker_plugin_enablements.shareable bool not-null default
 column workspace_worker_plugin_enablements.updated_at timestamptz not-null default
 column workspace_worker_plugin_enablements.version text not-null
 column workspace_worker_plugin_enablements.workspace_id text not-null
@@ -766,6 +766,8 @@ column workspace_worker_preferences.workspace_id text not-null
 constraint account_execution_waiters.account_execution_waiters_pkey primary-key
 constraint account_execution_waiters.account_execution_waiters_reason_check check
 constraint account_execution_waiters.account_execution_waiters_requester_user_id_fkey foreign-key -> users on-delete-cascade
+constraint account_execution_waiters.account_execution_waiters_run_id_fkey foreign-key -> runs on-delete-cascade
+constraint account_execution_waiters.account_execution_waiters_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
 constraint account_plans.account_plans_pkey primary-key
 constraint account_plans.account_plans_source_check check
 constraint account_plans.account_plans_status_check check
@@ -851,7 +853,6 @@ constraint conversations.conversations_thread_id_fkey foreign-key -> threads on-
 constraint conversations.conversations_thread_id_workflow_id_key unique
 constraint conversations.conversations_workflow_id_check check
 constraint conversations.conversations_workflow_version_check check
-constraint direct_space_user_state.direct_space_user_state_hidden_check check
 constraint direct_space_user_state.direct_space_user_state_pkey primary-key
 constraint direct_space_user_state.direct_space_user_state_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint direct_space_user_state.direct_space_user_state_user_id_fkey foreign-key -> users on-delete-cascade
@@ -869,6 +870,7 @@ constraint discussion_messages.discussion_messages_pkey primary-key
 constraint discussion_messages.discussion_messages_references_json_is_json check
 constraint discussion_messages.discussion_messages_reply_to_json_is_json check
 constraint discussion_messages.discussion_messages_thread_id_fkey foreign-key -> threads on-delete-cascade
+constraint discussion_messages.discussion_messages_work_request_id_fkey foreign-key -> work_requests on-delete-set-null
 constraint durable_object_alarms.durable_object_alarms_pkey primary-key
 constraint durable_object_storage.durable_object_storage_pkey primary-key
 constraint email_outbox.email_outbox_pkey primary-key
@@ -877,8 +879,6 @@ constraint execution_workspaces.execution_workspaces_id_owner_user_id_key unique
 constraint execution_workspaces.execution_workspaces_owner_user_id_fkey foreign-key -> users on-delete-restrict
 constraint execution_workspaces.execution_workspaces_parallel_slots_check check
 constraint execution_workspaces.execution_workspaces_pkey primary-key
-constraint execution_workspaces.execution_workspaces_space_ai_chat_check check
-constraint execution_workspaces.execution_workspaces_space_ai_work_check check
 constraint execution_workspaces.execution_workspaces_status_check check
 constraint issue_report_diagnostics.issue_report_diagnostics_diagnostic_json_check check
 constraint issue_report_diagnostics.issue_report_diagnostics_diagnostic_json_is_json check
@@ -1015,8 +1015,6 @@ constraint thread_work_configs.thread_work_configs_pkey primary-key
 constraint thread_work_configs.thread_work_configs_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint thread_work_configs.thread_work_configs_updated_by_user_id_fkey foreign-key -> users on-delete-set-null
 constraint threads.threads_access_policy_json_is_json check
-constraint threads.threads_has_other_contributions_check check
-constraint threads.threads_is_general_check check
 constraint threads.threads_lead_user_id_fkey foreign-key -> users on-delete-restrict
 constraint threads.threads_lease_fence_counter_check check
 constraint threads.threads_metadata_json_is_json check
@@ -1054,17 +1052,17 @@ constraint user_workflow_settings.user_workflow_settings_pkey primary-key
 constraint user_workflow_settings.user_workflow_settings_user_id_fkey foreign-key -> users on-delete-cascade
 constraint user_workflow_settings.user_workflow_settings_workspace_id_fkey foreign-key -> execution_workspaces on-delete-set-null
 constraint users.users_email_key unique
-constraint users.users_email_verified_check check
 constraint users.users_pkey primary-key
-constraint users.users_share_read_receipts_check check
 constraint users.users_status_check check
 constraint work_request_inputs.work_request_inputs_pkey primary-key
 constraint work_request_inputs.work_request_inputs_position_check check
 constraint work_request_inputs.work_request_inputs_size_bytes_check check
 constraint work_request_inputs.work_request_inputs_state_check check
+constraint work_request_inputs.work_request_inputs_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint work_request_inputs.work_request_inputs_user_id_fkey foreign-key -> users on-delete-no-action
 constraint work_request_inputs.work_request_inputs_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
 constraint work_request_inputs.work_request_inputs_work_request_id_position_key unique
+constraint work_request_inputs.work_request_inputs_workspace_id_fkey foreign-key -> execution_workspaces on-delete-no-action
 constraint work_requests.work_requests_input_json_is_json check
 constraint work_requests.work_requests_mode_check check
 constraint work_requests.work_requests_pkey primary-key
@@ -1201,7 +1199,6 @@ constraint workspace_person_grants.workspace_person_grants_status_check check
 constraint workspace_person_grants.workspace_person_grants_user_id_fkey foreign-key -> users on-delete-cascade
 constraint workspace_person_grants.workspace_person_grants_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 constraint workspace_releases.workspace_releases_channel_check check
-constraint workspace_releases.workspace_releases_is_revoked_check check
 constraint workspace_releases.workspace_releases_pkey primary-key
 constraint workspace_releases.workspace_releases_supported_arch_json_is_json check
 constraint workspace_releases.workspace_releases_supported_os_json_is_json check
@@ -1212,6 +1209,8 @@ constraint workspace_runtime_identities.workspace_runtime_identities_check check
 constraint workspace_runtime_identities.workspace_runtime_identities_pkey primary-key
 constraint workspace_runtime_identities.workspace_runtime_identities_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 constraint workspace_service_readiness.workspace_service_readiness_pkey primary-key
+constraint workspace_service_readiness.workspace_service_readiness_runtime_identity_id_fkey foreign-key -> workspace_runtime_identities on-delete-cascade
+constraint workspace_service_readiness.workspace_service_readiness_session_id_fkey foreign-key -> workspace_sessions on-delete-no-action
 constraint workspace_sessions.workspace_sessions_pkey primary-key
 constraint workspace_sessions.workspace_sessions_runtime_identity_id_fkey foreign-key -> workspace_runtime_identities on-delete-cascade
 constraint workspace_sessions.workspace_sessions_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
@@ -1243,7 +1242,6 @@ constraint workspace_worker_plugin_enablements.workspace_worker_plugin_enablemen
 constraint workspace_worker_plugin_enablements.workspace_worker_plugin_enablements_pkey primary-key
 constraint workspace_worker_plugin_enablements.workspace_worker_plugin_enablements_plugin_ref_fkey foreign-key -> account_worker_plugins on-delete-cascade
 constraint workspace_worker_plugin_enablements.workspace_worker_plugin_enablements_plugin_ref_version_fkey foreign-key -> account_worker_plugin_versions on-delete-no-action
-constraint workspace_worker_plugin_enablements.workspace_worker_plugin_enablements_shareable_check check
 constraint workspace_worker_plugin_enablements.workspace_worker_plugin_enablements_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 constraint workspace_worker_preferences.workspace_worker_preferences_pkey primary-key
 constraint workspace_worker_preferences.workspace_worker_preferences_preferences_json_check check
@@ -1251,6 +1249,7 @@ constraint workspace_worker_preferences.workspace_worker_preferences_preferences
 constraint workspace_worker_preferences.workspace_worker_preferences_user_id_fkey foreign-key -> users on-delete-cascade
 constraint workspace_worker_preferences.workspace_worker_preferences_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 function establish_people_on_membership_fn/0
+function syntila_guard_failed/1
 function syntila_iso/1
 function syntila_json_patch/2
 function syntila_json_path/1
@@ -1307,6 +1306,8 @@ function validate_direct_space_general_thread_update_fn/0
 function worker_catalog_origin_invariants_insert_fn/0
 function workspace_space_grant_status_transition_valid_fn/0
 index account_execution_waiters.account_execution_waiters_pkey (task_id) unique
+index account_execution_waiters.account_execution_waiters_run_id_fkidx (run_id)
+index account_execution_waiters.account_execution_waiters_work_request_id_fkidx (work_request_id)
 index account_execution_waiters.idx_account_execution_waiters_requester (requester_user_id,enqueued_at,task_id)
 index account_plans.account_plans_pkey (user_id) unique
 index account_worker_plugin_versions.account_worker_plugin_versions_pkey (plugin_ref,version) unique
@@ -1359,6 +1360,7 @@ index direct_spaces.direct_spaces_user_low_id_user_high_id_key (user_low_id,user
 index direct_spaces.idx_direct_spaces_high (user_high_id,user_low_id)
 index discussion_messages.discussion_messages_author_user_id_fkidx (author_user_id)
 index discussion_messages.discussion_messages_pkey (id) unique
+index discussion_messages.discussion_messages_work_request_id_fkidx (work_request_id)
 index discussion_messages.idx_discussion_messages_thread (thread_id,created_at)
 index durable_object_alarms.durable_object_alarms_pkey (namespace,object_name) unique
 index durable_object_storage.durable_object_storage_pkey (namespace,object_name,key) unique
@@ -1480,8 +1482,10 @@ index users.users_email_key (email) unique
 index users.users_pkey (id) unique
 index work_request_inputs.idx_work_request_inputs_workspace (workspace_id,state,created_at)
 index work_request_inputs.work_request_inputs_pkey (id) unique
+index work_request_inputs.work_request_inputs_thread_id_fkidx (thread_id)
 index work_request_inputs.work_request_inputs_user_id_fkidx (user_id)
 index work_request_inputs.work_request_inputs_work_request_id_position_key (work_request_id,position) unique
+index work_request_inputs.work_request_inputs_workspace_id_fkidx (workspace_id)
 index work_requests.idx_work_requests_thread (thread_id,status,created_at)
 index work_requests.work_requests_pkey (id) unique
 index work_requests.work_requests_primary_workspace_id_fkidx (primary_workspace_id)
@@ -1558,6 +1562,8 @@ index workspace_runtime_identities.idx_workspace_runtime_identities_active_works
 index workspace_runtime_identities.idx_workspace_runtime_token_hash (credential_token_hash) unique
 index workspace_runtime_identities.workspace_runtime_identities_pkey (id) unique
 index workspace_service_readiness.workspace_service_readiness_pkey (workspace_id) unique
+index workspace_service_readiness.workspace_service_readiness_runtime_identity_id_fkidx (runtime_identity_id)
+index workspace_service_readiness.workspace_service_readiness_session_id_fkidx (session_id)
 index workspace_sessions.idx_workspace_sessions_workspace (workspace_id)
 index workspace_sessions.workspace_sessions_pkey (id) unique
 index workspace_sessions.workspace_sessions_runtime_identity_id_fkidx (runtime_identity_id)

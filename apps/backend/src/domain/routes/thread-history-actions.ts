@@ -70,10 +70,10 @@ export function destructiveThreadGuard(
 ) {
   return env.SYNTILA_DB.prepare(
     `UPDATE threads SET has_other_contributions = CASE
-    WHEN ((lead_user_id = ?2 AND has_other_contributions = 0) OR EXISTS
+    WHEN ((lead_user_id = ?2 AND NOT has_other_contributions) OR EXISTS
       (SELECT 1 FROM spaces s WHERE s.id = threads.space_id AND s.owner_user_id = ?2 AND COALESCE(s.kind, 'group') <> 'direct'))
       AND NOT EXISTS (SELECT 1 FROM work_requests wr WHERE wr.thread_id = threads.id
         AND wr.status IN ('queued','running','waiting'))
-    THEN has_other_contributions ELSE -1 END WHERE id = ?1`,
+    THEN has_other_contributions ELSE syntila_guard_failed('thread_not_destructible') END WHERE id = ?1`,
   ).bind(threadId, userId);
 }

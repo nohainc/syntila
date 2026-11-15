@@ -175,7 +175,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     const generalThreadId = `legacy-gen-${directSpaceId}`;
     const now = new Date().toISOString();
     await (env as { SYNTILA_DB: D1Database }).SYNTILA_DB.prepare(
-      "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?1, ?2, 'General', 'active', 'user-alice', 1, ?3, ?3)",
+      "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?1, ?2, 'General', 'active', 'user-alice', TRUE, ?3, ?3)",
     )
       .bind(generalThreadId, directSpaceId, now)
       .run();

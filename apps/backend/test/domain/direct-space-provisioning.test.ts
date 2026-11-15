@@ -414,7 +414,7 @@ describe("Direct Space provisioning", () => {
     const now = new Date().toISOString();
     sqlite
       .prepare(
-        "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?, ?, 'General', 'active', 'user-alice', 1, ?, ?)",
+        "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?, ?, 'General', 'active', 'user-alice', TRUE, ?, ?)",
       )
       .run(general_thread_id, directSpaceId, now, now);
     sqlite

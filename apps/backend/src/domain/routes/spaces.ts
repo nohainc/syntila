@@ -85,7 +85,7 @@ export async function handleListSpaces(
               peer_u.display_name AS peerDisplayName,
               dsus.personal_name AS personalName,
               peer_u.avatar_url AS peerAvatarUrl,
-              COALESCE(dsus.hidden, 0) AS hidden,
+              COALESCE(dsus.hidden, FALSE) AS hidden,
               EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id) AS isSupport,
               EXISTS (
                 SELECT 1 FROM threads t
@@ -115,15 +115,15 @@ export async function handleListSpaces(
              ? ""
              : `AND COALESCE((p.settings_json::jsonb ->> 'archived'), 'false') NOT IN ('true', '1')
                 AND (
-                  (p.kind != 'direct' AND COALESCE(dsus.hidden, 0) = 0)
+                  (p.kind != 'direct' AND NOT COALESCE(dsus.hidden, FALSE))
                   OR (
                     EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id AND ss.user_id = ?1)
-                    AND COALESCE(dsus.hidden, 1) = 0
+                    AND NOT COALESCE(dsus.hidden, TRUE)
                   )
                   OR (
                     NOT EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id AND ss.user_id = ?1)
                     AND
-                    COALESCE(dsus.hidden, 0) = 0
+                    NOT COALESCE(dsus.hidden, FALSE)
                     AND (
                       dsus.last_opened_at IS NOT NULL
                       OR EXISTS (
@@ -392,10 +392,10 @@ export async function handleGetSpace(
     // Opening a support Space must not change the user's sidebar preference.
     await env.SYNTILA_DB.prepare(
       `INSERT INTO direct_space_user_state (space_id, user_id, hidden, last_opened_at, created_at, updated_at)
-       VALUES (?1, ?2, CASE WHEN EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2) THEN 1 ELSE 0 END, ?3, ?3, ?3)
+       VALUES (?1, ?2, EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2), ?3, ?3, ?3)
        ON CONFLICT(space_id, user_id) DO UPDATE SET
          last_opened_at = excluded.last_opened_at,
-         hidden = CASE WHEN EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2) THEN direct_space_user_state.hidden ELSE 0 END,
+         hidden = CASE WHEN EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2) THEN direct_space_user_state.hidden ELSE FALSE END,
          updated_at = excluded.updated_at`,
     )
       .bind(spaceId, context.userId, now)
@@ -515,7 +515,7 @@ export async function handleUpdateSpace(
     const now = new Date().toISOString();
     await env.SYNTILA_DB.prepare(
       `INSERT INTO direct_space_user_state (space_id, user_id, hidden, personal_name, created_at, updated_at)
-       VALUES (?1, ?2, CASE WHEN EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2) THEN 1 ELSE 0 END, ?3, ?4, ?4)
+       VALUES (?1, ?2, EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2), ?3, ?4, ?4)
        ON CONFLICT(space_id, user_id) DO UPDATE SET personal_name = excluded.personal_name, updated_at = excluded.updated_at`,
     )
       .bind(spaceId, context.userId, personalName, now)
@@ -603,7 +603,7 @@ export async function handleUpdateSpace(
     // last_opened_at remains specific to Direct Space discovery.
     await env.SYNTILA_DB.prepare(
       `INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?4)
+       VALUES (?1, ?2, ?3::int::boolean, ?4, ?4)
        ON CONFLICT(space_id, user_id) DO UPDATE SET
          hidden = excluded.hidden,
          updated_at = excluded.updated_at`,

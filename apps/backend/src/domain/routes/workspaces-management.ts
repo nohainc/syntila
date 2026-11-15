@@ -203,8 +203,8 @@ export async function handleUpdateWorkspace(
     `UPDATE execution_workspaces
         SET name = CASE WHEN ?1::text IS NULL THEN name ELSE ?1 END,
             parallel_slots = CASE WHEN ?5::bigint IS NULL THEN parallel_slots ELSE ?5 END,
-            space_ai_chat = CASE WHEN ?6::smallint IS NULL THEN space_ai_chat ELSE ?6 END,
-            space_ai_work = CASE WHEN ?7::smallint IS NULL THEN space_ai_work ELSE ?7 END,
+            space_ai_chat = COALESCE(?6::int::boolean, space_ai_chat),
+            space_ai_work = COALESCE(?7::int::boolean, space_ai_work),
             updated_at = ?2
       WHERE id = ?3 AND owner_user_id = ?4 AND status <> 'revoked'`,
   )

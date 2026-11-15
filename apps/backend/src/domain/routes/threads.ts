@@ -60,7 +60,7 @@ export async function handleListSpaceThreads(
   const rows = await env.SYNTILA_DB.prepare(
     `SELECT threads.id, threads.space_id AS spaceId,
             threads.name, threads.status, threads.has_other_contributions AS hasOtherContributions,
-            COALESCE(threads.is_general, 0) AS isGeneral,
+            threads.is_general AS isGeneral,
             threads.access_policy_json AS accessPolicyJson,
             usage.config_json AS workConfigJson,
             threads.metadata_json AS metadataJson,
@@ -642,7 +642,7 @@ export async function handleListDiscussionMessages(
   let cursor: { createdAt: string; id: string } | null = null;
   if (rawCursor !== null) {
     try {
-      if (rawCursor.length > 2048) throw new Error("Oversized cursor");
+      if (rawCursor.length > 2048) throw new HttpError(400, "Oversized cursor");
       const value = JSON.parse(decodeURIComponent(atob(rawCursor))) as Record<
         string,
         unknown
@@ -655,7 +655,7 @@ export async function handleListDiscussionMessages(
         typeof value.id !== "string" ||
         !value.id
       )
-        throw new Error("Invalid cursor");
+        throw new HttpError(400, "Invalid cursor");
       cursor = { createdAt: value.createdAt, id: value.id };
     } catch {
       throw new HttpError(400, "Invalid Discussion cursor");
@@ -831,7 +831,7 @@ export async function handleCreateDiscussionMessage(
   if (directSpace && !directSpace.isSupport) {
     mutations.push(
       env.SYNTILA_DB.prepare(
-        "UPDATE direct_space_user_state SET hidden = 0, last_opened_at = ?1, updated_at = ?1 WHERE space_id = ?2",
+        "UPDATE direct_space_user_state SET hidden = FALSE, last_opened_at = ?1, updated_at = ?1 WHERE space_id = ?2",
       ).bind(now, spaceId),
     );
   }
@@ -1167,9 +1167,9 @@ export async function handleListThreadReadStates(
     `SELECT r.user_id AS userId, u.display_name AS displayName, r.read_at AS readAt
        FROM thread_read_states r
        JOIN space_memberships m ON m.space_id = ?2 AND m.user_id = r.user_id
-       JOIN users u ON u.id = r.user_id AND u.share_read_receipts = 1
+       JOIN users u ON u.id = r.user_id AND u.share_read_receipts
       WHERE r.thread_id = ?1 AND r.user_id != ?3
-        AND EXISTS (SELECT 1 FROM users me WHERE me.id = ?3 AND me.share_read_receipts = 1)
+        AND EXISTS (SELECT 1 FROM users me WHERE me.id = ?3 AND me.share_read_receipts)
       ORDER BY r.read_at DESC`,
   )
     .bind(threadId, spaceId, context.userId)

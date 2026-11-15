@@ -444,7 +444,7 @@ export async function handleWorkspacePluginPin(
     .prepare(
       `INSERT INTO workspace_worker_plugin_enablements
          (workspace_id, plugin_ref, version, manifest_digest, consent_hash, intent, shareable, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7::int::boolean, ?8)
        ON CONFLICT(workspace_id, plugin_ref) DO UPDATE SET
          version = excluded.version,
          manifest_digest = excluded.manifest_digest,

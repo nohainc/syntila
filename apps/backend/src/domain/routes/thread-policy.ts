@@ -286,7 +286,7 @@ async function loadThreadRow(env: SecurityEnv, threadId: string) {
   const row = await env.SYNTILA_DB.prepare(
     `SELECT t.id, t.space_id AS spaceId, t.name, t.status,
             t.access_policy_json AS accessPolicyJson, t.lead_user_id AS leadUserId,
-            COALESCE(t.is_general, 0) AS isGeneral,
+            t.is_general AS isGeneral,
             t.created_at AS createdAt, t.updated_at AS updatedAt,
             COALESCE(s.kind, 'group') AS spaceKind
      FROM threads t

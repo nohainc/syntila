@@ -27,9 +27,9 @@ export async function handleGetHomeReadModel(
      WHERE pm.user_id = ?1
        AND COALESCE((p.settings_json::jsonb ->> 'archived'), 'false') NOT IN ('true', '1')
        AND (
-         (p.kind != 'direct' AND COALESCE(dsus.hidden, 0) = 0)
+         (p.kind != 'direct' AND NOT COALESCE(dsus.hidden, FALSE))
          OR (
-           COALESCE(dsus.hidden, 0) = 0
+           NOT COALESCE(dsus.hidden, FALSE)
            AND (
              dsus.last_opened_at IS NOT NULL
              OR EXISTS (

@@ -13,6 +13,8 @@ import {
   withErrorEnvelope,
 } from "../../src/domain/routes/api-contract";
 import worker from "../../src/domain/index";
+import { HttpError } from "../../src/domain/routes/http-security";
+import { routeWorkerRequest } from "../../src/domain/routes/router";
 
 describe("error envelope", () => {
   test("adds a code and the request id to a plain error", async () => {
@@ -105,5 +107,33 @@ describe("through the worker", () => {
     expect(typeof body.error).toBe("string");
     expect(typeof body.code).toBe("string");
     expect(body.requestId).toBe("req-9");
+  });
+});
+
+describe("router error handling", () => {
+  const deps = {
+    json: (data: unknown, init?: ResponseInit) => Response.json(data, init),
+    requireSameOriginForCookieMutation: () => {},
+    errorMessage: (error: unknown) => (error instanceof Error ? error.message : "failed"),
+    HttpError,
+  } as never;
+  const call = (thrown: unknown) =>
+    routeWorkerRequest(new Request("https://syntila.app/api/spaces"), {} as never, undefined,
+      { handleListSpaces: async () => { throw thrown; } } as never, deps);
+
+  test("a deliberate error keeps its status and text", async () => {
+    const response = await call(new HttpError(409, "Space name is taken"));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Space name is taken" });
+  });
+  test("an unexpected error is a 500 and its text stays in the log", async () => {
+    const response = await call(new Error("relation \"secret_table\" does not exist"));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Something went wrong on our side.", code: "internal_error" });
+  });
+  test("a body that is not JSON is the client's mistake", async () => {
+    const response = await call(new SyntaxError("Unexpected token"));
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe("invalid_json");
   });
 });

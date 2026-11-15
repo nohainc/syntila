@@ -31,12 +31,15 @@ Otherwise the code follows the status:
 | 404 | `not_found` | 500 | `internal_error` |
 | 409 | `conflict` | 503 | `unavailable` |
 
-Database failures are answered with `500 internal_error` and a generic
-message; the detail is only in the server log.
+Only deliberate errors reach the client with their own text: a handler
+throws `HttpError(status, message)` (optionally with a `code`). A body that
+is not JSON is answered with `400 invalid_json`. Every other exception,
+database failures included, is answered with `500 internal_error` and a
+generic message; the real error and its stack are in the server log as
+`http.unhandled_error`, findable by `requestId`.
 
-Known gap: other unexpected exceptions are still answered with status 400
-and their message. Each handler should throw `HttpError` for client mistakes
-so that the remainder can become 500.
+A handler that wants the client to see a validation message must therefore
+throw `HttpError(400, …)`, never a plain `Error`.
 
 ## Version
 

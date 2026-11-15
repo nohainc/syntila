@@ -355,10 +355,10 @@ async function provisionDirectConnection(
         "INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at) VALUES (?1, ?2, ?3, NULL, ?4)",
       ).bind(directSpaceId, userLowId, userHighId, now),
       env.SYNTILA_DB.prepare(
-        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, 0, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING",
+        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING",
       ).bind(directSpaceId, inviterUserId, now),
       env.SYNTILA_DB.prepare(
-        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, 0, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING",
+        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING",
       ).bind(directSpaceId, recipientUserId, now),
     );
   }
@@ -1321,7 +1321,7 @@ export async function handleEnsureSupportSpace(
   const context = await securityContext(request, env, ctx);
   if (request.method === "GET") {
     const row = await env.SYNTILA_DB.prepare(
-      `SELECT ss.space_id AS spaceId, COALESCE(dsus.hidden, 1) AS hidden
+      `SELECT ss.space_id AS spaceId, COALESCE(dsus.hidden, TRUE) AS hidden
        FROM support_spaces ss
        JOIN space_memberships pm ON pm.space_id = ss.space_id AND pm.user_id = ss.user_id
        LEFT JOIN direct_space_user_state dsus

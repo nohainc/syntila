@@ -1,3 +1,4 @@
+import { HttpError } from "../routes/http-security.js";
 import { hashToken } from "@syntila/security";
 
 type Database = Pick<D1Database, "prepare">;
@@ -120,7 +121,7 @@ export class WorkspaceRuntimeAuthenticator {
   ): Promise<WorkspaceRuntimeIdentity> {
     const identity = await this.authenticateRuntime(runtimeId, credential);
     if (!identity || identity.executionWorkspaceId !== workspaceId) {
-      throw new Error("Invalid or revoked Workspace runtime credential");
+      throw new HttpError(401, "Invalid or revoked Workspace runtime credential");
     }
     return identity;
   }

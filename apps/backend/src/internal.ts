@@ -49,7 +49,7 @@ export async function handleInternal(request: Request, env: Env, verifier: Token
       // anonymized, deactivated user; the address is free for a new account.
       await env.SYNTILA_DB.prepare(
         `UPDATE users SET status = 'deactivated', email = ?2, display_name = 'Deleted user', avatar_url = NULL,
-           email_verified = 0, updated_at = ?3 WHERE id = ?1`,
+           email_verified = FALSE, updated_at = ?3 WHERE id = ?1`,
       ).bind(userId, `deleted+${userId}@syntila.invalid`, now).run();
     }
     return json({ ok: true, existed: Boolean(user) });
@@ -61,7 +61,7 @@ export async function handleInternal(request: Request, env: Env, verifier: Token
   const result = await env.SYNTILA_DB.prepare(
     `UPDATE users SET email = COALESCE(?2, email), display_name = COALESCE(?3, display_name),
        avatar_url = CASE WHEN ?4::int = 1 THEN ?5 ELSE avatar_url END,
-       email_verified = CASE WHEN ?6::smallint IS NULL THEN email_verified ELSE ?6::smallint END,
+       email_verified = COALESCE(?6::int::boolean, email_verified),
        updated_at = ?7
      WHERE id = ?1 AND status <> 'deactivated'`,
   ).bind(userId, email, name, image !== undefined ? 1 : 0, image ?? null,

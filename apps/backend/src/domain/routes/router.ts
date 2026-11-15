@@ -1338,48 +1338,52 @@ export async function routeWorkerRequest(
       );
     }
   } catch (error) {
-    if (!(error instanceof deps.HttpError)) {
-      // Unexpected failures are reported as 400; keep their cause visible.
-      console.error(
-        JSON.stringify({
-          level: "error",
-          message: "http.unhandled_error",
-          details: {
-            method: request.method,
-            path: url.pathname,
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-          },
-        }),
+    const status =
+      typeof error === "object" &&
+      error !== null &&
+      "status" in error &&
+      typeof error.status === "number"
+        ? error.status
+        : undefined;
+    // A deliberate error (HttpError or anything carrying a status) is the
+    // handler talking to the client: pass its message, status and code on.
+    if (error instanceof deps.HttpError || status !== undefined) {
+      const code =
+        "code" in (error as object) &&
+        typeof (error as { code?: unknown }).code === "string"
+          ? (error as { code: string }).code
+          : undefined;
+      return deps.json(
+        code
+          ? { error: deps.errorMessage(error), code }
+          : { error: deps.errorMessage(error) },
+        { status: status ?? 400 },
       );
     }
-    // A database failure names tables and constraints: never send it out.
-    if (!(error instanceof deps.HttpError) && isDatabaseError(error))
+    // A body that is not JSON is the client's mistake.
+    if (error instanceof SyntaxError)
       return deps.json(
-        { error: "Something went wrong on our side.", code: "internal_error" },
-        { status: 500 },
+        { error: "Request body must be valid JSON", code: "invalid_json" },
+        { status: 400 },
       );
-    // Only HttpErrors expose a stable code; driver error codes stay internal.
-    const code =
-      error instanceof deps.HttpError &&
-      "code" in error &&
-      typeof error.code === "string"
-        ? error.code
-        : undefined;
+    // Anything else is a fault on our side. Its message may name tables,
+    // files or internals, so it goes to the log and never to the client.
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "http.unhandled_error",
+        details: {
+          method: request.method,
+          path: url.pathname,
+          database: isDatabaseError(error),
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      }),
+    );
     return deps.json(
-      code
-        ? { error: deps.errorMessage(error), code }
-        : { error: deps.errorMessage(error) },
-      {
-        status:
-          error instanceof deps.HttpError ||
-          (typeof error === "object" &&
-            error !== null &&
-            "status" in error &&
-            typeof error.status === "number")
-            ? (error as { status: number }).status
-            : 400,
-      },
+      { error: "Something went wrong on our side.", code: "internal_error" },
+      { status: 500 },
     );
   }
 
