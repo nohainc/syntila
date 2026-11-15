@@ -1,4 +1,5 @@
-import { afterCursorSql, cursorOrderSql, pageOf, pageRequest } from "./pagination.js";
+import { afterCursor, cursorOrder, pageOf, pageRequest } from "./pagination.js";
+import { dataOf, type Row } from "../../platform/data.js";
 import { NoteInputSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { spaceNameOf } from "../queries.js";
@@ -7,23 +8,27 @@ import { authorizeRequest } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
 
 
-/** Notes are private to their owner. A note may link to one Thread; the link
+/** Notes are private to their owner. Data layer: no global writer lock;
+ * every write is one self-contained statement guarded by `revision` or a
+ * unique index, so parallel writes stay correct.
+ *
+ * Notes are private to their owner. A note may link to one Thread; the link
  * is live only while the Thread exists and the owner is still a member of its
  * Space. Otherwise the note stays, detached, with the saved Space and Thread
  * titles. */
-const NOTE_COLUMNS = `n.id, n.title, n.body, n.thread_id AS threadId,
-  n.space_id AS spaceId, n.linked_title AS linkedTitle,
-  n.linked_space_title AS linkedSpaceTitle, n.revision,
-  n.created_at AS createdAt, n.updated_at AS updatedAt,
-  t.name AS liveThreadName, s.name AS liveSpaceName,
-  CASE WHEN t.id IS NOT NULL AND m.user_id IS NOT NULL THEN 1 ELSE 0 END AS linked`;
+const NOTE_COLUMNS = `n.id, n.title, n.body, n.thread_id AS "threadId",
+  n.space_id AS "spaceId", n.linked_title AS "linkedTitle",
+  n.linked_space_title AS "linkedSpaceTitle", n.revision,
+  n.created_at AS "createdAt", n.updated_at AS "updatedAt",
+  t.name AS "liveThreadName", s.name AS "liveSpaceName",
+  (t.id IS NOT NULL AND m.user_id IS NOT NULL) AS linked`;
 const NOTE_FROM = `user_notes n
   LEFT JOIN threads t ON t.id = n.thread_id
   LEFT JOIN space_memberships m ON m.space_id = t.space_id AND m.user_id = n.user_id
   LEFT JOIN spaces s ON s.id = t.space_id`;
 
-function noteView(row: Record<string, unknown>) {
-  const linked = row.linked === 1;
+function noteView(row: Row) {
+  const linked = row.linked === true;
   return {
     id: String(row.id),
     title: String(row.title),
@@ -46,11 +51,9 @@ function noteView(row: Record<string, unknown>) {
 }
 
 async function readNote(env: SecurityEnv, userId: string, noteId: string) {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT ${NOTE_COLUMNS} FROM ${NOTE_FROM} WHERE n.id = ?1 AND n.user_id = ?2`,
-  )
-    .bind(noteId, userId)
-    .first<Record<string, unknown>>();
+  const q = dataOf(env).read;
+  const row = await q.row`SELECT ${q.raw(NOTE_COLUMNS)} FROM ${q.raw(NOTE_FROM)}
+     WHERE n.id = ${noteId} AND n.user_id = ${userId}`;
   if (!row) throw new HttpError(404, "Note not found");
   return noteView(row);
 }
@@ -70,26 +73,15 @@ async function updateNote(
 ) {
   if (input.revision === undefined)
     throw new HttpError(400, "revision is required");
-  const result = await env.SYNTILA_DB.prepare(
-    `UPDATE user_notes
-        SET title = COALESCE(?1, title), body = COALESCE(?2, body),
-            linked_title = COALESCE(?3, linked_title),
-            linked_space_title = COALESCE(?8, linked_space_title),
-            revision = revision + 1, updated_at = ?4
-      WHERE id = ?5 AND user_id = ?6 AND revision = ?7`,
-  )
-    .bind(
-      input.title ?? null,
-      input.body ?? null,
-      linked?.thread ?? null,
-      new Date().toISOString(),
-      noteId,
-      userId,
-      input.revision,
-      linked?.space ?? null,
-    )
-    .run();
-  if (!result.meta.changes) {
+  const changed = await dataOf(env).read.run`
+    UPDATE user_notes
+       SET title = COALESCE(${input.title ?? null}::text, title),
+           body = COALESCE(${input.body ?? null}::text, body),
+           linked_title = COALESCE(${linked?.thread ?? null}::text, linked_title),
+           linked_space_title = COALESCE(${linked?.space ?? null}::text, linked_space_title),
+           revision = revision + 1, updated_at = now()
+     WHERE id = ${noteId} AND user_id = ${userId} AND revision = ${input.revision}`;
+  if (!changed) {
     await readNote(env, userId, noteId); // 404 when the note is gone
     throw new HttpError(409, "Note changed since it was loaded");
   }
@@ -110,14 +102,11 @@ export async function handleListNotes(
     accessContext,
   );
   const { limit, after } = pageRequest(new URL(request.url), { defaultLimit: 500, maxLimit: 500 });
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT ${NOTE_COLUMNS} FROM ${NOTE_FROM}
-      WHERE n.user_id = ?1 AND (?2::text IS NULL OR ${afterCursorSql("n.updated_at", "n.id", 2, 3)})
-      ORDER BY ${cursorOrderSql("n.updated_at", "n.id")} LIMIT ?4`,
-  )
-    .bind(context.userId, after?.at ?? null, after?.id ?? null, limit + 1)
-    .all<Record<string, unknown>>();
-  const page = pageOf(rows.results ?? [], limit, (row) => ({ at: String(row.updatedAt), id: String(row.id) }));
+  const q = dataOf(env).read;
+  const rows = await q.rows`SELECT ${q.raw(NOTE_COLUMNS)} FROM ${q.raw(NOTE_FROM)}
+     WHERE n.user_id = ${context.userId} AND ${afterCursor(q, "n.updated_at", "n.id", after)}
+     ORDER BY ${cursorOrder(q, "n.updated_at", "n.id")} LIMIT ${limit + 1}`;
+  const page = pageOf(rows, limit, (row) => ({ at: String(row.updatedAt), id: String(row.id) }));
   return json({ notes: page.items.map(noteView), nextCursor: page.nextCursor });
 }
 
@@ -136,13 +125,9 @@ export async function handleCreateNote(
   );
   const input = await noteInput(request);
   const id = `note-${crypto.randomUUID()}`;
-  const now = new Date().toISOString();
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO user_notes (id, user_id, title, body, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?5)`,
-  )
-    .bind(id, context.userId, input.title ?? "", input.body ?? "", now)
-    .run();
+  await dataOf(env).read.run`
+    INSERT INTO user_notes (id, user_id, title, body, created_at, updated_at)
+    VALUES (${id}, ${context.userId}, ${input.title ?? ""}, ${input.body ?? ""}, now(), now())`;
   return json(
     { note: await readNote(env, context.userId, id) },
     { status: 201 },
@@ -172,11 +157,7 @@ export async function handleNote(
     });
   }
   if (request.method === "DELETE") {
-    await env.SYNTILA_DB.prepare(
-      "DELETE FROM user_notes WHERE id = ?1 AND user_id = ?2",
-    )
-      .bind(noteId, context.userId)
-      .run();
+    await dataOf(env).read.run`DELETE FROM user_notes WHERE id = ${noteId} AND user_id = ${context.userId}`;
     return json({ ok: true, id: noteId });
   }
   throw new HttpError(405, "Method not allowed");
@@ -198,11 +179,8 @@ export async function handleThreadNote(
     "view",
     accessContext,
   );
-  const existing = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM user_notes WHERE user_id = ?1 AND thread_id = ?2",
-  )
-    .bind(context.userId, threadId)
-    .first<{ id: string }>();
+  const existing = await dataOf(env).read.row<{ id: string }>`
+    SELECT id FROM user_notes WHERE user_id = ${context.userId} AND thread_id = ${threadId}`;
   if (request.method === "GET")
     return json({
       note: existing ? await readNote(env, context.userId, existing.id) : null,
@@ -220,29 +198,16 @@ export async function handleThreadNote(
   if (input.revision !== undefined)
     throw new HttpError(409, "Note changed since it was loaded");
   const id = `note-${crypto.randomUUID()}`;
-  const now = new Date().toISOString();
   // A concurrent first save from another device loses on the unique index.
   // A new Thread note is titled after its Thread; the owner can rename it.
-  const result = await env.SYNTILA_DB.prepare(
-    `INSERT INTO user_notes
-       (id, user_id, title, body, thread_id, space_id, linked_title,
-        linked_space_title, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?9, ?8, ?8)
-     ON CONFLICT DO NOTHING`,
-  )
-    .bind(
-      id,
-      context.userId,
-      input.title || thread.name,
-      input.body ?? "",
-      threadId,
-      spaceId,
-      thread.name,
-      now,
-      linked.space,
-    )
-    .run();
-  if (!result.meta.changes)
+  const inserted = await dataOf(env).read.run`
+    INSERT INTO user_notes
+      (id, user_id, title, body, thread_id, space_id, linked_title,
+       linked_space_title, created_at, updated_at)
+    VALUES (${id}, ${context.userId}, ${input.title || thread.name}, ${input.body ?? ""},
+            ${threadId}, ${spaceId}, ${thread.name}, ${linked.space}, now(), now())
+    ON CONFLICT DO NOTHING`;
+  if (!inserted)
     throw new HttpError(409, "Note changed since it was loaded");
   return json(
     { note: await readNote(env, context.userId, id) },

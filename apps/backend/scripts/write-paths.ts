@@ -32,7 +32,7 @@ const AREAS: [RegExp, string][] = [
 ];
 
 interface Statement { table: string; verb: string; guarded: boolean; numbering: boolean }
-interface Path { file: string; fn: string; area: string; statements: Statement[]; reads: boolean; batch: boolean; adapter: boolean }
+interface Path { file: string; fn: string; area: string; statements: Statement[]; reads: boolean; batch: boolean; adapter: boolean; data: boolean }
 
 async function files(dir: string): Promise<string[]> {
   const out: string[] = [];
@@ -75,7 +75,7 @@ export async function collectWritePaths(): Promise<Path[]> {
       const fn = owner(literal.index!);
       const key = `${file}#${fn}`;
       const entry = paths.get(key) ?? {
-        file, fn, statements: [], reads: false, batch: false, adapter: false,
+        file, fn, statements: [], reads: false, batch: false, adapter: false, data: false,
         area: AREAS.find(([re]) => re.test(file))?.[1] ?? "other",
       };
       const writes = [...sql.matchAll(WRITE)];
@@ -99,6 +99,7 @@ export async function collectWritePaths(): Promise<Path[]> {
       const body = sliceOf(text, fns, entry.fn);
       entry.batch ||= /\.batch\s*\(/.test(body);
       entry.adapter ||= /\.prepare\s*\(/.test(body);
+      entry.data ||= /\bdataOf\s*\(|\.tx\s*\(|\b(?:q|tx)\.(?:rows|row|run)`/.test(body);
     }
   }
   return [...paths.values()].filter((p) => p.statements.length > 0);
@@ -123,11 +124,12 @@ export function renderWritePaths(paths: Path[]): string {
     "- **read-write**: the function reads before it writes (check-then-act); needs a row lock or a constraint.",
     "- **guarded**: every write carries its own condition (`NOT EXISTS`, `ON CONFLICT`, a status/version check).",
     "- **adapter**: still uses the D1-style adapter (`prepare`/`batch`), so it still takes the global writer lock.",
+    "- **data**: uses the data layer (`src/platform/data.ts`): no global lock.",
     "",
     `Totals: ${paths.length} write paths, ${tables.size} tables; ` +
       `${count((p) => p.statements.some((s) => s.numbering))} numbering, ` +
       `${count((p) => p.reads && !p.statements.every((s) => s.guarded))} unguarded read-write, ` +
-      `${count((p) => p.adapter)} on the adapter.`,
+      `${count((p) => p.adapter)} on the adapter, ${count((p) => p.data && !p.adapter)} on the data layer.`,
     "",
   ];
   const areas = [...new Set(paths.map((p) => p.area))].sort();
@@ -141,6 +143,7 @@ export function renderWritePaths(paths: Path[]): string {
         p.statements.every((s) => s.guarded) && "guarded",
         p.batch && "batch",
         p.adapter && "adapter",
+        p.data && "data",
       ].filter(Boolean).join(", ");
       lines.push(`| \`${p.file}\` | \`${p.fn}\` | ${writes} | ${flags} |`);
     }

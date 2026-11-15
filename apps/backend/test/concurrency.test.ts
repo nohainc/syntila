@@ -142,4 +142,18 @@ describe("HTTP write paths without the writer lock", () => {
     expect(results.map((r) => r.status).filter((s) => s !== 201)).toEqual([]);
     expect(await brokenInvariants(sql)).toEqual([]);
   });
+
+  test("parallel edits of one note: exactly one wins, the rest get 409", async () => {
+    const token = await mint("conc-note");
+    const created = await call(token, "POST", "/api/notes", { title: "N", body: "v0" });
+    expect(created.status).toBe(201);
+    const { id, revision } = created.body.note;
+    const results = await Promise.all(Array.from({ length: 12 }, (_, i) =>
+      call(token, "PUT", `/api/notes/${id}`, { body: `v${i + 1}`, revision })));
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+    expect(statuses.filter((s) => s === 409)).toHaveLength(11);
+    const [row] = await sql`SELECT revision::int AS revision FROM user_notes WHERE id = ${id}`;
+    expect(row.revision).toBe(revision + 1);
+  });
 });

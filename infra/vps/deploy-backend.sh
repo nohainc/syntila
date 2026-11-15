@@ -14,6 +14,28 @@ done
 psql_pg() { sudo -u postgres psql -v ON_ERROR_STOP=1 -XAtq -d syntila "$@"; }
 psql_pg -c "ALTER DATABASE syntila OWNER TO syntila_app; ALTER SCHEMA public OWNER TO syntila_app; REVOKE CREATE ON SCHEMA public FROM PUBLIC;"
 
+# Lock and deadlock visibility (project doc claude/concurrency-plan.md,
+# Phase 3): lock waits longer than deadlock_timeout are logged by PostgreSQL,
+# and pg_stat_statements feeds the backend's `db.health` log line.
+psql_admin() { sudo -u postgres psql -v ON_ERROR_STOP=1 -XAtq -d postgres "$@"; }
+if [ "$(psql_admin -c "SELECT count(*) FROM pg_settings WHERE (name = 'log_lock_waits' AND setting <> 'on') OR (name = 'deadlock_timeout' AND setting <> '1000')")" != 0 ]; then
+  psql_admin -c "ALTER SYSTEM SET log_lock_waits = on" -c "ALTER SYSTEM SET deadlock_timeout = '1s'" -c "SELECT pg_reload_conf()" >/dev/null
+  echo "== PostgreSQL: log_lock_waits on, deadlock_timeout 1s"
+fi
+preload=$(psql_admin -c "SHOW shared_preload_libraries")
+case ",$preload," in
+  *,pg_stat_statements,*)
+    psql_pg -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements" ;;
+  *)
+    # Only when the library is installed: a missing preload library would
+    # stop PostgreSQL from starting.
+    if [ "$(psql_admin -c "SELECT count(*) FROM pg_available_extensions WHERE name = 'pg_stat_statements'")" = 1 ]; then
+      psql_admin -c "ALTER SYSTEM SET shared_preload_libraries = '${preload:+$preload,}pg_stat_statements'" >/dev/null
+      echo "== PostgreSQL: pg_stat_statements loads at the next PostgreSQL restart."
+      echo "   At a quiet moment: sudo systemctl restart postgresql (a few seconds offline); the next deploy enables it."
+    fi ;;
+esac
+
 # One-time pre-production reset: the Phase 3 prototype schema (0001_core.sql)
 # is replaced by the ported schema (0001_initial.sql). No production data exists.
 # Migration 0006 uses IS JSON, which needs PostgreSQL 16. Refuse early rather

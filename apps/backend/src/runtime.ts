@@ -15,6 +15,7 @@ import {
   type UpgradeData,
 } from "./platform/durable-objects";
 import type { PgD1Database } from "./platform/pg-d1";
+import { Data } from "./platform/data";
 import { WorkflowHost } from "./platform/workflows";
 import worker, { RealtimeGateway, SyntilaRunWorkflow, ThreadExecutionCoordinator, WorkspaceGateway } from "./domain/index";
 
@@ -22,7 +23,8 @@ type Sql = ConstructorParameters<typeof WorkflowHost>[1] & { begin(fn: (tx: any)
 
 export function createRuntime(sql: Sql, db: PgD1Database, bindings: Record<string, unknown>) {
   installWebSocketGlobals();
-  const env: Record<string, unknown> = { SYNTILA_DB: db, ...bindings };
+  // SYNTILA_DATA: the data layer that replaces the adapter module by module.
+  const env: Record<string, unknown> = { SYNTILA_DB: db, SYNTILA_DATA: new Data(db.sql as any), ...bindings };
   const getEnv = () => env;
   const workspaceGateway = new DurableObjectNamespaceHost("WorkspaceGateway", sql, (s, e) => new WorkspaceGateway(s as any, e as any) as any, getEnv);
   const realtimeGateway = new DurableObjectNamespaceHost("RealtimeGateway", sql, (s, e) => new RealtimeGateway(s as any, e as any) as any, getEnv);

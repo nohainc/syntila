@@ -6,6 +6,7 @@
  * ordered by a timestamp and then the id). Clients pass it back unchanged.
  */
 import { HttpError } from "./http-security.js";
+import type { Query } from "../../platform/data.js";
 
 export interface PagePosition {
   /** Timestamp of the last item on the previous page (ISO 8601). */
@@ -91,3 +92,16 @@ export function decodeSequenceCursor(cursor: string): { after: number; through: 
   }
   throw Object.assign(new HttpError(400, "cursor is not valid"), { code: "invalid_cursor" });
 }
+
+/* Data-layer versions (tagged SQL) of the two helpers above. */
+
+/** Condition "after the cursor" for `WHERE … AND ${afterCursor(q, …)}`; TRUE without a cursor. */
+export function afterCursor(q: Query, atColumn: string, idColumn: string, after: PagePosition | null): unknown {
+  if (!after) return q.raw("TRUE");
+  const at = q.raw(ms(atColumn)), id = q.raw(idColumn);
+  return q.frag`(${at} < ${after.at}::timestamptz OR (${at} = ${after.at}::timestamptz AND ${id} < ${after.id}))`;
+}
+
+/** ORDER BY body matching `afterCursor`. */
+export const cursorOrder = (q: Query, atColumn: string, idColumn: string): unknown =>
+  q.raw(cursorOrderSql(atColumn, idColumn));

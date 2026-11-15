@@ -11,6 +11,8 @@ import { pruneOperationalTables } from "./retention";
 import { backgroundTaskCount, drainBackgroundTasks, executionContext } from "./platform/background";
 import { AuthWorkerSync, EmailOutbox, EmailRelay } from "./platform/email";
 import { drainWriterLockStats, PgD1Database } from "./platform/pg-d1";
+import { drainTxStats } from "./platform/data";
+import { sampleDbHealth } from "./platform/db-health";
 import { S3R2Bucket, unconfiguredBucket } from "./platform/r2";
 import { configureIdentityVerifier } from "./domain/auth/identity-service";
 import worker from "./domain/index";
@@ -129,6 +131,15 @@ async function runScheduled(cron: string) {
     reserved.release();
   }
 }
+async function logDbHealth() {
+  const tx = drainTxStats();
+  if (tx.length) console.log(JSON.stringify({ level: "info", message: "db.tx", details: { count: tx.reduce((n, s) => n + s.count, 0), top: tx.slice(0, 12) } }));
+  try {
+    console.log(JSON.stringify({ level: "info", message: "db.health", details: await sampleDbHealth(sql as any) }));
+  } catch (e) {
+    console.error(JSON.stringify({ level: "error", message: "db.health_failed", error: String(e) }));
+  }
+}
 function logWriterLock() {
   const stats = drainWriterLockStats();
   if (!stats.length) return;
@@ -136,7 +147,7 @@ function logWriterLock() {
   // holdMs / 300000 is the share of the last five minutes the lock was taken.
   console.log(JSON.stringify({ level: "info", message: "db.writer_lock", details: { ...total, top: stats.slice(0, 12) } }));
 }
-const every5 = setInterval(() => { void runScheduled("*/5 * * * *"); logWriterLock(); }, 5 * 60_000);
+const every5 = setInterval(() => { void runScheduled("*/5 * * * *"); logWriterLock(); void logDbHealth(); }, 5 * 60_000);
 let lastDaily = "";
 const daily = setInterval(() => {
   const now = new Date();
@@ -159,6 +170,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     console.log(`${signal}: draining (${backgroundTaskCount()} background tasks)`);
     clearInterval(every5); clearInterval(daily);
     logWriterLock();
+    await logDbHealth();
     // Stop accepting; in-flight HTTP requests get a short drain. Open
     // WebSockets never finish on their own, so they are closed after that and
     // clients reconnect to the next process.

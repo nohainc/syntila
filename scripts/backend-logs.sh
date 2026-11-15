@@ -5,6 +5,8 @@
 #   scripts/backend-logs.sh errors 3h      # unexpected errors, last 3 hours
 #   scripts/backend-logs.sh lock           # writer-lock summaries (every 5 minutes)
 #   scripts/backend-logs.sh slow           # single writes that held the lock 250 ms or more
+#   scripts/backend-logs.sh db             # database health: lock waits, deadlocks, transactions
+#   scripts/backend-logs.sh lockwaits      # lock waits and deadlocks PostgreSQL itself logged
 #   scripts/backend-logs.sh limited        # requests refused by the rate limiter
 #   scripts/backend-logs.sh retention      # nightly pruning results
 #   scripts/backend-logs.sh all 2d         # everything above, last 2 days
@@ -35,15 +37,26 @@ show() { # title, pattern
 case "$topic" in
   errors)    show "unexpected errors" '"http.unhandled_error"';;
   lock)      show "writer lock" '"db.writer_lock"';;
-  slow)      show "slow writes" '"db.slow_write"';;
+  slow)      show "slow writes" '"db.slow_write"'; show "slow transactions" '"db.slow_tx"';;
+  db)
+    show "database health (every 5 minutes)" '"db.health"'
+    show "data-layer transactions (every 5 minutes)" '"db.tx"'
+    show "slow transactions" '"db.slow_tx"';;
+  lockwaits)
+    echo "== PostgreSQL lock waits and deadlocks (since $period)"
+    ssh "$host" "sudo journalctl -u 'postgresql*' --since '$since' --no-pager -o cat | grep -E 'still waiting for|deadlock detected|acquired .* after' | tail -n $lines" || true
+    ssh "$host" "sudo sh -c 'grep -hE \"still waiting for|deadlock detected\" /var/log/postgresql/*.log 2>/dev/null | tail -n $lines'" || true
+    echo;;
   limited)   show "rate limited" '"http.rate_limited"';;
   retention) show "retention" '"retention.';;
   all)
     show "unexpected errors" '"http.unhandled_error"'
     show "slow writes" '"db.slow_write"'
+    show "slow transactions" '"db.slow_tx"'
+    show "database health" '"db.health"'
     show "rate limited" '"http.rate_limited"'
     show "retention" '"retention.'
     show "writer lock" '"db.writer_lock"';;
   follow)    exec ssh -t "$host" "journalctl -u syntila-backend -f -o cat";;
-  *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;
+  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;
 esac

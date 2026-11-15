@@ -7,8 +7,9 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **read-write**: the function reads before it writes (check-then-act); needs a row lock or a constraint.
 - **guarded**: every write carries its own condition (`NOT EXISTS`, `ON CONFLICT`, a status/version check).
 - **adapter**: still uses the D1-style adapter (`prepare`/`batch`), so it still takes the global writer lock.
+- **data**: uses the data layer (`src/platform/data.ts`): no global lock.
 
-Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 157 on the adapter.
+Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 153 on the adapter, 4 on the data layer.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -59,10 +60,10 @@ Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 157 on
 | `domain/routes/issue-reports.ts` | `handleCreateIssueReport` | INSERT issue_report_diagnostics, INSERT issue_report_events, INSERT issue_reports, UPDATE issue_report_diagnostics | read-write, batch, adapter |
 | `domain/routes/issue-reports.ts` | `handlePatchAdminIssueReport` | INSERT issue_report_events, UPDATE issue_report_groups, UPDATE issue_reports | read-write, batch, adapter |
 | `domain/routes/issue-reports.ts` | `recordEvent` | INSERT issue_report_events | adapter |
-| `domain/routes/notes.ts` | `handleCreateNote` | INSERT user_notes | adapter |
-| `domain/routes/notes.ts` | `handleNote` | DELETE user_notes | adapter |
-| `domain/routes/notes.ts` | `handleThreadNote` | INSERT user_notes | read-write, guarded, adapter |
-| `domain/routes/notes.ts` | `updateNote` | UPDATE user_notes | guarded, adapter |
+| `domain/routes/notes.ts` | `handleCreateNote` | INSERT user_notes | data |
+| `domain/routes/notes.ts` | `handleNote` | DELETE user_notes | data |
+| `domain/routes/notes.ts` | `handleThreadNote` | INSERT user_notes | read-write, guarded, data |
+| `domain/routes/notes.ts` | `updateNote` | UPDATE user_notes | guarded, data |
 | `domain/routes/notifications.ts` | `handleMarkNotificationsRead` | INSERT user_notification_reads | guarded, adapter |
 | `domain/routes/pins.ts` | `handleSetPin` | DELETE user_pins, INSERT user_pins | adapter |
 | `domain/routes/pins.ts` | `handleSetPinOrder` | UPDATE user_pins | adapter |
