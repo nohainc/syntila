@@ -144,6 +144,9 @@ function normalizeValue(v: unknown): unknown {
   if (typeof v === "boolean") return v ? 1 : 0; // SQLite/D1 report predicates as 1/0
   if (v instanceof Date) return v.toISOString();
   if (v instanceof Uint8Array) return v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength);
+  // json/jsonb documents arrive parsed. D1 has no JSON type: the domain code
+  // receives JSON as text and parses it itself, so hand it text.
+  if (v !== null && typeof v === "object" && !(v instanceof ArrayBuffer)) return JSON.stringify(v);
   return v;
 }
 
@@ -158,6 +161,35 @@ function bindValue(v: unknown, index: number): unknown {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (v instanceof ArrayBuffer) return new Uint8Array(v);
   return v;
+}
+
+/** Positions (0-based) of the json/jsonb and boolean parameters of a statement. */
+interface ParamKinds { json: number[]; bool: number[] }
+const NO_KINDS: ParamKinds = { json: [], bool: [] };
+let describeCounter = 0;
+
+/**
+ * Adapts D1-style values to PostgreSQL parameter types:
+ *  - a JSON *string* bound to a json/jsonb parameter is parsed first (the
+ *    driver would otherwise store it as a JSON string, not as the document);
+ *  - 1/0 bound to a boolean parameter become true/false.
+ */
+function coerceValues(values: unknown[], kinds: ParamKinds): unknown[] {
+  if (!kinds.json.length && !kinds.bool.length) return values;
+  const out = values.slice();
+  for (const i of kinds.json) {
+    const v = out[i];
+    if (typeof v === "string") {
+      // The driver would store an unparsable string as a JSON *string* value,
+      // so a malformed document has to be refused here.
+      try { out[i] = JSON.parse(v); } catch { throw new TypeError(`Invalid JSON for the json/jsonb parameter at index ${i}`); }
+    }
+  }
+  for (const i of kinds.bool) {
+    const v = out[i];
+    if (v === 1 || v === 0) out[i] = v === 1;
+  }
+  return out;
 }
 
 export class PgD1Error extends Error {
@@ -212,6 +244,47 @@ export class PgD1PreparedStatement {
 export class PgD1Database {
   constructor(readonly sql: Sql) {}
 
+  private readonly kinds = new Map<string, Promise<ParamKinds>>();
+
+  /**
+   * Asks PostgreSQL which parameters of a statement are json/jsonb or
+   * boolean. Done once per statement text (PREPARE on a spare connection,
+   * never executed) and cached for the life of the process.
+   */
+  private paramKinds(text: string): Promise<ParamKinds> {
+    if (!text.includes("$")) return Promise.resolve(NO_KINDS);
+    let known = this.kinds.get(text);
+    if (!known) {
+      if (this.kinds.size > 5000) this.kinds.clear();
+      known = this.describe(text);
+      this.kinds.set(text, known);
+    }
+    return known;
+  }
+
+  private async describe(text: string): Promise<ParamKinds> {
+    const name = `syntila_describe_${process.pid}_${++describeCounter}`;
+    const conn = await this.sql.reserve();
+    try {
+      await conn.unsafe(`PREPARE ${name} AS ${text}`);
+      const rows: { types: string[] }[] = await conn.unsafe(
+        "SELECT parameter_types::text[] AS types FROM pg_prepared_statements WHERE name = $1", [name]);
+      const types = rows[0]?.types ?? [];
+      const kinds: ParamKinds = { json: [], bool: [] };
+      types.forEach((type, i) => {
+        if (type === "jsonb" || type === "json") kinds.json.push(i);
+        else if (type === "boolean") kinds.bool.push(i);
+      });
+      return kinds;
+    } catch {
+      // Not preparable as written (the real execution reports why).
+      return NO_KINDS;
+    } finally {
+      await conn.unsafe(`DEALLOCATE ${name}`).catch(() => {});
+      conn.release();
+    }
+  }
+
   prepare(query: string): PgD1PreparedStatement {
     return new PgD1PreparedStatement(this, query);
   }
@@ -219,8 +292,9 @@ export class PgD1Database {
   /** @internal */
   async execute<T>(stmt: PgD1PreparedStatement, tx?: Sql): Promise<D1Result<T>> {
     const text = translatePlaceholders(stmt.sql);
+    const values = stmt.values.length ? coerceValues(stmt.values, await this.paramKinds(text)) : stmt.values;
     const started = performance.now();
-    const runOn = (conn: Sql) => conn.unsafe(text, stmt.values as Value[]);
+    const runOn = (conn: Sql) => conn.unsafe(text, values as Value[]);
     let result: any;
     try {
       if (tx) result = await runOn(tx);
@@ -236,6 +310,11 @@ export class PgD1Database {
     if (statements.length === 0) return [];
     try {
       const label = `batch(${statements.length}) ${statementLabel(statements[0]!.sql)}`;
+      // Resolve parameter kinds before the transaction takes the writer lock.
+      const prepared = await Promise.all(statements.map(async (s) => {
+        const text = translatePlaceholders(s.sql);
+        return { text, values: s.values.length ? coerceValues(s.values, await this.paramKinds(text)) : s.values };
+      }));
       return await this.serializable(async (tx) => {
         // The statements of a batch do not depend on each other's results, so
         // they are sent together (pipelined, in order, on the one transaction
@@ -244,7 +323,7 @@ export class PgD1Database {
         // statement order is the one reported, as with sequential execution.
         const started = performance.now();
         const settled = await Promise.allSettled(
-          statements.map((s) => tx.unsafe(translatePlaceholders(s.sql), s.values as Value[])));
+          prepared.map((s) => tx.unsafe(s.text, s.values as Value[])));
         const duration = (performance.now() - started) / statements.length;
         const out: D1Result<T>[] = [];
         for (const result of settled) {
@@ -256,6 +335,21 @@ export class PgD1Database {
     } catch (e) {
       throw e instanceof PgD1Error ? e : new PgD1Error(e);
     }
+  }
+
+  /**
+   * Runs one already-translated statement with the adapter's value
+   * conventions but outside the writer lock. For test fixtures and tools;
+   * application writes go through `prepare()` / `batch()`.
+   */
+  async unlocked(text: string, values: unknown[] = []): Promise<{ rows: Record<string, unknown>[]; count: number; command: string }> {
+    const bound = values.length ? coerceValues(values, await this.paramKinds(text)) : values;
+    const result: any = await this.sql.unsafe(text, bound as Value[]);
+    return {
+      rows: Array.isArray(result) ? result.map((r: Record<string, unknown>) => normalizeRow(r)) : [],
+      count: Number(result?.count ?? 0),
+      command: result?.command ?? "",
+    };
   }
 
   /** D1 `exec`: runs raw multi-statement SQL without bindings. */

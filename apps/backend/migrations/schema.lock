@@ -38,7 +38,7 @@ column artifacts.thread_id text
 column artifacts.work_request_id text
 column auth_audit_events.action text not-null
 column auth_audit_events.created_at timestamptz not-null default
-column auth_audit_events.details_json text not-null default
+column auth_audit_events.details_json jsonb not-null default
 column auth_audit_events.id text not-null
 column auth_audit_events.outcome text not-null
 column auth_audit_events.session_id text
@@ -51,7 +51,7 @@ column conversation_history_entries.deduplication_key text
 column conversation_history_entries.event_type text not-null
 column conversation_history_entries.id text not-null default
 column conversation_history_entries.kind text not-null
-column conversation_history_entries.metadata_json text not-null default
+column conversation_history_entries.metadata_json jsonb not-null default
 column conversation_history_entries.occurred_at timestamptz not-null
 column conversation_history_entries.recorded_at timestamptz not-null default
 column conversation_history_entries.schema_version int8 not-null default
@@ -173,12 +173,12 @@ column execution_workspaces.updated_at timestamptz not-null default
 column issue_report_diagnostics.bundle_key text
 column issue_report_diagnostics.bundle_sha256 text
 column issue_report_diagnostics.created_at timestamptz not-null default
-column issue_report_diagnostics.diagnostic_json text not-null
+column issue_report_diagnostics.diagnostic_json jsonb not-null
 column issue_report_diagnostics.report_id text not-null
 column issue_report_diagnostics.schema_version int8 not-null default
 column issue_report_events.actor_user_id text
 column issue_report_events.created_at timestamptz not-null default
-column issue_report_events.details_json text not-null default
+column issue_report_events.details_json jsonb not-null default
 column issue_report_events.event_type text not-null
 column issue_report_events.from_status text
 column issue_report_events.id text not-null
@@ -292,7 +292,7 @@ column space_audit_log.action text not-null
 column space_audit_log.actor_id text not-null
 column space_audit_log.actor_type text not-null
 column space_audit_log.created_at timestamptz not-null default
-column space_audit_log.details_json text not-null default
+column space_audit_log.details_json jsonb not-null default
 column space_audit_log.id text not-null
 column space_audit_log.space_id text
 column space_audit_log.target_id text not-null
@@ -382,7 +382,7 @@ column threads.id text not-null
 column threads.is_general bool not-null default
 column threads.lead_user_id text not-null
 column threads.lease_fence_counter int8 not-null default
-column threads.metadata_json text not-null default
+column threads.metadata_json jsonb not-null default
 column threads.name text not-null
 column threads.space_id text not-null
 column threads.status text not-null
@@ -481,7 +481,7 @@ column work_requests.workflow_version int8 not-null
 column worker_activity_history.activity_id text
 column worker_activity_history.assignment_id text not-null
 column worker_activity_history.attempt_id text not-null
-column worker_activity_history.details_json text not-null default
+column worker_activity_history.details_json jsonb not-null default
 column worker_activity_history.duration_ms int8
 column worker_activity_history.event_type text not-null
 column worker_activity_history.execution_id text not-null
@@ -507,7 +507,7 @@ column worker_assignments.effective_permissions_json text not-null default
 column worker_assignments.engine_alive_at timestamptz
 column worker_assignments.engine_missing_reports int8 not-null default
 column worker_assignments.engine_version text
-column worker_assignments.error_json text
+column worker_assignments.error_json jsonb
 column worker_assignments.execution_workspace_id text not-null
 column worker_assignments.id text not-null
 column worker_assignments.idempotency_key text
@@ -524,7 +524,7 @@ column worker_assignments.session_policy text not-null default
 column worker_assignments.space_id text not-null
 column worker_assignments.start_permit_issued_at timestamptz
 column worker_assignments.start_permit_required int8 not-null default
-column worker_assignments.startup_detail_json text
+column worker_assignments.startup_detail_json jsonb
 column worker_assignments.startup_stage text
 column worker_assignments.startup_stage_at timestamptz
 column worker_assignments.status text not-null
@@ -578,7 +578,7 @@ column worker_scheduling.worker_id text not-null
 column worker_scheduling_audit.action text not-null
 column worker_scheduling_audit.actor_user_id text
 column worker_scheduling_audit.completed_at timestamptz
-column worker_scheduling_audit.details_json text not-null default
+column worker_scheduling_audit.details_json jsonb not-null default
 column worker_scheduling_audit.id text not-null
 column worker_scheduling_audit.requested_at timestamptz not-null
 column worker_scheduling_audit.worker_id text not-null
@@ -637,7 +637,7 @@ column workspace_audit_log.action text not-null
 column workspace_audit_log.actor_id text not-null
 column workspace_audit_log.actor_type text not-null
 column workspace_audit_log.created_at timestamptz not-null default
-column workspace_audit_log.details_json text not-null default
+column workspace_audit_log.details_json jsonb not-null default
 column workspace_audit_log.id text not-null
 column workspace_audit_log.target_id text not-null
 column workspace_audit_log.target_type text not-null
@@ -794,7 +794,6 @@ constraint artifacts.artifacts_run_id_fkey foreign-key -> runs on-delete-set-nul
 constraint artifacts.artifacts_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint artifacts.artifacts_thread_id_fkey foreign-key -> threads on-delete-set-null
 constraint artifacts.artifacts_work_request_id_fkey foreign-key -> work_requests on-delete-set-null
-constraint auth_audit_events.auth_audit_events_details_json_is_json check
 constraint auth_audit_events.auth_audit_events_outcome_check check
 constraint auth_audit_events.auth_audit_events_pkey primary-key
 constraint auth_audit_events.auth_audit_events_user_id_fkey foreign-key -> users on-delete-set-null
@@ -807,7 +806,6 @@ constraint conversation_history_entries.conversation_history_entries_conversatio
 constraint conversation_history_entries.conversation_history_entries_conversation_id_sequence_key unique
 constraint conversation_history_entries.conversation_history_entries_kind_check check
 constraint conversation_history_entries.conversation_history_entries_metadata_json_check check
-constraint conversation_history_entries.conversation_history_entries_metadata_json_is_json check
 constraint conversation_history_entries.conversation_history_entries_pkey primary-key
 constraint conversation_history_entries.conversation_history_entries_schema_version_check check
 constraint conversation_history_entries.conversation_history_entries_sequence_check check
@@ -881,12 +879,10 @@ constraint execution_workspaces.execution_workspaces_parallel_slots_check check
 constraint execution_workspaces.execution_workspaces_pkey primary-key
 constraint execution_workspaces.execution_workspaces_status_check check
 constraint issue_report_diagnostics.issue_report_diagnostics_diagnostic_json_check check
-constraint issue_report_diagnostics.issue_report_diagnostics_diagnostic_json_is_json check
 constraint issue_report_diagnostics.issue_report_diagnostics_pkey primary-key
 constraint issue_report_diagnostics.issue_report_diagnostics_report_id_fkey foreign-key -> issue_reports on-delete-cascade
 constraint issue_report_events.issue_report_events_actor_user_id_fkey foreign-key -> users on-delete-set-null
 constraint issue_report_events.issue_report_events_details_json_check check
-constraint issue_report_events.issue_report_events_details_json_is_json check
 constraint issue_report_events.issue_report_events_pkey primary-key
 constraint issue_report_events.issue_report_events_report_id_fkey foreign-key -> issue_reports on-delete-cascade
 constraint issue_report_groups.issue_report_groups_created_by_user_id_fkey foreign-key -> users on-delete-set-null
@@ -949,7 +945,6 @@ constraint space_additional_folders.space_additional_folders_pkey primary-key
 constraint space_additional_folders.space_additional_folders_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint space_additional_folders.space_additional_folders_workspace_id_folder_id_fkey foreign-key -> workspace_allowed_folders on-delete-cascade
 constraint space_audit_log.space_audit_log_actor_type_check check
-constraint space_audit_log.space_audit_log_details_json_is_json check
 constraint space_audit_log.space_audit_log_pkey primary-key
 constraint space_audit_log.space_audit_log_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint space_invitations.space_invitations_accepted_by_user_id_fkey foreign-key -> users on-delete-set-null
@@ -1017,7 +1012,6 @@ constraint thread_work_configs.thread_work_configs_updated_by_user_id_fkey forei
 constraint threads.threads_access_policy_json_is_json check
 constraint threads.threads_lead_user_id_fkey foreign-key -> users on-delete-restrict
 constraint threads.threads_lease_fence_counter_check check
-constraint threads.threads_metadata_json_is_json check
 constraint threads.threads_pkey primary-key
 constraint threads.threads_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint threads.threads_status_check check
@@ -1077,7 +1071,6 @@ constraint work_requests.work_requests_workflow_version_check check
 constraint worker_activity_history.worker_activity_history_assignment_id_attempt_id_provider_s_key unique
 constraint worker_activity_history.worker_activity_history_assignment_id_attempt_id_source_eve_key unique
 constraint worker_activity_history.worker_activity_history_assignment_id_fkey foreign-key -> worker_assignments on-delete-cascade
-constraint worker_activity_history.worker_activity_history_details_json_is_json check
 constraint worker_activity_history.worker_activity_history_event_type_check check
 constraint worker_activity_history.worker_activity_history_pkey primary-key
 constraint worker_activity_history.worker_activity_history_provider_sequence_check check
@@ -1088,7 +1081,6 @@ constraint worker_assignments.worker_assignments_cloud_queue_reason_check check
 constraint worker_assignments.worker_assignments_command_payload_json_is_json check
 constraint worker_assignments.worker_assignments_config_json_is_json check
 constraint worker_assignments.worker_assignments_effective_permissions_json_is_json check
-constraint worker_assignments.worker_assignments_error_json_is_json check
 constraint worker_assignments.worker_assignments_execution_workspace_id_fkey foreign-key -> execution_workspaces on-delete-restrict
 constraint worker_assignments.worker_assignments_input_json_is_json check
 constraint worker_assignments.worker_assignments_output_json_is_json check
@@ -1099,7 +1091,6 @@ constraint worker_assignments.worker_assignments_run_id_fkey foreign-key -> runs
 constraint worker_assignments.worker_assignments_runtime_identity_id_fkey foreign-key -> workspace_runtime_identities on-delete-restrict
 constraint worker_assignments.worker_assignments_session_policy_check check
 constraint worker_assignments.worker_assignments_space_id_fkey foreign-key -> spaces on-delete-cascade
-constraint worker_assignments.worker_assignments_startup_detail_json_is_json check
 constraint worker_assignments.worker_assignments_thread_id_fkey foreign-key -> threads on-delete-set-null
 constraint worker_assignments.worker_assignments_work_request_id_fkey foreign-key -> work_requests on-delete-set-null
 constraint worker_assignments.worker_assignments_worker_type_id_fkey foreign-key -> worker_catalog on-delete-restrict
@@ -1138,7 +1129,6 @@ constraint worker_scheduling.worker_scheduling_updated_by_user_id_fkey foreign-k
 constraint worker_scheduling.worker_scheduling_worker_id_fkey foreign-key -> workspace_worker_inventory on-delete-cascade
 constraint worker_scheduling_audit.worker_scheduling_audit_action_check check
 constraint worker_scheduling_audit.worker_scheduling_audit_actor_user_id_fkey foreign-key -> users on-delete-set-null
-constraint worker_scheduling_audit.worker_scheduling_audit_details_json_is_json check
 constraint worker_scheduling_audit.worker_scheduling_audit_pkey primary-key
 constraint worker_scheduling_audit.worker_scheduling_audit_worker_id_fkey foreign-key -> workspace_worker_inventory on-delete-cascade
 constraint workflow_events.workflow_events_instance_id_fkey foreign-key -> workflow_instances on-delete-cascade
@@ -1168,7 +1158,6 @@ constraint workspace_allowed_folders.workspace_allowed_folders_pkey primary-key
 constraint workspace_allowed_folders.workspace_allowed_folders_status_check check
 constraint workspace_allowed_folders.workspace_allowed_folders_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 constraint workspace_audit_log.workspace_audit_log_actor_type_check check
-constraint workspace_audit_log.workspace_audit_log_details_json_is_json check
 constraint workspace_audit_log.workspace_audit_log_pkey primary-key
 constraint workspace_audit_log.workspace_audit_log_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 constraint workspace_installations.workspace_installations_check check
@@ -1252,8 +1241,11 @@ function establish_people_on_membership_fn/0
 function syntila_guard_failed/1
 function syntila_iso/1
 function syntila_json_patch/2
+function syntila_json_patch/2
 function syntila_json_path/1
 function syntila_json_remove/2
+function syntila_json_remove/2
+function syntila_json_set/3
 function syntila_json_set/3
 function syntila_jsonb_merge_patch/2
 function trg_assignment_context_snapshot_immutable_fn/0

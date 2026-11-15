@@ -145,3 +145,30 @@ describe("writer-lock metrics", () => {
     expect(drainWriterLockStats()).toEqual([]);
   });
 });
+
+describe("PostgreSQL types behind D1 conventions", () => {
+  test("a JSON string bound to a jsonb column is stored as the document and read back as text", async () => {
+    await sql.unsafe("CREATE TABLE IF NOT EXISTS d1t_doc (id text PRIMARY KEY, doc jsonb, flag boolean NOT NULL DEFAULT false)");
+    await db.prepare("INSERT INTO d1t_doc (id, doc, flag) VALUES (?1, ?2, ?3)").bind("a", JSON.stringify({ b: 1, list: [1, 2] }), 1).run();
+    await db.batch([
+      db.prepare("INSERT INTO d1t_doc (id, doc) VALUES (?1, ?2)").bind("b", "[]"),
+      db.prepare("UPDATE d1t_doc SET doc = ?2 WHERE id = ?1").bind("b", JSON.stringify({ nested: { ok: true } })),
+    ]);
+    const [stored] = await sql.unsafe("SELECT jsonb_typeof(doc) AS kind, doc ->> 'b' AS b, flag FROM d1t_doc WHERE id = 'a'");
+    expect(stored).toEqual({ kind: "object", b: "1", flag: true });
+    const row = await db.prepare("SELECT doc, flag FROM d1t_doc WHERE id = ?1").bind("a").first<{ doc: string; flag: number }>();
+    expect(typeof row!.doc).toBe("string");
+    expect(JSON.parse(row!.doc)).toEqual({ b: 1, list: [1, 2] });
+    expect(row!.flag).toBe(1);
+    const nested = await db.prepare("SELECT doc FROM d1t_doc WHERE id = 'b'").first<string>("doc");
+    expect(JSON.parse(nested!)).toEqual({ nested: { ok: true } });
+    await sql.unsafe("DROP TABLE d1t_doc");
+  });
+
+  test("malformed JSON for a jsonb column is refused by PostgreSQL", async () => {
+    await sql.unsafe("CREATE TABLE IF NOT EXISTS d1t_doc2 (id text PRIMARY KEY, doc jsonb)");
+    await expect(db.prepare("INSERT INTO d1t_doc2 (id, doc) VALUES (?1, ?2)").bind("x", "{not json").run()).rejects.toThrow();
+    expect((await db.prepare("SELECT count(*) AS n FROM d1t_doc2").first<number>("n"))).toBe(0);
+    await sql.unsafe("DROP TABLE d1t_doc2");
+  });
+});

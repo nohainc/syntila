@@ -35,9 +35,16 @@ lock, each in its own transaction, with a checksum per applied file.
 7. **New foreign keys need an index** that starts with the referencing
    columns; a test enforces this.
 
-8. **JSON kept in a text column needs `CHECK (col IS JSON)`.** Name the column
-   `*_json`; a test fails if such a column has no check. (Requires
-   PostgreSQL 16 or newer.)
+8. **Choosing a type for a JSON document.**
+   - `jsonb` for attribute bags that are queried or filtered by content and
+     whose key order does not matter (metadata, audit details, errors).
+   - `text` with `CHECK (col IS JSON)` for documents whose key order or exact
+     text matters: snapshots that code walks in order, signed or hashed
+     documents, stored responses. **jsonb sorts object keys**, so such a
+     document would change silently. Name the column `*_json`; a test fails
+     if a text `*_json` column has no check.
+   - Through the D1 adapter both arrive as JSON text and are written as JSON
+     text; the adapter parses text bound to a jsonb parameter.
 
 ## schema.lock
 

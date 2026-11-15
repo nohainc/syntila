@@ -1,15 +1,24 @@
 // Worker side of SyncPostgres: runs queries for the blocked main thread.
 import { SQL } from "bun";
+import { PgD1Database } from "../../../src/platform/pg-d1";
 declare const self: Worker;
 let sql: InstanceType<typeof SQL> | null = null;
+let db: PgD1Database | null = null;
 self.onmessage = async (e: MessageEvent) => {
   const { url, text, params, multi, signal, buffer } = e.data as { url: string; text: string; params: unknown[]; multi: boolean; signal: SharedArrayBuffer; buffer: SharedArrayBuffer };
   const flag = new Int32Array(signal);
   let payload: unknown;
   try {
     sql ??= new SQL(url, { bigint: true, max: 1, connection: { lock_timeout: "5000" } });
-    const rows: any = multi ? await sql.unsafe(text) : await sql.unsafe(text, params as any[]);
-    payload = { ok: true, rows: Array.isArray(rows) ? rows : [], count: rows?.count ?? 0, command: rows?.command ?? "" };
+    if (multi) {
+      const rows: any = await sql.unsafe(text);
+      payload = { ok: true, rows: Array.isArray(rows) ? rows : [], count: rows?.count ?? 0, command: rows?.command ?? "" };
+    } else {
+      // Same value conventions as the application adapter: JSON documents in
+      // and out as text, booleans as 1/0.
+      db ??= new PgD1Database(sql);
+      payload = { ok: true, ...(await db.unlocked(text, params)) };
+    }
   } catch (err: any) {
     payload = { ok: false, message: err?.message, code: err?.errno ?? err?.code, constraint: err?.constraint, table: err?.table, column: err?.column, detail: err?.detail };
   }
