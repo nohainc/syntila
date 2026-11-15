@@ -2067,9 +2067,12 @@ h3 {
 .site-footer__legal { grid-area: legal; align-self: center; text-align: right; }
 .site-footer__disclaimer { grid-area: disclaimer; justify-self: stretch; max-width: none; text-align: left; }
 @media (max-width: 600px) {
-  .site-footer { grid-template-columns: 1fr; grid-template-areas: "brand" "nav" "description" "legal"; gap: var(--space-4); }
-  .site-footer__nav { justify-content: flex-start; gap: var(--space-4); }
+  .site-footer { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "brand nav" "description description" "legal legal"; gap: var(--space-4) var(--space-3); }
+  .site-footer__nav { justify-content: flex-end; gap: var(--space-3); }
   .site-footer__legal { text-align: left; white-space: normal; }
+}
+@media (max-width: 380px) {
+  .site-footer__nav { gap: 8px; font-size: 0.75rem; }
 }
 
 /* Use-case scenarios */
@@ -2093,7 +2096,9 @@ h3 {
 .usecase-scenario__intro p { margin: 6px 0 0; color: var(--color-muted); font-size: var(--text-sm); }
 .usecase-scenario__flow { display: flex; flex-wrap: wrap; flex-shrink: 0; max-width: 100%; gap: 8px; justify-content: flex-end; }
 .usecase-scenario__flow span { padding: 10px 14px; color: #e6e1fa; background: rgba(129, 127, 182, .19); border: 1px solid rgba(185, 180, 229, .25); border-radius: 9px; font-size: var(--text-sm); font-weight: 700; white-space: nowrap; }
-.usecase-card-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: var(--space-3); background: var(--color-accent-wash); border: 1px solid var(--color-line-glow); border-radius: 13px; }
+.usecase-card { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-content: start; align-items: center; gap: var(--space-3); }
+.usecase-card-icon { display: grid; place-items: center; width: 48px; height: 48px; margin: 0; background: var(--color-accent-wash); border: 1px solid var(--color-line-glow); border-radius: 13px; }
+.usecase-card p { grid-column: 1 / -1; }
 @media (max-width: 680px) { .usecase-scenario { align-items: flex-start; flex-direction: column; gap: var(--space-5); padding: var(--space-6); } .usecase-scenario__flow { justify-content: flex-start; } }
 
 /* Worker catalog and MCP tools */

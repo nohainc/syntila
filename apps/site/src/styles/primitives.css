@@ -95,6 +95,11 @@
   font-weight: 700;
   box-shadow: 0 4px 14px -2px rgba(99, 102, 241, 0.35);
 }
+.button--primary[data-site-event="cta.open_app"] {
+  color: var(--color-ink);
+  background: var(--color-accent-pressed);
+  border-color: var(--color-accent-pressed);
+}
 .button--primary:hover,
 .button--primary:focus-visible,
 .button--primary:active {

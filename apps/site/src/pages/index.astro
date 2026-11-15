@@ -5,7 +5,6 @@ import Container from "../components/Container.astro";
 import Section from "../components/Section.astro";
 import SectionHeader from "../components/SectionHeader.astro";
 import SpaceMembersDiagram from "../components/SpaceMembersDiagram.astro";
-import WorkflowShowcase from "../components/WorkflowShowcase.astro";
 import AudienceCards from "../components/AudienceCards.astro";
 import PlansOverview from "../components/PlansOverview.astro";
 ---
@@ -58,7 +57,9 @@ import PlansOverview from "../components/PlansOverview.astro";
         title="When a chat isn't enough: turn a question into a workflow."
         description="Most requests are a quick Chat. When you need more, choose a workflow that does the work, splits it across Workers, or checks its own result."
       />
-      <WorkflowShowcase illustrated />
+      <div class="actions section-block-gap">
+        <Button href="/how-it-works/#workflows" label="Explore workflows" variant="secondary" />
+      </div>
     </Container>
   </Section>
 
