@@ -9,9 +9,9 @@ import { pgD1 } from "./domain/helpers/pg-d1";
 import { testTokens } from "./domain/helpers/tokens";
 import { validateWorkerProfileCandidate } from "../src/domain/worker-profile-registry";
 
-let base = "", stop = async () => {}, mint: Awaited<ReturnType<typeof testTokens>>, runtime: ReturnType<typeof createRuntime>;
+let sql: any, base = "", stop = async () => {}, mint: Awaited<ReturnType<typeof testTokens>>, runtime: ReturnType<typeof createRuntime>;
 beforeAll(async () => {
-  const { sql } = pgD1();
+  ({ sql } = pgD1());
   mint = await testTokens();
   runtime = createRuntime(sql as any, new PgD1Database(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app" });
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (r, s) => runtime.fetch(r, s as any), websocket: runtime.websocket as any });
@@ -129,6 +129,31 @@ describe("journey", () => {
     expect(done.status).toBe("completed");
     const history = await api(web, "GET", `/api/work-requests/${workRequestId}`);
     expect(history.body.workRequest.workflowRun.stepRuns[0].result).toBe("Hello from the Workspace");
+    // Golden Conversation history of one Chat round trip. Written by the
+    // history triggers today; moving them into code must keep it identical.
+    const entries = await sql`
+      SELECT h.sequence::int AS sequence, h.kind, h.event_type AS "eventType", h.actor_type AS "actorType"
+        FROM conversation_history_entries h JOIN conversations c ON c.id = h.conversation_id
+       WHERE c.thread_id = ${threadId} ORDER BY h.sequence`;
+    const e = (kind: string, eventType: string, actorType = "syntila") => ({ kind, eventType, actorType });
+    expect(entries.map(({ sequence, ...rest }: { sequence: number }) => rest)).toEqual([
+      e("context_event", "context.revision_advanced"),
+      e("user_message", "message.user_created", "user"),
+      e("workflow_event", "workflow.request_accepted"),
+      e("workflow_event", "workflow.step_created"),
+      e("workflow_event", "workflow.run_created"),
+      e("workflow_event", "workflow.request_status_changed"),
+      e("workflow_event", "workflow.run_status_changed"),
+      e("execution_event", "execution.created"),
+      e("execution_event", "execution.completed"),
+      e("worker_response", "message.worker_created", "worker"),
+      e("workflow_event", "workflow.step_status_changed"),
+      e("workflow_event", "workflow.step_status_changed"),
+      e("workflow_event", "workflow.step_status_changed"),
+      e("workflow_event", "workflow.run_status_changed"),
+      e("workflow_event", "workflow.request_status_changed"),
+    ]);
+    expect(entries.map((r: { sequence: number }) => r.sequence)).toEqual(entries.map((_: unknown, i: number) => i + 1));
     // The user's browser saw it live over realtime.
     await waitFor("realtime update", () => live.find((f) => JSON.stringify(f).includes(workRequestId)));
     browser.close();

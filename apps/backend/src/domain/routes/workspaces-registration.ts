@@ -1,4 +1,5 @@
-import { lockStatement } from "../../platform/tx-env.js";
+import { inTransaction, lockStatement } from "../../platform/tx-env.js";
+import { HttpError } from "./http-security.js";
 import { activeRuntimeIdentityCount } from "../queries.js";
 import { DESKTOP_WORKSPACE_AUDIENCE, hashToken } from "@syntila/security";
 
@@ -916,6 +917,11 @@ export async function handleRegisterWorkspaceFromDesktop(
   ) {
     return json({ error: "Runtime capabilities are invalid" }, { status: 400 });
   }
+  // One registration of an installation at a time, in one transaction: a
+  // second app start waits and then finds (recovers) the Workspace the first
+  // one created, instead of being counted as another Workspace.
+  return inTransaction(env, "workspace.register", async (env, tx) => {
+  await tx.lock("syntila.installation", installationId);
   const installation = await env.SYNTILA_DB.prepare(
     `SELECT wi.installation_id AS installationId,
             wi.owner_user_id AS ownerUserId, wi.workspace_id AS workspaceId,
@@ -1076,13 +1082,10 @@ export async function handleRegisterWorkspaceFromDesktop(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Workspace registration batch failed:", message);
-    return json(
-      {
-        error: `Workspace registration changed concurrently; retry the request (${message})`,
-        code: "registration_conflict",
-        details: message,
-      },
-      { status: 409 },
+    // Thrown, not returned: the transaction is aborted and must roll back.
+    throw Object.assign(
+      new HttpError(409, "Workspace registration changed concurrently; retry the request"),
+      { code: "registration_conflict" },
     );
   }
   const completedAt = new Date().toISOString();
@@ -1100,4 +1103,5 @@ export async function handleRegisterWorkspaceFromDesktop(
     },
     { status: 201 },
   );
+  });
 }

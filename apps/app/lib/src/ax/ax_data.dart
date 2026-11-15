@@ -231,10 +231,16 @@ abstract class _AxApiClientCore
     final key = uri.toString();
     final cached = conditional ? _conditionalReads.remove(key) : null;
     if (cached != null) _conditionalReads[key] = cached;
-    final response = await client.get(uri, headers: {
-      ..._headers(),
-      if (cached != null) 'if-none-match': cached.etag,
-    });
+    Future<http.Response> send() => client.get(uri, headers: {
+          ..._headers(),
+          if (cached != null) 'if-none-match': cached.etag,
+        });
+    var response = await send();
+    // Reads are always safe to repeat: one retry of a busy answer.
+    if (_isBusy(response)) {
+      await Future<void>.delayed(axBusyRetryDelay);
+      response = await send();
+    }
     if (response.statusCode == 304) {
       if (cached == null || generation != _readGeneration) {
         throw const AxApiException(
@@ -474,13 +480,42 @@ class AxApiClient extends _AxApiClientCore
 }
 
 /// A keyed mutation is safe to resend: the server replays the first result.
-/// One resend covers a request whose response was lost on the network.
+/// One resend covers a request whose response was lost on the network, or
+/// that the server answered `503` (`busy`: it waited too long for the same
+/// item another request was changing; or briefly unavailable).
 Future<T> _retryOnceWithKey<T>(
     String? idempotencyKey, Future<T> Function() send) async {
   try {
-    return await send();
+    final first = await send();
+    if (idempotencyKey == null || !_isBusy(first)) return first;
+    await _releaseBody(first);
+    await Future<void>.delayed(axBusyRetryDelay);
+    return send();
   } on http.ClientException {
     if (idempotencyKey == null) rethrow;
     return send();
+  }
+}
+
+/// One automatic retry of a `503` answer for a keyed request whose network
+/// failures the caller already retries itself (the sync engine keeps the
+/// key across its own attempts).
+Future<T> _retryOnceIfBusy<T>(Future<T> Function() send) async {
+  final first = await send();
+  if (!_isBusy(first)) return first;
+  await _releaseBody(first);
+  await Future<void>.delayed(axBusyRetryDelay);
+  return send();
+}
+
+/// Pause before the one automatic retry of a `503` answer.
+Duration axBusyRetryDelay = const Duration(milliseconds: 400);
+
+bool _isBusy(Object? response) =>
+    response is http.BaseResponse && response.statusCode == 503;
+
+Future<void> _releaseBody(Object? response) async {
+  if (response is http.StreamedResponse) {
+    await response.stream.drain<void>().catchError((Object _) {});
   }
 }

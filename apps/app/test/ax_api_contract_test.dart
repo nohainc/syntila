@@ -113,4 +113,59 @@ void main() {
     expect(notes.map((n) => n.id), ['n1', 'n2', 'n3']);
     expect(cursors, [null, 'page-2']);
   });
+
+  test('a busy answer (503) is retried once with the same key', () async {
+    axBusyRetryDelay = Duration.zero;
+    final keys = <String?>[];
+    final client = MockClient((request) async {
+      keys.add(request.headers['Idempotency-Key']);
+      if (keys.length == 1) {
+        return _json({'error': 'busy', 'code': 'busy'}, 503);
+      }
+      return _json({
+        'thread': {
+          'id': 't1',
+          'spaceId': 's1',
+          'name': 'T',
+          'status': 'active',
+          'createdAt': '2026-11-01T00:00:00.000Z',
+          'updatedAt': '2026-11-01T00:00:00.000Z',
+        }
+      }, 201);
+    });
+    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    await api.createThread(spaceId: 's1', name: 'T');
+    expect(keys, hasLength(2));
+    expect(keys.first, isNotNull);
+    expect(keys.last, keys.first);
+  });
+
+  test('a read answered busy (503) is retried once', () async {
+    axBusyRetryDelay = Duration.zero;
+    var calls = 0;
+    final client = MockClient((request) async {
+      calls++;
+      if (calls == 1) return _json({'error': 'busy', 'code': 'busy'}, 503);
+      return _json({'notes': [], 'nextCursor': null}, 200);
+    });
+    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    expect(await api.loadNotes(), isEmpty);
+    expect(calls, 2);
+  });
+
+  test('a second busy answer is reported, not retried again', () async {
+    axBusyRetryDelay = Duration.zero;
+    var calls = 0;
+    final client = MockClient((request) async {
+      calls++;
+      return _json({'error': 'busy', 'code': 'busy'}, 503);
+    });
+    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    await expectLater(
+        api.createNote(title: 'n'),
+        throwsA(isA<AxApiException>()
+            .having((e) => e.statusCode, 'statusCode', 503)
+            .having((e) => e.code, 'code', 'busy')));
+    expect(calls, 2);
+  });
 }

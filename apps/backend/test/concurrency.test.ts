@@ -339,3 +339,83 @@ describe("races on shared actions", () => {
     expect(unexpected(results, [200, 409])).toEqual([]);
   });
 });
+
+describe("races on Workspaces, grants and the request queue", () => {
+  const registration = (installationId: string, name: string) => ({
+    contractVersion: "1.0", installationId, proposedWorkspaceName: name,
+    hostname: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), platform: "macos", architecture: "arm64", appVersion: "1.0.0",
+    runtimeCapabilities: { os: "macos", arch: "arm64", appVersion: "1.0.0", supportedRuntimes: ["cli"], maxConcurrentWorkers: 2 },
+  });
+  const machine = async (token: string, path: string, body: unknown) => {
+    const r = await fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await r.text();
+    return { status: r.status, body: text ? JSON.parse(text) : null };
+  };
+
+  test("one installation registering from several app starts at once", async () => {
+    const desktop = await mint("race-ws-1", { client: "desktop", client_aud: "syntila.desktop.management" });
+    const installationId = `install_${crypto.randomUUID()}`;
+    const results = await Promise.all(Array.from({ length: 5 }, () =>
+      machine(desktop, "/api/workspace-runtime/register", registration(installationId, "Mac"))));
+    expect(unexpected(results, [200, 201, 409])).toEqual([]);
+    const [row] = await sql`SELECT count(*)::int AS n FROM execution_workspaces WHERE owner_user_id = 'race-ws-1' AND status <> 'revoked'`;
+    expect(row.n).toBe(1);
+    const [inst] = await sql`SELECT count(*)::int AS n FROM workspace_installations WHERE installation_id = ${installationId}`;
+    expect(inst.n).toBe(1);
+  });
+
+  test("releasing and registering one installation at the same moment", async () => {
+    const desktop = await mint("race-ws-2", { client: "desktop", client_aud: "syntila.desktop.management" });
+    const installationId = `install_${crypto.randomUUID()}`;
+    const first = await machine(desktop, "/api/workspace-runtime/register", registration(installationId, "Mac"));
+    expect(first.status).toBeLessThan(300);
+    const release = { installationId, workspaceId: first.body.workspaceId ?? first.body.executionWorkspaceId, runtimeId: first.body.workspaceRuntimeId };
+    const results = await Promise.all([
+      machine(desktop, "/api/workspace-runtime/release", release),
+      machine(desktop, "/api/workspace-runtime/register", registration(installationId, "Mac")),
+      machine(desktop, "/api/workspace-runtime/release", release),
+    ]);
+    expect(unexpected(results, [200, 201, 402, 404, 409])).toEqual([]);
+    // At most one live registration of the installation, whatever the order.
+    const [inst] = await sql`SELECT count(*)::int AS n FROM workspace_installations WHERE installation_id = ${installationId} AND status = 'active'`;
+    expect(inst.n).toBeLessThanOrEqual(1);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+
+  test("selecting the same Workspace for one Space from several tabs", async () => {
+    const owner = await mint("race-grant");
+    const desktop = await mint("race-grant", { client: "desktop", client_aud: "syntila.desktop.management" });
+    const ws = await machine(desktop, "/api/workspace-runtime/register", registration(`install_${crypto.randomUUID()}`, "Mac"));
+    expect(ws.status).toBeLessThan(300);
+    const workspaceId = ws.body.workspaceId ?? ws.body.executionWorkspaceId;
+    const space = await call(owner, "POST", "/api/spaces", { name: "Grant race" });
+    const spaceId = space.body.space.id;
+    const results = await Promise.all(Array.from({ length: 6 }, () =>
+      call(owner, "PUT", `/api/spaces/${spaceId}/workflow-workspace`, { workspaceId, confirmReset: true })));
+    expect(unexpected(results, [200, 409])).toEqual([]);
+    const [row] = await sql`SELECT count(*)::int AS n FROM workspace_space_grants WHERE space_id = ${spaceId} AND status IN ('active', 'suspended')`;
+    expect(row.n).toBe(1);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+
+  test("queueing, sending now, pausing and resuming one Thread queue at once", async () => {
+    const token = await mint("race-queue");
+    const { threadId } = await spaceWithThread(token, "Queue race");
+    const enqueue = (i: number) => call(token, "POST", `/api/threads/${threadId}/queue`, { request: { workflowId: "chat", input: { originalRequest: `q${i}` } } });
+    const queued = await enqueue(0);
+    expect(unexpected([queued], [200, 201])).toEqual([]);
+    const firstId = queued.body.items?.[0]?.id;
+    const results = await Promise.all([
+      ...Array.from({ length: 6 }, (_, i) => enqueue(i + 1)),
+      call(token, "POST", `/api/threads/${threadId}/queue/pause`, {}),
+      call(token, "POST", `/api/threads/${threadId}/queue/resume`, {}),
+      ...(firstId ? [call(token, "POST", `/api/threads/${threadId}/queue/${firstId}/send-now`, {})] : []),
+    ]);
+    expect(unexpected(results, [200, 201, 400, 404, 409, 422])).toEqual([]);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+});
