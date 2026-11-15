@@ -34,14 +34,8 @@ export async function handleListUserFiles(
     undefined,
     accessContext,
   );
-  const params = new URL(request.url).searchParams;
-  // `before` (a bare timestamp) is the old name of `cursor`.
-  const raw = params.get("cursor") ?? params.get("before");
-  const after: PagePosition | null = !raw
-    ? null
-    : !Number.isNaN(Date.parse(raw)) && !raw.includes("[")
-      ? { at: new Date(raw).toISOString(), id: "" }
-      : decodeCursor(raw);
+  const raw = new URL(request.url).searchParams.get("cursor");
+  const after: PagePosition | null = raw ? decodeCursor(raw) : null;
   const rows = await env.SYNTILA_DB.prepare(
     `SELECT f.id AS fileId, f.name, f.media_type AS mediaType,
         f.size_bytes AS sizeBytes, f.created_at AS createdAt,

@@ -101,7 +101,7 @@ it("scopes reads before history access and paginates against a stable high-water
   ).json()) as {
     entries: { sequence: number }[];
     throughSequence: number;
-    nextCursor: { afterSequence: number; throughSequence: number };
+    nextCursor: string | null;
   };
   expect(first.entries).toHaveLength(1);
   f.sqlite.exec("UPDATE work_requests SET status='waiting',updated_at='2030-01-01T00:00:00.000Z'");
@@ -111,7 +111,7 @@ it("scopes reads before history access and paginates against a stable high-water
     const page = (await (
       await handleListConversationHistory(
         req(
-          `?limit=1&afterSequence=${cursor.afterSequence}&throughSequence=${cursor.throughSequence}`,
+          `?limit=1&cursor=${encodeURIComponent(cursor)}`,
         ),
         env,
         "W",
@@ -130,9 +130,9 @@ it("scopes reads before history access and paginates against a stable high-water
   for (const query of [
     "?limit=0",
     "?limit=101",
-    "?afterSequence=-1",
-    "?afterSequence=Infinity",
-    "?throughSequence=999999",
+    "?cursor=not-a-cursor",
+    `?cursor=${Buffer.from(JSON.stringify(["seq", 0, 999999])).toString("base64url")}`,
+    `?cursor=${Buffer.from(JSON.stringify(["seq", 5, 1])).toString("base64url")}`,
   ])
     await expect(
       handleListConversationHistory(req(query), env, "W", conversation),

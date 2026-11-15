@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'ax_execution_phase.dart';
 import 'ax_models.dart';
 
@@ -286,21 +288,52 @@ class AxConversationHistoryPage {
         entries = List.unmodifiable((json['entries'] as List).map((item) =>
             AxConversationHistoryEntry.fromJson(
                 Map<String, dynamic>.from(item as Map)))),
-        nextCursor = json['nextCursor'] is Map
-            ? Map<String, int>.unmodifiable(
-                Map<String, int>.from(json['nextCursor'] as Map))
+        nextCursor = json['nextCursor'] is String &&
+                (json['nextCursor'] as String).isNotEmpty
+            ? json['nextCursor'] as String
             : null;
   final String conversationId;
   final int historyRevision;
   final int throughSequence;
   final List<AxConversationHistoryEntry> entries;
-  final Map<String, int>? nextCursor;
+  /// Opaque; pass back as `cursor`. Pages read the history as of the first
+  /// page.
+  final String? nextCursor;
 }
 
+/// Position in Work history: older pages start after this request.
+///
+/// The app keeps the position itself (it is persisted in the offline cache
+/// and rebuilt from the oldest retained request after compaction); on the
+/// wire it is the API's timestamp cursor, `base64url(JSON [createdAt, id])`.
 class AxWorkRequestCursor {
   const AxWorkRequestCursor({required this.createdAt, required this.id});
   final String createdAt;
   final String id;
+
+  String toWire() =>
+      base64Url.encode(utf8.encode(jsonEncode([createdAt, id]))).replaceAll('=', '');
+
+  /// Null when [value] is not a timestamp cursor.
+  static AxWorkRequestCursor? fromWire(String value) {
+    try {
+      final decoded =
+          jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(value))));
+      if (decoded is List &&
+          decoded.length == 2 &&
+          decoded[0] is String &&
+          decoded[1] is String &&
+          (decoded[0] as String).isNotEmpty &&
+          (decoded[1] as String).isNotEmpty) {
+        return AxWorkRequestCursor(
+            createdAt: decoded[0] as String, id: decoded[1] as String);
+      }
+    } on FormatException {
+      // Not a cursor.
+    }
+    return null;
+  }
+
   @override
   bool operator ==(Object other) =>
       other is AxWorkRequestCursor &&
@@ -1122,8 +1155,7 @@ abstract interface class AxDataSource {
   Future<AxConversationHistoryPage> loadConversationHistory(
           {required String threadId,
           required String conversationId,
-          int afterSequence = 0,
-          int? throughSequence,
+          String? cursor,
           int limit = 50}) async =>
       throw UnimplementedError('Conversation history is not available');
   Future<AxWorkRequestStatus> loadWorkRequest({

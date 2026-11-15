@@ -69,3 +69,25 @@ export function afterCursorSql(atColumn: string, idColumn: string, atParam: numb
 export function cursorOrderSql(atColumn: string, idColumn: string): string {
   return `${ms(atColumn)} DESC, ${idColumn} DESC`;
 }
+
+/**
+ * Cursor of an ascending, sequence-ordered list read at a fixed revision
+ * (Conversation history): the last sequence seen and the pinned end.
+ */
+export function encodeSequenceCursor(after: number, through: number): string {
+  return Buffer.from(JSON.stringify(["seq", after, through])).toString("base64url");
+}
+
+export function decodeSequenceCursor(cursor: string): { after: number; through: number } {
+  try {
+    if (cursor.length > 128) throw new Error("too long");
+    const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (Array.isArray(value) && value.length === 3 && value[0] === "seq" &&
+        Number.isSafeInteger(value[1]) && Number.isSafeInteger(value[2]) &&
+        value[1] >= 0 && value[1] <= value[2])
+      return { after: value[1], through: value[2] };
+  } catch {
+    // fall through
+  }
+  throw Object.assign(new HttpError(400, "cursor is not valid"), { code: "invalid_cursor" });
+}

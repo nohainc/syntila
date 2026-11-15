@@ -1,3 +1,4 @@
+import { afterCursorSql, cursorOrderSql, decodeCursor, encodeCursor } from "./pagination.js";
 import { activeThreadLease, activeWorkCount, cancelPendingTasks, cancelQueuedWorkRequest, spaceMembership, threadSpace, workRequestThread } from "../queries.js";
 import {
   RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS,
@@ -1115,8 +1116,8 @@ export async function handleListWorkRequests(
   const limit = Number.isInteger(rawLimit)
     ? Math.min(100, Math.max(1, rawLimit))
     : 100;
-  const beforeCreatedAt = url.searchParams.get("beforeCreatedAt");
-  const beforeId = url.searchParams.get("beforeId");
+  const rawCursor = url.searchParams.get("cursor");
+  const before = rawCursor ? decodeCursor(rawCursor) : null;
   const activeOnly = url.searchParams.get("activeOnly") === "true";
   const recentCutoff = new Date(Date.now() - 15 * 60_000).toISOString();
   const page = await env.SYNTILA_DB.prepare(
@@ -1130,20 +1131,21 @@ export async function handleListWorkRequests(
        FROM work_requests wr
        JOIN users u ON u.id = wr.requested_by_user_id
       WHERE wr.thread_id = ?1
-        AND (?2::timestamptz IS NULL OR wr.created_at < ?2 OR (wr.created_at = ?2 AND wr.id < ?3))
+        AND (?2::text IS NULL OR ${afterCursorSql("wr.created_at", "wr.id", 2, 3)})
         AND (?4 = 0 OR wr.status IN ('queued', 'running', 'waiting') OR wr.updated_at >= ?5)
-      ORDER BY wr.created_at DESC, wr.id DESC LIMIT ?6`,
+      ORDER BY ${cursorOrderSql("wr.created_at", "wr.id")} LIMIT ?6`,
   )
     .bind(
       threadId,
-      beforeCreatedAt,
-      beforeId,
+      before?.at ?? null,
+      before?.id ?? null,
       activeOnly ? 1 : 0,
       recentCutoff,
-      limit,
+      limit + 1,
     )
     .all<Record<string, unknown>>();
-  const requests = page.results ?? [];
+  const more = (page.results?.length ?? 0) > limit;
+  const requests = (page.results ?? []).slice(0, limit);
   if (requests.length === 0)
     return json({
       aiHistoryClearedAt: await aiHistoryClearedAt(env, threadId),
@@ -1493,10 +1495,9 @@ export async function handleListWorkRequests(
   return json({
     aiHistoryClearedAt: await aiHistoryClearedAt(env, threadId),
     workRequests,
-    nextCursor:
-      requests.length === limit
-        ? { createdAt: String(last.createdAt), id: String(last.id) }
-        : null,
+    nextCursor: more
+      ? encodeCursor({ at: String(last.createdAt), id: String(last.id) })
+      : null,
   });
 }
 

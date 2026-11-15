@@ -4,6 +4,7 @@ import type {
 } from "@syntila/core";
 import { authorizeThreadAccess } from "./thread-policy.js";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
+import { decodeSequenceCursor, encodeSequenceCursor } from "./pagination.js";
 
 export async function handleListConversationHistory(
   request: Request,
@@ -20,26 +21,23 @@ export async function handleListConversationHistory(
     .first();
   if (!scope) throw new HttpError(404, "Conversation not found");
   const params = new URL(request.url).searchParams;
-  const integer = (name: string, fallback: number): number => {
-    const raw = params.get(name);
-    if (raw === null) return fallback;
-    const value = Number(raw);
-    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value))
-      throw new HttpError(400, `Invalid ${name}`);
-    return value;
-  };
-  const afterSequence = integer("afterSequence", 0);
-  const limit = integer("limit", 50);
-  if (limit < 1 || limit > 100)
+  const rawLimit = params.get("limit") ?? "50";
+  const limit = Number(rawLimit);
+  if (!/^\d+$/.test(rawLimit) || limit < 1 || limit > 100)
     throw new HttpError(400, "limit must be between 1 and 100");
+  // The first page pins the current end of history; the cursor carries it,
+  // so later pages read the same snapshot while new entries are appended.
+  const rawCursor = params.get("cursor");
+  const position = rawCursor ? decodeSequenceCursor(rawCursor) : null;
+  const afterSequence = position?.after ?? 0;
   const revision = await env.SYNTILA_DB.prepare(
     "SELECT COALESCE(MAX(sequence),0) AS revision FROM conversation_history_entries WHERE conversation_id = ?1",
   )
     .bind(conversationId)
     .first<{ revision: number }>();
   const historyRevision = revision?.revision ?? 0;
-  const throughSequence = integer("throughSequence", historyRevision);
-  if (throughSequence > historyRevision || afterSequence > throughSequence)
+  const throughSequence = position?.through ?? historyRevision;
+  if (throughSequence > historyRevision)
     throw new HttpError(
       400,
       "History cursor is outside this Conversation history",
@@ -68,7 +66,7 @@ export async function handleListConversationHistory(
     entries,
     nextCursor:
       (rows.results?.length ?? 0) > limit
-        ? { afterSequence: entries.at(-1)!.sequence, throughSequence }
+        ? encodeSequenceCursor(entries.at(-1)!.sequence, throughSequence)
         : null,
   };
   return json(page);

@@ -111,14 +111,23 @@ List endpoints that can grow without bound use one shape:
 | `GET /api/notes` | 500 / 500 |
 | `GET /api/spaces/:spaceId/audit` | 100 / 200 |
 | `GET /api/files` | 100 (fixed) |
+| `GET /api/threads/:threadId/work-requests` | 100 / 100 |
+| `GET /api/threads/:threadId/discussion-messages` | 50 / 100 |
+| `GET /api/threads/:threadId/conversations/:conversationId/history` | 50 / 100 |
 
-Discussion messages take `cursor` for older pages; `after` (a message id)
-still fetches newer messages. Files and discussion messages still accept
-their old `before` parameter until the app release that sends `cursor` is
-everywhere; it will then be removed. Work Requests
-(`beforeCreatedAt`/`beforeId`) and conversation history (`afterSequence`)
-keep their own parameters for now, because the app stores those positions
-in its offline cache.
+Every list takes its next page as `cursor`; there are no other paging
+parameters. Two lists differ in direction:
+
+- Discussion messages also take `after` (the `newestCursor` of a page) to
+  read newer messages; `cursor` and `after` cannot be combined.
+- Conversation history is oldest first. The first page fixes the end of
+  the history (`throughSequence`); its cursors keep reading that snapshot
+  while new entries are appended.
+
+Timestamp cursors (notes, Space audit, files, Work Requests) are
+`base64url(JSON [createdAt, id])`. Clients pass them back unchanged; the
+one exception is the app's Work history, which keeps positions in its
+offline cache and may build the cursor that pages after a request it holds.
 Lists bounded by what one person can see (Spaces, Threads, members,
 Workspaces, people) are returned whole. Notifications are a bounded feed.
 

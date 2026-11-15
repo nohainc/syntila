@@ -296,7 +296,7 @@ void main() {
       'conversationId': 'C',
       'historyRevision': 5,
       'throughSequence': 4,
-      'nextCursor': {'afterSequence': 3, 'throughSequence': 4},
+      'nextCursor': 'next-page',
       'entries': [
         {
           'id': 'H',
@@ -316,14 +316,14 @@ void main() {
     final page = await source.loadConversationHistory(
         threadId: 'W',
         conversationId: 'C',
-        afterSequence: 2,
-        throughSequence: 4,
+        cursor: 'this-page',
         limit: 1);
     expect(page.entries.single.text, text);
-    expect(page.nextCursor!['throughSequence'], 4);
+    expect(page.nextCursor, 'next-page');
     expect(
         client.lastRequest!.url.path, '/api/threads/W/conversations/C/history');
-    expect(client.lastRequest!.url.queryParameters['afterSequence'], '2');
+    expect(client.lastRequest!.url.queryParameters,
+        {'limit': '1', 'cursor': 'this-page'});
   });
 
   test(
@@ -579,7 +579,9 @@ void main() {
         },
         {'id': 'a', 'createdAt': '2026-10-06T01:00:00Z'}
       ],
-      'nextCursor': {'createdAt': '2026-10-06T01:00:00Z', 'id': 'a'}
+      'nextCursor': const AxWorkRequestCursor(
+              createdAt: '2026-10-06T01:00:00Z', id: 'a')
+          .toWire()
     });
     final api = AxApiClient(baseUrl: 'https://example.test', client: client);
     final page = await api.loadThreadWorkRequestPage(
@@ -588,12 +590,12 @@ void main() {
         beforeCreatedAt: '2026-10-07T00:00:00Z',
         beforeId: 'id+/=',
         activeOnly: true);
-    expect(client.lastRequest!.url.queryParameters, {
-      'limit': '40',
-      'beforeCreatedAt': '2026-10-07T00:00:00Z',
-      'beforeId': 'id+/=',
-      'activeOnly': 'true'
-    });
+    final sent = client.lastRequest!.url.queryParameters;
+    expect(sent.keys.toSet(), {'limit', 'cursor', 'activeOnly'});
+    expect(sent['limit'], '40');
+    expect(sent['activeOnly'], 'true');
+    expect(AxWorkRequestCursor.fromWire(sent['cursor']!),
+        const AxWorkRequestCursor(createdAt: '2026-10-07T00:00:00Z', id: 'id+/='));
     expect(page.requests.map((r) => r.id), ['a', 'b']);
     expect(page.requests.last.prompt, '# Exact Markdown');
     expect(page.nextCursor!.id, 'a');
@@ -607,7 +609,7 @@ void main() {
   for (final body in [
     <String, dynamic>{
       'workRequests': [],
-      'nextCursor': {'id': 'x'}
+      'nextCursor': 'not-a-cursor'
     },
     <String, dynamic>{
       'workRequests': [null]

@@ -164,7 +164,7 @@ describe("cursor pagination", () => {
 });
 
 describe("older lists accept cursor", () => {
-  test("files page with an opaque cursor; the old timestamp form still works", async () => {
+  test("files page with an opaque cursor; a bare timestamp is rejected", async () => {
     const token = await mint("files-a");
     expect((await call(token, "GET", "/api/files")).status).toBe(200);
     const rows = Array.from({ length: 103 }, (_, i) => {
@@ -183,9 +183,9 @@ describe("older lists accept cursor", () => {
     expect(second.body.nextCursor).toBeNull();
     const ids = [...first.body.files, ...second.body.files].map((f: { fileId: string }) => f.fileId);
     expect(new Set(ids).size).toBe(103);
-    const legacy = await call(token, "GET", `/api/files?before=${encodeURIComponent("2026-01-01T00:00:01Z")}`);
-    expect(legacy.body.files.map((f: { fileId: string }) => f.fileId).sort()).toEqual(["f-000", "f-001", "f-002"]);
-    const exact = await call(token, "GET", `/api/files?before=${encodeURIComponent("2026-01-01T00:00:00.5Z")}`);
-    expect(exact.body.files).toEqual([]);
+    // The old `before` timestamp is gone: a bare timestamp is not a cursor.
+    const legacy = await call(token, "GET", `/api/files?cursor=${encodeURIComponent("2026-01-01T00:00:01Z")}`);
+    expect(legacy.status).toBe(400);
+    expect(legacy.body.code).toBe("invalid_cursor");
   });
 });

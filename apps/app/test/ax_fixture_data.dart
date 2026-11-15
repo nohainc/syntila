@@ -80,8 +80,7 @@ class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
   Future<AxConversationHistoryPage> loadConversationHistory(
           {required String threadId,
           required String conversationId,
-          int afterSequence = 0,
-          int? throughSequence,
+          String? cursor,
           int limit = 50}) async =>
       AxConversationHistoryPage.fromJson({
         'conversationId': conversationId,

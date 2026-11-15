@@ -846,15 +846,13 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   Future<AxConversationHistoryPage> loadConversationHistory(
       {required String threadId,
       required String conversationId,
-      int afterSequence = 0,
-      int? throughSequence,
+      String? cursor,
       int limit = 50}) async {
     final uri = Uri.parse(
             '$baseUrl/threads/${Uri.encodeComponent(threadId)}/conversations/${Uri.encodeComponent(conversationId)}/history')
         .replace(queryParameters: {
-      'afterSequence': '$afterSequence',
       'limit': '$limit',
-      if (throughSequence != null) 'throughSequence': '$throughSequence',
+      if (cursor != null) 'cursor': cursor,
     });
     final body = await _getJson(uri);
     final page = AxConversationHistoryPage.fromJson(body);
@@ -1080,20 +1078,18 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
         .replace(queryParameters: {
       'limit': '$limit',
       if (activeOnly) 'activeOnly': 'true',
-      if (beforeCreatedAt != null) 'beforeCreatedAt': beforeCreatedAt,
-      if (beforeId != null) 'beforeId': beforeId,
+      if (beforeCreatedAt != null && beforeId != null)
+        'cursor': AxWorkRequestCursor(createdAt: beforeCreatedAt, id: beforeId)
+            .toWire(),
     });
     final body = await _getJson(uri);
     final raw = body['workRequests'];
-    final cursor = body['nextCursor'];
+    final rawCursor = body['nextCursor'];
+    final cursor =
+        rawCursor is String ? AxWorkRequestCursor.fromWire(rawCursor) : null;
     if (raw is! List ||
         raw.any((v) => v is! Map) ||
-        (cursor != null &&
-            (cursor is! Map ||
-                cursor['createdAt'] is! String ||
-                cursor['id'] is! String ||
-                cursor['createdAt'] == '' ||
-                cursor['id'] == ''))) {
+        (rawCursor != null && cursor == null)) {
       throw const AxApiException('Malformed Work history page');
     }
     final records = raw
@@ -1106,11 +1102,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     return AxWorkRequestPage(
         aiHistoryClearedAt: clearedAt is String ? clearedAt : null,
         requests: records.reversed,
-        nextCursor: cursor == null
-            ? null
-            : AxWorkRequestCursor(
-                createdAt: cursor['createdAt'] as String,
-                id: cursor['id'] as String));
+        nextCursor: cursor);
   }
 
   @override

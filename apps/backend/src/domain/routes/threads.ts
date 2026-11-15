@@ -604,11 +604,11 @@ export async function handleListDiscussionMessages(
     throw new HttpError(400, "Discussion limit must be between 1 and 100");
   }
   const limit = Number(rawLimit);
-  // `cursor` pages back in time like every list; `before` is its old name.
-  const before = url.searchParams.get("cursor") ?? url.searchParams.get("before");
+  // `cursor` pages back in time like every list; `after` reads newer messages.
+  const before = url.searchParams.get("cursor");
   const after = url.searchParams.get("after");
   if (before !== null && after !== null) {
-    throw new HttpError(400, "Choose before or after, not both");
+    throw new HttpError(400, "Choose cursor or after, not both");
   }
   const rawCursor = before ?? after;
   let cursor: { createdAt: string; id: string } | null = null;

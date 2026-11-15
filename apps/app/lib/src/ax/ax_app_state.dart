@@ -543,6 +543,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
 
   Future<void> _createSpace() async {
     final source = widget.dataSource;
+    AxSpace? created;
     final values = await showCreateSpaceDialog(
       navigatorKey.currentContext ?? context,
       loadWorkspaces: () async => source is AxWorkflowWorkspaceDataSource
@@ -550,19 +551,17 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
                   .loadWorkflowWorkspace())
               .workspaces
           : const <AxWorkflowWorkspace>[],
+      // The dialog stays open on failure and shows the problems itself.
+      create: (values) async => created = await store.collaboration
+          .createSpace(
+              name: values.name,
+              description: values.description,
+              workspaceId: values.workspaceId),
     );
-    if (values == null) return;
-    try {
-      final space = await store.collaboration.createSpace(
-          name: values.name,
-          description: values.description,
-          workspaceId: values.workspaceId);
-      if (!mounted) return;
-      _navigateTo(AxNavigation.space(space.id), replace: true);
-      _showSnackBar('Space created. Create a Thread to get started.');
-    } catch (error) {
-      if (mounted) _showSnackBar(error.toString(), type: ToastType.error);
-    }
+    final space = created;
+    if (values == null || space == null || !mounted) return;
+    _navigateTo(AxNavigation.space(space.id), replace: true);
+    _showSnackBar('Space created. Create a Thread to get started.');
   }
 
   Future<void> _createThread([AxSpace? targetSpace]) async {

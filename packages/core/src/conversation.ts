@@ -228,16 +228,13 @@ export interface ConversationHistoryEntry {
   readonly occurredAt: string;
   readonly recordedAt: string;
 }
-export interface ConversationHistoryCursor {
-  readonly afterSequence: number;
-  readonly throughSequence: number;
-}
 export interface ConversationHistoryPage {
   readonly conversationId: string;
   readonly historyRevision: number;
   readonly throughSequence: number;
   readonly entries: readonly ConversationHistoryEntry[];
-  readonly nextCursor: ConversationHistoryCursor | null;
+  /** Opaque; pass back as `cursor`. Pages read the history as of the first page. */
+  readonly nextCursor: string | null;
 }
 
 /** Workspace-owned execution state; never a Cloud/Human Product response DTO. */

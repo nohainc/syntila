@@ -77,7 +77,7 @@ describe("Discussion paging contract 1", () => {
       expect(result.messages[0]?.body).toBe("  **6**\n");
       expect(result.nextCursor).toBeTruthy();
       const older = await page(
-        `?before=${encodeURIComponent(result.nextCursor!)}`,
+        `?cursor=${encodeURIComponent(result.nextCursor!)}`,
       );
       expect(older.messages.map((m) => m.id)).toEqual([
         "m001",
@@ -98,7 +98,7 @@ describe("Discussion paging contract 1", () => {
       let cursor: string | null = null;
       do {
         const result = await page(
-          `?limit=2${cursor ? `&before=${encodeURIComponent(cursor)}` : ""}`,
+          `?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
         );
         ids.unshift(...result.messages.map((m) => m.id));
         cursor = result.nextCursor;
@@ -149,15 +149,15 @@ describe("Discussion paging contract 1", () => {
         "?limit=101",
         "?limit=abc",
         "?limit=1.5",
-        "?before=",
-        "?before=bad",
-        "?before=x&after=y",
+        "?cursor=",
+        "?cursor=bad",
+        "?cursor=x&after=y",
       ]) {
         await expect(page(query)).rejects.toMatchObject({ status: 400 });
       }
       const head = await page("?limit=2");
       await expect(
-        page(`?before=${encodeURIComponent(head.nextCursor!)}`, "other-w"),
+        page(`?cursor=${encodeURIComponent(head.nextCursor!)}`, "other-w"),
       ).rejects.toMatchObject({ status: 400 });
     } finally {
       sqlite.close();
