@@ -1,4 +1,4 @@
-import { isSpaceMember, spaceKind, spaceMembership } from "../queries.js";
+import { isSpaceMember, spaceKind, spaceMembership, spaceNameOf, userByEmail } from "../queries.js";
 import {
   SpaceMemberLimitError,
   getSpaceMemberUsage,
@@ -1201,11 +1201,7 @@ export async function handleCreateSpaceInvitation(
     .run();
   const recipient = inviteeUserId
     ? { id: inviteeUserId }
-    : await env.SYNTILA_DB.prepare(
-        `SELECT id FROM users WHERE LOWER(email) = LOWER(?1) LIMIT 1`,
-      )
-        .bind(email)
-        .first<{ id: string }>();
+    : await userByEmail(env.SYNTILA_DB, email);
   await publishCollaborationEvent(env, "space.updated", spaceId, id, {
     additionalRecipientUserIds: inviteeUserId
       ? [inviteeUserId]
@@ -1214,11 +1210,7 @@ export async function handleCreateSpaceInvitation(
         : [],
   });
 
-  const spaceRow = await env.SYNTILA_DB.prepare(
-    `SELECT name FROM spaces WHERE id = ?1`,
-  )
-    .bind(spaceId)
-    .first<{ name: string }>();
+  const spaceRow = await spaceNameOf(env.SYNTILA_DB, spaceId);
   const spaceName = spaceRow?.name ?? "Space";
   const appUrl = resolveAppUrl(request, env);
   const invitationLink = `${appUrl}/?invitation=${id}`;
@@ -1432,11 +1424,7 @@ export async function handleExpireSpaceInvitation(
     .run();
   const recipient = existing.inviteeUserId
     ? { id: existing.inviteeUserId }
-    : await env.SYNTILA_DB.prepare(
-        `SELECT id FROM users WHERE LOWER(email) = LOWER(?1) LIMIT 1`,
-      )
-        .bind(existing.email)
-        .first<{ id: string }>();
+    : await userByEmail(env.SYNTILA_DB, existing.email);
   await publishCollaborationEvent(env, "space.updated", spaceId, invitationId, {
     additionalRecipientUserIds: existing.inviteeUserId
       ? [existing.inviteeUserId]

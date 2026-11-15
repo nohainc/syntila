@@ -1,4 +1,4 @@
-import { usersBlocked } from "../queries.js";
+import { directSpaceOfPair, usersBlocked } from "../queries.js";
 import {
   spaceMemberPermissions,
   type SpaceMemberPermissions,
@@ -324,11 +324,7 @@ async function provisionDirectConnection(
   );
   const now = new Date().toISOString();
 
-  const existing = await env.SYNTILA_DB.prepare(
-    "SELECT space_id FROM direct_spaces WHERE user_low_id = ?1 AND user_high_id = ?2",
-  )
-    .bind(userLowId, userHighId)
-    .first<{ space_id: string }>();
+  const existing = await directSpaceOfPair(env.SYNTILA_DB, userLowId, userHighId);
 
   let directSpaceId = existing?.space_id;
   const isNewSpace = !directSpaceId;
@@ -404,11 +400,7 @@ async function provisionDirectConnection(
       await env.SYNTILA_DB.batch(statements);
     }
   } catch (error) {
-    const rechecked = await env.SYNTILA_DB.prepare(
-      "SELECT space_id FROM direct_spaces WHERE user_low_id = ?1 AND user_high_id = ?2",
-    )
-      .bind(userLowId, userHighId)
-      .first<{ space_id: string }>();
+    const rechecked = await directSpaceOfPair(env.SYNTILA_DB, userLowId, userHighId);
     if (rechecked) {
       directSpaceId = rechecked.space_id;
       if (invitationId)

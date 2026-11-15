@@ -1,3 +1,4 @@
+import { accountPlanRow } from "./queries.js";
 import { HttpError } from "./routes/http-security.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "./assignment-transitions.js";
 
@@ -299,11 +300,7 @@ export async function getAttachmentLimits(
   userId: string,
   now: Date = new Date(),
 ): Promise<AttachmentLimits> {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT tier, status, current_period_end FROM account_plans WHERE user_id = ?1",
-  )
-    .bind(userId)
-    .first<AccountPlanRow>();
+  const row = await accountPlanRow<AccountPlanRow>(env.SYNTILA_DB, userId);
   return attachmentLimits(effectiveTier(row, now));
 }
 
@@ -422,11 +419,7 @@ export async function getAccountPlan(
   userId: string,
   now: Date = new Date(),
 ): Promise<AccountPlan> {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT tier, status, current_period_end FROM account_plans WHERE user_id = ?1",
-  )
-    .bind(userId)
-    .first<AccountPlanRow>();
+  const row = await accountPlanRow<AccountPlanRow>(env.SYNTILA_DB, userId);
   const tier = effectiveTier(row, now);
   return {
     tier,

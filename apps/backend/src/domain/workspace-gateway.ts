@@ -1,3 +1,4 @@
+import { assignmentStatus } from "./queries.js";
 import {
   applyEngineLivenessReport,
   failLostEngineAssignments,
@@ -2336,11 +2337,7 @@ export class WorkspaceGateway implements DurableObject {
     };
     diagnostic("read_start");
     const row = message.assignmentId
-      ? await this.env.SYNTILA_DB.prepare(
-          "SELECT status FROM worker_assignments WHERE id = ?1",
-        )
-          .bind(message.assignmentId)
-          .first<{ status: string }>()
+      ? await assignmentStatus(this.env.SYNTILA_DB, message.assignmentId)
       : null;
     diagnostic("read_done");
     // Local Worker Protocol 4.x acknowledges timeout as a failed terminal
@@ -2463,11 +2460,7 @@ export class WorkspaceGateway implements DurableObject {
     message: WorkspaceRuntimeMessage,
   ): Promise<boolean> {
     if (!(await this.assignmentContextMatches(message))) return false;
-    const assignment = await this.env.SYNTILA_DB.prepare(
-      "SELECT status FROM worker_assignments WHERE id = ?1",
-    )
-      .bind(message.assignmentId)
-      .first<{ status: string }>();
+    const assignment = await assignmentStatus(this.env.SYNTILA_DB, message.assignmentId);
     return assignment != null && workspaceAssignmentIsActive(assignment);
   }
 

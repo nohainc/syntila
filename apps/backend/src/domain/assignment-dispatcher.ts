@@ -1,3 +1,4 @@
+import { assignmentProgress, assignmentStatus } from "./queries.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
 import { createHash } from "node:crypto";
 import {
@@ -947,11 +948,7 @@ export async function failOrRevokeDispatch(
   attemptId: string,
   failure: AssignmentFailurePayload,
 ): Promise<void> {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT status FROM worker_assignments WHERE id = ?1",
-  )
-    .bind(assignmentId)
-    .first<{ status: string }>();
+  const row = await assignmentStatus(env.SYNTILA_DB, assignmentId);
   if (!row || row.status === "created") {
     await recordAssignmentError(
       env.SYNTILA_DB,
@@ -1040,16 +1037,7 @@ export async function recordAssignmentResult(
 ): Promise<boolean> {
   const now = new Date().toISOString();
 
-  const existing = await db
-    .prepare(
-      `SELECT status, task_id, attempt_id FROM worker_assignments WHERE id = ?1`,
-    )
-    .bind(assignmentId)
-    .first<{
-      status: string;
-      task_id: string;
-      attempt_id: string | null;
-    }>();
+  const existing = await assignmentProgress(db, assignmentId);
   if (!existing) return false;
   if (expectedAttemptId && existing.attempt_id !== expectedAttemptId)
     return false;
@@ -1107,16 +1095,7 @@ export async function recordAssignmentError(
     failedAt: now,
   };
 
-  const existing = await db
-    .prepare(
-      `SELECT status, task_id, attempt_id FROM worker_assignments WHERE id = ?1`,
-    )
-    .bind(assignmentId)
-    .first<{
-      status: string;
-      task_id: string;
-      attempt_id: string | null;
-    }>();
+  const existing = await assignmentProgress(db, assignmentId);
   if (!existing) return false;
   if (expectedAttemptId && existing.attempt_id !== expectedAttemptId)
     return false;
@@ -1174,16 +1153,7 @@ export async function recordAssignmentCancelled(
   options?: { onlyFrom?: readonly AssignmentLifecycleStatus[] },
 ): Promise<boolean> {
   const now = new Date().toISOString();
-  const existing = await db
-    .prepare(
-      `SELECT status, task_id, attempt_id FROM worker_assignments WHERE id = ?1`,
-    )
-    .bind(assignmentId)
-    .first<{
-      status: string;
-      task_id: string;
-      attempt_id: string | null;
-    }>();
+  const existing = await assignmentProgress(db, assignmentId);
   if (!existing) return false;
   if (expectedAttemptId && existing.attempt_id !== expectedAttemptId)
     return false;

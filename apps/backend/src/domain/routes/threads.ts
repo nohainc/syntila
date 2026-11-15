@@ -1,4 +1,4 @@
-import { spaceKind, usersBlocked } from "../queries.js";
+import { activeWorkCount, directSpaceOfGeneralThread, spaceKind, usersBlocked } from "../queries.js";
 import {
   resolveReplyReference,
   storedReplyReference,
@@ -327,11 +327,7 @@ export async function handleUpdateThread(
       accessContext,
     );
 
-  const isDirectGeneral = await env.SYNTILA_DB.prepare(
-    "SELECT space_id FROM direct_spaces WHERE general_thread_id = ?1",
-  )
-    .bind(threadId)
-    .first<{ space_id: string }>();
+  const isDirectGeneral = await directSpaceOfGeneralThread(env.SYNTILA_DB, threadId);
   if (isDirectGeneral) {
     if (body.name !== undefined && body.name !== thread.name) {
       throw new HttpError(
@@ -556,22 +552,14 @@ export async function handleDeleteThread(
     accessContext,
   );
   await requireDestructiveThreadAccess(env, threadId, context.userId);
-  const isDirectGeneral = await env.SYNTILA_DB.prepare(
-    "SELECT space_id FROM direct_spaces WHERE general_thread_id = ?1",
-  )
-    .bind(threadId)
-    .first<{ space_id: string }>();
+  const isDirectGeneral = await directSpaceOfGeneralThread(env.SYNTILA_DB, threadId);
   if (isDirectGeneral) {
     throw new HttpError(
       403,
       "The default General Thread of a Direct Space cannot be deleted",
     );
   }
-  const active = await env.SYNTILA_DB.prepare(
-    "SELECT COUNT(*) AS count FROM work_requests WHERE thread_id = ?1 AND status IN ('queued', 'running', 'waiting')",
-  )
-    .bind(threadId)
-    .first<{ count: number }>();
+  const active = await activeWorkCount(env.SYNTILA_DB, threadId);
   if (active && active.count > 0)
     throw new HttpError(
       409,
@@ -1007,11 +995,7 @@ export async function handleClearChatHistory(
     accessContext,
   );
   await requireDestructiveThreadAccess(env, threadId, context.userId);
-  const active = await env.SYNTILA_DB.prepare(
-    "SELECT COUNT(*) AS count FROM work_requests WHERE thread_id = ?1 AND status IN ('queued', 'running', 'waiting')",
-  )
-    .bind(threadId)
-    .first<{ count: number }>();
+  const active = await activeWorkCount(env.SYNTILA_DB, threadId);
   if (active && active.count > 0) {
     throw new HttpError(
       409,

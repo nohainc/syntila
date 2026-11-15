@@ -123,7 +123,6 @@ export {
   handleWorkspaceGatewayConnect,
   handleWorkspaceRuntimeTransport,
 } from "./workspaces.js";
-export { handleGetHomeReadModel } from "./home.js";
 export {
   handleListPeople,
   handleCreatePersonInvitation,

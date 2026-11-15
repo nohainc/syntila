@@ -1,3 +1,4 @@
+import { activeRuntimeIdentityCount } from "../queries.js";
 import { DESKTOP_WORKSPACE_AUDIENCE, hashToken } from "@syntila/security";
 
 import {
@@ -78,12 +79,7 @@ async function workspaceInstallationBindingIssue(
       409,
     );
   }
-  const activeRuntime = await env.SYNTILA_DB.prepare(
-    `SELECT COUNT(*) AS count FROM workspace_runtime_identities
-      WHERE workspace_id = ?1 AND revoked_at IS NULL`,
-  )
-    .bind(installation.workspaceId)
-    .first<{ count: number }>();
+  const activeRuntime = await activeRuntimeIdentityCount(env.SYNTILA_DB, installation.workspaceId);
   if ((activeRuntime?.count ?? 0) > 1) {
     return workspaceOwnershipFailure(
       "installation_binding_ambiguous",
@@ -217,12 +213,7 @@ export async function handleCheckWorkspaceOwnership(
     if (installation.ownerUserId !== session.userId) {
       return json({ state: "owned_by_other_user" });
     }
-    const activeRuntimeCount = await env.SYNTILA_DB.prepare(
-      `SELECT COUNT(*) AS count FROM workspace_runtime_identities
-        WHERE workspace_id = ?1 AND revoked_at IS NULL`,
-    )
-      .bind(installation.workspaceId)
-      .first<{ count: number }>();
+    const activeRuntimeCount = await activeRuntimeIdentityCount(env.SYNTILA_DB, installation.workspaceId);
     if ((activeRuntimeCount?.count ?? 0) > 1) {
       return json({ state: "corrupt_or_ambiguous" });
     }
@@ -954,12 +945,7 @@ export async function handleRegisterWorkspaceFromDesktop(
     );
   }
   if (existing) {
-    const activeRuntime = await env.SYNTILA_DB.prepare(
-      `SELECT COUNT(*) AS count FROM workspace_runtime_identities
-        WHERE workspace_id = ?1 AND revoked_at IS NULL`,
-    )
-      .bind(existing.workspaceId)
-      .first<{ count: number }>();
+    const activeRuntime = await activeRuntimeIdentityCount(env.SYNTILA_DB, existing.workspaceId);
     if ((activeRuntime?.count ?? 0) > 1) {
       return workspaceOwnershipFailure(
         "installation_binding_ambiguous",

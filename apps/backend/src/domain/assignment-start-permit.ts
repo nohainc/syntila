@@ -1,3 +1,4 @@
+import { assignmentStatus } from "./queries.js";
 import {
   isRevocationAssignmentStatus,
   isTerminalAssignmentStatus,
@@ -116,10 +117,7 @@ export async function grantStartPermit(
     };
   }
   // Lost the race: re-read to report why.
-  const current = await db
-    .prepare("SELECT status FROM worker_assignments WHERE id = ?1")
-    .bind(fence.assignmentId)
-    .first<{ status: string }>();
+  const current = await assignmentStatus(db, fence.assignmentId);
   return { granted: false, reason: denialFor(current?.status) };
 }
 

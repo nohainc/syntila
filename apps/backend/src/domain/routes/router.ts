@@ -748,13 +748,6 @@ export async function routeWorkerRequest(
       );
     }
 
-    if (
-      request.method === "GET" &&
-      (url.pathname === "/api/home" || url.pathname === "/home")
-    ) {
-      return await handlers.handleGetHomeReadModel!(request, env, ctx);
-    }
-
     if (request.method === "GET" && url.pathname === "/api/spaces") {
       return await handlers.handleListSpaces!(request, env, ctx);
     }
@@ -872,11 +865,7 @@ export async function routeWorkerRequest(
         ctx,
       );
     }
-    if (
-      request.method === "GET" &&
-      (url.pathname === "/api/me/invitations" ||
-        url.pathname === "/api/invitations")
-    ) {
+    if (request.method === "GET" && url.pathname === "/api/me/invitations") {
       return await handlers.handleListCurrentUserInvitations!(
         request,
         env,

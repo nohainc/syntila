@@ -1,3 +1,4 @@
+import { cancelQueuedWorkRequest, startQueuedWorkRequest } from "./queries.js";
 /**
  * Durable Object coordinator for one Thread.
  *
@@ -211,16 +212,7 @@ export function startStatefulLeaseStatements(
   },
 ): D1PreparedStatement[] {
   return [
-    db
-      .prepare(
-        "UPDATE work_requests SET status = 'running', updated_at = ?1 WHERE id = ?2 AND status = 'queued'",
-      )
-      .bind(input.now, input.workRequestId),
-    db
-      .prepare(
-        "UPDATE runs SET status = 'running', updated_at = ?1 WHERE work_request_id = ?2 AND status = 'created'",
-      )
-      .bind(input.now, input.workRequestId),
+    ...startQueuedWorkRequest(db, input.workRequestId, input.now),
     db
       .prepare(
         `UPDATE threads
@@ -387,17 +379,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
     if (request.status !== "queued")
       return conflict("Only queued Work Requests can be cancelled");
     const now = new Date().toISOString();
-    await this.env.SYNTILA_DB.batch([
-      this.env.SYNTILA_DB.prepare(
-        "UPDATE work_requests SET status = 'cancelled', updated_at = ?1 WHERE id = ?2 AND status = 'queued'",
-      ).bind(now, workRequestId),
-      this.env.SYNTILA_DB.prepare(
-        "UPDATE runs SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status = 'created'",
-      ).bind(now, workRequestId),
-      this.env.SYNTILA_DB.prepare(
-        "UPDATE workflow_tasks SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status IN ('queued', 'waiting')",
-      ).bind(now, workRequestId),
-    ]);
+    await this.env.SYNTILA_DB.batch(cancelQueuedWorkRequest(this.env.SYNTILA_DB, workRequestId, now));
     await this.reconcile();
     return json({ workRequestId, status: "cancelled" });
   }

@@ -1,3 +1,4 @@
+import { spaceOwnerOf } from "../queries.js";
 import {
   stepInstanceId,
   validateResearchModelDiversity,
@@ -165,11 +166,7 @@ export async function resolveWorkflowExecutionBindings(
   // A Workspace lent to the Space owner is used only by people who hold their
   // own Person Grant (ADR-020); Space membership and the Space owner's grant
   // never extend to other members.
-  const spaceOwner = await env.SYNTILA_DB.prepare(
-    "SELECT owner_user_id AS ownerUserId FROM spaces WHERE id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ ownerUserId: string }>();
+  const spaceOwner = await spaceOwnerOf(env.SYNTILA_DB, spaceId);
   const lent = Boolean(
     !ownWorkspaceId &&
     workspaceOwner &&

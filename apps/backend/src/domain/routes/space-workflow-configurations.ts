@@ -1,3 +1,4 @@
+import { spaceOwnerOf, spaceWorkflowDefault, userWorkflowDefault } from "../queries.js";
 import { loadWorkflowWorkspace } from "./workflow-workspace.js";
 import type { SecurityEnv } from "./http-security.js";
 import { HttpError } from "./http-security.js";
@@ -8,11 +9,7 @@ export async function loadSpaceWorkflowConfigurations(
   spaceId: string,
   workflowId?: string,
 ) {
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT owner_user_id AS ownerUserId FROM spaces WHERE id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ ownerUserId: string }>();
+  const space = await spaceOwnerOf(env.SYNTILA_DB, spaceId);
   if (!space) throw new HttpError(404, "Space not found");
   const workspace = await loadWorkflowWorkspace(
     env,
@@ -37,18 +34,10 @@ export async function loadSpaceWorkflowConfigurations(
     ownerUserId: space.ownerUserId,
     defaultWorkflowId:
       (
-        await env.SYNTILA_DB.prepare(
-          "SELECT workflow_id AS workflowId FROM space_workflow_defaults WHERE space_id = ?1",
-        )
-          .bind(spaceId)
-          .first<{ workflowId: string }>()
+        await spaceWorkflowDefault(env.SYNTILA_DB, spaceId)
       )?.workflowId ??
       (
-        await env.SYNTILA_DB.prepare(
-          "SELECT workflow_id AS workflowId FROM user_workflow_defaults WHERE user_id = ?1 AND workspace_id = ?2",
-        )
-          .bind(space.ownerUserId, workspace.workspaceId)
-          .first<{ workflowId: string }>()
+        await userWorkflowDefault(env.SYNTILA_DB, space.ownerUserId, workspace.workspaceId)
       )?.workflowId ??
       "chat",
     configurations: [...configurations.values()],

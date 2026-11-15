@@ -1,3 +1,4 @@
+import { spaceWorkflowDefault, userWorkflowDefault } from "../queries.js";
 import { BUILTIN_WORKFLOW_CATALOG } from "@syntila/core";
 import {
   loadWorkflowWorkspace,
@@ -27,11 +28,7 @@ export async function loadUserWorkflowDefault(
   workspaceId: string | null,
 ) {
   if (!workspaceId) return CHAT_WORKFLOW_ID;
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT workflow_id AS workflowId FROM user_workflow_defaults WHERE user_id = ?1 AND workspace_id = ?2",
-  )
-    .bind(userId, workspaceId)
-    .first<{ workflowId: string }>();
+  const row = await userWorkflowDefault(env.SYNTILA_DB, userId, workspaceId);
   return row?.workflowId ?? CHAT_WORKFLOW_ID;
 }
 
@@ -40,11 +37,7 @@ export async function loadSpaceWorkflowDefault(
   spaceId: string,
   ownerUserId: string,
 ) {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT workflow_id AS workflowId FROM space_workflow_defaults WHERE space_id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ workflowId: string }>();
+  const row = await spaceWorkflowDefault(env.SYNTILA_DB, spaceId);
   if (row) return row.workflowId;
   const { workspaceId } = await loadWorkflowWorkspace(
     env,

@@ -1,3 +1,4 @@
+import { threadSpace } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
 import { requireWorkflowPermission } from "./space-permissions.js";
@@ -134,11 +135,7 @@ function queueResponse(
 }
 
 async function threadSpaceId(env: SecurityEnv, threadId: string) {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT space_id AS spaceId FROM threads WHERE id = ?1",
-  )
-    .bind(threadId)
-    .first<{ spaceId: string }>();
+  const row = await threadSpace(env.SYNTILA_DB, threadId);
   return row?.spaceId ?? null;
 }
 

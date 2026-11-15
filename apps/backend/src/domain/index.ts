@@ -190,7 +190,6 @@ export const routeHandlers = {
   handleListV9WorkerProfileHistory: handlers.handleListV9WorkerProfileHistory,
   handleRestoreV9WorkerProfile: handlers.handleRestoreV9WorkerProfile,
   handleGetWorkspaceV9WorkerProfile: handlers.handleGetWorkspaceV9WorkerProfile,
-  handleGetHomeReadModel: handlers.handleGetHomeReadModel,
   handleGetAvatar: handlers.handleGetAvatar,
   handleUploadAvatar: handlers.handleUploadAvatar,
 } as unknown as WorkerRouteHandlers;

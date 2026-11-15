@@ -1,3 +1,4 @@
+import { activeThreadLease, startQueuedWorkRequest, threadSpace, workRequestCancelRequest } from "./queries.js";
 import { evaluatePhaseCompletionAndAdvanceQueue } from "./routes/implement-plan.js";
 import type { SecurityEnv } from "./routes/http-security.js";
 import {
@@ -424,13 +425,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       const db = runtimeEnv.SYNTILA_DB;
       const namespace = runtimeEnv.SYNTILA_THREAD_COORDINATOR;
       if (!db || !namespace) return;
-      const lease = await db
-        .prepare(
-          `SELECT id, fencing_token AS fencingToken FROM thread_runtime_leases
-         WHERE work_request_id = ?1 AND thread_id = ?2 AND status = 'active' LIMIT 1`,
-        )
-        .bind(params.workRequestId, params.threadId)
-        .first<{ id: string; fencingToken: number }>();
+      const lease = await activeThreadLease(db, params.workRequestId, params.threadId);
       if (!lease) return;
       await namespace
         .getByName(params.threadId)
@@ -495,13 +490,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       return;
     }
     if (!namespace) return;
-    const lease = await db
-      .prepare(
-        `SELECT id, fencing_token AS fencingToken FROM thread_runtime_leases
-       WHERE work_request_id = ?1 AND thread_id = ?2 AND status = 'active' LIMIT 1`,
-      )
-      .bind(params.workRequestId, params.threadId)
-      .first<{ id: string; fencingToken: number }>();
+    const lease = await activeThreadLease(db, params.workRequestId, params.threadId);
     if (!lease) {
       // The lease is already gone (an earlier failure path released it, or it
       // expired). A Workflow that still finished every step completed the
@@ -607,11 +596,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       const spaceId =
         params.spaceId ??
         (
-          await (this.env as ExecutionEnv).SYNTILA_DB.prepare(
-            "SELECT space_id AS spaceId FROM threads WHERE id = ?1",
-          )
-            .bind(threadId)
-            .first<{ spaceId: string }>()
+          await threadSpace((this.env as ExecutionEnv).SYNTILA_DB, threadId)
         )?.spaceId;
       if (!spaceId) return;
       // Lets clients skip "finished" notices for the person who asked.
@@ -716,12 +701,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       return { outcome: "none" };
     for (let round = 0; ; round += 1) {
       const rows = await loadWorkRequestInputs(db, params.workRequestId);
-      const request = await db
-        .prepare(
-          "SELECT cancel_requested_at AS cancelRequestedAt FROM work_requests WHERE id = ?1",
-        )
-        .bind(params.workRequestId)
-        .first<{ cancelRequestedAt: string | null }>();
+      const request = await workRequestCancelRequest(db, params.workRequestId);
       const decision = inputGateDecision(
         rows,
         !!request?.cancelRequestedAt,
@@ -763,18 +743,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         .first<{ mode: string }>();
       if (requestMode?.mode === "stateless") {
         const now = new Date().toISOString();
-        await db.batch([
-          db
-            .prepare(
-              "UPDATE work_requests SET status = 'running', updated_at = ?1 WHERE id = ?2 AND status = 'queued'",
-            )
-            .bind(now, params.workRequestId),
-          db
-            .prepare(
-              "UPDATE runs SET status = 'running', updated_at = ?1 WHERE work_request_id = ?2 AND status = 'created'",
-            )
-            .bind(now, params.workRequestId),
-        ]);
+        await db.batch(startQueuedWorkRequest(db, params.workRequestId, now));
       }
     }
     await this.persistWorkflowTasks(params, tasks);
@@ -950,13 +919,9 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           if (result.toolOutput && result.status === "completed") {
             toolOutputs[stepInstanceId(result.task.step)] = result.toolOutput;
           }
-          const cancellationRequested = await (
+          const cancellationRequested = await workRequestCancelRequest((
             this.env as ExecutionEnv
-          ).SYNTILA_DB.prepare(
-            "SELECT cancel_requested_at AS cancelRequestedAt FROM work_requests WHERE id = ?1",
-          )
-            .bind(params.workRequestId)
-            .first<{ cancelRequestedAt: string | null }>();
+          ).SYNTILA_DB, params.workRequestId);
           const resultStatus = cancellationRequested?.cancelRequestedAt
             ? "cancelled"
             : result.status;

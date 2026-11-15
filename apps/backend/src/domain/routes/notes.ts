@@ -1,3 +1,4 @@
+import { spaceNameOf } from "../queries.js";
 import { HttpError, authorizeThreadAccess, json } from "./handlers.js";
 import { authorizeRequest } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
@@ -237,11 +238,7 @@ export async function handleThreadNote(
   const input = await noteInput(request);
   // Saved names keep the note's Space and Thread path after the Thread is
   // deleted or the owner loses access.
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT name FROM spaces WHERE id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ name: string }>();
+  const space = await spaceNameOf(env.SYNTILA_DB, spaceId);
   const linked = { thread: thread.name, space: space?.name ?? "" };
   if (existing)
     return json({

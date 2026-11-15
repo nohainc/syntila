@@ -1,3 +1,4 @@
+import { accountPlanRow } from "./queries.js";
 import {
   EXECUTION_WAITER_STALE_MS,
   effectiveTier,
@@ -30,16 +31,7 @@ export async function isPaidRequester(
   userId: string,
   now: Date = new Date(),
 ): Promise<boolean> {
-  const row = await db
-    .prepare(
-      "SELECT tier, status, current_period_end FROM account_plans WHERE user_id = ?1",
-    )
-    .bind(userId)
-    .first<{
-      tier: "free" | "paid";
-      status: "active" | "trialing" | "past_due" | "canceled";
-      current_period_end: string | null;
-    }>();
+  const row = await accountPlanRow(db, userId);
   return effectiveTier(row, now) === "paid";
 }
 

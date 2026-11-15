@@ -1,4 +1,4 @@
-import { spaceMembership } from "../queries.js";
+import { activeThreadLease, activeWorkCount, cancelPendingTasks, cancelQueuedWorkRequest, spaceMembership, threadSpace, workRequestThread } from "../queries.js";
 import {
   RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS,
   RESEARCH_SYNTHESIS_STEP_ID,
@@ -155,11 +155,7 @@ export async function handleRetryWorkRequest(
   workRequestId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const parent = await env.SYNTILA_DB.prepare(
-    "SELECT thread_id AS threadId FROM work_requests WHERE id = ?1",
-  )
-    .bind(workRequestId)
-    .first<{ threadId: string }>();
+  const parent = await workRequestThread(env.SYNTILA_DB, workRequestId);
   if (!parent) throw new HttpError(404, "Work Request not found");
   const { context, spaceId } = await authorizeThreadAccess(
     request,
@@ -351,11 +347,7 @@ export async function handleRetryWorkRequest(
     contextLimitExceeded && contextResolution === "compact";
   const clearAiHistory = contextLimitExceeded && !compactContext;
   if (clearAiHistory) {
-    const active = await env.SYNTILA_DB.prepare(
-      "SELECT COUNT(*) AS count FROM work_requests WHERE thread_id = ?1 AND status IN ('queued', 'running', 'waiting')",
-    )
-      .bind(String(row.threadId))
-      .first<{ count: number }>();
+    const active = await activeWorkCount(env.SYNTILA_DB, String(row.threadId));
     if (active && active.count > 0)
       throw new HttpError(
         409,
@@ -1521,11 +1513,7 @@ export async function handleCancelWorkRequest(
     accessContext,
   );
   // A cancelled request may free the Thread for its next queued request.
-  const thread = await env.SYNTILA_DB.prepare(
-    "SELECT thread_id AS threadId FROM work_requests WHERE id = ?1",
-  )
-    .bind(workRequestId)
-    .first<{ threadId: string }>();
+  const thread = await workRequestThread(env.SYNTILA_DB, workRequestId);
   if (thread) await advanceThreadQueueSafely(env, thread.threadId);
   return response;
 }
@@ -1574,10 +1562,7 @@ async function cancelWorkRequest(
           WHERE id = (SELECT id FROM runs WHERE work_request_id = ?2 AND status = 'failed'
                      ORDER BY created_at DESC, id DESC LIMIT 1)`,
       ).bind(now, workRequestId),
-      env.SYNTILA_DB.prepare(
-        `UPDATE workflow_tasks SET status = 'cancelled', finished_at = ?1, updated_at = ?1
-          WHERE work_request_id = ?2 AND status IN ('queued', 'waiting')`,
-      ).bind(now, workRequestId),
+      cancelPendingTasks(env.SYNTILA_DB, workRequestId, now),
     ]);
     return json({ workRequestId, status: "cancelled" });
   }
@@ -1598,17 +1583,7 @@ async function cancelWorkRequest(
   }
   if (row.status === "queued") {
     const now = new Date().toISOString();
-    await env.SYNTILA_DB.batch([
-      env.SYNTILA_DB.prepare(
-        "UPDATE work_requests SET status = 'cancelled', updated_at = ?1 WHERE id = ?2 AND status = 'queued'",
-      ).bind(now, workRequestId),
-      env.SYNTILA_DB.prepare(
-        "UPDATE runs SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status = 'created'",
-      ).bind(now, workRequestId),
-      env.SYNTILA_DB.prepare(
-        "UPDATE workflow_tasks SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status IN ('queued', 'waiting')",
-      ).bind(now, workRequestId),
-    ]);
+    await env.SYNTILA_DB.batch(cancelQueuedWorkRequest(env.SYNTILA_DB, workRequestId, now));
     return json({ workRequestId, status: "cancelled" });
   }
   if (row.status !== "running")
@@ -1658,9 +1633,7 @@ async function cancelWorkRequest(
     env.SYNTILA_DB.prepare(
       "UPDATE runs SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status IN ('created', 'running')",
     ).bind(now, workRequestId),
-    env.SYNTILA_DB.prepare(
-      "UPDATE workflow_tasks SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status IN ('queued', 'waiting')",
-    ).bind(now, workRequestId),
+    cancelPendingTasks(env.SYNTILA_DB, workRequestId, now),
   ]);
   await releaseThreadLeaseAfterCancel(env, row.threadId, workRequestId);
   if (!active) {
@@ -1704,11 +1677,7 @@ export async function handleClearWorkHistory(
     `thread:${threadId}:clear-work-history`,
     {},
   );
-  const thread = await env.SYNTILA_DB.prepare(
-    "SELECT space_id AS spaceId FROM threads WHERE id = ?1",
-  )
-    .bind(threadId)
-    .first<{ spaceId: string }>();
+  const thread = await threadSpace(env.SYNTILA_DB, threadId);
   if (!thread) throw new HttpError(404, "Thread not found");
 
   // A retried request may follow a commit whose event was never published, so
@@ -1781,13 +1750,7 @@ async function releaseThreadLeaseAfterCancel(
 ): Promise<void> {
   const namespace = env.SYNTILA_THREAD_COORDINATOR;
   if (!namespace) return;
-  const lease = await env.SYNTILA_DB.prepare(
-    `SELECT id, fencing_token AS fencingToken FROM thread_runtime_leases
-      WHERE work_request_id = ?1 AND thread_id = ?2 AND status = 'active'
-      LIMIT 1`,
-  )
-    .bind(workRequestId, threadId)
-    .first<{ id: string; fencingToken: number }>();
+  const lease = await activeThreadLease(env.SYNTILA_DB, workRequestId, threadId);
   if (!lease) return;
   const response = await namespace.getByName(threadId).fetch(
     new Request("https://thread-coordinator/complete", {
