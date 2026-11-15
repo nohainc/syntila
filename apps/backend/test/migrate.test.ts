@@ -83,6 +83,30 @@ describe("migrate", () => {
   });
 });
 
+describe("bundling", () => {
+  test("a bundle that imports the migration module does not run the migrate command line", async () => {
+    // Regression: in the bundled server.js `import.meta.main` is true for this
+    // module too, so its command line ran inside the server and ended it.
+    const dir = mkdtempSync(join(tmpdir(), "syntila-bundle-"));
+    writeFileSync(join(dir, "server.ts"),
+      `import { migrationFiles } from ${JSON.stringify(join(import.meta.dir, "..", "src", "migrate.ts"))};\n` +
+      `setTimeout(() => console.log("server-still-running", typeof migrationFiles), 300);\n`);
+    // Same shape as scripts/build.sh: the server and the migration runner are
+    // both entry points of one build, which is what marks this module as "main".
+    const built = await Bun.build({ entrypoints: [join(dir, "server.ts"), join(import.meta.dir, "..", "src", "migrate.ts")], outdir: join(dir, "dist"), target: "bun" });
+    expect(built.success).toBe(true);
+    const serverJs = built.outputs.map((o) => o.path).find((p) => p.endsWith("server.js"))!;
+    const proc = Bun.spawn(["bun", serverJs], { stdout: "pipe", stderr: "pipe", env: { ...process.env, PGHOST: "127.0.0.1", PGPORT: "1" } });
+    const guard = setTimeout(() => proc.kill(), 8000);
+    const output = (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text());
+    const exitCode = await proc.exited;
+    clearTimeout(guard);
+    expect(output).toContain("server-still-running function");
+    expect(exitCode).toBe(0);
+    expect(output).not.toMatch(/Schema is up to date|PostgreSQL not reachable|Applied:/);
+  });
+});
+
 describe("schema lock", () => {
   test("migrations/schema.lock is what the migrations produce (run `bun run schema:lock` after adding one)", async () => {
     const sql = await emptyDatabase();

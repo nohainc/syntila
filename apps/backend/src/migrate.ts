@@ -129,7 +129,10 @@ const USAGE = `Usage: migrate [--dry-run | --verify | --print-lock]
   --verify      compare the live schema with migrations/schema.lock (exit code 4 on drift)
   --print-lock  print the live schema in schema.lock format`;
 
-if (import.meta.main) {
+// `import.meta.main` alone is not enough: in the bundled server.js this
+// module is part of the entry bundle, so it is true there as well. Only run
+// the command line when the migrate script itself is what was started.
+if (import.meta.main && /(^|[\\/])migrate\.(ts|js)$/.test(Bun.main)) {
   const flag = Bun.argv[2];
   if (flag && !["--dry-run", "--verify", "--print-lock"].includes(flag)) { console.error(USAGE); process.exit(2); }
   const config = await loadConfig();
@@ -161,5 +164,6 @@ if (import.meta.main) {
   } finally {
     await db.close();
   }
-  process.exit(exitCode);
+  // Never process.exit() here: let the process end on its own.
+  process.exitCode = exitCode;
 }
