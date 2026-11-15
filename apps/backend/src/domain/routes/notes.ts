@@ -1,10 +1,11 @@
+import { afterCursorSql, cursorOrderSql, pageOf, pageRequest } from "./pagination.js";
+import { NoteInputSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { spaceNameOf } from "../queries.js";
 import { HttpError, authorizeThreadAccess, json } from "./handlers.js";
 import { authorizeRequest } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
 
-const MAX_TITLE = 200;
-const MAX_BODY = 200_000;
 
 /** Notes are private to their owner. A note may link to one Thread; the link
  * is live only while the Thread exists and the owner is still a member of its
@@ -55,38 +56,7 @@ async function readNote(env: SecurityEnv, userId: string, noteId: string) {
 }
 
 async function noteInput(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
-  const title = body.title;
-  const text = body.body;
-  const revision = body.revision;
-  if (
-    title !== undefined &&
-    (typeof title !== "string" || title.length > MAX_TITLE)
-  )
-    throw new HttpError(
-      400,
-      `title must be text up to ${MAX_TITLE} characters`,
-    );
-  if (
-    text !== undefined &&
-    (typeof text !== "string" || text.length > MAX_BODY)
-  )
-    throw new HttpError(400, `body must be text up to ${MAX_BODY} characters`);
-  if (
-    revision !== undefined &&
-    (typeof revision !== "number" ||
-      !Number.isInteger(revision) ||
-      revision < 1)
-  )
-    throw new HttpError(400, "revision must be a positive integer");
-  return {
-    title: title as string | undefined,
-    body: text as string | undefined,
-    revision: revision as number | undefined,
-  };
+  return readBody(request, NoteInputSchema);
 }
 
 /** Guarded update: applies only when `revision` still matches, so a stale
@@ -139,13 +109,16 @@ export async function handleListNotes(
     undefined,
     accessContext,
   );
+  const { limit, after } = pageRequest(new URL(request.url), { defaultLimit: 500, maxLimit: 500 });
   const rows = await env.SYNTILA_DB.prepare(
     `SELECT ${NOTE_COLUMNS} FROM ${NOTE_FROM}
-      WHERE n.user_id = ?1 ORDER BY n.updated_at DESC, n.id DESC`,
+      WHERE n.user_id = ?1 AND (?2::text IS NULL OR ${afterCursorSql("n.updated_at", "n.id", 2, 3)})
+      ORDER BY ${cursorOrderSql("n.updated_at", "n.id")} LIMIT ?4`,
   )
-    .bind(context.userId)
+    .bind(context.userId, after?.at ?? null, after?.id ?? null, limit + 1)
     .all<Record<string, unknown>>();
-  return json({ notes: (rows.results ?? []).map(noteView) });
+  const page = pageOf(rows.results ?? [], limit, (row) => ({ at: String(row.updatedAt), id: String(row.id) }));
+  return json({ notes: page.items.map(noteView), nextCursor: page.nextCursor });
 }
 
 /** POST /api/notes — a standalone note, not linked to any Thread. */

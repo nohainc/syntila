@@ -61,8 +61,79 @@ exempt. Configure with `SYNTILA_RATE_LIMIT_PER_MINUTE` and
 Limits are kept in the memory of the one backend process. A second
 backend process would need a shared store.
 
-## Not yet uniform
+## Routes
 
-- Request validation is hand-written per handler.
-- List endpoints do not share one pagination shape.
-- Idempotency keys are honoured only where a handler implements them.
+Every route is one line in `apps/backend/src/domain/routes/table.ts`: method,
+path with `:name` parameters (URL-decoded before they reach the handler) and
+handler. [ROUTES.md](ROUTES.md) is generated from it (`bun run routes` in
+`apps/backend`); a test fails when it is stale.
+
+- Unknown path: `404 not_found`.
+- Known path, unsupported method: `405 method_not_allowed` with an `Allow`
+  header listing the methods the path accepts.
+
+## Request validation
+
+Bodies are read with `readBody(request, Schema)`
+(`apps/backend/src/domain/routes/validation.ts`) against schemas in
+`packages/protocol/src/api-requests.ts`. A body that is not JSON answers
+`400 invalid_json`; a body that does not fit the schema answers:
+
+```json
+{
+  "error": "name is required",
+  "code": "invalid_request",
+  "details": [{ "path": "name", "message": "name is required" }],
+  "requestId": "…"
+}
+```
+
+`error` repeats the first problem; `details` lists all of them.
+
+Converted so far: `POST /api/spaces`, `POST /api/notes`, `PUT /api/notes/:id`,
+`POST /api/people/invitations`. Other handlers still validate by hand with
+`HttpError(400, …)` and move to schemas as they are changed.
+
+## Pagination
+
+List endpoints that can grow without bound use one shape:
+
+- Request: `?limit=N&cursor=<opaque>`. `limit` is checked against the
+  endpoint's maximum (`400` otherwise).
+- Response: the list under its usual key plus `nextCursor` (a string, or
+  `null` on the last page). Pass it back unchanged as `cursor`. An invalid
+  cursor answers `400 invalid_cursor`.
+- Order is newest first; ties on the timestamp are broken by id, so pages
+  never skip or repeat an item.
+
+| Endpoint | Default / max `limit` |
+| --- | --- |
+| `GET /api/notes` | 500 / 500 |
+| `GET /api/spaces/:spaceId/audit` | 100 / 200 |
+
+These lists paginate with their own, older parameters and are to be moved
+to `cursor` together with the app: discussion messages (`before`/`after`),
+Work Requests (`beforeCreatedAt`/`beforeId`), conversation history
+(`afterSequence`) and files (`before`). They already return `nextCursor`.
+Lists bounded by what one person can see (Spaces, Threads, members,
+Workspaces, people) are returned whole. Notifications are a bounded feed.
+
+## Idempotency
+
+Create endpoints accept an `Idempotency-Key` header (16–128 characters of
+`A-Z a-z 0-9 _ -`). Keys are per user and per endpoint.
+
+- A retry with the same key and the same body returns the first response
+  with `Idempotency-Replayed: true`; nothing is created twice.
+- The same key with a different body: `409 idempotency_key_reused`.
+- A retry while the first request is still running:
+  `409 idempotency_in_progress`. A claim abandoned for more than five
+  minutes (crashed request) is taken over.
+- Only successful (2xx) responses are remembered; after an error the same
+  key can be used again. Receipts are kept for 30 days.
+
+Endpoints: `POST /api/spaces`, `/api/spaces/:spaceId/invitations`,
+`/api/spaces/:spaceId/threads`, `/api/threads/:threadId/discussion-messages`,
+`/api/threads/:threadId/work-requests`, `/api/notes`, `/api/people/invitations`,
+`/api/issue-reports`, `/api/admin/issue-reports/groups`, and
+`/api/threads/:threadId/work-history/clear`. ROUTES.md marks them.

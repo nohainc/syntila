@@ -19,7 +19,7 @@ const threadPolicy = readFileSync(
   "utf8",
 );
 const router = readFileSync(
-  fileURLToPath(new URL("../../src/domain/routes/router.ts", import.meta.url)),
+  fileURLToPath(new URL("../../src/domain/routes/table.ts", import.meta.url)),
   "utf8",
 );
 const gateway = readFileSync(

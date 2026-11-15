@@ -25,7 +25,7 @@ const entrypoint = readFileSync(
   "utf8",
 );
 const router = readFileSync(
-  fileURLToPath(new URL("../../src/domain/routes/router.ts", import.meta.url)),
+  fileURLToPath(new URL("../../src/domain/routes/table.ts", import.meta.url)),
   "utf8",
 );
 
@@ -37,12 +37,7 @@ describe("Space lifecycle integrity", () => {
   });
 
   it("routes Workspace revoke to the execution Workspace lifecycle", () => {
-    const start = router.indexOf("const workspaceMatch = url.pathname.match");
-    const end = router.indexOf('if (request.method === "PATCH"', start);
-    const body = router.slice(start, end);
-
-    expect(body).toContain('request.method === "DELETE"');
-    expect(body).toContain("handleRevokeWorkspace");
+    expect(router).toContain('r("DELETE", "/api/workspaces/:workspaceId", call("handleRevokeWorkspace"');
     expect(entrypoint).toContain(
       "handleRevokeWorkspace: handlers.handleRevokeWorkspace",
     );

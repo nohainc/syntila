@@ -1,3 +1,5 @@
+import { CreatePersonInvitationSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { directSpaceOfPair, usersBlocked } from "../queries.js";
 import {
   spaceMemberPermissions,
@@ -484,19 +486,9 @@ export async function handleCreatePersonInvitation(
     );
   }
 
-  const body = (await request.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
-  const rawEmail = typeof body.email === "string" ? body.email.trim() : null;
-  const rawUserId = typeof body.userId === "string" ? body.userId.trim() : null;
-
-  if ((!rawEmail && !rawUserId) || (rawEmail && rawUserId)) {
-    throw new HttpError(
-      400,
-      "Exactly one of 'email' or 'userId' must be provided",
-    );
-  }
+  const body = await readBody(request, CreatePersonInvitationSchema);
+  const rawEmail = body.email ?? null;
+  const rawUserId = body.userId ?? null;
 
   const now = new Date().toISOString();
   let inviteeUserId: string | null = null;

@@ -1,113 +1,65 @@
 #!/usr/bin/env bun
 /**
- * Route inventory: reads the hand-written router and lists every API path
- * with the methods it accepts. `bun scripts/routes.ts` prints the Markdown;
- * `bun scripts/routes.ts --write` updates docs/api/ROUTES.md. A test keeps
- * the committed file current, so the list cannot fall behind the code.
- *
- * This is a static reading of `if` conditions, not a router: it is the
- * stepping stone to a declarative route table.
+ * Route list: renders the route table (src/domain/routes/table.ts) as
+ * Markdown. `bun scripts/routes.ts` prints it; `--write` updates
+ * docs/api/ROUTES.md. A test keeps the committed file current.
  */
 import { join } from "node:path";
+import { routeTable, type WorkerRouteHandlers } from "../src/domain/routes/table";
 
-const ROOT = join(import.meta.dir, "..");
-const SOURCES = ["src/domain/index.ts", "src/domain/routes/router.ts"];
-export const ROUTES_FILE = join(ROOT, "..", "..", "docs", "api", "ROUTES.md");
-const METHOD = /request\.method\s*(===|!==)\s*"([A-Z]+)"/g;
-const ALL = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+export const ROUTES_FILE = join(import.meta.dir, "..", "..", "..", "docs", "api", "ROUTES.md");
 
-function readablePath(pattern: string): string {
-  return pattern
-    .replace(/^\^/, "").replace(/\$$/, "")
-    .replace(/\\\//g, "/").replace(/\\\./g, ".").replace(/\\-/g, "-")
-    .replace(/\(\[\^\/\]\+\)/g, ":id")
-    .replace(/\(\?:([^)]*)\)/g, "($1)");
-}
-
-function methodsIn(text: string): string[] {
-  const found = new Set<string>();
-  for (const m of text.matchAll(METHOD)) {
-    if (m[1] === "===") found.add(m[2]!);
-    else for (const other of ALL) if (other !== m[2]) found.add(other);
-  }
-  return [...found];
-}
-
-/** The `if (...) { ... }` or `if (...) statement;` that contains `index`. */
-function statementAround(source: string, index: number): string {
-  const start = source.lastIndexOf("if (", index);
-  if (start < 0 || index - start > 600) return source.slice(index, index + 200);
-  let depth = 0, i = start + 3;
-  for (; i < source.length; i++) {
-    if (source[i] === "(") depth++;
-    else if (source[i] === ")" && --depth === 0) break;
-  }
-  const condition = source.slice(start, i + 1);
-  if (methodsIn(condition).length) return condition;
-  // No method in the condition: the branch decides inside its block.
-  const after = source.slice(i + 1).trimStart();
-  if (!after.startsWith("{")) return condition + after.slice(0, after.indexOf(";") + 1);
-  let braces = 0, j = source.indexOf("{", i);
-  const open = j;
-  for (; j < source.length; j++) {
-    if (source[j] === "{") braces++;
-    else if (source[j] === "}" && --braces === 0) break;
-  }
-  return condition + source.slice(open, j + 1);
-}
-
-export async function collectRoutes(): Promise<Map<string, Set<string>>> {
+/** Path -> methods, in table order. */
+export function collectRoutes(): Map<string, Set<string>> {
   const routes = new Map<string, Set<string>>();
-  const add = (path: string, methods: string[]) => {
-    if (!path.startsWith("/api/") && path !== "/health") return;
-    const set = routes.get(path) ?? new Set<string>();
-    for (const m of methods.length ? methods : ["ANY"]) set.add(m);
-    routes.set(path, set);
-  };
-  for (const file of SOURCES) {
-    const source = await Bun.file(join(ROOT, file)).text();
-    for (const m of source.matchAll(/url\.pathname\s*===\s*"([^"]+)"/g))
-      add(m[1]!, methodsIn(statementAround(source, m.index!)));
-    for (const m of source.matchAll(/(?<!!)url\.pathname\.startsWith\(\s*"([^"]+)"\s*\)/g))
-      add(m[1]! + "*", methodsIn(statementAround(source, m.index!)));
-    for (const m of source.matchAll(/const\s+(\w+)\s*=\s*url\.pathname\.match\(\s*\/((?:\\.|\[[^\]]*\]|[^/\n])+)\/\s*,?\s*\)/g)) {
-      const methods = new Set<string>();
-      for (const use of source.matchAll(new RegExp(`\\b${m[1]}\\b`, "g"))) {
-        if (use.index === m.index! + m[0].indexOf(m[1]!)) continue;
-        for (const method of methodsIn(statementAround(source, use.index!))) methods.add(method);
-      }
-      add(readablePath(m[2]!), [...methods]);
-    }
+  for (const route of routeTable({} as WorkerRouteHandlers)) {
+    const set = routes.get(route.path) ?? new Set<string>();
+    set.add(route.method === "*" ? "ANY" : route.method);
+    routes.set(route.path, set);
   }
   return routes;
 }
 
-export async function renderRoutes(): Promise<string> {
-  const routes = await collectRoutes();
+export function renderRoutes(): string {
+  const table = routeTable({} as WorkerRouteHandlers);
   const order = ["GET", "POST", "PUT", "PATCH", "DELETE", "ANY"];
-  const rows = [...routes.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([path, methods]) => {
-    const list = [...methods].filter((m) => m !== "ANY" || methods.size === 1).sort((a, b) => order.indexOf(a) - order.indexOf(b));
-    return `| \`${path.replace(/\|/g, "\\|")}\` | ${list.join(", ")} |`;
-  });
+  const notes = new Map<string, Set<string>>();
+  for (const route of table) {
+    const set = notes.get(route.path) ?? new Set<string>();
+    if (route.machine) set.add("Workspace/server");
+    if (route.idempotent) set.add("Idempotency-Key");
+    notes.set(route.path, set);
+  }
+  const rows = [...collectRoutes().entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([path, methods]) => {
+      const list = [...methods].sort((a, b) => order.indexOf(a) - order.indexOf(b)).join(", ");
+      return `| \`${path}\` | ${list} | ${[...(notes.get(path) ?? [])].join(", ")} |`;
+    });
   return [
     "# Backend API routes",
     "",
-    "Generated by `bun scripts/routes.ts --write` in `apps/backend`. Do not edit by hand.",
+    "Generated from `apps/backend/src/domain/routes/table.ts` by `bun run routes`. Do not edit by hand.",
     "",
-    "`:id` is a path parameter. `ANY` means the handler decides by method itself.",
+    "`:name` is a path parameter. `ANY` means the handler decides by method itself.",
     "Every JSON error is `{ error, code, requestId }`; every response carries `x-syntila-api`.",
+    "A path that exists but not for the request's method answers `405` with an `Allow` header.",
+    "`Workspace/server`: called with Workspace or server credentials, no browser same-origin check.",
+    "`Idempotency-Key`: a retry with the same key returns the first response (see CONTRACT.md).",
     "",
     `${rows.length} paths.`,
     "",
-    "| Path | Methods |",
-    "| --- | --- |",
+    "| Path | Methods | Notes |",
+    "| --- | --- | --- |",
     ...rows,
     "",
   ].join("\n");
 }
 
 if (import.meta.main) {
-  const text = await renderRoutes();
-  if (Bun.argv.includes("--write")) { await Bun.write(ROUTES_FILE, text); console.log(`wrote ${ROUTES_FILE}`); }
-  else process.stdout.write(text);
+  const text = renderRoutes();
+  if (Bun.argv.includes("--write")) {
+    await Bun.write(ROUTES_FILE, text);
+    console.log(`wrote ${ROUTES_FILE}`);
+  } else process.stdout.write(text);
 }

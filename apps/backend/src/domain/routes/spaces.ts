@@ -1,3 +1,6 @@
+import { afterCursorSql, cursorOrderSql, pageOf, pageRequest } from "./pagination.js";
+import { CreateSpaceSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { isSpaceMember, spaceKind, spaceMembership, spaceNameOf, userByEmail } from "../queries.js";
 import {
   SpaceMemberLimitError,
@@ -234,17 +237,10 @@ export async function handleCreateSpace(
     undefined,
     accessContext,
   );
-  const body = (await request.json()) as Record<string, unknown>;
-  if (body.kind === "direct") {
-    throw new HttpError(400, "Direct Spaces cannot be created manually");
-  }
-  const name = requiredString(body.name, "name");
-  const description =
-    typeof body.description === "string" ? body.description : null;
-  const settings =
-    typeof body.settings === "object" && body.settings !== null
-      ? (body.settings as Record<string, unknown>)
-      : {};
+  const body = await readBody(request, CreateSpaceSchema);
+  const name = body.name;
+  const description = body.description ?? null;
+  const settings: Record<string, unknown> = { ...(body.settings ?? {}) };
   delete settings.defaultExecutionPolicy;
   delete settings.memberPermissions;
   delete settings.invitationPermissions;
@@ -260,16 +256,7 @@ export async function handleCreateSpace(
     throw new HttpError(400, "showAiHistory must be a boolean");
   // The Workspace is an explicit choice per Space (or none); Spaces never
   // receive a Workspace implicitly.
-  if (
-    body.workspaceId !== undefined &&
-    body.workspaceId !== null &&
-    typeof body.workspaceId !== "string"
-  )
-    throw new HttpError(400, "workspaceId must be a string or null");
-  const workspaceId =
-    typeof body.workspaceId === "string" && body.workspaceId
-      ? body.workspaceId
-      : null;
+  const workspaceId = body.workspaceId || null;
   const now = new Date().toISOString();
   const id = `space-${crypto.randomUUID()}`;
 
@@ -991,13 +978,17 @@ export async function handleListSpaceAudit(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   await authorizeRequest(request, env, "spaces:read", spaceId, accessContext);
+  const { limit, after } = pageRequest(new URL(request.url), { defaultLimit: 100, maxLimit: 200 });
   const rows = await env.SYNTILA_DB.prepare(
     `SELECT id, action, target_type AS targetType, target_id AS targetId, created_at AS createdAt
-     FROM space_audit_log WHERE space_id = ?1 ORDER BY created_at DESC LIMIT 100`,
+     FROM space_audit_log
+     WHERE space_id = ?1 AND (?2::text IS NULL OR ${afterCursorSql("created_at", "id", 2, 3)})
+     ORDER BY ${cursorOrderSql("created_at", "id")} LIMIT ?4`,
   )
-    .bind(spaceId)
-    .all();
-  return json({ entries: rows.results ?? [] });
+    .bind(spaceId, after?.at ?? null, after?.id ?? null, limit + 1)
+    .all<Record<string, unknown>>();
+  const page = pageOf(rows.results ?? [], limit, (row) => ({ at: String(row.createdAt), id: String(row.id) }));
+  return json({ entries: page.items, nextCursor: page.nextCursor });
 }
 
 export async function handleCreateSpaceInvitation(
