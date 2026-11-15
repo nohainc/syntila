@@ -29,7 +29,10 @@ export async function schemaLock(db: Db): Promise<string> {
   const constraints: any[] = await db`
     SELECT t.relname AS table_name, c.conname, c.contype::text AS contype, r.relname AS ref, c.confdeltype::text AS del
     FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid LEFT JOIN pg_class r ON r.oid = c.confrelid
-    WHERE c.connamespace = 'public'::regnamespace AND t.relname <> 'schema_migrations'`;
+    WHERE c.connamespace = 'public'::regnamespace AND t.relname <> 'schema_migrations'
+      -- PostgreSQL 18 also records NOT NULL as constraints (contype 'n'); the
+      -- column lines already say not-null, and older versions have no such rows.
+      AND c.contype IN ('p', 'u', 'f', 'c', 'x')`;
   const kinds: Record<string, string> = { p: "primary-key", u: "unique", f: "foreign-key", c: "check", x: "exclude" };
   const onDelete: Record<string, string> = { a: "no-action", r: "restrict", c: "cascade", n: "set-null", d: "set-default" };
   for (const c of constraints)
