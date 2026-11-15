@@ -13,15 +13,36 @@
     if (!sessionResponse.ok) throw new Error('Sign in to Syntila before opening the sandbox checkout.');
     const session = await sessionResponse.json();
     if (!session.authenticated) throw new Error('Sign in to Syntila before opening the sandbox checkout.');
-    const tokenResponse = await fetch(`${authOrigin}/api/backend-token`, {
-      method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{}',
-    });
-    if (!tokenResponse.ok) throw new Error('Could not authenticate with the local backend.');
-    const { token } = await tokenResponse.json();
+    const backendToken = async () => {
+      const response = await fetch(`${authOrigin}/api/backend-token`, {
+        method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{}',
+      });
+      if (!response.ok) throw new Error('Could not authenticate with the local backend.');
+      const { token } = await response.json();
+      return token;
+    };
+    const token = await backendToken();
     const configResponse = await fetch(`${backendOrigin}/api/billing/sandbox/checkout-config`, { headers: { authorization: `Bearer ${token}` } });
     if (!configResponse.ok) throw new Error('Sandbox checkout is not configured on the local backend.');
     const config = await configResponse.json();
     if (config.environment !== 'sandbox' || !config.clientToken?.startsWith('test_')) throw new Error('Invalid sandbox configuration.');
+    const portalButton = document.querySelector('#portal');
+    portalButton.disabled = false;
+    portalButton.onclick = async () => {
+      portalButton.disabled = true;
+      try {
+        const freshToken = await backendToken();
+        const response = await fetch(`${backendOrigin}/api/billing/sandbox/portal`, {
+          method: 'POST', headers: { authorization: `Bearer ${freshToken}` },
+        });
+        if (!response.ok) throw new Error('Could not open the sandbox portal. Check that a test subscription and portal API key are configured.');
+        const { url } = await response.json();
+        location.assign(url);
+      } catch (error) {
+        fail(error instanceof Error ? error.message : 'Could not open the sandbox portal.');
+        portalButton.disabled = false;
+      }
+    };
     await new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src = 'https://cdn.paddle.com/paddle/v2/paddle.js';

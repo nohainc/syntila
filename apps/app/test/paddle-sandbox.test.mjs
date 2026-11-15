@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 const script = await readFile(new URL('../web/paddle-sandbox.js', import.meta.url), 'utf8');
 
 function harness(host = 'localhost') {
-  const elements = Object.fromEntries(['status', 'monthly-price', 'annual-price', 'monthly', 'annual'].map((id) => [id, { textContent: '', disabled: true }]));
+  const elements = Object.fromEntries(['status', 'monthly-price', 'annual-price', 'monthly', 'annual', 'portal'].map((id) => [id, { textContent: '', disabled: true }]));
   const calls = [];
   const document = {
     querySelector: (selector) => elements[selector.slice(1)],
@@ -19,14 +19,16 @@ function harness(host = 'localhost') {
     PricePreview: async ({ items }) => ({ data: { details: { lineItems: [{ formattedTotals: { total: items[0].priceId === 'pri_month' ? '€9' : '€81' } }] } } }),
     Checkout: { open: (options) => calls.push(['checkout', options]) },
   };
-  const fetch = async (url) => {
-    calls.push(['fetch', url]);
+  const fetch = async (url, options) => {
+    calls.push(['fetch', url, options]);
     const body = url.endsWith('/session') ? { authenticated: true, user: { email: 'alice@example.test' } }
       : url.endsWith('/backend-token') ? { token: 'backend-token' }
+      : url.endsWith('/portal') ? { url: 'https://sandbox-customer-portal.paddle.com/test' }
       : { environment: 'sandbox', clientToken: 'test_token', monthlyPriceId: 'pri_month', annualPriceId: 'pri_year', checkoutReference: 'signed-reference' };
     return { ok: true, json: async () => body };
   };
-  runInNewContext(script, { document, Paddle, fetch, location: { protocol: 'http:', hostname: host }, Promise, Error });
+  const location = { protocol: 'http:', hostname: host, assign: (url) => calls.push(['navigate', url]) };
+  runInNewContext(script, { document, Paddle, fetch, location, Promise, Error });
   return { elements, calls };
 }
 
@@ -43,6 +45,15 @@ test('shows Paddle prices and opens the selected sandbox price for the signed-in
   assert.equal(checkout.customer.email, 'alice@example.test');
   assert.equal(checkout.settings.displayMode, 'overlay');
   assert.equal(calls.find(([name]) => name === 'environment')[1], 'sandbox');
+});
+
+test('opens a server-issued portal link using the authenticated backend session', async () => {
+  const { elements, calls } = harness();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await elements.portal.onclick();
+  const portalRequest = calls.find(([name, url]) => name === 'fetch' && url.endsWith('/portal'));
+  assert.equal(portalRequest[2].headers.authorization, 'Bearer backend-token');
+  assert.equal(calls.find(([name]) => name === 'navigate')[1], 'https://sandbox-customer-portal.paddle.com/test');
 });
 
 test('refuses to contact Paddle or auth from a non-local origin', async () => {

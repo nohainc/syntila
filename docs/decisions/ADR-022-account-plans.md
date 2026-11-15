@@ -17,8 +17,10 @@ be configured separately. A local-only checkout page displays Paddle's price
 previews and passes the signed reference to a sandbox overlay. Local settings
 can be stored in `.development/local-backend/paddle.env`; keep its reference
 secret stable so later subscription events can be verified. No live billing is
-enabled. A functioning default payment link, notification destination, customer
-portal and end-to-end sandbox test are still outstanding.
+enabled. A development-only customer-portal endpoint resolves the customer
+from the signed-in user's local subscription and creates a temporary sandbox
+portal link. A stable notification destination and a functioning payment-link
+page for Paddle's emails are still needed; live integration remains outstanding.
 
 ## Context
 Some web-app features will be available only to subscribers. We want one

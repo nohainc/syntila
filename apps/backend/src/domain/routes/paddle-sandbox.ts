@@ -8,6 +8,7 @@ type SandboxEnv = SecurityEnv & {
   PADDLE_SANDBOX_ANNUAL_PRICE_ID?: string;
   PADDLE_SANDBOX_REFERENCE_SECRET?: string;
   PADDLE_SANDBOX_WEBHOOK_SECRET?: string;
+  PADDLE_SANDBOX_API_KEY?: string;
 };
 
 /** Explicitly local-only configuration; production must never use test payments. */
@@ -23,6 +24,28 @@ export async function handleSandboxCheckoutConfig(request: Request, env: Sandbox
   const context = await securityContext(request, env, ctx);
   return json({ environment: 'sandbox', clientToken: token, monthlyPriceId: monthly, annualPriceId: annual,
     checkoutReference: await signCheckoutReference(context.userId, secret) }, { headers: { 'cache-control': 'no-store' } });
+}
+
+/** Mint a short-lived portal link only for the authenticated local account. */
+export async function handleSandboxPortal(request: Request, env: SandboxEnv, ctx?: ExecutionContext, requestPaddle: typeof fetch = fetch): Promise<Response> {
+  if (env.SYNTILA_ENVIRONMENT !== 'development') throw new HttpError(404, 'Not found');
+  if (request.method !== 'POST') throw new HttpError(405, 'Unsupported method');
+  const apiKey = env.PADDLE_SANDBOX_API_KEY;
+  if (!apiKey?.startsWith('pdl_sdbx_')) throw new HttpError(503, 'Sandbox customer portal is not configured');
+  const context = await securityContext(request, env, ctx);
+  const customer = await env.SYNTILA_DB.prepare('SELECT customer_id FROM paddle_sandbox_subscriptions WHERE user_id=?1 ORDER BY occurred_at DESC LIMIT 1')
+    .bind(context.userId).first<{ customer_id: string }>();
+  if (!customer) throw new HttpError(404, 'No sandbox subscription found');
+  const response = await requestPaddle(`https://sandbox-api.paddle.com/customers/${encodeURIComponent(customer.customer_id)}/portal-sessions`, {
+    method: 'POST', redirect: 'error', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: '{}',
+  });
+  if (!response.ok) throw new HttpError(502, 'Could not open the sandbox customer portal');
+  const body = await response.json() as { data?: { urls?: { general?: { overview?: string } } } };
+  let url: URL;
+  try { url = new URL(body.data?.urls?.general?.overview ?? ''); } catch { throw new HttpError(502, 'Invalid sandbox portal response'); }
+  if (url.protocol !== 'https:' || url.hostname !== 'sandbox-customer-portal.paddle.com' || url.username || url.password || url.port)
+    throw new HttpError(502, 'Invalid sandbox portal response');
+  return json({ url: url.toString() }, { headers: { 'cache-control': 'no-store' } });
 }
 
 /** Accept only signed sandbox subscription events on a development backend. */
