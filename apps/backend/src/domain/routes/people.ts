@@ -21,6 +21,28 @@ import { publishCollaborationEvent } from "../collaboration-events.js";
 import { createEventPublisher } from "../event-publisher.js";
 import { ensureSupportSpace, SupportSpaceError } from "../people.js";
 
+const INSERT_DIRECT_SPACE_USER_STATE =
+  "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING";
+
+const UPDATE_PERSON_INVITATIONS_SET_STATUS_BY_ID =
+  `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3`;
+
+const UPDATE_PERSON_CONNECTIONS_SET_DIRECT_SPACE_ID =
+  "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'";
+
+const SELECT_PERSON_INVITATIONS_BY_STATUS_EXPIRES_AT =
+  `SELECT id, inviter_user_id, invitee_user_id, status, expires_at, created_at
+       FROM person_invitations
+       WHERE status = 'pending' AND expires_at > ?1
+         AND ((inviter_user_id = ?2 AND invitee_user_id = ?3) OR (inviter_user_id = ?3 AND invitee_user_id = ?2))`;
+
+const SELECT_PERSON_INVITATIONS_BY_ID =
+  "SELECT * FROM person_invitations WHERE id = ?1";
+
+const UPDATE_PERSON_CONNECTIONS_SET_STATUS_BY_USER =
+  `UPDATE person_connections SET status = 'disconnected', disconnected_at = ?1
+     WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'`;
+
 export interface PeopleSpace {
   readonly id: string;
   readonly name: string;
@@ -348,10 +370,10 @@ async function provisionDirectConnection(
         "INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at) VALUES (?1, ?2, ?3, NULL, ?4)",
       ).bind(directSpaceId, userLowId, userHighId, now),
       env.SYNTILA_DB.prepare(
-        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING",
+        INSERT_DIRECT_SPACE_USER_STATE,
       ).bind(directSpaceId, inviterUserId, now),
       env.SYNTILA_DB.prepare(
-        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING",
+        INSERT_DIRECT_SPACE_USER_STATE,
       ).bind(directSpaceId, recipientUserId, now),
     );
   }
@@ -369,7 +391,7 @@ async function provisionDirectConnection(
        VALUES (?1, ?2, ?3) ON CONFLICT(user_low_id, user_high_id) DO NOTHING`,
       ).bind(userLowId, userHighId, now),
       env.SYNTILA_DB.prepare(
-        `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3`,
+        UPDATE_PERSON_INVITATIONS_SET_STATUS_BY_ID,
       ).bind(recipientUserId, now, invitationId),
       env.SYNTILA_DB.prepare(
         `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2
@@ -381,7 +403,7 @@ async function provisionDirectConnection(
   if (!invitationId)
     statements.push(
       env.SYNTILA_DB.prepare(
-        "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'",
+        UPDATE_PERSON_CONNECTIONS_SET_DIRECT_SPACE_ID,
       ).bind(directSpaceId, userLowId, userHighId),
     );
 
@@ -407,13 +429,13 @@ async function provisionDirectConnection(
       directSpaceId = rechecked.space_id;
       if (invitationId)
         await env.SYNTILA_DB.prepare(
-          "UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3",
+          UPDATE_PERSON_INVITATIONS_SET_STATUS_BY_ID,
         )
           .bind(recipientUserId, now, invitationId)
           .run();
       else
         await env.SYNTILA_DB.prepare(
-          "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'",
+          UPDATE_PERSON_CONNECTIONS_SET_DIRECT_SPACE_ID,
         )
           .bind(directSpaceId, userLowId, userHighId)
           .run();
@@ -595,10 +617,7 @@ export async function handleCreatePersonInvitation(
 
     // Check for existing pending invitation between them
     const pendingInv = await env.SYNTILA_DB.prepare(
-      `SELECT id, inviter_user_id, invitee_user_id, status, expires_at, created_at
-       FROM person_invitations
-       WHERE status = 'pending' AND expires_at > ?1
-         AND ((inviter_user_id = ?2 AND invitee_user_id = ?3) OR (inviter_user_id = ?3 AND invitee_user_id = ?2))`,
+      SELECT_PERSON_INVITATIONS_BY_STATUS_EXPIRES_AT,
     )
       .bind(now, context.userId, inviteeUserId)
       .first<{
@@ -709,10 +728,7 @@ export async function handleCreatePersonInvitation(
   } catch (err: unknown) {
     if (inviteeUserId) {
       const racingInv = await env.SYNTILA_DB.prepare(
-        `SELECT id, inviter_user_id, invitee_user_id, status, expires_at, created_at
-         FROM person_invitations
-         WHERE status = 'pending' AND expires_at > ?1
-           AND ((inviter_user_id = ?2 AND invitee_user_id = ?3) OR (inviter_user_id = ?3 AND invitee_user_id = ?2))`,
+        SELECT_PERSON_INVITATIONS_BY_STATUS_EXPIRES_AT,
       )
         .bind(now, context.userId, inviteeUserId)
         .first<{
@@ -955,7 +971,7 @@ export async function handleAcceptPersonInvitation(
   }
 
   const inv = await env.SYNTILA_DB.prepare(
-    "SELECT * FROM person_invitations WHERE id = ?1",
+    SELECT_PERSON_INVITATIONS_BY_ID,
   )
     .bind(invitationId)
     .first<{
@@ -1074,7 +1090,7 @@ export async function handleDeclinePersonInvitation(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   const inv = await env.SYNTILA_DB.prepare(
-    "SELECT * FROM person_invitations WHERE id = ?1",
+    SELECT_PERSON_INVITATIONS_BY_ID,
   )
     .bind(invitationId)
     .first<{
@@ -1142,7 +1158,7 @@ export async function handleCancelPersonInvitation(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   const inv = await env.SYNTILA_DB.prepare(
-    "SELECT * FROM person_invitations WHERE id = ?1",
+    SELECT_PERSON_INVITATIONS_BY_ID,
   )
     .bind(invitationId)
     .first<{
@@ -1205,8 +1221,7 @@ export async function handleDisconnectPersonConnection(
   );
   const now = new Date().toISOString();
   await env.SYNTILA_DB.prepare(
-    `UPDATE person_connections SET status = 'disconnected', disconnected_at = ?1
-     WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'`,
+    UPDATE_PERSON_CONNECTIONS_SET_STATUS_BY_USER,
   )
     .bind(now, userLowId, userHighId)
     .run();
@@ -1253,8 +1268,7 @@ export async function handleBlockPerson(
 
   // 2. Disconnect connection if connected
   await env.SYNTILA_DB.prepare(
-    `UPDATE person_connections SET status = 'disconnected', disconnected_at = ?1
-     WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'`,
+    UPDATE_PERSON_CONNECTIONS_SET_STATUS_BY_USER,
   )
     .bind(now, userLowId, userHighId)
     .run();
