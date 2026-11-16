@@ -5,6 +5,7 @@ import {
   type BuiltinWorkflowDefinition,
 } from "@syntila/core";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
+import { Data } from "../../src/platform/data.js";
 const admission = vi.hoisted(() => vi.fn());
 vi.mock("../../src/domain/routes/handlers.js", () => ({
   validateWorkflowWorkerEligibility: admission,
@@ -87,6 +88,18 @@ function fixture(
     stepOverrides,
   };
   const env = {
+    SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      expect(strings.join("?")).toContain("UNION ALL");
+      expect(values[0]).toBe("user");
+      expect(values[1]).toBe(workspaceId);
+      expect(values[4]).toBe("space");
+      return [{
+        workflow_id: configuration.workflowId,
+        configuration_json: JSON.stringify(
+          spaceDefaults ? { ...configuration, defaults: spaceDefaults } : configuration,
+        ),
+      }];
+    }) as any),
     SYNTILA_DB: {
       prepare(sql: string) {
         return {

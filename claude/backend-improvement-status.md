@@ -70,6 +70,10 @@ Batch 1: `routes/auth.ts` converts the desktop-session user lookup to `dataOf(en
 
 Validation: `bun run test runtime.test dup-statements` 15 pass; full suite 1231 pass / 0 fail across 169 files, no serial retries; concurrency three times, 43 pass each, including seeded PostgreSQL invariants; separate route sweep 3 pass; `bun run write-paths` produced no diff. Static inspection confirmed `server.ts` and `scripts/backend-logs.sh` still agree on `db.tx` and `db.slow_tx` names. No production logs were accessed and no schema changed. Remaining work: migrate the other areas only after per-site review of adapter normalization, transaction and fallback lock semantics, error handling, batch ordering and monitoring. Do not remove the adapter in Phase 6.
 
+Batch 2: `routes/space-workflow-configurations.ts` uses tagged reads for the existing two-branch configuration query. The optional workflow filter is bound repeatedly with the same value; configuration columns remain JSON text. The read retains the existing caller transaction and generates no writer statistics. D1-only test doubles in three test files were given explicit tagged query fixtures. Product `.prepare(` occurrences: 717 → 716; duplicate ceiling remains 5 groups / 6 excess. Write-path regeneration produced no diff; the same static monitoring checks apply.
+
+Validation: focused configuration and detector tests passed (27 tests), followed by a full run that exposed nine failures in two additional D1-only fixture files. After adapting those fixtures, their focused tests passed (26 tests) and the complete suite passed 1231 / 0 across 169 files with no serial retries. Concurrency passed three times (43 each) with seeded invariants, and the route sweep passed 3 tests. The first failed full run and its automatic serial retries are not counted as the final gate. No schema changed.
+
 ## Next
 
 - Compare `bun run schema:lock` output on PostgreSQL 16 and 18.

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
+import { Data } from "../../src/platform/data.js";
 
 vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
   ...(await original<Record<string, unknown>>()),
@@ -31,6 +32,18 @@ function fixture(coordinatorAvailable = true) {
   const enqueue = vi.fn(async () => new Response("{}"));
   const create = vi.fn(async () => ({ status: async () => "queued" }));
   const env = {
+    SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      expect(strings.join("?")).toContain("UNION ALL");
+      const target = typeof values[2] === "string" ? values[2] : null;
+      const rows = ["chat", "direct"].map((workflowId) => ({
+        workflow_id: workflowId,
+        configuration_json: JSON.stringify({
+          schemaVersion: 1, workflowId, enabled: true,
+          defaults: { worker: "worker-a" }, stepOverrides: {},
+        }),
+      }));
+      return target ? rows.filter((row) => row.workflow_id === target) : rows;
+    }) as any),
     SYNTILA_DB: {
       prepare(sql: string) {
         const statement = {

@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "./helpers/vitest-compat";
 import { BUILTIN_WORKFLOWS } from "@syntila/core";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
+import { Data } from "../../src/platform/data.js";
 const admission = vi.hoisted(() => vi.fn());
 vi.mock("../../src/domain/routes/handlers.js", () => ({
   validateWorkflowWorkerEligibility: admission,
@@ -23,6 +24,10 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
     ? { memberPermissions: { member: memberRights } }
     : {};
   const env = {
+    SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) => {
+      expect(strings.join("?")).toContain("UNION ALL");
+      return [];
+    }) as any),
     SYNTILA_DB: {
       prepare(sql: string) {
         return {
