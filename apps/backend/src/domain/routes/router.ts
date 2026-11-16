@@ -141,6 +141,7 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
   idx_space_invitations_pending_email: "A pending invitation already exists for this user",
   idx_space_invitations_pending_user: "A pending invitation already exists for this user",
   idx_workspace_invitations_pending_email: "An invitation is already pending",
+  workspace_invitations_no_active_grant: "This person already has access",
 };
 
 function databaseErrorCode(error: unknown): string | undefined {

@@ -34,4 +34,9 @@ UNION ALL SELECT 'one live grant per Space and Workspace', count(*)
          GROUP BY space_id, workspace_id HAVING count(*) > 1) t
 -- Idempotency claims are released or completed; none stays pending for long.
 UNION ALL SELECT 'no idempotency claim pending for over an hour', count(*)
-  FROM mutation_receipts WHERE response_status = 0 AND created_at < now() - interval '1 hour';
+  FROM mutation_receipts WHERE response_status = 0 AND created_at < now() - interval '1 hour'
+-- A person with active access to a Workspace has no pending invitation to it.
+UNION ALL SELECT 'no pending invitation beside an active Workspace grant', count(*)
+  FROM workspace_person_grants g JOIN users u ON u.id = g.user_id
+  JOIN workspace_invitations i ON i.workspace_id = g.workspace_id AND lower(i.email) = lower(u.email)
+ WHERE g.status = 'active' AND i.status = 'pending';

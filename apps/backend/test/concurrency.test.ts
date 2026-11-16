@@ -562,4 +562,33 @@ describe("membership and invitation conflicts", () => {
     expect(audit.n).toBe(1);
     expect(await brokenInvariants(sql)).toEqual([]);
   });
+
+  test("inviting a person while they accept access: never a pending invitation beside an active grant", async () => {
+    const owner = await mint("access-owner");
+    const ownerId = await userId(owner);
+    await sql`INSERT INTO account_plans (user_id, tier, status, source, created_at, updated_at) VALUES (${ownerId}, 'paid', 'active', 'manual', now(), now())`;
+    const overlaps = async () => sql`
+      SELECT g.workspace_id FROM workspace_person_grants g JOIN users u ON u.id = g.user_id
+        JOIN workspace_invitations i ON i.workspace_id = g.workspace_id AND lower(i.email) = lower(u.email)
+       WHERE g.status = 'active' AND i.status = 'pending'`;
+    const statuses: number[] = [];
+    const rejected = new Set<string>();
+    for (let round = 0; round < 12; round++) {
+      const guest = await mint(`access-guest-${round}`);
+      await userId(guest);
+      const wsId = `ws-access-${round}`;
+      await sql`INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at) VALUES (${wsId}, ${ownerId}, 'Mac', 'online', now(), now())`;
+      const first = await call(owner, "POST", `/api/workspaces/${wsId}/invitations`, { email: `access-guest-${round}@test` });
+      expect(first.status).toBe(201);
+      const results = await Promise.all([
+        call(guest, "POST", `/api/workspace-invitations/${first.body.id}/accept`, {}),
+        ...Array.from({ length: 8 }, () => call(owner, "POST", `/api/workspaces/${wsId}/invitations`, { email: `access-guest-${round}@test` })),
+      ]);
+      statuses.push(...results.map((r) => r.status));
+      for (const r of results) if (r.status === 409) rejected.add(r.body.error);
+      expect(await overlaps()).toEqual([]);
+    }
+    expect(statuses.filter((s) => s >= 500)).toEqual([]);
+    for (const m of rejected) expect(["An invitation is already pending", "This person already has access"]).toContain(m);
+  });
 });

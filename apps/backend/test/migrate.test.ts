@@ -302,3 +302,38 @@ describe("membership and invitation uniqueness already in the baseline", () => {
     await expect(sql.unsafe(winv("wi2", "C@test"))).rejects.toMatchObject({ constraint: "idx_workspace_invitations_pending_email" });
   });
 });
+
+describe("0021 active access excludes a pending invitation", () => {
+  test("overlapping invitations are expired, not deleted; new ones are rejected, and a new grant expires a pending one", async () => {
+    const real = new URL("../migrations/", import.meta.url).pathname;
+    const dir = mkdtempSync(join(tmpdir(), "syntila-0021-"));
+    for (const f of readdirSync(real).filter((f) => /^\d{4}_.*\.sql$/.test(f) && f < "0021")) copyFileSync(join(real, f), join(dir, f));
+    const sql = await emptyDatabase();
+    await migrate(sql as any, dir);
+    const invite = (id: string, ws: string, email: string, status = "pending") =>
+      `INSERT INTO workspace_invitations(id,workspace_id,email,token_hash,invited_by_user_id,status,expires_at,created_at,updated_at)
+       VALUES ('${id}','${ws}','${email}','h-${id}','o1','${status}',now() + interval '1 day',now(),now());`;
+    const grant = (ws: string, uid: string) =>
+      `INSERT INTO workspace_person_grants(workspace_id,user_id,granted_by_user_id,status,created_at,updated_at) VALUES ('${ws}','${uid}','o1','active',now(),now());`;
+    await sql.unsafe([
+      user("o1"), user("g1"), user("g2"),
+      `INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES ('w1','o1','Mac','online',now(),now()),('w2','o1','Mini','online',now(),now());`,
+      grant("w1", "g1"),
+      invite("overlap", "w1", "G1@test"),   // person already has access: expired
+      invite("other-ws", "w2", "g1@test"),  // access is per Workspace: kept
+      invite("no-access", "w1", "g2@test"), // nobody has access yet: kept
+    ].join("\n"));
+    copyFileSync(join(real, "0021_active_access_excludes_invitation.sql"), join(dir, "0021_active_access_excludes_invitation.sql"));
+    expect((await migrate(sql as any, dir)).applied).toEqual(["0021_active_access_excludes_invitation.sql"]);
+    const status = new Map((await sql.unsafe("SELECT id, status FROM workspace_invitations")).map((r: any) => [r.id, r.status]));
+    expect(status.get("overlap")).toBe("expired");
+    expect(status.get("other-ws")).toBe("pending");
+    expect(status.get("no-access")).toBe("pending");
+    await expect(sql.unsafe(invite("new", "w1", "g1@test"))).rejects.toMatchObject({ constraint: "workspace_invitations_no_active_grant" });
+    // Reviving an ended invitation is a new pending invitation too.
+    await expect(sql.unsafe("UPDATE workspace_invitations SET status='pending' WHERE id='overlap'")).rejects.toMatchObject({ constraint: "workspace_invitations_no_active_grant" });
+    // Granting access ends the person's pending invitation and keeps its row.
+    await sql.unsafe(grant("w1", "g2"));
+    expect((await sql.unsafe("SELECT status FROM workspace_invitations WHERE id='no-access'"))[0].status).toBe("expired");
+  });
+});
