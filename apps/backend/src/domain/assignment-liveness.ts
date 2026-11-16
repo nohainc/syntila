@@ -1,4 +1,5 @@
 import { beginAssignmentRevocation } from "./assignment-revocation.js";
+import type { Query } from "../platform/data.js";
 import { extendLeaseForLiveAssignment } from "./thread-coordinator.js";
 
 /**
@@ -62,56 +63,47 @@ export interface LostEngineAssignment {
  * assignments whose Engine has been missing for too many consecutive reports.
  */
 export async function applyEngineLivenessReport(
-  db: D1Database,
+  q: Query,
   workspaceId: string,
   report: EngineLivenessReport,
   now: string,
 ): Promise<LostEngineAssignment[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT id, attempt_id, engine_missing_reports
-         FROM worker_assignments
-        WHERE execution_workspace_id = ?1 AND status = 'running'
-        LIMIT 200`,
-    )
-    .bind(workspaceId)
-    .all<{
-      id: string;
-      attempt_id: string | null;
-      engine_missing_reports: number | null;
-    }>();
+  const results = await q.rows<{
+    id: string;
+    attempt_id: string | null;
+    engine_missing_reports: number | null;
+  }>`
+    SELECT id, attempt_id, engine_missing_reports
+      FROM worker_assignments
+     WHERE execution_workspace_id = ${workspaceId} AND status = 'running'
+     LIMIT 200
+  `;
   const lost: LostEngineAssignment[] = [];
-  for (const row of results ?? []) {
+  for (const row of results) {
     const present =
       report.liveAssignmentIds.has(row.id) ||
       report.pendingTerminalAssignmentIds.has(row.id);
     if (present) {
-      await db
-        .prepare(
-          `UPDATE worker_assignments
-              SET engine_alive_at = ?2, engine_missing_reports = 0
-            WHERE id = ?1 AND status = 'running'`,
-        )
-        .bind(row.id, now)
-        .run();
+      await q.run`
+        UPDATE worker_assignments
+           SET engine_alive_at = ${now}, engine_missing_reports = 0
+         WHERE id = ${row.id} AND status = 'running'
+      `;
       // A live Worker keeps its Thread lease alive, so the lease does not
       // depend only on the Workflow waking up to renew it.
       const nowMs = Date.parse(now);
       await extendLeaseForLiveAssignment(
-        db,
+        q,
         row.id,
         Number.isFinite(nowMs) ? nowMs : Date.now(),
-      ).run();
+      );
       continue;
     }
     const missing = (row.engine_missing_reports ?? 0) + 1;
-    await db
-      .prepare(
-        `UPDATE worker_assignments SET engine_missing_reports = ?2
-          WHERE id = ?1 AND status = 'running'`,
-      )
-      .bind(row.id, missing)
-      .run();
+    await q.run`
+      UPDATE worker_assignments SET engine_missing_reports = ${missing}
+        WHERE id = ${row.id} AND status = 'running'
+    `;
     if (missing >= ENGINE_MISSING_REPORT_LIMIT) {
       lost.push({ assignmentId: row.id, attemptId: row.attempt_id });
     }

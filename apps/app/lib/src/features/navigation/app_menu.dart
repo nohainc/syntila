@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../brand.dart';
-import '../common/external_links.dart';
 import '../../navigation/ax_navigation.dart';
 import 'ax_shell_context.dart';
 
@@ -168,19 +167,6 @@ class GlobalAppMenu extends StatelessWidget {
         divider(),
 
         // 2. Help and product information
-        MenuItemButton(
-          style: itemStyle(),
-          leadingIcon: Icon(
-            Icons.menu_book_rounded,
-            size: 16,
-            color: menuIconColor,
-          ),
-          onPressed: () => onOpenExternal(Uri.parse(syntilaDocumentationUrl)),
-          child: const Text(
-            'Documentation',
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
-          ),
-        ),
         if (onMessageSupport != null)
           MenuItemButton(
             key: const ValueKey('menu-message-syntila'),
@@ -199,19 +185,6 @@ class GlobalAppMenu extends StatelessWidget {
               style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
             ),
           ),
-        MenuItemButton(
-          style: itemStyle(),
-          leadingIcon: Icon(
-            Icons.download_outlined,
-            size: 16,
-            color: menuIconColor,
-          ),
-          onPressed: () => onOpenExternal(Uri.parse(syntilaDownloadsUrl)),
-          child: const Text(
-            'Downloads',
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
-          ),
-        ),
         MenuItemButton(
           style: itemStyle(),
           leadingIcon: SyntilaBrand.logoMark(size: 16),

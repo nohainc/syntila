@@ -4,6 +4,7 @@ import {
   WorkspaceWorkerInventoryEntrySchema,
 } from "@syntila/workspace-runtime-protocol";
 import type { WorkspaceGatewayEnv } from "./contracts.js";
+import { dataOf } from "../../platform/data.js";
 
 /** Persists the Workspace-owned logical Worker snapshot and prunes omissions. */
 export async function recordWorkspaceWorkerInventory(
@@ -18,11 +19,7 @@ export async function recordWorkspaceWorkerInventory(
     item && typeof item === "object" ? item.workerId : undefined,
   );
   if (new Set(ids).size !== ids.length) return;
-  const owner = await env.SYNTILA_DB.prepare(
-    "SELECT owner_user_id FROM execution_workspaces WHERE id = ?1 AND status != 'revoked'",
-  )
-    .bind(workspaceId)
-    .first<{ owner_user_id: string }>();
+  const owner = await dataOf(env).read.row<{ owner_user_id: string }>`SELECT owner_user_id FROM execution_workspaces WHERE id = ${workspaceId} AND status != 'revoked'`;
   if (!owner) return;
   const now = new Date().toISOString();
   const fullSnapshot =
@@ -38,12 +35,8 @@ export async function recordWorkspaceWorkerInventory(
     parallelSlots >= 1 &&
     parallelSlots <= 1024
   ) {
-    await env.SYNTILA_DB.prepare(
-      `UPDATE execution_workspaces SET parallel_slots = ?2, updated_at = ?3
-        WHERE id = ?1 AND parallel_slots IS NULL`,
-    )
-      .bind(workspaceId, parallelSlots, now)
-      .run();
+    await dataOf(env).read.run`UPDATE execution_workspaces SET parallel_slots = ${parallelSlots}, updated_at = ${now}
+        WHERE id = ${workspaceId} AND parallel_slots IS NULL`;
   }
   await recordWorkspaceAllowedFolders(
     env,
@@ -88,26 +81,18 @@ export async function recordWorkspaceWorkerInventory(
     if (item.executor !== undefined) {
       const executor = PluginInventoryExecutorSchema.safeParse(item.executor);
       if (!executor.success || !pluginShaped) continue;
-      const owned = await env.SYNTILA_DB.prepare(
-        `SELECT 1 AS ok FROM worker_catalog
-          WHERE worker_type_id = ?1 AND origin = 'plugin' AND owner_user_id = ?2`,
-      )
-        .bind(workerTypeId, owner.owner_user_id)
-        .first();
+      const owned = await dataOf(env).read.row`SELECT 1 AS ok FROM worker_catalog
+          WHERE worker_type_id = ${workerTypeId} AND origin = 'plugin' AND owner_user_id = ${owner.owner_user_id}`;
       if (!owned) continue;
       executorJson = JSON.stringify(executor.data);
     } else if (pluginShaped) {
       continue;
     }
-    const previous = await env.SYNTILA_DB.prepare(
-      "SELECT workspace_id, revision, model_catalog_json FROM workspace_worker_inventory WHERE worker_id = ?1",
-    )
-      .bind(workerId)
-      .first<{
+    const previous = await dataOf(env).read.row<{
         workspace_id: string;
         revision: number;
         model_catalog_json: string | null;
-      }>();
+      }>`SELECT workspace_id, revision, model_catalog_json FROM workspace_worker_inventory WHERE worker_id = ${workerId}`;
     // A Worker ID is permanently owned by the Workspace that first synced
     // it, and its local revision only moves forward. Releasing a Workspace
     // deletes its Workers, so a new registration starts clean.
@@ -119,12 +104,8 @@ export async function recordWorkspaceWorkerInventory(
     reportedWorkerIds.add(workerId);
     if (previous && Number(previous.revision) >= (revision as number)) {
       if (Number(previous.revision) === revision) {
-        await env.SYNTILA_DB.prepare(
-          `UPDATE workspace_worker_inventory SET last_seen_at = ?3
-              WHERE worker_id = ?1 AND workspace_id = ?2 AND revision = ?4`,
-        )
-          .bind(workerId, workspaceId, now, revision)
-          .run();
+        await dataOf(env).read.run`UPDATE workspace_worker_inventory SET last_seen_at = ${now}
+              WHERE worker_id = ${workerId} AND workspace_id = ${workspaceId} AND revision = ${revision}`;
       }
       continue;
     }
@@ -157,12 +138,8 @@ export async function recordWorkspaceWorkerInventory(
       let expectedDigest: string | undefined;
       if (executorJson) {
         const executor = JSON.parse(executorJson);
-        const pin = await env.SYNTILA_DB.prepare(
-          `SELECT manifest_digest FROM workspace_worker_plugin_enablements
-           WHERE workspace_id = ?1 AND plugin_ref = ?2 AND version = ?3 AND intent = 'enabled'`,
-        )
-          .bind(workspaceId, workerTypeId, executor.version)
-          .first<{ manifest_digest: string }>();
+        const pin = await dataOf(env).read.row<{ manifest_digest: string }>`SELECT manifest_digest FROM workspace_worker_plugin_enablements
+           WHERE workspace_id = ${workspaceId} AND plugin_ref = ${workerTypeId} AND version = ${executor.version} AND intent = 'enabled'`;
         if (
           pin &&
           pin.manifest_digest === executor.manifestDigest &&
@@ -170,13 +147,9 @@ export async function recordWorkspaceWorkerInventory(
         )
           expectedDigest = pin.manifest_digest;
       } else {
-        const profile = await env.SYNTILA_DB.prepare(
-          `SELECT digest FROM worker_profiles WHERE worker_type_id = ?1 AND revision = ?2
+        const profile = await dataOf(env).read.row<{ digest: string }>`SELECT digest FROM worker_profiles WHERE worker_type_id = ${workerTypeId} AND revision = ${item.profileReleaseVersion ?? null}
            UNION ALL SELECT digest FROM worker_profile_history
-           WHERE worker_type_id = ?1 AND revision = ?2 LIMIT 1`,
-        )
-          .bind(workerTypeId, item.profileReleaseVersion ?? null)
-          .first<{ digest: string }>();
+           WHERE worker_type_id = ${workerTypeId} AND revision = ${item.profileReleaseVersion ?? null} LIMIT 1`;
         expectedDigest = profile?.digest;
       }
       if (
@@ -204,8 +177,7 @@ export async function recordWorkspaceWorkerInventory(
         }
       }
     }
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO workspace_worker_inventory
+    await dataOf(env).read.run`INSERT INTO workspace_worker_inventory
           (worker_id, workspace_id, owner_user_id, worker_type_id,
            activation_state, readiness_state, readiness_issue_code,
            engine_version, profile_definition_id, profile_release_version,
@@ -213,7 +185,23 @@ export async function recordWorkspaceWorkerInventory(
            local_concurrency_limit, revision,
            created_at, updated_at, last_seen_at, model_catalog_json,
            executor_json)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+         VALUES (${workerId}, ${workspaceId}, ${owner.owner_user_id}, ${workerTypeId}, ${activationState}, ${readinessState}, ${readinessIssueCode}, ${nullableSafeToken(
+          item.engineVersion,
+          /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$/,
+        )}, ${typeof item.profileDefinitionId === "string" &&
+          /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item.profileDefinitionId) &&
+          item.profileDefinitionId.length <= 96
+          ? item.profileDefinitionId
+          : null}, ${Number.isSafeInteger(item.profileReleaseVersion) &&
+          (item.profileReleaseVersion as number) > 0
+          ? item.profileReleaseVersion
+          : null}, ${nullableSafeToken(
+          item.providerToolName,
+          /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,127}$/,
+        )}, ${nullableSafeToken(
+          item.providerToolVersion,
+          /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/,
+        )}, ${Math.min(1024, concurrency as number)}, ${revision}, ${nullableText(item.createdAt, 40) ?? now}, ${now}, ${nullableText(item.lastSeenAt, 40) ?? now}, ${acceptedCatalog ? JSON.stringify(acceptedCatalog) : null}, ${executorJson})
          ON CONFLICT(worker_id) DO UPDATE SET
            worker_type_id = excluded.worker_type_id,
            activation_state = excluded.activation_state,
@@ -231,91 +219,36 @@ export async function recordWorkspaceWorkerInventory(
            updated_at = excluded.updated_at,
            last_seen_at = excluded.last_seen_at
          WHERE workspace_worker_inventory.workspace_id = excluded.workspace_id
-           AND workspace_worker_inventory.revision < excluded.revision`,
-    )
-      .bind(
-        workerId,
-        workspaceId,
-        owner.owner_user_id,
-        workerTypeId,
-        activationState,
-        readinessState,
-        readinessIssueCode,
-        nullableSafeToken(
-          item.engineVersion,
-          /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$/,
-        ),
-        typeof item.profileDefinitionId === "string" &&
-          /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item.profileDefinitionId) &&
-          item.profileDefinitionId.length <= 96
-          ? item.profileDefinitionId
-          : null,
-        Number.isSafeInteger(item.profileReleaseVersion) &&
-          (item.profileReleaseVersion as number) > 0
-          ? item.profileReleaseVersion
-          : null,
-        nullableSafeToken(
-          item.providerToolName,
-          /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,127}$/,
-        ),
-        nullableSafeToken(
-          item.providerToolVersion,
-          /^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$/,
-        ),
-        Math.min(1024, concurrency as number),
-        revision,
-        nullableText(item.createdAt, 40) ?? now,
-        now,
-        nullableText(item.lastSeenAt, 40) ?? now,
-        acceptedCatalog ? JSON.stringify(acceptedCatalog) : null,
-        executorJson,
-      )
-      .run();
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO worker_scheduling (worker_id, state, updated_at)
-         SELECT worker_id, 'disabled', ?2 FROM workspace_worker_inventory WHERE worker_id = ?1
-         ON CONFLICT DO NOTHING`,
-    )
-      .bind(workerId, now)
-      .run();
+           AND workspace_worker_inventory.revision < excluded.revision`;
+    await dataOf(env).read.run`INSERT INTO worker_scheduling (worker_id, state, updated_at)
+         SELECT worker_id, 'disabled', ${now} FROM workspace_worker_inventory WHERE worker_id = ${workerId}
+         ON CONFLICT DO NOTHING`;
   }
   // Full snapshots are authoritative. Removed local slots disappear from
   // inventory; scheduling and audit rows cascade with the inventory row.
   if (fullSnapshot) {
-    const existing = await env.SYNTILA_DB.prepare(
-      `SELECT worker_id FROM workspace_worker_inventory
-          WHERE workspace_id = ?1`,
-    )
-      .bind(workspaceId)
-      .all<{ worker_id: string }>();
+    const existing = await dataOf(env).read.rows<{ worker_id: string }>`SELECT worker_id FROM workspace_worker_inventory
+          WHERE workspace_id = ${workspaceId}`;
     for (const row of existing.results ?? []) {
       if (reportedWorkerIds.has(row.worker_id)) continue;
-      await env.SYNTILA_DB.prepare(
-        `DELETE FROM workspace_worker_inventory
-            WHERE worker_id = ?1 AND workspace_id = ?2`,
-      )
-        .bind(row.worker_id, workspaceId)
-        .run();
+      await dataOf(env).read.run`DELETE FROM workspace_worker_inventory
+            WHERE worker_id = ${row.worker_id} AND workspace_id = ${workspaceId}`;
     }
   }
   // Workspace selection authorizes scheduling for ready, locally enabled
   // Workers, including ones configured after the Workspace was selected.
   // Reconcile even unchanged reports so an existing disabled row can recover.
-  await env.SYNTILA_DB.prepare(
-    `UPDATE worker_scheduling
-        SET state = 'enabled', updated_at = ?2
+  await dataOf(env).read.run`UPDATE worker_scheduling
+        SET state = 'enabled', updated_at = ${now}
       WHERE state = 'disabled'
         AND worker_id IN (
           SELECT i.worker_id FROM workspace_worker_inventory i
-           WHERE i.workspace_id = ?1
+           WHERE i.workspace_id = ${workspaceId}
              AND i.activation_state = 'enabled'
              AND i.readiness_state = 'ready'
              AND EXISTS (SELECT 1 FROM space_workflow_settings s
                           WHERE s.workspace_id = i.workspace_id)
-        )`,
-  )
-    .bind(workspaceId, now)
-    .run();
+        )`;
 }
 
 /**
@@ -338,49 +271,21 @@ export async function recordWorkspaceAllowedFolders(
   }
   if (new Set(folders.map((folder) => folder.id)).size !== folders.length)
     return;
-  const db = env.SYNTILA_DB;
-  const existing = await db
-    .prepare(
-      "SELECT folder_id FROM workspace_allowed_folders WHERE workspace_id = ?1",
-    )
-    .bind(workspaceId)
-    .all<{ folder_id: string }>();
+  const existing = await dataOf(env).read.rows<{ folder_id: string }>`SELECT folder_id FROM workspace_allowed_folders WHERE workspace_id = ${workspaceId}`;
   const keep = new Set(folders.map((folder) => folder.id));
-  for (const row of existing.results ?? []) {
+  for (const row of existing) {
     if (keep.has(row.folder_id)) continue;
-    await db
-      .prepare(
-        "DELETE FROM space_additional_folders WHERE workspace_id = ?1 AND folder_id = ?2",
-      )
-      .bind(workspaceId, row.folder_id)
-      .run();
-    await db
-      .prepare(
-        "DELETE FROM workspace_allowed_folders WHERE workspace_id = ?1 AND folder_id = ?2",
-      )
-      .bind(workspaceId, row.folder_id)
-      .run();
+    await dataOf(env).read.run`DELETE FROM space_additional_folders WHERE workspace_id = ${workspaceId} AND folder_id = ${row.folder_id}`;
+    await dataOf(env).read.run`DELETE FROM workspace_allowed_folders WHERE workspace_id = ${workspaceId} AND folder_id = ${row.folder_id}`;
   }
   for (const folder of folders) {
-    await db
-      .prepare(
-        `INSERT INTO workspace_allowed_folders
-            (workspace_id, folder_id, display_name, status, checked_at, updated_at)
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-          ON CONFLICT(workspace_id, folder_id) DO UPDATE SET
-            display_name = excluded.display_name,
-            status = excluded.status,
-            checked_at = excluded.checked_at,
-            updated_at = excluded.updated_at`,
-      )
-      .bind(
-        workspaceId,
-        folder.id,
-        folder.displayName,
-        folder.status,
-        folder.checkedAt,
-        now,
-      )
-      .run();
+    await dataOf(env).read.run`INSERT INTO workspace_allowed_folders
+          (workspace_id, folder_id, display_name, status, checked_at, updated_at)
+        VALUES (${workspaceId}, ${folder.id}, ${folder.displayName}, ${folder.status}, ${folder.checkedAt}, ${now})
+        ON CONFLICT(workspace_id, folder_id) DO UPDATE SET
+          display_name = excluded.display_name,
+          status = excluded.status,
+          checked_at = excluded.checked_at,
+          updated_at = excluded.updated_at`;
   }
 }

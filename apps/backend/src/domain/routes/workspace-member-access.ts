@@ -10,6 +10,7 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 /**
  * Workers, models and efforts a Workspace shares with invited members. A
@@ -133,11 +134,7 @@ export async function loadWorkspaceMemberAccess(
   env: Pick<SecurityEnv, "SYNTILA_DB">,
   workspaceId: string,
 ): Promise<WorkspaceMemberAccessPolicy | null> {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT policy_json AS policyJson FROM workspace_member_access WHERE workspace_id = ?1",
-  )
-    .bind(workspaceId)
-    .first<{ policyJson: string }>();
+  const row = await dataOf(env).read.row<{ policyJson: string }>`SELECT policy_json AS "policyJson" FROM workspace_member_access WHERE workspace_id = ${workspaceId}`;
   return row
     ? (JSON.parse(row.policyJson) as WorkspaceMemberAccessPolicy)
     : null;
@@ -164,11 +161,7 @@ export async function loadMemberAccessOverride(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceMemberAccessPolicy | null> {
-  const override = await env.SYNTILA_DB.prepare(
-    "SELECT policy_json AS policyJson FROM workspace_member_overrides WHERE workspace_id = ?1 AND user_id = ?2",
-  )
-    .bind(workspaceId, userId)
-    .first<{ policyJson: string }>();
+  const override = await dataOf(env).read.row<{ policyJson: string }>`SELECT policy_json AS "policyJson" FROM workspace_member_overrides WHERE workspace_id = ${workspaceId} AND user_id = ${userId}`;
   return override
     ? (JSON.parse(override.policyJson) as WorkspaceMemberAccessPolicy)
     : null;
@@ -307,7 +300,7 @@ export async function handleWorkspaceMemberAccess(
   personId?: string,
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
-  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
+  const workspace = await ownsActiveWorkspace(env, workspaceId, context.userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   if (personId !== undefined)
     return handlePersonOverride(request, env, workspaceId, personId);
@@ -320,11 +313,7 @@ export async function handleWorkspaceMemberAccess(
     message: "Invalid member access request",
   });
   if (!body.restricted) {
-    await env.SYNTILA_DB.prepare(
-      "DELETE FROM workspace_member_access WHERE workspace_id = ?1",
-    )
-      .bind(workspaceId)
-      .run();
+    await dataOf(env).read.run`DELETE FROM workspace_member_access WHERE workspace_id = ${workspaceId}`;
     return json({ restricted: false, policy: null });
   }
   const policy = parseWorkspaceMemberAccessPolicy({
@@ -332,12 +321,8 @@ export async function handleWorkspaceMemberAccess(
     mode: body.mode,
   });
   await assertWorkersInWorkspace(env, workspaceId, policy);
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO workspace_member_access(workspace_id,policy_json,updated_at) VALUES(?1,?2,?3)
-     ON CONFLICT(workspace_id) DO UPDATE SET policy_json=excluded.policy_json,updated_at=excluded.updated_at`,
-  )
-    .bind(workspaceId, JSON.stringify(policy), new Date().toISOString())
-    .run();
+  await dataOf(env).read.run`INSERT INTO workspace_member_access(workspace_id,policy_json,updated_at) VALUES(${workspaceId},${JSON.stringify(policy)},${new Date().toISOString()})
+     ON CONFLICT(workspace_id) DO UPDATE SET policy_json=excluded.policy_json,updated_at=excluded.updated_at`;
   return json({ restricted: true, policy });
 }
 
@@ -346,11 +331,7 @@ async function assertWorkersInWorkspace(
   workspaceId: string,
   policy: WorkspaceMemberAccessPolicy,
 ) {
-  const inventory = await env.SYNTILA_DB.prepare(
-    "SELECT worker_id AS workerId FROM workspace_worker_inventory WHERE workspace_id = ?1",
-  )
-    .bind(workspaceId)
-    .all<{ workerId: string }>();
+  const inventory = await dataOf(env).read.rows<{ workerId: string }>`SELECT worker_id AS "workerId" FROM workspace_worker_inventory WHERE workspace_id = ${workspaceId}`;
   const known = new Set(inventory.results.map((row) => row.workerId));
   if (Object.keys(policy.workers).some((id) => !known.has(id)))
     throw new HttpError(400, "Worker is outside this Workspace");
@@ -367,28 +348,16 @@ async function handlePersonOverride(
   workspaceId: string,
   personId: string,
 ): Promise<Response> {
-  const person = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM users WHERE id = ?1",
-  )
-    .bind(personId)
-    .first();
+  const person = await dataOf(env).read.row`SELECT id FROM users WHERE id = ${personId}`;
   if (!person) throw new HttpError(404, "Person not found");
   const read = async () => {
     const policy = await loadEffectiveMemberAccess(env, workspaceId, personId);
-    const override = await env.SYNTILA_DB.prepare(
-      "SELECT 1 AS found FROM workspace_member_overrides WHERE workspace_id = ?1 AND user_id = ?2",
-    )
-      .bind(workspaceId, personId)
-      .first();
+    const override = await dataOf(env).read.row`SELECT 1 AS found FROM workspace_member_overrides WHERE workspace_id = ${workspaceId} AND user_id = ${personId}`;
     return json({ custom: override !== null, policy });
   };
   if (request.method === "GET") return read();
   if (request.method === "DELETE") {
-    await env.SYNTILA_DB.prepare(
-      "DELETE FROM workspace_member_overrides WHERE workspace_id = ?1 AND user_id = ?2",
-    )
-      .bind(workspaceId, personId)
-      .run();
+    await dataOf(env).read.run`DELETE FROM workspace_member_overrides WHERE workspace_id = ${workspaceId} AND user_id = ${personId}`;
     return read();
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
@@ -397,16 +366,7 @@ async function handlePersonOverride(
   });
   const policy = parseWorkspaceMemberAccessPolicy(body);
   await assertWorkersInWorkspace(env, workspaceId, policy);
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO workspace_member_overrides(workspace_id,user_id,policy_json,updated_at) VALUES(?1,?2,?3,?4)
-     ON CONFLICT(workspace_id,user_id) DO UPDATE SET policy_json=excluded.policy_json,updated_at=excluded.updated_at`,
-  )
-    .bind(
-      workspaceId,
-      personId,
-      JSON.stringify(policy),
-      new Date().toISOString(),
-    )
-    .run();
+  await dataOf(env).read.run`INSERT INTO workspace_member_overrides(workspace_id,user_id,policy_json,updated_at) VALUES(${workspaceId},${personId},${JSON.stringify(policy)},${new Date().toISOString()})
+     ON CONFLICT(workspace_id,user_id) DO UPDATE SET policy_json=excluded.policy_json,updated_at=excluded.updated_at`;
   return read();
 }

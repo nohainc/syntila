@@ -9,6 +9,7 @@ import {
   type SecurityEnv,
 } from "./http-security.js";
 import { loadWorkflowWorkspace } from "./workflow-workspace.js";
+import { dataOf } from "../../platform/data.js";
 
 
 type Eligibility =
@@ -29,11 +30,7 @@ async function eligibility(
   userId: string,
   spaceId: string,
 ): Promise<Eligibility> {
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT s.owner_user_id AS ownerUserId FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ?1 AND m.user_id = ?2",
-  )
-    .bind(spaceId, userId)
-    .first<{ ownerUserId: string }>();
+  const space = await dataOf(env).read.row<{ ownerUserId: string }>`SELECT s.owner_user_id AS "ownerUserId" FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ${spaceId} AND m.user_id = ${userId}`;
   if (!space) throw new HttpError(403, "Space membership required");
   const { workspaceId } = await loadWorkflowWorkspace(
     env,
@@ -44,7 +41,7 @@ async function eligibility(
     return { eligible: false, workspaceId, reason: "not_space_owner" };
   if (!workspaceId)
     return { eligible: false, workspaceId: null, reason: "no_workspace" };
-  const owned = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, userId);
+  const owned = await ownsActiveWorkspace(env, workspaceId, userId);
   return owned
     ? { eligible: true, workspaceId }
     : { eligible: false, workspaceId, reason: "not_workspace_owner" };
@@ -55,25 +52,21 @@ async function listFolders(
   spaceId: string,
   workspaceId: string,
 ) {
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT f.folder_id AS id, f.display_name AS displayName, f.status,
-            f.checked_at AS checkedAt,
-            CASE WHEN a.folder_id IS NULL THEN 0 ELSE 1 END AS attached
-       FROM workspace_allowed_folders f
-       LEFT JOIN space_additional_folders a
-         ON a.space_id = ?1 AND a.workspace_id = f.workspace_id
-        AND a.folder_id = f.folder_id
-      WHERE f.workspace_id = ?2
-      ORDER BY lower(f.display_name), f.folder_id`,
-  )
-    .bind(spaceId, workspaceId)
-    .all<{
+  const rows = await dataOf(env).read.rows<{
       id: string;
       displayName: string;
       status: string;
       checkedAt: string;
       attached: number;
-    }>();
+    }>`SELECT f.folder_id AS id, f.display_name AS "displayName", f.status,
+            f.checked_at AS "checkedAt",
+            CASE WHEN a.folder_id IS NULL THEN 0 ELSE 1 END AS attached
+       FROM workspace_allowed_folders f
+       LEFT JOIN space_additional_folders a
+         ON a.space_id = ${spaceId} AND a.workspace_id = f.workspace_id
+        AND a.folder_id = f.folder_id
+      WHERE f.workspace_id = ${workspaceId}
+      ORDER BY lower(f.display_name), f.folder_id`;
   return (rows.results ?? []).map((row) => ({
     ...row,
     attached: Number(row.attached) === 1,
@@ -119,20 +112,13 @@ export async function handleSpaceAdditionalFolders(
   );
   if ((folderIds as string[]).some((id) => !available.has(id)))
     throw new HttpError(409, "A selected folder is no longer allowed");
-  const db = env.SYNTILA_DB;
   const now = new Date().toISOString();
-  await db.batch([
-    db
-      .prepare("DELETE FROM space_additional_folders WHERE space_id = ?1")
-      .bind(spaceId),
-    ...(folderIds as string[]).map((folderId) =>
-      db
-        .prepare(
-          "INSERT INTO space_additional_folders(space_id,workspace_id,folder_id,created_at) VALUES(?1,?2,?3,?4)",
-        )
-        .bind(spaceId, access.workspaceId, folderId, now),
-    ),
-  ]);
+  await dataOf(env).tx("space.additional_folders.set", async (tx) => {
+    await tx.run`DELETE FROM space_additional_folders WHERE space_id = ${spaceId}`;
+    for (const folderId of folderIds as string[]) {
+      await tx.run`INSERT INTO space_additional_folders(space_id, workspace_id, folder_id, created_at) VALUES(${spaceId}, ${access.workspaceId}, ${folderId}, ${now})`;
+    }
+  });
   await publishCollaborationEvent(env, "space.updated", spaceId, spaceId);
   return json({
     eligible: true,

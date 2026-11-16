@@ -6,12 +6,15 @@ import { PluginManifestSchema } from "@syntila/workspace-runtime-protocol";
 import { pluginManifestDigest } from "../plugin-manifest-digest.js";
 import { HttpError, json, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
-const SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN =
-  "SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ?1 AND version = ?2";
+async function pluginVersionDigest(env: SecurityEnv, pluginRef: string, version: string) {
+  return dataOf(env).read.row<{ digest: string }>`SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ${pluginRef} AND version = ${version}`;
+}
 
-const SELECT_ACCOUNT_WORKER_PLUGINS_BY_PLUGIN_REF =
-  "SELECT 1 AS ok FROM account_worker_plugins WHERE plugin_ref = ?1 AND owner_user_id = ?2";
+async function ownedPlugin(env: SecurityEnv, pluginRef: string, ownerUserId: string) {
+  return dataOf(env).read.row<{ ok: number }>`SELECT 1 AS ok FROM account_worker_plugins WHERE plugin_ref = ${pluginRef} AND owner_user_id = ${ownerUserId}`;
+}
 
 /**
  * Account library and Workspace enablement for custom Worker plugins
@@ -104,19 +107,14 @@ export async function handlePluginLibrary(
     return removeFromLibrary(env, userId, requireRef(pluginRef));
   }
   if (request.method === "GET") {
-    const rows = await db
-      .prepare(
-        `SELECT p.plugin_ref AS pluginRef, p.plugin_id AS pluginId,
-                p.display_name AS displayName, p.created_at AS createdAt,
-                v.version AS version, v.manifest_digest AS manifestDigest,
-                v.origin_json AS originJson, v.created_at AS versionCreatedAt
+    const rows = await dataOf(env).read.rows<Record<string, string | null>>`SELECT p.plugin_ref AS "pluginRef", p.plugin_id AS "pluginId",
+                p.display_name AS "displayName", p.created_at AS "createdAt",
+                v.version AS version, v.manifest_digest AS "manifestDigest",
+                v.origin_json AS "originJson", v.created_at AS "versionCreatedAt"
            FROM account_worker_plugins p
            LEFT JOIN account_worker_plugin_versions v ON v.plugin_ref = p.plugin_ref
-          WHERE p.owner_user_id = ?1
-          ORDER BY p.created_at, v.created_at LIMIT 1000`,
-      )
-      .bind(userId)
-      .all<Record<string, string | null>>();
+          WHERE p.owner_user_id = ${userId}
+          ORDER BY p.created_at, v.created_at LIMIT 1000`;
     const plugins = new Map<string, Record<string, unknown>>();
     for (const row of rows.results ?? []) {
       const ref = String(row.pluginRef);
@@ -193,20 +191,10 @@ export async function handlePluginLibrary(
     throw new PluginRouteError(400, "invalid_request", "Invalid signer");
 
   const now = new Date().toISOString();
-  const existing = await db
-    .prepare(
-      "SELECT plugin_ref AS pluginRef, display_name AS displayName FROM account_worker_plugins WHERE owner_user_id = ?1 AND plugin_id = ?2",
-    )
-    .bind(userId, manifest.pluginId)
-    .first<{ pluginRef: string; displayName: string }>();
+  const existing = await dataOf(env).read.row<{ pluginRef: string; displayName: string }>`SELECT plugin_ref AS "pluginRef", display_name AS "displayName" FROM account_worker_plugins WHERE owner_user_id = ${userId} AND plugin_id = ${manifest.pluginId}`;
   let ref = existing?.pluginRef;
   if (!ref) {
-    const count = await db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM account_worker_plugins WHERE owner_user_id = ?1",
-      )
-      .bind(userId)
-      .first<{ n: number }>();
+    const count = await dataOf(env).read.row<{ n: number }>`SELECT COUNT(*) AS n FROM account_worker_plugins WHERE owner_user_id = ${userId}`;
     if ((count?.n ?? 0) >= PLUGIN_LIBRARY_LIMIT)
       throw new PluginRouteError(
         409,
@@ -214,54 +202,27 @@ export async function handlePluginLibrary(
         `A library holds at most ${PLUGIN_LIBRARY_LIMIT} plugins`,
       );
     ref = allocatePluginRef();
-    await db.batch([
-      db
-        .prepare(
-          `INSERT INTO account_worker_plugins
+    await dataOf(env).tx("worker_plugin.create", async (tx) => {
+      await tx.run`INSERT INTO account_worker_plugins
              (plugin_ref, owner_user_id, plugin_id, display_name, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?5)`,
-        )
-        .bind(ref, userId, manifest.pluginId, manifest.displayName, now),
+           VALUES (${ref}, ${userId}, ${manifest.pluginId}, ${manifest.displayName}, ${now}, ${now})`;
       // The catalog row lets assignments reference the plugin Worker. Only its
       // owner's Workspaces ever list it (readers filter on origin/owner).
-      db
-        .prepare(
-          `INSERT INTO worker_catalog
+      await tx.run`INSERT INTO worker_catalog
              (worker_type_id, display_name, description, lifecycle_state,
               created_at, updated_at, engine_family, visibility_state,
               release_stage, sort_order, origin, owner_user_id)
-           VALUES (?1, ?2, ?3, 'active', ?4, ?4, 'cli', 'visible', 'stable',
-                   1000, 'plugin', ?5)`,
-        )
-        .bind(
-          ref,
-          manifest.displayName,
-          manifest.description.slice(0, 500),
-          now,
-          userId,
-        ),
-    ]);
+           VALUES (${ref}, ${manifest.displayName}, ${manifest.description.slice(0, 500)}, 'active', ${now}, ${now}, 'cli', 'visible', 'stable',
+                   1000, 'plugin', ${userId})`;
+    });
   } else if (existing && existing.displayName !== manifest.displayName) {
-    await db.batch([
-      db
-        .prepare(
-          "UPDATE account_worker_plugins SET display_name = ?2, updated_at = ?3 WHERE plugin_ref = ?1",
-        )
-        .bind(ref, manifest.displayName, now),
-      db
-        .prepare(
-          "UPDATE worker_catalog SET display_name = ?2, updated_at = ?3 WHERE worker_type_id = ?1",
-        )
-        .bind(ref, manifest.displayName, now),
-    ]);
+    await dataOf(env).tx("worker_plugin.rename", async (tx) => {
+      await tx.run`UPDATE account_worker_plugins SET display_name = ${manifest.displayName}, updated_at = ${now} WHERE plugin_ref = ${ref}`;
+      await tx.run`UPDATE worker_catalog SET display_name = ${manifest.displayName}, updated_at = ${now} WHERE worker_type_id = ${ref}`;
+    });
   }
 
-  const version = await db
-    .prepare(
-      SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN,
-    )
-    .bind(ref, manifest.version)
-    .first<{ digest: string }>();
+  const version = await pluginVersionDigest(env, ref, manifest.version);
   if (version && version.digest !== digest)
     throw new PluginRouteError(
       409,
@@ -269,34 +230,16 @@ export async function handlePluginLibrary(
       "This version is already registered with different contents",
     );
   if (!version) {
-    const versions = await db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM account_worker_plugin_versions WHERE plugin_ref = ?1",
-      )
-      .bind(ref)
-      .first<{ n: number }>();
+    const versions = await dataOf(env).read.row<{ n: number }>`SELECT COUNT(*) AS n FROM account_worker_plugin_versions WHERE plugin_ref = ${ref}`;
     if ((versions?.n ?? 0) >= PLUGIN_VERSION_LIMIT)
       throw new PluginRouteError(
         409,
         "plugin_quota_exceeded",
         `A plugin keeps at most ${PLUGIN_VERSION_LIMIT} versions`,
       );
-    await db
-      .prepare(
-        `INSERT INTO account_worker_plugin_versions
+    await dataOf(env).read.run`INSERT INTO account_worker_plugin_versions
            (plugin_ref, version, manifest_digest, manifest_json, origin_json, signer_json, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
-      )
-      .bind(
-        ref,
-        manifest.version,
-        digest,
-        JSON.stringify(manifest),
-        JSON.stringify({ kind: origin.kind, locator: origin.locator }),
-        signer ? JSON.stringify(signer) : null,
-        now,
-      )
-      .run();
+         VALUES (${ref}, ${manifest.version}, ${digest}, ${JSON.stringify(manifest)}, ${JSON.stringify({ kind: origin.kind, locator: origin.locator })}, ${signer ? JSON.stringify(signer) : null}, ${now})`;
   }
   return json(
     {
@@ -321,33 +264,18 @@ async function removeFromLibrary(
   pluginRef: string,
 ): Promise<Response> {
   const db = env.SYNTILA_DB;
-  const owned = await db
-    .prepare(
-      SELECT_ACCOUNT_WORKER_PLUGINS_BY_PLUGIN_REF,
-    )
-    .bind(pluginRef, userId)
-    .first();
+  const owned = await ownedPlugin(env, pluginRef, userId);
   if (!owned)
     throw new PluginRouteError(404, "plugin_not_found", "Plugin not found");
-  const enabled = await db
-    .prepare(
-      "SELECT 1 AS ok FROM workspace_worker_plugin_enablements WHERE plugin_ref = ?1 AND intent = 'enabled'",
-    )
-    .bind(pluginRef)
-    .first();
+  const enabled = await dataOf(env).read.row`SELECT 1 AS ok FROM workspace_worker_plugin_enablements WHERE plugin_ref = ${pluginRef} AND intent = 'enabled'`;
   if (enabled)
     throw new PluginRouteError(
       409,
       "plugin_in_use",
       "Disable this plugin on every Workspace first",
     );
-  const active = await db
-    .prepare(
-      `SELECT 1 AS ok FROM worker_assignments
-        WHERE worker_type_id = ?1 AND status IN ('created','queued','sent','accepted','running','cancel_requested') LIMIT 1`,
-    )
-    .bind(pluginRef)
-    .first()
+  const active = await dataOf(env).read.row`SELECT 1 AS ok FROM worker_assignments
+        WHERE worker_type_id = ${pluginRef} AND status IN ('created','queued','sent','accepted','running','cancel_requested') LIMIT 1`
     .catch(() => null);
   if (active)
     throw new PluginRouteError(
@@ -356,21 +284,11 @@ async function removeFromLibrary(
       "This plugin still has running work",
     );
   const now = new Date().toISOString();
-  await db.batch([
-    db
-      .prepare(
-        "DELETE FROM workspace_worker_inventory WHERE worker_type_id = ?1",
-      )
-      .bind(pluginRef),
-    db
-      .prepare(
-        "UPDATE worker_catalog SET lifecycle_state = 'retired', visibility_state = 'hidden', updated_at = ?2 WHERE worker_type_id = ?1",
-      )
-      .bind(pluginRef, now),
-    db
-      .prepare("DELETE FROM account_worker_plugins WHERE plugin_ref = ?1")
-      .bind(pluginRef),
-  ]);
+  await dataOf(env).tx("worker_plugin.delete", async (tx) => {
+    await tx.run`DELETE FROM workspace_worker_inventory WHERE worker_type_id = ${pluginRef}`;
+    await tx.run`UPDATE worker_catalog SET lifecycle_state = 'retired', visibility_state = 'hidden', updated_at = ${now} WHERE worker_type_id = ${pluginRef}`;
+    await tx.run`DELETE FROM account_worker_plugins WHERE plugin_ref = ${pluginRef}`;
+  });
   return json({ removed: true });
 }
 
@@ -392,22 +310,12 @@ export async function handleWorkspacePluginPin(
   const ref = requireRef(pluginRef);
   const workspace = await ownsActiveWorkspace(db, workspaceId, userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
-  const owned = await db
-    .prepare(
-      SELECT_ACCOUNT_WORKER_PLUGINS_BY_PLUGIN_REF,
-    )
-    .bind(ref, userId)
-    .first();
+  const owned = await ownedPlugin(env, ref, userId);
   if (!owned)
     throw new PluginRouteError(404, "plugin_not_found", "Plugin not found");
 
   if (request.method === "DELETE") {
-    await db
-      .prepare(
-        "DELETE FROM workspace_worker_plugin_enablements WHERE workspace_id = ?1 AND plugin_ref = ?2",
-      )
-      .bind(workspaceId, ref)
-      .run();
+    await dataOf(env).read.run`DELETE FROM workspace_worker_plugin_enablements WHERE workspace_id = ${workspaceId} AND plugin_ref = ${ref}`;
     return json({ removed: true });
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
@@ -430,12 +338,7 @@ export async function handleWorkspacePluginPin(
     typeof body.shareable !== "boolean"
   )
     throw new PluginRouteError(400, "invalid_request", "Invalid enablement");
-  const version = await db
-    .prepare(
-      SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN,
-    )
-    .bind(ref, body.version)
-    .first<{ digest: string }>();
+  const version = await pluginVersionDigest(env, ref, body.version);
   if (!version)
     throw new PluginRouteError(
       404,
@@ -448,30 +351,16 @@ export async function handleWorkspacePluginPin(
       "plugin_digest_mismatch",
       "The digest differs from the library version",
     );
-  await db
-    .prepare(
-      `INSERT INTO workspace_worker_plugin_enablements
+  await dataOf(env).read.run`INSERT INTO workspace_worker_plugin_enablements
          (workspace_id, plugin_ref, version, manifest_digest, consent_hash, intent, shareable, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7::int::boolean, ?8)
+       VALUES (${workspaceId}, ${ref}, ${body.version}, ${body.manifestDigest}, ${body.consentHash}, ${body.enabled ? "enabled" : "disabled"}, ${body.shareable ? 1 : 0}::int::boolean, ${new Date().toISOString()})
        ON CONFLICT(workspace_id, plugin_ref) DO UPDATE SET
          version = excluded.version,
          manifest_digest = excluded.manifest_digest,
          consent_hash = excluded.consent_hash,
          intent = excluded.intent,
          shareable = excluded.shareable,
-         updated_at = excluded.updated_at`,
-    )
-    .bind(
-      workspaceId,
-      ref,
-      body.version,
-      body.manifestDigest,
-      body.consentHash,
-      body.enabled ? "enabled" : "disabled",
-      body.shareable ? 1 : 0,
-      new Date().toISOString(),
-    )
-    .run();
+         updated_at = excluded.updated_at`;
   return json({
     pluginRef: ref,
     version: body.version,

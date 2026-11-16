@@ -1,6 +1,7 @@
 import { signCheckoutReference, verifyCheckoutReference } from '../../paddle-reference.js';
 import { verifyPaddleSignature } from '../../paddle-signature.js';
 import { HttpError, json, securityContext, type SecurityEnv } from './http-security.js';
+import { dataOf } from '../../platform/data.js';
 
 type SandboxEnv = SecurityEnv & {
   PADDLE_SANDBOX_CLIENT_TOKEN?: string;
@@ -33,8 +34,7 @@ export async function handleSandboxPortal(request: Request, env: SandboxEnv, ctx
   const apiKey = env.PADDLE_SANDBOX_API_KEY;
   if (!apiKey?.startsWith('pdl_sdbx_')) throw new HttpError(503, 'Sandbox customer portal is not configured');
   const context = await securityContext(request, env, ctx);
-  const customer = await env.SYNTILA_DB.prepare('SELECT customer_id FROM paddle_sandbox_subscriptions WHERE user_id=?1 ORDER BY occurred_at DESC LIMIT 1')
-    .bind(context.userId).first<{ customer_id: string }>();
+  const customer = await dataOf(env).read.row<{ customer_id: string }>`SELECT customer_id FROM paddle_sandbox_subscriptions WHERE user_id = ${context.userId} ORDER BY occurred_at DESC LIMIT 1`;
   if (!customer) throw new HttpError(404, 'No sandbox subscription found');
   const response = await requestPaddle(`https://sandbox-api.paddle.com/customers/${encodeURIComponent(customer.customer_id)}/portal-sessions`, {
     method: 'POST', redirect: 'error', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: '{}',
@@ -88,16 +88,14 @@ export async function handleSandboxWebhook(request: Request, env: SandboxEnv): P
   const periodEnd = typeof ends === 'string' && Number.isFinite(Date.parse(ends)) ? new Date(ends).toISOString() : null;
   if (!userId || typeof data?.id !== 'string' || !data.id.startsWith('sub_') || typeof data.customer_id !== 'string' || !data.customer_id.startsWith('ctm_') || !Number.isFinite(occurred) || !status || (status !== 'canceled' && !periodEnd) || !Array.isArray(data.items) || !data.items.some((item: any) => prices.includes(item?.price?.id)))
     throw new HttpError(400, 'Unsupported subscription event');
-  const db = env.SYNTILA_DB;
-  await db.batch([
-    db.prepare(`INSERT INTO paddle_sandbox_subscriptions(subscription_id,user_id,customer_id,status,current_period_end,occurred_at)
-      VALUES (?1,?2,?3,?4,?5,?6)
+  await dataOf(env).tx("paddle_sandbox.webhook", async (tx) => {
+    await tx.run`INSERT INTO paddle_sandbox_subscriptions(subscription_id,user_id,customer_id,status,current_period_end,occurred_at)
+      VALUES (${data.id},${userId},${data.customer_id},${status},${periodEnd},${new Date(occurred).toISOString()})
       ON CONFLICT(subscription_id) DO UPDATE SET customer_id=excluded.customer_id,status=excluded.status,current_period_end=excluded.current_period_end,occurred_at=excluded.occurred_at
-      WHERE paddle_sandbox_subscriptions.user_id=excluded.user_id AND paddle_sandbox_subscriptions.occurred_at < excluded.occurred_at`)
-      .bind(data.id, userId, data.customer_id, status, periodEnd, new Date(occurred).toISOString()),
-    db.prepare(`INSERT INTO account_plans(user_id,tier,status,source,current_period_end,provider_customer_id,provider_subscription_id,created_at,updated_at)
+      WHERE paddle_sandbox_subscriptions.user_id=excluded.user_id AND paddle_sandbox_subscriptions.occurred_at < excluded.occurred_at`;
+    await tx.run`INSERT INTO account_plans(user_id,tier,status,source,current_period_end,provider_customer_id,provider_subscription_id,created_at,updated_at)
       SELECT user_id,'paid',status,'provider',current_period_end,customer_id,subscription_id,now(),now()
-      FROM paddle_sandbox_subscriptions WHERE user_id=?1
+      FROM paddle_sandbox_subscriptions WHERE user_id=${userId}
       ORDER BY (status IN ('active','trialing','past_due') AND current_period_end > now()) DESC, current_period_end DESC NULLS LAST, occurred_at DESC LIMIT 1
       ON CONFLICT(user_id) DO UPDATE SET
         tier=CASE WHEN account_plans.source='manual' AND account_plans.tier='paid' AND account_plans.status='active' THEN account_plans.tier ELSE excluded.tier END,
@@ -107,7 +105,7 @@ export async function handleSandboxWebhook(request: Request, env: SandboxEnv): P
         provider_customer_id=excluded.provider_customer_id,provider_subscription_id=excluded.provider_subscription_id,updated_at=excluded.updated_at
       WHERE account_plans.source='provider'
          OR (account_plans.source='manual' AND ((account_plans.tier='free' AND account_plans.status='canceled')
-             OR (account_plans.tier='paid' AND account_plans.status='active')))`).bind(userId),
-  ]);
+             OR (account_plans.tier='paid' AND account_plans.status='active')))`;
+  });
   return json({ ok: true });
 }

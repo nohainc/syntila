@@ -12,6 +12,7 @@ import {
   recordAssignmentError,
 } from "./assignment-dispatcher.js";
 import { transitionAssignment } from "./assignment-transitions.js";
+import { dataOf } from "../platform/data.js";
 
 /**
  * Safe revocation of an assignment that must not run (or must stop running).
@@ -111,13 +112,9 @@ async function readRow(
   db: D1Database,
   assignmentId: string,
 ): Promise<RevocationRow | null> {
-  return db
-    .prepare(
-      `SELECT status, task_id, attempt_id, error_json
-         FROM worker_assignments WHERE id = ?1`,
-    )
-    .bind(assignmentId)
-    .first<RevocationRow>();
+  return dataOf({ SYNTILA_DB: db }).read.row<RevocationRow>`
+    SELECT status, task_id, attempt_id, error_json
+      FROM worker_assignments WHERE id = ${assignmentId}`;
 }
 
 function failureFor(intent: RevocationIntent): AssignmentFailurePayload {
@@ -277,19 +274,14 @@ async function fenceIfNeverStarted(
   assignmentId: string,
   result: RevocationBeginResult,
 ): Promise<RevocationBeginResult> {
-  const row = await db
-    .prepare(
-      `SELECT status, attempt_id, error_json, start_permit_required,
-              start_permit_issued_at
-         FROM worker_assignments WHERE id = ?1`,
-    )
-    .bind(assignmentId)
-    .first<
+  const row = await dataOf(env).read.row<
       RevocationRow & {
         start_permit_required: number | null;
         start_permit_issued_at: string | null;
       }
-    >();
+    >`SELECT status, attempt_id, error_json, start_permit_required,
+              start_permit_issued_at
+         FROM worker_assignments WHERE id = ${assignmentId}`;
   if (!row) return result;
   const permitIssued = row.start_permit_issued_at != null;
   const observed = parseStored(row.error_json)?.observedStatus;
@@ -351,14 +343,9 @@ export async function escalateUnconfirmedRevocations(
   now = new Date(),
 ): Promise<string[]> {
   const cutoff = new Date(now.getTime() - olderThanMs).toISOString();
-  const { results } = await db
-    .prepare(
-      `UPDATE worker_assignments SET status = 'reconciling', updated_at = ?1
-        WHERE status = 'revocation_pending' AND updated_at <= ?2
-        RETURNING id`,
-    )
-    .bind(now.toISOString(), cutoff)
-    .all<{ id: string }>();
+  const { results } = await dataOf(env).read.rows<{ id: string }>`UPDATE worker_assignments SET status = 'reconciling', updated_at = ${now.toISOString()}
+        WHERE status = 'revocation_pending' AND updated_at <= ${cutoff}
+        RETURNING id`;
   return (results ?? []).map((row) => row.id);
 }
 
@@ -379,18 +366,13 @@ export async function finalizeRevocationsOfRevokedRuntimes(
   db: D1Database,
   executionWorkspaceId?: string,
 ): Promise<string[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT wa.id AS id, wa.attempt_id AS attemptId
+  const { results } = await dataOf(env).read.rows<{ id: string; attemptId: string | null }>`SELECT wa.id AS id, wa.attempt_id AS "attemptId"
          FROM worker_assignments wa
          JOIN workspace_runtime_identities ri ON ri.id = wa.runtime_identity_id
         WHERE wa.status IN ('revocation_pending', 'reconciling')
           AND ri.revoked_at IS NOT NULL
-          AND (?1::text IS NULL OR wa.execution_workspace_id = ?1)
-        LIMIT 100`,
-    )
-    .bind(executionWorkspaceId ?? null)
-    .all<{ id: string; attemptId: string | null }>();
+          AND (${executionWorkspaceId ?? null}::text IS NULL OR wa.execution_workspace_id = ${executionWorkspaceId ?? null})
+        LIMIT 100`;
   const finalized: string[] = [];
   for (const row of results ?? []) {
     try {
@@ -436,14 +418,10 @@ export async function deliverRevocation(
   const gateway = env.SYNTILA_WORKSPACE_GATEWAY;
   if (!gateway) return false;
   try {
-    const row = await env.SYNTILA_DB.prepare(
-      `SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id,
+    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id,
               run_id, task_id, attempt_id, idempotency_key, error_json
          FROM worker_assignments
-        WHERE id = ?1 AND status IN ('revocation_pending', 'reconciling')`,
-    )
-      .bind(assignmentId)
-      .first<RevokingAssignment>();
+        WHERE id = ${assignmentId} AND status IN ('revocation_pending', 'reconciling')`;
     if (!row) return false;
     // A replaced runtime identity can never acknowledge: finalize instead of
     // sending a command that the current Service ignores.
@@ -504,13 +482,9 @@ async function notifyServiceOfFence(
   const gateway = env.SYNTILA_WORKSPACE_GATEWAY;
   if (!gateway) return;
   try {
-    const row = await env.SYNTILA_DB.prepare(
-      `SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id,
+    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id,
               run_id, task_id, attempt_id, idempotency_key
-         FROM worker_assignments WHERE id = ?1`,
-    )
-      .bind(assignmentId)
-      .first<RevokingAssignment>();
+         FROM worker_assignments WHERE id = ${assignmentId}`;
     if (!row) return;
     const sent = gateway
       .get(gateway.idFromName(row.execution_workspace_id))

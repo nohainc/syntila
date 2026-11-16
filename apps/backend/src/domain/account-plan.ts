@@ -1,3 +1,4 @@
+import { dataOf } from "../platform/data.js";
 import { accountPlanRow } from "./queries.js";
 import { HttpError } from "./routes/http-security.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "./assignment-transitions.js";
@@ -57,11 +58,9 @@ export async function countOwnedWorkspaces(
   env: Env,
   userId: string,
 ): Promise<number> {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT COUNT(*) AS count FROM execution_workspaces WHERE owner_user_id = ?1 AND status != 'revoked'",
-  )
-    .bind(userId)
-    .first<{ count: number }>();
+  const row = await dataOf(env).read.row<{ count: number }>`
+    SELECT COUNT(*) AS count FROM execution_workspaces WHERE owner_user_id = ${userId} AND status != 'revoked'
+  `;
   return row?.count ?? 0;
 }
 
@@ -189,13 +188,19 @@ export async function spaceMemberCapacityRefused(
   spaceId: string,
   excludeInvitationId: string | null = null,
 ): Promise<boolean> {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT CASE WHEN ${spaceMemberAdmissionSql("?1", excludeInvitationId ? "?2" : null)}
-                 THEN 0 ELSE 1 END AS refused`,
-  )
-    .bind(...(excludeInvitationId ? [spaceId, excludeInvitationId] : [spaceId]))
-    .first<{ refused: number }>();
-  return row?.refused === 1;
+  const now = new Date();
+  const usage = await getSpaceMemberUsage(env, spaceId, now);
+  if (usage.limit === null) return false;
+  let pending = usage.pendingInvitations;
+  if (excludeInvitationId) {
+    const excluded = await dataOf(env).read.row`
+      SELECT 1 FROM space_invitations
+      WHERE id = ${excludeInvitationId} AND space_id = ${spaceId}
+        AND status = 'pending' AND expires_at > ${now.toISOString()}::timestamptz
+    `;
+    if (excluded) pending = Math.max(0, pending - 1);
+  }
+  return usage.members + pending >= usage.limit;
 }
 
 export interface SpaceMemberUsage {
@@ -210,24 +215,22 @@ export async function getSpaceMemberUsage(
   spaceId: string,
   now: Date = new Date(),
 ): Promise<SpaceMemberUsage> {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT (SELECT COUNT(*) FROM space_memberships WHERE space_id = ?1) AS members,
-            (SELECT COUNT(*) FROM space_invitations
-              WHERE space_id = ?1 AND status = 'pending'
-                AND expires_at > ?2::timestamptz) AS pending,
-            ap.tier AS tier, ap.status AS status,
-            ap.current_period_end AS current_period_end
-       FROM spaces s LEFT JOIN account_plans ap ON ap.user_id = s.owner_user_id
-      WHERE s.id = ?1`,
-  )
-    .bind(spaceId, now.toISOString())
-    .first<{
-      members: number;
-      pending: number;
-      tier: AccountTier | null;
-      status: AccountPlanStatus | null;
-      current_period_end: string | null;
-    }>();
+  const row = await dataOf(env).read.row<{
+    members: number;
+    pending: number;
+    tier: string | null;
+    status: string | null;
+    current_period_end: string | null;
+  }>`
+    SELECT (SELECT COUNT(*) FROM space_memberships WHERE space_id = ${spaceId}) AS members,
+           (SELECT COUNT(*) FROM space_invitations
+             WHERE space_id = ${spaceId} AND status = 'pending'
+               AND expires_at > ${now.toISOString()}::timestamptz) AS pending,
+           ap.tier AS tier, ap.status AS status,
+           ap.current_period_end AS current_period_end
+      FROM spaces s LEFT JOIN account_plans ap ON ap.user_id = s.owner_user_id
+     WHERE s.id = ${spaceId}
+  `;
   const tier = effectiveTier(
     row?.tier && row.status
       ? {

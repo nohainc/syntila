@@ -8,6 +8,7 @@ import {
   pluginExecutionOptions,
   spaceWorkerExecutionOptions,
 } from "./worker-execution-options.js";
+import { dataOf } from "../platform/data.js";
 import { pluginOwnerEntitledSql } from "./account-plan.js";
 import {
   PluginInventoryExecutorSchema,
@@ -153,12 +154,13 @@ export async function selectSpaceExecutionTarget(
   isWorkspaceLive?: WorkspaceLiveCheck,
   onRejection?: (reasons: readonly string[]) => void,
 ): Promise<ExecutionTarget | null> {
-  const membership = await db
-    .prepare(
-      `SELECT sm.role, s.settings_json AS settingsJson FROM space_memberships sm JOIN spaces s ON s.id = sm.space_id JOIN users u ON u.id = sm.user_id WHERE u.status = 'active' AND sm.space_id = ?1 AND sm.user_id = ?2`,
-    )
-    .bind(request.spaceId, request.requesterUserId)
-    .first<{ role: string; settingsJson: string }>();
+  const read = dataOf({ SYNTILA_DB: db }).read;
+  const membership = await read.row<{ role: string; settingsJson: string }>`
+    SELECT sm.role, s.settings_json AS "settingsJson"
+      FROM space_memberships sm
+      JOIN spaces s ON s.id = sm.space_id
+      JOIN users u ON u.id = sm.user_id
+     WHERE u.status = 'active' AND sm.space_id = ${request.spaceId} AND sm.user_id = ${request.requesterUserId}`;
   if (!membership) return null;
   const rights = spaceMemberPermissions(
     membership.role,
@@ -167,16 +169,11 @@ export async function selectSpaceExecutionTarget(
   );
   let workflowId = request.workBindingId === "chat" ? "chat" : "direct";
   if (request.workRequestId) {
-    const work = await db
-      .prepare(
-        "SELECT workflow_id AS workflowId, requested_by_user_id AS requesterUserId, thread_id AS threadId FROM work_requests WHERE id = ?1",
-      )
-      .bind(request.workRequestId)
-      .first<{
-        workflowId: string;
-        requesterUserId: string;
-        threadId: string;
-      }>();
+    const work = await read.row<{
+      workflowId: string;
+      requesterUserId: string;
+      threadId: string;
+    }>`SELECT workflow_id AS "workflowId", requested_by_user_id AS "requesterUserId", thread_id AS "threadId" FROM work_requests WHERE id = ${request.workRequestId}`;
     if (
       !work ||
       work.requesterUserId !== request.requesterUserId ||
@@ -188,14 +185,10 @@ export async function selectSpaceExecutionTarget(
   if (workflowId === "chat" ? !rights.chat : !rights.work) return null;
 
   if (request.threadId) {
-    const thread = await db
-      .prepare(
-        `SELECT ws.space_id, ws.lead_user_id, ws.access_policy_json
-           FROM threads ws
-          WHERE ws.id = ?1`,
-      )
-      .bind(request.threadId)
-      .first<Record<string, unknown>>();
+    const thread = await read.row<Record<string, unknown>>`
+      SELECT ws.space_id, ws.lead_user_id, ws.access_policy_json
+        FROM threads ws
+       WHERE ws.id = ${request.threadId}`;
     if (
       !thread ||
       typeof thread.space_id !== "string" ||
@@ -241,20 +234,16 @@ export async function selectSpaceExecutionTarget(
   } | null = null;
   if (executionClass === "stateful_thread") {
     if (!request.threadId || !request.workRequestId) return null;
-    statefulLease = await db
-      .prepare(
-        `SELECT wr.thread_id AS threadId, wr.id AS workRequestId,
-              wr.primary_workspace_id AS workspaceId,
-              l.id AS leaseId, l.fencing_token AS fencingToken
-       FROM work_requests wr
-       JOIN thread_runtime_leases l ON l.work_request_id = wr.id
-        AND l.thread_id = wr.thread_id AND l.status = 'active'
-       WHERE wr.id = ?1 AND wr.thread_id = ?2
+    statefulLease = await read.row<Record<string, unknown>>`
+      SELECT wr.thread_id AS "threadId", wr.id AS "workRequestId",
+             wr.primary_workspace_id AS "workspaceId",
+             l.id AS "leaseId", l.fencing_token AS "fencingToken"
+        FROM work_requests wr
+        JOIN thread_runtime_leases l ON l.work_request_id = wr.id
+         AND l.thread_id = wr.thread_id AND l.status = 'active'
+       WHERE wr.id = ${request.workRequestId} AND wr.thread_id = ${request.threadId}
          AND wr.mode = 'stateful' AND wr.status = 'running'
-       LIMIT 1`,
-      )
-      .bind(request.workRequestId, request.threadId)
-      .first<Record<string, unknown>>()
+       LIMIT 1`
       .then((row) => {
         if (!row) return null;
         return {
@@ -272,9 +261,9 @@ export async function selectSpaceExecutionTarget(
       return null;
   }
 
-  const candidateRows = await db
-    .prepare(
-      `SELECT g.id AS grant_id, g.space_id, g.workspace_id, g.status AS grant_status,
+  const candidateRows = await read
+    .rows<Row>`
+      SELECT g.id AS grant_id, g.space_id, g.workspace_id, g.status AS grant_status,
             g.allowed_worker_ids_json,
             g.allowed_permissions_json, g.network_policy_json,
             g.concurrency_json, g.expires_at,
@@ -307,7 +296,7 @@ export async function selectSpaceExecutionTarget(
             pe.manifest_digest AS plugin_pin_digest,
             pe.intent AS plugin_pin_intent,
             pe.shareable AS plugin_pin_shareable,
-            ${pluginOwnerEntitledSql("ew.owner_user_id")} AS plugin_owner_entitled,
+            ${read.raw(pluginOwnerEntitledSql("ew.owner_user_id"))} AS plugin_owner_entitled,
             i.provider_tool_name,
             i.provider_tool_version,
             i.model_catalog_json,
@@ -326,15 +315,15 @@ export async function selectSpaceExecutionTarget(
             (SELECT COUNT(*) FROM worker_assignments wa
              WHERE wa.execution_workspace_id = g.workspace_id
                AND wa.workspace_worker_id = i.worker_id
-               AND wa.status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})) AS active_assignments,
+               AND wa.status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})) AS active_assignments,
             (SELECT COUNT(*) FROM worker_assignments wa
              WHERE wa.execution_workspace_id = g.workspace_id
-               AND wa.status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})) AS workspace_active_assignments
+               AND wa.status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})) AS workspace_active_assignments
      FROM workspace_space_grants g
-     LEFT JOIN thread_execution_policies ep ON ep.thread_id = ?4
+     LEFT JOIN thread_execution_policies ep ON ep.thread_id = ${request.threadId ?? ""}
      JOIN execution_workspaces ew ON ew.id = g.workspace_id
      LEFT JOIN users owner_user ON owner_user.id = ew.owner_user_id
-     LEFT JOIN work_requests wr ON wr.id = ?5 AND wr.thread_id = ?4
+     LEFT JOIN work_requests wr ON wr.id = ${request.workRequestId ?? ""} AND wr.thread_id = ${request.threadId ?? ""}
      JOIN workspace_runtime_identities wri ON wri.workspace_id = ew.id AND wri.revoked_at IS NULL
      JOIN workspace_worker_inventory i ON i.workspace_id = ew.id
      JOIN worker_catalog catalog
@@ -352,25 +341,16 @@ export async function selectSpaceExecutionTarget(
        ON history.worker_type_id = i.worker_type_id
       AND history.revision = i.profile_release_version
      JOIN worker_scheduling vs ON vs.worker_id = i.worker_id
-     WHERE g.space_id = ?1 AND g.status = 'active'
-       AND (g.expires_at IS NULL OR g.expires_at > ?3)
+     WHERE g.space_id = ${request.spaceId} AND g.status = 'active'
+       AND (g.expires_at IS NULL OR g.expires_at > ${now.toISOString()})
        AND ew.status <> 'revoked'
        AND (catalog.origin = 'plugin'
             OR current_profile.worker_type_id IS NOT NULL
             OR history.worker_type_id IS NOT NULL)
-       ${isWorkspaceLive ? "" : "AND ew.status = 'online'"}
-     ORDER BY CASE WHEN i.owner_user_id = ?2 THEN 0 ELSE 1 END,
-              active_assignments, ew.id, i.worker_id`,
-    )
-    .bind(
-      request.spaceId,
-      request.requesterUserId,
-      now.toISOString(),
-      request.threadId ?? "",
-      request.workRequestId ?? "",
-    )
-    .all<Row>()
-    .catch(() => ({ results: [] as Row[] }));
+       ${isWorkspaceLive ? read.raw("") : read.raw("AND ew.status = 'online'")}
+     ORDER BY CASE WHEN i.owner_user_id = ${request.requesterUserId} THEN 0 ELSE 1 END,
+              active_assignments, ew.id, i.worker_id`
+    .catch(() => [] as Row[]);
 
   const excluded = new Set(request.excludeIndependenceKeys ?? []);
   const rejected: Array<Record<string, unknown>> = [];
@@ -392,7 +372,7 @@ export async function selectSpaceExecutionTarget(
       ? (raw as Record<string, unknown>)
       : {};
   };
-  const candidates = [...(candidateRows.results ?? [])].sort((left, right) => {
+  const candidates = [...candidateRows].sort((left, right) => {
     const preference = (row: Row): number => {
       const value = bindingFor(row);
       const preferred = [

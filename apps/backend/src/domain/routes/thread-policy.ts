@@ -39,6 +39,7 @@ import type { SecurityEnv } from "./http-security.js";
 import { authorizeRequest } from "./http-security.js";
 
 import { HttpError, parseJson } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 /** Thread configuration owns authored context, never global execution choices. */
 export function normalizeThreadWorkConfig(value: unknown): {
@@ -283,18 +284,14 @@ export function discussionReferences(value: unknown): readonly string[] {
 export type ThreadAccess = "view" | "discuss" | "execute" | "manage";
 
 async function loadThreadRow(env: SecurityEnv, threadId: string) {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT t.id, t.space_id AS spaceId, t.name, t.status,
-            t.access_policy_json AS accessPolicyJson, t.lead_user_id AS leadUserId,
-            t.is_general AS isGeneral,
-            t.created_at AS createdAt, t.updated_at AS updatedAt,
-            COALESCE(s.kind, 'group') AS spaceKind
+  const row = await dataOf(env).read.row<Record<string, unknown>>`SELECT t.id, t.space_id AS "spaceId", t.name, t.status,
+            t.access_policy_json AS "accessPolicyJson", t.lead_user_id AS "leadUserId",
+            t.is_general AS "isGeneral",
+            t.created_at AS "createdAt", t.updated_at AS "updatedAt",
+            COALESCE(s.kind, 'group') AS "spaceKind"
      FROM threads t
      JOIN spaces s ON s.id = t.space_id
-     WHERE t.id = ?1`,
-  )
-    .bind(threadId)
-    .first<Record<string, unknown>>();
+     WHERE t.id = ${threadId}`;
   if (!row) throw new HttpError(404, "Thread not found");
   return row;
 }
@@ -347,11 +344,7 @@ export async function authorizeThreadAccessAsUser(
   spaceId: string;
 }> {
   const row = await loadThreadRow(env, threadId);
-  const user = await env.SYNTILA_DB.prepare(
-    "SELECT id, email, display_name AS displayName, status FROM users WHERE id = ?1",
-  )
-    .bind(userId)
-    .first<AuthenticatedUser>();
+  const user = await dataOf(env).read.row<AuthenticatedUser>`SELECT id, email, display_name AS "displayName", status FROM users WHERE id = ${userId}`;
   if (!user) throw new HttpError(403, `Thread ${access} access is required`);
   const spaceId = String(row.spaceId);
   try {
@@ -382,13 +375,9 @@ async function threadAccessForContext(
   row: Record<string, unknown>,
   access: ThreadAccess,
 ) {
-  const membership = await env.SYNTILA_DB.prepare(
-    `SELECT id, space_id AS spaceId, user_id AS userId, role,
-            created_at AS createdAt, updated_at AS updatedAt
-     FROM space_memberships WHERE space_id = ?1 AND user_id = ?2`,
-  )
-    .bind(String(row.spaceId), context.userId)
-    .first<SpaceMembership>();
+  const membership = await dataOf(env).read.row<SpaceMembership>`SELECT id, space_id AS "spaceId", user_id AS "userId", role,
+            created_at AS "createdAt", updated_at AS "updatedAt"
+     FROM space_memberships WHERE space_id = ${String(row.spaceId)} AND user_id = ${context.userId}`;
   const policy = await loadSpacePermissions(
     env,
     context.userId,
@@ -554,65 +543,63 @@ export async function validateWorkflowWorkerEligibility(
       });
       continue;
     }
-    const row = await env.SYNTILA_DB.prepare(
-      `SELECT i.workspace_id AS workspaceId, i.worker_type_id AS workerTypeId,
-              i.activation_state AS activationState, i.readiness_state AS readinessState,
-              i.readiness_issue_code AS readinessIssueCode,
-              i.engine_version AS engineVersion,
-              COALESCE(i.profile_definition_id,
-                       CASE WHEN catalog.origin = 'plugin' THEN i.worker_type_id END)
-                AS profileDefinitionId,
-              COALESCE(i.profile_release_version,
-                       CASE WHEN catalog.origin = 'plugin' THEN 1 END)
-                AS profileReleaseVersion,
-              i.provider_tool_version AS providerToolVersion,
-              catalog.origin AS workerCatalogOrigin,
-              catalog.owner_user_id AS workerCatalogOwnerUserId,
-              ew.owner_user_id AS workspaceOwnerUserId,
-              i.executor_json AS executorJson,
-              pe.version AS pluginPinVersion,
-              pe.manifest_digest AS pluginPinDigest,
-              pe.intent AS pluginPinIntent,
-              ${pluginOwnerEntitledSql("ew.owner_user_id")} AS pluginOwnerEntitled,
-              COALESCE(currentProfile.profile_json, history.profile_json) AS executionProfileJson,
-              COALESCE(currentProfile.digest, history.digest) AS executionProfileDigest,
-              i.model_catalog_json AS modelCatalogJson,
-              catalog.lifecycle_state AS workerCatalogLifecycleState,
-              catalog.visibility_state AS workerCatalogVisibilityState,
-              catalog.display_name AS workerDisplayName,
-              vs.state AS schedulingState,
-              g.id AS grantId, g.status AS grantStatus, g.expires_at AS grantExpiresAt,
-              g.allowed_worker_ids_json AS allowedWorkerIdsJson,
-              g.allowed_permissions_json AS grantPermissionsJson,
-              ep.allowed_models_json AS allowedModelsJson,
-              ep.primary_workspace_id AS primaryWorkspaceId,
-              ep.allowed_worker_type_ids_json AS allowedThreadWorkerTypesJson,
-              ew.status AS workspaceStatus,
-              wri.id AS runtimeIdentityId
-         FROM workspace_worker_inventory i
-         LEFT JOIN worker_catalog catalog
-           ON catalog.worker_type_id = i.worker_type_id
-         LEFT JOIN worker_profiles currentProfile
-           ON currentProfile.worker_type_id = i.worker_type_id
-          AND currentProfile.revision = i.profile_release_version
-         LEFT JOIN worker_profile_history history
-           ON history.worker_type_id = i.worker_type_id
-          AND history.revision = i.profile_release_version
-         LEFT JOIN worker_scheduling vs ON vs.worker_id = i.worker_id
-         LEFT JOIN workspace_worker_plugin_enablements pe
-           ON pe.workspace_id = i.workspace_id AND pe.plugin_ref = i.worker_type_id
-         -- Revoked and expired grants stay as history; only a live grant
-         -- (active or suspended) may answer, never an older revoked row.
-         LEFT JOIN workspace_space_grants g
-           ON g.workspace_id = i.workspace_id AND g.space_id = ?2
-          AND g.status IN ('active','suspended')
-         LEFT JOIN thread_execution_policies ep ON ep.thread_id = ?3
-         LEFT JOIN execution_workspaces ew ON ew.id = i.workspace_id
-         LEFT JOIN workspace_runtime_identities wri ON wri.workspace_id = i.workspace_id AND wri.revoked_at IS NULL
-        WHERE i.worker_id = ?1`,
-    )
-      .bind(binding.workerId, spaceId, threadId)
-      .first<Record<string, unknown>>();
+    const read = dataOf(env).read;
+    const row = await read.row<Record<string, unknown>>`
+      SELECT i.workspace_id AS "workspaceId", i.worker_type_id AS "workerTypeId",
+             i.activation_state AS "activationState", i.readiness_state AS "readinessState",
+             i.readiness_issue_code AS "readinessIssueCode",
+             i.engine_version AS "engineVersion",
+             COALESCE(i.profile_definition_id,
+                      CASE WHEN catalog.origin = 'plugin' THEN i.worker_type_id END)
+               AS "profileDefinitionId",
+             COALESCE(i.profile_release_version,
+                      CASE WHEN catalog.origin = 'plugin' THEN 1 END)
+               AS "profileReleaseVersion",
+             i.provider_tool_version AS "providerToolVersion",
+             catalog.origin AS "workerCatalogOrigin",
+             catalog.owner_user_id AS "workerCatalogOwnerUserId",
+             ew.owner_user_id AS "workspaceOwnerUserId",
+             i.executor_json AS "executorJson",
+             pe.version AS "pluginPinVersion",
+             pe.manifest_digest AS "pluginPinDigest",
+             pe.intent AS "pluginPinIntent",
+             ${read.raw(pluginOwnerEntitledSql("ew.owner_user_id"))} AS "pluginOwnerEntitled",
+             COALESCE(currentProfile.profile_json, history.profile_json) AS "executionProfileJson",
+             COALESCE(currentProfile.digest, history.digest) AS "executionProfileDigest",
+             i.model_catalog_json AS "modelCatalogJson",
+             catalog.lifecycle_state AS "workerCatalogLifecycleState",
+             catalog.visibility_state AS "workerCatalogVisibilityState",
+             catalog.display_name AS "workerDisplayName",
+             vs.state AS "schedulingState",
+             g.id AS "grantId", g.status AS "grantStatus", g.expires_at AS "grantExpiresAt",
+             g.allowed_worker_ids_json AS "allowedWorkerIdsJson",
+             g.allowed_permissions_json AS "grantPermissionsJson",
+             ep.allowed_models_json AS "allowedModelsJson",
+             ep.primary_workspace_id AS "primaryWorkspaceId",
+             ep.allowed_worker_type_ids_json AS "allowedThreadWorkerTypesJson",
+             ew.status AS "workspaceStatus",
+             wri.id AS "runtimeIdentityId"
+        FROM workspace_worker_inventory i
+        LEFT JOIN worker_catalog catalog
+          ON catalog.worker_type_id = i.worker_type_id
+        LEFT JOIN worker_profiles currentProfile
+          ON currentProfile.worker_type_id = i.worker_type_id
+         AND currentProfile.revision = i.profile_release_version
+        LEFT JOIN worker_profile_history history
+          ON history.worker_type_id = i.worker_type_id
+         AND history.revision = i.profile_release_version
+        LEFT JOIN worker_scheduling vs ON vs.worker_id = i.worker_id
+        LEFT JOIN workspace_worker_plugin_enablements pe
+          ON pe.workspace_id = i.workspace_id AND pe.plugin_ref = i.worker_type_id
+        -- Revoked and expired grants stay as history; only a live grant
+        -- (active or suspended) may answer, never an older revoked row.
+        LEFT JOIN workspace_space_grants g
+          ON g.workspace_id = i.workspace_id AND g.space_id = ${spaceId}
+         AND g.status IN ('active','suspended')
+        LEFT JOIN thread_execution_policies ep ON ep.thread_id = ${threadId}
+        LEFT JOIN execution_workspaces ew ON ew.id = i.workspace_id
+        LEFT JOIN workspace_runtime_identities wri ON wri.workspace_id = i.workspace_id AND wri.revoked_at IS NULL
+       WHERE i.worker_id = ${binding.workerId}`;
     if (!row) {
       const code = "worker_missing";
       issues.push({

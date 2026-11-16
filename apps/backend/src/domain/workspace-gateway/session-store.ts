@@ -1,3 +1,5 @@
+import { dataOf } from "../../platform/data.js";
+
 type Database = Pick<D1Database, "prepare">;
 
 export interface WorkspaceRuntimeSessionRecord {
@@ -15,49 +17,21 @@ export class WorkspaceRuntimeSessionStore {
   constructor(private readonly db: Database) {}
 
   closeForRuntime(runtimeIdentityId: string, disconnectedAt: string) {
-    return this.db
-      .prepare(
-        "UPDATE workspace_sessions SET disconnected_at = ?1 WHERE runtime_identity_id = ?2 AND disconnected_at IS NULL",
-      )
-      .bind(disconnectedAt, runtimeIdentityId)
-      .run();
+    return dataOf({ SYNTILA_DB: this.db }).read.run`UPDATE workspace_sessions SET disconnected_at = ${disconnectedAt} WHERE runtime_identity_id = ${runtimeIdentityId} AND disconnected_at IS NULL`;
   }
 
   open(record: WorkspaceRuntimeSessionRecord) {
-    return this.db
-      .prepare(
-        `INSERT INTO workspace_sessions
+    return dataOf({ SYNTILA_DB: this.db }).read.run`INSERT INTO workspace_sessions
          (id, workspace_id, runtime_identity_id, client_version, protocol_version,
           ip_address, connected_at, last_heartbeat_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)`,
-      )
-      .bind(
-        record.sessionId,
-        record.workspaceId,
-        record.runtimeIdentityId,
-        record.clientVersion,
-        record.protocolVersion,
-        record.ipAddress ?? null,
-        record.connectedAt,
-      )
-      .run();
+         VALUES (${record.sessionId}, ${record.workspaceId}, ${record.runtimeIdentityId}, ${record.clientVersion}, ${record.protocolVersion}, ${record.ipAddress ?? null}, ${record.connectedAt}, ${record.connectedAt})`;
   }
 
   close(sessionId: string, disconnectedAt: string) {
-    return this.db
-      .prepare(
-        "UPDATE workspace_sessions SET disconnected_at = ?1 WHERE id = ?2 AND disconnected_at IS NULL",
-      )
-      .bind(disconnectedAt, sessionId)
-      .run();
+    return dataOf({ SYNTILA_DB: this.db }).read.run`UPDATE workspace_sessions SET disconnected_at = ${disconnectedAt} WHERE id = ${sessionId} AND disconnected_at IS NULL`;
   }
 
   touch(sessionId: string, at: string) {
-    return this.db
-      .prepare(
-        "UPDATE workspace_sessions SET last_heartbeat_at = ?1 WHERE id = ?2",
-      )
-      .bind(at, sessionId)
-      .run();
+    return dataOf({ SYNTILA_DB: this.db }).read.run`UPDATE workspace_sessions SET last_heartbeat_at = ${at} WHERE id = ${sessionId}`;
   }
 }

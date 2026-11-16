@@ -3,6 +3,7 @@ import {
   isProfileLabOwner,
 } from "./profile-lab-policy.js";
 import { isTrustedOrigin } from "../observability.js";
+import { dataOf } from "../../platform/data.js";
 import {
   identityService,
   provisionSyntilaUser,
@@ -93,41 +94,14 @@ export async function recordAudit(
     const spaceId =
       typeof details.spaceId === "string" ? details.spaceId : null;
     if (!spaceId) return;
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO space_audit_log
+    await dataOf(env).read.run`INSERT INTO space_audit_log
          (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-       VALUES (?1, ?2, 'user', ?3, ?4, ?5, ?6, ?7, ?8)`,
-    )
-      .bind(
-        `audit-${crypto.randomUUID()}`,
-        spaceId,
-        context.userId,
-        action,
-        targetType,
-        targetId,
-        JSON.stringify(details),
-        new Date().toISOString(),
-      )
-      .run();
+       VALUES (${`audit-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(details)}, ${new Date().toISOString()})`;
     return;
   }
-  const values = [
-    `audit-${crypto.randomUUID()}`,
-    auditWorkspaceId,
-    context.userId,
-    action,
-    targetType,
-    targetId,
-    JSON.stringify(details),
-    new Date().toISOString(),
-  ] as const;
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO workspace_audit_log
+  await dataOf(env).read.run`INSERT INTO workspace_audit_log
        (id, workspace_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-     VALUES (?1, ?2, 'user', ?3, ?4, ?5, ?6, ?7, ?8)`,
-  )
-    .bind(...values)
-    .run();
+     VALUES (${`audit-${crypto.randomUUID()}`}, ${auditWorkspaceId}, 'user', ${context.userId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(details)}, ${new Date().toISOString()})`;
 }
 
 export function errorMessage(error: unknown): string {
@@ -150,25 +124,15 @@ export async function resolveWorkflowInstanceId(
   runId: string,
   idempotencyKey?: string,
 ): Promise<string> {
-  const run = await env.SYNTILA_DB.prepare(
-    SELECT_RUNS_BY_ID,
-  )
-    .bind(runId)
-    .first<{ workflow_instance_id?: string | null }>();
+  const readRunWorkflowInstanceId = () =>
+    dataOf(env).read.row<{ workflow_instance_id?: string | null }>`SELECT workflow_instance_id FROM runs WHERE id = ${runId}`;
+  const run = await readRunWorkflowInstanceId();
   if (run?.workflow_instance_id) return run.workflow_instance_id;
   if (!idempotencyKey) return workflowInstanceId(runId);
   const candidate = workflowInstanceId(idempotencyKey);
   const now = new Date().toISOString();
-  await env.SYNTILA_DB.prepare(
-    "UPDATE runs SET workflow_instance_id = COALESCE(workflow_instance_id, ?1), updated_at = ?2 WHERE id = ?3",
-  )
-    .bind(candidate, now, runId)
-    .run();
-  const stored = await env.SYNTILA_DB.prepare(
-    SELECT_RUNS_BY_ID,
-  )
-    .bind(runId)
-    .first<{ workflow_instance_id?: string | null }>();
+  await dataOf(env).read.run`UPDATE runs SET workflow_instance_id = COALESCE(workflow_instance_id, ${candidate}), updated_at = ${now} WHERE id = ${runId}`;
+  const stored = await readRunWorkflowInstanceId();
   return stored?.workflow_instance_id ?? candidate;
 }
 

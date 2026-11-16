@@ -108,8 +108,10 @@ export function assignmentMilestoneSql(
   }
 }
 
+import type { Query } from "../platform/data.js";
+
 export async function transitionAssignment(
-  db: D1Database,
+  q: Query,
   input: AssignmentTransitionInput,
 ): Promise<AssignmentTransitionResult> {
   const { fence, to } = input;
@@ -118,14 +120,15 @@ export async function transitionAssignment(
     (status) => !input.onlyFrom || input.onlyFrom.includes(status),
   );
   if (sources.length === 0) {
-    return classify(db, input);
+    return classify(q, input);
   }
 
-  const values: unknown[] = [to, now, fence.assignmentId];
-  if (input.errorJson !== undefined) values.push(input.errorJson);
-  const errorSql = input.errorJson !== undefined ? ", error_json = ?4" : "";
-  const milestoneSql = assignmentMilestoneSql(to);
-  let fenceSql = "";
+  const errorFrag =
+    input.errorJson !== undefined
+      ? q.frag`, error_json = ${input.errorJson}`
+      : q.frag``;
+  const milestoneFrag = q.raw(assignmentMilestoneSql(to));
+  const fenceFrags: ReturnType<typeof q.frag>[] = [];
   const fenced: Array<[string, string | undefined]> = [
     ["attempt_id", fence.attemptId],
     ["execution_workspace_id", fence.executionWorkspaceId],
@@ -133,24 +136,20 @@ export async function transitionAssignment(
   ];
   for (const [column, value] of fenced) {
     if (value === undefined) continue;
-    values.push(value);
-    fenceSql += ` AND ${column} = ?${values.length}`;
+    fenceFrags.push(q.frag` AND ${q.raw(column)} = ${value}`);
   }
-  const sourceSql = sources.map((status) => `'${status}'`).join(", ");
-  // D1 `meta.changes` also counts writes made by triggers, so the only
-  // reliable signal that this statement changed the row is RETURNING.
-  const returned = await db
-    .prepare(
-      `UPDATE worker_assignments SET status = ?1, updated_at = ?2${errorSql}${milestoneSql}
-        WHERE id = ?3 AND status IN (${sourceSql})${fenceSql}
-        RETURNING id`,
-    )
-    .bind(...values)
-    .first<{ id: string }>();
+  const fenceFrag = fenceFrags.length
+    ? fenceFrags.reduce((acc, f) => q.frag`${acc}${f}`)
+    : q.frag``;
+  const returned = await q.row<{ id: string }>`
+    UPDATE worker_assignments SET status = ${to}, updated_at = ${now}${errorFrag}${milestoneFrag}
+    WHERE id = ${fence.assignmentId} AND status IN ${q.list(sources)}${fenceFrag}
+    RETURNING id
+  `;
   const result: AssignmentTransitionResult =
     returned?.id === fence.assignmentId
       ? { outcome: "applied", applied: true }
-      : await classify(db, input);
+      : await classify(q, input);
   if (
     input.startTaskId &&
     to === "running" &&
@@ -159,38 +158,32 @@ export async function transitionAssignment(
     // Idempotent and gated on the assignment actually being Running, so a
     // replay repairs a projection that a crash left behind but a terminal
     // or superseded assignment can never start its task.
-    await db
-      .prepare(
-        `UPDATE workflow_tasks SET status = 'running',
-                started_at = COALESCE(started_at, ?1), updated_at = ?1
-           WHERE id = ?2 AND status IN ('queued', 'waiting')
-             AND EXISTS (SELECT 1 FROM worker_assignments
-                          WHERE id = ?3 AND status = 'running')`,
-      )
-      .bind(now, input.startTaskId, fence.assignmentId)
-      .run();
+    await q.run`
+      UPDATE workflow_tasks SET status = 'running',
+              started_at = COALESCE(started_at, ${now}), updated_at = ${now}
+         WHERE id = ${input.startTaskId} AND status IN ('queued', 'waiting')
+           AND EXISTS (SELECT 1 FROM worker_assignments
+                        WHERE id = ${fence.assignmentId} AND status = 'running')
+    `;
   }
   return result;
 }
 
 async function classify(
-  db: D1Database,
+  q: Query,
   input: AssignmentTransitionInput,
 ): Promise<AssignmentTransitionResult> {
   const applied = false;
   const { fence, to } = input;
-  const row = await db
-    .prepare(
-      `SELECT status, attempt_id, execution_workspace_id, runtime_identity_id
-         FROM worker_assignments WHERE id = ?1`,
-    )
-    .bind(fence.assignmentId)
-    .first<{
-      status: string;
-      attempt_id: string | null;
-      execution_workspace_id: string;
-      runtime_identity_id: string;
-    }>();
+  const row = await q.row<{
+    status: string;
+    attempt_id: string | null;
+    execution_workspace_id: string;
+    runtime_identity_id: string;
+  }>`
+    SELECT status, attempt_id, execution_workspace_id, runtime_identity_id
+       FROM worker_assignments WHERE id = ${fence.assignmentId}
+  `;
   if (!row) return { outcome: "not_found", applied };
   const currentStatus = row.status;
   if (

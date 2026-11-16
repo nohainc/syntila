@@ -10,6 +10,7 @@ import {
   storeWorkRequestFile,
 } from "./work-request-files.js";
 import { getAttachmentLimits } from "../account-plan.js";
+import { dataOf } from "../../platform/data.js";
 
 /**
  * Worker output files: files a Worker produced for the user. The
@@ -56,25 +57,21 @@ export async function handleUploadWorkerOutputImage(
   if (!assignmentId) throw new HttpError(400, "assignmentId is required");
   // Workflow-dispatched assignments leave `thread_id` empty; their Thread
   // comes from the Work Request of the assignment's conversation turn.
-  const assignment = await env.SYNTILA_DB.prepare(
-    `SELECT COALESCE(NULLIF(wa.thread_id, ''), wr.thread_id) AS threadId,
-            wa.status, t.space_id AS spaceId, s.owner_user_id AS ownerUserId
+  const assignment = await dataOf(env).read.row<{
+    threadId: string | null;
+    status: string;
+    spaceId: string;
+    ownerUserId: string;
+  }>`SELECT COALESCE(NULLIF(wa.thread_id, ''), wr.thread_id) AS "threadId",
+            wa.status, t.space_id AS "spaceId", s.owner_user_id AS "ownerUserId"
        FROM worker_assignments wa
        LEFT JOIN conversation_turns ct ON ct.assignment_id = wa.id
        LEFT JOIN work_requests wr
          ON wr.id = COALESCE(NULLIF(wa.work_request_id, ''), ct.work_request_id)
        JOIN threads t ON t.id = COALESCE(NULLIF(wa.thread_id, ''), wr.thread_id)
        JOIN spaces s ON s.id = t.space_id
-      WHERE wa.id = ?1 AND wa.execution_workspace_id = ?2
-      LIMIT 1`,
-  )
-    .bind(assignmentId, workspaceId)
-    .first<{
-      threadId: string | null;
-      status: string;
-      spaceId: string;
-      ownerUserId: string;
-    }>();
+      WHERE wa.id = ${assignmentId} AND wa.execution_workspace_id = ${workspaceId}
+      LIMIT 1`;
   if (!assignment?.threadId) throw new HttpError(404, "Assignment not found");
   if (
     isTerminalAssignmentStatus(assignment.status as AssignmentLifecycleStatus)

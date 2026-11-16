@@ -65,18 +65,13 @@ export async function resolveReplyReference(
   const notFound = () =>
     new HttpError(400, "The message you replied to is not in this Thread");
   if (kind === "message") {
-    const row = await db
-      .prepare(
-        `SELECT dm.body, dm.kind, dm.event_type AS eventType,
-                dm.attachments_json AS attachmentsJson,
-                dm.worker_display_name AS workerDisplayName,
-                COALESCE(u.display_name, 'Member') AS authorName
+    const row = await dataOf(env).read.row<Record<string, string | null>>`SELECT dm.body, dm.kind, dm.event_type AS "eventType",
+                dm.attachments_json AS "attachmentsJson",
+                dm.worker_display_name AS "workerDisplayName",
+                COALESCE(u.display_name, 'Member') AS "authorName"
            FROM discussion_messages dm
            LEFT JOIN users u ON u.id = dm.author_user_id
-          WHERE dm.id = ?1 AND dm.thread_id = ?2`,
-      )
-      .bind(id, threadId)
-      .first<Record<string, string | null>>();
+          WHERE dm.id = ${id} AND dm.thread_id = ${threadId}`;
     if (!row) throw notFound();
     if (row.eventType)
       throw new HttpError(400, "You cannot reply to a removed message");
@@ -92,16 +87,11 @@ export async function resolveReplyReference(
       excerpt: excerpt(text),
     };
   }
-  const request = await db
-    .prepare(
-      `SELECT wr.input_json AS inputJson,
-              COALESCE(u.display_name, 'Member') AS authorName
+  const request = await dataOf(env).read.row<{ inputJson: string; authorName: string }>`SELECT wr.input_json AS "inputJson",
+              COALESCE(u.display_name, 'Member') AS "authorName"
          FROM work_requests wr
          LEFT JOIN users u ON u.id = wr.requested_by_user_id
-        WHERE wr.id = ?1 AND wr.thread_id = ?2`,
-    )
-    .bind(id, threadId)
-    .first<{ inputJson: string; authorName: string }>();
+        WHERE wr.id = ${id} AND wr.thread_id = ${threadId}`;
   if (!request) throw notFound();
   if (kind === "request") {
     const input = parseJson<Record<string, unknown>>(request.inputJson, {});
@@ -112,17 +102,12 @@ export async function resolveReplyReference(
       ).trim() || attachmentSummary(input.attachments);
     return { kind, id, authorName: request.authorName, excerpt: excerpt(text) };
   }
-  const task = await db
-    .prepare(
-      `SELECT wt.output_json AS outputJson, catalog.display_name AS workerName
+  const task = await dataOf(env).read.row<{ outputJson: string | null; workerName: string | null }>`SELECT wt.output_json AS "outputJson", catalog.display_name AS "workerName"
          FROM workflow_tasks wt
          LEFT JOIN worker_catalog catalog
            ON catalog.worker_type_id = (wt.output_json::jsonb #>> '{workerTypeId}')
-        WHERE wt.work_request_id = ?1 AND wt.status = 'completed'
-        ORDER BY wt.updated_at DESC, wt.id DESC LIMIT 1`,
-    )
-    .bind(id)
-    .first<{ outputJson: string | null; workerName: string | null }>();
+        WHERE wt.work_request_id = ${id} AND wt.status = 'completed'
+        ORDER BY wt.updated_at DESC, wt.id DESC LIMIT 1`;
   const output = parseJson<Record<string, unknown>>(task?.outputJson, {});
   const text = typeof output.text === "string" ? output.text.trim() : "";
   if (!text)

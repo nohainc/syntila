@@ -50,27 +50,36 @@ import {
   threadMetadata,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
+import { dataOf } from "../../platform/data.js";
 
-const SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID =
-  `SELECT id, space_id AS spaceId, user_id AS userId, role,
-            created_at AS createdAt, updated_at AS updatedAt
-       FROM space_memberships WHERE space_id = ?1 AND user_id = ?2`;
+async function spaceMembershipRow(env: SecurityEnv, spaceId: string, userId: string) {
+  return dataOf(env).read.row<SpaceMembership>`SELECT id, space_id AS "spaceId", user_id AS "userId", role,
+            created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM space_memberships WHERE space_id = ${spaceId} AND user_id = ${userId}`;
+}
 
-const SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO =
-  `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId,
-            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = ds.space_id) AS isSupport
+async function directSpaceConnection(env: SecurityEnv, spaceId: string) {
+  return dataOf(env).read.row<{
+    status: string | null;
+    userLowId: string;
+    userHighId: string;
+    isSupport: number;
+  }>`SELECT pc.status, ds.user_low_id AS "userLowId", ds.user_high_id AS "userHighId",
+            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = ds.space_id) AS "isSupport"
      FROM direct_spaces ds
      LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
-     WHERE ds.space_id = ?1`;
+     WHERE ds.space_id = ${spaceId}`.catch(() => null);
+}
 
-const SELECT_DISCUSSION_MESSAGES_BY_ID =
-  `SELECT dm.id, dm.thread_id AS threadId, dm.author_user_id AS authorUserId,
-      COALESCE(u.display_name, 'Member') AS authorName,
-      dm.body, dm.attachments_json AS attachmentsJson, dm.references_json AS referencesJson, dm.reply_to_json AS replyToJson, dm.edited_at AS editedAt, dm.created_at AS createdAt,
-            dm.event_type AS eventType, dm.kind, dm.work_request_id AS workRequestId, dm.worker_display_name AS workerDisplayName
+async function discussionMessageById(env: SecurityEnv, messageId: string) {
+  return dataOf(env).read.row<Record<string, unknown>>`SELECT dm.id, dm.thread_id AS "threadId", dm.author_user_id AS "authorUserId",
+      COALESCE(u.display_name, 'Member') AS "authorName",
+      dm.body, dm.attachments_json AS "attachmentsJson", dm.references_json AS "referencesJson", dm.reply_to_json AS "replyToJson", dm.edited_at AS "editedAt", dm.created_at AS "createdAt",
+            dm.event_type AS "eventType", dm.kind, dm.work_request_id AS "workRequestId", dm.worker_display_name AS "workerDisplayName"
      FROM discussion_messages dm
      LEFT JOIN users u ON u.id = dm.author_user_id
-     WHERE dm.id = ?1`;
+     WHERE dm.id = ${messageId}`;
+}
 
 export async function handleListSpaceThreads(
   request: Request,
@@ -85,18 +94,19 @@ export async function handleListSpaceThreads(
     spaceId,
     accessContext,
   );
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT threads.id, threads.space_id AS spaceId,
-            threads.name, threads.status, threads.has_other_contributions AS hasOtherContributions,
-            threads.is_general AS isGeneral,
-            threads.access_policy_json AS accessPolicyJson,
-            usage.config_json AS workConfigJson,
-            threads.metadata_json AS metadataJson,
-            threads.lead_user_id AS leadUserId,
-            lead.display_name AS leadDisplayName,
-            creator.email AS creatorEmail,
-            CASE WHEN threads.lead_user_id = space.owner_user_id THEN 1 ELSE 0 END AS creatorIsOwner,
-            threads.created_at AS createdAt, ${lastThreadActivitySql("threads")} AS updatedAt,
+  const read = dataOf(env).read;
+  const rows = await read.rows<Record<string, unknown>>`
+    SELECT threads.id, threads.space_id AS "spaceId",
+            threads.name, threads.status, threads.has_other_contributions AS "hasOtherContributions",
+            threads.is_general AS "isGeneral",
+            threads.access_policy_json AS "accessPolicyJson",
+            usage.config_json AS "workConfigJson",
+            threads.metadata_json AS "metadataJson",
+            threads.lead_user_id AS "leadUserId",
+            lead.display_name AS "leadDisplayName",
+            creator.email AS "creatorEmail",
+            CASE WHEN threads.lead_user_id = space.owner_user_id THEN 1 ELSE 0 END AS "creatorIsOwner",
+            threads.created_at AS "createdAt", ${read.raw(lastThreadActivitySql("threads"))} AS "updatedAt",
             COALESCE((SELECT text FROM (SELECT m.body AS text,
                        CASE WHEN m.kind = 'ai_answer' THEN COALESCE(m.worker_display_name, 'AI')
                             ELSE COALESCE(u.display_name, 'Member') END AS author,
@@ -130,39 +140,32 @@ export async function handleListSpaceThreads(
                   JOIN conversations c ON c.id = h.conversation_id
                   LEFT JOIN users u ON h.actor_type = 'user' AND u.id = h.actor_id
                  WHERE c.thread_id = threads.id AND h.text IS NOT NULL
-                   AND h.kind IN ('user_message', 'worker_response')) ORDER BY sentAt DESC, source DESC, text DESC, author DESC LIMIT 1) AS briefAuthorName,
-            ${activeWorkSql("threads")} AS hasActiveWork,
-            ${unreadSql("threads", "?2", "COALESCE(read_state.read_at, member.created_at)")} AS hasUnread,
+                   AND h.kind IN ('user_message', 'worker_response')) ORDER BY sentAt DESC, source DESC, text DESC, author DESC LIMIT 1) AS "briefAuthorName",
+            ${read.raw(activeWorkSql("threads"))} AS "hasActiveWork",
+            ${read.raw(unreadSql("threads", "member.user_id", "COALESCE(read_state.read_at, member.created_at)"))} AS "hasUnread",
             (SELECT up.pinned_at FROM user_pins up
-              WHERE up.user_id = ?2 AND up.kind = 'thread'
-                AND up.target_id = threads.id) AS pinnedAt,
+              WHERE up.user_id = ${context.userId} AND up.kind = 'thread'
+                AND up.target_id = threads.id) AS "pinnedAt",
             (SELECT up.position FROM user_pins up
-              WHERE up.user_id = ?2 AND up.kind = 'thread'
-                AND up.target_id = threads.id) AS pinPosition
+              WHERE up.user_id = ${context.userId} AND up.kind = 'thread'
+                AND up.target_id = threads.id) AS "pinPosition"
      FROM threads
      JOIN spaces space ON space.id = threads.space_id
      LEFT JOIN users lead ON lead.id = threads.lead_user_id
      LEFT JOIN users creator ON creator.id = threads.lead_user_id
      LEFT JOIN thread_work_configs usage ON usage.thread_id = threads.id
      LEFT JOIN thread_read_states read_state
-       ON read_state.thread_id = threads.id AND read_state.user_id = ?2
+       ON read_state.thread_id = threads.id AND read_state.user_id = ${context.userId}
      LEFT JOIN space_memberships member
-       ON member.space_id = threads.space_id AND member.user_id = ?2
-     WHERE threads.space_id = ?1 ORDER BY updatedAt DESC, threads.id DESC`,
-  )
-    .bind(spaceId, context.userId)
-    .all<Record<string, unknown>>();
+       ON member.space_id = threads.space_id AND member.user_id = ${context.userId}
+     WHERE threads.space_id = ${spaceId} ORDER BY "updatedAt" DESC, threads.id DESC`;
 
-  const membership = await env.SYNTILA_DB.prepare(
-    SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID,
-  )
-    .bind(spaceId, context.userId)
-    .first<SpaceMembership>();
+  const membership = await spaceMembershipRow(env, spaceId, context.userId);
   const policy = await loadSpacePermissions(env, context.userId, spaceId);
   const effectiveMembership = membership
     ? { ...membership, permissions: policy.rights }
     : null;
-  const raw = (rows.results ?? []).map((row) => {
+  const raw = rows.map((row) => {
     const leadUserId = String(row.leadUserId ?? "");
     const createdAt = String(row.createdAt ?? "");
     const thread: Thread = {
@@ -222,19 +225,9 @@ export async function handleCreateThread(
     spaceId,
     "manageOwnThreads",
   );
-  const directSpace = await env.SYNTILA_DB.prepare(
-    SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO,
-  )
-    .bind(spaceId)
-    .first<{
-      status: string | null;
-      userLowId: string;
-      userHighId: string;
-      isSupport: number;
-    }>()
-    .catch(() => null);
+  const directSpace = await directSpaceConnection(env, spaceId);
   if (directSpace) {
-    const isBlocked = await usersBlocked(env.SYNTILA_DB, directSpace.userLowId, directSpace.userHighId);
+    const isBlocked = await usersBlocked(env, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }
@@ -248,7 +241,7 @@ export async function handleCreateThread(
   const body = await readBody(request, CreateThreadSchema);
   const receipt = await MutationIdempotency.from(
     request,
-    env.SYNTILA_DB,
+    dataOf(env).read,
     context.userId,
     `space:${spaceId}:create-thread`,
     body,
@@ -256,13 +249,9 @@ export async function handleCreateThread(
   const replay = await receipt?.replay();
   if (replay) return replay;
   const name = requiredString(body.name, "name");
-  const duplicate = await env.SYNTILA_DB.prepare(
-    `SELECT id FROM threads
-     WHERE space_id = ?1 AND LOWER(TRIM(name)) = LOWER(TRIM(?2))
-     LIMIT 1`,
-  )
-    .bind(spaceId, name)
-    .first<{ id: string }>();
+  const duplicate = await dataOf(env).read.row<{ id: string }>`SELECT id FROM threads
+     WHERE space_id = ${spaceId} AND LOWER(TRIM(name)) = LOWER(TRIM(${name}))
+     LIMIT 1`;
   if (duplicate) {
     const concurrentReplay = await receipt?.replay();
     if (concurrentReplay) return concurrentReplay;
@@ -274,11 +263,6 @@ export async function handleCreateThread(
     typeof body.accessPolicy === "object" && body.accessPolicy !== null
       ? body.accessPolicy
       : DEFAULT_THREAD_ACCESS_POLICY;
-  const mutation = env.SYNTILA_DB.prepare(
-    `INSERT INTO threads
-       (id, space_id, name, status, access_policy_json, lead_user_id, created_at, updated_at)
-       VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?6)`,
-  ).bind(id, spaceId, name, JSON.stringify(accessPolicy), context.userId, now);
   const response = {
     thread: {
       canConfigureWork: true,
@@ -301,14 +285,23 @@ export async function handleCreateThread(
       ),
     },
   };
-  const write = (receipts: D1PreparedStatement[]) =>
-    publishCollaborationEvent(env, "thread.created", spaceId, id, {
+  let concurrentReplay: Response | null = null;
+  try {
+    await publishCollaborationEvent(env, "thread.created", spaceId, id, {
       threadId: id,
-      mutations: [...receipts, mutation],
+      tx: async (tx) => {
+        await tx.run`
+          INSERT INTO threads
+            (id, space_id, name, status, access_policy_json, lead_user_id, created_at, updated_at)
+            VALUES (${id}, ${spaceId}, ${name}, 'active', ${JSON.stringify(accessPolicy)}, ${context.userId}, ${now}, ${now})
+        `;
+        if (receipt) await receipt.record(tx, response, 201);
+      },
     });
-  const concurrentReplay = receipt
-    ? await receipt.commit(response, 201, write)
-    : (await write([]), null);
+  } catch (error) {
+    if (receipt) concurrentReplay = await receipt.replayOnConflict(error);
+    if (!concurrentReplay) throw error;
+  }
   return concurrentReplay ?? json(response, { status: 201 });
 }
 
@@ -342,7 +335,7 @@ export async function handleUpdateThread(
       accessContext,
     );
 
-  const isDirectGeneral = await directSpaceOfGeneralThread(env.SYNTILA_DB, threadId);
+  const isDirectGeneral = await directSpaceOfGeneralThread(env, threadId);
   if (isDirectGeneral) {
     if (body.name !== undefined && body.name !== thread.name) {
       throw new HttpError(
@@ -358,7 +351,7 @@ export async function handleUpdateThread(
     }
   }
 
-  const space = await spaceKind(env.SYNTILA_DB, thread.spaceId);
+  const space = await spaceKind(env, thread.spaceId);
   if (space?.kind === "direct" && !isDirectGeneral) {
     if (thread.lead.userId !== context.userId) {
       throw new HttpError(
@@ -395,14 +388,10 @@ export async function handleUpdateThread(
     metadataPatch !== undefined &&
     Object.keys(body).every((key) => key === "metadata");
   if (name.trim().toLowerCase() !== thread.name.trim().toLowerCase()) {
-    const duplicate = await env.SYNTILA_DB.prepare(
-      `SELECT id FROM threads
-       WHERE space_id = ?1 AND id <> ?2
-         AND LOWER(TRIM(name)) = LOWER(TRIM(?3))
-       LIMIT 1`,
-    )
-      .bind(thread.spaceId, threadId, name)
-      .first<{ id: string }>();
+    const duplicate = await dataOf(env).read.row<{ id: string }>`SELECT id FROM threads
+       WHERE space_id = ${thread.spaceId} AND id <> ${threadId}
+         AND LOWER(TRIM(name)) = LOWER(TRIM(${name}))
+       LIMIT 1`;
     if (duplicate) {
       throw new HttpError(
         409,
@@ -412,65 +401,12 @@ export async function handleUpdateThread(
   }
   const now = new Date().toISOString();
   const updatedAt = metadataOnly ? thread.updatedAt : now;
-  const mutations: D1PreparedStatement[] = [];
-  mutations.push(
-    env.SYNTILA_DB.prepare(
-      `UPDATE threads
-     SET name = ?1, status = ?2, access_policy_json = ?3, updated_at = ?4,
-         metadata_json = syntila_json_patch(metadata_json, ?6)
-     WHERE id = ?5`,
-    ).bind(
-      name,
-      status,
-      JSON.stringify(accessPolicy),
-      updatedAt,
-      threadId,
-      JSON.stringify(metadataPatch ?? {}),
-    ),
-  );
-  if (
-    status !== thread.status &&
-    (status === "archived" || thread.status === "archived")
-  ) {
-    mutations.push(
-      threadNotice(
-        env,
-        threadId,
-        context.userId,
-        context.user.displayName || "Member",
-        status === "archived" ? "thread.archived" : "thread.restored",
-        status === "archived"
-          ? "archived this thread."
-          : "restored this thread.",
-        now,
-      ),
-    );
-  }
-  if (workConfig !== undefined) {
-    mutations.push(
-      env.SYNTILA_DB.prepare(
-        `INSERT INTO thread_work_configs
-         (thread_id, config_json, updated_by_user_id, updated_at)
-       VALUES (?1, ?2, ?3, ?4)
-       ON CONFLICT(thread_id) DO UPDATE SET config_json = excluded.config_json,
-         updated_by_user_id = excluded.updated_by_user_id, updated_at = excluded.updated_at`,
-      ).bind(threadId, JSON.stringify(workConfig), context.userId, now),
-    );
-  }
   const savedWorkConfigJson =
     workConfig === undefined
-      ? await env.SYNTILA_DB.prepare(
-          "SELECT config_json FROM thread_work_configs WHERE thread_id = ?1",
-        )
-          .bind(threadId)
-          .first<{ config_json: string }>()
+      ? await dataOf(env).read.row<{ config_json: string }>`SELECT config_json FROM thread_work_configs WHERE thread_id = ${threadId}`
           .then((row) => row?.config_json)
       : JSON.stringify(workConfig);
-  const savedMetadataJson = await env.SYNTILA_DB.prepare(
-    "SELECT metadata_json FROM threads WHERE id = ?1",
-  )
-    .bind(threadId)
-    .first<{ metadata_json: string }>()
+  const savedMetadataJson = await dataOf(env).read.row<{ metadata_json: string }>`SELECT metadata_json FROM threads WHERE id = ${threadId}`
     .then((row) => {
       const current = parseJson<Record<string, unknown>>(
         row?.metadata_json,
@@ -478,21 +414,13 @@ export async function handleUpdateThread(
       );
       return JSON.stringify(mergeMetadata(current, metadataPatch ?? {}));
     });
-  const member = await env.SYNTILA_DB.prepare(
-    SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID,
-  )
-    .bind(thread.spaceId, context.userId)
-    .first<SpaceMembership>();
+  const member = await spaceMembershipRow(env, thread.spaceId, context.userId);
   const policy = await loadSpacePermissions(
     env,
     context.userId,
     thread.spaceId,
   );
-  const creator = await env.SYNTILA_DB.prepare(
-    "SELECT u.email, s.owner_user_id AS ownerUserId FROM users u JOIN spaces s ON s.id = ?1 WHERE u.id = ?2",
-  )
-    .bind(thread.spaceId, thread.lead.userId)
-    .first<{ email: string; ownerUserId: string }>();
+  const creator = await dataOf(env).read.row<{ email: string; ownerUserId: string }>`SELECT u.email, s.owner_user_id AS "ownerUserId" FROM users u JOIN spaces s ON s.id = ${thread.spaceId} WHERE u.id = ${thread.lead.userId}`;
   const updatedThread: Thread = {
     ...thread,
     name,
@@ -505,7 +433,42 @@ export async function handleUpdateThread(
     "thread.updated",
     thread.spaceId,
     threadId,
-    { threadId, mutations },
+    {
+      threadId,
+      tx: async (tx) => {
+        await tx.run`
+          UPDATE threads
+          SET name = ${name}, status = ${status}, access_policy_json = ${JSON.stringify(accessPolicy)}, updated_at = ${updatedAt},
+              metadata_json = syntila_json_patch(metadata_json, ${JSON.stringify(metadataPatch ?? {})})
+          WHERE id = ${threadId}
+        `;
+        if (
+          status !== thread.status &&
+          (status === "archived" || thread.status === "archived")
+        ) {
+          await threadNotice(
+            tx,
+            threadId,
+            context.userId,
+            context.user.displayName || "Member",
+            status === "archived" ? "thread.archived" : "thread.restored",
+            status === "archived"
+              ? "archived this thread."
+              : "restored this thread.",
+            now,
+          );
+        }
+        if (workConfig !== undefined) {
+          await tx.run`
+            INSERT INTO thread_work_configs
+              (thread_id, config_json, updated_by_user_id, updated_at)
+            VALUES (${threadId}, ${JSON.stringify(workConfig)}, ${context.userId}, ${now})
+            ON CONFLICT(thread_id) DO UPDATE SET config_json = excluded.config_json,
+              updated_by_user_id = excluded.updated_by_user_id, updated_at = excluded.updated_at
+          `;
+        }
+      },
+    },
   );
   return json({
     thread: {
@@ -530,11 +493,7 @@ export async function handleUpdateThread(
         policy.role === "owner" ||
         (thread.lead.userId === context.userId &&
           (
-            await env.SYNTILA_DB.prepare(
-              "SELECT has_other_contributions AS contributed FROM threads WHERE id = ?1",
-            )
-              .bind(threadId)
-              .first<{ contributed: number }>()
+            await dataOf(env).read.row<{ contributed: number }>`SELECT has_other_contributions AS contributed FROM threads WHERE id = ${threadId}`
           )?.contributed === 0),
       canConfigureWork: canManageThread(
         context.userId,
@@ -565,14 +524,14 @@ export async function handleDeleteThread(
     accessContext,
   );
   await requireDestructiveThreadAccess(env, threadId, context.userId);
-  const isDirectGeneral = await directSpaceOfGeneralThread(env.SYNTILA_DB, threadId);
+  const isDirectGeneral = await directSpaceOfGeneralThread(env, threadId);
   if (isDirectGeneral) {
     throw new HttpError(
       403,
       "The default General Thread of a Direct Space cannot be deleted",
     );
   }
-  const active = await activeWorkCount(env.SYNTILA_DB, threadId);
+  const active = await activeWorkCount(env, threadId);
   if (active && active.count > 0)
     throw new HttpError(
       409,
@@ -580,13 +539,12 @@ export async function handleDeleteThread(
     );
   // Everything that belongs to the Thread (Work Requests, tasks, Worker
   // assignments, Runs, conversations, messages) is removed by cascade.
-  const mutations = [
-    destructiveThreadGuard(env, threadId, context.userId),
-    env.SYNTILA_DB.prepare("DELETE FROM threads WHERE id = ?1").bind(threadId),
-  ];
   await publishCollaborationEvent(env, "thread.deleted", spaceId, threadId, {
     threadId,
-    mutations,
+    tx: async (tx) => {
+      await destructiveThreadGuard(tx, threadId, context.userId);
+      await tx.run`DELETE FROM threads WHERE id = ${threadId}`;
+    },
   });
   return json({ ok: true, threadId });
 }
@@ -649,23 +607,23 @@ export async function handleListDiscussionMessages(
   const forward = after !== null;
   const comparison = forward ? ">" : "<";
   const order = forward ? "ASC" : "DESC";
-  const statement = env.SYNTILA_DB.prepare(
-    `SELECT dm.id, dm.thread_id AS threadId, dm.author_user_id AS authorUserId,
-            COALESCE(u.display_name, 'Member') AS authorName,
-            dm.body, dm.attachments_json AS attachmentsJson, dm.references_json AS referencesJson, dm.reply_to_json AS replyToJson, dm.edited_at AS editedAt, dm.created_at AS createdAt,
-            dm.event_type AS eventType, dm.kind, dm.work_request_id AS workRequestId, dm.worker_display_name AS workerDisplayName
-     FROM discussion_messages dm
-     LEFT JOIN users u ON u.id = dm.author_user_id
-     WHERE dm.thread_id = ?1
-       ${cursor ? `AND (dm.created_at ${comparison} ?2 OR (dm.created_at = ?2 AND dm.id ${comparison} ?3))` : ""}
-     ORDER BY dm.created_at ${order}, dm.id ${order} LIMIT ${cursor ? "?4" : "?2"}`,
-  );
-  const rows = await (
-    cursor
-      ? statement.bind(threadId, cursor.createdAt, cursor.id, limit + 1)
-      : statement.bind(threadId, limit + 1)
-  ).all<Record<string, unknown>>();
-  const results = rows.results ?? [];
+  const db = dataOf(env).read;
+  const cmp = db.raw(comparison);
+  const ord = db.raw(order);
+  const cursorFilter = cursor
+    ? db.frag`AND (dm.created_at ${cmp} ${cursor.createdAt} OR (dm.created_at = ${cursor.createdAt} AND dm.id ${cmp} ${cursor.id}))`
+    : db.frag``;
+  const results = await db.rows<Record<string, unknown>>`
+    SELECT dm.id, dm.thread_id AS "threadId", dm.author_user_id AS "authorUserId",
+           COALESCE(u.display_name, 'Member') AS "authorName",
+           dm.body, dm.attachments_json AS "attachmentsJson", dm.references_json AS "referencesJson", dm.reply_to_json AS "replyToJson", dm.edited_at AS "editedAt", dm.created_at AS "createdAt",
+           dm.event_type AS "eventType", dm.kind, dm.work_request_id AS "workRequestId", dm.worker_display_name AS "workerDisplayName"
+    FROM discussion_messages dm
+    LEFT JOIN users u ON u.id = dm.author_user_id
+    WHERE dm.thread_id = ${threadId}
+      ${cursorFilter}
+    ORDER BY dm.created_at ${ord}, dm.id ${ord} LIMIT ${limit + 1}
+  `;
   const more = results.length > limit;
   const selected = results.slice(0, limit);
   const encode = (row: Record<string, unknown>) =>
@@ -708,19 +666,9 @@ export async function handleCreateDiscussionMessage(
     "discuss",
     accessContext,
   );
-  const directSpace = await env.SYNTILA_DB.prepare(
-    SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO,
-  )
-    .bind(spaceId)
-    .first<{
-      status: string | null;
-      userLowId: string;
-      userHighId: string;
-      isSupport: number;
-    }>()
-    .catch(() => null);
+  const directSpace = await directSpaceConnection(env, spaceId);
   if (directSpace) {
-    const isBlocked = await usersBlocked(env.SYNTILA_DB, directSpace.userLowId, directSpace.userHighId);
+    const isBlocked = await usersBlocked(env, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }
@@ -739,7 +687,7 @@ export async function handleCreateDiscussionMessage(
   const body = await readBody(request, DiscussionMessageSchema);
   const receipt = await MutationIdempotency.from(
     request,
-    env.SYNTILA_DB,
+    dataOf(env).read,
     context.userId,
     `thread:${threadId}:send-discussion`,
     body,
@@ -765,51 +713,8 @@ export async function handleCreateDiscussionMessage(
   );
   const now = new Date().toISOString();
   const id = `discussion-${crypto.randomUUID()}`;
-  const userRow = await env.SYNTILA_DB.prepare(
-    `SELECT display_name AS displayName FROM users WHERE id = ?1`,
-  )
-    .bind(context.userId)
-    .first<{ displayName: string | null }>();
+  const userRow = await dataOf(env).read.row<{ displayName: string | null }>`SELECT display_name AS "displayName" FROM users WHERE id = ${context.userId}`;
   const authorName = userRow?.displayName || "Member";
-  const mutations: D1PreparedStatement[] = [];
-  mutations.push(
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO discussion_messages
-       (id, thread_id, author_user_id, body, references_json, created_at, attachments_json, reply_to_json)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
-    ).bind(
-      id,
-      threadId,
-      context.userId,
-      content,
-      JSON.stringify(references),
-      now,
-      JSON.stringify(attachments),
-      replyTo ? JSON.stringify(replyTo) : null,
-    ),
-  );
-  mutations.push(
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO space_audit_log
-       (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-     VALUES (?1, ?2, 'user', ?3, 'thread.discussion.created', 'discussion_message', ?4, ?5, ?6)`,
-    ).bind(
-      `pa-${crypto.randomUUID()}`,
-      spaceId,
-      context.userId,
-      id,
-      JSON.stringify({ threadId, references }),
-      now,
-    ),
-  );
-  // A support Space's sidebar visibility is the user's own setting; replies never change it.
-  if (directSpace && !directSpace.isSupport) {
-    mutations.push(
-      env.SYNTILA_DB.prepare(
-        "UPDATE direct_space_user_state SET hidden = FALSE, last_opened_at = ?1, updated_at = ?1 WHERE space_id = ?2",
-      ).bind(now, spaceId),
-    );
-  }
   const response = {
     message: {
       id,
@@ -827,14 +732,34 @@ export async function handleCreateDiscussionMessage(
       workerDisplayName: null,
     },
   };
-  const write = (receipts: D1PreparedStatement[]) =>
-    publishCollaborationEvent(env, "discussion.created", spaceId, id, {
+  let concurrentReplay: Response | null = null;
+  try {
+    await publishCollaborationEvent(env, "discussion.created", spaceId, id, {
       threadId,
-      mutations: [...receipts, ...mutations],
+      tx: async (tx) => {
+        await tx.run`
+          INSERT INTO discussion_messages
+            (id, thread_id, author_user_id, body, references_json, created_at, attachments_json, reply_to_json)
+          VALUES (${id}, ${threadId}, ${context.userId}, ${content}, ${JSON.stringify(references)}, ${now}, ${JSON.stringify(attachments)}, ${replyTo ? JSON.stringify(replyTo) : null})
+        `;
+        await tx.run`
+          INSERT INTO space_audit_log
+            (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
+          VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'thread.discussion.created', 'discussion_message', ${id}, ${JSON.stringify({ threadId, references })}, ${now})
+        `;
+        // A support Space's sidebar visibility is the user's own setting; replies never change it.
+        if (directSpace && !directSpace.isSupport) {
+          await tx.run`
+            UPDATE direct_space_user_state SET hidden = FALSE, last_opened_at = ${now}, updated_at = ${now} WHERE space_id = ${spaceId}
+          `;
+        }
+        if (receipt) await receipt.record(tx, response, 201);
+      },
     });
-  const concurrentReplay = receipt
-    ? await receipt.commit(response, 201, write)
-    : (await write([]), null);
+  } catch (error) {
+    if (receipt) concurrentReplay = await receipt.replayOnConflict(error);
+    if (!concurrentReplay) throw error;
+  }
   return concurrentReplay ?? json(response, { status: 201 });
 }
 
@@ -844,11 +769,7 @@ export async function handleGetDiscussionMessage(
   messageId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const message = await env.SYNTILA_DB.prepare(
-    SELECT_DISCUSSION_MESSAGES_BY_ID,
-  )
-    .bind(messageId)
-    .first<Record<string, unknown>>();
+  const message = await discussionMessageById(env, messageId);
   if (!message) throw new HttpError(404, "Discussion message not found");
   await authorizeThreadAccess(
     request,
@@ -871,11 +792,7 @@ export async function handleEditDiscussionMessage(
   messageId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const message = await env.SYNTILA_DB.prepare(
-    SELECT_DISCUSSION_MESSAGES_BY_ID,
-  )
-    .bind(messageId)
-    .first<Record<string, unknown>>();
+  const message = await discussionMessageById(env, messageId);
   if (!message) throw new HttpError(404, "Discussion message not found");
   const { context, spaceId } = await authorizeThreadAccess(
     request,
@@ -899,15 +816,19 @@ export async function handleEditDiscussionMessage(
     body.references ?? parseJson(message.referencesJson, []),
   );
   const editedAt = new Date().toISOString();
-  const mutation = env.SYNTILA_DB.prepare(
-    "UPDATE discussion_messages SET body = ?1, references_json = ?2, edited_at = ?3 WHERE id = ?4",
-  ).bind(content, JSON.stringify(references), editedAt, messageId);
   await publishCollaborationEvent(
     env,
     "discussion.updated",
     spaceId,
     messageId,
-    { threadId: String(message.threadId), mutations: [mutation] },
+    {
+      threadId: String(message.threadId),
+      tx: async (tx) => {
+        await tx.run`
+          UPDATE discussion_messages SET body = ${content}, references_json = ${JSON.stringify(references)}, edited_at = ${editedAt} WHERE id = ${messageId}
+        `;
+      },
+    },
   );
   return json({
     message: {
@@ -925,13 +846,9 @@ export async function handleDeleteDiscussionMessage(
   messageId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const message = await env.SYNTILA_DB.prepare(
-    `SELECT id, thread_id AS threadId, author_user_id AS authorUserId, event_type AS eventType, kind
+  const message = await dataOf(env).read.row<Record<string, unknown>>`SELECT id, thread_id AS "threadId", author_user_id AS "authorUserId", event_type AS "eventType", kind
      FROM discussion_messages
-     WHERE id = ?1`,
-  )
-    .bind(messageId)
-    .first<Record<string, unknown>>();
+     WHERE id = ${messageId}`;
   if (!message) throw new HttpError(404, "Discussion message not found");
   const { context, spaceId } = await authorizeThreadAccess(
     request,
@@ -941,7 +858,7 @@ export async function handleDeleteDiscussionMessage(
     accessContext,
   );
   const policy = await loadSpacePermissions(env, context.userId, spaceId);
-  const space = await spaceKind(env.SYNTILA_DB, spaceId);
+  const space = await spaceKind(env, spaceId);
 
   if (space?.kind === "direct") {
     if (String(message.authorUserId) !== context.userId) {
@@ -965,15 +882,19 @@ export async function handleDeleteDiscussionMessage(
     );
   const now = new Date().toISOString();
   const text = `Message removed by ${context.user.displayName || "Member"}${policy.role === "owner" && String(message.authorUserId) !== context.userId ? " · Space owner" : ""}`;
-  const mutation = env.SYNTILA_DB.prepare(
-    "UPDATE discussion_messages SET body = ?1, attachments_json = '[]', references_json = '[]', reply_to_json = NULL, event_type = 'message.removed', edited_at = ?2 WHERE id = ?3 AND event_type IS NULL",
-  ).bind(text, now, messageId);
   await publishCollaborationEvent(
     env,
     "discussion.updated",
     spaceId,
     messageId,
-    { threadId: String(message.threadId), mutations: [mutation] },
+    {
+      threadId: String(message.threadId),
+      tx: async (tx) => {
+        await tx.run`
+          UPDATE discussion_messages SET body = ${text}, attachments_json = '[]', references_json = '[]', reply_to_json = NULL, event_type = 'message.removed', edited_at = ${now} WHERE id = ${messageId} AND event_type IS NULL
+        `;
+      },
+    },
   );
   return json({ success: true });
 }
@@ -993,7 +914,7 @@ export async function handleClearChatHistory(
     accessContext,
   );
   await requireDestructiveThreadAccess(env, threadId, context.userId);
-  const active = await activeWorkCount(env.SYNTILA_DB, threadId);
+  const active = await activeWorkCount(env, threadId);
   if (active && active.count > 0) {
     throw new HttpError(
       409,
@@ -1007,30 +928,6 @@ export async function handleClearChatHistory(
   const now = new Date().toISOString();
   // Deleting the Work Requests removes their tasks, Worker assignments and
   // Runs by cascade.
-  const mutations = [
-    destructiveThreadGuard(env, threadId, context.userId),
-    db
-      .prepare("DELETE FROM discussion_messages WHERE thread_id = ?1")
-      .bind(threadId),
-    db.prepare("DELETE FROM conversations WHERE thread_id = ?1").bind(threadId),
-    db.prepare("DELETE FROM work_requests WHERE thread_id = ?1").bind(threadId),
-    db
-      .prepare(
-        `UPDATE threads SET ai_history_cleared_at = NULL,
-           work_session_generation = work_session_generation + 1, updated_at = ?1
-         WHERE id = ?2`,
-      )
-      .bind(now, threadId),
-    threadNotice(
-      env,
-      threadId,
-      context.userId,
-      context.user.displayName || "Member",
-      "conversation.cleared",
-      "cleared the conversation.",
-      now,
-    ),
-  ];
   // The mutations and the event are committed together by the publisher, so a
   // successful clear is always announced to other sessions.
   await publishCollaborationEvent(
@@ -1038,7 +935,29 @@ export async function handleClearChatHistory(
     "thread.chat_cleared",
     spaceId,
     threadId,
-    { threadId, mutations },
+    {
+      threadId,
+      tx: async (tx) => {
+        await destructiveThreadGuard(tx, threadId, context.userId);
+        await tx.run`DELETE FROM discussion_messages WHERE thread_id = ${threadId}`;
+        await tx.run`DELETE FROM conversations WHERE thread_id = ${threadId}`;
+        await tx.run`DELETE FROM work_requests WHERE thread_id = ${threadId}`;
+        await tx.run`
+          UPDATE threads SET ai_history_cleared_at = NULL,
+             work_session_generation = work_session_generation + 1, updated_at = ${now}
+           WHERE id = ${threadId}
+        `;
+        await threadNotice(
+          tx,
+          threadId,
+          context.userId,
+          context.user.displayName || "Member",
+          "conversation.cleared",
+          "cleared the conversation.",
+          now,
+        );
+      },
+    },
   );
   return json({ threadId, cleared: true });
 }
@@ -1059,16 +978,17 @@ export async function handleMarkThreadRead(
     accessContext,
   );
   const readAt = new Date().toISOString();
-  const mutation = env.SYNTILA_DB.prepare(
-    `INSERT INTO thread_read_states (thread_id, user_id, read_at)
-     VALUES (?1, ?2, ?3)
-     ON CONFLICT (thread_id, user_id) DO UPDATE SET read_at = excluded.read_at
-     WHERE excluded.read_at > thread_read_states.read_at`,
-  ).bind(threadId, context.userId, readAt);
   await publishCollaborationEvent(env, "thread.updated", spaceId, threadId, {
     threadId,
     recipientUserIds: [context.userId],
-    mutations: [mutation],
+    tx: async (tx) => {
+      await tx.run`
+        INSERT INTO thread_read_states (thread_id, user_id, read_at)
+        VALUES (${threadId}, ${context.userId}, ${readAt})
+        ON CONFLICT (thread_id, user_id) DO UPDATE SET read_at = excluded.read_at
+        WHERE excluded.read_at > thread_read_states.read_at
+      `;
+    },
   });
   // Read receipts: other members viewing the Thread refetch who has seen it.
   // Live-only; a reconnecting client simply reloads the read states.
@@ -1106,16 +1026,12 @@ export async function handleListThreadReadStates(
   );
   // Reciprocal privacy: only people who share receipts are listed, and only
   // to a viewer who shares theirs.
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT r.user_id AS userId, u.display_name AS displayName, r.read_at AS readAt
+  const rows = await dataOf(env).read.rows`SELECT r.user_id AS "userId", u.display_name AS "displayName", r.read_at AS "readAt"
        FROM thread_read_states r
-       JOIN space_memberships m ON m.space_id = ?2 AND m.user_id = r.user_id
+       JOIN space_memberships m ON m.space_id = ${spaceId} AND m.user_id = r.user_id
        JOIN users u ON u.id = r.user_id AND u.share_read_receipts
-      WHERE r.thread_id = ?1 AND r.user_id != ?3
-        AND EXISTS (SELECT 1 FROM users me WHERE me.id = ?3 AND me.share_read_receipts)
-      ORDER BY r.read_at DESC`,
-  )
-    .bind(threadId, spaceId, context.userId)
-    .all();
+      WHERE r.thread_id = ${threadId} AND r.user_id != ${context.userId}
+        AND EXISTS (SELECT 1 FROM users me WHERE me.id = ${context.userId} AND me.share_read_receipts)
+      ORDER BY r.read_at DESC`;
   return json({ readStates: rows.results ?? [] });
 }

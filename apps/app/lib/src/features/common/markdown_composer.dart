@@ -896,9 +896,8 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
       ],
     );
 
-    final backgroundColor = SyntilaColors.composerBackground(
-      Theme.of(context).brightness == Brightness.dark,
-    );
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = SyntilaColors.composerBackground(isDark);
 
     return TooltipVisibility(
         visible: widget.showControlTooltips,
@@ -909,6 +908,18 @@ class _MarkdownComposerState extends State<MarkdownComposer> {
             decoration: BoxDecoration(
               color: backgroundColor,
               borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.10),
+                  offset: const Offset(0, 3),
+                  blurRadius: 8,
+                ),
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: isDark ? 0.06 : 0.70),
+                  offset: const Offset(0, -1),
+                  blurRadius: 0,
+                ),
+              ],
             ),
             padding: EdgeInsets.all(widget.chatStyle
                 ? 0

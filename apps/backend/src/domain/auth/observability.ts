@@ -1,3 +1,5 @@
+import { dataOf } from "../../platform/data.js";
+
 export type AuthAuditOutcome = "success" | "failure" | "denied";
 
 export type AuthAuditAction =
@@ -69,22 +71,9 @@ export async function recordAuthAuditEvent(
   if (event.workspaceId && /^[a-zA-Z0-9._:-]{1,120}$/.test(event.workspaceId)) {
     details.workspaceId = event.workspaceId;
   }
-  await db
-    .prepare(
-      `INSERT INTO auth_audit_events
-         (id, user_id, session_id, action, outcome, details_json, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
-    )
-    .bind(
-      `auth-audit-${crypto.randomUUID()}`,
-      event.userId ?? null,
-      event.sessionId ?? null,
-      event.action,
-      event.outcome,
-      JSON.stringify(details),
-      new Date().toISOString(),
-    )
-    .run();
+  await dataOf({ SYNTILA_DB: db }).read.run`INSERT INTO auth_audit_events
+       (id, user_id, session_id, action, outcome, details_json, created_at)
+     VALUES (${`auth-audit-${crypto.randomUUID()}`}, ${event.userId ?? null}, ${event.sessionId ?? null}, ${event.action}, ${event.outcome}, ${JSON.stringify(details)}, ${new Date().toISOString()})`;
 }
 
 /** Structured edge log suitable for metrics aggregation; never include identity or token data. */

@@ -12,8 +12,8 @@ class ResizableSidebar extends StatefulWidget {
     required this.child,
   });
 
-  static const minWidth = 200.0;
-  static const maxWidth = 300.0;
+  static const minWidth = 210.0;
+  static const maxWidth = 400.0;
   final double width;
   final ValueChanged<double> onWidthChanged;
   final Widget child;
@@ -23,7 +23,6 @@ class ResizableSidebar extends StatefulWidget {
 }
 
 class _ResizableSidebarState extends State<ResizableSidebar> {
-  bool _hovered = false;
   double _dragStartX = 0;
   double _dragStartWidth = 0;
   double get width => widget.width.clamp(minWidth, maxWidth).toDouble();
@@ -70,8 +69,6 @@ class _ResizableSidebarState extends State<ResizableSidebar> {
                           width > minWidth ? () => _resize(width - 10) : null,
                       child: MouseRegion(
                         cursor: SystemMouseCursors.resizeColumn,
-                        onEnter: (_) => setState(() => _hovered = true),
-                        onExit: (_) => setState(() => _hovered = false),
                         child: GestureDetector(
                           key: const ValueKey('sidebar-resize-handle'),
                           behavior: HitTestBehavior.opaque,
@@ -90,9 +87,7 @@ class _ResizableSidebarState extends State<ResizableSidebar> {
                             child: Container(
                               key: const ValueKey('sidebar-resize-line'),
                               width: 1,
-                              color: _hovered
-                                  ? Colors.white24
-                                  : Colors.transparent,
+                              color: Colors.transparent,
                             ),
                           ),
                         ),

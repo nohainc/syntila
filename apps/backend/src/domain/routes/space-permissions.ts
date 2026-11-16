@@ -50,13 +50,13 @@ export async function loadSpacePermissions(
   userId: string,
   spaceId: string,
 ) {
-  const row = await dataOf(env).row<{
+  const row = await dataOf(env).read.row<{
     role: string;
     settingsJson: string;
     kind: string;
     isSupport: boolean | number;
-  }>`SELECT sm.role, s.settings_json AS settingsJson, COALESCE(s.kind, 'group') AS kind,
-            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = s.id) AS isSupport
+  }>`SELECT sm.role, s.settings_json AS "settingsJson", COALESCE(s.kind, 'group') AS kind,
+            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = s.id) AS "isSupport"
      FROM space_memberships sm
      JOIN spaces s ON s.id = sm.space_id WHERE sm.space_id = ${spaceId} AND sm.user_id = ${userId}`;
   if (!row) throw new HttpError(403, "Space membership is required");

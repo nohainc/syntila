@@ -23,6 +23,7 @@ import {
   loadSpaceWorkflowDefault,
   loadUserWorkflowDefault,
 } from "./workflow-default.js";
+import { dataOf } from "../../platform/data.js";
 
 function definitionFor(id: string) {
   const definition = Object.values(BUILTIN_WORKFLOW_CATALOG)
@@ -42,12 +43,7 @@ export async function handleWorkflowConfigurations(
   const context = await securityContext(request, env, ctx);
   const db = env.SYNTILA_DB;
   if (spaceId) {
-    const membership = await db
-      .prepare(
-        `SELECT s.owner_user_id AS ownerUserId, COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id JOIN users u ON u.id = m.user_id WHERE s.id = ?1 AND m.user_id = ?2 AND u.status = 'active'`,
-      )
-      .bind(spaceId, context.userId)
-      .first<{ ownerUserId: string; kind: string }>();
+    const membership = await dataOf(env).read.row<{ ownerUserId: string; kind: string }>`SELECT s.owner_user_id AS "ownerUserId", COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id JOIN users u ON u.id = m.user_id WHERE s.id = ${spaceId} AND m.user_id = ${context.userId} AND u.status = 'active'`;
     if (!membership) throw new HttpError(403, "Space membership required");
     if (membership.kind === "direct") {
       if (request.method !== "GET") {
@@ -94,13 +90,8 @@ export async function handleWorkflowConfigurations(
         configurations: effective.configurations,
       });
     }
-    const rows = await db
-      .prepare(
-        `SELECT configuration_json FROM user_workflow_configurations
-      WHERE user_id = ?1 AND workspace_id = ?3 AND (?2::text IS NULL OR workflow_id = ?2)`,
-      )
-      .bind(context.userId, workflowId ?? null, userWorkspaceId)
-      .all<{ configuration_json: string }>();
+    const rows = await dataOf(env).read.rows<{ configuration_json: string }>`SELECT configuration_json FROM user_workflow_configurations
+      WHERE user_id = ${context.userId} AND workspace_id = ${userWorkspaceId} AND (${workflowId ?? null}::text IS NULL OR workflow_id = ${workflowId ?? null})`;
     return json({
       schemaVersion: 1,
       workspaceId: userWorkspaceId,
@@ -109,7 +100,7 @@ export async function handleWorkflowConfigurations(
         context.userId,
         userWorkspaceId,
       ),
-      configurations: rows.results.map((row) =>
+      configurations: rows.map((row) =>
         JSON.parse(row.configuration_json),
       ),
     });
@@ -118,12 +109,11 @@ export async function handleWorkflowConfigurations(
     throw new HttpError(405, "Choose a workflow for this operation");
   const definition = definitionFor(workflowId);
   const reset = async () => {
-    await db
-      .prepare(
-        `DELETE FROM ${table} WHERE ${key} = ?1 AND workflow_id = ?2${scopeSql}`,
-      )
-      .bind(owner, workflowId, ...scopeBinds)
-      .run();
+    if (spaceId) {
+      await dataOf(env).read.run`DELETE FROM space_workflow_configurations WHERE space_id = ${owner} AND workflow_id = ${workflowId}`;
+    } else {
+      await dataOf(env).read.run`DELETE FROM user_workflow_configurations WHERE user_id = ${owner} AND workflow_id = ${workflowId} AND workspace_id = ${scopeBinds[0]}`;
+    }
   };
   if (request.method === "DELETE") {
     await reset();
@@ -192,12 +182,9 @@ export async function handleWorkflowConfigurations(
   inventory.workers = inventory.workers.filter(
     (worker) => worker.workspaceId === selectedWorkspace.workspaceId,
   );
-  const previous = await db
-    .prepare(
-      `SELECT configuration_json FROM ${table} WHERE ${key} = ?1 AND workflow_id = ?2${scopeSql}`,
-    )
-    .bind(owner, workflowId, ...scopeBinds)
-    .first<{ configuration_json: string }>();
+  const previous = spaceId
+    ? await dataOf(env).read.row<{ configuration_json: string }>`SELECT configuration_json FROM space_workflow_configurations WHERE space_id = ${owner} AND workflow_id = ${workflowId}`
+    : await dataOf(env).read.row<{ configuration_json: string }>`SELECT configuration_json FROM user_workflow_configurations WHERE user_id = ${owner} AND workflow_id = ${workflowId} AND workspace_id = ${scopeBinds[0]}`;
   const priorConfiguration: UserWorkflowConfiguration | undefined = previous
     ? JSON.parse(previous.configuration_json)
     : spaceId
@@ -294,45 +281,29 @@ export async function handleWorkflowConfigurations(
   ) {
     await reset();
   } else {
-    await db
-      .prepare(
-        spaceId
-          ? `INSERT INTO ${table}
-      (${key}, workflow_id, schema_version, configuration_json, updated_at) VALUES (?1, ?2, 1, ?3, ?4)
-      ON CONFLICT(${key}, workflow_id) DO UPDATE SET configuration_json = excluded.configuration_json, updated_at = excluded.updated_at`
-          : `INSERT INTO ${table}
-      (${key}, workflow_id, schema_version, configuration_json, updated_at, workspace_id) VALUES (?1, ?2, 1, ?3, ?4, ?5)
-      ON CONFLICT(${key}, workspace_id, workflow_id) DO UPDATE SET configuration_json = excluded.configuration_json, updated_at = excluded.updated_at`,
-      )
-      .bind(
-        owner,
-        workflowId,
-        JSON.stringify(configuration),
-        new Date().toISOString(),
-        ...scopeBinds,
-      )
-      .run();
+    const updatedAt = new Date().toISOString();
+    if (spaceId) {
+      await dataOf(env).read.run`INSERT INTO space_workflow_configurations
+        (space_id, workflow_id, schema_version, configuration_json, updated_at) VALUES (${owner}, ${workflowId}, 1, ${JSON.stringify(configuration)}, ${updatedAt})
+        ON CONFLICT(space_id, workflow_id) DO UPDATE SET configuration_json = excluded.configuration_json, updated_at = excluded.updated_at`;
+    } else {
+      await dataOf(env).read.run`INSERT INTO user_workflow_configurations
+        (user_id, workflow_id, schema_version, configuration_json, updated_at, workspace_id) VALUES (${owner}, ${workflowId}, 1, ${JSON.stringify(configuration)}, ${updatedAt}, ${scopeBinds[0]})
+        ON CONFLICT(user_id, workspace_id, workflow_id) DO UPDATE SET configuration_json = excluded.configuration_json, updated_at = excluded.updated_at`;
+    }
   }
   const defaultWorkflowId = spaceId
     ? await loadSpaceWorkflowDefault(env, spaceId, owner)
     : await loadUserWorkflowDefault(env, context.userId, userWorkspaceId);
   if (defaultWorkflowId === workflowId && !configuration.enabled) {
     if (spaceId) {
-      await env.SYNTILA_DB.prepare(
-        `INSERT INTO space_workflow_defaults(space_id,workflow_id,updated_at)
-         VALUES(?1,'chat',?2)
-         ON CONFLICT(space_id) DO UPDATE SET workflow_id='chat',updated_at=excluded.updated_at`,
-      )
-        .bind(spaceId, new Date().toISOString())
-        .run();
+      await dataOf(env).read.run`INSERT INTO space_workflow_defaults(space_id,workflow_id,updated_at)
+         VALUES(${spaceId},'chat',${new Date().toISOString()})
+         ON CONFLICT(space_id) DO UPDATE SET workflow_id='chat',updated_at=excluded.updated_at`;
     } else {
-      await env.SYNTILA_DB.prepare(
-        `INSERT INTO user_workflow_defaults(user_id,workspace_id,workflow_id,updated_at)
-         VALUES(?1,?3,'chat',?2)
-         ON CONFLICT(user_id,workspace_id) DO UPDATE SET workflow_id='chat',updated_at=excluded.updated_at`,
-      )
-        .bind(context.userId, new Date().toISOString(), userWorkspaceId)
-        .run();
+      await dataOf(env).read.run`INSERT INTO user_workflow_defaults(user_id,workspace_id,workflow_id,updated_at)
+         VALUES(${context.userId},${userWorkspaceId},'chat',${new Date().toISOString()})
+         ON CONFLICT(user_id,workspace_id) DO UPDATE SET workflow_id='chat',updated_at=excluded.updated_at`;
     }
   }
   return json({ configuration });

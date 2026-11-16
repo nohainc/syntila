@@ -776,9 +776,39 @@ extension _AxAppController on _AxAppStateMixin {
     final type = event['type'];
     if (type is! String) return;
 
+    final raw = event['payload'];
+    final payload = raw is Map ? raw : null;
+    final viewerId = store.auth.session?.viewer?.id ?? store.auth.viewer?.id;
+    final eventThreadId = payload?['threadId'] ??
+        payload?['thread_id'] ??
+        event['threadId'] ??
+        event['thread_id'];
+    final authorUserId = payload?['authorUserId'] ??
+        payload?['author_user_id'] ??
+        payload?['createdByUserId'] ??
+        payload?['created_by_user_id'] ??
+        payload?['requestedByUserId'] ??
+        payload?['requested_by_user_id'] ??
+        payload?['userId'] ??
+        payload?['user_id'] ??
+        event['authorUserId'] ??
+        event['author_user_id'] ??
+        event['createdByUserId'] ??
+        event['created_by_user_id'] ??
+        event['requestedByUserId'] ??
+        event['requested_by_user_id'] ??
+        event['userId'] ??
+        event['user_id'];
+    if (authorUserId != null && authorUserId == viewerId) {
+      return;
+    }
+    if (navigation.kind == AxRouteKind.thread &&
+        eventThreadId is String &&
+        eventThreadId == navigation.threadId) {
+      return;
+    }
+
     if (type == 'work_request.completed' || type == 'thread.completed') {
-      final raw = event['payload'];
-      final payload = raw is Map ? raw : null;
       final status = payload?['status'] as String? ?? 'completed';
       if (status == 'completed') {
         soundNotifications.playRequestCompleted();
@@ -787,26 +817,6 @@ extension _AxAppController on _AxAppStateMixin {
     }
 
     if (type == 'discussion.created' || type == 'thread.discussion.created') {
-      final raw = event['payload'];
-      final payload = raw is Map ? raw : null;
-      final eventThreadId = payload?['threadId'] ??
-          payload?['thread_id'] ??
-          event['threadId'] ??
-          event['thread_id'];
-      if (navigation.kind == AxRouteKind.thread &&
-          _tabVisible &&
-          eventThreadId is String &&
-          eventThreadId == navigation.threadId) {
-        return;
-      }
-      final authorUserId = payload?['authorUserId'] ??
-          payload?['author_user_id'] ??
-          event['authorUserId'] ??
-          event['author_user_id'];
-      final viewerId = store.auth.session?.viewer?.id ?? store.auth.viewer?.id;
-      if (authorUserId != null && authorUserId == viewerId) {
-        return;
-      }
       soundNotifications.playMessageReceived();
     }
   }

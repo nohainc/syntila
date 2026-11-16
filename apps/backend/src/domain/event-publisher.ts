@@ -8,6 +8,7 @@ import {
 } from "@syntila/protocol";
 
 import { afterCommit, inOpenTransaction, rootEnv } from "../platform/tx-env.js";
+import { dataOf } from "../platform/data.js";
 
 export interface EventPublisherEnv {
   readonly SYNTILA_DB: D1Database;
@@ -26,6 +27,7 @@ export interface DomainEventInput {
   readonly additionalRecipientUserIds?: readonly string[];
   /** Optional domain writes committed in the same transaction as the signal. */
   readonly mutations?: readonly D1PreparedStatement[];
+  readonly tx?: (tx: import("../platform/data.js").Tx) => Promise<void>;
   readonly spaceId?: string;
   readonly runId?: string;
   readonly taskId?: string;
@@ -175,82 +177,40 @@ export class CloudEventPublisher implements EventPublisher {
     const validated = parseRealtimeEvent({ ...eventBase, sequence: 0 });
     const stream = realtimeEventStream(validated);
 
-    const db = this.env.SYNTILA_DB;
-    const results = await db.batch([
-      ...(input.mutations ?? []),
-      db
-        .prepare(
-          `INSERT INTO realtime_event_cursors (stream_kind, stream_id, workspace_id, next_sequence)
-           VALUES (?1, ?2, ?3, COALESCE(
+    const inserted = await dataOf(this.env).tx("event.publish", async (tx) => {
+      if (input.tx) await input.tx(tx);
+      await tx.run`INSERT INTO realtime_event_cursors (stream_kind, stream_id, workspace_id, next_sequence)
+           VALUES (${stream.kind}, ${stream.id}, ${input.workspaceId ?? null}, COALESCE(
              (SELECT MAX(sequence) + 1 FROM realtime_events
-              WHERE stream_kind = ?1 AND COALESCE(stream_id, workspace_id) = ?2), 1))
-           ON CONFLICT DO NOTHING`,
-        )
-        .bind(stream.kind, stream.id, input.workspaceId ?? null),
-      db
-        .prepare(
-          `UPDATE realtime_event_cursors SET next_sequence = next_sequence + 1
-         WHERE stream_kind = ?1 AND COALESCE(stream_id, workspace_id) = ?2
+              WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}), 1))
+           ON CONFLICT DO NOTHING`;
+        await tx.run`UPDATE realtime_event_cursors SET next_sequence = next_sequence + 1
+         WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
            AND NOT EXISTS (SELECT 1 FROM realtime_events
-             WHERE stream_kind = ?1 AND COALESCE(stream_id, workspace_id) = ?2
-               AND (event_id = ?3 OR idempotency_key = ?4))
-         RETURNING next_sequence - 1 AS sequence`,
-        )
-        .bind(
-          stream.kind,
-          stream.id,
-          input.eventId,
-          input.idempotencyKey ?? null,
-        ),
-      db
-        .prepare(
-          `INSERT INTO realtime_events
+             WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+               AND (event_id = ${input.eventId} OR idempotency_key = ${input.idempotencyKey ?? null}))`;
+        const row = await tx.row<Record<string, unknown>>`INSERT INTO realtime_events
          (event_id, workspace_id, space_id, run_id, task_id, attempt_id,
           assignment_id, workspace_runtime_id, sequence, event_type, payload_json,
           idempotency_key, occurred_at, stream_kind, stream_id, thread_id)
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, cursor.next_sequence - 1,
-                ?9, ?10, ?11, ?12, ?13, ?14, ?15
+         SELECT ${input.eventId}, ${input.workspaceId ?? null}, ${input.spaceId ?? null}, ${input.runId ?? null}, ${input.taskId ?? null}, ${input.attemptId ?? null}, ${input.assignmentId ?? null}, ${input.workspaceRuntimeId ?? null}, cursor.next_sequence - 1,
+                ${input.type}, ${json(input.payload)}, ${input.idempotencyKey ?? null}, ${input.occurredAt}, ${stream.kind}, ${stream.id}, ${input.threadId ?? null}
          FROM realtime_event_cursors AS cursor
-         WHERE cursor.stream_kind = ?13 AND COALESCE(cursor.stream_id, cursor.workspace_id) = ?14
+         WHERE cursor.stream_kind = ${stream.kind} AND COALESCE(cursor.stream_id, cursor.workspace_id) = ${stream.id}
            AND NOT EXISTS (SELECT 1 FROM realtime_events
-             WHERE stream_kind = ?13 AND COALESCE(stream_id, workspace_id) = ?14
-               AND (event_id = ?1 OR idempotency_key = ?11))
-         RETURNING *`,
-        )
-        .bind(
-          input.eventId,
-          input.workspaceId ?? null,
-          input.spaceId ?? null,
-          input.runId ?? null,
-          input.taskId ?? null,
-          input.attemptId ?? null,
-          input.assignmentId ?? null,
-          input.workspaceRuntimeId ?? null,
-          input.type,
-          json(input.payload),
-          input.idempotencyKey ?? null,
-          input.occurredAt,
-          stream.kind,
-          stream.id,
-          input.threadId ?? null,
-        ),
-    ]);
-
-    const inserted = results[results.length - 1]?.results?.[0] as
-      Record<string, unknown> | undefined;
+             WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+               AND (event_id = ${input.eventId} OR idempotency_key = ${input.idempotencyKey ?? null}))
+         RETURNING *`;
+      return row ?? undefined;
+    });
     if (inserted) {
       return { event: realtimeEventFromRow(inserted), persisted: true };
     }
 
-    const duplicate = await db
-      .prepare(
-        `SELECT * FROM realtime_events
-         WHERE stream_kind = ?1 AND COALESCE(stream_id, workspace_id) = ?2
-           AND (event_id = ?3 OR idempotency_key = ?4)
-         LIMIT 1`,
-      )
-      .bind(stream.kind, stream.id, input.eventId, input.idempotencyKey)
-      .first<Record<string, unknown>>();
+    const duplicate = await dataOf(env).read.row<Record<string, unknown>>`SELECT * FROM realtime_events
+         WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+           AND (event_id = ${input.eventId} OR idempotency_key = ${input.idempotencyKey})
+         LIMIT 1`;
     if (duplicate)
       return { event: realtimeEventFromRow(duplicate), persisted: false };
     throw new Error("Could not persist durable realtime event");
@@ -269,18 +229,10 @@ export class CloudEventPublisher implements EventPublisher {
       : stream.kind === "user"
         ? { results: [{ user_id: stream.id }] }
         : event.spaceId
-          ? await this.env.SYNTILA_DB.prepare(
-              `SELECT user_id FROM space_memberships
-           WHERE space_id = ?1`,
-            )
-              .bind(event.spaceId)
-              .all<{ user_id: string }>()
-          : await this.env.SYNTILA_DB.prepare(
-              `SELECT owner_user_id AS user_id FROM execution_workspaces
-           WHERE id = ?1 AND status <> 'revoked'`,
-            )
-              .bind(event.workspaceId)
-              .all<{ user_id: string }>();
+          ? await dataOf(this.env).read.rows<{ user_id: string }>`SELECT user_id FROM space_memberships
+           WHERE space_id = ${event.spaceId}`
+          : await dataOf(this.env).read.rows<{ user_id: string }>`SELECT owner_user_id AS user_id FROM execution_workspaces
+           WHERE id = ${event.workspaceId} AND status <> 'revoked'`;
     const results = await Promise.all(
       [
         ...new Set([

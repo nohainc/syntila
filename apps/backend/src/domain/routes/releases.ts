@@ -13,9 +13,11 @@ import {
   testAuthenticationEnabled,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
+import { dataOf } from "../../platform/data.js";
 
-const SELECT_RELEASE_SIGNING_KEY_REVOCATIONS_BY_KEY_ID =
-  "SELECT key_id FROM release_signing_key_revocations WHERE key_id = ?1";
+async function isReleaseSigningKeyRevoked(env: SecurityEnv, keyId: string) {
+  return dataOf(env).read.row<{ key_id: string }>`SELECT key_id FROM release_signing_key_revocations WHERE key_id = ${keyId}`;
+}
 
 // =========================================================================
 // Workspace Release API Handlers
@@ -31,22 +33,7 @@ export async function handleGetLatestWorkspaceRelease(
   const arch = url.searchParams.get("arch");
   const currentVersion = url.searchParams.get("currentVersion");
 
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT version, channel, min_supported_workspace_version as minSupportedWorkspaceVersion,
-            supported_os_json as supportedOsJson, supported_arch_json as supportedArchJson,
-            package_digest as packageDigest, package_r2_key as packageR2Key,
-            signature, signing_key_id as signingKeyId, release_notes as releaseNotes, is_revoked as isRevoked,
-            created_at as createdAt
-     FROM workspace_releases
-     WHERE channel = ?1 AND NOT is_revoked AND signing_key_id IS NOT NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM release_signing_key_revocations revoked
-         WHERE revoked.key_id = workspace_releases.signing_key_id
-       )
-     ORDER BY created_at DESC`,
-  )
-    .bind(channel)
-    .all<{
+  const rows = await dataOf(env).read.rows<{
       version: string;
       channel: string;
       minSupportedWorkspaceVersion: string | null;
@@ -59,7 +46,18 @@ export async function handleGetLatestWorkspaceRelease(
       releaseNotes: string | null;
       isRevoked: number;
       createdAt: string;
-    }>();
+    }>`SELECT version, channel, min_supported_workspace_version as minSupportedWorkspaceVersion,
+            supported_os_json as supportedOsJson, supported_arch_json as supportedArchJson,
+            package_digest as packageDigest, package_r2_key as packageR2Key,
+            signature, signing_key_id as signingKeyId, release_notes as releaseNotes, is_revoked as isRevoked,
+            created_at as createdAt
+     FROM workspace_releases
+     WHERE channel = ${channel} AND NOT is_revoked AND signing_key_id IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM release_signing_key_revocations revoked
+         WHERE revoked.key_id = workspace_releases.signing_key_id
+       )
+     ORDER BY created_at DESC`;
 
   const releases = (rows.results ?? []).filter((r) => {
     if (os) {
@@ -110,17 +108,7 @@ export async function handleGetWorkspaceRelease(
   env: SecurityEnv,
   version: string,
 ): Promise<Response> {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT version, channel, min_supported_workspace_version as minSupportedWorkspaceVersion,
-            supported_os_json as supportedOsJson, supported_arch_json as supportedArchJson,
-            package_digest as packageDigest, package_r2_key as packageR2Key,
-            signature, signing_key_id as signingKeyId, release_notes as releaseNotes, is_revoked as isRevoked,
-            revoked_at as revokedAt, revocation_reason as revocationReason,
-            created_at as createdAt
-     FROM workspace_releases WHERE version = ?1`,
-  )
-    .bind(version)
-    .first<{
+  const row = await dataOf(env).read.row<{
       version: string;
       channel: string;
       minSupportedWorkspaceVersion: string | null;
@@ -135,7 +123,13 @@ export async function handleGetWorkspaceRelease(
       revokedAt: string | null;
       revocationReason: string | null;
       createdAt: string;
-    }>();
+    }>`SELECT version, channel, min_supported_workspace_version as minSupportedWorkspaceVersion,
+            supported_os_json as supportedOsJson, supported_arch_json as supportedArchJson,
+            package_digest as packageDigest, package_r2_key as packageR2Key,
+            signature, signing_key_id as signingKeyId, release_notes as releaseNotes, is_revoked as isRevoked,
+            revoked_at as revokedAt, revocation_reason as revocationReason,
+            created_at as createdAt
+     FROM workspace_releases WHERE version = ${version}`;
 
   if (!row) {
     return json(
@@ -177,18 +171,14 @@ export async function handleDownloadWorkspaceRelease(
       ctx,
     );
   }
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT package_r2_key, package_digest, is_revoked, revocation_reason,
-            signing_key_id as signingKeyId FROM workspace_releases WHERE version = ?1`,
-  )
-    .bind(version)
-    .first<{
+  const row = await dataOf(env).read.row<{
       package_r2_key: string;
       package_digest: string;
       is_revoked: number;
       revocation_reason: string | null;
       signingKeyId: string | null;
-    }>();
+    }>`SELECT package_r2_key, package_digest, is_revoked, revocation_reason,
+            signing_key_id as signingKeyId FROM workspace_releases WHERE version = ${version}`;
 
   if (!row) {
     return json(
@@ -207,11 +197,7 @@ export async function handleDownloadWorkspaceRelease(
     );
   }
 
-  const revokedKey = await env.SYNTILA_DB.prepare(
-    SELECT_RELEASE_SIGNING_KEY_REVOCATIONS_BY_KEY_ID,
-  )
-    .bind(row.signingKeyId)
-    .first();
+  const revokedKey = await isReleaseSigningKeyRevoked(env, row.signingKeyId);
   if (revokedKey) {
     return json(
       { error: `Workspace release '${version}' signing key is revoked` },
@@ -361,11 +347,7 @@ export async function handlePublishWorkspaceRelease(
       { status: 400 },
     );
   }
-  const revokedSigningKey = await env.SYNTILA_DB.prepare(
-    SELECT_RELEASE_SIGNING_KEY_REVOCATIONS_BY_KEY_ID,
-  )
-    .bind(signingKeyId)
-    .first();
+  const revokedSigningKey = await isReleaseSigningKeyRevoked(env, signingKeyId);
   const signedMetadata = {
     version,
     channel,
@@ -394,15 +376,11 @@ export async function handlePublishWorkspaceRelease(
   }
   const signature = providedSignature;
 
-  const previous = await env.SYNTILA_DB.prepare(
-    "SELECT package_digest, signature, signing_key_id FROM workspace_releases WHERE version = ?1",
-  )
-    .bind(version)
-    .first<{
+  const previous = await dataOf(env).read.row<{
       package_digest: string;
       signature: string;
       signing_key_id: string | null;
-    }>();
+    }>`SELECT package_digest, signature, signing_key_id FROM workspace_releases WHERE version = ${version}`;
   if (previous) {
     if (
       previous.package_digest === digest &&
@@ -445,27 +423,11 @@ export async function handlePublishWorkspaceRelease(
   });
 
   const now = new Date().toISOString();
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO workspace_releases (
+  await dataOf(env).read.run`INSERT INTO workspace_releases (
        version, channel, min_supported_workspace_version, supported_os_json,
        supported_arch_json, package_digest, package_r2_key, signature, signing_key_id,
        release_notes, is_revoked, created_at
-     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, FALSE, ?11)`,
-  )
-    .bind(
-      version,
-      channel,
-      minSupportedWorkspaceVersion,
-      JSON.stringify(supportedOS),
-      JSON.stringify(supportedArch),
-      digest,
-      r2Key,
-      signature,
-      signingKeyId,
-      releaseNotes,
-      now,
-    )
-    .run();
+     ) VALUES (${version}, ${channel}, ${minSupportedWorkspaceVersion}, ${JSON.stringify(supportedOS)}, ${JSON.stringify(supportedArch)}, ${digest}, ${r2Key}, ${signature}, ${signingKeyId}, ${releaseNotes}, FALSE, ${now})`;
 
   return json(
     {
@@ -494,13 +456,9 @@ export async function handleRevokeWorkspaceRelease(
   const reason = body.reason || "Revoked by administrator";
   const now = new Date().toISOString();
 
-  await env.SYNTILA_DB.prepare(
-    `UPDATE workspace_releases
-     SET is_revoked = TRUE, revoked_at = ?1, revocation_reason = ?2
-     WHERE version = ?3`,
-  )
-    .bind(now, reason, version)
-    .run();
+  await dataOf(env).read.run`UPDATE workspace_releases
+     SET is_revoked = TRUE, revoked_at = ${now}, revocation_reason = ${reason}
+     WHERE version = ${version}`;
 
   return json({
     version,
@@ -514,17 +472,13 @@ export async function handleGetReleaseTrustState(
   env: SecurityEnv,
 ): Promise<Response> {
   const [keys, workspaceReleases] = await Promise.all([
-    env.SYNTILA_DB.prepare(
-      "SELECT key_id FROM release_signing_key_revocations ORDER BY key_id",
-    ).all<{ key_id: string }>(),
-    env.SYNTILA_DB.prepare(
-      "SELECT version, package_digest FROM workspace_releases WHERE is_revoked",
-    ).all<{ version: string; package_digest: string }>(),
+    dataOf(env).read.rows<{ key_id: string }>`SELECT key_id FROM release_signing_key_revocations ORDER BY key_id`,
+    dataOf(env).read.rows<{ version: string; package_digest: string }>`SELECT version, package_digest FROM workspace_releases WHERE is_revoked`,
   ]);
   return json({
-    revokedKeyIds: (keys.results ?? []).map((row) => row.key_id),
+    revokedKeyIds: keys.map((row) => row.key_id),
     // Workspaces refresh this list before accepting or activating app releases.
-    revokedWorkspaceReleases: (workspaceReleases.results ?? []).map((row) => ({
+    revokedWorkspaceReleases: workspaceReleases.map((row) => ({
       version: row.version,
       packageDigest: row.package_digest,
     })),
@@ -550,11 +504,7 @@ export async function handleRevokeReleaseSigningKey(
   const reason = (body.reason ?? "").trim().slice(0, 500);
   if (!reason) throw new HttpError(400, "revocation reason is required");
   const now = new Date().toISOString();
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO release_signing_key_revocations (key_id, revoked_at, revoked_by_user_id, reason)
-     VALUES (?1, ?2, ?3, ?4) ON CONFLICT(key_id) DO NOTHING`,
-  )
-    .bind(keyId, now, actor.userId, reason)
-    .run();
+  await dataOf(env).read.run`INSERT INTO release_signing_key_revocations (key_id, revoked_at, revoked_by_user_id, reason)
+     VALUES (${keyId}, ${now}, ${actor.userId}, ${reason}) ON CONFLICT(key_id) DO NOTHING`;
   return json({ keyId, isRevoked: true, revokedAt: now });
 }

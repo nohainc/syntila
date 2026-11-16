@@ -5,6 +5,7 @@
  */
 import { deleteAccountAvatars } from "../avatar-storage.js";
 import { publishPeopleProfileChanged } from "../people.js";
+import { dataOf } from "../../platform/data.js";
 
 type LifecycleEnv = { SYNTILA_DB: D1Database; SYNTILA_ARTIFACTS?: R2Bucket };
 
@@ -37,55 +38,43 @@ export async function handleAccountDeletionCleanup(
   userId: string,
 ) {
   const now = new Date().toISOString();
-  await db.batch([
-    db.prepare(
-      `WITH direct_handover AS (
+  await dataOf({ SYNTILA_DB: db }).tx("account.deletion_cleanup", async (tx) => {
+    await tx.run`WITH direct_handover AS (
          SELECT ds.space_id, peer.id AS new_owner
            FROM direct_spaces ds
-           JOIN spaces s ON s.id = ds.space_id AND s.owner_user_id = ?1
-           JOIN users peer ON peer.id = CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END
+           JOIN spaces s ON s.id = ds.space_id AND s.owner_user_id = ${userId}
+           JOIN users peer ON peer.id = CASE WHEN ds.user_low_id = ${userId} THEN ds.user_high_id ELSE ds.user_low_id END
                           AND peer.status = 'active'
        ), group_handover AS (
          SELECT DISTINCT ON (m.space_id) m.space_id, m.user_id AS new_owner
            FROM spaces s
-           JOIN space_memberships m ON m.space_id = s.id AND m.user_id <> ?1
-          WHERE s.owner_user_id = ?1 AND COALESCE(s.kind, 'group') = 'group'
+           JOIN space_memberships m ON m.space_id = s.id AND m.user_id <> ${userId}
+          WHERE s.owner_user_id = ${userId} AND COALESCE(s.kind, 'group') = 'group'
           ORDER BY m.space_id, m.created_at, m.id
        ), handover AS (
          SELECT * FROM direct_handover UNION ALL SELECT * FROM group_handover
        ), moved AS (
-         UPDATE spaces s SET owner_user_id = h.new_owner, updated_at = ?2
+         UPDATE spaces s SET owner_user_id = h.new_owner, updated_at = ${now}
            FROM handover h WHERE s.id = h.space_id
          RETURNING s.id, h.new_owner
        ), promoted AS (
-         UPDATE space_memberships m SET role = 'owner', updated_at = ?2
+         UPDATE space_memberships m SET role = 'owner', updated_at = ${now}
            FROM moved WHERE m.space_id = moved.id AND m.user_id = moved.new_owner
          RETURNING m.id
        )
        DELETE FROM space_memberships m USING moved
-        WHERE m.space_id = moved.id AND m.user_id = ?1`,
-    ).bind(userId, now),
-    db.prepare(
-      `DELETE FROM spaces
-        WHERE owner_user_id = ?1
-          AND (COALESCE(kind, 'group') = 'group' OR id IN (SELECT space_id FROM direct_spaces))`,
-    ).bind(userId),
-    db.prepare(
-      `DELETE FROM space_memberships
-        WHERE user_id = ?1 AND space_id IN (SELECT space_id FROM direct_spaces)`,
-    ).bind(userId),
-    db.prepare(
-      `UPDATE person_connections SET status = 'disconnected', disconnected_at = ?1
-        WHERE (user_low_id = ?2 OR user_high_id = ?2) AND status = 'connected'`,
-    ).bind(now, userId),
-    db.prepare(
-      `UPDATE person_invitations SET status = 'cancelled', updated_at = ?1
-        WHERE (inviter_user_id = ?2 OR invitee_user_id = ?2) AND status = 'pending'`,
-    ).bind(now, userId),
-    db.prepare(
-      `UPDATE threads
+        WHERE m.space_id = moved.id AND m.user_id = ${userId}`;
+    await tx.run`DELETE FROM spaces
+        WHERE owner_user_id = ${userId}
+          AND (COALESCE(kind, 'group') = 'group' OR id IN (SELECT space_id FROM direct_spaces))`;
+    await tx.run`DELETE FROM space_memberships
+        WHERE user_id = ${userId} AND space_id IN (SELECT space_id FROM direct_spaces)`;
+    await tx.run`UPDATE person_connections SET status = 'disconnected', disconnected_at = ${now}
+        WHERE (user_low_id = ${userId} OR user_high_id = ${userId}) AND status = 'connected'`;
+    await tx.run`UPDATE person_invitations SET status = 'cancelled', updated_at = ${now}
+        WHERE (inviter_user_id = ${userId} OR invitee_user_id = ${userId}) AND status = 'pending'`;
+    await tx.run`UPDATE threads
           SET lead_user_id = (SELECT owner_user_id FROM spaces WHERE id = threads.space_id)
-        WHERE lead_user_id = ?1`,
-    ).bind(userId),
-  ]);
+        WHERE lead_user_id = ${userId}`;
+  });
 }

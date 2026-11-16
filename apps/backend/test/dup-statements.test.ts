@@ -115,8 +115,8 @@ test("the real source tree scans reproducibly and every group is a same-file rep
   for (const g of first.groupList) expect(g.lines.length).toBeGreaterThan(1);
   // Every .prepare( call is either compared or reported as skipped.
   const { statements, skipped } = scanWithSkips(src);
-  // The tagged SQL migration removes one legacy call from each migrated site.
-  expect(statements.filter((s) => s.kind === "prepare").length + skipped.length).toBeGreaterThanOrEqual(700);
+  // The tagged SQL migration removed all legacy .prepare( calls.
+  expect(statements.filter((s) => s.kind === "prepare").length + skipped.length).toBe(0);
 });
 
 // ---- Regression ceiling (Package 2, Phase 4) -----------------------------------

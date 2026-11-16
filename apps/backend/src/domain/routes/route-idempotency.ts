@@ -17,6 +17,7 @@
  * own writes are marked `idempotent: "handler"` and are not wrapped.
  */
 import { HttpError, readBodyText, securityContext, type SecurityEnv } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 const KEY = /^[A-Za-z0-9_-]{16,128}$/;
 /** A claim older than this belongs to a request that died; it may be taken over. */
@@ -51,24 +52,18 @@ export async function withRouteIdempotency(
   const hash = await sha256(body);
 
   const claim = () =>
-    db
-      .prepare(
-        `INSERT INTO mutation_receipts (user_id, scope, idempotency_key, request_hash, response_json, response_status, created_at)
-         VALUES (?1, ?2, ?3, ?4, '{}', ${PENDING}, ?5)
-         ON CONFLICT DO NOTHING RETURNING 1 AS claimed`,
-      )
-      .bind(userId, scope, key, hash, new Date().toISOString())
-      .first<{ claimed: number }>();
+    dataOf(env).read.row<{ claimed: number }>`
+      INSERT INTO mutation_receipts (user_id, scope, idempotency_key, request_hash, response_json, response_status, created_at)
+      VALUES (${userId}, ${scope}, ${key}, ${hash}, '{}', ${PENDING}, ${new Date().toISOString()})
+      ON CONFLICT DO NOTHING RETURNING 1 AS claimed`;
+
+  const release = () =>
+    dataOf(env).read.run`DELETE FROM mutation_receipts WHERE user_id = ${userId} AND scope = ${scope} AND idempotency_key = ${key} AND response_status = ${PENDING}`;
 
   let claimed = await claim();
   if (!claimed) {
-    const existing = await db
-      .prepare(
-        `SELECT request_hash AS hash, response_json AS body, response_status AS status, created_at AS createdAt
-           FROM mutation_receipts WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3`,
-      )
-      .bind(userId, scope, key)
-      .first<{ hash: string; body: string; status: number; createdAt: string }>();
+    const existing = await dataOf(env).read.row<{ hash: string; body: string; status: number; createdAt: string }>`SELECT request_hash AS hash, response_json AS body, response_status AS status, created_at AS "createdAt"
+           FROM mutation_receipts WHERE user_id = ${userId} AND scope = ${scope} AND idempotency_key = ${key}`;
     if (existing && existing.hash !== hash)
       throw Object.assign(new HttpError(409, "Idempotency-Key was already used for a different request"), {
         code: "idempotency_key_reused",
@@ -83,22 +78,13 @@ export async function withRouteIdempotency(
       throw Object.assign(new HttpError(409, "A request with this Idempotency-Key is still being processed"), {
         code: "idempotency_in_progress",
       });
-    await db
-      .prepare(DELETE_PENDING_RECEIPT)
-      .bind(userId, scope, key)
-      .run();
+    await release();
     claimed = await claim();
     if (!claimed)
       throw Object.assign(new HttpError(409, "A request with this Idempotency-Key is still being processed"), {
         code: "idempotency_in_progress",
       });
   }
-
-  const release = () =>
-    db
-      .prepare(DELETE_PENDING_RECEIPT)
-      .bind(userId, scope, key)
-      .run();
 
   let response: Response;
   try {
@@ -113,12 +99,7 @@ export async function withRouteIdempotency(
     return response;
   }
   const text = await response.text();
-  await db
-    .prepare(
-      `UPDATE mutation_receipts SET response_json = ?4, response_status = ?5
-        WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3`,
-    )
-    .bind(userId, scope, key, text, response.status)
-    .run();
+  await dataOf(env).read.run`UPDATE mutation_receipts SET response_json = ${text}, response_status = ${response.status}
+        WHERE user_id = ${userId} AND scope = ${scope} AND idempotency_key = ${key}`;
   return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
 }

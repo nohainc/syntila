@@ -60,6 +60,7 @@ import {
 import type { SecurityEnv } from "./handlers.js";
 import type { SyntilaWorkflowParams } from "../workflow.js";
 import { parseMcpToolStepInput } from "../mcp-tool-step.js";
+import { dataOf } from "../../platform/data.js";
 
 export async function createOrGetRun(
   env: Env,
@@ -93,12 +94,8 @@ export async function handleValidateWorkRequest(
     "execute",
     accessContext,
   );
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT wc.config_json AS configJson FROM threads ws
-       LEFT JOIN thread_work_configs wc ON wc.thread_id = ws.id WHERE ws.id = ?1`,
-  )
-    .bind(threadId)
-    .first<{ configJson: string | null }>();
+  const row = await dataOf(env).read.row<{ configJson: string | null }>`SELECT wc.config_json AS "configJson" FROM threads ws
+       LEFT JOIN thread_work_configs wc ON wc.thread_id = ws.id WHERE ws.id = ${threadId}`;
   const config = parseJson<Record<string, unknown>>(row?.configJson, {
     defaultWorkflowId: "direct",
     bindings: {},
@@ -181,7 +178,7 @@ export async function handleCreateWorkRequest(
   const body = await readBody(request, WorkRequestBodySchema);
   const receipt = await MutationIdempotency.from(
     request,
-    env.SYNTILA_DB,
+    dataOf(env).read,
     context.userId,
     `thread:${threadId}:create-work-request`,
     body,
@@ -227,17 +224,13 @@ export async function createWorkRequestForUser(
 ): Promise<Response> {
   const handlerStartedAt = startedAt;
   const context = { userId };
-  const directSpace = await env.SYNTILA_DB.prepare(
-    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId
+  const directSpace = await dataOf(env).read.row<{ status: string | null; userLowId: string; userHighId: string }>`SELECT pc.status, ds.user_low_id AS "userLowId", ds.user_high_id AS "userHighId"
      FROM direct_spaces ds
      LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
-     WHERE ds.space_id = ?1`,
-  )
-    .bind(spaceId)
-    .first<{ status: string | null; userLowId: string; userHighId: string }>()
+     WHERE ds.space_id = ${spaceId}`
     .catch(() => null);
   if (directSpace) {
-    const isBlocked = await usersBlocked(env.SYNTILA_DB, directSpace.userLowId, directSpace.userHighId);
+    const isBlocked = await usersBlocked(env, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }
@@ -257,15 +250,11 @@ export async function createWorkRequestForUser(
       : body.mode === "stateless"
         ? "stateless"
         : null;
-  const workConfigRow = await env.SYNTILA_DB.prepare(
-    `SELECT wc.config_json AS configJson, p.settings_json AS settingsJson
+  const workConfigRow = await dataOf(env).read.row<{ configJson: string | null; settingsJson: string | null }>`SELECT wc.config_json AS "configJson", p.settings_json AS "settingsJson"
      FROM threads ws
      JOIN spaces p ON p.id = ws.space_id
      LEFT JOIN thread_work_configs wc ON wc.thread_id = ws.id
-     WHERE ws.id = ?1`,
-  )
-    .bind(threadId)
-    .first<{ configJson: string | null; settingsJson: string | null }>();
+     WHERE ws.id = ${threadId}`;
   const workConfig = parseJson<Record<string, unknown>>(
     workConfigRow?.configJson,
     { defaultWorkflowId: "direct", bindings: {} },
@@ -652,11 +641,7 @@ export async function createWorkRequestForUser(
     stepAdditionalInstructions,
     promptProfileVersions,
   };
-  const policyRow = await env.SYNTILA_DB.prepare(
-    "SELECT mode, primary_workspace_id AS primaryWorkspaceId FROM thread_execution_policies WHERE thread_id = ?1",
-  )
-    .bind(threadId)
-    .first<ThreadExecutionPolicy>();
+  const policyRow = await dataOf(env).read.row<ThreadExecutionPolicy>`SELECT mode, primary_workspace_id AS "primaryWorkspaceId" FROM thread_execution_policies WHERE thread_id = ${threadId}`;
   const policy: ThreadExecutionPolicy =
     canonicalWorkflow.steps.length === 1
       ? {
@@ -736,80 +721,55 @@ export async function createWorkRequestForUser(
     workRequest,
     run: { id: runId, spaceId, threadId, status: "created" },
   };
-  const statements = (receipts: D1PreparedStatement[]) => [
-    ...receipts,
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO work_requests
+  const runWrites = async (tx: Tx) => {
+    await tx.run`
+      INSERT INTO work_requests
        (id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, primary_workspace_id, input_json, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'queued', ?9, ?10, ?11, ?11)`,
-    ).bind(
-      workRequest.id,
-      threadId,
-      context.userId,
-      mode,
-      workflowId,
-      workflowVersion,
-      JSON.stringify(workflowSnapshot),
-      JSON.stringify(snapshot),
-      workRequest.primaryWorkspaceId,
-      JSON.stringify(workRequest.input),
-      now,
-    ),
-    ...(fileInputs
-      ? workRequestInputStatements(env.SYNTILA_DB, {
-          workRequestId: workRequest.id,
-          threadId,
-          workspaceId: workRequest.primaryWorkspaceId!,
-          userId: context.userId,
-          attachments: normalizedAttachments,
-          now,
-        })
-      : []),
+       VALUES (${workRequest.id}, ${threadId}, ${context.userId}, ${mode}, ${workflowId}, ${workflowVersion}, ${JSON.stringify(workflowSnapshot)}, ${JSON.stringify(snapshot)}, 'queued', ${workRequest.primaryWorkspaceId}, ${JSON.stringify(workRequest.input)}, ${now}, ${now})
+    `;
+    if (fileInputs) {
+      await workRequestInputStatements(tx, {
+        workRequestId: workRequest.id,
+        threadId,
+        workspaceId: workRequest.primaryWorkspaceId!,
+        userId: context.userId,
+        attachments: normalizedAttachments,
+        now,
+      });
+    }
     // Sidebar ordering is based on these parent timestamps. A newly
     // accepted request is Thread activity even before a Worker responds.
-    env.SYNTILA_DB.prepare(
-      "UPDATE threads SET updated_at = ?1 WHERE id = ?2",
-    ).bind(now, threadId),
-    env.SYNTILA_DB.prepare(
-      "UPDATE spaces SET updated_at = ?1 WHERE id = ?2",
-    ).bind(now, spaceId),
-    ...(conversationWorkflow
-      ? conversationSubmissionStatements(
-          env.SYNTILA_DB,
-          selectedConversationId!,
-          threadId,
-          conversationWorkflow,
-          workRequest.id,
-          now,
-        )
-      : []),
-    ...(conversationWorkflow
-      ? initialConversationTaskStatements(
-          env.SYNTILA_DB,
-          workflowSnapshot,
-          workRequest.id,
-          now,
-        )
-      : []),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO runs
+    await tx.run`UPDATE threads SET updated_at = ${now} WHERE id = ${threadId}`;
+    await tx.run`UPDATE spaces SET updated_at = ${now} WHERE id = ${spaceId}`;
+    if (conversationWorkflow) {
+      await conversationSubmissionStatements(
+        tx,
+        selectedConversationId!,
+        threadId,
+        conversationWorkflow,
+        workRequest.id,
+        now,
+      );
+      await initialConversationTaskStatements(
+        tx,
+        workflowSnapshot,
+        workRequest.id,
+        now,
+      );
+    }
+    await tx.run`
+      INSERT INTO runs
        (id, space_id, thread_id, work_request_id, status, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, 'created', ?5, ?5)`,
-    ).bind(runId, spaceId, threadId, workRequest.id, now),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO space_audit_log
+       VALUES (${runId}, ${spaceId}, ${threadId}, ${workRequest.id}, 'created', ${now}, ${now})
+    `;
+    await tx.run`
+      INSERT INTO space_audit_log
        (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-       VALUES (?1, ?2, 'user', ?3, 'thread.work_requested', 'work_request', ?4, ?5, ?6)`,
-    ).bind(
-      `pa-${crypto.randomUUID()}`,
-      spaceId,
-      context.userId,
-      workRequest.id,
-      JSON.stringify({ threadId, runId, workflowId, workflowVersion }),
-      now,
-    ),
-  ];
-  // The "received by Syntila" signal commits in the same D1 batch as the
+       VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'thread.work_requested', 'work_request', ${workRequest.id}, ${JSON.stringify({ threadId, runId, workflowId, workflowVersion })}, ${now})
+    `;
+    if (receipt) await receipt.record(tx, responseBody, 202);
+  };
+  // The "received by Syntila" signal commits in the same transaction as the
   // request, so a saved request is never left unannounced.
   const created = {
     type: "work_request.created",
@@ -825,16 +785,20 @@ export async function createWorkRequestForUser(
       ...(submissionId ? { submissionId } : {}),
     },
   };
-  const write = (receipts: D1PreparedStatement[]) =>
-    workRequest.primaryWorkspaceId
-      ? createEventPublisher(env).publish({
-          ...created,
-          mutations: statements(receipts),
-        })
-      : env.SYNTILA_DB.batch(statements(receipts));
-  const concurrentReplay = receipt
-    ? await receipt.commit(responseBody, 202, write)
-    : (await write([]), null);
+  let concurrentReplay: Response | null = null;
+  try {
+    if (workRequest.primaryWorkspaceId) {
+      await createEventPublisher(env).publish({
+        ...created,
+        tx: runWrites,
+      });
+    } else {
+      await dataOf(env).tx("workCreation.create", runWrites);
+    }
+  } catch (error) {
+    if (receipt) concurrentReplay = await receipt.replayOnConflict(error);
+    if (!concurrentReplay) throw error;
+  }
   if (concurrentReplay) return resumeSubmission(env, concurrentReplay);
   // T2: the submission is durably accepted. durationMs is the handler's own
   // elapsed time (coarse in Workers; I/O advances the clock).
@@ -860,11 +824,7 @@ async function resumeSubmission(
     run: { id: string; spaceId: string; threadId: string };
   };
   if (replay) {
-    const row = await env.SYNTILA_DB.prepare(
-      "SELECT status FROM work_requests WHERE id = ?1",
-    )
-      .bind(workRequest.id)
-      .first<{ status: string }>();
+    const row = await dataOf(env).read.row<{ status: string }>`SELECT status FROM work_requests WHERE id = ${workRequest.id}`;
     if (!row || ["completed", "failed", "cancelled"].includes(row.status))
       return response;
   }
@@ -912,19 +872,15 @@ async function requireToolCallAuthority(
 ): Promise<void> {
   const target = parseMcpToolStepInput(toolCall);
   if (!target) throw new HttpError(400, "input.toolCall is invalid");
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT p.owner_user_id AS spaceOwner, COALESCE(p.kind, 'group') AS spaceKind,
-            ew.owner_user_id AS workspaceOwner
-     FROM spaces p
-     LEFT JOIN execution_workspaces ew ON ew.id = ?2
-     WHERE p.id = ?1`,
-  )
-    .bind(spaceId, target.executionWorkspaceId)
-    .first<{
+  const row = await dataOf(env).read.row<{
       spaceOwner: string;
       spaceKind: string;
       workspaceOwner: string | null;
-    }>();
+    }>`SELECT p.owner_user_id AS "spaceOwner", COALESCE(p.kind, 'group') AS "spaceKind",
+            ew.owner_user_id AS "workspaceOwner"
+     FROM spaces p
+     LEFT JOIN execution_workspaces ew ON ew.id = ${target.executionWorkspaceId}
+     WHERE p.id = ${spaceId}`;
   if (!row || row.workspaceOwner !== userId)
     throw new HttpError(
       403,

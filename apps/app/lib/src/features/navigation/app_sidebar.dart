@@ -105,7 +105,14 @@ class AppSidebar extends StatelessWidget {
         const rightPadding = 10.0;
         return Container(
           width: width,
-          color: SyntilaColors.navigationBackground(isDark),
+          decoration: BoxDecoration(
+            color: SyntilaColors.navigationBackground(isDark),
+            border: Border(
+              right: BorderSide(
+                color: SyntilaColors.navigationBorder(isDark),
+              ),
+            ),
+          ),
           padding: EdgeInsets.fromLTRB(sidePadding, 16, rightPadding, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -518,7 +525,14 @@ class AppIconRail extends StatelessWidget {
 
     return Container(
       width: 50,
-      color: SyntilaColors.navigationBackground(isDark),
+      decoration: BoxDecoration(
+        color: SyntilaColors.navigationBackground(isDark),
+        border: Border(
+          right: BorderSide(
+            color: SyntilaColors.navigationBorder(isDark),
+          ),
+        ),
+      ),
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
       child: Column(
         children: [

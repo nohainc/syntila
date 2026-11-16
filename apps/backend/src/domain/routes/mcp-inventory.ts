@@ -25,7 +25,7 @@ export async function handleWorkspaceMcpInventory(
 ): Promise<Response> {
   if (request.method !== "GET") throw new HttpError(405, "Unsupported method");
   const context = await securityContext(request, env, ctx);
-  const owned = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
+  const owned = await ownsActiveWorkspace(env, workspaceId, context.userId);
   if (!owned) throw new HttpError(404, "Workspace not found");
 
   const gateway = env.SYNTILA_WORKSPACE_GATEWAY;

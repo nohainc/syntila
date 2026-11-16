@@ -1,5 +1,6 @@
 import { HttpError } from "../routes/http-security.js";
 import { hashToken } from "@syntila/security";
+import { dataOf } from "../../platform/data.js";
 
 type Database = Pick<D1Database, "prepare">;
 
@@ -31,20 +32,16 @@ export class WorkspaceRuntimeAuthenticator {
   async findWorkspaceRuntimeIdentity(
     runtimeId: string,
   ): Promise<WorkspaceRuntimeIdentity | null> {
-    const row = await this.db
-      .prepare(
-        `SELECT wri.id AS runtimeId,
-                wri.workspace_id AS executionWorkspaceId,
-                wri.installation_id AS installationId,
-                wri.credential_token_hash AS credentialTokenHash
-           FROM workspace_runtime_identities wri
-           JOIN execution_workspaces ew ON ew.id = wri.workspace_id
-          WHERE wri.id = ?1
-            AND wri.revoked_at IS NULL
-            AND ew.status <> 'revoked'`,
-      )
-      .bind(runtimeId)
-      .first<WorkspaceRuntimeIdentity>();
+    const row = await dataOf({ SYNTILA_DB: this.db }).read.row<WorkspaceRuntimeIdentity>`
+      SELECT wri.id AS "runtimeId",
+             wri.workspace_id AS "executionWorkspaceId",
+             wri.installation_id AS "installationId",
+             wri.credential_token_hash AS "credentialTokenHash"
+        FROM workspace_runtime_identities wri
+        JOIN execution_workspaces ew ON ew.id = wri.workspace_id
+       WHERE wri.id = ${runtimeId}
+         AND wri.revoked_at IS NULL
+         AND ew.status <> 'revoked'`;
     return row ?? null;
   }
 
@@ -59,21 +56,17 @@ export class WorkspaceRuntimeAuthenticator {
     runtimeId: string,
     credentialTokenHash: string,
   ): Promise<WorkspaceRuntimeIdentity | null> {
-    const row = await this.db
-      .prepare(
-        `SELECT wri.id AS runtimeId,
-                wri.workspace_id AS executionWorkspaceId,
-                wri.installation_id AS installationId,
-                wri.credential_token_hash AS credentialTokenHash
-           FROM workspace_runtime_identities wri
-           JOIN execution_workspaces ew ON ew.id = wri.workspace_id
-          WHERE wri.id = ?1
-            AND wri.credential_token_hash = ?2
-            AND wri.revoked_at IS NULL
-            AND ew.status <> 'revoked'`,
-      )
-      .bind(runtimeId, credentialTokenHash)
-      .first<WorkspaceRuntimeIdentity>();
+    const row = await dataOf({ SYNTILA_DB: this.db }).read.row<WorkspaceRuntimeIdentity>`
+      SELECT wri.id AS "runtimeId",
+             wri.workspace_id AS "executionWorkspaceId",
+             wri.installation_id AS "installationId",
+             wri.credential_token_hash AS "credentialTokenHash"
+        FROM workspace_runtime_identities wri
+        JOIN execution_workspaces ew ON ew.id = wri.workspace_id
+       WHERE wri.id = ${runtimeId}
+         AND wri.credential_token_hash = ${credentialTokenHash}
+         AND wri.revoked_at IS NULL
+         AND ew.status <> 'revoked'`;
     return row &&
       (row.credentialTokenHash == null ||
         row.credentialTokenHash === credentialTokenHash)
@@ -84,18 +77,14 @@ export class WorkspaceRuntimeAuthenticator {
   async resolveRuntimeBySession(
     sessionId: string,
   ): Promise<WorkspaceRuntimeSession | null> {
-    const row = await this.db
-      .prepare(
-        `SELECT id AS sessionId,
-                workspace_id AS executionWorkspaceId,
-                runtime_identity_id AS runtimeIdentityId,
-                connected_at AS connectedAt,
-                disconnected_at AS disconnectedAt
-           FROM workspace_sessions
-          WHERE id = ?1 AND disconnected_at IS NULL`,
-      )
-      .bind(sessionId)
-      .first<WorkspaceRuntimeSession>();
+    const row = await dataOf({ SYNTILA_DB: this.db }).read.row<WorkspaceRuntimeSession>`
+      SELECT id AS "sessionId",
+             workspace_id AS "executionWorkspaceId",
+             runtime_identity_id AS "runtimeIdentityId",
+             connected_at AS "connectedAt",
+             disconnected_at AS "disconnectedAt"
+        FROM workspace_sessions
+       WHERE id = ${sessionId} AND disconnected_at IS NULL`;
     return row ?? null;
   }
 

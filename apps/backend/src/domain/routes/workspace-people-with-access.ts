@@ -7,6 +7,7 @@ import {
 } from "./http-security.js";
 import { monthStartIso } from "./workspace-invitations.js";
 import { loadEffectiveMemberAccess } from "./workspace-member-access.js";
+import { dataOf } from "../../platform/data.js";
 
 /**
  * Owner-only "People with access": everyone holding a Person Grant on this
@@ -23,18 +24,9 @@ export async function handlePeopleWithAccess(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   if (request.method !== "GET") throw new HttpError(405, "Unsupported method");
-  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
+  const workspace = await ownsActiveWorkspace(env, workspaceId, context.userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
-  const grants = await env.SYNTILA_DB.prepare(
-    `SELECT g.user_id AS userId, u.display_name AS displayName, u.email, g.status,
-            g.created_at AS grantedAt, g.max_concurrent_requests AS maxConcurrentRequests, g.max_run_seconds_per_month AS maxRunSecondsPerMonth,
-            EXISTS (SELECT 1 FROM workspace_member_overrides o
-                     WHERE o.workspace_id = g.workspace_id AND o.user_id = g.user_id) AS custom
-     FROM workspace_person_grants g JOIN users u ON u.id = g.user_id
-     WHERE g.workspace_id = ?1 ORDER BY g.status, LOWER(u.display_name), g.user_id`,
-  )
-    .bind(workspaceId)
-    .all<{
+  const grants = await dataOf(env).read.rows<{
       userId: string;
       displayName: string;
       email: string;
@@ -43,42 +35,35 @@ export async function handlePeopleWithAccess(
       maxConcurrentRequests: number;
       maxRunSecondsPerMonth: number | null;
       custom: number;
-    }>();
-  const usage = await env.SYNTILA_DB.prepare(
-    `SELECT requested_by_user_id AS userId,
-            COUNT(*) AS requests,
-            ROUND(SUM(GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at)))))::bigint AS approxSeconds,
-            MAX(created_at) AS lastUsedAt
-     FROM worker_assignments
-     WHERE execution_workspace_id = ?1 AND requested_by_user_id IS NOT NULL
-     GROUP BY requested_by_user_id`,
-  )
-    .bind(workspaceId)
-    .all<{
+    }>`SELECT g.user_id AS "userId", u.display_name AS "displayName", u.email, g.status,
+            g.created_at AS "grantedAt", g.max_concurrent_requests AS "maxConcurrentRequests", g.max_run_seconds_per_month AS "maxRunSecondsPerMonth",
+            EXISTS (SELECT 1 FROM workspace_member_overrides o
+                     WHERE o.workspace_id = g.workspace_id AND o.user_id = g.user_id) AS custom
+     FROM workspace_person_grants g JOIN users u ON u.id = g.user_id
+     WHERE g.workspace_id = ${workspaceId} ORDER BY g.status, LOWER(u.display_name), g.user_id`;
+  const usage = await dataOf(env).read.rows<{
       userId: string;
       requests: number;
       approxSeconds: number | null;
       lastUsedAt: string | null;
-    }>();
-  const monthRows = await env.SYNTILA_DB.prepare(
-    `SELECT requested_by_user_id AS userId,
+    }>`SELECT requested_by_user_id AS "userId",
+            COUNT(*) AS requests,
+            ROUND(SUM(GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at)))))::bigint AS "approxSeconds",
+            MAX(created_at) AS "lastUsedAt"
+     FROM worker_assignments
+     WHERE execution_workspace_id = ${workspaceId} AND requested_by_user_id IS NOT NULL
+     GROUP BY requested_by_user_id`;
+  const monthRows = await dataOf(env).read.rows<{ userId: string; seconds: number | null }>`SELECT requested_by_user_id AS "userId",
             ROUND(SUM(GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at)))))::bigint AS seconds
      FROM worker_assignments
-     WHERE execution_workspace_id = ?1 AND requested_by_user_id IS NOT NULL AND created_at >= ?2
-     GROUP BY requested_by_user_id`,
-  )
-    .bind(workspaceId, monthStartIso())
-    .all<{ userId: string; seconds: number | null }>();
+     WHERE execution_workspace_id = ${workspaceId} AND requested_by_user_id IS NOT NULL AND created_at >= ${monthStartIso()}
+     GROUP BY requested_by_user_id`;
   const monthSeconds = new Map(
     monthRows.results.map((row) => [row.userId, row.seconds ?? 0]),
   );
-  const workers = await env.SYNTILA_DB.prepare(
-    `SELECT DISTINCT requested_by_user_id AS userId, workspace_worker_id AS workerId
+  const workers = await dataOf(env).read.rows<{ userId: string; workerId: string }>`SELECT DISTINCT requested_by_user_id AS "userId", workspace_worker_id AS "workerId"
      FROM worker_assignments
-     WHERE execution_workspace_id = ?1 AND requested_by_user_id IS NOT NULL AND workspace_worker_id IS NOT NULL`,
-  )
-    .bind(workspaceId)
-    .all<{ userId: string; workerId: string }>();
+     WHERE execution_workspace_id = ${workspaceId} AND requested_by_user_id IS NOT NULL AND workspace_worker_id IS NOT NULL`;
   const usageByUser = new Map(usage.results.map((row) => [row.userId, row]));
   const people = [];
   for (const grant of grants.results) {
