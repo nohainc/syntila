@@ -19,6 +19,9 @@ import {
   type RealtimeQueueEnqueueResult,
 } from "./realtime-queue.js";
 
+const SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID =
+  "SELECT 1 AS owner FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status <> 'revoked'";
+
 export interface RealtimeScope {
   kind?: "user" | "space" | "thread" | "run" | "execution_workspace";
   executionWorkspaceId?: string;
@@ -314,7 +317,7 @@ export async function authorizeRealtimeScope(
   if (scope.kind === "execution_workspace") {
     const owner = await db
       .prepare(
-        "SELECT 1 AS owner FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status <> 'revoked'",
+        SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
       )
       .bind(scope.executionWorkspaceId, userId)
       .first<{ owner: number }>();
@@ -337,7 +340,7 @@ export async function authorizeRealtimeScope(
   }
   const owner = await db
     .prepare(
-      "SELECT 1 AS owner FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status <> 'revoked'",
+      SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
     )
     .bind(scope.workspaceId, userId)
     .first<{ owner: number }>();
