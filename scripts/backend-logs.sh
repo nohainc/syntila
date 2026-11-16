@@ -3,7 +3,7 @@
 #
 #   scripts/backend-logs.sh                # unexpected errors, last day
 #   scripts/backend-logs.sh errors 3h      # unexpected errors, last 3 hours
-#   scripts/backend-logs.sh lock           # write summaries every 5 minutes (db.writes; db.writer_lock if the fallback lock is on)
+#   scripts/backend-logs.sh lock           # write and tagged transaction summaries every 5 minutes
 #   scripts/backend-logs.sh slow           # single writes that held the lock 250 ms or more
 #   scripts/backend-logs.sh db             # database health: lock waits, deadlocks, transactions
 #   scripts/backend-logs.sh lockwaits      # lock waits and deadlocks PostgreSQL itself logged
@@ -37,7 +37,7 @@ show() { # title, pattern
 
 case "$topic" in
   errors)    show "unexpected errors" '"http.unhandled_error"';;
-  lock)      show "writes" '"db.writes"'; show "writer lock (fallback on)" '"db.writer_lock"';;
+  lock)      show "writes" '"db.writes"'; show "writer lock (fallback on)" '"db.writer_lock"'; show "data-layer transactions" '"db.tx"';;
   slow)      show "slow writes" '"db.slow_write"'; show "slow transactions" '"db.slow_tx"';;
   db)
     show "database health (every 5 minutes)" '"db.health"'
@@ -58,7 +58,8 @@ case "$topic" in
     show "database health" '"db.health"'
     show "rate limited" '"http.rate_limited"'
     show "retention" '"retention.'
-    show "writer lock" '"db.writer_lock"';;
+    show "writer lock" '"db.writer_lock"'
+    show "data-layer transactions" '"db.tx"';;
   follow)    exec ssh -t "$host" "journalctl -u syntila-backend -f -o cat";;
   *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;
 esac

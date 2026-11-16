@@ -2,6 +2,7 @@ import {
   isReplayableWorkerActivityType,
   type RealtimeEventPayload,
 } from "@syntila/protocol";
+import { dataOf } from "../platform/data.js";
 
 export const MAX_WORKER_ACTIVITY_HISTORY_PER_ASSIGNMENT = 256;
 
@@ -15,12 +16,11 @@ export function shouldPersistWorkerActivity(
 }
 
 export async function pruneWorkerActivityHistory(
-  db: D1Database,
+  env: { SYNTILA_DB: unknown; SYNTILA_DATA?: unknown },
   maxPerAssignment = MAX_WORKER_ACTIVITY_HISTORY_PER_ASSIGNMENT,
 ): Promise<number> {
-  const historyResult = await db
-    .prepare(
-      `DELETE FROM worker_activity_history
+  const historyResult = await dataOf(env).tx("retention.worker_activity", (tx) =>
+    tx.run`DELETE FROM worker_activity_history
        WHERE history_id IN (
          SELECT history_id FROM (
            SELECT history_id,
@@ -30,14 +30,11 @@ export async function pruneWorkerActivityHistory(
                   ) AS rank
            FROM worker_activity_history
          )
-         WHERE rank > ?1
+         WHERE rank > ${maxPerAssignment}
        )`,
-    )
-    .bind(maxPerAssignment)
-    .run();
-  const realtimeResult = await db
-    .prepare(
-      `DELETE FROM realtime_events
+  );
+  const realtimeResult = await dataOf(env).tx("retention.worker_activity_events", (tx) =>
+    tx.run`DELETE FROM realtime_events
        WHERE event_id IN (
          SELECT event_id FROM (
            SELECT event_id,
@@ -48,13 +45,8 @@ export async function pruneWorkerActivityHistory(
            FROM realtime_events
            WHERE event_type = 'assignment.activity'
          )
-         WHERE rank > ?1
+         WHERE rank > ${maxPerAssignment}
        )`,
-    )
-    .bind(maxPerAssignment)
-    .run();
-  return (
-    Number(historyResult.meta.changes ?? 0) +
-    Number(realtimeResult.meta.changes ?? 0)
   );
+  return historyResult + realtimeResult;
 }

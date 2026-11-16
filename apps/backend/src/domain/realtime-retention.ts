@@ -1,3 +1,4 @@
+import { dataOf } from "../platform/data.js";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DELETE_BATCH_SIZE = 1_000;
 const MAX_DELETE_BATCHES_PER_RUN = 10;
@@ -9,7 +10,7 @@ const MAX_DELETE_BATCHES_PER_RUN = 10;
 export const DURABLE_EVENT_RETENTION_DAYS = 7;
 
 export async function pruneExpiredRealtimeEvents(
-  db: D1Database,
+  env: { SYNTILA_DB: unknown; SYNTILA_DATA?: unknown },
   now = new Date(),
 ): Promise<number> {
   const cutoff = new Date(
@@ -18,19 +19,15 @@ export async function pruneExpiredRealtimeEvents(
   let deleted = 0;
 
   for (let batch = 0; batch < MAX_DELETE_BATCHES_PER_RUN; batch += 1) {
-    const result = await db
-      .prepare(
-        `DELETE FROM realtime_events
+    const batchDeleted = await dataOf(env).tx("retention.realtime", (tx) =>
+      tx.run`DELETE FROM realtime_events
          WHERE event_id IN (
            SELECT event_id FROM realtime_events
-           WHERE occurred_at < ?1
+           WHERE occurred_at < ${cutoff}
            ORDER BY occurred_at, event_id
-           LIMIT ?2
+           LIMIT ${DELETE_BATCH_SIZE}
          )`,
-      )
-      .bind(cutoff, DELETE_BATCH_SIZE)
-      .run();
-    const batchDeleted = Number(result.meta.changes ?? 0);
+    );
     deleted += batchDeleted;
     if (batchDeleted < DELETE_BATCH_SIZE) break;
   }

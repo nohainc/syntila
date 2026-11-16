@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; the global writer lock applies only with SYNTILA_DB_WRITER_LOCK=on).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 136 adapter-only, 25 in data-layer transactions.
+Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 134 adapter-only, 27 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -203,7 +203,7 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 136 ad
 | `domain/thread-coordinator.ts` | `release` | UPDATE runs, UPDATE thread_runtime_leases, UPDATE work_requests | guarded, batch, lock |
 | `domain/thread-coordinator.ts` | `settleExpiredLeases` | UPDATE runs, UPDATE thread_runtime_leases, UPDATE work_requests, UPDATE workflow_tasks | read-write, guarded, batch, lock |
 | `domain/thread-coordinator.ts` | `startStatefulLeaseStatements` | INSERT thread_runtime_leases, UPDATE threads | lock |
-| `domain/worker-activity-history.ts` | `pruneWorkerActivityHistory` | DELETE realtime_events, DELETE worker_activity_history | lock |
+| `domain/worker-activity-history.ts` | `pruneWorkerActivityHistory` | DELETE realtime_events, DELETE worker_activity_history | data |
 | `domain/worker-profile-registry.ts` | `persistWorkerProfileSnapshot` | INSERT worker_profile_history, INSERT worker_profiles, UPDATE worker_profiles | guarded, batch, lock |
 | `domain/workflow.ts` | `finishWorkRequestNow` | UPDATE work_requests | read-write, guarded, batch, lock |
 | `domain/workflow.ts` | `persistTerminalRun` | UPDATE runs | lock |
@@ -215,7 +215,7 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 136 ad
 | File | Function | Writes | Flags |
 | --- | --- | --- | --- |
 | `domain/event-publisher.ts` | `persistDurableEvent` | INSERT realtime_event_cursors, INSERT realtime_events, UPDATE realtime_event_cursors | numbering, read-write, guarded, batch, lock |
-| `domain/realtime-retention.ts` | `pruneExpiredRealtimeEvents` | DELETE realtime_events | lock |
+| `domain/realtime-retention.ts` | `pruneExpiredRealtimeEvents` | DELETE realtime_events | data |
 | `domain/routes/releases.ts` | `handlePublishWorkspaceRelease` | INSERT workspace_releases | read-write, lock |
 | `domain/routes/releases.ts` | `handleRevokeReleaseSigningKey` | INSERT release_signing_key_revocations | guarded, lock |
 | `domain/routes/releases.ts` | `handleRevokeWorkspaceRelease` | UPDATE workspace_releases | guarded, lock |

@@ -238,9 +238,9 @@ export default {
       );
       return;
     }
-    const deleted = await pruneExpiredRealtimeEvents(env.SYNTILA_DB);
+    const deleted = await pruneExpiredRealtimeEvents(env);
     const deletedWorkerActivity = await pruneWorkerActivityHistory(
-      env.SYNTILA_DB,
+      env,
     );
     const deletedIssueReports = await pruneExpiredIssueReports(
       env,

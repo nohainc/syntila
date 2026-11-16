@@ -392,7 +392,7 @@ describe("collaboration durable signals", () => {
       });
       expect(
         await pruneExpiredRealtimeEvents(
-          f.db,
+          { SYNTILA_DB: f.db },
           new Date("2026-10-06T00:00:00.000Z"),
         ),
       ).toBe(1);
