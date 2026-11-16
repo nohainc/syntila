@@ -69,10 +69,30 @@ export async function collectWritePaths(): Promise<Path[]> {
     const text = await Bun.file(path).text();
     const fns = enclosingFunctions(text);
     const owner = (at: number) => [...fns].reverse().find((f) => f.at <= at)?.name ?? "(module)";
-    for (const literal of text.matchAll(LITERAL)) {
-      const sql = literal[0];
+    // SQL kept in a module constant counts for every function that uses it, so a
+    // statement shared by two functions is still attributed to both (folding a
+    // duplicate into one constant must not change this inventory).
+    const constants = new Map<string, { sql: string; at: number }>();
+    for (const m of text.matchAll(/^(?:export\s+)?const\s+([A-Z][A-Z0-9_]*)\s*=\s*(`(?:\\.|[^`\\])*`|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')\s*;/gm))
+      if (/\b(SELECT|INSERT|UPDATE|DELETE)\b/.test(m[2]!)) constants.set(m[1]!, { sql: m[2]!, at: m.index! });
+    const usedConstants = new Set<string>();
+    const uses: { sql: string; at: number }[] = [];
+    for (const [name, c] of constants)
+      for (const u of text.matchAll(new RegExp(`\\b${name}\\b`, "g"))) {
+        if (u.index! >= c.at && u.index! < c.at + name.length + 12) continue; // its own declaration
+        usedConstants.add(name);
+        uses.push({ sql: c.sql, at: u.index! });
+      }
+    const literals = [
+      ...[...text.matchAll(LITERAL)].map((m) => ({ sql: m[0], at: m.index!, declared: false })),
+      ...uses.map((u) => ({ sql: u.sql, at: u.at, declared: true })),
+    ];
+    for (const literal of literals) {
+      const sql = literal.sql;
       if (!/\b(SELECT|INSERT|UPDATE|DELETE)\b/.test(sql)) continue;
-      const fn = owner(literal.index!);
+      const fn = owner(literal.at);
+      // A constant that is used elsewhere is attributed to its users, not listed on its own.
+      if (!literal.declared && /^\(([A-Z][A-Z0-9_]*)\)$/.test(fn) && usedConstants.has(fn.slice(1, -1))) continue;
       const key = `${file}#${fn}`;
       const entry = paths.get(key) ?? {
         file, fn, statements: [], reads: false, batch: false, adapter: false, data: false,

@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; the global writer lock applies only with SYNTILA_DB_WRITER_LOCK=on).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 134 adapter-only, 23 in data-layer transactions.
+Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 136 adapter-only, 25 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -119,7 +119,7 @@ Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 134 ad
 | `domain/routes/workspaces-management.ts` | `handleUpdateWorkspace` | UPDATE execution_workspaces | guarded, lock |
 | `domain/routes/workspaces-registration.ts` | `handleDisconnectDesktopWorkspace` | INSERT workspace_audit_log, UPDATE execution_workspaces, UPDATE workspace_runtime_identities | read-write, batch, lock |
 | `domain/routes/workspaces-registration.ts` | `handleReconcileWorkspaceOwnership` | INSERT workspace_audit_log, INSERT workspace_installations | read-write, batch, lock |
-| `domain/routes/workspaces-registration.ts` | `handleRegisterWorkspaceFromDesktop` | INSERT execution_workspaces, INSERT workspace_audit_log, INSERT workspace_installations, INSERT workspace_runtime_facts, INSERT workspace_runtime_identities, UPDATE execution_workspaces, UPDATE workspace_runtime_identities | read-write, batch, lock |
+| `domain/routes/workspaces-registration.ts` | `handleRegisterWorkspaceFromDesktop` | INSERT execution_workspaces, INSERT workspace_audit_log, INSERT workspace_installations, INSERT workspace_runtime_facts, INSERT workspace_runtime_identities, UPDATE execution_workspaces, UPDATE workspace_runtime_identities | read-write, batch, data |
 | `domain/routes/workspaces-registration.ts` | `handleReleaseDesktopWorkspace` | INSERT workspace_audit_log, UPDATE execution_workspaces, UPDATE workspace_installations, UPDATE workspace_runtime_identities, UPDATE workspace_space_grants | read-write, batch, lock |
 | `domain/workspace-audit.ts` | `recordExecutionWorkspaceAudit` | INSERT workspace_audit_log | lock |
 | `domain/workspace-gateway.ts` | `close` | UPDATE execution_workspaces | lock |
@@ -173,6 +173,7 @@ Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 134 ad
 | `domain/mcp-tool-dispatch-claim.ts` | `recordMcpToolOutcome` | UPDATE mcp_tool_calls | guarded, lock |
 | `domain/routes/conversation-workflow-step-runs.ts` | `initialConversationTaskStatements` | INSERT workflow_task_dependencies, INSERT workflow_tasks | guarded, lock |
 | `domain/routes/conversations.ts` | `conversationSubmissionStatements` | INSERT conversation_work_requests, INSERT conversations, UPDATE conversations | lock |
+| `domain/routes/implement-plan.ts` | `cleanSelection` | INSERT plan_approvals | batch, lock |
 | `domain/routes/implement-plan.ts` | `evaluatePhaseCompletionAndAdvanceQueue` | UPDATE work_requests | read-write, lock |
 | `domain/routes/thread-request-queue.ts` | `advanceThreadQueue` | DELETE thread_request_queue, UPDATE thread_request_queue | read-write, batch, lock |
 | `domain/routes/thread-request-queue.ts` | `handleThreadRequestQueue` | DELETE thread_request_queue, UPDATE thread_request_queue | read-write, guarded, batch, lock |
@@ -182,7 +183,7 @@ Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 134 ad
 | `domain/routes/work-creation.ts` | `statements` | INSERT runs, INSERT space_audit_log, INSERT work_requests, UPDATE spaces, UPDATE threads | lock |
 | `domain/routes/work-lifecycle.ts` | `announce` | UPDATE conversations, UPDATE threads | batch, lock |
 | `domain/routes/work-lifecycle.ts` | `cancelWorkRequest` | UPDATE runs, UPDATE work_requests, UPDATE workflow_tasks | read-write, guarded, batch, lock |
-| `domain/routes/work-lifecycle.ts` | `handleRetryWorkRequest` | INSERT runs, UPDATE conversations, UPDATE threads, UPDATE work_requests, UPDATE workflow_tasks | read-write, batch, lock |
+| `domain/routes/work-lifecycle.ts` | `handleRetryWorkRequest` | INSERT runs, UPDATE conversations, UPDATE threads, UPDATE work_requests, UPDATE workflow_tasks | read-write, batch, data |
 | `domain/routes/work-request-files.ts` | `putOptions` | DELETE user_file_reservations, INSERT user_files | batch, data |
 | `domain/routes/work-request-inputs.ts` | `failInput` | UPDATE work_request_inputs | guarded, lock |
 | `domain/routes/work-request-inputs.ts` | `handleConfirmRuntimeInput` | UPDATE work_request_inputs | guarded, lock |
@@ -223,5 +224,7 @@ Totals: 175 write paths, 81 tables; 1 numbering, 47 unguarded read-write, 134 ad
 
 | File | Function | Writes | Flags |
 | --- | --- | --- | --- |
-| `domain/routes/queue-positions.ts` | `(INSERT)` | INSERT thread_request_queue |  |
-| `domain/routes/queue-positions.ts` | `moveToFront` | UPDATE thread_request_queue | lock |
+| `domain/routes/queue-positions.ts` | `appendToQueue` | INSERT thread_request_queue | lock |
+| `domain/routes/queue-positions.ts` | `enqueueBeforePhases` | INSERT thread_request_queue | lock |
+| `domain/routes/queue-positions.ts` | `moveToFront` | UPDATE thread_request_queue | guarded, lock |
+| `domain/routes/queue-positions.ts` | `prependToQueue` | INSERT thread_request_queue | lock |
