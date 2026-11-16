@@ -14,6 +14,9 @@ import { dataOf } from "../platform/data.js";
  * connection) but not by much; once expired it counts for nothing.
  */
 export const UPLOAD_RESERVATION_TTL_MS = 60 * 60 * 1000;
+// These fragments are built from source-controlled SQL and constants only.
+const FILE_LIMIT_SQL = attachmentFileLimitSql("uploader.user_id");
+const STORAGE_QUOTA_SQL = attachmentStorageQuotaSql("uploader.user_id");
 
 export interface StorageUsage {
   /** Bytes of retained uploaded files, whatever Thread or Space holds them. */
@@ -62,30 +65,22 @@ export async function reserveUpload(
   },
 ): Promise<void> {
   const now = input.now ?? new Date();
-  const row = await inTransaction(env, "files.reserve", async (txEnv, tx) => {
+  const row = await inTransaction(env, "files.reserve", async (_txEnv, tx) => {
     await tx.lock("syntila.storage", input.userId);
-    return txEnv.SYNTILA_DB.prepare(
-      `INSERT INTO user_file_reservations (id, user_id, size_bytes, created_at, expires_at)
-     SELECT ?1, ?2, ?3, ?4, ?5
-      WHERE ?3 <= ${attachmentFileLimitSql("?2")}
+    return tx.row<{ id: string }>`
+     INSERT INTO user_file_reservations (id, user_id, size_bytes, created_at, expires_at)
+     SELECT ${input.fileId}, uploader.user_id, ${input.sizeBytes}, ${now.toISOString()}, ${new Date(now.getTime() + UPLOAD_RESERVATION_TTL_MS).toISOString()}
+       FROM (SELECT ${input.userId}::text AS user_id) uploader
+      WHERE ${input.sizeBytes} <= ${tx.raw(FILE_LIMIT_SQL)}
         AND (SELECT COALESCE(SUM(size_bytes), 0) FROM user_files
-              WHERE user_id = ?2 AND id != ?1)
+              WHERE user_id = uploader.user_id AND id != ${input.fileId})
           + (SELECT COALESCE(SUM(size_bytes), 0) FROM user_file_reservations
-              WHERE user_id = ?2 AND id != ?1 AND expires_at > ?4)
-          + ?3 <= ${attachmentStorageQuotaSql("?2")}
+              WHERE user_id = uploader.user_id AND id != ${input.fileId} AND expires_at > ${now.toISOString()})
+          + ${input.sizeBytes} <= ${tx.raw(STORAGE_QUOTA_SQL)}
      ON CONFLICT(id) DO UPDATE SET size_bytes = excluded.size_bytes,
        created_at = excluded.created_at, expires_at = excluded.expires_at
        WHERE user_file_reservations.user_id = excluded.user_id
-     RETURNING id`,
-    )
-      .bind(
-        input.fileId,
-        input.userId,
-        input.sizeBytes,
-        now.toISOString(),
-        new Date(now.getTime() + UPLOAD_RESERVATION_TTL_MS).toISOString(),
-      )
-      .first<{ id: string }>();
+     RETURNING id`;
   });
   if (row?.id === input.fileId) return;
   // Refused: say which allowance, so "file too large" never reads as "full".
