@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { UpdateWorkspaceSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { paidOwnerSql } from "../account-plan.js";
 import {
   HttpError,
@@ -152,10 +153,7 @@ export async function handleUpdateWorkspace(
     "workspace:manage",
     accessContext,
   );
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  >;
+  const body = await readBody(request, UpdateWorkspaceSchema);
   const hasName = body.name !== undefined;
   const hasSlots = body.parallelSlots !== undefined;
   const hasChat = body.spaceAiChat !== undefined;
@@ -165,12 +163,6 @@ export async function handleUpdateWorkspace(
       400,
       "Provide a name, parallelSlots or Space AI option",
     );
-  if (
-    (hasChat && typeof body.spaceAiChat !== "boolean") ||
-    (hasWork && typeof body.spaceAiWork !== "boolean")
-  ) {
-    throw new HttpError(400, "spaceAiChat and spaceAiWork must be booleans");
-  }
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (hasName && (name.length < 1 || name.length > 120)) {
     throw new HttpError(400, "Workspace name must be 1 to 120 characters");

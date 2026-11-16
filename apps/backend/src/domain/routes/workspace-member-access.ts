@@ -1,4 +1,8 @@
-import { readJson } from "./validation.js";
+import {
+  WorkspaceMemberAccessSchema,
+  WorkspaceMemberOverrideSchema,
+} from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import {
   HttpError,
@@ -312,18 +316,9 @@ export async function handleWorkspaceMemberAccess(
     return json({ restricted: policy !== null, policy });
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  > | null;
-  if (
-    !body ||
-    typeof body.restricted !== "boolean" ||
-    Object.keys(body).some(
-      (key) => !["restricted", "workers", "mode"].includes(key),
-    )
-  )
-    throw new HttpError(400, "Invalid member access request");
+  const body = await readBody(request, WorkspaceMemberAccessSchema, {
+    message: "Invalid member access request",
+  });
   if (!body.restricted) {
     await env.SYNTILA_DB.prepare(
       "DELETE FROM workspace_member_access WHERE workspace_id = ?1",
@@ -397,15 +392,9 @@ async function handlePersonOverride(
     return read();
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  > | null;
-  if (
-    !body ||
-    Object.keys(body).some((key) => !["workers", "mode"].includes(key))
-  )
-    throw new HttpError(400, "Invalid member access request");
+  const body = await readBody(request, WorkspaceMemberOverrideSchema, {
+    message: "Invalid member access request",
+  });
   const policy = parseWorkspaceMemberAccessPolicy(body);
   await assertWorkersInWorkspace(env, workspaceId, policy);
   await env.SYNTILA_DB.prepare(

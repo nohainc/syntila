@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { PersonGrantQuotaSchema, WorkspaceInvitationSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import { hashToken } from "@syntila/security";
 import { hasPaidFeature, requirePaidFeature } from "../account-plan.js";
@@ -123,16 +124,9 @@ export async function handleWorkspaceInvitations(
   // Inviting people is the paid part of sharing; listing and revoking stay
   // free so a downgraded owner can still see and remove access.
   await requirePaidFeature(env, context.userId, "workspace.sharing");
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  > | null;
-  if (
-    !body ||
-    typeof body.email !== "string" ||
-    Object.keys(body).some((key) => key !== "email")
-  )
-    throw new HttpError(400, "An email address is required");
+  const body = await readBody(request, WorkspaceInvitationSchema, {
+    message: "An email address is required",
+  });
   // A retried send with the same Idempotency-Key returns the first result.
   const receipt = await MutationIdempotency.from(
     request,
@@ -361,33 +355,12 @@ export async function handlePersonGrantQuota(
   const context = await securityContext(request, env, ctx);
   await ownedWorkspace(env, workspaceId, context.userId);
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  > | null;
-  const allowed = ["maxConcurrentRequests", "maxRunSecondsPerMonth"];
-  const limit = body?.maxConcurrentRequests;
-  const runSeconds = body?.maxRunSecondsPerMonth;
-  if (
-    !body ||
-    Object.keys(body).length === 0 ||
-    Object.keys(body).some((key) => !allowed.includes(key)) ||
-    (limit !== undefined &&
-      (typeof limit !== "number" ||
-        !Number.isInteger(limit) ||
-        limit < 1 ||
-        limit > 10)) ||
-    (runSeconds !== undefined &&
-      runSeconds !== null &&
-      (typeof runSeconds !== "number" ||
-        !Number.isInteger(runSeconds) ||
-        runSeconds < 60 ||
-        runSeconds > 31 * 24 * 3600))
-  )
-    throw new HttpError(
-      400,
+  const body = await readBody(request, PersonGrantQuotaSchema, {
+    message:
       "maxConcurrentRequests must be 1-10 and maxRunSecondsPerMonth null or 60 to 2678400",
-    );
+  });
+  const limit = body.maxConcurrentRequests;
+  const runSeconds = body.maxRunSecondsPerMonth;
   const updated = await env.SYNTILA_DB.prepare(
     `UPDATE workspace_person_grants
         SET max_concurrent_requests = COALESCE(?3, max_concurrent_requests),

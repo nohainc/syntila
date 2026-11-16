@@ -1,4 +1,9 @@
-import { readJson } from "./validation.js";
+import {
+  InputAttemptSchema,
+  InputDeliveredSchema,
+  InputUploadFailedSchema,
+} from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { extractBearerToken } from "@syntila/security";
 import { WorkspaceRuntimeAuthenticator } from "../workspace-gateway/runtime-authenticator.js";
 import { createEventPublisher } from "../event-publisher.js";
@@ -351,9 +356,7 @@ export async function handleFailWorkRequestInputUpload(
   );
   if (row.state !== "awaiting_upload")
     return json({ fileId, state: row.state });
-  const body = (await readJson(request)) as {
-    message?: unknown;
-  } | null;
+  const body = await readBody(request, InputUploadFailedSchema);
   await failInput(
     env,
     row,
@@ -454,9 +457,7 @@ export async function handleConfirmRuntimeInput(
   fileId: string,
 ): Promise<Response> {
   const row = await runtimeRow(request, env, fileId);
-  const body = (await readJson(request)) as {
-    contentDigest?: unknown;
-  } | null;
+  const body = await readBody(request, InputDeliveredSchema);
   if (row.state === "delivered") return json({ fileId, state: "delivered" });
   if (row.state !== "uploaded" || body?.contentDigest !== row.contentDigest)
     throw new HttpError(409, "Input does not match the uploaded file");
@@ -482,10 +483,7 @@ export async function handleReportRuntimeInputAttempt(
   fileId: string,
 ): Promise<Response> {
   const row = await runtimeRow(request, env, fileId);
-  const body = (await readJson(request)) as {
-    final?: unknown;
-    message?: unknown;
-  } | null;
+  const body = await readBody(request, InputAttemptSchema);
   if (row.state !== "uploaded") return json({ fileId, state: row.state });
   const message = failureMessage(body?.message, "download failed");
   if (body?.final === true) {

@@ -12,13 +12,13 @@ export interface ValidationIssue {
 
 export class RequestValidationError extends HttpError {
   readonly code = "invalid_request";
-  constructor(readonly details: readonly ValidationIssue[]) {
-    super(400, details[0]?.message ?? "Invalid request");
+  constructor(readonly details: readonly ValidationIssue[], message?: string) {
+    super(400, message ?? details[0]?.message ?? "Invalid request");
   }
 }
 
 /** The parsed, validated body. Invalid JSON is `invalid_json`; a schema miss is `invalid_request`. */
-export async function readBody<S extends z.ZodType>(request: Request, schema: S): Promise<z.output<S>> {
+export async function readBody<S extends z.ZodType>(request: Request, schema: S, options: { message?: string } = {}): Promise<z.output<S>> {
   let value: unknown;
   try {
     const text = await readBodyText(request);
@@ -31,6 +31,7 @@ export async function readBody<S extends z.ZodType>(request: Request, schema: S)
   if (result.success) return result.data;
   throw new RequestValidationError(
     result.error.issues.map((issue) => ({ path: issue.path.map(String).join("."), message: issue.message })),
+    options.message,
   );
 }
 
