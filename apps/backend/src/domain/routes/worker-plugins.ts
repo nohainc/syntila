@@ -7,6 +7,12 @@ import { pluginManifestDigest } from "../plugin-manifest-digest.js";
 import { HttpError, json, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
 
+const SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN =
+  "SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ?1 AND version = ?2";
+
+const SELECT_ACCOUNT_WORKER_PLUGINS_BY_PLUGIN_REF =
+  "SELECT 1 AS ok FROM account_worker_plugins WHERE plugin_ref = ?1 AND owner_user_id = ?2";
+
 /**
  * Account library and Workspace enablement for custom Worker plugins
  * (ADR-027). Cloud keeps metadata only: the manifest as imported, its digest,
@@ -252,7 +258,7 @@ export async function handlePluginLibrary(
 
   const version = await db
     .prepare(
-      "SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ?1 AND version = ?2",
+      SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN,
     )
     .bind(ref, manifest.version)
     .first<{ digest: string }>();
@@ -317,7 +323,7 @@ async function removeFromLibrary(
   const db = env.SYNTILA_DB;
   const owned = await db
     .prepare(
-      "SELECT 1 AS ok FROM account_worker_plugins WHERE plugin_ref = ?1 AND owner_user_id = ?2",
+      SELECT_ACCOUNT_WORKER_PLUGINS_BY_PLUGIN_REF,
     )
     .bind(pluginRef, userId)
     .first();
@@ -388,7 +394,7 @@ export async function handleWorkspacePluginPin(
   if (!workspace) throw new HttpError(404, "Workspace not found");
   const owned = await db
     .prepare(
-      "SELECT 1 AS ok FROM account_worker_plugins WHERE plugin_ref = ?1 AND owner_user_id = ?2",
+      SELECT_ACCOUNT_WORKER_PLUGINS_BY_PLUGIN_REF,
     )
     .bind(ref, userId)
     .first();
@@ -426,7 +432,7 @@ export async function handleWorkspacePluginPin(
     throw new PluginRouteError(400, "invalid_request", "Invalid enablement");
   const version = await db
     .prepare(
-      "SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ?1 AND version = ?2",
+      SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN,
     )
     .bind(ref, body.version)
     .first<{ digest: string }>();
