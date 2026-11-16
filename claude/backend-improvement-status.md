@@ -74,6 +74,8 @@ Batch 2: `routes/space-workflow-configurations.ts` uses tagged reads for the exi
 
 Validation: focused configuration and detector tests passed (27 tests), followed by a full run that exposed nine failures in two additional D1-only fixture files. After adapting those fixtures, their focused tests passed (26 tests) and the complete suite passed 1231 / 0 across 169 files with no serial retries. Concurrency passed three times (43 each) with seeded invariants, and the route sweep passed 3 tests. The first failed full run and its automatic serial retries are not counted as the final gate. No schema changed.
 
+Further conversion is incomplete: 716 `.prepare(` occurrences remain, including shared helpers, transaction and batch paths. An additional transaction-joining hazard was found during the audit: a transaction-bound adapter exposes the underlying pool as `sql`, so `dataOf({ SYNTILA_DB: txEnv.SYNTILA_DB })` uses a separate connection and loses the open transaction. Bare-database helpers such as `attachment-storage.ts` construct narrow environments. Do not convert those paths until they preserve the full joined environment or have a tested transaction-aware API. The optional global writer lock, adapter error/value normalization, and write metrics also need per-site solutions before write conversion. The two batches above pass their gates; Phase 6 as a whole is not complete.
+
 ## Next
 
 - Compare `bun run schema:lock` output on PostgreSQL 16 and 18.
