@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { QueueRequestSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { appendToQueue, enqueueBeforePhases, lockQueue, moveToFront } from "./queue-positions.js";
 import { threadSpace } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
@@ -470,7 +471,7 @@ export async function handleThreadRequestQueue(
         409,
         "Restore the Thread before sending messages or requests",
       );
-    const payload = (await readJson(request)) as Record<string, unknown>;
+    const payload = await readBody(request, QueueRequestSchema);
     const body = requestBody(payload.request);
     await requireWorkflowPermission(
       env,
@@ -559,7 +560,7 @@ export async function handleThreadRequestQueue(
         "Phased implementation steps cannot be edited. Remove the step if you wish to cancel it.",
       );
     }
-    const payload = (await readJson(request)) as Record<string, unknown>;
+    const payload = await readBody(request, QueueRequestSchema);
     const body = requestBody(payload.request);
     await requireWorkflowPermission(
       env,

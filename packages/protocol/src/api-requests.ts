@@ -43,6 +43,43 @@ export const MarkNotificationsReadSchema = z.object({
 });
 export type MarkNotificationsReadInput = z.infer<typeof MarkNotificationsReadSchema>;
 
+// ---- Work requests and the Thread request queue --------------------------------
+// The body is stored on queue rows and replayed later, so unknown keys pass; the
+// fields the handler reads are typed and bounded. A wrong-typed text field used
+// to be skipped silently; it is now a 400.
+
+const workRequestText = (name: string) => z.string({ error: `${name} must be text` }).max(200_000, `${name} must be at most 200000 characters`).optional();
+const workRequestShape = {
+  workflowId: z.string({ error: "workflowId must be text" }).max(64).optional(),
+  workflowVersion: z.number({ error: "workflowVersion must be a positive integer" }).optional(),
+  workflowSnapshot: z.unknown().optional(),
+  mode: z.string({ error: "mode must be text" }).max(32).optional(),
+  conversationId: z.string({ error: "conversationId must be text" }).max(128).nullish(),
+  primaryWorkspaceId: z.string({ error: "primaryWorkspaceId must be text" }).max(128).nullish(),
+  replyTo: z.string({ error: "replyTo must be text" }).max(128).nullish(),
+  originalRequest: workRequestText("originalRequest"),
+  request: workRequestText("request"),
+  objective: workRequestText("objective"),
+  executionSelection: z.unknown().optional(),
+  attachments: z.array(z.unknown(), { error: "attachments must be an array" }).max(10, "At most 10 attachments are allowed").optional(),
+  input: z
+    .looseObject({
+      originalRequest: workRequestText("originalRequest"),
+      request: workRequestText("request"),
+      objective: workRequestText("objective"),
+      attachments: z.array(z.unknown(), { error: "attachments must be an array" }).max(10, "At most 10 attachments are allowed").optional(),
+    }, { error: "input must be an object" })
+    .optional(),
+};
+
+/** POST /api/threads/:id/work-requests and .../work-requests/validate. */
+export const WorkRequestBodySchema = z.looseObject(workRequestShape);
+
+/** POST|PUT /api/threads/:id/queue[/:item]: `{request}` holds the work request body. */
+export const QueueRequestSchema = z.looseObject({
+  request: z.looseObject(workRequestShape, { error: "request must be an object" }).optional(),
+});
+
 // ---- Plugins, releases and grants ---------------------------------------------
 
 /** POST /api/me/worker-plugins: the manifest is validated by PluginManifestSchema in the handler. */
