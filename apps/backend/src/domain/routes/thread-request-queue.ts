@@ -11,6 +11,9 @@ import {
 } from "./thread-policy.js";
 import { createWorkRequestForUser } from "./work-creation.js";
 
+const SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID =
+  "SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1";
+
 /**
  * Thread request queue: requests members send while earlier ones are still
  * processing. The queue is shared by every member of the Thread. Cloud sends
@@ -480,7 +483,7 @@ export async function handleThreadRequestQueue(
       String(body.workflowId),
     );
     const last = await db
-      .prepare("SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1")
+      .prepare(SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID)
       .bind(threadId)
       .first<{ n: number }>();
     // A pause belongs to the requests it held; a new queue starts running.
@@ -591,7 +594,7 @@ export async function handleThreadRequestQueue(
     if (!removed) await lostQueuedItem(db, itemId);
     const left = await db
       .prepare(
-        "SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1",
+        SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID,
       )
       .bind(threadId)
       .first<{ n: number }>();
@@ -611,7 +614,7 @@ export async function handleThreadRequestQueue(
       .run();
     const left = await db
       .prepare(
-        "SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1",
+        SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID,
       )
       .bind(threadId)
       .first<{ n: number }>();
