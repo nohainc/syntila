@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { WorkflowDefaultSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { spaceWorkflowDefault, userWorkflowDefault } from "../queries.js";
 import { BUILTIN_WORKFLOW_CATALOG } from "@syntila/core";
 import {
@@ -115,16 +116,9 @@ export async function handleWorkflowDefault(
     });
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  > | null;
-  if (
-    !body ||
-    Object.keys(body).some((key) => key !== "defaultWorkflowId") ||
-    typeof body.defaultWorkflowId !== "string"
-  )
-    throw new HttpError(400, "Invalid default workflow selection");
+  const body = await readBody(request, WorkflowDefaultSchema, {
+    message: "Invalid default workflow selection",
+  });
   const workflowId = body.defaultWorkflowId;
   definitionFor(workflowId);
   if (workflowId !== CHAT_WORKFLOW_ID) {

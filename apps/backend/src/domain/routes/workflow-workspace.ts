@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { WorkflowWorkspaceSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { spaceKind } from "../queries.js";
 import { paidOwnerSql } from "../account-plan.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
@@ -274,20 +275,9 @@ export async function handleWorkflowWorkspace(
     });
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  >;
-  if (
-    !body ||
-    typeof body !== "object" ||
-    Array.isArray(body) ||
-    Object.keys(body).some(
-      (k) => !["workspaceId", "confirmReset", "inherit"].includes(k),
-    ) ||
-    (body.inherit !== undefined && typeof body.inherit !== "boolean")
-  )
-    throw new HttpError(400, "Invalid Workspace selection");
+  const body = await readBody(request, WorkflowWorkspaceSchema, {
+    message: "Invalid Workspace selection",
+  });
   // Spaces no longer inherit an account-level Workspace.
   if (body.inherit)
     throw new HttpError(400, "Choose a Workspace for this Space");

@@ -43,6 +43,48 @@ export const MarkNotificationsReadSchema = z.object({
 });
 export type MarkNotificationsReadInput = z.infer<typeof MarkNotificationsReadSchema>;
 
+// ---- Personal, workflow and admin routes ----------------------------------
+
+/** PUT /api/pins/order. */
+export const PinOrderSchema = z.object({
+  kind: z.enum(["space", "thread"], { error: "kind must be space or thread" }),
+  ids: z
+    .array(z.string().min(1).max(128), { error: "ids must be a non-empty list of ids" })
+    .min(1, "ids must be a non-empty list of ids")
+    .max(500, "ids must be a non-empty list of ids"),
+  spaceId: z.string({ error: "spaceId is required for threads" }).max(128).optional(),
+});
+
+/** PUT /api/spaces/:id/additional-folders. Same bound as MAX_ATTACHED_FOLDERS. */
+export const AdditionalFoldersSchema = z.strictObject({
+  folderIds: z
+    .array(z.string().regex(/^folder-[a-f0-9]{16}$/))
+    .max(32)
+    .refine((ids) => new Set(ids).size === ids.length),
+});
+
+/** PUT /api/me/privacy. */
+export const ReadReceiptPrivacySchema = z.strictObject({
+  shareReadReceipts: z.boolean({ error: "shareReadReceipts must be true or false" }),
+});
+
+/** PUT /api/spaces/:id/workflow-default and /api/user/workflow-default. */
+export const WorkflowDefaultSchema = z.strictObject({
+  defaultWorkflowId: z.string().min(1).max(64),
+});
+
+/** PUT /api/user|spaces/:id/workflow-workspace; `workspaceId` is checked by the handler (string or null). */
+export const WorkflowWorkspaceSchema = z.strictObject({
+  workspaceId: z.string().max(128).nullable().optional(),
+  confirmReset: z.boolean().optional(),
+  inherit: z.boolean().optional(),
+});
+
+/** POST /api/workspace-releases/:version/revoke and the signing-key revoke: a reason, bounded. */
+export const RevokeReasonSchema = z.object({
+  reason: z.string({ error: "reason must be text" }).max(2000).optional(),
+});
+
 // ---- Workspace routes ------------------------------------------------------
 
 /** PUT /api/workspaces/:id/member-access: the policy itself is parsed deeper by parseWorkspaceMemberAccessPolicy. */

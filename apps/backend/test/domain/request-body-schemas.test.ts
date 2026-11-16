@@ -19,6 +19,12 @@ const CASES: Case[] = [
   { schema: "InputUploadFailedSchema", valid: [{}, { message: "disk full" }], wrongType: [{ message: 5 }, { message: ["x"] }], overLimit: [{ message: "x".repeat(2001) }] },
   { schema: "InputDeliveredSchema", valid: [{}, { contentDigest: "a".repeat(64) }], wrongType: [{ contentDigest: 5 }], overLimit: [{ contentDigest: "a".repeat(129) }] },
   { schema: "InputAttemptSchema", valid: [{}, { final: true, message: "x" }], wrongType: [{ final: "yes" }, { message: 1 }], overLimit: [{ message: "x".repeat(2001) }] },
+  { schema: "PinOrderSchema", valid: [{ kind: "space", ids: ["a"] }, { kind: "thread", ids: ["t1", "t2"], spaceId: "s" }], wrongType: [{ kind: "nope", ids: ["a"] }, { kind: "space", ids: [] }, { kind: "space", ids: [5] }, { kind: "space", ids: "a" }, { kind: "thread", ids: ["t"], spaceId: 7 }], overLimit: [{ kind: "space", ids: Array.from({ length: 501 }, (_, i) => `i${i}`) }, { kind: "space", ids: ["x".repeat(129)] }] },
+  { schema: "AdditionalFoldersSchema", valid: [{ folderIds: [] }, { folderIds: ["folder-0123456789abcdef"] }], wrongType: [{ folderIds: "x" }, { folderIds: [5] }, { folderIds: ["nope"] }, { folderIds: ["folder-0123456789abcdef", "folder-0123456789abcdef"] }, { folderIds: [], extra: 1 }, {}], overLimit: [{ folderIds: Array.from({ length: 33 }, (_, i) => `folder-${i.toString(16).padStart(16, "0")}`) }], message: "Invalid folder selection" },
+  { schema: "ReadReceiptPrivacySchema", valid: [{ shareReadReceipts: true }, { shareReadReceipts: false }], wrongType: [{ shareReadReceipts: "yes" }, {}, { shareReadReceipts: true, extra: 1 }], overLimit: [], message: "shareReadReceipts must be true or false" },
+  { schema: "WorkflowDefaultSchema", valid: [{ defaultWorkflowId: "chat" }], wrongType: [{ defaultWorkflowId: 5 }, {}, { defaultWorkflowId: "chat", extra: 1 }], overLimit: [{ defaultWorkflowId: "x".repeat(65) }], message: "Invalid default workflow selection" },
+  { schema: "WorkflowWorkspaceSchema", valid: [{ workspaceId: null }, { workspaceId: "w", confirmReset: true }, { workspaceId: "w", inherit: false }], wrongType: [{ workspaceId: 5 }, { confirmReset: "yes" }, { inherit: "no" }, { workspaceId: "w", extra: 1 }], overLimit: [{ workspaceId: "x".repeat(129) }], message: "Invalid Workspace selection" },
+  { schema: "RevokeReasonSchema", valid: [{}, { reason: "key leaked" }], wrongType: [{ reason: 5 }, { reason: ["x"] }], overLimit: [{ reason: "x".repeat(2001) }] },
 ];
 
 const req = (body: unknown) => new Request("https://x/api", { method: "POST", body: JSON.stringify(body) });

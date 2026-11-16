@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { AdditionalFoldersSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import {
@@ -9,8 +10,6 @@ import {
 } from "./http-security.js";
 import { loadWorkflowWorkspace } from "./workflow-workspace.js";
 
-const MAX_ATTACHED_FOLDERS = 32;
-const FOLDER_ID = /^folder-[a-f0-9]{16}$/;
 
 type Eligibility =
   | { eligible: true; workspaceId: string }
@@ -110,22 +109,9 @@ export async function handleSpaceAdditionalFolders(
       403,
       "Only the owner of the Space and its Workspace can attach folders",
     );
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  > | null;
-  const folderIds = body?.folderIds;
-  if (
-    !body ||
-    typeof body !== "object" ||
-    Array.isArray(body) ||
-    Object.keys(body).some((key) => key !== "folderIds") ||
-    !Array.isArray(folderIds) ||
-    folderIds.length > MAX_ATTACHED_FOLDERS ||
-    folderIds.some((id) => typeof id !== "string" || !FOLDER_ID.test(id)) ||
-    new Set(folderIds).size !== folderIds.length
-  )
-    throw new HttpError(400, "Invalid folder selection");
+  const { folderIds } = await readBody(request, AdditionalFoldersSchema, {
+    message: "Invalid folder selection",
+  });
   const available = new Set(
     (await listFolders(env, spaceId, access.workspaceId)).map(
       (folder) => folder.id,

@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { RevokeReasonSchema } from "@syntila/protocol";
+import { readBody, readJson } from "./validation.js";
 import { canonicalJson } from "../canonical-json.js";
 import { verifyEd25519ReleaseSignature } from "../release-trust.js";
 import { computePackageDigest } from "@syntila/security";
@@ -489,7 +490,7 @@ export async function handleRevokeWorkspaceRelease(
 ): Promise<Response> {
   await authorizeToolProfileAdmin(request, env, ctx, "profiles:release:manage");
 
-  const body = (await readJson(request)) as { reason?: string };
+  const body = await readBody(request, RevokeReasonSchema);
   const reason = body.reason || "Revoked by administrator";
   const now = new Date().toISOString();
 
@@ -545,9 +546,8 @@ export async function handleRevokeReleaseSigningKey(
     ctx,
     "profiles:release:manage",
   );
-  const body = (await readJson(request)) as { reason?: unknown };
-  const reason =
-    typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
+  const body = await readBody(request, RevokeReasonSchema);
+  const reason = (body.reason ?? "").trim().slice(0, 500);
   if (!reason) throw new HttpError(400, "revocation reason is required");
   const now = new Date().toISOString();
   await env.SYNTILA_DB.prepare(

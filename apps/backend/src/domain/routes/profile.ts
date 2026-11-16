@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { ReadReceiptPrivacySchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { writeAlone } from "../../platform/tx-env.js";
 import { parseMultipart } from "../../platform/multipart";
 import { getAccountPlan } from "../account-plan.js";
@@ -222,16 +223,9 @@ export async function handleReadReceiptPrivacy(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   if (request.method === "PUT") {
-    const body = (await readJson(request)) as Record<
-      string,
-      unknown
-    > | null;
-    if (
-      !body ||
-      typeof body.shareReadReceipts !== "boolean" ||
-      Object.keys(body).some((key) => key !== "shareReadReceipts")
-    )
-      throw new HttpError(400, "shareReadReceipts must be true or false");
+    const body = await readBody(request, ReadReceiptPrivacySchema, {
+      message: "shareReadReceipts must be true or false",
+    });
     await writeAlone(env, "profile.read_receipts", (db) =>
       db
         .prepare(

@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { PinOrderSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { isSpaceMember } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { HttpError, authorizeThreadAccess, json } from "./handlers.js";
@@ -89,22 +90,9 @@ export async function handleSetPinOrder(
   env: SecurityEnv,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const body = (await readJson(request)) as {
-    kind?: unknown;
-    ids?: unknown;
-    spaceId?: unknown;
-  };
+  const body = await readBody(request, PinOrderSchema);
   const kind = body.kind;
-  if (kind !== "space" && kind !== "thread")
-    throw new HttpError(400, "kind must be space or thread");
-  if (
-    !Array.isArray(body.ids) ||
-    body.ids.length === 0 ||
-    body.ids.length > 500 ||
-    body.ids.some((id) => typeof id !== "string" || id.length === 0)
-  )
-    throw new HttpError(400, "ids must be a non-empty list of ids");
-  const ids = [...new Set(body.ids as string[])];
+  const ids = [...new Set(body.ids)];
   const spaceId = kind === "space" ? ids[0]! : body.spaceId;
   if (typeof spaceId !== "string" || spaceId.length === 0)
     throw new HttpError(400, "spaceId is required for threads");
