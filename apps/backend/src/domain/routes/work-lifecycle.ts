@@ -66,6 +66,11 @@ import {
   type ExecutionPhase,
 } from "../execution-phase.js";
 
+const SELECT_RUNS_BY_WORK_REQUEST_ID =
+  `SELECT policy_snapshot_json AS policySnapshotJson
+       FROM runs WHERE work_request_id = ?1
+      ORDER BY created_at DESC, id DESC LIMIT 1`;
+
 function historicalWorkflowName(
   snapshot: { readonly name?: unknown },
   workflowId: unknown,
@@ -620,9 +625,7 @@ async function contextCompactionUnavailable(
   )
     return "This Worker cannot compact its session. Clear AI History instead.";
   const latestRun = await env.SYNTILA_DB.prepare(
-    `SELECT policy_snapshot_json AS policySnapshotJson
-       FROM runs WHERE work_request_id = ?1
-      ORDER BY created_at DESC, id DESC LIMIT 1`,
+    SELECT_RUNS_BY_WORK_REQUEST_ID,
   )
     .bind(args.workRequestId)
     .first<{ policySnapshotJson: string | null }>();
@@ -690,9 +693,7 @@ export async function handleGetWorkRequest(
     {},
   );
   const latestRun = await env.SYNTILA_DB.prepare(
-    `SELECT policy_snapshot_json AS policySnapshotJson
-       FROM runs WHERE work_request_id = ?1
-      ORDER BY created_at DESC, id DESC LIMIT 1`,
+    SELECT_RUNS_BY_WORK_REQUEST_ID,
   )
     .bind(workRequestId)
     .first<{ policySnapshotJson: string | null }>();
