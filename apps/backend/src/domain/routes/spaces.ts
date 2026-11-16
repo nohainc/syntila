@@ -1172,16 +1172,8 @@ export async function handleCreateSpaceInvitation(
       )
     )
       throw new SpaceMemberLimitError("owner");
-    if (
-      error instanceof Error &&
-      /UNIQUE constraint failed.*(idx_space_invitations_pending_email|space_invitations.space_id, space_invitations.invitee_user_id)/i.test(
-        error.message,
-      )
-    )
-      throw new HttpError(
-        409,
-        "A pending invitation already exists for this user",
-      );
+    // A duplicate pending invitation reaches the router as a unique violation
+    // and is answered from CONSTRAINT_MESSAGES.
     throw error;
   }
   await env.SYNTILA_DB.prepare(
@@ -1560,8 +1552,11 @@ export async function handleAcceptSpaceInvitation(
         `UPDATE space_invitations SET status = CASE WHEN ${spaceMemberAdmissionSql("?4", "?3")} THEN 'accepted' ELSE NULL END, invitee_user_id = COALESCE(invitee_user_id, ?1), accepted_by_user_id = ?1, accepted_at = ?2, updated_at = ?2 WHERE id = ?3 AND status = 'pending' AND expires_at > ?2`,
       ).bind(context.userId, now, invitation.id, invitation.spaceId),
 
+      // No ON CONFLICT: a person who became a member another way makes this
+      // INSERT violate the unique (space_id, user_id), which rolls back the
+      // whole batch and reaches the router as "You are already a member".
       env.SYNTILA_DB.prepare(
-        `INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) SELECT ?1, ?2, ?3, ?4, ?5, ?5 WHERE EXISTS (SELECT 1 FROM space_invitations WHERE id=?6 AND status='accepted' AND accepted_by_user_id=?3 AND accepted_at=?5) ON CONFLICT(space_id, user_id) DO NOTHING`,
+        `INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) SELECT ?1, ?2, ?3, ?4, ?5, ?5 WHERE EXISTS (SELECT 1 FROM space_invitations WHERE id=?6 AND status='accepted' AND accepted_by_user_id=?3 AND accepted_at=?5)`,
       ).bind(
         membershipId,
         invitation.spaceId,

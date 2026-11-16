@@ -274,3 +274,31 @@ describe("0020 unique Space names", () => {
     await expect(sql.unsafe(insert("a9", "u1", "  tRiP  "))).rejects.toMatchObject({ constraint: "spaces_owner_group_name_key" });
   });
 });
+
+describe("membership and invitation uniqueness already in the baseline", () => {
+  test("duplicates are rejected by the named indexes the router maps to specific messages", async () => {
+    const sql = await emptyDatabase();
+    await migrate(sql as any, new URL("../migrations/", import.meta.url).pathname);
+    await sql.unsafe([user("o1"), user("g1")].join("\n"));
+    await sql.unsafe(`INSERT INTO spaces(id,owner_user_id,name,kind,created_at,updated_at) VALUES ('sp1','o1','S','group',now(),now());`);
+    const member = (id: string) =>
+      `INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES ('${id}','sp1','g1','viewer',now(),now());`;
+    const invite = (id: string, email: string, invitee: string, status = "pending") =>
+      `INSERT INTO space_invitations(id,space_id,email,role,token_hash,invited_by_user_id,status,expires_at,created_at,updated_at,invitee_user_id)
+       VALUES ('${id}','sp1','${email}','viewer','h-${id}','o1','${status}',now() + interval '1 day',now(),now(),${invitee});`;
+    await sql.unsafe(member("m1"));
+    await expect(sql.unsafe(member("m2"))).rejects.toMatchObject({ constraint: "space_memberships_space_id_user_id_key" });
+    await sql.unsafe(invite("i1", "a@test", "'g1'"));
+    // Same person, different address: only the user index catches it.
+    await expect(sql.unsafe(invite("i2", "b@test", "'g1'"))).rejects.toMatchObject({ constraint: "idx_space_invitations_pending_user" });
+    await expect(sql.unsafe(invite("i3", "A@test", "NULL"))).rejects.toMatchObject({ constraint: "idx_space_invitations_pending_email" });
+    // Only pending rows count: an ended invitation does not block a new one.
+    await sql.unsafe(invite("i4", "a@test", "NULL", "expired"));
+    await sql.unsafe(`INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES ('w1','o1','Mac','online',now(),now());`);
+    const winv = (id: string, email: string) =>
+      `INSERT INTO workspace_invitations(id,workspace_id,email,token_hash,invited_by_user_id,status,expires_at,created_at,updated_at)
+       VALUES ('${id}','w1','${email}','h-${id}','o1','pending',now() + interval '1 day',now(),now());`;
+    await sql.unsafe(winv("wi1", "c@test"));
+    await expect(sql.unsafe(winv("wi2", "C@test"))).rejects.toMatchObject({ constraint: "idx_workspace_invitations_pending_email" });
+  });
+});

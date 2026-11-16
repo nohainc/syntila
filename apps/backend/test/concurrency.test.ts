@@ -483,3 +483,83 @@ describe("Space names", () => {
     expect(results.map((r) => r.status)).toEqual([201, 201]);
   });
 });
+
+describe("membership and invitation conflicts", () => {
+  const userId = async (token: string) => (await call(token, "GET", "/api/session")).body.user.id as string;
+  const messages = (results: { status: number; body: any }[]) => results.filter((r) => r.status === 409).map((r) => r.body.error);
+
+  test("parallel Space invitations to one email: one wins, the rest are told one is pending", async () => {
+    const owner = await mint("inv-email-owner");
+    const space = await call(owner, "POST", "/api/spaces", { name: "Invite by email" });
+    const spaceId = space.body.space.id as string;
+    const results = await Promise.all(Array.from({ length: 8 }, (_, i) =>
+      call(owner, "POST", `/api/spaces/${spaceId}/invitations`, { email: i % 2 ? "Dup-Guest@test" : "dup-guest@test", role: "collaborator" })));
+    expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+    expect(messages(results)).toEqual(Array(7).fill("A pending invitation already exists for this user"));
+    const [row] = await sql`SELECT count(*)::int AS n FROM space_invitations WHERE space_id = ${spaceId} AND status = 'pending'`;
+    expect(row.n).toBe(1);
+    // A refused invitation leaves no audit entry behind.
+    const [audit] = await sql`SELECT count(*)::int AS n FROM space_audit_log WHERE space_id = ${spaceId} AND action = 'space.invitation.created'`;
+    expect(audit.n).toBe(1);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+
+  test("parallel Space invitations to one user, by id and by email: one wins", async () => {
+    const owner = await mint("inv-user-owner");
+    const guest = await mint("inv-user-guest");
+    const guestId = await userId(guest);
+    const ownerId = await userId(owner);
+    const space = await call(owner, "POST", "/api/spaces", { name: "Invite by user" });
+    const spaceId = space.body.space.id as string;
+    await sql`INSERT INTO people_relationships (user_low_id, user_high_id, established_at)
+              VALUES (${ownerId < guestId ? ownerId : guestId}, ${ownerId < guestId ? guestId : ownerId}, now())`;
+    const results = await Promise.all(Array.from({ length: 6 }, (_, i) =>
+      call(owner, "POST", `/api/spaces/${spaceId}/invitations`, i % 2 ? { userId: guestId, role: "viewer" } : { email: "inv-user-guest@test", role: "viewer" })));
+    expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+    expect(new Set(messages(results))).toEqual(new Set(["A pending invitation already exists for this user"]));
+    const [row] = await sql`SELECT count(*)::int AS n FROM space_invitations WHERE space_id = ${spaceId} AND status = 'pending'`;
+    expect(row.n).toBe(1);
+  });
+
+  test("parallel Workspace invitations to one email: one wins, the rest are told one is pending", async () => {
+    const owner = await mint("winv-owner");
+    const ownerId = await userId(owner);
+    await sql`INSERT INTO account_plans (user_id, tier, status, source, created_at, updated_at) VALUES (${ownerId}, 'paid', 'active', 'manual', now(), now())`;
+    await sql`INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at)
+              VALUES ('ws-winv', ${ownerId}, 'Mac', 'online', now(), now())`;
+    const results = await Promise.all(Array.from({ length: 8 }, (_, i) =>
+      call(owner, "POST", "/api/workspaces/ws-winv/invitations", { email: i % 2 ? "WDup@test" : "wdup@test" })));
+    expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+    expect(messages(results)).toEqual(Array(7).fill("An invitation is already pending"));
+    const [row] = await sql`SELECT count(*)::int AS n FROM workspace_invitations WHERE workspace_id = 'ws-winv' AND status = 'pending'`;
+    expect(row.n).toBe(1);
+  });
+
+  test("two pending invitations to one person accepted together: one membership, the loser is 409 and leaves nothing", async () => {
+    const owner = await mint("dual-owner");
+    const guest = await mint("dual-guest");
+    const guestId = await userId(guest);
+    const space = await call(owner, "POST", "/api/spaces", { name: "Dual accept" });
+    const spaceId = space.body.space.id as string;
+    const ownerId = await userId(owner);
+    // The by-email and by-user invitations are different rows for the same person.
+    for (const [id, email, invitee] of [["pinv-dual-a", "dual-guest@test", null], ["pinv-dual-b", "other-address@test", guestId]] as const)
+      await sql`INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at, invitee_user_id)
+                VALUES (${id}, ${spaceId}, ${email}, 'viewer', ${"h-" + id}, ${ownerId}, 'pending', now() + interval '1 day', now(), now(), ${invitee})`;
+    const results = await Promise.all(["pinv-dual-a", "pinv-dual-b"].map((id) => call(guest, "POST", `/api/space-invitations/${id}/accept`, {})));
+    expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
+    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    expect(messages(results)).toEqual(["You are already a member of this Space"]);
+    const [m] = await sql`SELECT count(*)::int AS n FROM space_memberships WHERE space_id = ${spaceId} AND user_id = ${guestId}`;
+    expect(m.n).toBe(1);
+    // The loser's invitation stays pending, and only the winner is audited.
+    const invs = await sql`SELECT status FROM space_invitations WHERE space_id = ${spaceId} ORDER BY status`;
+    expect(invs.map((r: any) => r.status)).toEqual(["accepted", "pending"]);
+    const [audit] = await sql`SELECT count(*)::int AS n FROM space_audit_log WHERE space_id = ${spaceId} AND action = 'space.invitation.accepted'`;
+    expect(audit.n).toBe(1);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+});

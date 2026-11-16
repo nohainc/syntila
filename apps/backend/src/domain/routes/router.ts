@@ -137,6 +137,10 @@ export async function routeWorkerRequest(
 const CONSTRAINT_MESSAGES: Record<string, string> = {
   threads_space_name_key: "This Space already has a Thread with this name",
   spaces_owner_group_name_key: "You already have a Space with this name",
+  space_memberships_space_id_user_id_key: "You are already a member of this Space",
+  idx_space_invitations_pending_email: "A pending invitation already exists for this user",
+  idx_space_invitations_pending_user: "A pending invitation already exists for this user",
+  idx_workspace_invitations_pending_email: "An invitation is already pending",
 };
 
 function databaseErrorCode(error: unknown): string | undefined {
