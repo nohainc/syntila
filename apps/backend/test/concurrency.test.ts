@@ -633,3 +633,105 @@ describe("Plan approval", () => {
     expect(await queued(threadId, id)).toBe(0);
   });
 });
+
+describe("Queue changes racing dispatch", () => {
+  const SENT = "This request is already being sent";
+  const sentFrom = async (threadId: string) =>
+    await sql`SELECT input_json FROM work_requests WHERE thread_id = ${threadId}`;
+
+  test("edit, delete and send-now against the dispatch of one request: a 200 is never reported for a change that was lost", async () => {
+    const token = await mint("queue-race");
+    for (let round = 0; round < 25; round++) {
+      const { threadId } = await spaceWithThread(token, `Queue dispatch ${round}`);
+      await call(token, "POST", `/api/threads/${threadId}/queue/pause`, {});
+      const queued = await call(token, "POST", `/api/threads/${threadId}/queue`, { request: { workflowId: "chat", input: { originalRequest: `orig-${round}` } } });
+      expect(queued.status).toBeLessThan(300);
+      const itemId = queued.body.items[0].id as string;
+      const base = `/api/threads/${threadId}/queue`;
+      const [edit, del, now, resume] = await Promise.all([
+        call(token, "PUT", `${base}/${itemId}`, { request: { workflowId: "chat", input: { originalRequest: `edited-${round}` } } }),
+        call(token, "DELETE", `${base}/${itemId}`),
+        call(token, "POST", `${base}/${itemId}/send-now`, {}),
+        call(token, "POST", `${base}/resume`, {}),
+      ]);
+      const all = [edit, del, now, resume];
+      expect(all.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
+      for (const r of [edit, del, now]) {
+        expect([200, 404, 409]).toContain(r.status);
+        if (r.status === 409) expect(r.body.error).toBe(SENT);
+      }
+      const sent = await sentFrom(threadId);
+      const left = (await sql`SELECT count(*)::int AS n FROM thread_request_queue WHERE thread_id = ${threadId}`)[0].n as number;
+      // A deleted request is neither queued nor sent.
+      if (del.status === 200) { expect(sent).toHaveLength(0); expect(left).toBe(0); }
+      // An accepted edit is what was sent or what still waits.
+      if (edit.status === 200 && del.status !== 200 && sent.length > 0) expect(String(sent[0].input_json)).toContain(`edited-${round}`);
+      // At most one execution per request.
+      expect(sent.length).toBeLessThanOrEqual(1);
+    }
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+
+  /**
+   * Holds the item's row lock while edit, delete and send-now pass their
+   * pre-check and block on their write, then commits `change`: each write
+   * then finds the item changed under it.
+   */
+  async function changedUnderneath(name: string, change: (tx: any, itemId: string) => Promise<unknown>) {
+    const token = await mint(name);
+    const { threadId } = await spaceWithThread(token, name);
+    await call(token, "POST", `/api/threads/${threadId}/queue/pause`, {});
+    const queued = await call(token, "POST", `/api/threads/${threadId}/queue`, { request: { workflowId: "chat", input: { originalRequest: "x" } } });
+    const itemId = queued.body.items[0].id as string;
+    const base = `/api/threads/${threadId}/queue/${itemId}`;
+    let pending: Promise<{ status: number; body: any }[]> = Promise.resolve([]);
+    await sql.begin(async (tx: any) => {
+      await change(tx, itemId);
+      pending = Promise.all([
+        call(token, "PUT", base, { request: { workflowId: "chat", input: { originalRequest: "y" } } }),
+        call(token, "DELETE", base),
+        call(token, "POST", `${base}/send-now`, {}),
+      ]);
+      await Bun.sleep(300); // all three are past their check and waiting for the lock
+    });
+    return { threadId, itemId, results: await pending };
+  }
+
+  test("the request is claimed for sending after the checks: edit, delete and send-now are 409, nothing changes", async () => {
+    const { itemId, results } = await changedUnderneath("queue-claimed", (tx, id) =>
+      tx.unsafe("UPDATE thread_request_queue SET status = 'sending' WHERE id = $1", [id]));
+    expect(results.filter((r) => r.status >= 500)).toEqual([]);
+    expect(results.map((r) => r.status)).toEqual([409, 409, 409]);
+    expect(results.map((r) => r.body.error)).toEqual(Array(3).fill(SENT));
+    const [row] = await sql`SELECT status, request_json, position FROM thread_request_queue WHERE id = ${itemId}`;
+    expect(row.status).toBe("sending");
+    expect(String(row.request_json)).toContain('"x"');
+  });
+
+  test("the request is removed after the checks: edit, delete and send-now are 404, not success", async () => {
+    const { results } = await changedUnderneath("queue-removed", (tx, id) =>
+      tx.unsafe("DELETE FROM thread_request_queue WHERE id = $1", [id]));
+    expect(results.filter((r) => r.status >= 500)).toEqual([]);
+    expect(results.map((r) => r.status)).toEqual([404, 404, 404]);
+  });
+
+  test("a request that is already being sent refuses edit, delete and send-now with 409", async () => {
+    const token = await mint("queue-sending");
+    const { threadId } = await spaceWithThread(token, "Queue sending");
+    await call(token, "POST", `/api/threads/${threadId}/queue/pause`, {});
+    const queued = await call(token, "POST", `/api/threads/${threadId}/queue`, { request: { workflowId: "chat", input: { originalRequest: "x" } } });
+    const itemId = queued.body.items[0].id as string;
+    await sql`UPDATE thread_request_queue SET status = 'sending' WHERE id = ${itemId}`;
+    const base = `/api/threads/${threadId}/queue/${itemId}`;
+    const results = await Promise.all([
+      call(token, "PUT", base, { request: { workflowId: "chat", input: { originalRequest: "y" } } }),
+      call(token, "DELETE", base),
+      call(token, "POST", `${base}/send-now`, {}),
+    ]);
+    expect(results.map((r) => r.status)).toEqual([409, 409, 409]);
+    expect(results.map((r) => r.body.error)).toEqual(Array(3).fill(SENT));
+    const [row] = await sql`SELECT status, request_json FROM thread_request_queue WHERE id = ${itemId}`;
+    expect(row.status).toBe("sending");
+    expect(String(row.request_json)).toContain('"x"');
+  });
+});

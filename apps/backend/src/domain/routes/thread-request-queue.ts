@@ -376,6 +376,19 @@ export async function advanceThreadQueue(
   await publishQueueUpdated(env, threadId, spaceId);
 }
 
+/**
+ * A conditional change of a queued request matched no row: it is being sent
+ * (409) or was removed meanwhile (404). Throws either way.
+ */
+async function lostQueuedItem(db: D1Database, itemId: string): Promise<never> {
+  const still = await db
+    .prepare("SELECT 1 AS found FROM thread_request_queue WHERE id = ?1")
+    .bind(itemId)
+    .first();
+  if (still) throw new HttpError(409, "This request is already being sent");
+  throw new HttpError(404, "Queued request not found");
+}
+
 /** Never lets a queue error break the caller that finished a request. */
 export async function advanceThreadQueueSafely(
   env: SecurityEnv,
@@ -554,25 +567,27 @@ export async function handleThreadRequestQueue(
       spaceId,
       String(body.workflowId),
     );
-    await db
+    const edited = await db
       .prepare(
         `UPDATE thread_request_queue SET request_json = ?1, updated_at = ?2
-          WHERE id = ?3 AND status = 'queued'`,
+          WHERE id = ?3 AND status = 'queued' RETURNING id`,
       )
       .bind(JSON.stringify(body), now, itemId)
-      .run();
+      .first<{ id: string }>();
+    if (!edited) await lostQueuedItem(db, itemId);
   } else if (method === "DELETE" && !action) {
     if (existingRequest.isPhased)
       throw new HttpError(
         400,
         "A single implementation phase cannot be removed. Stop all phases instead.",
       );
-    await db
+    const removed = await db
       .prepare(
-        "DELETE FROM thread_request_queue WHERE id = ?1 AND status = 'queued'",
+        "DELETE FROM thread_request_queue WHERE id = ?1 AND status = 'queued' RETURNING id",
       )
       .bind(itemId)
-      .run();
+      .first<{ id: string }>();
+    if (!removed) await lostQueuedItem(db, itemId);
     const left = await db
       .prepare(
         "SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1",
@@ -609,10 +624,12 @@ export async function handleThreadRequestQueue(
     }
     // First in line and running again. Requests still processing finish
     // first: members cannot cancel each other's requests.
-    await db.batch([
+    const moved = await db.batch([
       lockQueue(db, threadId),
       moveToFront(db, threadId, itemId, now),
     ]);
+    // Side effects (advancing the queue) only after this request won the item.
+    if (!moved[1]?.meta?.changes) await lostQueuedItem(db, itemId);
     // A paused queue (for example after a failed phase) stays paused: only
     // this request is sent, the remaining phases wait for an explicit resume.
     await advanceThreadQueueSafely(env, threadId, { forceHead: true });

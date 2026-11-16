@@ -60,4 +60,4 @@ export const moveToFront = (db: D1Database, threadId: string, itemId: string, no
   db.prepare(`UPDATE thread_request_queue
       SET position = (SELECT MIN(position) FROM thread_request_queue WHERE thread_id = ?1) - 1,
           updated_at = ?3
-    WHERE id = ?2 AND thread_id = ?1`).bind(threadId, itemId, now);
+    WHERE id = ?2 AND thread_id = ?1 AND status = 'queued'`).bind(threadId, itemId, now);
