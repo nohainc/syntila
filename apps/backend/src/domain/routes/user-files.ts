@@ -15,6 +15,9 @@ import {
   workRequestFileKey,
 } from "./work-request-files.js";
 
+const DELETE_USER_FILES_BY_ID_USER_ID =
+  `DELETE FROM user_files WHERE id = ?1 AND user_id = ?2`;
+
 const PAGE_SIZE = 100;
 /** Uploads never attached to a message or Work Request expire after this. */
 const ORPHAN_AGE_MS = 24 * 60 * 60 * 1000;
@@ -160,7 +163,7 @@ export async function handleDeleteUserFile(
   await deleteFileObjects(env, [fileId]);
   await writeAlone(env, "files.delete", (db) =>
     db
-      .prepare(`DELETE FROM user_files WHERE id = ?1 AND user_id = ?2`)
+      .prepare(DELETE_USER_FILES_BY_ID_USER_ID)
       .bind(fileId, context.userId),
   );
   return json({ usage: await userStorageUsage(env, context.userId) });
@@ -248,7 +251,7 @@ export async function handleSyncUserFiles(
       if (!object) {
         await writeAlone(env, "files.sync_drop", (db) =>
           db
-            .prepare("DELETE FROM user_files WHERE id = ?1 AND user_id = ?2")
+            .prepare(DELETE_USER_FILES_BY_ID_USER_ID)
             .bind(row.id, context.userId),
         );
       } else if (object.customMetadata?.userId === context.userId) {
