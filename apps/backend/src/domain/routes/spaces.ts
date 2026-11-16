@@ -1172,8 +1172,19 @@ export async function handleCreateSpaceInvitation(
       )
     )
       throw new SpaceMemberLimitError("owner");
-    // A duplicate pending invitation reaches the router as a unique violation
-    // and is answered from CONSTRAINT_MESSAGES.
+    // PostgreSQL names the violated index (the pending e-mail and pending
+    // user indexes); the router would answer the same text from
+    // CONSTRAINT_MESSAGES, this keeps the handler's own contract.
+    if (
+      error instanceof Error &&
+      /^idx_space_invitations_pending_(email|user)$/.test(
+        String((error as { constraint?: string }).constraint ?? ""),
+      )
+    )
+      throw new HttpError(
+        409,
+        "A pending invitation already exists for this user",
+      );
     throw error;
   }
   await env.SYNTILA_DB.prepare(
