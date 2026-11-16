@@ -21,6 +21,38 @@ import {
   personalWorkspaceAdmissionSql,
 } from "../account-plan.js";
 
+const COUNT_ACTIVE_ASSIGNMENTS =
+  `SELECT COUNT(*) AS count FROM worker_assignments
+      WHERE execution_workspace_id = ?1 AND status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})`;
+
+const SELECT_WORKSPACE_INSTALLATIONS_BY_INSTALLATION =
+  `SELECT wi.installation_id AS installationId,
+            wi.owner_user_id AS ownerUserId, wi.workspace_id AS workspaceId,
+            wi.status AS status, wi.released_at AS releasedAt,
+            w.status AS workspaceStatus, w.name AS workspaceName
+       FROM workspace_installations wi
+       JOIN execution_workspaces w ON w.id = wi.workspace_id
+      WHERE wi.installation_id = ?1`;
+
+const SELECT_WORKSPACE_RUNTIME_IDENTITIES =
+  `SELECT i.id AS runtimeId, w.status AS workspaceStatus
+         FROM workspace_runtime_identities i
+         JOIN execution_workspaces w ON w.id = i.workspace_id
+        WHERE i.workspace_id = ?1 AND i.revoked_at IS NULL
+        ORDER BY i.created_at DESC, i.id DESC
+        LIMIT 1`;
+
+const SELECT_WORKSPACE_AUDIT_LOG_BY_ACTION_DETAILS =
+  `SELECT 1 AS released
+       FROM workspace_audit_log
+      WHERE action = 'workspace.ownership.released'
+        AND CASE
+              WHEN details_json IS JSON
+              THEN (details_json::jsonb #>> '{installationId}')
+              ELSE NULL
+            END = ?1
+      LIMIT 1`;
+
 type WorkspaceOwnershipRow = {
   runtimeId: string;
   workspaceId: string;
@@ -63,13 +95,7 @@ async function workspaceInstallationBindingIssue(
   installationId: string,
 ): Promise<Response | null> {
   const installation = await env.SYNTILA_DB.prepare(
-    `SELECT wi.installation_id AS installationId,
-            wi.owner_user_id AS ownerUserId, wi.workspace_id AS workspaceId,
-            wi.status AS status, wi.released_at AS releasedAt,
-            w.status AS workspaceStatus, w.name AS workspaceName
-       FROM workspace_installations wi
-       JOIN execution_workspaces w ON w.id = wi.workspace_id
-      WHERE wi.installation_id = ?1`,
+    SELECT_WORKSPACE_INSTALLATIONS_BY_INSTALLATION,
   )
     .bind(installationId)
     .first<WorkspaceInstallationRow>();
@@ -207,13 +233,7 @@ export async function handleCheckWorkspaceOwnership(
   }
 
   const installation = await env.SYNTILA_DB.prepare(
-    `SELECT wi.installation_id AS installationId,
-            wi.owner_user_id AS ownerUserId, wi.workspace_id AS workspaceId,
-            wi.status AS status, wi.released_at AS releasedAt,
-            w.status AS workspaceStatus, w.name AS workspaceName
-       FROM workspace_installations wi
-       JOIN execution_workspaces w ON w.id = wi.workspace_id
-      WHERE wi.installation_id = ?1`,
+    SELECT_WORKSPACE_INSTALLATIONS_BY_INSTALLATION,
   )
     .bind(installationId)
     .first<WorkspaceInstallationRow>();
@@ -241,12 +261,7 @@ export async function handleCheckWorkspaceOwnership(
       return json({ state: "corrupt_or_ambiguous" });
     }
     const runtime = await env.SYNTILA_DB.prepare(
-      `SELECT i.id AS runtimeId, w.status AS workspaceStatus
-         FROM workspace_runtime_identities i
-         JOIN execution_workspaces w ON w.id = i.workspace_id
-        WHERE i.workspace_id = ?1 AND i.revoked_at IS NULL
-        ORDER BY i.created_at DESC, i.id DESC
-        LIMIT 1`,
+      SELECT_WORKSPACE_RUNTIME_IDENTITIES,
     )
       .bind(installation.workspaceId)
       .first<{ runtimeId: string; workspaceStatus: string }>();
@@ -323,15 +338,7 @@ export async function handleCheckWorkspaceOwnership(
     return json({ state: "local_registration_stale" });
   }
   const releaseHistory = await env.SYNTILA_DB.prepare(
-    `SELECT 1 AS released
-       FROM workspace_audit_log
-      WHERE action = 'workspace.ownership.released'
-        AND CASE
-              WHEN details_json IS JSON
-              THEN (details_json::jsonb #>> '{installationId}')
-              ELSE NULL
-            END = ?1
-      LIMIT 1`,
+    SELECT_WORKSPACE_AUDIT_LOG_BY_ACTION_DETAILS,
   )
     .bind(installationId)
     .first<{ released: number }>();
@@ -404,13 +411,7 @@ export async function handleReconcileWorkspaceOwnership(
   }
 
   const existing = await env.SYNTILA_DB.prepare(
-    `SELECT wi.installation_id AS installationId,
-            wi.owner_user_id AS ownerUserId, wi.workspace_id AS workspaceId,
-            wi.status AS status, wi.released_at AS releasedAt,
-            w.status AS workspaceStatus, w.name AS workspaceName
-       FROM workspace_installations wi
-       JOIN execution_workspaces w ON w.id = wi.workspace_id
-      WHERE wi.installation_id = ?1`,
+    SELECT_WORKSPACE_INSTALLATIONS_BY_INSTALLATION,
   )
     .bind(installationId)
     .first<WorkspaceInstallationRow>();
@@ -419,11 +420,7 @@ export async function handleReconcileWorkspaceOwnership(
       return json({ state: "owned_by_other_user" });
     }
     const runtime = await env.SYNTILA_DB.prepare(
-      `SELECT i.id AS runtimeId, w.status AS workspaceStatus
-         FROM workspace_runtime_identities i
-         JOIN execution_workspaces w ON w.id = i.workspace_id
-        WHERE i.workspace_id = ?1 AND i.revoked_at IS NULL
-        ORDER BY i.created_at DESC, i.id DESC LIMIT 1`,
+      SELECT_WORKSPACE_RUNTIME_IDENTITIES,
     )
       .bind(existing.workspaceId)
       .first<{ runtimeId: string; workspaceStatus: string }>();
@@ -434,12 +431,7 @@ export async function handleReconcileWorkspaceOwnership(
   if (existing?.status === "released") return json({ state: "released" });
 
   const releaseHistory = await env.SYNTILA_DB.prepare(
-    `SELECT 1 AS released
-       FROM workspace_audit_log
-      WHERE action = 'workspace.ownership.released'
-        AND CASE WHEN details_json IS JSON
-          THEN (details_json::jsonb #>> '{installationId}') ELSE NULL END = ?1
-      LIMIT 1`,
+    SELECT_WORKSPACE_AUDIT_LOG_BY_ACTION_DETAILS,
   )
     .bind(installationId)
     .first<{ released: number }>();
@@ -629,10 +621,7 @@ export async function handleDisconnectDesktopWorkspace(
   if (owned.revokedAt !== null)
     return json({ disconnected: true, workspaceId, installationId });
 
-  const active = await env.SYNTILA_DB.prepare(
-    `SELECT COUNT(*) AS count FROM worker_assignments
-      WHERE execution_workspace_id = ?1 AND status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})`,
-  )
+  const active = await env.SYNTILA_DB.prepare(COUNT_ACTIVE_ASSIGNMENTS)
     .bind(workspaceId)
     .first<{ count: number }>();
   if ((active?.count ?? 0) > 0) {
@@ -782,11 +771,7 @@ export async function handleReleaseDesktopWorkspace(
     );
   }
 
-  const active = await env.SYNTILA_DB.prepare(
-    `SELECT COUNT(*) AS count FROM worker_assignments
-      WHERE execution_workspace_id = ?1
-        AND status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})`,
-  )
+  const active = await env.SYNTILA_DB.prepare(COUNT_ACTIVE_ASSIGNMENTS)
     .bind(workspaceId)
     .first<{ count: number }>();
   if ((active?.count ?? 0) > 0) {
