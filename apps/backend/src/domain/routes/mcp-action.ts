@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import { HttpError, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
@@ -24,10 +25,7 @@ export async function handleWorkspaceMcpAction(
   const gateway = env.SYNTILA_WORKSPACE_GATEWAY;
   if (!gateway) throw new HttpError(503, "Workspace Gateway is not configured");
 
-  const body = (await request.json().catch(() => null)) as unknown;
-  if (!body || typeof body !== "object") {
-    throw new HttpError(400, "Invalid JSON body");
-  }
+  const body = await readJson(request);
 
   const response = await gateway
     .getByName(workspaceId)

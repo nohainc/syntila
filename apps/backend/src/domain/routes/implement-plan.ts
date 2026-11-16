@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { appendToQueue, lockQueue, prependToQueue } from "./queue-positions.js";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
 import { authorizeThreadAccess } from "./thread-policy.js";
@@ -254,12 +255,8 @@ export async function handleApprovePlan(
     planText = planTask.outputJson;
   }
 
-  let body: ApprovePlanBody = {};
-  try {
-    body = (await request.json()) as ApprovePlanBody;
-  } catch {
-    // defaults
-  }
+  // An empty body takes the defaults; a malformed one is a 400.
+  const body = (await readJson(request)) as ApprovePlanBody;
 
   const verificationMode: VerificationMode = body.verificationMode ?? "none";
   if (!["none", "per_phase", "final"].includes(verificationMode)) {

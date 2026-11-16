@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import {
@@ -109,7 +110,7 @@ export async function handleSpaceAdditionalFolders(
       403,
       "Only the owner of the Space and its Workspace can attach folders",
     );
-  const body = (await request.json().catch(() => null)) as Record<
+  const body = (await readJson(request)) as Record<
     string,
     unknown
   > | null;

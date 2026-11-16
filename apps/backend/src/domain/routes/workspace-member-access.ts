@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import {
   HttpError,
@@ -311,7 +312,7 @@ export async function handleWorkspaceMemberAccess(
     return json({ restricted: policy !== null, policy });
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await request.json().catch(() => null)) as Record<
+  const body = (await readJson(request)) as Record<
     string,
     unknown
   > | null;
@@ -396,7 +397,7 @@ async function handlePersonOverride(
     return read();
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await request.json().catch(() => null)) as Record<
+  const body = (await readJson(request)) as Record<
     string,
     unknown
   > | null;

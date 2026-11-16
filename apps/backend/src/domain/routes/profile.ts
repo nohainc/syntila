@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { writeAlone } from "../../platform/tx-env.js";
 import { parseMultipart } from "../../platform/multipart";
 import { getAccountPlan } from "../account-plan.js";
@@ -209,7 +210,7 @@ export async function handleReadReceiptPrivacy(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   if (request.method === "PUT") {
-    const body = (await request.json().catch(() => null)) as Record<
+    const body = (await readJson(request)) as Record<
       string,
       unknown
     > | null;

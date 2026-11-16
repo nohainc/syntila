@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { usersBlocked } from "../queries.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
@@ -101,7 +102,7 @@ export async function handleValidateWorkRequest(
     defaultWorkflowId: "direct",
     bindings: {},
   });
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = (await readJson(request)) as Record<string, unknown>;
   const executionSelection = parseWorkflowExecutionSelection(
     body.executionSelection,
   );
@@ -176,7 +177,7 @@ export async function handleCreateWorkRequest(
       409,
       "Restore the Thread before sending messages or requests",
     );
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = (await readJson(request)) as Record<string, unknown>;
   const receipt = await MutationIdempotency.from(
     request,
     env.SYNTILA_DB,

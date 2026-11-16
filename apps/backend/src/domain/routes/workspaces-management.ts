@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { paidOwnerSql } from "../account-plan.js";
 import {
   HttpError,
@@ -151,7 +152,7 @@ export async function handleUpdateWorkspace(
     "workspace:manage",
     accessContext,
   );
-  const body = (await request.json().catch(() => ({}))) as Record<
+  const body = (await readJson(request)) as Record<
     string,
     unknown
   >;

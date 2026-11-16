@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import { PluginManifestSchema } from "@syntila/workspace-runtime-protocol";
 import { pluginManifestDigest } from "../plugin-manifest-digest.js";
@@ -42,7 +43,7 @@ function allocatePluginRef(): string {
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {
-  const body = (await request.json().catch(() => null)) as unknown;
+  const body = (await readJson(request)) as unknown;
   if (!body || typeof body !== "object" || Array.isArray(body))
     throw new PluginRouteError(
       400,

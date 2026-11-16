@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import { hashToken } from "@syntila/security";
 import { hasPaidFeature, requirePaidFeature } from "../account-plan.js";
@@ -122,7 +123,7 @@ export async function handleWorkspaceInvitations(
   // Inviting people is the paid part of sharing; listing and revoking stay
   // free so a downgraded owner can still see and remove access.
   await requirePaidFeature(env, context.userId, "workspace.sharing");
-  const body = (await request.json().catch(() => null)) as Record<
+  const body = (await readJson(request)) as Record<
     string,
     unknown
   > | null;
@@ -360,7 +361,7 @@ export async function handlePersonGrantQuota(
   const context = await securityContext(request, env, ctx);
   await ownedWorkspace(env, workspaceId, context.userId);
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await request.json().catch(() => null)) as Record<
+  const body = (await readJson(request)) as Record<
     string,
     unknown
   > | null;

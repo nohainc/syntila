@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { spaceMembership } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import {
@@ -159,7 +160,7 @@ export async function createWorkspaceSpaceGrant(
   spaceId: string,
   workspaceId: string,
 ): Promise<Response> {
-  const body = recordBody(await request.json().catch(() => null), [
+  const body = recordBody(await readJson(request), [
     "allowedWorkerIds",
     "allowedPermissions",
     "networkPolicy",

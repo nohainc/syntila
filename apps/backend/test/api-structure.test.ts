@@ -123,6 +123,22 @@ describe("request validation", () => {
     expect(response.status).toBe(400);
     expect(response.body.code).toBe("invalid_json");
   });
+  test("hand-checked bodies: malformed JSON is 400 invalid_json, a non-object is 400 invalid_request", async () => {
+    const token = await mint("val-d");
+    const space = await call(token, "POST", "/api/spaces", { name: "Bodies" });
+    expect(space.status).toBe(201);
+    const id = space.body.space.id;
+    for (const [method, path] of [
+      ["PATCH", `/api/spaces/${id}`],
+      ["POST", `/api/spaces/${id}/threads`],
+      ["PUT", "/api/pins/order"],
+    ] as const) {
+      const malformed = await call(token, method, path, "{not json");
+      expect([path, malformed.status, malformed.body.code]).toEqual([path, 400, "invalid_json"]);
+      const list = await call(token, method, path, "[1]");
+      expect([path, list.status, list.body.code]).toEqual([path, 400, "invalid_request"]);
+    }
+  });
   test("exactly one of email or userId for a person invitation", async () => {
     const token = await mint("val-c");
     await call(token, "GET", "/api/session");

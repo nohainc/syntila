@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { revokeAssignment } from "../assignment-revocation.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "../assignment-transitions.js";
@@ -75,11 +76,7 @@ export async function handleUpdateWorkspaceSpaceGrant(
     String(existing.workspace_id),
     "workspace:manage",
   );
-  const rawBody = await request.json().catch(() => null);
-  if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
-    throw new HttpError(400, "Request body must be an object");
-  }
-  const body = rawBody as Record<string, unknown>;
+  const body = await readJson(request);
   if (
     Object.keys(body).length === 0 ||
     Object.keys(body).some(

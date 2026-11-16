@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { canonicalJson } from "../canonical-json.js";
 import { verifyEd25519ReleaseSignature } from "../release-trust.js";
 import { computePackageDigest } from "@syntila/security";
@@ -300,7 +301,7 @@ export async function handlePublishWorkspaceRelease(
       packageData = await (file as Blob).arrayBuffer();
     }
   } else {
-    const body = (await request.json().catch(() => ({}))) as Record<
+    const body = (await readJson(request)) as Record<
       string,
       unknown
     >;
@@ -488,7 +489,7 @@ export async function handleRevokeWorkspaceRelease(
 ): Promise<Response> {
   await authorizeToolProfileAdmin(request, env, ctx, "profiles:release:manage");
 
-  const body = (await request.json().catch(() => ({}))) as { reason?: string };
+  const body = (await readJson(request)) as { reason?: string };
   const reason = body.reason || "Revoked by administrator";
   const now = new Date().toISOString();
 
@@ -544,7 +545,7 @@ export async function handleRevokeReleaseSigningKey(
     ctx,
     "profiles:release:manage",
   );
-  const body = (await request.json().catch(() => ({}))) as { reason?: unknown };
+  const body = (await readJson(request)) as { reason?: unknown };
   const reason =
     typeof body.reason === "string" ? body.reason.trim().slice(0, 500) : "";
   if (!reason) throw new HttpError(400, "revocation reason is required");

@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { spaceKind } from "../queries.js";
 import { paidOwnerSql } from "../account-plan.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
@@ -273,7 +274,7 @@ export async function handleWorkflowWorkspace(
     });
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await request.json().catch(() => null)) as Record<
+  const body = (await readJson(request)) as Record<
     string,
     unknown
   >;

@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { spaceWorkflowDefault, userWorkflowDefault } from "../queries.js";
 import { BUILTIN_WORKFLOW_CATALOG } from "@syntila/core";
 import {
@@ -114,7 +115,7 @@ export async function handleWorkflowDefault(
     });
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-  const body = (await request.json().catch(() => null)) as Record<
+  const body = (await readJson(request)) as Record<
     string,
     unknown
   > | null;

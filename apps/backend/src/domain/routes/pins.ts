@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { isSpaceMember } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { HttpError, authorizeThreadAccess, json } from "./handlers.js";
@@ -88,7 +89,7 @@ export async function handleSetPinOrder(
   env: SecurityEnv,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const body = (await request.json().catch(() => ({}))) as {
+  const body = (await readJson(request)) as {
     kind?: unknown;
     ids?: unknown;
     spaceId?: unknown;

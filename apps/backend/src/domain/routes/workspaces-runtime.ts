@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { logStructured, requestIdFor } from "../observability.js";
 
 import { extractBearerToken } from "@syntila/security";
@@ -166,7 +167,7 @@ export async function handleWorkspaceRuntimeTransport(
       { status: 503 },
     );
   const url = new URL(request.url);
-  const body = (await request.json().catch(() => null)) as Record<
+  const body = (await readJson(request)) as Record<
     string,
     unknown
   > | null;

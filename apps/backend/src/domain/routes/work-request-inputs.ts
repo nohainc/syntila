@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { extractBearerToken } from "@syntila/security";
 import { WorkspaceRuntimeAuthenticator } from "../workspace-gateway/runtime-authenticator.js";
 import { createEventPublisher } from "../event-publisher.js";
@@ -350,7 +351,7 @@ export async function handleFailWorkRequestInputUpload(
   );
   if (row.state !== "awaiting_upload")
     return json({ fileId, state: row.state });
-  const body = (await request.json().catch(() => null)) as {
+  const body = (await readJson(request)) as {
     message?: unknown;
   } | null;
   await failInput(
@@ -453,7 +454,7 @@ export async function handleConfirmRuntimeInput(
   fileId: string,
 ): Promise<Response> {
   const row = await runtimeRow(request, env, fileId);
-  const body = (await request.json().catch(() => null)) as {
+  const body = (await readJson(request)) as {
     contentDigest?: unknown;
   } | null;
   if (row.state === "delivered") return json({ fileId, state: "delivered" });
@@ -481,7 +482,7 @@ export async function handleReportRuntimeInputAttempt(
   fileId: string,
 ): Promise<Response> {
   const row = await runtimeRow(request, env, fileId);
-  const body = (await request.json().catch(() => null)) as {
+  const body = (await readJson(request)) as {
     final?: unknown;
     message?: unknown;
   } | null;
