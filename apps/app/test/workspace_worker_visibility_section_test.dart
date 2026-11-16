@@ -67,33 +67,25 @@ void main() {
     ], workspaceWorkers: const [
       worker
     ], workerVisibilityPreferences: preferences)))));
-    expect(find.text('Workers for me'), findsOneWidget);
-    expect(find.text('Show Test worker'), findsNothing);
-    await tester.tap(find.text('Workers for me'));
+    expect(find.text('My Workers'), findsOneWidget);
+    expect(find.byKey(const ValueKey('visibility-worker-w')), findsNothing);
+    await tester.tap(find.text('My Workers'));
     await tester.pumpAndSettle();
-    await tester
-        .ensureVisible(find.text('Test worker · Offline or unavailable'));
-    await tester.tap(find.text('Test worker · Offline or unavailable'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Show Test worker'));
-    await tester.tap(find.text('Show Test worker'));
+    final workerCheckbox = find.byKey(const ValueKey('visibility-worker-w'));
+    await tester.ensureVisible(workerCheckbox);
+    await tester.tap(workerCheckbox);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Save'));
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(source.values['one']!.hiddenWorkers, ['w']);
-    await tester.ensureVisible(find.text('Show Test worker'));
-    await tester.tap(find.text('Show Test worker'));
+    await tester.ensureVisible(workerCheckbox);
+    await tester.tap(workerCheckbox);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Cancel'));
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    expect(
-        tester
-            .widget<SwitchListTile>(
-                find.widgetWithText(SwitchListTile, 'Show Test worker'))
-            .value,
-        isFalse);
+    expect(tester.widget<Checkbox>(workerCheckbox).value, isFalse);
     source.fail = true;
     await tester.ensureVisible(find.text('Save'));
     await tester.tap(find.text('Save'));
@@ -105,19 +97,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(source.resets, 1);
     expect(source.values['one']!.hiddenWorkers, isEmpty);
-    await tester.ensureVisible(find.text('Show Test worker'));
-    expect(
-        tester
-            .widget<SwitchListTile>(
-                find.widgetWithText(SwitchListTile, 'Show Test worker'))
-            .value,
-        isTrue);
-    final model = find.descendant(
-        of: find.byKey(const ValueKey('worker-visibility-one')),
-        matching: find.text('Model'));
-    await tester.ensureVisible(model);
-    await tester.tap(model);
-    await tester.pumpAndSettle();
-    expect(find.text('Show Model effort high'), findsOneWidget);
+    await tester.ensureVisible(workerCheckbox);
+    expect(tester.widget<Checkbox>(workerCheckbox).value, isTrue);
+    final modelCheckbox = find.byKey(const ValueKey('visibility-model-m-w'));
+    await tester.ensureVisible(modelCheckbox);
+    expect(tester.widget<Checkbox>(modelCheckbox).value, isTrue);
+    final effortCheckbox =
+        find.byKey(const ValueKey('visibility-effort-m-low-w'));
+    await tester.ensureVisible(effortCheckbox);
+    expect(tester.widget<Checkbox>(effortCheckbox).value, isTrue);
+    expect(find.byKey(const ValueKey('visibility-effort-m-high-w')),
+        findsOneWidget);
   });
 }

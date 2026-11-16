@@ -270,7 +270,16 @@ export async function resolveWorkflowExecutionBindings(
         : researchV2
           ? stepInstanceId(step)
           : step.kind;
-    const configuredSelection = effective.steps[stepInstanceId(step)] ?? {};
+    // A Worker swap must not inherit the previous Worker's model or effort.
+    const workerOverridden =
+      !!override &&
+      Object.hasOwn(override, "workerId") &&
+      !!override.workerId;
+    const configuredBase = effective.steps[stepInstanceId(step)] ?? {};
+    const configuredSelection =
+      workerOverridden && override!.workerId !== configuredBase.worker
+        ? { ...configuredBase, model: undefined, effort: undefined }
+        : configuredBase;
     const selection: WorkflowSelection = {
       ...configuredSelection,
       ...(override &&

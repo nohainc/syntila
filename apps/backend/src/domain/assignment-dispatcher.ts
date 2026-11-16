@@ -301,6 +301,19 @@ async function dispatchWorkspaceWorkerAssignment(
       rejectionReasons = reasons;
     },
   );
+  // A Workspace that is briefly offline (restart, update, reconnect) is a
+  // transient condition: wait durably for it, as for a Service that is not
+  // ready yet, instead of failing the step on the first dispatch.
+  if (!target && rejectionReasons.includes("workspace_offline")) {
+    await recordExecutionWaiter(env.SYNTILA_DB, {
+      taskId,
+      requesterUserId: task.requestedByUserId!,
+      runId,
+      workRequestId: task.workRequestId,
+      reason: "workspace_not_ready",
+    });
+    return deferredDispatch("workspace_not_ready");
+  }
   if (!target) {
     tryLogDiagnosticEvent({
       requestId: task.workRequestId,

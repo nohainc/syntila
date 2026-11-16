@@ -1215,6 +1215,23 @@ void main() {
       expect(regStore.readSync(), isNotNull);
       expect(workersFile.existsSync(), isTrue);
 
+      // Explicit force permits local recovery even when Cloud refuses.
+      final forced = await WorkspaceCli(
+        out: StringBuffer(),
+        err: StringBuffer(),
+        authClientFactory: (_) => client,
+        credentialStore: store,
+        request: (c, p) async => {'ok': true},
+      ).run(['--data-dir', root.path, 'unregister', '--force']);
+      expect(forced, 0);
+      expect(regStore.readSync(), isNull);
+      expect(workersFile.existsSync(), isTrue);
+      await regStore.write(const WorkspaceRegistration(
+        workspaceRuntimeId: 'rt-1', workspaceId: 'ws-1',
+        cloudUrl: 'https://syntila.test', name: 'Test WS',
+        hostname: 'testhost', installationId: 'inst-1',
+      ));
+
       // Cloud accepts: local state is cleared.
       client.releaseError = null;
       final outUnreg = StringBuffer(), errUnreg = StringBuffer();

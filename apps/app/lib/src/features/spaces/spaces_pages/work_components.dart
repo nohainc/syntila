@@ -961,7 +961,7 @@ class _WorkComposer extends StatelessWidget {
                             false) ||
                         selection.worker == worker.id)
                       worker.id:
-                          '${worker.displayName}${!worker.shared && (visibilityByWorkspace[worker.workspaceId]?.workerHidden(worker.id) ?? false) ? ' · Hidden in Workers for me' : ''}'
+                          '${worker.displayName}${!worker.shared && (visibilityByWorkspace[worker.workspaceId]?.workerHidden(worker.id) ?? false) ? ' · Hidden in My Workers' : ''}'
                 },
                 displayModels: (selection) {
                   final catalog =
@@ -4375,9 +4375,9 @@ class _QueuedMessagesPanel extends StatelessWidget {
       background: SyntilaColors.composerBackground(isDark),
       child: Container(
         key: const ValueKey('work-queue-panel'),
-        // Fits the content; shows at most 6 items before scrolling.
+        // Fits the content; shows at most 4 items before scrolling.
         constraints:
-            BoxConstraints(maxHeight: (hasPanelAbove ? 1 : 0) + 30 + 6 * 48),
+            BoxConstraints(maxHeight: (hasPanelAbove ? 1 : 0) + 30 + 4 * 48),
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
         child: Column(

@@ -1401,7 +1401,7 @@ class WorkspaceCli {
   }
 
   Future<int> _unregister(String? dataDir, bool json,
-      {bool quiet = false}) async {
+      {bool quiet = false, bool force = false}) async {
     final root = WorkspaceConfigurationResolver.resolveDataDirectory([
       if (dataDir != null) ...['--data-dir', dataDir],
     ]);
@@ -1473,10 +1473,14 @@ class WorkspaceCli {
       failure = 'No Cloud sign-in is available.';
     }
     if (failure != null) {
-      err.writeln('Cloud did not release this Workspace: $failure');
-      err.writeln(
-          'Local registration was retained. Fix the problem and run: syntila unregister');
-      return 1;
+      if (force) {
+        err.writeln('Cloud did not release this Workspace ($failure); forcing local unregistration.');
+      } else {
+        err.writeln('Cloud did not release this Workspace: $failure');
+        err.writeln(
+            'Local registration was retained. Fix the problem and run: syntila unregister (or syntila unregister --force)');
+        return 1;
+      }
     }
 
     // 4. Only the registration is forgotten. Workers and folders are this
@@ -1499,13 +1503,14 @@ class WorkspaceCli {
     return 0;
   }
 
-  Future<int> _reset(String? dataDir, bool json) async {
+  Future<int> _reset(String? dataDir, bool json,
+      {bool localOnly = false}) async {
     final root = WorkspaceConfigurationResolver.resolveDataDirectory([
       if (dataDir != null) ...['--data-dir', dataDir],
     ]);
-    // Preserve the local registration if Cloud cannot release it.
+    // Preserve the local registration if Cloud cannot release it, unless --local-only is set.
     try {
-      if (await _unregister(dataDir, true, quiet: true) != 0) {
+      if (await _unregister(dataDir, true, quiet: true, force: localOnly) != 0) {
         err.writeln('Reset incomplete: Workspace could not be unregistered.');
         return 1;
       }

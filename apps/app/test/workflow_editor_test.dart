@@ -180,7 +180,7 @@ void main() {
     expect(choices(tester, 'defaults', 'Model'), isNot(contains('review')));
     expect(choices(tester, 'defaults', 'Effort'), contains('low'));
     expect(choices(tester, 'defaults', 'Effort'), isNot(contains('high')));
-    expect(find.textContaining('Hidden in Workers for me'), findsWidgets);
+    expect(find.textContaining('Hidden in My Workers'), findsWidgets);
     await visibility.reset();
     await tester.pumpAndSettle();
     expect(choices(tester, 'defaults', 'Model'), contains('review'));

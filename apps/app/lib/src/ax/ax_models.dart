@@ -149,7 +149,23 @@ Map<String, dynamic> submissionExecutionSelection(
         AxBuiltinWorkflow? workflow, Map<String, dynamic> selection) =>
     workflow?.executionPolicy.multiStep == true
         ? <String, dynamic>{}
-        : Map<String, dynamic>.from(selection);
+        : _withoutOrphanedModelChoice(selection);
+
+/// A model, effort or catalog revision belongs to the Worker it was chosen
+/// for. Without a selected Worker they are leftovers (for example from an
+/// earlier Worker) and would be validated against another Worker's catalog.
+Map<String, dynamic> _withoutOrphanedModelChoice(
+    Map<String, dynamic> selection) {
+  final copy = Map<String, dynamic>.from(selection);
+  final workerId = copy['workerId'];
+  if (workerId is! String || workerId.isEmpty) {
+    copy
+      ..remove('model')
+      ..remove('reasoningEffort')
+      ..remove('catalogRevision');
+  }
+  return copy;
+}
 
 class AxBuiltinWorkflow {
   const AxBuiltinWorkflow({

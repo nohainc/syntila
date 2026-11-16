@@ -61,7 +61,7 @@ class AxWorkerVisibilityProjection {
   final ExecutionSelectionCatalog catalog;
   final AxWorkerVisibility preferences;
   final ExecutionSelection selected;
-  static const hiddenLabel = 'Hidden in Workers for me';
+  static const hiddenLabel = 'Hidden in My Workers';
   List<WorkerSelectionCapability> get workers =>
       List.unmodifiable(catalog.workers.where(
           (w) => !preferences.workerHidden(w.id) || selected.worker == w.id));

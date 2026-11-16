@@ -3743,9 +3743,11 @@ export class WorkspaceGateway implements DurableObject {
         message: JSON.parse(serialized),
       },
     });
-    await this.persistHttpRuntime();
+    // Wake the waiting poll first: the event is already queued in memory, and
+    // the storage write must not sit on the command-delivery latency path.
     this.httpWaiter?.();
     this.httpWaiter = null;
+    await this.persistHttpRuntime();
   }
 
   private sendError(error: string): void {

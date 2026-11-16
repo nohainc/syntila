@@ -329,7 +329,12 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         'unregister',
         'Unregister',
         'Unregister workspace from Cloud and clear local identity',
-        (run) => cli._unregister(dataDir(run), json(run)),
+        (run) => cli._unregister(dataDir(run), json(run), force: run.flag('force')),
+        parameters: const [
+          GuiParameter(name: 'force', kind: GuiParamKind.flag,
+              type: GuiParamType.boolean,
+              label: 'Forget local registration if Cloud cannot release it'),
+        ],
         destructive: true,
       ),
       command(
@@ -981,7 +986,15 @@ CliSpec _buildWorkspaceSpec(WorkspaceCli cli) {
         'reset',
         'Reset',
         'Stop service, unregister and erase local runtime state',
-        (run) => cli._reset(dataDir(run), json(run)),
+        (run) => cli._reset(dataDir(run), json(run),
+            localOnly: run.flag('local-only')),
+        parameters: const [
+          GuiParameter(
+              name: 'local-only',
+              kind: GuiParamKind.flag,
+              type: GuiParamType.boolean,
+              label: 'Erase local state even if Cloud cannot release this Workspace'),
+        ],
         destructive: true,
         longRunning: true,
         firstRun: true,
