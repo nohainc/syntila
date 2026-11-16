@@ -51,6 +51,27 @@ import {
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 
+const SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID =
+  `SELECT id, space_id AS spaceId, user_id AS userId, role,
+            created_at AS createdAt, updated_at AS updatedAt
+       FROM space_memberships WHERE space_id = ?1 AND user_id = ?2`;
+
+const SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO =
+  `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId,
+            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = ds.space_id) AS isSupport
+     FROM direct_spaces ds
+     LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
+     WHERE ds.space_id = ?1`;
+
+const SELECT_DISCUSSION_MESSAGES_BY_ID =
+  `SELECT dm.id, dm.thread_id AS threadId, dm.author_user_id AS authorUserId,
+      COALESCE(u.display_name, 'Member') AS authorName,
+      dm.body, dm.attachments_json AS attachmentsJson, dm.references_json AS referencesJson, dm.reply_to_json AS replyToJson, dm.edited_at AS editedAt, dm.created_at AS createdAt,
+            dm.event_type AS eventType, dm.kind, dm.work_request_id AS workRequestId, dm.worker_display_name AS workerDisplayName
+     FROM discussion_messages dm
+     LEFT JOIN users u ON u.id = dm.author_user_id
+     WHERE dm.id = ?1`;
+
 export async function handleListSpaceThreads(
   request: Request,
   env: SecurityEnv,
@@ -133,9 +154,7 @@ export async function handleListSpaceThreads(
     .all<Record<string, unknown>>();
 
   const membership = await env.SYNTILA_DB.prepare(
-    `SELECT id, space_id AS spaceId, user_id AS userId, role,
-            created_at AS createdAt, updated_at AS updatedAt
-       FROM space_memberships WHERE space_id = ?1 AND user_id = ?2`,
+    SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID,
   )
     .bind(spaceId, context.userId)
     .first<SpaceMembership>();
@@ -204,11 +223,7 @@ export async function handleCreateThread(
     "manageOwnThreads",
   );
   const directSpace = await env.SYNTILA_DB.prepare(
-    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId,
-            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = ds.space_id) AS isSupport
-     FROM direct_spaces ds
-     LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
-     WHERE ds.space_id = ?1`,
+    SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO,
   )
     .bind(spaceId)
     .first<{
@@ -464,9 +479,7 @@ export async function handleUpdateThread(
       return JSON.stringify(mergeMetadata(current, metadataPatch ?? {}));
     });
   const member = await env.SYNTILA_DB.prepare(
-    `SELECT id, space_id AS spaceId, user_id AS userId, role,
-            created_at AS createdAt, updated_at AS updatedAt
-       FROM space_memberships WHERE space_id = ?1 AND user_id = ?2`,
+    SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID,
   )
     .bind(thread.spaceId, context.userId)
     .first<SpaceMembership>();
@@ -696,11 +709,7 @@ export async function handleCreateDiscussionMessage(
     accessContext,
   );
   const directSpace = await env.SYNTILA_DB.prepare(
-    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId,
-            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = ds.space_id) AS isSupport
-     FROM direct_spaces ds
-     LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
-     WHERE ds.space_id = ?1`,
+    SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO,
   )
     .bind(spaceId)
     .first<{
@@ -836,13 +845,7 @@ export async function handleGetDiscussionMessage(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   const message = await env.SYNTILA_DB.prepare(
-    `SELECT dm.id, dm.thread_id AS threadId, dm.author_user_id AS authorUserId,
-      COALESCE(u.display_name, 'Member') AS authorName,
-      dm.body, dm.attachments_json AS attachmentsJson, dm.references_json AS referencesJson, dm.reply_to_json AS replyToJson, dm.edited_at AS editedAt, dm.created_at AS createdAt,
-            dm.event_type AS eventType, dm.kind, dm.work_request_id AS workRequestId, dm.worker_display_name AS workerDisplayName
-     FROM discussion_messages dm
-     LEFT JOIN users u ON u.id = dm.author_user_id
-     WHERE dm.id = ?1`,
+    SELECT_DISCUSSION_MESSAGES_BY_ID,
   )
     .bind(messageId)
     .first<Record<string, unknown>>();
@@ -869,13 +872,7 @@ export async function handleEditDiscussionMessage(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   const message = await env.SYNTILA_DB.prepare(
-    `SELECT dm.id, dm.thread_id AS threadId, dm.author_user_id AS authorUserId,
-            COALESCE(u.display_name, 'Member') AS authorName,
-            dm.body, dm.attachments_json AS attachmentsJson, dm.references_json AS referencesJson, dm.reply_to_json AS replyToJson, dm.edited_at AS editedAt, dm.created_at AS createdAt,
-            dm.event_type AS eventType, dm.kind, dm.work_request_id AS workRequestId, dm.worker_display_name AS workerDisplayName
-     FROM discussion_messages dm
-     LEFT JOIN users u ON u.id = dm.author_user_id
-     WHERE dm.id = ?1`,
+    SELECT_DISCUSSION_MESSAGES_BY_ID,
   )
     .bind(messageId)
     .first<Record<string, unknown>>();
