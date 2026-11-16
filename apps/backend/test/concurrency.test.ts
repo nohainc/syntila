@@ -735,3 +735,46 @@ describe("Queue changes racing dispatch", () => {
     expect(String(row.request_json)).toContain('"x"');
   });
 });
+
+describe("Work Request retry", () => {
+  async function failedRequest(name: string) {
+    const token = await mint(name);
+    const { threadId } = await spaceWithThread(token, `Retry ${name}`);
+    const userId = (await call(token, "GET", "/api/session")).body.user.id as string;
+    const snapshot = JSON.stringify({ id: "tool", steps: [{ kind: "tool_call" }] });
+    const id = `wr-retry-${name}`;
+    await sql`INSERT INTO work_requests (id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, input_json, created_at, updated_at)
+              VALUES (${id}, ${threadId}, ${userId}, 'stateless', 'chat', 1, ${snapshot}, '{}', 'failed', '{}', now(), now())`;
+    await sql`INSERT INTO workflow_tasks (id, work_request_id, step_kind, execution_mode, timeout_ms, prompt_profile_version, status, error, created_at, updated_at)
+              VALUES (${"task-" + id}, ${id}, 'tool_call', 'stateless_read', 60000, 'chat:v1', 'failed', 'boom', now(), now())`;
+    return { token, threadId, id };
+  }
+
+  test("parallel retries: one reservation, one run, the rest are 409", async () => {
+    const { token, id } = await failedRequest("race");
+    const results = await Promise.all(Array.from({ length: 8 }, () =>
+      call(token, "POST", `/api/work-requests/${id}/retry`, { stepKind: "tool_call" })));
+    expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
+    expect(results.filter((r) => r.status === 202)).toHaveLength(1);
+    expect(new Set(results.filter((r) => r.status === 409).map((r) => r.body.error))).toEqual(new Set(["This Work Request is already being retried"]));
+    const [runs] = await sql`SELECT count(*)::int AS n FROM runs WHERE work_request_id = ${id}`;
+    expect(runs.n).toBe(1);
+    const [task] = await sql`SELECT status FROM workflow_tasks WHERE work_request_id = ${id}`;
+    expect(task.status).toBe("queued");
+  });
+
+  test("a retry whose run cannot be created rolls back the reservation and the step reset", async () => {
+    const { token, id, threadId } = await failedRequest("rollback");
+    // The run id of the first retry is taken, so the last write of the retry fails.
+    await sql`INSERT INTO runs (id, space_id, thread_id, work_request_id, policy_snapshot_json, status, created_at, updated_at)
+              VALUES (${`run-${id}-retry-1`}, (SELECT space_id FROM threads WHERE id = ${threadId}), ${threadId}, ${id}, '{}', 'failed', now(), now())`;
+    const result = await call(token, "POST", `/api/work-requests/${id}/retry`, { stepKind: "tool_call" });
+    expect(result.status).toBeLessThan(500);
+    expect(result.status).not.toBe(202);
+    const [wr] = await sql`SELECT status FROM work_requests WHERE id = ${id}`;
+    const [task] = await sql`SELECT status, error FROM workflow_tasks WHERE work_request_id = ${id}`;
+    expect(wr.status).toBe("failed");
+    expect(task).toMatchObject({ status: "failed", error: "boom" });
+    expect((await sql`SELECT count(*)::int AS n FROM runs WHERE work_request_id = ${id}`)[0].n).toBe(1);
+  });
+});

@@ -1,3 +1,4 @@
+import { inTransaction } from "../../platform/tx-env.js";
 import { readJson } from "./validation.js";
 import { afterCursorSql, cursorOrderSql, decodeCursor, encodeCursor } from "./pagination.js";
 import { activeThreadLease, activeWorkCount, cancelPendingTasks, cancelQueuedWorkRequest, spaceMembership, threadSpace, workRequestThread } from "../queries.js";
@@ -442,24 +443,27 @@ export async function handleRetryWorkRequest(
       ...(partialSynthesis ? { partialSynthesis: true } : {}),
     },
   };
-  const reservation = await env.SYNTILA_DB.prepare(
-    "UPDATE work_requests SET status = 'queued', updated_at = ?1 WHERE id = ?2 AND status = ?3 RETURNING id",
-  )
-    .bind(now, workRequestId, String(row.status))
-    .first<{ id: string }>();
-  // Updating a Work Request also fires history and Workflow projection
-  // triggers. D1's meta.changes includes those writes, so only the returned
-  // identity proves that this retry won the failed-row reservation.
-  if (reservation?.id !== workRequestId)
-    throw new HttpError(409, "This Work Request is already being retried");
-  try {
-    await env.SYNTILA_DB.batch([
+  // The reservation and everything it implies commit together: a failure
+  // anywhere below rolls the reservation back with the rest, and a request
+  // that lost the reservation wrote nothing.
+  await inTransaction(env, "work.retry", async (tx) => {
+    const reservation = await tx.SYNTILA_DB.prepare(
+      "UPDATE work_requests SET status = 'queued', updated_at = ?1 WHERE id = ?2 AND status = ?3 RETURNING id",
+    )
+      .bind(now, workRequestId, String(row.status))
+      .first<{ id: string }>();
+    // Updating a Work Request also fires history and Workflow projection
+    // triggers. D1's meta.changes includes those writes, so only the returned
+    // identity proves that this retry won the failed-row reservation.
+    if (reservation?.id !== workRequestId)
+      throw new HttpError(409, "This Work Request is already being retried");
+    await tx.SYNTILA_DB.batch([
       // Over the context limit, AI History is cut off just before the latest
       // Worker answer that precedes this request, so the new session keeps
       // that answer and this request as its only context.
       ...(clearAiHistory
         ? [
-            env.SYNTILA_DB.prepare(
+            tx.SYNTILA_DB.prepare(
               `UPDATE conversations SET context_floor_sequence = COALESCE(
                  (SELECT MAX(h.sequence) - 1 FROM conversation_history_entries h
                    WHERE h.conversation_id = conversations.id
@@ -471,7 +475,7 @@ export async function handleRetryWorkRequest(
                  context_floor_sequence)
                WHERE thread_id = ?1`,
             ).bind(String(row.threadId), workRequestId),
-            env.SYNTILA_DB.prepare(
+            tx.SYNTILA_DB.prepare(
               "UPDATE threads SET ai_history_cleared_at = ?1, updated_at = ?1 WHERE id = ?2",
             ).bind(now, String(row.threadId)),
           ]
@@ -482,19 +486,19 @@ export async function handleRetryWorkRequest(
       ...((stepKind === "implement" || contextLimitExceeded) &&
       retrySessionStrategy === "fresh"
         ? [
-            env.SYNTILA_DB.prepare(
+            tx.SYNTILA_DB.prepare(
               "UPDATE threads SET work_session_generation = work_session_generation + 1, updated_at = ?1 WHERE id = ?2",
             ).bind(now, String(row.threadId)),
           ]
         : []),
-      env.SYNTILA_DB.prepare(
+      tx.SYNTILA_DB.prepare(
         `UPDATE work_requests SET ai_context_generation =
         (SELECT ai_context_generation FROM threads WHERE id = ?1) WHERE id = ?2`,
       ).bind(String(row.threadId), workRequestId),
       ...(clearAiHistory
         ? [
             threadNotice(
-              env,
+              tx,
               String(row.threadId),
               context.userId,
               context.user.displayName || "Member",
@@ -504,7 +508,7 @@ export async function handleRetryWorkRequest(
             ),
           ]
         : []),
-      env.SYNTILA_DB.prepare(
+      tx.SYNTILA_DB.prepare(
         `UPDATE workflow_tasks SET status = 'queued', output_json = NULL,
               error = NULL, started_at = NULL, finished_at = NULL, updated_at = ?1
         WHERE work_request_id = ?2 AND step_id = ?3 AND status = 'failed'`,
@@ -513,14 +517,14 @@ export async function handleRetryWorkRequest(
       // researcher, over the full set of reports.
       ...(gapRerun
         ? [
-            env.SYNTILA_DB.prepare(
+            tx.SYNTILA_DB.prepare(
               `UPDATE workflow_tasks SET status = 'queued', output_json = NULL,
                     error = NULL, started_at = NULL, finished_at = NULL, updated_at = ?1
               WHERE work_request_id = ?2 AND step_id = 'synthesis' AND status = 'completed'`,
             ).bind(now, workRequestId),
           ]
         : []),
-      env.SYNTILA_DB.prepare(
+      tx.SYNTILA_DB.prepare(
         `INSERT INTO runs
        (id, space_id, thread_id, work_request_id,
         policy_snapshot_json, status, created_at, updated_at)
@@ -534,14 +538,8 @@ export async function handleRetryWorkRequest(
         now,
       ),
     ]);
-  } catch (error) {
-    await env.SYNTILA_DB.prepare(
-      "UPDATE work_requests SET status = ?3, updated_at = ?1 WHERE id = ?2 AND status = 'queued'",
-    )
-      .bind(new Date().toISOString(), workRequestId, String(row.status))
-      .run();
-    throw error;
-  }
+  });
+
 
   if (row.mode === "stateful") {
     if (!env.SYNTILA_THREAD_COORDINATOR)
