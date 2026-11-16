@@ -1,4 +1,9 @@
-import { readJson } from "./validation.js";
+import {
+  CreateThreadSchema,
+  DiscussionMessageSchema,
+  UpdateThreadSchema,
+} from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { activeWorkCount, directSpaceOfGeneralThread, spaceKind, usersBlocked } from "../queries.js";
 import {
   resolveReplyReference,
@@ -225,10 +230,7 @@ export async function handleCreateThread(
       );
     }
   }
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  >;
+  const body = await readBody(request, CreateThreadSchema);
   const receipt = await MutationIdempotency.from(
     request,
     env.SYNTILA_DB,
@@ -301,10 +303,7 @@ export async function handleUpdateThread(
   threadId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  >;
+  const body = await readBody(request, UpdateThreadSchema);
   const statusOnly =
     Object.keys(body).length === 1 &&
     ["archived", "active"].includes(String(body.status));
@@ -728,7 +727,7 @@ export async function handleCreateDiscussionMessage(
       409,
       "Restore the Thread before sending messages or requests",
     );
-  const body = (await readJson(request)) as Record<string, unknown>;
+  const body = await readBody(request, DiscussionMessageSchema);
   const receipt = await MutationIdempotency.from(
     request,
     env.SYNTILA_DB,
@@ -892,7 +891,7 @@ export async function handleEditDiscussionMessage(
     throw new HttpError(403, "Only the message author may edit it");
   if (message.eventType || (message.kind ?? "message") !== "message")
     throw new HttpError(409, "Archived AI entries cannot be edited");
-  const body = (await readJson(request)) as Record<string, unknown>;
+  const body = await readBody(request, DiscussionMessageSchema);
   const rawContent = body.body ?? body.content;
   const attachments = parseJson<unknown[]>(message.attachmentsJson, []);
   const content =

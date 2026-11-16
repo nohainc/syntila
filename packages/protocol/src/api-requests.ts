@@ -43,6 +43,62 @@ export const MarkNotificationsReadSchema = z.object({
 });
 export type MarkNotificationsReadInput = z.infer<typeof MarkNotificationsReadSchema>;
 
+// ---- Threads, discussion, retry and plan approval ----------------------------
+
+/** POST /api/spaces/:id/threads. The handler still requires a non-empty name. */
+export const CreateThreadSchema = z.looseObject({
+  name: z.string({ error: "name is required" }).max(200, "name must be at most 200 characters").optional(),
+});
+
+/** PATCH /api/threads/:id. The handler decides the permission level from the exact key set, so extra keys pass. */
+export const UpdateThreadSchema = z.looseObject({
+  name: z.string({ error: "name must be text" }).max(200, "name must be at most 200 characters").optional(),
+  status: z.string({ error: "status must be text" }).max(32).optional(),
+  accessPolicy: z.unknown().optional(),
+  metadata: z.unknown().optional(),
+  workConfig: z.unknown().optional(),
+});
+
+/** POST /api/threads/:id/discussion-messages and PATCH /api/discussion-messages/:id. `content` is the legacy name of `body`. */
+export const DiscussionMessageSchema = z.looseObject({
+  body: z.string({ error: "body must be text" }).max(20_000, "body must be at most 20000 characters").optional(),
+  content: z.string({ error: "content must be text" }).max(20_000, "content must be at most 20000 characters").optional(),
+  attachments: z.array(z.unknown(), { error: "attachments must be an array" }).max(10, "At most 10 attachments are allowed").optional(),
+  references: z.array(z.unknown(), { error: "references must be an array" }).max(50, "references must list at most 50 items").optional(),
+  replyTo: z.string({ error: "replyTo must be text" }).max(128).nullish(),
+});
+
+/** POST /api/work-requests/:id/retry. */
+export const RetryWorkRequestSchema = z.looseObject({
+  stepKind: z.string({ error: "A valid failed Step is required" }).max(64).optional(),
+  stepId: z.string({ error: "stepId must be text" }).max(128).optional(),
+  sessionStrategy: z.string({ error: "sessionStrategy must be text" }).max(16).optional(),
+  contextResolution: z.string({ error: "contextResolution must be text" }).max(16).optional(),
+  clearAiHistory: z.boolean({ error: "clearAiHistory must be true or false" }).optional(),
+  confirmSideEffects: z.boolean({ error: "confirmSideEffects must be true or false" }).optional(),
+  partial: z.boolean({ error: "partial must be true or false" }).optional(),
+});
+
+const BAD_PHASES = "Invalid customPhases";
+/** POST /api/work-requests/:id/approve-plan. The handler still requires a non-empty phase title. */
+export const ApprovePlanSchema = z.looseObject({
+  verificationMode: z.enum(["none", "per_phase", "final"], { error: "Invalid verificationMode" }).optional(),
+  customPhases: z
+    .array(
+      z.looseObject({
+        title: z.string({ error: BAD_PHASES }).max(200, BAD_PHASES),
+        description: z.string({ error: BAD_PHASES }).max(20_000, BAD_PHASES),
+        files: z.array(z.string().max(500), { error: BAD_PHASES }).max(100, BAD_PHASES).optional(),
+        criteria: z.string({ error: BAD_PHASES }).max(4000, BAD_PHASES).optional(),
+      }, { error: BAD_PHASES }),
+      { error: BAD_PHASES },
+    )
+    .max(50, BAD_PHASES)
+    .optional(),
+  implementer: z.unknown().optional(),
+  verifier: z.unknown().optional(),
+});
+
 // ---- Spaces and invitations -------------------------------------------------
 // These handlers reject unknown keys themselves (with their own messages), so
 // the schemas are loose: known fields are typed and bounded, extra keys pass.

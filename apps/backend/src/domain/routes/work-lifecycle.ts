@@ -1,5 +1,6 @@
 import { inTransaction } from "../../platform/tx-env.js";
-import { readJson } from "./validation.js";
+import { RetryWorkRequestSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { afterCursorSql, cursorOrderSql, decodeCursor, encodeCursor } from "./pagination.js";
 import { activeThreadLease, activeWorkCount, cancelPendingTasks, cancelQueuedWorkRequest, spaceMembership, threadSpace, workRequestThread } from "../queries.js";
 import {
@@ -202,7 +203,7 @@ export async function handleRetryWorkRequest(
   if (row.status !== "failed" && !gapRerun)
     throw new HttpError(409, "Only a failed Work Request can be retried");
 
-  const body = await readJson(request);
+  const body = await readBody(request, RetryWorkRequestSchema);
   const stepKind = body.stepKind;
   if (
     typeof stepKind !== "string" ||

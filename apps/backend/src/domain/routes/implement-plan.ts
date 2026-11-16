@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { ApprovePlanSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { appendToQueue, lockQueue, prependToQueue } from "./queue-positions.js";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
 import { authorizeThreadAccess } from "./thread-policy.js";
@@ -256,12 +257,9 @@ export async function handleApprovePlan(
   }
 
   // An empty body takes the defaults; a malformed one is a 400.
-  const body = (await readJson(request)) as ApprovePlanBody;
+  const body = (await readBody(request, ApprovePlanSchema)) as ApprovePlanBody;
 
   const verificationMode: VerificationMode = body.verificationMode ?? "none";
-  if (!["none", "per_phase", "final"].includes(verificationMode)) {
-    throw new HttpError(400, "Invalid verificationMode");
-  }
   if (body.customPhases !== undefined) {
     const valid =
       Array.isArray(body.customPhases) &&
