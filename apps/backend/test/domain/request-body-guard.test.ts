@@ -47,3 +47,20 @@ test("readJson and readBodyText refuse an oversized body with 413, declared or s
   expect(await readBodyText(req("abcd"), 4)).toBe("abcd");
   await expect(readBodyText(req("abcde"), 4)).rejects.toMatchObject({ status: 413 });
 });
+
+// Routes read bodies with `readBody(request, Schema)`. `readJson` (an object with
+// no schema) is allowed only where the backend does not interpret the payload,
+// and each site says why. Adding a structured body without a schema fails here.
+const FREE_FORM_READJSON = new Map([
+  ["validation.ts", "defines readJson"],
+  ["mcp-action.ts", "forwards an MCP action verbatim to the Workspace gateway, which owns the contract; capped at 2 MiB"],
+]);
+
+test("routes call readJson only at documented free-form sites", () => {
+  const offenders = readdirSync(ROUTES)
+    .filter((f) => f.endsWith(".ts") && !FREE_FORM_READJSON.has(f))
+    .filter((f) => /\breadJson\(/.test(readFileSync(new URL(f, ROUTES), "utf8")));
+  expect(offenders).toEqual([]);
+  // The allowlist does not rot: every allowlisted file still has the call (or the definition).
+  for (const f of FREE_FORM_READJSON.keys()) expect(readFileSync(new URL(f, ROUTES), "utf8")).toMatch(/readJson/);
+});

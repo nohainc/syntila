@@ -25,6 +25,10 @@ export async function handleWorkspaceMcpAction(
   const gateway = env.SYNTILA_WORKSPACE_GATEWAY;
   if (!gateway) throw new HttpError(503, "Workspace Gateway is not configured");
 
+  // Free-form on purpose: the backend does not interpret an MCP action. It is
+  // forwarded verbatim to the Workspace gateway, which owns the contract. The
+  // body is already a JSON object (readJson) capped at 2 MiB (readBodyText);
+  // the guard in test/domain/request-body-guard.test.ts allowlists this site.
   const body = await readJson(request);
 
   const response = await gateway

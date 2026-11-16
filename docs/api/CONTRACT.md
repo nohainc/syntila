@@ -94,9 +94,20 @@ Bodies are read with `readBody(request, Schema)`
 
 `error` repeats the first problem; `details` lists all of them.
 
-Converted so far: `POST /api/spaces`, `POST /api/notes`, `PUT /api/notes/:id`,
-`POST /api/people/invitations`. Other handlers still validate by hand with
-`HttpError(400, …)` and move to schemas as they are changed.
+Every route that takes a JSON body reads it this way. A wrong-typed or
+over-limit field is `400 invalid_request`, never ignored; field limits are
+checked before the 2 MiB body cap matters, which answers `413
+payload_too_large`. Some handlers keep a fixed message for a rejected body
+(for example `Invalid folder selection`); the code is still `invalid_request`
+and `details` still lists every problem. The Workspace runtime and desktop
+registration routes and the plugin routes keep their own error JSON (`code` such
+as `invalid_installation_id`, or the plugin route codes) because the desktop
+client reads them.
+
+The one free-form body is `POST /api/workspaces/:id/mcp-action`: an object
+forwarded verbatim to the Workspace gateway, which owns that contract. The
+guard in `apps/backend/test/domain/request-body-guard.test.ts` allows no other
+route to read a body without a schema.
 
 ## Pagination
 
