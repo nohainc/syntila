@@ -64,6 +64,12 @@ Monitoring: the pilot is a read, which neither records adapter writer-lock stati
 
 Next: stop for review before converting another domain file. In particular, resolve per-site result normalization, error-message dependencies, optional global writer locking, ordered atomic batches and the monitoring label transition before migrating writes. Lesson: a count-based detector guard must change when an intentionally converted call moves to a different supported query form; preserve the duplicate ceiling separately.
 
+## Package 3: incremental conversion
+
+Batch 1: `routes/auth.ts` converts the desktop-session user lookup to `dataOf(env).read.row`; the mixed-case alias is quoted and status, ID predicate and authorization are unchanged. The statement is a read and emits neither adapter write statistics nor tagged transaction statistics. `claude/backend-tagged-sql-procedure.md` documents the manual conversion and review process. Product `.prepare(` occurrences: 718 → 717. Duplicate ceiling remains 5 groups / 6 excess; the detector's minimum legacy-call count was adjusted for the one intentional conversion.
+
+Validation: `bun run test runtime.test dup-statements` 15 pass; full suite 1231 pass / 0 fail across 169 files, no serial retries; concurrency three times, 43 pass each, including seeded PostgreSQL invariants; separate route sweep 3 pass; `bun run write-paths` produced no diff. Static inspection confirmed `server.ts` and `scripts/backend-logs.sh` still agree on `db.tx` and `db.slow_tx` names. No production logs were accessed and no schema changed. Remaining work: migrate the other areas only after per-site review of adapter normalization, transaction and fallback lock semantics, error handling, batch ordering and monitoring. Do not remove the adapter in Phase 6.
+
 ## Next
 
 - Compare `bun run schema:lock` output on PostgreSQL 16 and 18.

@@ -4,6 +4,7 @@
  * answers who the bearer of a backend token is.
  */
 import { isProfileLabOwner } from "./profile-lab-policy.js";
+import { dataOf } from "../../platform/data.js";
 import { identityService, provisionSyntilaUser } from "../auth/index.js";
 import { DESKTOP_PROFILE_LAB_AUDIENCE, extractBearerToken } from "@syntila/security";
 import { HttpError, json, securityContext } from "./handlers.js";
@@ -49,9 +50,8 @@ export async function findDesktopHumanSession(
   if (sessionId !== undefined && identity.sessionId !== sessionId)
     throw new HttpError(401, "Desktop human session is invalid, expired, or revoked");
   await provisionSyntilaUser(env.SYNTILA_DB, identity);
-  const user = await env.SYNTILA_DB.prepare("SELECT status, display_name AS displayName FROM users WHERE id = ?1")
-    .bind(identity.userId)
-    .first<{ status: string; displayName: string }>();
+  const user = await dataOf(env).read.row<{ status: string; displayName: string }>`
+    SELECT status, display_name AS "displayName" FROM users WHERE id = ${identity.userId}`;
   if (user?.status !== "active")
     throw new HttpError(401, "Desktop human session is invalid, expired, or revoked");
   const session = {
