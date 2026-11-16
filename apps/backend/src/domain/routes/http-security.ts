@@ -20,6 +20,39 @@ import {
   type SecurityContext,
 } from "@syntila/security";
 
+/** Largest JSON request body any handler buffers (notes are 200 000 characters; messages and Work inputs are smaller). */
+export const JSON_BODY_LIMIT = 2 * 1024 * 1024;
+
+/**
+ * The request body as text, refusing more than `limit` bytes with 413 before
+ * it is all buffered (a declared Content-Length over the limit is refused
+ * without reading). Use this instead of `request.text()` for JSON bodies.
+ */
+export async function readBodyText(request: Request, limit = JSON_BODY_LIMIT): Promise<string> {
+  const tooLarge = () =>
+    Object.assign(new HttpError(413, "Request body is too large"), { code: "payload_too_large" });
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) throw tooLarge();
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      void reader.cancel().catch(() => {}); // not awaited: it never settles while the client is still sending
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(bytes);
+}
+
 export function parseJson<T = Record<string, unknown>>(
   value: unknown,
   defaultValue: T = {} as T,

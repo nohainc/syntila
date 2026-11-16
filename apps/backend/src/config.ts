@@ -8,6 +8,10 @@ export interface Config {
     database: string;
     password: string;
     max: number;
+    /** A statement waiting this long for a lock fails (the API answers 503 busy). */
+    lockTimeoutMs?: number;
+    /** A session idle inside an open transaction is terminated after this long (frees its locks). */
+    idleInTransactionMs?: number;
   };
   auth: {
     issuer: string;
@@ -63,6 +67,8 @@ export async function loadConfig(): Promise<Config> {
       database: process.env.PGDATABASE || "syntila",
       password: await readDatabasePassword(),
       max: int("PG_POOL_MAX", 20, 1, 200),
+      lockTimeoutMs: int("PG_LOCK_TIMEOUT_MS", 10_000, 100, 600_000),
+      idleInTransactionMs: int("PG_IDLE_TX_TIMEOUT_MS", 30_000, 1_000, 3_600_000),
     },
     auth: {
       issuer: process.env.AUTH_JWT_ISSUER || "https://syntila.app",

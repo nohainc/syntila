@@ -16,7 +16,7 @@
  * Handlers that already write their receipt in the same transaction as their
  * own writes are marked `idempotent: "handler"` and are not wrapped.
  */
-import { HttpError, securityContext, type SecurityEnv } from "./http-security.js";
+import { HttpError, readBodyText, securityContext, type SecurityEnv } from "./http-security.js";
 
 const KEY = /^[A-Za-z0-9_-]{16,128}$/;
 /** A claim older than this belongs to a request that died; it may be taken over. */
@@ -43,7 +43,7 @@ export async function withRouteIdempotency(
   const db = security.SYNTILA_DB;
   const pathname = new URL(request.url).pathname;
   const scope = `route:${request.method} ${pathname}`;
-  const body = await request.clone().text();
+  const body = await readBodyText(request.clone());
   const hash = await sha256(body);
 
   const claim = () =>

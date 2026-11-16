@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { afterCursorSql, cursorOrderSql, decodeCursor, encodeCursor } from "./pagination.js";
 import { activeThreadLease, activeWorkCount, cancelPendingTasks, cancelQueuedWorkRequest, spaceMembership, threadSpace, workRequestThread } from "../queries.js";
 import {
@@ -200,7 +201,7 @@ export async function handleRetryWorkRequest(
   if (row.status !== "failed" && !gapRerun)
     throw new HttpError(409, "Only a failed Work Request can be retried");
 
-  const body = parseJson<Record<string, unknown>>(await request.text(), {});
+  const body = await readJson(request);
   const stepKind = body.stepKind;
   if (
     typeof stepKind !== "string" ||

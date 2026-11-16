@@ -136,7 +136,7 @@ if (import.meta.main && /(^|[\\/])migrate\.(ts|js)$/.test(Bun.main)) {
   const flag = Bun.argv[2];
   if (flag && !["--dry-run", "--verify", "--print-lock"].includes(flag)) { console.error(USAGE); process.exit(2); }
   const config = await loadConfig();
-  const db = createDb({ ...config.db, max: 2 }, "syntila-migrate");
+  const db = createDb({ ...config.db, max: 2 }, "syntila-migrate", false);
   let exitCode = 0;
   try {
     // PostgreSQL may still be starting (boot, restart): wait up to 60 s.

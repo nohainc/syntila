@@ -133,5 +133,14 @@ test("an oversized body is refused with 413 promptly, not left hanging", async (
   expect(avatar.status).toBe(413);
   const prefs = await call(token, "PUT", `/api/workspaces/${ws}/worker-preferences`, JSON.stringify({ pad: "x".repeat(2 * 1024 * 1024) }));
   expect(prefs.status).toBe(413);
+  // JSON bodies are capped at 2 MiB for every route, with or without an Idempotency-Key.
+  const huge = JSON.stringify({ title: "t", body: "x".repeat(3 * 1024 * 1024) });
+  const note = await call(token, "POST", "/api/notes", huge);
+  expect([note.status, note.body?.code]).toEqual([413, "payload_too_large"]);
+  const keyed = await fetch(base + "/api/notes", {
+    method: "POST", body: huge, signal: AbortSignal.timeout(8_000),
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", origin: "https://syntila.app", "idempotency-key": "huge-0000000000001" },
+  });
+  expect(keyed.status).toBe(413);
   expect(performance.now() - started).toBeLessThan(8_000);
 });

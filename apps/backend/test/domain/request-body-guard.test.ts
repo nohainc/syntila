@@ -28,3 +28,22 @@ test("readJson: empty is {}, objects pass, the rest is a 400 with a code", async
     await expect(readJson(req(body))).rejects.toMatchObject({ status: 400, code });
   }
 });
+
+test("route handlers never buffer a body with request.text()/clone().text() directly", () => {
+  const offenders = readdirSync(ROUTES)
+    .filter((f) => f.endsWith(".ts") && !["http-security.ts", "validation.ts", "issue-reports.ts"].includes(f))
+    .filter((f) => /\brequest(?:\.clone\(\))?\.text\(\)/.test(readFileSync(new URL(f, ROUTES), "utf8")));
+  expect(offenders).toEqual([]);
+});
+
+test("readJson and readBodyText refuse an oversized body with 413, declared or streamed", async () => {
+  const { readBodyText } = await import("../../src/domain/routes/http-security");
+  const big = "x".repeat(2 * 1024 * 1024 + 1);
+  await expect(readJson(req(JSON.stringify({ a: big })))).rejects.toMatchObject({ status: 413, code: "payload_too_large" });
+  // Declared length alone is enough.
+  const declared = new Request("https://x/api", { method: "POST", body: "{}", headers: { "content-length": String(10 * 1024 * 1024) } });
+  await expect(readBodyText(declared)).rejects.toMatchObject({ status: 413 });
+  expect(await readBodyText(req("héllo"))).toBe("héllo");
+  expect(await readBodyText(req("abcd"), 4)).toBe("abcd");
+  await expect(readBodyText(req("abcde"), 4)).rejects.toMatchObject({ status: 413 });
+});

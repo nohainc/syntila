@@ -1,3 +1,4 @@
+import { readJson } from "./validation.js";
 import { inTransaction, lockStatement } from "../../platform/tx-env.js";
 import { HttpError } from "./http-security.js";
 import { activeRuntimeIdentityCount } from "../queries.js";
@@ -163,7 +164,7 @@ export async function handleCheckWorkspaceOwnership(
     undefined,
     DESKTOP_WORKSPACE_AUDIENCE,
   );
-  const body = parseJson<Record<string, unknown>>(await request.text(), {});
+  const body = await readJson(request);
   const installationId =
     typeof body.installationId === "string" ? body.installationId.trim() : "";
   const workspaceId =
@@ -345,7 +346,7 @@ export async function handleReconcileWorkspaceOwnership(
     );
   }
 
-  const body = parseJson<Record<string, unknown>>(await request.text(), {});
+  const body = await readJson(request);
   const installationId =
     typeof body.installationId === "string" ? body.installationId.trim() : "";
   const workspaceId =
@@ -546,7 +547,7 @@ export async function handleDisconnectDesktopWorkspace(
     undefined,
     DESKTOP_WORKSPACE_AUDIENCE,
   );
-  const body = parseJson<Record<string, unknown>>(await request.text(), {});
+  const body = await readJson(request);
   const installationId =
     typeof body.installationId === "string" ? body.installationId.trim() : "";
   const workspaceId =
@@ -686,7 +687,7 @@ export async function handleReleaseDesktopWorkspace(
       { status: 403 },
     );
   }
-  const body = parseJson<Record<string, unknown>>(await request.text(), {});
+  const body = await readJson(request);
   const installationId =
     typeof body.installationId === "string" ? body.installationId.trim() : "";
   const workspaceId =
@@ -832,7 +833,7 @@ export async function handleRegisterWorkspaceFromDesktop(
     undefined,
     DESKTOP_WORKSPACE_AUDIENCE,
   );
-  const body = parseJson<Record<string, unknown>>(await request.text(), {});
+  const body = await readJson(request);
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return json(
       { error: "Workspace registration details are invalid" },
