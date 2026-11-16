@@ -9,6 +9,7 @@ import {
 } from "@syntila/security";
 import { HttpError } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 const GRANTED_RIGHT_KEYS = ["chat", "work", "manageOwnThreads"] as const;
 
@@ -49,21 +50,17 @@ export async function loadSpacePermissions(
   userId: string,
   spaceId: string,
 ) {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT sm.role, s.settings_json AS settingsJson, COALESCE(s.kind, 'group') AS kind,
+  const row = await dataOf(env).row<{
+    role: string;
+    settingsJson: string;
+    kind: string;
+    isSupport: boolean | number;
+  }>`SELECT sm.role, s.settings_json AS settingsJson, COALESCE(s.kind, 'group') AS kind,
             EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = s.id) AS isSupport
      FROM space_memberships sm
-     JOIN spaces s ON s.id = sm.space_id WHERE sm.space_id = ?1 AND sm.user_id = ?2`,
-  )
-    .bind(spaceId, userId)
-    .first<{
-      role: string;
-      settingsJson: string;
-      kind: string;
-      isSupport: number;
-    }>();
+     JOIN spaces s ON s.id = sm.space_id WHERE sm.space_id = ${spaceId} AND sm.user_id = ${userId}`;
   if (!row) throw new HttpError(403, "Space membership is required");
-  const isSupport = row.isSupport === 1;
+  const isSupport = Boolean(row.isSupport);
   return {
     role: row.role,
     kind: row.kind,
