@@ -212,7 +212,7 @@ describe("plan-based attachment limits", () => {
             StorageQuotaExceededError,
         ),
     ).toBe(true);
-    const usage = await loadStorageUsage(f.db as never, "free");
+    const usage = await loadStorageUsage({ SYNTILA_DB: f.db }, "free");
     expect(usage.reservedBytes).toBe(10_000_000);
   });
 
@@ -222,7 +222,7 @@ describe("plan-based attachment limits", () => {
     await reserve(f, "free", 1, 10_000_000);
     await reserve(f, "free", 1, 10_000_000); // a retry of the same upload
     await reserve(f, "free", 1, 10_000_000); // and a finalization recheck
-    expect((await loadStorageUsage(f.db as never, "free")).reservedBytes).toBe(
+    expect((await loadStorageUsage({ SYNTILA_DB: f.db }, "free")).reservedBytes).toBe(
       10_000_000,
     );
     // A restarted upload of an already stored id replaces it, not adds to it.
@@ -247,7 +247,7 @@ describe("plan-based attachment limits", () => {
     // Past its expiry the reservation counts for nothing even before a sweep.
     const later = new Date(now.getTime() + 2 * 60 * 60 * 1000);
     await reserve(f, "free", 2, 1, later);
-    await sweepExpiredUploadReservations(f.db as never, later);
+    await sweepExpiredUploadReservations({ SYNTILA_DB: f.db }, later);
     expect(
       f.sqlite
         .prepare("SELECT COUNT(*) AS n FROM user_file_reservations")
@@ -266,6 +266,7 @@ describe("plan-based attachment limits", () => {
     await reserve(f, "free", 1, 100);
     await expect(inTransaction({ SYNTILA_DB: f.db } as never, "test.release.rollback", async (txEnv) => {
       await releaseUpload(txEnv, fid(1), "free");
+      expect((await loadStorageUsage(txEnv, "free")).reservedBytes).toBe(0);
       throw new Error("rollback");
     })).rejects.toThrow("rollback");
     expect(f.sqlite.prepare("SELECT count(*) AS n FROM user_file_reservations WHERE id = ?").get(fid(1))).toEqual({ n: 1 });
@@ -316,19 +317,19 @@ describe("plan-based attachment limits", () => {
     const b = await f.store("free", fid(2), "same bytes"); // a separate copy
     expect(a.digest).toBe(b.digest);
     expect(a.sizeBytes).toBe(10);
-    expect((await loadStorageUsage(f.db as never, "free")).usedBytes).toBe(20);
+    expect((await loadStorageUsage({ SYNTILA_DB: f.db }, "free")).usedBytes).toBe(20);
     // Another account never shares storage: no cross-account deduplication.
     await f.store("plus", fid(3), "same bytes");
-    expect((await loadStorageUsage(f.db as never, "plus")).usedBytes).toBe(10);
+    expect((await loadStorageUsage({ SYNTILA_DB: f.db }, "plus")).usedBytes).toBe(10);
     // Messages and Work Requests that cite a file reference it; they own no
     // bytes, so two references to one file leave usage unchanged.
-    const before = (await loadStorageUsage(f.db as never, "free")).usedBytes;
+    const before = (await loadStorageUsage({ SYNTILA_DB: f.db }, "free")).usedBytes;
     f.sqlite.exec(space("s-free", "free") + thread("t", "s-free", "free"));
     f.sqlite
       .exec(`INSERT INTO discussion_messages(id,thread_id,author_user_id,body,attachments_json,created_at)
       VALUES('m1','t','free','x','[{"fileId":"${fid(1)}"}]','now'),
             ('m2','t','free','y','[{"fileId":"${fid(1)}"}]','now')`);
-    expect((await loadStorageUsage(f.db as never, "free")).usedBytes).toBe(
+    expect((await loadStorageUsage({ SYNTILA_DB: f.db }, "free")).usedBytes).toBe(
       before,
     );
     // Deletion removes the bytes and the row; usage drops by that file only.
@@ -344,7 +345,7 @@ describe("plan-based attachment limits", () => {
     // removed directly to assert the accounting.)
     void response;
     f.sqlite.exec(`DELETE FROM user_files WHERE id='${fid(1)}'`);
-    expect((await loadStorageUsage(f.db as never, "free")).usedBytes).toBe(10);
+    expect((await loadStorageUsage({ SYNTILA_DB: f.db }, "free")).usedBytes).toBe(10);
   });
 
   it("counts archived Spaces and Threads: usage ignores where a file lives", async () => {
@@ -354,7 +355,7 @@ describe("plan-based attachment limits", () => {
     );
     f.addFile("in-archived", "free", 123_456, "archived-thread");
     f.addFile("elsewhere", "free", 1_000, "other-thread");
-    expect((await loadStorageUsage(f.db as never, "free")).usedBytes).toBe(
+    expect((await loadStorageUsage({ SYNTILA_DB: f.db }, "free")).usedBytes).toBe(
       124_456,
     );
   });
@@ -378,7 +379,7 @@ describe("streamed upload storage", () => {
     ).toEqual({ n: 0 });
     // A retry of the same id replaces, never double counts.
     await f.store("free", fid(1), "hello world");
-    expect((await loadStorageUsage(f.db as never, "free")).usedBytes).toBe(11);
+    expect((await loadStorageUsage({ SYNTILA_DB: f.db }, "free")).usedBytes).toBe(11);
   });
 
   it("rejects false declared sizes and leaves nothing behind", async () => {
@@ -429,7 +430,7 @@ describe("streamed upload storage", () => {
       [1, 2, 3].map((n) => f.store("free", fid(n), "0123456789")),
     );
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect((await loadStorageUsage(f.db as never, "free")).usedBytes).toBe(
+    expect((await loadStorageUsage({ SYNTILA_DB: f.db }, "free")).usedBytes).toBe(
       GB - 2,
     );
   });

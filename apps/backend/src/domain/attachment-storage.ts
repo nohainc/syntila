@@ -6,7 +6,8 @@ import {
   getAttachmentLimits,
 } from "./account-plan.js";
 
-import { inTransaction, writeAlone } from "../platform/tx-env.js";
+import { inTransaction } from "../platform/tx-env.js";
+import { dataOf } from "../platform/data.js";
 
 /**
  * A reservation outlives the slowest permitted upload (100 MB on a poor
@@ -23,19 +24,15 @@ export interface StorageUsage {
 }
 
 export async function loadStorageUsage(
-  db: D1Database,
+  env: { SYNTILA_DB: unknown; SYNTILA_DATA?: unknown },
   userId: string,
   now: Date = new Date(),
 ): Promise<StorageUsage> {
-  const row = await db
-    .prepare(
-      `SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM user_files WHERE user_id = ?1) AS usedBytes,
-              (SELECT COUNT(*) FROM user_files WHERE user_id = ?1) AS fileCount,
+  const row = await dataOf(env).read.row<StorageUsage>`
+      SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM user_files WHERE user_id = ${userId}) AS "usedBytes",
+              (SELECT COUNT(*) FROM user_files WHERE user_id = ${userId}) AS "fileCount",
               (SELECT COALESCE(SUM(size_bytes), 0) FROM user_file_reservations
-                WHERE user_id = ?1 AND expires_at > ?2) AS reservedBytes`,
-    )
-    .bind(userId, now.toISOString())
-    .first<StorageUsage>();
+                WHERE user_id = ${userId} AND expires_at > ${now.toISOString()}) AS "reservedBytes"`;
   return {
     usedBytes: Number(row?.usedBytes ?? 0),
     fileCount: Number(row?.fileCount ?? 0),
@@ -109,12 +106,10 @@ export async function releaseUpload(
 
 /** Drops expired reservations (they already count for nothing). */
 export async function sweepExpiredUploadReservations(
-  db: D1Database,
+  env: { SYNTILA_DB: unknown; SYNTILA_DATA?: unknown },
   now: Date = new Date(),
 ): Promise<void> {
-  await writeAlone({ SYNTILA_DB: db }, "files.sweep_reservations", (tx) =>
-    tx
-      .prepare("DELETE FROM user_file_reservations WHERE expires_at <= ?1")
-      .bind(now.toISOString()),
-  );
+  await inTransaction(env, "files.sweep_reservations", async (_txEnv, tx) => {
+    await tx.run`DELETE FROM user_file_reservations WHERE expires_at <= ${now.toISOString()}`;
+  });
 }

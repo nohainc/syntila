@@ -221,7 +221,7 @@ export default {
       console.error("Execution waiter sweep failed", error),
     );
     // Expired upload reservations already count for nothing; this tidies rows.
-    await sweepExpiredUploadReservations(env.SYNTILA_DB).catch((error) =>
+    await sweepExpiredUploadReservations(env).catch((error) =>
       console.error("Upload reservation sweep failed", error),
     );
     // Queued Thread requests whose turn came without a Workflow event.

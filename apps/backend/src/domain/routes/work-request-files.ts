@@ -52,7 +52,7 @@ export async function userStorageUsage(
   userId: string,
 ): Promise<UserStorageUsage> {
   const [usage, limits] = await Promise.all([
-    loadStorageUsage(env.SYNTILA_DB, userId),
+    loadStorageUsage(env, userId),
     getAttachmentLimits(env as unknown as Env, userId),
   ]);
   return {
