@@ -39,7 +39,8 @@ import {
 } from "../../src/domain/routes/threads.js";
 
 function fixture() {
-  const sqlite = (pgD1().sqlite as unknown as DatabaseSync);
+  const fixtureDb = pgD1();
+  const sqlite = (fixtureDb.sqlite as unknown as DatabaseSync);
   sqlite.exec(basicThread({ user: "owner", space: "space", thread: "thread" }));
   for (const migration of [
     "0094_account_plans.sql",
@@ -48,31 +49,7 @@ function fixture() {
     sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-  const db = {
-    async batch(statements: { run(): Promise<unknown> }[]) {
-      const results = [];
-      for (const statement of statements) results.push(await statement.run());
-      return results;
-    },
-    prepare(sql: string) {
-      let values: unknown[] = [];
-      return {
-        bind(...args: unknown[]) {
-          values = args;
-          return this;
-        },
-        async run() {
-          return sqlite.prepare(sql).run(...(values as []));
-        },
-        async first() {
-          return sqlite.prepare(sql).get(...(values as [])) ?? null;
-        },
-        async all() {
-          return { results: sqlite.prepare(sql).all(...(values as [])) };
-        },
-      };
-    },
-  };
+  const db = fixtureDb.db;
   const objects = new Map<
     string,
     {

@@ -1,4 +1,5 @@
 import { inTransaction } from "../../platform/tx-env.js";
+import { dataOf } from "../../platform/data.js";
 import { MarkNotificationsReadSchema } from "@syntila/protocol";
 import { json } from "./handlers.js";
 import { readBody } from "./validation.js";
@@ -24,19 +25,19 @@ export async function handleListNotifications(
     undefined,
     accessContext,
   );
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT w.id, w.status, w.updated_at AS updatedAt, w.thread_id AS threadId,
-            t.name AS threadName, t.space_id AS spaceId,
-            w.requested_by_user_id AS requestedByUserId,
+  const rows = await dataOf(env).read.rows<Record<string, unknown>>`
+     SELECT w.id, w.status, w.updated_at AS "updatedAt", w.thread_id AS "threadId",
+            t.name AS "threadName", t.space_id AS "spaceId",
+            w.requested_by_user_id AS "requestedByUserId",
             CASE WHEN r.work_request_id IS NULL THEN 0 ELSE 1 END AS read
        FROM work_requests w
        JOIN threads t ON t.id = w.thread_id
-       JOIN space_memberships m ON m.space_id = t.space_id AND m.user_id = ?1
+       JOIN space_memberships m ON m.space_id = t.space_id AND m.user_id = ${context.userId}
        LEFT JOIN user_notification_reads r
-         ON r.work_request_id = w.id AND r.user_id = ?1
+         ON r.work_request_id = w.id AND r.user_id = ${context.userId}
       WHERE (w.status = 'failed'
-             OR (w.status = 'completed' AND w.requested_by_user_id <> ?1))
-        AND w.updated_at > now() + interval '${FEED_WINDOW}'
+             OR (w.status = 'completed' AND w.requested_by_user_id <> ${context.userId}))
+        AND w.updated_at > now() + ${FEED_WINDOW}::interval
         AND (w.status <> 'failed' OR NOT EXISTS (
           SELECT 1 FROM work_requests newer
            WHERE newer.thread_id = w.thread_id AND newer.status = 'failed'
@@ -44,12 +45,9 @@ export async function handleListNotifications(
                   (newer.updated_at = w.updated_at AND newer.id > w.id))
         ))
       ORDER BY w.updated_at DESC, w.id DESC
-      LIMIT ${FEED_LIMIT}`,
-  )
-    .bind(context.userId)
-    .all<Record<string, unknown>>();
+      LIMIT ${FEED_LIMIT}`;
   return json({
-    notifications: (rows.results ?? []).map((row) => ({
+    notifications: rows.map((row) => ({
       id: String(row.id),
       type:
         row.status === "failed"
@@ -82,26 +80,16 @@ export async function handleMarkNotificationsRead(
   // A wrong-typed `ids` is a 400, never "mark everything read".
   const { ids = null } = await readBody(request, MarkNotificationsReadSchema);
   const readAt = new Date().toISOString();
-  const scope = `FROM work_requests w
-       JOIN threads t ON t.id = w.thread_id
-       JOIN space_memberships m ON m.space_id = t.space_id AND m.user_id = ?1
-      WHERE w.status IN ('completed', 'failed')`;
   // One self-contained, conflict-safe statement: no global writer lock.
-  await inTransaction(env, "notifications.read", async (txEnv) => {
-    const statement =
-      ids === null
-        ? txEnv.SYNTILA_DB.prepare(
-            `INSERT INTO user_notification_reads (user_id, work_request_id, read_at)
-           SELECT ?1, w.id, ?2 ${scope}
-           ON CONFLICT DO NOTHING`,
-          ).bind(context.userId, readAt)
-        : txEnv.SYNTILA_DB.prepare(
-            `INSERT INTO user_notification_reads (user_id, work_request_id, read_at)
-           SELECT ?1, w.id, ?2 ${scope}
-              AND w.id IN (SELECT jsonb_array_elements_text(?3::jsonb))
-           ON CONFLICT DO NOTHING`,
-          ).bind(context.userId, readAt, JSON.stringify(ids));
-    await statement.run();
+  await inTransaction(env, "notifications.read", async (_txEnv, tx) => {
+    const filter = ids === null ? tx.frag`` : tx.frag`
+      AND w.id IN (SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::text::jsonb))`;
+    await tx.run`INSERT INTO user_notification_reads (user_id, work_request_id, read_at)
+      SELECT ${context.userId}, w.id, ${readAt} FROM work_requests w
+      JOIN threads t ON t.id = w.thread_id
+      JOIN space_memberships m ON m.space_id = t.space_id AND m.user_id = ${context.userId}
+      WHERE w.status IN ('completed', 'failed') ${filter}
+      ON CONFLICT DO NOTHING`;
   });
   return json({ readAt });
 }

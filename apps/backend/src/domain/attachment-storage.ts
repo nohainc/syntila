@@ -98,17 +98,13 @@ export async function reserveUpload(
 }
 
 export async function releaseUpload(
-  db: D1Database,
+  env: Env,
   fileId: string,
   userId: string,
 ): Promise<void> {
-  await writeAlone({ SYNTILA_DB: db }, "files.release", (tx) =>
-    tx
-      .prepare(
-        "DELETE FROM user_file_reservations WHERE id = ?1 AND user_id = ?2",
-      )
-      .bind(fileId, userId),
-  );
+  await inTransaction(env, "files.release", async (_txEnv, tx) => {
+    await tx.run`DELETE FROM user_file_reservations WHERE id = ${fileId} AND user_id = ${userId}`;
+  });
 }
 
 /** Drops expired reservations (they already count for nothing). */

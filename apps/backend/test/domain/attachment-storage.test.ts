@@ -22,6 +22,7 @@ import {
   userStorageUsage,
 } from "../../src/domain/routes/work-request-files.js";
 import { handleDeleteUserFile } from "../../src/domain/routes/user-files.js";
+import { inTransaction } from "../../src/platform/tx-env.js";
 
 const GB = 1_000_000_000;
 const open: Array<{ close(): void }> = [];
@@ -252,12 +253,22 @@ describe("plan-based attachment limits", () => {
         .prepare("SELECT COUNT(*) AS n FROM user_file_reservations")
         .get(),
     ).toEqual({ n: 1 });
-    await releaseUpload(f.db as never, fid(2), "free");
+    await releaseUpload({ SYNTILA_DB: f.db } as never, fid(2), "free");
     expect(
       f.sqlite
         .prepare("SELECT COUNT(*) AS n FROM user_file_reservations")
         .get(),
     ).toEqual({ n: 0 });
+  });
+
+  it("rolls reservation release back with its enclosing transaction", async () => {
+    const f = fixture();
+    await reserve(f, "free", 1, 100);
+    await expect(inTransaction({ SYNTILA_DB: f.db } as never, "test.release.rollback", async (txEnv) => {
+      await releaseUpload(txEnv, fid(1), "free");
+      throw new Error("rollback");
+    })).rejects.toThrow("rollback");
+    expect(f.sqlite.prepare("SELECT count(*) AS n FROM user_file_reservations WHERE id = ?").get(fid(1))).toEqual({ n: 1 });
   });
 
   it("re-evaluates the plan: upgrade, expiry, grace and downgrade", async () => {

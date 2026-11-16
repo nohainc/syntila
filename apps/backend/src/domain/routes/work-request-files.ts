@@ -401,7 +401,7 @@ export async function storeWorkRequestFile(
       await bucket
         .delete([key, `${key}/meta`, `${key}/preview`])
         .catch(() => undefined);
-    await releaseUpload(env.SYNTILA_DB, input.fileId, input.userId).catch(
+    await releaseUpload(env, input.fileId, input.userId).catch(
       () => undefined,
     );
     throw error;
