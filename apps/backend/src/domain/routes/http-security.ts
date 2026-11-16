@@ -20,6 +20,9 @@ import {
   type SecurityContext,
 } from "@syntila/security";
 
+const SELECT_RUNS_BY_ID =
+  "SELECT workflow_instance_id FROM runs WHERE id = ?1";
+
 /** Largest JSON request body any handler buffers (notes are 200 000 characters; messages and Work inputs are smaller). */
 export const JSON_BODY_LIMIT = 2 * 1024 * 1024;
 
@@ -148,7 +151,7 @@ export async function resolveWorkflowInstanceId(
   idempotencyKey?: string,
 ): Promise<string> {
   const run = await env.SYNTILA_DB.prepare(
-    "SELECT workflow_instance_id FROM runs WHERE id = ?1",
+    SELECT_RUNS_BY_ID,
   )
     .bind(runId)
     .first<{ workflow_instance_id?: string | null }>();
@@ -162,7 +165,7 @@ export async function resolveWorkflowInstanceId(
     .bind(candidate, now, runId)
     .run();
   const stored = await env.SYNTILA_DB.prepare(
-    "SELECT workflow_instance_id FROM runs WHERE id = ?1",
+    SELECT_RUNS_BY_ID,
   )
     .bind(runId)
     .first<{ workflow_instance_id?: string | null }>();
