@@ -183,28 +183,40 @@ test("no route answers 5xx to junk input", async () => {
   const token = await mint("fuzz-owner");
   for (const sub of ["fuzz-member", "fuzz-stranger", "fuzz-other", "fuzz-other-owner"]) await call(await mint(sub), "GET", "/api/session");
   await call(token, "GET", "/api/session");
+  await db.unsafe(`INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at)
+    VALUES ('claude',1,'{"schemaVersion":1}',1,'${HEX}','${T0}') ON CONFLICT DO NOTHING`);
+  await db.unsafe(`INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES ('fuzz-owner','paid','active','manual','${T0}','${T0}') ON CONFLICT DO NOTHING`);
+  // The same routes as a plain Space member and as a stranger: permission branches are separate code.
+  const tokens = { owner: token, member: await mint("fuzz-member"), stranger: await mint("fuzz-stranger") };
   const failures: string[] = [];
+  const exercised: Record<string, number> = {};
   const started = performance.now();
   for (const route of routes) {
     const methods = route.method === "*" ? ["GET", "POST", "PUT", "PATCH", "DELETE"] : [route.method];
     const params = paramsOf(route);
     const statuses = new Set<number>();
-    for (const fill of ["real", "unknown"] as const) {
+    // State variety: paid owner (sharing, invitations), and the Thread archived.
+    const passes = [["real", "owner", "paid"], ["unknown", "owner", "paid"], ["real", "member", "paid"], ["real", "stranger", "paid"], ["real", "owner", "archived"], ["real", "member", "archived"]] as const;
+    for (const [fill, role, state] of passes) {
+      const who = tokens[role];
       // A fresh world per route and pass: a DELETE here cannot starve a later route.
       const w = fill === "real" ? await seedWorld(token) : {};
+      if (state === "archived" && fill === "real")
+        await db.unsafe(`UPDATE threads SET status='archived' WHERE id='${w.threadId}'`);
       const path = route.segments.map((s) => s.startsWith(":") ? encodeURIComponent(fill === "real" ? fixture(route.path, s.slice(1), w)?.value ?? `unknown-${s.slice(1)}` : `unknown-${s.slice(1)}`) : s).join("/");
       for (const method of methods)
         for (const query of QUERIES)
           for (const body of JUNK) {
             const before = logged.length;
-            const r = await call(token, method, `/${path}${query}`, body);
-            if (fill === "real") statuses.add(r.status);
+            const r = await call(who, method, `/${path}${query}`, body);
+            exercised[`${role}/${state}`] = (exercised[`${role}/${state}`] ?? 0) + 1;
+            if (fill === "real" && role === "owner" && state === "paid") statuses.add(r.status);
             if (process.env.FUZZ_REPORT && body === JUNK[2] && method !== "GET" && r.status < 300)
-              console.log(`ACCEPTED ${method} ${route.path} [${fill}] -> ${r.status} ${r.text.slice(0, 160)}`);
+              console.log(`ACCEPTED ${method} ${route.path} [${fill}/${role}/${state}] -> ${r.status} ${r.text.slice(0, 160)}`);
             // 503 "unavailable" is a service this test does not configure (support, file storage).
             if (r.status >= 500 && !(r.status === 503 && r.body?.code === "unavailable")) {
               const log = logged.slice(before).find((l) => l.includes("unhandled_error")) ?? r.text.slice(0, 200);
-              failures.push(`${method} ${route.path}${query} [${fill}] body=${(body ?? "none").slice(0, 30)} -> ${r.status} ${log.slice(0, 400)}`);
+              failures.push(`${method} ${route.path}${query} [${fill}/${role}/${state}] body=${(body ?? "none").slice(0, 30)} -> ${r.status} ${log.slice(0, 400)}`);
             }
           }
     }
@@ -213,6 +225,7 @@ test("no route answers 5xx to junk input", async () => {
     REACH.routes++; REACH.A += +a; REACH.B += +b; REACH.C += +c;
     if (params.length) { REACH.withParams.routes++; REACH.withParams.A += +a; REACH.withParams.B += +b; REACH.withParams.C += +c; }
   }
+  console.log(`EXERCISED ${JSON.stringify(exercised)}`);
   console.log(`REACH ${JSON.stringify(REACH)} seconds=${((performance.now() - started) / 1000).toFixed(1)}`);
   if (failures.length) console.log(failures.join("\n"));
   expect(failures).toEqual([]);
