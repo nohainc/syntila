@@ -66,7 +66,9 @@ async function seedWorld(token: string): Promise<World> {
   const n = ++worldSeq;
   const w: World = {
     spaceId: `fz-sp-${n}`, threadId: `fz-th-${n}`, workspaceId: `fz-ws-${n}`, workRequestId: `fz-wr-${n}`,
-    messageId: `fz-dm-${n}`, fileId: `fz-file-${n}`, itemId: `fz-q-${n}`, inputId: `fz-in-${n}`,
+    // File and input ids must have the shape of a Work Request file id: wrf-<uuid>.
+    messageId: `fz-dm-${n}`, fileId: `wrf-${crypto.randomUUID()}`, itemId: `fz-q-${n}`, inputId: `wrf-${crypto.randomUUID()}`,
+    openWorkRequest: `fz-wro-${n}`,
     personIn: `fz-pin-${n}`, personOut: `fz-pout-${n}`, spaceInvOut: `fz-sinv-out-${n}`, spaceInvIn: `fz-sinv-in-${n}`,
     wsInvOut: `fz-winv-out-${n}`, wsInvIn: `fz-winv-in-${n}`, otherSpace: `fz-osp-${n}`, otherWorkspace: `fz-ows-${n}`,
     release: `9.${n}.0`, pluginRef: `fz-plugin-${n}`, workerId: `fz-worker-${n}`,
@@ -87,10 +89,13 @@ async function seedWorld(token: string): Promise<World> {
     `INSERT INTO conversations(id,thread_id,workflow_id,workflow_version,created_at,updated_at) VALUES ('${w.conversationId}','${w.threadId}','chat',1,'${T0}','${T0}')`,
     message(w.threadId!, "fuzz-owner", "[]", w.messageId),
     workRequest(w.threadId!, "fuzz-owner", "{}", w.workRequestId),
+    // A request still waiting for its files: the only state in which an input can be uploaded.
+    workRequest(w.threadId!, "fuzz-owner", "{}", w.openWorkRequest!),
+    `UPDATE work_requests SET status='waiting' WHERE id='${w.openWorkRequest}'`,
     workspace(w.workspaceId!, "fuzz-owner"),
     `INSERT INTO workspace_person_grants(workspace_id,user_id,granted_by_user_id,status,created_at,updated_at) VALUES ('${w.workspaceId}','fuzz-member','fuzz-owner','active','${T0}','${T0}')`,
     `INSERT INTO work_request_inputs(id,work_request_id,thread_id,workspace_id,user_id,position,name,media_type,size_bytes,state,created_at,updated_at)
-       VALUES ('${w.inputId}','${w.workRequestId}','${w.threadId}','${w.workspaceId}','fuzz-owner',0,'a.txt','text/plain',3,'uploaded','${T0}','${T0}')`,
+       VALUES ('${w.inputId}','${w.openWorkRequest}','${w.threadId}','${w.workspaceId}','fuzz-owner',0,'a.txt','text/plain',3,'awaiting_upload','${T0}','${T0}')`,
     `INSERT INTO user_files(id,user_id,thread_id,space_id,name,media_type,size_bytes,created_at) VALUES ('${w.fileId}','fuzz-owner','${w.threadId}','${w.spaceId}','a.txt','text/plain',3,now())`,
     `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at) VALUES ('${w.itemId}','${w.threadId}','fuzz-owner','{"message":"hi"}',1,'queued','${T0}','${T0}')`,
     // The People relationship with fuzz-other, and one pending invitation each way.
@@ -130,7 +135,7 @@ function fixture(route: string, p: string, w: World): Fixture | undefined {
     case "spaceId": return row(w.spaceId, "spaces");
     case "threadId": return row(w.threadId, "threads");
     case "workspaceId": return row(w.workspaceId, "execution_workspaces");
-    case "workRequestId": return row(w.workRequestId, "work_requests");
+    case "workRequestId": return row(route.includes("/inputs/") ? w.openWorkRequest : w.workRequestId, "work_requests");
     case "messageId": return row(w.messageId, "discussion_messages");
     case "noteId": return row(w.noteId, "user_notes");
     case "conversationId": return row(w.conversationId, "conversations");
@@ -177,6 +182,7 @@ const JUNK = [
 const QUERIES = ["", "?limit=abc&cursor=%%%&before=nope&after=-1"];
 
 
+const UNREACHED: string[] = [];
 const REACH = { A: 0, B: 0, C: 0, routes: 0, withParams: { A: 0, B: 0, C: 0, routes: 0 } };
 
 test("no route answers 5xx to junk input", async () => {
@@ -186,6 +192,8 @@ test("no route answers 5xx to junk input", async () => {
   await db.unsafe(`INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at)
     VALUES ('claude',1,'{"schemaVersion":1}',1,'${HEX}','${T0}') ON CONFLICT DO NOTHING`);
   await db.unsafe(`INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES ('fuzz-owner','paid','active','manual','${T0}','${T0}') ON CONFLICT DO NOTHING`);
+  // A published avatar for the connected person (the storage itself is not configured in this test).
+  await db.unsafe(`UPDATE users SET avatar_url='r2://avatars/fuzz-other' WHERE id='fuzz-other'`);
   // The same routes as a plain Space member and as a stranger: permission branches are separate code.
   const tokens = { owner: token, member: await mint("fuzz-member"), stranger: await mint("fuzz-stranger") };
   const failures: string[] = [];
@@ -222,9 +230,11 @@ test("no route answers 5xx to junk input", async () => {
     }
     // Reach, same method as the baseline: A some status other than 404, B other than 404/401/405, C some 2xx.
     const a = [...statuses].some((s) => s !== 404), b = [...statuses].some((s) => ![404, 401, 405].includes(s)), c = [...statuses].some((s) => s >= 200 && s < 300);
+    if (!b) UNREACHED.push(`${route.method} ${route.path} -> ${[...statuses].sort().join("/")}`);
     REACH.routes++; REACH.A += +a; REACH.B += +b; REACH.C += +c;
     if (params.length) { REACH.withParams.routes++; REACH.withParams.A += +a; REACH.withParams.B += +b; REACH.withParams.C += +c; }
   }
+  if (process.env.FUZZ_REPORT) console.log(`UNREACHED (only 404/401/405 as the owner)\n${UNREACHED.join("\n")}`);
   console.log(`EXERCISED ${JSON.stringify(exercised)}`);
   console.log(`REACH ${JSON.stringify(REACH)} seconds=${((performance.now() - started) / 1000).toFixed(1)}`);
   if (failures.length) console.log(failures.join("\n"));
