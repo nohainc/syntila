@@ -23,6 +23,10 @@ const KEY = /^[A-Za-z0-9_-]{16,128}$/;
 export const STALE_CLAIM_MS = 5 * 60_000;
 const PENDING = 0;
 
+/** Releases a claim still marked pending (a stale or failed request). */
+const DELETE_PENDING_RECEIPT = `DELETE FROM mutation_receipts
+          WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3 AND response_status = ${PENDING}`;
+
 async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -80,10 +84,7 @@ export async function withRouteIdempotency(
         code: "idempotency_in_progress",
       });
     await db
-      .prepare(
-        `DELETE FROM mutation_receipts
-          WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3 AND response_status = ${PENDING}`,
-      )
+      .prepare(DELETE_PENDING_RECEIPT)
       .bind(userId, scope, key)
       .run();
     claimed = await claim();
@@ -95,10 +96,7 @@ export async function withRouteIdempotency(
 
   const release = () =>
     db
-      .prepare(
-        `DELETE FROM mutation_receipts
-          WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3 AND response_status = ${PENDING}`,
-      )
+      .prepare(DELETE_PENDING_RECEIPT)
       .bind(userId, scope, key)
       .run();
 
