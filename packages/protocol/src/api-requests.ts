@@ -43,6 +43,38 @@ export const MarkNotificationsReadSchema = z.object({
 });
 export type MarkNotificationsReadInput = z.infer<typeof MarkNotificationsReadSchema>;
 
+// ---- Workspace runtime and desktop registration ------------------------------
+// The desktop client reads fixed error JSON from these routes, so the handlers
+// map a rejected body to their own response; the schemas type and bound fields.
+
+const runtimeId = z.string({ error: "must be text" }).max(256).optional();
+
+/** Ownership check, reconcile, disconnect and release (the handler checks which fields are required). */
+export const RuntimeIdentitySchema = z.looseObject({
+  contractVersion: z.string({ error: "contractVersion must be text" }).max(16).optional(),
+  installationId: runtimeId,
+  workspaceId: runtimeId,
+  runtimeId,
+});
+
+/** POST /api/workspace-runtime/register. */
+export const RegisterWorkspaceSchema = z.looseObject({
+  contractVersion: z.string({ error: "contractVersion must be text" }).max(16).optional(),
+  installationId: runtimeId,
+  proposedWorkspaceName: z.string({ error: "must be text" }).max(1000).optional(),
+  hostname: z.string({ error: "must be text" }).max(1000).optional(),
+  platform: z.string({ error: "must be text" }).max(32).optional(),
+  architecture: z.string({ error: "must be text" }).max(32).optional(),
+  appVersion: z.string({ error: "must be text" }).max(128).optional(),
+  runtimeCapabilities: z.record(z.string(), z.unknown(), { error: "runtimeCapabilities must be an object" }).optional(),
+});
+
+/** POST /api/workspace-runtime/{sessions,events,poll,sessions/:id/close}: the ids that authenticate; the rest is read per path. */
+export const RuntimeTransportSchema = z.looseObject({
+  workspaceRuntimeId: runtimeId,
+  sessionId: runtimeId,
+});
+
 // ---- Work requests and the Thread request queue --------------------------------
 // The body is stored on queue rows and replayed later, so unknown keys pass; the
 // fields the handler reads are typed and bounded. A wrong-typed text field used

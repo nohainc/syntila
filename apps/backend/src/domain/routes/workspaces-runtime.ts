@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { RuntimeTransportSchema } from "@syntila/protocol";
+import { readBody, RequestValidationError } from "./validation.js";
 import { logStructured, requestIdFor } from "../observability.js";
 
 import { extractBearerToken } from "@syntila/security";
@@ -167,11 +168,14 @@ export async function handleWorkspaceRuntimeTransport(
       { status: 503 },
     );
   const url = new URL(request.url);
-  const body = (await readJson(request)) as Record<
-    string,
-    unknown
-  > | null;
-  if (!body) return json({ error: "Invalid request body" }, { status: 400 });
+  let body;
+  try {
+    body = await readBody(request, RuntimeTransportSchema);
+  } catch (error) {
+    if (error instanceof RequestValidationError)
+      return json({ error: "Invalid request body" }, { status: 400 });
+    throw error;
+  }
   const authToken = extractBearerToken(request.headers);
   if (!authToken)
     return json(

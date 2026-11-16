@@ -1,4 +1,6 @@
-import { readJson } from "./validation.js";
+import type { z } from "zod";
+import { RegisterWorkspaceSchema, RuntimeIdentitySchema } from "@syntila/protocol";
+import { readBody, RequestValidationError } from "./validation.js";
 import { inTransaction, lockStatement } from "../../platform/tx-env.js";
 import { HttpError } from "./http-security.js";
 import { activeRuntimeIdentityCount } from "../queries.js";
@@ -154,6 +156,20 @@ function currentOwnerOwnership(
 }
 
 /** Returns a privacy-preserving ownership read model for the local installation. */
+/** Reads a runtime/registration body; a body the schema rejects gets the handler's own 400 JSON. */
+async function readOrInvalid<S extends z.ZodType>(
+  request: Request,
+  schema: S,
+  invalid: () => Response,
+): Promise<{ body: z.output<S> } | { response: Response }> {
+  try {
+    return { body: await readBody(request, schema) };
+  } catch (error) {
+    if (error instanceof RequestValidationError) return { response: invalid() };
+    throw error;
+  }
+}
+
 export async function handleCheckWorkspaceOwnership(
   request: Request,
   env: SecurityEnv,
@@ -164,7 +180,11 @@ export async function handleCheckWorkspaceOwnership(
     undefined,
     DESKTOP_WORKSPACE_AUDIENCE,
   );
-  const body = await readJson(request);
+  const read = await readOrInvalid(request, RuntimeIdentitySchema, () =>
+    json({ error: "Workspace installation identity is invalid", code: "invalid_installation_id" }, { status: 400 }),
+  );
+  if ("response" in read) return read.response;
+  const body = read.body;
   const installationId =
     typeof body.installationId === "string" ? body.installationId.trim() : "";
   const workspaceId =
@@ -346,7 +366,11 @@ export async function handleReconcileWorkspaceOwnership(
     );
   }
 
-  const body = await readJson(request);
+  const read = await readOrInvalid(request, RuntimeIdentitySchema, () =>
+    json({ error: "Workspace reconciliation details are invalid", code: "invalid_reconciliation_identity" }, { status: 400 }),
+  );
+  if ("response" in read) return read.response;
+  const body = read.body;
   const installationId =
     typeof body.installationId === "string" ? body.installationId.trim() : "";
   const workspaceId =
@@ -547,7 +571,11 @@ export async function handleDisconnectDesktopWorkspace(
     undefined,
     DESKTOP_WORKSPACE_AUDIENCE,
   );
-  const body = await readJson(request);
+  const read = await readOrInvalid(request, RuntimeIdentitySchema, () =>
+    json({ error: "Workspace disconnect identity is incomplete", code: "invalid_disconnect_identity" }, { status: 400 }),
+  );
+  if ("response" in read) return read.response;
+  const body = read.body;
   const installationId =
     typeof body.installationId === "string" ? body.installationId.trim() : "";
   const workspaceId =
@@ -687,7 +715,11 @@ export async function handleReleaseDesktopWorkspace(
       { status: 403 },
     );
   }
-  const body = await readJson(request);
+  const read = await readOrInvalid(request, RuntimeIdentitySchema, () =>
+    json({ error: "Workspace release identity is incomplete", code: "invalid_release_identity" }, { status: 400 }),
+  );
+  if ("response" in read) return read.response;
+  const body = read.body;
   const installationId =
     typeof body.installationId === "string" ? body.installationId.trim() : "";
   const workspaceId =
@@ -833,7 +865,11 @@ export async function handleRegisterWorkspaceFromDesktop(
     undefined,
     DESKTOP_WORKSPACE_AUDIENCE,
   );
-  const body = await readJson(request);
+  const read = await readOrInvalid(request, RegisterWorkspaceSchema, () =>
+    json({ error: "Workspace registration details are invalid" }, { status: 400 }),
+  );
+  if ("response" in read) return read.response;
+  const body = read.body;
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return json(
       { error: "Workspace registration details are invalid" },
