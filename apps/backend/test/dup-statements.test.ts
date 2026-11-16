@@ -79,6 +79,18 @@ test("comments, prose and unrelated strings are never mistaken for SQL", () => {
   expect(found).toEqual([]);
 });
 
+test("a shared module-level constant is one definition however many calls use it", () => {
+  const src = `const GET = "SELECT id FROM t WHERE id = ?1";\ndb.prepare(GET).bind(a); db.prepare(GET).bind(b);`;
+  const found = extractStatements(src, "f.ts");
+  expect(found.filter((s) => s.viaConstant)).toHaveLength(2);
+  expect(found.filter((s) => s.kind === "constant")).toHaveLength(1);
+  expect(groupDuplicates(found)).toEqual([]);
+  // The same SQL written inline next to the constant is still a duplicate definition.
+  const again = groupDuplicates(extractStatements(src + `\ndb.prepare("SELECT id FROM t WHERE id = ?1");`, "f.ts"));
+  expect(again).toHaveLength(1);
+  expect(again[0]!.lines).toEqual([1, 3]);
+});
+
 test("unresolvable arguments are reported as skipped, not compared", () => {
   const skipped: any[] = [];
   const found = extractStatements("db.prepare(sql); db.prepare(sql); db.prepare(build(1));", "f.ts", skipped);
@@ -104,4 +116,24 @@ test("the real source tree scans reproducibly and every group is a same-file rep
   // Every .prepare( call is either compared or reported as skipped.
   const { statements, skipped } = scanWithSkips(src);
   expect(statements.filter((s) => s.kind === "prepare").length + skipped.length).toBeGreaterThanOrEqual(719);
+});
+
+// ---- Regression ceiling (Package 2, Phase 4) -----------------------------------
+// Baseline before folding: 34 groups / 39 excess occurrences (claude/dup-statements-baseline.md).
+// After folding: the groups below remain, each with its reason. A new duplicate,
+// or one more occurrence of a retained one, fails this test: give the statement one
+// named constant instead.
+const RETAINED: Record<string, string> = {
+  "src/domain/workspace-gateway.ts": "3 groups (6 repeats of 2 or 3). The file has uncommitted edits by someone else; folding it now would mix into their change. Fold when it is committed.",
+  "src/domain/routes/workflow-execution-configuration.ts": "1 group. Same: uncommitted edits by someone else in this file.",
+  "src/platform/pg-d1.ts": "1 group. The D1 adapter's own statements; the file goes away in Package 3.",
+};
+const CEILING = { groups: 5, excess: 6 };
+
+test("no new duplicate statements: the ceiling holds and every remaining group is a documented exception", () => {
+  const s = summarize(scan(join(import.meta.dir, "..", "src")));
+  const files = [...new Set(s.groupList.map((g) => g.file))];
+  expect(files.filter((f) => !(f in RETAINED))).toEqual([]);
+  expect(s.groups).toBeLessThanOrEqual(CEILING.groups);
+  expect(s.excess).toBeLessThanOrEqual(CEILING.excess);
 });

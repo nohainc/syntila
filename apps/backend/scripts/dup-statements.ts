@@ -27,7 +27,7 @@ import ts from "typescript";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-export type Kind = "prepare" | "query" | "unsafe" | "tagged";
+export type Kind = "prepare" | "query" | "unsafe" | "tagged" | "constant";
 
 export interface Statement {
   readonly file: string;
@@ -37,6 +37,8 @@ export interface Statement {
   readonly sql: string;
   /** True when `${...}` text is part of an .prepare/.query/.unsafe statement. */
   readonly dynamic: boolean;
+  /** A call whose argument is a module-level SQL constant: a use, not a definition (never a duplicate). */
+  readonly viaConstant?: boolean;
 }
 
 export interface Group {
@@ -154,6 +156,17 @@ export interface Skipped {
 export function extractStatements(source: string, file: string, skipped?: Skipped[]): Statement[] {
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const out: Statement[] = [];
+  // Module-level `const NAME = "SQL..."`: the one definition of a statement used by several calls.
+  const constants = new Map<string, { text: string; line: number; dynamic: boolean }>();
+  const usedConstants = new Set<string>();
+  for (const st of sf.statements) {
+    if (!ts.isVariableStatement(st) || !(st.declarationList.flags & ts.NodeFlags.Const)) continue;
+    for (const d of st.declarationList.declarations) {
+      if (!ts.isIdentifier(d.name) || !d.initializer) continue;
+      const r = resolve(d.initializer, sf);
+      if (r && SQL_START.test(r.text)) constants.set(d.name.text, { text: r.text, line: sf.getLineAndCharacterOfPosition(d.getStart(sf)).line + 1, dynamic: r.dynamic });
+    }
+  }
   const add = (node: ts.Node, kind: Kind, text: string, dynamic: boolean) => {
     if (!SQL_START.test(text)) {
       // Not recognizably SQL (for example a template that starts with ${...}): reported, never compared.
@@ -167,8 +180,13 @@ export function extractStatements(source: string, file: string, skipped?: Skippe
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const name = node.expression.name.text;
       if ((name === "prepare" || name === "query" || name === "unsafe") && node.arguments[0]) {
-        const r = resolve(node.arguments[0], sf);
+        const arg = node.arguments[0];
+        const r = resolve(arg, sf);
         if (r) add(node, name, r.text, r.dynamic);
+        else if (ts.isIdentifier(arg) && constants.has(arg.text)) {
+          usedConstants.add(arg.text);
+          out.push({ file, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1, kind: name, sql: normalizeSql(constants.get(arg.text)!.text), dynamic: constants.get(arg.text)!.dynamic, viaConstant: true });
+        }
         else if (skipped && name === "prepare")
           skipped.push({ file, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1, why: ts.SyntaxKind[node.arguments[0].kind], text: node.arguments[0].getText(sf).replace(/\s+/g, " ").slice(0, 80) });
       }
@@ -178,13 +196,18 @@ export function extractStatements(source: string, file: string, skipped?: Skippe
     ts.forEachChild(node, visit);
   };
   visit(sf);
+  // A constant counts as a definition only when a query call uses it (a SQL-looking string alone is not a statement).
+  for (const name of usedConstants) {
+    const c = constants.get(name)!;
+    out.push({ file, line: c.line, kind: "constant", sql: normalizeSql(c.text), dynamic: c.dynamic });
+  }
   return out;
 }
 
 export function groupDuplicates(statements: readonly Statement[], minLength = 0): Group[] {
   const byKey = new Map<string, Statement[]>();
   for (const s of statements) {
-    if (s.sql.length < minLength) continue;
+    if (s.sql.length < minLength || s.viaConstant) continue;
     const key = `${s.file}\0${s.sql}`;
     (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(s);
   }
@@ -198,7 +221,7 @@ export function groupDuplicates(statements: readonly Statement[], minLength = 0)
 export function groupAcrossFiles(statements: readonly Statement[], minLength = 0) {
   const byKey = new Map<string, Statement[]>();
   for (const s of statements) {
-    if (s.sql.length < minLength) continue;
+    if (s.sql.length < minLength || s.viaConstant) continue;
     (byKey.get(s.sql) ?? byKey.set(s.sql, []).get(s.sql)!).push(s);
   }
   return [...byKey.values()]
@@ -228,7 +251,7 @@ export function summarize(statements: readonly Statement[], minLength = 0) {
   const groups = groupDuplicates(statements, minLength);
   return {
     statements: statements.length,
-    byKind: Object.fromEntries((["prepare", "query", "unsafe", "tagged"] as Kind[]).map((k) => [k, statements.filter((s) => s.kind === k).length])),
+    byKind: Object.fromEntries((["prepare", "query", "unsafe", "tagged", "constant"] as Kind[]).map((k) => [k, statements.filter((s) => s.kind === k).length])),
     dynamic: statements.filter((s) => s.dynamic).length,
     groups: groups.length,
     /** Occurrences beyond the first, summed: how many definitions folding removes. */
@@ -249,7 +272,7 @@ if (import.meta.main) {
   if (flag("--json")) {
     console.log(JSON.stringify({ ...s, groupList: undefined, groups: s.groupList }, null, 2));
   } else {
-    console.log(`statements: ${s.statements} (prepare ${s.byKind.prepare}, query ${s.byKind.query}, unsafe ${s.byKind.unsafe}, tagged ${s.byKind.tagged}); dynamic: ${s.dynamic}`);
+    console.log(`statements: ${s.statements} (prepare ${s.byKind.prepare}, query ${s.byKind.query}, unsafe ${s.byKind.unsafe}, tagged ${s.byKind.tagged}, shared constants ${s.byKind.constant}); dynamic: ${s.dynamic}`);
     console.log(`same-file duplicate groups: ${s.groups} in ${s.files} files; excess occurrences: ${s.excess} (min length ${minLength})\n`);
     for (const g of s.groupList)
       console.log(`${g.file}  lines ${g.lines.join(", ")}${g.dynamic ? "  [dynamic]" : ""}\n    ${g.sql.length > 160 ? g.sql.slice(0, 157) + "..." : g.sql}`);
