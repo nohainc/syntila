@@ -21,6 +21,15 @@ describe("data layer values", () => {
     await expect(data.read.rows`SELECT ${undefined} AS x`).rejects.toThrow("undefined");
   });
 
+  test("fragments preserve values, repeated inputs, nulls and row counts", async () => {
+    const data = fresh();
+    const value = "same";
+    const clause = data.read.frag`SELECT ${value}::text AS "firstValue", ${value}::text AS "secondValue", ${null}::text AS absent`;
+    expect(await data.read.row`${clause}`).toEqual({ firstValue: value, secondValue: value, absent: null });
+    expect(await data.read.run`SELECT 1 WHERE false`).toBe(0);
+    expect(await data.read.run`SELECT 1`).toBe(1);
+  });
+
   test("lists work for IN and multi-row inserts", async () => {
     const data = fresh();
     await data.read.run`CREATE TEMP TABLE IF NOT EXISTS t (id text, n int)`;

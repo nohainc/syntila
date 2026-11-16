@@ -4,6 +4,7 @@ import {
   type SecurityContext,
 } from "@syntila/security";
 import type { SecurityEnv } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 /** A configured owner replaces ID allowlists; it never expands them. */
 export async function isProfileLabOwner(
@@ -12,11 +13,8 @@ export async function isProfileLabOwner(
 ): Promise<boolean> {
   const email = env.SYNTILA_PROFILE_LAB_OWNER_EMAIL?.trim().toLowerCase();
   if (!email) return false;
-  const user = await env.SYNTILA_DB.prepare(
-    "SELECT email, status FROM users WHERE id = ?1",
-  )
-    .bind(userId)
-    .first<{ email: string; status: string }>();
+  const user = await dataOf(env).read.row<{ email: string; status: string }>`
+    SELECT email, status FROM users WHERE id = ${userId}`;
   return user?.status === "active" && user.email.trim().toLowerCase() === email;
 }
 

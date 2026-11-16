@@ -54,6 +54,16 @@ Write-path inventory: `scripts/write-paths.ts` now counts a shared SQL constant 
 
 Lesson: moving a statement into a module constant silently weakens a static inventory that attributes statements to functions; teach the tool the new shape first and prove the output is identical before and after.
 
+## Package 3: tagged SQL pilot (design review)
+
+Done: `claude/backend-sql-layer-design.md` records the tagged API and its compatibility gaps. The only domain pilot is the read-only Profile Lab owner lookup in `routes/profile-lab-policy.ts`; its predicate and authorization checks are unchanged. Focused coverage checks active, missing and suspended users, case normalization, transaction joining and rollback, plus tagged fragments, repeated inputs, nulls and counts. The duplicate detector's prepare-count baseline moved from 719 to 718; the ceiling remains 5 groups / 6 excess. The previously failing member-access test was fixed with the parallel changes in `e827313c`; the old failure statements above are historical. The previously uncommitted files mentioned in the retained duplicate reasons are now committed, but their duplicate groups have not yet been folded.
+
+Validation: clean full backend `bun run test`: 1231 pass / 0 fail across 169 files, with no serial retries; separate route sweep: 3 pass; concurrency: three consecutive runs, each 43 pass / 0 fail, including seeded PostgreSQL `check-invariants.sql` assertions. `bun run write-paths` produced no diff. The earlier pilot suite initially failed the detector's old prepare-count floor; its automatic serial retry passed after the floor was updated, and the full suite was then rerun cleanly. An earlier focused test used an invalid status and overlapped a second test process with the runner's global test-database cleanup; the fixture was corrected and the focused run passed (15/15). Subsequent database test runs were serialized.
+
+Monitoring: the pilot is a read, which neither records adapter writer-lock statistics nor tagged transaction statistics. Static inspection confirms `server.ts` emits `db.tx`, `db.writes` and `db.writer_lock`, and `scripts/backend-logs.sh` includes them. No production logs were accessed. No schema changes or migrations.
+
+Next: stop for review before converting another domain file. In particular, resolve per-site result normalization, error-message dependencies, optional global writer locking, ordered atomic batches and the monitoring label transition before migrating writes. Lesson: a count-based detector guard must change when an intentionally converted call moves to a different supported query form; preserve the duplicate ceiling separately.
+
 ## Next
 
 - Compare `bun run schema:lock` output on PostgreSQL 16 and 18.
