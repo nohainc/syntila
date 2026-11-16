@@ -55,18 +55,16 @@ export async function handleSetPin(
   const pinnedAt = new Date().toISOString();
   await inTransaction(env, "pin.set", async (txEnv, tx) => {
     await lockPins(tx, userId);
-    const mutation = pinned
-      ? txEnv.SYNTILA_DB.prepare(
-          // A new pin goes to the top of the user's pins of that kind.
-          `INSERT INTO user_pins (user_id, kind, target_id, pinned_at, position)
-         VALUES (?1, ?2, ?3, ?4,
+    if (pinned) {
+      // A new pin goes to the top of the user's pins of that kind.
+      await tx.run`INSERT INTO user_pins (user_id, kind, target_id, pinned_at, position)
+         VALUES (${userId}, ${kind}, ${targetId}, ${pinnedAt},
            COALESCE((SELECT MIN(position) FROM user_pins
-                      WHERE user_id = ?1 AND kind = ?2), 0) - 1)
-         ON CONFLICT DO NOTHING`,
-        ).bind(userId, kind, targetId, pinnedAt)
-      : txEnv.SYNTILA_DB.prepare(
-          `DELETE FROM user_pins WHERE user_id = ?1 AND kind = ?2 AND target_id = ?3`,
-        ).bind(userId, kind, targetId);
+                      WHERE user_id = ${userId} AND kind = ${kind}), 0) - 1)
+         ON CONFLICT DO NOTHING`;
+    } else {
+      await tx.run`DELETE FROM user_pins WHERE user_id = ${userId} AND kind = ${kind} AND target_id = ${targetId}`;
+    }
     await publishCollaborationEvent(
       txEnv,
       kind === "space" ? "space.updated" : "thread.updated",
@@ -75,7 +73,6 @@ export async function handleSetPin(
       {
         ...(kind === "thread" ? { threadId: targetId } : {}),
         recipientUserIds: [userId],
-        mutations: [mutation],
       },
     );
   });
@@ -107,12 +104,10 @@ export async function handleSetPinOrder(
   if (!member) throw new HttpError(404, "Space not found");
   await inTransaction(env, "pin.order", async (txEnv, tx) => {
     await lockPins(tx, context.userId);
-    const mutations = ids.map((id, index) =>
-      txEnv.SYNTILA_DB.prepare(
-        `UPDATE user_pins SET position = ?1
-        WHERE user_id = ?2 AND kind = ?3 AND target_id = ?4`,
-      ).bind(index, context.userId, kind, id),
-    );
+    for (const [index, id] of ids.entries()) {
+      await tx.run`UPDATE user_pins SET position = ${index}
+        WHERE user_id = ${context.userId} AND kind = ${kind} AND target_id = ${id}`;
+    }
     await publishCollaborationEvent(
       txEnv,
       kind === "space" ? "space.updated" : "thread.updated",
@@ -121,7 +116,6 @@ export async function handleSetPinOrder(
       {
         ...(kind === "thread" ? { threadId: ids[0]! } : {}),
         recipientUserIds: [context.userId],
-        mutations,
       },
     );
   });

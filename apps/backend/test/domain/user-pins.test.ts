@@ -96,6 +96,21 @@ it("rejects pins from people outside the Space and unknown kinds", async () => {
   ).rejects.toMatchObject({});
 });
 
+it("rolls back a pin when its durable event cannot be stored", async () => {
+  const { env, as, sqlite } = fixture();
+  sqlite.exec("ALTER TABLE realtime_events ADD CONSTRAINT test_reject_event CHECK (false) NOT VALID");
+  await expect(handleSetPin(as("bob", "PUT"), env, "space", "S")).rejects.toThrow();
+  expect(sqlite.prepare("SELECT count(*) AS n FROM user_pins WHERE user_id = ?").get("bob")).toEqual({ n: 0 });
+});
+
+it("keeps concurrent pin positions distinct for the same user", async () => {
+  const { env, as, sqlite } = fixture();
+  sqlite.exec("INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S2','alice','Two','now','now'); INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m2','S2','bob','collaborator','now','now')");
+  await Promise.all(["S", "S2"].map((id) => handleSetPin(as("bob", "PUT"), env, "space", id)));
+  const rows = sqlite.prepare("SELECT position FROM user_pins WHERE user_id = ? ORDER BY position").all("bob") as { position: number }[];
+  expect(rows.map((row) => row.position)).toEqual([-2, -1]);
+});
+
 it("keeps a Space's position when only sidebar view state changes", async () => {
   const { env, sqlite } = fixture();
   const update = (body: unknown) =>
