@@ -87,7 +87,7 @@ async function readBody(request: Request): Promise<unknown> {
     if (done) break;
     size += value.byteLength;
     if (size > MAX_BODY_BYTES) {
-      await reader.cancel();
+      void reader.cancel().catch(() => undefined); // not awaited: it never settles while the client is still sending
       throw new HttpError(413, "Preference document too large");
     }
     chunks.push(value);

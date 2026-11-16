@@ -65,7 +65,7 @@ export async function handleSandboxWebhook(request: Request, env: SandboxEnv): P
     const part = await reader.read();
     if (part.done) break;
     length += part.value.length;
-    if (length > 256 * 1024) { await reader.cancel(); throw new HttpError(413, 'Webhook too large'); }
+    if (length > 256 * 1024) { void reader.cancel().catch(() => undefined); throw new HttpError(413, 'Webhook too large'); }
     chunks.push(part.value);
   }
   const bytes = new Uint8Array(length);

@@ -56,7 +56,7 @@ export async function handleUploadAvatar(
     if (done) break;
     size += value.byteLength;
     if (size > limit) {
-      await reader.cancel();
+      void reader.cancel().catch(() => undefined); // not awaited: it never settles while the client is still sending
       throw new HttpError(413, "Avatar upload is too large");
     }
     chunks.push(value);

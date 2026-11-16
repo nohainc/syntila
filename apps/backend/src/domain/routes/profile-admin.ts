@@ -44,7 +44,7 @@ export async function readToolProfileAdminBody(
       if (done) break;
       size += value.byteLength;
       if (size > maxBytes) {
-        await reader.cancel();
+        void reader.cancel().catch(() => undefined); // not awaited: it never settles while the client is still sending
         throw new HttpError(413, "request body is too large");
       }
       chunks.push(value);

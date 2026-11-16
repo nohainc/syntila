@@ -10,11 +10,13 @@ import { routeTable, type WorkerRouteHandlers } from "../src/domain/routes/table
 import { PgD1Database } from "../src/platform/pg-d1";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
+import { message, user, workRequest, workspace } from "./domain/helpers/seed";
+import { threadConversationId } from "../src/domain/routes/conversations";
 
-let base = "", stop = async () => {}, mint: (sub: string) => Promise<string>;
+let base = "", stop = async () => {}, mint: (sub: string) => Promise<string>, db: ReturnType<typeof pgD1>["sql"];
 const logged: string[] = [];
 beforeAll(async () => {
-  const sql = pgD1().sql;
+  const sql = db = pgD1().sql;
   const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
   const pub = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k" };
   const priv = { ...(await crypto.subtle.exportKey("jwk", pair.privateKey)), kid: "k" } as JsonWebKey & { kid: string };
@@ -37,7 +39,10 @@ const call = async (token: string, method: string, path: string, body?: string) 
     method,
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json", origin: "https://syntila.app" },
     body: method === "GET" || method === "HEAD" ? undefined : body,
-  });
+    signal: AbortSignal.timeout(8_000),
+  }).catch((e) => (e?.name === "TimeoutError" ? null : Promise.reject(e)));
+  // null: the request hung (reported as a failure below).
+  if (!r) return { status: 599, body: null, text: "hung for 8 s" };
   const text = await r.text();
   let json: any = null;
   try { json = text ? JSON.parse(text) : null; } catch {}
@@ -61,7 +66,31 @@ test("no route answers 5xx to junk input", async () => {
   const thread = await call(token, "POST", `/api/spaces/${spaceId}/threads`, JSON.stringify({ name: "T" }));
   expect(thread.status).toBe(201);
   const threadId = thread.body.thread.id;
-  const real: Record<string, string> = { spaceId, threadId };
+  // Real rows for the other path parameters, so requests get past the first
+  // lookup and into the handlers' own checks.
+  const note = await call(token, "POST", "/api/notes", JSON.stringify({ title: "n", body: "b" }));
+  expect(note.status).toBe(201);
+  const msg = await call(token, "POST", `/api/threads/${threadId}/messages`, JSON.stringify({ body: "hello" }));
+  const other = "fuzz-other";
+  await call(await mint(other), "GET", "/api/session");
+  await call(token, "POST", "/api/people/invitations", JSON.stringify({ userId: other }));
+  const invitation = await call(token, "GET", "/api/people/invitations");
+  await db.unsafe([
+    user("fuzz-ghost"),
+    workspace("fuzz-ws", "fuzz-owner"),
+    workRequest(threadId, "fuzz-owner", "{}", "fuzz-wr").replace("?", "'{}'"),
+    message(threadId, "fuzz-owner", "[]", "fuzz-dm").replace("?", "'[]'"),
+  ].join(";\n"));
+  const real: Record<string, string> = {
+    spaceId, threadId,
+    workspaceId: "fuzz-ws",
+    workRequestId: "fuzz-wr",
+    messageId: msg.body?.message?.id ?? "fuzz-dm",
+    noteId: note.body.note.id,
+    userId: other,
+    conversationId: threadConversationId(threadId),
+    invitationId: invitation.body?.outgoing?.[0]?.id ?? "unknown",
+  };
 
   const failures: string[] = [];
   for (const route of routeTable({} as WorkerRouteHandlers)) {
@@ -86,3 +115,23 @@ test("no route answers 5xx to junk input", async () => {
   if (failures.length) console.log(failures.join("\n"));
   expect(failures).toEqual([]);
 }, 600_000);
+
+test("an oversized body is refused with 413 promptly, not left hanging", async () => {
+  const token = await mint("fuzz-big");
+  await call(token, "GET", "/api/session");
+  const ws = "fuzz-big-ws";
+  await db.unsafe(workspace(ws, "fuzz-big"));
+  const big = new Uint8Array(6 * 1024 * 1024);
+  const form = new FormData();
+  form.set("original", new File([big], "a.png", { type: "image/png" }));
+  form.set("thumbnail", new File([new Uint8Array(10)], "t.png", { type: "image/png" }));
+  const started = performance.now();
+  const avatar = await fetch(base + "/api/profile/avatar", {
+    method: "PUT", body: form, signal: AbortSignal.timeout(8_000),
+    headers: { authorization: `Bearer ${token}`, origin: "https://syntila.app" },
+  });
+  expect(avatar.status).toBe(413);
+  const prefs = await call(token, "PUT", `/api/workspaces/${ws}/worker-preferences`, JSON.stringify({ pad: "x".repeat(2 * 1024 * 1024) }));
+  expect(prefs.status).toBe(413);
+  expect(performance.now() - started).toBeLessThan(8_000);
+});
