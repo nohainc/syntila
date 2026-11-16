@@ -56,6 +56,20 @@ import {
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 
+const SELECT_DIRECT_SPACES_BY_SPACE_ID =
+  `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl,
+                  state.personal_name AS personalName
+       FROM direct_spaces ds
+       JOIN users u ON u.id = (CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END)
+       LEFT JOIN direct_space_user_state state ON state.space_id = ds.space_id AND state.user_id = ?1
+       WHERE ds.space_id = ?2`;
+
+const UPDATE_SPACES_SET_SETTINGS_JSON_BY_ID =
+  "UPDATE spaces SET settings_json = syntila_json_set(settings_json, ?1, ?2), updated_at = ?3 WHERE id = ?4";
+
+const UPDATE_SPACES_2 =
+  "UPDATE spaces SET settings_json = syntila_json_remove(settings_json, ?1) WHERE id = ?2";
+
 function spaceSettings(value: unknown): Record<string, unknown> {
   const settings = parseJson<Record<string, unknown>>(value);
   delete settings.defaultExecutionPolicy;
@@ -619,12 +633,7 @@ export async function handleUpdateSpace(
     let avatarUrl: string | null = null;
     const peer = isDirect
       ? await env.SYNTILA_DB.prepare(
-          `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl,
-                  state.personal_name AS personalName
-       FROM direct_spaces ds
-       JOIN users u ON u.id = (CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END)
-       LEFT JOIN direct_space_user_state state ON state.space_id = ds.space_id AND state.user_id = ?1
-       WHERE ds.space_id = ?2`,
+          SELECT_DIRECT_SPACES_BY_SPACE_ID,
         )
           .bind(context.userId, spaceId)
           .first<{
@@ -815,12 +824,7 @@ export async function handleUpdateSpace(
   let originalName: string | null = null;
   if (existing.kind === "direct") {
     const peer = await env.SYNTILA_DB.prepare(
-      `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl,
-              state.personal_name AS personalName
-       FROM direct_spaces ds
-       JOIN users u ON u.id = (CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END)
-       LEFT JOIN direct_space_user_state state ON state.space_id = ds.space_id AND state.user_id = ?1
-       WHERE ds.space_id = ?2`,
+      SELECT_DIRECT_SPACES_BY_SPACE_ID,
     )
       .bind(context.userId, spaceId)
       .first<{
@@ -1157,7 +1161,7 @@ export async function handleCreateSpaceInvitation(
           inviteeUserId,
         ),
         env.SYNTILA_DB.prepare(
-          "UPDATE spaces SET settings_json = syntila_json_set(settings_json, ?1, ?2), updated_at = ?3 WHERE id = ?4",
+          UPDATE_SPACES_SET_SETTINGS_JSON_BY_ID,
         ).bind(
           permissionJsonPath("invitationPermissions", id),
           JSON.stringify(permissions),
@@ -1284,7 +1288,7 @@ export async function handleChangeSpaceMemberRole(
       "UPDATE space_memberships SET role = ?1, updated_at = ?2 WHERE space_id = ?3 AND user_id = ?4 AND role <> 'owner'",
     ).bind(role, new Date().toISOString(), spaceId, userId),
     env.SYNTILA_DB.prepare(
-      "UPDATE spaces SET settings_json = syntila_json_set(settings_json, ?1, ?2), updated_at = ?3 WHERE id = ?4",
+      UPDATE_SPACES_SET_SETTINGS_JSON_BY_ID,
     ).bind(
       permissionJsonPath("memberPermissions", userId),
       JSON.stringify(
@@ -1347,7 +1351,7 @@ export async function handleRemoveSpaceMember(
   if (!result.success || (result.meta?.changes ?? 0) === 0)
     throw new HttpError(404, "Space member not found");
   await env.SYNTILA_DB.prepare(
-    "UPDATE spaces SET settings_json = syntila_json_remove(settings_json, ?1) WHERE id = ?2",
+    UPDATE_SPACES_2,
   )
     .bind(permissionJsonPath("memberPermissions", userId), spaceId)
     .run();
@@ -1413,7 +1417,7 @@ export async function handleExpireSpaceInvitation(
   if (!result.success || (result.meta?.changes ?? 0) === 0)
     throw new HttpError(404, "Pending invitation not found");
   await env.SYNTILA_DB.prepare(
-    "UPDATE spaces SET settings_json = syntila_json_remove(settings_json, ?1) WHERE id = ?2",
+    UPDATE_SPACES_2,
   )
     .bind(permissionJsonPath("invitationPermissions", invitationId), spaceId)
     .run();
@@ -1681,7 +1685,7 @@ export async function handleDeclineSpaceInvitation(
   const now = new Date().toISOString();
   await env.SYNTILA_DB.batch([
     env.SYNTILA_DB.prepare(
-      "UPDATE spaces SET settings_json = syntila_json_remove(settings_json, ?1) WHERE id = ?2",
+      UPDATE_SPACES_2,
     ).bind(
       permissionJsonPath("invitationPermissions", invitation.id),
       invitation.spaceId,
