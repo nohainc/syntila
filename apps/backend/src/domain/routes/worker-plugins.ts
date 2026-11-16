@@ -1,4 +1,6 @@
-import { readJson } from "./validation.js";
+import type { z } from "zod";
+import { PluginPinSchema, PluginUploadSchema } from "@syntila/protocol";
+import { readBody, RequestValidationError } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import { PluginManifestSchema } from "@syntila/workspace-runtime-protocol";
 import { pluginManifestDigest } from "../plugin-manifest-digest.js";
@@ -42,15 +44,18 @@ function allocatePluginRef(): string {
   return `plugin-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
-async function readBody(request: Request): Promise<Record<string, unknown>> {
-  const body = (await readJson(request)) as unknown;
-  if (!body || typeof body !== "object" || Array.isArray(body))
-    throw new PluginRouteError(
-      400,
-      "invalid_request",
-      "A JSON body is required",
-    );
-  return body as Record<string, unknown>;
+/** Reads a body with a schema; a rejected body keeps the plugin routes' own error shape. */
+async function readPluginBody<S extends z.ZodType>(
+  request: Request,
+  schema: S,
+): Promise<z.output<S> & Record<string, unknown>> {
+  try {
+    return (await readBody(request, schema)) as z.output<S> & Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof RequestValidationError)
+      throw new PluginRouteError(400, "invalid_request", error.message);
+    throw error;
+  }
 }
 
 function onlyKeys(body: Record<string, unknown>, allowed: readonly string[]) {
@@ -129,7 +134,7 @@ export async function handlePluginLibrary(
   }
   if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
 
-  const body = await readBody(request);
+  const body = await readPluginBody(request, PluginUploadSchema);
   onlyKeys(body, ["manifest", "manifestDigest", "origin", "signer"]);
 
   const parsed = PluginManifestSchema.safeParse(body.manifest);
@@ -401,7 +406,7 @@ export async function handleWorkspacePluginPin(
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
 
-  const body = await readBody(request);
+  const body = await readPluginBody(request, PluginPinSchema);
   onlyKeys(body, [
     "version",
     "manifestDigest",

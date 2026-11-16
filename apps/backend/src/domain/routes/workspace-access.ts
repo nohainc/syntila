@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { WorkspaceGrantCreateSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { spaceMembership } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import {
@@ -160,7 +161,7 @@ export async function createWorkspaceSpaceGrant(
   spaceId: string,
   workspaceId: string,
 ): Promise<Response> {
-  const body = recordBody(await readJson(request), [
+  const body = recordBody(await readBody(request, WorkspaceGrantCreateSchema), [
     "allowedWorkerIds",
     "allowedPermissions",
     "networkPolicy",

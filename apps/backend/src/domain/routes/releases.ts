@@ -1,5 +1,5 @@
-import { RevokeReasonSchema } from "@syntila/protocol";
-import { readBody, readJson } from "./validation.js";
+import { PublishReleaseSchema, RevokeReasonSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { canonicalJson } from "../canonical-json.js";
 import { verifyEd25519ReleaseSignature } from "../release-trust.js";
 import { computePackageDigest } from "@syntila/security";
@@ -302,11 +302,8 @@ export async function handlePublishWorkspaceRelease(
       packageData = await (file as Blob).arrayBuffer();
     }
   } else {
-    const body = (await readJson(request)) as Record<
-      string,
-      unknown
-    >;
-    if (!body.version || typeof body.version !== "string") {
+    const body = await readBody(request, PublishReleaseSchema);
+    if (!body.version) {
       return json({ error: "'version' is required" }, { status: 400 });
     }
     version = body.version.trim();

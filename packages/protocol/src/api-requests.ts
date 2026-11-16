@@ -43,6 +43,56 @@ export const MarkNotificationsReadSchema = z.object({
 });
 export type MarkNotificationsReadInput = z.infer<typeof MarkNotificationsReadSchema>;
 
+// ---- Plugins, releases and grants ---------------------------------------------
+
+/** POST /api/me/worker-plugins: the manifest is validated by PluginManifestSchema in the handler. */
+export const PluginUploadSchema = z.looseObject({
+  manifest: z.unknown(),
+  manifestDigest: z.string({ error: "manifestDigest must be text" }).max(128).optional(),
+  origin: z.record(z.string(), z.unknown(), { error: "origin must be an object" }).optional(),
+  signer: z.unknown().optional(),
+});
+
+/** PUT /api/workspaces/:id/worker-plugins/:ref. */
+export const PluginPinSchema = z.looseObject({
+  version: z.string({ error: "version must be text" }).max(64).optional(),
+  manifestDigest: z.string({ error: "manifestDigest must be text" }).max(128).optional(),
+  consentHash: z.string({ error: "consentHash must be text" }).max(128).optional(),
+  enabled: z.boolean({ error: "enabled must be true or false" }).optional(),
+  shareable: z.boolean({ error: "shareable must be true or false" }).optional(),
+});
+
+/** POST /api/workspace-releases/publish as JSON (the multipart form is read separately). */
+export const PublishReleaseSchema = z.object({
+  version: z.string({ error: "'version' is required" }).max(64).optional(),
+  channel: z.enum(["stable", "beta", "development"], { error: "channel must be stable, beta or development" }).optional(),
+  minSupportedWorkspaceVersion: z.string({ error: "minSupportedWorkspaceVersion must be text" }).max(64).optional(),
+  supportedOS: z.array(z.string().max(32), { error: "supportedOS must be a list" }).max(20).optional(),
+  supportedArch: z.array(z.string().max(32), { error: "supportedArch must be a list" }).max(20).optional(),
+  releaseNotes: z.string({ error: "releaseNotes must be text" }).max(20_000).optional(),
+  packageDigest: z.string({ error: "packageDigest must be text" }).max(128).optional(),
+  signature: z.string({ error: "signature must be text" }).max(4096).optional(),
+  signingKeyId: z.string({ error: "signingKeyId must be text" }).max(128).optional(),
+});
+
+/** Create a Workspace Grant; the handler rejects unknown keys itself and parses the nested policy fields. */
+export const WorkspaceGrantCreateSchema = z.looseObject({
+  allowedWorkerIds: z.array(z.string().max(128), { error: "allowedWorkerIds must be a list" }).max(200).optional(),
+  allowedPermissions: z.unknown().optional(),
+  networkPolicy: z.unknown().optional(),
+  concurrency: z.unknown().optional(),
+  expiresAt: z.unknown().optional(),
+  confirmContribution: z.boolean({ error: "confirmContribution must be a boolean" }).optional(),
+  workspaceId: z.string({ error: "workspaceId must be text" }).max(128).optional(),
+});
+
+/** Update a Workspace Grant (at least one key, checked by the handler). */
+export const WorkspaceGrantUpdateSchema = z.looseObject({
+  status: z.string({ error: "status must be active or suspended" }).max(32).optional(),
+  expiresAt: z.string({ error: "expiresAt must be text" }).max(64).nullish(),
+  allowedPermissions: z.unknown().optional(),
+});
+
 // ---- Threads, discussion, retry and plan approval ----------------------------
 
 /** POST /api/spaces/:id/threads. The handler still requires a non-empty name. */

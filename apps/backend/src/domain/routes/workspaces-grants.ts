@@ -1,4 +1,5 @@
-import { readJson } from "./validation.js";
+import { WorkspaceGrantUpdateSchema } from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { revokeAssignment } from "../assignment-revocation.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "../assignment-transitions.js";
@@ -76,7 +77,7 @@ export async function handleUpdateWorkspaceSpaceGrant(
     String(existing.workspace_id),
     "workspace:manage",
   );
-  const body = await readJson(request);
+  const body = await readBody(request, WorkspaceGrantUpdateSchema);
   if (
     Object.keys(body).length === 0 ||
     Object.keys(body).some(
