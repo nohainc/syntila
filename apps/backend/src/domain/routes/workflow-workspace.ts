@@ -10,6 +10,12 @@ import {
   type SecurityEnv,
 } from "./http-security.js";
 
+const SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID =
+  "SELECT id FROM execution_workspaces WHERE id=?1 AND owner_user_id=?2 AND status != 'revoked'";
+
+const INSERT_SPACE_AUDIT_LOG =
+  "INSERT INTO space_audit_log(id,space_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at) VALUES(?1,?2,'user',?3,'workflow.workspace.authorized','execution_workspace',?4,?5,?6)";
+
 export async function loadWorkflowWorkspace(
   env: Pick<SecurityEnv, "SYNTILA_DB">,
   userId: string,
@@ -48,7 +54,7 @@ export async function resolveUserWorkflowWorkspace(
 ): Promise<string | null> {
   if (!requested) return (await loadWorkflowWorkspace(env, userId)).workspaceId;
   const owned = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM execution_workspaces WHERE id=?1 AND owner_user_id=?2 AND status != 'revoked'",
+    SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
   )
     .bind(requested, userId)
     .first();
@@ -97,7 +103,7 @@ export async function prepareWorkflowWorkspaceGrant(
   now: string,
 ): Promise<D1PreparedStatement[]> {
   const owned = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM execution_workspaces WHERE id=?1 AND owner_user_id=?2 AND status != 'revoked'",
+    SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
   )
     .bind(workspaceId, ownerUserId)
     .first();
@@ -138,7 +144,7 @@ export async function prepareWorkflowWorkspaceGrant(
         now,
       ),
       env.SYNTILA_DB.prepare(
-        "INSERT INTO space_audit_log(id,space_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at) VALUES(?1,?2,'user',?3,'workflow.workspace.authorized','execution_workspace',?4,?5,?6)",
+        INSERT_SPACE_AUDIT_LOG,
       ).bind(
         crypto.randomUUID(),
         spaceId,
@@ -178,7 +184,7 @@ export async function prepareWorkflowWorkspaceGrant(
       now,
     ),
     env.SYNTILA_DB.prepare(
-      "INSERT INTO space_audit_log(id,space_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at) VALUES(?1,?2,'user',?3,'workflow.workspace.authorized','execution_workspace',?4,?5,?6)",
+      INSERT_SPACE_AUDIT_LOG,
     ).bind(
       crypto.randomUUID(),
       spaceId,
