@@ -243,7 +243,7 @@ export default {
       env.SYNTILA_DB,
     );
     const deletedIssueReports = await pruneExpiredIssueReports(
-      env.SYNTILA_DB,
+      env,
       env.SYNTILA_ARTIFACTS,
     );
     const deletedOrphanFiles = await pruneOrphanUserFiles(

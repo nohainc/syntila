@@ -352,7 +352,7 @@ describe("issue reports", () => {
       .run();
     expect(
       await pruneExpiredIssueReports(
-        fixture.db,
+        { SYNTILA_DB: fixture.db },
         undefined,
         new Date("2026-01-01"),
       ),
