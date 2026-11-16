@@ -115,3 +115,15 @@ it("marks selected or all notifications read per user", async () => {
   await handleMarkNotificationsRead(as("bob", "POST", {}), env);
   expect((await list("bob")).every((n) => n.read)).toBe(true);
 });
+
+it("refuses a wrong-typed ids list instead of marking everything read", async () => {
+  const { env, as, list } = fixture();
+  for (const ids of ["w-done", [1], { a: 1 }, Array.from({ length: 501 }, (_, i) => `w-${i}`)]) {
+    await expect(
+      handleMarkNotificationsRead(as("bob", "POST", { ids }), env),
+    ).rejects.toMatchObject({ status: 400, code: "invalid_request" });
+  }
+  const malformed = new Request("https://test/api", { method: "POST", headers: { "test-user": "bob" }, body: "{ids" });
+  await expect(handleMarkNotificationsRead(malformed, env)).rejects.toMatchObject({ status: 400, code: "invalid_json" });
+  expect((await list("bob")).some((n) => n.read)).toBe(false);
+});

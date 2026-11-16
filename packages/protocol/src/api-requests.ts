@@ -33,3 +33,12 @@ export const CreatePersonInvitationSchema = z
     message: "Exactly one of 'email' or 'userId' must be provided",
   });
 export type CreatePersonInvitationInput = z.infer<typeof CreatePersonInvitationSchema>;
+
+/** POST /api/notifications/read: the given Work notifications, or all when `ids` is absent. */
+export const MarkNotificationsReadSchema = z.object({
+  ids: z
+    .array(z.string({ error: "ids must be a list of notification ids" }).min(1).max(128), { error: "ids must be a list of notification ids" })
+    .max(500, "ids must list at most 500 notifications")
+    .optional(),
+});
+export type MarkNotificationsReadInput = z.infer<typeof MarkNotificationsReadSchema>;

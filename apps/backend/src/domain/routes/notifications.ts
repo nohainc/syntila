@@ -1,5 +1,7 @@
 import { inTransaction } from "../../platform/tx-env.js";
-import { json, parseJson } from "./handlers.js";
+import { MarkNotificationsReadSchema } from "@syntila/protocol";
+import { json } from "./handlers.js";
+import { readBody } from "./validation.js";
 import { authorizeRequest } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
 
@@ -77,15 +79,8 @@ export async function handleMarkNotificationsRead(
     undefined,
     accessContext,
   );
-  const body = parseJson<{ ids?: unknown }>(
-    await request.text().catch(() => ""),
-    {},
-  );
-  const ids = Array.isArray(body.ids)
-    ? body.ids
-        .filter((id): id is string => typeof id === "string")
-        .slice(0, 200)
-    : null;
+  // A wrong-typed `ids` is a 400, never "mark everything read".
+  const { ids = null } = await readBody(request, MarkNotificationsReadSchema);
   const readAt = new Date().toISOString();
   const scope = `FROM work_requests w
        JOIN threads t ON t.id = w.thread_id

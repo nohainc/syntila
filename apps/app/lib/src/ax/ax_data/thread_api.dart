@@ -147,14 +147,24 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   }
 
   Future<void> markNotificationsRead({List<String>? ids}) async {
-    final response = await client.post(
-      Uri.parse('$baseUrl/notifications/read'),
-      headers: _headers(contentType: 'application/json'),
-      body: jsonEncode({if (ids != null) 'ids': ids}),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException('Marking notifications read failed',
-          statusCode: response.statusCode);
+    // The server takes at most 500 ids per call; null marks all.
+    const chunk = 200;
+    final batches = ids == null
+        ? const <List<String>?>[null]
+        : [
+            for (var i = 0; i < ids.length; i += chunk)
+              ids.sublist(i, i + chunk > ids.length ? ids.length : i + chunk),
+          ];
+    for (final batch in batches) {
+      final response = await client.post(
+        Uri.parse('$baseUrl/notifications/read'),
+        headers: _headers(contentType: 'application/json'),
+        body: jsonEncode({if (batch != null) 'ids': batch}),
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AxApiException('Marking notifications read failed',
+            statusCode: response.statusCode);
+      }
     }
   }
 

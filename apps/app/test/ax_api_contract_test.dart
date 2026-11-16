@@ -168,4 +168,21 @@ void main() {
             .having((e) => e.code, 'code', 'busy')));
     expect(calls, 2);
   });
+
+  test('marking many notifications read sends them in chunks of 200',
+      () async {
+    final sizes = <int?>[];
+    final client = MockClient((request) async {
+      final ids = (jsonDecode(request.body) as Map)['ids'] as List?;
+      sizes.add(ids?.length);
+      return _json({'readAt': '2026-11-16T00:00:00.000Z'}, 200);
+    });
+    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    await api.markNotificationsRead(
+        ids: List.generate(450, (i) => 'w-$i'));
+    expect(sizes, [200, 200, 50]);
+    sizes.clear();
+    await api.markNotificationsRead();
+    expect(sizes, [null]);
+  });
 }
