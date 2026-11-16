@@ -246,3 +246,31 @@ describe("0019 unique Thread names", () => {
     )).rejects.toMatchObject({ constraint: "threads_space_name_key" });
   });
 });
+
+describe("0020 unique Space names", () => {
+  test("existing duplicates are renamed (oldest keeps its name); Direct Spaces and other owners are untouched", async () => {
+    const real = new URL("../migrations/", import.meta.url).pathname;
+    const dir = mkdtempSync(join(tmpdir(), "syntila-0020-"));
+    for (const f of readdirSync(real).filter((f) => /^\d{4}_.*\.sql$/.test(f) && f < "0020")) copyFileSync(join(real, f), join(dir, f));
+    const sql = await emptyDatabase();
+    await migrate(sql as any, dir);
+    const insert = (id: string, owner: string, name: string, kind = "group", created = "2026-01-01T00:00:00Z") =>
+      `INSERT INTO spaces(id,owner_user_id,name,kind,created_at,updated_at) VALUES ('${id}','${owner}','${name}','${kind}','${created}','${created}');`;
+    await sql.unsafe([
+      user("u1"), user("u2"),
+      insert("a1", "u1", "Trip", "group", "2026-01-01T00:00:00Z"),
+      insert("a2", "u1", " trip", "group", "2026-01-02T00:00:00Z"),
+      insert("a3", "u1", "TRIP ", "group", "2026-01-03T00:00:00Z"),
+      insert("d1", "u1", "Trip", "direct"), insert("d2", "u1", "Trip", "direct"),
+      insert("b1", "u2", "Trip"),
+    ].join("\n"));
+    copyFileSync(join(real, "0020_unique_space_names.sql"), join(dir, "0020_unique_space_names.sql"));
+    expect((await migrate(sql as any, dir)).applied).toEqual(["0020_unique_space_names.sql"]);
+    const names = new Map((await sql.unsafe("SELECT id, name FROM spaces")).map((r: any) => [r.id, r.name]));
+    expect(names.get("a1")).toBe("Trip");
+    expect(String(names.get("a2"))).toContain("(2)");
+    expect(String(names.get("a3"))).toContain("(3)");
+    expect(names.get("d1")).toBe("Trip"); expect(names.get("d2")).toBe("Trip"); expect(names.get("b1")).toBe("Trip");
+    await expect(sql.unsafe(insert("a9", "u1", "  tRiP  "))).rejects.toMatchObject({ constraint: "spaces_owner_group_name_key" });
+  });
+});

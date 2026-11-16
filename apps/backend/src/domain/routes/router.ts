@@ -136,6 +136,7 @@ export async function routeWorkerRequest(
  */
 const CONSTRAINT_MESSAGES: Record<string, string> = {
   threads_space_name_key: "This Space already has a Thread with this name",
+  spaces_owner_group_name_key: "You already have a Space with this name",
 };
 
 function databaseErrorCode(error: unknown): string | undefined {

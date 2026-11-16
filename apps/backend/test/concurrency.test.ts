@@ -457,3 +457,29 @@ describe("Thread names", () => {
     expect((await names(spaceId)).filter((n) => n === "target")).toHaveLength(1);
   });
 });
+
+describe("Space names", () => {
+  const owned = async (owner: string) =>
+    (await sql.unsafe("SELECT lower(btrim(name)) AS name FROM spaces WHERE owner_user_id = $1 AND kind = 'group'", [owner])).map((r: any) => r.name as string);
+
+  test("a create racing renames to the same name: at most one Space ends up with it, no 5xx", async () => {
+    const token = await mint("space-name-a");
+    const me = (await call(token, "GET", "/api/session")).body.user.id as string;
+    const ids: string[] = [];
+    for (const n of ["one", "two", "three", "four"]) ids.push((await call(token, "POST", "/api/spaces", { name: n })).body.space.id);
+    const results = await Promise.all([
+      call(token, "POST", "/api/spaces", { name: "Target" }),
+      ...ids.map((id) => call(token, "PATCH", `/api/spaces/${id}`, { name: " target " })),
+    ]);
+    expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
+    expect((await owned(me)).filter((n) => n === "target")).toHaveLength(1);
+    const loser = results.find((r) => r.status === 409);
+    expect(loser?.body.error).toBe("You already have a Space with this name");
+  });
+
+  test("different owners may use the same name", async () => {
+    const [a, b] = await Promise.all([mint("space-name-b1"), mint("space-name-b2")]);
+    const results = await Promise.all([a, b].map((t) => call(t, "POST", "/api/spaces", { name: "Shared name" })));
+    expect(results.map((r) => r.status)).toEqual([201, 201]);
+  });
+});

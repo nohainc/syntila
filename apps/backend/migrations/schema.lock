@@ -1400,6 +1400,7 @@ index space_workflow_defaults.space_workflow_defaults_pkey (space_id) unique
 index space_workflow_settings.space_workflow_settings_pkey (space_id) unique
 index space_workflow_settings.space_workflow_settings_workspace_id_fkidx (workspace_id)
 index spaces.idx_spaces_owner (owner_user_id)
+index spaces.spaces_owner_group_name_key (owner_user_id,(expr)) unique partial
 index spaces.spaces_pkey (id) unique
 index support_spaces.idx_support_spaces_support_user (support_user_id)
 index support_spaces.support_spaces_pkey (user_id,support_user_id) unique
