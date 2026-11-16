@@ -14,6 +14,9 @@ import {
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 
+const SELECT_RELEASE_SIGNING_KEY_REVOCATIONS_BY_KEY_ID =
+  "SELECT key_id FROM release_signing_key_revocations WHERE key_id = ?1";
+
 // =========================================================================
 // Workspace Release API Handlers
 // =========================================================================
@@ -205,7 +208,7 @@ export async function handleDownloadWorkspaceRelease(
   }
 
   const revokedKey = await env.SYNTILA_DB.prepare(
-    "SELECT key_id FROM release_signing_key_revocations WHERE key_id = ?1",
+    SELECT_RELEASE_SIGNING_KEY_REVOCATIONS_BY_KEY_ID,
   )
     .bind(row.signingKeyId)
     .first();
@@ -359,7 +362,7 @@ export async function handlePublishWorkspaceRelease(
     );
   }
   const revokedSigningKey = await env.SYNTILA_DB.prepare(
-    "SELECT key_id FROM release_signing_key_revocations WHERE key_id = ?1",
+    SELECT_RELEASE_SIGNING_KEY_REVOCATIONS_BY_KEY_ID,
   )
     .bind(signingKeyId)
     .first();
