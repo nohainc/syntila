@@ -11,6 +11,9 @@ import { STEP_HARD_CAP_MS } from "@syntila/core";
 import { revokeAssignment } from "./assignment-revocation.js";
 import { createEventPublisher } from "./event-publisher.js";
 
+const UPDATE_THREAD_RUNTIME_LEASES_SET_EXPIRES_AT =
+  "UPDATE thread_runtime_leases SET expires_at = ?1 WHERE id = ?2 AND status = 'active'";
+
 export interface ThreadCoordinatorEnv {
   readonly SYNTILA_DB: D1Database;
   readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
@@ -395,7 +398,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
       return conflict("Stale or expired lease");
     const expiresAt = new Date(Date.now() + THREAD_LEASE_MS).toISOString();
     await this.env.SYNTILA_DB.prepare(
-      "UPDATE thread_runtime_leases SET expires_at = ?1 WHERE id = ?2 AND status = 'active'",
+      UPDATE_THREAD_RUNTIME_LEASES_SET_EXPIRES_AT,
     )
       .bind(expiresAt, lease.id)
       .run();
@@ -612,7 +615,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
       if (decision.action === "extend") {
         const expiresAt = new Date(nowMs + THREAD_LEASE_MS).toISOString();
         await this.env.SYNTILA_DB.prepare(
-          "UPDATE thread_runtime_leases SET expires_at = ?1 WHERE id = ?2 AND status = 'active'",
+          UPDATE_THREAD_RUNTIME_LEASES_SET_EXPIRES_AT,
         )
           .bind(expiresAt, lease.id)
           .run();
