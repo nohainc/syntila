@@ -25,6 +25,9 @@ const CASES: Case[] = [
   { schema: "WorkflowDefaultSchema", valid: [{ defaultWorkflowId: "chat" }], wrongType: [{ defaultWorkflowId: 5 }, {}, { defaultWorkflowId: "chat", extra: 1 }], overLimit: [{ defaultWorkflowId: "x".repeat(65) }], message: "Invalid default workflow selection" },
   { schema: "WorkflowWorkspaceSchema", valid: [{ workspaceId: null }, { workspaceId: "w", confirmReset: true }, { workspaceId: "w", inherit: false }], wrongType: [{ workspaceId: 5 }, { confirmReset: "yes" }, { inherit: "no" }, { workspaceId: "w", extra: 1 }], overLimit: [{ workspaceId: "x".repeat(129) }], message: "Invalid Workspace selection" },
   { schema: "RevokeReasonSchema", valid: [{}, { reason: "key leaked" }], wrongType: [{ reason: 5 }, { reason: ["x"] }], overLimit: [{ reason: "x".repeat(2001) }] },
+  { schema: "UpdateSpaceSchema", valid: [{ name: "Trip" }, { description: null }, { settings: { personalName: "x" } }, { hidden: true, archived: false }, { name: "x", extra: 1 }], wrongType: [{ name: 5 }, { description: 5 }, { settings: "x" }, { settings: [] }, { hidden: "yes" }, { archived: 1 }], overLimit: [{ name: "x".repeat(201) }, { description: "x".repeat(2001) }] },
+  { schema: "SpaceInvitationSchema", valid: [{ email: "a@b.co", role: "viewer" }, { userId: "u", role: "collaborator", permissions: { chat: true } }], wrongType: [{ email: 5 }, { userId: [] }, { role: 3 }], overLimit: [{ email: "x".repeat(321) }, { userId: "x".repeat(129) }, { role: "x".repeat(33) }] },
+  { schema: "SpaceMemberRoleSchema", valid: [{ role: "viewer" }, { permissions: { chat: true } }], wrongType: [{ role: 3 }, { role: ["viewer"] }], overLimit: [{ role: "x".repeat(33) }] },
 ];
 
 const req = (body: unknown) => new Request("https://x/api", { method: "POST", body: JSON.stringify(body) });

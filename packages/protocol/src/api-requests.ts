@@ -43,6 +43,35 @@ export const MarkNotificationsReadSchema = z.object({
 });
 export type MarkNotificationsReadInput = z.infer<typeof MarkNotificationsReadSchema>;
 
+// ---- Spaces and invitations -------------------------------------------------
+// These handlers reject unknown keys themselves (with their own messages), so
+// the schemas are loose: known fields are typed and bounded, extra keys pass.
+
+/** PATCH /api/spaces/:id. */
+export const UpdateSpaceSchema = z.looseObject({
+  name: z.string({ error: "name must be text" }).max(200, "name must be at most 200 characters").optional(),
+  description: z.string({ error: "description must be text" }).max(2000, "description must be at most 2000 characters").nullish(),
+  settings: z.record(z.string(), z.unknown(), { error: "settings must be an object" }).optional(),
+  hidden: z.boolean({ error: "hidden must be true or false" }).nullish(),
+  archived: z.boolean({ error: "archived must be true or false" }).nullish(),
+  kind: z.string().max(32).optional(),
+  ownerUserId: z.string().max(128).optional(),
+});
+
+/** POST /api/spaces/:id/invitations: email or userId (the handler checks exactly one), role, member permissions. */
+export const SpaceInvitationSchema = z.looseObject({
+  email: z.string({ error: "email must be text" }).max(320).optional(),
+  userId: z.string({ error: "userId must be text" }).max(128).optional(),
+  role: z.string({ error: "role must be text" }).max(32).optional(),
+  permissions: z.unknown().optional(),
+});
+
+/** PATCH /api/spaces/:id/members/:userId/{role,permissions}. */
+export const SpaceMemberRoleSchema = z.looseObject({
+  role: z.string({ error: "role must be text" }).max(32).optional(),
+  permissions: z.unknown().optional(),
+});
+
 // ---- Personal, workflow and admin routes ----------------------------------
 
 /** PUT /api/pins/order. */

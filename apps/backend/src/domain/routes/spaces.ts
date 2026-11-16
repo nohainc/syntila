@@ -1,7 +1,12 @@
 import { inTransaction, lockStatement } from "../../platform/tx-env.js";
 import { afterCursorSql, cursorOrderSql, pageOf, pageRequest } from "./pagination.js";
-import { CreateSpaceSchema } from "@syntila/protocol";
-import { readBody, readJson } from "./validation.js";
+import {
+  CreateSpaceSchema,
+  SpaceInvitationSchema,
+  SpaceMemberRoleSchema,
+  UpdateSpaceSchema,
+} from "@syntila/protocol";
+import { readBody } from "./validation.js";
 import { isSpaceMember, spaceKind, spaceMembership, spaceNameOf, userByEmail } from "../queries.js";
 import {
   SpaceMemberLimitError,
@@ -460,7 +465,7 @@ export async function handleUpdateSpace(
     }>();
   if (!existing) throw new HttpError(404, "Space not found");
 
-  const body = (await readJson(request)) as Record<string, unknown>;
+  const body = await readBody(request, UpdateSpaceSchema);
   const personalSettings =
     body.settings &&
     typeof body.settings === "object" &&
@@ -1013,7 +1018,7 @@ export async function handleCreateSpaceInvitation(
     throw new HttpError(403, "Direct Spaces cannot have additional members");
   }
   const policy = await requireSpaceOwner(env, context, spaceId);
-  const body = (await readJson(request)) as Record<string, unknown>;
+  const body = await readBody(request, SpaceInvitationSchema);
   // A retried send with the same Idempotency-Key returns the first result
   // instead of "already pending".
   const receipt = await MutationIdempotency.from(
@@ -1256,7 +1261,7 @@ export async function handleChangeSpaceMemberRole(
       "Direct Space members cannot be modified or removed",
     );
   }
-  const body = (await readJson(request)) as Record<string, unknown>;
+  const body = await readBody(request, SpaceMemberRoleSchema);
   const permissions =
     body.permissions === undefined
       ? null
