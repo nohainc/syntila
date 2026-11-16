@@ -279,13 +279,13 @@ export async function handleApprovePlan(
       ? body.customPhases
       : parseImplementationPhases(planText);
 
+  // Friendly early refusal; the claim inserted with the phases below is the
+  // guarantee (plan_approvals_pkey).
   const alreadyApproved = await db
     .prepare(
-      `SELECT 1 AS found FROM thread_request_queue
-        WHERE thread_id = ?1
-          AND (request_json::jsonb #>> '{planWorkRequestId}') = ?2 LIMIT 1`,
+      "SELECT 1 AS found FROM plan_approvals WHERE plan_work_request_id = ?1",
     )
-    .bind(workRequest.threadId, workRequestId)
+    .bind(workRequestId)
     .first();
   if (alreadyApproved)
     throw new HttpError(409, "This plan was already approved");
@@ -493,6 +493,13 @@ export async function handleApprovePlan(
   // All phases at the end of the queue, in order, in one transaction.
   await db.batch([
     lockQueue(db, workRequest.threadId),
+    // The claim comes first: a second approval fails here and rolls back the
+    // whole batch, so no phase of the loser is ever queued.
+    db
+      .prepare(
+        "INSERT INTO plan_approvals (plan_work_request_id, thread_id, approved_by_user_id, created_at) VALUES (?1, ?2, ?3, ?4)",
+      )
+      .bind(workRequestId, workRequest.threadId, context.userId, now),
     ...[...queueInserts]
       .sort((a, b) => a.position - b.position)
       .map((item) =>

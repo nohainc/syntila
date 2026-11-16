@@ -337,3 +337,43 @@ describe("0021 active access excludes a pending invitation", () => {
     expect((await sql.unsafe("SELECT status FROM workspace_invitations WHERE id='no-access'"))[0].status).toBe("expired");
   });
 });
+
+describe("0022 plan approvals", () => {
+  test("existing approvals are backfilled from the queue and from sent phases; a second claim is rejected", async () => {
+    const real = new URL("../migrations/", import.meta.url).pathname;
+    const dir = mkdtempSync(join(tmpdir(), "syntila-0022-"));
+    for (const f of readdirSync(real).filter((f) => /^\d{4}_.*\.sql$/.test(f) && f < "0022")) copyFileSync(join(real, f), join(dir, f));
+    const sql = await emptyDatabase();
+    await migrate(sql as any, dir);
+    const wr = (id: string, workflow: string, input: unknown, created: string) =>
+      `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
+       VALUES ('${id}','t1','u1','stateless','${workflow}',2,'{}','{}','completed','${JSON.stringify(input)}','${created}','${created}');`;
+    const queued = (id: string, plan: string, author: string, created: string) =>
+      `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
+       VALUES ('${id}','t1','${author}','${JSON.stringify({ planWorkRequestId: plan })}',${Number(id.slice(1))},'queued','${created}','${created}');`;
+    await sql.unsafe([
+      user("u1"), space("s1", "u1"), thread("t1", "s1", "u1"),
+      wr("plan-queue", "plan_implement", {}, "2026-01-01T00:00:00Z"),   // phases still queued
+      wr("plan-sent", "plan_implement", {}, "2026-01-01T00:00:00Z"),    // phases already sent
+      wr("plan-none", "plan_implement", {}, "2026-01-01T00:00:00Z"),    // never approved
+      wr("phase-1", "direct", { planWorkRequestId: "plan-sent" }, "2026-02-01T00:00:00Z"),
+      queued("q1", "plan-queue", "u1", "2026-03-02T00:00:00Z"),
+      queued("q2", "plan-queue", "u1", "2026-03-01T00:00:00Z"),
+      queued("q3", "plan-gone", "u1", "2026-03-01T00:00:00Z"),          // plan row no longer exists: no claim
+    ].join("\n"));
+    copyFileSync(join(real, "0022_plan_approvals.sql"), join(dir, "0022_plan_approvals.sql"));
+    expect((await migrate(sql as any, dir)).applied).toEqual(["0022_plan_approvals.sql"]);
+    const rows = await sql.unsafe("SELECT plan_work_request_id AS id, approved_by_user_id AS by, created_at FROM plan_approvals ORDER BY 1");
+    expect(rows.map((r: any) => r.id)).toEqual(["plan-queue", "plan-sent"]);
+    // The earliest evidence gives the time.
+    expect(new Date(rows[0].created_at).toISOString()).toBe("2026-03-01T00:00:00.000Z");
+    expect(new Date(rows[1].created_at).toISOString()).toBe("2026-02-01T00:00:00.000Z");
+    // The source rows are untouched.
+    expect((await sql.unsafe("SELECT count(*)::int AS n FROM thread_request_queue"))[0].n).toBe(3);
+    // The claim survives the queue being emptied, and cannot be taken twice.
+    await sql.unsafe("DELETE FROM thread_request_queue");
+    await expect(sql.unsafe("INSERT INTO plan_approvals(plan_work_request_id,thread_id,approved_by_user_id) VALUES ('plan-queue','t1','u1')"))
+      .rejects.toMatchObject({ constraint: "plan_approvals_pkey" });
+    await sql.unsafe("INSERT INTO plan_approvals(plan_work_request_id,thread_id,approved_by_user_id) VALUES ('plan-none','t1','u1')");
+  });
+});

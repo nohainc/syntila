@@ -592,3 +592,44 @@ describe("membership and invitation conflicts", () => {
     for (const m of rejected) expect(["An invitation is already pending", "This person already has access"]).toContain(m);
   });
 });
+
+describe("Plan approval", () => {
+  const plan = (n: number) => JSON.stringify({ text: "Plan\n```json:phases\n" + JSON.stringify(Array.from({ length: n }, (_, i) => ({ id: i + 1, title: `Phase ${i + 1}`, description: "Do it" }))) + "\n```" });
+  async function approvedPlan(name: string, phases: number) {
+    const token = await mint(name);
+    const { threadId } = await spaceWithThread(token, `Plan ${name}`);
+    const userId = (await call(token, "GET", "/api/session")).body.user.id as string;
+    const id = `wr-plan-${name}`;
+    await sql`INSERT INTO work_requests (id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, input_json, created_at, updated_at)
+              VALUES (${id}, ${threadId}, ${userId}, 'stateless', 'plan_implement', 2, '{}', '{}', 'completed', '{}', now(), now())`;
+    await sql`INSERT INTO workflow_tasks (id, work_request_id, step_kind, execution_mode, timeout_ms, prompt_profile_version, status, output_json, created_at, updated_at)
+              VALUES (${"task-" + id}, ${id}, 'plan', 'stateless_read', 60000, 'plan:v2', 'completed', ${plan(phases)}, now(), now())`;
+    return { token, threadId, id };
+  }
+  const queued = async (threadId: string, id: string) =>
+    (await sql`SELECT count(*)::int AS n FROM thread_request_queue WHERE thread_id = ${threadId} AND request_json::jsonb #>> '{planWorkRequestId}' = ${id}`)[0].n as number;
+
+  for (const [mode, perApproval] of [["none", 3], ["per_phase", 6], ["final", 4]] as const) {
+    test(`parallel approvals (verification ${mode}): one wins, one complete phase set`, async () => {
+      const { token, threadId, id } = await approvedPlan(`mode-${mode}`, 3);
+      const results = await Promise.all(Array.from({ length: 8 }, () =>
+        call(token, "POST", `/api/work-requests/${id}/approve-plan`, { verificationMode: mode })));
+      expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
+      expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+      expect(results.filter((r) => r.status === 409).map((r) => r.body.error)).toEqual(Array(7).fill("This plan was already approved"));
+      // Winning requests may already have been sent; count queued plus dispatched.
+      const dispatched = (await sql`SELECT count(*)::int AS n FROM work_requests WHERE thread_id = ${threadId} AND input_json::jsonb #>> '{planWorkRequestId}' = ${id}`)[0].n as number;
+      expect(await queued(threadId, id) + dispatched).toBe(perApproval);
+    });
+  }
+
+  test("approving again after the queue entries are gone is still refused", async () => {
+    const { token, threadId, id } = await approvedPlan("consumed", 2);
+    expect((await call(token, "POST", `/api/work-requests/${id}/approve-plan`, {})).status).toBe(200);
+    await sql`DELETE FROM thread_request_queue WHERE thread_id = ${threadId}`;
+    const again = await call(token, "POST", `/api/work-requests/${id}/approve-plan`, {});
+    expect(again.status).toBe(409);
+    expect(again.body.error).toBe("This plan was already approved");
+    expect(await queued(threadId, id)).toBe(0);
+  });
+});

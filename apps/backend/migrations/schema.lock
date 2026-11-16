@@ -246,6 +246,10 @@ column person_invitations.invitee_user_id text
 column person_invitations.inviter_user_id text not-null
 column person_invitations.status text not-null
 column person_invitations.updated_at timestamptz not-null default
+column plan_approvals.approved_by_user_id text not-null
+column plan_approvals.created_at timestamptz not-null default
+column plan_approvals.plan_work_request_id text not-null
+column plan_approvals.thread_id text not-null
 column realtime_event_cursors.next_sequence int8 not-null default
 column realtime_event_cursors.stream_id text
 column realtime_event_cursors.stream_key text not-null
@@ -906,6 +910,9 @@ constraint person_invitations.person_invitations_invitee_user_id_fkey foreign-ke
 constraint person_invitations.person_invitations_inviter_user_id_fkey foreign-key -> users on-delete-cascade
 constraint person_invitations.person_invitations_pkey primary-key
 constraint person_invitations.person_invitations_status_check check
+constraint plan_approvals.plan_approvals_pkey primary-key
+constraint plan_approvals.plan_approvals_plan_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
+constraint plan_approvals.plan_approvals_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint realtime_event_cursors.realtime_event_cursors_check check
 constraint realtime_event_cursors.realtime_event_cursors_pkey primary-key
 constraint realtime_event_cursors.realtime_event_cursors_stream_kind_check check
@@ -1366,6 +1373,8 @@ index person_invitations.idx_person_invitations_pending_email (inviter_user_id,(
 index person_invitations.idx_person_invitations_pending_pair ((expr),(expr)) unique partial
 index person_invitations.person_invitations_accepted_by_user_id_fkidx (accepted_by_user_id)
 index person_invitations.person_invitations_pkey (id) unique
+index plan_approvals.plan_approvals_pkey (plan_work_request_id) unique
+index plan_approvals.plan_approvals_thread_id_fkidx (thread_id)
 index realtime_event_cursors.idx_realtime_event_cursors_stream (stream_kind,(expr)) unique
 index realtime_event_cursors.realtime_event_cursors_pkey (stream_kind,stream_key) unique
 index realtime_events.idx_realtime_events_assignment_activity (assignment_id,event_type,occurred_at,sequence)
