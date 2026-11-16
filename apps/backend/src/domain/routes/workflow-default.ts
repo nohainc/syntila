@@ -14,6 +14,9 @@ import {
   type SecurityEnv,
 } from "./http-security.js";
 
+const SELECT_USER_WORKFLOW_CONFIGURATIONS_BY_USER_ID =
+  "SELECT configuration_json AS configurationJson FROM user_workflow_configurations WHERE user_id = ?1 AND workflow_id = ?2 AND workspace_id = ?3";
+
 const CHAT_WORKFLOW_ID = "chat";
 
 function definitionFor(id: string) {
@@ -103,7 +106,7 @@ export async function handleWorkflowDefault(
       : JSON.parse(
           (
             await env.SYNTILA_DB.prepare(
-              "SELECT configuration_json AS configurationJson FROM user_workflow_configurations WHERE user_id = ?1 AND workflow_id = ?2 AND workspace_id = ?3",
+              SELECT_USER_WORKFLOW_CONFIGURATIONS_BY_USER_ID,
             )
               .bind(ownerUserId, selected, userWorkspaceId)
               .first<{ configurationJson: string }>()
@@ -138,7 +141,7 @@ export async function handleWorkflowDefault(
     : JSON.parse(
         (
           await env.SYNTILA_DB.prepare(
-            "SELECT configuration_json AS configurationJson FROM user_workflow_configurations WHERE user_id = ?1 AND workflow_id = ?2 AND workspace_id = ?3",
+            SELECT_USER_WORKFLOW_CONFIGURATIONS_BY_USER_ID,
           )
             .bind(ownerUserId, workflowId, userWorkspaceId)
             .first<{ configurationJson: string }>()
