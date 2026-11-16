@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { migrate, migrationFiles, pendingMigrations, splitStatements } from "../src/migrate";
 import { pruneOperationalTables } from "../src/retention";
 import { schemaLock, verifySchemaLock } from "../src/schema-lock";
+import { copyFileSync, readdirSync } from "node:fs";
+import { space, thread, user } from "./domain/helpers/seed";
 
 const BASE_URL = process.env.TEST_DATABASE_URL ?? "postgres://syntila_app:devpass@127.0.0.1:5432/postgres";
 const admin = new SQL(BASE_URL, { max: 1 });
@@ -214,5 +216,33 @@ describe("operational retention", () => {
     expect((await sql`SELECT id FROM email_outbox ORDER BY id`).map((r: any) => r.id)).toEqual(["new-sent", "old-pending"]);
     expect((await sql`SELECT id FROM workflow_instances ORDER BY id`).map((r: any) => r.id)).toEqual(["new-done", "old-waiting"]);
     expect(Number((await sql`SELECT count(*) AS n FROM workflow_events`)[0].n)).toBe(0);
+  });
+});
+
+describe("0019 unique Thread names", () => {
+  test("existing duplicates are renamed (oldest keeps its name), then the rule is enforced", async () => {
+    const real = new URL("../migrations/", import.meta.url).pathname;
+    const dir = mkdtempSync(join(tmpdir(), "syntila-0019-"));
+    for (const f of readdirSync(real).filter((f) => /^\d{4}_.*\.sql$/.test(f) && f < "0019")) copyFileSync(join(real, f), join(dir, f));
+    const sql = await emptyDatabase();
+    await migrate(sql as any, dir);
+    // The state of an older database: the rule was only checked by the handlers.
+    await sql.unsafe([
+      user("u"), space("S", "u"), space("S2", "u"),
+      thread("t1", "S", "u", "Plan"), thread("t2", "S", "u", "plan "), thread("t3", "S", "u", " PLAN"),
+      thread("t4", "S", "u", "Plan (2)"),          // already holds the first free-looking name
+      thread("o1", "S2", "u", "Plan"),             // another Space may reuse the name
+    ].join("\n"));
+    copyFileSync(join(real, "0019_unique_thread_names.sql"), join(dir, "0019_unique_thread_names.sql"));
+    expect((await migrate(sql as any, dir)).applied).toEqual(["0019_unique_thread_names.sql"]);
+    const rows = await sql.unsafe("SELECT id, name FROM threads WHERE space_id = 'S' ORDER BY id");
+    const names = new Map(rows.map((r: any) => [r.id, r.name]));
+    expect(names.get("t1")).toBe("Plan");                         // keeps its name (ties break by id)
+    expect(new Set(rows.map((r: any) => String(r.name).trim().toLowerCase())).size).toBe(rows.length);
+    expect(String(names.get("t2"))).toContain("(2)");
+    expect((await sql.unsafe("SELECT name FROM threads WHERE id = 'o1'"))[0].name).toBe("Plan");
+    await expect(sql.unsafe(
+      "INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES ('t9','S','  pLaN  ','active','u',now(),now())",
+    )).rejects.toMatchObject({ constraint: "threads_space_name_key" });
   });
 });

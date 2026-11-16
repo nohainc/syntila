@@ -80,6 +80,10 @@ test("no route answers 5xx to junk input", async () => {
     workspace("fuzz-ws", "fuzz-owner"),
     workRequest(threadId, "fuzz-owner", "{}", "fuzz-wr").replace("?", "'{}'"),
     message(threadId, "fuzz-owner", "[]", "fuzz-dm").replace("?", "'[]'"),
+    `INSERT INTO user_files(id,user_id,thread_id,space_id,name,media_type,size_bytes,created_at)
+       VALUES ('fuzz-file','fuzz-owner','${threadId}','${spaceId}','a.txt','text/plain',3,now())`,
+    `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
+       VALUES ('fuzz-q','${threadId}','fuzz-owner','{"message":"hi"}',1,'queued',now(),now())`,
   ].join(";\n"));
   const real: Record<string, string> = {
     spaceId, threadId,
@@ -90,6 +94,17 @@ test("no route answers 5xx to junk input", async () => {
     userId: other,
     conversationId: threadConversationId(threadId),
     invitationId: invitation.body?.outgoing?.[0]?.id ?? "unknown",
+    id: invitation.body?.outgoing?.[0]?.id ?? "unknown",
+    fileId: "fuzz-file",
+    itemId: "fuzz-q",
+    workflowId: "chat",
+    workerTypeId: "claude",
+    workerId: "claude",
+    inputId: "fuzz-input",
+    kind: "thread",
+    targetId: threadId,
+    pluginRef: "fuzz-plugin",
+    version: "1.0.0",
   };
 
   const failures: string[] = [];

@@ -1423,6 +1423,7 @@ index thread_work_configs.thread_work_configs_updated_by_user_id_fkidx (updated_
 index threads.idx_threads_space (space_id,status)
 index threads.threads_lead_user_id_fkidx (lead_user_id)
 index threads.threads_pkey (id) unique
+index threads.threads_space_name_key (space_id,(expr)) unique
 index user_blocks.idx_user_blocks_blocked (blocked_user_id)
 index user_blocks.user_blocks_pkey (blocker_user_id,blocked_user_id) unique
 index user_file_reservations.idx_user_file_reservations_user (user_id,expires_at)

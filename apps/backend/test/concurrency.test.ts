@@ -419,3 +419,41 @@ describe("races on Workspaces, grants and the request queue", () => {
     expect(await brokenInvariants(sql)).toEqual([]);
   });
 });
+
+describe("Thread names", () => {
+  const names = async (spaceId: string) =>
+    (await sql.unsafe("SELECT name FROM threads WHERE space_id = $1", [spaceId])).map((r: any) => String(r.name).trim().toLowerCase());
+
+  test("parallel creates of one name: exactly one wins, the rest are 409, no 5xx", async () => {
+    const token = await mint("thread-name-a");
+    const space = await call(token, "POST", "/api/spaces", { name: "Names" });
+    const spaceId = space.body.space.id as string;
+    const results = await Promise.all(Array.from({ length: 12 }, (_, i) =>
+      call(token, "POST", `/api/spaces/${spaceId}/threads`, { name: i % 2 ? " Plan " : "plan" })));
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses.filter((s) => s >= 500)).toEqual([]);
+    expect(statuses.filter((s) => s === 201)).toHaveLength(1);
+    expect(statuses.filter((s) => s === 409)).toHaveLength(11);
+    // The loser is told what to change, not just to reload.
+    expect(results.find((r) => r.status === 409)!.body.error).toBe("This Space already has a Thread with this name");
+    expect((await names(spaceId)).filter((n) => n === "plan")).toHaveLength(1);
+    expect(await brokenInvariants(sql)).toEqual([]);
+  });
+
+  test("a create racing a rename to the same name: at most one Thread ends up with it", async () => {
+    const token = await mint("thread-name-b");
+    const space = await call(token, "POST", "/api/spaces", { name: "Rename race" });
+    const spaceId = space.body.space.id as string;
+    const ids: string[] = [];
+    for (const n of ["a", "b", "c", "d"]) {
+      const t = await call(token, "POST", `/api/spaces/${spaceId}/threads`, { name: n });
+      ids.push(t.body.thread.id);
+    }
+    const results = await Promise.all([
+      call(token, "POST", `/api/spaces/${spaceId}/threads`, { name: "Target" }),
+      ...ids.map((id) => call(token, "PATCH", `/api/threads/${id}`, { name: "target" })),
+    ]);
+    expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
+    expect((await names(spaceId)).filter((n) => n === "target")).toHaveLength(1);
+  });
+});

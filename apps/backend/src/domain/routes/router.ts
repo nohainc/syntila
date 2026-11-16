@@ -97,9 +97,10 @@ export async function routeWorkerRequest(
           },
         }),
       );
+      const specific = conflict ? CONSTRAINT_MESSAGES[(error as { constraint?: string }).constraint ?? ""] : undefined;
       return deps.json(
         conflict
-          ? { error: "This changed at the same time elsewhere. Reload and try again.", code: "conflict" }
+          ? { error: specific ?? "This changed at the same time elsewhere. Reload and try again.", code: "conflict" }
           : { error: "The server is busy with the same item. Try again.", code: "busy" },
         { status: conflict ? 409 : 503 },
       );
@@ -129,6 +130,14 @@ export async function routeWorkerRequest(
 }
 
 /** SQLSTATE of a PostgreSQL error, through the adapter's wrapper too. */
+/**
+ * Unique constraints that express a rule a person can break by choosing a
+ * name: the message tells them what to change instead of "reload".
+ */
+const CONSTRAINT_MESSAGES: Record<string, string> = {
+  threads_space_name_key: "This Space already has a Thread with this name",
+};
+
 function databaseErrorCode(error: unknown): string | undefined {
   for (let e: any = error, depth = 0; e && depth < 3; e = e.cause, depth++) {
     const code = e.errno ?? e.code;
