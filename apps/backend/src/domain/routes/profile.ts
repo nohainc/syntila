@@ -135,7 +135,7 @@ export async function handleUploadAvatar(
       throw new HttpError(409, "Profile changed; retry the upload");
     await publishPeopleProfileChanged(env, context.userId);
     // The signed-in session (served by the auth Worker) shows the avatar.
-    await (
+    const authSync = (
       env as {
         SYNTILA_AUTH_SYNC?: {
           avatarChanged(
@@ -144,7 +144,19 @@ export async function handleUploadAvatar(
           ): Promise<void>;
         };
       }
-    ).SYNTILA_AUTH_SYNC?.avatarChanged(context.userId, storedValue);
+    ).SYNTILA_AUTH_SYNC;
+    if (authSync) {
+      await authSync.avatarChanged(context.userId, storedValue);
+    } else {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          message: "auth_worker.avatar_sync_skipped",
+          userId: context.userId,
+          reason: "not_configured",
+        }),
+      );
+    }
   } catch (error) {
     await bucket.delete([key, originalKey]).catch(() => undefined);
     throw error;

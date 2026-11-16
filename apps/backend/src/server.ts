@@ -63,6 +63,11 @@ if (!emailOutbox) console.warn("EMAIL_RELAY_URL / EMAIL_RELAY_SECRET are not con
 
 const runtime = createRuntime(sql, db, {
   SYNTILA_ENVIRONMENT: process.env.SYNTILA_ENVIRONMENT ?? "production",
+  PADDLE_LIVE_CHECKOUT_ENABLED: process.env.PADDLE_LIVE_CHECKOUT_ENABLED,
+  PADDLE_LIVE_CLIENT_TOKEN: process.env.PADDLE_LIVE_CLIENT_TOKEN,
+  PADDLE_LIVE_MONTHLY_PRICE_ID: process.env.PADDLE_LIVE_MONTHLY_PRICE_ID,
+  PADDLE_LIVE_ANNUAL_PRICE_ID: process.env.PADDLE_LIVE_ANNUAL_PRICE_ID,
+  PADDLE_LIVE_REFERENCE_SECRET: process.env.PADDLE_LIVE_REFERENCE_SECRET,
   PADDLE_SANDBOX_CLIENT_TOKEN: process.env.PADDLE_SANDBOX_CLIENT_TOKEN || localPaddle.PADDLE_SANDBOX_CLIENT_TOKEN,
   PADDLE_SANDBOX_MONTHLY_PRICE_ID: process.env.PADDLE_SANDBOX_MONTHLY_PRICE_ID || localPaddle.PADDLE_SANDBOX_MONTHLY_PRICE_ID,
   PADDLE_SANDBOX_ANNUAL_PRICE_ID: process.env.PADDLE_SANDBOX_ANNUAL_PRICE_ID || localPaddle.PADDLE_SANDBOX_ANNUAL_PRICE_ID,
@@ -83,9 +88,11 @@ const runtime = createRuntime(sql, db, {
   // The relay URL's origin is the auth Worker; it also takes avatar updates.
   SYNTILA_AUTH_SYNC: process.env.EMAIL_RELAY_URL && process.env.EMAIL_RELAY_SECRET
     ? new AuthWorkerSync(new URL(process.env.EMAIL_RELAY_URL).origin, process.env.EMAIL_RELAY_SECRET) : undefined,
-  SYNTILA_ARTIFACTS: process.env.R2_ACCOUNT_ID
-    ? new S3R2Bucket({ accountId: process.env.R2_ACCOUNT_ID, bucket: process.env.R2_BUCKET ?? "syntila-artifacts",
-        accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "", secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "" })
+  // Values are trimmed: a stray space or line break in the env file makes R2
+  // answer 403 SignatureDoesNotMatch. `scripts/check-storage.sh` tests them.
+  SYNTILA_ARTIFACTS: process.env.R2_ACCOUNT_ID?.trim()
+    ? new S3R2Bucket({ accountId: process.env.R2_ACCOUNT_ID.trim(), bucket: (process.env.R2_BUCKET ?? "syntila-artifacts").trim(),
+        accessKeyId: (process.env.R2_ACCESS_KEY_ID ?? "").trim(), secretAccessKey: (process.env.R2_SECRET_ACCESS_KEY ?? "").trim() })
     : unconfiguredBucket,
 });
 

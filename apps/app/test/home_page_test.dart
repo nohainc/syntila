@@ -5,6 +5,51 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('changelog adds history without duplicating current updates', () {
+    const current = AxProductUpdate(
+      id: 'newer-entry',
+      slug: 'parallel-research',
+      title: 'Research',
+      summary: 'Current update',
+      publishedAt: '2026-11-15T00:00:00Z',
+    );
+    final updates = productUpdateHistory([current]);
+    expect(updates.where((update) => update.slug == 'parallel-research'),
+        [current]);
+    expect(
+        updates.any((update) => update.slug == 'personal-connections'), isTrue);
+    expect(defaultProductUpdates.length, 4);
+  });
+
+  testWidgets('Home shows the four latest updates from the full history',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 2200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+      child: EstablishedUserHome(
+        spaces: const [],
+        workspaces: const [],
+        workers: const [],
+        run: null,
+        openFindingCount: 0,
+        onOpenWorkspaces: () {},
+        onOpenRun: (_, __) {},
+        onOpenSpace: (_) {},
+      ),
+    ))));
+    await tester.pumpAndSettle();
+    final latest = AxProductUpdateService.getHomeUpdates(
+        productUpdateHistory(defaultProductUpdates),
+        limit: 4);
+    expect(latest, hasLength(4));
+    for (final update in latest) {
+      expect(find.text(update.title), findsOneWidget);
+    }
+    expect(find.text('Research with multiple Workers'), findsNothing);
+  });
+
   Widget scaffold(Widget child) => MaterialApp(
         home: Scaffold(body: SingleChildScrollView(child: child)),
       );
@@ -14,6 +59,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1200, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(scaffold(EstablishedUserHome(
+      historicalUpdates: const [],
       spaces: const [
         AxSpace(
             id: 's',
@@ -102,6 +148,7 @@ void main() {
             child: SizedBox(
           width: contentWidth,
           child: EstablishedUserHome(
+            historicalUpdates: const [],
             spaces: const [
               AxSpace(
                   id: 's',
@@ -159,6 +206,7 @@ void main() {
       await tester.binding.setSurfaceSize(Size(width, 1800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(scaffold(EstablishedUserHome(
+        historicalUpdates: const [],
         spaces: const [
           AxSpace(
               id: 's',
@@ -219,6 +267,7 @@ void main() {
   testWidgets('Continue working bounds the message preview to 200 characters',
       (tester) async {
     await tester.pumpWidget(scaffold(EstablishedUserHome(
+      historicalUpdates: const [],
       spaces: const [
         AxSpace(id: 's', name: 'Syntila', branch: 'main', lastActivity: 'Now')
       ],
@@ -315,6 +364,7 @@ void main() {
     var navigated = false;
     await tester.pumpWidget(scaffold(StatefulBuilder(
         builder: (context, setState) => HomePage(
+              historicalUpdates: const [],
               spaces: const [space],
               workspaces: const [],
               workers: const [],
@@ -404,6 +454,7 @@ void main() {
   testWidgets('For you shows unread actions without a count badge',
       (tester) async {
     await tester.pumpWidget(scaffold(HomePage(
+      historicalUpdates: const [],
       spaces: const [space],
       workspaces: const [],
       workers: const [],
@@ -450,6 +501,7 @@ void main() {
     var workspaceOpened = false;
 
     await tester.pumpWidget(scaffold(HomePage(
+      historicalUpdates: const [],
       spaces: const [],
       workspaces: const [],
       workers: const [],
@@ -514,6 +566,7 @@ void main() {
     AxSpaceInvitation? declinedInvite;
 
     await tester.pumpWidget(scaffold(HomePage(
+      historicalUpdates: const [],
       spaces: const [],
       workspaces: const [],
       workers: const [],
@@ -586,6 +639,7 @@ void main() {
     AxSpaceInvitation? acceptedInvite;
 
     await tester.pumpWidget(scaffold(HomePage(
+      historicalUpdates: const [],
       spaces: const [space],
       workspaces: const [
         AxWorkspace(id: 'workspace-1', name: 'MacBook'),
@@ -762,6 +816,7 @@ void main() {
     ];
 
     await tester.pumpWidget(scaffold(HomePage(
+      historicalUpdates: const [],
       spaces: const [space],
       workspaces: const [],
       workers: const [],
@@ -899,6 +954,7 @@ void main() {
     ];
 
     await tester.pumpWidget(scaffold(HomePage(
+      historicalUpdates: const [],
       spaces: const [space],
       workspaces: const [],
       workers: const [],
@@ -950,6 +1006,7 @@ void main() {
     );
 
     await tester.pumpWidget(scaffold(HomePage(
+      historicalUpdates: const [],
       spaces: const [space],
       workspaces: const [],
       workers: const [],
@@ -1090,6 +1147,7 @@ void main() {
     ];
 
     await tester.pumpWidget(scaffold(HomePage(
+      historicalUpdates: const [],
       spaces: const [
         AxSpace(
           id: 'proj-syntila',
@@ -1447,6 +1505,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: EstablishedUserHome(
+            historicalUpdates: const [],
             spaces: const [
               AxSpace(
                 id: 'p-1',
@@ -1638,6 +1697,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: EstablishedUserHome(
+            historicalUpdates: const [],
             spaces: const [
               AxSpace(
                 id: 'p-1',
@@ -1714,6 +1774,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [
@@ -1855,6 +1916,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: EstablishedUserHome(
+            historicalUpdates: const [],
             spaces: const [
               AxSpace(
                 id: 'p-1',
@@ -1981,6 +2043,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [activeRunSpace],
           workspaces: const [],
           workers: const [],
@@ -2025,6 +2088,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [],
@@ -2063,6 +2127,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [],
@@ -2110,6 +2175,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [],
@@ -2201,6 +2267,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [testWorker],
@@ -2292,6 +2359,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [testWorker],
@@ -2398,6 +2466,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [testWorker],
@@ -2442,6 +2511,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [],
@@ -2467,6 +2537,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [],
@@ -2494,6 +2565,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         EstablishedUserHome(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [],
@@ -2524,6 +2596,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         HomePage(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [],
@@ -2616,6 +2689,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         HomePage(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [
@@ -2732,6 +2806,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         HomePage(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [],
@@ -2800,6 +2875,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         HomePage(
+          historicalUpdates: const [],
           spaces: const [space],
           workspaces: const [],
           workers: const [],
@@ -2846,6 +2922,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         HomePage(
+          historicalUpdates: const [],
           spaces: const [],
           workspaces: const [],
           workers: const [],
@@ -2971,6 +3048,7 @@ void main() {
     await tester.pumpWidget(
       scaffold(
         HomePage(
+          historicalUpdates: const [],
           spaces: const [authorizedSpace],
           workspaces: const [],
           workers: const [localWorker],
@@ -3197,6 +3275,7 @@ void main() {
       ];
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3223,6 +3302,7 @@ void main() {
         'Scenario: Brand-new account -> Expected: Create/Join Space onboarding',
         (tester) async {
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [],
         workspaces: const [],
         workers: const [],
@@ -3250,6 +3330,7 @@ void main() {
         'Scenario: New user with invitation -> Expected: Invitation takes priority',
         (tester) async {
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [],
         workspaces: const [],
         workers: const [],
@@ -3274,6 +3355,7 @@ void main() {
         'Scenario: Space but no Workspace -> Expected: Normal Home, not setup warning',
         (tester) async {
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3305,6 +3387,7 @@ void main() {
       );
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3337,6 +3420,7 @@ void main() {
       );
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3355,6 +3439,7 @@ void main() {
 
       // Re-render with invitation accepted & converted to joined space
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space, newJoinedSpace],
         workspaces: const [],
         workers: const [],
@@ -3388,6 +3473,7 @@ void main() {
       ];
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3425,6 +3511,7 @@ void main() {
       );
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3463,6 +3550,7 @@ void main() {
 
       // Re-rendered after completion: run is null / done, completion attention item in For You
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3505,6 +3593,7 @@ void main() {
       );
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [activeSpace],
         workspaces: const [],
         workers: const [],
@@ -3562,6 +3651,7 @@ void main() {
       );
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [spaceWithArchived],
         workspaces: const [],
         workers: const [],
@@ -3595,6 +3685,7 @@ void main() {
       ];
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3638,6 +3729,7 @@ void main() {
       };
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3684,6 +3776,7 @@ void main() {
       ];
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [chatgptWorker],
@@ -3728,6 +3821,7 @@ void main() {
       ];
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [chatgptWorker], // User has NO Gemini worker
@@ -3775,6 +3869,7 @@ void main() {
 
       // 1. With worker present: AI update is shown
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [claudeWorker],
@@ -3792,6 +3887,7 @@ void main() {
 
       // 2. Revoke worker access: workers list emptied -> AI update disappears
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [], // Claude worker revoked
@@ -3813,6 +3909,7 @@ void main() {
     testWidgets('Scenario: Empty optional section -> Expected: Section hidden',
         (tester) async {
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3837,6 +3934,7 @@ void main() {
     testWidgets('Scenario: Offline -> Expected: Cached Home survives',
         (tester) async {
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -3889,6 +3987,7 @@ void main() {
       ];
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [authProj], // User ONLY has access to proj-allowed
         workspaces: const [],
         workers: const [],
@@ -3951,6 +4050,7 @@ void main() {
       });
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -4026,6 +4126,7 @@ void main() {
       );
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [activeSpace],
         workspaces: const [],
         workers: const [],
@@ -4059,6 +4160,7 @@ void main() {
 
       AxSpaceInvitation? accepted;
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -4106,6 +4208,7 @@ void main() {
       ];
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -4155,6 +4258,7 @@ void main() {
 
       var openedWhatsNew = false;
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -4211,6 +4315,7 @@ void main() {
 
       AxAiCapabilityUpdate? openedAiUpdate;
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [chatgptWorker],
@@ -4242,6 +4347,7 @@ void main() {
 
       var spaceCreated = false;
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [],
         workspaces: const [],
         workers: const [],
@@ -4278,6 +4384,7 @@ void main() {
       );
 
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [space],
         workspaces: const [],
         workers: const [],
@@ -4307,6 +4414,7 @@ void main() {
         'New user Home uses Space-first onboarding and omits old workspace-first dashboard',
         (tester) async {
       await tester.pumpWidget(scaffold(HomePage(
+        historicalUpdates: const [],
         spaces: const [],
         workspaces: const [],
         workers: const [],

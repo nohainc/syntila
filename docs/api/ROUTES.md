@@ -8,7 +8,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 `Workspace/server`: called with Workspace or server credentials, no browser same-origin check.
 `Idempotency-Key`: a retry with the same key returns the first response (see CONTRACT.md).
 
-137 paths.
+138 paths.
 
 | Path | Methods | Notes |
 | --- | --- | --- |
@@ -22,6 +22,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/admin/workers/:workerTypeId/profile/history` | GET |  |
 | `/api/admin/workers/:workerTypeId/profile/restore` | POST |  |
 | `/api/admin/workers/:workerTypeId/profile/validate` | POST |  |
+| `/api/billing/live/checkout-config` | ANY |  |
 | `/api/billing/sandbox/checkout-config` | ANY |  |
 | `/api/billing/sandbox/portal` | ANY |  |
 | `/api/billing/sandbox/webhook` | ANY | Workspace/server |

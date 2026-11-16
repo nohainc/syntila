@@ -146,7 +146,8 @@ instead of treating a missing legacy status field as “Needs attention”.
 
 The Home page's What's new and AI updates sections use the same compact,
 clickable update rows. Each section has a See all dialog with the complete
-available update summaries. Continue working is populated from cached Space
+available update summaries; What’s new includes historical milestones and Home
+shows the four most recent published updates. Continue working is populated from cached Space
 thread collections and shows the three most recently updated, navigable
 Threads; thread timestamps and message snippets come from the authorized
 Cloud thread read model.

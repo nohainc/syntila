@@ -13,6 +13,7 @@ import { conditionalJson } from "./conditional-read.js";
 import { handleApprovePlan } from "./implement-plan.js";
 import { handleWorkspaceMcpAction } from "./mcp-action.js";
 import { handleWorkspaceMcpInventory } from "./mcp-inventory.js";
+import { handleLiveCheckoutConfig } from "./paddle-live.js";
 import {
   handleSandboxCheckoutConfig,
   handleSandboxPortal,
@@ -215,6 +216,9 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("*", "/api/me/privacy", (c) => handleReadReceiptPrivacy(c.request, c.env, c.ctx)),
     r("*", "/api/me/plan", (c) => handleAccountPlan(c.request, c.env, c.ctx)),
     r("GET", "/api/me/invitations", call("handleListCurrentUserInvitations", ctx)),
+
+    // Billing. Live checkout remains disabled until explicitly configured.
+    r("*", "/api/billing/live/checkout-config", (c) => handleLiveCheckoutConfig(c.request, c.env, c.ctx)),
 
     // Billing (Paddle sandbox).
     r("*", "/api/billing/sandbox/checkout-config", (c) => handleSandboxCheckoutConfig(c.request, c.env, c.ctx)),

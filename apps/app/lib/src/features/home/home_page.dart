@@ -26,6 +26,7 @@ class HomePage extends StatelessWidget {
     this.attentionItems = const [],
     this.continueWorkItems = const [],
     this.productUpdates = const [],
+    this.historicalUpdates = historicalProductUpdates,
     this.productUpdateReadStates = const {},
     this.aiUpdates = const [],
     this.userName,
@@ -67,6 +68,7 @@ class HomePage extends StatelessWidget {
   final List<AxHomeAttentionItem> attentionItems;
   final List<AxContinueWorkItem> continueWorkItems;
   final List<AxProductUpdate> productUpdates;
+  final List<AxProductUpdate> historicalUpdates;
   final Map<String, AxUserProductUpdateState> productUpdateReadStates;
   final List<AxAiUpdate> aiUpdates;
   final String? userName;
@@ -110,6 +112,7 @@ class HomePage extends StatelessWidget {
           attentionItems: attentionItems,
           continueWorkItems: continueWorkItems,
           productUpdates: productUpdates,
+          historicalUpdates: historicalUpdates,
           productUpdateReadStates: productUpdateReadStates,
           aiUpdates: aiUpdates,
           userName: userName,
@@ -641,6 +644,7 @@ class EstablishedUserHome extends StatelessWidget {
     this.attentionItems = const [],
     this.continueWorkItems = const [],
     this.productUpdates = const [],
+    this.historicalUpdates = historicalProductUpdates,
     this.productUpdateReadStates = const {},
     this.aiUpdates = const [],
     this.userName,
@@ -679,6 +683,7 @@ class EstablishedUserHome extends StatelessWidget {
   final List<AxHomeAttentionItem> attentionItems;
   final List<AxContinueWorkItem> continueWorkItems;
   final List<AxProductUpdate> productUpdates;
+  final List<AxProductUpdate> historicalUpdates;
   final Map<String, AxUserProductUpdateState> productUpdateReadStates;
   final List<AxAiUpdate> aiUpdates;
   final String? userName;
@@ -709,7 +714,9 @@ class EstablishedUserHome extends StatelessWidget {
   List<AxProductUpdate> get _effectiveProductUpdates {
     try {
       return AxProductUpdateService.getHomeUpdates(
-        productUpdates.isNotEmpty ? productUpdates : defaultProductUpdates,
+        productUpdateHistory(
+            productUpdates.isNotEmpty ? productUpdates : defaultProductUpdates,
+            history: historicalUpdates),
         limit: 4,
       );
     } catch (_) {
@@ -720,7 +727,9 @@ class EstablishedUserHome extends StatelessWidget {
   int get _unreadWhatsNewCount {
     try {
       return AxProductUpdateService.computeUnreadCount(
-        productUpdates.isNotEmpty ? productUpdates : defaultProductUpdates,
+        productUpdateHistory(
+            productUpdates.isNotEmpty ? productUpdates : defaultProductUpdates,
+            history: historicalUpdates),
         readStates: productUpdateReadStates,
       );
     } catch (_) {
@@ -978,9 +987,11 @@ class EstablishedUserHome extends StatelessWidget {
                   AxWhatsNewDialog.show(
                     context,
                     contentWidth: context.size?.width,
-                    updates: productUpdates.isNotEmpty
-                        ? productUpdates
-                        : defaultProductUpdates,
+                    updates: productUpdateHistory(
+                        productUpdates.isNotEmpty
+                            ? productUpdates
+                            : defaultProductUpdates,
+                        history: historicalUpdates),
                     readStates: productUpdateReadStates,
                     onOpenUpdateDetail: onOpenUpdateDetail,
                     onDismissUpdate: onDismissUpdate,
@@ -2027,6 +2038,208 @@ class AxWhatsNewDialog extends StatelessWidget {
       ),
     );
   }
+}
+
+// Historical milestones appear in See all without changing Home’s current list.
+const historicalProductUpdates = <AxProductUpdate>[
+  AxProductUpdate(
+    id: 'history-remote-mcp-tools',
+    slug: 'remote-mcp-tools',
+    title: 'Remote MCP tools',
+    summary:
+        'Connect supported remote MCP servers to your Workspace for your own AI work.',
+    category: AxProductUpdateCategory.workspace,
+    publishedAt: '2026-11-13T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-workspace-mcp-setup',
+    slug: 'workspace-mcp-setup',
+    title: 'Simpler MCP setup',
+    summary:
+        'Manage enabled MCP servers at the Workspace level for your own AI work.',
+    category: AxProductUpdateCategory.workspace,
+    publishedAt: '2026-11-11T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-personal-space-management',
+    slug: 'personal-space-management',
+    title: 'Personal Space improvements',
+    summary: 'Rename a personal Space for yourself and archive Spaces.',
+    category: AxProductUpdateCategory.collaboration,
+    publishedAt: '2026-11-08T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-personal-connections',
+    slug: 'personal-connections',
+    title: 'Personal connections',
+    summary:
+        'Connect with another person, exchange messages, and collaborate in a personal Space.',
+    category: AxProductUpdateCategory.collaboration,
+    publishedAt: '2026-11-06T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-parallel-research',
+    slug: 'parallel-research',
+    title: 'Research with multiple Workers',
+    summary:
+        'Run independent investigations and combine their findings. The requester needs Syntila Plus.',
+    category: AxProductUpdateCategory.workflow,
+    publishedAt: '2026-11-02T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-free-and-plus-plans',
+    slug: 'free-and-plus-plans',
+    title: 'Free and Plus plans',
+    summary:
+        'Plan limits cover AI tasks, Workspaces, Space members, and uploaded files.',
+    category: AxProductUpdateCategory.feature,
+    publishedAt: '2026-11-02T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-read-receipts',
+    slug: 'read-receipts',
+    title: 'Read receipts',
+    summary:
+        'See received and read status for work requests, with a privacy setting.',
+    category: AxProductUpdateCategory.collaboration,
+    publishedAt: '2026-10-29T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-thread-replies',
+    slug: 'thread-replies',
+    title: 'Replies in Threads',
+    summary:
+        'Reply to a message, Work request, or AI response and navigate back to the original.',
+    category: AxProductUpdateCategory.collaboration,
+    publishedAt: '2026-10-25T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-files-and-attachments',
+    slug: 'files-and-attachments',
+    title: 'Files for AI work',
+    summary:
+        'Upload files for conversations and AI requests, and manage uploads in My Files.',
+    category: AxProductUpdateCategory.feature,
+    publishedAt: '2026-10-25T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-additional-folders',
+    slug: 'additional-folders',
+    title: 'Additional folders',
+    summary: 'Choose additional folders that Workers may access for a Space.',
+    category: AxProductUpdateCategory.workspace,
+    publishedAt: '2026-10-25T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-grok-worker',
+    slug: 'grok-worker',
+    title: 'Grok Worker',
+    summary: 'Grok was added to the Worker catalog.',
+    category: AxProductUpdateCategory.worker,
+    publishedAt: '2026-10-24T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-copilot-worker',
+    slug: 'copilot-worker',
+    title: 'GitHub Copilot Worker',
+    summary:
+        'GitHub Copilot was added to the Worker catalog, with model discovery.',
+    category: AxProductUpdateCategory.worker,
+    publishedAt: '2026-10-23T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-private-notes',
+    slug: 'private-notes',
+    title: 'Private notes',
+    summary: 'Keep personal notes associated with Spaces and Threads.',
+    category: AxProductUpdateCategory.feature,
+    publishedAt: '2026-10-23T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-speech-dictation',
+    slug: 'speech-dictation',
+    title: 'Speech dictation',
+    summary: 'Dictate text in supported browsers.',
+    category: AxProductUpdateCategory.feature,
+    publishedAt: '2026-10-23T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-workspace-access-controls',
+    slug: 'workspace-access-controls',
+    title: 'Workspace access controls',
+    summary: 'Manage a person’s Workspace access and usage limits.',
+    category: AxProductUpdateCategory.workspace,
+    publishedAt: '2026-10-17T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-live-worker-activity',
+    slug: 'live-worker-activity',
+    title: 'Live Worker activity',
+    summary: 'Follow Worker progress while AI work runs.',
+    category: AxProductUpdateCategory.worker,
+    publishedAt: '2026-10-17T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-thread-management',
+    slug: 'thread-management',
+    title: 'Thread management',
+    summary: 'Archive Threads and manage their history.',
+    category: AxProductUpdateCategory.improvement,
+    publishedAt: '2026-10-14T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-home-overview',
+    slug: 'home-overview',
+    title: 'A more useful Home',
+    summary:
+        'Find attention items, ongoing work, and updates together on Home.',
+    category: AxProductUpdateCategory.improvement,
+    publishedAt: '2026-10-08T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-model-effort-selection',
+    slug: 'model-effort-selection',
+    title: 'Model and effort selection',
+    summary: 'Choose a supported model and reasoning effort for AI work.',
+    category: AxProductUpdateCategory.worker,
+    publishedAt: '2026-10-07T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-markdown-conversations',
+    slug: 'markdown-conversations',
+    title: 'Markdown in conversations',
+    summary: 'Write and read formatted content in Threads.',
+    category: AxProductUpdateCategory.improvement,
+    publishedAt: '2026-10-06T00:00:00Z',
+  ),
+  AxProductUpdate(
+    id: 'history-chat-and-work',
+    slug: 'chat-and-work',
+    title: 'Chat and Work workflows',
+    summary: 'Use Chat and Work workflows for different kinds of AI tasks.',
+    category: AxProductUpdateCategory.workflow,
+    publishedAt: '2026-10-01T00:00:00Z',
+  ),
+];
+
+/// Preserves current updates when a historical entry has the same identity.
+List<AxProductUpdate> productUpdateHistory(List<AxProductUpdate> current,
+    {List<AxProductUpdate> history = historicalProductUpdates}) {
+  final ids = current.map((update) => update.id).toSet();
+  final slugs = current
+      .map((update) => update.slug)
+      .where((slug) => slug.isNotEmpty)
+      .toSet();
+  final titles =
+      current.map((update) => update.title.trim().toLowerCase()).toSet();
+  return [
+    ...current,
+    for (final update in history)
+      if (!ids.contains(update.id) &&
+          !slugs.contains(update.slug) &&
+          !titles.contains(update.title.trim().toLowerCase()))
+        update,
+  ];
 }
 
 const defaultProductUpdates = [

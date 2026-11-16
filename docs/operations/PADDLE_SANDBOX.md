@@ -34,3 +34,15 @@ initializes Paddle.js for transaction links. See
 The local sandbox page can open Paddle's customer portal for the authenticated
 account. Production billing is not implemented. Live deployments must not use
 the sandbox endpoints or secrets.
+
+## Live preparation
+
+The backend includes a disabled-by-default live checkout configuration endpoint
+(`/api/billing/live/checkout-config`). It authenticates the production user,
+validates separate live token and price configuration, and signs an account
+reference with a production-only secret. The endpoint is not a complete live
+billing integration: production subscription notifications, fulfillment,
+customer portal, and the customer-facing checkout are not implemented.
+**Do not set `PADDLE_LIVE_CHECKOUT_ENABLED=true` or accept live purchases until
+those paths and the deployment have been verified end to end.** The sandbox
+endpoint and sandbox settings stay separate.

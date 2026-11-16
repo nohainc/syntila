@@ -21,19 +21,29 @@ export class AuthWorkerSync {
 
   async avatarChanged(userId: string, avatarUrl: string | null): Promise<void> {
     const body = JSON.stringify({ userId, avatarUrl });
+    let lastStatus: number | undefined;
+    let lastError: string | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await fetch(`${this.origin}/api/internal/profile-avatar`, {
           method: "POST", headers: await signedWorkerHeaders(this.secret, body), body, signal: AbortSignal.timeout(10_000),
         });
         if (res.ok) return;
+        lastStatus = res.status;
+        lastError = undefined;
         if (res.status < 500) break;
-      } catch {
-        // retried below
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
       }
       await Bun.sleep(250 * 2 ** attempt);
     }
-    console.warn(JSON.stringify({ level: "warn", message: "auth_worker.avatar_sync_failed", userId }));
+    console.warn(JSON.stringify({
+      level: "warn",
+      message: "auth_worker.avatar_sync_failed",
+      userId,
+      ...(lastStatus !== undefined ? { status: lastStatus } : {}),
+      ...(lastError !== undefined ? { error: lastError } : {}),
+    }));
   }
 }
 

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "syntila-paddle-live-payment",
+  "main": "./worker.mjs",
+  "compatibility_date": "2026-11-16",
+  "vars": { "PADDLE_LIVE_CLIENT_TOKEN": "" },
+  "workers_dev": false,
+  "observability": { "enabled": true }
+}
