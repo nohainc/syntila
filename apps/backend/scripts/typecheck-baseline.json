@@ -13,8 +13,7 @@
   },
   "src/domain/realtime-gateway.ts": {
     "TS2305": 1,
-    "TS2339": 1,
-    "TS2345": 1
+    "TS2339": 1
   },
   "src/domain/routes/implement-plan.ts": {
     "TS2352": 1
