@@ -2,7 +2,8 @@ vi.mock("../../src/domain/collaboration-events.js", () => ({
   publishCollaborationEvent: vi.fn(async () => {}),
 }));
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
-import { withSql } from "./helpers/fake-sql";
+import { pgD1 } from "./helpers/pg-d1";
+import { T0, user, space, workspace } from "./helpers/seed";
 
 const state = vi.hoisted(() => ({ status: "active", owner: true }));
 vi.mock("../../src/domain/routes/handlers.js", async (importOriginal) => ({
@@ -28,63 +29,68 @@ vi.mock("@syntila/security", async (importOriginal) => ({
 import { handleUpdateWorkspaceSpaceGrant } from "../../src/domain/routes/workspaces-grants.js";
 
 describe("Workspace grant access editing", () => {
-  async function update(permissions: unknown) {
-    const writes: unknown[][] = [];
-    const env = {
-      SYNTILA_DB: withSql({
-        prepare: () => ({
-          bind(...values: unknown[]) {
-            writes.push(values);
-            return this;
-          },
-          run: async () => ({ meta: { changes: 1 } }),
+  const stored = (f: ReturnType<typeof pgD1>) =>
+    (f.sqlite.prepare("SELECT allowed_permissions_json AS p FROM workspace_space_grants WHERE id = 'grant-1'").get() as { p: string }).p;
+  function fixture() {
+    const f = pgD1();
+    f.sqlite.exec(`${user("owner-1")}${space("space-1", "owner-1")}${workspace("workspace-1", "owner-1")}
+      INSERT INTO workspace_space_grants(id, space_id, workspace_id, granted_by_user_id, created_at, updated_at)
+        VALUES ('grant-1', 'space-1', 'workspace-1', 'owner-1', '${T0}', '${T0}');`);
+    const update = (permissions: unknown) =>
+      handleUpdateWorkspaceSpaceGrant(
+        new Request("https://cloud.test/api/workspace-space-grants/grant-1", {
+          method: "PATCH",
+          body: JSON.stringify({ allowedPermissions: permissions }),
         }),
-      }),
-    } as never;
-    const result = handleUpdateWorkspaceSpaceGrant(
-      new Request("https://cloud.test/api/workspace-space-grants/grant-1", {
-        method: "PATCH",
-        body: JSON.stringify({ allowedPermissions: permissions }),
-      }),
-      env,
-      "grant-1",
-    );
-    return { result, writes };
+        { SYNTILA_DB: f.db } as never,
+        "grant-1",
+      );
+    return { f, update };
   }
   it("stores explicitly confirmed Direct permissions", async () => {
     state.status = "active";
     state.owner = true;
-    const { result, writes } = await update([
-      "repository:read",
-      "repository:write",
-    ]);
-    expect((await result).status).toBe(200);
-    expect(writes[0]?.[3]).toBe('["repository:read","repository:write"]');
+    const { f, update } = fixture();
+    try {
+      expect((await update(["repository:read", "repository:write"])).status).toBe(200);
+      expect(stored(f)).toBe('["repository:read","repository:write"]');
+    } finally {
+      f.sqlite.close();
+    }
   });
   it("rejects invalid permissions without a write", async () => {
     state.status = "active";
     state.owner = true;
-    const { result, writes } = await update(["full_access"]);
-    await expect(result).rejects.toMatchObject({ status: 400 });
-    expect(writes).toEqual([]);
+    const { f, update } = fixture();
+    try {
+      await expect(update(["full_access"])).rejects.toMatchObject({ status: 400 });
+      expect(stored(f)).toBe("[]");
+    } finally {
+      f.sqlite.close();
+    }
   });
   it("requires Workspace ownership", async () => {
     state.status = "active";
     state.owner = false;
-    const { result, writes } = await update(["repository:write"]);
-    await expect(result).rejects.toMatchObject({ status: 403 });
-    expect(writes).toEqual([]);
-    state.owner = true;
+    const { f, update } = fixture();
+    try {
+      await expect(update(["repository:write"])).rejects.toMatchObject({ status: 403 });
+      expect(stored(f)).toBe("[]");
+    } finally {
+      state.owner = true;
+      f.sqlite.close();
+    }
   });
   it("cannot widen a revoked grant", async () => {
     state.status = "revoked";
     state.owner = true;
-    const { result, writes } = await update([
-      "repository:read",
-      "repository:write",
-    ]);
-    await expect(result).rejects.toMatchObject({ status: 409 });
-    expect(writes).toEqual([]);
-    state.status = "active";
+    const { f, update } = fixture();
+    try {
+      await expect(update(["repository:read", "repository:write"])).rejects.toMatchObject({ status: 409 });
+      expect(stored(f)).toBe("[]");
+    } finally {
+      state.status = "active";
+      f.sqlite.close();
+    }
   });
 });

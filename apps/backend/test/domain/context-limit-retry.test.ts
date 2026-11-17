@@ -1,5 +1,6 @@
-import { chainData } from "./helpers/fake-sql";
 import { expect, it, vi } from "./helpers/vitest-compat";
+import { pgD1, recordStatements } from "./helpers/pg-d1";
+import { basicThread, T0 } from "./helpers/seed";
 vi.mock("../../src/domain/routes/thread-policy.js", () => ({
   authorizeThreadAccess: vi.fn(async () => ({
     context: { userId: "U" },
@@ -7,49 +8,38 @@ vi.mock("../../src/domain/routes/thread-policy.js", () => ({
   })),
 }));
 import { handleRetryWorkRequest } from "../../src/domain/routes/work-lifecycle.js";
-import { Data } from "../../src/platform/data.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 
 it("requires reset approval before reserving or changing a failed request", async () => {
-  const prepare = vi.fn((sql: string) => {
-    let row: unknown;
-    if (sql.startsWith("SELECT thread_id")) row = { threadId: "T" };
-    else if (sql.startsWith("SELECT role")) row = { role: "owner" };
-    else if (sql.includes("wr.workflow_id"))
-      row = {
-        threadId: "T",
-        status: "failed",
-        workflowSnapshotJson: JSON.stringify({
-          steps: [{ kind: "implement" }],
+  const f = pgD1();
+  try {
+    f.sqlite.exec(`${basicThread({ user: "U", space: "S", thread: "T" })}
+      INSERT INTO work_requests(id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, status, created_at, updated_at)
+        VALUES ('R', 'T', 'U', 'stateful', 'chat', 1, '${JSON.stringify({ steps: [{ kind: "implement" }] })}', 'failed', '${T0}', '${T0}');
+      INSERT INTO workflow_tasks(id, work_request_id, step_kind, execution_mode, timeout_ms, prompt_profile_version, status, error, created_at, updated_at)
+        VALUES ('task-1', 'R', 'implement', 'stateful_thread', 60000, 'v1', 'failed', 'context_limit_exceeded', '${T0}', '${T0}');`);
+    const recorded = recordStatements(f.db);
+    const response = await handleRetryWorkRequest(
+      new Request("https://test/retry", {
+        method: "POST",
+        body: JSON.stringify({
+          stepKind: "implement",
+          sessionStrategy: "resume",
         }),
-      };
-    else if (sql.includes("wt.status"))
-      row = { status: "failed", error: "context_limit_exceeded" };
-    else throw new Error(`Unexpected SQL before consent: ${sql}`);
-    return { bind: () => ({ first: async () => row }) };
-  });
-  const response = await handleRetryWorkRequest(
-    new Request("https://test/retry", {
-      method: "POST",
-      body: JSON.stringify({
-        stepKind: "implement",
-        sessionStrategy: "resume",
       }),
-    }),
-    chainData({ SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) =>
-      {
-      const text = strings.join("?");
-      if (text.includes('thread_id AS "threadId" FROM work_requests')) return [{ threadId: "T" }]; // workRequestThread
-      if (text.includes("FROM space_memberships")) return [{ role: "owner" }]; // spaceMembership
-      return [];
-    }) as any), SYNTILA_DB: { prepare } } as any) as unknown as SecurityEnv,
-    "R",
-  );
-  expect(response.status).toBe(409);
-  expect(await response.json()).toMatchObject({
-    error: "clear_ai_history_required",
-  });
-  expect(prepare.mock.calls.every(([sql]) => sql.startsWith("SELECT"))).toBe(
-    true,
-  );
+      { SYNTILA_DB: recorded.db } as unknown as SecurityEnv,
+      "R",
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "clear_ai_history_required",
+    });
+    // Nothing was reserved or changed before the user agreed.
+    expect(recorded.statements.length).toBeGreaterThan(0);
+    expect(recorded.statements.every((text) => /^\s*(SELECT|WITH)/i.test(text))).toBe(true);
+    const [{ status }] = [f.sqlite.prepare("SELECT status FROM workflow_tasks WHERE id = 'task-1'").get() as { status: string }];
+    expect(status).toBe("failed");
+  } finally {
+    f.sqlite.close();
+  }
 });

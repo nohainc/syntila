@@ -83,6 +83,27 @@ export function pgD1(options: PgD1TestOptions = {}) {
   return { db, read: dataOf({ SYNTILA_DB: db }).read, sqlite: sync, sql, url: urlFor(name) };
 }
 
+/**
+ * Wraps a test database so the statements it runs (also inside transactions)
+ * are recorded as text, with each value shown as `?`. Use the returned `db` as
+ * `SYNTILA_DB`; reads and writes still reach the real database.
+ */
+export function recordStatements(db: unknown): { db: any; statements: string[] } {
+  const statements: string[] = [];
+  const wrap = (target: any): any =>
+    new Proxy(target, {
+      apply(t, thisArg, args) {
+        if (Array.isArray(args[0])) statements.push((args[0] as string[]).join("?"));
+        return Reflect.apply(t, thisArg, args);
+      },
+      get(t, prop, receiver) {
+        if (prop === "begin") return (fn: (conn: unknown) => unknown) => t.begin((conn: unknown) => fn(wrap(conn)));
+        return Reflect.get(t, prop, receiver);
+      },
+    });
+  return { db: Object.create(db as object, { sql: { value: wrap((db as any).sql) } }), statements };
+}
+
 /** Drops databases created by this process (call from afterAll or rely on exit hook). */
 export async function dropTestDatabases() {
   while (created.length) {
