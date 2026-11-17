@@ -223,7 +223,7 @@ export class Data {
  * transaction instead of starting another one.
  */
 export class JoinedData extends Data {
-  override readonly read: Query;
+  declare readonly read: Query;
   constructor(private readonly open: Tx) {
     super(open.connection);
     this.read = open;

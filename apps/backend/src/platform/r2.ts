@@ -21,7 +21,7 @@ const META_PREFIX = "x-amz-meta-";
 const toHex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 const sha256Hex = async (s: string) => toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
 async function hmac(key: ArrayBuffer | Uint8Array, data: string) {
-  const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const k = await crypto.subtle.importKey("raw", key as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data));
 }
 

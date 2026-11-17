@@ -1,4 +1,5 @@
 import { accountPlanRow } from "./queries.js";
+import type { AccountPlanRow } from "./account-plan.js";
 import {
   EXECUTION_WAITER_STALE_MS,
   effectiveTier,
@@ -33,7 +34,7 @@ export async function isPaidRequester(
   userId: string,
   now: Date = new Date(),
 ): Promise<boolean> {
-  const row = await accountPlanRow(q, userId);
+  const row = await accountPlanRow<AccountPlanRow>(q, userId);
   return effectiveTier(row, now) === "paid";
 }
 

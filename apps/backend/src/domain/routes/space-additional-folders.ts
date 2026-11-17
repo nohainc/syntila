@@ -86,7 +86,7 @@ export async function handleSpaceAdditionalFolders(
     if (!access.eligible)
       return json({
         eligible: false,
-        reason: access.reason,
+        reason: (access as { reason: string }).reason,
         workspaceId: access.workspaceId,
         folders: [],
       });

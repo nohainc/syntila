@@ -622,7 +622,7 @@ export class RealtimeGateway implements DurableObject {
         this.sendRaw(connected.socket, {
           type: "subscription.denied",
           scope: message.scope,
-          reason: result.reason,
+          reason: (result as { reason: string }).reason,
         });
         return;
       }

@@ -1,13 +1,12 @@
 {
   // Type check only (bun runs the sources directly): `bun run typecheck`.
-  // Bun's own types (@types/bun) are not installed yet; their absence is in
-  // scripts/typecheck-baseline.json and disappears once they are added.
+  // Bun's own types come from @types/bun (devDependency).
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["node"],
+    "types": ["node", "bun"],
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,

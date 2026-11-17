@@ -3,7 +3,7 @@
  * is empty. This parses with Bun, then restores part types from the headers.
  */
 export async function parseMultipart(bytes: Uint8Array, contentType: string): Promise<FormData> {
-  const form = await new Request("http://local/", { method: "POST", headers: { "content-type": contentType }, body: bytes }).formData();
+  const form = await new Request("http://local/", { method: "POST", headers: { "content-type": contentType }, body: bytes as BodyInit }).formData();
   const boundary = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
   if (!boundary) return form;
   const marker = `--${boundary[1] ?? boundary[2]}`;

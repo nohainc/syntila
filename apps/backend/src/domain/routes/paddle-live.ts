@@ -11,7 +11,7 @@ type LiveEnv = SecurityEnv & {
 
 /** Disabled by default until live fulfillment and rollout are ready. */
 export async function handleLiveCheckoutConfig(request: Request, env: LiveEnv, ctx?: ExecutionContext): Promise<Response> {
-  if (env.SYNTILA_ENVIRONMENT !== 'production' || env.PADDLE_LIVE_CHECKOUT_ENABLED !== 'true')
+  if ((env.SYNTILA_ENVIRONMENT as string) !== 'production' || env.PADDLE_LIVE_CHECKOUT_ENABLED !== 'true')
     throw new HttpError(404, 'Not found');
   if (request.method !== 'GET') throw new HttpError(405, 'Unsupported method');
   const token = env.PADDLE_LIVE_CLIENT_TOKEN;

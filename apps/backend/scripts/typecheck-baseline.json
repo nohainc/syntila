@@ -1,108 +1,17 @@
 {
-  "src/config.ts": {
-    "TS2868": 4
-  },
-  "src/db.ts": {
-    "TS2307": 1
-  },
-  "src/domain/account-execution-slots.ts": {
-    "TS2345": 1
-  },
-  "src/domain/index.ts": {
-    "TS2339": 2
-  },
   "src/domain/realtime-gateway.ts": {
-    "TS2305": 1,
-    "TS2339": 1
+    "TS2305": 1
   },
   "src/domain/routes/implement-plan.ts": {
     "TS2352": 1
   },
-  "src/domain/routes/issue-reports.ts": {
-    "TS2339": 1
-  },
-  "src/domain/routes/paddle-live.ts": {
-    "TS2367": 1
-  },
-  "src/domain/routes/profile.ts": {
-    "TS2339": 2
-  },
-  "src/domain/routes/releases.ts": {
-    "TS2339": 4
-  },
   "src/domain/routes/route-idempotency.ts": {
     "TS2345": 1
-  },
-  "src/domain/routes/space-additional-folders.ts": {
-    "TS2339": 1
-  },
-  "src/domain/routes/user-files.ts": {
-    "TS2339": 3
-  },
-  "src/domain/routes/work-creation.ts": {
-    "TS2339": 2
-  },
-  "src/domain/routes/work-lifecycle.ts": {
-    "TS2339": 2
-  },
-  "src/domain/routes/work-request-files.ts": {
-    "TS2339": 7
-  },
-  "src/domain/routes/work-request-inputs.ts": {
-    "TS2339": 3
   },
   "src/domain/routes/workflow-execution-configuration.ts": {
     "TS2322": 1
   },
   "src/domain/worker-execution-options.ts": {
     "TS2322": 1
-  },
-  "src/domain/workspace-gateway.ts": {
-    "TS2339": 2
-  },
-  "src/migrate.ts": {
-    "TS2339": 1,
-    "TS2868": 5
-  },
-  "src/platform/background.ts": {
-    "TS2868": 1
-  },
-  "src/platform/data.ts": {
-    "TS2307": 1,
-    "TS2612": 1,
-    "TS2868": 1
-  },
-  "src/platform/db-health.ts": {
-    "TS2307": 1
-  },
-  "src/platform/durable-objects.ts": {
-    "TS2304": 2,
-    "TS2307": 1
-  },
-  "src/platform/email.ts": {
-    "TS2322": 1,
-    "TS2868": 1
-  },
-  "src/platform/multipart.ts": {
-    "TS2322": 1
-  },
-  "src/platform/r2.ts": {
-    "TS2307": 1,
-    "TS2769": 1
-  },
-  "src/platform/workflows.ts": {
-    "TS2304": 1,
-    "TS2868": 3
-  },
-  "src/runtime.ts": {
-    "TS2307": 1
-  },
-  "src/schema-lock.ts": {
-    "TS2345": 1,
-    "TS2868": 1
-  },
-  "src/server.ts": {
-    "TS2307": 1,
-    "TS2868": 3
   }
 }

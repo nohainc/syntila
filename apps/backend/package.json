@@ -24,5 +24,8 @@
     "@syntila/security": "workspace:*",
     "@syntila/tool-profile": "workspace:*",
     "@syntila/workspace-runtime-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0"
   }
 }

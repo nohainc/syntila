@@ -100,6 +100,7 @@ export class EmailOutbox {
 
   poke() {
     this.running ??= this.deliverDue()
+      .then(() => undefined)
       .catch((e) => console.error(JSON.stringify({ level: "error", message: "email.outbox_failed", error: String(e?.stack ?? e) })))
       .finally(() => { this.running = null; });
   }

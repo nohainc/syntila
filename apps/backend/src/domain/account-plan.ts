@@ -276,7 +276,7 @@ export interface AccountPlan {
   };
 }
 
-interface AccountPlanRow {
+export interface AccountPlanRow {
   tier: AccountTier;
   status: AccountPlanStatus;
   current_period_end: string | null;

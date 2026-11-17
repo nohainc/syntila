@@ -1529,7 +1529,7 @@ export class WorkspaceGateway implements DurableObject {
           severity: decision.granted ? "info" : "warning",
           retryable: false,
           context: {
-            status: decision.granted ? "granted" : `denied_${decision.reason}`,
+            status: decision.granted ? "granted" : `denied_${(decision as { reason: string }).reason}`,
           },
         });
         await this.send({
@@ -1553,7 +1553,7 @@ export class WorkspaceGateway implements DurableObject {
                 permitId: decision.permitId,
                 expiresAt: decision.expiresAt,
               }
-            : { granted: false, reason: decision.reason },
+            : { granted: false, reason: (decision as { reason: string }).reason },
         });
         if (decision.granted && message.assignmentId)
           await publishAssignmentPhase(this.env, message.assignmentId);
