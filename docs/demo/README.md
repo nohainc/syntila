@@ -158,6 +158,7 @@ On 2026-11-11, four focused Cloud fixture test files passed (34 tests):
 selected read models, invitation identity migration, workflow dispatch and
 prompt contracts in test fixtures. They are not a live local-backend rehearsal,
 UI capture, provider run, or evidence that all three demo accounts can interact.
+(The `thread-read-model.acceptance` and `work-v1-v8-regression.acceptance` files were removed later, when the backend tests moved to real PostgreSQL; the other two now live in `apps/backend/test/domain`.)
 No production interaction was performed during that fixture check. Production
 demo accounts were created separately after the user changed direction. See the scene-by-scene record in
 [scenes.md](scenes.md).

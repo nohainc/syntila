@@ -8,15 +8,13 @@ Historical `direct:v1` remains Direct. Tests cover these independent contracts:
 | Contract | Executable coverage |
 | --- | --- |
 | Immutable versions, read/write Step policies and Full Cycle isolation | [Core workflows](../../packages/core/test/thread.test.ts) |
-| Read-only Chat instructions, implementation Work intent, Markdown source | [Prompt profiles](../../apps/cloud/test/workflow-prompts.test.ts) |
-| Actual Gateway dispatch execution class, read-only flag and binding/model | [Cloud workflow acceptance](../../apps/cloud/test/work-v1-v8-regression.acceptance.test.ts) |
-| Stateless Chat without mutation lease, coordinated Work | [Request coordination](../../apps/cloud/test/work-request-coordination.test.ts) |
+| Read-only Chat instructions, implementation Work intent, Markdown source | [Prompt profiles](../../apps/backend/test/domain/workflow-prompts.test.ts) |
+| Stateless Chat without mutation lease, coordinated Work | [Request coordination](../../apps/backend/test/domain/work-request-coordination.test.ts) |
 | Generic Workspace execution policies and fail-closed Profile admission | [Workspace policy](../../apps/workspace/test/assignment_execution_policy_test.dart) |
 | Actual Codex argv, explicit approval policy, sandbox policy in normal/compatibility layouts and fresh/resumed sessions | [Profile interpreter](../../packages/tool-profile/test/interpreter.test.ts) |
-| Durable Chat reuse, cross-Thread and Chat/Work session isolation | [Session keys](../../apps/cloud/test/work-session-key.test.ts) |
-| Historical rows, snapshots, cancellation, foreign keys, indexes, triggers, rollback and Chat schema admission | [Migration alignment](../../apps/cloud/test/chat-workflow-migration.test.ts) |
+| Durable Chat reuse, cross-Thread and Chat/Work session isolation | [Session keys](../../apps/backend/test/domain/work-session-key.test.ts) |
 | Canonical starter synchronization and preservation of existing templates/releases | [Starter provisioning](../../scripts/provision-profile-starter-templates.test.mjs) |
-| Snapshot/version history names and unchanged Markdown through Cloud read models | [Storage/read contract](../../apps/cloud/test/markdown-storage-contract.test.ts) |
+| Snapshot/version history names and unchanged Markdown through Cloud read models | [Storage/read contract](../../apps/backend/test/domain/markdown-storage-contract.test.ts) |
 | Current dynamic Workflow menu, separate Chat/Work bindings, Markdown rendering and historical labels | [AX widget acceptance](../../apps/app/test/spaces_pages_test.dart) |
 | Snapshot name precedence and compatibility with older read models | [AX history model](../../apps/app/test/work_request_history_test.dart) |
 
