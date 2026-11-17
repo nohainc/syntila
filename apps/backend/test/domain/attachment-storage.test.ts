@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "./helpers/vitest-compat";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
-import { space, thread } from "./helpers/seed";
 import {
   ATTACHMENT_LIMITS,
   FileTooLargeError,
@@ -43,6 +42,13 @@ function fixture() {
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
       .run(id, `${id}@test`, id);
+  // user_files references its Space and Thread; the upload code is given thread "t".
+  sqlite.exec(
+    `INSERT INTO spaces(id,name,owner_user_id,created_at,updated_at) VALUES('space','Space','owner','now','now') ON CONFLICT DO NOTHING`,
+  );
+  sqlite.exec(
+    `INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('t','space','t','active','owner','now','now') ON CONFLICT DO NOTHING`,
+  );
   const plan = (user: string, status = "active", end: string | null = null) =>
     sqlite
       .prepare(
@@ -89,12 +95,20 @@ function fixture() {
     },
   };
   const env = { SYNTILA_DB: db, SYNTILA_ARTIFACTS: bucket } as never;
-  const addFile = (id: string, user: string, size: number, thread = "t") =>
-    sqlite
+  const addFile = (id: string, user: string, size: number, thread = "t") => {
+    // user_files references its Space and Thread, so both must exist.
+    sqlite.exec(
+      `INSERT INTO spaces(id,name,owner_user_id,created_at,updated_at) VALUES('space','Space','owner','now','now') ON CONFLICT DO NOTHING`,
+    );
+    sqlite.exec(
+      `INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('${thread}','space','${thread}','active','owner','now','now') ON CONFLICT DO NOTHING`,
+    );
+    return sqlite
       .prepare(
         "INSERT INTO user_files VALUES (?, ?, ?, 'space', ?, 'x', ?, 'now')",
       )
       .run(id, user, thread, id, size);
+  };
   const stream = (text: string) =>
     new Response(text).body as ReadableStream<Uint8Array>;
   const store = (user: string, id: string, text: string, declared?: number) =>
@@ -324,7 +338,6 @@ describe("plan-based attachment limits", () => {
     // Messages and Work Requests that cite a file reference it; they own no
     // bytes, so two references to one file leave usage unchanged.
     const before = (await loadStorageUsage({ SYNTILA_DB: f.db }, "free")).usedBytes;
-    f.sqlite.exec(space("s-free", "free") + thread("t", "s-free", "free"));
     f.sqlite
       .exec(`INSERT INTO discussion_messages(id,thread_id,author_user_id,body,attachments_json,created_at)
       VALUES('m1','t','free','x','[{"fileId":"${fid(1)}"}]','now'),

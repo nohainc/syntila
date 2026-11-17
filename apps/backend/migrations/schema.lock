@@ -246,7 +246,7 @@ column person_invitations.invitee_user_id text
 column person_invitations.inviter_user_id text not-null
 column person_invitations.status text not-null
 column person_invitations.updated_at timestamptz not-null default
-column plan_approvals.approved_by_user_id text not-null
+column plan_approvals.approved_by_user_id text
 column plan_approvals.created_at timestamptz not-null default
 column plan_approvals.plan_work_request_id text not-null
 column plan_approvals.thread_id text not-null
@@ -907,6 +907,7 @@ constraint person_invitations.person_invitations_invitee_user_id_fkey foreign-ke
 constraint person_invitations.person_invitations_inviter_user_id_fkey foreign-key -> users on-delete-cascade
 constraint person_invitations.person_invitations_pkey primary-key
 constraint person_invitations.person_invitations_status_check check
+constraint plan_approvals.plan_approvals_approved_by_user_id_fkey foreign-key -> users on-delete-set-null
 constraint plan_approvals.plan_approvals_pkey primary-key
 constraint plan_approvals.plan_approvals_plan_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
 constraint plan_approvals.plan_approvals_thread_id_fkey foreign-key -> threads on-delete-cascade
@@ -1009,6 +1010,8 @@ constraint user_file_reservations.user_file_reservations_size_bytes_check check
 constraint user_file_reservations.user_file_reservations_user_id_fkey foreign-key -> users on-delete-cascade
 constraint user_files.user_files_pkey primary-key
 constraint user_files.user_files_size_bytes_check check
+constraint user_files.user_files_space_id_fkey foreign-key -> spaces on-delete-set-null
+constraint user_files.user_files_thread_id_fkey foreign-key -> threads on-delete-set-null
 constraint user_files.user_files_user_id_fkey foreign-key -> users on-delete-cascade
 constraint user_notes.user_notes_pkey primary-key
 constraint user_notes.user_notes_user_id_fkey foreign-key -> users on-delete-cascade
@@ -1369,6 +1372,7 @@ index person_invitations.idx_person_invitations_pending_email (inviter_user_id,(
 index person_invitations.idx_person_invitations_pending_pair ((expr),(expr)) unique partial
 index person_invitations.person_invitations_accepted_by_user_id_fkidx (accepted_by_user_id)
 index person_invitations.person_invitations_pkey (id) unique
+index plan_approvals.plan_approvals_approved_by_user_id_fkidx (approved_by_user_id)
 index plan_approvals.plan_approvals_pkey (plan_work_request_id) unique
 index plan_approvals.plan_approvals_thread_id_fkidx (thread_id)
 index realtime_event_cursors.idx_realtime_event_cursors_stream (stream_kind,(expr)) unique
@@ -1438,6 +1442,8 @@ index user_file_reservations.idx_user_file_reservations_user (user_id,expires_at
 index user_file_reservations.user_file_reservations_pkey (id) unique
 index user_files.idx_user_files_user (user_id,created_at,size_bytes)
 index user_files.user_files_pkey (id) unique
+index user_files.user_files_space_id_fkidx (space_id)
+index user_files.user_files_thread_id_fkidx (thread_id)
 index user_notes.idx_user_notes_thread (user_id,thread_id) unique partial
 index user_notes.idx_user_notes_user (user_id,updated_at)
 index user_notes.user_notes_pkey (id) unique

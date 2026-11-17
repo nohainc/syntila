@@ -190,6 +190,34 @@ describe("schema lock", () => {
     ]);
   });
 
+  test("files keep existing rows when their Thread or Space is gone, and detach when it is deleted later; notes keep their saved link (0025)", async () => {
+    const sql = await emptyDatabase();
+    const migrations = join(import.meta.dir, "..", "migrations");
+    const dir = mkdtempSync(join(tmpdir(), "syntila-migrations-"));
+    for (const f of readdirSync(migrations).filter((n) => /^\d{4}_.*\.sql$/.test(n) && n < "0025")) copyFileSync(join(migrations, f), join(dir, f));
+    await migrate(sql as any, dir);
+    await sql`INSERT INTO users (id, email, display_name) VALUES ('u1', 'u1@example.test', 'U1')`;
+    await sql`INSERT INTO spaces (id, name, owner_user_id) VALUES ('s1', 'S1', 'u1')`;
+    await sql`INSERT INTO threads (id, lead_user_id, name, space_id, status) VALUES ('t1', 'u1', 'T1', 's1', 'active')`;
+    await sql`INSERT INTO user_notes (id, user_id, thread_id, space_id) VALUES ('n-live', 'u1', 't1', 's1'), ('n-gone', 'u1', 'gone-thread', 'gone-space')`;
+    await sql`INSERT INTO user_files (id, user_id, thread_id, space_id, name, media_type, size_bytes) VALUES ('f-live', 'u1', 't1', 's1', 'a', 'text/plain', 1), ('f-gone', 'u1', 'gone-thread', 'gone-space', 'b', 'text/plain', 1)`;
+    copyFileSync(join(migrations, "0024_file_approval_indexes.sql"), join(dir, "0024_file_approval_indexes.sql"));
+    copyFileSync(join(migrations, "0025_file_approval_foreign_keys.sql"), join(dir, "0025_file_approval_foreign_keys.sql"));
+    await migrate(sql as any, dir);
+    // Notes are left alone: a note keeps the ids of a Thread that is gone (its saved titles are shown for it).
+    const notes = await sql`SELECT id, thread_id, space_id FROM user_notes ORDER BY id`;
+    expect(notes.map((r: any) => [r.id, r.thread_id, r.space_id])).toEqual([["n-gone", "gone-thread", "gone-space"], ["n-live", "t1", "s1"]]);
+    const files = await sql`SELECT id, thread_id, space_id FROM user_files ORDER BY id`;
+    expect(files.map((r: any) => [r.id, r.thread_id, r.space_id])).toEqual([["f-gone", null, null], ["f-live", "t1", "s1"]]);
+    // Deleting the Space (which removes its Threads) keeps the file without the link, and the note as it was.
+    await sql`DELETE FROM spaces WHERE id = 's1'`;
+    const left = await sql`SELECT n.thread_id AS nt, n.space_id AS ns, f.thread_id AS ft, f.space_id AS fs FROM user_notes n, user_files f WHERE n.id = 'n-live' AND f.id = 'f-live'`;
+    expect(left.map((r: any) => [r.nt, r.ns, r.ft, r.fs])).toEqual([["t1", "s1", null, null]]);
+    // The approver of a plan may be unknown once the account is gone.
+    const [{ nullable }] = await sql`SELECT NOT attnotnull AS nullable FROM pg_attribute WHERE attrelid = 'plan_approvals'::regclass AND attname = 'approved_by_user_id'`;
+    expect(nullable).toBe(true);
+  });
+
   test("drift is reported line by line", async () => {
     const sql = await emptyDatabase();
     await migrate(sql as any);
