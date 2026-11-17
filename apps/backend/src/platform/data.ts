@@ -282,8 +282,8 @@ export function dataOf(env: { SYNTILA_DATA?: unknown; SYNTILA_DB: unknown }): Da
  * transaction (`within`) hands out that transaction's connection, so reads and
  * writes through it stay inside the transaction. Goes away with the adapter.
  */
-export function queryOf(db: unknown): Query {
-  const joined = (db as { connection?: Sql } | null)?.connection;
+export function queryOf(db: Db): Query {
+  const joined = db.connection;
   return joined ? queryOn(joined) : dataOf({ SYNTILA_DB: db }).read;
 }
 
@@ -291,7 +291,7 @@ export function queryOf(db: unknown): Query {
  * Runs `fn` as one unit on an adapter instance: its own transaction, or the
  * open one when the adapter is joined to a transaction.
  */
-export function atomically<T>(db: unknown, label: string, fn: (q: Query) => Promise<T>): Promise<T> {
-  const joined = (db as { connection?: Sql } | null)?.connection;
+export function atomically<T>(db: Db, label: string, fn: (q: Query) => Promise<T>): Promise<T> {
+  const joined = db.connection;
   return joined ? fn(queryOn(joined)) : dataOf({ SYNTILA_DB: db }).tx(label, fn);
 }

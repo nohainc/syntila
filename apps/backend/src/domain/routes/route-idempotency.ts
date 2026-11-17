@@ -1,4 +1,4 @@
-import { queryOf } from "../../platform/data.js";
+import { queryOf, type Db } from "../../platform/data.js";
 /**
  * Idempotency for create endpoints marked `idempotent: "route"` in the route
  * table. A client that sends `Idempotency-Key` and retries (lost response,
@@ -25,7 +25,7 @@ export const STALE_CLAIM_MS = 5 * 60_000;
 const PENDING = 0;
 
 /** Releases a claim still marked pending (a stale or failed request). */
-const deletePendingReceipt = (db: unknown, userId: string, scope: string, key: string) =>
+const deletePendingReceipt = (db: Db, userId: string, scope: string, key: string) =>
   queryOf(db).run`DELETE FROM mutation_receipts
           WHERE user_id = ${userId} AND scope = ${scope} AND idempotency_key = ${key} AND response_status = ${PENDING}`;
 
