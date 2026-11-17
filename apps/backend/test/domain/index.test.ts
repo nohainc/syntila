@@ -1,27 +1,9 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
+import { pgD1 } from "./helpers/pg-d1";
 import worker, { routeHandlers } from "../../src/domain/index.js";
 
-const identityDb = {
-  prepare() {
-    return {
-      bind() {
-        return this;
-      },
-      async first() {
-        return null;
-      },
-      async all() {
-        return { results: [] };
-      },
-      async run() {
-        return { success: true };
-      },
-    };
-  },
-  async batch() {
-    return [];
-  },
-};
+// A real, empty database: no user, Space or Workspace rows exist.
+const database = pgD1();
 
 const env = {
   SYNTILA_ENVIRONMENT: "development",
@@ -38,7 +20,7 @@ const env = {
     sessionId: "session-local-development",
     clientType: "desktop",
   }),
-  SYNTILA_DB: identityDb,
+  SYNTILA_DB: database.db,
 } as unknown as Env;
 
 describe("Worker smoke tests", () => {

@@ -1,4 +1,3 @@
-import { withSql } from "./helpers/fake-sql";
 import { pgD1 } from "./helpers/pg-d1";
 import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
@@ -14,7 +13,8 @@ describe("Workspace Profile download before Worker configuration", () => {
   let digest: string;
 
   beforeEach(async () => {
-    sqlite = (pgD1().sqlite as unknown as DatabaseSync);
+    const handle = pgD1();
+    sqlite = handle.sqlite as unknown as DatabaseSync;
     // Only the read boundary's tables are needed. In particular, inventory
     // exists but stays empty, as on a newly connected Workspace.
     sqlite.exec(`
@@ -58,18 +58,7 @@ describe("Workspace Profile download before Worker configuration", () => {
         null,
         "2026-10-23T00:00:00Z",
       );
-    const db = {
-      prepare(sql: string) {
-        return {
-          bind(...values: SQLInputValue[]) {
-            return {
-              first: async () => sqlite.prepare(sql).get(...values) ?? null,
-            };
-          },
-        };
-      },
-    };
-    env = { SYNTILA_DB: withSql(db) } as unknown as Env;
+    env = { SYNTILA_DB: handle.db } as unknown as Env;
   });
 
   afterEach(() => sqlite.close());

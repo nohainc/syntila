@@ -1,54 +1,14 @@
-import { withSql } from "./helpers/fake-sql";
 import { pgD1 } from "./helpers/pg-d1";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { WorkspaceGateway } from "../../src/domain/workspace-gateway.js";
 
-class LocalD1Statement {
-  constructor(
-    private readonly db: DatabaseSync,
-    private readonly sql: string,
-    private readonly values: unknown[] = [],
-  ) {}
-
-  bind(...values: unknown[]): LocalD1Statement {
-    return new LocalD1Statement(this.db, this.sql, values);
-  }
-
-  async first<T>(): Promise<T | null> {
-    return (
-      (this.db.prepare(this.sql).get(...(this.values as SQLInputValue[])) as
-        T | undefined) ?? null
-    );
-  }
-
-  async run(): Promise<{ success: true }> {
-    this.db.prepare(this.sql).run(...(this.values as SQLInputValue[]));
-    return { success: true };
-  }
-
-  async all<T>(): Promise<{ results: T[] }> {
-    return {
-      results: this.db
-        .prepare(this.sql)
-        .all(...(this.values as SQLInputValue[])) as T[],
-    };
-  }
-}
-
-class LocalD1 {
-  constructor(private readonly db: DatabaseSync) {}
-
-  prepare(sql: string): LocalD1Statement {
-    return new LocalD1Statement(this.db, sql);
-  }
-}
-
 describe("v8 Workspace inventory recovery", () => {
   it("reconciles duplicate snapshots, omissions, reconnects, and foreign Worker IDs", async () => {
-    const database = (pgD1().sqlite as unknown as DatabaseSync);
+    const handle = pgD1();
+    const database = handle.sqlite as unknown as DatabaseSync;
     database.exec("PRAGMA foreign_keys = ON");
     database.exec(
       "",
@@ -82,7 +42,7 @@ describe("v8 Workspace inventory recovery", () => {
 
     const gateway = new WorkspaceGateway(
       {} as never,
-      { SYNTILA_DB: withSql(new LocalD1(database)) } as never,
+      { SYNTILA_DB: handle.db } as never,
     );
     const internal = gateway as unknown as {
       executionWorkspaceId: string;
@@ -210,7 +170,8 @@ describe("v8 Workspace inventory recovery", () => {
     database.close();
   });
   it("stores the Workspace-wide parallel slot total and ignores invalid values", async () => {
-    const database = (pgD1().sqlite as unknown as DatabaseSync);
+    const handle = pgD1();
+    const database = handle.sqlite as unknown as DatabaseSync;
     database.exec("PRAGMA foreign_keys = ON");
     for (const migration of [
       "0001_syntila_v8.sql",
@@ -234,7 +195,7 @@ describe("v8 Workspace inventory recovery", () => {
     `);
     const gateway = new WorkspaceGateway(
       {} as never,
-      { SYNTILA_DB: withSql(new LocalD1(database)) } as never,
+      { SYNTILA_DB: handle.db } as never,
     );
     const internal = gateway as unknown as {
       executionWorkspaceId: string;

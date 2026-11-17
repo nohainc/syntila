@@ -1,4 +1,3 @@
-import { withSql } from "./helpers/fake-sql";
 import { pgD1 } from "./helpers/pg-d1";
 import { basicThread } from "./helpers/seed";
 vi.mock("../../src/domain/collaboration-events.js", () => ({
@@ -57,7 +56,8 @@ it.each(
 )(
   "$definition.name v$definition.version history preserves names and Markdown (snapshot name: $snapshotName)",
   async ({ definition, snapshotName }) => {
-    const sqlite = (pgD1().sqlite as unknown as DatabaseSync);
+    const handle = pgD1();
+    const sqlite = handle.sqlite as unknown as DatabaseSync;
     sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
@@ -100,29 +100,12 @@ it.each(
         "2026-10-06T00:00:01Z",
         "2026-10-06T00:00:01Z",
       );
-    const db = {
-      prepare(sql: string) {
-        let values: (string | number | null)[] = [];
-        return {
-          bind(...args: (string | number | null)[]) {
-            values = args;
-            return this;
-          },
-          async first() {
-            return sqlite.prepare(sql).get(...values) ?? null;
-          },
-          async all() {
-            return { results: sqlite.prepare(sql).all(...values) };
-          },
-        };
-      },
-    };
     try {
       const response = await handleListWorkRequests(
         new Request(
           "https://syntila.test/api/threads/stream-test/work-requests",
         ),
-        { SYNTILA_DB: withSql(db) } as unknown as Parameters<
+        { SYNTILA_DB: handle.db } as unknown as Parameters<
           typeof handleListWorkRequests
         >[1],
         "stream-test",
@@ -146,7 +129,7 @@ it.each(
       expect(body.workRequests[0]?.workflowVersion).toBe(definition.version);
       const detail = await handleGetWorkRequest(
         new Request("https://syntila.test/api/work-requests/request-test"),
-        { SYNTILA_DB: withSql(db) } as unknown as Parameters<
+        { SYNTILA_DB: handle.db } as unknown as Parameters<
           typeof handleGetWorkRequest
         >[1],
         "request-test",
@@ -174,30 +157,10 @@ it.each(
 );
 
 it("persists and returns exact Markdown through Chat create, edit and list", async () => {
-  const sqlite = (pgD1().sqlite as unknown as DatabaseSync);
+  const handle = pgD1();
+  const sqlite = handle.sqlite as unknown as DatabaseSync;
   sqlite.exec(basicThread({ user: "user-owner", space: "space-test", thread: "stream-test" }));
-  const db = {
-    prepare(sql: string) {
-      let values: (string | null)[] = [];
-      return {
-        bind(...args: (string | null)[]) {
-          values = args;
-          return this;
-        },
-        async run() {
-          sqlite.prepare(sql).run(...values);
-          return { success: true };
-        },
-        async first() {
-          return sqlite.prepare(sql).get(...values) ?? null;
-        },
-        async all() {
-          return { results: sqlite.prepare(sql).all(...values) };
-        },
-      };
-    },
-  };
-  const env = { SYNTILA_DB: withSql(db) } as unknown as Parameters<
+  const env = { SYNTILA_DB: handle.db } as unknown as Parameters<
     typeof handleCreateDiscussionMessage
   >[1];
   const request = (body: string, method = "POST") =>

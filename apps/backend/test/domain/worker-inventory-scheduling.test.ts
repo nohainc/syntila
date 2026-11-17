@@ -1,6 +1,5 @@
-import { withSql } from "./helpers/fake-sql";
 import { pgD1 } from "./helpers/pg-d1";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { beforeEach, afterEach, describe, expect, it } from "./helpers/vitest-compat";
 import { recordWorkspaceWorkerInventory } from "../../src/domain/workspace-gateway/inventory.js";
@@ -9,7 +8,8 @@ describe("inventory scheduling for Workers configured after Workspace selection"
   let sqlite: DatabaseSync;
   let env: Parameters<typeof recordWorkspaceWorkerInventory>[0];
   beforeEach(() => {
-    sqlite = (pgD1().sqlite as unknown as DatabaseSync);
+    const handle = pgD1();
+    sqlite = handle.sqlite as unknown as DatabaseSync;
     sqlite.exec("PRAGMA foreign_keys = ON");
     for (const migration of [
       "0001_syntila_v8.sql",
@@ -28,17 +28,8 @@ describe("inventory scheduling for Workers configured after Workspace selection"
       INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES ('workspace','owner','Workspace','online','now','now'), ('other','owner','Other','online','now','now');
       INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES ('space','owner','Space','now','now');
     `);
-    const statement = (sql: string, values: SQLInputValue[] = []) => ({
-      bind: (...bound: SQLInputValue[]) => statement(sql, bound),
-      first: async () => sqlite.prepare(sql).get(...values) ?? null,
-      run: async () => {
-        sqlite.prepare(sql).run(...values);
-        return { success: true };
-      },
-      all: async () => ({ results: sqlite.prepare(sql).all(...values) }),
-    });
     env = {
-      SYNTILA_DB: withSql({ prepare: (sql: string) => statement(sql) }),
+      SYNTILA_DB: handle.db,
     } as unknown as typeof env;
   });
   afterEach(() => sqlite.close());

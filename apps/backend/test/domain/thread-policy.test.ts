@@ -1,4 +1,5 @@
-import { withSql } from "./helpers/fake-sql";
+import { listAware } from "./helpers/fake-sql";
+import { Data } from "../../src/platform/data.js";
 import { describe, expect, it } from "./helpers/vitest-compat";
 
 import {
@@ -112,9 +113,8 @@ it("validates selected effort and models against the selected Worker Profile", a
       },
     }),
   };
-  const db = { prepare: () => ({ bind: () => ({ first: async () => row }) }) };
   const env = {
-    SYNTILA_DB: withSql(db),
+    SYNTILA_DATA: new Data(Object.assign(listAware(async () => [row]), { unsafe: (text: string) => ({ raw: text }) }) as any),
   } as unknown as import("../../src/domain/routes/http-security.js").SecurityEnv;
   for (const [model, effort, invalid] of [
     ["a", "deep", false],

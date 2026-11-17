@@ -25,7 +25,7 @@ const LIMITS = {
   prepareCalls: 0,
   batchCalls: 0,
   d1DatabaseReferences: 0,
-  mockBasedTestFiles: 47, // test files that mention prepare but use no PostgreSQL helper
+  mockBasedTestFiles: 11, // test files that define a fake `prepare` database by hand
 };
 
 test("ratchet: .prepare( call sites only go down", () => {
@@ -38,10 +38,9 @@ test("ratchet: D1Database references only go down", () => {
   expect(count(source, /\bD1Database\b/g)).toBeLessThanOrEqual(LIMITS.d1DatabaseReferences);
 });
 test("ratchet: test files that fake prepare/bind by hand only go down", () => {
-  const faked = tests.filter((f) => {
-    const text = readFileSync(f, "utf8");
-    return /\bprepare\b/.test(text) && !/pgD1|helpers\/(seed|pg)/.test(text);
-  });
+  // A fake database: a `prepare` method or property defined in the test itself.
+  const fake = /prepare:|prepare\((sql|text|query|_?s)\b[^)]*\)\s*\{|prepare = |prepare\(\) *\{|const prepare|vi\.fn\(\(sql|spyOn\([^)]*prepare/;
+  const faked = tests.filter((f) => !f.includes("/helpers/") && !f.endsWith("pg-d1.test.ts") && fake.test(readFileSync(f, "utf8")));
   expect(faked.length).toBeLessThanOrEqual(LIMITS.mockBasedTestFiles);
 });
 test("ratchet: the sqliteD1 alias is gone", () => {

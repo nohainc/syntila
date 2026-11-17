@@ -11,48 +11,6 @@ function environment(
   membershipError?: Error,
 ) {
   const writes: string[] = [];
-  const db = {
-    prepare(query: string) {
-      let values: unknown[] = [];
-      return {
-        bind(...bound: unknown[]) {
-          values = bound;
-          return this;
-        },
-        async first() {
-          if (query.includes("FROM spaces")) return { id: "space-1" };
-          if (query.includes("FROM execution_workspaces")) {
-            return {
-              id: "workspace-1",
-              owner_user_id: "owner-1",
-              status: "online",
-            };
-          }
-          if (query.includes("FROM space_memberships")) {
-            if (membershipError) throw membershipError;
-            return null;
-          }
-          if (query.includes("FROM workspace_space_grants")) return null;
-          return null;
-        },
-        async all() {
-          if (!query.includes("FROM workspace_worker_inventory")) {
-            return { results: [] };
-          }
-          const requestedIds = values.slice(1);
-          return {
-            results: inventoryWorkerIds
-              .filter((workerId) => requestedIds.includes(workerId))
-              .map((worker_id) => ({ worker_id })),
-          };
-        },
-        async run() {
-          writes.push(query);
-          return { success: true };
-        },
-      };
-    },
-  };
   const data = new Data(listAware(async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const t = strings.join("?");
     if (t.includes("FROM spaces WHERE id")) return [{ id: "space-1" }];
@@ -68,7 +26,7 @@ function environment(
     }
     return []; // no membership
   }) as any);
-  return { env: { SYNTILA_DB: db, SYNTILA_DATA: data } as never, writes };
+  return { env: { SYNTILA_DATA: data } as never, writes };
 }
 
 const context = {
