@@ -203,5 +203,16 @@
     "sequenceMeaning": "source execution sequence; Cloud realtime cursors are separate",
     "categories": ["activity", "lifecycle"],
     "deliveries": ["ephemeral", "replayable", "terminal"]
+  },
+  "x-provider-failure": {
+    "schemaVersion": 1,
+    "sources": ["structured_error", "result_message", "stderr", "stdout", "plugin"],
+    "omittableFields": ["nativeErrorCode", "providerErrorText", "failedRunResponse"],
+    "limits": {
+      "maxNativeErrorCodeBytes": 128,
+      "maxProviderErrorTextBytes": 4096,
+      "maxFailedRunResponseBytes": 32768,
+      "maxTotalBytes": 40960
+    }
   }
 }

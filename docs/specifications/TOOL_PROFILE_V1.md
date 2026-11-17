@@ -577,6 +577,21 @@ is a list of actions the provider refused to run (for example AGY's
 `denied_actions`) and is reported as `permission_denied` even when the provider
 turn says success; an empty list is ignored.
 
+The [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
+specifies declarative extraction of native error codes and responses on
+failure via an optional `failureExtraction` block:
+
+- `nativeErrorCode`: optional selector extracting the provider's native error
+  code from structured output. Never populated from process exit codes.
+- `providerErrorText`: optional selector extracting the provider's error text.
+- `failedRunResponse`: optional selector extracting a final response emitted
+  alongside a failure.
+- `source`: optional explicit source hint (`structured_error`, `result_message`,
+  `stderr`, `stdout`).
+
+Existing Profile releases without `failureExtraction` remain unchanged and
+produce canonical-only failures.
+
 ## 16. Terminal result contract
 
 A Profile makes terminal success/failure unambiguous.

@@ -1,6 +1,7 @@
 import 'generated_protocol.dart';
 
 export 'generated_protocol.dart';
+export 'provider_failure.dart';
 export 'realtime_events.dart';
 export 'workspace_runtime_protocol.dart';
 export 'worker_descriptor.dart';

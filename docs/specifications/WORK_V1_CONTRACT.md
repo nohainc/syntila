@@ -489,6 +489,59 @@ surfaces those counts separately as a short Test summary.
 
 ## Run details and observability
 
+**Planned contract change:** The owner-approved target is to show provider
+failure information and a response returned with an error to users authorized to
+view the Work. The existing canonical-only behavior below remains in effect
+until implemented. The target semantics, credential boundary, rollout and
+verification phases are specified in
+[Provider failure details](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md).
+
+### Provider failure details contract (Phase 1)
+
+When Phase 2–4 are deployed, failed assignments may carry an optional,
+schema-versioned `providerFailure` object (`schemaVersion: 1`) alongside the
+authoritative canonical Syntila execution error code, canonical fallback
+message, and failed status:
+
+| Field | Type | Max UTF-8 bytes | Rules |
+| --- | --- | --- | --- |
+| `schemaVersion` | `1` (int literal) | — | Required when `providerFailure` is present. |
+| `nativeErrorCode` | `string` (optional) | 128 | Provider-supplied error code only; single-line, no control chars. Never fabricated from process exit code or Engine classification. |
+| `providerErrorText` | `string` (optional) | 4,096 | Provider-supplied error message. |
+| `failedRunResponse` | `string` (optional) | 32,768 | Provider-supplied final response text returned alongside a failure. Never promotes failure to success. |
+| `source` | `enum` (required) | — | One of `structured_error`, `result_message`, `stderr`, `stdout`, `plugin`. Separates provider data from Engine diagnostics and process exit evidence. |
+| `truncated` | `boolean` (optional) | — | `true` if any field was truncated to fit UTF-8 byte limits (always sliced on valid UTF-8 codepoint boundaries). |
+| `omitted` | `boolean` (optional) | — | `true` if any field was omitted due to credential detection. |
+| `omittedFields` | `string[]` (optional) | — | Explicit list of omitted field names (`nativeErrorCode`, `providerErrorText`, `failedRunResponse`) when `omitted` is `true`. |
+
+- **Total payload bound:** `providerFailure` text fields (`nativeErrorCode` +
+  `providerErrorText` + `failedRunResponse`) MUST NOT exceed **40,960 UTF-8
+  bytes** (40 KiB) in total, fitting within Local Worker Protocol frames,
+  WebSocket messages, Cloud API/D1 storage, and UI display bounds.
+- **Encoding & terminal control handling:** UTF-8. ANSI/VT escape sequences and
+  C0/C1 control characters (except `\n` and `\t`, with `\r\n` normalized to `\n`)
+  are stripped from `providerErrorText` and `failedRunResponse`; all control
+  characters are stripped from `nativeErrorCode`.
+- **Credential handling boundary:** API keys and credentials MUST NEVER be
+  persisted in plaintext application tables. Before persistence (and at the
+  Engine/Service boundary), fields are scanned for known credential patterns.
+  If a credential is detected in a field, that field is omitted, `omitted` is
+  set to `true`, and the field name is added to `omittedFields` rather than
+  silently presenting altered text as the original.
+- **Fallback, retention & authorization:** When `providerFailure` is absent or
+  all fields are omitted, clients display the canonical fallback message.
+  Ordinary Work authorization applies; no new access is granted. Records are
+  retained and deleted with the Work / Assignment Attempt record, and raw
+  provider payloads MUST NOT be written to logs, activity events, analytics, or
+  support reports as a side effect.
+- **Compatibility & rollout:** Local Worker Protocol `4.4` gates emission of
+  `providerFailure` on `WorkerErrorFrame`; `4.0`–`4.3` peers never receive it.
+  Workspace <-> Cloud `assignment.error` carries `providerFailure` as an
+  optional field; old peers ignore or omit it without rejecting terminal
+  messages or losing the canonical failure. Rollout order: (1) Protocol &
+  Profile schemas, (2) Cloud persistence/reads, (3) Engine & Workspace
+  delivery, (4) Work UI.
+
 The Work timeline stays concise and links to a separately loaded Run details
 view. Details use the immutable Work Request and Step records and show the
 Workflow ID/version, original request, and each Step's status, assigned Worker,

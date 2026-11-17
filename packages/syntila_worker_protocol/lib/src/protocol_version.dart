@@ -9,11 +9,17 @@ const pluginExecutorProtocolVersion = '4.2';
 /// (ADR-028 MCP Worker). An MCP executor names 4.3 explicitly, so a 4.2 peer
 /// rejects it instead of reading it as an NDJSON plugin; 4.0-4.2 are unchanged.
 const mcpExecutorProtocolVersion = '4.3';
+
+/// Protocol 4.4 adds optional `providerFailure` on `error` frames.
+/// Peers on 4.0-4.3 never receive `providerFailure` and keep canonical-only
+/// failure handling.
+const providerFailureDetailsProtocolVersion = '4.4';
 const supportedLocalWorkerProtocolVersions = {
   '4.0',
   localWorkerProtocolVersion,
   pluginExecutorProtocolVersion,
   mcpExecutorProtocolVersion,
+  providerFailureDetailsProtocolVersion,
 };
 
 /// Selects the newest protocol version supported by both sides.

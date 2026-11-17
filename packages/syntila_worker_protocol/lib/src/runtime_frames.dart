@@ -1616,6 +1616,7 @@ final class WorkerErrorFrame extends WorkerFrame {
     this.assignmentId,
     this.retryable = false,
     String? diagnostics,
+    Map<String, Object?>? providerFailure,
   })  : code = _boundedText(
           code,
           'error code',
@@ -1632,7 +1633,10 @@ final class WorkerErrorFrame extends WorkerFrame {
                 diagnostics,
                 'diagnostics',
                 WorkerProtocolLimits.maxDiagnosticLength,
-              ) {
+              ),
+        providerFailure = providerFailure == null
+            ? null
+            : _validateProviderFailure(providerFailure) {
     _validateToken(
       requestId,
       'requestId',
@@ -1655,6 +1659,7 @@ final class WorkerErrorFrame extends WorkerFrame {
   final String message;
   final bool retryable;
   final String? diagnostics;
+  final Map<String, Object?>? providerFailure;
 
   @override
   String get type => 'error';
@@ -1668,6 +1673,7 @@ final class WorkerErrorFrame extends WorkerFrame {
         'message': message,
         'retryable': retryable,
         if (diagnostics != null) 'diagnostics': diagnostics,
+        if (providerFailure != null) 'providerFailure': providerFailure,
       };
 
   factory WorkerErrorFrame.fromJson(Map<String, Object?> json) {
@@ -1679,6 +1685,7 @@ final class WorkerErrorFrame extends WorkerFrame {
       'message',
       'retryable',
       'diagnostics',
+      'providerFailure',
     });
     _expectType(json, 'error');
     final retryable = json['retryable'];
@@ -1695,7 +1702,109 @@ final class WorkerErrorFrame extends WorkerFrame {
       message: _requiredString(json, 'message'),
       retryable: retryable,
       diagnostics: _optionalString(json, 'diagnostics'),
+      providerFailure: _optionalMap(json, 'providerFailure'),
     );
+  }
+
+  static Map<String, Object?>? _optionalMap(
+    Map<String, Object?> json,
+    String key,
+  ) {
+    final value = json[key];
+    if (value == null) return null;
+    if (value is! Map) {
+      throw FormatException('$key must be a JSON object');
+    }
+    return Map<String, Object?>.unmodifiable(
+      value.map((k, v) => MapEntry(k.toString(), v)),
+    );
+  }
+
+  static Map<String, Object?> _validateProviderFailure(
+    Map<String, Object?> input,
+  ) {
+    const allowedKeys = <String>{
+      'schemaVersion',
+      'nativeErrorCode',
+      'providerErrorText',
+      'failedRunResponse',
+      'source',
+      'truncated',
+      'omitted',
+      'omittedFields',
+    };
+    const allowedSources = <String>{
+      'structured_error',
+      'result_message',
+      'stderr',
+      'stdout',
+      'plugin',
+    };
+    const omittableFields = <String>{
+      'nativeErrorCode',
+      'providerErrorText',
+      'failedRunResponse',
+    };
+    for (final key in input.keys) {
+      if (!allowedKeys.contains(key)) {
+        throw FormatException('Unknown providerFailure key: $key');
+      }
+    }
+    if (input['schemaVersion'] != 1) {
+      throw FormatException(
+        'Unsupported providerFailure schemaVersion: ${input['schemaVersion']}',
+      );
+    }
+    final source = input['source'];
+    if (source is! String || !allowedSources.contains(source)) {
+      throw FormatException('Invalid providerFailure source: $source');
+    }
+    int checkField(String key, int maxBytes) {
+      final value = input[key];
+      if (value == null) return 0;
+      if (value is! String || value.isEmpty) {
+        throw FormatException('$key must be a non-empty string');
+      }
+      final bytes = utf8.encode(value).length;
+      if (bytes > maxBytes) {
+        throw FormatException('$key exceeds $maxBytes UTF-8 bytes');
+      }
+      return bytes;
+    }
+
+    final totalBytes = checkField('nativeErrorCode', 128) +
+        checkField('providerErrorText', 4096) +
+        checkField('failedRunResponse', 32768);
+    if (totalBytes > 40960) {
+      throw FormatException(
+        'providerFailure total UTF-8 bytes ($totalBytes) exceeds 40960',
+      );
+    }
+    final truncated = input['truncated'];
+    if (truncated != null && truncated is! bool) {
+      throw const FormatException('truncated must be a boolean');
+    }
+    final omitted = input['omitted'];
+    if (omitted != null && omitted is! bool) {
+      throw const FormatException('omitted must be a boolean');
+    }
+    final omittedFields = input['omittedFields'];
+    if (omittedFields != null) {
+      if (omittedFields is! List || omittedFields.length > 3) {
+        throw const FormatException('omittedFields must be a bounded list');
+      }
+      for (final entry in omittedFields) {
+        if (entry is! String || !omittableFields.contains(entry)) {
+          throw FormatException('Invalid omittedFields entry: $entry');
+        }
+      }
+      if (omittedFields.isNotEmpty && omitted != true) {
+        throw const FormatException(
+          'omitted must be true when omittedFields is non-empty',
+        );
+      }
+    }
+    return input;
   }
 }
 
