@@ -89,25 +89,7 @@ function fixture(
   };
   const env = {
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const sql = strings.join("?");
-      if (sql.includes("FROM space_memberships")) {
-        return [{ role: "owner", settingsJson: "{}", kind: "group", isSupport: 0 }];
-      }
-      if (sql.includes("FROM user_workflow_settings") || sql.includes("FROM space_workflow_settings")) {
-        return [{ workspaceId }];
-      }
-      if (sql.includes("FROM workspace_worker_inventory")) {
-        return workspaceId === "first"
-          ? [{ workerId: "a", workspaceId }]
-          : [{ workerId: "a", workspaceId }, { workerId: "b", workspaceId }];
-      }
-      if (sql.includes("FROM execution_workspaces")) {
-        return [{ ownerUserId: "user" }];
-      }
-      if (sql.includes("FROM workspace_member_overrides") || sql.includes("FROM workspace_member_access")) {
-        return [];
-      }
-      expect(sql).toContain("UNION ALL");
+      expect(strings.join("?")).toContain("UNION ALL");
       expect(values[0]).toBe("user");
       expect(values[1]).toBe(workspaceId);
       expect(values[4]).toBe("space");

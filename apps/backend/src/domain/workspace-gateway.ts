@@ -108,7 +108,6 @@ import {
   type WorkspaceAssignmentCorrelation,
   type WorkspaceGatewayEnv,
 } from "./workspace-gateway/contracts.js";
-import { dataOf } from "../platform/data.js";
 
 /**
  * Bound the fallback transport's pending server-to-Workspace messages. The
@@ -459,7 +458,11 @@ export class WorkspaceGateway implements DurableObject {
         protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
         connectedAt: now,
       });
-      await dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'online', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}`;
+      await this.env.SYNTILA_DB.prepare(
+        "UPDATE execution_workspaces SET status = 'online', updated_at = ?1 WHERE id = ?2",
+      )
+        .bind(now, this.executionWorkspaceId)
+        .run();
       await this.persistHttpRuntime();
       await this.startReadinessSession(this.sessionId, runtimeId);
       return Response.json({
@@ -596,9 +599,11 @@ export class WorkspaceGateway implements DurableObject {
       if (this.executionWorkspaceId)
         this.queueProjectionWrite(
           () =>
-            dataOf(this.env).read.run`
-              UPDATE execution_workspaces SET status = 'offline', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}
-            `,
+            this.env.SYNTILA_DB.prepare(
+              "UPDATE execution_workspaces SET status = 'offline', updated_at = ?1 WHERE id = ?2",
+            )
+              .bind(now, this.executionWorkspaceId)
+              .run(),
           "workspace_offline_projection_failed",
           { workspaceId: this.executionWorkspaceId, runtimeId },
         );
@@ -792,7 +797,11 @@ export class WorkspaceGateway implements DurableObject {
       const now = new Date().toISOString();
       await this.sessionStore.close(this.sessionId, now);
       if (this.executionWorkspaceId) {
-        await dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'offline', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}`;
+        await this.env.SYNTILA_DB.prepare(
+          "UPDATE execution_workspaces SET status = 'offline', updated_at = ?1 WHERE id = ?2",
+        )
+          .bind(now, this.executionWorkspaceId)
+          .run();
       }
       this.sessionId = null;
       this.httpLastActivityAt = null;
@@ -928,9 +937,11 @@ export class WorkspaceGateway implements DurableObject {
 
     this.queueProjectionWrite(
       () =>
-        dataOf(this.env).read.run`
-          UPDATE execution_workspaces SET status = 'online', updated_at = ${now} WHERE id = ${runtimeIdentity.executionWorkspaceId}
-        `,
+        this.env.SYNTILA_DB.prepare(
+          "UPDATE execution_workspaces SET status = 'online', updated_at = ?1 WHERE id = ?2",
+        )
+          .bind(now, runtimeIdentity.executionWorkspaceId)
+          .run(),
       "workspace_online_projection_failed",
       {
         requestId: correlationId,
@@ -1050,9 +1061,11 @@ export class WorkspaceGateway implements DurableObject {
     if (this.executionWorkspaceId) {
       this.queueProjectionWrite(
         () =>
-          dataOf(this.env).read.run`
-            UPDATE execution_workspaces SET status = 'offline', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}
-          `,
+          this.env.SYNTILA_DB.prepare(
+            "UPDATE execution_workspaces SET status = 'offline', updated_at = ?1 WHERE id = ?2",
+          )
+            .bind(now, this.executionWorkspaceId)
+            .run(),
         "workspace_offline_projection_failed",
         {
           requestId: this.correlationId ?? undefined,
@@ -1160,17 +1173,29 @@ export class WorkspaceGateway implements DurableObject {
             runtimeId: this.workspaceRuntimeId ?? message.workspaceRuntimeId,
             capabilities: facts.capabilities,
           });
-          await dataOf(this.env).read.run`INSERT INTO workspace_runtime_facts
+          await this.env.SYNTILA_DB.prepare(
+            `INSERT INTO workspace_runtime_facts
              (workspace_id, platform, architecture, hostname, app_version,
               runtime_capabilities_json, updated_at)
-             VALUES (${this.executionWorkspaceId}, ${facts.platform}, ${facts.architecture}, ${facts.hostname}, ${facts.appVersion}, ${JSON.stringify(facts.capabilities)}, ${now})
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT(workspace_id) DO UPDATE SET
                platform = excluded.platform,
                architecture = excluded.architecture,
                hostname = excluded.hostname,
                app_version = excluded.app_version,
                runtime_capabilities_json = excluded.runtime_capabilities_json,
-               updated_at = excluded.updated_at`;
+               updated_at = excluded.updated_at`,
+          )
+            .bind(
+              this.executionWorkspaceId,
+              facts.platform,
+              facts.architecture,
+              facts.hostname,
+              facts.appVersion,
+              JSON.stringify(facts.capabilities),
+              now,
+            )
+            .run();
         }
         await this.send({
           protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
@@ -1315,7 +1340,7 @@ export class WorkspaceGateway implements DurableObject {
           // provider-start acknowledgement or a terminal outcome got here
           // first, this late acknowledgement is recorded and ignored; it
           // must never refresh updated_at or downgrade the assignment.
-          const transition = await transitionAssignment(dataOf(this.env).read, {
+          const transition = await transitionAssignment(this.env.SYNTILA_DB, {
             to: assignmentStatusForEvidence("admission"),
             now,
             fence: {
@@ -1462,7 +1487,7 @@ export class WorkspaceGateway implements DurableObject {
         // created, dispatched or acknowledged. That keeps the evidence when
         // it overtakes the acceptance acknowledgement (HTTP fallback, replay).
         if (!(await this.assignmentContextMatches(message))) return;
-        const transition = await transitionAssignment(dataOf(this.env).read, {
+        const transition = await transitionAssignment(this.env.SYNTILA_DB, {
           to: assignmentStatusForEvidence("provider_start"),
           now,
           startTaskId: message.taskId,
@@ -1498,7 +1523,7 @@ export class WorkspaceGateway implements DurableObject {
         // Fencing: the Service asks to launch the provider. Granted only while
         // Cloud has not revoked the assignment (see assignment-start-permit).
         if (!(await this.assignmentContextMatches(message))) return;
-        const decision = await grantStartPermit(dataOf(this.env).read, {
+        const decision = await grantStartPermit(this.env.SYNTILA_DB, {
           assignmentId: message.assignmentId!,
           attemptId: message.attemptId!,
           executionWorkspaceId: this.executionWorkspaceId ?? undefined,
@@ -1603,7 +1628,8 @@ export class WorkspaceGateway implements DurableObject {
           });
           return;
         }
-        const assignment = await dataOf(this.env).read.row<Record<string, unknown>>`SELECT id, execution_workspace_id, runtime_identity_id,
+        const assignment = await this.env.SYNTILA_DB.prepare(
+          `SELECT id, execution_workspace_id, runtime_identity_id,
                   worker_type_id, workspace_worker_id, run_id, task_id,
                   -- Work Request assignments are not stamped with a thread.
                   -- Without one the realtime event carries no threadId and the
@@ -1642,7 +1668,10 @@ export class WorkspaceGateway implements DurableObject {
                     )
                   ) AS work_request_binding_valid
            FROM worker_assignments
-           WHERE id = ${message.assignmentId}`;
+           WHERE id = ?1`,
+        )
+          .bind(message.assignmentId)
+          .first<Record<string, unknown>>();
         const correlation: WorkspaceAssignmentCorrelation = {
           executionWorkspaceId: message.executionWorkspaceId!,
           workspaceRuntimeId: message.workspaceRuntimeId!,
@@ -1729,11 +1758,20 @@ export class WorkspaceGateway implements DurableObject {
         }
         const replayable = shouldPersistWorkerActivity(activityPayload.data);
         if (replayable) {
-          const conflict = await dataOf(this.env).read.row<{ source_event_id: string; provider_sequence: number }>`SELECT source_event_id, provider_sequence
+          const conflict = await this.env.SYNTILA_DB.prepare(
+            `SELECT source_event_id, provider_sequence
              FROM worker_activity_history
-             WHERE assignment_id = ${message.assignmentId} AND attempt_id = ${message.attemptId}
-               AND (source_event_id = ${activityPayload.data.sourceEventId} OR provider_sequence = ${activityPayload.data.activitySequence})
-             LIMIT 1`;
+             WHERE assignment_id = ?1 AND attempt_id = ?2
+               AND (source_event_id = ?3 OR provider_sequence = ?4)
+             LIMIT 1`,
+          )
+            .bind(
+              message.assignmentId,
+              message.attemptId,
+              activityPayload.data.sourceEventId,
+              activityPayload.data.activitySequence,
+            )
+            .first<{ source_event_id: string; provider_sequence: number }>();
           if (
             conflict &&
             conflict.source_event_id !== activityPayload.data.sourceEventId
@@ -1758,37 +1796,43 @@ export class WorkspaceGateway implements DurableObject {
           }
         }
         const eventId = `assignment-activity:${message.assignmentId}:${message.attemptId}:${activityPayload.data.sourceEventId}`;
+        const historyMutation = replayable
+          ? this.env.SYNTILA_DB.prepare(
+              `INSERT INTO worker_activity_history
+               (history_id, assignment_id, workspace_id, attempt_id,
+                execution_id, worker_id, source_event_id, provider_sequence,
+               event_type, status, activity_id, title, details_json,
+                duration_ms, tool_id, tool_name, occurred_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                       ?13, ?14, ?15, ?16, ?17)
+               ON CONFLICT DO NOTHING`,
+            ).bind(
+              eventId,
+              message.assignmentId,
+              workspaceId,
+              message.attemptId,
+              activityPayload.data.executionId,
+              activityPayload.data.workerId,
+              activityPayload.data.sourceEventId,
+              activityPayload.data.activitySequence,
+              activityPayload.data.activityType,
+              activityPayload.data.activityStatus,
+              activityPayload.data.activityId ?? null,
+              activityPayload.data.title,
+              JSON.stringify(activityPayload.data.details ?? {}),
+              activityPayload.data.durationMs ?? null,
+              activityPayload.data.toolId ?? null,
+              activityPayload.data.toolName ?? null,
+              new Date().toISOString(),
+            )
+          : undefined;
         try {
           await createEventPublisher(this.env).publish({
             type: "assignment.activity",
             eventId,
             idempotencyKey: eventId,
             durable: replayable,
-            ...(replayable
-              ? {
-                  tx: async (tx) => {
-                    await tx.run`
-                      INSERT INTO worker_activity_history
-                       (history_id, assignment_id, workspace_id, attempt_id,
-                        execution_id, worker_id, source_event_id, provider_sequence,
-                       event_type, status, activity_id, title, details_json,
-                        duration_ms, tool_id, tool_name, occurred_at)
-                       VALUES (
-                         ${eventId}, ${message.assignmentId}, ${workspaceId}, ${message.attemptId},
-                         ${activityPayload.data.executionId}, ${activityPayload.data.workerId},
-                         ${activityPayload.data.sourceEventId}, ${activityPayload.data.activitySequence},
-                         ${activityPayload.data.activityType}, ${activityPayload.data.activityStatus},
-                         ${activityPayload.data.activityId ?? null}, ${activityPayload.data.title},
-                         ${JSON.stringify(activityPayload.data.details ?? {})},
-                         ${activityPayload.data.durationMs ?? null},
-                         ${activityPayload.data.toolId ?? null}, ${activityPayload.data.toolName ?? null},
-                         ${new Date().toISOString()}
-                       )
-                       ON CONFLICT DO NOTHING
-                    `;
-                  },
-                }
-              : {}),
+            ...(historyMutation ? { mutations: [historyMutation] } : {}),
             workspaceId,
             workspaceRuntimeId:
               this.workspaceRuntimeId ?? message.workspaceRuntimeId,
@@ -2031,13 +2075,17 @@ export class WorkspaceGateway implements DurableObject {
       this.env.SYNTILA_DB,
       ASSIGNMENT_REVOCATION_CONFIRMATION_MS,
     );
-    const { results } = await dataOf(this.env).read.rows<Record<string, unknown>>`SELECT id, execution_workspace_id, runtime_identity_id,
+    const { results } = await this.env.SYNTILA_DB.prepare(
+      `SELECT id, execution_workspace_id, runtime_identity_id,
               workspace_worker_id, run_id, task_id, attempt_id,
               idempotency_key, error_json
          FROM worker_assignments
-        WHERE execution_workspace_id = ${workspaceId}
+        WHERE execution_workspace_id = ?1
           AND status IN ('revocation_pending', 'reconciling')
-        LIMIT 100`;
+        LIMIT 100`,
+    )
+      .bind(workspaceId)
+      .all<Record<string, unknown>>();
     for (const row of results ?? []) {
       let reason = "Cloud revoked the assignment";
       let commandId = `revoke:${String(row.id)}:${String(row.attempt_id)}`;
@@ -2086,28 +2134,35 @@ export class WorkspaceGateway implements DurableObject {
     const terminalSince = new Date(
       Date.now() - 24 * 60 * 60 * 1000,
     ).toISOString();
-    const read = dataOf(this.env).read;
-    const assignmentRows = await read.rows<Record<string, unknown>>`
-      SELECT id AS assignment_id, status
+    const assignments = await this.env.SYNTILA_DB.prepare(
+      `SELECT id AS assignment_id, status
        FROM worker_assignments
-       WHERE execution_workspace_id = ${workspaceId}
+       WHERE execution_workspace_id = ?1
          AND (
-           status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})
-           OR (status IN ('completed', 'failed', 'cancelled', 'timed_out') AND updated_at >= ${terminalSince})
+           status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})
+           OR (status IN ('completed', 'failed', 'cancelled', 'timed_out') AND updated_at >= ?2)
          )
        ORDER BY updated_at DESC
-       LIMIT 500`;
+       LIMIT 500`,
+    )
+      .bind(workspaceId, terminalSince)
+      .all<Record<string, unknown>>();
     const activeStatuses = new Set<string>(ASSIGNMENT_ACTIVE_STATUSES);
+    const assignmentRows = assignments.results ?? [];
     // Spaces that still exist for this Workspace. The Service uses it only to
     // forget local bookkeeping for removed Spaces; it never deletes folders.
     // Omitted on a query failure so the Service keeps everything.
     let knownSpaceIds: string[] | undefined;
     try {
-      const spaces = await dataOf(this.env).read.rows<{ space_id: string }>`SELECT DISTINCT g.space_id AS space_id
+      const spaces = await this.env.SYNTILA_DB.prepare(
+        `SELECT DISTINCT g.space_id AS space_id
          FROM workspace_space_grants g
          JOIN spaces s ON s.id = g.space_id
-         WHERE g.workspace_id = ${workspaceId}
-         LIMIT 5000`;
+         WHERE g.workspace_id = ?1
+         LIMIT 5000`,
+      )
+        .bind(workspaceId)
+        .all<{ space_id: string }>();
       knownSpaceIds = (spaces.results ?? []).map((row) => String(row.space_id));
     } catch {
       knownSpaceIds = undefined;
@@ -2282,7 +2337,7 @@ export class WorkspaceGateway implements DurableObject {
     };
     diagnostic("read_start");
     const row = message.assignmentId
-      ? await assignmentStatus(this.env, message.assignmentId)
+      ? await assignmentStatus(this.env.SYNTILA_DB, message.assignmentId)
       : null;
     diagnostic("read_done");
     // Local Worker Protocol 4.x acknowledges timeout as a failed terminal
@@ -2353,10 +2408,14 @@ export class WorkspaceGateway implements DurableObject {
     ) {
       return false;
     }
-    const assignment = await dataOf(this.env).read.row<Record<string, unknown>>`SELECT id, execution_workspace_id, runtime_identity_id,
+    const assignment = await this.env.SYNTILA_DB.prepare(
+      `SELECT id, execution_workspace_id, runtime_identity_id,
               worker_type_id, workspace_worker_id, run_id, task_id,
               attempt_id, idempotency_key
-         FROM worker_assignments WHERE id = ${message.assignmentId}`;
+         FROM worker_assignments WHERE id = ?1`,
+    )
+      .bind(message.assignmentId)
+      .first<Record<string, unknown>>();
     return (
       assignment != null &&
       workspaceAssignmentContextMatches(
@@ -2378,10 +2437,14 @@ export class WorkspaceGateway implements DurableObject {
     ) {
       return false;
     }
-    const assignment = await dataOf(this.env).read.row<Record<string, unknown>>`SELECT id, execution_workspace_id, runtime_identity_id,
+    const assignment = await this.env.SYNTILA_DB.prepare(
+      `SELECT id, execution_workspace_id, runtime_identity_id,
               worker_type_id, workspace_worker_id, run_id, task_id,
               attempt_id, idempotency_key
-         FROM worker_assignments WHERE id = ${message.assignmentId}`;
+         FROM worker_assignments WHERE id = ?1`,
+    )
+      .bind(message.assignmentId)
+      .first<Record<string, unknown>>();
     return (
       assignment != null &&
       workspaceAssignmentContextMatches(
@@ -2397,7 +2460,7 @@ export class WorkspaceGateway implements DurableObject {
     message: WorkspaceRuntimeMessage,
   ): Promise<boolean> {
     if (!(await this.assignmentContextMatches(message))) return false;
-    const assignment = await assignmentStatus(this.env, message.assignmentId);
+    const assignment = await assignmentStatus(this.env.SYNTILA_DB, message.assignmentId);
     return assignment != null && workspaceAssignmentIsActive(assignment);
   }
 
@@ -2413,7 +2476,11 @@ export class WorkspaceGateway implements DurableObject {
   private async serviceHasCapability(capability: string): Promise<boolean> {
     const workspaceId = this.executionWorkspaceId;
     if (!workspaceId) return false;
-    const facts = await dataOf(this.env).read.row<{ runtime_capabilities_json: string | null }>`SELECT runtime_capabilities_json FROM workspace_runtime_facts WHERE workspace_id = ${workspaceId}`;
+    const facts = await this.env.SYNTILA_DB.prepare(
+      "SELECT runtime_capabilities_json FROM workspace_runtime_facts WHERE workspace_id = ?1",
+    )
+      .bind(workspaceId)
+      .first<{ runtime_capabilities_json: string | null }>();
     try {
       const capabilities: unknown = JSON.parse(
         facts?.runtime_capabilities_json ?? "[]",
@@ -2706,7 +2773,21 @@ export class WorkspaceGateway implements DurableObject {
     let flushed = 0;
     try {
       for (let pass = 0; pass < 8; pass += 1) {
-        const rows = await dataOf(this.env).read.rows<{
+        const rows = await this.env.SYNTILA_DB.prepare(
+          `SELECT id, run_id, task_id, attempt_id, idempotency_key,
+                  workspace_worker_id, command_payload_json
+             FROM worker_assignments
+            WHERE execution_workspace_id = ?1 AND runtime_identity_id = ?2
+              AND status = 'created' AND command_payload_json IS NOT NULL
+              AND task_id NOT IN (
+                SELECT wt.id FROM workflow_tasks wt
+                  JOIN work_requests wr ON wr.id = wt.work_request_id
+                 WHERE wr.status IN ('cancelled', 'failed', 'completed'))
+            ORDER BY created_at, id
+            LIMIT 25`,
+        )
+          .bind(workspaceId, runtimeId)
+          .all<{
             id: string;
             run_id: string;
             task_id: string;
@@ -2714,17 +2795,7 @@ export class WorkspaceGateway implements DurableObject {
             idempotency_key: string;
             workspace_worker_id: string;
             command_payload_json: string;
-          }>`SELECT id, run_id, task_id, attempt_id, idempotency_key,
-                  workspace_worker_id, command_payload_json
-             FROM worker_assignments
-            WHERE execution_workspace_id = ${workspaceId} AND runtime_identity_id = ${runtimeId}
-              AND status = 'created' AND command_payload_json IS NOT NULL
-              AND task_id NOT IN (
-                SELECT wt.id FROM workflow_tasks wt
-                  JOIN work_requests wr ON wr.id = wt.work_request_id
-                 WHERE wr.status IN ('cancelled', 'failed', 'completed'))
-            ORDER BY created_at, id
-            LIMIT 25`;
+          }>();
         const queued = rows.results ?? [];
         if (queued.length === 0) break;
         let progressed = 0;
@@ -2780,7 +2851,11 @@ export class WorkspaceGateway implements DurableObject {
 
   /** The owner's slot total from Workspace settings (the web Workspaces page). */
   private async workspaceSlotLimit(): Promise<number> {
-    const row = await dataOf(this.env).read.row<{ slots: number | null }>`SELECT parallel_slots AS slots FROM execution_workspaces WHERE id = ${this.executionWorkspaceId}`;
+    const row = await this.env.SYNTILA_DB.prepare(
+      "SELECT parallel_slots AS slots FROM execution_workspaces WHERE id = ?1",
+    )
+      .bind(this.executionWorkspaceId)
+      .first<{ slots: number | null }>();
     return row?.slots ?? DEFAULT_WORKSPACE_PARALLEL_SLOTS;
   }
 
@@ -2789,11 +2864,13 @@ export class WorkspaceGateway implements DurableObject {
    * ones being revoked: their process may still be running.
    */
   private async slotIsFree(): Promise<boolean> {
-    const read = dataOf(this.env).read;
-    const row = await read.row<{ active: number }>`
-      SELECT COUNT(*) AS active FROM worker_assignments
-       WHERE execution_workspace_id = ${this.executionWorkspaceId}
-         AND status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)}) AND status <> 'created'`;
+    const row = await this.env.SYNTILA_DB.prepare(
+      `SELECT COUNT(*) AS active FROM worker_assignments
+        WHERE execution_workspace_id = ?1
+          AND status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL}) AND status <> 'created'`,
+    )
+      .bind(this.executionWorkspaceId)
+      .first<{ active: number }>();
     return Number(row?.active ?? 0) < (await this.workspaceSlotLimit());
   }
 
@@ -2832,7 +2909,8 @@ export class WorkspaceGateway implements DurableObject {
     body: WorkspaceAssignmentCorrelation & { payload: unknown },
     options: { readonly claimCreated?: boolean },
   ): Promise<Response> {
-    const row = await dataOf(this.env).read.row<Record<string, unknown>>`SELECT wa.id, wa.execution_workspace_id, wa.runtime_identity_id,
+    const row = await this.env.SYNTILA_DB.prepare(
+      `SELECT wa.id, wa.execution_workspace_id, wa.runtime_identity_id,
               wa.worker_type_id, wa.workspace_worker_id,
               wa.run_id, wa.task_id, wa.attempt_id,
               wa.idempotency_key, wa.status, wa.start_permit_required
@@ -2842,8 +2920,11 @@ export class WorkspaceGateway implements DurableObject {
         AND g.space_id = wa.space_id
         AND g.workspace_id = wa.execution_workspace_id
         AND g.status = 'active'
-        AND (g.expires_at IS NULL OR g.expires_at > ${new Date().toISOString()})
-       WHERE wa.id = ${body.assignmentId}`;
+        AND (g.expires_at IS NULL OR g.expires_at > ?2)
+       WHERE wa.id = ?1`,
+    )
+      .bind(body.assignmentId, new Date().toISOString())
+      .first<Record<string, unknown>>();
     if (
       !row ||
       !workspaceAssignmentContextMatches(body, row) ||
@@ -2947,7 +3028,7 @@ export class WorkspaceGateway implements DurableObject {
     const claim = await this.withSlotLock(async () => {
       if (currentStatus === "created" && !(await this.slotIsFree()))
         return null;
-      return transitionAssignment(dataOf(this.env).read, {
+      return transitionAssignment(this.env.SYNTILA_DB, {
         fence: {
           assignmentId: body.assignmentId,
           attemptId: body.attemptId,
@@ -2987,8 +3068,12 @@ export class WorkspaceGateway implements DurableObject {
       });
     }
     if (persisted.applied) {
-      await dataOf(this.env).read.run`UPDATE worker_assignments SET start_permit_required = 1
-          WHERE id = ${body.assignmentId} AND start_permit_required = 0 AND status = 'dispatched'`;
+      await this.env.SYNTILA_DB.prepare(
+        `UPDATE worker_assignments SET start_permit_required = 1
+          WHERE id = ?1 AND start_permit_required = 0 AND status = 'dispatched'`,
+      )
+        .bind(body.assignmentId)
+        .run();
     }
     if (!persisted.applied && persisted.outcome !== "duplicate") {
       return Response.json(
@@ -3293,7 +3378,7 @@ export class WorkspaceGateway implements DurableObject {
     if (!parsed.success || !workspaceId)
       return Response.json({ error: "Invalid tool call" }, { status: 400 });
     const call = parsed.data;
-    const db = dataOf(this.env).read;
+    const db = this.env.SYNTILA_DB;
     const previous = await loadMcpToolCall(db, call.taskId);
     if (previous) {
       if (
@@ -3404,7 +3489,7 @@ export class WorkspaceGateway implements DurableObject {
         { status: 400 },
       );
     const query = parsed.data;
-    const cloud = await loadMcpToolCall(dataOf(this.env).read, query.taskId);
+    const cloud = await loadMcpToolCall(this.env.SYNTILA_DB, query.taskId);
     if (!cloud)
       return Response.json({ cloud: null, workspace: null }, { status: 404 });
     if (

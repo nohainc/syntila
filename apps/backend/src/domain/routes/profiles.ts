@@ -12,7 +12,6 @@ import { extractBearerToken } from "@syntila/security";
 import { listWorkerProfiles } from "../worker-profile-registry.js";
 import { HttpError, json, securityContext } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
-import { dataOf } from "../../platform/data.js";
 import {
   loadEffectiveMemberAccess,
   restrictExecutionOptions,
@@ -55,31 +54,16 @@ export async function handleListWorkspaceWorkerInventory(
        LEFT JOIN worker_profile_history history
          ON history.worker_type_id = i.worker_type_id
         AND history.revision = i.profile_release_version`;
-  const rows = await dataOf(env).read.rows<Record<string, unknown>>`
-    SELECT i.workspace_id, i.worker_id, i.worker_type_id,
-           i.worker_display_name, i.available, i.availability_reason,
-           i.profile_release_version, i.capabilities_json, i.updated_at,
-           ew.name AS workspace_name,
-           current_profile.capabilities_json AS current_capabilities_json,
-           history.capabilities_json AS history_capabilities_json,
-           catalog.origin AS catalog_origin,
-           pe.shareable AS plugin_pin_shareable
-      FROM workspace_worker_inventory i
-      JOIN execution_workspaces ew ON ew.id = i.workspace_id
-      LEFT JOIN worker_catalog catalog ON catalog.worker_type_id = i.worker_type_id
-      LEFT JOIN workspace_worker_plugin_enablements pe
-        ON pe.workspace_id = i.workspace_id AND pe.plugin_ref = i.worker_type_id
-      LEFT JOIN worker_profiles current_profile
-        ON current_profile.worker_type_id = i.worker_type_id
-       AND current_profile.revision = i.profile_release_version
-      LEFT JOIN worker_profile_history history
-        ON history.worker_type_id = i.worker_type_id
-       AND history.revision = i.profile_release_version
-     WHERE i.owner_user_id = ${context.userId}
-       AND ew.status != 'revoked'
-       AND (${workspaceId}::text IS NULL OR i.workspace_id = ${workspaceId})
-     ORDER BY i.workspace_id, i.worker_type_id, i.worker_id`;
-  const owned = rows.map((row) =>
+  const rows = await env.SYNTILA_DB.prepare(
+    `${columns}
+      WHERE i.owner_user_id = ?1
+        AND ew.status != 'revoked'
+        AND (?2::text IS NULL OR i.workspace_id = ?2)
+      ORDER BY i.workspace_id, i.worker_type_id, i.worker_id`,
+  )
+    .bind(context.userId, workspaceId)
+    .all<Record<string, unknown>>();
+  const owned = (rows.results ?? []).map((row) =>
     projectInventoryRow(row, null),
   );
   // Space members and people a Workspace is lent to also see what the owner
@@ -87,21 +71,20 @@ export async function handleListWorkspaceWorkerInventory(
   // member-access policy. Only clients that ask for it receive them.
   const shared: unknown[] = [];
   if (params.get("includeShared") === "true") {
-    const read = dataOf(env).read;
-    const sharedRows = await read.rows<Record<string, unknown>>`
-      ${read.raw(columns)}
+    const sharedRows = await env.SYNTILA_DB.prepare(
+      `${columns}
         WHERE ew.status != 'revoked'
-          AND i.owner_user_id <> ${context.userId}
+          AND i.owner_user_id <> ?1
           -- A custom plugin is shared only when its owner opted in (ADR-027).
           AND (COALESCE(catalog.origin, 'official') <> 'plugin'
                OR pe.shareable)
-          AND (${workspaceId}::text IS NULL OR i.workspace_id = ${workspaceId})
+          AND (?2::text IS NULL OR i.workspace_id = ?2)
           AND (EXISTS (
             SELECT 1
               FROM space_memberships m
               JOIN spaces s ON s.id = m.space_id
               JOIN space_workflow_settings sws ON sws.space_id = s.id
-             WHERE m.user_id = ${context.userId} AND s.owner_user_id <> ${context.userId}
+             WHERE m.user_id = ?1 AND s.owner_user_id <> ?1
                -- A Workspace lent to the Space owner is not passed on to
                -- their Space members (ADR-020: grants are non-transferable).
                AND s.owner_user_id = i.owner_user_id
@@ -109,11 +92,14 @@ export async function handleListWorkspaceWorkerInventory(
             OR i.workspace_id IN (
             SELECT g.workspace_id FROM workspace_person_grants g
               JOIN execution_workspaces gw ON gw.id = g.workspace_id
-             WHERE g.user_id = ${context.userId} AND g.status = 'active'
-               AND ${read.raw(paidOwnerSql("gw.owner_user_id"))}))
-        ORDER BY i.workspace_id, i.worker_type_id, i.worker_id`;
+             WHERE g.user_id = ?1 AND g.status = 'active'
+               AND ${paidOwnerSql("gw.owner_user_id")}))
+        ORDER BY i.workspace_id, i.worker_type_id, i.worker_id`,
+    )
+      .bind(context.userId, workspaceId)
+      .all<Record<string, unknown>>();
     const policies = new Map<string, WorkspaceMemberAccessPolicy | null>();
-    for (const row of sharedRows) {
+    for (const row of sharedRows.results ?? []) {
       const id = String(row.workspace_id);
       if (!policies.has(id))
         policies.set(

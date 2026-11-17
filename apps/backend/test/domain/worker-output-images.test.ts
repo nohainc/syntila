@@ -76,7 +76,6 @@ describe("generated output upload", () => {
     const runtime = await import("../../src/domain/routes/work-request-inputs.js");
     const plans = await import("../../src/domain/account-plan.js");
     const files = await import("../../src/domain/routes/work-request-files.js");
-    const data = await import("../../src/platform/data.js");
     const runtimeSpy = vi
       .spyOn(runtime, "requireRuntime")
       .mockResolvedValue("workspace-1");
@@ -87,17 +86,20 @@ describe("generated output upload", () => {
       .spyOn(files, "storeWorkRequestFile")
       .mockResolvedValue({ digest: "sha256:test", sizeBytes: 4 });
     let status = "running";
-    const dataSpy = vi.spyOn(data, "dataOf").mockReturnValue({
-      read: {
-        row: async () => ({
-          threadId: "thread-1",
-          spaceId: "space-1",
-          ownerUserId: "space-owner",
-          status,
+    const env = {
+      SYNTILA_DB: {
+        prepare: () => ({
+          bind: () => ({
+            first: async () => ({
+              threadId: "thread-1",
+              spaceId: "space-1",
+              ownerUserId: "space-owner",
+              status,
+            }),
+          }),
         }),
       },
-    } as never);
-    const env = {} as never;
+    } as never;
     const request = () =>
       new Request(
         "https://example.com/api/workspace-runtime/outputs?assignmentId=asg-1&name=report.txt",

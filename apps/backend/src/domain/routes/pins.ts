@@ -39,7 +39,7 @@ export async function handleSetPin(
     );
     userId = context.userId;
     spaceId = targetId;
-    const member = await isSpaceMember(env, targetId, userId);
+    const member = await isSpaceMember(env.SYNTILA_DB, targetId, userId);
     if (!member) throw new HttpError(404, "Space not found");
   } else {
     const access = await authorizeThreadAccess(
@@ -100,7 +100,7 @@ export async function handleSetPinOrder(
     spaceId,
     accessContext,
   );
-  const member = await isSpaceMember(env, spaceId, context.userId);
+  const member = await isSpaceMember(env.SYNTILA_DB, spaceId, context.userId);
   if (!member) throw new HttpError(404, "Space not found");
   await inTransaction(env, "pin.order", async (txEnv, tx) => {
     await lockPins(tx, context.userId);

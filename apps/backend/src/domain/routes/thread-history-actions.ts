@@ -1,9 +1,8 @@
 import type { SecurityEnv } from "./http-security.js";
 import { HttpError } from "./http-security.js";
-import { dataOf, type Tx } from "../../platform/data.js";
 
-export async function threadNotice(
-  tx: Tx,
+export function threadNotice(
+  env: SecurityEnv,
   threadId: string,
   userId: string,
   name: string,
@@ -11,11 +10,18 @@ export async function threadNotice(
   text: string,
   now: string,
 ) {
-  await tx.run`
-    INSERT INTO discussion_messages
+  return env.SYNTILA_DB.prepare(
+    `INSERT INTO discussion_messages
     (id, thread_id, author_user_id, body, created_at, event_type)
-    VALUES (${`notice-${crypto.randomUUID()}`}, ${threadId}, ${userId}, ${`${name} ${text}`}, ${now}, ${event})
-  `;
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+  ).bind(
+    `notice-${crypto.randomUUID()}`,
+    threadId,
+    userId,
+    `${name} ${text}`,
+    now,
+    event,
+  );
 }
 
 export async function requireDestructiveThreadAccess(
@@ -23,15 +29,19 @@ export async function requireDestructiveThreadAccess(
   threadId: string,
   userId: string,
 ) {
-  const row = await dataOf(env).read.row<{
+  const row = await env.SYNTILA_DB.prepare(
+    `SELECT t.lead_user_id AS creator,
+    t.has_other_contributions AS contributed, s.owner_user_id AS owner,
+    COALESCE(s.kind, 'group') AS spaceKind
+    FROM threads t JOIN spaces s ON s.id = t.space_id WHERE t.id = ?1`,
+  )
+    .bind(threadId)
+    .first<{
       creator: string;
       contributed: number;
       owner: string;
       spaceKind: string;
-    }>`SELECT t.lead_user_id AS creator,
-    t.has_other_contributions AS contributed, s.owner_user_id AS owner,
-    COALESCE(s.kind, 'group') AS "spaceKind"
-    FROM threads t JOIN spaces s ON s.id = t.space_id WHERE t.id = ${threadId}`;
+    }>();
   if (!row) throw new HttpError(404, "Thread not found");
 
   if (row.spaceKind === "direct") {
@@ -53,17 +63,17 @@ export async function requireDestructiveThreadAccess(
 
 /** Recheck inside the atomic action batch to fence contributions/requests
  * admitted after the HTTP authorization read. A failed CHECK rolls it back. */
-export async function destructiveThreadGuard(
-  tx: Tx,
+export function destructiveThreadGuard(
+  env: SecurityEnv,
   threadId: string,
   userId: string,
 ) {
-  await tx.run`
-    UPDATE threads SET has_other_contributions = CASE
-    WHEN ((lead_user_id = ${userId} AND NOT has_other_contributions) OR EXISTS
-      (SELECT 1 FROM spaces s WHERE s.id = threads.space_id AND s.owner_user_id = ${userId} AND COALESCE(s.kind, 'group') <> 'direct'))
+  return env.SYNTILA_DB.prepare(
+    `UPDATE threads SET has_other_contributions = CASE
+    WHEN ((lead_user_id = ?2 AND NOT has_other_contributions) OR EXISTS
+      (SELECT 1 FROM spaces s WHERE s.id = threads.space_id AND s.owner_user_id = ?2 AND COALESCE(s.kind, 'group') <> 'direct'))
       AND NOT EXISTS (SELECT 1 FROM work_requests wr WHERE wr.thread_id = threads.id
         AND wr.status IN ('queued','running','waiting'))
-    THEN has_other_contributions ELSE syntila_guard_failed('thread_not_destructible') END WHERE id = ${threadId}
-  `;
+    THEN has_other_contributions ELSE syntila_guard_failed('thread_not_destructible') END WHERE id = ?1`,
+  ).bind(threadId, userId);
 }

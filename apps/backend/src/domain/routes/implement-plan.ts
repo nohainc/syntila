@@ -12,7 +12,6 @@ import {
 } from "@syntila/core";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import { parseWorkflowExecutionSelection } from "./workflow-execution-configuration.js";
-import { dataOf } from "../../platform/data.js";
 
 export type VerificationMode = "none" | "per_phase" | "final";
 
@@ -198,18 +197,23 @@ export async function handleApprovePlan(
   if (request.method !== "POST") throw new HttpError(405, "Method not allowed");
 
   const db = env.SYNTILA_DB;
-  const workRequest = await dataOf(env).read.row<{
+  const workRequest = await db
+    .prepare(
+      `SELECT wr.id, wr.thread_id AS threadId, wr.requested_by_user_id AS requestedByUserId,
+              wr.workflow_id AS workflowId, wr.status, t.space_id AS spaceId
+         FROM work_requests wr
+         JOIN threads t ON t.id = wr.thread_id
+        WHERE wr.id = ?1`,
+    )
+    .bind(workRequestId)
+    .first<{
       id: string;
       threadId: string;
       requestedByUserId: string;
       workflowId: string;
       status: string;
       spaceId: string;
-    }>`SELECT wr.id, wr.thread_id AS "threadId", wr.requested_by_user_id AS "requestedByUserId",
-              wr.workflow_id AS "workflowId", wr.status, t.space_id AS "spaceId"
-         FROM work_requests wr
-         JOIN threads t ON t.id = wr.thread_id
-        WHERE wr.id = ${workRequestId}`;
+    }>();
 
   if (!workRequest) throw new HttpError(404, "Work request not found");
   if (workRequest.workflowId !== "plan_implement") {
@@ -224,10 +228,15 @@ export async function handleApprovePlan(
     ctx,
   );
 
-  const planTask = await dataOf(env).read.row<{ outputJson: string | null; status: string }>`SELECT output_json AS "outputJson", status
+  const planTask = await db
+    .prepare(
+      `SELECT output_json AS outputJson, status
          FROM workflow_tasks
-        WHERE work_request_id = ${workRequestId} AND step_kind = 'plan'
-        ORDER BY attempt DESC LIMIT 1`;
+        WHERE work_request_id = ?1 AND step_kind = 'plan'
+        ORDER BY attempt DESC LIMIT 1`,
+    )
+    .bind(workRequestId)
+    .first<{ outputJson: string | null; status: string }>();
 
   if (!planTask || planTask.status !== "completed" || !planTask.outputJson) {
     throw new HttpError(
@@ -270,7 +279,12 @@ export async function handleApprovePlan(
 
   // Friendly early refusal; the claim inserted with the phases below is the
   // guarantee (plan_approvals_pkey).
-  const alreadyApproved = await dataOf(env).read.row`SELECT 1 AS found FROM plan_approvals WHERE plan_work_request_id = ${workRequestId}`;
+  const alreadyApproved = await db
+    .prepare(
+      "SELECT 1 AS found FROM plan_approvals WHERE plan_work_request_id = ?1",
+    )
+    .bind(workRequestId)
+    .first();
   if (alreadyApproved)
     throw new HttpError(409, "This plan was already approved");
 
@@ -475,21 +489,27 @@ export async function handleApprovePlan(
   }
 
   // All phases at the end of the queue, in order, in one transaction.
-  await dataOf(env).tx("plan.approve", async (tx) => {
-    await lockQueue(tx, workRequest.threadId);
+  await db.batch([
+    lockQueue(db, workRequest.threadId),
     // The claim comes first: a second approval fails here and rolls back the
-    // whole transaction, so no phase of the loser is ever queued.
-    await tx.run`INSERT INTO plan_approvals (plan_work_request_id, thread_id, approved_by_user_id, created_at) VALUES (${workRequestId}, ${workRequest.threadId}, ${context.userId}, ${now})`;
-    for (const item of [...queueInserts].sort((a, b) => a.position - b.position)) {
-      await appendToQueue(tx, {
-        id: item.id,
-        threadId: item.threadId,
-        authorUserId: item.userId,
-        requestJson: item.requestJson,
-        now,
-      });
-    }
-  });
+    // whole batch, so no phase of the loser is ever queued.
+    db
+      .prepare(
+        "INSERT INTO plan_approvals (plan_work_request_id, thread_id, approved_by_user_id, created_at) VALUES (?1, ?2, ?3, ?4)",
+      )
+      .bind(workRequestId, workRequest.threadId, context.userId, now),
+    ...[...queueInserts]
+      .sort((a, b) => a.position - b.position)
+      .map((item) =>
+        appendToQueue(db, {
+          id: item.id,
+          threadId: item.threadId,
+          authorUserId: item.userId,
+          requestJson: item.requestJson,
+          now,
+        }),
+      ),
+  ]);
 
   // Trigger safe advance so Phase 1 starts immediately if nothing is running
   await advanceThreadQueueSafely(env, workRequest.threadId);
@@ -532,7 +552,12 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
   }
 
   try {
-    const wr = await dataOf(env).read.row<{ inputJson: string | null }>`SELECT input_json AS "inputJson" FROM work_requests WHERE id = ${workRequestId}`;
+    const wr = await db
+      .prepare(
+        "SELECT input_json AS inputJson FROM work_requests WHERE id = ?1",
+      )
+      .bind(workRequestId)
+      .first<{ inputJson: string | null }>();
 
     let inputData: Record<string, unknown> | null = null;
     try {
@@ -563,9 +588,14 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
 
     if (type === "work_request.completed" && isPhased) {
       // Inspect task output to verify whether the phase completed cleanly
-      const taskRow = await dataOf(env).read.row<{ outputJson: string | null }>`SELECT output_json AS "outputJson" FROM workflow_tasks
-            WHERE work_request_id = ${workRequestId} AND step_kind IN ('implement', 'verify')
-            ORDER BY attempt DESC, finished_at DESC LIMIT 1`;
+      const taskRow = await db
+        .prepare(
+          `SELECT output_json AS outputJson FROM workflow_tasks
+            WHERE work_request_id = ?1 AND step_kind IN ('implement', 'verify')
+            ORDER BY attempt DESC, finished_at DESC LIMIT 1`,
+        )
+        .bind(workRequestId)
+        .first<{ outputJson: string | null }>();
 
       let outputText = "";
       try {
@@ -650,17 +680,32 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
               ? "verification criteria were not satisfied"
               : "verifier did not report STATUS: PASSED";
 
-          await dataOf(env).read.run`UPDATE work_requests SET status = 'failed', updated_at = ${new Date().toISOString()} WHERE id = ${workRequestId}`;
+          await db
+            .prepare(
+              "UPDATE work_requests SET status = 'failed', updated_at = ?1 WHERE id = ?2",
+            )
+            .bind(new Date().toISOString(), workRequestId)
+            .run();
 
           const verifiedPhase = inputData?.isFinalVerification
             ? null
             : inputData?.phaseIndex;
           if (verifiedPhase && inputData?.planWorkRequestId) {
-            await dataOf(env).read.run`UPDATE work_requests SET status = 'failed', updated_at = ${new Date().toISOString()}
-                  WHERE thread_id = ${threadId}
-                    AND (input_json::jsonb #>> '{planWorkRequestId}') = ${String(inputData.planWorkRequestId)}
-                    AND (input_json::jsonb #>> '{phaseIndex}')::bigint = ${Number(verifiedPhase)}
-                    AND COALESCE(input_json::jsonb #>> '{isVerification}', 'false') NOT IN ('true', '1')`;
+            await db
+              .prepare(
+                `UPDATE work_requests SET status = 'failed', updated_at = ?1
+                  WHERE thread_id = ?2
+                    AND (input_json::jsonb #>> '{planWorkRequestId}') = ?3
+                    AND (input_json::jsonb #>> '{phaseIndex}')::bigint = ?4
+                    AND COALESCE(input_json::jsonb #>> '{isVerification}', 'false') NOT IN ('true', '1')`,
+              )
+              .bind(
+                new Date().toISOString(),
+                threadId,
+                String(inputData.planWorkRequestId),
+                Number(verifiedPhase),
+              )
+              .run();
           }
 
           const pauseMsg = `${phaseTitle} failed: ${reason}. Review findings in the Thread and resume or adjust the queue.`;
@@ -704,8 +749,13 @@ async function enqueueVerificationStatusFollowUp(
 ): Promise<boolean> {
   const db = env.SYNTILA_DB;
   if (!db) return false;
-  const row = await dataOf(env).read.row<{ userId: string | null; snapshotJson: string | null }>`SELECT requested_by_user_id AS "userId", snapshot_json AS "snapshotJson"
-         FROM work_requests WHERE id = ${workRequestId}`;
+  const row = await db
+    .prepare(
+      `SELECT requested_by_user_id AS userId, snapshot_json AS snapshotJson
+         FROM work_requests WHERE id = ?1`,
+    )
+    .bind(workRequestId)
+    .first<{ userId: string | null; snapshotJson: string | null }>();
   if (!row?.userId) return false;
   let selection: Record<string, string> | undefined;
   try {
@@ -759,15 +809,15 @@ async function enqueueVerificationStatusFollowUp(
     isVerification: true,
     ...(inputData.isFinalVerification ? { isFinalVerification: true } : {}),
   };
-  await dataOf(env).tx("plan.verify.prepend", async (tx) => {
-    await lockQueue(tx, threadId);
-    await prependToQueue(tx, {
+  await db.batch([
+    lockQueue(db, threadId),
+    prependToQueue(db, {
       id: `trq-verify-status-${crypto.randomUUID()}`,
       threadId,
-      authorUserId: row.userId!,
+      authorUserId: row.userId,
       requestJson: JSON.stringify(request),
       now: new Date().toISOString(),
-    });
-  });
+    }),
+  ]);
   return true;
 }

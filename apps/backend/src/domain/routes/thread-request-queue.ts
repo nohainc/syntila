@@ -10,7 +10,6 @@ import {
   authorizeThreadAccessAsUser,
 } from "./thread-policy.js";
 import { createWorkRequestForUser } from "./work-creation.js";
-import { dataOf } from "../../platform/data.js";
 
 const SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID =
   "SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1";
@@ -92,27 +91,29 @@ function requestBody(value: unknown): Record<string, unknown> {
   return body;
 }
 
-async function countQueuedRequests(env: SecurityEnv, threadId: string) {
-  return dataOf(env).read.row<{ n: number }>`SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ${threadId} AND status = 'queued'`;
-}
-
 async function loadQueue(env: SecurityEnv, threadId: string) {
   const [items, state] = await Promise.all([
-    dataOf(env).read.rows<QueueRow>`
-      SELECT q.id, q.thread_id AS "threadId", q.author_user_id AS "authorUserId",
-             u.display_name AS "authorName", q.request_json AS "requestJson",
-             q.position, q.status, q.created_at AS "createdAt",
-             q.updated_at AS "updatedAt"
-        FROM thread_request_queue q
-        LEFT JOIN users u ON u.id = q.author_user_id
-       WHERE q.thread_id = ${threadId}
-       ORDER BY q.position, q.created_at, q.id`,
-    dataOf(env).read.row<StateRow>`
-      SELECT paused_reason AS "pausedReason", paused_by_user_id AS "pausedByUserId",
-             failure_message AS "failureMessage"
-        FROM thread_request_queue_state WHERE thread_id = ${threadId}`,
+    env.SYNTILA_DB.prepare(
+      `SELECT q.id, q.thread_id AS threadId, q.author_user_id AS authorUserId,
+              u.display_name AS authorName, q.request_json AS requestJson,
+              q.position, q.status, q.created_at AS createdAt,
+              q.updated_at AS updatedAt
+         FROM thread_request_queue q
+         LEFT JOIN users u ON u.id = q.author_user_id
+        WHERE q.thread_id = ?1
+        ORDER BY q.position, q.created_at, q.id`,
+    )
+      .bind(threadId)
+      .all<QueueRow>(),
+    env.SYNTILA_DB.prepare(
+      `SELECT paused_reason AS pausedReason, paused_by_user_id AS pausedByUserId,
+              failure_message AS failureMessage
+         FROM thread_request_queue_state WHERE thread_id = ?1`,
+    )
+      .bind(threadId)
+      .first<StateRow>(),
   ]);
-  return { items, state: state ?? null };
+  return { items: items.results ?? [], state: state ?? null };
 }
 
 function queueResponse(
@@ -140,7 +141,7 @@ function queueResponse(
 }
 
 async function threadSpaceId(env: SecurityEnv, threadId: string) {
-  const row = await threadSpace(env, threadId);
+  const row = await threadSpace(env.SYNTILA_DB, threadId);
   return row?.spaceId ?? null;
 }
 
@@ -171,17 +172,25 @@ async function pause(
   userId: string | null,
   message: string | null,
 ) {
-  await dataOf(env).read.run`INSERT INTO thread_request_queue_state
+  await env.SYNTILA_DB.prepare(
+    `INSERT INTO thread_request_queue_state
        (thread_id, paused_reason, paused_by_user_id, failure_message, updated_at)
-     VALUES (${threadId}, ${reason}, ${userId}, ${message}, ${new Date().toISOString()})
+     VALUES (?1, ?2, ?3, ?4, ?5)
      ON CONFLICT(thread_id) DO UPDATE SET paused_reason = excluded.paused_reason,
        paused_by_user_id = excluded.paused_by_user_id,
        failure_message = excluded.failure_message,
-       updated_at = excluded.updated_at`;
+       updated_at = excluded.updated_at`,
+  )
+    .bind(threadId, reason, userId, message, new Date().toISOString())
+    .run();
 }
 
 async function resume(env: SecurityEnv, threadId: string) {
-  await dataOf(env).read.run`DELETE FROM thread_request_queue_state WHERE thread_id = ${threadId}`;
+  await env.SYNTILA_DB.prepare(
+    "DELETE FROM thread_request_queue_state WHERE thread_id = ?1",
+  )
+    .bind(threadId)
+    .run();
 }
 
 async function errorMessageOf(response: Response) {
@@ -231,9 +240,14 @@ async function withApprovedPlan(
     request.includes(APPROVED_PLAN_HEADING)
   )
     return body;
-  const plan = await dataOf(env).read.row<{ outputJson: string | null }>`SELECT output_json AS "outputJson" FROM workflow_tasks
-        WHERE work_request_id = ${planId} AND step_kind = 'plan' AND status = 'completed'
-        ORDER BY attempt DESC LIMIT 1`;
+  const plan = await db
+    .prepare(
+      `SELECT output_json AS outputJson FROM workflow_tasks
+        WHERE work_request_id = ?1 AND step_kind = 'plan' AND status = 'completed'
+        ORDER BY attempt DESC LIMIT 1`,
+    )
+    .bind(planId)
+    .first<{ outputJson: string | null }>();
   let planText = plan?.outputJson ?? "";
   try {
     const parsed = JSON.parse(planText) as unknown;
@@ -273,9 +287,14 @@ export async function advanceThreadQueue(
   } = {},
 ): Promise<void> {
   const db = env.SYNTILA_DB;
-  const head = await dataOf(env).read.row<Pick<QueueRow, "id" | "authorUserId" | "requestJson" | "status">>`SELECT id, author_user_id AS "authorUserId", request_json AS "requestJson", status
-         FROM thread_request_queue WHERE thread_id = ${threadId}
-        ORDER BY position, created_at, id LIMIT 1`;
+  const head = await db
+    .prepare(
+      `SELECT id, author_user_id AS authorUserId, request_json AS requestJson, status
+         FROM thread_request_queue WHERE thread_id = ?1
+        ORDER BY position, created_at, id LIMIT 1`,
+    )
+    .bind(threadId)
+    .first<Pick<QueueRow, "id" | "authorUserId" | "requestJson" | "status">>();
   if (!head) return;
   if (failedRequest) {
     await pause(
@@ -290,16 +309,29 @@ export async function advanceThreadQueue(
     return;
   }
   if (head.status === "sending") return;
-  const paused = await dataOf(env).read.row`SELECT 1 AS found FROM thread_request_queue_state WHERE thread_id = ${threadId}`;
+  const paused = await db
+    .prepare(
+      "SELECT 1 AS found FROM thread_request_queue_state WHERE thread_id = ?1",
+    )
+    .bind(threadId)
+    .first();
   if (paused && !forceHead) return;
-  const active = await dataOf(env).read.row`
-    SELECT 1 AS found FROM work_requests w
-    WHERE w.thread_id = ${threadId} AND ${dataOf(env).read.raw(processingWork("w"))} LIMIT 1
-  `;
+  const active = await db
+    .prepare(
+      `SELECT 1 AS found FROM work_requests w
+        WHERE w.thread_id = ?1 AND ${processingWork("w")} LIMIT 1`,
+    )
+    .bind(threadId)
+    .first();
   if (active) return;
-  const claimed = await dataOf(env).read.run`UPDATE thread_request_queue SET status = 'sending', updated_at = ${new Date().toISOString()}
-        WHERE id = ${head.id} AND status = 'queued'`;
-  if (!claimed.count) return;
+  const claimed = await db
+    .prepare(
+      `UPDATE thread_request_queue SET status = 'sending', updated_at = ?1
+        WHERE id = ?2 AND status = 'queued'`,
+    )
+    .bind(new Date().toISOString(), head.id)
+    .run();
+  if (!claimed.meta?.changes) return;
 
   let failure: string | null = null;
   let spaceId: string | null = null;
@@ -330,12 +362,19 @@ export async function advanceThreadQueue(
       error instanceof Error ? error.message : "The request could not be sent";
   }
   if (failure === null) {
-    await dataOf(env).read.run`DELETE FROM thread_request_queue WHERE id = ${head.id}`;
+    await db
+      .prepare("DELETE FROM thread_request_queue WHERE id = ?1")
+      .bind(head.id)
+      .run();
   } else {
     // Keep the request first in line and wait for people to decide.
-    await dataOf(env).read.run`
-      UPDATE thread_request_queue SET status = 'queued', updated_at = ${new Date().toISOString()} WHERE id = ${head.id}
-    `;
+    await db.batch([
+      db
+        .prepare(
+          "UPDATE thread_request_queue SET status = 'queued', updated_at = ?1 WHERE id = ?2",
+        )
+        .bind(new Date().toISOString(), head.id),
+    ]);
     await pause(env, threadId, "failure", null, failure);
   }
   await publishQueueUpdated(env, threadId, spaceId);
@@ -346,7 +385,10 @@ export async function advanceThreadQueue(
  * (409) or was removed meanwhile (404). Throws either way.
  */
 async function lostQueuedItem(db: D1Database, itemId: string): Promise<never> {
-  const still = await dataOf(env).read.row`SELECT 1 AS found FROM thread_request_queue WHERE id = ${itemId}`;
+  const still = await db
+    .prepare("SELECT 1 AS found FROM thread_request_queue WHERE id = ?1")
+    .bind(itemId)
+    .first();
   if (still) throw new HttpError(409, "This request is already being sent");
   throw new HttpError(404, "Queued request not found");
 }
@@ -375,18 +417,22 @@ export async function advanceThreadQueueSafely(
  */
 export async function sweepThreadRequestQueues(env: SecurityEnv) {
   const stale = new Date(Date.now() - STALE_SENDING_MS).toISOString();
-  await dataOf(env).read.run`UPDATE thread_request_queue SET status = 'queued', updated_at = ${new Date().toISOString()}
-      WHERE status = 'sending' AND updated_at < ${stale}`;
-  const read = dataOf(env).read;
-  const threads = await read.rows<{ threadId: string }>`
-    SELECT DISTINCT q.thread_id AS "threadId" FROM thread_request_queue q
+  await env.SYNTILA_DB.prepare(
+    `UPDATE thread_request_queue SET status = 'queued', updated_at = ?2
+      WHERE status = 'sending' AND updated_at < ?1`,
+  )
+    .bind(stale, new Date().toISOString())
+    .run();
+  const threads = await env.SYNTILA_DB.prepare(
+    `SELECT DISTINCT q.thread_id AS threadId FROM thread_request_queue q
       WHERE NOT EXISTS (SELECT 1 FROM thread_request_queue_state s
                          WHERE s.thread_id = q.thread_id)
         AND NOT EXISTS (SELECT 1 FROM work_requests w
                          WHERE w.thread_id = q.thread_id
-                           AND ${read.raw(processingWork("w"))})
-      LIMIT 50`;
-  for (const { threadId } of threads)
+                           AND ${processingWork("w")})
+      LIMIT 50`,
+  ).all<{ threadId: string }>();
+  for (const { threadId } of threads.results ?? [])
     await advanceThreadQueueSafely(env, threadId);
 }
 
@@ -436,7 +482,10 @@ export async function handleThreadRequestQueue(
       spaceId,
       String(body.workflowId),
     );
-    const last = await countQueuedRequests(env, threadId);
+    const last = await db
+      .prepare(SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID)
+      .bind(threadId)
+      .first<{ n: number }>();
     // A pause belongs to the requests it held; a new queue starts running.
     if (!last?.n) await resume(env, threadId);
     // People's requests run between implementation phases instead of after
@@ -445,10 +494,15 @@ export async function handleThreadRequestQueue(
     // until someone resumes them.
     const planPaused =
       !body.isPhased &&
-      !!(await dataOf(env).read.row`SELECT 1 AS found FROM thread_request_queue_state s
-            WHERE s.thread_id = ${threadId} AND EXISTS (
-              SELECT 1 FROM thread_request_queue q WHERE q.thread_id = ${threadId}
-                 AND (q.request_json::jsonb #>> '{isPhased}') IN ('true', '1'))`);
+      !!(await db
+        .prepare(
+          `SELECT 1 AS found FROM thread_request_queue_state s
+            WHERE s.thread_id = ?1 AND EXISTS (
+              SELECT 1 FROM thread_request_queue q WHERE q.thread_id = ?1
+                 AND (q.request_json::jsonb #>> '{isPhased}') IN ('true', '1'))`,
+        )
+        .bind(threadId)
+        .first());
     const item = {
       id: `trq-${crypto.randomUUID()}`,
       threadId,
@@ -456,10 +510,10 @@ export async function handleThreadRequestQueue(
       requestJson: JSON.stringify(body),
       now,
     };
-    await dataOf(env).tx("thread.queue.enqueue", async (tx) => {
-      await lockQueue(tx, threadId);
-      await (body.isPhased ? appendToQueue(tx, item) : enqueueBeforePhases(tx, item));
-    });
+    await db.batch([
+      lockQueue(db, threadId),
+      body.isPhased ? appendToQueue(db, item) : enqueueBeforePhases(db, item),
+    ]);
     await advanceThreadQueueSafely(env, threadId, { forceHead: planPaused });
     await publishQueueUpdated(env, threadId, spaceId);
     return queueResponse(await loadQueue(env, threadId), 201);
@@ -478,8 +532,13 @@ export async function handleThreadRequestQueue(
   }
 
   if (!itemId) throw new HttpError(405, "Unsupported method");
-  const item = await dataOf(env).read.row<{ authorUserId: string; status: string; requestJson: string }>`SELECT author_user_id AS "authorUserId", status, request_json AS "requestJson" FROM thread_request_queue
-        WHERE id = ${itemId} AND thread_id = ${threadId}`;
+  const item = await db
+    .prepare(
+      `SELECT author_user_id AS authorUserId, status, request_json AS requestJson FROM thread_request_queue
+        WHERE id = ?1 AND thread_id = ?2`,
+    )
+    .bind(itemId, threadId)
+    .first<{ authorUserId: string; status: string; requestJson: string }>();
   if (!item) throw new HttpError(404, "Queued request not found");
   // Members share the queue but act only on their own requests.
   if (item.authorUserId !== context.userId)
@@ -512,8 +571,13 @@ export async function handleThreadRequestQueue(
       spaceId,
       String(body.workflowId),
     );
-    const edited = await dataOf(env).read.row<{ id: string }>`UPDATE thread_request_queue SET request_json = ${JSON.stringify(body)}, updated_at = ${now}
-          WHERE id = ${itemId} AND status = 'queued' RETURNING id`;
+    const edited = await db
+      .prepare(
+        `UPDATE thread_request_queue SET request_json = ?1, updated_at = ?2
+          WHERE id = ?3 AND status = 'queued' RETURNING id`,
+      )
+      .bind(JSON.stringify(body), now, itemId)
+      .first<{ id: string }>();
     if (!edited) await lostQueuedItem(db, itemId);
   } else if (method === "DELETE" && !action) {
     if (existingRequest.isPhased)
@@ -521,18 +585,39 @@ export async function handleThreadRequestQueue(
         400,
         "A single implementation phase cannot be removed. Stop all phases instead.",
       );
-    const removed = await dataOf(env).read.row<{ id: string }>`DELETE FROM thread_request_queue WHERE id = ${itemId} AND status = 'queued' RETURNING id`;
+    const removed = await db
+      .prepare(
+        "DELETE FROM thread_request_queue WHERE id = ?1 AND status = 'queued' RETURNING id",
+      )
+      .bind(itemId)
+      .first<{ id: string }>();
     if (!removed) await lostQueuedItem(db, itemId);
-    const left = await countQueuedRequests(env, threadId);
+    const left = await db
+      .prepare(
+        SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID,
+      )
+      .bind(threadId)
+      .first<{ n: number }>();
     if (!left?.n) await resume(env, threadId);
   } else if (method === "POST" && action === "stop-phases") {
     const planId = existingRequest.planWorkRequestId;
     if (!existingRequest.isPhased || typeof planId !== "string")
       throw new HttpError(400, "This request is not an implementation phase");
-    await dataOf(env).read.run`DELETE FROM thread_request_queue
-          WHERE thread_id = ${threadId} AND status = 'queued' AND author_user_id = ${context.userId}
-            AND (request_json::jsonb #>> '{planWorkRequestId}') = ${planId}`;
-    const left = await countQueuedRequests(env, threadId);
+    await db
+      .prepare(
+        `DELETE FROM thread_request_queue
+          WHERE thread_id = ?1 AND status = 'queued' AND author_user_id = ?2
+            AND (request_json::jsonb #>> '{planWorkRequestId}') = ?3`,
+      )
+      // D1 rejects LIKE patterns over 50 bytes, which a plan id exceeds.
+      .bind(threadId, context.userId, planId)
+      .run();
+    const left = await db
+      .prepare(
+        SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID,
+      )
+      .bind(threadId)
+      .first<{ n: number }>();
     if (!left?.n) await resume(env, threadId);
   } else if (method === "POST" && action === "send-now") {
     if (existingRequest.isPhased) {
@@ -543,12 +628,12 @@ export async function handleThreadRequestQueue(
     }
     // First in line and running again. Requests still processing finish
     // first: members cannot cancel each other's requests.
-    const moved = await dataOf(env).tx("thread.queue.move_to_front", async (tx) => {
-      await lockQueue(tx, threadId);
-      return moveToFront(tx, threadId, itemId, now);
-    });
+    const moved = await db.batch([
+      lockQueue(db, threadId),
+      moveToFront(db, threadId, itemId, now),
+    ]);
     // Side effects (advancing the queue) only after this request won the item.
-    if (!moved) await lostQueuedItem(db, itemId);
+    if (!moved[1]?.meta?.changes) await lostQueuedItem(db, itemId);
     // A paused queue (for example after a failed phase) stays paused: only
     // this request is sent, the remaining phases wait for an explicit resume.
     await advanceThreadQueueSafely(env, threadId, { forceHead: true });

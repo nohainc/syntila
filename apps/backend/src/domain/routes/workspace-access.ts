@@ -18,7 +18,6 @@ import type { SecurityEnv } from "./http-security.js";
 import { parseJson, recordAudit } from "./http-security.js";
 
 import { HttpError, json } from "./http-security.js";
-import { dataOf } from "../../platform/data.js";
 
 export async function disconnectWorkspaceRuntime(
   env: SecurityEnv,
@@ -88,12 +87,14 @@ export async function loadWorkspaceSpaceGrant(
   env: SecurityEnv,
   grantId: string,
 ): Promise<Record<string, unknown> | null> {
-  return dataOf(env).read.row<Record<string, unknown>>`
-    SELECT g.*, ew.name AS workspace_name, ew.owner_user_id
-    FROM workspace_space_grants g
-    JOIN execution_workspaces ew ON ew.id = g.workspace_id
-    WHERE g.id = ${grantId}
-  `;
+  return env.SYNTILA_DB.prepare(
+    `SELECT g.*, ew.name AS workspace_name, ew.owner_user_id
+     FROM workspace_space_grants g
+     JOIN execution_workspaces ew ON ew.id = g.workspace_id
+     WHERE g.id = ?1`,
+  )
+    .bind(grantId)
+    .first<Record<string, unknown>>();
 }
 
 export function grantStringArray(value: unknown, field: string): string {
@@ -178,9 +179,17 @@ export async function createWorkspaceSpaceGrant(
   if (body.workspaceId !== undefined && body.workspaceId !== workspaceId) {
     throw new HttpError(400, "workspaceId does not match the grant target");
   }
-  const space = await dataOf(env).read.row<{ id: string }>`SELECT id FROM spaces WHERE id = ${spaceId}`;
+  const space = await env.SYNTILA_DB.prepare(
+    "SELECT id FROM spaces WHERE id = ?1",
+  )
+    .bind(spaceId)
+    .first<{ id: string }>();
   if (!space) throw new HttpError(404, "Space not found");
-  const workspace = await dataOf(env).read.row<{ id: string; owner_user_id: string; status: string }>`SELECT id, owner_user_id, status FROM execution_workspaces WHERE id = ${workspaceId}`;
+  const workspace = await env.SYNTILA_DB.prepare(
+    "SELECT id, owner_user_id, status FROM execution_workspaces WHERE id = ?1",
+  )
+    .bind(workspaceId)
+    .first<{ id: string; owner_user_id: string; status: string }>();
   if (!workspace) throw new HttpError(404, "Workspace not found");
   if (
     workspace.owner_user_id !== context.userId ||
@@ -191,7 +200,7 @@ export async function createWorkspaceSpaceGrant(
       "Only the Workspace owner can grant this Workspace",
     );
   }
-  const rawMembership = await spaceMembership(env, spaceId, context.userId);
+  const rawMembership = await spaceMembership(env.SYNTILA_DB, spaceId, context.userId);
   const membership = rawMembership;
   if (!membership && body.confirmContribution !== true) {
     throw new HttpError(
@@ -205,10 +214,14 @@ export async function createWorkspaceSpaceGrant(
     workspaceId,
     "workspace:manage",
   );
-  const existingGrant = await dataOf(env).read.row<{ id: string }>`SELECT id FROM workspace_space_grants
-     WHERE space_id = ${spaceId} AND workspace_id = ${workspaceId}
+  const existingGrant = await env.SYNTILA_DB.prepare(
+    `SELECT id FROM workspace_space_grants
+     WHERE space_id = ?1 AND workspace_id = ?2
        AND status IN ('active', 'suspended')
-     LIMIT 1`;
+     LIMIT 1`,
+  )
+    .bind(spaceId, workspaceId)
+    .first<{ id: string }>();
   if (existingGrant) {
     throw new HttpError(
       409,
@@ -231,12 +244,14 @@ export async function createWorkspaceSpaceGrant(
   }
   const allowedWorkerIds = JSON.stringify(workerIdsValue);
   if (workerIdsValue.length > 0) {
-    const db = dataOf(env).read;
-    const rows = await db.rows<{ worker_id: string }>`
-      SELECT worker_id FROM workspace_worker_inventory
-      WHERE workspace_id = ${workspaceId} AND worker_id IN ${db.list(workerIdsValue)}
-    `;
-    const found = new Set(rows.map((row) => row.worker_id));
+    const placeholders = workerIdsValue.map((_, index) => `?${index + 2}`);
+    const rows = await env.SYNTILA_DB.prepare(
+      `SELECT worker_id FROM workspace_worker_inventory
+       WHERE workspace_id = ?1 AND worker_id IN (${placeholders.join(", ")})`,
+    )
+      .bind(workspaceId, ...workerIdsValue)
+      .all<{ worker_id: string }>();
+    const found = new Set((rows.results ?? []).map((row) => row.worker_id));
     if (workerIdsValue.some((workerId) => !found.has(workerId))) {
       throw new HttpError(
         400,
@@ -264,13 +279,28 @@ export async function createWorkspaceSpaceGrant(
   const concurrency = JSON.stringify(concurrencyValue);
   const expiresAt = grantExpiry(body.expiresAt, new Date(now));
   const id = `workspace-space-grant-${crypto.randomUUID().slice(0, 16)}`;
-  const inserted = await dataOf(env).read.run`INSERT INTO workspace_space_grants
+  const inserted = await env.SYNTILA_DB.prepare(
+    `INSERT INTO workspace_space_grants
        (id, space_id, workspace_id, granted_by_user_id, status,
         allowed_worker_ids_json, allowed_permissions_json,
         network_policy_json, concurrency_json,
         expires_at, created_at, updated_at)
-     VALUES (${id}, ${spaceId}, ${workspaceId}, ${context.userId}, 'active', ${allowedWorkerIds}, ${allowedPermissions}, ${networkPolicy}, ${concurrency}, ${expiresAt}, ${now}, ${now})
-     ON CONFLICT DO NOTHING`;
+     VALUES (?1, ?2, ?3, ?4, 'active', ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+     ON CONFLICT DO NOTHING`,
+  )
+    .bind(
+      id,
+      spaceId,
+      workspaceId,
+      context.userId,
+      allowedWorkerIds,
+      allowedPermissions,
+      networkPolicy,
+      concurrency,
+      expiresAt,
+      now,
+    )
+    .run();
   // A parallel request connected the same Workspace first.
   if (inserted?.meta?.changes === 0)
     throw new HttpError(409, "This Workspace is already connected to the Space");

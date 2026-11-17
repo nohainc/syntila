@@ -33,18 +33,56 @@ export async function loadConversationBootstrap(
 ): Promise<ConversationBootstrap> {
   // Freeze a high-water mark at dispatch, including late results from older
   // requests while excluding the current and future accepted requests.
-  const boundary = await dataOf(env).read.row<{ revision: number }>`SELECT conversation_revision AS revision FROM conversation_work_requests
-    WHERE conversation_id = ${conversationId} AND work_request_id = ${workRequestId}`;
+  const boundary = await db
+    .prepare(
+      `SELECT conversation_revision AS revision FROM conversation_work_requests
+    WHERE conversation_id = ?1 AND work_request_id = ?2`,
+    )
+    .bind(conversationId, workRequestId)
+    .first<{ revision: number }>();
   if (!boundary)
     throw new Error("Canonical Conversation request boundary is missing");
   if (contextRevision !== boundary.revision - 1)
     throw new Error("Canonical context revision does not match this turn");
-  const highWater = await dataOf(env).read.row<{ sequence: number }>`SELECT COALESCE(MAX(sequence),0) AS sequence FROM conversation_history_entries WHERE conversation_id = ${conversationId}`;
+  const highWater = await db
+    .prepare(
+      `SELECT COALESCE(MAX(sequence),0) AS sequence FROM conversation_history_entries WHERE conversation_id = ?1`,
+    )
+    .bind(conversationId)
+    .first<{ sequence: number }>();
   const throughSequence = highWater?.sequence ?? 0;
   // A cleared AI History leaves its exchanges readable but out of context.
-  const floor = await dataOf(env).read.row<{ floor: number }>`SELECT context_floor_sequence AS floor FROM conversations WHERE id = ${conversationId}`;
+  const floor = await db
+    .prepare(
+      "SELECT context_floor_sequence AS floor FROM conversations WHERE id = ?1",
+    )
+    .bind(conversationId)
+    .first<{ floor: number }>();
   const floorSequence = floor?.floor ?? 0;
-  const result = await dataOf(env).read.rows<{
+  const result = await db
+    .prepare(
+      `SELECT COUNT(*) OVER() AS eligibleEntryCount, sequence, kind, event_type AS eventType, actor_type AS actorType,
+    actor_id AS actorId, text, source_id AS sourceId, artifact_id AS artifactId, metadata_json AS metadataJson,
+    COALESCE((SELECT cr.conversation_revision FROM conversation_work_requests cr WHERE cr.work_request_id = h.work_request_id AND cr.conversation_id = h.conversation_id),0) AS contextRevision
+    FROM conversation_history_entries h
+    WHERE conversation_id = ?1 AND sequence <= ?2 AND sequence > ?4 AND (h.work_request_id IS NULL OR EXISTS
+      (SELECT 1 FROM conversation_work_requests cr WHERE cr.conversation_id = h.conversation_id AND cr.work_request_id = h.work_request_id AND cr.conversation_revision <= ?3 AND EXISTS
+          (SELECT 1 FROM work_requests wr JOIN threads t ON t.id = wr.thread_id
+           WHERE wr.id = cr.work_request_id AND wr.ai_context_generation = t.ai_context_generation)))
+    AND NOT (h.kind = 'worker_response'
+      AND COALESCE((h.metadata_json::jsonb #>> '{workflowId}'), '') = 'research'
+      AND COALESCE((h.metadata_json::jsonb #>> '{workflowVersion}')::int, 0) = 2
+      AND COALESCE((h.metadata_json::jsonb #>> '{stepKind}'), '') != 'synthesis')
+    ORDER BY sequence DESC LIMIT ?5`,
+    )
+    .bind(
+      conversationId,
+      throughSequence,
+      contextRevision,
+      floorSequence,
+      MAX_BOOTSTRAP_ENTRIES,
+    )
+    .all<{
       eligibleEntryCount: number;
       sequence: number;
       contextRevision: number;
@@ -54,19 +92,7 @@ export async function loadConversationBootstrap(
       actorId: string | null;
       text: string | null;
       metadataJson: string;
-    }>`SELECT COUNT(*) OVER() AS "eligibleEntryCount", sequence, kind, event_type AS "eventType", actor_type AS "actorType",
-    actor_id AS "actorId", text, source_id AS "sourceId", artifact_id AS "artifactId", metadata_json AS "metadataJson",
-    COALESCE((SELECT cr.conversation_revision FROM conversation_work_requests cr WHERE cr.work_request_id = h.work_request_id AND cr.conversation_id = h.conversation_id),0) AS "contextRevision"
-    FROM conversation_history_entries h
-    WHERE conversation_id = ${conversationId} AND sequence <= ${throughSequence} AND sequence > ${floorSequence} AND (h.work_request_id IS NULL OR EXISTS
-      (SELECT 1 FROM conversation_work_requests cr WHERE cr.conversation_id = h.conversation_id AND cr.work_request_id = h.work_request_id AND cr.conversation_revision <= ${contextRevision} AND EXISTS
-          (SELECT 1 FROM work_requests wr JOIN threads t ON t.id = wr.thread_id
-           WHERE wr.id = cr.work_request_id AND wr.ai_context_generation = t.ai_context_generation)))
-    AND NOT (h.kind = 'worker_response'
-      AND COALESCE((h.metadata_json::jsonb #>> '{workflowId}'), '') = 'research'
-      AND COALESCE((h.metadata_json::jsonb #>> '{workflowVersion}')::int, 0) = 2
-      AND COALESCE((h.metadata_json::jsonb #>> '{stepKind}'), '') != 'synthesis')
-    ORDER BY sequence DESC LIMIT ${MAX_BOOTSTRAP_ENTRIES}`;
+    }>();
   // Newest first: keep the most recent entries that fit the byte budget.
   const encoder = new TextEncoder();
   const entries: NonNullable<typeof result.results> = [];
@@ -84,7 +110,16 @@ export async function loadConversationBootstrap(
       metadata: JSON.parse(metadataJson) as Record<string, unknown>,
     }),
   ) as ContextHistoryFact[];
-  const current = await dataOf(env).read.row<{
+  const current = await db
+    .prepare(
+      `SELECT wr.workflow_id AS workflowId, wr.workflow_version AS workflowVersion,
+    wfr.id AS workflowRunId, wr.status, wr.snapshot_json AS snapshotJson, ws.space_id AS spaceId, wr.thread_id AS threadId, wr.primary_workspace_id AS workspaceId FROM work_requests wr
+    JOIN conversation_workflow_runs wfr ON wfr.work_request_id = wr.id
+    JOIN threads ws ON ws.id = wr.thread_id
+    JOIN conversation_work_requests cr ON cr.work_request_id = wr.id WHERE cr.conversation_id = ?1 AND wr.id = ?2`,
+    )
+    .bind(conversationId, workRequestId)
+    .first<{
       workflowRunId: string;
       workflowId: string;
       workflowVersion: number;
@@ -93,23 +128,24 @@ export async function loadConversationBootstrap(
       spaceId: string;
       threadId: string;
       workspaceId: string | null;
-    }>`SELECT wr.workflow_id AS "workflowId", wr.workflow_version AS "workflowVersion",
-    wfr.id AS "workflowRunId", wr.status, wr.snapshot_json AS "snapshotJson", ws.space_id AS "spaceId", wr.thread_id AS "threadId", wr.primary_workspace_id AS "workspaceId" FROM work_requests wr
-    JOIN conversation_workflow_runs wfr ON wfr.work_request_id = wr.id
-    JOIN threads ws ON ws.id = wr.thread_id
-    JOIN conversation_work_requests cr ON cr.work_request_id = wr.id WHERE cr.conversation_id = ${conversationId} AND wr.id = ${workRequestId}`;
+    }>();
   if (!current) throw new Error("Conversation workflow state is missing");
-  const tasks = await dataOf(env).read.rows<
+  const tasks = await db
+    .prepare(
+      `SELECT t.id, t.step_kind AS kind, t.status, t.attempt, t.output_json AS outputJson,
+      s.id AS workflowStepRunId,s.role,
+      (SELECT worker_id FROM conversation_turns WHERE workflow_step_run_id=s.id ORDER BY seq DESC LIMIT 1) AS actualWorkerId
+      FROM workflow_tasks t JOIN conversation_workflow_step_runs s ON s.task_id=t.id WHERE t.work_request_id = ?1 ORDER BY t.id LIMIT 1001`,
+    )
+    .bind(workRequestId)
+    .all<
       ContextWorkflowState["steps"][number] & {
         outputJson: string | null;
         actualWorkerId: string | null;
         workflowStepRunId: string;
         role: string;
       }
-    >`SELECT t.id, t.step_kind AS kind, t.status, t.attempt, t.output_json AS "outputJson",
-      s.id AS "workflowStepRunId",s.role,
-      (SELECT worker_id FROM conversation_turns WHERE workflow_step_run_id=s.id ORDER BY seq DESC LIMIT 1) AS "actualWorkerId"
-      FROM workflow_tasks t JOIN conversation_workflow_step_runs s ON s.task_id=t.id WHERE t.work_request_id = ${workRequestId} ORDER BY t.id LIMIT 1001`;
+    >();
   if ((tasks.results?.length ?? 0) > 1000)
     throw new Error("Workflow context exceeds the step limit");
   const snapshot = JSON.parse(current.snapshotJson) as Record<string, unknown>;
@@ -142,8 +178,13 @@ export async function loadConversationBootstrap(
       ),
     }),
   };
-  const dependencies = await dataOf(env).read.rows<{ taskId: string; dependencyId: string }>`SELECT d.task_id AS "taskId", d.depends_on_task_id AS "dependencyId"
-    FROM workflow_task_dependencies d JOIN workflow_tasks t ON t.id = d.task_id WHERE t.work_request_id = ${workRequestId} LIMIT 10001`;
+  const dependencies = await db
+    .prepare(
+      `SELECT d.task_id AS taskId, d.depends_on_task_id AS dependencyId
+    FROM workflow_task_dependencies d JOIN workflow_tasks t ON t.id = d.task_id WHERE t.work_request_id = ?1 LIMIT 10001`,
+    )
+    .bind(workRequestId)
+    .all<{ taskId: string; dependencyId: string }>();
   if ((dependencies.results?.length ?? 0) > 10000)
     throw new Error("Workflow dependency limit exceeded");
   const taskRows = tasks.results ?? [];

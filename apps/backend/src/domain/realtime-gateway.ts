@@ -18,11 +18,6 @@ import {
   BoundedRealtimeQueue,
   type RealtimeQueueEnqueueResult,
 } from "./realtime-queue.js";
-import { dataOf, type Frag } from "../platform/data.js";
-
-async function ownsExecutionWorkspace(env: RealtimeGatewayEnv, workspaceId: string, userId: string) {
-  return dataOf(env).read.row<{ owner: number }>`SELECT 1 AS owner FROM execution_workspaces WHERE id = ${workspaceId} AND owner_user_id = ${userId} AND status <> 'revoked'`;
-}
 
 const SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID =
   "SELECT 1 AS owner FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status <> 'revoked'";
@@ -296,48 +291,83 @@ export async function authorizeRealtimeScope(
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
   if (scope.kind === "user") return { allowed: true };
   if (scope.kind === "space") {
-    const member = await dataOf(env).read.row<{ member: number }>`SELECT 1 AS member FROM space_memberships WHERE space_id = ${scope.spaceId} AND user_id = ${userId}`;
+    const member = await db
+      .prepare(
+        "SELECT 1 AS member FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
+      )
+      .bind(scope.spaceId, userId)
+      .first<{ member: number }>();
     return member
       ? { allowed: true }
       : { allowed: false, reason: "space_access_denied" };
   }
   if (scope.kind === "thread") {
-    const member = await dataOf(env).read.row<{ member: number }>`SELECT 1 AS member FROM threads w
+    const member = await db
+      .prepare(
+        `SELECT 1 AS member FROM threads w
        JOIN space_memberships pm ON pm.space_id = w.space_id
-       WHERE w.id = ${scope.threadId} AND pm.user_id = ${userId}`;
+       WHERE w.id = ?1 AND pm.user_id = ?2`,
+      )
+      .bind(scope.threadId, userId)
+      .first<{ member: number }>();
     return member
       ? { allowed: true }
       : { allowed: false, reason: "thread_access_denied" };
   }
   if (scope.kind === "execution_workspace") {
-    const owner = await ownsExecutionWorkspace(env, scope.executionWorkspaceId, userId);
+    const owner = await db
+      .prepare(
+        SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
+      )
+      .bind(scope.executionWorkspaceId, userId)
+      .first<{ owner: number }>();
     return owner
       ? { allowed: true }
       : { allowed: false, reason: "execution_workspace_access_denied" };
   }
   if (scope.kind === "run") {
-    const row = await dataOf(env).read.row<{ user_id: string }>`SELECT pm.user_id FROM space_memberships pm
+    const row = await db
+      .prepare(
+        `SELECT pm.user_id FROM space_memberships pm
        JOIN runs resource ON resource.space_id = pm.space_id
-       WHERE resource.id = ${scope.runId} AND pm.user_id = ${userId}`;
+       WHERE resource.id = ?1 AND pm.user_id = ?2`,
+      )
+      .bind(scope.runId, userId)
+      .first<{ user_id: string }>();
     return row
       ? { allowed: true }
       : { allowed: false, reason: `${scope.kind}_access_denied` };
   }
-  const owner = await ownsExecutionWorkspace(env, scope.workspaceId, userId);
+  const owner = await db
+    .prepare(
+      SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
+    )
+    .bind(scope.workspaceId, userId)
+    .first<{ owner: number }>();
   if (!owner)
     return { allowed: false, reason: "execution_workspace_access_denied" };
 
   if (scope.spaceId) {
-    const space = await dataOf(env).read.row<{ granted: number }>`SELECT 1 AS granted FROM workspace_space_grants
-                  WHERE space_id = ${scope.spaceId} AND workspace_id = ${scope.workspaceId} AND status = 'active'`;
+    const space = await db
+      .prepare(
+        `SELECT 1 AS granted FROM workspace_space_grants
+                  WHERE space_id = ?1 AND workspace_id = ?2 AND status = 'active'`,
+      )
+      .bind(scope.spaceId, scope.workspaceId)
+      .first<{ granted: number }>();
     if (!space) {
       return { allowed: false, reason: "space_access_denied" };
     }
   }
   if (scope.runId) {
-    const run = await dataOf(env).read.row<{ granted: number }>`SELECT 1 AS granted FROM runs r
+    const run = await db
+      .prepare(
+        `SELECT 1 AS granted FROM runs r
                   JOIN workspace_space_grants g ON g.space_id = r.space_id
-                  WHERE r.id = ${scope.runId} AND g.workspace_id = ${scope.workspaceId} AND g.status = 'active'`;
+                  WHERE r.id = ?1 AND g.workspace_id = ?2 AND g.status = 'active'`,
+      )
+      .bind(scope.runId, scope.workspaceId)
+      .first<{ granted: number }>();
     if (!run) {
       return { allowed: false, reason: "run_access_denied" };
     }
@@ -421,7 +451,7 @@ export class RealtimeGateway implements DurableObject {
         { status: 401 },
       );
     }
-    const user = await userAccount(this.env, identity.userId);
+    const user = await userAccount(this.env.SYNTILA_DB, identity.userId);
     const accountError = realtimeAuthenticationError(identity, user?.status);
     if (accountError) {
       return Response.json({ error: accountError }, { status: 403 });
@@ -727,7 +757,15 @@ export class RealtimeGateway implements DurableObject {
       if (!member.allowed) {
         const owner =
           event.type === "workspace_space_grant.updated"
-            ? await dataOf(this.env).read.row`SELECT 1 AS owner FROM workspace_space_grants WHERE id = ${event.payload.entityId} AND space_id = ${stream.id} AND granted_by_user_id = ${connected.identity.userId}`
+            ? await this.env.SYNTILA_DB.prepare(
+                "SELECT 1 AS owner FROM workspace_space_grants WHERE id = ?1 AND space_id = ?2 AND granted_by_user_id = ?3",
+              )
+                .bind(
+                  event.payload.entityId,
+                  stream.id,
+                  connected.identity.userId,
+                )
+                .first()
             : null;
         if (!owner) return;
       }
@@ -984,44 +1022,50 @@ export class RealtimeGateway implements DurableObject {
   private replayAudience(
     userId: string,
     scope: RealtimeScope,
-  ): { join: Frag; where: Frag } | null {
-    const read = dataOf(this.env).read;
+  ): { join: string; where: string; bindings: string[] } | null {
     if (scope.kind === "execution_workspace" && scope.executionWorkspaceId) {
       return {
-        join: read.raw(""),
-        where: read.frag`e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ${scope.executionWorkspaceId}`,
+        join: "",
+        where:
+          "e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ?",
+        bindings: [scope.executionWorkspaceId],
       };
     }
     if (scope.kind === "space" && scope.spaceId) {
       return {
-        join: read.raw(""),
-        where: read.frag`e.stream_kind = 'space' AND e.stream_id = ${scope.spaceId}`,
+        join: "",
+        where: "e.stream_kind = 'space' AND e.stream_id = ?",
+        bindings: [scope.spaceId],
       };
     }
     if (scope.kind === "user") {
       return {
-        join: read.raw(" LEFT JOIN execution_workspaces w ON w.id = e.workspace_id"),
-        where: read.frag`(e.stream_kind = 'user' AND e.stream_id = ${userId}) OR
-         (e.stream_kind = 'execution_workspace' AND w.owner_user_id = ${userId}) OR
+        join: " LEFT JOIN execution_workspaces w ON w.id = e.workspace_id",
+        where: `(e.stream_kind = 'user' AND e.stream_id = ?) OR
+         (e.stream_kind = 'execution_workspace' AND w.owner_user_id = ?) OR
          (e.stream_kind = 'space' AND EXISTS (
            SELECT 1 FROM space_memberships m
-           WHERE m.space_id = e.stream_id AND m.user_id = ${userId}
+           WHERE m.space_id = e.stream_id AND m.user_id = ?
          ))`,
+        bindings: [userId, userId, userId],
       };
     }
     if (scope.kind === "run" && scope.runId) {
-      return { join: read.raw(""), where: read.frag`e.run_id = ${scope.runId}` };
+      return { join: "", where: "e.run_id = ?", bindings: [scope.runId] };
     }
     if (scope.kind === "thread" && scope.threadId) {
       return {
-        join: read.raw(""),
-        where: read.frag`e.thread_id = ${scope.threadId}`,
+        join: "",
+        where: "e.thread_id = ?",
+        bindings: [scope.threadId],
       };
     }
     if (scope.workspaceId) {
       return {
-        join: read.raw(""),
-        where: read.frag`e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ${scope.workspaceId}`,
+        join: "",
+        where:
+          "e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ?",
+        bindings: [scope.workspaceId],
       };
     }
     return null;
@@ -1037,9 +1081,8 @@ export class RealtimeGateway implements DurableObject {
   ): Promise<void> {
     const audience = this.replayAudience(connected.identity.userId, scope);
     if (!audience) return;
-    const read = dataOf(this.env).read;
-    const rows = await read.rows<{ streamKind: string; streamId: string | null; head: number }>`
-      SELECT s.stream_kind AS "streamKind", s.stream_id AS "streamId",
+    const result = await this.env.SYNTILA_DB.prepare(
+      `SELECT s.stream_kind AS streamKind, s.stream_id AS streamId,
               (SELECT MAX(x.sequence) FROM realtime_events x
                 WHERE x.stream_kind = s.stream_kind
                   AND COALESCE(x.stream_id, x.workspace_id) = s.stream_id) AS head
@@ -1048,8 +1091,11 @@ export class RealtimeGateway implements DurableObject {
                 COALESCE(e.stream_id, e.workspace_id) AS stream_id
          FROM realtime_events e${audience.join}
          WHERE (${audience.where})
-       ) s`;
-    for (const row of rows) {
+       ) s`,
+    )
+      .bind(...audience.bindings)
+      .all<{ streamKind: string; streamId: string | null; head: number }>();
+    for (const row of result.results ?? []) {
       if (!row.streamId) continue;
       const key = realtimeStreamKey({
         kind: row.streamKind as RealtimeStream["kind"],
@@ -1068,21 +1114,30 @@ export class RealtimeGateway implements DurableObject {
   ): Promise<Record<string, unknown>[]> {
     const audience = this.replayAudience(userId, scope);
     if (!audience) return [];
-    const read = dataOf(this.env).read;
-    const cursorJson = JSON.stringify(Object.fromEntries(cursors));
+    const query = `
+      SELECT e.*
+      FROM realtime_events e${audience.join}`;
+    const bindings = [...audience.bindings];
     // One JSON binding avoids a SQL parameter per cursor. Keep the audience
     // predicate grouped so user-scope OR branches cannot bypass cursor filtering.
-    return read.rows<Record<string, unknown>>`
-      SELECT e.*
-      FROM realtime_events e${audience.join}
-       WHERE (${audience.where})
-         AND NOT EXISTS (
-           SELECT 1 FROM jsonb_each_text(${cursorJson}::jsonb) cursor(key, value)
-           WHERE cursor.key::jsonb = jsonb_build_array(e.stream_kind, COALESCE(e.stream_id, e.workspace_id))
-             AND e.sequence <= cursor.value::bigint
-         )
+    const conditions = [
+      `(${audience.where})`,
+      `NOT EXISTS (
+      SELECT 1 FROM jsonb_each_text(?::jsonb) cursor(key, value)
+      WHERE cursor.key::jsonb = jsonb_build_array(e.stream_kind, COALESCE(e.stream_id, e.workspace_id))
+        AND e.sequence <= cursor.value::bigint
+    )`,
+    ];
+    bindings.push(JSON.stringify(Object.fromEntries(cursors)));
+    const result = await this.env.SYNTILA_DB.prepare(
+      `${query}
+       WHERE ${conditions.join(" AND ")}
        ORDER BY e.occurred_at ASC, e.sequence ASC, e.event_id ASC
-       LIMIT ${read.raw(String(MAX_REPLAY_EVENTS))}`;
+       LIMIT ${MAX_REPLAY_EVENTS}`,
+    )
+      .bind(...bindings)
+      .all<Record<string, unknown>>();
+    return result.results ?? [];
   }
 
   private sendReplayGap(

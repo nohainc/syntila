@@ -1,6 +1,3 @@
-import { dataOf } from "../../platform/data.js";
-import type { SecurityEnv } from "./handlers.js";
-
 export function hasControlCharacters(value: string): boolean {
   return Array.from(value).some((character) => {
     const code = character.charCodeAt(0);
@@ -13,15 +10,19 @@ export function hasControlCharacters(value: string): boolean {
  * Workspaces, ignoring case, so the owner can tell them apart.
  */
 export async function workspaceNameTaken(
-  env: SecurityEnv,
+  db: Pick<D1Database, "prepare">,
   ownerUserId: string,
   name: string,
   exceptWorkspaceId: string | null,
 ): Promise<boolean> {
-  const row = await dataOf(env).read.row<{ taken: number }>`
-    SELECT 1 AS taken FROM execution_workspaces
-     WHERE owner_user_id = ${ownerUserId} AND status <> 'revoked'
-       AND lower(name) = lower(${name}) AND id <> ${exceptWorkspaceId ?? ""}
-     LIMIT 1`;
+  const row = await db
+    .prepare(
+      `SELECT 1 AS taken FROM execution_workspaces
+        WHERE owner_user_id = ?1 AND status <> 'revoked'
+          AND lower(name) = lower(?2) AND id <> ?3
+        LIMIT 1`,
+    )
+    .bind(ownerUserId, name, exceptWorkspaceId ?? "")
+    .first<{ taken: number }>();
   return row != null;
 }

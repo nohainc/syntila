@@ -5,7 +5,6 @@ import {
   executionSlotAdmissionSql,
 } from "./account-plan.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "./assignment-transitions.js";
-import { dataOf, type Query } from "../platform/data.js";
 
 /**
  * Why a task is waiting before it has an assignment. Neither reason holds a
@@ -41,28 +40,31 @@ export async function countHeldExecutionSlots(
   db: D1Database,
   userId: string,
 ): Promise<number> {
-  const read = dataOf({ SYNTILA_DB: db }).read;
-  const row = await read.row<{ count: number }>`
-    SELECT COUNT(*) AS count FROM worker_assignments
-     WHERE requested_by_user_id = ${userId}
-       AND status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})`;
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM worker_assignments
+        WHERE requested_by_user_id = ?1
+          AND status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})`,
+    )
+    .bind(userId)
+    .first<{ count: number }>();
   return row?.count ?? 0;
 }
 
 /** True when the slot admission rule would currently refuse this task. */
 export async function executionSlotRefused(
-  q: Query,
+  db: D1Database,
   userId: string,
   taskId: string,
   now: Date = new Date(),
 ): Promise<boolean> {
-  const row = await q.row<{ refused: number }>`
-    WITH args AS (
-      SELECT ${userId}::text AS user_id, ${taskId}::text AS task_id, ${waiterCutoff(now)}::text AS cutoff
+  const row = await db
+    .prepare(
+      `SELECT CASE WHEN ${executionSlotAdmissionSql("?1", "?2", "?3")}
+                   THEN 0 ELSE 1 END AS refused`,
     )
-    SELECT CASE WHEN ${q.raw(executionSlotAdmissionSql("args.user_id", "args.task_id", "args.cutoff"))}
-                THEN 0 ELSE 1 END AS refused
-    FROM args`;
+    .bind(userId, taskId, waiterCutoff(now))
+    .first<{ refused: number }>();
   return row?.refused === 1;
 }
 
@@ -82,19 +84,34 @@ export async function recordExecutionWaiter(
   now: Date = new Date(),
 ): Promise<void> {
   const stamp = now.toISOString();
-  await dataOf(env).read.run`INSERT INTO account_execution_waiters
+  await db
+    .prepare(
+      `INSERT INTO account_execution_waiters
          (task_id, requester_user_id, run_id, work_request_id, reason,
           enqueued_at, heartbeat_at)
-       VALUES (${input.taskId}, ${input.requesterUserId}, ${input.runId}, ${input.workRequestId ?? null}, ${input.reason}, ${stamp}, ${stamp})
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
        ON CONFLICT(task_id) DO UPDATE SET
-         reason = excluded.reason, heartbeat_at = excluded.heartbeat_at`;
+         reason = excluded.reason, heartbeat_at = excluded.heartbeat_at`,
+    )
+    .bind(
+      input.taskId,
+      input.requesterUserId,
+      input.runId,
+      input.workRequestId ?? null,
+      input.reason,
+      stamp,
+    )
+    .run();
 }
 
 export async function clearExecutionWaiter(
   db: D1Database,
   taskId: string,
 ): Promise<void> {
-  await dataOf(env).read.run`DELETE FROM account_execution_waiters WHERE task_id = ${taskId}`;
+  await db
+    .prepare("DELETE FROM account_execution_waiters WHERE task_id = ?1")
+    .bind(taskId)
+    .run();
 }
 
 /** Drops waiters whose Workflow stopped heartbeating. Never touches capacity. */
@@ -102,7 +119,12 @@ export async function sweepStaleExecutionWaiters(
   db: D1Database,
   now: Date = new Date(),
 ): Promise<void> {
-  await dataOf(env).read.run`DELETE FROM account_execution_waiters WHERE heartbeat_at < ${new Date(now.getTime() - 10 * EXECUTION_WAITER_STALE_MS).toISOString()}`;
+  await db
+    .prepare("DELETE FROM account_execution_waiters WHERE heartbeat_at < ?1")
+    .bind(
+      new Date(now.getTime() - 10 * EXECUTION_WAITER_STALE_MS).toISOString(),
+    )
+    .run();
 }
 
 /** The waiter's current reason, for read models. */
@@ -110,7 +132,10 @@ export async function executionWaitReason(
   db: D1Database,
   taskId: string,
 ): Promise<ExecutionWaitReason | null> {
-  const row = await dataOf(env).read.row<{ reason: ExecutionWaitReason }>`SELECT reason FROM account_execution_waiters WHERE task_id = ${taskId}`;
+  const row = await db
+    .prepare("SELECT reason FROM account_execution_waiters WHERE task_id = ?1")
+    .bind(taskId)
+    .first<{ reason: ExecutionWaitReason }>();
   return row?.reason ?? null;
 }
 
@@ -134,12 +159,16 @@ export async function wakeNextExecutionWaiter(
 ): Promise<boolean> {
   if (!env.SYNTILA_RUN_WORKFLOW) return false;
   try {
-    const waiter = await dataOf(env).read.row<{ taskId: string; instanceId: string | null }>`SELECT w.task_id AS "taskId", r.workflow_instance_id AS "instanceId"
+    const waiter = await env.SYNTILA_DB.prepare(
+      `SELECT w.task_id AS taskId, r.workflow_instance_id AS instanceId
          FROM account_execution_waiters w
          LEFT JOIN runs r ON r.id = w.run_id
-        WHERE w.requester_user_id = ${requesterUserId} AND w.reason = 'account_concurrency_limit'
-          AND w.heartbeat_at >= ${waiterCutoff(now)}
-        ORDER BY w.enqueued_at, w.task_id LIMIT 1`;
+        WHERE w.requester_user_id = ?1 AND w.reason = 'account_concurrency_limit'
+          AND w.heartbeat_at >= ?2
+        ORDER BY w.enqueued_at, w.task_id LIMIT 1`,
+    )
+      .bind(requesterUserId, waiterCutoff(now))
+      .first<{ taskId: string; instanceId: string | null }>();
     if (!waiter?.instanceId) return false;
     const instance = await env.SYNTILA_RUN_WORKFLOW.get(waiter.instanceId);
     await instance.sendEvent({

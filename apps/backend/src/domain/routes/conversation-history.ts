@@ -2,7 +2,6 @@ import type {
   ConversationHistoryEntry,
   ConversationHistoryPage,
 } from "@syntila/core";
-import { dataOf } from "../../platform/data.js";
 import { authorizeThreadAccess } from "./thread-policy.js";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
 import { decodeSequenceCursor, encodeSequenceCursor } from "./pagination.js";
@@ -15,10 +14,11 @@ export async function handleListConversationHistory(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   await authorizeThreadAccess(request, env, threadId, "view", accessContext);
-  const db = dataOf(env).read;
-  const scope = await db.row`
-    SELECT id FROM conversations WHERE id = ${conversationId} AND thread_id = ${threadId}
-  `;
+  const scope = await env.SYNTILA_DB.prepare(
+    "SELECT id FROM conversations WHERE id = ?1 AND thread_id = ?2",
+  )
+    .bind(conversationId, threadId)
+    .first();
   if (!scope) throw new HttpError(404, "Conversation not found");
   const params = new URL(request.url).searchParams;
   const rawLimit = params.get("limit") ?? "50";
@@ -30,9 +30,11 @@ export async function handleListConversationHistory(
   const rawCursor = params.get("cursor");
   const position = rawCursor ? decodeSequenceCursor(rawCursor) : null;
   const afterSequence = position?.after ?? 0;
-  const revision = await db.row<{ revision: number }>`
-    SELECT COALESCE(MAX(sequence),0) AS revision FROM conversation_history_entries WHERE conversation_id = ${conversationId}
-  `;
+  const revision = await env.SYNTILA_DB.prepare(
+    "SELECT COALESCE(MAX(sequence),0) AS revision FROM conversation_history_entries WHERE conversation_id = ?1",
+  )
+    .bind(conversationId)
+    .first<{ revision: number }>();
   const historyRevision = revision?.revision ?? 0;
   const throughSequence = position?.through ?? historyRevision;
   if (throughSequence > historyRevision)
@@ -40,16 +42,18 @@ export async function handleListConversationHistory(
       400,
       "History cursor is outside this Conversation history",
     );
-  const rows = await db.rows<
-    Omit<ConversationHistoryEntry, "metadata"> & { metadataJson: string }
-  >`
-    SELECT id, conversation_id AS "conversationId", sequence,
-     schema_version AS "schemaVersion", kind, event_type AS "eventType", actor_type AS "actorType",
-     actor_id AS "actorId", work_request_id AS "workRequestId", turn_id AS "turnId", artifact_id AS "artifactId",
-     source_id AS "sourceId", text, metadata_json AS "metadataJson", occurred_at AS "occurredAt", recorded_at AS "recordedAt"
-    FROM conversation_history_entries WHERE conversation_id = ${conversationId} AND sequence > ${afterSequence} AND sequence <= ${throughSequence} ORDER BY sequence LIMIT ${limit + 1}
-  `;
-  const entries = rows
+  const rows = await env.SYNTILA_DB.prepare(
+    `SELECT id, conversation_id AS conversationId, sequence,
+ schema_version AS schemaVersion, kind, event_type AS eventType, actor_type AS actorType,
+ actor_id AS actorId, work_request_id AS workRequestId, turn_id AS turnId, artifact_id AS artifactId,
+ source_id AS sourceId, text, metadata_json AS metadataJson, occurred_at AS occurredAt, recorded_at AS recordedAt
+ FROM conversation_history_entries WHERE conversation_id = ?1 AND sequence > ?2 AND sequence <= ?3 ORDER BY sequence LIMIT ?4`,
+  )
+    .bind(conversationId, afterSequence, throughSequence, limit + 1)
+    .all<
+      Omit<ConversationHistoryEntry, "metadata"> & { metadataJson: string }
+    >();
+  const entries = (rows.results ?? [])
     .slice(0, limit)
     .map(({ metadataJson, ...entry }) => ({
       ...entry,

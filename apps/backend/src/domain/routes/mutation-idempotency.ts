@@ -1,10 +1,9 @@
-import type { Query } from "../../platform/data.js";
 import { HttpError } from "./http-security.js";
 
 /** Authenticated, endpoint-scoped receipt committed atomically with domain writes. */
 export class MutationIdempotency {
   private constructor(
-    readonly q: Query,
+    readonly db: D1Database,
     readonly userId: string,
     readonly scope: string,
     readonly key: string,
@@ -13,7 +12,7 @@ export class MutationIdempotency {
 
   static async from(
     request: Request,
-    q: Query,
+    db: D1Database,
     userId: string,
     scope: string,
     body: unknown,
@@ -45,11 +44,14 @@ export class MutationIdempotency {
   }
 
   async replay(): Promise<Response | null> {
-    const row = await this.q.row<{ hash: string; body: string; status: number }>`
-      SELECT request_hash AS hash, response_json AS body,
+    const row = await this.db
+      .prepare(
+        `SELECT request_hash AS hash, response_json AS body,
       response_status AS status FROM mutation_receipts
-      WHERE user_id = ${this.userId} AND scope = ${this.scope} AND idempotency_key = ${this.key}
-    `;
+      WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3`,
+      )
+      .bind(this.userId, this.scope, this.key)
+      .first<{ hash: string; body: string; status: number }>();
     if (!row) return null;
     if (row.hash !== this.hash)
       throw new HttpError(
@@ -65,17 +67,37 @@ export class MutationIdempotency {
     });
   }
 
-  async record(
-    tx: { run: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown> },
-    body: unknown,
-    status: number,
-  ): Promise<void> {
-    await tx.run`INSERT INTO mutation_receipts
+  statement(body: unknown, status: number): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO mutation_receipts
       (user_id, scope, idempotency_key, request_hash, response_json, response_status, created_at)
-      VALUES (${this.userId}, ${this.scope}, ${this.key}, ${this.hash}, ${JSON.stringify(body)}, ${status}, ${new Date().toISOString()})`;
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+      )
+      .bind(
+        this.userId,
+        this.scope,
+        this.key,
+        this.hash,
+        JSON.stringify(body),
+        status,
+        new Date().toISOString(),
+      );
   }
 
-  async replayOnConflict(_error: unknown): Promise<Response | null> {
-    return this.replay();
+  /** A unique receipt collision rolls the entire D1 batch back. */
+  async commit(
+    body: unknown,
+    status: number,
+    write: (receipt: D1PreparedStatement[]) => Promise<unknown>,
+  ): Promise<Response | null> {
+    try {
+      await write([this.statement(body, status)]);
+      return null;
+    } catch (error) {
+      const replay = await this.replay();
+      if (replay) return replay;
+      throw error;
+    }
   }
 }

@@ -5,7 +5,6 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
-import { dataOf } from "../../platform/data.js";
 
 /** Hidden identifiers only: absent and newly discovered options remain visible. */
 export interface WorkspaceWorkerPreferences {
@@ -113,21 +112,38 @@ export async function handleWorkspaceWorkerPreferences(
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const { userId } = await securityContext(request, env, ctx);
-  const workspace = await ownsActiveWorkspace(env, workspaceId, userId);
+  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   if (request.method === "GET") {
-    const row = await dataOf(env).read.row<{ preferencesJson: string }>`SELECT preferences_json AS "preferencesJson" FROM workspace_worker_preferences WHERE user_id = ${userId} AND workspace_id = ${workspaceId}`;
+    const row = await env.SYNTILA_DB.prepare(
+      "SELECT preferences_json AS preferencesJson FROM workspace_worker_preferences WHERE user_id = ?1 AND workspace_id = ?2",
+    )
+      .bind(userId, workspaceId)
+      .first<{ preferencesJson: string }>();
     return json({
       preferences: row ? JSON.parse(row.preferencesJson) : emptyPreferences(),
     });
   }
   if (request.method === "DELETE") {
-    await dataOf(env).read.run`DELETE FROM workspace_worker_preferences WHERE user_id = ${userId} AND workspace_id = ${workspaceId}`;
+    await env.SYNTILA_DB.prepare(
+      "DELETE FROM workspace_worker_preferences WHERE user_id = ?1 AND workspace_id = ?2",
+    )
+      .bind(userId, workspaceId)
+      .run();
     return json({ preferences: emptyPreferences() });
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
   const preferences = parsePreferences(await readBody(request));
-  await dataOf(env).read.run`INSERT INTO workspace_worker_preferences(user_id,workspace_id,preferences_json,updated_at) VALUES(${userId},${workspaceId},${JSON.stringify(preferences)},${new Date().toISOString()})
-    ON CONFLICT(user_id,workspace_id) DO UPDATE SET preferences_json=excluded.preferences_json,updated_at=excluded.updated_at`;
+  await env.SYNTILA_DB.prepare(
+    `INSERT INTO workspace_worker_preferences(user_id,workspace_id,preferences_json,updated_at) VALUES(?1,?2,?3,?4)
+    ON CONFLICT(user_id,workspace_id) DO UPDATE SET preferences_json=excluded.preferences_json,updated_at=excluded.updated_at`,
+  )
+    .bind(
+      userId,
+      workspaceId,
+      JSON.stringify(preferences),
+      new Date().toISOString(),
+    )
+    .run();
   return json({ preferences });
 }

@@ -23,24 +23,26 @@ export async function publishAssignmentPhase(
   assignmentId: string,
 ): Promise<void> {
   try {
-    const row = await dataOf(env).read.row<Record<string, unknown>>`
-      SELECT wa.status AS "assignmentStatus", wa.dispatched_at AS "dispatchedAt",
-             wa.acknowledged_at AS "acknowledgedAt",
-             wa.start_permit_issued_at AS "startPermitIssuedAt",
-             wa.start_permit_required AS "startPermitRequired",
-             wa.running_at AS "runningAt", wa.startup_stage AS "startupStage",
-             wa.cloud_queue_reason AS "cloudQueueReason",
-             wa.error_json AS "errorJson", wa.run_id AS "runId",
-             wt.status AS "taskStatus", wt.step_kind AS "stepKind", wt.step_id AS "stepId",
-             wt.work_request_id AS "workRequestId", wt.error AS "taskError",
-             wr.thread_id AS "threadId", wr.primary_workspace_id AS "workspaceId",
-             th.space_id AS "spaceId"
-        FROM worker_assignments wa
-        JOIN workflow_tasks wt ON wt.id = wa.task_id
-        JOIN work_requests wr ON wr.id = wt.work_request_id
-        JOIN threads th ON th.id = wr.thread_id
-       WHERE wa.id = ${assignmentId}
-    `;
+    const row = await env.SYNTILA_DB.prepare(
+      `SELECT wa.status AS assignmentStatus, wa.dispatched_at AS dispatchedAt,
+              wa.acknowledged_at AS acknowledgedAt,
+              wa.start_permit_issued_at AS startPermitIssuedAt,
+              wa.start_permit_required AS startPermitRequired,
+              wa.running_at AS runningAt, wa.startup_stage AS startupStage,
+              wa.cloud_queue_reason AS cloudQueueReason,
+              wa.error_json AS errorJson, wa.run_id AS runId,
+              wt.status AS taskStatus, wt.step_kind AS stepKind, wt.step_id AS stepId,
+              wt.work_request_id AS workRequestId, wt.error AS taskError,
+              wr.thread_id AS threadId, wr.primary_workspace_id AS workspaceId,
+              th.space_id AS spaceId
+         FROM worker_assignments wa
+         JOIN workflow_tasks wt ON wt.id = wa.task_id
+         JOIN work_requests wr ON wr.id = wt.work_request_id
+         JOIN threads th ON th.id = wr.thread_id
+        WHERE wa.id = ?1`,
+    )
+      .bind(assignmentId)
+      .first<Record<string, unknown>>();
     if (!row?.workRequestId || !row.threadId || !row.workspaceId) return;
     let errorCode: string | null = null;
     if (typeof row.taskError === "string") {

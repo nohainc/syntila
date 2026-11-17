@@ -18,7 +18,6 @@ export async function publishCollaborationEvent(
     recipientUserIds?: readonly string[];
     additionalRecipientUserIds?: readonly string[];
     mutations?: readonly D1PreparedStatement[];
-    tx?: (tx: import("../platform/data.js").Tx) => Promise<void>;
   } = {},
 ): Promise<void> {
   const publisher = createEventPublisher(env);
@@ -33,7 +32,7 @@ export async function publishCollaborationEvent(
     threadId: options.threadId,
     payload,
     recipientUserIds: options.recipientUserIds,
-    tx: options.tx,
+    mutations: options.mutations,
   });
   // Invitees and removed members cannot subscribe to the Space stream.
   // Give them an ID-only invalidation on their own authorized, replayable stream.

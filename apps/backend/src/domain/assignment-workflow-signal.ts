@@ -1,7 +1,6 @@
 import { tryLogDiagnosticEvent } from "./observability.js";
 import { wakeNextExecutionWaiter } from "./account-execution-slots.js";
 import { scheduleLostWorkflowCheck } from "./thread-coordinator.js";
-import { dataOf } from "../platform/data.js";
 
 /**
  * Event type the Workflow waits for. Cloudflare Workflows event types cannot
@@ -82,13 +81,16 @@ export async function signalAssignmentTerminal(
   now: () => Date = () => new Date(),
 ): Promise<WorkflowSignalOutcome> {
   try {
-    const row = await dataOf(env).read.row<SignalRow>`
-      SELECT wa.id, wa.status, wa.attempt_id, wa.task_id, wa.run_id,
-             wa.workflow_signaled_at, r.workflow_instance_id,
-             wa.requested_by_user_id
-        FROM worker_assignments wa
-        LEFT JOIN runs r ON r.id = wa.run_id
-       WHERE wa.id = ${assignmentId}`;
+    const row = await env.SYNTILA_DB.prepare(
+      `SELECT wa.id, wa.status, wa.attempt_id, wa.task_id, wa.run_id,
+              wa.workflow_signaled_at, r.workflow_instance_id,
+              wa.requested_by_user_id
+         FROM worker_assignments wa
+         LEFT JOIN runs r ON r.id = wa.run_id
+        WHERE wa.id = ?1`,
+    )
+      .bind(assignmentId)
+      .first<SignalRow>();
     if (!row || !TERMINAL_STATUSES.includes(row.status)) return "not_terminal";
     if (row.workflow_signaled_at) return "already_signaled";
     // The requester's execution slot is free once this status is durable:
@@ -104,8 +106,12 @@ export async function signalAssignmentTerminal(
     // the request; the Thread coordinator checks after a grace period.
     await scheduleLostWorkflowCheck(env, assignmentId);
     const stamp = async (): Promise<void> => {
-      await dataOf(env).read.run`UPDATE worker_assignments SET workflow_signaled_at = ${now().toISOString()}
-          WHERE id = ${assignmentId} AND workflow_signaled_at IS NULL`;
+      await env.SYNTILA_DB.prepare(
+        `UPDATE worker_assignments SET workflow_signaled_at = ?1
+          WHERE id = ?2 AND workflow_signaled_at IS NULL`,
+      )
+        .bind(now().toISOString(), assignmentId)
+        .run();
     };
     if (!row.workflow_instance_id) {
       await stamp();
@@ -128,9 +134,13 @@ export async function signalAssignmentTerminal(
         payload,
       });
     } catch {
-      await dataOf(env).read.run`UPDATE worker_assignments
+      await env.SYNTILA_DB.prepare(
+        `UPDATE worker_assignments
             SET workflow_signal_attempts = workflow_signal_attempts + 1
-          WHERE id = ${assignmentId} AND workflow_signaled_at IS NULL`;
+          WHERE id = ?1 AND workflow_signaled_at IS NULL`,
+      )
+        .bind(assignmentId)
+        .run();
       tryLogDiagnosticEvent({
         assignmentId,
         runId: row.run_id,
@@ -166,18 +176,21 @@ export async function sweepUnsignaledTerminals(
   const now = options.now ?? new Date();
   const limit = options.limit ?? 50;
   const cutoff = new Date(now.getTime() - SWEEP_WINDOW_MS).toISOString();
-  const read = dataOf(env).read;
-  const results = await read.rows<{ id: string }>`SELECT id FROM worker_assignments
+  const { results } = await env.SYNTILA_DB.prepare(
+    `SELECT id FROM worker_assignments
       WHERE workflow_signaled_at IS NULL
-        AND status IN (${read.raw(TERMINAL_SQL)})
-        AND workflow_signal_attempts < ${MAX_WORKFLOW_SIGNAL_ATTEMPTS}
-        AND updated_at >= ${cutoff}
+        AND status IN (${TERMINAL_SQL})
+        AND workflow_signal_attempts < ?1
+        AND updated_at >= ?2
       ORDER BY updated_at
-      LIMIT ${limit}`;
+      LIMIT ?3`,
+  )
+    .bind(MAX_WORKFLOW_SIGNAL_ATTEMPTS, cutoff, limit)
+    .all<{ id: string }>();
   let signaled = 0;
-  for (const row of results) {
+  for (const row of results ?? []) {
     const outcome = await signalAssignmentTerminal(env, row.id, () => now);
     if (outcome === "signaled" || outcome === "no_instance") signaled += 1;
   }
-  return { attempted: results.length, signaled };
+  return { attempted: results?.length ?? 0, signaled };
 }

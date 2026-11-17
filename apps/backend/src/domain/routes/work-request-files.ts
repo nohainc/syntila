@@ -16,7 +16,6 @@ import {
   releaseUpload,
   reserveUpload,
 } from "../attachment-storage.js";
-import { dataOf } from "../../platform/data.js";
 
 /** Base64 JPEG thumbnail budget; AX enforces the same value. */
 const MAX_PREVIEW_IMAGE_CHARS = 32000;
@@ -368,19 +367,28 @@ export async function storeWorkRequestFile(
       sizeBytes: stored.size,
     });
     // The reservation becomes the file in one transaction (quota-neutral).
-    await dataOf(env).tx("files.finalize", async (tx) => {
-      await tx.run`
-        INSERT INTO user_files
+    await inTransaction(env, "files.finalize", (txEnv) => txEnv.SYNTILA_DB.batch([
+      txEnv.SYNTILA_DB.prepare(
+        `INSERT INTO user_files
           (id, user_id, thread_id, space_id, name, media_type, size_bytes, created_at)
-          VALUES (${input.fileId}, ${input.userId}, ${input.threadId}, ${input.spaceId}, ${input.name}, ${mediaType}, ${stored.size}, ${new Date().toISOString()})
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
           ON CONFLICT (id) DO UPDATE SET user_id = excluded.user_id, thread_id = excluded.thread_id,
             space_id = excluded.space_id, name = excluded.name, media_type = excluded.media_type,
-            size_bytes = excluded.size_bytes, created_at = excluded.created_at
-      `;
-      await tx.run`
-        DELETE FROM user_file_reservations WHERE id = ${input.fileId} AND user_id = ${input.userId}
-      `;
-    });
+            size_bytes = excluded.size_bytes, created_at = excluded.created_at`,
+      ).bind(
+        input.fileId,
+        input.userId,
+        input.threadId,
+        input.spaceId,
+        input.name,
+        mediaType,
+        stored.size,
+        new Date().toISOString(),
+      ),
+      txEnv.SYNTILA_DB.prepare(
+        "DELETE FROM user_file_reservations WHERE id = ?1 AND user_id = ?2",
+      ).bind(input.fileId, input.userId),
+    ]));
     return {
       digest,
       sizeBytes: stored.size,
@@ -556,14 +564,18 @@ export async function handleDownloadThreadFile(
 ): Promise<Response> {
   await authorizeThreadAccess(request, env, threadId, "view", accessContext);
   if (!isWorkRequestFileId(fileId)) throw new HttpError(404, "File not found");
-  const reference = await dataOf(env).read.row`SELECT 1 AS present FROM discussion_messages dm, jsonb_array_elements(COALESCE(dm.attachments_json, '[]')::jsonb) f(value)
-    WHERE dm.thread_id = ${threadId} AND f.value ->> 'fileId' = ${fileId}
+  const reference = await env.SYNTILA_DB.prepare(
+    `SELECT 1 AS present FROM discussion_messages dm, jsonb_array_elements(COALESCE(dm.attachments_json, '[]')::jsonb) f(value)
+    WHERE dm.thread_id = ?1 AND f.value ->> 'fileId' = ?2
     UNION ALL SELECT 1 AS present FROM work_requests wr, jsonb_array_elements(COALESCE(wr.input_json::jsonb -> 'attachments', '[]'::jsonb)) f(value)
-    WHERE wr.thread_id = ${threadId} AND f.value ->> 'fileId' = ${fileId}
+    WHERE wr.thread_id = ?1 AND f.value ->> 'fileId' = ?2
     UNION ALL SELECT 1 AS present FROM worker_assignments wa, jsonb_array_elements(COALESCE(wa.output_json::jsonb #> '{output,images}', '[]'::jsonb)) f(value)
-    WHERE wa.status = 'completed' AND f.value ->> 'fileId' = ${fileId}
+    WHERE wa.status = 'completed' AND f.value ->> 'fileId' = ?2
     UNION ALL SELECT 1 AS present FROM worker_assignments wa, jsonb_array_elements(COALESCE(wa.output_json::jsonb #> '{output,files}', '[]'::jsonb)) f(value)
-    WHERE wa.status = 'completed' AND f.value ->> 'fileId' = ${fileId} LIMIT 1`;
+    WHERE wa.status = 'completed' AND f.value ->> 'fileId' = ?2 LIMIT 1`,
+  )
+    .bind(threadId, fileId)
+    .first();
   if (!reference) throw new HttpError(404, "File not found");
   const object = await env.SYNTILA_ARTIFACTS?.get(workRequestFileKey(fileId));
   // Worker outputs are referenced by a completed assignment whose own

@@ -9,15 +9,9 @@ import {
   json,
   type SecurityEnv,
 } from "./http-security.js";
-import { dataOf } from "../../platform/data.js";
 
-async function ownedExecutionWorkspace(
-  env: Pick<SecurityEnv, "SYNTILA_DB">,
-  workspaceId: string,
-  ownerUserId: string,
-) {
-  return dataOf(env).read.row<{ id: string }>`SELECT id FROM execution_workspaces WHERE id = ${workspaceId} AND owner_user_id = ${ownerUserId} AND status != 'revoked'`;
-}
+const SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID =
+  "SELECT id FROM execution_workspaces WHERE id=?1 AND owner_user_id=?2 AND status != 'revoked'";
 
 const INSERT_SPACE_AUDIT_LOG =
   "INSERT INTO space_audit_log(id,space_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at) VALUES(?1,?2,'user',?3,'workflow.workspace.authorized','execution_workspace',?4,?5,?6)";
@@ -27,9 +21,17 @@ export async function loadWorkflowWorkspace(
   userId: string,
   spaceId?: string,
 ) {
-  const global = await dataOf(env).read.row<{ workspaceId: string | null }>`SELECT workspace_id AS "workspaceId" FROM user_workflow_settings WHERE user_id = ${userId}`;
+  const global = await env.SYNTILA_DB.prepare(
+    "SELECT workspace_id AS workspaceId FROM user_workflow_settings WHERE user_id = ?1",
+  )
+    .bind(userId)
+    .first<{ workspaceId: string | null }>();
   const space = spaceId
-    ? await dataOf(env).read.row<{ workspaceId: string | null }>`SELECT workspace_id AS "workspaceId" FROM space_workflow_settings WHERE space_id = ${spaceId}`
+    ? await env.SYNTILA_DB.prepare(
+        "SELECT workspace_id AS workspaceId FROM space_workflow_settings WHERE space_id = ?1",
+      )
+        .bind(spaceId)
+        .first<{ workspaceId: string | null }>()
     : null;
   // A Space uses only its own choice; it never inherits the account's
   // Workspace (attaching a Workspace lets Work run on that machine).
@@ -51,7 +53,11 @@ export async function resolveUserWorkflowWorkspace(
   requested: string | null,
 ): Promise<string | null> {
   if (!requested) return (await loadWorkflowWorkspace(env, userId)).workspaceId;
-  const owned = await ownedExecutionWorkspace(env, requested, userId);
+  const owned = await env.SYNTILA_DB.prepare(
+    SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
+  )
+    .bind(requested, userId)
+    .first();
   if (
     !owned &&
     !(await loadBorrowedWorkspaces(env, userId)).some(
@@ -67,13 +73,17 @@ export async function loadBorrowedWorkspaces(
   env: Pick<SecurityEnv, "SYNTILA_DB">,
   userId: string,
 ) {
-  const read = dataOf(env).read;
-  return read.rows<{ id: string; name: string; ownerUserId: string }>`SELECT ew.id, ew.name, ew.owner_user_id AS "ownerUserId"
+  const rows = await env.SYNTILA_DB.prepare(
+    `SELECT ew.id, ew.name, ew.owner_user_id AS ownerUserId
      FROM workspace_person_grants g
      JOIN execution_workspaces ew ON ew.id = g.workspace_id AND ew.status != 'revoked'
-     WHERE g.user_id = ${userId} AND g.status = 'active'
-       AND ${read.raw(paidOwnerSql("ew.owner_user_id"))}
-     ORDER BY ew.name, ew.id`;
+     WHERE g.user_id = ?1 AND g.status = 'active'
+       AND ${paidOwnerSql("ew.owner_user_id")}
+     ORDER BY ew.name, ew.id`,
+  )
+    .bind(userId)
+    .all<{ id: string; name: string; ownerUserId: string }>();
+  return rows.results ?? [];
 }
 
 /** A lent Workspace answers only its borrower's Chat, which reads only. */
@@ -92,7 +102,11 @@ export async function prepareWorkflowWorkspaceGrant(
   workspaceId: string,
   now: string,
 ): Promise<D1PreparedStatement[]> {
-  const owned = await ownedExecutionWorkspace(env, workspaceId, ownerUserId);
+  const owned = await env.SYNTILA_DB.prepare(
+    SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
+  )
+    .bind(workspaceId, ownerUserId)
+    .first();
   const lent = owned
     ? null
     : (await loadBorrowedWorkspaces(env, ownerUserId)).find(
@@ -103,7 +117,11 @@ export async function prepareWorkflowWorkspaceGrant(
       403,
       "Workspace is unavailable or not owned by the settings owner",
     );
-  const existing = await dataOf(env).read.row<{ id: string; status: string; expires_at: string | null }>`SELECT id,status,expires_at FROM workspace_space_grants WHERE space_id=${spaceId} AND workspace_id=${workspaceId} AND status IN ('active','suspended')`;
+  const existing = await env.SYNTILA_DB.prepare(
+    "SELECT id,status,expires_at FROM workspace_space_grants WHERE space_id=?1 AND workspace_id=?2 AND status IN ('active','suspended')",
+  )
+    .bind(spaceId, workspaceId)
+    .first<{ id: string; status: string; expires_at: string | null }>();
   if (
     existing?.status === "suspended" ||
     (existing?.expires_at && existing.expires_at <= now)
@@ -112,54 +130,71 @@ export async function prepareWorkflowWorkspaceGrant(
       409,
       "The selected Workspace grant is suspended or expired",
     );
-async function recordWorkspaceSelectionAudit(
-  tx: Tx,
-  spaceId: string,
-  userId: string,
-  workspaceId: string,
-  details: Record<string, unknown>,
-  now: string,
-) {
-  await tx.run`
-    INSERT INTO space_audit_log(id,space_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at)
-    VALUES(${crypto.randomUUID()},${spaceId},'user',${userId},'space.workspace.selected','workspace',${workspaceId},${JSON.stringify(details)},${now})
-  `;
-}
-
   if (lent) {
-    if (existing) return async () => {};
-    return async (tx: Tx) => {
-      await tx.run`
-        INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at)
-        VALUES(${crypto.randomUUID()},${spaceId},${workspaceId},${lent.ownerUserId},'active',${JSON.stringify(BORROWED_PERMISSIONS)},'{"maxConcurrentAssignments":1}',${now},${now})
-        ON CONFLICT DO NOTHING
-      `;
-      await recordWorkspaceSelectionAudit(tx, spaceId, ownerUserId, workspaceId, { workspaceId, lent: true }, now);
-    };
+    if (existing) return [];
+    return [
+      env.SYNTILA_DB.prepare(
+        "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(?1,?2,?3,?4,'active',?5,'{\"maxConcurrentAssignments\":1}',?6,?6) ON CONFLICT DO NOTHING",
+      ).bind(
+        crypto.randomUUID(),
+        spaceId,
+        workspaceId,
+        lent.ownerUserId,
+        JSON.stringify(BORROWED_PERMISSIONS),
+        now,
+      ),
+      env.SYNTILA_DB.prepare(
+        INSERT_SPACE_AUDIT_LOG,
+      ).bind(
+        crypto.randomUUID(),
+        spaceId,
+        ownerUserId,
+        workspaceId,
+        JSON.stringify({ workspaceId, lent: true }),
+        now,
+      ),
+    ];
   }
-  return async (tx: Tx) => {
+  const statements: D1PreparedStatement[] = [
     // Selecting a Workflow Workspace is the user-facing execution boundary.
     // Ready, locally enabled Workers there are available to Cloud scheduling;
     // no second hidden scheduling toggle is required for Workflows.
-    await tx.run`
-      UPDATE worker_scheduling
-         SET state='enabled', updated_by_user_id=${ownerUserId}, updated_at=${now}
-       WHERE worker_id IN (
-         SELECT worker_id FROM workspace_worker_inventory
-          WHERE workspace_id=${workspaceId}
-            AND activation_state='enabled'
-            AND readiness_state='ready'
-       )
-         AND state <> 'draining'
-    `;
-    if (existing) return;
-    await tx.run`
-      INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at)
-      VALUES(${crypto.randomUUID()},${spaceId},${workspaceId},${ownerUserId},'active',${JSON.stringify(["repository:read", "repository:write", "shell:execute"])},'{"maxConcurrentAssignments":3}',${now},${now})
-      ON CONFLICT DO NOTHING
-    `;
-    await recordWorkspaceSelectionAudit(tx, spaceId, ownerUserId, workspaceId, { workspaceId }, now);
-  };
+    env.SYNTILA_DB.prepare(
+      `UPDATE worker_scheduling
+          SET state='enabled', updated_by_user_id=?2, updated_at=?3
+        WHERE worker_id IN (
+          SELECT worker_id FROM workspace_worker_inventory
+           WHERE workspace_id=?1
+             AND activation_state='enabled'
+             AND readiness_state='ready'
+        )
+          AND state <> 'draining'`,
+    ).bind(workspaceId, ownerUserId, now),
+  ];
+  if (existing) return statements;
+  statements.push(
+    env.SYNTILA_DB.prepare(
+      "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(?1,?2,?3,?4,'active',?5,'{\"maxConcurrentAssignments\":3}',?6,?6) ON CONFLICT DO NOTHING",
+    ).bind(
+      crypto.randomUUID(),
+      spaceId,
+      workspaceId,
+      ownerUserId,
+      JSON.stringify(["repository:read", "repository:write", "shell:execute"]),
+      now,
+    ),
+    env.SYNTILA_DB.prepare(
+      INSERT_SPACE_AUDIT_LOG,
+    ).bind(
+      crypto.randomUUID(),
+      spaceId,
+      ownerUserId,
+      workspaceId,
+      JSON.stringify({ workspaceId }),
+      now,
+    ),
+  );
+  return statements;
 }
 
 export async function handleWorkflowWorkspace(
@@ -171,7 +206,11 @@ export async function handleWorkflowWorkspace(
   const context = await securityContext(request, env, ctx);
   let ownerUserId = context.userId;
   if (spaceId) {
-    const space = await dataOf(env).read.row<{ ownerUserId: string; kind: string }>`SELECT s.owner_user_id AS "ownerUserId", COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ${spaceId} AND m.user_id = ${context.userId}`;
+    const space = await env.SYNTILA_DB.prepare(
+      "SELECT s.owner_user_id AS ownerUserId, COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ?1 AND m.user_id = ?2",
+    )
+      .bind(spaceId, context.userId)
+      .first<{ ownerUserId: string; kind: string }>();
     if (!space) throw new HttpError(403, "Space membership required");
     if (space.kind === "direct") {
       if (request.method !== "GET") {
@@ -193,16 +232,20 @@ export async function handleWorkflowWorkspace(
   const current =
     spaceId &&
     (
-      await spaceKind(env, spaceId)
+      await spaceKind(env.SYNTILA_DB, spaceId)
     )?.kind === "direct"
       ? await loadWorkflowWorkspace(env, ownerUserId)
       : await loadWorkflowWorkspace(env, ownerUserId, spaceId);
-  const owned = await dataOf(env).read.rows<{ id: string; name: string }>`SELECT id, name FROM execution_workspaces WHERE owner_user_id = ${ownerUserId} AND status != 'revoked' ORDER BY name, id`;
+  const owned = await env.SYNTILA_DB.prepare(
+    "SELECT id, name FROM execution_workspaces WHERE owner_user_id = ?1 AND status != 'revoked' ORDER BY name, id",
+  )
+    .bind(ownerUserId)
+    .all<{ id: string; name: string }>();
   // A Space, and the user-level default, may also run on a Workspace lent to
   // its owner; each Space then receives a grant capped by the borrower's mode.
   const choices = {
     results: [
-      ...owned,
+      ...owned.results,
       ...(await loadBorrowedWorkspaces(env, ownerUserId)).map(
         ({ id, name }) => ({ id, name }),
       ),
@@ -256,31 +299,60 @@ export async function handleWorkflowWorkspace(
       409,
       "Changing Workspace resets Space workflow overrides; confirmReset is required",
     );
+  const db = env.SYNTILA_DB;
   const now = new Date().toISOString();
+  const statements: D1PreparedStatement[] = [];
   if (spaceId) {
-    const applyGrant = selected
-      ? await prepareWorkflowWorkspaceGrant(env, ownerUserId, spaceId, selected, now)
-      : null;
-    await dataOf(env).tx("workflowWorkspace.update", async (tx) => {
-      await tx.run`
-        INSERT INTO space_workflow_settings(space_id,workspace_id,updated_at)
-        VALUES(${spaceId},${selected},${now})
-        ON CONFLICT(space_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at
-      `;
-      await tx.run`DELETE FROM space_workflow_configurations WHERE space_id = ${spaceId}`;
-      // Additional folders belong to one Workspace; switching detaches them.
-      // Local files are untouched.
-      await tx.run`
-        DELETE FROM space_additional_folders WHERE space_id = ${spaceId} AND workspace_id IS DISTINCT FROM ${selected}
-      `;
-      await tx.run`DELETE FROM space_workflow_defaults WHERE space_id = ${spaceId}`;
-      if (applyGrant) await applyGrant(tx);
-    });
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO space_workflow_settings(space_id,workspace_id,updated_at) VALUES(?1,?2,?3) ON CONFLICT(space_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at",
+        )
+        .bind(spaceId, selected, now),
+    );
+    statements.push(
+      db
+        .prepare(
+          "DELETE FROM space_workflow_configurations WHERE space_id = ?1",
+        )
+        .bind(spaceId),
+    );
+    // Additional folders belong to one Workspace; switching detaches them.
+    // Local files are untouched.
+    statements.push(
+      db
+        .prepare(
+          "DELETE FROM space_additional_folders WHERE space_id = ?1 AND workspace_id IS DISTINCT FROM ?2",
+        )
+        .bind(spaceId, selected),
+    );
+    statements.push(
+      db
+        .prepare("DELETE FROM space_workflow_defaults WHERE space_id = ?1")
+        .bind(spaceId),
+    );
+    if (selected)
+      statements.push(
+        ...(await prepareWorkflowWorkspaceGrant(
+          env,
+          ownerUserId,
+          spaceId,
+          selected,
+          now,
+        )),
+      );
   } else {
     // The account-level selection only chooses which Workspace's account
     // workflow templates are shown. It never attaches a Workspace to a Space.
-    await dataOf(env).read.run`INSERT INTO user_workflow_settings(user_id,workspace_id,updated_at) VALUES(${ownerUserId},${selected},${now}) ON CONFLICT(user_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at`;
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO user_workflow_settings(user_id,workspace_id,updated_at) VALUES(?1,?2,?3) ON CONFLICT(user_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at",
+        )
+        .bind(ownerUserId, selected, now),
+    );
   }
+  await db.batch(statements);
   if (spaceId)
     await publishCollaborationEvent(env, "space.updated", spaceId, spaceId);
   return json({

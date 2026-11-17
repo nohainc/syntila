@@ -1,4 +1,4 @@
-
+import { cancelQueuedWorkRequest, startQueuedWorkRequest } from "./queries.js";
 /**
  * Durable Object coordinator for one Thread.
  *
@@ -10,11 +10,9 @@
 import { STEP_HARD_CAP_MS } from "@syntila/core";
 import { revokeAssignment } from "./assignment-revocation.js";
 import { createEventPublisher } from "./event-publisher.js";
-import { dataOf } from "../platform/data.js";
 
-async function extendThreadLease(env: ThreadCoordinatorEnv, leaseId: string, expiresAt: string) {
-  return dataOf(env).read.run`UPDATE thread_runtime_leases SET expires_at = ${expiresAt} WHERE id = ${leaseId} AND status = 'active'`;
-}
+const UPDATE_THREAD_RUNTIME_LEASES_SET_EXPIRES_AT =
+  "UPDATE thread_runtime_leases SET expires_at = ?1 WHERE id = ?2 AND status = 'active'";
 
 export interface ThreadCoordinatorEnv {
   readonly SYNTILA_DB: D1Database;
@@ -160,20 +158,26 @@ export function classifyExpiredLease(
  * Worker proves it is alive. Writes only when less than half the lease is
  * left, so frequent heartbeats cost one indexed no-op update.
  */
-export async function extendLeaseForLiveAssignment(
-  q: Query,
+export function extendLeaseForLiveAssignment(
+  db: D1Database,
   assignmentId: string,
   nowMs = Date.now(),
-): Promise<void> {
-  await q.run`
-    UPDATE thread_runtime_leases SET expires_at = ${new Date(nowMs + THREAD_LEASE_MS).toISOString()}
-    WHERE status = 'active' AND expires_at < ${new Date(nowMs + THREAD_LEASE_MS / 2).toISOString()}
-      AND work_request_id = (
-        SELECT COALESCE(wa.work_request_id, wt.work_request_id)
-          FROM worker_assignments wa
-          LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
-         WHERE wa.id = ${assignmentId})
-  `;
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE thread_runtime_leases SET expires_at = ?2
+        WHERE status = 'active' AND expires_at < ?3
+          AND work_request_id = (
+            SELECT COALESCE(wa.work_request_id, wt.work_request_id)
+              FROM worker_assignments wa
+              LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
+             WHERE wa.id = ?1)`,
+    )
+    .bind(
+      assignmentId,
+      new Date(nowMs + THREAD_LEASE_MS).toISOString(),
+      new Date(nowMs + THREAD_LEASE_MS / 2).toISOString(),
+    );
 }
 
 export function selectNextStatefulRequest(
@@ -199,8 +203,8 @@ export function selectNextStatefulRequest(
  * batch. Workspaces compare tokens only within a Thread, so a token that goes
  * backwards is rejected there as a stale fence.
  */
-export async function startStatefulLease(
-  tx: Tx,
+export function startStatefulLeaseStatements(
+  db: D1Database,
   input: {
     readonly threadId: string;
     readonly workRequestId: string;
@@ -209,25 +213,37 @@ export async function startStatefulLease(
     readonly now: string;
     readonly expiresAt: string;
   },
-): Promise<void> {
-  await tx.run`UPDATE work_requests SET status = 'running', updated_at = ${input.now} WHERE id = ${input.workRequestId} AND status = 'queued'`;
-  await tx.run`UPDATE runs SET status = 'running', updated_at = ${input.now} WHERE work_request_id = ${input.workRequestId} AND status = 'created'`;
-  await tx.run`
-    UPDATE threads
-       SET lease_fence_counter = GREATEST(
-         lease_fence_counter,
-         COALESCE((SELECT MAX(fencing_token) FROM thread_runtime_leases
-                    WHERE thread_id = ${input.threadId}), 0)
-       ) + 1
-     WHERE id = ${input.threadId}
-  `;
-  await tx.run`
-    INSERT INTO thread_runtime_leases
-     (id, thread_id, work_request_id, workspace_id, fencing_token, status, acquired_at, expires_at)
-     VALUES (${input.leaseId}, ${input.threadId}, ${input.workRequestId}, ${input.workspaceId},
-             (SELECT lease_fence_counter FROM threads WHERE id = ${input.threadId}),
-             'active', ${input.now}, ${input.expiresAt})
-  `;
+): D1PreparedStatement[] {
+  return [
+    ...startQueuedWorkRequest(db, input.workRequestId, input.now),
+    db
+      .prepare(
+        `UPDATE threads
+            SET lease_fence_counter = GREATEST(
+              lease_fence_counter,
+              COALESCE((SELECT MAX(fencing_token) FROM thread_runtime_leases
+                         WHERE thread_id = ?1), 0)
+            ) + 1
+          WHERE id = ?1`,
+      )
+      .bind(input.threadId),
+    db
+      .prepare(
+        `INSERT INTO thread_runtime_leases
+         (id, thread_id, work_request_id, workspace_id, fencing_token, status, acquired_at, expires_at)
+         VALUES (?1, ?2, ?3, ?4,
+                 (SELECT lease_fence_counter FROM threads WHERE id = ?2),
+                 'active', ?5, ?6)`,
+      )
+      .bind(
+        input.leaseId,
+        input.threadId,
+        input.workRequestId,
+        input.workspaceId,
+        input.now,
+        input.expiresAt,
+      ),
+  ];
 }
 
 /** How often a deferred lease release re-checks whether the Worker stopped. */
@@ -317,15 +333,23 @@ export class ThreadExecutionCoordinator implements DurableObject {
 
   private async status(): Promise<Response> {
     const threadId = await this.threadId();
-    const active = await dataOf(this.env).read.row<CoordinatorLeaseRow>`SELECT id, work_request_id AS "workRequestId",
-              workspace_id AS "workspaceId", fencing_token AS "fencingToken",
-              status, expires_at AS "expiresAt"
+    const active = await this.env.SYNTILA_DB.prepare(
+      `SELECT id, work_request_id AS workRequestId,
+              workspace_id AS workspaceId, fencing_token AS fencingToken,
+              status, expires_at AS expiresAt
        FROM thread_runtime_leases
-       WHERE thread_id = ${threadId} AND status = 'active'
-       LIMIT 1`;
-    const queued = await dataOf(this.env).read.rows<{ id: string; createdAt: string }>`SELECT id, created_at AS "createdAt" FROM work_requests
-       WHERE thread_id = ${threadId} AND mode = 'stateful' AND status = 'queued'
-       ORDER BY created_at, id`;
+       WHERE thread_id = ?1 AND status = 'active'
+       LIMIT 1`,
+    )
+      .bind(threadId)
+      .first<CoordinatorLeaseRow>();
+    const queued = await this.env.SYNTILA_DB.prepare(
+      `SELECT id, created_at AS createdAt FROM work_requests
+       WHERE thread_id = ?1 AND mode = 'stateful' AND status = 'queued'
+       ORDER BY created_at, id`,
+    )
+      .bind(threadId)
+      .all<{ id: string; createdAt: string }>();
     return json({ threadId, active, queued: queued.results });
   }
 
@@ -358,11 +382,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
     if (request.status !== "queued")
       return conflict("Only queued Work Requests can be cancelled");
     const now = new Date().toISOString();
-    await dataOf(this.env).tx("threadCoordinator.cancelQueued", async (tx) => {
-      await tx.run`UPDATE work_requests SET status = 'cancelled', updated_at = ${now} WHERE id = ${workRequestId} AND status = 'queued'`;
-      await tx.run`UPDATE runs SET status = 'cancelled', finished_at = ${now}, updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status = 'created'`;
-      await tx.run`UPDATE workflow_tasks SET status = 'cancelled', finished_at = ${now}, updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status IN ('queued', 'waiting')`;
-    });
+    await this.env.SYNTILA_DB.batch(cancelQueuedWorkRequest(this.env.SYNTILA_DB, workRequestId, now));
     await this.reconcile();
     return json({ workRequestId, status: "cancelled" });
   }
@@ -377,7 +397,11 @@ export class ThreadExecutionCoordinator implements DurableObject {
     if (!lease || !leaseIsCurrent(lease, Number(body.fencingToken)))
       return conflict("Stale or expired lease");
     const expiresAt = new Date(Date.now() + THREAD_LEASE_MS).toISOString();
-    await extendThreadLease(this.env, lease.id, expiresAt);
+    await this.env.SYNTILA_DB.prepare(
+      UPDATE_THREAD_RUNTIME_LEASES_SET_EXPIRES_AT,
+    )
+      .bind(expiresAt, lease.id)
+      .run();
     await this.state.storage.setAlarm(Date.parse(expiresAt));
     return json({
       leaseId: lease.id,
@@ -429,10 +453,14 @@ export class ThreadExecutionCoordinator implements DurableObject {
 
   /** True while any assignment of the request has not reached a terminal state. */
   private async workerMayBeRunning(workRequestId: string): Promise<boolean> {
-    const row = await dataOf(this.env).read.row<{ count: number }>`SELECT COUNT(*) AS count FROM worker_assignments wa
+    const row = await this.env.SYNTILA_DB.prepare(
+      `SELECT COUNT(*) AS count FROM worker_assignments wa
          JOIN workflow_tasks wt ON wt.id = wa.task_id
-        WHERE wt.work_request_id = ${workRequestId}
-          AND wa.status NOT IN ('completed', 'failed', 'cancelled', 'timed_out', 'lost')`;
+        WHERE wt.work_request_id = ?1
+          AND wa.status NOT IN ('completed', 'failed', 'cancelled', 'timed_out', 'lost')`,
+    )
+      .bind(workRequestId)
+      .first<{ count: number }>();
     return Number(row?.count ?? 0) > 0;
   }
 
@@ -475,21 +503,35 @@ export class ThreadExecutionCoordinator implements DurableObject {
     status: "completed" | "failed" | "cancelled",
   ): Promise<void> {
     const now = new Date().toISOString();
-    await dataOf(this.env).tx("thread.lease.release", async (tx) => {
-      await tx.run`UPDATE thread_runtime_leases SET status = 'released', released_at = ${now} WHERE id = ${lease.id} AND status = 'active'`;
-      await tx.run`UPDATE work_requests SET status = ${status}, updated_at = ${now} WHERE id = ${lease.workRequestId} AND status = 'running'`;
-      await tx.run`UPDATE runs SET status = ${status}, updated_at = ${now} WHERE work_request_id = ${lease.workRequestId} AND status = 'running'`;
-    });
+    await this.env.SYNTILA_DB.batch([
+      this.env.SYNTILA_DB.prepare(
+        "UPDATE thread_runtime_leases SET status = 'released', released_at = ?1 WHERE id = ?2 AND status = 'active'",
+      ).bind(now, lease.id),
+      this.env.SYNTILA_DB.prepare(
+        "UPDATE work_requests SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status = 'running'",
+      ).bind(status, now, lease.workRequestId),
+      this.env.SYNTILA_DB.prepare(
+        "UPDATE runs SET status = ?1, updated_at = ?2 WHERE work_request_id = ?3 AND status = 'running'",
+      ).bind(status, now, lease.workRequestId),
+    ]);
   }
 
   private async reconcile(fromAlarm = false): Promise<Response> {
     const threadId = await this.threadId();
     const stillWaiting = await this.settlePending();
     await this.settleExpiredLeases(threadId);
-    const active = await dataOf(this.env).read.row<{ id: string }>`SELECT id FROM thread_runtime_leases WHERE thread_id = ${threadId} AND status = 'active' LIMIT 1`;
+    const active = await this.env.SYNTILA_DB.prepare(
+      "SELECT id FROM thread_runtime_leases WHERE thread_id = ?1 AND status = 'active' LIMIT 1",
+    )
+      .bind(threadId)
+      .first<{ id: string }>();
     if (!active) await this.startNext(threadId);
     if (fromAlarm) {
-      const nextExpiry = await dataOf(this.env).read.row<{ expiresAt: string | null }>`SELECT MIN(expires_at) AS "expiresAt" FROM thread_runtime_leases WHERE thread_id = ${threadId} AND status = 'active'`;
+      const nextExpiry = await this.env.SYNTILA_DB.prepare(
+        "SELECT MIN(expires_at) AS expiresAt FROM thread_runtime_leases WHERE thread_id = ?1 AND status = 'active'",
+      )
+        .bind(threadId)
+        .first<{ expiresAt: string | null }>();
       if (nextExpiry?.expiresAt)
         await this.state.storage.setAlarm(Date.parse(nextExpiry.expiresAt));
       if (stillWaiting)
@@ -505,31 +547,43 @@ export class ThreadExecutionCoordinator implements DurableObject {
   private async settleExpiredLeases(threadId: string): Promise<void> {
     const nowMs = Date.now();
     const now = new Date(nowMs).toISOString();
-    const leases = await dataOf(this.env).read.rows<{
+    const leases = await this.env.SYNTILA_DB.prepare(
+      `SELECT l.id, l.work_request_id AS workRequestId,
+              l.acquired_at AS acquiredAt, l.workspace_id AS workspaceId,
+              l.expires_at AS expiresAt, w.status AS workspaceStatus
+         FROM thread_runtime_leases l
+         LEFT JOIN execution_workspaces w ON w.id = l.workspace_id
+        WHERE l.thread_id = ?1 AND l.status = 'active'`,
+    )
+      .bind(threadId)
+      .all<{
         id: string;
         workRequestId: string;
         acquiredAt: string;
         workspaceId: string;
         expiresAt: string;
         workspaceStatus: string | null;
-      }>`SELECT l.id, l.work_request_id AS "workRequestId",
-              l.acquired_at AS "acquiredAt", l.workspace_id AS "workspaceId",
-              l.expires_at AS "expiresAt", w.status AS "workspaceStatus"
-         FROM thread_runtime_leases l
-         LEFT JOIN execution_workspaces w ON w.id = l.workspace_id
-        WHERE l.thread_id = ${threadId} AND l.status = 'active'`;
+      }>();
     for (const lease of leases.results ?? []) {
       const expired = Date.parse(lease.expiresAt) <= nowMs;
-      const assignments = await dataOf(this.env).read.rows<ExpiredLeaseAssignment>`SELECT wa.id, wa.attempt_id AS "attemptId", wa.status,
-                wa.engine_alive_at AS "engineAliveAt",
-                wa.running_at AS "runningAt", wa.updated_at AS "updatedAt"
+      const assignments = await this.env.SYNTILA_DB.prepare(
+        `SELECT wa.id, wa.attempt_id AS attemptId, wa.status,
+                wa.engine_alive_at AS engineAliveAt,
+                wa.running_at AS runningAt, wa.updated_at AS updatedAt
            FROM worker_assignments wa
            LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
-          WHERE COALESCE(wa.work_request_id, wt.work_request_id) = ${lease.workRequestId}`;
+          WHERE COALESCE(wa.work_request_id, wt.work_request_id) = ?1`,
+      )
+        .bind(lease.workRequestId)
+        .all<ExpiredLeaseAssignment>();
       const rows = assignments.results ?? [];
-      const remaining = await dataOf(this.env).read.row<{ count: number }>`SELECT COUNT(*) AS count FROM workflow_tasks wt
-          WHERE wt.work_request_id = ${lease.workRequestId} AND wt.status IN ('queued', 'waiting')
-            AND NOT EXISTS (SELECT 1 FROM worker_assignments wa WHERE wa.task_id = wt.id)`;
+      const remaining = await this.env.SYNTILA_DB.prepare(
+        `SELECT COUNT(*) AS count FROM workflow_tasks wt
+          WHERE wt.work_request_id = ?1 AND wt.status IN ('queued', 'waiting')
+            AND NOT EXISTS (SELECT 1 FROM worker_assignments wa WHERE wa.task_id = wt.id)`,
+      )
+        .bind(lease.workRequestId)
+        .first<{ count: number }>();
       const remainingSteps = Number(remaining?.count ?? 0);
       if (!expired) {
         // Early settle only when every step has ended long enough ago that
@@ -560,16 +614,24 @@ export class ThreadExecutionCoordinator implements DurableObject {
       );
       if (decision.action === "extend") {
         const expiresAt = new Date(nowMs + THREAD_LEASE_MS).toISOString();
-        await extendThreadLease(this.env, lease.id, expiresAt);
+        await this.env.SYNTILA_DB.prepare(
+          UPDATE_THREAD_RUNTIME_LEASES_SET_EXPIRES_AT,
+        )
+          .bind(expiresAt, lease.id)
+          .run();
         console.warn(
           `Thread lease ${lease.id} expired while its Worker is alive; extended.`,
         );
         continue;
       }
       if (decision.action === "complete") {
-        await dataOf(this.env).read.run`UPDATE workflow_tasks SET status = 'completed', updated_at = ${now},
-                  finished_at = COALESCE(finished_at, ${now})
-            WHERE work_request_id = ${lease.workRequestId} AND status IN ('queued', 'running', 'waiting')`;
+        await this.env.SYNTILA_DB.prepare(
+          `UPDATE workflow_tasks SET status = 'completed', updated_at = ?1,
+                  finished_at = COALESCE(finished_at, ?1)
+            WHERE work_request_id = ?2 AND status IN ('queued', 'running', 'waiting')`,
+        )
+          .bind(now, lease.workRequestId)
+          .run();
         await this.release(
           { id: lease.id, workRequestId: lease.workRequestId },
           "completed",
@@ -578,16 +640,24 @@ export class ThreadExecutionCoordinator implements DurableObject {
         continue;
       }
       const message = EXPIRED_LEASE_MESSAGES[decision.reason];
-      await dataOf(this.env).tx("thread.lease.expire", async (tx) => {
-        await tx.run`UPDATE thread_runtime_leases SET status = 'expired', released_at = ${now} WHERE id = ${lease.id} AND status = 'active'`;
-        await tx.run`UPDATE work_requests SET status = 'failed', updated_at = ${now} WHERE id = ${lease.workRequestId} AND status = 'running'`;
-        await tx.run`UPDATE runs SET status = 'failed', finished_at = COALESCE(finished_at, ${now}), updated_at = ${now} WHERE work_request_id = ${lease.workRequestId} AND status = 'running'`;
+      await this.env.SYNTILA_DB.batch([
+        this.env.SYNTILA_DB.prepare(
+          "UPDATE thread_runtime_leases SET status = 'expired', released_at = ?1 WHERE id = ?2 AND status = 'active'",
+        ).bind(now, lease.id),
+        this.env.SYNTILA_DB.prepare(
+          "UPDATE work_requests SET status = 'failed', updated_at = ?1 WHERE id = ?2 AND status = 'running'",
+        ).bind(now, lease.workRequestId),
+        this.env.SYNTILA_DB.prepare(
+          "UPDATE runs SET status = 'failed', finished_at = COALESCE(finished_at, ?1), updated_at = ?1 WHERE work_request_id = ?2 AND status = 'running'",
+        ).bind(now, lease.workRequestId),
         // The reason is kept with the steps, where the Work view shows
         // step errors, so it survives a reload.
-        await tx.run`UPDATE workflow_tasks SET status = 'failed', error = COALESCE(error, ${message}),
-                updated_at = ${now}, finished_at = COALESCE(finished_at, ${now})
-          WHERE work_request_id = ${lease.workRequestId} AND status IN ('queued', 'running', 'waiting')`;
-      });
+        this.env.SYNTILA_DB.prepare(
+          `UPDATE workflow_tasks SET status = 'failed', error = COALESCE(error, ?3),
+                  updated_at = ?1, finished_at = COALESCE(finished_at, ?1)
+            WHERE work_request_id = ?2 AND status IN ('queued', 'running', 'waiting')`,
+        ).bind(now, lease.workRequestId, message),
+      ]);
       // A failed request must not keep a Worker changing files.
       for (const row of rows) {
         if (!decision.revokeAssignmentIds.includes(row.id)) continue;
@@ -630,9 +700,13 @@ export class ThreadExecutionCoordinator implements DurableObject {
     message?: string,
   ): Promise<void> {
     try {
-      const row = await dataOf(this.env).read.row<{ spaceId: string; userId: string | null }>`SELECT t.space_id AS "spaceId", r.requested_by_user_id AS "userId"
+      const row = await this.env.SYNTILA_DB.prepare(
+        `SELECT t.space_id AS spaceId, r.requested_by_user_id AS userId
            FROM work_requests r JOIN threads t ON t.id = r.thread_id
-          WHERE r.id = ${lease.workRequestId}`;
+          WHERE r.id = ?1`,
+      )
+        .bind(lease.workRequestId)
+        .first<{ spaceId: string; userId: string | null }>();
       if (!row) return;
       const type = `work_request.${status}` as const;
       await createEventPublisher(this.env).publish({
@@ -655,18 +729,22 @@ export class ThreadExecutionCoordinator implements DurableObject {
   }
 
   private async startNext(threadId: string): Promise<void> {
-    const rows = await dataOf(this.env).read.rows<CoordinatorRequestRow>`SELECT id, thread_id AS "threadId", mode, status,
-              primary_workspace_id AS "primaryWorkspaceId",
-              created_at AS "createdAt"
-       FROM work_requests WHERE thread_id = ${threadId} AND mode = 'stateful' AND status = 'queued'
-       ORDER BY created_at, id LIMIT 1`;
+    const rows = await this.env.SYNTILA_DB.prepare(
+      `SELECT id, thread_id AS threadId, mode, status,
+              primary_workspace_id AS primaryWorkspaceId,
+              created_at AS createdAt
+       FROM work_requests WHERE thread_id = ?1 AND mode = 'stateful' AND status = 'queued'
+       ORDER BY created_at, id LIMIT 1`,
+    )
+      .bind(threadId)
+      .all<CoordinatorRequestRow>();
     const next = selectNextStatefulRequest(rows.results);
     if (!next) return;
     const leaseId = `lease-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + THREAD_LEASE_MS).toISOString();
-    await dataOf(this.env).tx("threadCoordinator.startLease", (tx) =>
-      startStatefulLease(tx, {
+    await this.env.SYNTILA_DB.batch(
+      startStatefulLeaseStatements(this.env.SYNTILA_DB, {
         threadId,
         workRequestId: next.id,
         workspaceId: next.primaryWorkspaceId,
@@ -679,11 +757,13 @@ export class ThreadExecutionCoordinator implements DurableObject {
   }
 
   private async requestRow(id: string): Promise<CoordinatorRequestRow | null> {
-    return dataOf(this.env).read.row<CoordinatorRequestRow>`
-      SELECT id, thread_id AS "threadId", mode, status,
-             primary_workspace_id AS "primaryWorkspaceId",
-             created_at AS "createdAt" FROM work_requests WHERE id = ${id}
-    `;
+    return this.env.SYNTILA_DB.prepare(
+      `SELECT id, thread_id AS threadId, mode, status,
+              primary_workspace_id AS primaryWorkspaceId,
+              created_at AS createdAt FROM work_requests WHERE id = ?1`,
+    )
+      .bind(id)
+      .first<CoordinatorRequestRow>();
   }
 
   private async currentLease(
@@ -691,12 +771,15 @@ export class ThreadExecutionCoordinator implements DurableObject {
     workRequestId: string,
     token: number,
   ) {
-    return dataOf(this.env).read.row<CoordinatorLeaseRow>`
-      SELECT l.id, l.thread_id AS "threadId", l.work_request_id AS "workRequestId",
-             workspace_id AS "workspaceId",
-             fencing_token AS "fencingToken", l.status, l.expires_at AS "expiresAt"
-        FROM thread_runtime_leases l
-       WHERE l.id = ${leaseId} AND l.work_request_id = ${workRequestId} AND l.fencing_token = ${token}`;
+    return this.env.SYNTILA_DB.prepare(
+      `SELECT l.id, l.thread_id AS threadId, l.work_request_id AS workRequestId,
+              workspace_id AS workspaceId,
+              fencing_token AS fencingToken, l.status, l.expires_at AS expiresAt
+       FROM thread_runtime_leases l
+       WHERE l.id = ?1 AND l.work_request_id = ?2 AND l.fencing_token = ?3`,
+    )
+      .bind(leaseId, workRequestId, token)
+      .first<CoordinatorLeaseRow>();
   }
 
   private async threadId(): Promise<string> {
@@ -720,11 +803,15 @@ export async function scheduleLostWorkflowCheck(
 ): Promise<void> {
   if (!env.SYNTILA_THREAD_COORDINATOR) return;
   try {
-    const row = await dataOf(env).read.row<{ threadId: string }>`SELECT wr.thread_id AS "threadId" FROM worker_assignments wa
+    const row = await env.SYNTILA_DB.prepare(
+      `SELECT wr.thread_id AS threadId FROM worker_assignments wa
          LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
          JOIN work_requests wr
            ON wr.id = COALESCE(wa.work_request_id, wt.work_request_id)
-        WHERE wa.id = ${assignmentId} AND wr.mode = 'stateful' AND wr.status = 'running'`;
+        WHERE wa.id = ?1 AND wr.mode = 'stateful' AND wr.status = 'running'`,
+    )
+      .bind(assignmentId)
+      .first<{ threadId: string }>();
     if (!row) return;
     await env.SYNTILA_THREAD_COORDINATOR.getByName(row.threadId).fetch(
       "https://thread-coordinator/check-after",

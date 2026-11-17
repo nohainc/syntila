@@ -20,48 +20,28 @@ import {
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { createEventPublisher } from "../event-publisher.js";
 import { ensureSupportSpace, SupportSpaceError } from "../people.js";
-import { dataOf } from "../../platform/data.js";
-
-async function disconnectPersonPair(env: SecurityEnv, now: string, userLowId: string, userHighId: string) {
-  return dataOf(env).read.run`UPDATE person_connections SET status = 'disconnected', disconnected_at = ${now}
-     WHERE user_low_id = ${userLowId} AND user_high_id = ${userHighId} AND status = 'connected'`;
-}
 
 const INSERT_DIRECT_SPACE_USER_STATE =
   "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING";
 
-async function findPendingPersonInvitation(
-  env: SecurityEnv,
-  now: string,
-  userA: string,
-  userB: string,
-) {
-  return dataOf(env).read.row<{
-    id: string;
-    inviter_user_id: string;
-    invitee_user_id: string;
-    status: string;
-    expires_at: string;
-    created_at: string;
-  }>`SELECT id, inviter_user_id, invitee_user_id, status, expires_at, created_at
+const UPDATE_PERSON_INVITATIONS_SET_STATUS_BY_ID =
+  `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3`;
+
+const UPDATE_PERSON_CONNECTIONS_SET_DIRECT_SPACE_ID =
+  "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'";
+
+const SELECT_PERSON_INVITATIONS_BY_STATUS_EXPIRES_AT =
+  `SELECT id, inviter_user_id, invitee_user_id, status, expires_at, created_at
        FROM person_invitations
-       WHERE status = 'pending' AND expires_at > ${now}
-         AND ((inviter_user_id = ${userA} AND invitee_user_id = ${userB}) OR (inviter_user_id = ${userB} AND invitee_user_id = ${userA}))`;
-}
+       WHERE status = 'pending' AND expires_at > ?1
+         AND ((inviter_user_id = ?2 AND invitee_user_id = ?3) OR (inviter_user_id = ?3 AND invitee_user_id = ?2))`;
 
-async function personInvitationById(env: SecurityEnv, invitationId: string) {
-  return dataOf(env).read.row<{
-    id: string;
-    inviter_user_id: string;
-    invitee_user_id: string | null;
-    email: string | null;
-    status: string;
-    expires_at: string;
-    accepted_by_user_id: string | null;
-  }>`SELECT * FROM person_invitations WHERE id = ${invitationId}`;
-}
+const SELECT_PERSON_INVITATIONS_BY_ID =
+  "SELECT * FROM person_invitations WHERE id = ?1";
 
-
+const UPDATE_PERSON_CONNECTIONS_SET_STATUS_BY_USER =
+  `UPDATE person_connections SET status = 'disconnected', disconnected_at = ?1
+     WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'`;
 
 export interface PeopleSpace {
   readonly id: string;
@@ -109,108 +89,129 @@ export async function handleListPeople(
   const callerEmail = context.user.email.toLowerCase();
   const supportEmail = env.SYNTILA_SUPPORT_ACCOUNT_EMAIL?.trim().toLowerCase();
 
-  const db = dataOf(env).read;
   const [rows, emailPendingRows, personInvs, spaces, shared, pending] =
     await Promise.all([
-      db.rows<{
-        userId: string;
-        displayName: string;
-        email: string;
-        avatarUrl: string | null;
-        establishedAt: string;
-        sharedSpaceCount: number;
-        rawConnectionStatus: string | null;
-        directSpaceId: string | null;
-        generalThreadId: string | null;
-        isBlocked: number;
-      }>`WITH peer_users AS (
-          SELECT user_high_id AS user_id, established_at FROM people_relationships WHERE user_low_id = ${context.userId}
+      env.SYNTILA_DB.prepare(
+        `WITH peer_users AS (
+          SELECT user_high_id AS user_id, established_at FROM people_relationships WHERE user_low_id = ?1
           UNION ALL
-          SELECT user_low_id AS user_id, established_at FROM people_relationships WHERE user_high_id = ${context.userId}
+          SELECT user_low_id AS user_id, established_at FROM people_relationships WHERE user_high_id = ?1
           UNION ALL
-          SELECT CASE WHEN user_low_id = ${context.userId} THEN user_high_id ELSE user_low_id END AS user_id, established_at
-          FROM person_connections WHERE user_low_id = ${context.userId} OR user_high_id = ${context.userId}
+          SELECT CASE WHEN user_low_id = ?1 THEN user_high_id ELSE user_low_id END AS user_id, established_at
+          FROM person_connections WHERE user_low_id = ?1 OR user_high_id = ?1
           UNION ALL
           SELECT invitee_user_id AS user_id, created_at AS established_at
-          FROM person_invitations WHERE inviter_user_id = ${context.userId} AND status = 'pending' AND expires_at > ${now} AND invitee_user_id IS NOT NULL
+          FROM person_invitations WHERE inviter_user_id = ?1 AND status = 'pending' AND expires_at > ?2 AND invitee_user_id IS NOT NULL
           UNION ALL
           SELECT inviter_user_id AS user_id, created_at AS established_at
-          FROM person_invitations WHERE (invitee_user_id = ${context.userId} OR (invitee_user_id IS NULL AND LOWER(email) = ${callerEmail})) AND status = 'pending' AND expires_at > ${now}
+          FROM person_invitations WHERE (invitee_user_id = ?1 OR (invitee_user_id IS NULL AND LOWER(email) = ?3)) AND status = 'pending' AND expires_at > ?2
         ),
         unique_peers AS (
-          SELECT user_id, MIN(established_at) AS established_at FROM peer_users WHERE user_id <> ${context.userId} GROUP BY user_id
+          SELECT user_id, MIN(established_at) AS established_at FROM peer_users WHERE user_id <> ?1 GROUP BY user_id
         )
-        SELECT u.id AS "userId", u.display_name AS "displayName", u.email, u.avatar_url AS "avatarUrl", p.established_at AS "establishedAt",
+        SELECT u.id AS userId, u.display_name AS displayName, u.email, u.avatar_url AS avatarUrl, p.established_at AS establishedAt,
           (SELECT COUNT(*) FROM space_memberships mine
            JOIN space_memberships theirs ON theirs.space_id=mine.space_id
            JOIN spaces s ON s.id = mine.space_id
-           WHERE mine.user_id=${context.userId} AND theirs.user_id=u.id AND COALESCE(s.kind, 'group') = 'group') AS "sharedSpaceCount",
-          pc.status AS "rawConnectionStatus",
-          ds.space_id AS "directSpaceId",
-          ds.general_thread_id AS "generalThreadId",
+           WHERE mine.user_id=?1 AND theirs.user_id=u.id AND COALESCE(s.kind, 'group') = 'group') AS sharedSpaceCount,
+          pc.status AS rawConnectionStatus,
+          ds.space_id AS directSpaceId,
+          ds.general_thread_id AS generalThreadId,
           EXISTS (
             SELECT 1 FROM user_blocks ub
-            WHERE ub.blocker_user_id = ${context.userId} AND ub.blocked_user_id = u.id
-          ) AS "isBlocked"
+            WHERE ub.blocker_user_id = ?1 AND ub.blocked_user_id = u.id
+          ) AS isBlocked
         FROM unique_peers p
         JOIN users u ON u.id = p.user_id
-        LEFT JOIN person_connections pc ON pc.user_low_id = LEAST(${context.userId}::text, u.id) AND pc.user_high_id = GREATEST(${context.userId}::text, u.id)
+        LEFT JOIN person_connections pc ON pc.user_low_id = LEAST(?1::text, u.id) AND pc.user_high_id = GREATEST(?1::text, u.id)
         LEFT JOIN direct_spaces ds ON ds.space_id = pc.direct_space_id
         WHERE u.status = 'active'
         ORDER BY LOWER(u.display_name), u.id`,
-      db.rows<{ id: string; email: string; createdAt: string }>`
-        SELECT id, email, created_at AS "createdAt"
-        FROM person_invitations
-        WHERE inviter_user_id = ${context.userId} AND status = 'pending' AND expires_at > ${now} AND invitee_user_id IS NULL
-        ORDER BY created_at DESC`,
-      db.rows<{
-        id: string;
-        inviterUserId: string;
-        inviteeUserId: string | null;
-        email: string | null;
-        status: string;
-      }>`
-        SELECT id, inviter_user_id AS "inviterUserId", invitee_user_id AS "inviteeUserId", LOWER(email) AS email, status
-        FROM person_invitations
-        WHERE status = 'pending' AND expires_at > ${now}
-          AND (inviter_user_id = ${context.userId} OR invitee_user_id = ${context.userId} OR (invitee_user_id IS NULL AND LOWER(email) = ${callerEmail}))`,
-      db.rows<
-        PeopleSpace & {
-          kind: string;
-          archived: number;
-          settingsJson: string;
-          role: string;
-        }
-      >`SELECT s.id,s.name,COALESCE(s.kind, 'group') AS kind,CASE WHEN COALESCE((s.settings_json::jsonb ->> 'archived'), 'false') IN ('true', '1') THEN 1 ELSE 0 END AS archived,s.settings_json AS "settingsJson",m.role
-        FROM spaces s JOIN space_memberships m ON m.space_id=s.id WHERE m.user_id=${context.userId} ORDER BY LOWER(s.name),s.id`,
-      db.rows<{ userId: string; spaceId: string }>`SELECT theirs.user_id AS "userId",mine.space_id AS "spaceId"
+      )
+        .bind(context.userId, now, callerEmail)
+        .all<{
+          userId: string;
+          displayName: string;
+          email: string;
+          avatarUrl: string | null;
+          establishedAt: string;
+          sharedSpaceCount: number;
+          rawConnectionStatus: string | null;
+          directSpaceId: string | null;
+          generalThreadId: string | null;
+          isBlocked: number;
+        }>(),
+      env.SYNTILA_DB.prepare(
+        `SELECT id, email, created_at AS createdAt
+         FROM person_invitations
+         WHERE inviter_user_id = ?1 AND status = 'pending' AND expires_at > ?2 AND invitee_user_id IS NULL
+         ORDER BY created_at DESC`,
+      )
+        .bind(context.userId, now)
+        .all<{ id: string; email: string; createdAt: string }>(),
+      env.SYNTILA_DB.prepare(
+        `SELECT id, inviter_user_id AS inviterUserId, invitee_user_id AS inviteeUserId, LOWER(email) AS email, status
+         FROM person_invitations
+         WHERE status = 'pending' AND expires_at > ?1
+           AND (inviter_user_id = ?2 OR invitee_user_id = ?2 OR (invitee_user_id IS NULL AND LOWER(email) = ?3))`,
+      )
+        .bind(now, context.userId, callerEmail)
+        .all<{
+          id: string;
+          inviterUserId: string;
+          inviteeUserId: string | null;
+          email: string | null;
+          status: string;
+        }>(),
+      env.SYNTILA_DB.prepare(
+        `SELECT s.id,s.name,COALESCE(s.kind, 'group') AS kind,CASE WHEN COALESCE((s.settings_json::jsonb ->> 'archived'), 'false') IN ('true', '1') THEN 1 ELSE 0 END AS archived,s.settings_json AS settingsJson,m.role
+        FROM spaces s JOIN space_memberships m ON m.space_id=s.id WHERE m.user_id=?1 ORDER BY LOWER(s.name),s.id`,
+      )
+        .bind(context.userId)
+        .all<
+          PeopleSpace & {
+            kind: string;
+            archived: number;
+            settingsJson: string;
+            role: string;
+          }
+        >(),
+      env.SYNTILA_DB.prepare(
+        `SELECT theirs.user_id AS userId,mine.space_id AS spaceId
         FROM space_memberships mine JOIN space_memberships theirs ON theirs.space_id=mine.space_id
-        JOIN people_relationships p ON p.user_low_id=LEAST(${context.userId}::text,theirs.user_id) AND p.user_high_id=GREATEST(${context.userId}::text,theirs.user_id)
-        WHERE mine.user_id=${context.userId}`,
-      db.rows<{
-        spaceId: string;
-        email: string;
-        inviteeUserId: string | null;
-      }>`SELECT i.space_id AS "spaceId",LOWER(i.email) AS email,i.invitee_user_id AS "inviteeUserId" FROM space_invitations i
-        JOIN space_memberships m ON m.space_id=i.space_id AND m.user_id=${context.userId}
-        WHERE i.status='pending' AND i.expires_at>${now}`,
+        JOIN people_relationships p ON p.user_low_id=LEAST(?1::text,theirs.user_id) AND p.user_high_id=GREATEST(?1::text,theirs.user_id)
+        WHERE mine.user_id=?1`,
+      )
+        .bind(context.userId)
+        .all<{ userId: string; spaceId: string }>(),
+      env.SYNTILA_DB.prepare(
+        `SELECT i.space_id AS spaceId,LOWER(i.email) AS email,i.invitee_user_id AS inviteeUserId FROM space_invitations i
+        JOIN space_memberships m ON m.space_id=i.space_id AND m.user_id=?1
+        WHERE i.status='pending' AND i.expires_at>?2`,
+      )
+        .bind(context.userId, now)
+        .all<{
+          spaceId: string;
+          email: string;
+          inviteeUserId: string | null;
+        }>(),
     ]);
 
   const permissions = new Map(
-    spaces.map((space) => [
+    spaces.results.map((space) => [
       space.id,
       spaceMemberPermissions(space.role, space.settingsJson, context.userId),
     ]),
   );
   const sharedByUser = new Map<string, Set<string>>();
-  for (const row of shared) {
+  for (const row of shared.results) {
     const ids = sharedByUser.get(row.userId) ?? new Set<string>();
     ids.add(row.spaceId);
     sharedByUser.set(row.userId, ids);
   }
   const pendingByUser = new Map<string, Set<string>>();
   const pendingByEmail = new Map<string, Set<string>>();
-  for (const row of pending) {
+  for (const row of pending.results) {
     if (row.inviteeUserId !== null) {
       const ids = pendingByUser.get(row.inviteeUserId) ?? new Set<string>();
       ids.add(row.spaceId);
@@ -222,7 +223,7 @@ export async function handleListPeople(
     pendingByEmail.set(row.email, ids);
   }
 
-  const peopleList: Person[] = rows
+  const peopleList: Person[] = rows.results
     .filter((person) => person.email.trim().toLowerCase() !== supportEmail)
     .map((person) => {
       const membership = sharedByUser.get(person.userId) ?? new Set<string>();
@@ -235,7 +236,7 @@ export async function handleListPeople(
       let connectionStatus: Person["connectionStatus"] = "collaborator";
       let invitationId: string | null = null;
 
-      const matchingInv = personInvs.find(
+      const matchingInv = personInvs.results.find(
         (inv) =>
           (inv.inviterUserId === person.userId &&
             (inv.inviteeUserId === context.userId ||
@@ -274,14 +275,14 @@ export async function handleListPeople(
         generalThreadId: person.generalThreadId,
         invitationId,
         pendingInvitationSpaceIds: [...invitations].filter((id) =>
-          spaces.some(
+          spaces.results.some(
             (space) => space.id === id && space.role === "owner",
           ),
         ),
-        sharedSpaces: spaces
+        sharedSpaces: spaces.results
           .filter((space) => space.kind === "group" && membership.has(space.id))
           .map(({ id, name }): PeopleSpace => ({ id, name })),
-        invitableSpaces: spaces
+        invitableSpaces: spaces.results
           .filter(
             (space) =>
               space.kind === "group" &&
@@ -300,8 +301,8 @@ export async function handleListPeople(
     });
 
   // Append pending email invitations sent by caller to unknown accounts
-  const knownEmails = new Set(rows.map((r) => r.email.toLowerCase()));
-  for (const emailInv of emailPendingRows) {
+  const knownEmails = new Set(rows.results.map((r) => r.email.toLowerCase()));
+  for (const emailInv of emailPendingRows.results) {
     if (emailInv.email.trim().toLowerCase() === supportEmail) continue;
     if (!knownEmails.has(emailInv.email.toLowerCase())) {
       peopleList.push({
@@ -336,7 +337,7 @@ async function provisionDirectConnection(
   recipientUserId: string,
   invitationId: string | null,
 ): Promise<{ directSpaceId: string; userLowId: string; userHighId: string }> {
-  const isBlocked = await usersBlocked(env, inviterUserId, recipientUserId);
+  const isBlocked = await usersBlocked(env.SYNTILA_DB, inviterUserId, recipientUserId);
   if (isBlocked) {
     throw new HttpError(403, "Cannot accept invitation from a blocked user");
   }
@@ -347,74 +348,64 @@ async function provisionDirectConnection(
   );
   const now = new Date().toISOString();
 
-  const existing = await directSpaceOfPair(env, userLowId, userHighId);
+  const existing = await directSpaceOfPair(env.SYNTILA_DB, userLowId, userHighId);
 
   let directSpaceId = existing?.space_id;
   const isNewSpace = !directSpaceId;
-async function markInvitationAccepted(
-  q: Pick<Tx, "run">,
-  invitationId: string,
-  recipientUserId: string,
-  now: string,
-) {
-  await q.run`UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ${recipientUserId}, updated_at = ${now} WHERE id = ${invitationId}`;
-}
+  const statements: D1PreparedStatement[] = [];
 
-  const newDirectSpaceId = directSpaceId ?? `space-direct-${crypto.randomUUID()}`;
-  const runMutations = async (tx: Tx) => {
-    if (!directSpaceId) {
-      await tx.run`
-        INSERT INTO spaces (id, owner_user_id, name, kind, settings_json, created_at, updated_at)
-        VALUES (${newDirectSpaceId}, ${inviterUserId}, 'Direct Space', 'direct', '{}', ${now}, ${now})
-      `;
-      await tx.run`
-        INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at)
-        VALUES (${`pm-${crypto.randomUUID()}`}, ${newDirectSpaceId}, ${inviterUserId}, 'owner', ${now}, ${now})
-        ON CONFLICT(space_id, user_id) DO NOTHING
-      `;
-      await tx.run`
-        INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at)
-        VALUES (${`pm-${crypto.randomUUID()}`}, ${newDirectSpaceId}, ${recipientUserId}, 'collaborator', ${now}, ${now})
-        ON CONFLICT(space_id, user_id) DO NOTHING
-      `;
-      await tx.run`
-        INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at)
-        VALUES (${newDirectSpaceId}, ${userLowId}, ${userHighId}, NULL, ${now})
-      `;
-      for (const uid of [inviterUserId, recipientUserId]) {
-        await tx.run`
-          INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at)
-          VALUES (${newDirectSpaceId}, ${uid}, FALSE, ${now}, ${now})
-          ON CONFLICT(space_id, user_id) DO NOTHING
-        `;
-      }
-    }
+  if (!directSpaceId) {
+    directSpaceId = `space-direct-${crypto.randomUUID()}`;
+    statements.push(
+      env.SYNTILA_DB.prepare(
+        "INSERT INTO spaces (id, owner_user_id, name, kind, settings_json, created_at, updated_at) VALUES (?1, ?2, 'Direct Space', 'direct', '{}', ?3, ?3)",
+      ).bind(directSpaceId, inviterUserId, now),
+      env.SYNTILA_DB.prepare(
+        "INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (?1, ?2, ?3, 'owner', ?4, ?4) ON CONFLICT(space_id, user_id) DO NOTHING",
+      ).bind(`pm-${crypto.randomUUID()}`, directSpaceId, inviterUserId, now),
+      env.SYNTILA_DB.prepare(
+        "INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (?1, ?2, ?3, 'collaborator', ?4, ?4) ON CONFLICT(space_id, user_id) DO NOTHING",
+      ).bind(`pm-${crypto.randomUUID()}`, directSpaceId, recipientUserId, now),
+      env.SYNTILA_DB.prepare(
+        "INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at) VALUES (?1, ?2, ?3, NULL, ?4)",
+      ).bind(directSpaceId, userLowId, userHighId, now),
+      env.SYNTILA_DB.prepare(
+        INSERT_DIRECT_SPACE_USER_STATE,
+      ).bind(directSpaceId, inviterUserId, now),
+      env.SYNTILA_DB.prepare(
+        INSERT_DIRECT_SPACE_USER_STATE,
+      ).bind(directSpaceId, recipientUserId, now),
+    );
+  }
 
-    if (invitationId) {
-      await tx.run`
-        INSERT INTO person_connections (user_low_id, user_high_id, status, established_at, direct_space_id)
-        VALUES (${userLowId}, ${userHighId}, 'connected', ${now}, ${newDirectSpaceId})
-        ON CONFLICT(user_low_id, user_high_id) DO UPDATE SET
-          status = 'connected', established_at = ${now}, disconnected_at = NULL, direct_space_id = ${newDirectSpaceId}
-      `;
-      await tx.run`
-        INSERT INTO people_relationships (user_low_id, user_high_id, established_at)
-        VALUES (${userLowId}, ${userHighId}, ${now}) ON CONFLICT(user_low_id, user_high_id) DO NOTHING
-      `;
-      await markInvitationAccepted(tx, invitationId, recipientUserId, now);
-      await tx.run`
-        UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ${recipientUserId}, updated_at = ${now}
-        WHERE id <> ${invitationId} AND status = 'pending'
-          AND ((inviter_user_id = ${userLowId} AND invitee_user_id = ${userHighId}) OR (inviter_user_id = ${userHighId} AND invitee_user_id = ${userLowId}))
-      `;
-    } else {
-      await tx.run`
-        UPDATE person_connections SET direct_space_id = ${newDirectSpaceId}
-        WHERE user_low_id = ${userLowId} AND user_high_id = ${userHighId}
-      `;
-    }
-  };
-  directSpaceId = newDirectSpaceId;
+  if (invitationId)
+    statements.push(
+      env.SYNTILA_DB.prepare(
+        `INSERT INTO person_connections (user_low_id, user_high_id, status, established_at, direct_space_id)
+       VALUES (?1, ?2, 'connected', ?3, ?4)
+       ON CONFLICT(user_low_id, user_high_id) DO UPDATE SET
+         status = 'connected', established_at = ?3, disconnected_at = NULL, direct_space_id = ?4`,
+      ).bind(userLowId, userHighId, now, directSpaceId),
+      env.SYNTILA_DB.prepare(
+        `INSERT INTO people_relationships (user_low_id, user_high_id, established_at)
+       VALUES (?1, ?2, ?3) ON CONFLICT(user_low_id, user_high_id) DO NOTHING`,
+      ).bind(userLowId, userHighId, now),
+      env.SYNTILA_DB.prepare(
+        UPDATE_PERSON_INVITATIONS_SET_STATUS_BY_ID,
+      ).bind(recipientUserId, now, invitationId),
+      env.SYNTILA_DB.prepare(
+        `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2
+       WHERE id <> ?3 AND status = 'pending'
+         AND ((inviter_user_id = ?4 AND invitee_user_id = ?5) OR (inviter_user_id = ?5 AND invitee_user_id = ?4))`,
+      ).bind(recipientUserId, now, invitationId, userLowId, userHighId),
+    );
+
+  if (!invitationId)
+    statements.push(
+      env.SYNTILA_DB.prepare(
+        UPDATE_PERSON_CONNECTIONS_SET_DIRECT_SPACE_ID,
+      ).bind(directSpaceId, userLowId, userHighId),
+    );
 
   try {
     if (isNewSpace) {
@@ -426,20 +417,28 @@ async function markInvitationAccepted(
         {
           recipientUserIds: [userLowId, userHighId],
           additionalRecipientUserIds: [userLowId, userHighId],
-          tx: runMutations,
+          mutations: statements,
         },
       );
     } else {
-      await dataOf(env).tx("people.acceptInvitation", runMutations);
+      await env.SYNTILA_DB.batch(statements);
     }
   } catch (error) {
-    const rechecked = await directSpaceOfPair(env, userLowId, userHighId);
+    const rechecked = await directSpaceOfPair(env.SYNTILA_DB, userLowId, userHighId);
     if (rechecked) {
       directSpaceId = rechecked.space_id;
       if (invitationId)
-        await markInvitationAccepted(dataOf(env).read, invitationId, recipientUserId, now);
+        await env.SYNTILA_DB.prepare(
+          UPDATE_PERSON_INVITATIONS_SET_STATUS_BY_ID,
+        )
+          .bind(recipientUserId, now, invitationId)
+          .run();
       else
-        await dataOf(env).read.run`UPDATE person_connections SET direct_space_id = ${directSpaceId} WHERE user_low_id = ${userLowId} AND user_high_id = ${userHighId} AND status = 'connected'`;
+        await env.SYNTILA_DB.prepare(
+          UPDATE_PERSON_CONNECTIONS_SET_DIRECT_SPACE_ID,
+        )
+          .bind(directSpaceId, userLowId, userHighId)
+          .run();
     } else {
       throw error;
     }
@@ -469,8 +468,12 @@ export async function handleOpenPersonalSpace(
   if (request.method !== "POST") throw new HttpError(405, "Method not allowed");
   if (peerId === context.userId) throw new HttpError(400, "Invalid person");
   const { userLowId, userHighId } = normalizeUserPair(context.userId, peerId);
-  const connection = await dataOf(env).read.row`SELECT 1 FROM person_connections pc JOIN users u ON u.id = ${peerId} AND u.status = 'active'
-     WHERE pc.user_low_id = ${userLowId} AND pc.user_high_id = ${userHighId} AND pc.status = 'connected'`;
+  const connection = await env.SYNTILA_DB.prepare(
+    `SELECT 1 FROM person_connections pc JOIN users u ON u.id = ?3 AND u.status = 'active'
+     WHERE pc.user_low_id = ?1 AND pc.user_high_id = ?2 AND pc.status = 'connected'`,
+  )
+    .bind(userLowId, userHighId, peerId)
+    .first();
   if (!connection) throw new HttpError(403, "Person is not connected");
   const result = await provisionDirectConnection(
     env,
@@ -492,8 +495,12 @@ export async function handleCreatePersonInvitation(
   }
 
   // Rate limiting check
-  const recent = await dataOf(env).read.row<{ count: number }>`SELECT COUNT(*) AS count FROM person_invitations
-     WHERE inviter_user_id = ${context.userId} AND created_at >= ${new Date(Date.now() - 60 * 60 * 1000).toISOString()}`;
+  const recent = await env.SYNTILA_DB.prepare(
+    `SELECT COUNT(*) AS count FROM person_invitations
+     WHERE inviter_user_id = ?1 AND created_at >= ?2`,
+  )
+    .bind(context.userId, new Date(Date.now() - 60 * 60 * 1000).toISOString())
+    .first<{ count: number }>();
   if (Number(recent?.count ?? 0) >= PERSONAL_INVITATION_RATE_LIMIT_PER_HOUR) {
     throw new HttpError(
       429,
@@ -513,17 +520,25 @@ export async function handleCreatePersonInvitation(
     if (rawUserId === context.userId) {
       throw new HttpError(400, "Cannot invite yourself");
     }
-    const isPeer = await dataOf(env).read.row`SELECT 1 FROM people_relationships
-       WHERE user_low_id = LEAST(${context.userId}::text, ${rawUserId}::text) AND user_high_id = GREATEST(${context.userId}::text, ${rawUserId}::text)`;
+    const isPeer = await env.SYNTILA_DB.prepare(
+      `SELECT 1 FROM people_relationships
+       WHERE user_low_id = LEAST(?1::text, ?2::text) AND user_high_id = GREATEST(?1::text, ?2::text)`,
+    )
+      .bind(context.userId, rawUserId)
+      .first();
     if (!isPeer) {
       throw new HttpError(404, "Recipient not found in your contacts");
     }
-    const target = await dataOf(env).read.row<{
+    const target = await env.SYNTILA_DB.prepare(
+      "SELECT id, email, display_name, status FROM users WHERE id = ?1",
+    )
+      .bind(rawUserId)
+      .first<{
         id: string;
         email: string;
         display_name: string;
         status: string;
-      }>`SELECT id, email, display_name, status FROM users WHERE id = ${rawUserId}`;
+      }>();
     if (!target || target.status !== "active") {
       throw new HttpError(404, "Recipient not found or inactive");
     }
@@ -537,12 +552,16 @@ export async function handleCreatePersonInvitation(
     if (normalizedEmail === context.user.email.toLowerCase()) {
       throw new HttpError(400, "Cannot invite yourself");
     }
-    const existing = await dataOf(env).read.row<{
+    const existing = await env.SYNTILA_DB.prepare(
+      "SELECT id, email, display_name, status FROM users WHERE LOWER(email) = ?1",
+    )
+      .bind(normalizedEmail)
+      .first<{
         id: string;
         email: string;
         display_name: string;
         status: string;
-      }>`SELECT id, email, display_name, status FROM users WHERE LOWER(email) = ${normalizedEmail}`;
+      }>();
     if (existing) {
       if (existing.id === context.userId) {
         throw new HttpError(400, "Cannot invite yourself");
@@ -560,7 +579,7 @@ export async function handleCreatePersonInvitation(
 
   // Check if blocked
   if (inviteeUserId) {
-    const isBlocked = await usersBlocked(env, context.userId, inviteeUserId);
+    const isBlocked = await usersBlocked(env.SYNTILA_DB, context.userId, inviteeUserId);
     if (isBlocked) {
       throw new HttpError(403, "Cannot send invitation to a blocked user");
     }
@@ -572,8 +591,12 @@ export async function handleCreatePersonInvitation(
       context.userId,
       inviteeUserId,
     );
-    const existingConn = await dataOf(env).read.row<{ status: string; direct_space_id: string | null }>`SELECT status, direct_space_id FROM person_connections
-       WHERE user_low_id = ${userLowId} AND user_high_id = ${userHighId} AND status = 'connected'`;
+    const existingConn = await env.SYNTILA_DB.prepare(
+      `SELECT status, direct_space_id FROM person_connections
+       WHERE user_low_id = ?1 AND user_high_id = ?2 AND status = 'connected'`,
+    )
+      .bind(userLowId, userHighId)
+      .first<{ status: string; direct_space_id: string | null }>();
     if (existingConn) {
       // The personal Space was deleted: connecting again creates a new one.
       const directSpaceId =
@@ -593,7 +616,18 @@ export async function handleCreatePersonInvitation(
     }
 
     // Check for existing pending invitation between them
-    const pendingInv = await findPendingPersonInvitation(env, now, context.userId, inviteeUserId);
+    const pendingInv = await env.SYNTILA_DB.prepare(
+      SELECT_PERSON_INVITATIONS_BY_STATUS_EXPIRES_AT,
+    )
+      .bind(now, context.userId, inviteeUserId)
+      .first<{
+        id: string;
+        inviter_user_id: string;
+        invitee_user_id: string;
+        status: string;
+        expires_at: string;
+        created_at: string;
+      }>();
 
     if (pendingInv) {
       if (pendingInv.inviter_user_id === context.userId) {
@@ -641,16 +675,20 @@ export async function handleCreatePersonInvitation(
     }
   } else {
     // Check pending email invitation
-    const pendingEmail = await dataOf(env).read.row<{
+    const pendingEmail = await env.SYNTILA_DB.prepare(
+      `SELECT id, inviter_user_id, email, status, expires_at, created_at
+       FROM person_invitations
+       WHERE inviter_user_id = ?1 AND LOWER(email) = ?2 AND status = 'pending' AND expires_at > ?3`,
+    )
+      .bind(context.userId, targetEmail.toLowerCase(), now)
+      .first<{
         id: string;
         inviter_user_id: string;
         email: string;
         status: string;
         expires_at: string;
         created_at: string;
-      }>`SELECT id, inviter_user_id, email, status, expires_at, created_at
-       FROM person_invitations
-       WHERE inviter_user_id = ${context.userId} AND LOWER(email) = ${targetEmail.toLowerCase()} AND status = 'pending' AND expires_at > ${now}`;
+      }>();
     if (pendingEmail) {
       return json({
         status: "pending",
@@ -674,11 +712,33 @@ export async function handleCreatePersonInvitation(
   ).toISOString();
 
   try {
-    await dataOf(env).read.run`INSERT INTO person_invitations (id, inviter_user_id, invitee_user_id, email, status, created_at, expires_at, updated_at)
-       VALUES (${invitationId}, ${context.userId}, ${inviteeUserId}, ${targetEmail}, 'pending', ${now}, ${expiresAt}, ${now})`;
+    await env.SYNTILA_DB.prepare(
+      `INSERT INTO person_invitations (id, inviter_user_id, invitee_user_id, email, status, created_at, expires_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?5)`,
+    )
+      .bind(
+        invitationId,
+        context.userId,
+        inviteeUserId,
+        targetEmail,
+        now,
+        expiresAt,
+      )
+      .run();
   } catch (err: unknown) {
     if (inviteeUserId) {
-      const racingInv = await findPendingPersonInvitation(env, now, context.userId, inviteeUserId);
+      const racingInv = await env.SYNTILA_DB.prepare(
+        SELECT_PERSON_INVITATIONS_BY_STATUS_EXPIRES_AT,
+      )
+        .bind(now, context.userId, inviteeUserId)
+        .first<{
+          id: string;
+          inviter_user_id: string;
+          invitee_user_id: string;
+          status: string;
+          expires_at: string;
+          created_at: string;
+        }>();
 
       if (racingInv) {
         if (racingInv.inviter_user_id === context.userId) {
@@ -732,7 +792,11 @@ export async function handleCreatePersonInvitation(
         context.userId,
         inviteeUserId,
       );
-      const conn = await dataOf(env).read.row<{ direct_space_id: string }>`SELECT direct_space_id FROM person_connections WHERE user_low_id = ${userLowId} AND user_high_id = ${userHighId} AND status = 'connected'`;
+      const conn = await env.SYNTILA_DB.prepare(
+        "SELECT direct_space_id FROM person_connections WHERE user_low_id = ?1 AND user_high_id = ?2 AND status = 'connected'",
+      )
+        .bind(userLowId, userHighId)
+        .first<{ direct_space_id: string }>();
       if (conn) {
         return json(
           {
@@ -754,15 +818,19 @@ export async function handleCreatePersonInvitation(
     } else {
       // A parallel request invited the same address first: answer like the
       // pre-check above would have, instead of a unique-index error.
-      const racingEmail = await dataOf(env).read.row<{
+      const racingEmail = await env.SYNTILA_DB.prepare(
+        `SELECT id, inviter_user_id, email, expires_at, created_at
+         FROM person_invitations
+         WHERE inviter_user_id = ?1 AND LOWER(email) = ?2 AND status = 'pending' AND expires_at > ?3`,
+      )
+        .bind(context.userId, targetEmail.toLowerCase(), now)
+        .first<{
           id: string;
           inviter_user_id: string;
           email: string;
           expires_at: string;
           created_at: string;
-        }>`SELECT id, inviter_user_id, email, expires_at, created_at
-         FROM person_invitations
-         WHERE inviter_user_id = ${context.userId} AND LOWER(email) = ${targetEmail.toLowerCase()} AND status = 'pending' AND expires_at > ${now}`;
+        }>();
       if (racingEmail)
         return json({
           status: "pending",
@@ -829,44 +897,52 @@ export async function handleListPersonInvitations(
   const callerEmail = context.user.email.toLowerCase();
 
   const [incoming, outgoing] = await Promise.all([
-    dataOf(env).read.rows<{
-      id: string;
-      inviterUserId: string;
-      inviterName: string;
-      inviterAvatarUrl: string | null;
-      createdAt: string;
-      expiresAt: string;
-      status: string;
-    }>`SELECT pi.id, pi.inviter_user_id AS "inviterUserId", u.display_name AS "inviterName",
-             u.avatar_url AS "inviterAvatarUrl", pi.created_at AS "createdAt",
-             pi.expires_at AS "expiresAt", pi.status
-      FROM person_invitations pi
-      JOIN users u ON u.id = pi.inviter_user_id
-      WHERE pi.status = 'pending' AND pi.expires_at > ${now}
-        AND ((pi.invitee_user_id = ${context.userId}) OR (pi.invitee_user_id IS NULL AND LOWER(pi.email) = ${callerEmail}))
-      ORDER BY pi.created_at DESC`,
-    dataOf(env).read.rows<{
-      id: string;
-      inviteeUserId: string | null;
-      email: string | null;
-      recipientName: string;
-      recipientAvatarUrl: string | null;
-      createdAt: string;
-      expiresAt: string;
-      status: string;
-    }>`SELECT pi.id, pi.invitee_user_id AS "inviteeUserId", pi.email,
-             COALESCE(u.display_name, pi.email) AS "recipientName",
-             u.avatar_url AS "recipientAvatarUrl", pi.created_at AS "createdAt",
-             pi.expires_at AS "expiresAt", pi.status
-      FROM person_invitations pi
-      LEFT JOIN users u ON u.id = pi.invitee_user_id
-      WHERE pi.inviter_user_id = ${context.userId} AND pi.status = 'pending' AND pi.expires_at > ${now}
-      ORDER BY pi.created_at DESC`,
+    env.SYNTILA_DB.prepare(
+      `SELECT pi.id, pi.inviter_user_id AS inviterUserId, u.display_name AS inviterName,
+              u.avatar_url AS inviterAvatarUrl, pi.created_at AS createdAt,
+              pi.expires_at AS expiresAt, pi.status
+       FROM person_invitations pi
+       JOIN users u ON u.id = pi.inviter_user_id
+       WHERE pi.status = 'pending' AND pi.expires_at > ?1
+         AND ((pi.invitee_user_id = ?2) OR (pi.invitee_user_id IS NULL AND LOWER(pi.email) = ?3))
+       ORDER BY pi.created_at DESC`,
+    )
+      .bind(now, context.userId, callerEmail)
+      .all<{
+        id: string;
+        inviterUserId: string;
+        inviterName: string;
+        inviterAvatarUrl: string | null;
+        createdAt: string;
+        expiresAt: string;
+        status: string;
+      }>(),
+    env.SYNTILA_DB.prepare(
+      `SELECT pi.id, pi.invitee_user_id AS inviteeUserId, pi.email,
+              COALESCE(u.display_name, pi.email) AS recipientName,
+              u.avatar_url AS recipientAvatarUrl, pi.created_at AS createdAt,
+              pi.expires_at AS expiresAt, pi.status
+       FROM person_invitations pi
+       LEFT JOIN users u ON u.id = pi.invitee_user_id
+       WHERE pi.inviter_user_id = ?1 AND pi.status = 'pending' AND pi.expires_at > ?2
+       ORDER BY pi.created_at DESC`,
+    )
+      .bind(context.userId, now)
+      .all<{
+        id: string;
+        inviteeUserId: string | null;
+        email: string | null;
+        recipientName: string;
+        recipientAvatarUrl: string | null;
+        createdAt: string;
+        expiresAt: string;
+        status: string;
+      }>(),
   ]);
 
   return json({
     schemaVersion: 1,
-    incoming: incoming.map((row) => ({
+    incoming: (incoming.results ?? []).map((row) => ({
       ...row,
       inviterAvatarUrl: avatarUrlFor(
         request,
@@ -874,7 +950,7 @@ export async function handleListPersonInvitations(
         row.inviterAvatarUrl,
       ),
     })),
-    outgoing: outgoing.map((row) => ({
+    outgoing: (outgoing.results ?? []).map((row) => ({
       ...row,
       recipientAvatarUrl: row.inviteeUserId
         ? avatarUrlFor(request, row.inviteeUserId, row.recipientAvatarUrl)
@@ -894,7 +970,19 @@ export async function handleAcceptPersonInvitation(
     throw new HttpError(403, "Account is not active");
   }
 
-  const inv = await personInvitationById(env, invitationId);
+  const inv = await env.SYNTILA_DB.prepare(
+    SELECT_PERSON_INVITATIONS_BY_ID,
+  )
+    .bind(invitationId)
+    .first<{
+      id: string;
+      inviter_user_id: string;
+      invitee_user_id: string | null;
+      email: string | null;
+      status: string;
+      expires_at: string;
+      accepted_by_user_id: string | null;
+    }>();
 
   if (!inv) {
     throw new HttpError(404, "Invitation not found");
@@ -915,7 +1003,11 @@ export async function handleAcceptPersonInvitation(
         context.userId,
         partnerUserId,
       );
-      const ds = await dataOf(env).read.row<{ direct_space_id: string }>`SELECT direct_space_id FROM person_connections WHERE user_low_id = ${userLowId} AND user_high_id = ${userHighId}`;
+      const ds = await env.SYNTILA_DB.prepare(
+        "SELECT direct_space_id FROM person_connections WHERE user_low_id = ?1 AND user_high_id = ?2",
+      )
+        .bind(userLowId, userHighId)
+        .first<{ direct_space_id: string }>();
       return json({
         status: "accepted",
         directSpaceId: ds?.direct_space_id ?? null,
@@ -960,7 +1052,11 @@ export async function handleAcceptPersonInvitation(
   }
 
   // Check inviter is active
-  const inviter = await dataOf(env).read.row<{ id: string; status: string }>`SELECT id, status FROM users WHERE id = ${inv.inviter_user_id}`;
+  const inviter = await env.SYNTILA_DB.prepare(
+    "SELECT id, status FROM users WHERE id = ?1",
+  )
+    .bind(inv.inviter_user_id)
+    .first<{ id: string; status: string }>();
   if (!inviter || inviter.status !== "active") {
     throw new HttpError(
       400,
@@ -993,7 +1089,17 @@ export async function handleDeclinePersonInvitation(
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
-  const inv = await personInvitationById(env, invitationId);
+  const inv = await env.SYNTILA_DB.prepare(
+    SELECT_PERSON_INVITATIONS_BY_ID,
+  )
+    .bind(invitationId)
+    .first<{
+      id: string;
+      inviter_user_id: string;
+      invitee_user_id: string | null;
+      email: string | null;
+      status: string;
+    }>();
 
   if (!inv) {
     throw new HttpError(404, "Invitation not found");
@@ -1023,7 +1129,11 @@ export async function handleDeclinePersonInvitation(
   }
 
   const now = new Date().toISOString();
-  await dataOf(env).read.run`UPDATE person_invitations SET status = 'declined', updated_at = ${now} WHERE id = ${invitationId}`;
+  await env.SYNTILA_DB.prepare(
+    "UPDATE person_invitations SET status = 'declined', updated_at = ?1 WHERE id = ?2",
+  )
+    .bind(now, invitationId)
+    .run();
 
   const publisher = createEventPublisher(env);
   await publisher.publish({
@@ -1047,7 +1157,16 @@ export async function handleCancelPersonInvitation(
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
-  const inv = await personInvitationById(env, invitationId);
+  const inv = await env.SYNTILA_DB.prepare(
+    SELECT_PERSON_INVITATIONS_BY_ID,
+  )
+    .bind(invitationId)
+    .first<{
+      id: string;
+      inviter_user_id: string;
+      invitee_user_id: string | null;
+      status: string;
+    }>();
 
   if (!inv) {
     throw new HttpError(404, "Invitation not found");
@@ -1066,7 +1185,11 @@ export async function handleCancelPersonInvitation(
   }
 
   const now = new Date().toISOString();
-  await dataOf(env).read.run`UPDATE person_invitations SET status = 'cancelled', updated_at = ${now} WHERE id = ${invitationId}`;
+  await env.SYNTILA_DB.prepare(
+    "UPDATE person_invitations SET status = 'cancelled', updated_at = ?1 WHERE id = ?2",
+  )
+    .bind(now, invitationId)
+    .run();
 
   const publisher = createEventPublisher(env);
   await publisher.publish({
@@ -1097,7 +1220,11 @@ export async function handleDisconnectPersonConnection(
     targetUserId,
   );
   const now = new Date().toISOString();
-  await disconnectPersonPair(env, now, userLowId, userHighId);
+  await env.SYNTILA_DB.prepare(
+    UPDATE_PERSON_CONNECTIONS_SET_STATUS_BY_USER,
+  )
+    .bind(now, userLowId, userHighId)
+    .run();
 
   const publisher = createEventPublisher(env);
   await publisher.publish({
@@ -1131,17 +1258,29 @@ export async function handleBlockPerson(
   );
 
   // 1. Insert into user_blocks
-  await dataOf(env).read.run`INSERT INTO user_blocks (blocker_user_id, blocked_user_id, created_at)
-     VALUES (${context.userId}, ${targetUserId}, ${now})
-     ON CONFLICT(blocker_user_id, blocked_user_id) DO NOTHING`;
+  await env.SYNTILA_DB.prepare(
+    `INSERT INTO user_blocks (blocker_user_id, blocked_user_id, created_at)
+     VALUES (?1, ?2, ?3)
+     ON CONFLICT(blocker_user_id, blocked_user_id) DO NOTHING`,
+  )
+    .bind(context.userId, targetUserId, now)
+    .run();
 
   // 2. Disconnect connection if connected
-  await disconnectPersonPair(env, now, userLowId, userHighId);
+  await env.SYNTILA_DB.prepare(
+    UPDATE_PERSON_CONNECTIONS_SET_STATUS_BY_USER,
+  )
+    .bind(now, userLowId, userHighId)
+    .run();
 
   // 3. Cancel pending invitations in either direction
-  await dataOf(env).read.run`UPDATE person_invitations SET status = 'cancelled', updated_at = ${now}
+  await env.SYNTILA_DB.prepare(
+    `UPDATE person_invitations SET status = 'cancelled', updated_at = ?1
      WHERE status = 'pending'
-       AND ((inviter_user_id = ${context.userId} AND invitee_user_id = ${targetUserId}) OR (inviter_user_id = ${targetUserId} AND invitee_user_id = ${context.userId}))`;
+       AND ((inviter_user_id = ?2 AND invitee_user_id = ?3) OR (inviter_user_id = ?3 AND invitee_user_id = ?2))`,
+  )
+    .bind(now, context.userId, targetUserId)
+    .run();
 
   // 4. Publish people.updated event to both users
   const publisher = createEventPublisher(env);
@@ -1166,7 +1305,11 @@ export async function handleUnblockPerson(
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
-  await dataOf(env).read.run`DELETE FROM user_blocks WHERE blocker_user_id = ${context.userId} AND blocked_user_id = ${targetUserId}`;
+  await env.SYNTILA_DB.prepare(
+    "DELETE FROM user_blocks WHERE blocker_user_id = ?1 AND blocked_user_id = ?2",
+  )
+    .bind(context.userId, targetUserId)
+    .run();
 
   const publisher = createEventPublisher(env);
   await publisher.publish({
@@ -1194,13 +1337,17 @@ export async function handleEnsureSupportSpace(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   if (request.method === "GET") {
-    const row = await dataOf(env).read.row<{ spaceId: string; hidden: number }>`SELECT ss.space_id AS "spaceId", COALESCE(dsus.hidden, TRUE) AS hidden
+    const row = await env.SYNTILA_DB.prepare(
+      `SELECT ss.space_id AS spaceId, COALESCE(dsus.hidden, TRUE) AS hidden
        FROM support_spaces ss
        JOIN space_memberships pm ON pm.space_id = ss.space_id AND pm.user_id = ss.user_id
        LEFT JOIN direct_space_user_state dsus
          ON dsus.space_id = ss.space_id AND dsus.user_id = ss.user_id
-       WHERE ss.user_id = ${context.userId}
-       ORDER BY ss.created_at DESC LIMIT 1`;
+       WHERE ss.user_id = ?1
+       ORDER BY ss.created_at DESC LIMIT 1`,
+    )
+      .bind(context.userId)
+      .first<{ spaceId: string; hidden: number }>();
     return json({
       spaceId: row?.spaceId ?? null,
       hidden: row ? row.hidden === 1 : true,
@@ -1209,7 +1356,11 @@ export async function handleEnsureSupportSpace(
   if (request.method !== "POST") throw new HttpError(405, "Method not allowed");
   try {
     const result = await ensureSupportSpace(env, context.userId);
-    const state = await dataOf(env).read.row<{ hidden: number }>`SELECT hidden FROM direct_space_user_state WHERE space_id = ${result.spaceId} AND user_id = ${context.userId}`;
+    const state = await env.SYNTILA_DB.prepare(
+      "SELECT hidden FROM direct_space_user_state WHERE space_id = ?1 AND user_id = ?2",
+    )
+      .bind(result.spaceId, context.userId)
+      .first<{ hidden: number }>();
     return json(
       { spaceId: result.spaceId, hidden: (state?.hidden ?? 1) === 1 },
       { status: result.created ? 201 : 200 },

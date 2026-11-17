@@ -1,4 +1,3 @@
-import { dataOf } from "../platform/data.js";
 import {
   ASSIGNMENT_STARTUP_STAGE_RANK,
   type AssignmentStartupPayload,
@@ -49,10 +48,13 @@ export async function recordAssignmentStartup(
     now: string;
   },
 ): Promise<AssignmentStartupOutcome> {
-  const read = dataOf({ SYNTILA_DB: db }).read;
-  const row = await read.row<{ status: string; startup_stage: string | null }>`
-    SELECT status, startup_stage FROM worker_assignments
-     WHERE id = ${input.assignmentId} AND attempt_id = ${input.attemptId}`;
+  const row = await db
+    .prepare(
+      `SELECT status, startup_stage FROM worker_assignments
+        WHERE id = ?1 AND attempt_id = ?2`,
+    )
+    .bind(input.assignmentId, input.attemptId)
+    .first<{ status: string; startup_stage: string | null }>();
   if (!row) return { applied: false, reason: "not_found" };
   if (!(PRE_START_STATUSES as readonly string[]).includes(row.status)) {
     return { applied: false, reason: "not_pre_start" };
@@ -60,12 +62,23 @@ export async function recordAssignmentStartup(
   if (!startupReportAdvances(row.startup_stage, input.payload.stage)) {
     return { applied: false, reason: "stale" };
   }
-  const updated = await read.row<{ id: string }>`
-    UPDATE worker_assignments
-       SET startup_stage = ${input.payload.stage}, startup_stage_at = ${input.payload.at ?? input.now}, startup_detail_json = ${startupDetail(input.payload)}
-     WHERE id = ${input.assignmentId} AND attempt_id = ${input.attemptId}
-       AND status IN ('dispatched', 'acknowledged')
-       AND COALESCE(startup_stage, '') = COALESCE(${row.startup_stage}, '')
-     RETURNING id`;
+  const updated = await db
+    .prepare(
+      `UPDATE worker_assignments
+          SET startup_stage = ?1, startup_stage_at = ?2, startup_detail_json = ?3
+        WHERE id = ?4 AND attempt_id = ?5
+          AND status IN ('dispatched', 'acknowledged')
+          AND COALESCE(startup_stage, '') = COALESCE(?6, '')
+        RETURNING id`,
+    )
+    .bind(
+      input.payload.stage,
+      input.payload.at ?? input.now,
+      startupDetail(input.payload),
+      input.assignmentId,
+      input.attemptId,
+      row.startup_stage,
+    )
+    .first<{ id: string }>();
   return updated ? { applied: true } : { applied: false, reason: "stale" };
 }

@@ -9,7 +9,6 @@ import {
   type ToolProfileRegistryEnvironment,
   type WorkerProfilePublicationEvidence,
 } from "./tool-profile-validation.js";
-import { dataOf } from "../platform/data.js";
 
 export {
   ToolProfileRegistryError,
@@ -128,20 +127,9 @@ function canonicalProfilePayload(profile: ToolProfileV1): string {
 export async function listWorkerProfiles(
   db: D1Database,
 ): Promise<{ workers: WorkerProfileSummary[] }> {
-  const rows = await dataOf(env).read.rows<{
-      worker_type_id: string;
-      display_name: string;
-      description: string;
-      lifecycle_state: string;
-      engine_family: string;
-      visibility_state: string;
-      sort_order: number;
-      profile_definition_id: string | null;
-      provider_tool_name: string | null;
-      current_revision: number | null;
-      current_digest: string | null;
-      current_updated_at: string | null;
-    }>`SELECT worker.worker_type_id, worker.display_name, worker.description,
+  const rows = await db
+    .prepare(
+      `SELECT worker.worker_type_id, worker.display_name, worker.description,
               worker.lifecycle_state, worker.engine_family,
               worker.visibility_state, worker.sort_order,
               COALESCE(worker.profile_definition_id,
@@ -158,7 +146,22 @@ export async function listWorkerProfiles(
         -- never appear in the shared catalog or in Profile administration.
         WHERE worker.origin = 'official'
         ORDER BY worker.sort_order, worker.worker_type_id
-        LIMIT 256`;
+        LIMIT 256`,
+    )
+    .all<{
+      worker_type_id: string;
+      display_name: string;
+      description: string;
+      lifecycle_state: string;
+      engine_family: string;
+      visibility_state: string;
+      sort_order: number;
+      profile_definition_id: string | null;
+      provider_tool_name: string | null;
+      current_revision: number | null;
+      current_digest: string | null;
+      current_updated_at: string | null;
+    }>();
   return {
     workers: (rows.results ?? []).map((row) => ({
       workerTypeId: row.worker_type_id,
@@ -185,11 +188,15 @@ async function loadCurrentWorkerProfileRow(
   db: D1Database,
   workerTypeId: string,
 ): Promise<CurrentWorkerProfileRow | null> {
-  return dataOf({ SYNTILA_DB: db }).read.row<CurrentWorkerProfileRow>`
-    SELECT worker_type_id, schema_version, profile_json, revision,
-           digest, updated_by_user_id, updated_at
-      FROM worker_profiles
-     WHERE worker_type_id = ${workerTypeId}`;
+  return db
+    .prepare(
+      `SELECT worker_type_id, schema_version, profile_json, revision,
+              digest, updated_by_user_id, updated_at
+         FROM worker_profiles
+        WHERE worker_type_id = ?1`,
+    )
+    .bind(workerTypeId)
+    .first<CurrentWorkerProfileRow>();
 }
 
 /** Whether the Worker's current Profile can compact its native session. */
@@ -213,7 +220,12 @@ async function requireWorkerCatalogRow(
   db: D1Database,
   workerTypeId: string,
 ): Promise<void> {
-  const row = await dataOf(env).read.row<{ worker_type_id: string }>`SELECT worker_type_id FROM worker_catalog WHERE worker_type_id = ${workerTypeId} AND origin = 'official'`;
+  const row = await db
+    .prepare(
+      "SELECT worker_type_id FROM worker_catalog WHERE worker_type_id = ?1 AND origin = 'official'",
+    )
+    .bind(workerTypeId)
+    .first<{ worker_type_id: string }>();
   if (!row) throw new ToolProfileRegistryError(404, "Worker was not found");
 }
 
@@ -249,7 +261,17 @@ export async function listWorkerProfileHistory(
 ): Promise<{ history: WorkerProfileHistorySnapshot[] }> {
   validateId(workerTypeId, "workerTypeId");
   await requireWorkerCatalogRow(env.SYNTILA_DB, workerTypeId);
-  const rows = await dataOf(env).read.rows<{
+  const rows = await env.SYNTILA_DB.prepare(
+    `SELECT worker_type_id, schema_version, profile_json, revision,
+              digest, actor_user_id,
+              published_at, restoration_reason
+         FROM worker_profile_history
+        WHERE worker_type_id = ?1
+        ORDER BY revision DESC
+        LIMIT 256`,
+  )
+    .bind(workerTypeId)
+    .all<{
       worker_type_id: string;
       schema_version: number;
       profile_json: string;
@@ -258,13 +280,7 @@ export async function listWorkerProfileHistory(
       actor_user_id: string | null;
       published_at: string;
       restoration_reason: string | null;
-    }>`SELECT worker_type_id, schema_version, profile_json, revision,
-              digest, actor_user_id,
-              published_at, restoration_reason
-         FROM worker_profile_history
-        WHERE worker_type_id = ${workerTypeId}
-        ORDER BY revision DESC
-        LIMIT 256`;
+    }>();
   return {
     history: await Promise.all(
       (rows.results ?? []).map(async (row) => {
@@ -378,11 +394,23 @@ async function persistWorkerProfileSnapshot(args: {
         "Worker Profile revision is stale",
       );
     }
-    const result = await dataOf(env).read.run`INSERT INTO worker_profiles
+    const result = await db
+      .prepare(
+        `INSERT INTO worker_profiles
            (worker_type_id, schema_version, profile_json, revision, digest,
             updated_by_user_id, updated_at)
-         VALUES (${args.workerTypeId}, ${args.profile.schemaVersion}, ${args.canonicalJson}, 1, ${args.digest}, ${args.actorUserId}, ${args.updatedAt})
-         ON CONFLICT(worker_type_id) DO NOTHING`;
+         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6)
+         ON CONFLICT(worker_type_id) DO NOTHING`,
+      )
+      .bind(
+        args.workerTypeId,
+        args.profile.schemaVersion,
+        args.canonicalJson,
+        args.digest,
+        args.actorUserId,
+        args.updatedAt,
+      )
+      .run();
     if (Number(result.meta?.changes ?? 0) !== 1) {
       throw new ToolProfileRegistryError(
         409,
@@ -392,20 +420,43 @@ async function persistWorkerProfileSnapshot(args: {
     return 1;
   }
 
-  const updatedCount = await dataOf({ SYNTILA_DB: db }).tx("worker_profile.update", async (tx) => {
-    await tx.run`INSERT INTO worker_profile_history
+  const results = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO worker_profile_history
            (worker_type_id, revision, schema_version, profile_json, digest,
             actor_user_id, published_at, restoration_reason)
          SELECT worker_type_id, revision, schema_version, profile_json, digest,
-                updated_by_user_id, updated_at, ${args.restorationReason}
+                updated_by_user_id, updated_at, ?4
            FROM worker_profiles
-          WHERE worker_type_id = ${args.workerTypeId} AND revision = ${args.expectedRevision} AND digest = ${args.current.digest}`;
-    return tx.run`UPDATE worker_profiles
-            SET schema_version = ${args.profile.schemaVersion}, profile_json = ${args.canonicalJson}, revision = ${nextRevision},
-                digest = ${args.digest}, updated_by_user_id = ${args.actorUserId}, updated_at = ${args.updatedAt}
-          WHERE worker_type_id = ${args.workerTypeId} AND revision = ${args.expectedRevision} AND digest = ${args.current.digest}`;
-  });
-  if (updatedCount !== 1) {
+          WHERE worker_type_id = ?1 AND revision = ?2 AND digest = ?3`,
+      )
+      .bind(
+        args.workerTypeId,
+        args.expectedRevision,
+        args.current.digest,
+        args.restorationReason,
+      ),
+    db
+      .prepare(
+        `UPDATE worker_profiles
+            SET schema_version = ?1, profile_json = ?2, revision = ?3,
+                digest = ?4, updated_by_user_id = ?5, updated_at = ?6
+          WHERE worker_type_id = ?7 AND revision = ?8 AND digest = ?9`,
+      )
+      .bind(
+        args.profile.schemaVersion,
+        args.canonicalJson,
+        nextRevision,
+        args.digest,
+        args.actorUserId,
+        args.updatedAt,
+        args.workerTypeId,
+        args.expectedRevision,
+        args.current.digest,
+      ),
+  ]);
+  if (Number(results[1]?.meta?.changes ?? 0) !== 1) {
     throw new ToolProfileRegistryError(409, "Worker Profile revision is stale");
   }
   return nextRevision;
@@ -480,12 +531,15 @@ export async function restoreWorkerProfile(args: {
   if (!current || current.revision !== args.expectedRevision) {
     throw new ToolProfileRegistryError(409, "Worker Profile revision is stale");
   }
-  const history = await dataOf(args.env).read.row<CurrentWorkerProfileRow>`
-    SELECT worker_type_id, schema_version, profile_json, revision,
-           digest, actor_user_id,
-           published_at AS updated_at
-      FROM worker_profile_history
-     WHERE worker_type_id = ${args.workerTypeId} AND revision = ${args.targetRevision}`;
+  const history = await args.env.SYNTILA_DB.prepare(
+    `SELECT worker_type_id, schema_version, profile_json, revision,
+              digest, actor_user_id,
+              published_at AS updated_at
+         FROM worker_profile_history
+        WHERE worker_type_id = ?1 AND revision = ?2`,
+  )
+    .bind(args.workerTypeId, args.targetRevision)
+    .first<CurrentWorkerProfileRow>();
   if (!history)
     throw new ToolProfileRegistryError(404, "Profile revision was not found");
   const profile = parseCurrentWorkerProfile(history);

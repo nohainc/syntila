@@ -10,7 +10,7 @@ export async function loadSpaceWorkflowConfigurations(
   spaceId: string,
   workflowId?: string,
 ) {
-  const space = await spaceOwnerOf(env, spaceId);
+  const space = await spaceOwnerOf(env.SYNTILA_DB, spaceId);
   if (!space) throw new HttpError(404, "Space not found");
   const workspace = await loadWorkflowWorkspace(
     env,
@@ -37,10 +37,10 @@ export async function loadSpaceWorkflowConfigurations(
     ownerUserId: space.ownerUserId,
     defaultWorkflowId:
       (
-        await spaceWorkflowDefault(env, spaceId)
+        await spaceWorkflowDefault(env.SYNTILA_DB, spaceId)
       )?.workflowId ??
       (
-        await userWorkflowDefault(env, space.ownerUserId, workspace.workspaceId)
+        await userWorkflowDefault(env.SYNTILA_DB, space.ownerUserId, workspace.workspaceId)
       )?.workflowId ??
       "chat",
     configurations: [...configurations.values()],

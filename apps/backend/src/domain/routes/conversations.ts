@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import type { Conversation, WorkflowDefinition } from "@syntila/core";
-import { dataOf } from "../../platform/data.js";
 
 /**
  * One canonical Conversation per Thread, shared by every manual workflow
@@ -22,32 +21,45 @@ export async function resolveThreadConversationId(
   db: D1Database,
   threadId: string,
 ): Promise<string> {
-  const existing = await dataOf(env).read.row<{ id: string }>`SELECT id FROM conversations WHERE thread_id = ${threadId} ORDER BY created_at, id LIMIT 1`;
+  const existing = await db
+    .prepare(
+      "SELECT id FROM conversations WHERE thread_id = ?1 ORDER BY created_at, id LIMIT 1",
+    )
+    .bind(threadId)
+    .first<{ id: string }>();
   return existing?.id ?? threadConversationId(threadId);
 }
 
-export async function conversationSubmissionStatements(
-  tx: Tx,
+export function conversationSubmissionStatements(
+  db: D1Database,
   id: string,
   threadId: string,
   definition: WorkflowDefinition,
   workRequestId: string,
   now: string,
-): Promise<void> {
-  await tx.run`
-    INSERT INTO conversations
+): D1PreparedStatement[] {
+  return [
+    db
+      .prepare(
+        `INSERT INTO conversations
       (id, thread_id, workflow_id, workflow_version, conversation_revision, context_revision, created_at, updated_at)
-      SELECT ${id}, ${threadId}, ${definition.id}, ${definition.version}, 0, 0, ${now}, ${now}
-      WHERE NOT EXISTS (SELECT 1 FROM conversations WHERE id = ${id})
-  `;
-  await tx.run`
-    UPDATE conversations SET conversation_revision = conversation_revision + 1,
-      context_revision = conversation_revision + 1, updated_at = ${now}
-    WHERE id = ${id} AND thread_id = ${threadId}
-  `;
-  await tx.run`
-    INSERT INTO conversation_work_requests
+      SELECT ?1, ?2, ?3, ?4, 0, 0, ?5, ?5
+      WHERE NOT EXISTS (SELECT 1 FROM conversations WHERE id = ?1)`,
+      )
+      .bind(id, threadId, definition.id, definition.version, now),
+    db
+      .prepare(
+        `UPDATE conversations SET conversation_revision = conversation_revision + 1,
+        context_revision = conversation_revision + 1, updated_at = ?2
+      WHERE id = ?1 AND thread_id = ?3`,
+      )
+      .bind(id, now, threadId),
+    db
+      .prepare(
+        `INSERT INTO conversation_work_requests
       (conversation_id, work_request_id, conversation_revision)
-      SELECT id, ${workRequestId}, conversation_revision FROM conversations WHERE id = ${id}
-  `;
+      SELECT id, ?2, conversation_revision FROM conversations WHERE id = ?1`,
+      )
+      .bind(id, workRequestId),
+  ];
 }

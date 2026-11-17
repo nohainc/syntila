@@ -25,7 +25,6 @@ import {
   workspaceSpaceGrantMetadata,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
-import { dataOf } from "../../platform/data.js";
 
 export async function handleListWorkspaceSpaceGrants(
   request: Request,
@@ -40,9 +39,13 @@ export async function handleListWorkspaceSpaceGrants(
     workspaceId,
     "workspace:manage",
   );
-  const rows = await dataOf(env).read.rows<Record<string, unknown>>`SELECT g.*, ew.name AS workspace_name, ew.owner_user_id
+  const rows = await env.SYNTILA_DB.prepare(
+    `SELECT g.*, ew.name AS workspace_name, ew.owner_user_id
      FROM workspace_space_grants g JOIN execution_workspaces ew ON ew.id = g.workspace_id
-     WHERE g.workspace_id = ${workspaceId} ORDER BY g.created_at DESC`;
+     WHERE g.workspace_id = ?1 ORDER BY g.created_at DESC`,
+  )
+    .bind(workspaceId)
+    .all<Record<string, unknown>>();
   return json({
     grants: (rows.results ?? []).map(workspaceSpaceGrantMetadata),
   });
@@ -109,9 +112,13 @@ export async function handleUpdateWorkspaceSpaceGrant(
   if (existingStatus !== "active" && existingStatus !== "suspended") {
     throw new HttpError(409, "Terminal Workspace Grants cannot be updated");
   }
-  const updatedRow = await dataOf(env).read.run`UPDATE workspace_space_grants SET
-       status = ${status}, expires_at = ${expiresAt}, updated_at = ${now}, allowed_permissions_json = ${permissions}
-     WHERE id = ${grantId} AND status = ${existingStatus}`;
+  const updatedRow = await env.SYNTILA_DB.prepare(
+    `UPDATE workspace_space_grants SET
+       status = ?1, expires_at = ?2, updated_at = ?3, allowed_permissions_json = ?6
+     WHERE id = ?4 AND status = ?5`,
+  )
+    .bind(status, expiresAt, now, grantId, existingStatus, permissions)
+    .run();
   if (updatedRow.meta?.changes === 0) {
     throw new HttpError(409, "Workspace Grant changed concurrently");
   }
@@ -170,7 +177,11 @@ export async function handleRevokeWorkspaceSpaceGrant(
     throw new HttpError(409, "Terminal Workspace Grants cannot be revoked");
   }
   const now = new Date().toISOString();
-  const revoked = await dataOf(env).read.run`UPDATE workspace_space_grants SET status = 'revoked', updated_at = ${now} WHERE id = ${grantId} AND status = ${existing.status}`;
+  const revoked = await env.SYNTILA_DB.prepare(
+    "UPDATE workspace_space_grants SET status = 'revoked', updated_at = ?1 WHERE id = ?2 AND status = ?3",
+  )
+    .bind(now, grantId, existing.status)
+    .run();
   if (revoked.meta?.changes === 0) {
     const current = await loadWorkspaceSpaceGrant(env, grantId);
     if (current?.status !== "revoked") {
@@ -200,12 +211,14 @@ async function revokeGrantAssignments(
   env: SecurityEnv,
   grantId: string,
 ): Promise<void> {
-  const read = dataOf(env).read;
-  const results = await read.rows<{ id: string; attempt_id: string | null }>`
-    SELECT id, attempt_id FROM worker_assignments
-     WHERE workspace_space_grant_id = ${grantId} AND status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})`;
+  const { results } = await env.SYNTILA_DB.prepare(
+    `SELECT id, attempt_id FROM worker_assignments
+      WHERE workspace_space_grant_id = ?1 AND status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})`,
+  )
+    .bind(grantId)
+    .all<{ id: string; attempt_id: string | null }>();
   await Promise.all(
-    results.map((row) =>
+    (results ?? []).map((row) =>
       revokeAssignment(env, {
         assignmentId: row.id,
         attemptId: row.attempt_id ?? undefined,

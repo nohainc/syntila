@@ -8,7 +8,6 @@ import {
   type SecurityEnv,
 } from "./handlers.js";
 import { authorizeThreadAccess } from "./thread-policy.js";
-import { dataOf } from "../../platform/data.js";
 
 const MAX_REPORT_BODY_BYTES = 4096;
 const MAX_SUPPORT_NOTE_LENGTH = 1000;
@@ -328,19 +327,20 @@ async function loadExecutionEvidence(
   env: SecurityEnv,
   requestId: string,
 ): Promise<ExecutionEvidence> {
-  const row = await dataOf(env).read.row<Record<string, unknown>>`SELECT wr.id AS "requestId", wr.thread_id AS "threadId",
-            wr.requested_by_user_id AS "requestedByUserId", wr.status AS "requestStatus",
-            wr.updated_at AS "requestUpdatedAt",
-            r.id AS "runId",
-            wa.id AS "assignmentId", wa.task_id AS "taskId", wa.attempt_id AS "attemptId",
-            wa.execution_workspace_id AS "workspaceId", wa.workspace_worker_id AS "workerId",
-            wa.worker_type_id AS "workerTypeId", wa.status AS "assignmentStatus",
-            wa.engine_version AS "engineVersion", wa.model AS "modelId",
-            wa.error_json AS "assignmentErrorJson",
-            wa.permission_snapshot_json AS "permissionSnapshotJson",
-            wa.updated_at AS "assignmentUpdatedAt",
-            wt.error AS "taskError",
-            wrf.app_version AS "applicationVersion"
+  const row = await env.SYNTILA_DB.prepare(
+    `SELECT wr.id AS requestId, wr.thread_id AS threadId,
+            wr.requested_by_user_id AS requestedByUserId, wr.status AS requestStatus,
+            wr.updated_at AS requestUpdatedAt,
+            r.id AS runId,
+            wa.id AS assignmentId, wa.task_id AS taskId, wa.attempt_id AS attemptId,
+            wa.execution_workspace_id AS workspaceId, wa.workspace_worker_id AS workerId,
+            wa.worker_type_id AS workerTypeId, wa.status AS assignmentStatus,
+            wa.engine_version AS engineVersion, wa.model AS modelId,
+            wa.error_json AS assignmentErrorJson,
+            wa.permission_snapshot_json AS permissionSnapshotJson,
+            wa.updated_at AS assignmentUpdatedAt,
+            wt.error AS taskError,
+            wrf.app_version AS applicationVersion
        FROM work_requests wr
        LEFT JOIN runs r ON r.work_request_id = wr.id
        LEFT JOIN worker_assignments wa ON wa.id = (
@@ -351,9 +351,12 @@ async function loadExecutionEvidence(
        )
        LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
        LEFT JOIN workspace_runtime_facts wrf ON wrf.workspace_id = wa.execution_workspace_id
-      WHERE wr.id = ${requestId}
+      WHERE wr.id = ?1
       ORDER BY r.updated_at DESC NULLS LAST
-      LIMIT 1`;
+      LIMIT 1`,
+  )
+    .bind(requestId)
+    .first<Record<string, unknown>>();
   if (!row) throw new HttpError(404, "Work Request not found");
   if (row.requestStatus !== "failed")
     throw new HttpError(409, "Only a failed Work Request can be reported");
@@ -415,10 +418,14 @@ async function enrichProviderVersion(
   evidence: ExecutionEvidence,
 ): Promise<ExecutionEvidence> {
   if (!evidence.workspaceId || !evidence.workerId) return evidence;
-  const row = await dataOf(env).read.row<{ providerToolVersion?: string | null }>`SELECT provider_tool_version AS "providerToolVersion"
+  const row = await env.SYNTILA_DB.prepare(
+    `SELECT provider_tool_version AS providerToolVersion
        FROM workspace_worker_inventory
-      WHERE workspace_id = ${evidence.workspaceId} AND worker_id = ${evidence.workerId}
-      ORDER BY last_seen_at DESC LIMIT 1`;
+      WHERE workspace_id = ?1 AND worker_id = ?2
+      ORDER BY last_seen_at DESC LIMIT 1`,
+  )
+    .bind(evidence.workspaceId, evidence.workerId)
+    .first<{ providerToolVersion?: string | null }>();
   return {
     ...evidence,
     providerToolVersion: boundedToken(row?.providerToolVersion),
@@ -560,9 +567,22 @@ async function recordEvent(
   status: { from?: string; to?: string } = {},
 ): Promise<void> {
   try {
-    await dataOf(env).read.run`INSERT INTO issue_report_events
+    await writeAlone(env, "issue_report.event", (db) => db.prepare(
+      `INSERT INTO issue_report_events
          (id, report_id, actor_user_id, event_type, from_status, to_status, details_json, created_at)
-       VALUES (${`ire-${crypto.randomUUID()}`}, ${reportId}, ${actorUserId}, ${eventType}, ${status.from ?? null}, ${status.to ?? null}, ${JSON.stringify(details)}, ${new Date().toISOString()})`;
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+    )
+      .bind(
+        `ire-${crypto.randomUUID()}`,
+        reportId,
+        actorUserId,
+        eventType,
+        status.from ?? null,
+        status.to ?? null,
+        JSON.stringify(details),
+        new Date().toISOString(),
+      ),
+    );
   } catch {
     // Report reads remain available if an audit write is temporarily degraded.
   }
@@ -573,14 +593,18 @@ async function existingReport(
   reporterUserId: string,
   attemptKey: string,
 ): Promise<ReportRow | null> {
-  const row = await dataOf(env).read.row<Record<string, unknown>>`SELECT id, public_reference AS "publicReference",
-            reporter_user_id AS "reporterUserId", workspace_id AS "workspaceId",
-            request_id AS "requestId", assignment_id AS "assignmentId",
-            component, error_code AS "errorCode", failure_stage AS "failureStage",
-            fingerprint, status, diagnostic_state AS "diagnosticState",
-            created_at AS "createdAt", updated_at AS "updatedAt"
-       FROM issue_reports WHERE reporter_user_id = ${reporterUserId} AND attempt_key = ${attemptKey}
-       LIMIT 1`;
+  const row = await env.SYNTILA_DB.prepare(
+    `SELECT id, public_reference AS publicReference,
+            reporter_user_id AS reporterUserId, workspace_id AS workspaceId,
+            request_id AS requestId, assignment_id AS assignmentId,
+            component, error_code AS errorCode, failure_stage AS failureStage,
+            fingerprint, status, diagnostic_state AS diagnosticState,
+            created_at AS createdAt, updated_at AS updatedAt
+       FROM issue_reports WHERE reporter_user_id = ?1 AND attempt_key = ?2
+       LIMIT 1`,
+  )
+    .bind(reporterUserId, attemptKey)
+    .first<Record<string, unknown>>();
   return row ? reportRow(row) : null;
 }
 
@@ -606,8 +630,12 @@ export async function handleCreateIssueReport(
   const existing = await existingReport(env, actor.userId, attemptKey);
   if (existing) return json(userReportResponse(existing), { status: 200 });
 
-  const recent = await dataOf(env).read.row<{ count: number }>`SELECT COUNT(*) AS count FROM issue_reports
-      WHERE reporter_user_id = ${actor.userId} AND created_at >= ${new Date(Date.now() - 60 * 60 * 1000).toISOString()}`;
+  const recent = await env.SYNTILA_DB.prepare(
+    `SELECT COUNT(*) AS count FROM issue_reports
+      WHERE reporter_user_id = ?1 AND created_at >= ?2`,
+  )
+    .bind(actor.userId, new Date(Date.now() - 60 * 60 * 1000).toISOString())
+    .first<{ count: number }>();
   if (Number(recent?.count ?? 0) >= REPORT_RATE_LIMIT_PER_HOUR)
     throw new HttpError(429, "Issue report rate limit reached");
 
@@ -617,28 +645,59 @@ export async function handleCreateIssueReport(
   const fingerprint = fingerprintFor(evidence);
   const diagnostic = diagnosticFor(evidence, now);
   const diagnosticState: DiagnosticState = "partial";
-  try {
-    await dataOf(env).tx("issue_report.create", async (tx) => {
-      await tx.run`INSERT INTO issue_reports
+  const statements = [
+    env.SYNTILA_DB.prepare(
+      `INSERT INTO issue_reports
          (id, public_reference, reporter_user_id, workspace_id, request_id,
           assignment_id, attempt_key, component, error_code, failure_stage, fingerprint,
           status, diagnostic_state, created_at, updated_at,
           worker_type_id, model_id, effort, engine_version,
           profile_definition_id, profile_release_version, provider_tool_version,
           application_version)
-       VALUES (${reportId}, ${reference}, ${actor.userId}, ${evidence.workspaceId}, ${evidence.requestId},
-          ${evidence.assignmentId}, ${attemptKey}, ${evidence.component}, ${evidence.errorCode}, ${evidence.failureStage}, ${fingerprint},
-          'open', ${diagnosticState}, ${now}, ${now},
-          ${evidence.workerTypeId}, ${evidence.modelId}, ${evidence.effort}, ${evidence.engineVersion},
-          ${evidence.profileDefinitionId}, ${evidence.profileReleaseVersion}, ${evidence.providerToolVersion},
-          ${evidence.applicationVersion})`;
-      await tx.run`INSERT INTO issue_report_diagnostics
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'open', ?12, ?13, ?13,
+          ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)`,
+    ).bind(
+      reportId,
+      reference,
+      actor.userId,
+      evidence.workspaceId,
+      evidence.requestId,
+      evidence.assignmentId,
+      attemptKey,
+      evidence.component,
+      evidence.errorCode,
+      evidence.failureStage,
+      fingerprint,
+      diagnosticState,
+      now,
+      evidence.workerTypeId,
+      evidence.modelId,
+      evidence.effort,
+      evidence.engineVersion,
+      evidence.profileDefinitionId,
+      evidence.profileReleaseVersion,
+      evidence.providerToolVersion,
+      evidence.applicationVersion,
+    ),
+    env.SYNTILA_DB.prepare(
+      `INSERT INTO issue_report_diagnostics
          (report_id, schema_version, diagnostic_json, created_at)
-       VALUES (${reportId}, 1, ${JSON.stringify(diagnostic)}, ${now})`;
-      await tx.run`INSERT INTO issue_report_events
+       VALUES (?1, 1, ?2, ?3)`,
+    ).bind(reportId, JSON.stringify(diagnostic), now),
+    env.SYNTILA_DB.prepare(
+      `INSERT INTO issue_report_events
          (id, report_id, actor_user_id, event_type, to_status, details_json, created_at)
-       VALUES (${`ire-${crypto.randomUUID()}`}, ${reportId}, ${actor.userId}, 'report.created', 'open', ${JSON.stringify({ diagnosticState })}, ${now})`;
-    });
+       VALUES (?1, ?2, ?3, 'report.created', 'open', ?4, ?5)`,
+    ).bind(
+      `ire-${crypto.randomUUID()}`,
+      reportId,
+      actor.userId,
+      JSON.stringify({ diagnosticState }),
+      now,
+    ),
+  ];
+  try {
+    await batchAlone(env, "issue_report.create", statements);
   } catch {
     const duplicate = await existingReport(env, actor.userId, attemptKey);
     if (duplicate) return json(userReportResponse(duplicate), { status: 200 });
@@ -655,8 +714,14 @@ export async function handleCreateIssueReport(
       });
       const digest = createHash("sha256").update(body).digest("hex");
       try {
-        await dataOf(env).read.run`UPDATE issue_report_diagnostics
-                  SET bundle_key = ${key}, bundle_sha256 = ${digest} WHERE report_id = ${reportId}`;
+        await writeAlone(env, "issue_report.bundle", (db) =>
+          db
+            .prepare(
+              `UPDATE issue_report_diagnostics
+                  SET bundle_key = ?1, bundle_sha256 = ?2 WHERE report_id = ?3`,
+            )
+            .bind(key, digest, reportId),
+        );
       } catch {
         await bucket.delete(key).catch(() => {});
       }
@@ -710,16 +775,20 @@ export async function handleGetIssueReportForRequest(
   const requestId = boundedToken(url.searchParams.get("requestId"));
   const assignmentId = boundedToken(url.searchParams.get("assignmentId"));
   if (!requestId) throw new HttpError(400, "requestId is required");
-  const row = await dataOf(env).read.row<Record<string, unknown>>`SELECT id, public_reference AS "publicReference",
-            reporter_user_id AS "reporterUserId", workspace_id AS "workspaceId",
-            request_id AS "requestId", assignment_id AS "assignmentId",
-            component, error_code AS "errorCode", failure_stage AS "failureStage",
-            fingerprint, status, diagnostic_state AS "diagnosticState",
-            created_at AS "createdAt", updated_at AS "updatedAt"
+  const row = await env.SYNTILA_DB.prepare(
+    `SELECT id, public_reference AS publicReference,
+            reporter_user_id AS reporterUserId, workspace_id AS workspaceId,
+            request_id AS requestId, assignment_id AS assignmentId,
+            component, error_code AS errorCode, failure_stage AS failureStage,
+            fingerprint, status, diagnostic_state AS diagnosticState,
+            created_at AS createdAt, updated_at AS updatedAt
        FROM issue_reports
-      WHERE reporter_user_id = ${actor.userId} AND request_id = ${requestId}
-        AND (${assignmentId}::text IS NULL OR assignment_id = ${assignmentId})
-      ORDER BY created_at DESC, id DESC LIMIT 1`;
+      WHERE reporter_user_id = ?1 AND request_id = ?2
+        AND (?3::text IS NULL OR assignment_id = ?3)
+      ORDER BY created_at DESC, id DESC LIMIT 1`,
+  )
+    .bind(actor.userId, requestId, assignmentId)
+    .first<Record<string, unknown>>();
   return row
     ? json(userReportResponse(reportRow(row)))
     : json({ report: null });
@@ -742,13 +811,14 @@ export async function handleListAdminIssueReports(
     "resolved",
     "dismissed",
   ]);
-  const db = dataOf(env).read;
-  const filters: ReturnType<typeof db.frag>[] = [];
+  const filters: string[] = [];
+  const params: Array<string | number> = [];
   const status = url.searchParams.get("status");
   if (status) {
     if (!allowedStatuses.has(status as ReportStatus))
       throw new HttpError(400, "Invalid issue report status filter");
-    filters.push(db.frag`ir.status = ${status}`);
+    filters.push("ir.status = ?");
+    params.push(status);
   }
   for (const [name, column, message] of [
     ["component", "ir.component", "Invalid component filter"],
@@ -759,7 +829,8 @@ export async function handleListAdminIssueReports(
     if (value != null) {
       const token = boundedToken(value, 128);
       if (!token) throw new HttpError(400, message);
-      filters.push(db.frag`${db.raw(column)} = ${token}`);
+      filters.push(`${column} = ?`);
+      params.push(token);
     }
   }
   for (const [name, operator] of [
@@ -771,17 +842,18 @@ export async function handleListAdminIssueReports(
       const parsed = new Date(value);
       if (Number.isNaN(parsed.valueOf()))
         throw new HttpError(400, `Invalid ${name} date`);
-      filters.push(db.frag`ir.created_at ${db.raw(operator)} ${parsed.toISOString()}`);
+      filters.push(`ir.created_at ${operator} ?`);
+      params.push(parsed.toISOString());
     }
   }
-  const whereClause = filters.length
-    ? db.frag` WHERE ${filters.reduce((acc, f, i) => (i === 0 ? f : db.frag`${acc} AND ${f}`))}`
-    : db.frag``;
-  const rows = await db.rows<Record<string, unknown>>`
-    ${db.raw(reportSelect())}${whereClause}
-    ORDER BY ir.created_at DESC, ir.id DESC LIMIT ${limit}
-  `;
-  const listedReports = rows.map(reportRow);
+  params.push(limit);
+  const rows = await env.SYNTILA_DB.prepare(
+    `${reportSelect()}${filters.length ? ` WHERE ${filters.join(" AND ")}` : ""}
+       ORDER BY ir.created_at DESC, ir.id DESC LIMIT ?`,
+  )
+    .bind(...params)
+    .all<Record<string, unknown>>();
+  const listedReports = (rows.results ?? []).map(reportRow);
   const audit = Promise.all(
     listedReports.map((report) =>
       recordEvent(env, report.id, actor.userId, "report.admin_listed"),
@@ -839,18 +911,27 @@ export async function handleGetAdminIssueReport(
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const actor = await issueSupportContext(request, env, ctx);
-  const read = dataOf(env).read;
-  const row = await read.row<Record<string, unknown>>`${read.raw(reportSelect())} WHERE ir.id = ${reportId}`;
+  const row = await env.SYNTILA_DB.prepare(`${reportSelect()} WHERE ir.id = ?1`)
+    .bind(reportId)
+    .first<Record<string, unknown>>();
   if (!row) throw new HttpError(404, "Issue report not found");
   const report = reportRow(row);
-  const diagnostic = await dataOf(env).read.row<Record<string, unknown>>`SELECT schema_version AS "schemaVersion", diagnostic_json AS "diagnosticJson",
-            bundle_key AS "bundleKey", bundle_sha256 AS "bundleSha256",
-            created_at AS "createdAt"
-       FROM issue_report_diagnostics WHERE report_id = ${report.id}`;
-  const events = await dataOf(env).read.rows<Record<string, unknown>>`SELECT id, actor_user_id AS "actorUserId", event_type AS "eventType",
-            from_status AS "fromStatus", to_status AS "toStatus",
-            details_json AS "detailsJson", created_at AS "createdAt"
-       FROM issue_report_events WHERE report_id = ${report.id} ORDER BY created_at, id`;
+  const diagnostic = await env.SYNTILA_DB.prepare(
+    `SELECT schema_version AS schemaVersion, diagnostic_json AS diagnosticJson,
+            bundle_key AS bundleKey, bundle_sha256 AS bundleSha256,
+            created_at AS createdAt
+       FROM issue_report_diagnostics WHERE report_id = ?1`,
+  )
+    .bind(report.id)
+    .first<Record<string, unknown>>();
+  const events = await env.SYNTILA_DB.prepare(
+    `SELECT id, actor_user_id AS actorUserId, event_type AS eventType,
+            from_status AS fromStatus, to_status AS toStatus,
+            details_json AS detailsJson, created_at AS createdAt
+       FROM issue_report_events WHERE report_id = ?1 ORDER BY created_at, id`,
+  )
+    .bind(report.id)
+    .all<Record<string, unknown>>();
   await recordEvent(env, report.id, actor.userId, "report.admin_viewed");
   const diagnosticData = diagnostic
     ? parseJsonRecord(diagnostic.diagnosticJson)
@@ -1003,54 +1084,101 @@ export async function handlePatchAdminIssueReport(
       : boundedToken(value.groupId, 128);
   if (groupWasSupplied && !requestedGroupId)
     throw new HttpError(400, "Invalid incident group");
-  await dataOf(env).tx("issue_report.update", async (tx) => {
-    const existing = await tx.row<{ status: ReportStatus; incidentGroupId: string | null }>`
-      SELECT status, incident_group_id AS "incidentGroupId" FROM issue_reports WHERE id = ${reportId} FOR UPDATE`;
-    if (!existing) throw new HttpError(404, "Issue report not found");
-    const currentStatus = existing.status as ReportStatus;
-    const nextStatus = (
-      status == null ? currentStatus : String(status)
-    ) as ReportStatus;
-    const allowedNext: Record<ReportStatus, ReportStatus[]> = {
-      open: ["open", "investigating"],
-      investigating: ["investigating", "resolved", "dismissed"],
-      resolved: ["resolved"],
-      dismissed: ["dismissed"],
-    };
-    if (!allowedNext[currentStatus]?.includes(nextStatus))
-      throw new HttpError(
-        409,
-        `Cannot change issue status from ${currentStatus} to ${nextStatus}`,
-      );
-    if (requestedGroupId != null) {
-      const group = await tx.row<{ id: string }>`SELECT id FROM issue_report_groups WHERE id = ${requestedGroupId}`;
-      if (!group) throw new HttpError(404, "Incident group not found");
-    }
-    const now = new Date().toISOString();
-    const nextGroupId =
+  await inTransaction(env, "issue_report.update", async (txEnv) => {
+  const existing = await txEnv.SYNTILA_DB.prepare(
+    // Locked: two support people changing one report cannot skip a transition.
+    "SELECT status, incident_group_id AS incidentGroupId FROM issue_reports WHERE id = ?1 FOR UPDATE",
+  )
+    .bind(reportId)
+    .first<{ status: ReportStatus; incidentGroupId: string | null }>();
+  if (!existing) throw new HttpError(404, "Issue report not found");
+  const currentStatus = existing.status as ReportStatus;
+  const nextStatus = (
+    status == null ? currentStatus : String(status)
+  ) as ReportStatus;
+  const allowedNext: Record<ReportStatus, ReportStatus[]> = {
+    open: ["open", "investigating"],
+    investigating: ["investigating", "resolved", "dismissed"],
+    resolved: ["resolved"],
+    dismissed: ["dismissed"],
+  };
+  if (!allowedNext[currentStatus]?.includes(nextStatus))
+    throw new HttpError(
+      409,
+      `Cannot change issue status from ${currentStatus} to ${nextStatus}`,
+    );
+  if (requestedGroupId != null) {
+    const group = await txEnv.SYNTILA_DB.prepare(
+      "SELECT id FROM issue_report_groups WHERE id = ?1",
+    )
+      .bind(requestedGroupId)
+      .first<{ id: string }>();
+    if (!group) throw new HttpError(404, "Incident group not found");
+  }
+  const now = new Date().toISOString();
+  const statements = [
+    txEnv.SYNTILA_DB.prepare(
+      "UPDATE issue_reports SET status = ?1, incident_group_id = ?2, updated_at = ?3 WHERE id = ?4",
+    ).bind(
+      nextStatus,
       requestedGroupId === undefined
         ? existing.incidentGroupId
-        : requestedGroupId;
-    await tx.run`UPDATE issue_reports SET status = ${nextStatus}, incident_group_id = ${nextGroupId}, updated_at = ${now} WHERE id = ${reportId}`;
-    await tx.run`INSERT INTO issue_report_events
+        : requestedGroupId,
+      now,
+      reportId,
+    ),
+    txEnv.SYNTILA_DB.prepare(
+      `INSERT INTO issue_report_events
          (id, report_id, actor_user_id, event_type, from_status, to_status, details_json, created_at)
-       VALUES (${`ire-${crypto.randomUUID()}`}, ${reportId}, ${actor.userId}, 'report.status_changed', ${existing.status}, ${nextStatus}, ${JSON.stringify(note ? { note } : {})}, ${now})`;
-    if (existing.incidentGroupId !== nextGroupId) {
-      await tx.run`INSERT INTO issue_report_events
+       VALUES (?1, ?2, ?3, 'report.status_changed', ?4, ?5, ?6, ?7)`,
+    ).bind(
+      `ire-${crypto.randomUUID()}`,
+      reportId,
+      actor.userId,
+      existing.status,
+      nextStatus,
+      JSON.stringify(note ? { note } : {}),
+      now,
+    ),
+  ];
+  const nextGroupId =
+    requestedGroupId === undefined
+      ? existing.incidentGroupId
+      : requestedGroupId;
+  if (existing.incidentGroupId !== nextGroupId) {
+    statements.push(
+      txEnv.SYNTILA_DB.prepare(
+        `INSERT INTO issue_report_events
            (id, report_id, actor_user_id, event_type, details_json, created_at)
-         VALUES (${`ire-${crypto.randomUUID()}`}, ${reportId}, ${actor.userId}, 'report.group_changed', ${JSON.stringify({
-           fromGroupId: existing.incidentGroupId ?? null,
-           toGroupId: nextGroupId,
-         })}, ${now})`;
-      for (const groupId of [existing.incidentGroupId, nextGroupId]) {
-        if (groupId != null) {
-          await tx.run`UPDATE issue_report_groups SET updated_at = ${now} WHERE id = ${groupId}`;
-        }
+         VALUES (?1, ?2, ?3, 'report.group_changed', ?4, ?5)`,
+      ).bind(
+        `ire-${crypto.randomUUID()}`,
+        reportId,
+        actor.userId,
+        JSON.stringify({
+          fromGroupId: existing.incidentGroupId ?? null,
+          toGroupId: nextGroupId,
+        }),
+        now,
+      ),
+    );
+    for (const groupId of [existing.incidentGroupId, nextGroupId]) {
+      if (groupId != null) {
+        statements.push(
+          txEnv.SYNTILA_DB.prepare(
+            "UPDATE issue_report_groups SET updated_at = ?1 WHERE id = ?2",
+          ).bind(now, groupId),
+        );
       }
     }
+  }
+  await txEnv.SYNTILA_DB.batch(statements);
   });
-  const read = dataOf(env).read;
-  const updated = await read.row<Record<string, unknown>>`${read.raw(reportSelect())} WHERE ir.id = ${reportId}`;
+  const updated = await env.SYNTILA_DB.prepare(
+    `${reportSelect()} WHERE ir.id = ?1`,
+  )
+    .bind(reportId)
+    .first<Record<string, unknown>>();
   return json({ report: adminReportResponse(reportRow(updated!)) });
 }
 
@@ -1068,17 +1196,21 @@ export async function handleListAdminIssueReportGroups(
     Math.max(Number(new URL(request.url).searchParams.get("limit") ?? 100), 1),
     200,
   );
-  const rows = await dataOf(env).read.rows<Record<string, unknown>>`SELECT g.id, g.public_reference AS "publicReference", g.label, g.fingerprint,
-            g.created_at AS "createdAt", g.updated_at AS "updatedAt",
-            COUNT(r.id) AS "reportCount", MIN(r.created_at) AS "firstOccurrence",
-            MAX(r.created_at) AS "lastOccurrence",
-            string_agg(DISTINCT r.worker_type_id, ',') AS "workerTypes",
-            string_agg(DISTINCT r.provider_tool_version, ',') AS "providerVersions",
-            string_agg(DISTINCT r.engine_version, ',') AS "engineVersions",
-            string_agg(DISTINCT r.profile_definition_id || '@' || r.profile_release_version, ',') AS "profileVersions"
+  const rows = await env.SYNTILA_DB.prepare(
+    `SELECT g.id, g.public_reference AS publicReference, g.label, g.fingerprint,
+            g.created_at AS createdAt, g.updated_at AS updatedAt,
+            COUNT(r.id) AS reportCount, MIN(r.created_at) AS firstOccurrence,
+            MAX(r.created_at) AS lastOccurrence,
+            string_agg(DISTINCT r.worker_type_id, ',') AS workerTypes,
+            string_agg(DISTINCT r.provider_tool_version, ',') AS providerVersions,
+            string_agg(DISTINCT r.engine_version, ',') AS engineVersions,
+            string_agg(DISTINCT r.profile_definition_id || '@' || r.profile_release_version, ',') AS profileVersions
        FROM issue_report_groups g
        LEFT JOIN issue_reports r ON r.incident_group_id = g.id
-      GROUP BY g.id ORDER BY g.updated_at DESC, g.id DESC LIMIT ${limit}`;
+      GROUP BY g.id ORDER BY g.updated_at DESC, g.id DESC LIMIT ?1`,
+  )
+    .bind(limit)
+    .all<Record<string, unknown>>();
   return json({
     groups: (rows.results ?? []).map((row) => ({
       id: String(row.id),
@@ -1135,8 +1267,14 @@ export async function handleCreateAdminIssueReportGroup(
   const id = `issue-group-${crypto.randomUUID()}`;
   const now = new Date().toISOString();
   const reference = groupReference();
-  await dataOf(env).read.run`INSERT INTO issue_report_groups (id, public_reference, label, fingerprint, created_by_user_id, created_at, updated_at)
-         VALUES (${id}, ${reference}, ${label}, ${fingerprint}, ${actor.userId}, ${now}, ${now})`;
+  await writeAlone(env, "issue_report.group", (db) =>
+    db
+      .prepare(
+        `INSERT INTO issue_report_groups (id, public_reference, label, fingerprint, created_by_user_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)`,
+      )
+      .bind(id, reference, label, fingerprint, actor.userId, now),
+  );
   return json(
     {
       group: {

@@ -14,7 +14,6 @@ import { userAccount } from "./domain/queries.js";
  */
 import { AuthError, bearer, type TokenVerifier } from "./auth";
 import { prepareAccountDeletion, handleAccountProfileUpdated } from "./domain/auth/account-lifecycle";
-import { dataOf } from "./platform/data.js";
 
 type Env = { SYNTILA_DB: D1Database; SYNTILA_ARTIFACTS?: R2Bucket };
 const ROUTE = /^\/internal\/accounts\/([A-Za-z0-9_-]{1,128})\/(deletion|profile)$/;
@@ -44,13 +43,15 @@ export async function handleInternal(request: Request, env: Env, verifier: Token
 
   if (action === "deletion") {
     // Idempotent: the Worker retries until this succeeds, then deletes the account.
-    const user = await userAccount(env, userId);
+    const user = await userAccount(env.SYNTILA_DB, userId);
     if (user) {
       await prepareAccountDeletion(env, userId);
       // Authored content stays (RESTRICT foreign keys), attributed to an
       // anonymized, deactivated user; the address is free for a new account.
-      await dataOf(env).read.run`UPDATE users SET status = 'deactivated', email = ${`deleted+${userId}@syntila.invalid`}, display_name = 'Deleted user', avatar_url = NULL,
-           email_verified = FALSE, updated_at = ${now} WHERE id = ${userId}`;
+      await env.SYNTILA_DB.prepare(
+        `UPDATE users SET status = 'deactivated', email = ?2, display_name = 'Deleted user', avatar_url = NULL,
+           email_verified = FALSE, updated_at = ?3 WHERE id = ?1`,
+      ).bind(userId, `deleted+${userId}@syntila.invalid`, now).run();
     }
     return json({ ok: true, existed: Boolean(user) });
   }
@@ -58,11 +59,14 @@ export async function handleInternal(request: Request, env: Env, verifier: Token
   const email = typeof body.email === "string" && body.email.includes("@") ? body.email.trim().toLowerCase() : null;
   const name = typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, 200) : null;
   const image = typeof body.image === "string" ? body.image.slice(0, 2048) : body.image === null ? null : undefined;
-  const result = await dataOf(env).read.run`UPDATE users SET email = COALESCE(${email}, email), display_name = COALESCE(${name}, display_name),
-       avatar_url = CASE WHEN ${image !== undefined ? 1 : 0}::int = 1 THEN ${image ?? null} ELSE avatar_url END,
-       email_verified = COALESCE(${typeof body.emailVerified === "boolean" ? (body.emailVerified ? 1 : 0) : null}::int::boolean, email_verified),
-       updated_at = ${now}
-     WHERE id = ${userId} AND status <> 'deactivated'`;
+  const result = await env.SYNTILA_DB.prepare(
+    `UPDATE users SET email = COALESCE(?2, email), display_name = COALESCE(?3, display_name),
+       avatar_url = CASE WHEN ?4::int = 1 THEN ?5 ELSE avatar_url END,
+       email_verified = COALESCE(?6::int::boolean, email_verified),
+       updated_at = ?7
+     WHERE id = ?1 AND status <> 'deactivated'`,
+  ).bind(userId, email, name, image !== undefined ? 1 : 0, image ?? null,
+    typeof body.emailVerified === "boolean" ? (body.emailVerified ? 1 : 0) : null, now).run();
   // A user who never called the backend has no row yet: nothing to sync.
   if (Number(result.meta?.changes ?? 0) > 0) await handleAccountProfileUpdated(env, userId);
   return json({ ok: true, updated: Number(result.meta?.changes ?? 0) > 0 });
@@ -78,9 +82,8 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
   if (pathname === "/internal/admin/accounts/stats") {
     const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string").slice(0, 500) : [];
     if (!ids.length) return json({ stats: {} });
-    const db = dataOf(env).read;
-    const rows = await db.rows<Record<string, unknown> & { id: string }>`
-      SELECT u.id,
+    const rows = await env.SYNTILA_DB.prepare(
+      `SELECT u.id,
          (SELECT count(*) FROM space_memberships m WHERE m.user_id = u.id) AS spaces,
          (SELECT count(*) FROM execution_workspaces w WHERE w.owner_user_id = u.id AND w.status <> 'revoked') AS workspaces,
          (SELECT count(*) FROM work_requests r WHERE r.requested_by_user_id = u.id) AS requests,
@@ -88,15 +91,15 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
          (SELECT max(r.created_at) FROM work_requests r WHERE r.requested_by_user_id = u.id) AS last_request_at,
          (SELECT count(*) FROM discussion_messages m WHERE m.author_user_id = u.id) AS messages,
          (SELECT max(m.created_at) FROM discussion_messages m WHERE m.author_user_id = u.id) AS last_message_at,
-         CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = u.id AND ${db.raw(PAID)}) THEN 'paid' ELSE 'free' END AS plan,
+         CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = u.id AND ${PAID}) THEN 'paid' ELSE 'free' END AS plan,
          (SELECT source FROM account_plans ap WHERE ap.user_id = u.id) AS plan_source,
          CASE WHEN EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = u.id)
            OR EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = u.id AND (ap.source = 'provider' OR ap.provider_customer_id IS NOT NULL OR ap.provider_subscription_id IS NOT NULL))
            THEN 'provider' ELSE 'manual' END AS plan_management,
          (SELECT current_period_end FROM account_plans ap WHERE ap.user_id = u.id) AS plan_period_end
-       FROM users u WHERE u.id IN ${db.list(ids)}
-    `;
-    return json({ stats: Object.fromEntries(rows.map(({ id, ...rest }) => [id, rest])) });
+       FROM users u WHERE u.id IN (${ids.map((_, i) => `?${i + 1}`).join(",")})`,
+    ).bind(...ids).all<Record<string, unknown> & { id: string }>();
+    return json({ stats: Object.fromEntries((rows.results ?? []).map(({ id, ...rest }) => [id, rest])) });
   }
   const match = pathname.match(ADMIN_ACCOUNT);
   if (!match) return json({ error: "Not found" }, 404);
@@ -105,7 +108,9 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
   if (action === "status") {
     const status = body.status === "suspended" ? "suspended" : body.status === "active" ? "active" : null;
     if (!status) return json({ error: "status must be active or suspended" }, 400);
-    const result = await dataOf(env).read.run`UPDATE users SET status = ${status}, updated_at = ${now} WHERE id = ${userId} AND status IN ('active','suspended')`;
+    const result = await env.SYNTILA_DB.prepare(
+      "UPDATE users SET status = ?2, updated_at = ?3 WHERE id = ?1 AND status IN ('active','suspended')",
+    ).bind(userId, status, now).run();
     // No backend row yet: the account never used the product, nothing to mirror.
     return json({ ok: true, updated: Number(result.meta?.changes ?? 0) > 0 });
   }
@@ -114,22 +119,25 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
   const email = typeof body.email === "string" && body.email.includes("@") ? body.email.trim().toLowerCase() : null;
   if (grant === null || !email) return json({ error: "action (grant_paid|revoke_paid) and email are required" }, 400);
   // The plan can be granted before the account first used the product.
-  await dataOf(env).read.run`INSERT INTO users (id, email, display_name, status, created_at, updated_at)
-       VALUES (${userId}, ${email}, ${email.split("@")[0]}, 'active', ${now}, ${now}) ON CONFLICT (id) DO NOTHING`;
-  const owner = await dataOf(env).read.row<{ email: string }>`SELECT email FROM users WHERE id = ${userId}`;
+  await env.SYNTILA_DB.prepare(
+    `INSERT INTO users (id, email, display_name, status, created_at, updated_at)
+       VALUES (?1, ?2, ?3, 'active', ?4, ?4) ON CONFLICT (id) DO NOTHING`,
+  ).bind(userId, email, email.split("@")[0], now).run();
+  const owner = await env.SYNTILA_DB.prepare("SELECT email FROM users WHERE id = ?1").bind(userId).first<{ email: string }>();
   if (owner?.email.toLowerCase() !== email) return json({ error: "Account email does not match" }, 409);
-  const changed = await dataOf(env).read.run`INSERT INTO account_plans (user_id, tier, status, source, current_period_end, created_at, updated_at)
-       SELECT ${userId}, ${grant ? "paid" : "free"}, ${grant ? "active" : "canceled"}, 'manual', NULL, ${now}, ${now}
-       WHERE NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ${userId})
+  const changed = await env.SYNTILA_DB.prepare(
+    `INSERT INTO account_plans (user_id, tier, status, source, current_period_end, created_at, updated_at)
+       SELECT ?1, ?2, ?3, 'manual', NULL, ?4, ?4
+       WHERE NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ?1)
      ON CONFLICT (user_id) DO UPDATE SET tier = excluded.tier, status = excluded.status, source = 'manual',
        current_period_end = NULL, updated_at = excluded.updated_at
      WHERE account_plans.source = 'manual' AND account_plans.provider_customer_id IS NULL AND account_plans.provider_subscription_id IS NULL
-       AND NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ${userId})`;
-  if (Number(changed.count ?? 0) !== 1)
+       AND NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ?1)`,
+  ).bind(userId, grant ? "paid" : "free", grant ? "active" : "canceled", now).run();
+  if (Number(changed.meta?.changes ?? 0) !== 1)
     return json({ error: "This account has a provider-linked subscription. Manage it through the payment provider.", code: "provider_subscription_managed" }, 409);
-  const db = dataOf(env).read;
-  const plan = await db.row<{ plan: string }>`
-    SELECT CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = ${userId} AND ${db.raw(PAID)}) THEN 'paid' ELSE 'free' END AS plan
-  `;
+  const plan = await env.SYNTILA_DB.prepare(
+    `SELECT CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = ?1 AND ${PAID}) THEN 'paid' ELSE 'free' END AS plan`,
+  ).bind(userId).first<{ plan: string }>();
   return json({ ok: true, plan: plan?.plan ?? "free" });
 }
