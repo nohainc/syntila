@@ -13,6 +13,7 @@
     "routes": "bun scripts/routes.ts --write",
     "write-paths": "bun scripts/write-paths.ts --write",
     "dup-statements": "bun scripts/dup-statements.ts",
+    "typecheck": "bun scripts/typecheck.ts",
     "build": "bash scripts/build.sh",
     "test": "bun scripts/test.ts"
   },
