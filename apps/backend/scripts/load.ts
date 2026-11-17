@@ -10,7 +10,7 @@
 // runs against the database and any violation fails the load test.
 //
 // bun scripts/load.ts <baseUrl> <privateJwkFile> [users=50] [messages=20] [chats=20] [mixed=10]
-import { FakeWorkspace, User, completeWith, publishedChatgptProfile, tokenMinter, waitFor, type Jwk } from "./lib/clients";
+import { FakeWorkspace, User, completeWith, publishedChatgptProfile, runMessagePosts, tokenMinter, waitFor, type Client, type Jwk } from "./lib/clients";
 
 const [base, jwkFile, usersArg, messagesArg, chatsArg, mixedArg] = Bun.argv.slice(2);
 if (!base || !jwkFile) { console.error("usage: bun scripts/load.ts <baseUrl> <privateJwkFile> [users] [messages] [chats]"); process.exit(2); }
@@ -32,7 +32,6 @@ async function brokenInvariants(): Promise<string[] | null> {
   } finally { await sql.close(); }
 }
 
-type Client = { user: User; spaceId: string; threadId: string; live: ReturnType<User["realtime"]> };
 const clients: Client[] = [];
 const cleanup: Array<() => Promise<unknown>> = [];
 let failed = false;
@@ -49,26 +48,10 @@ try {
   }));
 
   console.log(`messages: ${USERS} × ${MESSAGES} posts, concurrently`);
-  const rest: number[] = [], fanout: number[] = [];
-  let errors = 0;
-  const t0 = performance.now();
-  await Promise.all(clients.map(async (c) => {
-    for (let m = 0; m < MESSAGES; m++) {
-      const marker = `load-${run}-${m}-${crypto.randomUUID().slice(0, 8)}`;
-      const start = performance.now();
-      const mark = c.live.state.frames.length;
-      const posted = await c.user.api("POST", `/api/threads/${c.threadId}/discussion-messages`, { body: marker });
-      rest.push(performance.now() - start);
-      if (posted.status >= 300) { errors++; continue; }
-      const id = posted.body?.message?.id ?? posted.body?.id;
-      await waitFor("fan-out", () => c.live.state.frames.slice(mark).find((f) => JSON.stringify(f).includes(id ?? c.threadId)), 15_000)
-        .then(() => fanout.push(performance.now() - start)).catch(() => { errors++; });
-    }
-  }));
-  const seconds = (performance.now() - t0) / 1000;
+  const { rest, fanout, errors, throughput } = await runMessagePosts(clients, MESSAGES, `load-${run}`);
   report("POST message (REST)", rest);
   report("post → realtime event", fanout);
-  console.log(`throughput ${(rest.length / seconds).toFixed(0)} messages/s, errors ${errors}`);
+  console.log(`throughput ${throughput.toFixed(0)} messages/s, errors ${errors}`);
   if (errors) failed = true;
 
   if (MIXED > 0) {

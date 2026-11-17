@@ -229,6 +229,30 @@ export async function publishedChatgptProfile(): Promise<{ digest: string; relea
   } catch { return null; } finally { await sql.close(); }
 }
 
+export type Client = { user: User; spaceId: string; threadId: string; live: ReturnType<User["realtime"]> };
+
+/** Posts `messages` discussion messages per client concurrently and waits for each realtime fan-out event. */
+export async function runMessagePosts(clients: Client[], messages: number, prefix: string) {
+  const rest: number[] = [], fanout: number[] = [];
+  let errors = 0;
+  const t0 = performance.now();
+  await Promise.all(clients.map(async (c) => {
+    for (let m = 0; m < messages; m++) {
+      const marker = `${prefix}-${m}-${crypto.randomUUID().slice(0, 8)}`;
+      const start = performance.now();
+      const mark = c.live.state.frames.length;
+      const posted = await c.user.api("POST", `/api/threads/${c.threadId}/discussion-messages`, { body: marker });
+      rest.push(performance.now() - start);
+      if (posted.status >= 300) { errors++; continue; }
+      const id = posted.body?.message?.id ?? posted.body?.id;
+      await waitFor("fan-out", () => c.live.state.frames.slice(mark).find((f) => JSON.stringify(f).includes(id ?? c.threadId)), 15_000)
+        .then(() => fanout.push(performance.now() - start)).catch(() => { errors++; });
+    }
+  }));
+  const seconds = (performance.now() - t0) / 1000;
+  return { rest, fanout, errors, seconds, throughput: seconds > 0 ? rest.length / seconds : 0 };
+}
+
 /** Sends a Chat request through the Workspace and waits for its answer. */
 export async function chatRoundTrip(user: User, spaceId: string, threadId: string, workspace: FakeWorkspace, text: string, ms = 30_000) {
   const pick = await user.api("PUT", `/api/spaces/${spaceId}/workflow-workspace`, { workspaceId: workspace.workspaceId, confirmReset: true });

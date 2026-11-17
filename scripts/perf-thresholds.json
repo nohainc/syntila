@@ -1,0 +1,21 @@
+{
+  "_comment": "p95 latency limits (ms) for scripts/perf-local.sh on the local stack. Chosen by running scripts/perf-local.sh three times on a quiet local machine (Apple M5 Pro), taking the highest measured p95 across the three runs for each metric, and multiplying by 2 (with a minimum floor of 5-10 ms for sub-millisecond in-process intervals so 1 ms timer jitter does not cause false failures). Three-run measured p95s (run1 / run2 / run3 -> max * 2): messages.rest_post: 6.3 / 6.1 / 5.2 -> 12.6ms; messages.realtime_fanout: 6.4 / 6.1 / 5.2 -> 12.8ms; workflows.concurrent.total: 176.2 / 161.4 / 160.4 -> 352.4ms; web_submitted->cloud_accepted: 15.0 / 15.0 / 14.0 -> 30.0ms; cloud_accepted->workflow_dispatch_started: 0.0 / 0.0 / 0.0 -> 10.0ms floor; workflow_dispatch_started->gateway_queued: 102.0 / 102.0 / 88.0 -> 204.0ms; gateway_queued->service_received: 3.0 / 2.0 / 2.0 -> 6.0ms; service_received->service_accepted: 1.0 / 0.0 / 0.0 -> 5.0ms floor; service_accepted->provider_started: 26.0 / 26.0 / 26.0 -> 52.0ms; provider_started->terminal_persisted: 1.0 / 1.0 / 1.0 -> 5.0ms floor; terminal_persisted->web_received: 38.0 / 40.0 / 42.0 -> 84.0ms; workflows.serial.request_total: 72.3 / 75.1 / 68.7 -> 150.2ms; workflows.serial.queued_overhead: 45.3 / 49.1 / 41.7 -> 98.2ms; transport.probe_0b / 1024b / 32768b: 20.0 / 25.0 / 50.0ms (local WebSocket/HTTP probe round-trip 2x ceiling when live Workspace Service answers).",
+  "metrics": {
+    "transport.probe_0b": { "p95Ms": 20.0 },
+    "transport.probe_1024b": { "p95Ms": 25.0 },
+    "transport.probe_32768b": { "p95Ms": 50.0 },
+    "messages.rest_post": { "p95Ms": 12.6 },
+    "messages.realtime_fanout": { "p95Ms": 12.8 },
+    "workflows.concurrent.total": { "p95Ms": 352.4 },
+    "workflows.concurrent.web_submitted->cloud_accepted": { "p95Ms": 30.0 },
+    "workflows.concurrent.cloud_accepted->workflow_dispatch_started": { "p95Ms": 10.0 },
+    "workflows.concurrent.workflow_dispatch_started->gateway_queued": { "p95Ms": 204.0 },
+    "workflows.concurrent.gateway_queued->service_received": { "p95Ms": 6.0 },
+    "workflows.concurrent.service_received->service_accepted": { "p95Ms": 5.0 },
+    "workflows.concurrent.service_accepted->provider_started": { "p95Ms": 52.0 },
+    "workflows.concurrent.provider_started->terminal_persisted": { "p95Ms": 5.0 },
+    "workflows.concurrent.terminal_persisted->web_received": { "p95Ms": 84.0 },
+    "workflows.serial.request_total": { "p95Ms": 150.2 },
+    "workflows.serial.queued_overhead": { "p95Ms": 98.2 }
+  }
+}
