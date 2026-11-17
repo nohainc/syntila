@@ -1,7 +1,7 @@
 import { inTransaction } from "../../platform/tx-env.js";
 import { RetryWorkRequestSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
-import { afterCursorSql, cursorOrderSql, decodeCursor, encodeCursor } from "./pagination.js";
+import { afterCursor, cursorOrder, decodeCursor, encodeCursor } from "./pagination.js";
 import { activeThreadLease, activeWorkCount, cancelPendingTasks, cancelQueuedWorkRequest, spaceMembership, threadSpace, workRequestThread } from "../queries.js";
 import {
   RESEARCH_PARTIAL_SYNTHESIS_MIN_REPORTS,
@@ -1041,32 +1041,22 @@ export async function handleListWorkRequests(
   const before = rawCursor ? decodeCursor(rawCursor) : null;
   const activeOnly = url.searchParams.get("activeOnly") === "true";
   const recentCutoff = new Date(Date.now() - 15 * 60_000).toISOString();
-  const page = await env.SYNTILA_DB.prepare(
-    `SELECT wr.id, wr.requested_by_user_id AS requestedByUserId,
-            (SELECT conversation_id FROM conversation_work_requests WHERE work_request_id = wr.id) AS conversationId,
-            u.display_name AS requestedByName, wr.workflow_id AS workflowId,
-            wr.workflow_version AS workflowVersion,
-            wr.workflow_snapshot_json AS workflowSnapshotJson,
-            wr.snapshot_json AS snapshotJson, (SELECT text FROM conversation_history_entries h WHERE h.work_request_id = wr.id AND h.kind = 'user_message' LIMIT 1) AS canonicalUserText, wr.input_json AS inputJson,
-            wr.status, wr.created_at AS createdAt, wr.updated_at AS updatedAt
+  const read = dataOf(env).read;
+  const pageRows = await read.rows<Record<string, unknown>>`SELECT wr.id, wr.requested_by_user_id AS "requestedByUserId",
+            (SELECT conversation_id FROM conversation_work_requests WHERE work_request_id = wr.id) AS "conversationId",
+            u.display_name AS "requestedByName", wr.workflow_id AS "workflowId",
+            wr.workflow_version AS "workflowVersion",
+            wr.workflow_snapshot_json AS "workflowSnapshotJson",
+            wr.snapshot_json AS "snapshotJson", (SELECT text FROM conversation_history_entries h WHERE h.work_request_id = wr.id AND h.kind = 'user_message' LIMIT 1) AS "canonicalUserText", wr.input_json AS "inputJson",
+            wr.status, wr.created_at AS "createdAt", wr.updated_at AS "updatedAt"
        FROM work_requests wr
        JOIN users u ON u.id = wr.requested_by_user_id
-      WHERE wr.thread_id = ?1
-        AND (?2::text IS NULL OR ${afterCursorSql("wr.created_at", "wr.id", 2, 3)})
-        AND (?4 = 0 OR wr.status IN ('queued', 'running', 'waiting') OR wr.updated_at >= ?5)
-      ORDER BY ${cursorOrderSql("wr.created_at", "wr.id")} LIMIT ?6`,
-  )
-    .bind(
-      threadId,
-      before?.at ?? null,
-      before?.id ?? null,
-      activeOnly ? 1 : 0,
-      recentCutoff,
-      limit + 1,
-    )
-    .all<Record<string, unknown>>();
-  const more = (page.results?.length ?? 0) > limit;
-  const requests = (page.results ?? []).slice(0, limit);
+      WHERE wr.thread_id = ${threadId}
+        AND ${afterCursor(read, "wr.created_at", "wr.id", before)}
+        AND (${!activeOnly} OR wr.status IN ('queued', 'running', 'waiting') OR wr.updated_at >= ${recentCutoff}::timestamptz)
+      ORDER BY ${cursorOrder(read, "wr.created_at", "wr.id")} LIMIT ${limit + 1}`;
+  const more = pageRows.length > limit;
+  const requests = pageRows.slice(0, limit);
   if (requests.length === 0)
     return json({
       aiHistoryClearedAt: await aiHistoryClearedAt(env, threadId),
@@ -1079,7 +1069,6 @@ export async function handleListWorkRequests(
     env.SYNTILA_DB,
     ids,
   );
-  const placeholders = ids.map((_, index) => `?${index + 1}`).join(", ");
   const desiredWorkerIds = new Set<string>();
   for (const row of requests) {
     const requestSnapshot = parseJson<Record<string, unknown>>(
@@ -1103,48 +1092,40 @@ export async function handleListWorkRequests(
   }
   const desiredWorkers = new Map<string, Record<string, unknown>>();
   if (desiredWorkerIds.size > 0) {
-    const workerPlaceholders = [...desiredWorkerIds]
-      .map((_, index) => `?${index + 1}`)
-      .join(", ");
-    const workerRows = await env.SYNTILA_DB.prepare(
-      `SELECT worker_id AS workerId, worker_type_id AS workerTypeId,
-              engine_version AS engineVersion,
-              profile_definition_id AS profileDefinitionId,
-              profile_release_version AS profileReleaseVersion,
-              provider_tool_name AS providerToolName,
-              provider_tool_version AS providerToolVersion
-         FROM workspace_worker_inventory WHERE worker_id IN (${workerPlaceholders})`,
-    )
-      .bind(...desiredWorkerIds)
-      .all<Record<string, unknown>>();
-    for (const worker of workerRows.results ?? []) {
+    const workerRows = await read.rows<Record<string, unknown>>`SELECT worker_id AS "workerId", worker_type_id AS "workerTypeId",
+              engine_version AS "engineVersion",
+              profile_definition_id AS "profileDefinitionId",
+              profile_release_version AS "profileReleaseVersion",
+              provider_tool_name AS "providerToolName",
+              provider_tool_version AS "providerToolVersion"
+         FROM workspace_worker_inventory WHERE worker_id IN ${read.list([...desiredWorkerIds])}`;
+    for (const worker of workerRows) {
       desiredWorkers.set(String(worker.workerId), worker);
     }
   }
-  const taskRows = await env.SYNTILA_DB.prepare(
-    `SELECT wt.work_request_id AS workRequestId, wt.step_kind AS kind, wt.step_id AS stepId,
-            wt.status, wt.output_json AS outputJson, wt.error,
-            COALESCE(wt.started_at, wt.created_at) AS startedAt,
-            COALESCE(wt.finished_at, wt.updated_at) AS updatedAt,
-            wa.error_json AS assignmentErrorJson,
-            wa.status AS assignmentStatus, wa.dispatched_at AS dispatchedAt,
-            wa.acknowledged_at AS acknowledgedAt,
-            wa.start_permit_issued_at AS startPermitIssuedAt,
-            wa.start_permit_required AS startPermitRequired,
+  const taskRows = await read.rows<Record<string, unknown>>`SELECT wt.work_request_id AS "workRequestId", wt.step_kind AS "kind", wt.step_id AS "stepId",
+            wt.status, wt.output_json AS "outputJson", wt.error,
+            COALESCE(wt.started_at, wt.created_at) AS "startedAt",
+            COALESCE(wt.finished_at, wt.updated_at) AS "updatedAt",
+            wa.error_json::text AS "assignmentErrorJson",
+            wa.status AS "assignmentStatus", wa.dispatched_at AS "dispatchedAt",
+            wa.acknowledged_at AS "acknowledgedAt",
+            wa.start_permit_issued_at AS "startPermitIssuedAt",
+            wa.start_permit_required AS "startPermitRequired",
             (SELECT aw.reason FROM account_execution_waiters aw
-              WHERE aw.task_id = wt.id) AS waitReason,
-            wa.running_at AS runningAt, wa.startup_stage AS startupStage,
-            wa.id AS assignmentId, wa.workspace_worker_id AS workerId,
-            wa.cloud_queue_reason AS cloudQueueReason,
-            wa.worker_type_id AS logicalWorkerTypeId,
-            wa.model AS assignedModel,
-            wa.engine_version AS engineVersion,
-            (wa.permission_snapshot_json::jsonb #>> '{executionSelection,modelName}') AS modelName,
-            (wa.permission_snapshot_json::jsonb #> '{executionSelection,catalogRevision}') AS catalogRevision,
-            wa.permission_snapshot_json AS permissionSnapshotJson,
-            wi.worker_type_id AS inventoryWorkerTypeId,
-            wi.provider_tool_name AS configuredProviderToolName,
-            wi.provider_tool_version AS configuredProviderToolVersion
+              WHERE aw.task_id = wt.id) AS "waitReason",
+            wa.running_at AS "runningAt", wa.startup_stage AS "startupStage",
+            wa.id AS "assignmentId", wa.workspace_worker_id AS "workerId",
+            wa.cloud_queue_reason AS "cloudQueueReason",
+            wa.worker_type_id AS "logicalWorkerTypeId",
+            wa.model AS "assignedModel",
+            wa.engine_version AS "engineVersion",
+            (wa.permission_snapshot_json::jsonb #>> '{executionSelection,modelName}') AS "modelName",
+            (wa.permission_snapshot_json::jsonb #> '{executionSelection,catalogRevision}') AS "catalogRevision",
+            wa.permission_snapshot_json AS "permissionSnapshotJson",
+            wi.worker_type_id AS "inventoryWorkerTypeId",
+            wi.provider_tool_name AS "configuredProviderToolName",
+            wi.provider_tool_version AS "configuredProviderToolVersion"
        FROM workflow_tasks wt
        JOIN work_requests wr ON wr.id = wt.work_request_id
        LEFT JOIN worker_assignments wa ON wa.id = (
@@ -1158,13 +1139,10 @@ export async function handleListWorkRequests(
            (wr.snapshot_json::jsonb #>> syntila_json_path('$.resolvedBindings.' ||
            CASE WHEN wr.workflow_id = 'direct' THEN 'direct' ELSE wt.step_kind END || '.workerId')))
        )
-      WHERE wt.work_request_id IN (${placeholders})
-      ORDER BY wt.created_at, wt.id`,
-  )
-    .bind(...ids)
-    .all<Record<string, unknown>>();
+      WHERE wt.work_request_id IN ${read.list(ids)}
+      ORDER BY wt.created_at, wt.id`;
   const tasksByRequest = new Map<string, Record<string, unknown>[]>();
-  for (const task of taskRows.results ?? []) {
+  for (const task of taskRows) {
     const key = String(task.workRequestId);
     const values = tasksByRequest.get(key) ?? [];
     values.push(task);
@@ -1506,21 +1484,17 @@ async function cancelWorkRequest(
   const requestedAt = row.cancelRequestedAt ?? new Date().toISOString();
   await dataOf(env).read.run`UPDATE work_requests SET cancel_requested_at = COALESCE(cancel_requested_at, ${requestedAt}), updated_at = ${requestedAt} WHERE id = ${workRequestId} AND status = 'running'`;
 
-  const active = await env.SYNTILA_DB.prepare(
-    `SELECT wa.id AS assignmentId, wa.execution_workspace_id AS workspaceId,
-            wa.status AS assignmentStatus
+  const active = await dataOf(env).read.row<{
+    assignmentId: string;
+    workspaceId: string;
+    assignmentStatus: string;
+  }>`SELECT wa.id AS "assignmentId", wa.execution_workspace_id AS "workspaceId",
+            wa.status AS "assignmentStatus"
        FROM workflow_tasks wt
        JOIN worker_assignments wa ON wa.task_id = wt.id
-      WHERE wt.work_request_id = ?1
-        AND wa.status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})
-      ORDER BY wa.created_at DESC LIMIT 1`,
-  )
-    .bind(workRequestId)
-    .first<{
-      assignmentId: string;
-      workspaceId: string;
-      assignmentStatus: string;
-    }>();
+      WHERE wt.work_request_id = ${workRequestId}
+        AND wa.status IN (${dataOf(env).read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})
+      ORDER BY wa.created_at DESC LIMIT 1`;
   if (active) {
     const cancellation = await cancelTaskAssignment(
       env as unknown as AssignmentDispatcherEnv,

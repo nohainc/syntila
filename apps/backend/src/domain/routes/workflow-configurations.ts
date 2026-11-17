@@ -67,14 +67,7 @@ export async function handleWorkflowConfigurations(
         context.userId,
         new URL(request.url).searchParams.get("workspaceId"),
       );
-  const table = spaceId
-    ? "space_workflow_configurations"
-    : "user_workflow_configurations";
-  const key = spaceId ? "space_id" : "user_id";
   const owner = spaceId ?? context.userId;
-  // Extra scope column/bind so every statement addresses one Workspace.
-  const scopeSql = spaceId ? "" : " AND workspace_id = ?3";
-  const scopeBinds = spaceId ? [] : [userWorkspaceId];
 
   if (request.method === "GET") {
     if (workflowId) definitionFor(workflowId);
@@ -109,12 +102,11 @@ export async function handleWorkflowConfigurations(
     throw new HttpError(405, "Choose a workflow for this operation");
   const definition = definitionFor(workflowId);
   const reset = async () => {
-    await db
-      .prepare(
-        `DELETE FROM ${table} WHERE ${key} = ?1 AND workflow_id = ?2${scopeSql}`,
-      )
-      .bind(owner, workflowId, ...scopeBinds)
-      .run();
+    const q = queryOf(db);
+    if (spaceId)
+      await q.run`DELETE FROM space_workflow_configurations WHERE space_id = ${spaceId} AND workflow_id = ${workflowId}`;
+    else
+      await q.run`DELETE FROM user_workflow_configurations WHERE user_id = ${context.userId} AND workflow_id = ${workflowId} AND workspace_id = ${userWorkspaceId}`;
   };
   if (request.method === "DELETE") {
     await reset();
@@ -183,12 +175,10 @@ export async function handleWorkflowConfigurations(
   inventory.workers = inventory.workers.filter(
     (worker) => worker.workspaceId === selectedWorkspace.workspaceId,
   );
-  const previous = await db
-    .prepare(
-      `SELECT configuration_json FROM ${table} WHERE ${key} = ?1 AND workflow_id = ?2${scopeSql}`,
-    )
-    .bind(owner, workflowId, ...scopeBinds)
-    .first<{ configuration_json: string }>();
+  const previousQuery = queryOf(db);
+  const previous = spaceId
+    ? await previousQuery.row<{ configuration_json: string }>`SELECT configuration_json FROM space_workflow_configurations WHERE space_id = ${spaceId} AND workflow_id = ${workflowId}`
+    : await previousQuery.row<{ configuration_json: string }>`SELECT configuration_json FROM user_workflow_configurations WHERE user_id = ${context.userId} AND workflow_id = ${workflowId} AND workspace_id = ${userWorkspaceId}`;
   const priorConfiguration: UserWorkflowConfiguration | undefined = previous
     ? JSON.parse(previous.configuration_json)
     : spaceId
@@ -285,24 +275,17 @@ export async function handleWorkflowConfigurations(
   ) {
     await reset();
   } else {
-    await db
-      .prepare(
-        spaceId
-          ? `INSERT INTO ${table}
-      (${key}, workflow_id, schema_version, configuration_json, updated_at) VALUES (?1, ?2, 1, ?3, ?4)
-      ON CONFLICT(${key}, workflow_id) DO UPDATE SET configuration_json = excluded.configuration_json, updated_at = excluded.updated_at`
-          : `INSERT INTO ${table}
-      (${key}, workflow_id, schema_version, configuration_json, updated_at, workspace_id) VALUES (?1, ?2, 1, ?3, ?4, ?5)
-      ON CONFLICT(${key}, workspace_id, workflow_id) DO UPDATE SET configuration_json = excluded.configuration_json, updated_at = excluded.updated_at`,
-      )
-      .bind(
-        owner,
-        workflowId,
-        JSON.stringify(configuration),
-        new Date().toISOString(),
-        ...scopeBinds,
-      )
-      .run();
+    const q = queryOf(db);
+    const saved = JSON.stringify(configuration);
+    const savedAt = new Date().toISOString();
+    if (spaceId)
+      await q.run`INSERT INTO space_workflow_configurations
+      (space_id, workflow_id, schema_version, configuration_json, updated_at) VALUES (${spaceId}, ${workflowId}, 1, ${saved}, ${savedAt})
+      ON CONFLICT(space_id, workflow_id) DO UPDATE SET configuration_json = excluded.configuration_json, updated_at = excluded.updated_at`;
+    else
+      await q.run`INSERT INTO user_workflow_configurations
+      (user_id, workflow_id, schema_version, configuration_json, updated_at, workspace_id) VALUES (${context.userId}, ${workflowId}, 1, ${saved}, ${savedAt}, ${userWorkspaceId})
+      ON CONFLICT(user_id, workspace_id, workflow_id) DO UPDATE SET configuration_json = excluded.configuration_json, updated_at = excluded.updated_at`;
   }
   const defaultWorkflowId = spaceId
     ? await loadSpaceWorkflowDefault(env, spaceId, owner)

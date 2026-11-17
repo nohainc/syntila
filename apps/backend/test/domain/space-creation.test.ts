@@ -181,7 +181,7 @@ describe("Space creation", () => {
       {
         SYNTILA_ENVIRONMENT: "development",
         SYNTILA_DB: withSql(db),
-        SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) => strings.join("?").includes("FROM threads") ? [] : [{ role: "owner", settingsJson: "{}", kind: "group", isSupport: false }]) as never),
+        SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) => /FROM (threads|direct_spaces)/.test(strings.join("?")) ? [] : [{ role: "owner", settingsJson: "{}", kind: "group", isSupport: false }]) as never),
         TEST_AUTHENTICATION: async () => ({
           userId: "user-1",
           user: {

@@ -25,8 +25,9 @@ export const STALE_CLAIM_MS = 5 * 60_000;
 const PENDING = 0;
 
 /** Releases a claim still marked pending (a stale or failed request). */
-const DELETE_PENDING_RECEIPT = `DELETE FROM mutation_receipts
-          WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3 AND response_status = ${PENDING}`;
+const deletePendingReceipt = (db: unknown, userId: string, scope: string, key: string) =>
+  queryOf(db).run`DELETE FROM mutation_receipts
+          WHERE user_id = ${userId} AND scope = ${scope} AND idempotency_key = ${key} AND response_status = ${PENDING}`;
 
 async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -52,14 +53,9 @@ export async function withRouteIdempotency(
   const hash = await sha256(body);
 
   const claim = () =>
-    db
-      .prepare(
-        `INSERT INTO mutation_receipts (user_id, scope, idempotency_key, request_hash, response_json, response_status, created_at)
-         VALUES (?1, ?2, ?3, ?4, '{}', ${PENDING}, ?5)
-         ON CONFLICT DO NOTHING RETURNING 1 AS claimed`,
-      )
-      .bind(userId, scope, key, hash, new Date().toISOString())
-      .first<{ claimed: number }>();
+    queryOf(db).row<{ claimed: number }>`INSERT INTO mutation_receipts (user_id, scope, idempotency_key, request_hash, response_json, response_status, created_at)
+         VALUES (${userId}, ${scope}, ${key}, ${hash}, '{}', ${PENDING}, ${new Date().toISOString()})
+         ON CONFLICT DO NOTHING RETURNING 1 AS claimed`;
 
   let claimed = await claim();
   if (!claimed) {
@@ -79,10 +75,7 @@ export async function withRouteIdempotency(
       throw Object.assign(new HttpError(409, "A request with this Idempotency-Key is still being processed"), {
         code: "idempotency_in_progress",
       });
-    await db
-      .prepare(DELETE_PENDING_RECEIPT)
-      .bind(userId, scope, key)
-      .run();
+    await deletePendingReceipt(db, userId, scope, key);
     claimed = await claim();
     if (!claimed)
       throw Object.assign(new HttpError(409, "A request with this Idempotency-Key is still being processed"), {
@@ -90,11 +83,7 @@ export async function withRouteIdempotency(
       });
   }
 
-  const release = () =>
-    db
-      .prepare(DELETE_PENDING_RECEIPT)
-      .bind(userId, scope, key)
-      .run();
+  const release = () => deletePendingReceipt(db, userId, scope, key);
 
   let response: Response;
   try {

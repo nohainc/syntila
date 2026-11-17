@@ -21,7 +21,8 @@ type Page = {
 };
 
 function fixture(count = 7) {
-  const sqlite = (pgD1().sqlite as unknown as DatabaseSync);
+  const handle = pgD1();
+  const sqlite = handle.sqlite as unknown as DatabaseSync;
   sqlite.exec([basicThread({ user: "owner", space: "p", thread: "w" }), thread("other-w", "p", "owner")].join("\n"));
   const insert = sqlite.prepare(
     "INSERT INTO discussion_messages(id, thread_id, author_user_id, body, references_json, edited_at, created_at) VALUES(?, ?, 'owner', ?, '[]', NULL, ?)",
@@ -35,21 +36,7 @@ function fixture(count = 7) {
       "2026-10-06T00:00:00.000Z",
     );
   insert.run("other", "other-w", "private", "2026-10-06T00:00:00.000Z");
-  const db = {
-    prepare(sql: string) {
-      let values: (string | number)[] = [];
-      return {
-        bind(...args: (string | number)[]) {
-          values = args;
-          return this;
-        },
-        async all() {
-          return { results: sqlite.prepare(sql).all(...values) };
-        },
-      };
-    },
-  };
-  const env = { SYNTILA_DB: db } as unknown as Parameters<
+  const env = { SYNTILA_DB: handle.db } as unknown as Parameters<
     typeof handleListDiscussionMessages
   >[1];
   async function page(parameters = "", id = "w") {

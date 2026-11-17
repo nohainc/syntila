@@ -1,5 +1,5 @@
 import { inTransaction } from "../../platform/tx-env.js";
-import { afterCursorSql, cursorOrderSql, pageOf, pageRequest } from "./pagination.js";
+import { afterCursor, cursorOrder, pageOf, pageRequest } from "./pagination.js";
 import {
   CreateSpaceSchema,
   SpaceInvitationSchema,
@@ -113,64 +113,84 @@ export async function handleListSpaces(
   {
     const includeArchived =
       new URL(request.url).searchParams.get("archived") === "true";
-    const rows = await env.SYNTILA_DB.prepare(
-      `SELECT p.id, p.name, p.description, pm.role, COALESCE(p.kind, 'group') AS kind,
-              p.settings_json AS settingsJson, p.created_at AS createdAt, ${lastSpaceActivitySql("p")} AS updatedAt,
-              peer_u.id AS peerUserId,
-              peer_u.display_name AS peerDisplayName,
-              dsus.personal_name AS personalName,
-              peer_u.avatar_url AS peerAvatarUrl,
+    const read = dataOf(env).read;
+    const rows = await read.rows<{
+        id: string;
+        name: string;
+        description: string | null;
+        role: string;
+        kind: string;
+        settingsJson: string;
+        createdAt: string;
+        updatedAt: string;
+        peerUserId: string | null;
+        peerDisplayName: string | null;
+        personalName: string | null;
+        peerAvatarUrl: string | null;
+        hidden: boolean;
+        isSupport: boolean;
+        hasActiveWork: boolean;
+        hasUnread: boolean;
+        pinnedAt: string | null;
+        pinPosition: number | null;
+      }>`WITH me AS (SELECT ${context.userId}::text AS id)
+      SELECT p.id, p.name, p.description, pm.role, COALESCE(p.kind, 'group') AS kind,
+              p.settings_json AS "settingsJson", p.created_at AS "createdAt", ${read.raw(lastSpaceActivitySql("p"))} AS "updatedAt",
+              peer_u.id AS "peerUserId",
+              peer_u.display_name AS "peerDisplayName",
+              dsus.personal_name AS "personalName",
+              peer_u.avatar_url AS "peerAvatarUrl",
               COALESCE(dsus.hidden, FALSE) AS hidden,
-              EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id) AS isSupport,
+              EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id) AS "isSupport",
               EXISTS (
                 SELECT 1 FROM threads t
-                 WHERE t.space_id = p.id AND ${activeWorkSql("t")}
-              ) AS hasActiveWork,
+                 WHERE t.space_id = p.id AND ${read.raw(activeWorkSql("t"))}
+              ) AS "hasActiveWork",
               EXISTS (
                 SELECT 1 FROM threads t
                   LEFT JOIN thread_read_states rs
-                    ON rs.thread_id = t.id AND rs.user_id = ?1
+                    ON rs.thread_id = t.id AND rs.user_id = (SELECT id FROM me)
                  WHERE t.space_id = p.id
-                   AND ${unreadSql("t", "?1", "COALESCE(rs.read_at, pm.created_at)")}
-              ) AS hasUnread,
+                   AND ${read.raw(unreadSql("t", "(SELECT id FROM me)", "COALESCE(rs.read_at, pm.created_at)"))}
+              ) AS "hasUnread",
               (SELECT up.pinned_at FROM user_pins up
-                WHERE up.user_id = ?1 AND up.kind = 'space'
-                  AND up.target_id = p.id) AS pinnedAt,
+                WHERE up.user_id = (SELECT id FROM me) AND up.kind = 'space'
+                  AND up.target_id = p.id) AS "pinnedAt",
               (SELECT up.position FROM user_pins up
-                WHERE up.user_id = ?1 AND up.kind = 'space'
-                  AND up.target_id = p.id) AS pinPosition
+                WHERE up.user_id = (SELECT id FROM me) AND up.kind = 'space'
+                  AND up.target_id = p.id) AS "pinPosition"
        FROM spaces p
        JOIN space_memberships pm ON pm.space_id = p.id
        LEFT JOIN direct_spaces ds ON ds.space_id = p.id
-       LEFT JOIN users peer_u ON peer_u.id = (CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END)
-       LEFT JOIN direct_space_user_state dsus ON dsus.space_id = p.id AND dsus.user_id = ?1
-       WHERE pm.user_id = ?1
-         ${
+       LEFT JOIN users peer_u ON peer_u.id = (CASE WHEN ds.user_low_id = (SELECT id FROM me) THEN ds.user_high_id ELSE ds.user_low_id END)
+       LEFT JOIN direct_space_user_state dsus ON dsus.space_id = p.id AND dsus.user_id = (SELECT id FROM me)
+       WHERE pm.user_id = (SELECT id FROM me)
+         ${read.raw(
            includeArchived
              ? ""
              : `AND COALESCE((p.settings_json::jsonb ->> 'archived'), 'false') NOT IN ('true', '1')
                 AND (
                   (p.kind != 'direct' AND NOT COALESCE(dsus.hidden, FALSE))
                   OR (
-                    EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id AND ss.user_id = ?1)
+                    EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id AND ss.user_id = (SELECT id FROM me))
                     AND NOT COALESCE(dsus.hidden, TRUE)
                   )
                   OR (
-                    NOT EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id AND ss.user_id = ?1)
+                    NOT EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id AND ss.user_id = (SELECT id FROM me))
                     AND
                     NOT COALESCE(dsus.hidden, FALSE)
                     AND (
                       dsus.last_opened_at IS NOT NULL
                       OR EXISTS (
                         SELECT 1 FROM user_pins up
-                        WHERE up.user_id = ?1 AND up.kind = 'space' AND up.target_id = p.id
+                        WHERE up.user_id = (SELECT id FROM me) AND up.kind = 'space' AND up.target_id = p.id
                       )
                       OR EXISTS (
                         SELECT 1 FROM threads t
                         LEFT JOIN thread_read_states rs
-                          ON rs.thread_id = t.id AND rs.user_id = ?1
+                          ON rs.thread_id = t.id AND rs.user_id = (SELECT id FROM me)
                         WHERE t.space_id = p.id
-                          AND ${unreadSql("t", "?1", "COALESCE(rs.read_at, pm.created_at)")}
+                          AND ${unreadSql("t", "(SELECT id FROM me)", "COALESCE(rs.read_at, pm.created_at)")}
                       )
                       OR EXISTS (
                         SELECT 1 FROM threads t
@@ -184,32 +204,10 @@ export async function handleListSpaces(
                     )
                   )
                 )`
-         }
-       ORDER BY updatedAt DESC, p.id DESC`,
-    )
-      .bind(context.userId)
-      .all<{
-        id: string;
-        name: string;
-        description: string | null;
-        role: string;
-        kind: string;
-        settingsJson: string;
-        createdAt: string;
-        updatedAt: string;
-        peerUserId: string | null;
-        peerDisplayName: string | null;
-        personalName: string | null;
-        peerAvatarUrl: string | null;
-        hidden: number;
-        isSupport: number;
-        hasActiveWork: number;
-        hasUnread: number;
-        pinnedAt: string | null;
-        pinPosition: number | null;
-      }>();
+         )}
+       ORDER BY "updatedAt" DESC, p.id DESC`;
 
-    const spaces = (rows.results ?? []).map((row) => {
+    const spaces = rows.map((row) => {
       const settings = publicSpaceSettings(row.settingsJson);
       const isDirect = row.kind === "direct";
       return {
@@ -920,15 +918,12 @@ export async function handleListSpaceAudit(
 ): Promise<Response> {
   await authorizeRequest(request, env, "spaces:read", spaceId, accessContext);
   const { limit, after } = pageRequest(new URL(request.url), { defaultLimit: 100, maxLimit: 200 });
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT id, action, target_type AS targetType, target_id AS targetId, created_at AS createdAt
+  const read = dataOf(env).read;
+  const rows = await read.rows<Record<string, unknown>>`SELECT id, action, target_type AS "targetType", target_id AS "targetId", created_at AS "createdAt"
      FROM space_audit_log
-     WHERE space_id = ?1 AND (?2::text IS NULL OR ${afterCursorSql("created_at", "id", 2, 3)})
-     ORDER BY ${cursorOrderSql("created_at", "id")} LIMIT ?4`,
-  )
-    .bind(spaceId, after?.at ?? null, after?.id ?? null, limit + 1)
-    .all<Record<string, unknown>>();
-  const page = pageOf(rows.results ?? [], limit, (row) => ({ at: String(row.createdAt), id: String(row.id) }));
+     WHERE space_id = ${spaceId} AND ${afterCursor(read, "created_at", "id", after)}
+     ORDER BY ${cursorOrder(read, "created_at", "id")} LIMIT ${limit + 1}`;
+  const page = pageOf(rows, limit, (row) => ({ at: String(row.createdAt), id: String(row.id) }));
   return json({ entries: page.items, nextCursor: page.nextCursor });
 }
 
@@ -1021,11 +1016,8 @@ export async function handleCreateSpaceInvitation(
   if (existingMember) {
     throw new HttpError(409, "This user is already a Space member");
   }
-  await env.SYNTILA_DB.prepare(
-    "UPDATE space_invitations SET status='expired',updated_at=?3 WHERE space_id=?1 AND (LOWER(email)=?2 OR invitee_user_id=?4) AND status='pending' AND expires_at<=?3",
-  )
-    .bind(spaceId, email, new Date().toISOString(), inviteeUserId)
-    .run();
+  const expiredAt = new Date().toISOString();
+  await dataOf(env).read.run`UPDATE space_invitations SET status='expired',updated_at=${expiredAt}::timestamptz WHERE space_id=${spaceId} AND (LOWER(email)=${email} OR invitee_user_id=${inviteeUserId}) AND status='pending' AND expires_at<=${expiredAt}::timestamptz`;
   const existingInvitation = await dataOf(env).read.row<{ id: string }>`SELECT id FROM space_invitations
      WHERE space_id = ${spaceId} AND status = 'pending' AND (LOWER(email) = LOWER(${email}) OR invitee_user_id = ${inviteeUserId})
      LIMIT 1`;

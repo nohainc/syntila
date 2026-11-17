@@ -57,12 +57,12 @@ const selectSpaceMembershipsBySpaceIdUserId = <T = Record<string, unknown>>(q: Q
             created_at AS "createdAt", updated_at AS "updatedAt"
        FROM space_memberships WHERE space_id = ${p1} AND user_id = ${p2}`;
 
-const SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO =
-  `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId,
-            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = ds.space_id) AS isSupport
+const selectSupportSpacesBySpaceIdJo = (q: Query, spaceId: string) =>
+  q.row<{ status: string | null; userLowId: string; userHighId: string; isSupport: boolean }>`SELECT pc.status, ds.user_low_id AS "userLowId", ds.user_high_id AS "userHighId",
+            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = ds.space_id) AS "isSupport"
      FROM direct_spaces ds
      LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
-     WHERE ds.space_id = ?1`;
+     WHERE ds.space_id = ${spaceId}`;
 
 const selectDiscussionMessagesById = <T = Record<string, unknown>>(q: Query, p1: unknown) =>
   q.row<T>`SELECT dm.id, dm.thread_id AS "threadId", dm.author_user_id AS "authorUserId",
@@ -86,22 +86,23 @@ export async function handleListSpaceThreads(
     spaceId,
     accessContext,
   );
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT threads.id, threads.space_id AS spaceId,
-            threads.name, threads.status, threads.has_other_contributions AS hasOtherContributions,
-            threads.is_general AS isGeneral,
-            threads.access_policy_json AS accessPolicyJson,
-            usage.config_json AS workConfigJson,
-            threads.metadata_json AS metadataJson,
-            threads.lead_user_id AS leadUserId,
-            lead.display_name AS leadDisplayName,
-            creator.email AS creatorEmail,
-            CASE WHEN threads.lead_user_id = space.owner_user_id THEN 1 ELSE 0 END AS creatorIsOwner,
-            threads.created_at AS createdAt, ${lastThreadActivitySql("threads")} AS updatedAt,
+  const read = dataOf(env).read;
+  const rows = await read.rows<Record<string, unknown>>`WITH me AS (SELECT ${context.userId}::text AS id)
+    SELECT threads.id, threads.space_id AS "spaceId",
+            threads.name, threads.status, threads.has_other_contributions AS "hasOtherContributions",
+            threads.is_general AS "isGeneral",
+            threads.access_policy_json AS "accessPolicyJson",
+            usage.config_json AS "workConfigJson",
+            threads.metadata_json::text AS "metadataJson",
+            threads.lead_user_id AS "leadUserId",
+            lead.display_name AS "leadDisplayName",
+            creator.email AS "creatorEmail",
+            CASE WHEN threads.lead_user_id = space.owner_user_id THEN 1 ELSE 0 END AS "creatorIsOwner",
+            threads.created_at AS "createdAt", ${read.raw(lastThreadActivitySql("threads"))} AS "updatedAt",
             COALESCE((SELECT text FROM (SELECT m.body AS text,
                        CASE WHEN m.kind = 'ai_answer' THEN COALESCE(m.worker_display_name, 'AI')
                             ELSE COALESCE(u.display_name, 'Member') END AS author,
-                       m.created_at AS sentAt, 0 AS source
+                       m.created_at AS "sentAt", 0 AS source
                   FROM discussion_messages m LEFT JOIN users u ON u.id = m.author_user_id
                  WHERE m.thread_id = threads.id AND m.body IS NOT NULL
                 UNION ALL
@@ -114,11 +115,11 @@ export async function handleListSpaceThreads(
                   JOIN conversations c ON c.id = h.conversation_id
                   LEFT JOIN users u ON h.actor_type = 'user' AND u.id = h.actor_id
                  WHERE c.thread_id = threads.id AND h.text IS NOT NULL
-                   AND h.kind IN ('user_message', 'worker_response')) ORDER BY sentAt DESC, source DESC, text DESC, author DESC LIMIT 1), '') AS brief,
+                   AND h.kind IN ('user_message', 'worker_response')) ORDER BY "sentAt" DESC, source DESC, text DESC, author DESC LIMIT 1), '') AS "brief",
             (SELECT author FROM (SELECT m.body AS text,
                        CASE WHEN m.kind = 'ai_answer' THEN COALESCE(m.worker_display_name, 'AI')
                             ELSE COALESCE(u.display_name, 'Member') END AS author,
-                       m.created_at AS sentAt, 0 AS source
+                       m.created_at AS "sentAt", 0 AS source
                   FROM discussion_messages m LEFT JOIN users u ON u.id = m.author_user_id
                  WHERE m.thread_id = threads.id AND m.body IS NOT NULL
                 UNION ALL
@@ -131,35 +132,32 @@ export async function handleListSpaceThreads(
                   JOIN conversations c ON c.id = h.conversation_id
                   LEFT JOIN users u ON h.actor_type = 'user' AND u.id = h.actor_id
                  WHERE c.thread_id = threads.id AND h.text IS NOT NULL
-                   AND h.kind IN ('user_message', 'worker_response')) ORDER BY sentAt DESC, source DESC, text DESC, author DESC LIMIT 1) AS briefAuthorName,
-            ${activeWorkSql("threads")} AS hasActiveWork,
-            ${unreadSql("threads", "?2", "COALESCE(read_state.read_at, member.created_at)")} AS hasUnread,
+                   AND h.kind IN ('user_message', 'worker_response')) ORDER BY "sentAt" DESC, source DESC, text DESC, author DESC LIMIT 1) AS "briefAuthorName",
+            ${read.raw(activeWorkSql("threads"))} AS "hasActiveWork",
+            ${read.raw(unreadSql("threads", "(SELECT id FROM me)", "COALESCE(read_state.read_at, member.created_at)"))} AS "hasUnread",
             (SELECT up.pinned_at FROM user_pins up
-              WHERE up.user_id = ?2 AND up.kind = 'thread'
-                AND up.target_id = threads.id) AS pinnedAt,
+              WHERE up.user_id = (SELECT id FROM me) AND up.kind = 'thread'
+                AND up.target_id = threads.id) AS "pinnedAt",
             (SELECT up.position FROM user_pins up
-              WHERE up.user_id = ?2 AND up.kind = 'thread'
-                AND up.target_id = threads.id) AS pinPosition
+              WHERE up.user_id = (SELECT id FROM me) AND up.kind = 'thread'
+                AND up.target_id = threads.id) AS "pinPosition"
      FROM threads
      JOIN spaces space ON space.id = threads.space_id
      LEFT JOIN users lead ON lead.id = threads.lead_user_id
      LEFT JOIN users creator ON creator.id = threads.lead_user_id
      LEFT JOIN thread_work_configs usage ON usage.thread_id = threads.id
      LEFT JOIN thread_read_states read_state
-       ON read_state.thread_id = threads.id AND read_state.user_id = ?2
+       ON read_state.thread_id = threads.id AND read_state.user_id = (SELECT id FROM me)
      LEFT JOIN space_memberships member
-       ON member.space_id = threads.space_id AND member.user_id = ?2
-     WHERE threads.space_id = ?1 ORDER BY updatedAt DESC, threads.id DESC`,
-  )
-    .bind(spaceId, context.userId)
-    .all<Record<string, unknown>>();
+       ON member.space_id = threads.space_id AND member.user_id = (SELECT id FROM me)
+     WHERE threads.space_id = ${spaceId} ORDER BY "updatedAt" DESC, threads.id DESC`;
 
   const membership = await selectSpaceMembershipsBySpaceIdUserId<SpaceMembership>(dataOf(env).read, spaceId, context.userId);
   const policy = await loadSpacePermissions(env, context.userId, spaceId);
   const effectiveMembership = membership
     ? { ...membership, permissions: policy.rights }
     : null;
-  const raw = (rows.results ?? []).map((row) => {
+  const raw = rows.map((row) => {
     const leadUserId = String(row.leadUserId ?? "");
     const createdAt = String(row.createdAt ?? "");
     const thread: Thread = {
@@ -219,17 +217,7 @@ export async function handleCreateThread(
     spaceId,
     "manageOwnThreads",
   );
-  const directSpace = await env.SYNTILA_DB.prepare(
-    SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO,
-  )
-    .bind(spaceId)
-    .first<{
-      status: string | null;
-      userLowId: string;
-      userHighId: string;
-      isSupport: number;
-    }>()
-    .catch(() => null);
+  const directSpace = await selectSupportSpacesBySpaceIdJo(dataOf(env).read, spaceId).catch(() => null);
   if (directSpace) {
     const isBlocked = await usersBlocked(dataOf(env).read, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
@@ -431,21 +419,15 @@ export async function handleUpdateThread(
   };
   const savedWorkConfigJson =
     workConfig === undefined
-      ? await env.SYNTILA_DB.prepare(
-          "SELECT config_json FROM thread_work_configs WHERE thread_id = ?1",
-        )
-          .bind(threadId)
-          .first<{ config_json: string }>()
-          .then((row) => row?.config_json)
+      ? await dataOf(env).read
+          .row<{ configJson: string }>`SELECT config_json AS "configJson" FROM thread_work_configs WHERE thread_id = ${threadId}`
+          .then((row) => row?.configJson)
       : JSON.stringify(workConfig);
-  const savedMetadataJson = await env.SYNTILA_DB.prepare(
-    "SELECT metadata_json FROM threads WHERE id = ?1",
-  )
-    .bind(threadId)
-    .first<{ metadata_json: string }>()
+  const savedMetadataJson = await dataOf(env).read
+    .row<{ metadataJson: string }>`SELECT metadata_json::text AS "metadataJson" FROM threads WHERE id = ${threadId}`
     .then((row) => {
       const current = parseJson<Record<string, unknown>>(
-        row?.metadata_json,
+        row?.metadataJson,
         {},
       );
       return JSON.stringify(mergeMetadata(current, metadataPatch ?? {}));
@@ -608,25 +590,19 @@ export async function handleListDiscussionMessages(
     }
   }
   const forward = after !== null;
-  const comparison = forward ? ">" : "<";
   const order = forward ? "ASC" : "DESC";
-  const statement = env.SYNTILA_DB.prepare(
-    `SELECT dm.id, dm.thread_id AS threadId, dm.author_user_id AS authorUserId,
-            COALESCE(u.display_name, 'Member') AS authorName,
-            dm.body, dm.attachments_json AS attachmentsJson, dm.references_json AS referencesJson, dm.reply_to_json AS replyToJson, dm.edited_at AS editedAt, dm.created_at AS createdAt,
-            dm.event_type AS eventType, dm.kind, dm.work_request_id AS workRequestId, dm.worker_display_name AS workerDisplayName
+  const read = dataOf(env).read;
+  const results = await read.rows<Record<string, unknown>>`SELECT dm.id, dm.thread_id AS "threadId", dm.author_user_id AS "authorUserId",
+            COALESCE(u.display_name, 'Member') AS "authorName",
+            dm.body, dm.attachments_json AS "attachmentsJson", dm.references_json AS "referencesJson", dm.reply_to_json AS "replyToJson", dm.edited_at AS "editedAt", dm.created_at AS "createdAt",
+            dm.event_type AS "eventType", dm.kind, dm.work_request_id AS "workRequestId", dm.worker_display_name AS "workerDisplayName"
      FROM discussion_messages dm
      LEFT JOIN users u ON u.id = dm.author_user_id
-     WHERE dm.thread_id = ?1
-       ${cursor ? `AND (dm.created_at ${comparison} ?2 OR (dm.created_at = ?2 AND dm.id ${comparison} ?3))` : ""}
-     ORDER BY dm.created_at ${order}, dm.id ${order} LIMIT ${cursor ? "?4" : "?2"}`,
-  );
-  const rows = await (
-    cursor
-      ? statement.bind(threadId, cursor.createdAt, cursor.id, limit + 1)
-      : statement.bind(threadId, limit + 1)
-  ).all<Record<string, unknown>>();
-  const results = rows.results ?? [];
+     WHERE dm.thread_id = ${threadId}
+       AND (${cursor?.createdAt ?? null}::timestamptz IS NULL
+            OR (${forward} AND (dm.created_at > ${cursor?.createdAt ?? null}::timestamptz OR (dm.created_at = ${cursor?.createdAt ?? null}::timestamptz AND dm.id > ${cursor?.id ?? null})))
+            OR (NOT ${forward} AND (dm.created_at < ${cursor?.createdAt ?? null}::timestamptz OR (dm.created_at = ${cursor?.createdAt ?? null}::timestamptz AND dm.id < ${cursor?.id ?? null}))))
+     ORDER BY dm.created_at ${read.raw(order)}, dm.id ${read.raw(order)} LIMIT ${limit + 1}`;
   const more = results.length > limit;
   const selected = results.slice(0, limit);
   const encode = (row: Record<string, unknown>) =>
@@ -669,17 +645,7 @@ export async function handleCreateDiscussionMessage(
     "discuss",
     accessContext,
   );
-  const directSpace = await env.SYNTILA_DB.prepare(
-    SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO,
-  )
-    .bind(spaceId)
-    .first<{
-      status: string | null;
-      userLowId: string;
-      userHighId: string;
-      isSupport: number;
-    }>()
-    .catch(() => null);
+  const directSpace = await selectSupportSpacesBySpaceIdJo(dataOf(env).read, spaceId).catch(() => null);
   if (directSpace) {
     const isBlocked = await usersBlocked(dataOf(env).read, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {

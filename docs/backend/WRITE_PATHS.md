@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 183 write paths, 82 tables; 1 numbering, 38 unguarded read-write, 4 adapter-only, 149 in data-layer transactions.
+Totals: 184 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 2 adapter-only, 149 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -43,8 +43,9 @@ Totals: 183 write paths, 82 tables; 1 numbering, 38 unguarded read-write, 4 adap
 | `domain/routes/http-security.ts` | `recordAudit` | INSERT space_audit_log, INSERT workspace_audit_log | data |
 | `domain/routes/http-security.ts` | `resolveWorkflowInstanceId` | UPDATE runs | data |
 | `domain/routes/mutation-idempotency.ts` | `write` | INSERT mutation_receipts | data |
-| `domain/routes/route-idempotency.ts` | `claim` | DELETE mutation_receipts, INSERT mutation_receipts | read-write, lock |
-| `domain/routes/route-idempotency.ts` | `release` | DELETE mutation_receipts, UPDATE mutation_receipts | lock |
+| `domain/routes/route-idempotency.ts` | `claim` | INSERT mutation_receipts | read-write, guarded |
+| `domain/routes/route-idempotency.ts` | `deletePendingReceipt` | DELETE mutation_receipts |  |
+| `domain/routes/route-idempotency.ts` | `release` | UPDATE mutation_receipts |  |
 | `internal.ts` | `handleAdmin` | INSERT account_plans, INSERT users, UPDATE users | read-write, guarded, data |
 | `internal.ts` | `handleInternal` | UPDATE users | data |
 
@@ -199,7 +200,7 @@ Totals: 183 write paths, 82 tables; 1 numbering, 38 unguarded read-write, 4 adap
 | `domain/routes/worker-plugins.ts` | `handlePluginLibrary` | INSERT account_worker_plugin_versions, INSERT account_worker_plugins, INSERT worker_catalog, UPDATE account_worker_plugins, UPDATE worker_catalog | read-write, data |
 | `domain/routes/worker-plugins.ts` | `handleWorkspacePluginPin` | DELETE workspace_worker_plugin_enablements, INSERT workspace_worker_plugin_enablements | data |
 | `domain/routes/worker-plugins.ts` | `removeFromLibrary` | DELETE account_worker_plugins, DELETE workspace_worker_inventory, UPDATE worker_catalog | read-write, data |
-| `domain/routes/workflow-configurations.ts` | `reset` | INSERT space_workflow_defaults, INSERT user_workflow_defaults | read-write, guarded, data |
+| `domain/routes/workflow-configurations.ts` | `reset` | DELETE space_workflow_configurations, DELETE user_workflow_configurations, INSERT space_workflow_configurations, INSERT space_workflow_defaults, INSERT user_workflow_configurations, INSERT user_workflow_defaults | read-write, data |
 | `domain/routes/workflow-default.ts` | `handleWorkflowDefault` | INSERT space_workflow_defaults, INSERT user_workflow_defaults | read-write, guarded, data |
 | `domain/routes/workflow-execution-configuration.ts` | `ensureOwnChatWorkspaceGrant` | INSERT space_audit_log, INSERT workspace_space_grants | read-write, data |
 | `domain/routes/workflow-workspace.ts` | `auditWorkspaceAuthorized` | INSERT space_audit_log | data |

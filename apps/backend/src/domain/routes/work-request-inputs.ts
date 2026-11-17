@@ -60,26 +60,21 @@ export const WORK_INPUTS_EVENT_TYPE = "work-inputs";
 /** The request fails when no input makes progress for this long. */
 export const INPUT_DELIVERY_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
-const COLUMNS = `id AS fileId, work_request_id AS workRequestId,
-  thread_id AS threadId, workspace_id AS workspaceId, user_id AS userId,
-  position, name, media_type AS mediaType, size_bytes AS sizeBytes,
-  content_digest AS contentDigest, preview_text AS previewText,
-  preview_image AS previewImage, state, upload_attempts AS uploadAttempts,
-  delivery_attempts AS deliveryAttempts, error_message AS errorMessage,
-  updated_at AS updatedAt`;
+const COLUMNS = `id AS "fileId", work_request_id AS "workRequestId",
+  thread_id AS "threadId", workspace_id AS "workspaceId", user_id AS "userId",
+  position, name, media_type AS "mediaType", size_bytes AS "sizeBytes",
+  content_digest AS "contentDigest", preview_text AS "previewText",
+  preview_image AS "previewImage", state, upload_attempts AS "uploadAttempts",
+  delivery_attempts AS "deliveryAttempts", error_message AS "errorMessage",
+  updated_at AS "updatedAt"`;
 
 /** Rows for one request in attachment order. */
 export async function loadWorkRequestInputs(
   db: D1Database,
   workRequestId: string,
 ): Promise<WorkRequestInputRow[]> {
-  const rows = await db
-    .prepare(
-      `SELECT ${COLUMNS} FROM work_request_inputs WHERE work_request_id = ?1 ORDER BY position`,
-    )
-    .bind(workRequestId)
-    .all<WorkRequestInputRow>();
-  return rows.results ?? [];
+  const q = queryOf(db);
+  return q.rows<WorkRequestInputRow>`SELECT ${q.raw(COLUMNS)} FROM work_request_inputs WHERE work_request_id = ${workRequestId} ORDER BY position`;
 }
 
 /** Bounded, path-free progress for clients. */
@@ -129,10 +124,8 @@ async function inputRow(
   fileId: string,
 ): Promise<WorkRequestInputRow | null> {
   if (!isWorkRequestFileId(fileId)) return null;
-  return db
-    .prepare(`SELECT ${COLUMNS} FROM work_request_inputs WHERE id = ?1`)
-    .bind(fileId)
-    .first<WorkRequestInputRow>();
+  const q = queryOf(db);
+  return q.row<WorkRequestInputRow>`SELECT ${q.raw(COLUMNS)} FROM work_request_inputs WHERE id = ${fileId}`;
 }
 
 async function requestIsOpen(
@@ -455,15 +448,11 @@ export async function loadInputsForRequests(
 ): Promise<Map<string, WorkRequestInputRow[]>> {
   const byRequest = new Map<string, WorkRequestInputRow[]>();
   if (workRequestIds.length === 0) return byRequest;
-  const rows = await db
-    .prepare(
-      `SELECT ${COLUMNS} FROM work_request_inputs
-        WHERE work_request_id IN (${workRequestIds.map((_, i) => `?${i + 1}`).join(", ")})
-        ORDER BY position`,
-    )
-    .bind(...workRequestIds)
-    .all<WorkRequestInputRow>();
-  for (const row of rows.results ?? []) {
+  const q = queryOf(db);
+  const rows = await q.rows<WorkRequestInputRow>`SELECT ${q.raw(COLUMNS)} FROM work_request_inputs
+        WHERE work_request_id IN ${q.list(workRequestIds)}
+        ORDER BY position`;
+  for (const row of rows) {
     const values = byRequest.get(row.workRequestId) ?? [];
     values.push(row);
     byRequest.set(row.workRequestId, values);
