@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   ASSIGNMENT_STARTUP_STAGE_RANK,
   ASSIGNMENT_STARTUP_STAGES,
+  DIAGNOSTIC_PROBE_ECHO_MAX_CHARS,
   parseWorkspaceRuntimeMessage,
+  SERVICE_PROBE_PAYLOAD_CAPABILITY,
   WORKSPACE_RUNTIME_PROTOCOL_NAME,
   WORKSPACE_RUNTIME_PROTOCOL_VERSION,
 } from "../src/index.js";
@@ -607,5 +609,56 @@ describe("Workspace Runtime protocol", () => {
         },
       }),
     ).toThrow(/canonical safe message/);
+  });
+
+  it("validates optional base64 echo on diagnostic.probe and diagnostic.probe.ack", () => {
+    expect(SERVICE_PROBE_PAYLOAD_CAPABILITY).toBe("workspace.probe_payload.v1");
+    expect(DIAGNOSTIC_PROBE_ECHO_MAX_CHARS).toBe(65_536);
+
+    const parseProbe = (payload: Record<string, unknown>) =>
+      parseWorkspaceRuntimeMessage({
+        ...base,
+        type: "diagnostic.probe",
+        payload: {
+          probeId: "probe-1",
+          sentAt: "2026-10-12T12:00:00.000Z",
+          ...payload,
+        },
+      });
+    const parseAck = (payload: Record<string, unknown>) =>
+      parseWorkspaceRuntimeMessage({
+        ...base,
+        type: "diagnostic.probe.ack",
+        payload: {
+          probeId: "probe-1",
+          receivedAt: "2026-10-12T12:00:00.000Z",
+          ackedAt: "2026-10-12T12:00:00.001Z",
+          ...payload,
+        },
+      });
+
+    expect(parseProbe({}).type).toBe("diagnostic.probe");
+    expect(parseAck({}).type).toBe("diagnostic.probe.ack");
+
+    expect(parseProbe({ echo: "YWJjZA==" }).type).toBe("diagnostic.probe");
+    expect(parseAck({ echo: "YWJjZA==" }).type).toBe("diagnostic.probe.ack");
+
+    const maxEcho = "A".repeat(DIAGNOSTIC_PROBE_ECHO_MAX_CHARS);
+    expect(parseProbe({ echo: maxEcho }).type).toBe("diagnostic.probe");
+    expect(parseAck({ echo: maxEcho }).type).toBe("diagnostic.probe.ack");
+
+    for (const invalidEcho of [
+      "",
+      "not base64!",
+      "YWJj\n",
+      "====",
+      "A".repeat(DIAGNOSTIC_PROBE_ECHO_MAX_CHARS + 1),
+      123,
+    ]) {
+      expect(() => parseProbe({ echo: invalidEcho })).toThrow();
+      expect(() => parseAck({ echo: invalidEcho })).toThrow();
+    }
+    expect(() => parseProbe({ unknownField: "x" })).toThrow();
+    expect(() => parseAck({ unknownField: "x" })).toThrow();
   });
 });

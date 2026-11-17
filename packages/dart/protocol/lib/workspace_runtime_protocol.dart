@@ -5,6 +5,9 @@ import 'syntila_protocol.dart';
 const workspaceRuntimeProtocolName = 'syntila.workspace-runtime-protocol';
 const workspaceRuntimeProtocolVersion = '5.1';
 const workspaceRuntimeProtocolMaxMessageSizeBytes = 4194304;
+const workspaceProbePayloadCapability = 'workspace.probe_payload.v1';
+const diagnosticProbeEchoMaxChars = 65536;
+final _base64AsciiPattern = RegExp(r'^[A-Za-z0-9+/]+=*$');
 
 const workspaceRuntimeMessageTypes = <String>{
   'workspace.hello',
@@ -92,6 +95,19 @@ class WorkspaceRuntimeMessage {
         'idempotencyKey',
       ]) {
         _required(map, field);
+      }
+    }
+    if (type == 'diagnostic.probe' || type == 'diagnostic.probe.ack') {
+      final payloadMap = Map<String, Object?>.from(map['payload'] as Map);
+      final echo = payloadMap['echo'];
+      if (echo != null &&
+          (echo is! String ||
+              echo.isEmpty ||
+              echo.length > diagnosticProbeEchoMaxChars ||
+              !_base64AsciiPattern.hasMatch(echo))) {
+        throw const ProtocolException(
+          'diagnostic probe echo must be base64 of at most 65536 characters',
+        );
       }
     }
     return WorkspaceRuntimeMessage._(map);

@@ -136,6 +136,9 @@ const mcpInventoryCapability = 'workspace.mcp_inventory.v1';
 /// Advertised by a Service that handles `mcp.action.request`.
 const mcpActionCapability = 'workspace.mcp_action.v1';
 
+/// Advertised by a Service that echoes `echo` in `diagnostic.probe.ack`.
+const probePayloadCapability = workspaceProbePayloadCapability;
+
 /// Capability Cloud announces in `hello.ack` when it accepts
 /// `assignment.startup` progress for accepted, not-yet-running assignments.
 const assignmentStartupCapability = 'assignment.startup.v1';
@@ -1374,6 +1377,7 @@ class WorkspaceCloudConnection {
         mcpToolCallStatusCapability,
         mcpInventoryCapability,
         mcpActionCapability,
+        probePayloadCapability,
       ],
       'maxConcurrentWorkers': 1,
     };
@@ -2209,12 +2213,17 @@ class WorkspaceCloudConnection {
       if (probeId is! String || probeId.isEmpty || probeId.length > 128) {
         return;
       }
+      final echo = payload['echo'];
       final context = _traceContext();
       socket.send(jsonEncode({
         ..._envelope('diagnostic.probe.ack', {
           'probeId': probeId,
           'receivedAt': receivedAt.toIso8601String(),
           'ackedAt': DateTime.now().toUtc().toIso8601String(),
+          if (echo is String &&
+              echo.isNotEmpty &&
+              echo.length <= diagnosticProbeEchoMaxChars)
+            'echo': echo,
           for (final key in const [
             'traceEpochId',
             'transport',

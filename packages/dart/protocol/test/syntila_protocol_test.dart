@@ -91,4 +91,69 @@ void main() {
     expect(isReplayableRealtimeEvent(parsed.toJson()), isTrue);
     expect(ephemeralRealtimeEventTypes, contains('assignment.activity'));
   });
+
+  test('validates optional base64 echo on diagnostic.probe messages', () {
+    expect(workspaceProbePayloadCapability, 'workspace.probe_payload.v1');
+    expect(diagnosticProbeEchoMaxChars, 65536);
+
+    Map<String, Object?> envelope(String type, Map<String, Object?> payload) => {
+          'protocol': workspaceRuntimeProtocolName,
+          'protocolVersion': workspaceRuntimeProtocolVersion,
+          'messageId': 'msg-1',
+          'timestamp': '2026-10-12T12:00:00.000Z',
+          'type': type,
+          'payload': payload,
+        };
+
+    expect(
+      WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe', {
+        'probeId': 'p1',
+        'sentAt': '2026-10-12T12:00:00.000Z',
+      })).type,
+      'diagnostic.probe',
+    );
+    expect(
+      WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe', {
+        'probeId': 'p1',
+        'sentAt': '2026-10-12T12:00:00.000Z',
+        'echo': 'YWJjZA==',
+      })).payload['echo'],
+      'YWJjZA==',
+    );
+    expect(
+      WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe.ack', {
+        'probeId': 'p1',
+        'receivedAt': '2026-10-12T12:00:00.000Z',
+        'ackedAt': '2026-10-12T12:00:00.001Z',
+        'echo': 'A' * diagnosticProbeEchoMaxChars,
+      })).type,
+      'diagnostic.probe.ack',
+    );
+
+    for (final invalidEcho in <Object>[
+      '',
+      'not base64!',
+      '====',
+      'A' * (diagnosticProbeEchoMaxChars + 1),
+      42,
+    ]) {
+      expect(
+        () => WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe', {
+          'probeId': 'p1',
+          'sentAt': '2026-10-12T12:00:00.000Z',
+          'echo': invalidEcho,
+        })),
+        throwsA(isA<ProtocolException>()),
+      );
+      expect(
+        () => WorkspaceRuntimeMessage.parse(envelope('diagnostic.probe.ack', {
+          'probeId': 'p1',
+          'receivedAt': '2026-10-12T12:00:00.000Z',
+          'ackedAt': '2026-10-12T12:00:00.001Z',
+          'echo': invalidEcho,
+        })),
+        throwsA(isA<ProtocolException>()),
+      );
+    }
+  });
 }

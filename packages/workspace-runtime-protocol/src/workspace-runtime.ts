@@ -106,6 +106,15 @@ export const SERVICE_MCP_INVENTORY_CAPABILITY = "workspace.mcp_inventory.v1";
 export const SERVICE_MCP_ACTION_CAPABILITY = "workspace.mcp_action.v1";
 
 /**
+ * Capability a Service advertises in `workspace.hello` when it echoes `echo`
+ * in `diagnostic.probe` -> `diagnostic.probe.ack`.
+ */
+export const SERVICE_PROBE_PAYLOAD_CAPABILITY = "workspace.probe_payload.v1";
+
+/** Maximum characters of base64 payload carried in a delivery probe `echo`. */
+export const DIAGNOSTIC_PROBE_ECHO_MAX_CHARS = 65_536;
+
+/**
  * Capability Cloud announces in `hello.ack` when `worker.inventory` may carry
  * `allowedFolders`. Older Cloud rejects the field, so Services wait for it.
  */
@@ -723,14 +732,22 @@ export const workspaceRuntimeEnvelopeSchema = z
       message.type === "diagnostic.probe.ack"
     ) {
       const probeId = nonEmptyString.max(128).regex(/^[A-Za-z0-9._:-]+$/);
+      const echo = z
+        .string()
+        .min(1)
+        .max(DIAGNOSTIC_PROBE_ECHO_MAX_CHARS)
+        .regex(/^[A-Za-z0-9+/]+=*$/);
       const schema =
         message.type === "diagnostic.probe"
-          ? z.object({ probeId, sentAt: timestamp }).strict()
+          ? z
+              .object({ probeId, sentAt: timestamp, echo: echo.optional() })
+              .strict()
           : z
               .object({
                 probeId,
                 receivedAt: timestamp,
                 ackedAt: timestamp,
+                echo: echo.optional(),
                 transport: probeId.optional(),
                 syncState: probeId.optional(),
                 localQueueLength: z

@@ -1461,7 +1461,55 @@ void main() {
     expect(payload['syncState'], 'ready');
     expect(payload['localQueueLength'], 3);
     expect(payload['activeAssignments'], 0);
+    expect(payload.containsKey('echo'), isFalse);
     expect(connection.activeAssignmentCount, 0);
+    await connection.close();
+  });
+
+  test('echoes base64 payload in diagnostic.probe.ack and advertises capability',
+      () async {
+    final socket = FakeSocket();
+    final connection = WorkspaceCloudConnection(
+      uri: Uri.parse(
+          'wss://cloud.test/api/workspace-gateway/connect?workspaceRuntimeId=workspace-1'),
+      workspaceRuntimeId: 'workspace-1',
+      workspaceId: 'workspace-1',
+      factory: (_) async => socket,
+    );
+    await connection.connect();
+    final hello =
+        jsonDecode(socket.sent.single as String) as Map<String, dynamic>;
+    final customCapabilities = ((hello['payload']
+            as Map<String, dynamic>)['capabilities']
+        as Map<String, dynamic>)['customCapabilities'] as List<dynamic>;
+    expect(customCapabilities, contains('workspace.probe_payload.v1'));
+    await completeHandshake(connection, socket);
+
+    socket.controller.add(jsonEncode({
+      'protocol': 'syntila.workspace-runtime-protocol',
+      'protocolVersion': workspaceRuntimeProtocolVersion,
+      'messageId': 'cloud-probe-echo-1',
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'type': 'diagnostic.probe',
+      'workspaceRuntimeId': 'workspace-1',
+      'executionWorkspaceId': 'workspace-1',
+      'payload': {
+        'probeId': 'probe-echo-1',
+        'sentAt': DateTime.now().toUtc().toIso8601String(),
+        'echo': 'c3ludGlsYS1wcm9iZQ==',
+      },
+    }));
+    await waitFor(() => socket.sent.any((message) =>
+        (jsonDecode(message as String) as Map<String, dynamic>)['type'] ==
+        'diagnostic.probe.ack'));
+
+    final ack = socket.sent
+        .map((message) => jsonDecode(message as String) as Map<String, dynamic>)
+        .firstWhere((message) => message['type'] == 'diagnostic.probe.ack');
+    final payload = ack['payload'] as Map<String, dynamic>;
+    expect(ack['correlationId'], 'cloud-probe-echo-1');
+    expect(payload['probeId'], 'probe-echo-1');
+    expect(payload['echo'], 'c3ludGlsYS1wcm9iZQ==');
     await connection.close();
   });
 
