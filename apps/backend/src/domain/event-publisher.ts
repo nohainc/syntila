@@ -179,8 +179,10 @@ export class CloudEventPublisher implements EventPublisher {
 
     const db = this.env.SYNTILA_DB;
     // The caller's writes, the cursor bump and the event row commit together.
+    // The stream's cursor row is locked first, then the caller's rows: every
+    // writer of one stream takes locks in that order, so a Space deletion and
+    // the posts racing it cannot deadlock on the cursor and the Space row.
     const inserted = await dataOf(this.env).tx("event.persist", async (tx) => {
-      await input.mutate?.(tx);
       await tx.run`INSERT INTO realtime_event_cursors (stream_kind, stream_id, workspace_id, next_sequence)
            VALUES (${stream.kind}, ${stream.id}, ${input.workspaceId ?? null}, COALESCE(
              (SELECT MAX(sequence) + 1 FROM realtime_events
@@ -191,6 +193,7 @@ export class CloudEventPublisher implements EventPublisher {
            AND NOT EXISTS (SELECT 1 FROM realtime_events
              WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
                AND (event_id = ${input.eventId} OR idempotency_key = ${input.idempotencyKey ?? null}))`;
+      await input.mutate?.(tx);
       return tx.row<Record<string, unknown>>`INSERT INTO realtime_events
          (event_id, workspace_id, space_id, run_id, task_id, attempt_id,
           assignment_id, workspace_runtime_id, sequence, event_type, payload_json,
