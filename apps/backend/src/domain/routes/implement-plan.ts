@@ -248,7 +248,7 @@ export async function handleApprovePlan(
   }
 
   // An empty body takes the defaults; a malformed one is a 400.
-  const body = (await readBody(request, ApprovePlanSchema)) as ApprovePlanBody;
+  const body = (await readBody(request, ApprovePlanSchema)) as unknown as ApprovePlanBody;
 
   const verificationMode: VerificationMode = body.verificationMode ?? "none";
   if (body.customPhases !== undefined) {

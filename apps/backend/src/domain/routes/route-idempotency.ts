@@ -45,11 +45,11 @@ export async function withRouteIdempotency(
   if (!KEY.test(key)) throw new HttpError(400, "Invalid Idempotency-Key");
 
   const security = env as unknown as SecurityEnv;
-  const { userId } = await securityContext(request, security, ctx);
+  const { userId } = await securityContext(request as unknown as Parameters<typeof securityContext>[0], security, ctx);
   const db = security.SYNTILA_DB;
   const pathname = new URL(request.url).pathname;
   const scope = `route:${request.method} ${pathname}`;
-  const body = await readBodyText(request.clone());
+  const body = await readBodyText(request.clone() as unknown as Parameters<typeof readBodyText>[0]);
   const hash = await sha256(body);
 
   const claim = () =>

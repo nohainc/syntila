@@ -58,9 +58,9 @@ export function parseWorkflowExecutionSelection(
     )
   )
     throw new HttpError(400, "executionSelection contains an unknown field");
-  const stringOrNull = (key: string) => {
+  const stringOrNull = (key: string): string | null | undefined => {
     const selected = object[key];
-    if (selected === undefined || selected === null) return selected;
+    if (selected === undefined || selected === null) return selected as null | undefined;
     if (typeof selected !== "string" || selected.trim().length === 0)
       throw new HttpError(400, `executionSelection.${key} is invalid`);
     if (selected.length > 200)

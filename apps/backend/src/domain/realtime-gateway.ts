@@ -13,7 +13,6 @@ import { realtimeEventFromRow } from "./event-publisher.js";
 import {
   identityService,
   type AuthenticatedIdentity,
-  type BetterAuthRuntimeEnv,
 } from "./auth/index.js";
 import {
   BoundedRealtimeQueue,
@@ -42,7 +41,7 @@ export type RealtimeClientMessage =
   | { type: "unsubscribe"; scope: RealtimeScope }
   | { type: "ping" };
 
-export interface RealtimeGatewayEnv extends BetterAuthRuntimeEnv {
+export interface RealtimeGatewayEnv {
   readonly SYNTILA_DB: Db;
 }
 

@@ -424,7 +424,7 @@ export function pluginExecutionOptions(
         id: m.id,
         name: m.name,
         status: m.status,
-        selectionMode: "separate",
+        selectionMode: "separate" as const,
         efforts: [],
         defaultEffort: null,
       })),

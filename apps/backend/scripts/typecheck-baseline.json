@@ -1,17 +1,1 @@
-{
-  "src/domain/realtime-gateway.ts": {
-    "TS2305": 1
-  },
-  "src/domain/routes/implement-plan.ts": {
-    "TS2352": 1
-  },
-  "src/domain/routes/route-idempotency.ts": {
-    "TS2345": 1
-  },
-  "src/domain/routes/workflow-execution-configuration.ts": {
-    "TS2322": 1
-  },
-  "src/domain/worker-execution-options.ts": {
-    "TS2322": 1
-  }
-}
+{}
