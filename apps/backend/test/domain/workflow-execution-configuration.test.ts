@@ -91,6 +91,7 @@ function fixture(
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const text = strings.join("?");
       if (text.includes("owner_user_id")) return [{ ownerUserId: "user" }]; // spaceOwnerOf
+      if (text.includes("settings_json")) return [{ role: "owner", settingsJson: "{}", kind: "group", isSupport: false }]; // loadSpacePermissions
       if (!text.includes("UNION ALL")) return []; // workflow defaults, membership: none
       expect(values[0]).toBe("user");
       expect(values[1]).toBe(workspaceId);

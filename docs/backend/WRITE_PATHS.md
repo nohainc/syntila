@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 178 write paths, 82 tables; 1 numbering, 46 unguarded read-write, 110 adapter-only, 51 in data-layer transactions.
+Totals: 178 write paths, 82 tables; 1 numbering, 46 unguarded read-write, 109 adapter-only, 52 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -116,7 +116,7 @@ Totals: 178 write paths, 82 tables; 1 numbering, 46 unguarded read-write, 110 ad
 | `domain/routes/workspaces-grants.ts` | `handleRevokeWorkspaceSpaceGrant` | UPDATE workspace_space_grants | guarded, lock |
 | `domain/routes/workspaces-grants.ts` | `handleUpdateWorkspaceSpaceGrant` | UPDATE workspace_space_grants | guarded, lock |
 | `domain/routes/workspaces-management.ts` | `handleRevokeWorkspace` | UPDATE execution_workspaces, UPDATE workspace_installations, UPDATE workspace_runtime_identities, UPDATE workspace_space_grants | read-write, batch, lock |
-| `domain/routes/workspaces-management.ts` | `handleUpdateWorkspace` | UPDATE execution_workspaces | guarded, lock |
+| `domain/routes/workspaces-management.ts` | `handleUpdateWorkspace` | UPDATE execution_workspaces | guarded, data |
 | `domain/routes/workspaces-registration.ts` | `handleDisconnectDesktopWorkspace` | INSERT workspace_audit_log, UPDATE execution_workspaces, UPDATE workspace_runtime_identities | read-write, batch, lock |
 | `domain/routes/workspaces-registration.ts` | `handleReconcileWorkspaceOwnership` | INSERT workspace_audit_log, INSERT workspace_installations | read-write, batch, lock |
 | `domain/routes/workspaces-registration.ts` | `handleRegisterWorkspaceFromDesktop` | INSERT execution_workspaces, INSERT workspace_audit_log, INSERT workspace_installations, INSERT workspace_runtime_facts, INSERT workspace_runtime_identities, UPDATE execution_workspaces, UPDATE workspace_runtime_identities | read-write, batch, data |

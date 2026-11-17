@@ -1,3 +1,4 @@
+import { dataOf } from "../../platform/data.js";
 import { UpdateWorkspaceSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { paidOwnerSql } from "../account-plan.js";
@@ -183,7 +184,7 @@ export async function handleUpdateWorkspace(
   if (
     hasName &&
     (await workspaceNameTaken(
-      env.SYNTILA_DB,
+      dataOf(env).read,
       context.userId,
       name,
       workspaceId,

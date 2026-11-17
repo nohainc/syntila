@@ -1,3 +1,4 @@
+import type { Query } from "../../platform/data.js";
 export function hasControlCharacters(value: string): boolean {
   return Array.from(value).some((character) => {
     const code = character.charCodeAt(0);
@@ -10,19 +11,15 @@ export function hasControlCharacters(value: string): boolean {
  * Workspaces, ignoring case, so the owner can tell them apart.
  */
 export async function workspaceNameTaken(
-  db: Pick<D1Database, "prepare">,
+  q: Query,
   ownerUserId: string,
   name: string,
   exceptWorkspaceId: string | null,
 ): Promise<boolean> {
-  const row = await db
-    .prepare(
-      `SELECT 1 AS taken FROM execution_workspaces
-        WHERE owner_user_id = ?1 AND status <> 'revoked'
-          AND lower(name) = lower(?2) AND id <> ?3
-        LIMIT 1`,
-    )
-    .bind(ownerUserId, name, exceptWorkspaceId ?? "")
-    .first<{ taken: number }>();
+  const row = await q.row<{ taken: number }>`
+    SELECT 1 AS taken FROM execution_workspaces
+     WHERE owner_user_id = ${ownerUserId} AND status <> 'revoked'
+       AND lower(name) = lower(${name}) AND id <> ${exceptWorkspaceId ?? ""}
+     LIMIT 1`;
   return row != null;
 }

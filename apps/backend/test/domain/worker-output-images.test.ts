@@ -1,4 +1,5 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
+import { Data } from "../../src/platform/data.js";
 import { workerOutputImages } from "../../src/domain/routes/worker-output-images.js";
 
 const fileId = "wrf-12345678-1234-1234-1234-123456789abc";
@@ -87,18 +88,12 @@ describe("generated output upload", () => {
       .mockResolvedValue({ digest: "sha256:test", sizeBytes: 4 });
     let status = "running";
     const env = {
-      SYNTILA_DB: {
-        prepare: () => ({
-          bind: () => ({
-            first: async () => ({
-              threadId: "thread-1",
-              spaceId: "space-1",
-              ownerUserId: "space-owner",
-              status,
-            }),
-          }),
-        }),
-      },
+      SYNTILA_DATA: new Data((async () => [{
+        threadId: "thread-1",
+        spaceId: "space-1",
+        ownerUserId: "space-owner",
+        status,
+      }]) as never),
     } as never;
     const request = () =>
       new Request(

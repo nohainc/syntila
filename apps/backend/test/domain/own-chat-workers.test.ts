@@ -27,6 +27,7 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) => {
       const text = strings.join("?");
       if (text.includes("owner_user_id")) return [{ ownerUserId: "owner" }]; // spaceOwnerOf
+      if (text.includes("settings_json")) return [{ role: "collaborator", settingsJson: JSON.stringify(settings), kind, isSupport: false }]; // loadSpacePermissions
       if (text.includes("FROM space_memberships")) return [{ role: "collaborator" }]; // spaceMembership
       if (!text.includes("UNION ALL")) return [];
       return [];

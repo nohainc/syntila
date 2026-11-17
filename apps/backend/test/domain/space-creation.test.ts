@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
+import { Data } from "../../src/platform/data.js";
 import {
   handleCreateSpace,
   handleCreateThread,
@@ -174,6 +175,7 @@ describe("Space creation", () => {
       {
         SYNTILA_ENVIRONMENT: "development",
         SYNTILA_DB: db,
+        SYNTILA_DATA: new Data((async () => [{ role: "owner", settingsJson: "{}", kind: "group", isSupport: false }]) as never),
         TEST_AUTHENTICATION: async () => ({
           userId: "user-1",
           user: {
