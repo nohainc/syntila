@@ -1,5 +1,5 @@
-import { listAware } from "./helpers/fake-sql";
-import { Data } from "../../src/platform/data.js";
+import { pgD1 } from "./helpers/pg-d1";
+import { T0, user, workspace } from "./helpers/seed";
 import { describe, expect, it } from "./helpers/vitest-compat";
 
 import {
@@ -92,30 +92,40 @@ it("validates selected effort and models against the selected Worker Profile", a
   const { validateWorkflowWorkerEligibility } =
     await import("../../src/domain/routes/thread-policy.js");
   const { BUILTIN_WORKFLOWS } = await import("@syntila/core");
-  const row = {
-    workspaceId: "WS",
-    workerTypeId: "generic-worker",
-    profileDefinitionId: "generic-profile",
-    profileReleaseVersion: 1,
-    activationState: "enabled",
-    readinessState: "ready",
-    executionProfileJson: JSON.stringify({
-      session: { supported: true },
-      model: {
-        supported: true,
-        unknownModelPolicy: "profile_allowlist",
-        allowlist: ["a", "b"],
-        supportedReasoningEfforts: ["brief", "deep"],
-        catalog: [
-          { id: "a", name: "A", supportedReasoningEfforts: ["deep"] },
-          { id: "b", name: "B", supportedReasoningEfforts: [] },
-        ],
-      },
-    }),
-  };
-  const env = {
-    SYNTILA_DATA: new Data(Object.assign(listAware(async () => [row]), { unsafe: (text: string) => ({ raw: text }) }) as any),
-  } as unknown as import("../../src/domain/routes/http-security.js").SecurityEnv;
+  const executionProfile = JSON.stringify({
+    schemaVersion: 1,
+    session: { supported: true },
+    model: {
+      supported: true,
+      unknownModelPolicy: "profile_allowlist",
+      allowlist: ["a", "b"],
+      supportedReasoningEfforts: ["brief", "deep"],
+      catalog: [
+        { id: "a", name: "A", supportedReasoningEfforts: ["deep"] },
+        { id: "b", name: "B", supportedReasoningEfforts: [] },
+      ],
+    },
+  });
+  const { db, sqlite } = pgD1();
+  sqlite.exec(
+    user("owner") +
+      workspace("WS", "owner") +
+      `INSERT INTO worker_catalog (worker_type_id, display_name, created_at, updated_at)
+         VALUES ('generic-worker', 'Generic', '${T0}', '${T0}');
+       INSERT INTO workspace_worker_inventory (
+         worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
+         local_concurrency_limit, revision, profile_definition_id, profile_release_version,
+         created_at, updated_at, last_seen_at
+       ) VALUES ('worker', 'WS', 'owner', 'generic-worker', 'enabled', 'ready', 1, 1,
+         'generic-profile', 1, '${T0}', '${T0}', '${T0}');`,
+  );
+  sqlite
+    .prepare(
+      `INSERT INTO worker_profiles (worker_type_id, schema_version, profile_json, revision, digest, updated_at)
+       VALUES ('generic-worker', 1, ?, 1, ?, '${T0}')`,
+    )
+    .run(executionProfile, "a".repeat(64));
+  const env = { SYNTILA_DB: db } as unknown as import("../../src/domain/routes/http-security.js").SecurityEnv;
   for (const [model, effort, invalid] of [
     ["a", "deep", false],
     ["a", "brief", true],
@@ -158,10 +168,10 @@ it("validates selected effort and models against the selected Worker Profile", a
       catalogRevision: revision,
     },
   };
-  row.executionProfileJson = row.executionProfileJson.replace(
-    '"name":"A"',
-    '"name":"Renamed A"',
-  );
+  // The Profile is republished with a renamed model: same revision, new content.
+  sqlite
+    .prepare("UPDATE worker_profiles SET profile_json = ?, digest = ? WHERE worker_type_id = 'generic-worker'")
+    .run(executionProfile.replace('"name":"A"', '"name":"Renamed A"'), "b".repeat(64));
   const changed = await validateWorkflowWorkerEligibility(
     env,
     "P",

@@ -9,8 +9,8 @@ vi.mock("../../src/domain/collaboration-events.js", () => ({
     options: { mutate?: (tx: never) => Promise<unknown> } = {},
   ) => {
     if (options.mutate) {
-      const { fakeTx } = await import("./helpers/fake-sql");
-      await options.mutate!(fakeTx((env as { SYNTILA_DB: unknown }).SYNTILA_DB) as never);
+      const { dataOf } = await import("../../src/platform/data.js");
+      await dataOf(env as never).tx("test.publish", (tx) => options.mutate!(tx as never));
     }
   },
 }));

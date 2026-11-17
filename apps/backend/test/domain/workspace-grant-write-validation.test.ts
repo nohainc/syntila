@@ -3,30 +3,49 @@ vi.mock("../../src/domain/collaboration-events.js", () => ({
 }));
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { createWorkspaceSpaceGrant } from "../../src/domain/routes/workspace-access.js";
-import { Data } from "../../src/platform/data.js";
-import { listAware } from "./helpers/fake-sql";
+import { pgD1 } from "./helpers/pg-d1";
+import { space, T0, user, workspace } from "./helpers/seed";
 
 function environment(
   inventoryWorkerIds: readonly string[] = [],
   membershipError?: Error,
 ) {
-  const writes: string[] = [];
-  const data = new Data(listAware(async (strings: TemplateStringsArray, ...values: unknown[]) => {
-    const t = strings.join("?");
-    if (t.includes("FROM spaces WHERE id")) return [{ id: "space-1" }];
-    if (t.includes("FROM execution_workspaces WHERE id")) return [{ id: "workspace-1", owner_user_id: "owner-1", status: "online" }];
-    if (t.includes("FROM workspace_space_grants")) return [];
-    if (t.includes("FROM workspace_worker_inventory")) { const ids = values.flat().slice(1) as string[]; return inventoryWorkerIds.filter((w) => ids.includes(w)).map((worker_id) => ({ worker_id })); }
-    if (strings.join("?").includes("FROM space_memberships")) {
-      if (membershipError) throw membershipError;
-    }
-    if (/^\s*INSERT/i.test(t)) {
-      writes.push(t);
-      return Object.assign([], { count: 1 });
-    }
-    return []; // no membership
-  }) as any);
-  return { env: { SYNTILA_DATA: data } as never, writes };
+  const { db, sqlite } = pgD1();
+  sqlite.exec(
+    user("owner-1") +
+      space("space-1", "owner-1") +
+      workspace("workspace-1", "owner-1") +
+      "UPDATE execution_workspaces SET status = 'online' WHERE id = 'workspace-1';" +
+      inventoryWorkerIds
+        .map(
+          (id) => `INSERT INTO workspace_worker_inventory (
+             worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
+             local_concurrency_limit, revision, created_at, updated_at, last_seen_at
+           ) VALUES ('${id}', 'workspace-1', 'owner-1', 'chatgpt-codex', 'enabled', 'ready', 1, 1, '${T0}', '${T0}', '${T0}');`,
+        )
+        .join(""),
+  );
+  // A failing membership lookup is a failing database, not "no membership".
+  const database = membershipError
+    ? new Proxy(db as object, {
+        get(target, prop, receiver) {
+          const value = Reflect.get(target, prop, receiver);
+          if (prop !== "sql") return value;
+          return new Proxy(value, {
+            apply(fn, thisArg, args) {
+              if (Array.isArray(args[0]) && args[0].join("?").includes("FROM space_memberships"))
+                throw membershipError;
+              return Reflect.apply(fn, thisArg, args);
+            },
+          });
+        },
+      })
+    : db;
+  const grants = () =>
+    Number(
+      (sqlite.prepare("SELECT count(*) AS n FROM workspace_space_grants").get() as { n: number | string }).n,
+    );
+  return { env: { SYNTILA_DB: database } as never, grants };
 }
 
 const context = {
@@ -42,7 +61,7 @@ async function createGrant(
   workerIds: string[] = [],
   membershipError?: Error,
 ) {
-  const { env, writes } = environment(workerIds, membershipError);
+  const { env, grants } = environment(workerIds, membershipError);
   await createWorkspaceSpaceGrant(
     new Request("https://cloud.test", {
       method: "POST",
@@ -54,7 +73,7 @@ async function createGrant(
     "space-1",
     "workspace-1",
   );
-  return writes;
+  return grants();
 }
 
 describe("Workspace Grant write validation", () => {
@@ -64,7 +83,7 @@ describe("Workspace Grant write validation", () => {
     ["concurrency", { concurrency: { maxConcurrentAssignments: 0 } }],
     ["unknown fields", { legacyScope: "all" }],
   ])("rejects invalid %s before storing a Grant", async (_field, body) => {
-    const { env, writes } = environment();
+    const { env, grants } = environment();
     await expect(
       createWorkspaceSpaceGrant(
         new Request("https://cloud.test", {
@@ -78,7 +97,7 @@ describe("Workspace Grant write validation", () => {
         "workspace-1",
       ),
     ).rejects.toMatchObject({ status: 400 });
-    expect(writes).toEqual([]);
+    expect(grants()).toBe(0);
   });
 
   it("requires every explicit Worker ID to belong to the granted Workspace", async () => {
@@ -95,7 +114,7 @@ describe("Workspace Grant write validation", () => {
   });
 
   it("stores a valid explicit Worker, permission, network, and concurrency policy", async () => {
-    const writes = await createGrant(
+    const stored = await createGrant(
       {
         allowedWorkerIds: ["worker-local"],
         allowedPermissions: ["repository:read", "network:use"],
@@ -107,10 +126,6 @@ describe("Workspace Grant write validation", () => {
       },
       ["worker-local"],
     );
-    expect(
-      writes.some((query) =>
-        query.includes("INSERT INTO workspace_space_grants"),
-      ),
-    ).toBe(true);
+    expect(stored).toBe(1);
   });
 });
