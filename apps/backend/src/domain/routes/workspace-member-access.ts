@@ -10,6 +10,7 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 /**
  * Workers, models and efforts a Workspace shares with invited members. A
@@ -307,7 +308,7 @@ export async function handleWorkspaceMemberAccess(
   personId?: string,
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
-  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
+  const workspace = await ownsActiveWorkspace(dataOf(env).read, workspaceId, context.userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   if (personId !== undefined)
     return handlePersonOverride(request, env, workspaceId, personId);

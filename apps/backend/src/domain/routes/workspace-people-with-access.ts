@@ -7,6 +7,7 @@ import {
 } from "./http-security.js";
 import { monthStartIso } from "./workspace-invitations.js";
 import { loadEffectiveMemberAccess } from "./workspace-member-access.js";
+import { dataOf } from "../../platform/data.js";
 
 /**
  * Owner-only "People with access": everyone holding a Person Grant on this
@@ -23,7 +24,7 @@ export async function handlePeopleWithAccess(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   if (request.method !== "GET") throw new HttpError(405, "Unsupported method");
-  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
+  const workspace = await ownsActiveWorkspace(dataOf(env).read, workspaceId, context.userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   const grants = await env.SYNTILA_DB.prepare(
     `SELECT g.user_id AS userId, u.display_name AS displayName, u.email, g.status,

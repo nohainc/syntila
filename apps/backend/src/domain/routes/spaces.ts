@@ -878,7 +878,7 @@ export async function handleDeleteSpace(
     accessContext,
   );
   {
-    const space = await spaceKind(env.SYNTILA_DB, spaceId);
+    const space = await spaceKind(dataOf(env).read, spaceId);
     if (space?.kind === "direct") {
       // Either participant may delete a personal Space; the connection stays
       // and messaging again creates a fresh one.
@@ -1018,7 +1018,7 @@ export async function handleCreateSpaceInvitation(
     spaceId,
     accessContext,
   );
-  const space = await spaceKind(env.SYNTILA_DB, spaceId);
+  const space = await spaceKind(dataOf(env).read, spaceId);
   if (space?.kind === "direct") {
     throw new HttpError(403, "Direct Spaces cannot have additional members");
   }
@@ -1259,7 +1259,7 @@ export async function handleChangeSpaceMemberRole(
     spaceId,
     accessContext,
   );
-  const space = await spaceKind(env.SYNTILA_DB, spaceId);
+  const space = await spaceKind(dataOf(env).read, spaceId);
   if (space?.kind === "direct") {
     throw new HttpError(
       403,
@@ -1337,7 +1337,7 @@ export async function handleRemoveSpaceMember(
     spaceId,
     accessContext,
   );
-  const space = await spaceKind(env.SYNTILA_DB, spaceId);
+  const space = await spaceKind(dataOf(env).read, spaceId);
   if (space?.kind === "direct") {
     throw new HttpError(
       403,

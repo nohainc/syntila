@@ -3,6 +3,7 @@ import { McpInventorySchema } from "@syntila/workspace-runtime-protocol";
 import { getWorkspaceGatewayStatus } from "./workspace-access.js";
 import { HttpError, json, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 /**
  * `GET /api/workspaces/:id/mcp-inventory`: the last sanitized MCP inventory a
@@ -25,7 +26,7 @@ export async function handleWorkspaceMcpInventory(
 ): Promise<Response> {
   if (request.method !== "GET") throw new HttpError(405, "Unsupported method");
   const context = await securityContext(request, env, ctx);
-  const owned = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
+  const owned = await ownsActiveWorkspace(dataOf(env).read, workspaceId, context.userId);
   if (!owned) throw new HttpError(404, "Workspace not found");
 
   const gateway = env.SYNTILA_WORKSPACE_GATEWAY;

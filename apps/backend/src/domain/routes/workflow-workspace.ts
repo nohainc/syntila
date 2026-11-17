@@ -9,6 +9,7 @@ import {
   json,
   type SecurityEnv,
 } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 const SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID =
   "SELECT id FROM execution_workspaces WHERE id=?1 AND owner_user_id=?2 AND status != 'revoked'";
@@ -232,7 +233,7 @@ export async function handleWorkflowWorkspace(
   const current =
     spaceId &&
     (
-      await spaceKind(env.SYNTILA_DB, spaceId)
+      await spaceKind(dataOf(env).read, spaceId)
     )?.kind === "direct"
       ? await loadWorkflowWorkspace(env, ownerUserId)
       : await loadWorkflowWorkspace(env, ownerUserId, spaceId);

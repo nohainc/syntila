@@ -6,6 +6,7 @@ import { PluginManifestSchema } from "@syntila/workspace-runtime-protocol";
 import { pluginManifestDigest } from "../plugin-manifest-digest.js";
 import { HttpError, json, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 const SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN =
   "SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ?1 AND version = ?2";
@@ -390,7 +391,7 @@ export async function handleWorkspacePluginPin(
   const userId = context.userId;
   const db = env.SYNTILA_DB;
   const ref = requireRef(pluginRef);
-  const workspace = await ownsActiveWorkspace(db, workspaceId, userId);
+  const workspace = await ownsActiveWorkspace(dataOf(env).read, workspaceId, userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   const owned = await db
     .prepare(

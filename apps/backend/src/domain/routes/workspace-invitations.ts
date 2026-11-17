@@ -11,6 +11,7 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 /** First instant of the current UTC month, as an ISO timestamp. */
 export function monthStartIso(now = new Date()): string {
@@ -71,7 +72,7 @@ async function ownedWorkspace(
   workspaceId: string,
   userId: string,
 ) {
-  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, userId);
+  const workspace = await ownsActiveWorkspace(dataOf(env).read, workspaceId, userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
 }
 

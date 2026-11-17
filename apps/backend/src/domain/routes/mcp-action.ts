@@ -2,6 +2,7 @@ import { readJson } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";
 import { HttpError, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 /**
  * `POST /api/workspaces/:id/mcp-action`: invokes a Service-owned MCP management
@@ -19,7 +20,7 @@ export async function handleWorkspaceMcpAction(
 ): Promise<Response> {
   if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
   const context = await securityContext(request, env, ctx);
-  const owned = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, context.userId);
+  const owned = await ownsActiveWorkspace(dataOf(env).read, workspaceId, context.userId);
   if (!owned) throw new HttpError(404, "Workspace not found");
 
   const gateway = env.SYNTILA_WORKSPACE_GATEWAY;

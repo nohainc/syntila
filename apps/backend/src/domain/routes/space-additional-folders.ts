@@ -9,6 +9,7 @@ import {
   type SecurityEnv,
 } from "./http-security.js";
 import { loadWorkflowWorkspace } from "./workflow-workspace.js";
+import { dataOf } from "../../platform/data.js";
 
 
 type Eligibility =
@@ -44,7 +45,7 @@ async function eligibility(
     return { eligible: false, workspaceId, reason: "not_space_owner" };
   if (!workspaceId)
     return { eligible: false, workspaceId: null, reason: "no_workspace" };
-  const owned = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, userId);
+  const owned = await ownsActiveWorkspace(dataOf(env).read, workspaceId, userId);
   return owned
     ? { eligible: true, workspaceId }
     : { eligible: false, workspaceId, reason: "not_workspace_owner" };

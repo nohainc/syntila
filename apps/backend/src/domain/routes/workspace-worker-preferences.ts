@@ -5,6 +5,7 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 /** Hidden identifiers only: absent and newly discovered options remain visible. */
 export interface WorkspaceWorkerPreferences {
@@ -112,7 +113,7 @@ export async function handleWorkspaceWorkerPreferences(
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const { userId } = await securityContext(request, env, ctx);
-  const workspace = await ownsActiveWorkspace(env.SYNTILA_DB, workspaceId, userId);
+  const workspace = await ownsActiveWorkspace(dataOf(env).read, workspaceId, userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   if (request.method === "GET") {
     const row = await env.SYNTILA_DB.prepare(

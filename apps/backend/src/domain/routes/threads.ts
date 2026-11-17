@@ -359,7 +359,7 @@ export async function handleUpdateThread(
     }
   }
 
-  const space = await spaceKind(env.SYNTILA_DB, thread.spaceId);
+  const space = await spaceKind(dataOf(env).read, thread.spaceId);
   if (space?.kind === "direct" && !isDirectGeneral) {
     if (thread.lead.userId !== context.userId) {
       throw new HttpError(
@@ -942,7 +942,7 @@ export async function handleDeleteDiscussionMessage(
     accessContext,
   );
   const policy = await loadSpacePermissions(env, context.userId, spaceId);
-  const space = await spaceKind(env.SYNTILA_DB, spaceId);
+  const space = await spaceKind(dataOf(env).read, spaceId);
 
   if (space?.kind === "direct") {
     if (String(message.authorUserId) !== context.userId) {

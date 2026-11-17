@@ -22,11 +22,8 @@ export async function isSpaceMember(q: Query, spaceId: string, userId: string): 
 }
 
 /** True when the user owns the Workspace and it has not been revoked. */
-export async function ownsActiveWorkspace(db: D1Database, workspaceId: string, userId: string): Promise<boolean> {
-  const row = await db
-    .prepare("SELECT 1 FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status != 'revoked'")
-    .bind(workspaceId, userId)
-    .first();
+export async function ownsActiveWorkspace(q: Query, workspaceId: string, userId: string): Promise<boolean> {
+  const row = await q.row`SELECT 1 FROM execution_workspaces WHERE id = ${workspaceId} AND owner_user_id = ${userId} AND status != 'revoked'`;
   return row !== null;
 }
 
@@ -36,8 +33,8 @@ export async function userAccount(db: D1Database, userId: string): Promise<{ sta
 }
 
 /** The kind of a Space ("group" or "direct"), or null when it does not exist. */
-export async function spaceKind(db: D1Database, spaceId: string): Promise<{ kind: string } | null> {
-  return db.prepare("SELECT kind FROM spaces WHERE id = ?1").bind(spaceId).first<{ kind: string }>();
+export async function spaceKind(q: Query, spaceId: string): Promise<{ kind: string } | null> {
+  return q.row<{ kind: string }>`SELECT kind FROM spaces WHERE id = ${spaceId}`;
 }
 
 /* ------------------------------------------------------------------------

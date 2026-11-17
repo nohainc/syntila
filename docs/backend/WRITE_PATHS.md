@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 120 adapter-only, 41 in data-layer transactions.
+Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 113 adapter-only, 48 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -96,12 +96,12 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 120 ad
 | `domain/routes/spaces.ts` | `handleAcceptSpaceInvitation` | INSERT space_audit_log, INSERT space_memberships, UPDATE space_invitations, UPDATE spaces | read-write, batch, lock |
 | `domain/routes/spaces.ts` | `handleChangeSpaceMemberRole` | INSERT space_audit_log, UPDATE space_memberships, UPDATE spaces | batch, data |
 | `domain/routes/spaces.ts` | `handleCreateSpace` | INSERT space_memberships, INSERT space_workflow_settings, INSERT spaces | read-write, data |
-| `domain/routes/spaces.ts` | `handleCreateSpaceInvitation` | UPDATE space_invitations | read-write, guarded, lock |
+| `domain/routes/spaces.ts` | `handleCreateSpaceInvitation` | UPDATE space_invitations | read-write, guarded, data |
 | `domain/routes/spaces.ts` | `handleDeclineSpaceInvitation` | INSERT space_audit_log, UPDATE space_invitations, UPDATE spaces | read-write, batch, lock |
 | `domain/routes/spaces.ts` | `handleDeleteSpace` | DELETE spaces | read-write, data |
 | `domain/routes/spaces.ts` | `handleExpireSpaceInvitation` | INSERT space_audit_log, UPDATE space_invitations, UPDATE spaces | read-write, data |
 | `domain/routes/spaces.ts` | `handleGetSpace` | INSERT direct_space_user_state | read-write, guarded, lock |
-| `domain/routes/spaces.ts` | `handleRemoveSpaceMember` | DELETE space_memberships, INSERT space_audit_log, UPDATE spaces, UPDATE workspace_space_grants | lock |
+| `domain/routes/spaces.ts` | `handleRemoveSpaceMember` | DELETE space_memberships, INSERT space_audit_log, UPDATE spaces, UPDATE workspace_space_grants | data |
 | `domain/routes/spaces.ts` | `handleUpdateSpace` | INSERT direct_space_user_state, UPDATE spaces | read-write, data |
 | `domain/routes/spaces.ts` | `write` | INSERT space_audit_log, INSERT space_invitations, UPDATE spaces | batch, data |
 | `domain/routes/workspace-access.ts` | `createWorkspaceSpaceGrant` | INSERT workspace_space_grants | read-write, guarded, data |
@@ -110,9 +110,9 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 120 ad
 | `domain/routes/workspace-invitations.ts` | `handlePersonGrantQuota` | UPDATE workspace_person_grants | guarded, lock |
 | `domain/routes/workspace-invitations.ts` | `handleRevokePersonGrant` | INSERT workspace_audit_log, UPDATE workspace_person_grants, UPDATE workspace_space_grants | guarded, batch, lock |
 | `domain/routes/workspace-invitations.ts` | `handleWorkspaceInvitations` | INSERT workspace_invitations, UPDATE workspace_invitations | read-write, lock |
-| `domain/routes/workspace-member-access.ts` | `handleWorkspaceMemberAccess` | DELETE workspace_member_access, INSERT workspace_member_access | lock |
+| `domain/routes/workspace-member-access.ts` | `handleWorkspaceMemberAccess` | DELETE workspace_member_access, INSERT workspace_member_access | data |
 | `domain/routes/workspace-member-access.ts` | `read` | DELETE workspace_member_overrides, INSERT workspace_member_overrides | read-write, lock |
-| `domain/routes/workspace-worker-preferences.ts` | `handleWorkspaceWorkerPreferences` | DELETE workspace_worker_preferences, INSERT workspace_worker_preferences | read-write, lock |
+| `domain/routes/workspace-worker-preferences.ts` | `handleWorkspaceWorkerPreferences` | DELETE workspace_worker_preferences, INSERT workspace_worker_preferences | read-write, data |
 | `domain/routes/workspaces-grants.ts` | `handleRevokeWorkspaceSpaceGrant` | UPDATE workspace_space_grants | guarded, lock |
 | `domain/routes/workspaces-grants.ts` | `handleUpdateWorkspaceSpaceGrant` | UPDATE workspace_space_grants | guarded, lock |
 | `domain/routes/workspaces-management.ts` | `handleRevokeWorkspace` | UPDATE execution_workspaces, UPDATE workspace_installations, UPDATE workspace_runtime_identities, UPDATE workspace_space_grants | read-write, batch, lock |
@@ -147,7 +147,7 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 120 ad
 | `domain/routes/threads.ts` | `handleClearChatHistory` | DELETE conversations, DELETE discussion_messages, DELETE work_requests, UPDATE threads | data |
 | `domain/routes/threads.ts` | `handleCreateDiscussionMessage` | INSERT discussion_messages, INSERT space_audit_log, UPDATE direct_space_user_state | read-write, data |
 | `domain/routes/threads.ts` | `handleCreateThread` | INSERT threads | read-write, data |
-| `domain/routes/threads.ts` | `handleDeleteDiscussionMessage` | UPDATE discussion_messages | read-write, lock |
+| `domain/routes/threads.ts` | `handleDeleteDiscussionMessage` | UPDATE discussion_messages | read-write, data |
 | `domain/routes/threads.ts` | `handleDeleteThread` | DELETE threads | data |
 | `domain/routes/threads.ts` | `handleEditDiscussionMessage` | UPDATE discussion_messages | read-write, lock |
 | `domain/routes/threads.ts` | `handleMarkThreadRead` | INSERT thread_read_states | guarded, lock |
@@ -191,12 +191,12 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 120 ad
 | `domain/routes/work-request-inputs.ts` | `handleUploadWorkRequestInput` | UPDATE work_request_inputs | guarded, lock |
 | `domain/routes/work-request-inputs.ts` | `workRequestInputStatements` | INSERT work_request_inputs | lock |
 | `domain/routes/worker-plugins.ts` | `handlePluginLibrary` | INSERT account_worker_plugin_versions, INSERT account_worker_plugins, INSERT worker_catalog, UPDATE account_worker_plugins, UPDATE worker_catalog | read-write, batch, lock |
-| `domain/routes/worker-plugins.ts` | `handleWorkspacePluginPin` | DELETE workspace_worker_plugin_enablements, INSERT workspace_worker_plugin_enablements | read-write, lock |
+| `domain/routes/worker-plugins.ts` | `handleWorkspacePluginPin` | DELETE workspace_worker_plugin_enablements, INSERT workspace_worker_plugin_enablements | read-write, data |
 | `domain/routes/worker-plugins.ts` | `removeFromLibrary` | DELETE account_worker_plugins, DELETE workspace_worker_inventory, UPDATE worker_catalog | read-write, batch, lock |
 | `domain/routes/workflow-configurations.ts` | `reset` | INSERT space_workflow_defaults, INSERT user_workflow_defaults | read-write, guarded, lock |
 | `domain/routes/workflow-default.ts` | `handleWorkflowDefault` | INSERT space_workflow_defaults, INSERT user_workflow_defaults | read-write, guarded, lock |
 | `domain/routes/workflow-execution-configuration.ts` | `ensureOwnChatWorkspaceGrant` | INSERT space_audit_log, INSERT workspace_space_grants | read-write, batch, lock |
-| `domain/routes/workflow-workspace.ts` | `handleWorkflowWorkspace` | DELETE space_additional_folders, DELETE space_workflow_configurations, DELETE space_workflow_defaults, INSERT space_workflow_settings, INSERT user_workflow_settings | read-write, batch, lock |
+| `domain/routes/workflow-workspace.ts` | `handleWorkflowWorkspace` | DELETE space_additional_folders, DELETE space_workflow_configurations, DELETE space_workflow_defaults, INSERT space_workflow_settings, INSERT user_workflow_settings | read-write, batch, data |
 | `domain/routes/workflow-workspace.ts` | `prepareWorkflowWorkspaceGrant` | INSERT space_audit_log, INSERT workspace_space_grants, UPDATE worker_scheduling | read-write, lock |
 | `domain/thread-coordinator.ts` | `extendLeaseForLiveAssignment` | UPDATE thread_runtime_leases | guarded, lock |
 | `domain/thread-coordinator.ts` | `heartbeat` | UPDATE thread_runtime_leases | guarded, lock |
