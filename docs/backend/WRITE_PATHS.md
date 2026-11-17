@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 113 adapter-only, 48 in data-layer transactions.
+Totals: 178 write paths, 82 tables; 1 numbering, 46 unguarded read-write, 113 adapter-only, 48 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -69,8 +69,8 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 113 ad
 | `domain/routes/pins.ts` | `handleSetPinOrder` | UPDATE user_pins | data |
 | `domain/routes/profile.ts` | `handleReadReceiptPrivacy` | UPDATE users | read-write, data |
 | `domain/routes/profile.ts` | `handleUploadAvatar` | UPDATE users | read-write, guarded, data |
-| `domain/routes/user-files.ts` | `handleDeleteUserFile` | DELETE user_files | read-write, data |
-| `domain/routes/user-files.ts` | `handleSyncUserFiles` | DELETE user_files, INSERT user_files, UPDATE user_files | read-write, data |
+| `domain/routes/user-files.ts` | `dropFileRecord` | DELETE user_files | data |
+| `domain/routes/user-files.ts` | `handleSyncUserFiles` | INSERT user_files, UPDATE user_files | read-write, data |
 | `domain/routes/user-files.ts` | `pruneOrphanUserFiles` | DELETE user_files | read-write, data |
 
 ## 2 people, Spaces, accounts

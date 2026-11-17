@@ -1,6 +1,6 @@
 import { ReadReceiptPrivacySchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
-import { writeAlone } from "../../platform/tx-env.js";
+import { dataOf } from "../../platform/data.js";
 import { parseMultipart } from "../../platform/multipart";
 import { getAccountPlan } from "../account-plan.js";
 import { avatarObjectKeys } from "../avatar-storage.js";
@@ -99,11 +99,9 @@ export async function handleUploadAvatar(
   const bucket = env.SYNTILA_ARTIFACTS;
   if (!bucket) throw new HttpError(503, "Avatar storage is not configured");
 
-  const old = await env.SYNTILA_DB.prepare(
-    "SELECT avatar_url AS avatarUrl FROM users WHERE id = ?1",
-  )
-    .bind(context.userId)
-    .first<{ avatarUrl: string | null }>();
+  const data = dataOf(env);
+  const old = await data.read.row<{ avatarUrl: string | null }>`
+    SELECT avatar_url AS "avatarUrl" FROM users WHERE id = ${context.userId}`;
   if (!old) throw new HttpError(404, "User not found");
 
   const version = crypto.randomUUID();
@@ -120,19 +118,11 @@ export async function handleUploadAvatar(
       customMetadata: { userId: context.userId },
     });
     // Compare-and-set on the previous avatar: safe without the writer lock.
-    const updated = await writeAlone(env, "profile.avatar", (db) =>
-      db
-        .prepare(
-          "UPDATE users SET avatar_url = ?1, updated_at = ?2 WHERE id = ?3 AND status = 'active' AND avatar_url IS NOT DISTINCT FROM ?4",
-        )
-        .bind(
-          storedValue,
-          new Date().toISOString(),
-          context.userId,
-          old.avatarUrl,
-        ),
-    );
-    if (updated.meta.changes !== 1)
+    const updated = await data.tx("profile.avatar", (tx) => tx.run`
+      UPDATE users SET avatar_url = ${storedValue}, updated_at = ${new Date().toISOString()}
+       WHERE id = ${context.userId} AND status = 'active'
+         AND avatar_url IS NOT DISTINCT FROM ${old.avatarUrl}`);
+    if (updated !== 1)
       throw new HttpError(409, "Profile changed; retry the upload");
     await publishPeopleProfileChanged(env, context.userId);
     // The signed-in session (served by the auth Worker) shows the avatar.
@@ -177,25 +167,19 @@ export async function handleGetAvatar(
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
+  const data = dataOf(env);
   const canView =
     context.userId === userId ||
     Boolean(
-      await env.SYNTILA_DB.prepare(
-        `SELECT 1 FROM people_relationships
-         WHERE (user_low_id = ?1 AND user_high_id = ?2)
-            OR (user_low_id = ?2 AND user_high_id = ?1)
+      await data.read.row`SELECT 1 FROM people_relationships
+         WHERE (user_low_id = ${context.userId} AND user_high_id = ${userId})
+            OR (user_low_id = ${userId} AND user_high_id = ${context.userId})
          LIMIT 1`,
-      )
-        .bind(context.userId, userId)
-        .first(),
     );
   if (!canView) throw new HttpError(404, "Avatar not found");
 
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT avatar_url AS avatarUrl FROM users WHERE id = ?1 AND status = 'active'",
-  )
-    .bind(userId)
-    .first<{ avatarUrl: string | null }>();
+  const row = await data.read.row<{ avatarUrl: string | null }>`
+    SELECT avatar_url AS "avatarUrl" FROM users WHERE id = ${userId} AND status = 'active'`;
   const key = avatarKey(row?.avatarUrl);
   if (!key) throw new HttpError(404, "Avatar not found");
   const bucket = env.SYNTILA_ARTIFACTS;
@@ -226,26 +210,15 @@ export async function handleReadReceiptPrivacy(
     const body = await readBody(request, ReadReceiptPrivacySchema, {
       message: "shareReadReceipts must be true or false",
     });
-    await writeAlone(env, "profile.read_receipts", (db) =>
-      db
-        .prepare(
-          "UPDATE users SET share_read_receipts = ?1::int::boolean, updated_at = ?2 WHERE id = ?3",
-        )
-        .bind(
-          body.shareReadReceipts ? 1 : 0,
-          new Date().toISOString(),
-          context.userId,
-        ),
-    );
+    await dataOf(env).tx("profile.read_receipts", (tx) => tx.run`
+      UPDATE users SET share_read_receipts = ${body.shareReadReceipts}, updated_at = ${new Date().toISOString()}
+       WHERE id = ${context.userId}`);
     return json({ shareReadReceipts: body.shareReadReceipts });
   }
   if (request.method !== "GET") throw new HttpError(405, "Unsupported method");
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT share_read_receipts AS share FROM users WHERE id = ?1",
-  )
-    .bind(context.userId)
-    .first<{ share: number }>();
-  return json({ shareReadReceipts: (row?.share ?? 1) === 1 });
+  const row = await dataOf(env).read.row<{ share: boolean }>`
+    SELECT share_read_receipts AS share FROM users WHERE id = ${context.userId}`;
+  return json({ shareReadReceipts: row?.share ?? true });
 }
 
 /** The caller's account tier. Read-only: plans change through grants or billing. */
