@@ -133,19 +133,3 @@ export function batchAlone<E extends Env>(
     (txEnv.SYNTILA_DB as unknown as D1Database).batch([...statements]),
   );
 }
-
-/**
- * Adapter statement that takes the same lock as `tx.lock(scope, id)`. Put it
- * first in a batch (one transaction): every later statement of the batch then
- * sees what the previous holder committed. For conditions that count or sum
- * other rows (admission limits, quotas), which no row lock protects.
- */
-export function lockStatement(
-  db: D1Database,
-  scope: string,
-  id: string,
-): D1PreparedStatement {
-  return db
-    .prepare("SELECT pg_advisory_xact_lock(hashtextextended(?1 || ':' || ?2, 0))")
-    .bind(scope, id);
-}

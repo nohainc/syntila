@@ -4,7 +4,7 @@ import {
   validateResearchModelDiversity,
   type ModelIdentityCatalog,
 } from "@syntila/core";
-import { paidOwnerSql } from "../account-plan.js";
+import { paidOwner } from "../account-plan.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
   parseUserWorkflowConfiguration,
@@ -16,7 +16,7 @@ import { HttpError, type SecurityEnv } from "./http-security.js";
 import { loadSpacePermissions } from "./space-permissions.js";
 import { validateWorkflowWorkerEligibility } from "./handlers.js";
 import {
-  MONTHLY_RUN_SECONDS_SQL,
+  monthlyRunSeconds,
   monthStartIso,
 } from "./workspace-invitations.js";
 import {
@@ -175,20 +175,17 @@ export async function resolveWorkflowExecutionBindings(
       "A shared Workspace runs Chat only; choose your own Workspace for this Workflow",
     );
   if (lent && workspaceOwner!.ownerUserId !== userId) {
-    const grant = await env.SYNTILA_DB.prepare(
-      `SELECT g.max_concurrent_requests AS maxConcurrent,
-              g.max_run_seconds_per_month AS maxRunSeconds,
-              ${paidOwnerSql("ew.owner_user_id")} AS ownerShares
+    const read = dataOf(env).read;
+    const grant = await read.row<{
+      maxConcurrent: number;
+      maxRunSeconds: number | null;
+      ownerShares: boolean;
+    }>`SELECT g.max_concurrent_requests AS "maxConcurrent",
+              g.max_run_seconds_per_month AS "maxRunSeconds",
+              ${paidOwner(read, read.raw("ew.owner_user_id"))} AS "ownerShares"
        FROM workspace_person_grants g
        JOIN execution_workspaces ew ON ew.id = g.workspace_id
-       WHERE g.workspace_id = ?1 AND g.user_id = ?2 AND g.status = 'active'`,
-    )
-      .bind(space.workspaceId, userId)
-      .first<{
-        maxConcurrent: number;
-        maxRunSeconds: number | null;
-        ownerShares: number;
-      }>();
+       WHERE g.workspace_id = ${space.workspaceId} AND g.user_id = ${userId} AND g.status = 'active'`;
     if (!grant)
       throw new HttpError(
         403,
@@ -202,9 +199,7 @@ export async function resolveWorkflowExecutionBindings(
       );
     const inFlight = await dataOf(env).read.row<{ n: number }>`SELECT COUNT(*) AS n FROM work_requests WHERE requested_by_user_id = ${userId} AND primary_workspace_id = ${space.workspaceId} AND status IN ('queued','running','waiting')`;
     if (grant.maxRunSeconds !== null) {
-      const used = await env.SYNTILA_DB.prepare(MONTHLY_RUN_SECONDS_SQL)
-        .bind(space.workspaceId, userId, monthStartIso())
-        .first<{ seconds: number }>();
+      const used = await monthlyRunSeconds(read, space.workspaceId, userId, monthStartIso());
       if ((used?.seconds ?? 0) >= grant.maxRunSeconds)
         throw new HttpError(
           429,

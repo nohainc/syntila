@@ -11,7 +11,7 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
-import { atomically, dataOf } from "../../platform/data.js";
+import { atomically, dataOf, type Query } from "../../platform/data.js";
 
 /** First instant of the current UTC month, as an ISO timestamp. */
 export function monthStartIso(now = new Date()): string {
@@ -21,9 +21,10 @@ export function monthStartIso(now = new Date()): string {
 }
 
 /** Approximate run seconds a person used on a Workspace this UTC month. */
-export const MONTHLY_RUN_SECONDS_SQL = `SELECT COALESCE(ROUND(SUM(GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at)))))::bigint, 0) AS seconds
+export const monthlyRunSeconds = (q: Query, workspaceId: string, userId: string, since: string) =>
+  q.row<{ seconds: number }>`SELECT COALESCE(ROUND(SUM(GREATEST(0, EXTRACT(EPOCH FROM (updated_at - created_at)))))::bigint, 0) AS seconds
    FROM worker_assignments
-   WHERE execution_workspace_id = ?1 AND requested_by_user_id = ?2 AND created_at >= ?3`;
+   WHERE execution_workspace_id = ${workspaceId} AND requested_by_user_id = ${userId} AND created_at >= ${since}::timestamptz`;
 
 /**
  * ID-only invalidation on each party's own user stream: the owner sees the

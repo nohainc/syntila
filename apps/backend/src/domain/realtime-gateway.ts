@@ -978,52 +978,41 @@ export class RealtimeGateway implements DurableObject {
 
   /** The streams a Scope covers for this user, as SQL over realtime_events e. */
   private replayAudience(
+    q: Query,
     userId: string,
     scope: RealtimeScope,
-  ): { join: string; where: string; bindings: string[] } | null {
+  ): { join: unknown; where: unknown } | null {
+    const none = q.raw("");
     if (scope.kind === "execution_workspace" && scope.executionWorkspaceId) {
       return {
-        join: "",
-        where:
-          "e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ?",
-        bindings: [scope.executionWorkspaceId],
+        join: none,
+        where: q.frag`e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ${scope.executionWorkspaceId}`,
       };
     }
     if (scope.kind === "space" && scope.spaceId) {
-      return {
-        join: "",
-        where: "e.stream_kind = 'space' AND e.stream_id = ?",
-        bindings: [scope.spaceId],
-      };
+      return { join: none, where: q.frag`e.stream_kind = 'space' AND e.stream_id = ${scope.spaceId}` };
     }
     if (scope.kind === "user") {
       return {
-        join: " LEFT JOIN execution_workspaces w ON w.id = e.workspace_id",
-        where: `(e.stream_kind = 'user' AND e.stream_id = ?) OR
-         (e.stream_kind = 'execution_workspace' AND w.owner_user_id = ?) OR
+        join: q.raw(" LEFT JOIN execution_workspaces w ON w.id = e.workspace_id"),
+        where: q.frag`(e.stream_kind = 'user' AND e.stream_id = ${userId}) OR
+         (e.stream_kind = 'execution_workspace' AND w.owner_user_id = ${userId}) OR
          (e.stream_kind = 'space' AND EXISTS (
            SELECT 1 FROM space_memberships m
-           WHERE m.space_id = e.stream_id AND m.user_id = ?
+           WHERE m.space_id = e.stream_id AND m.user_id = ${userId}
          ))`,
-        bindings: [userId, userId, userId],
       };
     }
     if (scope.kind === "run" && scope.runId) {
-      return { join: "", where: "e.run_id = ?", bindings: [scope.runId] };
+      return { join: none, where: q.frag`e.run_id = ${scope.runId}` };
     }
     if (scope.kind === "thread" && scope.threadId) {
-      return {
-        join: "",
-        where: "e.thread_id = ?",
-        bindings: [scope.threadId],
-      };
+      return { join: none, where: q.frag`e.thread_id = ${scope.threadId}` };
     }
     if (scope.workspaceId) {
       return {
-        join: "",
-        where:
-          "e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ?",
-        bindings: [scope.workspaceId],
+        join: none,
+        where: q.frag`e.stream_kind = 'execution_workspace' AND COALESCE(e.stream_id, e.workspace_id) = ${scope.workspaceId}`,
       };
     }
     return null;
@@ -1037,10 +1026,10 @@ export class RealtimeGateway implements DurableObject {
     connected: ConnectedClient,
     scope: RealtimeScope,
   ): Promise<void> {
-    const audience = this.replayAudience(connected.identity.userId, scope);
+    const q = dataOf(this.env).read;
+    const audience = this.replayAudience(q, connected.identity.userId, scope);
     if (!audience) return;
-    const result = await this.env.SYNTILA_DB.prepare(
-      `SELECT s.stream_kind AS streamKind, s.stream_id AS streamId,
+    const result = await q.rows<{ streamKind: string; streamId: string | null; head: number }>`SELECT s.stream_kind AS "streamKind", s.stream_id AS "streamId",
               (SELECT MAX(x.sequence) FROM realtime_events x
                 WHERE x.stream_kind = s.stream_kind
                   AND COALESCE(x.stream_id, x.workspace_id) = s.stream_id) AS head
@@ -1049,11 +1038,8 @@ export class RealtimeGateway implements DurableObject {
                 COALESCE(e.stream_id, e.workspace_id) AS stream_id
          FROM realtime_events e${audience.join}
          WHERE (${audience.where})
-       ) s`,
-    )
-      .bind(...audience.bindings)
-      .all<{ streamKind: string; streamId: string | null; head: number }>();
-    for (const row of result.results ?? []) {
+       ) s`;
+    for (const row of result) {
       if (!row.streamId) continue;
       const key = realtimeStreamKey({
         kind: row.streamKind as RealtimeStream["kind"],
@@ -1070,32 +1056,21 @@ export class RealtimeGateway implements DurableObject {
     scope: RealtimeScope,
     cursors: ReadonlyMap<string, number>,
   ): Promise<Record<string, unknown>[]> {
-    const audience = this.replayAudience(userId, scope);
+    const q = dataOf(this.env).read;
+    const audience = this.replayAudience(q, userId, scope);
     if (!audience) return [];
-    const query = `
-      SELECT e.*
-      FROM realtime_events e${audience.join}`;
-    const bindings = [...audience.bindings];
     // One JSON binding avoids a SQL parameter per cursor. Keep the audience
     // predicate grouped so user-scope OR branches cannot bypass cursor filtering.
-    const conditions = [
-      `(${audience.where})`,
-      `NOT EXISTS (
-      SELECT 1 FROM jsonb_each_text(?::jsonb) cursor(key, value)
+    const cursorJson = JSON.stringify(Object.fromEntries(cursors));
+    return q.rows<Record<string, unknown>>`SELECT e.*
+      FROM realtime_events e${audience.join}
+       WHERE (${audience.where}) AND NOT EXISTS (
+      SELECT 1 FROM jsonb_each_text(${cursorJson}::text::jsonb) cursor(key, value)
       WHERE cursor.key::jsonb = jsonb_build_array(e.stream_kind, COALESCE(e.stream_id, e.workspace_id))
         AND e.sequence <= cursor.value::bigint
-    )`,
-    ];
-    bindings.push(JSON.stringify(Object.fromEntries(cursors)));
-    const result = await this.env.SYNTILA_DB.prepare(
-      `${query}
-       WHERE ${conditions.join(" AND ")}
-       ORDER BY e.occurred_at ASC, e.sequence ASC, e.event_id ASC
-       LIMIT ${MAX_REPLAY_EVENTS}`,
     )
-      .bind(...bindings)
-      .all<Record<string, unknown>>();
-    return result.results ?? [];
+       ORDER BY e.occurred_at ASC, e.sequence ASC, e.event_id ASC
+       LIMIT ${q.raw(String(MAX_REPLAY_EVENTS))}`;
   }
 
   private sendReplayGap(

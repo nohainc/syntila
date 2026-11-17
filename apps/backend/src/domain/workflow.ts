@@ -568,11 +568,9 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       // Lets clients skip "finished" notices for the person who asked.
       const requestedByUserId = type.startsWith("work_request.")
         ? ((
-            await (this.env as ExecutionEnv).SYNTILA_DB.prepare(
-              "SELECT requested_by_user_id AS userId FROM work_requests WHERE id = ?1",
-            )
-              .bind(workRequestId)
-              .first<{ userId: string }>()
+            await dataOf(this.env as ExecutionEnv).read.row<{
+              userId: string;
+            }>`SELECT requested_by_user_id AS "userId" FROM work_requests WHERE id = ${workRequestId}`
           )?.userId ?? null)
         : null;
       const stepSuffix =
@@ -630,23 +628,12 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
   ): Promise<void> {
     const db = (this.env as ExecutionEnv).SYNTILA_DB;
     if (!db) return;
-    await db
-      .prepare(
-        `UPDATE workflow_tasks SET status = ?1, attempt = ?2, output_json = ?3,
-       error = ?4, updated_at = ?5,
-       started_at = CASE WHEN ?1 = 'running' THEN COALESCE(started_at, ?5) ELSE started_at END,
-       finished_at = CASE WHEN ?1 IN ('completed', 'failed', 'cancelled') THEN ?5 ELSE finished_at END
-       WHERE id = ?6`,
-      )
-      .bind(
-        status,
-        attempt,
-        output === undefined ? null : JSON.stringify(output),
-        error ?? null,
-        new Date().toISOString(),
-        task.id,
-      )
-      .run();
+    const at = new Date().toISOString();
+    await queryOf(db).run`UPDATE workflow_tasks SET status = ${status}::text, attempt = ${attempt}, output_json = ${output === undefined ? null : JSON.stringify(output)},
+       error = ${error ?? null}, updated_at = ${at}::timestamptz,
+       started_at = CASE WHEN ${status}::text = 'running' THEN COALESCE(started_at, ${at}::timestamptz) ELSE started_at END,
+       finished_at = CASE WHEN ${status}::text IN ('completed', 'failed', 'cancelled') THEN ${at}::timestamptz ELSE finished_at END
+       WHERE id = ${task.id}`;
   }
 
   /**

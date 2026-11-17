@@ -229,14 +229,10 @@ export async function createWorkspaceSpaceGrant(
   }
   const allowedWorkerIds = JSON.stringify(workerIdsValue);
   if (workerIdsValue.length > 0) {
-    const placeholders = workerIdsValue.map((_, index) => `?${index + 2}`);
-    const rows = await env.SYNTILA_DB.prepare(
-      `SELECT worker_id FROM workspace_worker_inventory
-       WHERE workspace_id = ?1 AND worker_id IN (${placeholders.join(", ")})`,
-    )
-      .bind(workspaceId, ...workerIdsValue)
-      .all<{ worker_id: string }>();
-    const found = new Set((rows.results ?? []).map((row) => row.worker_id));
+    const read = dataOf(env).read;
+    const rows = await read.rows<{ worker_id: string }>`SELECT worker_id FROM workspace_worker_inventory
+       WHERE workspace_id = ${workspaceId} AND worker_id IN ${read.list(workerIdsValue)}`;
+    const found = new Set(rows.map((row) => row.worker_id));
     if (workerIdsValue.some((workerId) => !found.has(workerId))) {
       throw new HttpError(
         400,

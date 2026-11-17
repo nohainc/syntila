@@ -200,14 +200,11 @@ async function revokeGrantAssignments(
   env: SecurityEnv,
   grantId: string,
 ): Promise<void> {
-  const { results } = await env.SYNTILA_DB.prepare(
-    `SELECT id, attempt_id FROM worker_assignments
-      WHERE workspace_space_grant_id = ?1 AND status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})`,
-  )
-    .bind(grantId)
-    .all<{ id: string; attempt_id: string | null }>();
+  const read = dataOf(env).read;
+  const results = await read.rows<{ id: string; attempt_id: string | null }>`SELECT id, attempt_id FROM worker_assignments
+      WHERE workspace_space_grant_id = ${grantId} AND status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})`;
   await Promise.all(
-    (results ?? []).map((row) =>
+    results.map((row) =>
       revokeAssignment(env, {
         assignmentId: row.id,
         attemptId: row.attempt_id ?? undefined,

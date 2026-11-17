@@ -1,7 +1,7 @@
 import { atomically, dataOf } from "../../platform/data.js";
 import { UpdateWorkspaceSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
-import { paidOwnerSql } from "../account-plan.js";
+import { paidOwner } from "../account-plan.js";
 import {
   HttpError,
   json,
@@ -27,23 +27,23 @@ export async function handleListWorkspaces(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   const context = await securityContext(request, env, accessContext);
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT execution_workspaces.id, name, status,
-            CASE WHEN owner_user_id = ?1 THEN 'owner' ELSE 'member' END AS role,
-            CASE WHEN owner_user_id = ?1 THEN 0 ELSE 1 END AS shared,
-            CASE WHEN owner_user_id = ?1
-              THEN COALESCE(parallel_slots, ${DEFAULT_WORKSPACE_PARALLEL_SLOTS})
-            END AS parallelSlots,
-            CASE WHEN owner_user_id = ?1 THEN space_ai_chat END AS spaceAiChat,
-            CASE WHEN owner_user_id = ?1 THEN space_ai_work END AS spaceAiWork,
+  const q = dataOf(env).read;
+  const rows = await q.rows<Record<string, unknown>>`SELECT execution_workspaces.id, name, status,
+            CASE WHEN owner_user_id = ${context.userId} THEN 'owner' ELSE 'member' END AS role,
+            CASE WHEN owner_user_id = ${context.userId} THEN 0 ELSE 1 END AS shared,
+            CASE WHEN owner_user_id = ${context.userId}
+              THEN COALESCE(parallel_slots, ${q.raw(String(DEFAULT_WORKSPACE_PARALLEL_SLOTS))})
+            END AS "parallelSlots",
+            CASE WHEN owner_user_id = ${context.userId} THEN space_ai_chat END AS "spaceAiChat",
+            CASE WHEN owner_user_id = ${context.userId} THEN space_ai_work END AS "spaceAiWork",
             EXISTS (SELECT 1 FROM workspace_runtime_identities identity
                     WHERE identity.workspace_id = execution_workspaces.id
-                      AND identity.revoked_at IS NULL) AS hasRuntimeIdentity,
+                      AND identity.revoked_at IS NULL) AS "hasRuntimeIdentity",
             (SELECT COUNT(*) FROM workspace_worker_inventory worker
-              WHERE worker.workspace_id = execution_workspaces.id) AS workerCount,
+              WHERE worker.workspace_id = execution_workspaces.id) AS "workerCount",
             (SELECT COUNT(*) FROM worker_assignments assignment
               WHERE assignment.execution_workspace_id = execution_workspaces.id
-                AND assignment.status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})) AS activeTaskCount,
+                AND assignment.status IN (${q.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})) AS "activeTaskCount",
             CASE
               WHEN NOT EXISTS (SELECT 1 FROM workspace_runtime_identities identity
                                WHERE identity.workspace_id = execution_workspaces.id
@@ -51,27 +51,24 @@ export async function handleListWorkspaces(
               WHEN f.updated_at IS NULL OR execution_workspaces.updated_at > f.updated_at
                 THEN execution_workspaces.updated_at
               ELSE f.updated_at
-            END AS lastSeen,
+            END AS "lastSeen",
             f.platform, f.architecture, f.hostname,
-            f.app_version AS appVersion,
-            f.runtime_capabilities_json AS runtimeCapabilitiesJson,
-            f.updated_at AS factsUpdatedAt,
-            execution_workspaces.created_at AS createdAt,
-            execution_workspaces.updated_at AS updatedAt
+            f.app_version AS "appVersion",
+            f.runtime_capabilities_json AS "runtimeCapabilitiesJson",
+            f.updated_at AS "factsUpdatedAt",
+            execution_workspaces.created_at AS "createdAt",
+            execution_workspaces.updated_at AS "updatedAt"
        FROM execution_workspaces
        LEFT JOIN workspace_runtime_facts f ON f.workspace_id = execution_workspaces.id
       WHERE status <> 'revoked'
-        AND (owner_user_id = ?1
+        AND (owner_user_id = ${context.userId}
              OR EXISTS (SELECT 1 FROM workspace_person_grants g
                          WHERE g.workspace_id = execution_workspaces.id
-                           AND g.user_id = ?1 AND g.status = 'active'
-                           AND ${paidOwnerSql("execution_workspaces.owner_user_id")}))
-      ORDER BY shared ASC, name ASC`,
-  )
-    .bind(context.userId)
-    .all();
+                           AND g.user_id = ${context.userId} AND g.status = 'active'
+                           AND ${paidOwner(q, q.raw("execution_workspaces.owner_user_id"))}))
+      ORDER BY shared ASC, name ASC`;
   const workspaces = await Promise.all(
-    (rows.results ?? []).map(async (raw) => {
+    rows.map(async (raw) => {
       const row = raw as Record<string, unknown>;
       const workspaceId = typeof row.id === "string" ? row.id : null;
       let activeTransport: "websocket" | "http_long_poll" | null = null;
@@ -189,26 +186,14 @@ export async function handleUpdateWorkspace(
     throw new HttpError(409, `You already have a Workspace named "${name}"`);
   }
   const now = new Date().toISOString();
-  const result = await env.SYNTILA_DB.prepare(
-    `UPDATE execution_workspaces
-        SET name = CASE WHEN ?1::text IS NULL THEN name ELSE ?1 END,
-            parallel_slots = CASE WHEN ?5::bigint IS NULL THEN parallel_slots ELSE ?5 END,
-            space_ai_chat = COALESCE(?6::int::boolean, space_ai_chat),
-            space_ai_work = COALESCE(?7::int::boolean, space_ai_work),
-            updated_at = ?2
-      WHERE id = ?3 AND owner_user_id = ?4 AND status <> 'revoked'`,
-  )
-    .bind(
-      hasName ? name : null,
-      now,
-      workspaceId,
-      context.userId,
-      hasSlots ? slots : null,
-      hasChat ? (body.spaceAiChat ? 1 : 0) : null,
-      hasWork ? (body.spaceAiWork ? 1 : 0) : null,
-    )
-    .run();
-  if (!result.success || result.meta.changes === 0) {
+  const result = await dataOf(env).read.run`UPDATE execution_workspaces
+        SET name = CASE WHEN ${hasName ? name : null}::text IS NULL THEN name ELSE ${hasName ? name : null}::text END,
+            parallel_slots = CASE WHEN ${hasSlots ? slots : null}::bigint IS NULL THEN parallel_slots ELSE ${hasSlots ? slots : null}::bigint END,
+            space_ai_chat = COALESCE(${hasChat ? (body.spaceAiChat ? 1 : 0) : null}::int::boolean, space_ai_chat),
+            space_ai_work = COALESCE(${hasWork ? (body.spaceAiWork ? 1 : 0) : null}::int::boolean, space_ai_work),
+            updated_at = ${now}::timestamptz
+      WHERE id = ${workspaceId} AND owner_user_id = ${context.userId} AND status <> 'revoked'`;
+  if (result === 0) {
     throw new HttpError(404, "Workspace not found");
   }
   await recordAudit(

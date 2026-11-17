@@ -2071,21 +2071,17 @@ export class WorkspaceGateway implements DurableObject {
     const terminalSince = new Date(
       Date.now() - 24 * 60 * 60 * 1000,
     ).toISOString();
-    const assignments = await this.env.SYNTILA_DB.prepare(
-      `SELECT id AS assignment_id, status
+    const read = dataOf(this.env).read;
+    const assignmentRows = await read.rows<Record<string, unknown>>`SELECT id AS assignment_id, status
        FROM worker_assignments
-       WHERE execution_workspace_id = ?1
+       WHERE execution_workspace_id = ${workspaceId}
          AND (
-           status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})
-           OR (status IN ('completed', 'failed', 'cancelled', 'timed_out') AND updated_at >= ?2)
+           status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})
+           OR (status IN ('completed', 'failed', 'cancelled', 'timed_out') AND updated_at >= ${terminalSince}::timestamptz)
          )
        ORDER BY updated_at DESC
-       LIMIT 500`,
-    )
-      .bind(workspaceId, terminalSince)
-      .all<Record<string, unknown>>();
+       LIMIT 500`;
     const activeStatuses = new Set<string>(ASSIGNMENT_ACTIVE_STATUSES);
-    const assignmentRows = assignments.results ?? [];
     // Spaces that still exist for this Workspace. The Service uses it only to
     // forget local bookkeeping for removed Spaces; it never deletes folders.
     // Omitted on a query failure so the Service keeps everything.
@@ -2777,13 +2773,10 @@ export class WorkspaceGateway implements DurableObject {
    * ones being revoked: their process may still be running.
    */
   private async slotIsFree(): Promise<boolean> {
-    const row = await this.env.SYNTILA_DB.prepare(
-      `SELECT COUNT(*) AS active FROM worker_assignments
-        WHERE execution_workspace_id = ?1
-          AND status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL}) AND status <> 'created'`,
-    )
-      .bind(this.executionWorkspaceId)
-      .first<{ active: number }>();
+    const read = dataOf(this.env).read;
+    const row = await read.row<{ active: number }>`SELECT COUNT(*) AS active FROM worker_assignments
+        WHERE execution_workspace_id = ${this.executionWorkspaceId ?? null}
+          AND status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)}) AND status <> 'created'`;
     return Number(row?.active ?? 0) < (await this.workspaceSlotLimit());
   }
 

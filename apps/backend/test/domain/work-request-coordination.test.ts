@@ -81,6 +81,7 @@ function fixture(coordinatorAvailable = true) {
             return null;
           },
           async all() {
+            if (sql.includes("direct_spaces")) return { results: [] };
             if (sql.includes("UNION ALL")) {
               const target =
                 typeof this.values[1] === "string" ? this.values[1] : null;

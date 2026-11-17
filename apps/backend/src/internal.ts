@@ -78,8 +78,8 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
   if (pathname === "/internal/admin/accounts/stats") {
     const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string").slice(0, 500) : [];
     if (!ids.length) return json({ stats: {} });
-    const rows = await env.SYNTILA_DB.prepare(
-      `SELECT u.id,
+    const q = dataOf(env).read;
+    const rows = await q.rows<Record<string, unknown> & { id: string }>`SELECT u.id,
          (SELECT count(*) FROM space_memberships m WHERE m.user_id = u.id) AS spaces,
          (SELECT count(*) FROM execution_workspaces w WHERE w.owner_user_id = u.id AND w.status <> 'revoked') AS workspaces,
          (SELECT count(*) FROM work_requests r WHERE r.requested_by_user_id = u.id) AS requests,
@@ -87,15 +87,14 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
          (SELECT max(r.created_at) FROM work_requests r WHERE r.requested_by_user_id = u.id) AS last_request_at,
          (SELECT count(*) FROM discussion_messages m WHERE m.author_user_id = u.id) AS messages,
          (SELECT max(m.created_at) FROM discussion_messages m WHERE m.author_user_id = u.id) AS last_message_at,
-         CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = u.id AND ${PAID}) THEN 'paid' ELSE 'free' END AS plan,
+         CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = u.id AND ${q.raw(PAID)}) THEN 'paid' ELSE 'free' END AS plan,
          (SELECT source FROM account_plans ap WHERE ap.user_id = u.id) AS plan_source,
          CASE WHEN EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = u.id)
            OR EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = u.id AND (ap.source = 'provider' OR ap.provider_customer_id IS NOT NULL OR ap.provider_subscription_id IS NOT NULL))
            THEN 'provider' ELSE 'manual' END AS plan_management,
          (SELECT current_period_end FROM account_plans ap WHERE ap.user_id = u.id) AS plan_period_end
-       FROM users u WHERE u.id IN (${ids.map((_, i) => `?${i + 1}`).join(",")})`,
-    ).bind(...ids).all<Record<string, unknown> & { id: string }>();
-    return json({ stats: Object.fromEntries((rows.results ?? []).map(({ id, ...rest }) => [id, rest])) });
+       FROM users u WHERE u.id IN ${q.list(ids)}`;
+    return json({ stats: Object.fromEntries(rows.map(({ id, ...rest }) => [id, rest])) });
   }
   const match = pathname.match(ADMIN_ACCOUNT);
   if (!match) return json({ error: "Not found" }, 404);
@@ -126,8 +125,7 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
        AND NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ${userId})`;
   if (Number(changed) !== 1)
     return json({ error: "This account has a provider-linked subscription. Manage it through the payment provider.", code: "provider_subscription_managed" }, 409);
-  const plan = await env.SYNTILA_DB.prepare(
-    `SELECT CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = ?1 AND ${PAID}) THEN 'paid' ELSE 'free' END AS plan`,
-  ).bind(userId).first<{ plan: string }>();
+  const q = dataOf(env).read;
+  const plan = await q.row<{ plan: string }>`SELECT CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = ${userId} AND ${q.raw(PAID)}) THEN 'paid' ELSE 'free' END AS plan`;
   return json({ ok: true, plan: plan?.plan ?? "free" });
 }

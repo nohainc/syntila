@@ -224,15 +224,10 @@ export async function createWorkRequestForUser(
 ): Promise<Response> {
   const handlerStartedAt = startedAt;
   const context = { userId };
-  const directSpace = await env.SYNTILA_DB.prepare(
-    `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId
+  const directSpace = await dataOf(env).read.row<{ status: string | null; userLowId: string; userHighId: string }>`SELECT pc.status, ds.user_low_id AS "userLowId", ds.user_high_id AS "userHighId"
      FROM direct_spaces ds
      LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
-     WHERE ds.space_id = ?1`,
-  )
-    .bind(spaceId)
-    .first<{ status: string | null; userLowId: string; userHighId: string }>()
-    .catch(() => null);
+     WHERE ds.space_id = ${spaceId}`.catch(() => null);
   if (directSpace) {
     const isBlocked = await usersBlocked(dataOf(env).read, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {

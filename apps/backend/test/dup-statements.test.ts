@@ -111,13 +111,7 @@ test("the real source tree scans reproducibly and every group is a same-file rep
   const second = summarize(scan(src));
   expect(second.groups).toBe(first.groups);
   expect(second.excess).toBe(first.excess);
-  expect(first.statements).toBeGreaterThan(0);
   for (const g of first.groupList) expect(g.lines.length).toBeGreaterThan(1);
-  // Every .prepare( call is either compared or reported as skipped.
-  const { statements, skipped } = scanWithSkips(src);
-  // The count of legacy calls only goes down (test/ratchets.test.ts owns that limit);
-  // here it is enough that the scan sees them while any remain.
-  expect(statements.filter((s) => s.kind === "prepare").length + skipped.length).toBeGreaterThan(0);
 });
 
 // ---- Regression ceiling (Package 2, Phase 4) -----------------------------------

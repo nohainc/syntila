@@ -165,21 +165,17 @@ export async function sweepUnsignaledTerminals(
   const now = options.now ?? new Date();
   const limit = options.limit ?? 50;
   const cutoff = new Date(now.getTime() - SWEEP_WINDOW_MS).toISOString();
-  const { results } = await env.SYNTILA_DB.prepare(
-    `SELECT id FROM worker_assignments
+  const results = await dataOf(env).read.rows<{ id: string }>`SELECT id FROM worker_assignments
       WHERE workflow_signaled_at IS NULL
-        AND status IN (${TERMINAL_SQL})
-        AND workflow_signal_attempts < ?1
-        AND updated_at >= ?2
+        AND status IN (${dataOf(env).read.raw(TERMINAL_SQL)})
+        AND workflow_signal_attempts < ${MAX_WORKFLOW_SIGNAL_ATTEMPTS}
+        AND updated_at >= ${cutoff}::timestamptz
       ORDER BY updated_at
-      LIMIT ?3`,
-  )
-    .bind(MAX_WORKFLOW_SIGNAL_ATTEMPTS, cutoff, limit)
-    .all<{ id: string }>();
+      LIMIT ${limit}`;
   let signaled = 0;
-  for (const row of results ?? []) {
+  for (const row of results) {
     const outcome = await signalAssignmentTerminal(env, row.id, () => now);
     if (outcome === "signaled" || outcome === "no_instance") signaled += 1;
   }
-  return { attempted: results?.length ?? 0, signaled };
+  return { attempted: results.length, signaled };
 }

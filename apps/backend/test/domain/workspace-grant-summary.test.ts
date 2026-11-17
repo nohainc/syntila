@@ -63,7 +63,7 @@ function fixture() {
       workspaces: { id: string; activeSpaceGrantCount: number }[];
     };
   };
-  return { sqlite, db, space, grant, list };
+  return { sqlite, db, env, space, grant, list };
 }
 
 describe("Workspace aggregate", () => {
@@ -106,12 +106,21 @@ describe("Workspace aggregate", () => {
         f.space(`p${i}`);
         f.grant(`g${i}`, `p${i}`);
       }
-      const reads = vi.spyOn(f.db, "prepare");
+      // Count the statements the handler sends through the data layer.
+      const statements: string[] = [];
+      const real = (f.db as any).sql;
+      const counted: any = new Proxy(real, {
+        apply(target, thisArg, args) {
+          if (Array.isArray(args[0])) statements.push((args[0] as string[]).join("?"));
+          return Reflect.apply(target, thisArg, args);
+        },
+      });
+      (f.env as any).SYNTILA_DB = Object.create(f.db, { sql: { value: counted } });
       await f.list();
-      expect(reads.mock.calls).toHaveLength(1);
-      expect(reads.mock.calls[0]?.[0]).not.toContain(
-        "COUNT(DISTINCT g.space_id)",
-      );
+      // Besides the account provisioning of the signed-in user, the list is one read.
+      const reads = statements.filter((text) => text.includes("FROM execution_workspaces"));
+      expect(reads).toHaveLength(1);
+      expect(statements.join("\n")).not.toContain("COUNT(DISTINCT g.space_id)");
     } finally {
       f.sqlite.close();
     }

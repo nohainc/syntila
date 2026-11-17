@@ -45,8 +45,8 @@ import {
   assignmentSourceStatusList,
 } from "./assignment-transitions.js";
 import {
-  executionSlotAdmissionSql,
-  pluginAssignmentAdmissionSql,
+  executionSlotAdmission,
+  pluginAssignmentAdmission,
 } from "./account-plan.js";
 import {
   clearExecutionWaiter,
@@ -470,10 +470,11 @@ async function dispatchWorkspaceWorkerAssignment(
   // The Free concurrency limit counts the requester's live assignments:
   // admissions of one requester run one at a time (lock first, same
   // transaction), or two parallel dispatches could both take the last slot.
-  const insertion = await inTransaction(env, "assignment.admit", async (txEnv, tx) => {
+  const insertion = await dataOf(env).tx("assignment.admit", async (tx) => {
     await tx.lock("syntila.execution_slots", task.requestedByUserId ?? "");
-    return txEnv.SYNTILA_DB.prepare(
-    `INSERT INTO worker_assignments
+    const created = new Date().toISOString();
+    const assignmentJson = JSON.stringify(assignmentInput);
+    return tx.row<{ id: string }>`INSERT INTO worker_assignments
        (id, space_id, execution_workspace_id, workspace_space_grant_id,
         run_id, task_id, attempt_id, requested_by_user_id, runtime_identity_id,
         worker_type_id, workspace_worker_id, engine_version,
@@ -481,38 +482,11 @@ async function dispatchWorkspaceWorkerAssignment(
         permission_snapshot_json, timeout_ms, queue_wait_timeout_ms,
         session_policy, idempotency_key, status,
         input_json, created_at, updated_at)
-     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-            ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, 'created', ?21, ?22, ?22
-      WHERE ${executionSlotAdmissionSql("?8", "?6", "?23")}
-        AND ${pluginAssignmentAdmissionSql("?10", "?3")}
-     RETURNING id`,
-  )
-    .bind(
-      assignmentId,
-      target.spaceId,
-      target.workspaceId,
-      target.workspaceSpaceGrantId,
-      runId,
-      taskId,
-      attemptId,
-      task.requestedByUserId,
-      target.workspaceRuntimeIdentityId,
-      target.workerTypeId,
-      target.workerId,
-      target.engineVersion,
-      target.model,
-      JSON.stringify(assignmentInput),
-      JSON.stringify(target.effectivePermissions),
-      JSON.stringify(snapshot),
-      timeoutMs,
-      queueWaitTimeoutMs,
-      sessionPolicy,
-      idempotencyKey,
-      JSON.stringify(assignmentInput),
-      now,
-      waiterCutoff(),
-    )
-    .first<{ id: string }>();
+     SELECT ${assignmentId}::text, ${target.spaceId}::text, ${target.workspaceId}::text, ${target.workspaceSpaceGrantId ?? null}::text, ${runId}::text, ${taskId}::text, ${attemptId}::text, ${task.requestedByUserId ?? null}::text, ${target.workspaceRuntimeIdentityId ?? null}::text, ${target.workerTypeId}::text, ${target.workerId ?? null}::text, ${target.engineVersion ?? null}::text,
+            ${target.model ?? null}::text, ${assignmentJson}::text, ${JSON.stringify(target.effectivePermissions)}::text, ${JSON.stringify(snapshot)}::text, ${timeoutMs ?? null}::bigint, ${queueWaitTimeoutMs ?? null}::bigint, ${sessionPolicy ?? null}::text, ${idempotencyKey}::text, 'created', ${assignmentJson}::text, ${now}::timestamptz, ${now}::timestamptz
+      WHERE ${executionSlotAdmission(tx, task.requestedByUserId ?? "", taskId, waiterCutoff())}
+        AND ${pluginAssignmentAdmission(tx, target.workerTypeId, target.workspaceId)}
+     RETURNING id`;
   });
   // D1 meta.changes includes writes made by triggers. Only the row returned
   // by this INSERT proves admission; an ignored/rejected insert returns none.
@@ -840,13 +814,10 @@ async function dispatchWorkspaceWorkerAssignment(
         accepted: true,
       };
     }
-    await env.SYNTILA_DB.prepare(
-      `UPDATE worker_assignments SET status = 'dispatched', updated_at = ?1,
-              dispatched_at = COALESCE(dispatched_at, ?1)
-        WHERE id = ?2 AND status IN (${assignmentSourceStatusList("dispatched")})`,
-    )
-      .bind(new Date().toISOString(), assignmentId)
-      .run();
+    const dispatchedAt = new Date().toISOString();
+    await dataOf(env).read.run`UPDATE worker_assignments SET status = 'dispatched', updated_at = ${dispatchedAt}::timestamptz,
+              dispatched_at = COALESCE(dispatched_at, ${dispatchedAt}::timestamptz)
+        WHERE id = ${assignmentId} AND status IN (${dataOf(env).read.raw(assignmentSourceStatusList("dispatched"))})`;
     tryLogDiagnosticEvent({
       requestId: task.workRequestId,
       assignmentId,
@@ -1218,31 +1189,8 @@ export async function recoverStaleAssignments(
     ASSIGNMENT_REVOCATION_CONFIRMATION_MS,
     now,
   );
-  const rows = await db
-    .prepare(
-      `SELECT wa.id, wa.status, wa.attempt_id AS attemptId,
-              wa.created_at AS createdAt,
-              wa.updated_at AS updatedAt, wa.timeout_ms AS timeoutMs,
-              wa.queue_wait_timeout_ms AS queueWaitTimeoutMs,
-              wa.cloud_queue_reason AS cloudQueueReason,
-              wa.cloud_queue_since AS cloudQueueSince,
-              wa.dispatched_at AS dispatchedAt,
-              wa.acknowledged_at AS acknowledgedAt,
-              wa.running_at AS runningAt,
-              wa.start_permit_issued_at AS permitIssuedAt,
-              wa.start_permit_required AS permitRequired,
-              ew.status AS workspaceStatus, ew.updated_at AS workspaceUpdatedAt,
-              g.expires_at AS grantExpiresAt, g.status AS grantStatus,
-              wr.status AS workRequestStatus, wr.workflow_id AS workflowId,
-              wr.workflow_version AS workflowVersion
-         FROM worker_assignments wa
-         JOIN execution_workspaces ew ON ew.id = wa.execution_workspace_id
-         LEFT JOIN workspace_space_grants g ON g.id = wa.workspace_space_grant_id
-         LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
-         LEFT JOIN work_requests wr ON wr.id = wt.work_request_id
-        WHERE wa.status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL})`,
-    )
-    .all<{
+  const q = queryOf(db);
+  const rows = await q.rows<{
       id: string;
       status: string;
       attemptId: string | null;
@@ -1264,7 +1212,27 @@ export async function recoverStaleAssignments(
       grantExpiresAt: string | null;
       grantStatus: string | null;
       workRequestStatus: string | null;
-    }>();
+    }>`SELECT wa.id, wa.status, wa.attempt_id AS "attemptId",
+              wa.created_at AS "createdAt",
+              wa.updated_at AS "updatedAt", wa.timeout_ms AS "timeoutMs",
+              wa.queue_wait_timeout_ms AS "queueWaitTimeoutMs",
+              wa.cloud_queue_reason AS "cloudQueueReason",
+              wa.cloud_queue_since AS "cloudQueueSince",
+              wa.dispatched_at AS "dispatchedAt",
+              wa.acknowledged_at AS "acknowledgedAt",
+              wa.running_at AS "runningAt",
+              wa.start_permit_issued_at AS "permitIssuedAt",
+              wa.start_permit_required AS "permitRequired",
+              ew.status AS "workspaceStatus", ew.updated_at AS "workspaceUpdatedAt",
+              g.expires_at AS "grantExpiresAt", g.status AS "grantStatus",
+              wr.status AS "workRequestStatus", wr.workflow_id AS "workflowId",
+              wr.workflow_version AS "workflowVersion"
+         FROM worker_assignments wa
+         JOIN execution_workspaces ew ON ew.id = wa.execution_workspace_id
+         LEFT JOIN workspace_space_grants g ON g.id = wa.workspace_space_grant_id
+         LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
+         LEFT JOIN work_requests wr ON wr.id = wt.work_request_id
+        WHERE wa.status IN (${q.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})`;
 
   const revoke = async (
     row: { id: string; status: string; attemptId: string | null },
@@ -1285,7 +1253,7 @@ export async function recoverStaleAssignments(
   };
 
   let recovered = 0;
-  for (const row of rows.results ?? []) {
+  for (const row of rows) {
     if (
       isKnownAssignmentStatus(row.status) &&
       isRevocationAssignmentStatus(row.status)
@@ -1467,11 +1435,7 @@ async function pluginEntitlementRefused(
   workspaceId: string,
   workerTypeId: string,
 ): Promise<boolean> {
-  const row = await db
-    .prepare(
-      `SELECT CASE WHEN ${pluginAssignmentAdmissionSql("?1", "?2")} THEN 0 ELSE 1 END AS refused`,
-    )
-    .bind(workerTypeId, workspaceId)
-    .first<{ refused: number }>();
+  const q = queryOf(db);
+  const row = await q.row<{ refused: number }>`SELECT CASE WHEN ${pluginAssignmentAdmission(q, workerTypeId, workspaceId)} THEN 0 ELSE 1 END AS refused`;
   return row?.refused === 1;
 }

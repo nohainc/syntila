@@ -4,6 +4,7 @@ vi.mock("../../src/domain/collaboration-events.js", () => ({
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { createWorkspaceSpaceGrant } from "../../src/domain/routes/workspace-access.js";
 import { Data } from "../../src/platform/data.js";
+import { listAware } from "./helpers/fake-sql";
 
 function environment(
   inventoryWorkerIds: readonly string[] = [],
@@ -52,7 +53,7 @@ function environment(
       };
     },
   };
-  const data = new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
+  const data = new Data(listAware(async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const t = strings.join("?");
     if (t.includes("FROM spaces WHERE id")) return [{ id: "space-1" }];
     if (t.includes("FROM execution_workspaces WHERE id")) return [{ id: "workspace-1", owner_user_id: "owner-1", status: "online" }];

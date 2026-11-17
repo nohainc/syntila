@@ -62,6 +62,8 @@ export function withSql<T>(fake: T): T {
   const sql: any = (strings: any, ...values: unknown[]) =>
     Array.isArray(strings) && "raw" in strings ? build(strings, values) : strings;
   sql.unsafe = (text: string) => ({ raw: text });
+  // A "transaction" on a text-routing fake just runs the statements through it.
+  sql.begin = async (fn: (conn: unknown) => unknown) => fn(sql);
   db.sql = sql;
   return fake;
 }
@@ -97,4 +99,14 @@ export function fakeTx(db: unknown): any {
     lock: async () => {},
     afterCommit: () => {},
   };
+}
+
+/**
+ * For a hand-written `Data` fake that answers `async (strings, ...values)`:
+ * `q.list(ids)` calls the function with a plain array, which must come back
+ * as is (not as a Promise) so the list reaches the statement as a value.
+ */
+export function listAware<F extends (strings: any, ...values: any[]) => any>(fn: F): F {
+  return ((strings: any, ...values: any[]) =>
+    Array.isArray(strings) && "raw" in strings ? fn(strings, ...values) : strings) as F;
 }

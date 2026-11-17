@@ -37,7 +37,7 @@ describe("Workspace Worker inventory catalog metadata", () => {
     };
     const env = {
       SYNTILA_ENVIRONMENT: "development",
-      SYNTILA_DB: { prepare: vi.fn(() => statement) },
+      SYNTILA_DB: withSql({ prepare: vi.fn(() => statement) }),
       TEST_AUTHENTICATION: async () => ({ userId: "user-1" }),
     } as unknown as Env;
 
@@ -123,7 +123,7 @@ describe("Workspace Worker inventory catalog metadata", () => {
     };
     const env = {
       SYNTILA_ENVIRONMENT: "development",
-      SYNTILA_DB: { prepare: vi.fn(() => statement) },
+      SYNTILA_DB: withSql({ prepare: vi.fn(() => statement) }),
       TEST_AUTHENTICATION: async () => ({ userId: "user-1" }),
     } as unknown as Env;
 

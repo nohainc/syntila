@@ -9,7 +9,7 @@ import {
   canRevalidateAcceptedSelection,
   supportsPluginExecutor,
 } from "../execution-selection-snapshot.js";
-import { pluginOwnerEntitledSql } from "../account-plan.js";
+import { paidOwner } from "../account-plan.js";
 import { PluginInventoryExecutorSchema } from "@syntila/workspace-runtime-protocol";
 import {
   AuthorizationError,
@@ -543,41 +543,41 @@ export async function validateWorkflowWorkerEligibility(
       });
       continue;
     }
-    const row = await env.SYNTILA_DB.prepare(
-      `SELECT i.workspace_id AS workspaceId, i.worker_type_id AS workerTypeId,
-              i.activation_state AS activationState, i.readiness_state AS readinessState,
-              i.readiness_issue_code AS readinessIssueCode,
-              i.engine_version AS engineVersion,
+    const q = dataOf(env).read;
+    const row = await q.row<Record<string, unknown>>`SELECT i.workspace_id AS "workspaceId", i.worker_type_id AS "workerTypeId",
+              i.activation_state AS "activationState", i.readiness_state AS "readinessState",
+              i.readiness_issue_code AS "readinessIssueCode",
+              i.engine_version AS "engineVersion",
               COALESCE(i.profile_definition_id,
                        CASE WHEN catalog.origin = 'plugin' THEN i.worker_type_id END)
-                AS profileDefinitionId,
+                AS "profileDefinitionId",
               COALESCE(i.profile_release_version,
                        CASE WHEN catalog.origin = 'plugin' THEN 1 END)
-                AS profileReleaseVersion,
-              i.provider_tool_version AS providerToolVersion,
-              catalog.origin AS workerCatalogOrigin,
-              catalog.owner_user_id AS workerCatalogOwnerUserId,
-              ew.owner_user_id AS workspaceOwnerUserId,
-              i.executor_json AS executorJson,
-              pe.version AS pluginPinVersion,
-              pe.manifest_digest AS pluginPinDigest,
-              pe.intent AS pluginPinIntent,
-              ${pluginOwnerEntitledSql("ew.owner_user_id")} AS pluginOwnerEntitled,
-              COALESCE(currentProfile.profile_json, history.profile_json) AS executionProfileJson,
-              COALESCE(currentProfile.digest, history.digest) AS executionProfileDigest,
-              i.model_catalog_json AS modelCatalogJson,
-              catalog.lifecycle_state AS workerCatalogLifecycleState,
-              catalog.visibility_state AS workerCatalogVisibilityState,
-              catalog.display_name AS workerDisplayName,
-              vs.state AS schedulingState,
-              g.id AS grantId, g.status AS grantStatus, g.expires_at AS grantExpiresAt,
-              g.allowed_worker_ids_json AS allowedWorkerIdsJson,
-              g.allowed_permissions_json AS grantPermissionsJson,
-              ep.allowed_models_json AS allowedModelsJson,
-              ep.primary_workspace_id AS primaryWorkspaceId,
-              ep.allowed_worker_type_ids_json AS allowedThreadWorkerTypesJson,
-              ew.status AS workspaceStatus,
-              wri.id AS runtimeIdentityId
+                AS "profileReleaseVersion",
+              i.provider_tool_version AS "providerToolVersion",
+              catalog.origin AS "workerCatalogOrigin",
+              catalog.owner_user_id AS "workerCatalogOwnerUserId",
+              ew.owner_user_id AS "workspaceOwnerUserId",
+              i.executor_json AS "executorJson",
+              pe.version AS "pluginPinVersion",
+              pe.manifest_digest AS "pluginPinDigest",
+              pe.intent AS "pluginPinIntent",
+              ${paidOwner(q, q.raw("ew.owner_user_id"))} AS "pluginOwnerEntitled",
+              COALESCE(currentProfile.profile_json, history.profile_json) AS "executionProfileJson",
+              COALESCE(currentProfile.digest, history.digest) AS "executionProfileDigest",
+              i.model_catalog_json AS "modelCatalogJson",
+              catalog.lifecycle_state AS "workerCatalogLifecycleState",
+              catalog.visibility_state AS "workerCatalogVisibilityState",
+              catalog.display_name AS "workerDisplayName",
+              vs.state AS "schedulingState",
+              g.id AS "grantId", g.status AS "grantStatus", g.expires_at AS "grantExpiresAt",
+              g.allowed_worker_ids_json AS "allowedWorkerIdsJson",
+              g.allowed_permissions_json AS "grantPermissionsJson",
+              ep.allowed_models_json AS "allowedModelsJson",
+              ep.primary_workspace_id AS "primaryWorkspaceId",
+              ep.allowed_worker_type_ids_json AS "allowedThreadWorkerTypesJson",
+              ew.status AS "workspaceStatus",
+              wri.id AS "runtimeIdentityId"
          FROM workspace_worker_inventory i
          LEFT JOIN worker_catalog catalog
            ON catalog.worker_type_id = i.worker_type_id
@@ -593,15 +593,12 @@ export async function validateWorkflowWorkerEligibility(
          -- Revoked and expired grants stay as history; only a live grant
          -- (active or suspended) may answer, never an older revoked row.
          LEFT JOIN workspace_space_grants g
-           ON g.workspace_id = i.workspace_id AND g.space_id = ?2
+           ON g.workspace_id = i.workspace_id AND g.space_id = ${spaceId}
           AND g.status IN ('active','suspended')
-         LEFT JOIN thread_execution_policies ep ON ep.thread_id = ?3
+         LEFT JOIN thread_execution_policies ep ON ep.thread_id = ${threadId}
          LEFT JOIN execution_workspaces ew ON ew.id = i.workspace_id
          LEFT JOIN workspace_runtime_identities wri ON wri.workspace_id = i.workspace_id AND wri.revoked_at IS NULL
-        WHERE i.worker_id = ?1`,
-    )
-      .bind(binding.workerId, spaceId, threadId)
-      .first<Record<string, unknown>>();
+        WHERE i.worker_id = ${binding.workerId}`;
     if (!row) {
       const code = "worker_missing";
       issues.push({

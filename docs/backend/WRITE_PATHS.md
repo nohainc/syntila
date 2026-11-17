@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 184 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 2 adapter-only, 149 in data-layer transactions.
+Totals: 184 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 0 adapter-only, 149 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -206,7 +206,7 @@ Totals: 184 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 2 adap
 | `domain/routes/workflow-workspace.ts` | `auditWorkspaceAuthorized` | INSERT space_audit_log | data |
 | `domain/routes/workflow-workspace.ts` | `handleWorkflowWorkspace` | DELETE space_additional_folders, DELETE space_workflow_configurations, DELETE space_workflow_defaults, INSERT space_workflow_settings, INSERT user_workflow_settings | read-write, data |
 | `domain/routes/workflow-workspace.ts` | `prepareWorkflowWorkspaceGrant` | INSERT workspace_space_grants, UPDATE worker_scheduling | read-write, guarded, data |
-| `domain/thread-coordinator.ts` | `extendLeaseForLiveAssignment` | UPDATE thread_runtime_leases | guarded, lock |
+| `domain/thread-coordinator.ts` | `extendLeaseForLiveAssignment` | UPDATE thread_runtime_leases | guarded |
 | `domain/thread-coordinator.ts` | `release` | UPDATE runs, UPDATE thread_runtime_leases, UPDATE work_requests | guarded, data |
 | `domain/thread-coordinator.ts` | `settleExpiredLeases` | UPDATE runs, UPDATE thread_runtime_leases, UPDATE work_requests, UPDATE workflow_tasks | read-write, guarded, data |
 | `domain/thread-coordinator.ts` | `startStatefulLease` | INSERT thread_runtime_leases, UPDATE threads | data |
@@ -216,7 +216,7 @@ Totals: 184 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 2 adap
 | `domain/workflow.ts` | `finishWorkRequestNow` | UPDATE work_requests | read-write, guarded, data |
 | `domain/workflow.ts` | `persistTerminalRun` | UPDATE runs |  |
 | `domain/workflow.ts` | `persistWorkflowTasks` | INSERT workflow_task_dependencies, INSERT workflow_tasks | read-write, guarded, data |
-| `domain/workflow.ts` | `persistWorkflowTaskState` | UPDATE workflow_tasks | lock |
+| `domain/workflow.ts` | `persistWorkflowTaskState` | UPDATE workflow_tasks |  |
 
 ## 5 realtime, gateway, jobs
 

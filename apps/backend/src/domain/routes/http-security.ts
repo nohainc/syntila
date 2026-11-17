@@ -99,23 +99,9 @@ export async function recordAudit(
        VALUES (${`audit-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(details)}::text::jsonb, ${new Date().toISOString()})`;
     return;
   }
-  const values = [
-    `audit-${crypto.randomUUID()}`,
-    auditWorkspaceId,
-    context.userId,
-    action,
-    targetType,
-    targetId,
-    JSON.stringify(details),
-    new Date().toISOString(),
-  ] as const;
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO workspace_audit_log
+  await dataOf(env).read.run`INSERT INTO workspace_audit_log
        (id, workspace_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-     VALUES (?1, ?2, 'user', ?3, ?4, ?5, ?6, ?7, ?8)`,
-  )
-    .bind(...values)
-    .run();
+     VALUES (${`audit-${crypto.randomUUID()}`}, ${auditWorkspaceId}, 'user', ${context.userId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(details)}::text::jsonb, ${new Date().toISOString()}::timestamptz)`;
 }
 
 export function errorMessage(error: unknown): string {

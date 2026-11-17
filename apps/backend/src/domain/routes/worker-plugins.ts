@@ -272,14 +272,8 @@ async function removeFromLibrary(
       "plugin_in_use",
       "Disable this plugin on every Workspace first",
     );
-  const active = await db
-    .prepare(
-      `SELECT 1 AS ok FROM worker_assignments
-        WHERE worker_type_id = ?1 AND status IN ('created','queued','sent','accepted','running','cancel_requested') LIMIT 1`,
-    )
-    .bind(pluginRef)
-    .first()
-    .catch(() => null);
+  const active = await queryOf(db).row`SELECT 1 AS ok FROM worker_assignments
+        WHERE worker_type_id = ${pluginRef} AND status IN ('created','queued','sent','accepted','running','cancel_requested') LIMIT 1`.catch(() => null);
   if (active)
     throw new PluginRouteError(
       409,

@@ -92,7 +92,7 @@ export async function applyEngineLivenessReport(
         db,
         row.id,
         Number.isFinite(nowMs) ? nowMs : Date.now(),
-      ).run();
+      );
       continue;
     }
     const missing = (row.engine_missing_reports ?? 0) + 1;
