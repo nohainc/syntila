@@ -15,7 +15,8 @@ void main() {
       expect(details.toJson()['failedRunResponse'], 'Partial output');
     });
 
-    test('rejects invalid source, unknown keys, and oversized UTF-8 values', () {
+    test('rejects invalid source, unknown keys, and oversized UTF-8 values',
+        () {
       expect(
         () => ProviderFailureDetails.fromJson(<String, Object?>{
           'schemaVersion': 1,
@@ -68,6 +69,15 @@ void main() {
       expect(sanitized.failedRunResponse, 'Hello\nWorld');
       expect(sanitized.omitted, isTrue);
       expect(sanitized.omittedFields, <String>['providerErrorText']);
+    });
+
+    test('omits common credential assignments and Google keys', () {
+      for (final text in ['password=hunter2', 'key AIza${'A' * 35}']) {
+        final result = sanitizeProviderFailureDetails(
+            source: 'stderr', providerErrorText: text);
+        expect(result.providerErrorText, isNull);
+        expect(result.omittedFields, ['providerErrorText']);
+      }
     });
   });
 }

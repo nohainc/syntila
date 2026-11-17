@@ -1,9 +1,81 @@
 import 'dart:io';
 
 import 'package:syntila_workspace/assignment_journal.dart';
+import 'package:syntila_workspace/provider_failure_cipher.dart';
+import 'package:syntila_workspace/secure_credentials.dart';
 import 'package:test/test.dart';
 
+class _MemoryCredentials implements SecureCredentialStore {
+  final values = <String, String>{};
+  @override
+  String? readSync(String key) => values[key];
+  @override
+  Future<String?> read(String key) async => values[key];
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
+  @override
+  Future<void> delete(String key) async => values.remove(key);
+}
+
 void main() {
+  test('encrypts provider failures and replays them after restart', () async {
+    final directory =
+        await Directory.systemTemp.createTemp('encrypted-journal-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/assignments.jsonl');
+    final store = _MemoryCredentials();
+    AssignmentJournal journal() => AssignmentJournal(file,
+        providerFailureCipher:
+            ProviderFailureCipher(store, file, 'install-test'));
+    await journal().append(AssignmentRecord(
+      assignmentId: 'assignment-1',
+      status: AssignmentStatus.failed,
+      updatedAt: DateTime.utc(2026),
+      result: {
+        'error': 'failed',
+        'providerFailure': {
+          'schemaVersion': 1,
+          'source': 'stderr',
+          'providerErrorText': 'secret output',
+        },
+      },
+    ));
+    expect(await file.readAsString(), isNot(contains('secret output')));
+    final restored = (await journal().find('assignment-1'))!
+        .result!['providerFailure'] as Map;
+    expect(restored['providerErrorText'], 'secret output');
+    store.values.clear();
+    await expectLater(journal().reconcile(), throwsStateError);
+    await expectLater(
+        journal().append(AssignmentRecord(
+          assignmentId: 'another',
+          status: AssignmentStatus.failed,
+          updatedAt: DateTime.utc(2026),
+          result: {
+            'providerFailure': {'source': 'stderr'}
+          },
+        )),
+        throwsStateError);
+  });
+  test('binds encrypted details to the assignment and rejects tampering',
+      () async {
+    final directory =
+        await Directory.systemTemp.createTemp('cipher-integrity-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/assignments.jsonl');
+    final cipher =
+        ProviderFailureCipher(_MemoryCredentials(), file, 'install-test');
+    final envelope =
+        await cipher.encrypt('assignment-1', {'providerErrorText': 'private'});
+    await expectLater(
+        cipher.decrypt('assignment-2', envelope), throwsA(isA<Exception>()));
+    final altered = Map<String, Object?>.from(envelope);
+    final ciphertext = altered['ciphertext'] as String;
+    altered['ciphertext'] =
+        '${ciphertext[0] == 'A' ? 'B' : 'A'}${ciphertext.substring(1)}';
+    await expectLater(
+        cipher.decrypt('assignment-1', altered), throwsA(isA<Exception>()));
+  });
   test('reconciles the latest idempotent assignment state', () async {
     final directory = await Directory.systemTemp.createTemp('syntila-journal-');
     final journal =

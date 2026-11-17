@@ -87,6 +87,20 @@ Map<String, Object?> validProfileMap({
 
 void main() {
   group('Tool Profile Release & Candidate Primitives', () {
+    test('validates provider failure extraction selectors', () {
+      final profile = validProfileMap();
+      final execution = profile['execution'] as Map<String, Object?>;
+      execution['failureExtraction'] = {
+        'providerErrorText': r'$.result.error',
+        'failedRunResponse': r'$.result.response',
+        'source': 'structured_error',
+      };
+      expect(() => EngineProfile.parse(utf8.encode(canonicalJson(profile))),
+          returnsNormally);
+      execution['failureExtraction'] = {'nativeErrorCode': 'invalid'};
+      expect(() => EngineProfile.parse(utf8.encode(canonicalJson(profile))),
+          throwsFormatException);
+    });
     test('Profiles omit CLI ranges without changing the candidate payload', () {
       final profile = validProfileMap();
       (profile['providerTool'] as Map).remove('supportedVersions');

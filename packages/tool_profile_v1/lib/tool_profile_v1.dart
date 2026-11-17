@@ -252,6 +252,35 @@ class EngineProfile {
     final progress = json['progress'];
     _boundedArray(progress, 'progress', 64);
     _boundedArray(execution['events'], 'execution.events', 128);
+    if (execution['failureExtraction'] != null) {
+      final failure = _object(
+          execution['failureExtraction'], 'execution.failureExtraction');
+      _expectOnly(
+          failure,
+          const {
+            'nativeErrorCode',
+            'providerErrorText',
+            'failedRunResponse',
+            'source'
+          },
+          'execution.failureExtraction');
+      for (final key in [
+        'nativeErrorCode',
+        'providerErrorText',
+        'failedRunResponse'
+      ]) {
+        if (failure.containsKey(key)) {
+          if (failure[key] is! String)
+            throw FormatException('$key must be a selector');
+          _validateSelector(failure[key]);
+        }
+      }
+      if (failure.containsKey('source') &&
+          !const {'structured_error', 'result_message', 'stderr', 'stdout'}
+              .contains(failure['source'])) {
+        throw const FormatException('invalid failure extraction source');
+      }
+    }
     final compatibilityOverrides = json['compatibilityOverrides'];
     _validateCompatibilityOverrides(compatibilityOverrides);
     final probe = _object(json['probe'], 'probe');

@@ -2,6 +2,44 @@ import 'package:syntila_protocol/syntila_protocol.dart';
 import 'package:test/test.dart';
 
 void main() {
+  test('validates assignment provider failure details', () {
+    final envelope = <String, Object?>{
+      'protocol': workspaceRuntimeProtocolName,
+      'protocolVersion': workspaceRuntimeProtocolVersion,
+      'messageId': 'message',
+      'timestamp': '2026-01-01T00:00:00Z',
+      'type': 'assignment.error',
+      for (final field in [
+        'executionWorkspaceId',
+        'workspaceRuntimeId',
+        'workerId',
+        'runId',
+        'taskId',
+        'attemptId',
+        'assignmentId',
+        'idempotencyKey'
+      ])
+        field: 'id',
+      'payload': {
+        'providerFailure': {
+          'schemaVersion': 1,
+          'source': 'stderr',
+          'providerErrorText': 'ошибка',
+          'failedRunResponse': 'partial'
+        }
+      },
+    };
+    expect(WorkspaceRuntimeMessage.parse(envelope).type, 'assignment.error');
+    envelope['payload'] = {
+      'providerFailure': {
+        'schemaVersion': 1,
+        'source': 'stderr',
+        'providerErrorText': 'x' * 4097
+      }
+    };
+    expect(() => WorkspaceRuntimeMessage.parse(envelope),
+        throwsA(isA<ProtocolException>()));
+  });
   test('maps unknown execution errors to the generic failure code', () {
     expect(canonicalExecutionErrorCode('unknown'), equals('execution_failed'));
     expect(executionErrorMessage('timeout'), isNotEmpty);
@@ -96,7 +134,8 @@ void main() {
     expect(workspaceProbePayloadCapability, 'workspace.probe_payload.v1');
     expect(diagnosticProbeEchoMaxChars, 65536);
 
-    Map<String, Object?> envelope(String type, Map<String, Object?> payload) => {
+    Map<String, Object?> envelope(String type, Map<String, Object?> payload) =>
+        {
           'protocol': workspaceRuntimeProtocolName,
           'protocolVersion': workspaceRuntimeProtocolVersion,
           'messageId': 'msg-1',

@@ -114,6 +114,7 @@ class CliWorkerEngine {
   DiscoveredModelCatalog? _modelCatalog;
   bool _discoveryUsedCache = false;
   bool _initialized = false;
+  String _negotiatedProtocolVersion = localWorkerProtocolVersion;
   final _operationStarts = <String, Stopwatch>{};
   final _activitySequences = <String, int>{};
   int? _providerExitCode;
@@ -242,6 +243,7 @@ class CliWorkerEngine {
     _profileRevision =
         int.tryParse(request.profileReleaseVersion) ??
         _admittedProfile.releaseVersion;
+    _negotiatedProtocolVersion = request.protocolVersion;
     _initialized = true;
     _logger.log(
       'info',
@@ -263,7 +265,7 @@ class CliWorkerEngine {
         profileSchemaVersion: _admittedProfile.schemaVersion,
         // Kept on the wire for protocol compatibility; capability metadata is
         // no longer sourced from or enforced by Tool Profiles.
-        capabilities: const [],
+        capabilities: const [providerFailureDetailsCapability],
       ),
     );
   }
@@ -1181,10 +1183,11 @@ class CliWorkerEngine {
         providerStarted: providerStarted,
         recovered: recovered,
       ),
-      providerFailure: _negotiatedProtocolVersion ==
-              providerFailureDetailsProtocolVersion
+      providerFailure:
+          _negotiatedProtocolVersion == providerFailureDetailsProtocolVersion
           ? providerFailure
           : null,
+      protocolVersion: _negotiatedProtocolVersion,
     );
   }
 
@@ -1236,6 +1239,7 @@ class CliWorkerEngine {
   final _mcpInline = <String, McpInlineToml>{};
 
   Future<void> _execute(ExecuteRequest request, IOSink sink) async {
+    if (_initialized) _negotiatedProtocolVersion = request.protocolVersion;
     McpConfigFile? mcpConfig;
     final hasMcpSlot =
         request.executor == null &&
@@ -2752,6 +2756,15 @@ class CliWorkerEngine {
         exitCode == 0 && stdout.trim().isNotEmpty ? stdout.trimRight() : null,
         null,
         exitCode == 0 && stdout.trim().isNotEmpty ? null : _mapExit(exitCode),
+        providerFailure: exitCode == 0
+            ? null
+            : _buildProviderFailureDetails(
+                providerErrorText: '',
+                stderr: stderr,
+                failedRunResponse: stdout,
+                structuredError: false,
+                plainTextMode: true,
+              ),
       );
     List<Object?> events;
     var skippedLines = 0;
@@ -2773,11 +2786,18 @@ class CliWorkerEngine {
         }
       }
     } on Object {
-      return const _InterpretedOutput(
+      return _InterpretedOutput(
         null,
         null,
         WorkerIssueCode.providerFailure,
         reason: 'provider output is not valid JSON',
+        providerFailure: _buildProviderFailureDetails(
+          providerErrorText: '',
+          stderr: stderr,
+          failedRunResponse: stdout,
+          structuredError: false,
+          plainTextMode: false,
+        ),
       );
     }
     Object? finalText;
@@ -2884,9 +2904,7 @@ class CliWorkerEngine {
               value != '') {
             providerError = true;
             otherProviderError = true;
-            providerErrorText = value is String
-                ? value.substring(0, value.length.clamp(0, 4096))
-                : 'provider error';
+            providerErrorText = value is String ? value : 'provider error';
           }
           if (type == 'mark_success') markedSuccess = true;
           if (type == 'mark_failure') markedFailure = true;
@@ -2901,7 +2919,10 @@ class CliWorkerEngine {
       // streamed an answer; use what it streamed.
       finalText = _providerActivityAdapter?.streamedAnswer(events) ?? finalText;
     }
-    if (finalText is String && _providerActivityAdapter != null) {
+    if (finalText is String &&
+        _providerActivityAdapter != null &&
+        !markedFailure &&
+        !providerError) {
       // The live narration was already shown; do not repeat it in the answer.
       finalText =
           _providerActivityAdapter!.answerAfterNarration(events, finalText) ??
@@ -2990,6 +3011,27 @@ class CliWorkerEngine {
       );
     }
 
+    final extraction = execution['failureExtraction'];
+    String? extract(String key) {
+      if (extraction is! Map || extraction[key] is! String) return null;
+      for (final event in events.reversed) {
+        final value = _select(event, extraction[key] as String);
+        if (value is String && value.isNotEmpty) return value;
+      }
+      return null;
+    }
+
+    final failureDetails = _buildProviderFailureDetails(
+      nativeErrorCode: extract('nativeErrorCode'),
+      providerErrorText: extract('providerErrorText') ?? providerErrorText,
+      stderr: stderr,
+      failedRunResponse: extract('failedRunResponse') ?? text,
+      structuredError: providerError,
+      plainTextMode: mode == 'plain_text',
+      sourceHint: extraction is Map && extraction['source'] is String
+          ? extraction['source'] as String
+          : null,
+    );
     if (_contextOverflow([stderr, providerErrorText, terminalStatus])) {
       return _InterpretedOutput(
         null,
@@ -2997,6 +3039,7 @@ class CliWorkerEngine {
         WorkerIssueCode.contextLimitExceeded,
         terminalObserved: terminalObserved,
         providerFailed: true,
+        providerFailure: failureDetails,
         reason: [
           'exit=$exitCode',
           'matched context overflow marker',
@@ -3004,13 +3047,6 @@ class CliWorkerEngine {
         ].join(', '),
       );
     }
-    final failureDetails = _buildProviderFailureDetails(
-      providerErrorText: providerErrorText,
-      stderr: stderr,
-      failedRunResponse: text,
-      structuredError: providerError,
-      plainTextMode: mode == 'plain_text',
-    );
     final mappings = _list(_map(_profile.json['errors'])['mappings']);
     for (final raw in mappings) {
       final mapping = _map(raw);
@@ -3081,33 +3117,36 @@ class CliWorkerEngine {
   /// Counts only: which event kinds the provider sent and what its result
   /// reported. Never contains provider text.
   Map<String, Object?>? _buildProviderFailureDetails({
+    String? nativeErrorCode,
     required String providerErrorText,
     required String stderr,
     required String? failedRunResponse,
     required bool structuredError,
     required bool plainTextMode,
+    String? sourceHint,
   }) {
-    final trimmedError = providerErrorText.trim();
-    final trimmedStderr = stderr.trim();
-    final trimmedResponse = failedRunResponse?.trim();
-    final hasError = trimmedError.isNotEmpty;
-    final hasStderr = trimmedStderr.isNotEmpty;
-    final hasResponse = trimmedResponse != null && trimmedResponse.isNotEmpty;
-    if (!hasError && !hasStderr && !hasResponse) return null;
+    final hasError = providerErrorText.trim().isNotEmpty;
+    final hasStderr = stderr.trim().isNotEmpty;
+    final hasResponse = failedRunResponse?.trim().isNotEmpty == true;
+    if (!hasError && !hasStderr && !hasResponse && nativeErrorCode == null)
+      return null;
 
-    final source = structuredError || hasError
-        ? 'structured_error'
-        : hasStderr
+    final source =
+        sourceHint ??
+        (structuredError || hasError
+            ? 'structured_error'
+            : hasStderr
             ? 'stderr'
             : plainTextMode
-                ? 'stdout'
-                : 'result_message';
+            ? 'stdout'
+            : 'result_message');
 
     return sanitizeProviderFailureDetails(
+      nativeErrorCode: nativeErrorCode,
       providerErrorText: hasError
-          ? trimmedError
-          : (hasStderr ? trimmedStderr : null),
-      failedRunResponse: hasResponse ? trimmedResponse : null,
+          ? providerErrorText
+          : (hasStderr ? stderr : null),
+      failedRunResponse: hasResponse ? failedRunResponse : null,
       source: source,
     ).toJson();
   }

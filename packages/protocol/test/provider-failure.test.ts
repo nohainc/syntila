@@ -78,4 +78,15 @@ describe("ProviderFailureDetails contract", () => {
     expect(sanitized.omitted).toBe(true);
     expect(sanitized.omittedFields).toEqual(["providerErrorText"]);
   });
+
+  it("omits common credential assignments and Google keys", () => {
+    for (const text of ["password=hunter2", `key AIza${"A".repeat(35)}`]) {
+      const result = sanitizeProviderFailureDetails({
+        source: "stderr",
+        providerErrorText: text,
+      });
+      expect(result.providerErrorText).toBeUndefined();
+      expect(result.omittedFields).toEqual(["providerErrorText"]);
+    }
+  });
 });

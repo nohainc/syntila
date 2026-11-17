@@ -579,7 +579,9 @@ turn says success; an empty list is ignored.
 
 The [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
 specifies declarative extraction of native error codes and responses on
-failure via an optional `failureExtraction` block:
+failure via an optional `execution.failureExtraction` block. Each selector is
+evaluated against the provider event carrying the failure, using the existing
+bounded selector grammar. The block has no effect until Engine support ships:
 
 - `nativeErrorCode`: optional selector extracting the provider's native error
   code from structured output. Never populated from process exit codes.

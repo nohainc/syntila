@@ -145,6 +145,11 @@ Tool Profiles are not protocol peers. They are immutable behavior configuration 
 
 Provider credentials, provider session IDs, arbitrary Cloud executable paths, shell commands, and raw provider output are not Local Worker Protocol fields.
 
+The planned [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
+proposes a narrowly scoped exception for provider-supplied failure text and
+responses accompanying failures. This is not implemented; the current boundary
+above remains in force until the versioned protocol and rollout are complete.
+
 Durable execute requests may carry version 1 `workerSession` metadata: Syntila
 session, Conversation, and Worker IDs plus a frozen context target revision.
 Workspace validates ownership before forwarding it; the Engine retains native

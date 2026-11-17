@@ -32,7 +32,11 @@ final List<RegExp> _credentialPatterns = <RegExp>[
   RegExp(r'\bsk-[A-Za-z0-9_-]{16,}\b'),
   RegExp(r'\bgh[pousr]_[A-Za-z0-9]{20,}\b'),
   RegExp(r'\bAKIA[0-9A-Z]{16}\b'),
+  RegExp(r'\bAIza[0-9A-Za-z_-]{35}\b'),
   RegExp(r'\bxox[baprs]-[A-Za-z0-9-]{10,}\b'),
+  RegExp(
+      r'''\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*["']?[^\s,;"']+''',
+      caseSensitive: false),
   RegExp(r'\bBearer\s+[A-Za-z0-9._~+/=-]{16,}\b', caseSensitive: false),
   RegExp(r'-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----'),
 ];
@@ -139,7 +143,7 @@ final class ProviderFailureDetails {
 
     String? readBoundedString(String key, int maxBytes) {
       final raw = json[key];
-      if (raw == null) return null;
+      if (!json.containsKey(key)) return null;
       if (raw is! String || raw.isEmpty) {
         throw FormatException('$key must be a non-empty string');
       }
@@ -162,8 +166,7 @@ final class ProviderFailureDetails {
       ProviderFailureLimits.maxFailedRunResponseBytes,
     );
 
-    final totalBytes =
-        (nativeErrorCode == null
+    final totalBytes = (nativeErrorCode == null
             ? 0
             : providerFailureUtf8ByteLength(nativeErrorCode)) +
         (providerErrorText == null
@@ -179,16 +182,16 @@ final class ProviderFailureDetails {
     }
 
     final truncated = json['truncated'];
-    if (truncated != null && truncated is! bool) {
+    if (json.containsKey('truncated') && truncated is! bool) {
       throw const FormatException('truncated must be a boolean');
     }
     final omitted = json['omitted'];
-    if (omitted != null && omitted is! bool) {
+    if (json.containsKey('omitted') && omitted is! bool) {
       throw const FormatException('omitted must be a boolean');
     }
     List<String>? omittedFields;
     final rawOmittedFields = json['omittedFields'];
-    if (rawOmittedFields != null) {
+    if (json.containsKey('omittedFields')) {
       if (rawOmittedFields is! List) {
         throw const FormatException('omittedFields must be a list');
       }
@@ -196,7 +199,8 @@ final class ProviderFailureDetails {
         throw const FormatException('omittedFields exceeds maximum length');
       }
       omittedFields = rawOmittedFields.map((entry) {
-        if (entry is! String || !providerFailureOmittableFields.contains(entry)) {
+        if (entry is! String ||
+            !providerFailureOmittableFields.contains(entry)) {
           throw FormatException('Invalid omittedFields entry: $entry');
         }
         return entry;

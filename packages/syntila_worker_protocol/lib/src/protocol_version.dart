@@ -14,6 +14,7 @@ const mcpExecutorProtocolVersion = '4.3';
 /// Peers on 4.0-4.3 never receive `providerFailure` and keep canonical-only
 /// failure handling.
 const providerFailureDetailsProtocolVersion = '4.4';
+const providerFailureDetailsCapability = 'provider_failure_details_v1';
 const supportedLocalWorkerProtocolVersions = {
   '4.0',
   localWorkerProtocolVersion,

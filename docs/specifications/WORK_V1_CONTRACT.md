@@ -523,19 +523,28 @@ message, and failed status:
   are stripped from `providerErrorText` and `failedRunResponse`; all control
   characters are stripped from `nativeErrorCode`.
 - **Credential handling boundary:** API keys and credentials MUST NEVER be
-  persisted in plaintext application tables. Before persistence (and at the
-  Engine/Service boundary), fields are scanned for known credential patterns.
-  If a credential is detected in a field, that field is omitted, `omitted` is
-  set to `true`, and the field name is added to `omittedFields` rather than
-  silently presenting altered text as the original.
+  persisted in plaintext application tables. Provider text is arbitrary and
+  pattern scanning cannot reliably detect all credentials. Before Cloud or
+  local table persistence, encrypt the entire provider failure object using an
+  authenticated encryption scheme and a key held outside application tables.
+  The persistence phase must define key provisioning, rotation, backup, access,
+  deletion and fail-closed behavior; do not enable storage without them.
+  Scan known credential patterns as an additional precaution, not as the
+  security boundary. If detected, omit the entire affected field and set
+  `omitted` and `omittedFields` instead of presenting altered text as original.
 - **Fallback, retention & authorization:** When `providerFailure` is absent or
   all fields are omitted, clients display the canonical fallback message.
   Ordinary Work authorization applies; no new access is granted. Records are
   retained and deleted with the Work / Assignment Attempt record, and raw
   provider payloads MUST NOT be written to logs, activity events, analytics, or
   support reports as a side effect.
-- **Compatibility & rollout:** Local Worker Protocol `4.4` gates emission of
-  `providerFailure` on `WorkerErrorFrame`; `4.0`–`4.3` peers never receive it.
+- **Compatibility & rollout:** The Local Worker Protocol `4.4` frame contract
+  permits `providerFailure`; the sending implementation must gate its emission
+  on the peer's negotiated support. Until that gate is implemented and tested,
+  send only canonical failures to all peers. Protocol 4.4 does not by itself
+  establish plugin or MCP executor compatibility: those currently require 4.2
+  and 4.3 respectively. Their negotiated extension and old-peer tests are a
+  prerequisite to sending details through those executors.
   Workspace <-> Cloud `assignment.error` carries `providerFailure` as an
   optional field; old peers ignore or omit it without rejecting terminal
   messages or losing the canonical failure. Rollout order: (1) Protocol &

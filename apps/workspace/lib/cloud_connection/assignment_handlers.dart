@@ -135,17 +135,7 @@ extension _WorkspaceAssignmentHandlers on WorkspaceCloudConnection {
           },
         )));
       } else if (previous.status == AssignmentStatus.failed) {
-        await _sendAssignmentError(
-          socket,
-          message,
-          'execution_failed',
-          retryable: true,
-          diagnostic: _assignmentDiagnostic(
-            stage: 'assignment_replay',
-            detail:
-                'A previous local journal entry marked this assignment failed',
-          ),
-        );
+        await _sendRecoveredTerminal(socket, previous, correlation);
       } else if (previous.status == AssignmentStatus.cancelled) {
         socket.send(jsonEncode(_assignmentEnvelope(
           'assignment.cancel.ack',
@@ -338,17 +328,54 @@ extension _WorkspaceAssignmentHandlers on WorkspaceCloudConnection {
               },
           },
         };
-        await _recordAssignment(
-          context.assignmentId,
-          AssignmentStatus.failed,
-          context: context,
-          result: {
-            ...errorPayload,
-            'error': errorMessage,
-            'errorCode': errorCode,
-            if (diagnostic != null) 'localDiagnostic': diagnostic,
-          },
-        );
+        final details = normalizedError.providerFailure;
+        final canEncrypt =
+            details != null && assignmentJournal?.providerFailureCipher != null;
+        final omittedFields = <String>{
+          if (details != null)
+            for (final field in [
+              'nativeErrorCode',
+              'providerErrorText',
+              'failedRunResponse'
+            ])
+              if (details[field] is String) field,
+          if (details?['omittedFields'] is List)
+            ...(details!['omittedFields'] as List).whereType<String>(),
+        };
+        final omission = details == null
+            ? null
+            : <String, Object?>{
+                'schemaVersion': 1,
+                'source': details['source'],
+                'omitted': true,
+                'omittedFields': omittedFields.toList(),
+              };
+        final journalResult = <String, Object?>{
+          ...errorPayload,
+          'error': errorMessage,
+          'errorCode': errorCode,
+          if (diagnostic != null) 'localDiagnostic': diagnostic,
+          if (canEncrypt) 'providerFailure': details,
+          if (details != null && !canEncrypt)
+            'providerFailureOmission': omission,
+        };
+        var detailsStored = false;
+        try {
+          await _recordAssignment(context.assignmentId, AssignmentStatus.failed,
+              context: context, result: journalResult);
+          detailsStored = canEncrypt;
+        } on Object {
+          if (!canEncrypt) rethrow;
+          journalResult.remove('providerFailure');
+          journalResult['providerFailureOmission'] = omission;
+          await _recordAssignment(context.assignmentId, AssignmentStatus.failed,
+              context: context, result: journalResult);
+        }
+        if (detailsStored && _cloudAcceptsProviderFailure) {
+          errorPayload['providerFailure'] = details;
+        } else if (details != null && _cloudAcceptsProviderFailure) {
+          errorPayload['providerFailure'] = omission;
+        }
         await recordAssignmentDiagnostic(
           context,
           event: 'assignment.failed',

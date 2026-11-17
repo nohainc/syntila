@@ -8,6 +8,7 @@ import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:syntila_workspace/workspace.dart';
 import 'package:syntila_workspace/workspace_configuration.dart';
 import 'package:syntila_workspace/assignment_journal.dart';
+import 'package:syntila_workspace/provider_failure_cipher.dart';
 import 'package:syntila_workspace/platform_runtime.dart';
 import 'package:syntila_workspace/allowed_folders.dart';
 import 'package:syntila_workspace/cloud_connection.dart';
@@ -1077,6 +1078,11 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
           },
           assignmentJournal: AssignmentJournal(
             File('${config.dataDirectory.path}/assignments.jsonl'),
+            providerFailureCipher: ProviderFailureCipher(
+              secureCredentialStore,
+              File('${config.dataDirectory.path}/assignments.jsonl'),
+              installationId,
+            ),
           ),
           factory: (uri) => connectWebSocketWorkspaceTransport(
             uri,

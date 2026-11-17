@@ -609,6 +609,34 @@ describe("Workspace Runtime protocol", () => {
         },
       }),
     ).toThrow(/canonical safe message/);
+    const withProvider = {
+      ...assignmentError,
+      payload: {
+        ...assignmentError.payload,
+        providerFailure: {
+          schemaVersion: 1,
+          source: "structured_error",
+          providerErrorText: "error",
+          failedRunResponse: "partial",
+        },
+      },
+    };
+    expect(parseWorkspaceRuntimeMessage(withProvider).payload).toMatchObject(
+      withProvider.payload,
+    );
+    expect(() =>
+      parseWorkspaceRuntimeMessage({
+        ...withProvider,
+        payload: {
+          ...withProvider.payload,
+          providerFailure: {
+            schemaVersion: 1,
+            source: "stderr",
+            providerErrorText: "x".repeat(4097),
+          },
+        },
+      }),
+    ).toThrow();
   });
 
   it("validates optional base64 echo on diagnostic.probe and diagnostic.probe.ack", () => {

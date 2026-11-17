@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'provider_failure_cipher.dart';
+
 enum AssignmentStatus {
   received,
   accepted,
@@ -124,8 +126,9 @@ class AssignmentRecord {
 }
 
 class AssignmentJournal {
-  AssignmentJournal(this.file);
+  AssignmentJournal(this.file, {this.providerFailureCipher});
   final File file;
+  final ProviderFailureCipher? providerFailureCipher;
   Future<void> _writeQueue = Future<void>.value();
 
   // The journal is append-only, so the latest state per assignment can be kept
@@ -146,7 +149,7 @@ class AssignmentJournal {
   Future<void> append(AssignmentRecord record) {
     final next = _writeQueue.then((_) async {
       await file.parent.create(recursive: true);
-      final line = '${jsonEncode(record.toJson())}\n';
+      final line = '${jsonEncode(await _encodeRecord(record))}\n';
       await file.writeAsString(line, mode: FileMode.append, flush: true);
       _applyAppended(record, utf8.encode(line).length, await file.length());
     });
@@ -234,7 +237,7 @@ class AssignmentJournal {
     final cache = _cache;
     if (cache != null && length == _knownLength) return cache;
     final lines = await file.readAsLines();
-    final records = _replay(lines);
+    final records = await _replay(lines);
     _cache = records;
     _knownLength = length;
     _lineCount = lines.length;
@@ -256,7 +259,7 @@ class AssignmentJournal {
         ..sort((left, right) => left.updatedAt.compareTo(right.updatedAt));
       final buffer = StringBuffer();
       for (final record in ordered) {
-        buffer.writeln(jsonEncode(record.toJson()));
+        buffer.writeln(jsonEncode(await _encodeRecord(record)));
       }
       final text = buffer.toString();
       final temporary = File('${file.path}.compact');
@@ -271,16 +274,52 @@ class AssignmentJournal {
     return result;
   }
 
-  Map<String, AssignmentRecord> _replay(List<String> lines) {
+  Future<Map<String, Object?>> _encodeRecord(AssignmentRecord record) async {
+    final json = record.toJson();
+    final result = record.result;
+    if (result != null && result.containsKey('providerFailure')) {
+      final details = result['providerFailure'];
+      final cipher = providerFailureCipher;
+      if (details is! Map || cipher == null) {
+        throw StateError('Provider failure encryption is unavailable');
+      }
+      final safeResult = Map<String, Object?>.from(result);
+      safeResult.remove('providerFailure');
+      safeResult['providerFailureEncrypted'] = await cipher.encrypt(
+          record.assignmentId, Map<String, Object?>.from(details));
+      json['result'] = safeResult;
+    }
+    return json;
+  }
+
+  Future<Map<String, AssignmentRecord>> _replay(List<String> lines) async {
     final records = <String, AssignmentRecord>{};
     final history = <String, List<_JournalEntry>>{};
     for (var index = 0; index < lines.length; index++) {
       final line = lines[index];
       if (line.trim().isEmpty) continue;
       try {
-        final record = AssignmentRecord.fromJson(
-          Map<String, Object?>.from(jsonDecode(line) as Map),
-        );
+        final json = Map<String, Object?>.from(jsonDecode(line) as Map);
+        final rawResult = json['result'];
+        if (rawResult is Map && rawResult.containsKey('providerFailure')) {
+          throw const FormatException('Plaintext provider failure in journal');
+        }
+        if (rawResult is Map &&
+            rawResult.containsKey('providerFailureEncrypted')) {
+          final result = Map<String, Object?>.from(rawResult);
+          final encrypted = result.remove('providerFailureEncrypted');
+          final cipher = providerFailureCipher;
+          if (encrypted is! Map ||
+              cipher == null ||
+              json['assignmentId'] is! String) {
+            throw StateError('Provider failure decryption is unavailable');
+          }
+          result['providerFailure'] = await cipher.decrypt(
+              json['assignmentId'] as String,
+              Map<String, Object?>.from(encrypted));
+          json['result'] = result;
+        }
+        final record = AssignmentRecord.fromJson(json);
         history
             .putIfAbsent(record.assignmentId, () => [])
             .add(_JournalEntry(index, record));

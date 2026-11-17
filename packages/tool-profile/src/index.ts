@@ -715,6 +715,17 @@ const profileSchema = z
           .object({ mode: z.enum(["plain_text", "single_json", "jsonl"]) })
           .strict(),
         events: z.array(eventRule).max(TOOL_PROFILE_LIMITS.eventRules),
+        failureExtraction: z
+          .object({
+            nativeErrorCode: selector.optional(),
+            providerErrorText: selector.optional(),
+            failedRunResponse: selector.optional(),
+            source: z
+              .enum(["structured_error", "result_message", "stderr", "stdout"])
+              .optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict(),
     session: z

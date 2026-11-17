@@ -3,7 +3,9 @@ import 'package:test/test.dart';
 
 void main() {
   group('Local Worker Protocol 4.4 providerFailure', () {
-    test('negotiates 4.4 when both sides support it, and falls back to 4.3 for older peers', () {
+    test(
+        'negotiates 4.4 when both sides support it, and falls back to 4.3 for older peers',
+        () {
       expect(
         negotiateProtocolVersion(
           workspaceVersions: ['4.1', '4.2', '4.3', '4.4'],
@@ -63,6 +65,24 @@ void main() {
         }),
         throwsFormatException,
       );
+    });
+
+    test('legacy protocol cannot emit new error fields', () {
+      final details = <String, Object?>{'schemaVersion': 1, 'source': 'stderr'};
+      expect(
+          () => WorkerErrorFrame(
+              requestId: 'req',
+              code: WorkerIssueCode.providerFailure,
+              message: 'failed',
+              providerFailure: details),
+          throwsFormatException);
+      final frame = WorkerErrorFrame(
+          requestId: 'req',
+          code: WorkerIssueCode.providerFailure,
+          message: 'failed',
+          providerFailure: details,
+          protocolVersion: '4.4');
+      expect(frame.toJson()['providerFailure'], details);
     });
   });
 }

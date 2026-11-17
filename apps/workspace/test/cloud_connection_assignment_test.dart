@@ -9,12 +9,134 @@ import 'package:syntila_workspace/cli_worker_engine_supervisor.dart'
     show CliWorkerEngineProbeException;
 import 'package:syntila_workspace/cloud_connection.dart';
 import 'package:syntila_workspace/worker_diagnostic_store.dart';
+import 'package:syntila_workspace/provider_failure_cipher.dart';
+import 'package:syntila_workspace/secure_credentials.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:test/test.dart';
 
 import 'support/cloud_connection_test_support.dart';
 
+class _MemoryCredentials implements SecureCredentialStore {
+  final values = <String, String>{};
+  @override
+  String? readSync(String key) => values[key];
+  @override
+  Future<String?> read(String key) async => values[key];
+  @override
+  Future<void> write(String key, String value) async {
+    values[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    values.remove(key);
+  }
+}
+
 void main() {
+  for (final supported in [false, true]) {
+    test('journals encrypted failure and gates Cloud delivery: $supported',
+        () async {
+      final dir = await Directory.systemTemp.createTemp('failure-delivery-');
+      addTearDown(() => dir.delete(recursive: true));
+      final file = File('${dir.path}/assignments.jsonl');
+      final credentials = _MemoryCredentials();
+      AssignmentJournal journal() => AssignmentJournal(file,
+          providerFailureCipher:
+              ProviderFailureCipher(credentials, file, 'installation'));
+      final socket = FakeSocket();
+      final connection = WorkspaceCloudConnection(
+        uri: Uri.parse(
+            'wss://cloud.test/api/workspace-gateway/connect?workspaceRuntimeId=workspace-1'),
+        workspaceRuntimeId: 'workspace-1',
+        workspaceId: 'workspace-1',
+        factory: (_) async => socket,
+        assignmentJournal: journal(),
+        assignmentHandler: (_) async =>
+            throw const CliWorkerEngineProbeException(
+                'provider_failure', 'failed',
+                providerFailure: {
+              'schemaVersion': 1,
+              'source': 'structured_error',
+              'providerErrorText': 'provider secret text',
+              'failedRunResponse': 'partial response',
+            }),
+      );
+      await connection.connect();
+      await completeHandshake(connection, socket,
+          extraCloudCapabilities:
+              supported ? [providerFailureDetailsCapability] : []);
+      final assignment = {
+        'protocol': 'syntila.workspace-runtime-protocol',
+        'protocolVersion': workspaceRuntimeProtocolVersion,
+        'messageId': 'provider-error',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'type': 'assignment.start',
+        'workspaceId': 'workspace-1',
+        'workspaceRuntimeId': 'workspace-1',
+        'workerId': 'worker-1',
+        'runId': 'run-1',
+        'taskId': 'task-1',
+        'attemptId': 'attempt-1',
+        'assignmentId': 'assignment-1',
+        'idempotencyKey': 'idem-1',
+        'payload': {
+          'objective': 'test',
+          'role': 'implementer',
+          'workerId': 'chatgpt',
+          'engineVersion': '1.0.0',
+          'profileDefinitionId': 'chatgpt-codex',
+          'profileReleaseVersion': 1,
+          'input': {},
+          'contextArtifactIds': [],
+          'timeoutMs': 1000
+        },
+      };
+      socket.controller.add(jsonEncode(assignment));
+      await waitFor(() => socket.sent.any((line) =>
+          (jsonDecode(line as String) as Map)['type'] == 'assignment.error'));
+      final sent = socket.sent
+          .map((line) => jsonDecode(line as String) as Map)
+          .firstWhere((message) => message['type'] == 'assignment.error');
+      expect(
+          (sent['payload'] as Map).containsKey('providerFailure'), supported);
+      expect(
+          await file.readAsString(), isNot(contains('provider secret text')));
+      final recovered = await journal().find('assignment-1');
+      expect(
+          (recovered!.result!['providerFailure'] as Map)['failedRunResponse'],
+          'partial response');
+      socket.controller.add(jsonEncode(assignment));
+      await waitFor(() =>
+          socket.sent
+              .where((line) =>
+                  (jsonDecode(line as String) as Map)['type'] ==
+                  'assignment.error')
+              .length >=
+          2);
+      final replay = socket.sent
+          .map((line) => jsonDecode(line as String) as Map)
+          .where((message) => message['type'] == 'assignment.error')
+          .last;
+      expect(
+          (replay['payload'] as Map).containsKey('providerFailure'), supported);
+      await connection.close();
+    });
+  }
+  test('retains provider failure details during normalization', () {
+    const details = <String, Object?>{
+      'schemaVersion': 1,
+      'source': 'structured_error',
+      'providerErrorText': 'Output limit reached',
+      'failedRunResponse': 'Partial answer',
+    };
+    final failure = normalizeAssignmentExecutionFailure(
+      const CliWorkerEngineProbeException('provider_failure', 'failed',
+          providerFailure: details),
+    );
+    expect(failure.code, 'execution_failed');
+    expect(failure.providerFailure, details);
+  });
   test('includes recovered non-terminal assignments in sync', () async {
     final socket = FakeSocket();
     final directory = await Directory.systemTemp.createTemp('workspace-sync-');

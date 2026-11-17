@@ -385,6 +385,7 @@ final class CliWorkerEngineSupervisor {
           result.code,
           result.message,
           localDiagnostics: result.diagnostics,
+          providerFailure: result.providerFailure,
         );
       }
       if (result is! ConformanceResult) {
@@ -808,7 +809,13 @@ final class CliWorkerEngineSupervisor {
         mcpServers: mcpServers,
         compactContext: compactContext,
         executor: identity.executor,
-        protocolVersion: identity.protocolVersion,
+        protocolVersion:
+            identity.executor == null &&
+                initialized.capabilities.contains(
+                  providerFailureDetailsCapability,
+                )
+            ? providerFailureDetailsProtocolVersion
+            : identity.protocolVersion,
       );
       final structured =
           identity.executor != null &&
@@ -859,6 +866,7 @@ final class CliWorkerEngineSupervisor {
           result.code,
           result.message,
           localDiagnostics: result.diagnostics,
+          providerFailure: result.providerFailure,
         );
       }
       if (result is! WorkerResult || result.assignmentId != assignmentId) {
@@ -1583,6 +1591,7 @@ final class CliWorkerEngineProbeException implements Exception {
     this.issueCode,
     this.safeMessage, {
     this.localDiagnostics,
+    this.providerFailure,
   });
 
   final String issueCode;
@@ -1591,6 +1600,9 @@ final class CliWorkerEngineProbeException implements Exception {
   /// Bounded protocol diagnostics for local operator investigation.
   /// Never send this field to Cloud or include it in acceptance evidence.
   final String? localDiagnostics;
+
+  /// Provider-supplied failure details; not a diagnostic or a successful result.
+  final Map<String, Object?>? providerFailure;
 
   @override
   String toString() =>

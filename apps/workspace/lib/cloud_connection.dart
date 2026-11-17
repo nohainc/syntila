@@ -142,6 +142,7 @@ const probePayloadCapability = workspaceProbePayloadCapability;
 /// Capability Cloud announces in `hello.ack` when it accepts
 /// `assignment.startup` progress for accepted, not-yet-running assignments.
 const assignmentStartupCapability = 'assignment.startup.v1';
+const providerFailureDetailsCapability = 'assignment.provider_failure.v1';
 
 /// Capability Cloud announces in `hello.ack` when its inventory schema accepts
 /// the optional plugin `executor` object (ADR-027). Plugin Workers are only
@@ -457,6 +458,7 @@ class WorkspaceCloudConnection {
   /// older Cloud would reject the message, so it is only sent after the
   /// announcement; the heartbeat carries readiness either way.
   bool _cloudAcceptsReadiness = false;
+  bool _cloudAcceptsProviderFailure = false;
 
   /// Whether this Cloud announced `workspace.idle_ping.v1`. An older Cloud
   /// would reject the ping frame, so every tick stays a full heartbeat.
@@ -1546,6 +1548,7 @@ class WorkspaceCloudConnection {
     _syncRequested = false;
     _helloAcknowledged = false;
     _cloudAcceptsReadiness = false;
+    _cloudAcceptsProviderFailure = false;
     _cloudAcceptsStartup = false;
     _cloudAcceptsAllowedFolders = false;
     _cloudAcceptsExternalWorkers = false;
@@ -1901,6 +1904,8 @@ class WorkspaceCloudConnection {
         lastHelloAcknowledgedAt = DateTime.now().toUtc();
         _helloAcknowledged = true;
         final cloudCapabilities = payload['cloudCapabilities'];
+        _cloudAcceptsProviderFailure = cloudCapabilities is List &&
+            cloudCapabilities.contains(providerFailureDetailsCapability);
         _cloudAcceptsReadiness = cloudCapabilities is List &&
             cloudCapabilities.contains(serviceReadinessCapability);
         _cloudAcceptsStartup = cloudCapabilities is List &&
@@ -2459,6 +2464,13 @@ class WorkspaceCloudConnection {
         correlation,
         {
           'status': 'failed',
+          if (_cloudAcceptsProviderFailure &&
+              record.result?['providerFailure'] is Map)
+            'providerFailure': record.result!['providerFailure'],
+          if (_cloudAcceptsProviderFailure &&
+              record.result?['providerFailure'] == null &&
+              record.result?['providerFailureOmission'] is Map)
+            'providerFailure': record.result!['providerFailureOmission'],
           'error': {
             'code': record.errorCode ?? 'provider_unavailable',
             'message':

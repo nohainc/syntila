@@ -86,6 +86,23 @@ void main() {
     ).readAsString()) as Map;
     expect(request.containsKey('externalConversation'), isFalse);
   });
+  test('uses protocol 4.4 only when the Engine advertises failure details',
+      () async {
+    final setup = await _setup();
+    addTearDown(() => setup.root.delete(recursive: true));
+    await _execute(setup, 'failure-old');
+    final old = jsonDecode(
+        await File('${setup.state.path}/request-failure-old.json')
+            .readAsString()) as Map;
+    expect(old['protocolVersion'], '4.1');
+    await File('${setup.state.path}/supports-provider-failure')
+        .writeAsString('yes');
+    await _execute(setup, 'failure-new');
+    final current = jsonDecode(
+        await File('${setup.state.path}/request-failure-new.json')
+            .readAsString()) as Map;
+    expect(current['protocolVersion'], '4.4');
+  });
   test('Engine VM service banners do not corrupt protocol framing', () async {
     final setup = await _setup(enableVmService: true);
     addTearDown(() => setup.root.delete(recursive: true));
@@ -771,8 +788,10 @@ Future<void> main(List<String> args) async {
           'profileDefinitionId': request['profileDefinitionId'],
           'profileReleaseVersion': request['profileReleaseVersion'],
           'profileSchemaVersion': 1,
-          'capabilities': File('${state.path}/supports-external-conversation').existsSync()
-              ? ['external_conversation_v1'] : <String>[],
+          'capabilities': [
+            if (File('${state.path}/supports-external-conversation').existsSync()) 'external_conversation_v1',
+            if (File('${state.path}/supports-provider-failure').existsSync()) 'provider_failure_details_v1',
+          ],
         }));
       case 'execute.request':
         File('${state.path}/request-${request['assignmentId']}.json').writeAsStringSync(jsonEncode(request));

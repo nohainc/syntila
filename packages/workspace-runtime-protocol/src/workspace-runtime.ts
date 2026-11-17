@@ -14,6 +14,7 @@ import {
   NORMALIZED_ACTIVITY_EVENT_TYPES,
   NORMALIZED_ACTIVITY_STATUSES,
   NormalizedActivityDetailsSchema,
+  ProviderFailureDetailsSchema,
 } from "@syntila/protocol";
 
 export const WORKSPACE_RUNTIME_PROTOCOL_NAME =
@@ -686,6 +687,7 @@ export const workspaceRuntimeEnvelopeSchema = z
     if (message.type === "assignment.error") {
       const payload = z
         .object({
+          providerFailure: ProviderFailureDetailsSchema.optional(),
           error: z
             .object({
               code: executionErrorCode,

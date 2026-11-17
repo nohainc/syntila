@@ -53,6 +53,20 @@ gemini-3.1-pro-low\tGemini 3.1 Pro (Low)\n''');
       : transportedPrompt.substring(
           separator + '\n\nCurrent user request:\n'.length,
         );
+  if (prompt == 'Failure with response') {
+    stdout.writeln(
+      jsonEncode({
+        'event': 'result',
+        'result': {
+          'status': 'ERROR',
+          'error': 'Output limit reached',
+          'response': 'Partial answer',
+          'code': 'OUTPUT_LIMIT',
+        },
+      }),
+    );
+    return;
+  }
   if (prompt == 'Switch without resume' ||
       prompt == 'Switch without resume failure') {
     final prefix =

@@ -800,8 +800,14 @@ final class McpServerLaunch {
       };
 
   factory McpServerLaunch.fromJson(Map<String, Object?> json) {
-    _expectKeys(
-        json, const {'name', 'command', 'arguments', 'environment', 'url', 'headers'});
+    _expectKeys(json, const {
+      'name',
+      'command',
+      'arguments',
+      'environment',
+      'url',
+      'headers'
+    });
     final name = json['name'];
     final command = json['command'];
     final arguments = json['arguments'] ?? const <Object?>[];
@@ -1617,6 +1623,7 @@ final class WorkerErrorFrame extends WorkerFrame {
     this.retryable = false,
     String? diagnostics,
     Map<String, Object?>? providerFailure,
+    this.protocolVersion = localWorkerProtocolVersion,
   })  : code = _boundedText(
           code,
           'error code',
@@ -1652,6 +1659,10 @@ final class WorkerErrorFrame extends WorkerFrame {
     if (!WorkerIssueCode.isKnown(this.code)) {
       throw const FormatException('error code is not a supported stable code');
     }
+    if (providerFailure != null &&
+        protocolVersion != providerFailureDetailsProtocolVersion) {
+      throw const FormatException('providerFailure requires protocol 4.4');
+    }
   }
 
   final String? assignmentId;
@@ -1660,6 +1671,7 @@ final class WorkerErrorFrame extends WorkerFrame {
   final bool retryable;
   final String? diagnostics;
   final Map<String, Object?>? providerFailure;
+  final String protocolVersion;
 
   @override
   String get type => 'error';
@@ -1703,6 +1715,9 @@ final class WorkerErrorFrame extends WorkerFrame {
       retryable: retryable,
       diagnostics: _optionalString(json, 'diagnostics'),
       providerFailure: _optionalMap(json, 'providerFailure'),
+      protocolVersion: json['providerFailure'] == null
+          ? localWorkerProtocolVersion
+          : providerFailureDetailsProtocolVersion,
     );
   }
 
@@ -1761,7 +1776,7 @@ final class WorkerErrorFrame extends WorkerFrame {
     }
     int checkField(String key, int maxBytes) {
       final value = input[key];
-      if (value == null) return 0;
+      if (!input.containsKey(key)) return 0;
       if (value is! String || value.isEmpty) {
         throw FormatException('$key must be a non-empty string');
       }
@@ -1781,15 +1796,15 @@ final class WorkerErrorFrame extends WorkerFrame {
       );
     }
     final truncated = input['truncated'];
-    if (truncated != null && truncated is! bool) {
+    if (input.containsKey('truncated') && truncated is! bool) {
       throw const FormatException('truncated must be a boolean');
     }
     final omitted = input['omitted'];
-    if (omitted != null && omitted is! bool) {
+    if (input.containsKey('omitted') && omitted is! bool) {
       throw const FormatException('omitted must be a boolean');
     }
     final omittedFields = input['omittedFields'];
-    if (omittedFields != null) {
+    if (input.containsKey('omittedFields')) {
       if (omittedFields is! List || omittedFields.length > 3) {
         throw const FormatException('omittedFields must be a bounded list');
       }

@@ -103,6 +103,7 @@ Future<void> completeHandshake(
   FakeSocket socket, {
   String sessionId = 'test-session',
   bool announceReadiness = false,
+  List<String> extraCloudCapabilities = const [],
   List<Map<String, Object?>> assignmentStates = const [],
   Future<void> Function()? beforeSyncResult,
   DateTime? serverTime,
@@ -135,7 +136,11 @@ Future<void> completeHandshake(
       'sessionId': sessionId,
       if (serverTime != null)
         'serverTime': serverTime.toUtc().toIso8601String(),
-      if (announceReadiness) 'cloudCapabilities': [serviceReadinessCapability],
+      if (announceReadiness || extraCloudCapabilities.isNotEmpty)
+        'cloudCapabilities': [
+          if (announceReadiness) serviceReadinessCapability,
+          ...extraCloudCapabilities,
+        ],
     },
   }));
 

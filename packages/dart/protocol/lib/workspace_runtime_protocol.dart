@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'syntila_protocol.dart';
+import 'provider_failure.dart';
 
 const workspaceRuntimeProtocolName = 'syntila.workspace-runtime-protocol';
 const workspaceRuntimeProtocolVersion = '5.1';
@@ -95,6 +96,20 @@ class WorkspaceRuntimeMessage {
         'idempotencyKey',
       ]) {
         _required(map, field);
+      }
+    }
+    if (type == 'assignment.error') {
+      final payloadMap = Map<String, Object?>.from(map['payload'] as Map);
+      if (payloadMap.containsKey('providerFailure')) {
+        final details = payloadMap['providerFailure'];
+        if (details is! Map) {
+          throw const ProtocolException('providerFailure must be an object');
+        }
+        try {
+          ProviderFailureDetails.fromJson(Map<String, Object?>.from(details));
+        } on FormatException catch (error) {
+          throw ProtocolException(error.message);
+        }
       }
     }
     if (type == 'diagnostic.probe' || type == 'diagnostic.probe.ack') {

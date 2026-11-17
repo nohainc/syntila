@@ -105,7 +105,10 @@ export function stripTerminalControlChars(
   if (options.multiline) {
     const normalized = withoutAnsi.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     // eslint-disable-next-line no-control-regex
-    return normalized.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, "");
+    return normalized.replace(
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g,
+      "",
+    );
   }
   // eslint-disable-next-line no-control-regex
   return withoutAnsi.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim();
@@ -115,7 +118,9 @@ const CREDENTIAL_PATTERNS: readonly RegExp[] = [
   /\bsk-[A-Za-z0-9_-]{16,}\b/,
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
   /\bAKIA[0-9A-Z]{16}\b/,
+  /\bAIza[0-9A-Za-z_-]{35}\b/,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
+  /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*["']?[^\s,;"']+/i,
   /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}\b/i,
   /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/,
 ];
@@ -176,7 +181,11 @@ export const ProviderFailureDetailsSchema = z
         message: `providerFailure total UTF-8 bytes (${totalBytes}) exceeds ${PROVIDER_FAILURE_LIMITS.maxTotalBytes}`,
       });
     }
-    if (val.omittedFields && val.omittedFields.length > 0 && val.omitted !== true) {
+    if (
+      val.omittedFields &&
+      val.omittedFields.length > 0 &&
+      val.omitted !== true
+    ) {
       ctx.addIssue({
         code: "custom",
         path: ["omitted"],
@@ -242,8 +251,6 @@ export function sanitizeProviderFailureDetails(input: {
     ...(failedRunResponse !== undefined ? { failedRunResponse } : {}),
     source: input.source,
     ...(truncated ? { truncated: true } : {}),
-    ...(omittedFields.length > 0
-      ? { omitted: true, omittedFields }
-      : {}),
+    ...(omittedFields.length > 0 ? { omitted: true, omittedFields } : {}),
   };
 }

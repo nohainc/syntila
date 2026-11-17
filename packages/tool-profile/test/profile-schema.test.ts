@@ -33,6 +33,17 @@ const template = (name: string): Record<string, any> =>
   );
 
 describe("Tool Profile v1 canonical schema", () => {
+  it("validates optional failure extraction selectors", () => {
+    const profile = template("gemini");
+    profile.execution.failureExtraction = {
+      providerErrorText: "$.result.error",
+      failedRunResponse: "$.result.response",
+      source: "structured_error",
+    };
+    expect(() => parseToolProfileV1(profile)).not.toThrow();
+    profile.execution.failureExtraction.nativeErrorCode = "not-a-selector";
+    expect(() => parseToolProfileV1(profile)).toThrow();
+  });
   it.each(["chatgpt", "claude", "gemini", "copilot"])(
     "accepts the %s Profile file for publication without CLI ranges",
     (worker) => {

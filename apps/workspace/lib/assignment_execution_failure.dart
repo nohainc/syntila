@@ -15,6 +15,7 @@ class AssignmentExecutionFailure implements Exception {
     required this.message,
     this.retryable = false,
     this.localDiagnostic,
+    this.providerFailure,
   });
 
   final String code;
@@ -24,6 +25,7 @@ class AssignmentExecutionFailure implements Exception {
   /// Redacted, bounded detail for private issue-report evidence. It is never
   /// displayed as the Work result or included in the public report response.
   final String? localDiagnostic;
+  final Map<String, Object?>? providerFailure;
 
   @override
   String toString() => message;
@@ -74,6 +76,7 @@ AssignmentExecutionFailure normalizeAssignmentExecutionFailure(Object error) {
       code: code,
       message: executionErrorMessage(code),
       retryable: isWorkerExecutionErrorRetryable(code),
+      providerFailure: error.providerFailure,
       localDiagnostic: SafeProviderDiagnostics.safeFailureDetail(
         error.localDiagnostics ?? error.safeMessage,
       ),

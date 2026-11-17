@@ -42,6 +42,12 @@ void main() {
         'models',
       ];
       final execution = profile['execution']! as Map<String, Object?>;
+      execution['failureExtraction'] = {
+        'nativeErrorCode': r'$.result.code',
+        'providerErrorText': r'$.result.error',
+        'failedRunResponse': r'$.result.response',
+        'source': 'structured_error',
+      };
       execution['arguments'] = [
         'run',
         providerScript,
@@ -159,6 +165,7 @@ void main() {
           profileDefinitionId: 'gemini-antigravity',
           profileReleaseVersion: '1',
           profileDigest: sha256.convert(profileBytes).toString(),
+          protocolVersion: providerFailureDetailsProtocolVersion,
         ),
       );
       expect(initialized.terminal, isA<InitializeResult>());
@@ -166,6 +173,30 @@ void main() {
       expect(initializeResult.workerTypeId, 'gemini');
       expect(initializeResult.profileDefinitionId, 'gemini-antigravity');
       expect(initializeResult.profileReleaseVersion, '1');
+
+      final failed = await exchange(
+        ExecuteRequest(
+          requestId: 'failure-with-response',
+          assignmentId: 'failure-assignment',
+          prompt: 'Failure with response',
+          timeoutMs: 10000,
+          sessionPolicy: WorkerSessionPolicy.stateless,
+          protocolVersion: providerFailureDetailsProtocolVersion,
+        ),
+      );
+      final failure = failed.terminal as WorkerErrorFrame;
+      expect(
+        failure.providerFailure,
+        containsPair('nativeErrorCode', 'OUTPUT_LIMIT'),
+      );
+      expect(
+        failure.providerFailure,
+        containsPair('providerErrorText', 'Output limit reached'),
+      );
+      expect(
+        failure.providerFailure,
+        containsPair('failedRunResponse', 'Partial answer'),
+      );
 
       // A missing local settings file warns but does not block readiness.
       final missingConfig = await exchange(
