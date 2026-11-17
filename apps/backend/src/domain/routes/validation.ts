@@ -18,10 +18,12 @@ export class RequestValidationError extends HttpError {
 }
 
 /** The parsed, validated body. Invalid JSON is `invalid_json`; a schema miss is `invalid_request`. */
-export async function readBody<S extends z.ZodType>(request: Request, schema: S, options: { message?: string } = {}): Promise<z.output<S>> {
+export async function readBody<S extends z.ZodType>(request: Request, schema: S, options: { message?: string; limit?: number } = {}): Promise<z.output<S>> {
   let value: unknown;
   try {
-    const text = await readBodyText(request);
+    // `limit` raises the 2 MiB default for the few routes that carry a file
+    // inline (a Workspace release package); keep it behind authentication.
+    const text = await readBodyText(request, options.limit);
     value = text.trim() ? JSON.parse(text) : {};
   } catch (error) {
     if (error instanceof HttpError) throw error; // 413

@@ -246,6 +246,13 @@ export async function handleDownloadWorkspaceRelease(
   return new Response(object.body, { headers });
 }
 
+/**
+ * The release publisher (scripts/release/publish-workspace-release.mjs) sends
+ * the package inline as base64 JSON, far above the 2 MiB JSON default. The
+ * caller is checked before the body is read.
+ */
+export const RELEASE_JSON_BODY_LIMIT = 128 * 1024 * 1024;
+
 export async function handlePublishWorkspaceRelease(
   request: Request,
   env: SecurityEnv,
@@ -305,7 +312,7 @@ export async function handlePublishWorkspaceRelease(
       packageData = await (file as Blob).arrayBuffer();
     }
   } else {
-    const body = await readBody(request, PublishReleaseSchema);
+    const body = await readBody(request, PublishReleaseSchema, { limit: RELEASE_JSON_BODY_LIMIT });
     if (!body.version) {
       return json({ error: "'version' is required" }, { status: 400 });
     }

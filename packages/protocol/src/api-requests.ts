@@ -142,6 +142,8 @@ export const PublishReleaseSchema = z.object({
   packageDigest: z.string({ error: "packageDigest must be text" }).max(128).optional(),
   signature: z.string({ error: "signature must be text" }).max(4096).optional(),
   signingKeyId: z.string({ error: "signingKeyId must be text" }).max(128).optional(),
+  // The package itself, base64 (the release publisher script sends it this way).
+  packageBase64: z.string({ error: "packageBase64 must be text" }).optional(),
 });
 
 /** Create a Workspace Grant; the handler rejects unknown keys itself and parses the nested policy fields. */
