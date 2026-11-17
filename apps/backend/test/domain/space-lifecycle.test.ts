@@ -87,7 +87,7 @@ describe("Space lifecycle integrity", () => {
     const body = spaces.slice(start, end);
     // Children are removed by foreign-key cascades (see
     // test/domain/history-cascade.test.ts), not by hand-ordered deletes.
-    expect(body).toContain('prepare("DELETE FROM spaces WHERE id = ?1")');
+    expect(body).toContain("DELETE FROM spaces WHERE id = ${spaceId}");
     expect(body).not.toContain("DELETE FROM runs");
   });
 });

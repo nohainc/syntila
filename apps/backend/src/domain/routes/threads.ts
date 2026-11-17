@@ -25,7 +25,7 @@ import {
   lastThreadActivitySql,
   unreadSql,
 } from "./thread-activity.js";
-import { MutationIdempotency } from "./mutation-idempotency.js";
+import { MutationIdempotency, NO_RECEIPT, type ReceiptWrite } from "./mutation-idempotency.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { createEventPublisher } from "../event-publisher.js";
 import {
@@ -50,7 +50,7 @@ import {
   threadMetadata,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
-import { dataOf } from "../../platform/data.js";
+import { dataOf, type Tx } from "../../platform/data.js";
 
 const SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID =
   `SELECT id, space_id AS spaceId, user_id AS userId, role,
@@ -271,11 +271,9 @@ export async function handleCreateThread(
     typeof body.accessPolicy === "object" && body.accessPolicy !== null
       ? body.accessPolicy
       : DEFAULT_THREAD_ACCESS_POLICY;
-  const mutation = env.SYNTILA_DB.prepare(
-    `INSERT INTO threads
+  const insertThread = (tx: Tx) => tx.run`INSERT INTO threads
        (id, space_id, name, status, access_policy_json, lead_user_id, created_at, updated_at)
-       VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?6)`,
-  ).bind(id, spaceId, name, JSON.stringify(accessPolicy), context.userId, now);
+       VALUES (${id}, ${spaceId}, ${name}, 'active', ${JSON.stringify(accessPolicy)}, ${context.userId}, ${now}, ${now})`;
   const response = {
     thread: {
       canConfigureWork: true,
@@ -298,14 +296,17 @@ export async function handleCreateThread(
       ),
     },
   };
-  const write = (receipts: D1PreparedStatement[]) =>
+  const write = (receiptWrite: ReceiptWrite) =>
     publishCollaborationEvent(env, "thread.created", spaceId, id, {
       threadId: id,
-      mutations: [...receipts, mutation],
+      mutate: async (tx) => {
+        await receiptWrite(tx);
+        await insertThread(tx);
+      },
     });
   const concurrentReplay = receipt
     ? await receipt.commit(response, 201, write)
-    : (await write([]), null);
+    : (await write(NO_RECEIPT), null);
   return concurrentReplay ?? json(response, { status: 201 });
 }
 
@@ -405,29 +406,17 @@ export async function handleUpdateThread(
   }
   const now = new Date().toISOString();
   const updatedAt = metadataOnly ? thread.updatedAt : now;
-  const mutations: D1PreparedStatement[] = [];
-  mutations.push(
-    env.SYNTILA_DB.prepare(
-      `UPDATE threads
-     SET name = ?1, status = ?2, access_policy_json = ?3, updated_at = ?4,
-         metadata_json = syntila_json_patch(metadata_json, ?6)
-     WHERE id = ?5`,
-    ).bind(
-      name,
-      status,
-      JSON.stringify(accessPolicy),
-      updatedAt,
-      threadId,
-      JSON.stringify(metadataPatch ?? {}),
-    ),
-  );
-  if (
+  const archiveChanged =
     status !== thread.status &&
-    (status === "archived" || thread.status === "archived")
-  ) {
-    mutations.push(
-      threadNotice(
-        env,
+    (status === "archived" || thread.status === "archived");
+  const mutate = async (tx: Tx) => {
+    await tx.run`UPDATE threads
+     SET name = ${name}, status = ${status}, access_policy_json = ${JSON.stringify(accessPolicy)}, updated_at = ${updatedAt},
+         metadata_json = syntila_json_patch(metadata_json, ${JSON.stringify(metadataPatch ?? {})})
+     WHERE id = ${threadId}`;
+    if (archiveChanged)
+      await threadNotice(
+        tx,
         threadId,
         context.userId,
         context.user.displayName || "Member",
@@ -436,20 +425,14 @@ export async function handleUpdateThread(
           ? "archived this thread."
           : "restored this thread.",
         now,
-      ),
-    );
-  }
-  if (workConfig !== undefined) {
-    mutations.push(
-      env.SYNTILA_DB.prepare(
-        `INSERT INTO thread_work_configs
+      );
+    if (workConfig !== undefined)
+      await tx.run`INSERT INTO thread_work_configs
          (thread_id, config_json, updated_by_user_id, updated_at)
-       VALUES (?1, ?2, ?3, ?4)
+       VALUES (${threadId}, ${JSON.stringify(workConfig)}, ${context.userId}, ${now})
        ON CONFLICT(thread_id) DO UPDATE SET config_json = excluded.config_json,
-         updated_by_user_id = excluded.updated_by_user_id, updated_at = excluded.updated_at`,
-      ).bind(threadId, JSON.stringify(workConfig), context.userId, now),
-    );
-  }
+         updated_by_user_id = excluded.updated_by_user_id, updated_at = excluded.updated_at`;
+  };
   const savedWorkConfigJson =
     workConfig === undefined
       ? await env.SYNTILA_DB.prepare(
@@ -494,7 +477,7 @@ export async function handleUpdateThread(
     "thread.updated",
     thread.spaceId,
     threadId,
-    { threadId, mutations },
+    { threadId, mutate },
   );
   return json({
     thread: {
@@ -567,13 +550,12 @@ export async function handleDeleteThread(
     );
   // Everything that belongs to the Thread (Work Requests, tasks, Worker
   // assignments, Runs, conversations, messages) is removed by cascade.
-  const mutations = [
-    destructiveThreadGuard(env, threadId, context.userId),
-    env.SYNTILA_DB.prepare("DELETE FROM threads WHERE id = ?1").bind(threadId),
-  ];
   await publishCollaborationEvent(env, "thread.deleted", spaceId, threadId, {
     threadId,
-    mutations,
+    mutate: async (tx) => {
+      await destructiveThreadGuard(tx, threadId, context.userId);
+      await tx.run`DELETE FROM threads WHERE id = ${threadId}`;
+    },
   });
   return json({ ok: true, threadId });
 }
@@ -754,45 +736,17 @@ export async function handleCreateDiscussionMessage(
   const id = `discussion-${crypto.randomUUID()}`;
   const userRow = await dataOf(env).read.row<{ displayName: string | null }>`SELECT display_name AS "displayName" FROM users WHERE id = ${context.userId}`;
   const authorName = userRow?.displayName || "Member";
-  const mutations: D1PreparedStatement[] = [];
-  mutations.push(
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO discussion_messages
+  const insertMessage = async (tx: Tx) => {
+    await tx.run`INSERT INTO discussion_messages
        (id, thread_id, author_user_id, body, references_json, created_at, attachments_json, reply_to_json)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
-    ).bind(
-      id,
-      threadId,
-      context.userId,
-      content,
-      JSON.stringify(references),
-      now,
-      JSON.stringify(attachments),
-      replyTo ? JSON.stringify(replyTo) : null,
-    ),
-  );
-  mutations.push(
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO space_audit_log
+     VALUES (${id}, ${threadId}, ${context.userId}, ${content}, ${JSON.stringify(references)}, ${now}, ${JSON.stringify(attachments)}, ${replyTo ? JSON.stringify(replyTo) : null})`;
+    await tx.run`INSERT INTO space_audit_log
        (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-     VALUES (?1, ?2, 'user', ?3, 'thread.discussion.created', 'discussion_message', ?4, ?5, ?6)`,
-    ).bind(
-      `pa-${crypto.randomUUID()}`,
-      spaceId,
-      context.userId,
-      id,
-      JSON.stringify({ threadId, references }),
-      now,
-    ),
-  );
-  // A support Space's sidebar visibility is the user's own setting; replies never change it.
-  if (directSpace && !directSpace.isSupport) {
-    mutations.push(
-      env.SYNTILA_DB.prepare(
-        "UPDATE direct_space_user_state SET hidden = FALSE, last_opened_at = ?1, updated_at = ?1 WHERE space_id = ?2",
-      ).bind(now, spaceId),
-    );
-  }
+     VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'thread.discussion.created', 'discussion_message', ${id}, ${JSON.stringify({ threadId, references })}::text::jsonb, ${now})`;
+    // A support Space's sidebar visibility is the user's own setting; replies never change it.
+    if (directSpace && !directSpace.isSupport)
+      await tx.run`UPDATE direct_space_user_state SET hidden = FALSE, last_opened_at = ${now}, updated_at = ${now} WHERE space_id = ${spaceId}`;
+  };
   const response = {
     message: {
       id,
@@ -810,14 +764,17 @@ export async function handleCreateDiscussionMessage(
       workerDisplayName: null,
     },
   };
-  const write = (receipts: D1PreparedStatement[]) =>
+  const write = (receiptWrite: ReceiptWrite) =>
     publishCollaborationEvent(env, "discussion.created", spaceId, id, {
       threadId,
-      mutations: [...receipts, ...mutations],
+      mutate: async (tx) => {
+        await receiptWrite(tx);
+        await insertMessage(tx);
+      },
     });
   const concurrentReplay = receipt
     ? await receipt.commit(response, 201, write)
-    : (await write([]), null);
+    : (await write(NO_RECEIPT), null);
   return concurrentReplay ?? json(response, { status: 201 });
 }
 
@@ -882,15 +839,15 @@ export async function handleEditDiscussionMessage(
     body.references ?? parseJson(message.referencesJson, []),
   );
   const editedAt = new Date().toISOString();
-  const mutation = env.SYNTILA_DB.prepare(
-    "UPDATE discussion_messages SET body = ?1, references_json = ?2, edited_at = ?3 WHERE id = ?4",
-  ).bind(content, JSON.stringify(references), editedAt, messageId);
   await publishCollaborationEvent(
     env,
     "discussion.updated",
     spaceId,
     messageId,
-    { threadId: String(message.threadId), mutations: [mutation] },
+    {
+      threadId: String(message.threadId),
+      mutate: (tx) => tx.run`UPDATE discussion_messages SET body = ${content}, references_json = ${JSON.stringify(references)}, edited_at = ${editedAt} WHERE id = ${messageId}`,
+    },
   );
   return json({
     message: {
@@ -944,15 +901,15 @@ export async function handleDeleteDiscussionMessage(
     );
   const now = new Date().toISOString();
   const text = `Message removed by ${context.user.displayName || "Member"}${policy.role === "owner" && String(message.authorUserId) !== context.userId ? " · Space owner" : ""}`;
-  const mutation = env.SYNTILA_DB.prepare(
-    "UPDATE discussion_messages SET body = ?1, attachments_json = '[]', references_json = '[]', reply_to_json = NULL, event_type = 'message.removed', edited_at = ?2 WHERE id = ?3 AND event_type IS NULL",
-  ).bind(text, now, messageId);
   await publishCollaborationEvent(
     env,
     "discussion.updated",
     spaceId,
     messageId,
-    { threadId: String(message.threadId), mutations: [mutation] },
+    {
+      threadId: String(message.threadId),
+      mutate: (tx) => tx.run`UPDATE discussion_messages SET body = ${text}, attachments_json = '[]', references_json = '[]', reply_to_json = NULL, event_type = 'message.removed', edited_at = ${now} WHERE id = ${messageId} AND event_type IS NULL`,
+    },
   );
   return json({ success: true });
 }
@@ -979,45 +936,39 @@ export async function handleClearChatHistory(
       `Cannot clear the Conversation with ${active.count} active Work Request(s). Cancel first.`,
     );
   }
-  const db = env.SYNTILA_DB;
   // Clearing the Conversation is the real deletion: Chat messages, every Work
   // Request with its answers and diagnostics, and Worker session continuity.
   // Deleting the owning Conversations lets canonical history cascade legally.
   const now = new Date().toISOString();
-  // Deleting the Work Requests removes their tasks, Worker assignments and
-  // Runs by cascade.
-  const mutations = [
-    destructiveThreadGuard(env, threadId, context.userId),
-    db
-      .prepare("DELETE FROM discussion_messages WHERE thread_id = ?1")
-      .bind(threadId),
-    db.prepare("DELETE FROM conversations WHERE thread_id = ?1").bind(threadId),
-    db.prepare("DELETE FROM work_requests WHERE thread_id = ?1").bind(threadId),
-    db
-      .prepare(
-        `UPDATE threads SET ai_history_cleared_at = NULL,
-           work_session_generation = work_session_generation + 1, updated_at = ?1
-         WHERE id = ?2`,
-      )
-      .bind(now, threadId),
-    threadNotice(
-      env,
-      threadId,
-      context.userId,
-      context.user.displayName || "Member",
-      "conversation.cleared",
-      "cleared the conversation.",
-      now,
-    ),
-  ];
-  // The mutations and the event are committed together by the publisher, so a
-  // successful clear is always announced to other sessions.
+  // The writes and the event are committed together by the publisher, so a
+  // successful clear is always announced to other sessions. Deleting the Work
+  // Requests removes their tasks, Worker assignments and Runs by cascade.
   await publishCollaborationEvent(
     env,
     "thread.chat_cleared",
     spaceId,
     threadId,
-    { threadId, mutations },
+    {
+      threadId,
+      mutate: async (tx) => {
+        await destructiveThreadGuard(tx, threadId, context.userId);
+        await tx.run`DELETE FROM discussion_messages WHERE thread_id = ${threadId}`;
+        await tx.run`DELETE FROM conversations WHERE thread_id = ${threadId}`;
+        await tx.run`DELETE FROM work_requests WHERE thread_id = ${threadId}`;
+        await tx.run`UPDATE threads SET ai_history_cleared_at = NULL,
+           work_session_generation = work_session_generation + 1, updated_at = ${now}
+         WHERE id = ${threadId}`;
+        await threadNotice(
+          tx,
+          threadId,
+          context.userId,
+          context.user.displayName || "Member",
+          "conversation.cleared",
+          "cleared the conversation.",
+          now,
+        );
+      },
+    },
   );
   return json({ threadId, cleared: true });
 }
@@ -1038,16 +989,13 @@ export async function handleMarkThreadRead(
     accessContext,
   );
   const readAt = new Date().toISOString();
-  const mutation = env.SYNTILA_DB.prepare(
-    `INSERT INTO thread_read_states (thread_id, user_id, read_at)
-     VALUES (?1, ?2, ?3)
-     ON CONFLICT (thread_id, user_id) DO UPDATE SET read_at = excluded.read_at
-     WHERE excluded.read_at > thread_read_states.read_at`,
-  ).bind(threadId, context.userId, readAt);
   await publishCollaborationEvent(env, "thread.updated", spaceId, threadId, {
     threadId,
     recipientUserIds: [context.userId],
-    mutations: [mutation],
+    mutate: (tx) => tx.run`INSERT INTO thread_read_states (thread_id, user_id, read_at)
+     VALUES (${threadId}, ${context.userId}, ${readAt}::timestamptz)
+     ON CONFLICT (thread_id, user_id) DO UPDATE SET read_at = excluded.read_at
+     WHERE excluded.read_at > thread_read_states.read_at`,
   });
   // Read receipts: other members viewing the Thread refetch who has seen it.
   // Live-only; a reconnecting client simply reloads the read states.

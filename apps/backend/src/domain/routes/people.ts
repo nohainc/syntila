@@ -20,16 +20,15 @@ import {
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { createEventPublisher } from "../event-publisher.js";
 import { ensureSupportSpace, SupportSpaceError } from "../people.js";
-import { dataOf } from "../../platform/data.js";
+import { dataOf, type Tx } from "../../platform/data.js";
 
-const INSERT_DIRECT_SPACE_USER_STATE =
-  "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING";
-
-const UPDATE_PERSON_INVITATIONS_SET_STATUS_BY_ID =
-  `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2 WHERE id = ?3`;
-
-const UPDATE_PERSON_CONNECTIONS_SET_DIRECT_SPACE_ID =
-  "UPDATE person_connections SET direct_space_id = ?1 WHERE user_low_id = ?2 AND user_high_id = ?3 AND status = 'connected'";
+type Runner = Pick<Tx, "run">;
+const showDirectSpace = (q: Runner, spaceId: string, userId: string, now: string) =>
+  q.run`INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (${spaceId}, ${userId}, FALSE, ${now}, ${now}) ON CONFLICT(space_id, user_id) DO NOTHING`;
+const acceptPersonInvitation = (q: Runner, invitationId: string, userId: string, now: string) =>
+  q.run`UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ${userId}, updated_at = ${now} WHERE id = ${invitationId}`;
+const pointConnectionAtSpace = (q: Runner, spaceId: string, low: string, high: string) =>
+  q.run`UPDATE person_connections SET direct_space_id = ${spaceId} WHERE user_low_id = ${low} AND user_high_id = ${high} AND status = 'connected'`;
 
 const SELECT_PERSON_INVITATIONS_BY_STATUS_EXPIRES_AT =
   `SELECT id, inviter_user_id, invitee_user_id, status, expires_at, created_at
@@ -353,93 +352,58 @@ async function provisionDirectConnection(
 
   let directSpaceId = existing?.space_id;
   const isNewSpace = !directSpaceId;
-  const statements: D1PreparedStatement[] = [];
-
-  if (!directSpaceId) {
-    directSpaceId = `space-direct-${crypto.randomUUID()}`;
-    statements.push(
-      env.SYNTILA_DB.prepare(
-        "INSERT INTO spaces (id, owner_user_id, name, kind, settings_json, created_at, updated_at) VALUES (?1, ?2, 'Direct Space', 'direct', '{}', ?3, ?3)",
-      ).bind(directSpaceId, inviterUserId, now),
-      env.SYNTILA_DB.prepare(
-        "INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (?1, ?2, ?3, 'owner', ?4, ?4) ON CONFLICT(space_id, user_id) DO NOTHING",
-      ).bind(`pm-${crypto.randomUUID()}`, directSpaceId, inviterUserId, now),
-      env.SYNTILA_DB.prepare(
-        "INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (?1, ?2, ?3, 'collaborator', ?4, ?4) ON CONFLICT(space_id, user_id) DO NOTHING",
-      ).bind(`pm-${crypto.randomUUID()}`, directSpaceId, recipientUserId, now),
-      env.SYNTILA_DB.prepare(
-        "INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at) VALUES (?1, ?2, ?3, NULL, ?4)",
-      ).bind(directSpaceId, userLowId, userHighId, now),
-      env.SYNTILA_DB.prepare(
-        INSERT_DIRECT_SPACE_USER_STATE,
-      ).bind(directSpaceId, inviterUserId, now),
-      env.SYNTILA_DB.prepare(
-        INSERT_DIRECT_SPACE_USER_STATE,
-      ).bind(directSpaceId, recipientUserId, now),
-    );
-  }
-
-  if (invitationId)
-    statements.push(
-      env.SYNTILA_DB.prepare(
-        `INSERT INTO person_connections (user_low_id, user_high_id, status, established_at, direct_space_id)
-       VALUES (?1, ?2, 'connected', ?3, ?4)
+  const createdSpaceId = directSpaceId ? null : `space-direct-${crypto.randomUUID()}`;
+  if (createdSpaceId) directSpaceId = createdSpaceId;
+  const spaceIdForWrites = directSpaceId!;
+  const writes = async (tx: Tx) => {
+    if (createdSpaceId) {
+      await tx.run`INSERT INTO spaces (id, owner_user_id, name, kind, settings_json, created_at, updated_at) VALUES (${createdSpaceId}, ${inviterUserId}, 'Direct Space', 'direct', '{}', ${now}, ${now})`;
+      await tx.run`INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (${`pm-${crypto.randomUUID()}`}, ${createdSpaceId}, ${inviterUserId}, 'owner', ${now}, ${now}) ON CONFLICT(space_id, user_id) DO NOTHING`;
+      await tx.run`INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (${`pm-${crypto.randomUUID()}`}, ${createdSpaceId}, ${recipientUserId}, 'collaborator', ${now}, ${now}) ON CONFLICT(space_id, user_id) DO NOTHING`;
+      await tx.run`INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at) VALUES (${createdSpaceId}, ${userLowId}, ${userHighId}, NULL, ${now})`;
+      await showDirectSpace(tx, createdSpaceId, inviterUserId, now);
+      await showDirectSpace(tx, createdSpaceId, recipientUserId, now);
+    }
+    if (invitationId) {
+      await tx.run`INSERT INTO person_connections (user_low_id, user_high_id, status, established_at, direct_space_id)
+       VALUES (${userLowId}, ${userHighId}, 'connected', ${now}, ${spaceIdForWrites})
        ON CONFLICT(user_low_id, user_high_id) DO UPDATE SET
-         status = 'connected', established_at = ?3, disconnected_at = NULL, direct_space_id = ?4`,
-      ).bind(userLowId, userHighId, now, directSpaceId),
-      env.SYNTILA_DB.prepare(
-        `INSERT INTO people_relationships (user_low_id, user_high_id, established_at)
-       VALUES (?1, ?2, ?3) ON CONFLICT(user_low_id, user_high_id) DO NOTHING`,
-      ).bind(userLowId, userHighId, now),
-      env.SYNTILA_DB.prepare(
-        UPDATE_PERSON_INVITATIONS_SET_STATUS_BY_ID,
-      ).bind(recipientUserId, now, invitationId),
-      env.SYNTILA_DB.prepare(
-        `UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ?1, updated_at = ?2
-       WHERE id <> ?3 AND status = 'pending'
-         AND ((inviter_user_id = ?4 AND invitee_user_id = ?5) OR (inviter_user_id = ?5 AND invitee_user_id = ?4))`,
-      ).bind(recipientUserId, now, invitationId, userLowId, userHighId),
-    );
-
-  if (!invitationId)
-    statements.push(
-      env.SYNTILA_DB.prepare(
-        UPDATE_PERSON_CONNECTIONS_SET_DIRECT_SPACE_ID,
-      ).bind(directSpaceId, userLowId, userHighId),
-    );
+         status = 'connected', established_at = ${now}, disconnected_at = NULL, direct_space_id = ${spaceIdForWrites}`;
+      await tx.run`INSERT INTO people_relationships (user_low_id, user_high_id, established_at)
+       VALUES (${userLowId}, ${userHighId}, ${now}) ON CONFLICT(user_low_id, user_high_id) DO NOTHING`;
+      await acceptPersonInvitation(tx, invitationId, recipientUserId, now);
+      await tx.run`UPDATE person_invitations SET status = 'accepted', accepted_by_user_id = ${recipientUserId}, updated_at = ${now}
+       WHERE id <> ${invitationId} AND status = 'pending'
+         AND ((inviter_user_id = ${userLowId} AND invitee_user_id = ${userHighId}) OR (inviter_user_id = ${userHighId} AND invitee_user_id = ${userLowId}))`;
+    } else {
+      await pointConnectionAtSpace(tx, spaceIdForWrites, userLowId, userHighId);
+    }
+  };
 
   try {
     if (isNewSpace) {
       await publishCollaborationEvent(
         env,
         "space.created",
-        directSpaceId,
-        directSpaceId,
+        spaceIdForWrites,
+        spaceIdForWrites,
         {
           recipientUserIds: [userLowId, userHighId],
           additionalRecipientUserIds: [userLowId, userHighId],
-          mutations: statements,
+          mutate: writes,
         },
       );
     } else {
-      await env.SYNTILA_DB.batch(statements);
+      await dataOf(env).tx("people.connect", writes);
     }
   } catch (error) {
     const rechecked = await directSpaceOfPair(dataOf(env).read, userLowId, userHighId);
     if (rechecked) {
       directSpaceId = rechecked.space_id;
       if (invitationId)
-        await env.SYNTILA_DB.prepare(
-          UPDATE_PERSON_INVITATIONS_SET_STATUS_BY_ID,
-        )
-          .bind(recipientUserId, now, invitationId)
-          .run();
+        await acceptPersonInvitation(dataOf(env).read, invitationId, recipientUserId, now);
       else
-        await env.SYNTILA_DB.prepare(
-          UPDATE_PERSON_CONNECTIONS_SET_DIRECT_SPACE_ID,
-        )
-          .bind(directSpaceId, userLowId, userHighId)
-          .run();
+        await pointConnectionAtSpace(dataOf(env).read, directSpaceId, userLowId, userHighId);
     } else {
       throw error;
     }

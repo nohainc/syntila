@@ -4,7 +4,7 @@ import { ownsActiveWorkspace } from "../queries.js";
 import { hashToken } from "@syntila/security";
 import { hasPaidFeature, requirePaidFeature } from "../account-plan.js";
 import { createEventPublisher } from "../event-publisher.js";
-import { MutationIdempotency } from "./mutation-idempotency.js";
+import { MutationIdempotency, NO_RECEIPT, type ReceiptWrite } from "./mutation-idempotency.js";
 import {
   HttpError,
   json,
@@ -144,23 +144,16 @@ export async function handleWorkspaceInvitations(
   const token = `workspace_invite_${crypto.randomUUID()}_${crypto.randomUUID()}`;
   const expiresAt = new Date(Date.now() + INVITATION_TTL_MS).toISOString();
   const created = { id, email, status: "pending", expiresAt };
-  const insert = env.SYNTILA_DB.prepare(
-    `INSERT INTO workspace_invitations(id,workspace_id,email,token_hash,invited_by_user_id,status,expires_at,created_at,updated_at)
-     VALUES(?1,?2,?3,?4,?5,'pending',?6,?7,?7)`,
-  ).bind(
-    id,
-    workspaceId,
-    email,
-    await hashToken(token),
-    context.userId,
-    expiresAt,
-    now,
-  );
-  const write = (receipts: D1PreparedStatement[]) =>
-    env.SYNTILA_DB.batch([...receipts, insert]);
+  const tokenHash = await hashToken(token);
+  const write = (receiptWrite: ReceiptWrite) =>
+    dataOf(env).tx("workspace.invitation.create", async (tx) => {
+      await receiptWrite(tx);
+      await tx.run`INSERT INTO workspace_invitations(id,workspace_id,email,token_hash,invited_by_user_id,status,expires_at,created_at,updated_at)
+     VALUES(${id},${workspaceId},${email},${tokenHash},${context.userId},'pending',${expiresAt}::timestamptz,${now}::timestamptz,${now}::timestamptz)`;
+    });
   const concurrentReplay = receipt
     ? await receipt.commit(created, 201, write)
-    : (await write([]), null);
+    : (await write(NO_RECEIPT), null);
   if (concurrentReplay) return concurrentReplay;
   await publishWorkspaceInvitationChanged(env, id, [
     context.userId,

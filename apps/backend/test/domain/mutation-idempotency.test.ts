@@ -2,6 +2,7 @@ import { hashToken } from "@syntila/security";
 import { testTokens } from "./helpers/tokens";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { dataOf } from "../../src/platform/data.js";
 import { MutationIdempotency } from "../../src/domain/routes/mutation-idempotency.js";
 import {
   handleCreateSpace,
@@ -51,8 +52,8 @@ describe("durable mutation receipts", () => {
       "scope",
       { a: 1, b: 2 },
     ))!;
-    await receipt.commit({ id: "one" }, 201, (statements) =>
-      f.db.batch(statements),
+    await receipt.commit({ id: "one" }, 201, (write) =>
+      dataOf({ SYNTILA_DB: f.db } as never).tx("test.receipt", write),
     );
     const same = (await MutationIdempotency.from(
       request({ b: 2, a: 1 }),
@@ -106,23 +107,19 @@ describe("durable mutation receipts", () => {
       {},
     ))!;
     await expect(
-      receipt.commit({ id: "one" }, 201, (statements) =>
-        f.db.batch([
-          ...statements,
-          f.db
-            .prepare(
-              "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES(?,?,?,?,?)",
-            )
-            .bind("P", "missing-user", "Space", "now", "now"),
-        ]),
+      receipt.commit({ id: "one" }, 201, (write) =>
+        dataOf({ SYNTILA_DB: f.db } as never).tx("test.receipt", async (tx) => {
+          await write(tx);
+          await tx.run`INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES ('P', 'missing-user', 'Space', 'now', 'now')`;
+        }),
       ),
     ).rejects.toThrow();
     expect(await receipt.replay()).toBeNull();
     expect(f.sqlite.prepare("SELECT count(*) AS n FROM spaces").get()?.n).toBe(
       0,
     );
-    await receipt.commit({ id: "one" }, 201, (statements) =>
-      f.db.batch(statements),
+    await receipt.commit({ id: "one" }, 201, (write) =>
+      dataOf({ SYNTILA_DB: f.db } as never).tx("test.receipt", write),
     );
     expect(await receipt.replay()).not.toBeNull();
     f.sqlite.close();

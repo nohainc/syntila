@@ -1,3 +1,4 @@
+import { dataOf } from "../../src/platform/data.js";
 import { afterEach, describe, expect, it } from "./helpers/vitest-compat";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 import {
@@ -240,18 +241,21 @@ describe("shared thread history permissions", () => {
 
 it("atomically refuses cleanup when another contribution arrives after authorization", async () => {
   const f = await fixture();
-  const batch = f.env.SYNTILA_DB.batch.bind(f.env.SYNTILA_DB);
-  f.env.SYNTILA_DB.batch = async (statements) => {
-    f.sqlite
-      .prepare(
-        "INSERT INTO discussion_messages(id,thread_id,author_user_id,body,created_at) VALUES('racing',?,'other','Keep this','now')",
-      )
-      .run(f.id);
-    return batch(statements);
-  };
+  const data = dataOf(f.env as never) as any;
+  const begin = data.tx.bind(data);
+  // Another contribution arrives after authorization, before the deletion runs.
+  data.tx = (label: string, fn: (tx: unknown) => Promise<unknown>) =>
+    begin(label, async (tx: unknown) => {
+      f.sqlite
+        .prepare(
+          "INSERT INTO discussion_messages(id,thread_id,author_user_id,body,created_at) VALUES('racing',?,'other','Keep this','now')",
+        )
+        .run(f.id);
+      return fn(tx);
+    });
   await expect(
     handleDeleteThread(f.request("creator"), f.env, f.id),
-  ).rejects.toThrow(/CHECK/);
+  ).rejects.toThrow(/thread_not_destructible/);
   expect(
     f.sqlite.prepare("SELECT id FROM threads WHERE id=?").get(f.id),
   ).toBeTruthy();

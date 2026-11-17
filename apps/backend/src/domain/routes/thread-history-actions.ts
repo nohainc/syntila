@@ -1,9 +1,9 @@
-import { dataOf } from "../../platform/data.js";
+import { dataOf, type Tx } from "../../platform/data.js";
 import type { SecurityEnv } from "./http-security.js";
 import { HttpError } from "./http-security.js";
 
 export function threadNotice(
-  env: SecurityEnv,
+  tx: Tx,
   threadId: string,
   userId: string,
   name: string,
@@ -11,18 +11,9 @@ export function threadNotice(
   text: string,
   now: string,
 ) {
-  return env.SYNTILA_DB.prepare(
-    `INSERT INTO discussion_messages
+  return tx.run`INSERT INTO discussion_messages
     (id, thread_id, author_user_id, body, created_at, event_type)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
-  ).bind(
-    `notice-${crypto.randomUUID()}`,
-    threadId,
-    userId,
-    `${name} ${text}`,
-    now,
-    event,
-  );
+    VALUES (${`notice-${crypto.randomUUID()}`}, ${threadId}, ${userId}, ${`${name} ${text}`}, ${now}, ${event})`;
 }
 
 export async function requireDestructiveThreadAccess(
@@ -61,16 +52,14 @@ export async function requireDestructiveThreadAccess(
 /** Recheck inside the atomic action batch to fence contributions/requests
  * admitted after the HTTP authorization read. A failed CHECK rolls it back. */
 export function destructiveThreadGuard(
-  env: SecurityEnv,
+  tx: Tx,
   threadId: string,
   userId: string,
 ) {
-  return env.SYNTILA_DB.prepare(
-    `UPDATE threads SET has_other_contributions = CASE
-    WHEN ((lead_user_id = ?2 AND NOT has_other_contributions) OR EXISTS
-      (SELECT 1 FROM spaces s WHERE s.id = threads.space_id AND s.owner_user_id = ?2 AND COALESCE(s.kind, 'group') <> 'direct'))
+  return tx.run`UPDATE threads SET has_other_contributions = CASE
+    WHEN ((lead_user_id = ${userId} AND NOT has_other_contributions) OR EXISTS
+      (SELECT 1 FROM spaces s WHERE s.id = threads.space_id AND s.owner_user_id = ${userId} AND COALESCE(s.kind, 'group') <> 'direct'))
       AND NOT EXISTS (SELECT 1 FROM work_requests wr WHERE wr.thread_id = threads.id
         AND wr.status IN ('queued','running','waiting'))
-    THEN has_other_contributions ELSE syntila_guard_failed('thread_not_destructible') END WHERE id = ?1`,
-  ).bind(threadId, userId);
+    THEN has_other_contributions ELSE syntila_guard_failed('thread_not_destructible') END WHERE id = ${threadId}`;
 }

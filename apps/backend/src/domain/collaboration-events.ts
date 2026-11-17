@@ -1,3 +1,4 @@
+import type { Tx } from "../platform/data.js";
 import {
   createEventPublisher,
   type EventPublisherEnv,
@@ -17,7 +18,7 @@ export async function publishCollaborationEvent(
     threadId?: string;
     recipientUserIds?: readonly string[];
     additionalRecipientUserIds?: readonly string[];
-    mutations?: readonly D1PreparedStatement[];
+    mutate?: (tx: Tx) => Promise<unknown>;
   } = {},
 ): Promise<void> {
   const publisher = createEventPublisher(env);
@@ -32,7 +33,7 @@ export async function publishCollaborationEvent(
     threadId: options.threadId,
     payload,
     recipientUserIds: options.recipientUserIds,
-    mutations: options.mutations,
+    mutate: options.mutate,
   });
   // Invitees and removed members cannot subscribe to the Space stream.
   // Give them an ID-only invalidation on their own authorized, replayable stream.

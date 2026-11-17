@@ -1,9 +1,19 @@
 import { CONVERSATION_WORKFLOWS } from "@syntila/core";
 import { sqliteD1 } from "./sqlite-d1.js";
+import { dataOf } from "../../../src/platform/data.js";
 import {
-  conversationSubmissionStatements,
+  insertConversationSubmission,
   threadConversationId,
 } from "../../../src/domain/routes/conversations.js";
+/** Records a conversation submission in one transaction on the fixture's database. */
+export function submitConversation(
+  db: unknown,
+  ...args: Parameters<typeof insertConversationSubmission> extends [unknown, ...infer R] ? R : never
+): Promise<void> {
+  return dataOf({ SYNTILA_DB: db } as never).tx("test.submitConversation", (tx) =>
+    insertConversationSubmission(tx, ...args),
+  );
+}
 import { loadConversationTurns } from "../../../src/domain/routes/conversation-turns.js";
 export async function conversationFixture(
   options: { beforeTurnLifecycleRepair?: boolean; research?: boolean } = {},
@@ -19,15 +29,13 @@ export async function conversationFixture(
  VALUES('R','W','U','stateless','${options.research ? "research" : "chat"}',${options.research ? 2 : 1},'{}','running','{"originalRequest":"**Exact user text**"}','2026-10-07T10:00:00Z','now');
  INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
  VALUES('T','R','chat','stateless_read',1000,'chat:v1','running','now','now');`);
-  await db.batch(
-    conversationSubmissionStatements(
-      db as unknown as D1Database,
+  await submitConversation(
+    db,
       threadConversationId("W"),
       "W",
       CONVERSATION_WORKFLOWS.chat!,
       "R",
       "now",
-    ),
   );
   const assign = (
     id: string,

@@ -3,13 +3,16 @@ import { pgD1 } from "./helpers/pg-d1";
 import { basicThread } from "./helpers/seed";
 vi.mock("../../src/domain/collaboration-events.js", () => ({
   publishCollaborationEvent: async (
-    _env: unknown,
+    env: unknown,
     _type: string,
     _space: string,
     _entity: string,
-    options: { mutations?: { run: () => Promise<unknown> }[] } = {},
+    options: { mutate?: (tx: never) => Promise<unknown> } = {},
   ) => {
-    for (const mutation of options.mutations ?? []) await mutation.run();
+    if (options.mutate) {
+      const { fakeTx } = await import("./helpers/fake-sql");
+      await options.mutate!(fakeTx((env as { SYNTILA_DB: unknown }).SYNTILA_DB) as never);
+    }
   },
 }));
 import { readFileSync } from "node:fs";

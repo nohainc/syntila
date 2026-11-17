@@ -1,8 +1,7 @@
 import { expect, it } from "./helpers/vitest-compat";
 import { CONVERSATION_WORKFLOWS } from "@syntila/core";
-import { conversationFixture } from "./helpers/conversation.js";
+import { conversationFixture, submitConversation } from "./helpers/conversation.js";
 import {
-  conversationSubmissionStatements,
   threadConversationId,
 } from "../../src/domain/routes/conversations.js";
 import { loadConversationWorkflowRuns } from "../../src/domain/routes/conversation-workflow-runs.js";
@@ -29,15 +28,13 @@ it("one Work StepRun snapshots pending choices and spaces actual provider defaul
     VALUES('WORK','W','U','stateful','direct',2,'{}',?,'queued','{}','now','now')`,
       )
       .run(snapshot);
-    await f.db.batch(
-      conversationSubmissionStatements(
-        f.db as unknown as D1Database,
+    await submitConversation(
+      f.db,
         threadConversationId("W"),
         "W",
         CONVERSATION_WORKFLOWS.work!,
         "WORK",
         "now",
-      ),
     );
     f.sqlite.exec(
       `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at) VALUES('IMPLEMENT','WORK','implement','stateful_thread',1000,'implement:v1','queued','now','now')`,

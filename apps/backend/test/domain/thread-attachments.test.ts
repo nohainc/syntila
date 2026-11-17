@@ -17,13 +17,16 @@ vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
 }));
 vi.mock("../../src/domain/collaboration-events.js", () => ({
   publishCollaborationEvent: async (
-    _env: unknown,
+    env: unknown,
     _type: string,
     _space: string,
     _entity: string,
-    options: { mutations: { run(): Promise<unknown> }[] },
+    options: { mutate?: (tx: never) => Promise<unknown> } = {},
   ) => {
-    for (const mutation of options.mutations) await mutation.run();
+    if (options.mutate) {
+      const { dataOf } = await import("../../src/platform/data.js");
+      await dataOf(env as never).tx("test.publish", (tx) => options.mutate!(tx as never));
+    }
   },
 }));
 import {

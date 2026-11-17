@@ -22,9 +22,11 @@ vi.mock("../../src/domain/workspace-gateway/runtime-authenticator.js", () => ({
 }));
 vi.mock("../../src/domain/event-publisher.js", () => ({
   // Applies the domain writes the route commits together with its signal.
-  createEventPublisher: () => ({
-    publish: async (input?: { mutations?: { run(): Promise<unknown> }[] }) => {
-      for (const statement of input?.mutations ?? []) await statement.run();
+  createEventPublisher: (env: unknown) => ({
+    publish: async (input?: { mutate?: (tx: never) => Promise<unknown> }) => {
+      if (!input?.mutate) return;
+      const { dataOf } = await import("../../src/platform/data.js");
+      await dataOf(env as never).tx("test.publish", (tx) => input.mutate!(tx as never));
     },
   }),
 }));
@@ -40,8 +42,9 @@ import {
   handleUploadWorkRequestInput,
   loadWorkRequestInputs,
   withInputFacts,
-  workRequestInputStatements,
+  insertWorkRequestInputs,
 } from "../../src/domain/routes/work-request-inputs.js";
+import { dataOf } from "../../src/platform/data.js";
 import { computePackageDigest } from "@syntila/security";
 
 const fileA = "wrf-11111111-2222-3333-4444-555555555555";
@@ -79,8 +82,8 @@ async function fixture() {
         'queued', 'ws', ?, 'now', 'now')`,
     )
     .run(JSON.stringify({ attachments }));
-  await (db as unknown as D1Database).batch(
-    workRequestInputStatements(db as unknown as D1Database, {
+  await dataOf({ SYNTILA_DB: db } as never).tx("test.inputs", (tx) =>
+    insertWorkRequestInputs(tx, {
       workRequestId: "wr",
       threadId: "thread",
       workspaceId: "ws",

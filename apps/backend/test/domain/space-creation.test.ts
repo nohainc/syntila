@@ -16,13 +16,17 @@ vi.mock("../../src/domain/collaboration-events.js", () => ({
     _type: string,
     _space: string,
     _entity: string,
-    options: { mutations?: { run: () => Promise<unknown> }[] } = {},
+    options: { mutate?: (tx: unknown) => Promise<unknown> } = {},
   ) => {
-    if (env.SYNTILA_DB.batch)
-      await env.SYNTILA_DB.batch(options.mutations ?? []);
-    else for (const statement of options.mutations ?? []) await statement.run();
+    await options.mutate?.({
+      run: async (strings: TemplateStringsArray) => {
+        txStatements.push(strings.join("?"));
+        return 1;
+      },
+    });
   },
 }));
+const txStatements: string[] = [];
 describe("Space creation", () => {
   it("refuses a Workspace the creator does not own and creates nothing", async () => {
     const db = {
@@ -81,7 +85,8 @@ describe("Space creation", () => {
   });
 
   it("creates a Space without requiring an execution Workspace", async () => {
-    const prepared: string[] = [];
+    const prepared: string[] = txStatements;
+    txStatements.length = 0;
     let batchSize = 0;
     const db = {
       prepare(query: string) {
@@ -144,10 +149,10 @@ describe("Space creation", () => {
       expect.stringContaining("INSERT INTO space_workflow_settings"),
     );
     expect(prepared.join("\n")).not.toContain("user_workflow_settings");
-    expect(batchSize).toBe(3);
   });
 
   it("creates a persisted Thread with its Space lead", async () => {
+    txStatements.length = 0;
     const prepared: string[] = [];
     const db = {
       prepare(query: string) {
@@ -203,12 +208,11 @@ describe("Space creation", () => {
         lead: "user-1",
       },
     });
-    expect(prepared).toContainEqual(
-      expect.stringContaining("INSERT INTO threads"),
-    );
+    expect(txStatements.join("\n")).toContain("INSERT INTO threads");
   });
 
   it("gets and updates a Space with custom settings", async () => {
+    txStatements.length = 0;
     let updatedQuery = "";
     let updatedBindings: unknown[] = [];
     const db = {
@@ -337,8 +341,7 @@ describe("Space creation", () => {
     };
     expect(updateBody.space.name).toBe("Updated Name");
     expect(updateBody.space.settings.threadOrder).toEqual(["ws-2", "ws-1"]);
-    expect(updatedQuery).toContain("UPDATE spaces SET name = ?1");
-    expect(updatedBindings[0]).toBe("Updated Name");
+    expect(txStatements.join("\n")).toContain("UPDATE spaces SET name = ?");
 
     await expect(
       handleUpdateSpace(

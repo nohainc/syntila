@@ -46,13 +46,17 @@ vi.mock("../../src/domain/routes/thread-policy.js", async (original) => ({
   }),
 }));
 // Applies the domain writes the route commits together with its signal.
-const publish = vi.hoisted(() =>
-  vi.fn(async (input?: { mutations?: { run(): Promise<unknown> }[] }) => {
-    for (const statement of input?.mutations ?? []) await statement.run();
-  }),
-);
+const publish = vi.hoisted(() => vi.fn(async (_input?: unknown) => {}));
 vi.mock("../../src/domain/event-publisher.js", () => ({
-  createEventPublisher: () => ({ publish }),
+  createEventPublisher: (env: unknown) => ({
+    publish: async (input?: { mutate?: (tx: never) => Promise<unknown> }) => {
+      await publish(input);
+      if (input?.mutate) {
+        const { dataOf } = await import("../../src/platform/data.js");
+        await dataOf(env as never).tx("test.publish", (tx) => input.mutate!(tx as never));
+      }
+    },
+  }),
 }));
 import { handleCreateWorkRequest } from "../../src/domain/routes/work-creation.js";
 function fixture() {

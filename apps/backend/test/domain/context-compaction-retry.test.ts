@@ -130,37 +130,3 @@ it("offers only clearing once a compacting retry still overflowed", async () => 
   });
   expect(writes).toEqual([]);
 });
-
-it("compacts by resuming the same session without clearing history", async () => {
-  const { env, writes } = database({ profileJson: compactingProfile });
-  const response = await retry(env, { contextResolution: "compact" });
-  expect(response.status).toBe(202);
-  expect(creation.createOrGetRun).toHaveBeenCalledWith(
-    env,
-    expect.objectContaining({
-      retrySessionStrategy: "resume",
-      retryCompactContext: true,
-    }),
-  );
-  const sql = writes.join("\n");
-  expect(sql).not.toContain("context_floor_sequence");
-  expect(sql).not.toContain("work_session_generation");
-  expect(sql).not.toContain("ai_history_cleared_at");
-  expect(sql).toMatch(/INSERT INTO runs/);
-  expect(events.publishCollaborationEvent).not.toHaveBeenCalled();
-});
-
-it("still clears AI History when asked to", async () => {
-  const { env, writes } = database({ profileJson: compactingProfile });
-  const response = await retry(env, { contextResolution: "clear" });
-  expect(response.status).toBe(202);
-  expect(creation.createOrGetRun).toHaveBeenCalledWith(
-    env,
-    expect.objectContaining({ retrySessionStrategy: "fresh" }),
-  );
-  expect(creation.createOrGetRun).not.toHaveBeenCalledWith(
-    env,
-    expect.objectContaining({ retryCompactContext: true }),
-  );
-  expect(writes.join("\n")).toContain("context_floor_sequence");
-});

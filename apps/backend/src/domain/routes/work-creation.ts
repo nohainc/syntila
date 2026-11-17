@@ -12,11 +12,11 @@ import {
   resolveWorkflowExecutionBindings,
 } from "./workflow-execution-configuration.js";
 import { requireWorkflowPermission } from "./space-permissions.js";
-import { initialConversationTaskStatements } from "./conversation-workflow-step-runs.js";
-import { MutationIdempotency } from "./mutation-idempotency.js";
+import { insertInitialConversationTasks } from "./conversation-workflow-step-runs.js";
+import { MutationIdempotency, NO_RECEIPT, type ReceiptWrite } from "./mutation-idempotency.js";
 import { resolveWorkflowStepExecutionConfig } from "./workflow-step-execution-config.js";
 import {
-  conversationSubmissionStatements,
+  insertConversationSubmission,
   resolveThreadConversationId,
 } from "./conversations.js";
 import {
@@ -42,7 +42,7 @@ import {
   verifyWorkRequestFile,
   workRequestFileName,
 } from "./work-request-files.js";
-import { workRequestInputStatements } from "./work-request-inputs.js";
+import { insertWorkRequestInputs } from "./work-request-inputs.js";
 import { resolveReplyReference } from "./reply-references.js";
 import { createEventPublisher } from "../event-publisher.js";
 import { tryLogTraceEvent } from "../observability.js";
@@ -60,7 +60,7 @@ import {
 import type { SecurityEnv } from "./handlers.js";
 import type { SyntilaWorkflowParams } from "../workflow.js";
 import { parseMcpToolStepInput } from "../mcp-tool-step.js";
-import { dataOf } from "../../platform/data.js";
+import { dataOf, type Tx } from "../../platform/data.js";
 
 export async function createOrGetRun(
   env: Env,
@@ -725,79 +725,41 @@ export async function createWorkRequestForUser(
     workRequest,
     run: { id: runId, spaceId, threadId, status: "created" },
   };
-  const statements = (receipts: D1PreparedStatement[]) => [
-    ...receipts,
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO work_requests
+  const writeRequest = async (tx: Tx) => {
+    await tx.run`INSERT INTO work_requests
        (id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, primary_workspace_id, input_json, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'queued', ?9, ?10, ?11, ?11)`,
-    ).bind(
-      workRequest.id,
-      threadId,
-      context.userId,
-      mode,
-      workflowId,
-      workflowVersion,
-      JSON.stringify(workflowSnapshot),
-      JSON.stringify(snapshot),
-      workRequest.primaryWorkspaceId,
-      JSON.stringify(workRequest.input),
-      now,
-    ),
-    ...(fileInputs
-      ? workRequestInputStatements(env.SYNTILA_DB, {
-          workRequestId: workRequest.id,
-          threadId,
-          workspaceId: workRequest.primaryWorkspaceId!,
-          userId: context.userId,
-          attachments: normalizedAttachments,
-          now,
-        })
-      : []),
+       VALUES (${workRequest.id}, ${threadId}, ${context.userId}, ${mode}, ${workflowId}, ${workflowVersion}, ${JSON.stringify(workflowSnapshot)}, ${JSON.stringify(snapshot)}, 'queued', ${workRequest.primaryWorkspaceId}, ${JSON.stringify(workRequest.input)}, ${now}, ${now})`;
+    if (fileInputs)
+      await insertWorkRequestInputs(tx, {
+        workRequestId: workRequest.id,
+        threadId,
+        workspaceId: workRequest.primaryWorkspaceId!,
+        userId: context.userId,
+        attachments: normalizedAttachments,
+        now,
+      });
     // Sidebar ordering is based on these parent timestamps. A newly
     // accepted request is Thread activity even before a Worker responds.
-    env.SYNTILA_DB.prepare(
-      "UPDATE threads SET updated_at = ?1 WHERE id = ?2",
-    ).bind(now, threadId),
-    env.SYNTILA_DB.prepare(
-      "UPDATE spaces SET updated_at = ?1 WHERE id = ?2",
-    ).bind(now, spaceId),
-    ...(conversationWorkflow
-      ? conversationSubmissionStatements(
-          env.SYNTILA_DB,
-          selectedConversationId!,
-          threadId,
-          conversationWorkflow,
-          workRequest.id,
-          now,
-        )
-      : []),
-    ...(conversationWorkflow
-      ? initialConversationTaskStatements(
-          env.SYNTILA_DB,
-          workflowSnapshot,
-          workRequest.id,
-          now,
-        )
-      : []),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO runs
+    await tx.run`UPDATE threads SET updated_at = ${now} WHERE id = ${threadId}`;
+    await tx.run`UPDATE spaces SET updated_at = ${now} WHERE id = ${spaceId}`;
+    if (conversationWorkflow) {
+      await insertConversationSubmission(
+        tx,
+        selectedConversationId!,
+        threadId,
+        conversationWorkflow,
+        workRequest.id,
+        now,
+      );
+      await insertInitialConversationTasks(tx, workflowSnapshot, workRequest.id, now);
+    }
+    await tx.run`INSERT INTO runs
        (id, space_id, thread_id, work_request_id, status, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, 'created', ?5, ?5)`,
-    ).bind(runId, spaceId, threadId, workRequest.id, now),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO space_audit_log
+       VALUES (${runId}, ${spaceId}, ${threadId}, ${workRequest.id}, 'created', ${now}, ${now})`;
+    await tx.run`INSERT INTO space_audit_log
        (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-       VALUES (?1, ?2, 'user', ?3, 'thread.work_requested', 'work_request', ?4, ?5, ?6)`,
-    ).bind(
-      `pa-${crypto.randomUUID()}`,
-      spaceId,
-      context.userId,
-      workRequest.id,
-      JSON.stringify({ threadId, runId, workflowId, workflowVersion }),
-      now,
-    ),
-  ];
+       VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'thread.work_requested', 'work_request', ${workRequest.id}, ${JSON.stringify({ threadId, runId, workflowId, workflowVersion })}::text::jsonb, ${now})`;
+  };
   // The "received by Syntila" signal commits in the same D1 batch as the
   // request, so a saved request is never left unannounced.
   const created = {
@@ -814,16 +776,22 @@ export async function createWorkRequestForUser(
       ...(submissionId ? { submissionId } : {}),
     },
   };
-  const write = (receipts: D1PreparedStatement[]) =>
+  const write = (receiptWrite: ReceiptWrite) =>
     workRequest.primaryWorkspaceId
       ? createEventPublisher(env).publish({
           ...created,
-          mutations: statements(receipts),
+          mutate: async (tx) => {
+            await receiptWrite(tx);
+            await writeRequest(tx);
+          },
         })
-      : env.SYNTILA_DB.batch(statements(receipts));
+      : dataOf(env).tx("work.create", async (tx) => {
+          await receiptWrite(tx);
+          await writeRequest(tx);
+        });
   const concurrentReplay = receipt
     ? await receipt.commit(responseBody, 202, write)
-    : (await write([]), null);
+    : (await write(NO_RECEIPT), null);
   if (concurrentReplay) return resumeSubmission(env, concurrentReplay);
   // T2: the submission is durably accepted. durationMs is the handler's own
   // elapsed time (coarse in Workers; I/O advances the clock).

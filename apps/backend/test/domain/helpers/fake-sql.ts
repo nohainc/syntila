@@ -85,3 +85,16 @@ export function chainData<T extends { SYNTILA_DATA?: any; SYNTILA_DB?: any }>(en
   env.SYNTILA_DATA = new (env.SYNTILA_DATA.constructor)(chained);
   return env;
 }
+
+/** A data-layer Tx over a text-routing fake database: statements run through the fake, nothing is transactional. */
+export function fakeTx(db: unknown): any {
+  const holder = db as { sql?: any };
+  const sql = holder.sql ?? (withSql(db as never) as any).sql;
+  return {
+    run: async (s: any, ...v: unknown[]) => Number((await sql(s, ...v)).count ?? 0),
+    row: async (s: any, ...v: unknown[]) => (await sql(s, ...v))[0] ?? null,
+    rows: async (s: any, ...v: unknown[]) => [...(await sql(s, ...v))],
+    lock: async () => {},
+    afterCommit: () => {},
+  };
+}

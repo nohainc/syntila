@@ -4,7 +4,7 @@
  *
  *   await inTransaction(env, "pin.set", async (txEnv, tx) => {
  *     await tx.lock("syntila.pins", userId);
- *     await publishCollaborationEvent(txEnv, …, { mutations: [stmt] });
+ *     await publishCollaborationEvent(txEnv, …, { mutate: (tx) => … });
  *   });
  *
  * `txEnv` is `env` with:

@@ -79,69 +79,37 @@ export async function ensureSupportSpace(
     return direct?.spaceId ?? null;
   };
   const adopt = (spaceId: string, now: string) =>
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO support_spaces (user_id, support_user_id, space_id, created_at)
-       VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING`,
-    ).bind(userId, support.id, spaceId, now);
+    dataOf(env).read.run`INSERT INTO support_spaces (user_id, support_user_id, space_id, created_at)
+       VALUES (${userId}, ${support.id}, ${spaceId}, ${now}) ON CONFLICT DO NOTHING`;
 
   const existing = await lookup();
   if (existing) {
-    await adopt(existing, new Date().toISOString()).run();
+    await adopt(existing, new Date().toISOString());
     return { spaceId: existing, supportUserId: support.id, created: false };
   }
 
   const { userLowId, userHighId } = normalizeUserPair(userId, support.id);
   const now = new Date().toISOString();
   const spaceId = `space-direct-${crypto.randomUUID()}`;
-  const db = env.SYNTILA_DB;
-  const mutations = [
-    db
-      .prepare(
-        "INSERT INTO spaces (id, owner_user_id, name, kind, settings_json, created_at, updated_at) VALUES (?1, ?2, 'Syntila Support', 'direct', '{}', ?3, ?3)",
-      )
-      .bind(spaceId, userId, now),
-    db
-      .prepare(
-        "INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (?1, ?2, ?3, 'owner', ?4, ?4)",
-      )
-      .bind(`pm-${crypto.randomUUID()}`, spaceId, userId, now),
-    db
-      .prepare(
-        "INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (?1, ?2, ?3, 'collaborator', ?4, ?4)",
-      )
-      .bind(`pm-${crypto.randomUUID()}`, spaceId, support.id, now),
-    db
-      .prepare(
-        "INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at) VALUES (?1, ?2, ?3, NULL, ?4)",
-      )
-      .bind(spaceId, userLowId, userHighId, now),
-    db
-      .prepare(
-        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, TRUE, ?3, ?3)",
-      )
-      .bind(spaceId, userId, now),
-    db
-      .prepare(
-        "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3)",
-      )
-      .bind(spaceId, support.id, now),
-    db
-      .prepare(
-        "INSERT INTO support_spaces (user_id, support_user_id, space_id, created_at) VALUES (?1, ?2, ?3, ?4)",
-      )
-      .bind(userId, support.id, spaceId, now),
-  ];
   try {
     await publishCollaborationEvent(env, "space.created", spaceId, spaceId, {
       recipientUserIds: [userId, support.id],
       additionalRecipientUserIds: [userId, support.id],
-      mutations,
+      mutate: async (tx) => {
+        await tx.run`INSERT INTO spaces (id, owner_user_id, name, kind, settings_json, created_at, updated_at) VALUES (${spaceId}, ${userId}, 'Syntila Support', 'direct', '{}', ${now}, ${now})`;
+        await tx.run`INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (${`pm-${crypto.randomUUID()}`}, ${spaceId}, ${userId}, 'owner', ${now}, ${now})`;
+        await tx.run`INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES (${`pm-${crypto.randomUUID()}`}, ${spaceId}, ${support.id}, 'collaborator', ${now}, ${now})`;
+        await tx.run`INSERT INTO direct_spaces (space_id, user_low_id, user_high_id, general_thread_id, created_at) VALUES (${spaceId}, ${userLowId}, ${userHighId}, NULL, ${now})`;
+        await tx.run`INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (${spaceId}, ${userId}, TRUE, ${now}, ${now})`;
+        await tx.run`INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (${spaceId}, ${support.id}, FALSE, ${now}, ${now})`;
+        await tx.run`INSERT INTO support_spaces (user_id, support_user_id, space_id, created_at) VALUES (${userId}, ${support.id}, ${spaceId}, ${now})`;
+      },
     });
   } catch (error) {
     // The batch is atomic: a concurrent winner leaves no partial rows here.
     const winner = await lookup();
     if (!winner) throw error;
-    await adopt(winner, now).run();
+    await adopt(winner, now);
     return { spaceId: winner, supportUserId: support.id, created: false };
   }
   return { spaceId, supportUserId: support.id, created: true };

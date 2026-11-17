@@ -20,9 +20,11 @@ vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
 }));
 vi.mock("../../src/domain/event-publisher.js", () => ({
   // Applies the domain writes the route commits together with its signal.
-  createEventPublisher: () => ({
-    publish: async (input?: { mutations?: { run(): Promise<unknown> }[] }) => {
-      for (const statement of input?.mutations ?? []) await statement.run();
+  createEventPublisher: (env: unknown) => ({
+    publish: async (input?: { mutate?: (tx: never) => Promise<unknown> }) => {
+      if (!input?.mutate) return;
+      const { fakeTx } = await import("./helpers/fake-sql");
+      await input.mutate!(fakeTx((env as { SYNTILA_DB: unknown }).SYNTILA_DB) as never);
     },
   }),
 }));

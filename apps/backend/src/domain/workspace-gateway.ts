@@ -1,4 +1,4 @@
-import { dataOf, queryOf } from "../platform/data.js";
+import { dataOf, queryOf , type Tx } from "../platform/data.js";
 import { assignmentStatus } from "./queries.js";
 import {
   applyEngineLivenessReport,
@@ -1764,35 +1764,20 @@ export class WorkspaceGateway implements DurableObject {
           }
         }
         const eventId = `assignment-activity:${message.assignmentId}:${message.attemptId}:${activityPayload.data.sourceEventId}`;
+        const activity = activityPayload.data;
+        const recordedAt = new Date().toISOString();
         const historyMutation = replayable
-          ? this.env.SYNTILA_DB.prepare(
-              `INSERT INTO worker_activity_history
+          ? (tx: Tx) => tx.run`INSERT INTO worker_activity_history
                (history_id, assignment_id, workspace_id, attempt_id,
                 execution_id, worker_id, source_event_id, provider_sequence,
                event_type, status, activity_id, title, details_json,
                 duration_ms, tool_id, tool_name, occurred_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                       ?13, ?14, ?15, ?16, ?17)
-               ON CONFLICT DO NOTHING`,
-            ).bind(
-              eventId,
-              message.assignmentId,
-              workspaceId,
-              message.attemptId,
-              activityPayload.data.executionId,
-              activityPayload.data.workerId,
-              activityPayload.data.sourceEventId,
-              activityPayload.data.activitySequence,
-              activityPayload.data.activityType,
-              activityPayload.data.activityStatus,
-              activityPayload.data.activityId ?? null,
-              activityPayload.data.title,
-              JSON.stringify(activityPayload.data.details ?? {}),
-              activityPayload.data.durationMs ?? null,
-              activityPayload.data.toolId ?? null,
-              activityPayload.data.toolName ?? null,
-              new Date().toISOString(),
-            )
+               VALUES (${eventId}, ${message.assignmentId}, ${workspaceId}, ${message.attemptId},
+                       ${activity.executionId}, ${activity.workerId}, ${activity.sourceEventId}, ${activity.activitySequence},
+                       ${activity.activityType}, ${activity.activityStatus}, ${activity.activityId ?? null}, ${activity.title},
+                       ${JSON.stringify(activity.details ?? {})}::text::jsonb, ${activity.durationMs ?? null}, ${activity.toolId ?? null},
+                       ${activity.toolName ?? null}, ${recordedAt}::timestamptz)
+               ON CONFLICT DO NOTHING`
           : undefined;
         try {
           await createEventPublisher(this.env).publish({
@@ -1800,7 +1785,7 @@ export class WorkspaceGateway implements DurableObject {
             eventId,
             idempotencyKey: eventId,
             durable: replayable,
-            ...(historyMutation ? { mutations: [historyMutation] } : {}),
+            ...(historyMutation ? { mutate: historyMutation } : {}),
             workspaceId,
             workspaceRuntimeId:
               this.workspaceRuntimeId ?? message.workspaceRuntimeId,

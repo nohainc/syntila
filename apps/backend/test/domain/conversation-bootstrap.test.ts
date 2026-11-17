@@ -1,8 +1,7 @@
 import { expect, it } from "./helpers/vitest-compat";
 import { CONVERSATION_WORKFLOWS } from "@syntila/core";
-import { conversationFixture } from "./helpers/conversation.js";
+import { conversationFixture, submitConversation } from "./helpers/conversation.js";
 import {
-  conversationSubmissionStatements,
   threadConversationId,
 } from "../../src/domain/routes/conversations.js";
 import { loadConversationBootstrap } from "../../src/domain/routes/conversation-bootstrap.js";
@@ -16,15 +15,13 @@ it("includes late prior replies while excluding the current request", async () =
     f.sqlite
       .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R2','W','U','stateless','chat',1,'{}','running','{"originalRequest":"Current request"}','now','now')`);
-    await f.db.batch(
-      conversationSubmissionStatements(
-        f.db as unknown as D1Database,
+    await submitConversation(
+      f.db,
         threadConversationId("W"),
         "W",
         CONVERSATION_WORKFLOWS.chat!,
         "R2",
         "now",
-      ),
     );
     await recordAssignmentResult(f.db as unknown as D1Database, "A", {
       assignmentId: "A",
@@ -107,15 +104,13 @@ it("includes late prior replies while excluding the current request", async () =
     f.sqlite
       .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R3','W','U','stateless','chat',1,'{}','running','{"originalRequest":"Next request"}','now','now')`);
-    await f.db.batch(
-      conversationSubmissionStatements(
-        f.db as unknown as D1Database,
+    await submitConversation(
+      f.db,
         threadConversationId("W"),
         "W",
         CONVERSATION_WORKFLOWS.chat!,
         "R3",
         "now",
-      ),
     );
     // History over the transport budget is left out instead of failing the
     // turn; the Worker's CLI reports a real context overflow itself.
@@ -177,15 +172,13 @@ it("assembles Work environment and scoped prerequisite results for the receiving
       VALUES('RW','W','U','stateful','direct',2,'{}',?,'WS','running','{}','now','now')`,
       )
       .run(snapshot);
-    await f.db.batch(
-      conversationSubmissionStatements(
-        f.db as unknown as D1Database,
+    await submitConversation(
+      f.db,
         threadConversationId("W"),
         "W",
         CONVERSATION_WORKFLOWS.work!,
         "RW",
         "now",
-      ),
     );
     f.sqlite
       .exec(`INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,attempt,output_json,created_at,updated_at) VALUES
@@ -379,15 +372,13 @@ it("leaves exchanges before an AI History clear out of later context", async () 
     f.sqlite
       .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R2','W','U','stateless','chat',1,'{}','running','{"originalRequest":"Current request"}','now','now')`);
-    await f.db.batch(
-      conversationSubmissionStatements(
-        f.db as unknown as D1Database,
+    await submitConversation(
+      f.db,
         threadConversationId("W"),
         "W",
         CONVERSATION_WORKFLOWS.chat!,
         "R2",
         "now",
-      ),
     );
     const conversation = f.sqlite
       .prepare("SELECT id FROM conversations")
@@ -443,15 +434,13 @@ it("excludes late pre-reset replies from fresh context while retaining visible h
     f.sqlite
       .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R2','W','U','stateless','chat',1,'{}','running','{"originalRequest":"Fresh request"}','now','now')`);
-    await f.db.batch(
-      conversationSubmissionStatements(
-        f.db as unknown as D1Database,
+    await submitConversation(
+      f.db,
         threadConversationId("W"),
         "W",
         CONVERSATION_WORKFLOWS.chat!,
         "R2",
         "now",
-      ),
     );
     const result = await loadConversationBootstrap(
       f.db as unknown as D1Database,
@@ -510,9 +499,8 @@ it.each(["chat", "direct", "research"])(
         )
         .run(workflowId, workflowId === "chat" ? 1 : 2);
       const conversationId = threadConversationId("W");
-      await f.db.batch(
-        conversationSubmissionStatements(
-          f.db as unknown as D1Database,
+      await submitConversation(
+      f.db,
           conversationId,
           "W",
           workflowId === "direct"
@@ -520,7 +508,6 @@ it.each(["chat", "direct", "research"])(
             : CONVERSATION_WORKFLOWS.chat!,
           "next",
           "now",
-        ),
       );
       const bootstrap = await loadConversationBootstrap(
         f.db as unknown as D1Database,

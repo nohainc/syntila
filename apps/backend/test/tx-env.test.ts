@@ -25,13 +25,13 @@ function fixture() {
   return { env, sql, sqlite, delivered };
 }
 
-const publish = (env: any, mutations: unknown[] = []) =>
+const publish = (env: any, mutate?: (tx: any) => Promise<unknown>) =>
   createEventPublisher(env).publish({
     type: "space.updated",
     spaceId: "S",
     stream: { kind: "space", id: "S" },
     payload: { entityId: "S" },
-    mutations: mutations as any,
+    mutate,
   });
 
 describe("inTransaction", () => {
@@ -51,11 +51,9 @@ describe("inTransaction", () => {
           }>`SELECT name FROM spaces WHERE id = 'S'`
         )?.name,
       ).toBe("A");
-      await publish(txEnv, [
-        txEnv.SYNTILA_DB.prepare(
-          "UPDATE spaces SET description = 'd' WHERE id = 'S'",
-        ),
-      ]);
+      await publish(txEnv, (t) =>
+        t.run`UPDATE spaces SET description = 'd' WHERE id = 'S'`,
+      );
       // Nested inTransaction joins the open transaction.
       await inTransaction(txEnv, "test.nested", async (_e, inner) =>
         expect(inner).toBe(tx),
@@ -78,11 +76,9 @@ describe("inTransaction", () => {
     const { env, sql, delivered } = fixture();
     await expect(
       inTransaction(env, "test.rollback", async (txEnv) => {
-        await publish(txEnv, [
-          txEnv.SYNTILA_DB.prepare(
-            "UPDATE spaces SET name = 'B' WHERE id = 'S'",
-          ),
-        ]);
+        await publish(txEnv, (t) =>
+          t.run`UPDATE spaces SET name = 'B' WHERE id = 'S'`,
+        );
         throw new Error("boom");
       }),
     ).rejects.toThrow("boom");

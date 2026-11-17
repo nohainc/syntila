@@ -1,5 +1,9 @@
-import { queryOf } from "../../platform/data.js";
+import { queryOf, type Tx } from "../../platform/data.js";
 import { HttpError } from "./http-security.js";
+
+/** What a route runs first inside its transaction: nothing, or the receipt insert. */
+export type ReceiptWrite = (tx: Tx) => Promise<void>;
+export const NO_RECEIPT: ReceiptWrite = async () => {};
 
 /** Authenticated, endpoint-scoped receipt committed atomically with domain writes. */
 export class MutationIdempotency {
@@ -63,32 +67,25 @@ export class MutationIdempotency {
     });
   }
 
-  statement(body: unknown, status: number): D1PreparedStatement {
-    return this.db
-      .prepare(
-        `INSERT INTO mutation_receipts
+  /** The receipt insert, to run inside the transaction of the domain writes. */
+  write(body: unknown, status: number): ReceiptWrite {
+    const response = JSON.stringify(body);
+    const createdAt = new Date().toISOString();
+    return async (tx) => {
+      await tx.run`INSERT INTO mutation_receipts
       (user_id, scope, idempotency_key, request_hash, response_json, response_status, created_at)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
-      )
-      .bind(
-        this.userId,
-        this.scope,
-        this.key,
-        this.hash,
-        JSON.stringify(body),
-        status,
-        new Date().toISOString(),
-      );
+      VALUES (${this.userId}, ${this.scope}, ${this.key}, ${this.hash}, ${response}, ${status}, ${createdAt})`;
+    };
   }
 
-  /** A unique receipt collision rolls the entire D1 batch back. */
+  /** A unique receipt collision rolls the whole transaction back. */
   async commit(
     body: unknown,
     status: number,
-    write: (receipt: D1PreparedStatement[]) => Promise<unknown>,
+    write: (receipt: ReceiptWrite) => Promise<unknown>,
   ): Promise<Response | null> {
     try {
-      await write([this.statement(body, status)]);
+      await write(this.write(body, status));
       return null;
     } catch (error) {
       const replay = await this.replay();

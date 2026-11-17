@@ -1,3 +1,4 @@
+import type { Tx } from "../../platform/data.js";
 import {
   planWorkflowTasks,
   type BuiltinWorkflowDefinition,
@@ -64,41 +65,19 @@ export async function loadConversationWorkflowStepRuns(
 }
 
 /** Materialize the logical steps atomically with accepted Conversation requests. */
-export function initialConversationTaskStatements(
-  db: D1Database,
+export async function insertInitialConversationTasks(
+  tx: Tx,
   definition: BuiltinWorkflowDefinition,
   workRequestId: string,
   now: string,
-): D1PreparedStatement[] {
+): Promise<void> {
   const tasks = planWorkflowTasks(definition, workRequestId);
-  return [
-    ...tasks.map((task) =>
-      db
-        .prepare(
-          `INSERT INTO workflow_tasks
+  for (const task of tasks)
+    await tx.run`INSERT INTO workflow_tasks
       (id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,attempt,created_at,updated_at,step_instance_id)
-      VALUES (?1,?2,?3,?4,?5,?6,'queued',0,?7,?7,?8) ON CONFLICT(work_request_id,step_id) DO NOTHING`,
-        )
-        .bind(
-          task.id,
-          workRequestId,
-          task.step.kind,
-          task.step.executionMode,
-          task.step.timeoutMs,
-          task.step.promptProfileVersion,
-          now,
-          task.step.id ?? null,
-        ),
-    ),
-    ...tasks.flatMap((task) =>
-      task.dependencyTaskIds.map((dependency) =>
-        db
-          .prepare(
-            `INSERT INTO workflow_task_dependencies(task_id,depends_on_task_id)
-      VALUES (?1,?2) ON CONFLICT(task_id,depends_on_task_id) DO NOTHING`,
-          )
-          .bind(task.id, dependency),
-      ),
-    ),
-  ];
+      VALUES (${task.id},${workRequestId},${task.step.kind},${task.step.executionMode},${task.step.timeoutMs},${task.step.promptProfileVersion},'queued',0,${now},${now},${task.step.id ?? null}) ON CONFLICT(work_request_id,step_id) DO NOTHING`;
+  for (const task of tasks)
+    for (const dependency of task.dependencyTaskIds)
+      await tx.run`INSERT INTO workflow_task_dependencies(task_id,depends_on_task_id)
+      VALUES (${task.id},${dependency}) ON CONFLICT(task_id,depends_on_task_id) DO NOTHING`;
 }

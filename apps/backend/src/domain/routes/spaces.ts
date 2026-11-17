@@ -1,4 +1,4 @@
-import { inTransaction, lockStatement } from "../../platform/tx-env.js";
+import { inTransaction } from "../../platform/tx-env.js";
 import { afterCursorSql, cursorOrderSql, pageOf, pageRequest } from "./pagination.js";
 import {
   CreateSpaceSchema,
@@ -11,7 +11,7 @@ import { isSpaceMember, spaceKind, spaceMembership, spaceNameOf, userByEmail } f
 import {
   SpaceMemberLimitError,
   getSpaceMemberUsage,
-  spaceMemberAdmissionSql,
+  spaceMemberAdmission,
   spaceMemberCapacityRefused,
 } from "../account-plan.js";
 import { prepareWorkflowWorkspaceGrant } from "./workflow-workspace.js";
@@ -30,7 +30,7 @@ import {
   permissionJsonPath,
 } from "./space-permissions.js";
 import { conditionalJson } from "./conditional-read.js";
-import { MutationIdempotency } from "./mutation-idempotency.js";
+import { MutationIdempotency, NO_RECEIPT, type ReceiptWrite } from "./mutation-idempotency.js";
 import {
   activeWorkSql,
   lastSpaceActivitySql,
@@ -55,7 +55,15 @@ import {
   securityEnv,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
-import { dataOf } from "../../platform/data.js";
+import { dataOf, type Tx } from "../../platform/data.js";
+
+type Runner = Pick<Tx, "run">;
+/** Stores one JSON value in the Space settings (a member or invitation permission snapshot). */
+const putSpaceSetting = (q: Runner, spaceId: string, path: string, value: unknown, now: string) =>
+  q.run`UPDATE spaces SET settings_json = syntila_json_set(settings_json, ${path}, ${JSON.stringify(value)}), updated_at = ${now} WHERE id = ${spaceId}`;
+/** Removes one JSON value from the Space settings. */
+const dropSpaceSetting = (q: Runner, spaceId: string, path: string) =>
+  q.run`UPDATE spaces SET settings_json = syntila_json_remove(settings_json, ${path}) WHERE id = ${spaceId}`;
 
 const SELECT_DIRECT_SPACES_BY_SPACE_ID =
   `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl,
@@ -65,11 +73,13 @@ const SELECT_DIRECT_SPACES_BY_SPACE_ID =
        LEFT JOIN direct_space_user_state state ON state.space_id = ds.space_id AND state.user_id = ?1
        WHERE ds.space_id = ?2`;
 
-const UPDATE_SPACES_SET_SETTINGS_JSON_BY_ID =
-  "UPDATE spaces SET settings_json = syntila_json_set(settings_json, ?1, ?2), updated_at = ?3 WHERE id = ?4";
-
-const UPDATE_SPACES_2 =
-  "UPDATE spaces SET settings_json = syntila_json_remove(settings_json, ?1) WHERE id = ?2";
+/** A NOT NULL violation of one column (SQLSTATE 23502), as the driver or the adapter reports it. */
+function isNullViolation(error: unknown, column: string): boolean {
+  const e = error as { errno?: unknown; code?: unknown; column?: unknown; message?: unknown } | null;
+  if (!(error instanceof Error)) return false;
+  if (e?.column === column) return true;
+  return new RegExp(`(null value in column "${column}"|NOT NULL constraint failed: [a-z_]*\\.${column})`, "i").test(error.message);
+}
 
 function spaceSettings(value: unknown): Record<string, unknown> {
   const settings = parseJson<Record<string, unknown>>(value);
@@ -293,7 +303,7 @@ export async function handleCreateSpace(
     }
     // Refused (403) when the chosen Workspace is not owned or lent to the
     // creator; nothing is created then.
-    const workspaceGrants = workspaceId
+    const workspaceGrant = workspaceId
       ? await prepareWorkflowWorkspaceGrant(
           env,
           context.userId,
@@ -301,31 +311,17 @@ export async function handleCreateSpace(
           workspaceId,
           now,
         )
-      : [];
+      : null;
     await publishCollaborationEvent(env, "space.created", id, id, {
-      mutations: [
-        env.SYNTILA_DB.prepare(
-          `INSERT INTO spaces (id, owner_user_id, name, description, settings_json, created_at, updated_at, kind)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7)`,
-        ).bind(
-          id,
-          context.userId,
-          name,
-          description,
-          JSON.stringify(settings),
-          now,
-          "group",
-        ),
-        env.SYNTILA_DB.prepare(
-          `INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'owner', ?4, ?4)
-         ON CONFLICT(space_id, user_id) DO NOTHING`,
-        ).bind(`pm-${crypto.randomUUID()}`, id, context.userId, now),
-        env.SYNTILA_DB.prepare(
-          "INSERT INTO space_workflow_settings(space_id, workspace_id, updated_at) VALUES (?1, ?2, ?3)",
-        ).bind(id, workspaceId, now),
-        ...workspaceGrants,
-      ],
+      mutate: async (writer) => {
+        await writer.run`INSERT INTO spaces (id, owner_user_id, name, description, settings_json, created_at, updated_at, kind)
+         VALUES (${id}, ${context.userId}, ${name}, ${description}, ${JSON.stringify(settings)}, ${now}, ${now}, 'group')`;
+        await writer.run`INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at)
+         VALUES (${`pm-${crypto.randomUUID()}`}, ${id}, ${context.userId}, 'owner', ${now}, ${now})
+         ON CONFLICT(space_id, user_id) DO NOTHING`;
+        await writer.run`INSERT INTO space_workflow_settings(space_id, workspace_id, updated_at) VALUES (${id}, ${workspaceId}, ${now})`;
+        if (workspaceGrant) await workspaceGrant(writer);
+      },
     });
     return json(
       {
@@ -762,17 +758,6 @@ export async function handleUpdateSpace(
       : {}),
     ...(typeof body.archived === "boolean" ? { archived: body.archived } : {}),
   };
-  const mutation = env.SYNTILA_DB.prepare(
-    `UPDATE spaces SET name = ?1, description = ?2,
-       settings_json = syntila_json_patch(settings_json, ?3), updated_at = ?4
-     WHERE id = ?5`,
-  ).bind(
-    space.name,
-    space.description,
-    JSON.stringify(settingsPatch),
-    now,
-    spaceId,
-  );
   await publishCollaborationEvent(
     env,
     settings.archived === true &&
@@ -781,7 +766,11 @@ export async function handleUpdateSpace(
       : "space.updated",
     spaceId,
     spaceId,
-    { mutations: [mutation] },
+    {
+      mutate: (tx) => tx.run`UPDATE spaces SET name = ${space.name}, description = ${space.description},
+       settings_json = syntila_json_patch(settings_json, ${JSON.stringify(settingsPatch)}), updated_at = ${now}
+     WHERE id = ${spaceId}`,
+    },
   );
   let dynamicName = space.name;
   let avatarUrl: string | null = null;
@@ -869,9 +858,7 @@ export async function handleDeleteSpace(
     // committed together with the deletion event.
     await publishCollaborationEvent(env, "space.deleted", spaceId, spaceId, {
       recipientUserIds: audience.map((row) => row.user_id),
-      mutations: [
-        env.SYNTILA_DB.prepare("DELETE FROM spaces WHERE id = ?1").bind(spaceId),
-      ],
+      mutate: (tx) => tx.run`DELETE FROM spaces WHERE id = ${spaceId}`,
     });
     return json({ spaceId, deleted: true });
   }
@@ -1073,49 +1060,29 @@ export async function handleCreateSpaceInvitation(
   const tokenHash = await hashToken(token);
   try {
     // The stored replay omits the secret token; it is shown only once.
-    const write = (receipts: D1PreparedStatement[]) =>
-      env.SYNTILA_DB.batch([
+    const expiresAt = new Date(now.getTime() + 7 * 86400000).toISOString();
+    const write = (receiptWrite: ReceiptWrite) =>
+      dataOf(env).tx("space.invitation.create", async (tx) => {
         // The member limit counts members and pending invitations: one
         // admission at a time per Space, or two could take the last slot.
-        lockStatement(env.SYNTILA_DB, "syntila.space_members", spaceId),
-        ...receipts,
-        env.SYNTILA_DB.prepare(
-          // A refused reservation writes a NULL into the NOT NULL token_hash,
-          // which rolls back this whole batch (and any idempotency receipt).
-          `INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at, invitee_user_id)
-     SELECT ?1, ?2, ?3, ?4,
-            CASE WHEN ${spaceMemberAdmissionSql("?2")} THEN ?5 ELSE NULL END,
-            ?6, 'pending', ?7, ?8, ?8, ?9`,
-        ).bind(
-          id,
-          spaceId,
-          email,
-          role,
-          tokenHash,
-          context.userId,
-          new Date(now.getTime() + 7 * 86400000).toISOString(),
-          now.toISOString(),
-          inviteeUserId,
-        ),
-        env.SYNTILA_DB.prepare(
-          UPDATE_SPACES_SET_SETTINGS_JSON_BY_ID,
-        ).bind(
-          permissionJsonPath("invitationPermissions", id),
-          JSON.stringify(permissions),
-          now.toISOString(),
-          spaceId,
-        ),
-      ]);
+        await tx.lock("syntila.space_members", spaceId);
+        await receiptWrite(tx);
+        // A refused reservation writes a NULL into the NOT NULL token_hash,
+        // which rolls back this whole transaction (and any idempotency receipt).
+        await tx.run`INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at, invitee_user_id)
+     SELECT ${id}, ${spaceId}, ${email}, ${role},
+            CASE WHEN ${spaceMemberAdmission(tx, spaceId)} THEN ${tokenHash}::text ELSE NULL END,
+            ${context.userId}, 'pending', ${expiresAt}::timestamptz, ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${inviteeUserId}`;
+        await putSpaceSetting(tx, spaceId, permissionJsonPath("invitationPermissions", id), permissions, now.toISOString());
+      });
     const concurrentReplay = receipt
       ? await receipt.commit({ invitation }, 201, write)
-      : (await write([]), null);
+      : (await write(NO_RECEIPT), null);
     if (concurrentReplay) return concurrentReplay;
   } catch (error) {
     if (
       error instanceof Error &&
-      /NOT NULL constraint failed: space_invitations\.token_hash/i.test(
-        error.message,
-      )
+      isNullViolation(error, "token_hash")
     )
       throw new SpaceMemberLimitError("owner");
     // PostgreSQL names the violated index (the pending e-mail and pending
@@ -1209,23 +1176,17 @@ export async function handleChangeSpaceMemberRole(
   if (!member) throw new HttpError(404, "Space member not found");
   if (member.role === "owner")
     throw new HttpError(403, "Owner permissions cannot be changed");
-  await env.SYNTILA_DB.batch([
-    env.SYNTILA_DB.prepare(
-      "UPDATE space_memberships SET role = ?1, updated_at = ?2 WHERE space_id = ?3 AND user_id = ?4 AND role <> 'owner'",
-    ).bind(role, new Date().toISOString(), spaceId, userId),
-    env.SYNTILA_DB.prepare(
-      UPDATE_SPACES_SET_SETTINGS_JSON_BY_ID,
-    ).bind(
-      permissionJsonPath("memberPermissions", userId),
-      JSON.stringify(
-        storedSpaceMemberRights(
-          permissions ?? defaultSpaceMemberPermissions(role),
-        ),
-      ),
-      new Date().toISOString(),
+  await dataOf(env).tx("space.member.role", async (tx) => {
+    const changedAt = new Date().toISOString();
+    await tx.run`UPDATE space_memberships SET role = ${role}, updated_at = ${changedAt} WHERE space_id = ${spaceId} AND user_id = ${userId} AND role <> 'owner'`;
+    await putSpaceSetting(
+      tx,
       spaceId,
-    ),
-  ]);
+      permissionJsonPath("memberPermissions", userId),
+      storedSpaceMemberRights(permissions ?? defaultSpaceMemberPermissions(role)),
+      changedAt,
+    );
+  });
   await dataOf(env).read.run`INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'space.member.role_changed', 'user', ${userId}, ${JSON.stringify({ role, permissions })}::text::jsonb, ${new Date().toISOString()})`;
   await publishCollaborationEvent(env, "space.updated", spaceId, userId, {
     additionalRecipientUserIds: [userId],
@@ -1258,18 +1219,9 @@ export async function handleRemoveSpaceMember(
       "Direct Space members cannot be modified or removed",
     );
   }
-  const result = await env.SYNTILA_DB.prepare(
-    `DELETE FROM space_memberships WHERE space_id = ?1 AND user_id = ?2 AND role <> 'owner'`,
-  )
-    .bind(spaceId, userId)
-    .run();
-  if (!result.success || (result.meta?.changes ?? 0) === 0)
-    throw new HttpError(404, "Space member not found");
-  await env.SYNTILA_DB.prepare(
-    UPDATE_SPACES_2,
-  )
-    .bind(permissionJsonPath("memberPermissions", userId), spaceId)
-    .run();
+  const removed = await dataOf(env).read.run`DELETE FROM space_memberships WHERE space_id = ${spaceId} AND user_id = ${userId} AND role <> 'owner'`;
+  if (removed === 0) throw new HttpError(404, "Space member not found");
+  await dropSpaceSetting(dataOf(env).read, spaceId, permissionJsonPath("memberPermissions", userId));
   // A contributed execution Workspace is owned by the departing user. Revoke
   // that user's Space Grants with the membership removal so the scheduler
   // cannot continue using infrastructure after collaboration ends.
@@ -1306,18 +1258,9 @@ export async function handleExpireSpaceInvitation(
     }>`SELECT id, email, invitee_user_id AS "inviteeUserId" FROM space_invitations WHERE id = ${invitationId} AND space_id = ${spaceId} AND status = 'pending'`;
   if (!existing) throw new HttpError(404, "Pending invitation not found");
 
-  const result = await env.SYNTILA_DB.prepare(
-    `UPDATE space_invitations SET status = 'expired', updated_at = ?1 WHERE id = ?2 AND space_id = ?3 AND status = 'pending'`,
-  )
-    .bind(new Date().toISOString(), invitationId, spaceId)
-    .run();
-  if (!result.success || (result.meta?.changes ?? 0) === 0)
-    throw new HttpError(404, "Pending invitation not found");
-  await env.SYNTILA_DB.prepare(
-    UPDATE_SPACES_2,
-  )
-    .bind(permissionJsonPath("invitationPermissions", invitationId), spaceId)
-    .run();
+  const expired = await dataOf(env).read.run`UPDATE space_invitations SET status = 'expired', updated_at = ${new Date().toISOString()} WHERE id = ${invitationId} AND space_id = ${spaceId} AND status = 'pending'`;
+  if (expired === 0) throw new HttpError(404, "Pending invitation not found");
+  await dropSpaceSetting(dataOf(env).read, spaceId, permissionJsonPath("invitationPermissions", invitationId));
   await dataOf(env).read.run`INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'space.invitation.expired', 'invitation', ${invitationId}, '{}', ${new Date().toISOString()})`;
   const recipient = existing.inviteeUserId
     ? { id: existing.inviteeUserId }
@@ -1439,59 +1382,24 @@ export async function handleAcceptSpaceInvitation(
     throw new SpaceMemberLimitError("member");
   const membershipId = `pm-${crypto.randomUUID()}`;
   const now = new Date().toISOString();
-  let acceptance;
+  let accepted = 0;
   try {
-    acceptance = await env.SYNTILA_DB.batch([
-      lockStatement(env.SYNTILA_DB, "syntila.space_members", invitation.spaceId),
-      env.SYNTILA_DB.prepare(
-        `UPDATE space_invitations SET status = CASE WHEN ${spaceMemberAdmissionSql("?4", "?3")} THEN 'accepted' ELSE NULL END, invitee_user_id = COALESCE(invitee_user_id, ?1), accepted_by_user_id = ?1, accepted_at = ?2, updated_at = ?2 WHERE id = ?3 AND status = 'pending' AND expires_at > ?2`,
-      ).bind(context.userId, now, invitation.id, invitation.spaceId),
-
+    accepted = await dataOf(env).tx("space.invitation.accept", async (tx) => {
+      await tx.lock("syntila.space_members", invitation.spaceId);
+      const changed = await tx.run`UPDATE space_invitations SET status = CASE WHEN ${spaceMemberAdmission(tx, invitation.spaceId, invitation.id)} THEN 'accepted' ELSE NULL END, invitee_user_id = COALESCE(invitee_user_id, ${context.userId}), accepted_by_user_id = ${context.userId}, accepted_at = ${now}::timestamptz, updated_at = ${now}::timestamptz WHERE id = ${invitation.id} AND status = 'pending' AND expires_at > ${now}::timestamptz`;
       // No ON CONFLICT: a person who became a member another way makes this
       // INSERT violate the unique (space_id, user_id), which rolls back the
-      // whole batch and reaches the router as "You are already a member".
-      env.SYNTILA_DB.prepare(
-        `INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) SELECT ?1, ?2, ?3, ?4, ?5, ?5 WHERE EXISTS (SELECT 1 FROM space_invitations WHERE id=?6 AND status='accepted' AND accepted_by_user_id=?3 AND accepted_at=?5)`,
-      ).bind(
-        membershipId,
-        invitation.spaceId,
-        context.userId,
-        invitation.role,
-        now,
-        invitation.id,
-      ),
-      env.SYNTILA_DB.prepare(
-        "UPDATE spaces SET settings_json = syntila_json_remove(syntila_json_set(settings_json, ?1, ?2), ?3), updated_at = ?4 WHERE id = ?5 AND EXISTS (SELECT 1 FROM space_memberships WHERE id = ?6)",
-      ).bind(
-        permissionJsonPath("memberPermissions", context.userId),
-        JSON.stringify(permissions),
-        permissionJsonPath("invitationPermissions", invitation.id),
-        now,
-        invitation.spaceId,
-        membershipId,
-      ),
-      env.SYNTILA_DB.prepare(
-        `INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) SELECT ?1, ?2, 'user', ?3, 'space.invitation.accepted', 'invitation', ?4, '{}', ?5 WHERE EXISTS(SELECT 1 FROM space_memberships WHERE id=?6)`,
-      ).bind(
-        `pa-${crypto.randomUUID()}`,
-        invitation.spaceId,
-        context.userId,
-        invitation.id,
-        now,
-        membershipId,
-      ),
-    ]);
+      // whole transaction and reaches the router as "You are already a member".
+      await tx.run`INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) SELECT ${membershipId}, ${invitation.spaceId}, ${context.userId}, ${invitation.role}, ${now}::timestamptz, ${now}::timestamptz WHERE EXISTS (SELECT 1 FROM space_invitations WHERE id = ${invitation.id} AND status='accepted' AND accepted_by_user_id = ${context.userId} AND accepted_at = ${now}::timestamptz)`;
+      await tx.run`UPDATE spaces SET settings_json = syntila_json_remove(syntila_json_set(settings_json, ${permissionJsonPath("memberPermissions", context.userId)}, ${JSON.stringify(permissions)}), ${permissionJsonPath("invitationPermissions", invitation.id)}), updated_at = ${now} WHERE id = ${invitation.spaceId} AND EXISTS (SELECT 1 FROM space_memberships WHERE id = ${membershipId})`;
+      await tx.run`INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) SELECT ${`pa-${crypto.randomUUID()}`}, ${invitation.spaceId}, 'user', ${context.userId}, 'space.invitation.accepted', 'invitation', ${invitation.id}, '{}'::jsonb, ${now}::timestamptz WHERE EXISTS(SELECT 1 FROM space_memberships WHERE id = ${membershipId})`;
+      return changed;
+    });
   } catch (error) {
-    if (
-      error instanceof Error &&
-      /NOT NULL constraint failed: space_invitations\.status/i.test(
-        error.message,
-      )
-    )
-      throw new SpaceMemberLimitError("member");
+    if (isNullViolation(error, "status")) throw new SpaceMemberLimitError("member");
     throw error;
   }
-  if (acceptance[1]?.meta?.changes === 0)
+  if (accepted === 0)
     throw new HttpError(409, "Invitation changed before acceptance");
   await publishCollaborationEvent(
     env,
@@ -1554,26 +1462,11 @@ export async function handleDeclineSpaceInvitation(
       "Invitation recipient does not match signed-in user",
     );
   const now = new Date().toISOString();
-  await env.SYNTILA_DB.batch([
-    env.SYNTILA_DB.prepare(
-      UPDATE_SPACES_2,
-    ).bind(
-      permissionJsonPath("invitationPermissions", invitation.id),
-      invitation.spaceId,
-    ),
-    env.SYNTILA_DB.prepare(
-      `UPDATE space_invitations SET status = 'declined', updated_at = ?1 WHERE id = ?2 AND status = 'pending'`,
-    ).bind(now, invitation.id),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (?1, ?2, 'user', ?3, 'space.invitation.declined', 'invitation', ?4, '{}', ?5)`,
-    ).bind(
-      `pa-${crypto.randomUUID()}`,
-      invitation.spaceId,
-      context.userId,
-      invitation.id,
-      now,
-    ),
-  ]);
+  await dataOf(env).tx("space.invitation.decline", async (tx) => {
+    await dropSpaceSetting(tx, invitation.spaceId, permissionJsonPath("invitationPermissions", invitation.id));
+    await tx.run`UPDATE space_invitations SET status = 'declined', updated_at = ${now} WHERE id = ${invitation.id} AND status = 'pending'`;
+    await tx.run`INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (${`pa-${crypto.randomUUID()}`}, ${invitation.spaceId}, 'user', ${context.userId}, 'space.invitation.declined', 'invitation', ${invitation.id}, '{}', ${now})`;
+  });
   await publishCollaborationEvent(
     env,
     "space.updated",

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { CONVERSATION_WORKFLOWS } from "@syntila/core";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { dataOf } from "../../src/platform/data.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 const { authorize } = vi.hoisted(() => ({
   authorize: vi.fn(async () => ({})),
@@ -11,7 +12,7 @@ vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
   authorizeThreadAccess: authorize,
 }));
 import {
-  conversationSubmissionStatements,
+  insertConversationSubmission,
   resolveThreadConversationId,
   threadConversationId,
 } from "../../src/domain/routes/conversations.js";
@@ -40,6 +41,10 @@ it("shares one Thread Conversation across workflows, preserves context revision,
       .prepare("SELECT count(*) AS n FROM conversation_work_requests")
       .get(),
   ).toEqual({ n: 0 });
+  const submitTx = (...args: Parameters<typeof insertConversationSubmission> extends [unknown, ...infer R] ? R : never) =>
+    dataOf({ SYNTILA_DB: db } as never).tx("test.submit", (tx) =>
+      insertConversationSubmission(tx, ...args),
+    );
   const insertRequest = (id: string) =>
     db
       .prepare(
@@ -48,33 +53,27 @@ it("shares one Thread Conversation across workflows, preserves context revision,
     VALUES (?1,'W','U','stateful','direct',2,'{}','queued','now','now')`,
       )
       .bind(id);
-  await db.batch([
-    insertRequest("R1"),
-    ...conversationSubmissionStatements(
-      db as unknown as D1Database,
-      threadConversationId("W"),
-      "W",
-      CONVERSATION_WORKFLOWS.work!,
-      "R1",
-      "2030-01-01T00:00:00.000Z",
-    ),
-  ]);
+  await db.batch([insertRequest("R1")]);
+  await submitTx(
+    threadConversationId("W"),
+    "W",
+    CONVERSATION_WORKFLOWS.work!,
+    "R1",
+    "2030-01-01T00:00:00.000Z",
+  );
   const id = threadConversationId("W");
   expect(
     await resolveThreadConversationId(db as unknown as D1Database, "W"),
   ).toBe(id);
   // Receipt/request failure rolls back both the counter and association.
   await expect(
-    db.batch([
-      ...conversationSubmissionStatements(
-        db as unknown as D1Database,
-        threadConversationId("W"),
-        "W",
-        CONVERSATION_WORKFLOWS.work!,
-        "missing-request",
-        "later",
-      ),
-    ]),
+    submitTx(
+      threadConversationId("W"),
+      "W",
+      CONVERSATION_WORKFLOWS.work!,
+      "missing-request",
+      "later",
+    ),
   ).rejects.toThrow();
   expect(
     sqlite.prepare("SELECT conversation_revision FROM conversations").get(),
@@ -124,15 +123,17 @@ it("continues Chat and Work in one Thread Conversation and keeps a legacy one ca
           CONVERSATION_WORKFLOWS[workflow]!.execution.workflowId,
           CONVERSATION_WORKFLOWS[workflow]!.execution.workflowVersion,
         ),
-      ...conversationSubmissionStatements(
-        d1,
+    ]);
+    await dataOf({ SYNTILA_DB: db } as never).tx("test.submit", (tx) =>
+      insertConversationSubmission(
+        tx,
         conversation,
         "W",
         CONVERSATION_WORKFLOWS[workflow]!,
         id,
         "2030-01-01T00:00:00.000Z",
       ),
-    ]);
+    );
   };
   await submit("R1", "chat");
   await submit("R2", "work");

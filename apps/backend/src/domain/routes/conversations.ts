@@ -1,4 +1,4 @@
-import { queryOf } from "../../platform/data.js";
+import { queryOf, type Tx } from "../../platform/data.js";
 import { createHash } from "node:crypto";
 import type { Conversation, WorkflowDefinition } from "@syntila/core";
 
@@ -26,36 +26,22 @@ export async function resolveThreadConversationId(
   return existing?.id ?? threadConversationId(threadId);
 }
 
-export function conversationSubmissionStatements(
-  db: D1Database,
+export async function insertConversationSubmission(
+  tx: Tx,
   id: string,
   threadId: string,
   definition: WorkflowDefinition,
   workRequestId: string,
   now: string,
-): D1PreparedStatement[] {
-  return [
-    db
-      .prepare(
-        `INSERT INTO conversations
+): Promise<void> {
+  await tx.run`INSERT INTO conversations
       (id, thread_id, workflow_id, workflow_version, conversation_revision, context_revision, created_at, updated_at)
-      SELECT ?1, ?2, ?3, ?4, 0, 0, ?5, ?5
-      WHERE NOT EXISTS (SELECT 1 FROM conversations WHERE id = ?1)`,
-      )
-      .bind(id, threadId, definition.id, definition.version, now),
-    db
-      .prepare(
-        `UPDATE conversations SET conversation_revision = conversation_revision + 1,
-        context_revision = conversation_revision + 1, updated_at = ?2
-      WHERE id = ?1 AND thread_id = ?3`,
-      )
-      .bind(id, now, threadId),
-    db
-      .prepare(
-        `INSERT INTO conversation_work_requests
+      SELECT ${id}, ${threadId}, ${definition.id}, ${definition.version}, 0, 0, ${now}, ${now}
+      WHERE NOT EXISTS (SELECT 1 FROM conversations WHERE id = ${id})`;
+  await tx.run`UPDATE conversations SET conversation_revision = conversation_revision + 1,
+        context_revision = conversation_revision + 1, updated_at = ${now}
+      WHERE id = ${id} AND thread_id = ${threadId}`;
+  await tx.run`INSERT INTO conversation_work_requests
       (conversation_id, work_request_id, conversation_revision)
-      SELECT id, ?2, conversation_revision FROM conversations WHERE id = ?1`,
-      )
-      .bind(id, workRequestId),
-  ];
+      SELECT id, ${workRequestId}, conversation_revision FROM conversations WHERE id = ${id}`;
 }

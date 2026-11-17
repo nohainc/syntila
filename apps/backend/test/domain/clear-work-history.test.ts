@@ -11,6 +11,7 @@ vi.mock("../../src/domain/routes/thread-policy.js", async (original) => ({
 vi.mock("../../src/domain/collaboration-events.js", () => ({
   publishCollaborationEvent: vi.fn(async () => {}),
 }));
+import { dataOf } from "../../src/platform/data.js";
 import { publishCollaborationEvent } from "../../src/domain/collaboration-events.js";
 import { handleClearWorkHistory } from "../../src/domain/routes/work-lifecycle.js";
 import { handleClearChatHistory } from "../../src/domain/routes/threads.js";
@@ -190,7 +191,9 @@ it("clears the whole Conversation remotely, including Work history", async () =>
     expect(entityId).toBe("W");
     expect(options).toMatchObject({ threadId: "W" });
     // The deletion rides on the event so both commit together.
-    for (const mutation of options!.mutations!) await mutation.run();
+    await dataOf({ SYNTILA_DB: f.db } as never).tx("test.clear", (tx) =>
+      (options as unknown as { mutate: (tx: unknown) => Promise<unknown> }).mutate(tx),
+    );
     expect(
       f.sqlite
         .prepare("SELECT COUNT(*) AS count FROM discussion_messages")

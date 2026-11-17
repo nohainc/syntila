@@ -1,4 +1,4 @@
-import { dataOf, queryOf } from "../../platform/data.js";
+import { dataOf, queryOf, type Tx } from "../../platform/data.js";
 import {
   InputAttemptSchema,
   InputDeliveredSchema,
@@ -99,8 +99,8 @@ export function inputProgress(rows: readonly WorkRequestInputRow[]) {
  * Manifest rows inserted with the Work Request. A file that already carries
  * a verified digest (uploaded before submission) starts as `uploaded`.
  */
-export function workRequestInputStatements(
-  db: D1Database,
+export async function insertWorkRequestInputs(
+  tx: Tx,
   input: {
     workRequestId: string;
     threadId: string;
@@ -109,39 +109,19 @@ export function workRequestInputStatements(
     attachments: readonly Record<string, unknown>[];
     now: string;
   },
-): D1PreparedStatement[] {
-  return input.attachments.flatMap((attachment, position) =>
-    attachment.kind === "file" && isWorkRequestFileId(attachment.fileId)
-      ? [
-          db
-            .prepare(
-              `INSERT INTO work_request_inputs
+): Promise<void> {
+  for (const [position, attachment] of input.attachments.entries()) {
+    if (!(attachment.kind === "file" && isWorkRequestFileId(attachment.fileId))) continue;
+    const digest =
+      typeof attachment.contentDigest === "string" ? attachment.contentDigest : null;
+    await tx.run`INSERT INTO work_request_inputs
                (id, work_request_id, thread_id, workspace_id, user_id, position,
                 name, media_type, size_bytes, content_digest, state,
                 created_at, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)`,
-            )
-            .bind(
-              attachment.fileId,
-              input.workRequestId,
-              input.threadId,
-              input.workspaceId,
-              input.userId,
-              position,
-              String(attachment.name ?? "Attachment"),
-              String(attachment.mediaType ?? "application/octet-stream"),
-              Number(attachment.sizeBytes ?? 0),
-              typeof attachment.contentDigest === "string"
-                ? attachment.contentDigest
-                : null,
-              typeof attachment.contentDigest === "string"
-                ? "uploaded"
-                : "awaiting_upload",
-              input.now,
-            ),
-        ]
-      : [],
-  );
+               VALUES (${attachment.fileId}, ${input.workRequestId}, ${input.threadId}, ${input.workspaceId}, ${input.userId}, ${position},
+                ${String(attachment.name ?? "Attachment")}, ${String(attachment.mediaType ?? "application/octet-stream")}, ${Number(attachment.sizeBytes ?? 0)}, ${digest}, ${digest ? "uploaded" : "awaiting_upload"},
+                ${input.now}, ${input.now})`;
+  }
 }
 
 async function inputRow(
