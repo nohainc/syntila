@@ -1,6 +1,6 @@
 import { dataOf } from "../../src/platform/data.js";
 import { afterEach, describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import {
   handleCreateThread,
   handleUpdateThread,
@@ -19,7 +19,7 @@ afterEach(() => {
   for (const close of cleanups.splice(0)) close();
 });
 async function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   cleanups.push(() => sqlite.close());
   sqlite.exec(
     "ALTER TABLE threads ADD COLUMN work_session_generation INTEGER NOT NULL DEFAULT 0",

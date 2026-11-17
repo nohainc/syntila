@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { handleListWorkspaces } from "../../src/domain/routes/workspaces-management.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
     ('owner','owner@test','Owner','now','now'), ('other','other@test','Other','now','now');
     INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES

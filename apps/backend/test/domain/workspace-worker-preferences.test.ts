@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 
 vi.mock("../../src/domain/routes/http-security.js", async (original) => ({
@@ -26,7 +26,7 @@ const defaults = {
   hiddenEfforts: {},
 };
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(
     "" /* D1 migration: schema is final in PostgreSQL */,
   );

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import {
   ATTACHMENT_LIMITS,
   FileTooLargeError,
@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   open.push(sqlite);
   sqlite.exec("PRAGMA foreign_keys = OFF");
   sqlite.exec(

@@ -4,7 +4,7 @@ import {
   resolveAppUrl,
 } from "../../src/domain/invitation-email.js";
 import { handleCreateSpaceInvitation } from "../../src/domain/routes/spaces.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 describe("Invitation Email Delivery", () => {
   it("resolves app URL from SYNTILA_APP_URL, BETTER_AUTH_URL, or request URL", () => {
@@ -164,7 +164,7 @@ describe("Invitation Email Delivery", () => {
   });
 
   it("sends email and creates invitation on handleCreateSpaceInvitation", async () => {
-    const { sqlite, db } = sqliteD1();
+    const { sqlite, db } = pgD1();
     const now = new Date().toISOString();
 
     sqlite.exec(`
@@ -230,7 +230,7 @@ describe("Invitation Email Delivery", () => {
   });
 
   it("keeps a pending invitation when email delivery is rejected", async () => {
-    const { sqlite, db } = sqliteD1();
+    const { sqlite, db } = pgD1();
     const now = new Date().toISOString();
 
     sqlite.exec(`

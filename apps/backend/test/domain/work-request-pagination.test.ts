@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { handleCreateThread, type SecurityEnv } from "../../src/domain/routes/handlers.js";
 import { handleListWorkRequests } from "../../src/domain/routes/work-lifecycle.js";
 
@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 it("pages Work Requests newest first with an opaque cursor and an id tie-break", async () => {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   cleanups.push(() => sqlite.close());
   sqlite.exec("INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('u','u@test','u','now','now')");
   sqlite.exec("INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','u','Space','now','now')");

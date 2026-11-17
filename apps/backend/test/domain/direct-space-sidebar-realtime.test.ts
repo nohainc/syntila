@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import worker from "../../src/domain/index.js";
 
 describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
   function createTestEnv() {
-    const { sqlite, db } = sqliteD1();
+    const { sqlite, db } = pgD1();
     const now = new Date().toISOString();
 
     sqlite.exec(`
@@ -555,8 +555,8 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
 
 describe("Support Space sidebar visibility", () => {
   async function setup() {
-    const { sqliteD1 } = await import("./helpers/sqlite-d1.js");
-    const { sqlite, db } = sqliteD1();
+    const { pgD1 } = await import("./helpers/pg-d1");
+    const { sqlite, db } = pgD1();
     const now = new Date().toISOString();
     sqlite.exec(`
       INSERT INTO users (id, email, display_name, avatar_url, status, created_at, updated_at) VALUES

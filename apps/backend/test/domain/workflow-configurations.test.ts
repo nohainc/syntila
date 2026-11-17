@@ -1,5 +1,5 @@
 import { expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { handleWorkflowConfigurations } from "../../src/domain/routes/workflow-configurations.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 vi.mock("../../src/domain/routes/http-security.js", async (original) => ({
@@ -21,7 +21,7 @@ vi.mock("../../src/domain/routes/profiles.js", () => ({
   handleListWorkspaceWorkerInventory: async () => Response.json(inventory),
 }));
 it("persists only user overrides, isolates users, retains offline choices, resets and rejects foreign writes", async () => {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   try {
     sqlite.exec(
       "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('U','u@test','U','now','now'),('V','v@test','V','now','now')",

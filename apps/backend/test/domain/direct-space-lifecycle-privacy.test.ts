@@ -1,11 +1,11 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import worker from "../../src/domain/index.js";
 import { handleAccountDeletionCleanup } from "../../src/domain/auth/account-lifecycle.js";
 
 describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () => {
   function createTestEnv() {
-    const { sqlite, db } = sqliteD1();
+    const { sqlite, db } = pgD1();
     const now = new Date().toISOString();
 
     sqlite.exec(`

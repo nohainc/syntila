@@ -1,5 +1,5 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import worker from "../../src/domain/index.js";
 import {
   loadSpacePermissions,
@@ -7,7 +7,7 @@ import {
 } from "../../src/domain/routes/space-permissions.js";
 
 function setup(support: string | null = "support@syntila.test") {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   const now = new Date().toISOString();
   sqlite.exec(`
     INSERT INTO users (id, email, display_name, avatar_url, status, created_at, updated_at) VALUES

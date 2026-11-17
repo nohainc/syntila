@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import {
   parseImplementationPhases,
   handleApprovePlan,
@@ -102,7 +102,7 @@ Completion Criteria: Profile renders avatar and bio.
 });
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   cleanups.push(() => sqlite.close());
 
   sqlite

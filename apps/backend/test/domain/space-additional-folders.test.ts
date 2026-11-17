@@ -1,5 +1,5 @@
 import { expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { handleSpaceAdditionalFolders } from "../../src/domain/routes/space-additional-folders.js";
 import { handleWorkflowWorkspace } from "../../src/domain/routes/workflow-workspace.js";
 import { recordWorkspaceAllowedFolders } from "../../src/domain/workspace-gateway/inventory.js";
@@ -25,7 +25,7 @@ const API = "folder-00000000000000a1";
 const DOCS = "folder-00000000000000b2";
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(
     `INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
        ('U','u@test','U','now','now'),('V','v@test','V','now','now');

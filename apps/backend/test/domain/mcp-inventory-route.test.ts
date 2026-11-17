@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { identityService } from "../../src/domain/auth/identity-service.js";
 import { handleWorkspaceMcpInventory } from "../../src/domain/routes/mcp-inventory.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 
-let store: ReturnType<typeof sqliteD1>;
+let store: ReturnType<typeof pgD1>;
 let gatewayReplies: Record<string, unknown>;
 let env: SecurityEnv;
 
@@ -36,7 +36,7 @@ const get = (user: string, workspace: string, method = "GET") =>
   );
 
 beforeEach(() => {
-  store = sqliteD1();
+  store = pgD1();
   store.sqlite.exec(`
     INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
       ('owner','o@test','Owner','now','now'),

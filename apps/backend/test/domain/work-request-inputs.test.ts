@@ -31,7 +31,7 @@ vi.mock("../../src/domain/event-publisher.js", () => ({
   }),
 }));
 
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { basicThread, workspace } from "./helpers/seed";
 import {
   handleConfirmRuntimeInput,
@@ -51,7 +51,7 @@ const fileA = "wrf-11111111-2222-3333-4444-555555555555";
 const fileB = "wrf-11111111-2222-3333-4444-666666666666";
 
 async function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec("PRAGMA foreign_keys = OFF");
   sqlite.exec(basicThread({ user: "owner", space: "space", thread: "thread", threadName: "T" }) + workspace("ws", "owner"));
   sqlite.exec(

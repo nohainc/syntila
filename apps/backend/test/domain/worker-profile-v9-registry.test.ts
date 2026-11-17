@@ -10,7 +10,7 @@ import {
   validateWorkerProfileCandidate,
 } from "../../src/domain/worker-profile-registry.js";
 import { toolProfileAcceptanceScenarioStatuses } from "../../src/domain/tool-profile-validation.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 const fixture = JSON.parse(
   readFileSync(
@@ -46,7 +46,7 @@ function makeEvidence(profile: Record<string, unknown>, digest: string) {
 }
 
 function setup() {
-  const { db, sqlite } = sqliteD1();
+  const { db, sqlite } = pgD1();
   sqlite.exec(
     "" /* D1 migration: schema is final in PostgreSQL */,
   );

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import {
   handleChangeSpaceMemberRole,
   handleListSpaceMembers,
@@ -23,7 +23,7 @@ import { requireWorkflowPermission } from "../../src/domain/routes/space-permiss
 
 const all = defaultSpaceMemberPermissions("owner");
 const none = defaultSpaceMemberPermissions("viewer");
-let store: ReturnType<typeof sqliteD1>;
+let store: ReturnType<typeof pgD1>;
 let env: SecurityEnv;
 const req = (user: string, body: unknown = {}, method = "POST") =>
   new Request("https://test/api", {
@@ -55,7 +55,7 @@ async function rights(id: string, permissions: typeof all) {
 }
 
 beforeEach(() => {
-  store = sqliteD1();
+  store = pgD1();
   for (const id of ["owner", "member", "other", "recipient"])
     store.sqlite
       .prepare(

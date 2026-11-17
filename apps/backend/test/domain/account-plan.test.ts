@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { identityService } from "../../src/domain/auth/identity-service.js";
 import { handleAccountPlan } from "../../src/domain/routes/profile.js";
 import {
@@ -11,12 +11,12 @@ import {
 } from "../../src/domain/account-plan.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 
-let store: ReturnType<typeof sqliteD1>;
+let store: ReturnType<typeof pgD1>;
 let env: SecurityEnv;
 const now = new Date("2026-10-31T12:00:00Z");
 
 beforeEach(() => {
-  store = sqliteD1();
+  store = pgD1();
   store.sqlite
     .exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('free','f@test','Free','now','now'),('paid','p@test','Paid','now','now');
  INSERT INTO account_plans(user_id,tier,status,source,current_period_end,created_at,updated_at) VALUES('paid','paid','active','manual',NULL,'now','now');`);

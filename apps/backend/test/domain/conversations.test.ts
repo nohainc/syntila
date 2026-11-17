@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { CONVERSATION_WORKFLOWS } from "@syntila/core";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { dataOf } from "../../src/platform/data.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 const { authorize } = vi.hoisted(() => ({
@@ -18,7 +18,7 @@ import {
 } from "../../src/domain/routes/conversations.js";
 
 it("shares one Thread Conversation across workflows, preserves context revision, and gates Conversation reads", async () => {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('U','u@test','U','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','U','P','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','W','active','U','now','now');`);
@@ -101,7 +101,7 @@ it("shares one Thread Conversation across workflows, preserves context revision,
 });
 
 it("continues Chat and Work in one Thread Conversation and keeps a legacy one canonical", async () => {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('U','u@test','U','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','U','P','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','W','active','U','now','now');

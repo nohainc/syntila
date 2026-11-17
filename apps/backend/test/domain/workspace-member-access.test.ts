@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { BUILTIN_WORKFLOW_CATALOG } from "@syntila/core";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 vi.mock("../../src/domain/routes/http-security.js", async (original) => ({
   ...(await original<typeof import("../../src/domain/routes/http-security.js")>()),
@@ -27,7 +27,7 @@ import {
 import { resolveWorkflowExecutionBindings } from "../../src/domain/routes/workflow-execution-configuration.js";
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','o@test','O','now','now'),('member','m@test','M','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','owner','Space','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('o','P','owner','owner','now','now'),('m','P','member','collaborator','now','now');

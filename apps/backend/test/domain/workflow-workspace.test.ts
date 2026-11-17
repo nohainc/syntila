@@ -1,12 +1,12 @@
 import { expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { handleCreateSpace } from "../../src/domain/routes/spaces.js";
 import { identityService } from "../../src/domain/auth/identity-service.js";
 import { handleWorkflowWorkspace } from "../../src/domain/routes/workflow-workspace.js";
 import { loadSpaceWorkflowConfigurations } from "../../src/domain/routes/space-workflow-configurations.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 it("attaches Workspaces only by explicit per-Space choice, never by inheritance", async () => {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   const identity = vi
     .spyOn(identityService, "resolve")
     .mockImplementation(async (request) => {

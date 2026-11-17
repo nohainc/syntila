@@ -1,7 +1,7 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { pruneExpiredRealtimeEvents } from "../../src/domain/realtime-retention.js";
 import { CloudEventPublisher } from "../../src/domain/event-publisher.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { publishCollaborationEvent } from "../../src/domain/collaboration-events.js";
 import {
   authorizeRealtimeScope,
@@ -27,7 +27,7 @@ import {
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
     ('owner','owner@test','Owner','now','now'), ('member','member@test','Member','now','now'), ('outsider','outsider@test','Outsider','now','now');`);
   const deliveries: { user: string; event: Record<string, unknown> }[] = [];

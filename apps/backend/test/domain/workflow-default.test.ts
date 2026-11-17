@@ -1,5 +1,5 @@
 import { expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { identityService } from "../../src/domain/auth/identity-service.js";
 import { handleWorkflowDefault } from "../../src/domain/routes/workflow-default.js";
 import { handleWorkflowConfigurations } from "../../src/domain/routes/workflow-configurations.js";
@@ -20,7 +20,7 @@ vi.mock("../../src/domain/routes/profiles.js", () => ({
 }));
 
 it("persists scoped defaults, rejects disabled workflows, and falls back to Chat", async () => {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   const identity = vi
     .spyOn(identityService, "resolve")
     .mockImplementation(async (request) => {

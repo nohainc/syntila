@@ -1,9 +1,9 @@
 /** Work history follows its Thread and Space (migration 0014). */
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 function seed() {
-  const fixture = sqliteD1();
+  const fixture = pgD1();
   fixture.sqlite.exec(`
     INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES ('owner','owner@test','Owner','active','now','now');
     INSERT INTO spaces(id,name,owner_user_id,created_at,updated_at) VALUES ('space-1','Space','owner','now','now');
@@ -29,7 +29,7 @@ function seed() {
   return fixture;
 }
 
-const count = (sqlite: ReturnType<typeof sqliteD1>["sqlite"], table: string, where = "TRUE") =>
+const count = (sqlite: ReturnType<typeof pgD1>["sqlite"], table: string, where = "TRUE") =>
   Number((sqlite.prepare(`SELECT count(*) AS n FROM ${table} WHERE ${where}`).get() as { n: number }).n);
 
 describe("work history cascades", () => {

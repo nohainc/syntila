@@ -1,6 +1,6 @@
 import { deleteAccountAvatars } from "../../src/domain/avatar-storage.js";
 import { afterEach, beforeEach, describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { handleGetAvatar, handleUploadAvatar } from "../../src/domain/routes/profile.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 
@@ -45,12 +45,12 @@ class MemoryAvatarBucket {
 }
 
 describe("profile avatars", () => {
-  let store: ReturnType<typeof sqliteD1>;
+  let store: ReturnType<typeof pgD1>;
   let bucket: MemoryAvatarBucket;
   let env: SecurityEnv;
 
   beforeEach(() => {
-    store = sqliteD1();
+    store = pgD1();
     store.sqlite.exec(
       `INSERT INTO users(id,email,display_name,created_at,updated_at)
        VALUES ('a','a@test','Alice','now','now'),('b','b@test','Bob','now','now')`,

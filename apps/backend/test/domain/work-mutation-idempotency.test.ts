@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
   ...(await original<Record<string, unknown>>()),
@@ -60,7 +60,7 @@ vi.mock("../../src/domain/event-publisher.js", () => ({
 }));
 import { handleCreateWorkRequest } from "../../src/domain/routes/work-creation.js";
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','owner@test','Owner','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','owner','Space','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('member','P','owner','owner','now','now');

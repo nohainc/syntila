@@ -1,5 +1,5 @@
 import { expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import {
   handleListSpaceThreads,
   handleListSpaces,
@@ -10,7 +10,7 @@ import {
 const joined = "2020-01-01T00:00:00.000Z";
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   for (const id of ["alice", "bob"]) {
     sqlite
       .prepare(

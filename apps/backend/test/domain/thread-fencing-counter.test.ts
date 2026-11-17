@@ -14,10 +14,10 @@ import { atomically } from "../../src/platform/data.js";
 import { startStatefulLease } from "../../src/domain/thread-coordinator.js";
 import { handleClearWorkHistory } from "../../src/domain/routes/work-lifecycle.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   // Clearing Work history bumps threads.work_session_generation (migration 0054
   // is not part of the shared fixture baseline).
   sqlite.exec(

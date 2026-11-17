@@ -1,5 +1,5 @@
 import { expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 vi.mock("../../src/domain/routes/http-security.js", async (original) => ({
   ...(await original<typeof import("../../src/domain/routes/http-security.js")>()),
@@ -16,7 +16,7 @@ import {
 } from "../../src/domain/routes/workspace-invitations.js";
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at)
       VALUES('owner','owner@test','Owner','now','now'),('guest','guest@test','Guest','now','now'),('other','other@test','Other','now','now');
     INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('workspace','owner','Mac','now','now');

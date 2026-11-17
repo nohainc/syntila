@@ -1,7 +1,7 @@
 import { hashToken } from "@syntila/security";
 import { testTokens } from "./helpers/tokens";
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { dataOf } from "../../src/platform/data.js";
 import { MutationIdempotency } from "../../src/domain/routes/mutation-idempotency.js";
 import {
@@ -20,7 +20,7 @@ function request(body: unknown, idempotencyKey = key) {
   });
 }
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
     ('owner','owner@test','Owner','now','now'), ('other','other@test','Other','now','now')`);
   const env = {

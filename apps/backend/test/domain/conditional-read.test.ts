@@ -4,7 +4,7 @@ import { conditionalJson } from "../../src/domain/routes/conditional-read.js";
 import { handleGetSpace } from "../../src/domain/routes/spaces.js";
 import { handleListSpaceThreads } from "../../src/domain/routes/threads.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 function request(etag?: string) {
   return new Request("https://syntila.test/api/spaces/p", {
@@ -12,7 +12,7 @@ function request(etag?: string) {
   });
 }
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('u','u@test','User','now','now');
     INSERT INTO spaces(id,owner_user_id,name,settings_json,created_at,updated_at) VALUES ('p','u','Space','{}','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES ('m','p','u','owner','now','now');

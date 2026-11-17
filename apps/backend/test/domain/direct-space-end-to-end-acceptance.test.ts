@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 const admission = vi.hoisted(() =>
   vi
@@ -46,7 +46,7 @@ import worker from "../../src/domain/index.js";
 
 describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
   function createTestEnv() {
-    const { sqlite, db } = sqliteD1();
+    const { sqlite, db } = pgD1();
     const now = new Date().toISOString();
 
     sqlite.exec(`

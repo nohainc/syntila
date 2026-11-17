@@ -10,9 +10,9 @@ import {
 } from "../../src/domain/routes/issue-reports.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 import { pruneExpiredIssueReports } from "../../src/domain/issue-report-retention.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
-function seedExecution(sqlite: ReturnType<typeof sqliteD1>["sqlite"]) {
+function seedExecution(sqlite: ReturnType<typeof pgD1>["sqlite"]) {
   sqlite.exec(`
     INSERT INTO users(id,email,display_name,status,created_at,updated_at)
       VALUES ('owner','owner@example.test','Owner','active','now','now'),
@@ -93,7 +93,7 @@ function envFor(
 
 describe("issue reports", () => {
   it("creates one trusted partial report and deduplicates repeated submission", async () => {
-    const fixture = sqliteD1();
+    const fixture = pgD1();
     seedExecution(fixture.sqlite);
     const bundles = new Map<string, string>();
     const bucket = {
@@ -198,7 +198,7 @@ describe("issue reports", () => {
   });
 
   it("uses structured private Engine diagnostics for stage and Workspace evidence", async () => {
-    const fixture = sqliteD1();
+    const fixture = pgD1();
     seedExecution(fixture.sqlite);
     fixture.sqlite
       .prepare("UPDATE worker_assignments SET error_json = ? WHERE id = ?")
@@ -254,7 +254,7 @@ describe("issue reports", () => {
   });
 
   it("rejects browser-supplied authority and unauthorized report access", async () => {
-    const fixture = sqliteD1();
+    const fixture = pgD1();
     seedExecution(fixture.sqlite);
     const outsiderEnv = envFor(fixture.db, "outsider");
     await expect(
@@ -283,7 +283,7 @@ describe("issue reports", () => {
   });
 
   it("keeps report diagnostics private and records support status changes", async () => {
-    const fixture = sqliteD1();
+    const fixture = pgD1();
     seedExecution(fixture.sqlite);
     const create = await handleCreateIssueReport(
       new Request("https://syntila.test/api/issue-reports", {
@@ -334,7 +334,7 @@ describe("issue reports", () => {
   });
 
   it("retains reports until their private diagnostic attachment can be deleted", async () => {
-    const fixture = sqliteD1();
+    const fixture = pgD1();
     seedExecution(fixture.sqlite);
     const create = await handleCreateIssueReport(
       new Request("https://syntila.test/api/issue-reports", {
@@ -365,7 +365,7 @@ describe("issue reports", () => {
   });
 
   it("supports filtered investigation, timelines, status transitions and explicit groups", async () => {
-    const fixture = sqliteD1();
+    const fixture = pgD1();
     seedExecution(fixture.sqlite);
     const owner = envFor(fixture.db, "owner");
     const support = envFor(fixture.db, "support", { support: true });
@@ -470,7 +470,7 @@ describe("issue reports", () => {
   });
 
   it("keeps the report durable when R2 fails and enforces the per-user rate limit", async () => {
-    const fixture = sqliteD1();
+    const fixture = pgD1();
     seedExecution(fixture.sqlite);
     const failingBucket = {
       async put() {

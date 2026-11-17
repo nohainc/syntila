@@ -4,7 +4,7 @@ import {
   loadMcpToolCall,
   recordMcpToolOutcome,
 } from "../../src/domain/mcp-tool-dispatch-claim.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 const closers: Array<() => void> = [];
 afterEach(() => {
@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const { sqlite, db, read } = sqliteD1();
+  const { sqlite, db, read } = pgD1();
   closers.push(() => sqlite.close());
   sqlite.exec(`
  INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('U','u@test','User','now','now');

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { normalizeUserPair } from "@syntila/core";
 
 describe("Direct Spaces and Personal Connections Schema (Phase 1)", () => {
   it("defaults existing spaces to group kind and enforces valid discriminator values", () => {
-    const { sqlite } = sqliteD1();
+    const { sqlite } = pgD1();
     try {
       sqlite.exec(
         "INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('u1', 'u1@test', 'User 1', 'now', 'now');",
@@ -36,7 +36,7 @@ describe("Direct Spaces and Personal Connections Schema (Phase 1)", () => {
   });
 
   it("enforces Direct Space identity, user ordering, uniqueness, and general thread ownership", () => {
-    const { sqlite } = sqliteD1();
+    const { sqlite } = pgD1();
     try {
       sqlite.exec(`
         INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES
@@ -105,7 +105,7 @@ describe("Direct Spaces and Personal Connections Schema (Phase 1)", () => {
   });
 
   it("prevents duplicate pending personal invitations including reverse directions", () => {
-    const { sqlite } = sqliteD1();
+    const { sqlite } = pgD1();
     try {
       sqlite.exec(`
         INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES
@@ -151,7 +151,7 @@ describe("Direct Spaces and Personal Connections Schema (Phase 1)", () => {
   });
 
   it("manages person_connections and direct_space_user_state", () => {
-    const { sqlite } = sqliteD1();
+    const { sqlite } = pgD1();
     try {
       sqlite.exec(`
         INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES

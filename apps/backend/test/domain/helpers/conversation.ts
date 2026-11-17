@@ -1,5 +1,5 @@
 import { CONVERSATION_WORKFLOWS } from "@syntila/core";
-import { sqliteD1 } from "./sqlite-d1.js";
+import { pgD1 } from "./pg-d1";
 import { dataOf } from "../../../src/platform/data.js";
 import {
   insertConversationSubmission,
@@ -18,7 +18,7 @@ import { loadConversationTurns } from "../../../src/domain/routes/conversation-t
 export async function conversationFixture(
   options: { beforeTurnLifecycleRepair?: boolean; research?: boolean } = {},
 ) {
-  const { sqlite, db, read } = sqliteD1(options);
+  const { sqlite, db, read } = pgD1();
   sqlite.exec(`
  INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('U','u@test','User','now','now');
  INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','U','Space','now','now');

@@ -1,5 +1,5 @@
 import { expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import {
   handleCreateNote,
   handleDeleteThread,
@@ -21,7 +21,7 @@ type Note = {
 };
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   for (const id of ["alice", "bob", "eve"])
     sqlite
       .prepare(

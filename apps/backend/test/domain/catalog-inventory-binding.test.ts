@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { recordWorkspaceWorkerInventory } from "../../src/domain/workspace-gateway/inventory.js";
 
 it("binds catalog ingestion to the current V9 Profile revision and tool version", async () => {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   try {
     sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,

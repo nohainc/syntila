@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { BUILTIN_WORKFLOWS } from "@syntila/core";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 const admission = vi.hoisted(() =>
   vi
@@ -33,7 +33,7 @@ import { threadConversationId } from "../../src/domain/routes/conversations.js";
 
 describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
   function createTestEnv() {
-    const { sqlite, db } = sqliteD1();
+    const { sqlite, db } = pgD1();
     const now = new Date().toISOString();
 
     sqlite.exec(`

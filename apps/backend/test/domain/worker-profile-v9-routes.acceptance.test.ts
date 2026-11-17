@@ -19,7 +19,7 @@ import {
   type WorkerRouteDependencies,
   type WorkerRouteHandlers,
 } from "../../src/domain/routes/router.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 
 const fixture = JSON.parse(
   readFileSync(
@@ -41,7 +41,7 @@ const routeDependencies: WorkerRouteDependencies = {
 };
 
 function setup() {
-  const { db, sqlite } = sqliteD1();
+  const { db, sqlite } = pgD1();
   sqlite.exec(
     "" /* D1 migration: schema is final in PostgreSQL */,
   );

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, it, vi } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import { handleWorkflowConfigurations } from "../../src/domain/routes/workflow-configurations.js";
 import { handleWorkflowDefault } from "../../src/domain/routes/workflow-default.js";
 import { handleWorkflowWorkspace } from "../../src/domain/routes/workflow-workspace.js";
@@ -32,7 +32,7 @@ const configuration = (workflowId: string, worker: string) => ({
 });
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(
     `INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('U','u@test','U','now','now'),('V','v@test','V','now','now');
      INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('A','U','First','now','now'),('B','U','Second','now','now'),('F','V','Foreign','now','now');

@@ -1,6 +1,6 @@
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { BUILTIN_WORKFLOW_CATALOG } from "@syntila/core";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 vi.mock("../../src/domain/routes/http-security.js", async (original) => ({
   ...(await original<typeof import("../../src/domain/routes/http-security.js")>()),
@@ -40,7 +40,7 @@ import { resolveWorkflowExecutionBindings } from "../../src/domain/routes/workfl
  * is only a member of Space "G". "own" is guest's own Workspace.
  */
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec(`CREATE TABLE IF NOT EXISTS worker_profiles(worker_type_id TEXT, revision INTEGER, profile_json TEXT, digest TEXT);
     CREATE TABLE IF NOT EXISTS worker_profile_history(worker_type_id TEXT, revision INTEGER, profile_json TEXT, digest TEXT);
     ALTER TABLE workspace_worker_inventory ADD COLUMN model_catalog_json TEXT;

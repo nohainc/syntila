@@ -23,10 +23,9 @@ const countFiles = (list: string[], pattern: RegExp) =>
 
 const LIMITS = {
   prepareCalls: 0,
-  batchCalls: 48,
-  d1DatabaseReferences: 115,
+  batchCalls: 0,
+  d1DatabaseReferences: 0,
   mockBasedTestFiles: 47, // test files that mention prepare but use no PostgreSQL helper
-  sqliteD1AliasFiles: 60,
 };
 
 test("ratchet: .prepare( call sites only go down", () => {
@@ -41,10 +40,10 @@ test("ratchet: D1Database references only go down", () => {
 test("ratchet: test files that fake prepare/bind by hand only go down", () => {
   const faked = tests.filter((f) => {
     const text = readFileSync(f, "utf8");
-    return /\bprepare\b/.test(text) && !/pgD1|sqliteD1|helpers\/(seed|pg)/.test(text);
+    return /\bprepare\b/.test(text) && !/pgD1|helpers\/(seed|pg)/.test(text);
   });
   expect(faked.length).toBeLessThanOrEqual(LIMITS.mockBasedTestFiles);
 });
-test("ratchet: the sqliteD1 alias is used by fewer files over time", () => {
-  expect(countFiles(tests, /\bsqliteD1\b/)).toBeLessThanOrEqual(LIMITS.sqliteD1AliasFiles);
+test("ratchet: the sqliteD1 alias is gone", () => {
+  expect(countFiles(tests, /\bsqliteD1\b/)).toBe(0);
 });

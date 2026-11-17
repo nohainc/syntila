@@ -1,6 +1,6 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { BUILTIN_WORKFLOW_CATALOG } from "@syntila/core";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import {
   REPLY_EXCERPT_MAX_CHARS,
   resolveReplyReference,
@@ -12,7 +12,7 @@ import {
 } from "../../src/domain/workflow-prompts.js";
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   sqlite.exec("PRAGMA foreign_keys = OFF");
   sqlite.exec(`
     INSERT INTO users(id,email,display_name,created_at,updated_at)

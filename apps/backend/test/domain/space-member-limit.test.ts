@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import {
   handleAcceptSpaceInvitation,
   handleCreateSpaceInvitation,
@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db } = pgD1();
   open.push(sqlite);
   const now = new Date().toISOString();
   const ids = ["O", "O2", "A", "B", "C", "D", "E", "F", "PLUS", "V"];

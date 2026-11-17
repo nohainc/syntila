@@ -1,10 +1,10 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { pgD1 } from "./helpers/pg-d1";
 import worker from "../../src/domain/index.js";
 
 describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () => {
   function createTestEnv() {
-    const { sqlite, db } = sqliteD1();
+    const { sqlite, db } = pgD1();
     const now = new Date().toISOString();
 
     sqlite.exec(`
@@ -85,7 +85,7 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
 
   async function establishDirectSpace(
     env: unknown,
-    sqlite?: ReturnType<typeof sqliteD1>["sqlite"],
+    sqlite?: ReturnType<typeof pgD1>["sqlite"],
   ) {
     const inviteRes = await worker.fetch(
       new Request("https://syntila.test/api/people/invitations", {
