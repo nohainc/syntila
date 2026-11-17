@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { BUILTIN_WORKFLOWS, workflowCatalogEntry } from "@syntila/core";
+import { Data } from "../../src/platform/data.js";
 import { handleGetReleaseTrustState } from "../../src/domain/routes/releases.js";
 import {
   routeWorkerRequest,
@@ -233,10 +234,10 @@ describe("Worker API routes", () => {
   });
 
   it("passes database environment to the actual release trust handler", async () => {
-    const prepare = vi.fn(() => ({ all: async () => ({ results: [] }) }));
+    const sql = vi.fn(async () => []);
     const response = await routeWorkerRequest(
       request("/api/release-trust"),
-      { SYNTILA_DB: { prepare } } as unknown as Parameters<
+      { SYNTILA_DATA: new Data(sql as never) } as unknown as Parameters<
         typeof routeWorkerRequest
       >[1],
       undefined,
@@ -248,7 +249,7 @@ describe("Worker API routes", () => {
       revokedKeyIds: [],
       revokedWorkspaceReleases: [],
     });
-    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(sql).toHaveBeenCalledTimes(2);
   });
 
   it("routes the V9 admin Worker Profile catalog", async () => {

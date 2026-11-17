@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 178 write paths, 82 tables; 1 numbering, 46 unguarded read-write, 113 adapter-only, 48 in data-layer transactions.
+Totals: 178 write paths, 82 tables; 1 numbering, 46 unguarded read-write, 110 adapter-only, 51 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -216,9 +216,9 @@ Totals: 178 write paths, 82 tables; 1 numbering, 46 unguarded read-write, 113 ad
 | --- | --- | --- | --- |
 | `domain/event-publisher.ts` | `persistDurableEvent` | INSERT realtime_event_cursors, INSERT realtime_events, UPDATE realtime_event_cursors | numbering, read-write, guarded, batch, lock |
 | `domain/realtime-retention.ts` | `pruneExpiredRealtimeEvents` | DELETE realtime_events | data |
-| `domain/routes/releases.ts` | `handlePublishWorkspaceRelease` | INSERT workspace_releases | read-write, lock |
-| `domain/routes/releases.ts` | `handleRevokeReleaseSigningKey` | INSERT release_signing_key_revocations | guarded, lock |
-| `domain/routes/releases.ts` | `handleRevokeWorkspaceRelease` | UPDATE workspace_releases | guarded, lock |
+| `domain/routes/releases.ts` | `handlePublishWorkspaceRelease` | INSERT workspace_releases | read-write, data |
+| `domain/routes/releases.ts` | `handleRevokeReleaseSigningKey` | INSERT release_signing_key_revocations | guarded, data |
+| `domain/routes/releases.ts` | `handleRevokeWorkspaceRelease` | UPDATE workspace_releases | guarded, data |
 
 ## other
 
