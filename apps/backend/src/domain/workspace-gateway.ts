@@ -358,7 +358,10 @@ export class WorkspaceGateway implements DurableObject {
       return this.disconnectRuntime(request);
     }
     if (request.method === "POST" && url.pathname === "/diagnostic-probe") {
-      return this.diagnosticProbe();
+      const timeoutMs = Number(url.searchParams.get("timeoutMs"));
+      return this.diagnosticProbe(
+        Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined,
+      );
     }
     if (request.method === "POST" && url.pathname === "/worker-usage") {
       return this.requestWorkerUsage(request);
@@ -3074,7 +3077,9 @@ export class WorkspaceGateway implements DurableObject {
    * latency. A Service that predates probes simply never answers; the probe
    * then reports `timeout` rather than failing the Workspace.
    */
-  private async diagnosticProbe(): Promise<Response> {
+  private async diagnosticProbe(
+    timeoutMs = WorkspaceGateway.PROBE_TIMEOUT_MS,
+  ): Promise<Response> {
     if (!(await this.isRuntimeLive()))
       return Response.json({ error: "Workspace is offline" }, { status: 503 });
     if (this.pendingProbes.size >= WorkspaceGateway.MAX_PENDING_PROBES)
@@ -3091,7 +3096,7 @@ export class WorkspaceGateway implements DurableObject {
         const timer = setTimeout(() => {
           this.pendingProbes.delete(probeId);
           reject(new Error("probe timeout"));
-        }, WorkspaceGateway.PROBE_TIMEOUT_MS);
+        }, timeoutMs);
         this.pendingProbes.set(probeId, { resolve, timer });
       },
     );
@@ -3161,7 +3166,7 @@ export class WorkspaceGateway implements DurableObject {
           probeId,
           transport,
           outcome: "timeout",
-          timeoutMs: WorkspaceGateway.PROBE_TIMEOUT_MS,
+          timeoutMs,
           note: "No acknowledgement arrived. The Workspace Service may predate delivery probes or may not be reading its connection.",
         },
         { status: 504 },

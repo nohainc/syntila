@@ -250,6 +250,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("*", "/api/workspaces/:workspaceId/mcp-inventory", (c) => handleWorkspaceMcpInventory(c.request, c.env, c.params.workspaceId!, c.ctx)),
     r("*", "/api/workspaces/:workspaceId/mcp-action", (c) => handleWorkspaceMcpAction(c.request, c.env, c.params.workspaceId!, c.ctx)),
     r("*", "/api/workspaces/:workspaceId/worker-plugins/:pluginRef", (c) => handleWorkspacePluginPin(c.request, c.env, c.params.workspaceId!, c.params.pluginRef!, c.ctx)),
+    r("POST", "/api/workspaces/:workspaceId/delivery-probe", call("handleWorkspaceDeliveryProbe", p("workspaceId"), ctx)),
     r("GET", "/api/workspaces/:workspaceId/audit-export", call("handleExportWorkspaceAudit", p("workspaceId"), ctx)),
     r("POST", "/api/workspaces/:workspaceId/workers/:workerId/usage", call("handleWorkerUsage", p("workspaceId"), p("workerId"), ctx)),
     r("GET", "/api/workspaces/:workspaceId", call("handleGetWorkspace", p("workspaceId"), ctx)),

@@ -368,3 +368,124 @@ export async function handleWorkerUsage(
   }));
   return json(body, { status: response.status });
 }
+
+const activeProbeBatches = new Set<string>();
+
+function parseBoundedInt(
+  raw: string | null,
+  defaultValue: number,
+  min: number,
+  max: number,
+  name: string,
+): number {
+  if (raw === null) return defaultValue;
+  if (!/^-?\d+$/.test(raw)) {
+    throw new HttpError(400, `${name} must be an integer between ${min} and ${max}`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new HttpError(400, `${name} must be between ${min} and ${max}`);
+  }
+  return value;
+}
+
+function percentile(sorted: readonly number[], p: number): number | null {
+  if (sorted.length === 0) return null;
+  const rank = Math.max(1, Math.ceil((p / 100) * sorted.length));
+  return sorted[Math.min(rank, sorted.length) - 1] ?? null;
+}
+
+/**
+ * Owner-only latency diagnostic: sends one or more Cloud-to-Service probes over
+ * the Workspace's live transport and returns the measured round trip(s). It
+ * never starts a Worker, touches assignments, or writes to the database.
+ */
+export async function handleWorkspaceDeliveryProbe(
+  request: Request,
+  env: SecurityEnv,
+  workspaceId: string,
+  accessContext?: ExecutionContext,
+  options?: { timeoutMs?: number },
+): Promise<Response> {
+  if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
+  await workspaceOwnerContext(
+    request,
+    env,
+    workspaceId,
+    "workspace:manage",
+    accessContext,
+  );
+  const url = new URL(request.url);
+  const count = parseBoundedInt(url.searchParams.get("count"), 1, 1, 20, "count");
+  const intervalMs = parseBoundedInt(
+    url.searchParams.get("intervalMs"),
+    0,
+    0,
+    1000,
+    "intervalMs",
+  );
+  if (!env.SYNTILA_WORKSPACE_GATEWAY)
+    return json(
+      { error: "Workspace Gateway is not configured" },
+      { status: 503 },
+    );
+  if (activeProbeBatches.has(workspaceId)) {
+    return json(
+      { error: "A delivery probe batch is already in progress for this Workspace" },
+      { status: 429 },
+    );
+  }
+  activeProbeBatches.add(workspaceId);
+  const probeUrl =
+    options?.timeoutMs !== undefined
+      ? `https://workspace-gateway/diagnostic-probe?timeoutMs=${options.timeoutMs}`
+      : "https://workspace-gateway/diagnostic-probe";
+  try {
+    const stub = env.SYNTILA_WORKSPACE_GATEWAY.getByName(workspaceId);
+    if (count === 1) {
+      const response = await stub.fetch(probeUrl, { method: "POST" });
+      const body = await response.json().catch(() => ({
+        error: "Delivery probe returned an unreadable response",
+      }));
+      return json(body, { status: response.status });
+    }
+    const results: Record<string, unknown>[] = [];
+    for (let i = 0; i < count; i += 1) {
+      if (i > 0 && intervalMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+      const response = await stub.fetch(probeUrl, { method: "POST" });
+      const body = (await response.json().catch(() => ({
+        error: "Delivery probe returned an unreadable response",
+      }))) as Record<string, unknown>;
+      if (response.status !== 200 && response.status !== 504) {
+        return json(body, { status: response.status });
+      }
+      results.push(body);
+    }
+    const rtts = results
+      .filter(
+        (r) =>
+          r.outcome === "acknowledged" &&
+          typeof r.roundTripMs === "number" &&
+          Number.isFinite(r.roundTripMs),
+      )
+      .map((r) => r.roundTripMs as number)
+      .sort((a, b) => a - b);
+    const timeouts = results.filter((r) => r.outcome === "timeout").length;
+    return json({
+      results,
+      summary: {
+        n: results.length,
+        ok: rtts.length,
+        timeouts,
+        minMs: rtts[0] ?? null,
+        p50Ms: percentile(rtts, 50),
+        p95Ms: percentile(rtts, 95),
+        maxMs: rtts.length > 0 ? rtts[rtts.length - 1]! : null,
+      },
+    });
+  } finally {
+    activeProbeBatches.delete(workspaceId);
+  }
+}

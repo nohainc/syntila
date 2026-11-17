@@ -57,14 +57,21 @@ synchronization deferral, so time spent waiting for the Service to reach
 
 ## Delivery probe
 
-The Workspace Gateway's `diagnostic-probe` (the public route
-`POST /api/workspaces/:workspaceId/delivery-probe` was removed in the backend
-cleanup) sends `diagnostic.probe` over the Workspace's live
+`POST /api/workspaces/:workspaceId/delivery-probe` (allowed for the Workspace
+owner only, requiring `workspace:manage`) calls the Workspace Gateway's
+`diagnostic-probe`, which sends `diagnostic.probe` over the Workspace's live
 transport and waits up to 5 s for `diagnostic.probe.ack`. No assignment,
-Worker, Engine or provider process is involved. The response reports the
-transport, round trip, Service receive/acknowledge times, clock offset, sync
-state, local queue length and active assignment count. A Service that does not
-implement probes never answers and the route returns `outcome: "timeout"`.
+Worker, Engine or provider process is involved, and nothing is written to the
+database. With the default `count=1`, the response reports the transport, round
+trip, Service receive/acknowledge times, clock offset, sync state, local queue
+length and active assignment count. A Service that does not implement probes
+never answers and the route returns `outcome: "timeout"` (status 504).
+
+Optional query parameters `count` (1–20, default 1) and `intervalMs` (0–1000,
+default 0) run multiple probes sequentially and return
+`{ results: [...], summary: { n, ok, timeouts, minMs, p50Ms, p95Ms, maxMs } }`.
+At most one probe batch may be in flight per Workspace (concurrent batches
+receive 429).
 
 Both message types are additive within Workspace protocol 5.1: an older Cloud
 never sends a probe, and a newer Service only answers one.
@@ -101,7 +108,7 @@ Capture a baseline with the current system before changing delivery or
 startup behavior, and record it with the build under test.
 
 1. Run 20-30 Work requests: a mix against an idle Service and against one with
-   an active assignment, plus a few gateway `diagnostic-probe` calls.
+   an active assignment, plus a few `delivery-probe` calls.
 2. Collect Cloud logs (`wrangler tail --format json > cloud.log`), the
    Service `worker.jsonl*` files, and the browser console lines.
 3. Run `pnpm latency:baseline -- --cloud cloud.log --service worker.jsonl

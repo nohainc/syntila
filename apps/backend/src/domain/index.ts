@@ -125,6 +125,7 @@ export const routeHandlers = {
   handleGetWorkspaceRelease: handlers.handleGetWorkspaceRelease,
   handleGetWorkspace: handlers.handleGetWorkspace,
   handleUpdateWorkspace: handlers.handleUpdateWorkspace,
+  handleWorkspaceDeliveryProbe: handlers.handleWorkspaceDeliveryProbe,
   handleWorkerUsage: handlers.handleWorkerUsage,
   handleRevokeWorkspace: handlers.handleRevokeWorkspace,
   handleListSpaces: handlers.handleListSpaces,
