@@ -1,4 +1,4 @@
-import { dataOf } from "./platform/data.js";
+import { dataOf, type Db } from "./platform/data.js";
 import { userAccount } from "./domain/queries.js";
 /**
  * Server-to-server endpoints for the Cloudflare auth Worker, which owns the
@@ -16,7 +16,7 @@ import { userAccount } from "./domain/queries.js";
 import { AuthError, bearer, type TokenVerifier } from "./auth";
 import { prepareAccountDeletion, handleAccountProfileUpdated } from "./domain/auth/account-lifecycle";
 
-type Env = { SYNTILA_DB: D1Database; SYNTILA_ARTIFACTS?: R2Bucket };
+type Env = { SYNTILA_DB: Db; SYNTILA_ARTIFACTS?: R2Bucket };
 const ROUTE = /^\/internal\/accounts\/([A-Za-z0-9_-]{1,128})\/(deletion|profile)$/;
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 

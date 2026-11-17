@@ -1,4 +1,4 @@
-import { dataOf } from "../platform/data.js";
+import { dataOf, type Db } from "../platform/data.js";
 import { tryLogDiagnosticEvent } from "./observability.js";
 import { wakeNextExecutionWaiter } from "./account-execution-slots.js";
 import { scheduleLostWorkflowCheck } from "./thread-coordinator.js";
@@ -39,7 +39,7 @@ interface WorkflowInstanceLike {
 }
 
 export interface WorkflowSignalEnv {
-  readonly SYNTILA_DB: D1Database;
+  readonly SYNTILA_DB: Db;
   readonly SYNTILA_RUN_WORKFLOW?: {
     get(id: string): Promise<WorkflowInstanceLike>;
   };

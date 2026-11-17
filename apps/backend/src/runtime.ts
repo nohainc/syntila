@@ -14,14 +14,13 @@ import {
   upgradeContext,
   type UpgradeData,
 } from "./platform/durable-objects";
-import type { PgD1Database } from "./platform/pg-d1";
-import { Data } from "./platform/data";
+import { Data, type Db } from "./platform/data";
 import { WorkflowHost } from "./platform/workflows";
 import worker, { RealtimeGateway, SyntilaRunWorkflow, ThreadExecutionCoordinator, WorkspaceGateway } from "./domain/index";
 
 type Sql = ConstructorParameters<typeof WorkflowHost>[1] & { begin(fn: (tx: any) => Promise<unknown>): Promise<unknown> };
 
-export function createRuntime(sql: Sql, db: PgD1Database, bindings: Record<string, unknown>) {
+export function createRuntime(sql: Sql, db: Db, bindings: Record<string, unknown>) {
   installWebSocketGlobals();
   // SYNTILA_DATA: the data layer that replaces the adapter module by module.
   const env: Record<string, unknown> = { SYNTILA_DB: db, SYNTILA_DATA: new Data(db.sql as any), ...bindings };

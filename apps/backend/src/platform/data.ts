@@ -71,7 +71,7 @@ export interface Tx extends Query {
   lock(scope: string, id: string): Promise<void>;
   /** Runs `fn` once the transaction committed; never on rollback or retry. */
   afterCommit(fn: () => unknown): void;
-  /** The transaction's connection, for `PgD1Database.within` (tx-env.ts). */
+  /** The transaction's connection, for `Db.within` (tx-env.ts). */
   readonly connection: Sql;
 }
 
@@ -230,6 +230,33 @@ export class JoinedData extends Data {
   }
   override tx<T>(_label: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
     return fn(this.open);
+  }
+}
+
+/**
+ * What `env.SYNTILA_DB` is: the connection pool, plus the open transaction's
+ * connection when the code runs inside one (`within`, used by `inTransaction`).
+ * Modules that still receive this instead of an env go through `queryOf(db)`
+ * and `atomically(db, …)`; both go away as they move to `dataOf(env)`.
+ */
+export interface Db {
+  readonly sql: Sql;
+  readonly connection?: Sql;
+  within(conn: Sql): Db;
+}
+
+export class PgDb implements Db {
+  readonly connection: Sql | undefined = undefined;
+  constructor(readonly sql: Sql) {}
+  within(conn: Sql): Db {
+    return new JoinedDb(this.sql, conn);
+  }
+}
+
+class JoinedDb implements Db {
+  constructor(readonly sql: Sql, readonly connection: Sql) {}
+  within(conn: Sql): Db {
+    return conn === this.connection ? this : new JoinedDb(this.sql, conn);
   }
 }
 

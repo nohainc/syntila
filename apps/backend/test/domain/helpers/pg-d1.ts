@@ -10,7 +10,7 @@ import { SQL } from "bun";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { dataOf } from "../../../src/platform/data";
-import { PgD1Database } from "../../../src/platform/pg-d1";
+import { PgD1Database } from "./pg-d1-adapter";
 import { SyncPostgres } from "./pg-sync";
 
 const BASE_URL = process.env.TEST_DATABASE_URL ?? "postgres://syntila_app:devpass@127.0.0.1:5432/postgres";

@@ -830,7 +830,7 @@ export async function handleDeleteSpace(
     } else {
       try {
         await authorizeSpaceOwner(
-          env.SYNTILA_DB,
+          dataOf(env).read,
           context,
           spaceId,
           "spaces:manage",

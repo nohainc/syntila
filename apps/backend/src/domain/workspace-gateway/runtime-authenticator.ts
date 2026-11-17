@@ -1,8 +1,8 @@
-import { queryOf } from "../../platform/data.js";
+import { queryOf, type Db } from "../../platform/data.js";
 import { HttpError } from "../routes/http-security.js";
 import { hashToken } from "@syntila/security";
 
-type Database = Pick<D1Database, "prepare">;
+type Database = Db;
 
 export interface WorkspaceRuntimeIdentity {
   runtimeId: string;

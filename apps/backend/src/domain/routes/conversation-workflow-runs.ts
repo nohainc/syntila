@@ -1,10 +1,10 @@
 import { loadConversationWorkflowStepRuns } from "./conversation-workflow-step-runs.js";
-import { queryOf } from "../../platform/data.js";
+import { queryOf, type Db } from "../../platform/data.js";
 import type { WorkflowRun } from "@syntila/core";
 
 /** Call after authorizing the enclosing request collection. Lifecycle has one owner: Work Request. */
 export async function loadConversationWorkflowRuns(
-  db: D1Database,
+  db: Db,
   workRequestIds: readonly string[],
 ): Promise<Map<string, WorkflowRun>> {
   if (!workRequestIds.length) return new Map();

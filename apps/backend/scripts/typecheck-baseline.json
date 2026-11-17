@@ -86,10 +86,6 @@
   "src/platform/multipart.ts": {
     "TS2322": 1
   },
-  "src/platform/pg-d1.ts": {
-    "TS2307": 1,
-    "TS2868": 1
-  },
   "src/platform/r2.ts": {
     "TS2307": 1,
     "TS2769": 1

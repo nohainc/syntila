@@ -23,8 +23,7 @@
  *    pool connection, and with the pool full of waiting transactions that
  *    wait never ends.
  */
-import { dataOf, JoinedData, type Tx } from "./data";
-import type { PgD1Database } from "./pg-d1";
+import { dataOf, JoinedData, type Db, type Tx } from "./data";
 
 const ROOT = Symbol("syntila.rootEnv");
 const OPEN = Symbol("syntila.openTx");
@@ -77,7 +76,7 @@ async function withoutTransaction<E extends Env, T>(
 }
 
 function transactionEnv<E extends Env>(env: E, tx: Tx): E {
-  const db = env.SYNTILA_DB as PgD1Database;
+  const db = env.SYNTILA_DB as Db;
   if (typeof db?.within !== "function")
     throw new Error("SYNTILA_DB cannot join a transaction");
   return {
@@ -106,30 +105,4 @@ export function afterCommit(
 
 export function inOpenTransaction(env: unknown): boolean {
   return !!(env as Record<symbol, unknown>)?.[OPEN];
-}
-
-/**
- * One self-contained statement (conditional or conflict-safe on its own),
- * run without the global writer lock. For anything that reads before it
- * writes, use `inTransaction` and lock what the rule needs.
- */
-export function writeAlone<E extends Env>(
-  env: E,
-  label: string,
-  build: (db: D1Database) => D1PreparedStatement,
-): Promise<D1Result> {
-  return inTransaction(env, label, (txEnv) =>
-    build(txEnv.SYNTILA_DB as unknown as D1Database).run(),
-  );
-}
-
-/** Statements prepared on any adapter, run as one transaction without the global writer lock. */
-export function batchAlone<E extends Env>(
-  env: E,
-  label: string,
-  statements: readonly D1PreparedStatement[],
-): Promise<D1Result[]> {
-  return inTransaction(env, label, (txEnv) =>
-    (txEnv.SYNTILA_DB as unknown as D1Database).batch([...statements]),
-  );
 }

@@ -1,4 +1,4 @@
-import { dataOf, queryOf, type Query } from "../platform/data.js";
+import { dataOf, queryOf, type Query, type Db } from "../platform/data.js";
 import { userAccount } from "./queries.js";
 import {
   isReplayableRealtimeEvent,
@@ -43,7 +43,7 @@ export type RealtimeClientMessage =
   | { type: "ping" };
 
 export interface RealtimeGatewayEnv extends BetterAuthRuntimeEnv {
-  readonly SYNTILA_DB: D1Database;
+  readonly SYNTILA_DB: Db;
 }
 
 interface ConnectedClient {
@@ -286,7 +286,7 @@ export function requiresRealtimeReconnect(
 }
 
 export async function authorizeRealtimeScope(
-  db: Pick<D1Database, "prepare">,
+  db: Db,
   userId: string,
   scope: RealtimeScope,
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
@@ -342,7 +342,7 @@ export async function authorizeRealtimeScope(
 }
 
 export async function isRealtimeIdentityAuthorized(
-  db: Pick<D1Database, "prepare">,
+  db: Db,
   userId: string,
   scopes: readonly RealtimeScope[],
 ): Promise<boolean> {

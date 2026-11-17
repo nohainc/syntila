@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
-import { drainWriteStats, PgD1Database, PgD1Error, statementLabel, translatePlaceholders } from "../src/platform/pg-d1";
+import { drainWriteStats, PgD1Database, PgD1Error, statementLabel, translatePlaceholders } from "./domain/helpers/pg-d1-adapter";
 import { pgD1 } from "./domain/helpers/pg-d1";
 
 let sql: InstanceType<typeof SQL>;

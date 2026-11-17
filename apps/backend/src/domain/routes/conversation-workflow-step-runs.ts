@@ -1,4 +1,4 @@
-import { queryOf, type Tx } from "../../platform/data.js";
+import { queryOf, type Tx, type Db } from "../../platform/data.js";
 import {
   planWorkflowTasks,
   type BuiltinWorkflowDefinition,
@@ -7,7 +7,7 @@ import {
 
 /** Authorized request scope only. Task state owns lifecycle; turns own actual invocation attribution. */
 export async function loadConversationWorkflowStepRuns(
-  db: D1Database,
+  db: Db,
   workRequestIds: readonly string[],
 ): Promise<Map<string, WorkflowStepRun[]>> {
   if (!workRequestIds.length) return new Map();

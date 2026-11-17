@@ -119,12 +119,8 @@ test("the real source tree scans reproducibly and every group is a same-file rep
 // After folding: the groups below remain, each with its reason. A new duplicate,
 // or one more occurrence of a retained one, fails this test: give the statement one
 // named constant instead.
-const RETAINED: Record<string, string> = {
-  "src/domain/workspace-gateway.ts": "3 groups (6 repeats of 2 or 3). The file has uncommitted edits by someone else; folding it now would mix into their change. Fold when it is committed.",
-  "src/domain/routes/workflow-execution-configuration.ts": "1 group. Same: uncommitted edits by someone else in this file.",
-  "src/platform/pg-d1.ts": "1 group. The D1 adapter's own statements; the file goes away in Package 3.",
-};
-const CEILING = { groups: 5, excess: 6 };
+const RETAINED: Record<string, string> = {};
+const CEILING = { groups: 0, excess: 0 };
 
 test("no new duplicate statements: the ceiling holds and every remaining group is a documented exception", () => {
   const s = summarize(scan(join(import.meta.dir, "..", "src")));

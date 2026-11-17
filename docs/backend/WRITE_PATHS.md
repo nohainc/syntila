@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 184 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 0 adapter-only, 149 in data-layer transactions.
+Totals: 180 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 0 adapter-only, 145 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -129,13 +129,9 @@ Totals: 184 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 0 adap
 | `domain/routes/workspaces-registration.ts` | `handleRegisterWorkspaceFromDesktop` | INSERT execution_workspaces, INSERT workspace_audit_log, INSERT workspace_installations, INSERT workspace_runtime_facts, INSERT workspace_runtime_identities, UPDATE execution_workspaces, UPDATE workspace_runtime_identities | read-write, data |
 | `domain/routes/workspaces-registration.ts` | `handleReleaseDesktopWorkspace` | INSERT workspace_audit_log, UPDATE execution_workspaces, UPDATE workspace_installations, UPDATE workspace_runtime_identities, UPDATE workspace_space_grants | read-write, data |
 | `domain/workspace-audit.ts` | `recordExecutionWorkspaceAudit` | INSERT workspace_audit_log | data |
-| `domain/workspace-gateway.ts` | `close` | UPDATE execution_workspaces | data |
-| `domain/workspace-gateway.ts` | `connectSocket` | UPDATE execution_workspaces | data |
 | `domain/workspace-gateway.ts` | `deliverAssignmentOnce` | UPDATE worker_assignments | read-write, guarded, data |
-| `domain/workspace-gateway.ts` | `disconnectRuntime` | UPDATE execution_workspaces | data |
-| `domain/workspace-gateway.ts` | `handleHttpRuntimeRequest` | UPDATE execution_workspaces | data |
 | `domain/workspace-gateway.ts` | `handleMessage` | INSERT worker_activity_history, INSERT workspace_runtime_facts | read-write, guarded, data |
-| `domain/workspace-gateway.ts` | `wake` | UPDATE execution_workspaces | data |
+| `domain/workspace-gateway.ts` | `setWorkspaceStatus` | UPDATE execution_workspaces | data |
 | `domain/workspace-gateway/inventory.ts` | `nullableSafeToken` | DELETE workspace_worker_inventory, INSERT worker_scheduling, INSERT workspace_worker_inventory, UPDATE worker_scheduling | read-write, data |
 | `domain/workspace-gateway/inventory.ts` | `recordWorkspaceAllowedFolders` | DELETE space_additional_folders, DELETE workspace_allowed_folders, INSERT workspace_allowed_folders | read-write |
 | `domain/workspace-gateway/inventory.ts` | `recordWorkspaceWorkerInventory` | UPDATE execution_workspaces, UPDATE workspace_worker_inventory | read-write, data |

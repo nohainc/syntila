@@ -1,10 +1,10 @@
-import { dataOf } from "../platform/data.js";
+import { dataOf, type Db } from "../platform/data.js";
 import { createEventPublisher } from "./event-publisher.js";
 import { presentExecution } from "./execution-phase.js";
 import { canonicalExecutionErrorCode } from "@syntila/protocol";
 
 interface PhaseEnv {
-  readonly SYNTILA_DB: D1Database;
+  readonly SYNTILA_DB: Db;
 }
 
 /**

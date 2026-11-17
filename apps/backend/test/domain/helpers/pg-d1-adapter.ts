@@ -1,4 +1,8 @@
 /**
+ * TEST ONLY. The backend no longer uses this adapter: production code runs on
+ * the tagged data layer (`src/platform/data.ts`). Test fixtures still seed and
+ * read through `prepare/bind` on it until they move to the data layer.
+ *
  * D1-compatible facade over PostgreSQL (Bun.SQL).
  *
  * Lets the ported Cloudflare domain code keep its `prepare/bind/first/all/run/batch`

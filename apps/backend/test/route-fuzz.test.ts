@@ -10,7 +10,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { signToken, TokenVerifier } from "../src/auth";
 import { configureIdentityVerifier } from "../src/domain/auth/identity-service";
 import { routeTable, type WorkerRouteHandlers } from "../src/domain/routes/table";
-import { PgD1Database } from "../src/platform/pg-d1";
+import { PgD1Database } from "./domain/helpers/pg-d1-adapter";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 import { member, message, space, thread, user, workRequest, workspace } from "./domain/helpers/seed";

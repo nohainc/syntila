@@ -1,10 +1,10 @@
-import { queryOf } from "../../platform/data.js";
+import { queryOf, type Db } from "../../platform/data.js";
 import type { ConversationTurn } from "@syntila/core";
 import { workerOutputImages } from "./worker-output-images.js";
 
 /** Call only after authorizing the enclosing Thread/request collection. */
 export async function loadConversationTurns(
-  db: D1Database,
+  db: Db,
   workRequestIds: readonly string[],
 ): Promise<Map<string, ConversationTurn[]>> {
   const result = new Map<string, ConversationTurn[]>();

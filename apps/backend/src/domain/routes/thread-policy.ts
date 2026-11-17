@@ -349,7 +349,7 @@ export async function authorizeThreadAccessAsUser(
   const spaceId = String(row.spaceId);
   try {
     const { role } = await authorizeSpaceMembership(
-      env.SYNTILA_DB,
+      dataOf(env).read,
       { userId, user },
       spaceId,
       threadAccessPermission(access),

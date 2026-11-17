@@ -198,7 +198,7 @@ export async function createWorkspaceSpaceGrant(
     );
   }
   await authorizeWorkspaceOwner(
-    env.SYNTILA_DB,
+    dataOf(env).read,
     context,
     workspaceId,
     "workspace:manage",

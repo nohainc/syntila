@@ -1,4 +1,4 @@
-import { dataOf, queryOf } from "../platform/data.js";
+import { dataOf, queryOf, type Db } from "../platform/data.js";
 import {
   isRevocationAssignmentStatus,
   isTerminalAssignmentStatus,
@@ -109,7 +109,7 @@ interface RevocationRow {
 }
 
 async function readRow(
-  db: D1Database,
+  db: Db,
   assignmentId: string,
 ): Promise<RevocationRow | null> {
   return queryOf(db).row<RevocationRow>`SELECT status, task_id, attempt_id, error_json::text AS error_json
@@ -132,7 +132,7 @@ function failureFor(intent: RevocationIntent): AssignmentFailurePayload {
 
 /** Writes the intended terminal outcome through the guarded terminal writers. */
 async function applyIntent(
-  db: D1Database,
+  db: Db,
   assignmentId: string,
   attemptId: string | null | undefined,
   intent: RevocationIntent,
@@ -182,7 +182,7 @@ function parseStored(errorJson: string | null): StoredRevocation | null {
  * assignment was never delivered, the result is `pending`.
  */
 export async function beginAssignmentRevocation(
-  db: D1Database,
+  db: Db,
   input: {
     assignmentId: string;
     attemptId?: string;
@@ -269,7 +269,7 @@ export async function beginAssignmentRevocation(
  * both keep waiting for the Service to confirm.
  */
 async function fenceIfNeverStarted(
-  db: D1Database,
+  db: Db,
   assignmentId: string,
   result: RevocationBeginResult,
 ): Promise<RevocationBeginResult> {
@@ -308,7 +308,7 @@ export type RevocationFinalizeOutcome =
  * intended. Call it only with Service evidence that the stop happened.
  */
 export async function finalizeAssignmentRevocation(
-  db: D1Database,
+  db: Db,
   assignmentId: string,
   attemptId?: string,
 ): Promise<RevocationFinalizeOutcome> {
@@ -337,7 +337,7 @@ export async function finalizeAssignmentRevocation(
  * Returns the IDs escalated.
  */
 export async function escalateUnconfirmedRevocations(
-  db: D1Database,
+  db: Db,
   olderThanMs: number,
   now = new Date(),
 ): Promise<string[]> {
@@ -362,7 +362,7 @@ export async function escalateUnconfirmedRevocations(
  * Returns the IDs finalized.
  */
 export async function finalizeRevocationsOfRevokedRuntimes(
-  db: D1Database,
+  db: Db,
   executionWorkspaceId?: string,
 ): Promise<string[]> {
   const results = await queryOf(db).rows<{ id: string; attemptId: string | null }>`SELECT wa.id AS id, wa.attempt_id AS "attemptId"
@@ -389,7 +389,7 @@ export async function finalizeRevocationsOfRevokedRuntimes(
 }
 
 export interface RevocationEnv {
-  readonly SYNTILA_DB: D1Database;
+  readonly SYNTILA_DB: Db;
   readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
 }
 

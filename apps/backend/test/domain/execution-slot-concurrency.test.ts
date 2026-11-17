@@ -5,7 +5,7 @@
  */
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { dispatchTaskAssignment } from "../../src/domain/assignment-dispatcher.js";
-import { PgD1Database } from "../../src/platform/pg-d1.js";
+import { PgD1Database } from "./helpers/pg-d1-adapter";
 import { conversationFixture } from "./helpers/conversation.js";
 
 const scheduler = vi.hoisted(() => ({ selectSpaceExecutionTarget: vi.fn() }));

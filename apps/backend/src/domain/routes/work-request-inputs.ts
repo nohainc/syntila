@@ -1,4 +1,4 @@
-import { dataOf, queryOf, type Tx } from "../../platform/data.js";
+import { dataOf, queryOf, type Tx, type Db } from "../../platform/data.js";
 import {
   InputAttemptSchema,
   InputDeliveredSchema,
@@ -70,7 +70,7 @@ const COLUMNS = `id AS "fileId", work_request_id AS "workRequestId",
 
 /** Rows for one request in attachment order. */
 export async function loadWorkRequestInputs(
-  db: D1Database,
+  db: Db,
   workRequestId: string,
 ): Promise<WorkRequestInputRow[]> {
   const q = queryOf(db);
@@ -120,7 +120,7 @@ export async function insertWorkRequestInputs(
 }
 
 async function inputRow(
-  db: D1Database,
+  db: Db,
   fileId: string,
 ): Promise<WorkRequestInputRow | null> {
   if (!isWorkRequestFileId(fileId)) return null;
@@ -129,7 +129,7 @@ async function inputRow(
 }
 
 async function requestIsOpen(
-  db: D1Database,
+  db: Db,
   workRequestId: string,
 ): Promise<boolean> {
   const row = await queryOf(db).row<{ status: string; cancelRequestedAt: string | null }>`SELECT status, cancel_requested_at AS "cancelRequestedAt" FROM work_requests WHERE id = ${workRequestId}`;
@@ -443,7 +443,7 @@ export async function handleReportRuntimeInputAttempt(
 
 /** Rows for several requests, keyed by request id. */
 export async function loadInputsForRequests(
-  db: D1Database,
+  db: Db,
   workRequestIds: readonly string[],
 ): Promise<Map<string, WorkRequestInputRow[]>> {
   const byRequest = new Map<string, WorkRequestInputRow[]>();

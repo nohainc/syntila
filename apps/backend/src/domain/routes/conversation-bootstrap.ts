@@ -1,4 +1,4 @@
-import { queryOf } from "../../platform/data.js";
+import { queryOf, type Db } from "../../platform/data.js";
 import {
   ContextEngine,
   ContextLimitError,
@@ -25,7 +25,7 @@ export interface ConversationBootstrap {
 }
 
 export async function loadConversationBootstrap(
-  db: D1Database,
+  db: Db,
   conversationId: string,
   workRequestId: string,
   contextRevision: number,

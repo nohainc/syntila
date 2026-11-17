@@ -65,7 +65,7 @@ import {
   presentExecution,
   type ExecutionPhase,
 } from "../execution-phase.js";
-import { atomically, dataOf, queryOf, type Tx, type Query } from "../../platform/data.js";
+import { atomically, dataOf, queryOf, type Tx, type Query, type Db } from "../../platform/data.js";
 
 const selectRunsByWorkRequestId = <T = Record<string, unknown>>(q: Query, p1: unknown) =>
   q.row<T>`SELECT policy_snapshot_json AS "policySnapshotJson"
@@ -85,7 +85,7 @@ function historicalWorkflowName(
 }
 
 async function loadWorkRequestActivityHistory(
-  db: D1Database,
+  db: Db,
   workRequestId: string,
 ): Promise<Record<string, unknown>[]> {
   const rows = await queryOf(db).rows<Record<string, unknown>>`SELECT * FROM (

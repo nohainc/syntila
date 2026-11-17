@@ -4,7 +4,7 @@ import {
   effectiveTier,
   executionSlotAdmission,
 } from "./account-plan.js";
-import { dataOf } from "../platform/data.js";
+import { dataOf, type Db } from "../platform/data.js";
 import type { Query } from "../platform/data.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "./assignment-transitions.js";
 
@@ -116,7 +116,7 @@ interface WakeableWorkflow {
  * durable path, and admission is decided by the INSERT, never by this nudge.
  */
 export async function wakeNextExecutionWaiter(
-  env: { SYNTILA_DB: D1Database; SYNTILA_RUN_WORKFLOW?: WakeableWorkflow },
+  env: { SYNTILA_DB: Db; SYNTILA_RUN_WORKFLOW?: WakeableWorkflow },
   requesterUserId: string,
   eventType: string,
   now: Date = new Date(),

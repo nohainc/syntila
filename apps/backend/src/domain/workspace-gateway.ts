@@ -134,6 +134,23 @@ export {
  * delivery time. Cloud has already admitted the assignment against that
  * total, so the Service uses it as its local limit and never queues by count.
  */
+function setWorkspaceStatus(
+  env: WorkspaceGatewayEnv,
+  workspaceId: string,
+  status: "online" | "offline",
+  now: string,
+) {
+  return dataOf(env).read
+    .run`UPDATE execution_workspaces SET status = ${status}, updated_at = ${now} WHERE id = ${workspaceId}`;
+}
+
+function assignmentCorrelationRow(env: WorkspaceGatewayEnv, assignmentId: string) {
+  return dataOf(env).read.row<Record<string, unknown>>`SELECT id, execution_workspace_id, runtime_identity_id,
+              worker_type_id, workspace_worker_id, run_id, task_id,
+              attempt_id, idempotency_key
+         FROM worker_assignments WHERE id = ${assignmentId}`;
+}
+
 function withSlotLimit(payload: unknown, slots: number): unknown {
   if (!payload || typeof payload !== "object") return payload;
   const value = payload as { snapshot?: unknown };
@@ -459,7 +476,7 @@ export class WorkspaceGateway implements DurableObject {
         protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
         connectedAt: now,
       });
-      await dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'online', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}`;
+      await setWorkspaceStatus(this.env, this.executionWorkspaceId, "online", now);
       await this.persistHttpRuntime();
       await this.startReadinessSession(this.sessionId, runtimeId);
       return Response.json({
@@ -596,7 +613,7 @@ export class WorkspaceGateway implements DurableObject {
       if (this.executionWorkspaceId)
         this.queueProjectionWrite(
           () =>
-            dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'offline', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}`,
+            setWorkspaceStatus(this.env, this.executionWorkspaceId, "offline", now),
           "workspace_offline_projection_failed",
           { workspaceId: this.executionWorkspaceId, runtimeId },
         );
@@ -790,7 +807,7 @@ export class WorkspaceGateway implements DurableObject {
       const now = new Date().toISOString();
       await this.sessionStore.close(this.sessionId, now);
       if (this.executionWorkspaceId) {
-        await dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'offline', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}`;
+        await setWorkspaceStatus(this.env, this.executionWorkspaceId, "offline", now);
       }
       this.sessionId = null;
       this.httpLastActivityAt = null;
@@ -926,7 +943,7 @@ export class WorkspaceGateway implements DurableObject {
 
     this.queueProjectionWrite(
       () =>
-        dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'online', updated_at = ${now} WHERE id = ${runtimeIdentity.executionWorkspaceId}`,
+        setWorkspaceStatus(this.env, runtimeIdentity.executionWorkspaceId, "online", now),
       "workspace_online_projection_failed",
       {
         requestId: correlationId,
@@ -1046,7 +1063,7 @@ export class WorkspaceGateway implements DurableObject {
     if (this.executionWorkspaceId) {
       this.queueProjectionWrite(
         () =>
-          dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'offline', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}`,
+          setWorkspaceStatus(this.env, this.executionWorkspaceId, "offline", now),
         "workspace_offline_projection_failed",
         {
           requestId: this.correlationId ?? undefined,
@@ -2337,10 +2354,7 @@ export class WorkspaceGateway implements DurableObject {
     ) {
       return false;
     }
-    const assignment = await dataOf(this.env).read.row<Record<string, unknown>>`SELECT id, execution_workspace_id, runtime_identity_id,
-              worker_type_id, workspace_worker_id, run_id, task_id,
-              attempt_id, idempotency_key
-         FROM worker_assignments WHERE id = ${message.assignmentId}`;
+    const assignment = await assignmentCorrelationRow(this.env, message.assignmentId);
     return (
       assignment != null &&
       workspaceAssignmentContextMatches(
@@ -2362,10 +2376,7 @@ export class WorkspaceGateway implements DurableObject {
     ) {
       return false;
     }
-    const assignment = await dataOf(this.env).read.row<Record<string, unknown>>`SELECT id, execution_workspace_id, runtime_identity_id,
-              worker_type_id, workspace_worker_id, run_id, task_id,
-              attempt_id, idempotency_key
-         FROM worker_assignments WHERE id = ${message.assignmentId}`;
+    const assignment = await assignmentCorrelationRow(this.env, message.assignmentId);
     return (
       assignment != null &&
       workspaceAssignmentContextMatches(

@@ -1,5 +1,5 @@
-import { queryOf } from "../../platform/data.js";
-type Database = Pick<D1Database, "prepare">;
+import { queryOf, type Db } from "../../platform/data.js";
+type Database = Db;
 
 export interface WorkspaceRuntimeSessionRecord {
   sessionId: string;

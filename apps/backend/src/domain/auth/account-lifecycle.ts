@@ -1,4 +1,4 @@
-import { atomically } from "../../platform/data.js";
+import { atomically, type Db } from "../../platform/data.js";
 /**
  * Account lifecycle effects owned by the backend. The auth Worker owns the
  * Better Auth account itself and notifies the backend (internal endpoint)
@@ -7,7 +7,7 @@ import { atomically } from "../../platform/data.js";
 import { deleteAccountAvatars } from "../avatar-storage.js";
 import { publishPeopleProfileChanged } from "../people.js";
 
-type LifecycleEnv = { SYNTILA_DB: D1Database; SYNTILA_ARTIFACTS?: R2Bucket };
+type LifecycleEnv = { SYNTILA_DB: Db; SYNTILA_ARTIFACTS?: R2Bucket };
 
 /** Runs everything Better Auth's `beforeDelete` hook used to run. */
 export async function prepareAccountDeletion(env: LifecycleEnv, userId: string) {
@@ -34,7 +34,7 @@ export async function handleAccountProfileUpdated(env: LifecycleEnv, userId: str
  *  4. Threads they led are led by the Space owner.
  */
 export async function handleAccountDeletionCleanup(
-  db: D1Database,
+  db: Db,
   userId: string,
 ) {
   const now = new Date().toISOString();

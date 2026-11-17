@@ -1,3 +1,4 @@
+import type { Db } from "../../platform/data.js";
 import type { WorkflowSignalEnv } from "../assignment-workflow-signal.js";
 import { WorkspaceRuntimeAuthenticator } from "./runtime-authenticator.js";
 
@@ -98,7 +99,7 @@ export function normalizeWorkspaceWorkerInstallationStatus(
 }
 
 export interface WorkspaceGatewayEnv {
-  SYNTILA_DB: D1Database;
+  SYNTILA_DB: Db;
   SYNTILA_REALTIME_GATEWAY?: DurableObjectNamespace;
   /** Holds Work Request input files delivered with `assignment.start`. */
   SYNTILA_ARTIFACTS?: R2Bucket;
@@ -157,7 +158,7 @@ export function workspaceAssignmentIsActive(
 }
 
 export async function isWorkspaceRuntimeAuthorized(
-  db: Pick<D1Database, "prepare">,
+  db: Db,
   workspaceRuntimeId: string,
   tokenHash: string,
 ): Promise<{ executionWorkspaceId: string } | null> {
@@ -170,7 +171,7 @@ export async function isWorkspaceRuntimeAuthorized(
 }
 
 export async function findWorkspaceRuntimeIdentity(
-  db: Pick<D1Database, "prepare">,
+  db: Db,
   workspaceRuntimeId: string,
 ): Promise<{
   executionWorkspaceId: string;

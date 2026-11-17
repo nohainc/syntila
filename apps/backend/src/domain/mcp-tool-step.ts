@@ -1,4 +1,4 @@
-import { dataOf } from "../platform/data.js";
+import { dataOf, type Db } from "../platform/data.js";
 import type { StepResult } from "@syntila/core";
 
 /** The tool target accepted with a Chat-with-tool request (`input.toolCall`). */
@@ -102,7 +102,7 @@ export function normalizeMcpToolStepOutcome(
 }
 
 interface McpToolStepEnv {
-  readonly SYNTILA_DB: D1Database;
+  readonly SYNTILA_DB: Db;
   readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
 }
 

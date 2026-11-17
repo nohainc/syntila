@@ -5,7 +5,6 @@ export {
 } from "./identity-service.js";
 export {
   provisionSyntilaUser,
-  type ProvisioningDatabase,
 } from "./provisioning-service.js";
 export {
   recordAuthAuditEvent,

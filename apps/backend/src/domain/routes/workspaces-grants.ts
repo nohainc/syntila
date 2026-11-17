@@ -35,7 +35,7 @@ export async function handleListWorkspaceSpaceGrants(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   await authorizeWorkspaceOwner(
-    env.SYNTILA_DB,
+    dataOf(env).read,
     context,
     workspaceId,
     "workspace:manage",
@@ -69,7 +69,7 @@ export async function handleUpdateWorkspaceSpaceGrant(
   const existing = await loadWorkspaceSpaceGrant(env, grantId);
   if (!existing) throw new HttpError(404, "Workspace Space Grant not found");
   await authorizeWorkspaceOwner(
-    env.SYNTILA_DB,
+    dataOf(env).read,
     context,
     String(existing.workspace_id),
     "workspace:manage",
@@ -147,14 +147,14 @@ export async function handleRevokeWorkspaceSpaceGrant(
   if (!existing) throw new HttpError(404, "Workspace Space Grant not found");
   try {
     await authorizeWorkspaceOwner(
-      env.SYNTILA_DB,
+      dataOf(env).read,
       context,
       String(existing.workspace_id),
       "workspace:manage",
     );
   } catch {
     await authorizeSpaceOwner(
-      env.SYNTILA_DB,
+      dataOf(env).read,
       context,
       String(existing.space_id),
     );

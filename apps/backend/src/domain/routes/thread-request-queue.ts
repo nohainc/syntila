@@ -10,7 +10,7 @@ import {
   authorizeThreadAccessAsUser,
 } from "./thread-policy.js";
 import { createWorkRequestForUser } from "./work-creation.js";
-import { dataOf, queryOf, type Query, atomically } from "../../platform/data.js";
+import { dataOf, queryOf, type Query, atomically, type Db } from "../../platform/data.js";
 
 const selectThreadRequestQueueByThreadId = <T = Record<string, unknown>>(q: Query, p1: unknown) =>
   q.row<T>`SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ${p1}`;
@@ -213,7 +213,7 @@ const APPROVED_PLAN_HEADING = "Approved plan (prepared by the planning step):";
  * before this existed get it too.
  */
 async function withApprovedPlan(
-  db: D1Database,
+  db: Db,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const input = body.input as Record<string, unknown> | undefined;
@@ -337,7 +337,7 @@ export async function advanceThreadQueue(
  * A conditional change of a queued request matched no row: it is being sent
  * (409) or was removed meanwhile (404). Throws either way.
  */
-async function lostQueuedItem(db: D1Database, itemId: string): Promise<never> {
+async function lostQueuedItem(db: Db, itemId: string): Promise<never> {
   const still = await queryOf(db).row`SELECT 1 AS found FROM thread_request_queue WHERE id = ${itemId}`;
   if (still) throw new HttpError(409, "This request is already being sent");
   throw new HttpError(404, "Queued request not found");

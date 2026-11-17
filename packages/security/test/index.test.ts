@@ -12,8 +12,7 @@ import {
   extractBearerToken,
   hashToken,
   resolveSpaceSecurityContextFromIdentity,
-  type DatabaseAdapter,
-  type DatabaseStatement,
+  type SecurityQuery,
   type SecurityContext,
 } from "../src/index.js";
 
@@ -31,14 +30,11 @@ const context: SecurityContext = {
   clientType: "web",
 };
 
-function database(firstResult: unknown): DatabaseAdapter {
-  const statement: DatabaseStatement = {
-    bind: () => statement,
-    first: async () => firstResult as never,
-    all: async () => ({ results: [] }),
-    run: async () => ({ success: true }),
+function database(firstResult: unknown): SecurityQuery {
+  return {
+    row: async <T>() => firstResult as T,
+    rows: async <T>() => [] as T[],
   };
-  return { prepare: () => statement };
 }
 
 describe("current authorization model", () => {
@@ -127,27 +123,16 @@ describe("current authorization model", () => {
   });
 
   it("resolves human identity and Space roles without legacy aliases", async () => {
-    let call = 0;
-    const db: DatabaseAdapter = {
-      prepare: () => {
-        const statement: DatabaseStatement = {
-          bind: () => statement,
-          first: async <T>() =>
-            ({
-              id: "user-1",
-              email: "one@example.test",
-              display_name: "User One",
-              avatar_url: null,
-              status: "active",
-            }) as T,
-          all: async <T>() =>
-            (++call === 1
-              ? { results: [{ space_id: "space-1", role: "owner" }] }
-              : { results: [] }) as unknown as { results: readonly T[] },
-          run: async () => ({ success: true }),
-        };
-        return statement;
-      },
+    const db: SecurityQuery = {
+      row: async <T>() =>
+        ({
+          id: "user-1",
+          email: "one@example.test",
+          display_name: "User One",
+          avatar_url: null,
+          status: "active",
+        }) as T,
+      rows: async <T>() => [{ space_id: "space-1", role: "owner" }] as unknown as T[],
     };
     const resolved = await resolveSpaceSecurityContextFromIdentity(db, {
       userId: "user-1",

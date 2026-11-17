@@ -1,4 +1,4 @@
-import { queryOf } from "../platform/data.js";
+import { queryOf, type Db } from "../platform/data.js";
 import { beginAssignmentRevocation } from "./assignment-revocation.js";
 import { extendLeaseForLiveAssignment } from "./thread-coordinator.js";
 
@@ -63,7 +63,7 @@ export interface LostEngineAssignment {
  * assignments whose Engine has been missing for too many consecutive reports.
  */
 export async function applyEngineLivenessReport(
-  db: D1Database,
+  db: Db,
   workspaceId: string,
   report: EngineLivenessReport,
   now: string,
@@ -107,7 +107,7 @@ export async function applyEngineLivenessReport(
 
 /** Starts a safe revocation (failure) for assignments whose Engine is gone. */
 export async function failLostEngineAssignments(
-  db: D1Database,
+  db: Db,
   lost: readonly LostEngineAssignment[],
   now: string,
 ): Promise<number> {

@@ -1,4 +1,4 @@
-import { queryOf } from "../../platform/data.js";
+import { queryOf, type Db } from "../../platform/data.js";
 import { HttpError, parseJson } from "./handlers.js";
 
 /**
@@ -45,7 +45,7 @@ function attachmentSummary(value: unknown): string {
  * this Thread, a removed message, or a response that has no text yet.
  */
 export async function resolveReplyReference(
-  db: D1Database,
+  db: Db,
   threadId: string,
   raw: unknown,
 ): Promise<ReplyReference | null> {

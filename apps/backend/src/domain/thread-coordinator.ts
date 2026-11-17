@@ -1,4 +1,4 @@
-import { dataOf, queryOf, type Query, atomically } from "../platform/data.js";
+import { dataOf, queryOf, type Query, atomically, type Db } from "../platform/data.js";
 import { cancelQueuedWorkRequest, startQueuedWorkRequest } from "./queries.js";
 /**
  * Durable Object coordinator for one Thread.
@@ -16,7 +16,7 @@ const updateThreadRuntimeLeasesSetExpiresAtRun = (q: Query, p1: unknown, p2: unk
   q.run`UPDATE thread_runtime_leases SET expires_at = ${p1} WHERE id = ${p2} AND status = 'active'`;
 
 export interface ThreadCoordinatorEnv {
-  readonly SYNTILA_DB: D1Database;
+  readonly SYNTILA_DB: Db;
   readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
   readonly SYNTILA_REALTIME_GATEWAY?: DurableObjectNamespace;
 }
@@ -160,7 +160,7 @@ export function classifyExpiredLease(
  * left, so frequent heartbeats cost one indexed no-op update.
  */
 export async function extendLeaseForLiveAssignment(
-  db: D1Database,
+  db: Db,
   assignmentId: string,
   nowMs = Date.now(),
 ): Promise<number> {
@@ -700,7 +700,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
  */
 export async function scheduleLostWorkflowCheck(
   env: {
-    readonly SYNTILA_DB: D1Database;
+    readonly SYNTILA_DB: Db;
     readonly SYNTILA_THREAD_COORDINATOR?: DurableObjectNamespace;
   },
   assignmentId: string,

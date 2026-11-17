@@ -238,7 +238,7 @@ export async function securityContext(
         throw new HttpError(403, "Profile Lab is restricted to its verified owner account");
       }
       return await resolveSpaceSecurityContextFromIdentity(
-        env.SYNTILA_DB,
+        dataOf(env).read,
         identity,
         identity.clientType ?? "web",
         identity.audience,
@@ -285,7 +285,7 @@ export async function authorizeRequest(
   if (spaceId && !testAuthenticationEnabled(env)) {
     try {
       await authorizeSpaceMembership(
-        env.SYNTILA_DB,
+        dataOf(env).read,
         context,
         spaceId,
         permission,
@@ -328,7 +328,7 @@ export async function requireWorkspaceContext(
   workspaceId: string,
 ): Promise<void> {
   try {
-    await authorizeWorkspaceOwner(env.SYNTILA_DB, context, workspaceId);
+    await authorizeWorkspaceOwner(dataOf(env).read, context, workspaceId);
   } catch {
     if (!testAuthenticationEnabled(env))
       throw new HttpError(404, "Resource not found");
@@ -350,7 +350,7 @@ export async function workspaceOwnerContext(
   const context = await securityContext(request, env, accessContext);
   try {
     await authorizeWorkspaceOwner(
-      env.SYNTILA_DB,
+      dataOf(env).read,
       context,
       workspaceId,
       permission,
@@ -380,7 +380,7 @@ export async function authorizeSpaceOwnerOrThrow(
     accessContext,
   );
   try {
-    await authorizeSpaceOwner(env.SYNTILA_DB, context, spaceId);
+    await authorizeSpaceOwner(dataOf(env).read, context, spaceId);
   } catch {
     throw new HttpError(403, "Only the Space owner can manage collaboration");
   }

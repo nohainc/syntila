@@ -1,4 +1,4 @@
-import { queryOf, type Tx } from "../../platform/data.js";
+import { queryOf, type Tx, type Db } from "../../platform/data.js";
 import { createHash } from "node:crypto";
 import type { Conversation, WorkflowDefinition } from "@syntila/core";
 
@@ -19,7 +19,7 @@ export function threadConversationId(threadId: string): string {
  * Sessions continue.
  */
 export async function resolveThreadConversationId(
-  db: D1Database,
+  db: Db,
   threadId: string,
 ): Promise<string> {
   const existing = await queryOf(db).row<{ id: string }>`SELECT id FROM conversations WHERE thread_id = ${threadId} ORDER BY created_at, id LIMIT 1`;

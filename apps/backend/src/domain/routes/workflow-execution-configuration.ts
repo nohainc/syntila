@@ -34,6 +34,14 @@ export interface WorkflowExecutionSelectionOverride {
   readonly catalogRevision?: string | null;
 }
 
+function ownWorkerWorkspace(env: SecurityEnv, userId: string, workerId: string) {
+  return dataOf(env).read.row<{ workspaceId: string }>`SELECT i.workspace_id AS "workspaceId"
+       FROM workspace_worker_inventory i
+       JOIN execution_workspaces ew ON ew.id = i.workspace_id
+      WHERE i.worker_id = ${workerId} AND ew.owner_user_id = ${userId}
+        AND ew.status != 'revoked'`;
+}
+
 export function parseWorkflowExecutionSelection(
   value: unknown,
 ): WorkflowExecutionSelectionOverride | undefined {
@@ -106,9 +114,7 @@ export async function resolveWorkflowExecutionBindings(
     if (definition.id !== "chat")
       throw new HttpError(403, "Personal Spaces support Chat only");
     const ownedWorker = override?.workerId
-      ? await dataOf(env).read.row`SELECT i.workspace_id AS "workspaceId" FROM workspace_worker_inventory i
-           JOIN execution_workspaces ew ON ew.id = i.workspace_id
-           WHERE i.worker_id = ${override.workerId} AND ew.owner_user_id = ${userId} AND ew.status != 'revoked'`
+      ? await ownWorkerWorkspace(env, userId, override.workerId)
       : null;
     if (!ownedWorker)
       throw new HttpError(403, "Choose a Worker from your own Workspace");
@@ -375,11 +381,7 @@ async function ownChatWorkerWorkspace(
   workerId: string | null | undefined,
 ): Promise<string | null> {
   if (definition.id !== "chat" || !workerId) return null;
-  const worker = await dataOf(env).read.row<{ workspaceId: string }>`SELECT i.workspace_id AS "workspaceId"
-       FROM workspace_worker_inventory i
-       JOIN execution_workspaces ew ON ew.id = i.workspace_id
-      WHERE i.worker_id = ${workerId} AND ew.owner_user_id = ${userId}
-        AND ew.status != 'revoked'`;
+  const worker = await ownWorkerWorkspace(env, userId, workerId);
   if (!worker?.workspaceId || worker.workspaceId === spaceWorkspaceId)
     return null;
   const policy = await loadSpacePermissions(env, userId, spaceId);

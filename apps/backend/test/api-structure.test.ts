@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { signToken, TokenVerifier } from "../src/auth";
 import { configureIdentityVerifier } from "../src/domain/auth/identity-service";
 import { STALE_CLAIM_MS } from "../src/domain/routes/route-idempotency";
-import { PgD1Database } from "../src/platform/pg-d1";
+import { PgD1Database } from "./domain/helpers/pg-d1-adapter";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 

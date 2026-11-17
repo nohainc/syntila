@@ -30,7 +30,22 @@ export function typeErrors(): { counts: Counts; lines: string[]; global: string[
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
   if (config.error) throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, "\n"));
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
-  const program = ts.createProgram(parsed.fileNames, parsed.options);
+  // The Cloudflare-generated Env (apps/cloud) types SYNTILA_DB as a D1 binding,
+  // which is right for the auth Worker. In the backend it is the PostgreSQL
+  // holder (`Db`), so the generated file is read with that one line replaced.
+  const host = ts.createCompilerHost(parsed.options);
+  const getSourceFile = host.getSourceFile.bind(host);
+  host.getSourceFile = (fileName, languageVersionOrOptions, ...rest) => {
+    if (fileName.endsWith("cloud/worker-configuration.d.ts")) {
+      const text = (ts.sys.readFile(fileName) ?? "").replace(
+        "SYNTILA_DB: D1Database;",
+        'SYNTILA_DB: import("../backend/src/platform/data").Db;',
+      );
+      return ts.createSourceFile(fileName, text, languageVersionOrOptions);
+    }
+    return getSourceFile(fileName, languageVersionOrOptions, ...rest);
+  };
+  const program = ts.createProgram(parsed.fileNames, parsed.options, host);
   const counts: Counts = {};
   const lines: string[] = [];
   const global: string[] = []; // configuration problems (a missing types package, a bad option)

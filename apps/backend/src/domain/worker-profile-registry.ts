@@ -1,4 +1,4 @@
-import { atomically, dataOf, queryOf } from "../platform/data.js";
+import { atomically, dataOf, queryOf, type Db } from "../platform/data.js";
 import { canonicalJson } from "./canonical-json.js";
 import type { ToolProfileV1 } from "@syntila/tool-profile";
 import {
@@ -126,7 +126,7 @@ function canonicalProfilePayload(profile: ToolProfileV1): string {
 }
 
 export async function listWorkerProfiles(
-  db: D1Database,
+  db: Db,
 ): Promise<{ workers: WorkerProfileSummary[] }> {
   const rows = await queryOf(db).rows<{
       worker_type_id: string;
@@ -182,7 +182,7 @@ export async function listWorkerProfiles(
 }
 
 async function loadCurrentWorkerProfileRow(
-  db: D1Database,
+  db: Db,
   workerTypeId: string,
 ): Promise<CurrentWorkerProfileRow | null> {
   return queryOf(db).row<CurrentWorkerProfileRow>`SELECT worker_type_id, schema_version, profile_json, revision,
@@ -193,7 +193,7 @@ async function loadCurrentWorkerProfileRow(
 
 /** Whether the Worker's current Profile can compact its native session. */
 export async function workerProfileSupportsCompaction(
-  db: D1Database,
+  db: Db,
   workerTypeId: string,
 ): Promise<boolean> {
   const row = await loadCurrentWorkerProfileRow(db, workerTypeId);
@@ -209,7 +209,7 @@ export async function workerProfileSupportsCompaction(
 }
 
 async function requireWorkerCatalogRow(
-  db: D1Database,
+  db: Db,
   workerTypeId: string,
 ): Promise<void> {
   const row = await queryOf(db).row<{ worker_type_id: string }>`SELECT worker_type_id FROM worker_catalog WHERE worker_type_id = ${workerTypeId} AND origin = 'official'`;

@@ -196,10 +196,10 @@ describe("Space member permissions contract v1", () => {
   it("enforces current rights at the security boundary and keeps reading available", async () => {
     await rights("member", none);
     await expect(
-      authorizeSpaceMembership(store.db, context("member"), "S", "run.start"),
+      authorizeSpaceMembership(store.read, context("member"), "S", "run.start"),
     ).rejects.toThrow();
     await expect(
-      authorizeSpaceMembership(store.db, context("member"), "S", "spaces:read"),
+      authorizeSpaceMembership(store.read, context("member"), "S", "spaces:read"),
     ).resolves.toBeDefined();
   });
   it("workflow enablement preserves member rights and history, and retired Space-wide settings are rejected", async () => {

@@ -9,7 +9,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { signToken, TokenVerifier } from "../src/auth";
 import { configureIdentityVerifier } from "../src/domain/auth/identity-service";
 import { JSON_BODY_LIMIT } from "../src/domain/routes/http-security";
-import { PgD1Database } from "../src/platform/pg-d1";
+import { PgD1Database } from "./domain/helpers/pg-d1-adapter";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 

@@ -1,6 +1,6 @@
 // Worker side of SyncPostgres: runs queries for the blocked main thread.
 import { SQL } from "bun";
-import { PgD1Database } from "../../../src/platform/pg-d1";
+import { PgD1Database } from "./pg-d1-adapter";
 declare const self: Worker;
 let sql: InstanceType<typeof SQL> | null = null;
 let db: PgD1Database | null = null;

@@ -1,4 +1,4 @@
-import { dataOf, queryOf, type Tx } from "../platform/data.js";
+import { dataOf, queryOf, type Tx, type Db } from "../platform/data.js";
 import {
   isDurableRealtimeEventType,
   parseRealtimeEvent,
@@ -11,7 +11,7 @@ import {
 import { afterCommit, inOpenTransaction, rootEnv } from "../platform/tx-env.js";
 
 export interface EventPublisherEnv {
-  readonly SYNTILA_DB: D1Database;
+  readonly SYNTILA_DB: Db;
   readonly SYNTILA_REALTIME_GATEWAY?: DurableObjectNamespace;
 }
 

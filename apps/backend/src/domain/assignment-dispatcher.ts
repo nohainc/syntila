@@ -1,4 +1,4 @@
-import { atomically, dataOf, queryOf, type Query } from "../platform/data.js";
+import { atomically, dataOf, queryOf, type Query, type Db } from "../platform/data.js";
 import { inTransaction } from "../platform/tx-env.js";
 import { assignmentProgress, assignmentStatus } from "./queries.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
@@ -235,7 +235,7 @@ function deferredDispatch(
 }
 
 export interface AssignmentDispatcherEnv {
-  readonly SYNTILA_DB: D1Database;
+  readonly SYNTILA_DB: Db;
   readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
 }
 
@@ -1010,7 +1010,7 @@ export async function dispatchTaskAssignment(
  * Records successful completion of an assignment, updating assignment, attempt, and task in D1.
  */
 export async function recordAssignmentResult(
-  db: D1Database,
+  db: Db,
   assignmentId: string,
   result: AssignmentResultPayload,
   expectedAttemptId?: string,
@@ -1049,7 +1049,7 @@ export async function recordAssignmentResult(
  * Records failure of an assignment, updating assignment, attempt, and task in D1.
  */
 export async function recordAssignmentError(
-  db: D1Database,
+  db: Db,
   assignmentId: string,
   failure: AssignmentFailurePayload,
   expectedAttemptId?: string,
@@ -1101,7 +1101,7 @@ export async function recordAssignmentError(
 }
 
 export async function recordAssignmentCancelled(
-  db: D1Database,
+  db: Db,
   assignmentId: string,
   cancellation: { status: "cancelled"; reason: string },
   expectedAttemptId?: string,
@@ -1156,7 +1156,7 @@ function isKnownAssignmentStatus(
 }
 
 async function runTerminalTransition(
-  db: D1Database,
+  db: Db,
   label: string,
   body: (q: Query) => Promise<boolean>,
 ): Promise<boolean> {
@@ -1178,7 +1178,7 @@ async function runTerminalTransition(
  * recorded and delivered later, on reconnect or the next recovery pass.
  */
 export async function recoverStaleAssignments(
-  db: D1Database,
+  db: Db,
   now = new Date(),
   env?: RevocationEnv,
 ): Promise<number> {
@@ -1412,7 +1412,7 @@ export async function cancelTaskAssignment(
  * previous owner's folders.
  */
 export async function loadAssignmentAdditionalFolderIds(
-  db: D1Database,
+  db: Db,
   spaceId: string | null | undefined,
   workspaceId: string,
 ): Promise<string[]> {
@@ -1431,7 +1431,7 @@ export async function loadAssignmentAdditionalFolderIds(
 
 /** True when the Worker is a plugin whose Workspace owner is not entitled. */
 async function pluginEntitlementRefused(
-  db: D1Database,
+  db: Db,
   workspaceId: string,
   workerTypeId: string,
 ): Promise<boolean> {

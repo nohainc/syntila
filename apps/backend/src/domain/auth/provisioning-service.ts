@@ -1,21 +1,5 @@
-import { atomically } from "../../platform/data.js";
+import { atomically, type Db } from "../../platform/data.js";
 import type { AuthenticatedIdentity } from "./identity-service.js";
-
-export interface ProvisioningStatement {
-  bind(...values: unknown[]): ProvisioningStatement;
-  first<T = Record<string, unknown>>(): Promise<T | null>;
-  all<T = Record<string, unknown>>(): Promise<{ results?: readonly T[] }>;
-  run(): Promise<unknown>;
-}
-
-export interface ProvisioningDatabase {
-  prepare(query: string): ProvisioningStatement & {
-    first<T = Record<string, unknown>>(): Promise<T | null>;
-    all<T = Record<string, unknown>>(): Promise<{ results?: readonly T[] }>;
-    run(): Promise<unknown>;
-  };
-  batch(statements: readonly ProvisioningStatement[]): Promise<unknown>;
-}
 
 /**
  * Initialize Syntila application state after Better Auth has authenticated
@@ -28,7 +12,7 @@ const provisionedByDb = new WeakMap<object, Map<string, { at: number; key: strin
 const PROVISION_TTL_MS = 5 * 60_000;
 
 export async function provisionSyntilaUser(
-  db: ProvisioningDatabase,
+  db: Db,
   identity: AuthenticatedIdentity,
   now = new Date().toISOString(),
 ): Promise<void> {

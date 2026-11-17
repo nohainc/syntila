@@ -1,4 +1,4 @@
-import { queryOf, type Tx } from "../../platform/data.js";
+import { queryOf, type Tx, type Db } from "../../platform/data.js";
 import { HttpError } from "./http-security.js";
 
 /** What a route runs first inside its transaction: nothing, or the receipt insert. */
@@ -8,7 +8,7 @@ export const NO_RECEIPT: ReceiptWrite = async () => {};
 /** Authenticated, endpoint-scoped receipt committed atomically with domain writes. */
 export class MutationIdempotency {
   private constructor(
-    readonly db: D1Database,
+    readonly db: Db,
     readonly userId: string,
     readonly scope: string,
     readonly key: string,
@@ -17,7 +17,7 @@ export class MutationIdempotency {
 
   static async from(
     request: Request,
-    db: D1Database,
+    db: Db,
     userId: string,
     scope: string,
     body: unknown,

@@ -37,8 +37,8 @@ show() { # title, pattern
 
 case "$topic" in
   errors)    show "unexpected errors" '"http.unhandled_error"';;
-  lock)      show "writes" '"db.writes"'; show "data-layer transactions" '"db.tx"';;
-  slow)      show "slow writes" '"db.slow_write"'; show "slow transactions" '"db.slow_tx"';;
+  lock)      show "data-layer transactions" '"db.tx"';;
+  slow)      show "slow transactions" '"db.slow_tx"';;
   db)
     show "database health (every 5 minutes)" '"db.health"'
     show "data-layer transactions (every 5 minutes)" '"db.tx"'
@@ -53,7 +53,6 @@ case "$topic" in
   retention) show "retention" '"retention.';;
   all)
     show "unexpected errors" '"http.unhandled_error"'
-    show "slow writes" '"db.slow_write"'
     show "slow transactions" '"db.slow_tx"'
     show "database health" '"db.health"'
     show "rate limited" '"http.rate_limited"'

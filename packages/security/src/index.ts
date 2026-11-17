@@ -141,17 +141,13 @@ export function allowsSpacePermission(
   return false;
 }
 
-export interface DatabaseStatement {
-  bind(...values: unknown[]): DatabaseStatement;
-  first<T = Record<string, unknown>>(): Promise<T | null>;
-  all<T = Record<string, unknown>>(): Promise<{
-    results?: readonly T[];
-  }>;
-  run(): Promise<{ success?: boolean }>;
-}
-
-export interface DatabaseAdapter {
-  prepare(query: string): DatabaseStatement;
+/**
+ * The reads the authorization helpers need. The backend's data-layer `Query`
+ * (`dataOf(env).read`, or an open transaction) satisfies it as is.
+ */
+export interface SecurityQuery {
+  row<T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T | null>;
+  rows<T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
 }
 
 export interface AuthenticatedIdentity {
@@ -162,24 +158,19 @@ export interface AuthenticatedIdentity {
 }
 
 export async function resolveSpaceSecurityContextFromIdentity(
-  db: DatabaseAdapter,
+  db: SecurityQuery,
   identity: AuthenticatedIdentity,
   clientType: ClientType = "web",
   audience?: string,
 ): Promise<SecurityContext> {
-  const userRow = await db
-    .prepare(
-      `SELECT id, email, display_name, avatar_url, status
-       FROM users WHERE id = ?1`,
-    )
-    .bind(identity.userId)
-    .first<{
-      id: string;
-      email: string;
-      display_name: string;
-      avatar_url: string | null;
-      status: string;
-    }>();
+  const userRow = await db.row<{
+    id: string;
+    email: string;
+    display_name: string;
+    avatar_url: string | null;
+    status: string;
+  }>`SELECT id, email, display_name, avatar_url, status
+       FROM users WHERE id = ${identity.userId}`;
   if (!userRow) throw new AuthenticationError("Syntila user not found");
   if (!["active", "suspended", "deactivated"].includes(userRow.status)) {
     throw new AuthenticationError("Invalid Syntila user status");
@@ -194,17 +185,12 @@ export async function resolveSpaceSecurityContextFromIdentity(
   if (user.status !== "active") {
     throw new AuthenticationError(`User account is ${user.status}`);
   }
-  const memberships = await db
-    .prepare(
-      `SELECT sm.space_id, sm.role, s.settings_json AS settingsJson
+  const memberships = await db.rows<{ space_id: string; role: SpaceRole; settingsJson: string }>`SELECT sm.space_id, sm.role, s.settings_json AS "settingsJson"
        FROM space_memberships sm JOIN spaces s ON s.id = sm.space_id
-       WHERE sm.user_id = ?1`,
-    )
-    .bind(user.id)
-    .all<{ space_id: string; role: SpaceRole; settingsJson: string }>();
+       WHERE sm.user_id = ${user.id}`;
   const spaceRoles: Record<string, SpaceRole> = {};
   const spacePermissions: Record<string, SpaceMemberPermissions> = {};
-  for (const membership of memberships.results ?? []) {
+  for (const membership of memberships) {
     if (SPACE_ROLES.includes(membership.role)) {
       spaceRoles[membership.space_id] = membership.role;
       spacePermissions[membership.space_id] = spaceMemberPermissions(
@@ -226,7 +212,7 @@ export async function resolveSpaceSecurityContextFromIdentity(
 }
 
 export async function authorizeSpaceMembership(
-  db: DatabaseAdapter,
+  db: SecurityQuery,
   context: Pick<SecurityContext, "userId" | "user">,
   spaceId: string,
   permission: Permission,
@@ -234,14 +220,9 @@ export async function authorizeSpaceMembership(
   if (context.user.status !== "active") {
     throw new AuthorizationError(permission, spaceId);
   }
-  const membership = await db
-    .prepare(
-      `SELECT sm.role, s.settings_json AS settingsJson FROM space_memberships sm
+  const membership = await db.row<{ role: SpaceRole; settingsJson?: string }>`SELECT sm.role, s.settings_json AS "settingsJson" FROM space_memberships sm
        JOIN spaces s ON s.id = sm.space_id
-       WHERE sm.space_id = ?1 AND sm.user_id = ?2`,
-    )
-    .bind(spaceId, context.userId)
-    .first<{ role: SpaceRole; settingsJson?: string }>();
+       WHERE sm.space_id = ${spaceId} AND sm.user_id = ${context.userId}`;
   if (
     !membership ||
     !SPACE_ROLES.includes(membership.role) ||
@@ -261,7 +242,7 @@ export async function authorizeSpaceMembership(
 }
 
 export async function authorizeWorkspaceOwner(
-  db: DatabaseAdapter,
+  db: SecurityQuery,
   context: Pick<SecurityContext, "userId" | "user">,
   workspaceId: string,
   permission: Permission = "workspace:manage",
@@ -269,17 +250,12 @@ export async function authorizeWorkspaceOwner(
   if (context.user.status !== "active") {
     throw new AuthorizationError(permission, workspaceId);
   }
-  const workspace = await db
-    .prepare(
-      "SELECT id FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status <> 'revoked'",
-    )
-    .bind(workspaceId, context.userId)
-    .first<{ id: string }>();
+  const workspace = await db.row<{ id: string }>`SELECT id FROM execution_workspaces WHERE id = ${workspaceId} AND owner_user_id = ${context.userId} AND status <> 'revoked'`;
   if (!workspace) throw new AuthorizationError(permission, workspaceId);
 }
 
 export async function authorizeSpaceOwner(
-  db: DatabaseAdapter,
+  db: SecurityQuery,
   context: Pick<SecurityContext, "userId" | "user">,
   spaceId: string,
   permission: Permission = "spaces:manage",
@@ -287,10 +263,7 @@ export async function authorizeSpaceOwner(
   if (context.user.status !== "active") {
     throw new AuthorizationError(permission, spaceId);
   }
-  const owner = await db
-    .prepare("SELECT id FROM spaces WHERE id = ?1 AND owner_user_id = ?2")
-    .bind(spaceId, context.userId)
-    .first<{ id: string }>();
+  const owner = await db.row<{ id: string }>`SELECT id FROM spaces WHERE id = ${spaceId} AND owner_user_id = ${context.userId}`;
   if (!owner) throw new AuthorizationError(permission, spaceId);
 }
 

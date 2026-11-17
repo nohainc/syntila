@@ -3,7 +3,7 @@
 // assignment over the gateway WebSocket, the fake Service answers, and the
 // answer reaches the Thread over realtime.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { PgD1Database } from "../src/platform/pg-d1";
+import { PgD1Database } from "./domain/helpers/pg-d1-adapter";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 import { testTokens } from "./domain/helpers/tokens";

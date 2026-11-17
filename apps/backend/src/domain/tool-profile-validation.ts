@@ -1,3 +1,4 @@
+import type { Db } from "../platform/data.js";
 import {
   validateToolProfileV1,
   type ToolProfileV1,
@@ -14,7 +15,7 @@ export class ToolProfileRegistryError extends Error {
   }
 }
 export interface ToolProfileRegistryEnvironment {
-  readonly SYNTILA_DB: D1Database;
+  readonly SYNTILA_DB: Db;
 }
 
 export interface WorkerProfilePublicationEvidence {

@@ -1,4 +1,4 @@
-import { PgD1Error, translatePlaceholders } from "../../../src/platform/pg-d1";
+import { PgD1Error, translatePlaceholders } from "./pg-d1-adapter";
 /**
  * Synchronous PostgreSQL access for test fixtures (replaces node:sqlite's
  * DatabaseSync in seeds). A worker owns the connection; the test thread blocks
