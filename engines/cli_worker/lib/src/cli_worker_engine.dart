@@ -1155,6 +1155,7 @@ class CliWorkerEngine {
     Object? detail,
     bool providerStarted = false,
     bool recovered = false,
+    Map<String, Object?>? providerFailure,
   }) {
     _logger.log(
       'error',
@@ -1180,6 +1181,10 @@ class CliWorkerEngine {
         providerStarted: providerStarted,
         recovered: recovered,
       ),
+      providerFailure: _negotiatedProtocolVersion ==
+              providerFailureDetailsProtocolVersion
+          ? providerFailure
+          : null,
     );
   }
 
@@ -1899,6 +1904,7 @@ class CliWorkerEngine {
             _executionError(
               request,
               code: interpreted.issueCode ?? WorkerIssueCode.providerFailure,
+              providerFailure: interpreted.providerFailure,
               message: failureMessage,
               stage: 'provider_execution',
               detail: failureDetail.isEmpty ? null : failureDetail,
@@ -2998,6 +3004,13 @@ class CliWorkerEngine {
         ].join(', '),
       );
     }
+    final failureDetails = _buildProviderFailureDetails(
+      providerErrorText: providerErrorText,
+      stderr: stderr,
+      failedRunResponse: text,
+      structuredError: providerError,
+      plainTextMode: mode == 'plain_text',
+    );
     final mappings = _list(_map(_profile.json['errors'])['mappings']);
     for (final raw in mappings) {
       final mapping = _map(raw);
@@ -3027,6 +3040,7 @@ class CliWorkerEngine {
               finalText == null &&
               !markedSuccess,
           terminalObserved: terminalObserved,
+          providerFailure: failureDetails,
           reason: [
             'exit=$exitCode',
             'matched $kind',
@@ -3043,6 +3057,7 @@ class CliWorkerEngine {
       null,
       WorkerIssueCode.providerFailure,
       providerFailed: markedFailure || providerError,
+      providerFailure: failureDetails,
       emptyResponse:
           exitCode == 0 &&
           (markedSuccess || implicitTextSuccess) &&
@@ -3065,6 +3080,38 @@ class CliWorkerEngine {
 
   /// Counts only: which event kinds the provider sent and what its result
   /// reported. Never contains provider text.
+  Map<String, Object?>? _buildProviderFailureDetails({
+    required String providerErrorText,
+    required String stderr,
+    required String? failedRunResponse,
+    required bool structuredError,
+    required bool plainTextMode,
+  }) {
+    final trimmedError = providerErrorText.trim();
+    final trimmedStderr = stderr.trim();
+    final trimmedResponse = failedRunResponse?.trim();
+    final hasError = trimmedError.isNotEmpty;
+    final hasStderr = trimmedStderr.isNotEmpty;
+    final hasResponse = trimmedResponse != null && trimmedResponse.isNotEmpty;
+    if (!hasError && !hasStderr && !hasResponse) return null;
+
+    final source = structuredError || hasError
+        ? 'structured_error'
+        : hasStderr
+            ? 'stderr'
+            : plainTextMode
+                ? 'stdout'
+                : 'result_message';
+
+    return sanitizeProviderFailureDetails(
+      providerErrorText: hasError
+          ? trimmedError
+          : (hasStderr ? trimmedStderr : null),
+      failedRunResponse: hasResponse ? trimmedResponse : null,
+      source: source,
+    ).toJson();
+  }
+
   String _eventShape(List<Object?> events) {
     final kinds = <String, int>{};
     Map? result;
@@ -3380,7 +3427,10 @@ class _InterpretedOutput {
     this.emptyResponse = false,
     this.providerFailed = false,
     this.deniedActions = const [],
+    this.providerFailure,
   });
+
+  final Map<String, Object?>? providerFailure;
 
   /// Actions the provider refused to run (for example agy's soft-denied
   /// terminal commands). Non-empty on a success means a warning only.

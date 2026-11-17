@@ -9,3 +9,4 @@ export 'src/runtime_frames.dart';
 export 'src/discovered_models.dart';
 export 'src/diagnostic_events.dart';
 export 'src/worker_issue_codes.dart';
+export 'src/provider_failure.dart';
