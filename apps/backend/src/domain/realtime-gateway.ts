@@ -1,3 +1,4 @@
+import { dataOf, queryOf } from "../platform/data.js";
 import { userAccount } from "./queries.js";
 import {
   isReplayableRealtimeEvent,
@@ -291,25 +292,15 @@ export async function authorizeRealtimeScope(
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
   if (scope.kind === "user") return { allowed: true };
   if (scope.kind === "space") {
-    const member = await db
-      .prepare(
-        "SELECT 1 AS member FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-      )
-      .bind(scope.spaceId, userId)
-      .first<{ member: number }>();
+    const member = await queryOf(db).row<{ member: number }>`SELECT 1 AS member FROM space_memberships WHERE space_id = ${scope.spaceId} AND user_id = ${userId}`;
     return member
       ? { allowed: true }
       : { allowed: false, reason: "space_access_denied" };
   }
   if (scope.kind === "thread") {
-    const member = await db
-      .prepare(
-        `SELECT 1 AS member FROM threads w
+    const member = await queryOf(db).row<{ member: number }>`SELECT 1 AS member FROM threads w
        JOIN space_memberships pm ON pm.space_id = w.space_id
-       WHERE w.id = ?1 AND pm.user_id = ?2`,
-      )
-      .bind(scope.threadId, userId)
-      .first<{ member: number }>();
+       WHERE w.id = ${scope.threadId} AND pm.user_id = ${userId}`;
     return member
       ? { allowed: true }
       : { allowed: false, reason: "thread_access_denied" };
@@ -326,14 +317,9 @@ export async function authorizeRealtimeScope(
       : { allowed: false, reason: "execution_workspace_access_denied" };
   }
   if (scope.kind === "run") {
-    const row = await db
-      .prepare(
-        `SELECT pm.user_id FROM space_memberships pm
+    const row = await queryOf(db).row<{ user_id: string }>`SELECT pm.user_id FROM space_memberships pm
        JOIN runs resource ON resource.space_id = pm.space_id
-       WHERE resource.id = ?1 AND pm.user_id = ?2`,
-      )
-      .bind(scope.runId, userId)
-      .first<{ user_id: string }>();
+       WHERE resource.id = ${scope.runId} AND pm.user_id = ${userId}`;
     return row
       ? { allowed: true }
       : { allowed: false, reason: `${scope.kind}_access_denied` };
@@ -348,26 +334,16 @@ export async function authorizeRealtimeScope(
     return { allowed: false, reason: "execution_workspace_access_denied" };
 
   if (scope.spaceId) {
-    const space = await db
-      .prepare(
-        `SELECT 1 AS granted FROM workspace_space_grants
-                  WHERE space_id = ?1 AND workspace_id = ?2 AND status = 'active'`,
-      )
-      .bind(scope.spaceId, scope.workspaceId)
-      .first<{ granted: number }>();
+    const space = await queryOf(db).row<{ granted: number }>`SELECT 1 AS granted FROM workspace_space_grants
+                  WHERE space_id = ${scope.spaceId} AND workspace_id = ${scope.workspaceId} AND status = 'active'`;
     if (!space) {
       return { allowed: false, reason: "space_access_denied" };
     }
   }
   if (scope.runId) {
-    const run = await db
-      .prepare(
-        `SELECT 1 AS granted FROM runs r
+    const run = await queryOf(db).row<{ granted: number }>`SELECT 1 AS granted FROM runs r
                   JOIN workspace_space_grants g ON g.space_id = r.space_id
-                  WHERE r.id = ?1 AND g.workspace_id = ?2 AND g.status = 'active'`,
-      )
-      .bind(scope.runId, scope.workspaceId)
-      .first<{ granted: number }>();
+                  WHERE r.id = ${scope.runId} AND g.workspace_id = ${scope.workspaceId} AND g.status = 'active'`;
     if (!run) {
       return { allowed: false, reason: "run_access_denied" };
     }
@@ -380,7 +356,7 @@ export async function isRealtimeIdentityAuthorized(
   userId: string,
   scopes: readonly RealtimeScope[],
 ): Promise<boolean> {
-  const user = await userAccount(db, userId);
+  const user = await userAccount(queryOf(db), userId);
   if (!user || user.status !== "active") return false;
   for (const scope of scopes) {
     const result = await authorizeRealtimeScope(db, userId, scope);
@@ -451,7 +427,7 @@ export class RealtimeGateway implements DurableObject {
         { status: 401 },
       );
     }
-    const user = await userAccount(this.env.SYNTILA_DB, identity.userId);
+    const user = await userAccount(dataOf(this.env).read, identity.userId);
     const accountError = realtimeAuthenticationError(identity, user?.status);
     if (accountError) {
       return Response.json({ error: accountError }, { status: 403 });
@@ -757,15 +733,7 @@ export class RealtimeGateway implements DurableObject {
       if (!member.allowed) {
         const owner =
           event.type === "workspace_space_grant.updated"
-            ? await this.env.SYNTILA_DB.prepare(
-                "SELECT 1 AS owner FROM workspace_space_grants WHERE id = ?1 AND space_id = ?2 AND granted_by_user_id = ?3",
-              )
-                .bind(
-                  event.payload.entityId,
-                  stream.id,
-                  connected.identity.userId,
-                )
-                .first()
+            ? await dataOf(this.env).read.row`SELECT 1 AS owner FROM workspace_space_grants WHERE id = ${event.payload.entityId} AND space_id = ${stream.id} AND granted_by_user_id = ${connected.identity.userId}`
             : null;
         if (!owner) return;
       }

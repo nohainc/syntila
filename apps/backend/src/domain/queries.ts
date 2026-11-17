@@ -28,8 +28,8 @@ export async function ownsActiveWorkspace(q: Query, workspaceId: string, userId:
 }
 
 /** The account status of a user, or null when the user does not exist. */
-export async function userAccount(db: D1Database, userId: string): Promise<{ status: string } | null> {
-  return db.prepare("SELECT status FROM users WHERE id = ?1").bind(userId).first<{ status: string }>();
+export async function userAccount(q: Query, userId: string): Promise<{ status: string } | null> {
+  return q.row<{ status: string }>`SELECT status FROM users WHERE id = ${userId}`;
 }
 
 /** The kind of a Space ("group" or "direct"), or null when it does not exist. */
@@ -43,13 +43,13 @@ export async function spaceKind(q: Query, spaceId: string): Promise<{ kind: stri
  * --------------------------------------------------------------------- */
 
 /** Status of a Worker Assignment. */
-export function assignmentStatus(db: D1Database, assignmentId: string) {
-  return db.prepare("SELECT status FROM worker_assignments WHERE id = ?1").bind(assignmentId).first<{ status: string }>();
+export function assignmentStatus(q: Query, assignmentId: string) {
+  return q.row<{ status: string }>`SELECT status FROM worker_assignments WHERE id = ${assignmentId}`;
 }
 
 /** Status, task and attempt of a Worker Assignment. */
-export function assignmentProgress(db: D1Database, assignmentId: string) {
-  return db.prepare("SELECT status, task_id, attempt_id FROM worker_assignments WHERE id = ?1").bind(assignmentId).first<{ status: string; task_id: string; attempt_id: string }>();
+export function assignmentProgress(q: Query, assignmentId: string) {
+  return q.row<{ status: string; task_id: string; attempt_id: string }>`SELECT status, task_id, attempt_id FROM worker_assignments WHERE id = ${assignmentId}`;
 }
 
 /** The Space a Thread belongs to. */
@@ -68,13 +68,13 @@ export function workRequestThread(q: Query, workRequestId: string) {
 }
 
 /** When cancellation of a Work Request was requested, if it was. */
-export function workRequestCancelRequest(db: D1Database, workRequestId: string) {
-  return db.prepare("SELECT cancel_requested_at AS cancelRequestedAt FROM work_requests WHERE id = ?1").bind(workRequestId).first<{ cancelRequestedAt: string | null }>();
+export function workRequestCancelRequest(q: Query, workRequestId: string) {
+  return q.row<{ cancelRequestedAt: string | null }>`SELECT cancel_requested_at AS "cancelRequestedAt" FROM work_requests WHERE id = ${workRequestId}`;
 }
 
 /** The active Thread lease held for a Work Request. */
-export function activeThreadLease(db: D1Database, workRequestId: string, threadId: string) {
-  return db.prepare("SELECT id, fencing_token AS fencingToken FROM thread_runtime_leases WHERE work_request_id = ?1 AND thread_id = ?2 AND status = 'active' LIMIT 1").bind(workRequestId, threadId).first<{ id: string; fencingToken: number }>();
+export function activeThreadLease(q: Query, workRequestId: string, threadId: string) {
+  return q.row<{ id: string; fencingToken: number }>`SELECT id, fencing_token AS "fencingToken" FROM thread_runtime_leases WHERE work_request_id = ${workRequestId} AND thread_id = ${threadId} AND status = 'active' LIMIT 1`;
 }
 
 /** Owner of a Space. */
@@ -108,8 +108,8 @@ export function activeRuntimeIdentityCount(q: Query, workspaceId: string) {
 }
 
 /** A user's plan row (missing row means Free). */
-export function accountPlanRow<T = { tier: string; status: string; current_period_end: string | null }>(db: D1Database, userId: string) {
-  return db.prepare("SELECT tier, status, current_period_end FROM account_plans WHERE user_id = ?1").bind(userId).first<T>();
+export function accountPlanRow<T = { tier: string; status: string; current_period_end: string | null }>(q: Query, userId: string) {
+  return q.row<T>`SELECT tier, status, current_period_end FROM account_plans WHERE user_id = ${userId}`;
 }
 
 /** The default Workflow a Space chose. */

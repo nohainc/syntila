@@ -1,3 +1,4 @@
+import { queryOf } from "../../platform/data.js";
 import { HttpError } from "./http-security.js";
 
 /** Authenticated, endpoint-scoped receipt committed atomically with domain writes. */
@@ -44,14 +45,9 @@ export class MutationIdempotency {
   }
 
   async replay(): Promise<Response | null> {
-    const row = await this.db
-      .prepare(
-        `SELECT request_hash AS hash, response_json AS body,
+    const row = await queryOf(this.db).row<{ hash: string; body: string; status: number }>`SELECT request_hash AS hash, response_json AS body,
       response_status AS status FROM mutation_receipts
-      WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3`,
-      )
-      .bind(this.userId, this.scope, this.key)
-      .first<{ hash: string; body: string; status: number }>();
+      WHERE user_id = ${this.userId} AND scope = ${this.scope} AND idempotency_key = ${this.key}`;
     if (!row) return null;
     if (row.hash !== this.hash)
       throw new HttpError(

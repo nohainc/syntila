@@ -1,3 +1,4 @@
+import { dataOf } from "../../platform/data.js";
 import { inTransaction } from "../../platform/tx-env.js";
 import { computePackageDigest } from "@syntila/security";
 import { HttpError } from "./http-security.js";
@@ -564,18 +565,14 @@ export async function handleDownloadThreadFile(
 ): Promise<Response> {
   await authorizeThreadAccess(request, env, threadId, "view", accessContext);
   if (!isWorkRequestFileId(fileId)) throw new HttpError(404, "File not found");
-  const reference = await env.SYNTILA_DB.prepare(
-    `SELECT 1 AS present FROM discussion_messages dm, jsonb_array_elements(COALESCE(dm.attachments_json, '[]')::jsonb) f(value)
-    WHERE dm.thread_id = ?1 AND f.value ->> 'fileId' = ?2
+  const reference = await dataOf(env).read.row`SELECT 1 AS present FROM discussion_messages dm, jsonb_array_elements(COALESCE(dm.attachments_json, '[]')::jsonb) f(value)
+    WHERE dm.thread_id = ${threadId} AND f.value ->> 'fileId' = ${fileId}
     UNION ALL SELECT 1 AS present FROM work_requests wr, jsonb_array_elements(COALESCE(wr.input_json::jsonb -> 'attachments', '[]'::jsonb)) f(value)
-    WHERE wr.thread_id = ?1 AND f.value ->> 'fileId' = ?2
+    WHERE wr.thread_id = ${threadId} AND f.value ->> 'fileId' = ${fileId}
     UNION ALL SELECT 1 AS present FROM worker_assignments wa, jsonb_array_elements(COALESCE(wa.output_json::jsonb #> '{output,images}', '[]'::jsonb)) f(value)
-    WHERE wa.status = 'completed' AND f.value ->> 'fileId' = ?2
+    WHERE wa.status = 'completed' AND f.value ->> 'fileId' = ${fileId}
     UNION ALL SELECT 1 AS present FROM worker_assignments wa, jsonb_array_elements(COALESCE(wa.output_json::jsonb #> '{output,files}', '[]'::jsonb)) f(value)
-    WHERE wa.status = 'completed' AND f.value ->> 'fileId' = ?2 LIMIT 1`,
-  )
-    .bind(threadId, fileId)
-    .first();
+    WHERE wa.status = 'completed' AND f.value ->> 'fileId' = ${fileId} LIMIT 1`;
   if (!reference) throw new HttpError(404, "File not found");
   const object = await env.SYNTILA_ARTIFACTS?.get(workRequestFileKey(fileId));
   // Worker outputs are referenced by a completed assignment whose own

@@ -48,7 +48,7 @@ describe("Space lifecycle integrity", () => {
       "UPDATE workspace_space_grants SET status = 'revoked'",
     );
     expect(workspaces).toContain(
-      "UPDATE workspace_runtime_identities SET revoked_at = ?1",
+      "UPDATE workspace_runtime_identities SET revoked_at = ${now}",
     );
     expect(workspaces).not.toContain("catch(() => undefined)");
     expect(workspaces).not.toContain(
@@ -68,11 +68,11 @@ describe("Space lifecycle integrity", () => {
 
   it("guards duplicate names, grants, and invitations across lifecycle changes", () => {
     const all = `${spaces}\n${threads}\n${workspaces}`;
-    expect(all).toContain("LOWER(TRIM(name)) = LOWER(TRIM(?2))");
-    expect(all).toContain("id <> ?2");
+    expect(all).toContain("LOWER(TRIM(name)) = LOWER(TRIM(${name}))");
+    expect(all).toContain("id <> ${spaceId}");
     expect(all).toContain("status IN ('active', 'suspended')");
     expect(all).toContain(
-      "status = 'pending' AND (LOWER(email) = LOWER(?2) OR invitee_user_id = ?3)",
+      "status = 'pending' AND (LOWER(email) = LOWER(${email}) OR invitee_user_id = ${inviteeUserId})",
     );
     expect(all).toContain("You already have a Space with this name");
     expect(all).toContain("This Space already has a Thread with this name");

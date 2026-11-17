@@ -1,3 +1,4 @@
+import { dataOf } from "../../platform/data.js";
 import { stepInstanceId, type ModelIdentityCatalog } from "@syntila/core";
 import { loadSpacePermissions } from "./space-permissions.js";
 import {
@@ -211,7 +212,7 @@ export function threadMetadata(
     status: String(row.status),
     createdByUserId: row.leadUserId ?? row.lead_user_id ?? null,
     creatorEmail: row.creatorEmail ?? null,
-    creatorIsOwner: row.creatorIsOwner === 1,
+    creatorIsOwner: Number(row.creatorIsOwner) === 1,
     lead: row.leadUserId ?? row.lead_user_id ?? null,
     leadDisplayName:
       row.leadDisplayName ?? row.lead_display_name ?? row.leadName ?? null,
@@ -234,11 +235,11 @@ export function threadMetadata(
       accessPolicy.primary_workspace_id ??
       null,
     queueStatus: "Idle",
-    hasActiveWork: row.hasActiveWork === 1,
-    hasUnread: row.hasUnread === 1,
+    hasActiveWork: Number(row.hasActiveWork) === 1,
+    hasUnread: Number(row.hasUnread) === 1,
     isGeneral:
-      row.isGeneral === 1 ||
-      row.is_general === 1 ||
+      Number(row.isGeneral) === 1 ||
+      Number(row.is_general) === 1 ||
       row.isGeneral === true ||
       row.is_general === true,
     pinnedAt: typeof row.pinnedAt === "string" ? row.pinnedAt : null,
@@ -283,18 +284,14 @@ export function discussionReferences(value: unknown): readonly string[] {
 export type ThreadAccess = "view" | "discuss" | "execute" | "manage";
 
 async function loadThreadRow(env: SecurityEnv, threadId: string) {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT t.id, t.space_id AS spaceId, t.name, t.status,
-            t.access_policy_json AS accessPolicyJson, t.lead_user_id AS leadUserId,
-            t.is_general AS isGeneral,
-            t.created_at AS createdAt, t.updated_at AS updatedAt,
-            COALESCE(s.kind, 'group') AS spaceKind
+  const row = await dataOf(env).read.row<Record<string, unknown>>`SELECT t.id, t.space_id AS "spaceId", t.name, t.status,
+            t.access_policy_json AS "accessPolicyJson", t.lead_user_id AS "leadUserId",
+            t.is_general AS "isGeneral",
+            t.created_at AS "createdAt", t.updated_at AS "updatedAt",
+            COALESCE(s.kind, 'group') AS "spaceKind"
      FROM threads t
      JOIN spaces s ON s.id = t.space_id
-     WHERE t.id = ?1`,
-  )
-    .bind(threadId)
-    .first<Record<string, unknown>>();
+     WHERE t.id = ${threadId}`;
   if (!row) throw new HttpError(404, "Thread not found");
   return row;
 }
@@ -347,11 +344,7 @@ export async function authorizeThreadAccessAsUser(
   spaceId: string;
 }> {
   const row = await loadThreadRow(env, threadId);
-  const user = await env.SYNTILA_DB.prepare(
-    "SELECT id, email, display_name AS displayName, status FROM users WHERE id = ?1",
-  )
-    .bind(userId)
-    .first<AuthenticatedUser>();
+  const user = await dataOf(env).read.row<AuthenticatedUser>`SELECT id, email, display_name AS "displayName", status FROM users WHERE id = ${userId}`;
   if (!user) throw new HttpError(403, `Thread ${access} access is required`);
   const spaceId = String(row.spaceId);
   try {
@@ -382,13 +375,9 @@ async function threadAccessForContext(
   row: Record<string, unknown>,
   access: ThreadAccess,
 ) {
-  const membership = await env.SYNTILA_DB.prepare(
-    `SELECT id, space_id AS spaceId, user_id AS userId, role,
-            created_at AS createdAt, updated_at AS updatedAt
-     FROM space_memberships WHERE space_id = ?1 AND user_id = ?2`,
-  )
-    .bind(String(row.spaceId), context.userId)
-    .first<SpaceMembership>();
+  const membership = await dataOf(env).read.row<SpaceMembership>`SELECT id, space_id AS "spaceId", user_id AS "userId", role,
+            created_at AS "createdAt", updated_at AS "updatedAt"
+     FROM space_memberships WHERE space_id = ${String(row.spaceId)} AND user_id = ${context.userId}`;
   const policy = await loadSpacePermissions(
     env,
     context.userId,

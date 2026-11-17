@@ -37,9 +37,9 @@ describe("Cloud-owned Workspace slots", () => {
     try {
       await f.dispatch();
       const now = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
-      await recordCloudQueueNotReady(f.db, "WS", "RT", now);
+      await recordCloudQueueNotReady(f.read, "WS", "RT", now);
       await recordCloudQueueNotReady(
-        f.db,
+        f.read,
         "WS",
         "RT",
         new Date(Date.parse(now) + 1000).toISOString(),
@@ -153,7 +153,7 @@ describe("Cloud-owned Workspace slots", () => {
           source: "work_cancelled",
         },
       });
-      await recordCloudQueueReason(f.db, "A1", "ATT1", "service_not_ready");
+      await recordCloudQueueReason(f.read, "A1", "ATT1", "service_not_ready");
       expect(f.status().status).toBe("cancelled");
       f.sqlite.exec(
         "UPDATE worker_assignments SET status='completed' WHERE id='B1'",

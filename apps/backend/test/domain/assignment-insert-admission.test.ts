@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { dispatchTaskAssignment } from "../../src/domain/assignment-dispatcher.js";
 import { conversationFixture } from "./helpers/conversation.js";
@@ -77,7 +78,7 @@ async function fixture() {
     dispatch: () =>
       dispatchTaskAssignment(
         {
-          SYNTILA_DB: db,
+          SYNTILA_DB: withSql(db),
           SYNTILA_WORKSPACE_GATEWAY: {
             idFromName: () => "WS",
             get: () => ({ fetch }),

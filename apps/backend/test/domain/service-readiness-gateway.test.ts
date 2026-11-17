@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
+import { dataOf } from "../../src/platform/data.js";
 import { gatewayFixture } from "./helpers/assignment-gateway.js";
 
 const types = (messages: Array<{ type: string }>) =>
@@ -22,34 +23,27 @@ async function queued(initial = "created") {
 describe("Gateway Service readiness", () => {
   it("does not hand a persisted command to a replacement session during dispatch", async () => {
     const f = await gatewayFixture("created");
-    const prepare = f.db.prepare.bind(f.db);
     let replaced = false;
-    const spy = vi.spyOn(f.db, "prepare").mockImplementation((sql) => {
-      const statement = prepare(sql);
-      if (!sql.includes("SET start_permit_required = 1")) return statement;
-      return {
-        bind(...values: unknown[]) {
-          const bound = statement.bind(...values);
-          return {
-            async run() {
-              const result = await bound.run();
-              replaced = true;
-              await f.gateway.fetch(
-                new Request("https://gateway.internal/runtime/sessions", {
-                  method: "POST",
-                  headers: f.headers,
-                  body: JSON.stringify({
-                    workspaceRuntimeId: "RT",
-                    contractVersion: "1.0",
-                  }),
-                }),
-              );
-              return result;
-            },
-          };
-        },
-      } as D1PreparedStatement;
-    });
+    const read = dataOf({ SYNTILA_DB: f.db }).read as any;
+    const realRun = read.run;
+    // The Service replaces the session right after the start permit is persisted.
+    read.run = async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const result = await realRun(strings, ...values);
+      if (strings.join("?").includes("SET start_permit_required = 1")) {
+        replaced = true;
+        await f.gateway.fetch(
+          new Request("https://gateway.internal/runtime/sessions", {
+            method: "POST",
+            headers: f.headers,
+            body: JSON.stringify({
+              workspaceRuntimeId: "RT",
+              contractVersion: "1.0",
+            }),
+          }),
+        );
+      }
+      return result;
+    };
     try {
       const response = await f.dispatch();
       expect(replaced).toBe(true);
@@ -86,7 +80,7 @@ describe("Gateway Service readiness", () => {
         "assignment.start",
       );
     } finally {
-      spy.mockRestore();
+      read.run = realRun;
       f.sqlite.close();
     }
   });

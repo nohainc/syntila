@@ -65,7 +65,7 @@ import {
   presentExecution,
   type ExecutionPhase,
 } from "../execution-phase.js";
-import { dataOf } from "../../platform/data.js";
+import { dataOf, queryOf } from "../../platform/data.js";
 
 const SELECT_RUNS_BY_WORK_REQUEST_ID =
   `SELECT policy_snapshot_json AS policySnapshotJson
@@ -88,23 +88,21 @@ async function loadWorkRequestActivityHistory(
   db: D1Database,
   workRequestId: string,
 ): Promise<Record<string, unknown>[]> {
-  const rows = await db
-    .prepare(
-      `SELECT * FROM (
-         SELECT h.history_id AS eventId,
-                h.assignment_id AS assignmentId,
-                h.attempt_id AS attemptId,
-                h.execution_id AS executionId,
-                h.worker_id AS workerId,
-                h.provider_sequence AS activitySequence,
-                h.event_type AS activityType,
-                h.status AS activityStatus,
-                h.activity_id AS activityId,
+  const rows = await queryOf(db).rows<Record<string, unknown>>`SELECT * FROM (
+         SELECT h.history_id AS "eventId",
+                h.assignment_id AS "assignmentId",
+                h.attempt_id AS "attemptId",
+                h.execution_id AS "executionId",
+                h.worker_id AS "workerId",
+                h.provider_sequence AS "activitySequence",
+                h.event_type AS "activityType",
+                h.status AS "activityStatus",
+                h.activity_id AS "activityId",
                 h.title,
-                h.details_json AS detailsJson,
-                h.duration_ms AS durationMs,
-                h.tool_id AS toolId,
-                h.tool_name AS toolName,
+                h.details_json::text AS "detailsJson",
+                h.duration_ms AS "durationMs",
+                h.tool_id AS "toolId",
+                h.tool_name AS "toolName",
                 h.occurred_at AS timestamp
            FROM worker_activity_history h
            JOIN worker_assignments a ON a.id = h.assignment_id
@@ -112,16 +110,13 @@ async function loadWorkRequestActivityHistory(
                   a.work_request_id,
                   (SELECT wt.work_request_id FROM workflow_tasks wt
                     WHERE wt.id = a.task_id)
-                ) = ?1
+                ) = ${workRequestId}
           ORDER BY h.occurred_at DESC, h.provider_sequence DESC, h.history_id DESC
           LIMIT 256
        )
-       ORDER BY timestamp ASC, activitySequence ASC, eventId ASC`,
-    )
-    .bind(workRequestId)
-    .all<Record<string, unknown>>();
+       ORDER BY timestamp ASC, "activitySequence" ASC, "eventId" ASC`;
 
-  return (rows.results ?? []).map((row) => {
+  return rows.map((row) => {
     const rawDetails = parseJson<Record<string, unknown>>(
       typeof row.detailsJson === "string" ? row.detailsJson : null,
       {},
@@ -180,18 +175,14 @@ export async function handleRetryWorkRequest(
       403,
       "Space membership with execute access is required",
     );
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT wr.thread_id AS threadId, wr.mode, wr.status,
-            wr.workflow_id AS workflowId, wr.workflow_version AS workflowVersion,
-            wr.workflow_snapshot_json AS workflowSnapshotJson,
-            wr.snapshot_json AS snapshotJson, (SELECT text FROM conversation_history_entries h WHERE h.work_request_id = wr.id AND h.kind = 'user_message' LIMIT 1) AS canonicalUserText, wr.input_json AS inputJson,
-            wr.primary_workspace_id AS primaryWorkspaceId,
-            ws.space_id AS spaceId
+  const row = await dataOf(env).read.row<Record<string, unknown>>`SELECT wr.thread_id AS "threadId", wr.mode, wr.status,
+            wr.workflow_id AS "workflowId", wr.workflow_version AS "workflowVersion",
+            wr.workflow_snapshot_json AS "workflowSnapshotJson",
+            wr.snapshot_json AS "snapshotJson", (SELECT text FROM conversation_history_entries h WHERE h.work_request_id = wr.id AND h.kind = 'user_message' LIMIT 1) AS "canonicalUserText", wr.input_json AS "inputJson",
+            wr.primary_workspace_id AS "primaryWorkspaceId",
+            ws.space_id AS "spaceId"
        FROM work_requests wr JOIN threads ws ON ws.id = wr.thread_id
-      WHERE wr.id = ?1`,
-  )
-    .bind(workRequestId)
-    .first<Record<string, unknown>>();
+      WHERE wr.id = ${workRequestId}`;
   // A user-triggered retry starts new execution, so it needs the requester's
   // current plan (automatic recovery of the accepted run does not).
   if (row)
@@ -229,33 +220,29 @@ export async function handleRetryWorkRequest(
       stepInstanceId(candidate) === stepId && candidate.kind === stepKind,
   );
   if (!step) throw new HttpError(400, "Step is not part of this Workflow");
-  const failedTask = await env.SYNTILA_DB.prepare(
-    `SELECT wt.status, wt.error, wa.error_json AS assignmentErrorJson,
-            wa.status AS assignmentStatus, wa.dispatched_at AS dispatchedAt,
-            wa.acknowledged_at AS acknowledgedAt,
-            wa.start_permit_issued_at AS startPermitIssuedAt,
-            wa.start_permit_required AS startPermitRequired,
+  const failedTask = await dataOf(env).read.row<
+      Record<string, unknown> & {
+        status: string;
+        error: string | null;
+        assignmentErrorJson: string | null;
+      }
+    >`SELECT wt.status, wt.error, wa.error_json::text AS "assignmentErrorJson",
+            wa.status AS "assignmentStatus", wa.dispatched_at AS "dispatchedAt",
+            wa.acknowledged_at AS "acknowledgedAt",
+            wa.start_permit_issued_at AS "startPermitIssuedAt",
+            wa.start_permit_required AS "startPermitRequired",
             (SELECT aw.reason FROM account_execution_waiters aw
-              WHERE aw.task_id = wt.id) AS waitReason,
-            wa.running_at AS runningAt, wa.startup_stage AS startupStage,
-            wa.cloud_queue_reason AS cloudQueueReason,
-            wa.worker_type_id AS workerTypeId
+              WHERE aw.task_id = wt.id) AS "waitReason",
+            wa.running_at AS "runningAt", wa.startup_stage AS "startupStage",
+            wa.cloud_queue_reason AS "cloudQueueReason",
+            wa.worker_type_id AS "workerTypeId"
        FROM workflow_tasks wt
        LEFT JOIN worker_assignments wa ON wa.id = (
          SELECT wa2.id FROM worker_assignments wa2
           WHERE wa2.task_id = wt.id
           ORDER BY wa2.created_at DESC, wa2.id DESC LIMIT 1
        )
-      WHERE wt.work_request_id = ?1 AND wt.step_id = ?2`,
-  )
-    .bind(workRequestId, stepId)
-    .first<
-      Record<string, unknown> & {
-        status: string;
-        error: string | null;
-        assignmentErrorJson: string | null;
-      }
-    >();
+      WHERE wt.work_request_id = ${workRequestId} AND wt.step_id = ${stepId}`;
   // A user-requested partial synthesis is not the retry of a failed Step: it
   // runs the not-yet-run synthesis over the reports that succeeded.
   const partialSynthesis = body.partial === true;
@@ -264,18 +251,14 @@ export async function handleRetryWorkRequest(
       throw new HttpError(400, "Only a Research synthesis can be partial");
     if (row.status !== "failed")
       throw new HttpError(409, "Only a failed Research request can be partial");
-    const counts = await env.SYNTILA_DB.prepare(
-      `SELECT COUNT(*) FILTER (WHERE step_kind = 'research' AND status = 'completed') AS ok,
-              COUNT(*) FILTER (WHERE step_kind = 'research' AND status <> 'completed') AS missing,
-              COUNT(*) FILTER (WHERE step_id = 'synthesis' AND status IN ('queued', 'failed')) AS open
-         FROM workflow_tasks WHERE work_request_id = ?1`,
-    )
-      .bind(workRequestId)
-      .first<{
+    const counts = await dataOf(env).read.row<{
         ok: number | null;
         missing: number | null;
         open: number | null;
-      }>();
+      }>`SELECT COUNT(*) FILTER (WHERE step_kind = 'research' AND status = 'completed') AS ok,
+              COUNT(*) FILTER (WHERE step_kind = 'research' AND status <> 'completed') AS missing,
+              COUNT(*) FILTER (WHERE step_id = 'synthesis' AND status IN ('queued', 'failed')) AS open
+         FROM workflow_tasks WHERE work_request_id = ${workRequestId}`;
     if (
       Number(counts?.open ?? 0) !== 1 ||
       Number(counts?.missing ?? 0) < 1 ||
@@ -419,11 +402,7 @@ export async function handleRetryWorkRequest(
     );
   }
 
-  const latestRuns = await env.SYNTILA_DB.prepare(
-    "SELECT COUNT(*) AS count FROM runs WHERE work_request_id = ?1",
-  )
-    .bind(workRequestId)
-    .first<{ count: number }>();
+  const latestRuns = await dataOf(env).read.row<{ count: number }>`SELECT COUNT(*) AS count FROM runs WHERE work_request_id = ${workRequestId}`;
   const retryNumber = Math.max(1, Number(latestRuns?.count ?? 1));
   const runId = `run-${workRequestId}-retry-${retryNumber}`;
   const now = new Date().toISOString();
@@ -454,11 +433,7 @@ export async function handleRetryWorkRequest(
   // anywhere below rolls the reservation back with the rest, and a request
   // that lost the reservation wrote nothing.
   await inTransaction(env, "work.retry", async (tx) => {
-    const reservation = await tx.SYNTILA_DB.prepare(
-      "UPDATE work_requests SET status = 'queued', updated_at = ?1 WHERE id = ?2 AND status = ?3 RETURNING id",
-    )
-      .bind(now, workRequestId, String(row.status))
-      .first<{ id: string }>();
+    const reservation = await dataOf(tx).read.row<{ id: string }>`UPDATE work_requests SET status = 'queued', updated_at = ${now} WHERE id = ${workRequestId} AND status = ${String(row.status)} RETURNING id`;
     // Updating a Work Request also fires history and Workflow projection
     // triggers. D1's meta.changes includes those writes, so only the returned
     // identity proves that this retry won the failed-row reservation.
@@ -647,20 +622,16 @@ export async function handleGetWorkRequest(
   workRequestId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT wr.id, wr.thread_id AS threadId,
-            wr.requested_by_user_id AS requestedByUserId,
-            (SELECT conversation_id FROM conversation_work_requests WHERE work_request_id = wr.id) AS conversationId,
-            u.display_name AS requestedByName,
-            wr.workflow_id AS workflowId, wr.workflow_version AS workflowVersion,
-            wr.workflow_snapshot_json AS workflowSnapshotJson,
-            (SELECT text FROM conversation_history_entries h WHERE h.work_request_id = wr.id AND h.kind = 'user_message' LIMIT 1) AS canonicalUserText, wr.input_json AS inputJson, wr.snapshot_json AS snapshotJson,
-            wr.status, wr.created_at AS createdAt, wr.updated_at AS updatedAt
+  const row = await dataOf(env).read.row<Record<string, unknown>>`SELECT wr.id, wr.thread_id AS "threadId",
+            wr.requested_by_user_id AS "requestedByUserId",
+            (SELECT conversation_id FROM conversation_work_requests WHERE work_request_id = wr.id) AS "conversationId",
+            u.display_name AS "requestedByName",
+            wr.workflow_id AS "workflowId", wr.workflow_version AS "workflowVersion",
+            wr.workflow_snapshot_json AS "workflowSnapshotJson",
+            (SELECT text FROM conversation_history_entries h WHERE h.work_request_id = wr.id AND h.kind = 'user_message' LIMIT 1) AS "canonicalUserText", wr.input_json AS "inputJson", wr.snapshot_json AS "snapshotJson",
+            wr.status, wr.created_at AS "createdAt", wr.updated_at AS "updatedAt"
        FROM work_requests wr JOIN users u ON u.id = wr.requested_by_user_id
-      WHERE wr.id = ?1`,
-  )
-    .bind(workRequestId)
-    .first<Record<string, unknown>>();
+      WHERE wr.id = ${workRequestId}`;
   if (!row) throw new HttpError(404, "Work Request not found");
   await authorizeThreadAccess(
     request,
@@ -669,13 +640,9 @@ export async function handleGetWorkRequest(
     "view",
     accessContext,
   );
-  const task = await env.SYNTILA_DB.prepare(
-    `SELECT output_json AS outputJson, error
-     FROM workflow_tasks WHERE work_request_id = ?1
-     ORDER BY created_at DESC, id DESC LIMIT 1`,
-  )
-    .bind(workRequestId)
-    .first<{ outputJson: string | null; error: string | null }>();
+  const task = await dataOf(env).read.row<{ outputJson: string | null; error: string | null }>`SELECT output_json AS "outputJson", error
+     FROM workflow_tasks WHERE work_request_id = ${workRequestId}
+     ORDER BY created_at DESC, id DESC LIMIT 1`;
   let result: unknown = null;
   if (task?.outputJson) {
     try {
@@ -712,32 +679,31 @@ export async function handleGetWorkRequest(
     snapshot.resolvedBindings !== null
       ? (snapshot.resolvedBindings as Record<string, unknown>)
       : {};
-  const taskRows = await env.SYNTILA_DB.prepare(
-    `SELECT wt.id AS taskId, wt.step_kind AS kind, wt.step_id AS stepId, wt.status,
-            wt.output_json AS outputJson, wt.error, wt.attempt,
-            wt.started_at AS startedAt, wt.finished_at AS finishedAt,
-            wa.id AS assignmentId, wa.workspace_worker_id AS workerId,
-            wa.worker_type_id AS logicalWorkerTypeId, wa.model AS assignedModel,
-            wa.engine_version AS engineVersion,
-            wa.session_policy AS sessionPolicy,
-            wa.created_at AS assignmentCreatedAt,
-            wa.updated_at AS assignmentUpdatedAt,
-            (wa.permission_snapshot_json::jsonb #>> '{executionSelection,modelName}') AS modelName,
-            (wa.permission_snapshot_json::jsonb #> '{executionSelection,catalogRevision}') AS catalogRevision,
-            wa.permission_snapshot_json AS permissionSnapshotJson,
-            wa.error_json AS assignmentErrorJson,
-            wa.status AS assignmentStatus, wa.dispatched_at AS dispatchedAt,
-            wa.acknowledged_at AS acknowledgedAt,
-            wa.start_permit_issued_at AS startPermitIssuedAt,
-            wa.start_permit_required AS startPermitRequired,
+  const taskRows = await dataOf(env).read.rows<Record<string, unknown>>`SELECT wt.id AS "taskId", wt.step_kind AS kind, wt.step_id AS "stepId", wt.status,
+            wt.output_json AS "outputJson", wt.error, wt.attempt,
+            wt.started_at AS "startedAt", wt.finished_at AS "finishedAt",
+            wa.id AS "assignmentId", wa.workspace_worker_id AS "workerId",
+            wa.worker_type_id AS "logicalWorkerTypeId", wa.model AS "assignedModel",
+            wa.engine_version AS "engineVersion",
+            wa.session_policy AS "sessionPolicy",
+            wa.created_at AS "assignmentCreatedAt",
+            wa.updated_at AS "assignmentUpdatedAt",
+            (wa.permission_snapshot_json::jsonb #>> '{executionSelection,modelName}') AS "modelName",
+            (wa.permission_snapshot_json::jsonb #> '{executionSelection,catalogRevision}') AS "catalogRevision",
+            wa.permission_snapshot_json AS "permissionSnapshotJson",
+            wa.error_json::text AS "assignmentErrorJson",
+            wa.status AS "assignmentStatus", wa.dispatched_at AS "dispatchedAt",
+            wa.acknowledged_at AS "acknowledgedAt",
+            wa.start_permit_issued_at AS "startPermitIssuedAt",
+            wa.start_permit_required AS "startPermitRequired",
             (SELECT aw.reason FROM account_execution_waiters aw
-              WHERE aw.task_id = wt.id) AS waitReason,
-            wa.running_at AS runningAt, wa.startup_stage AS startupStage,
-            wi.worker_type_id AS inventoryWorkerTypeId,
-            wa.cloud_queue_reason AS cloudQueueReason,
-            wi.provider_tool_name AS configuredProviderToolName,
-            wi.provider_tool_version AS configuredProviderToolVersion,
-            COALESCE((wa.permission_snapshot_json::jsonb #>> '{executionSelection,workerDisplayName}'), (wa.permission_snapshot_json::jsonb #>> '{workerDisplayName}'), worker_catalog.display_name) AS workerDisplayName
+              WHERE aw.task_id = wt.id) AS "waitReason",
+            wa.running_at AS "runningAt", wa.startup_stage AS "startupStage",
+            wi.worker_type_id AS "inventoryWorkerTypeId",
+            wa.cloud_queue_reason AS "cloudQueueReason",
+            wi.provider_tool_name AS "configuredProviderToolName",
+            wi.provider_tool_version AS "configuredProviderToolVersion",
+            COALESCE((wa.permission_snapshot_json::jsonb #>> '{executionSelection,workerDisplayName}'), (wa.permission_snapshot_json::jsonb #>> '{workerDisplayName}'), worker_catalog.display_name) AS "workerDisplayName"
        FROM workflow_tasks wt
        JOIN work_requests wr ON wr.id = wt.work_request_id
        LEFT JOIN worker_assignments wa ON wa.id = (
@@ -755,14 +721,11 @@ export async function handleGetWorkRequest(
          ON worker_catalog.worker_type_id = COALESCE(
            wa.worker_type_id, wi.worker_type_id
          )
-      WHERE wt.work_request_id = ?1
-      ORDER BY wt.created_at, wt.id`,
-  )
-    .bind(workRequestId)
-    .all<Record<string, unknown>>();
+      WHERE wt.work_request_id = ${workRequestId}
+      ORDER BY wt.created_at, wt.id`;
   // Keyed by step-instance ID: Research v2 repeats the research kind.
   const taskByKind = new Map(
-    (taskRows.results ?? []).map((value) => [
+    taskRows.map((value) => [
       String(value.stepId ?? value.kind),
       value,
     ]),
@@ -1090,11 +1053,7 @@ async function aiHistoryClearedAt(
   env: SecurityEnv,
   threadId: string,
 ): Promise<string | null> {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT ai_history_cleared_at AS clearedAt FROM threads WHERE id = ?1",
-  )
-    .bind(threadId)
-    .first<{ clearedAt: string | null }>();
+  const row = await dataOf(env).read.row<{ clearedAt: string | null }>`SELECT ai_history_cleared_at AS "clearedAt" FROM threads WHERE id = ${threadId}`;
   return row?.clearedAt ?? null;
 }
 
@@ -1527,17 +1486,13 @@ async function cancelWorkRequest(
   workRequestId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT thread_id AS threadId, mode, status, cancel_requested_at AS cancelRequestedAt, requested_by_user_id AS requestedByUserId FROM work_requests WHERE id = ?1",
-  )
-    .bind(workRequestId)
-    .first<{
+  const row = await dataOf(env).read.row<{
       threadId: string;
       mode: string;
       status: string;
       cancelRequestedAt: string | null;
       requestedByUserId: string;
-    }>();
+    }>`SELECT thread_id AS "threadId", mode, status, cancel_requested_at AS "cancelRequestedAt", requested_by_user_id AS "requestedByUserId" FROM work_requests WHERE id = ${workRequestId}`;
   if (!row) throw new HttpError(404, "Work Request not found");
   const { context } = await authorizeThreadAccess(
     request,
@@ -1593,11 +1548,7 @@ async function cancelWorkRequest(
     throw new HttpError(409, "This Work Request cannot be cancelled");
 
   const requestedAt = row.cancelRequestedAt ?? new Date().toISOString();
-  await env.SYNTILA_DB.prepare(
-    "UPDATE work_requests SET cancel_requested_at = COALESCE(cancel_requested_at, ?1), updated_at = ?1 WHERE id = ?2 AND status = 'running'",
-  )
-    .bind(requestedAt, workRequestId)
-    .run();
+  await dataOf(env).read.run`UPDATE work_requests SET cancel_requested_at = COALESCE(cancel_requested_at, ${requestedAt}), updated_at = ${requestedAt} WHERE id = ${workRequestId} AND status = 'running'`;
 
   const active = await env.SYNTILA_DB.prepare(
     `SELECT wa.id AS assignmentId, wa.execution_workspace_id AS workspaceId,
@@ -1640,16 +1591,8 @@ async function cancelWorkRequest(
   ]);
   await releaseThreadLeaseAfterCancel(env, row.threadId, workRequestId);
   if (!active) {
-    await env.SYNTILA_DB.prepare(
-      "UPDATE workflow_tasks SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status = 'running'",
-    )
-      .bind(now, workRequestId)
-      .run();
-    const run = await env.SYNTILA_DB.prepare(
-      "SELECT id FROM runs WHERE work_request_id = ?1 ORDER BY created_at DESC LIMIT 1",
-    )
-      .bind(workRequestId)
-      .first<{ id: string }>();
+    await dataOf(env).read.run`UPDATE workflow_tasks SET status = 'cancelled', finished_at = ${now}, updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status = 'running'`;
+    const run = await dataOf(env).read.row<{ id: string }>`SELECT id FROM runs WHERE work_request_id = ${workRequestId} ORDER BY created_at DESC LIMIT 1`;
     if (run && env.SYNTILA_RUN_WORKFLOW) {
       const instanceId = await resolveWorkflowInstanceId(env, run.id);
       const instance = await env.SYNTILA_RUN_WORKFLOW.get(instanceId);
@@ -1753,7 +1696,7 @@ async function releaseThreadLeaseAfterCancel(
 ): Promise<void> {
   const namespace = env.SYNTILA_THREAD_COORDINATOR;
   if (!namespace) return;
-  const lease = await activeThreadLease(env.SYNTILA_DB, workRequestId, threadId);
+  const lease = await activeThreadLease(dataOf(env).read, workRequestId, threadId);
   if (!lease) return;
   const response = await namespace.getByName(threadId).fetch(
     new Request("https://thread-coordinator/complete", {

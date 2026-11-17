@@ -1,4 +1,6 @@
 import { accountPlanRow } from "./queries.js";
+import { dataOf } from "../platform/data.js";
+import type { Query } from "../platform/data.js";
 import { HttpError } from "./routes/http-security.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "./assignment-transitions.js";
 
@@ -57,11 +59,8 @@ export async function countOwnedWorkspaces(
   env: Env,
   userId: string,
 ): Promise<number> {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT COUNT(*) AS count FROM execution_workspaces WHERE owner_user_id = ?1 AND status != 'revoked'",
-  )
-    .bind(userId)
-    .first<{ count: number }>();
+  const row = await dataOf(env).read.row<{ count: number }>`
+    SELECT COUNT(*) AS count FROM execution_workspaces WHERE owner_user_id = ${userId} AND status != 'revoked'`;
   return row?.count ?? 0;
 }
 
@@ -189,13 +188,10 @@ export async function spaceMemberCapacityRefused(
   spaceId: string,
   excludeInvitationId: string | null = null,
 ): Promise<boolean> {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT CASE WHEN ${spaceMemberAdmissionSql("?1", excludeInvitationId ? "?2" : null)}
-                 THEN 0 ELSE 1 END AS refused`,
-  )
-    .bind(...(excludeInvitationId ? [spaceId, excludeInvitationId] : [spaceId]))
-    .first<{ refused: number }>();
-  return row?.refused === 1;
+  const q = dataOf(env).read;
+  const row = await q.row<{ refused: boolean }>`
+    SELECT NOT ${spaceMemberAdmission(q, spaceId, excludeInvitationId)} AS refused`;
+  return row?.refused === true;
 }
 
 export interface SpaceMemberUsage {
@@ -210,24 +206,21 @@ export async function getSpaceMemberUsage(
   spaceId: string,
   now: Date = new Date(),
 ): Promise<SpaceMemberUsage> {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT (SELECT COUNT(*) FROM space_memberships WHERE space_id = ?1) AS members,
-            (SELECT COUNT(*) FROM space_invitations
-              WHERE space_id = ?1 AND status = 'pending'
-                AND expires_at > ?2::timestamptz) AS pending,
-            ap.tier AS tier, ap.status AS status,
-            ap.current_period_end AS current_period_end
-       FROM spaces s LEFT JOIN account_plans ap ON ap.user_id = s.owner_user_id
-      WHERE s.id = ?1`,
-  )
-    .bind(spaceId, now.toISOString())
-    .first<{
-      members: number;
-      pending: number;
-      tier: AccountTier | null;
-      status: AccountPlanStatus | null;
-      current_period_end: string | null;
-    }>();
+  const row = await dataOf(env).read.row<{
+    members: number;
+    pending: number;
+    tier: AccountTier | null;
+    status: AccountPlanStatus | null;
+    current_period_end: string | null;
+  }>`
+    SELECT (SELECT COUNT(*) FROM space_memberships WHERE space_id = ${spaceId}) AS members,
+           (SELECT COUNT(*) FROM space_invitations
+             WHERE space_id = ${spaceId} AND status = 'pending'
+               AND expires_at > ${now.toISOString()}::timestamptz) AS pending,
+           ap.tier AS tier, ap.status AS status,
+           ap.current_period_end AS current_period_end
+      FROM spaces s LEFT JOIN account_plans ap ON ap.user_id = s.owner_user_id
+     WHERE s.id = ${spaceId}`;
   const tier = effectiveTier(
     row?.tier && row.status
       ? {
@@ -300,7 +293,7 @@ export async function getAttachmentLimits(
   userId: string,
   now: Date = new Date(),
 ): Promise<AttachmentLimits> {
-  const row = await accountPlanRow<AccountPlanRow>(env.SYNTILA_DB, userId);
+  const row = await accountPlanRow<AccountPlanRow>(dataOf(env).read, userId);
   return attachmentLimits(effectiveTier(row, now));
 }
 
@@ -402,6 +395,74 @@ export function pluginAssignmentAdmissionSql(
     )})`;
 }
 
+/* Data-layer (tagged SQL) versions of the SQL builders above and below. Each
+ * takes the Query it will be embedded in and plain values, not parameter
+ * numbers. The string builders stay until their last caller has moved. */
+
+/** `owner` is a value (`${userId}`) or a column (`q.raw("ew.owner_user_id")`). */
+export function paidOwner(q: Query, owner: unknown): unknown {
+  return q.frag`EXISTS (SELECT 1 FROM account_plans ap
+    WHERE ap.user_id = ${owner} AND ap.tier = 'paid'
+      AND ap.status IN ('active', 'trialing', 'past_due')
+      AND (ap.current_period_end IS NULL
+           OR ap.current_period_end > now()))`;
+}
+
+export function executionSlotAdmission(q: Query, userId: string, taskId: string, cutoff: string): unknown {
+  const active = q.raw(ACTIVE_ASSIGNMENT_STATUS_SQL);
+  const limit = q.raw(String(FREE_CONCURRENT_EXECUTION_LIMIT));
+  return q.frag`(${paidOwner(q, userId)}
+    OR ((SELECT COUNT(*) FROM worker_assignments sa
+          WHERE sa.requested_by_user_id = ${userId}
+            AND sa.status IN (${active}))
+        < ${limit}
+        AND NOT EXISTS (
+          SELECT 1 FROM account_execution_waiters w
+           WHERE w.requester_user_id = ${userId}
+             AND w.task_id != ${taskId}
+             AND w.reason = 'account_concurrency_limit'
+             AND w.heartbeat_at >= ${cutoff}::timestamptz
+             AND (NOT EXISTS (SELECT 1 FROM account_execution_waiters me
+                               WHERE me.task_id = ${taskId})
+                  OR w.enqueued_at < (SELECT me.enqueued_at
+                                        FROM account_execution_waiters me
+                                       WHERE me.task_id = ${taskId})
+                  OR (w.enqueued_at = (SELECT me.enqueued_at
+                                         FROM account_execution_waiters me
+                                        WHERE me.task_id = ${taskId})
+                      AND w.task_id < ${taskId})))))`;
+}
+
+export function pluginAssignmentAdmission(q: Query, workerTypeId: string, workspaceId: string): unknown {
+  return q.frag`(NOT EXISTS (SELECT 1 FROM worker_catalog wc
+                        WHERE wc.worker_type_id = ${workerTypeId}
+                          AND wc.origin = 'plugin')
+    OR ${paidOwner(q, q.frag`(SELECT pw.owner_user_id FROM execution_workspaces pw WHERE pw.id = ${workspaceId})`)})`;
+}
+
+export function personalWorkspaceAdmission(q: Query, userId: string): unknown {
+  const limit = q.raw(String(FREE_PERSONAL_WORKSPACE_LIMIT));
+  return q.frag`(${paidOwner(q, userId)}
+    OR (SELECT COUNT(*) FROM execution_workspaces ow
+         WHERE ow.owner_user_id = ${userId} AND ow.status != 'revoked')
+       < ${limit})`;
+}
+
+/** Accepted human members plus valid pending invitations, which reserve a slot. */
+export function spaceMemberUsage(q: Query, spaceId: string, excludeInvitationId: string | null = null): unknown {
+  const exclude = excludeInvitationId ? q.frag` AND pi.id != ${excludeInvitationId}` : q.raw("");
+  return q.frag`((SELECT COUNT(*) FROM space_memberships sm WHERE sm.space_id = ${spaceId})
+    + (SELECT COUNT(*) FROM space_invitations pi
+        WHERE pi.space_id = ${spaceId} AND pi.status = 'pending'
+          AND pi.expires_at > now()${exclude}))`;
+}
+
+export function spaceMemberAdmission(q: Query, spaceId: string, excludeInvitationId: string | null = null): unknown {
+  const limit = q.raw(String(FREE_SPACE_MEMBER_LIMIT));
+  return q.frag`(${paidOwner(q, q.frag`(SELECT so.owner_user_id FROM spaces so WHERE so.id = ${spaceId})`)}
+    OR ${spaceMemberUsage(q, spaceId, excludeInvitationId)} < ${limit})`;
+}
+
 export function effectiveTier(
   row: AccountPlanRow | null,
   now: Date = new Date(),
@@ -419,7 +480,7 @@ export async function getAccountPlan(
   userId: string,
   now: Date = new Date(),
 ): Promise<AccountPlan> {
-  const row = await accountPlanRow<AccountPlanRow>(env.SYNTILA_DB, userId);
+  const row = await accountPlanRow<AccountPlanRow>(dataOf(env).read, userId);
   const tier = effectiveTier(row, now);
   return {
     tier,

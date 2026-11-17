@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import {
   handleListWorkspaceWorkerCatalog,
@@ -186,7 +187,7 @@ describe("Workspace Worker inventory catalog metadata", () => {
       }),
     };
     const env = {
-      SYNTILA_DB: db,
+      SYNTILA_DB: withSql(db),
     } as unknown as Env;
 
     const response = await handleListWorkspaceWorkerCatalog(
@@ -265,7 +266,7 @@ describe("Workspace Worker inventory catalog metadata", () => {
     };
     const env = {
       SYNTILA_ENVIRONMENT: "development",
-      SYNTILA_DB: db,
+      SYNTILA_DB: withSql(db),
       TEST_AUTHENTICATION: async () => ({ userId: "user-1" }),
     } as unknown as Env;
 

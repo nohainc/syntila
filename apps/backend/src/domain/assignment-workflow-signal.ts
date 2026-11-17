@@ -1,3 +1,4 @@
+import { dataOf } from "../platform/data.js";
 import { tryLogDiagnosticEvent } from "./observability.js";
 import { wakeNextExecutionWaiter } from "./account-execution-slots.js";
 import { scheduleLostWorkflowCheck } from "./thread-coordinator.js";
@@ -81,16 +82,12 @@ export async function signalAssignmentTerminal(
   now: () => Date = () => new Date(),
 ): Promise<WorkflowSignalOutcome> {
   try {
-    const row = await env.SYNTILA_DB.prepare(
-      `SELECT wa.id, wa.status, wa.attempt_id, wa.task_id, wa.run_id,
+    const row = await dataOf(env).read.row<SignalRow>`SELECT wa.id, wa.status, wa.attempt_id, wa.task_id, wa.run_id,
               wa.workflow_signaled_at, r.workflow_instance_id,
               wa.requested_by_user_id
          FROM worker_assignments wa
          LEFT JOIN runs r ON r.id = wa.run_id
-        WHERE wa.id = ?1`,
-    )
-      .bind(assignmentId)
-      .first<SignalRow>();
+        WHERE wa.id = ${assignmentId}`;
     if (!row || !TERMINAL_STATUSES.includes(row.status)) return "not_terminal";
     if (row.workflow_signaled_at) return "already_signaled";
     // The requester's execution slot is free once this status is durable:
@@ -106,12 +103,8 @@ export async function signalAssignmentTerminal(
     // the request; the Thread coordinator checks after a grace period.
     await scheduleLostWorkflowCheck(env, assignmentId);
     const stamp = async (): Promise<void> => {
-      await env.SYNTILA_DB.prepare(
-        `UPDATE worker_assignments SET workflow_signaled_at = ?1
-          WHERE id = ?2 AND workflow_signaled_at IS NULL`,
-      )
-        .bind(now().toISOString(), assignmentId)
-        .run();
+      await dataOf(env).read.run`UPDATE worker_assignments SET workflow_signaled_at = ${now().toISOString()}
+          WHERE id = ${assignmentId} AND workflow_signaled_at IS NULL`;
     };
     if (!row.workflow_instance_id) {
       await stamp();
@@ -134,13 +127,9 @@ export async function signalAssignmentTerminal(
         payload,
       });
     } catch {
-      await env.SYNTILA_DB.prepare(
-        `UPDATE worker_assignments
+      await dataOf(env).read.run`UPDATE worker_assignments
             SET workflow_signal_attempts = workflow_signal_attempts + 1
-          WHERE id = ?1 AND workflow_signaled_at IS NULL`,
-      )
-        .bind(assignmentId)
-        .run();
+          WHERE id = ${assignmentId} AND workflow_signaled_at IS NULL`;
       tryLogDiagnosticEvent({
         assignmentId,
         runId: row.run_id,

@@ -5,6 +5,7 @@ import {
   isTerminalAssignmentStatus,
   type AssignmentLifecycleStatus,
 } from "@syntila/core";
+import type { Query } from "../platform/data.js";
 
 /**
  * Cloud's only writer of `worker_assignments.status` for message-driven
@@ -90,26 +91,23 @@ const KNOWN = new Set<string>(ASSIGNMENT_LIFECYCLE_STATUSES);
 /**
  * SQL fragment recording the event that starts the next deadline. First write
  * wins (`COALESCE`), so a replayed message can never push a deadline back.
- * `?2` is the transition time.
  */
-export function assignmentMilestoneSql(
-  target: AssignmentLifecycleStatus,
-): string {
+function milestone(q: Query, target: AssignmentLifecycleStatus, now: string): unknown {
   switch (target) {
     case "dispatched":
-      return ", dispatched_at = COALESCE(dispatched_at, ?2)";
+      return q.frag`, dispatched_at = COALESCE(dispatched_at, ${now})`;
     case "acknowledged":
-      return ", acknowledged_at = COALESCE(acknowledged_at, ?2)";
+      return q.frag`, acknowledged_at = COALESCE(acknowledged_at, ${now})`;
     case "running":
       // A start ack that overtakes the admission ack still admits the work.
-      return ", acknowledged_at = COALESCE(acknowledged_at, ?2), running_at = COALESCE(running_at, ?2)";
+      return q.frag`, acknowledged_at = COALESCE(acknowledged_at, ${now}), running_at = COALESCE(running_at, ${now})`;
     default:
-      return "";
+      return q.raw("");
   }
 }
 
 export async function transitionAssignment(
-  db: D1Database,
+  q: Query,
   input: AssignmentTransitionInput,
 ): Promise<AssignmentTransitionResult> {
   const { fence, to } = input;
@@ -118,14 +116,13 @@ export async function transitionAssignment(
     (status) => !input.onlyFrom || input.onlyFrom.includes(status),
   );
   if (sources.length === 0) {
-    return classify(db, input);
+    return classify(q, input);
   }
 
-  const values: unknown[] = [to, now, fence.assignmentId];
-  if (input.errorJson !== undefined) values.push(input.errorJson);
-  const errorSql = input.errorJson !== undefined ? ", error_json = ?4" : "";
-  const milestoneSql = assignmentMilestoneSql(to);
-  let fenceSql = "";
+  const errorSql = input.errorJson !== undefined
+    ? q.frag`, error_json = ${input.errorJson}::text::jsonb`
+    : q.raw("");
+  let fenceSql: unknown = q.raw("");
   const fenced: Array<[string, string | undefined]> = [
     ["attempt_id", fence.attemptId],
     ["execution_workspace_id", fence.executionWorkspaceId],
@@ -133,24 +130,19 @@ export async function transitionAssignment(
   ];
   for (const [column, value] of fenced) {
     if (value === undefined) continue;
-    values.push(value);
-    fenceSql += ` AND ${column} = ?${values.length}`;
+    fenceSql = q.frag`${fenceSql} AND ${q.raw(column)} = ${value}`;
   }
-  const sourceSql = sources.map((status) => `'${status}'`).join(", ");
-  // D1 `meta.changes` also counts writes made by triggers, so the only
+  const sourceSql = q.raw(sources.map((status) => `'${status}'`).join(", "));
+  // `meta.changes` also counts writes made by triggers, so the only
   // reliable signal that this statement changed the row is RETURNING.
-  const returned = await db
-    .prepare(
-      `UPDATE worker_assignments SET status = ?1, updated_at = ?2${errorSql}${milestoneSql}
-        WHERE id = ?3 AND status IN (${sourceSql})${fenceSql}
-        RETURNING id`,
-    )
-    .bind(...values)
-    .first<{ id: string }>();
+  const returned = await q.row<{ id: string }>`
+    UPDATE worker_assignments SET status = ${to}, updated_at = ${now}${errorSql}${milestone(q, to, now)}
+     WHERE id = ${fence.assignmentId} AND status IN (${sourceSql})${fenceSql}
+     RETURNING id`;
   const result: AssignmentTransitionResult =
     returned?.id === fence.assignmentId
       ? { outcome: "applied", applied: true }
-      : await classify(db, input);
+      : await classify(q, input);
   if (
     input.startTaskId &&
     to === "running" &&
@@ -159,38 +151,30 @@ export async function transitionAssignment(
     // Idempotent and gated on the assignment actually being Running, so a
     // replay repairs a projection that a crash left behind but a terminal
     // or superseded assignment can never start its task.
-    await db
-      .prepare(
-        `UPDATE workflow_tasks SET status = 'running',
-                started_at = COALESCE(started_at, ?1), updated_at = ?1
-           WHERE id = ?2 AND status IN ('queued', 'waiting')
-             AND EXISTS (SELECT 1 FROM worker_assignments
-                          WHERE id = ?3 AND status = 'running')`,
-      )
-      .bind(now, input.startTaskId, fence.assignmentId)
-      .run();
+    await q.run`
+      UPDATE workflow_tasks SET status = 'running',
+             started_at = COALESCE(started_at, ${now}), updated_at = ${now}
+       WHERE id = ${input.startTaskId} AND status IN ('queued', 'waiting')
+         AND EXISTS (SELECT 1 FROM worker_assignments
+                      WHERE id = ${fence.assignmentId} AND status = 'running')`;
   }
   return result;
 }
 
 async function classify(
-  db: D1Database,
+  q: Query,
   input: AssignmentTransitionInput,
 ): Promise<AssignmentTransitionResult> {
   const applied = false;
   const { fence, to } = input;
-  const row = await db
-    .prepare(
-      `SELECT status, attempt_id, execution_workspace_id, runtime_identity_id
-         FROM worker_assignments WHERE id = ?1`,
-    )
-    .bind(fence.assignmentId)
-    .first<{
-      status: string;
-      attempt_id: string | null;
-      execution_workspace_id: string;
-      runtime_identity_id: string;
-    }>();
+  const row = await q.row<{
+    status: string;
+    attempt_id: string | null;
+    execution_workspace_id: string;
+    runtime_identity_id: string;
+  }>`
+    SELECT status, attempt_id, execution_workspace_id, runtime_identity_id
+      FROM worker_assignments WHERE id = ${fence.assignmentId}`;
   if (!row) return { outcome: "not_found", applied };
   const currentStatus = row.status;
   if (

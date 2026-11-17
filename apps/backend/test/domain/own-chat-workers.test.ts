@@ -24,12 +24,19 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
     ? { memberPermissions: { member: memberRights } }
     : {};
   const env = {
-    SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) => {
+    SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const text = strings.join("?");
+      if (text.includes("space_workflow_settings")) return [{ workspaceId: "space-ws" }];
+      if (text.includes("FROM workspace_worker_inventory i") && text.includes("JOIN execution_workspaces"))
+        return inventory.filter((w) => w.workerId === values[0] && w.ownerUserId === values[1]);
+      if (text.includes("FROM workspace_worker_inventory i"))
+        return inventory.filter((w) => w.workspaceId === values[0]);
+      if (text.includes("FROM execution_workspaces WHERE id"))
+        return [{ ownerUserId: inventory.find((w) => w.workspaceId === values[0])?.ownerUserId }];
+      if (text.includes("FROM workspace_space_grants")) return [];
       if (text.includes("owner_user_id")) return [{ ownerUserId: "owner" }]; // spaceOwnerOf
       if (text.includes("settings_json")) return [{ role: "collaborator", settingsJson: JSON.stringify(settings), kind, isSupport: false }]; // loadSpacePermissions
       if (text.includes("FROM space_memberships")) return [{ role: "collaborator" }]; // spaceMembership
-      if (!text.includes("UNION ALL")) return [];
       return [];
     }) as any),
     SYNTILA_DB: {

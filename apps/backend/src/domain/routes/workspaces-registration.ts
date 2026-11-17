@@ -137,17 +137,13 @@ async function workspaceIdentityFailure(
   );
   if (bindingIssue) return bindingIssue;
 
-  const runtime = await env.SYNTILA_DB.prepare(
-    `SELECT i.workspace_id AS workspaceId, w.owner_user_id AS ownerUserId
-       FROM workspace_runtime_identities i
-       JOIN execution_workspaces w ON w.id = i.workspace_id
-      WHERE i.id = ?1`,
-  )
-    .bind(runtimeId)
-    .first<{
+  const runtime = await dataOf(env).read.row<{
       workspaceId: string;
       ownerUserId: string;
-    }>();
+    }>`SELECT i.workspace_id AS "workspaceId", w.owner_user_id AS "ownerUserId"
+       FROM workspace_runtime_identities i
+       JOIN execution_workspaces w ON w.id = i.workspace_id
+      WHERE i.id = ${runtimeId}`;
   if (!runtime) {
     return workspaceOwnershipFailure(
       "workspace_runtime_missing",
@@ -241,16 +237,12 @@ export async function handleCheckWorkspaceOwnership(
 
   let localRow: WorkspaceOwnershipRow | null = null;
   if (workspaceId && runtimeId) {
-    localRow = await env.SYNTILA_DB.prepare(
-      `SELECT i.id AS runtimeId, i.workspace_id AS workspaceId,
-              i.installation_id AS installationId, w.owner_user_id AS ownerUserId,
-              w.status AS workspaceStatus, i.revoked_at AS revokedAt
+    localRow = await dataOf(env).read.row<WorkspaceOwnershipRow>`SELECT i.id AS "runtimeId", i.workspace_id AS "workspaceId",
+              i.installation_id AS "installationId", w.owner_user_id AS "ownerUserId",
+              w.status AS "workspaceStatus", i.revoked_at AS "revokedAt"
          FROM workspace_runtime_identities i
          JOIN execution_workspaces w ON w.id = i.workspace_id
-        WHERE i.id = ?1 AND i.workspace_id = ?2`,
-    )
-      .bind(runtimeId, workspaceId)
-      .first<WorkspaceOwnershipRow>();
+        WHERE i.id = ${runtimeId} AND i.workspace_id = ${workspaceId}`;
   }
 
   if (installation?.status === "active") {
@@ -296,31 +288,23 @@ export async function handleCheckWorkspaceOwnership(
     if (installation.ownerUserId !== session.userId) {
       return json({ state: "released" });
     }
-    const latestRuntime = await env.SYNTILA_DB.prepare(
-      `SELECT i.id AS runtimeId, w.status AS workspaceStatus
+    const latestRuntime = await dataOf(env).read.row<{ runtimeId: string; workspaceStatus: string }>`SELECT i.id AS "runtimeId", w.status AS "workspaceStatus"
          FROM workspace_runtime_identities i
          JOIN execution_workspaces w ON w.id = i.workspace_id
-        WHERE i.workspace_id = ?1
+        WHERE i.workspace_id = ${installation.workspaceId}
         ORDER BY i.created_at DESC, i.id DESC
-        LIMIT 1`,
-    )
-      .bind(installation.workspaceId)
-      .first<{ runtimeId: string; workspaceStatus: string }>();
+        LIMIT 1`;
     return json(currentOwnerOwnership("released", installation, latestRuntime));
   }
 
   if (localRow?.ownerUserId === session.userId) {
-    const localInstallation = await env.SYNTILA_DB.prepare(
-      `SELECT wi.installation_id AS installationId,
-              wi.owner_user_id AS ownerUserId, wi.workspace_id AS workspaceId,
-              wi.status AS status, wi.released_at AS releasedAt,
-              w.status AS workspaceStatus, w.name AS workspaceName
+    const localInstallation = await dataOf(env).read.row<WorkspaceInstallationRow>`SELECT wi.installation_id AS "installationId",
+              wi.owner_user_id AS "ownerUserId", wi.workspace_id AS "workspaceId",
+              wi.status AS status, wi.released_at AS "releasedAt",
+              w.status AS "workspaceStatus", w.name AS "workspaceName"
          FROM workspace_installations wi
          JOIN execution_workspaces w ON w.id = wi.workspace_id
-        WHERE wi.workspace_id = ?1 AND wi.status = 'active'`,
-    )
-      .bind(localRow.workspaceId)
-      .first<WorkspaceInstallationRow>();
+        WHERE wi.workspace_id = ${localRow.workspaceId} AND wi.status = 'active'`;
     if (localInstallation?.ownerUserId === session.userId) {
       return json(
         currentOwnerOwnership("installation_conflict", localInstallation, {
@@ -438,11 +422,12 @@ export async function handleReconcileWorkspaceOwnership(
     .first<{ released: number }>();
   if (releaseHistory) return json({ state: "released" });
 
-  const legacy = await env.SYNTILA_DB.prepare(
-    `SELECT i.id AS runtimeId, i.workspace_id AS workspaceId,
-            i.installation_id AS installationId, w.owner_user_id AS ownerUserId,
-            w.status AS workspaceStatus, i.revoked_at AS revokedAt,
-            w.name AS workspaceName,
+  const legacy = await dataOf(env).read.row<
+      WorkspaceOwnershipRow & { workspaceName: string; auditBinding: number }
+    >`SELECT i.id AS "runtimeId", i.workspace_id AS "workspaceId",
+            i.installation_id AS "installationId", w.owner_user_id AS "ownerUserId",
+            w.status AS "workspaceStatus", i.revoked_at AS "revokedAt",
+            w.name AS "workspaceName",
             (SELECT COUNT(*) FROM workspace_audit_log a
               WHERE a.workspace_id = i.workspace_id
                 AND a.target_type = 'workspace_runtime'
@@ -450,15 +435,10 @@ export async function handleReconcileWorkspaceOwnership(
                 AND a.action IN ('workspace.registered', 'workspace.recovered')
                 AND CASE WHEN a.details_json IS JSON
                   THEN (a.details_json::jsonb #>> '{installationId}')
-                  ELSE NULL END = ?3) AS auditBinding
+                  ELSE NULL END = ${installationId}) AS "auditBinding"
        FROM workspace_runtime_identities i
        JOIN execution_workspaces w ON w.id = i.workspace_id
-      WHERE i.id = ?1 AND i.workspace_id = ?2`,
-  )
-    .bind(runtimeId, workspaceId, installationId)
-    .first<
-      WorkspaceOwnershipRow & { workspaceName: string; auditBinding: number }
-    >();
+      WHERE i.id = ${runtimeId} AND i.workspace_id = ${workspaceId}`;
   if (
     legacy &&
     (legacy.installationId === installationId || legacy.auditBinding > 0) &&
@@ -471,7 +451,7 @@ export async function handleReconcileWorkspaceOwnership(
   if (
     !legacy ||
     legacy.ownerUserId !== session.userId ||
-    (legacy.installationId !== installationId && legacy.auditBinding === 0) ||
+    (legacy.installationId !== installationId && Number(legacy.auditBinding) === 0) ||
     (legacy.installationId !== null &&
       legacy.installationId !== installationId) ||
     legacy.workspaceStatus === "revoked"
@@ -479,28 +459,24 @@ export async function handleReconcileWorkspaceOwnership(
     return json({ state: "not_reconcilable" }, { status: 409 });
   }
 
-  const competing = await env.SYNTILA_DB.prepare(
-    `SELECT
-       (SELECT COUNT(DISTINCT i.workspace_id)
-          FROM workspace_runtime_identities i
-          JOIN execution_workspaces w ON w.id = i.workspace_id
-         WHERE i.installation_id = ?1
-           AND (i.workspace_id <> ?2 OR w.owner_user_id <> ?3)) AS conflictingHistory,
-       (SELECT COUNT(*) FROM workspace_runtime_identities i
-          WHERE i.installation_id = ?1 AND i.revoked_at IS NULL
-            AND i.workspace_id <> ?2) AS competingActiveRuntime,
-       (SELECT COUNT(*) FROM workspace_installations wi
-          WHERE wi.workspace_id = ?2 AND wi.status = 'active') AS competingWorkspaceBinding,
-       (SELECT COUNT(*) FROM workspace_runtime_identities i
-          WHERE i.workspace_id = ?2 AND i.revoked_at IS NULL) AS activeRuntimeCount`,
-  )
-    .bind(installationId, workspaceId, session.userId)
-    .first<{
+  const competing = await dataOf(env).read.row<{
       conflictingHistory: number;
       competingActiveRuntime: number;
       competingWorkspaceBinding: number;
       activeRuntimeCount: number;
-    }>();
+    }>`SELECT
+       (SELECT COUNT(DISTINCT i.workspace_id)
+          FROM workspace_runtime_identities i
+          JOIN execution_workspaces w ON w.id = i.workspace_id
+         WHERE i.installation_id = ${installationId}
+           AND (i.workspace_id <> ${workspaceId} OR w.owner_user_id <> ${session.userId})) AS "conflictingHistory",
+       (SELECT COUNT(*) FROM workspace_runtime_identities i
+          WHERE i.installation_id = ${installationId} AND i.revoked_at IS NULL
+            AND i.workspace_id <> ${workspaceId}) AS "competingActiveRuntime",
+       (SELECT COUNT(*) FROM workspace_installations wi
+          WHERE wi.workspace_id = ${workspaceId} AND wi.status = 'active') AS "competingWorkspaceBinding",
+       (SELECT COUNT(*) FROM workspace_runtime_identities i
+          WHERE i.workspace_id = ${workspaceId} AND i.revoked_at IS NULL) AS "activeRuntimeCount"`;
   if (
     !competing ||
     competing.conflictingHistory > 0 ||
@@ -590,26 +566,22 @@ export async function handleDisconnectDesktopWorkspace(
     installationId,
   );
   if (bindingIssue) return bindingIssue;
-  const owned = await env.SYNTILA_DB.prepare(
-    `SELECT i.id AS runtimeId, i.workspace_id AS workspaceId,
-            i.credential_token_hash AS credentialHash,
-            i.revoked_at AS revokedAt, wi.owner_user_id AS ownerUserId,
-            w.status AS workspaceStatus
-       FROM workspace_runtime_identities i
-       JOIN execution_workspaces w ON w.id = i.workspace_id
-       JOIN workspace_installations wi ON wi.workspace_id = i.workspace_id
-      WHERE wi.installation_id = ?1 AND wi.status = 'active'
-        AND i.workspace_id = ?2 AND i.id = ?3`,
-  )
-    .bind(installationId, workspaceId, runtimeId)
-    .first<{
+  const owned = await dataOf(env).read.row<{
       runtimeId: string;
       workspaceId: string;
       credentialHash: string;
       revokedAt: string | null;
       ownerUserId: string;
       workspaceStatus: string;
-    }>();
+    }>`SELECT i.id AS "runtimeId", i.workspace_id AS "workspaceId",
+            i.credential_token_hash AS "credentialHash",
+            i.revoked_at AS "revokedAt", wi.owner_user_id AS "ownerUserId",
+            w.status AS "workspaceStatus"
+       FROM workspace_runtime_identities i
+       JOIN execution_workspaces w ON w.id = i.workspace_id
+       JOIN workspace_installations wi ON wi.workspace_id = i.workspace_id
+      WHERE wi.installation_id = ${installationId} AND wi.status = 'active'
+        AND i.workspace_id = ${workspaceId} AND i.id = ${runtimeId}`;
   if (!owned || owned.ownerUserId !== session.userId) {
     return workspaceIdentityFailure(
       env,
@@ -731,22 +703,18 @@ export async function handleReleaseDesktopWorkspace(
     installationId,
   );
   if (bindingIssue) return bindingIssue;
-  const owned = await env.SYNTILA_DB.prepare(
-    `SELECT i.id AS runtimeId, i.workspace_id AS workspaceId,
-            wi.owner_user_id AS ownerUserId, w.status AS workspaceStatus
-       FROM workspace_runtime_identities i
-       JOIN execution_workspaces w ON w.id = i.workspace_id
-       JOIN workspace_installations wi ON wi.workspace_id = i.workspace_id
-      WHERE wi.installation_id = ?1 AND wi.status = 'active'
-        AND i.workspace_id = ?2 AND i.id = ?3`,
-  )
-    .bind(installationId, workspaceId, runtimeId)
-    .first<{
+  const owned = await dataOf(env).read.row<{
       runtimeId: string;
       workspaceId: string;
       ownerUserId: string;
       workspaceStatus: string;
-    }>();
+    }>`SELECT i.id AS "runtimeId", i.workspace_id AS "workspaceId",
+            wi.owner_user_id AS "ownerUserId", w.status AS "workspaceStatus"
+       FROM workspace_runtime_identities i
+       JOIN execution_workspaces w ON w.id = i.workspace_id
+       JOIN workspace_installations wi ON wi.workspace_id = i.workspace_id
+      WHERE wi.installation_id = ${installationId} AND wi.status = 'active'
+        AND i.workspace_id = ${workspaceId} AND i.id = ${runtimeId}`;
   if (!owned || owned.ownerUserId !== session.userId) {
     return workspaceIdentityFailure(
       env,
@@ -945,17 +913,13 @@ export async function handleRegisterWorkspaceFromDesktop(
   // one created, instead of being counted as another Workspace.
   return inTransaction(env, "workspace.register", async (env, tx) => {
   await tx.lock("syntila.installation", installationId);
-  const installation = await env.SYNTILA_DB.prepare(
-    `SELECT wi.installation_id AS installationId,
-            wi.owner_user_id AS ownerUserId, wi.workspace_id AS workspaceId,
-            wi.status AS status, wi.released_at AS releasedAt,
-            w.name AS workspaceName, w.status AS workspaceStatus
+  const installation = await dataOf(env).read.row<WorkspaceInstallationRow>`SELECT wi.installation_id AS "installationId",
+            wi.owner_user_id AS "ownerUserId", wi.workspace_id AS "workspaceId",
+            wi.status AS status, wi.released_at AS "releasedAt",
+            w.name AS "workspaceName", w.status AS "workspaceStatus"
        FROM workspace_installations wi
        JOIN execution_workspaces w ON w.id = wi.workspace_id
-      WHERE wi.installation_id = ?1`,
-  )
-    .bind(installationId)
-    .first<WorkspaceInstallationRow>();
+      WHERE wi.installation_id = ${installationId}`;
   if (
     installation?.status === "active" &&
     installation.ownerUserId !== session.userId

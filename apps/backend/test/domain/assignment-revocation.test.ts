@@ -151,11 +151,11 @@ describe("safe assignment revocation", () => {
       intent: timeoutIntent,
     });
     const stamp = f.row().updated_at;
-    const admit = await transitionAssignment(f.db as never, {
+    const admit = await transitionAssignment(f.read, {
       fence: f.fence,
       to: "acknowledged",
     });
-    const started = await transitionAssignment(f.db as never, {
+    const started = await transitionAssignment(f.read, {
       fence: f.fence,
       to: "running",
       startTaskId: "T",

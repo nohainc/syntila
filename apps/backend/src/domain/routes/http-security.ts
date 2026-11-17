@@ -1,3 +1,4 @@
+import { dataOf } from "../../platform/data.js";
 import {
   hasProfileLabPermission,
   isProfileLabOwner,
@@ -93,22 +94,9 @@ export async function recordAudit(
     const spaceId =
       typeof details.spaceId === "string" ? details.spaceId : null;
     if (!spaceId) return;
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO space_audit_log
+    await dataOf(env).read.run`INSERT INTO space_audit_log
          (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-       VALUES (?1, ?2, 'user', ?3, ?4, ?5, ?6, ?7, ?8)`,
-    )
-      .bind(
-        `audit-${crypto.randomUUID()}`,
-        spaceId,
-        context.userId,
-        action,
-        targetType,
-        targetId,
-        JSON.stringify(details),
-        new Date().toISOString(),
-      )
-      .run();
+       VALUES (${`audit-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(details)}::text::jsonb, ${new Date().toISOString()})`;
     return;
   }
   const values = [
@@ -159,11 +147,7 @@ export async function resolveWorkflowInstanceId(
   if (!idempotencyKey) return workflowInstanceId(runId);
   const candidate = workflowInstanceId(idempotencyKey);
   const now = new Date().toISOString();
-  await env.SYNTILA_DB.prepare(
-    "UPDATE runs SET workflow_instance_id = COALESCE(workflow_instance_id, ?1), updated_at = ?2 WHERE id = ?3",
-  )
-    .bind(candidate, now, runId)
-    .run();
+  await dataOf(env).read.run`UPDATE runs SET workflow_instance_id = COALESCE(workflow_instance_id, ${candidate}), updated_at = ${now} WHERE id = ${runId}`;
   const stored = await env.SYNTILA_DB.prepare(
     SELECT_RUNS_BY_ID,
   )
@@ -343,7 +327,7 @@ export async function authorizeRequest(
       authorize(context, permission, spaceId);
     }
   } catch (error) {
-    await recordAuthAuditEvent(env.SYNTILA_DB, {
+    await recordAuthAuditEvent(dataOf(env).read, {
       action: "auth.authorization.denied",
       outcome: "denied",
       userId: context.userId,

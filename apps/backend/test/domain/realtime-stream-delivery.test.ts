@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { RealtimeGateway } from "../../src/domain/realtime-gateway.js";
 import { BoundedRealtimeQueue } from "../../src/domain/realtime-queue.js";
@@ -35,7 +36,7 @@ function harness(member = true) {
       };
     },
   };
-  const gateway = new RealtimeGateway({} as never, { SYNTILA_DB: db } as never);
+  const gateway = new RealtimeGateway({} as never, { SYNTILA_DB: withSql(db) } as never);
   const clients = Reflect.get(gateway, "clients") as Map<string, unknown>;
   clients.set("client", {
     socket,
@@ -155,7 +156,7 @@ describe("durable stream delivery", () => {
                   return args[0] === "workspace-activity" ? { owner: 1 } : null;
                 return null;
               },
-              all: async () => ({ results: rows }),
+              all: async () => ({ results: /FROM (realtime_events|worker_activity)/.test(query) ? rows : [] }),
             };
           },
         };
@@ -163,7 +164,7 @@ describe("durable stream delivery", () => {
     };
     const gateway = new RealtimeGateway(
       {} as never,
-      { SYNTILA_DB: db } as never,
+      { SYNTILA_DB: withSql(db) } as never,
     );
     const clients = Reflect.get(gateway, "clients") as Map<string, unknown>;
     clients.set("client", {
@@ -242,7 +243,7 @@ describe("durable stream delivery", () => {
     // A woken Durable Object starts with no memory of its connections.
     const gateway = new RealtimeGateway(
       state as never,
-      { SYNTILA_DB: db } as never,
+      { SYNTILA_DB: withSql(db) } as never,
     );
     const publish = (sequence: number) =>
       gateway.fetch(

@@ -1,3 +1,4 @@
+import { Data } from "../../src/platform/data.js";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import {
   ASSIGNMENT_TERMINAL_EVENT_TYPE,
@@ -76,17 +77,15 @@ describe("assignment terminal workflow signal", () => {
 
   it("recovers after event delivery succeeds but persisting its receipt fails", async () => {
     const { env, f, row, sent } = await fixture("completed");
-    const prepare = f.db.prepare.bind(f.db);
-    const interrupted = {
-      ...env,
-      SYNTILA_DB: {
-        prepare(sql: string) {
-          if (sql.includes("SET workflow_signaled_at"))
-            throw new Error("simulated restart before receipt");
-          return prepare(sql);
-        },
-      } as unknown as D1Database,
+    const real = (f.db as any).sql;
+    const failing: any = (strings: any, ...values: unknown[]) => {
+      if (Array.isArray(strings) && strings.join("?").includes("SET workflow_signaled_at"))
+        throw new Error("simulated restart before receipt");
+      return real(strings, ...values);
     };
+    failing.unsafe = (...a: unknown[]) => real.unsafe(...a);
+    failing.begin = (...a: unknown[]) => real.begin(...a);
+    const interrupted = { ...env, SYNTILA_DATA: new Data(failing) };
     expect(await signalAssignmentTerminal(interrupted, "A1")).toBe("failed");
     expect(sent).toHaveLength(1);
     expect(row().at).toBeNull();

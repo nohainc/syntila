@@ -22,17 +22,9 @@ export async function loadWorkflowWorkspace(
   userId: string,
   spaceId?: string,
 ) {
-  const global = await env.SYNTILA_DB.prepare(
-    "SELECT workspace_id AS workspaceId FROM user_workflow_settings WHERE user_id = ?1",
-  )
-    .bind(userId)
-    .first<{ workspaceId: string | null }>();
+  const global = await dataOf(env).read.row<{ workspaceId: string | null }>`SELECT workspace_id AS "workspaceId" FROM user_workflow_settings WHERE user_id = ${userId}`;
   const space = spaceId
-    ? await env.SYNTILA_DB.prepare(
-        "SELECT workspace_id AS workspaceId FROM space_workflow_settings WHERE space_id = ?1",
-      )
-        .bind(spaceId)
-        .first<{ workspaceId: string | null }>()
+    ? await dataOf(env).read.row<{ workspaceId: string | null }>`SELECT workspace_id AS "workspaceId" FROM space_workflow_settings WHERE space_id = ${spaceId}`
     : null;
   // A Space uses only its own choice; it never inherits the account's
   // Workspace (attaching a Workspace lets Work run on that machine).
@@ -118,11 +110,7 @@ export async function prepareWorkflowWorkspaceGrant(
       403,
       "Workspace is unavailable or not owned by the settings owner",
     );
-  const existing = await env.SYNTILA_DB.prepare(
-    "SELECT id,status,expires_at FROM workspace_space_grants WHERE space_id=?1 AND workspace_id=?2 AND status IN ('active','suspended')",
-  )
-    .bind(spaceId, workspaceId)
-    .first<{ id: string; status: string; expires_at: string | null }>();
+  const existing = await dataOf(env).read.row<{ id: string; status: string; expires_at: string | null }>`SELECT id,status,expires_at FROM workspace_space_grants WHERE space_id=${spaceId} AND workspace_id=${workspaceId} AND status IN ('active','suspended')`;
   if (
     existing?.status === "suspended" ||
     (existing?.expires_at && existing.expires_at <= now)
@@ -207,11 +195,7 @@ export async function handleWorkflowWorkspace(
   const context = await securityContext(request, env, ctx);
   let ownerUserId = context.userId;
   if (spaceId) {
-    const space = await env.SYNTILA_DB.prepare(
-      "SELECT s.owner_user_id AS ownerUserId, COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ?1 AND m.user_id = ?2",
-    )
-      .bind(spaceId, context.userId)
-      .first<{ ownerUserId: string; kind: string }>();
+    const space = await dataOf(env).read.row<{ ownerUserId: string; kind: string }>`SELECT s.owner_user_id AS "ownerUserId", COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id WHERE s.id = ${spaceId} AND m.user_id = ${context.userId}`;
     if (!space) throw new HttpError(403, "Space membership required");
     if (space.kind === "direct") {
       if (request.method !== "GET") {
@@ -237,16 +221,12 @@ export async function handleWorkflowWorkspace(
     )?.kind === "direct"
       ? await loadWorkflowWorkspace(env, ownerUserId)
       : await loadWorkflowWorkspace(env, ownerUserId, spaceId);
-  const owned = await env.SYNTILA_DB.prepare(
-    "SELECT id, name FROM execution_workspaces WHERE owner_user_id = ?1 AND status != 'revoked' ORDER BY name, id",
-  )
-    .bind(ownerUserId)
-    .all<{ id: string; name: string }>();
+  const owned = await dataOf(env).read.rows<{ id: string; name: string }>`SELECT id, name FROM execution_workspaces WHERE owner_user_id = ${ownerUserId} AND status != 'revoked' ORDER BY name, id`;
   // A Space, and the user-level default, may also run on a Workspace lent to
   // its owner; each Space then receives a grant capped by the borrower's mode.
   const choices = {
     results: [
-      ...owned.results,
+      ...owned,
       ...(await loadBorrowedWorkspaces(env, ownerUserId)).map(
         ({ id, name }) => ({ id, name }),
       ),

@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { pgD1 } from "./helpers/pg-d1";
 import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
@@ -68,7 +69,7 @@ describe("Workspace Profile download before Worker configuration", () => {
         };
       },
     };
-    env = { SYNTILA_DB: db } as unknown as Env;
+    env = { SYNTILA_DB: withSql(db) } as unknown as Env;
   });
 
   afterEach(() => sqlite.close());

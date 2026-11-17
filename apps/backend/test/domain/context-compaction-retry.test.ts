@@ -1,3 +1,4 @@
+import { chainData } from "./helpers/fake-sql";
 import { beforeEach, expect, it, vi } from "./helpers/vitest-compat";
 vi.mock("../../src/domain/routes/thread-policy.js", () => ({
   authorizeThreadAccess: vi.fn(async () => ({
@@ -86,7 +87,7 @@ function database(options: {
     }) as any),
     SYNTILA_DB: { prepare, batch: vi.fn(async () => []) },
   } as unknown as SecurityEnv;
-  return { env, writes };
+  return { env: chainData(env), writes };
 }
 
 const retry = (env: SecurityEnv, body: Record<string, unknown>) =>

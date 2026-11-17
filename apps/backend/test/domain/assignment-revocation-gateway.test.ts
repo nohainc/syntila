@@ -209,7 +209,7 @@ describe("grant revocation ownership", () => {
         "UPDATE workspace_space_grants SET status='revoked' WHERE id='G'",
       );
       expect(
-        await grantStartPermit(f.db, {
+        await grantStartPermit(f.read, {
           assignmentId: "A1",
           attemptId: "ATT1",
           executionWorkspaceId: "WS",

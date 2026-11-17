@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { readFileSync } from "node:fs";
 import { selectSpaceExecutionTarget } from "../../src/domain/scheduler.js";
+import { Data } from "../../src/platform/data.js";
 
 const permissionAssignment = JSON.parse(
   readFileSync(
@@ -94,41 +95,36 @@ function db(
   },
   settings: Record<string, unknown> = {},
 ) {
-  return {
-    prepare(query: string) {
-      let _values: unknown[] = [];
-      return {
-        bind(...bound: unknown[]) {
-          _values = bound;
-          return this;
-        },
-        async first<T>() {
-          if (query.includes("workflow_id AS workflowId"))
-            return {
-              workflowId: "direct",
-              requesterUserId: "user-a",
-              threadId:
-                lease?.threadId ??
-                (rows.some((row) =>
-                  String(row.work_request_snapshot_json).includes(
-                    "resolvedBindings",
-                  ),
-                )
-                  ? "thread-a"
-                  : undefined),
-            } as T;
-          if (query.includes("thread_runtime_leases")) return lease as T;
-          if (query.includes("FROM threads ws")) return thread as T;
-          return query.includes("space_memberships")
-            ? ({ role, settingsJson: JSON.stringify(settings) } as T)
-            : null;
-        },
-        async all<T>() {
-          return { results: rows as T[] };
-        },
-      };
+  // A fake of the data layer's connection: routes on the SQL text.
+  const sql = Object.assign(
+    async (strings: TemplateStringsArray) => {
+      const query = strings.join("?");
+      if (query.includes("FROM workspace_space_grants g")) return rows;
+      if (query.includes('workflow_id AS "workflowId"'))
+        return [
+          {
+            workflowId: "direct",
+            requesterUserId: "user-a",
+            threadId:
+              lease?.threadId ??
+              (rows.some((row) =>
+                String(row.work_request_snapshot_json).includes(
+                  "resolvedBindings",
+                ),
+              )
+                ? "thread-a"
+                : undefined),
+          },
+        ];
+      if (query.includes("thread_runtime_leases")) return lease ? [lease] : [];
+      if (query.includes("FROM threads ws")) return thread ? [thread] : [];
+      if (query.includes("space_memberships"))
+        return [{ role, settingsJson: JSON.stringify(settings) }];
+      return [];
     },
-  } as never;
+    { unsafe: (text: string) => text },
+  );
+  return new Data(sql as never).read as never;
 }
 
 describe("Space execution scheduler", () => {

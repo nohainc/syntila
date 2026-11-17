@@ -1,3 +1,4 @@
+import { dataOf, queryOf } from "../platform/data.js";
 import { canonicalJson } from "./canonical-json.js";
 import type { ToolProfileV1 } from "@syntila/tool-profile";
 import {
@@ -127,9 +128,20 @@ function canonicalProfilePayload(profile: ToolProfileV1): string {
 export async function listWorkerProfiles(
   db: D1Database,
 ): Promise<{ workers: WorkerProfileSummary[] }> {
-  const rows = await db
-    .prepare(
-      `SELECT worker.worker_type_id, worker.display_name, worker.description,
+  const rows = await queryOf(db).rows<{
+      worker_type_id: string;
+      display_name: string;
+      description: string;
+      lifecycle_state: string;
+      engine_family: string;
+      visibility_state: string;
+      sort_order: number;
+      profile_definition_id: string | null;
+      provider_tool_name: string | null;
+      current_revision: number | null;
+      current_digest: string | null;
+      current_updated_at: string | null;
+    }>`SELECT worker.worker_type_id, worker.display_name, worker.description,
               worker.lifecycle_state, worker.engine_family,
               worker.visibility_state, worker.sort_order,
               COALESCE(worker.profile_definition_id,
@@ -146,24 +158,9 @@ export async function listWorkerProfiles(
         -- never appear in the shared catalog or in Profile administration.
         WHERE worker.origin = 'official'
         ORDER BY worker.sort_order, worker.worker_type_id
-        LIMIT 256`,
-    )
-    .all<{
-      worker_type_id: string;
-      display_name: string;
-      description: string;
-      lifecycle_state: string;
-      engine_family: string;
-      visibility_state: string;
-      sort_order: number;
-      profile_definition_id: string | null;
-      provider_tool_name: string | null;
-      current_revision: number | null;
-      current_digest: string | null;
-      current_updated_at: string | null;
-    }>();
+        LIMIT 256`;
   return {
-    workers: (rows.results ?? []).map((row) => ({
+    workers: rows.map((row) => ({
       workerTypeId: row.worker_type_id,
       displayName: row.display_name,
       description: row.description,
@@ -220,12 +217,7 @@ async function requireWorkerCatalogRow(
   db: D1Database,
   workerTypeId: string,
 ): Promise<void> {
-  const row = await db
-    .prepare(
-      "SELECT worker_type_id FROM worker_catalog WHERE worker_type_id = ?1 AND origin = 'official'",
-    )
-    .bind(workerTypeId)
-    .first<{ worker_type_id: string }>();
+  const row = await queryOf(db).row<{ worker_type_id: string }>`SELECT worker_type_id FROM worker_catalog WHERE worker_type_id = ${workerTypeId} AND origin = 'official'`;
   if (!row) throw new ToolProfileRegistryError(404, "Worker was not found");
 }
 
@@ -261,17 +253,7 @@ export async function listWorkerProfileHistory(
 ): Promise<{ history: WorkerProfileHistorySnapshot[] }> {
   validateId(workerTypeId, "workerTypeId");
   await requireWorkerCatalogRow(env.SYNTILA_DB, workerTypeId);
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT worker_type_id, schema_version, profile_json, revision,
-              digest, actor_user_id,
-              published_at, restoration_reason
-         FROM worker_profile_history
-        WHERE worker_type_id = ?1
-        ORDER BY revision DESC
-        LIMIT 256`,
-  )
-    .bind(workerTypeId)
-    .all<{
+  const rows = await dataOf(env).read.rows<{
       worker_type_id: string;
       schema_version: number;
       profile_json: string;
@@ -280,10 +262,16 @@ export async function listWorkerProfileHistory(
       actor_user_id: string | null;
       published_at: string;
       restoration_reason: string | null;
-    }>();
+    }>`SELECT worker_type_id, schema_version, profile_json, revision,
+              digest, actor_user_id,
+              published_at, restoration_reason
+         FROM worker_profile_history
+        WHERE worker_type_id = ${workerTypeId}
+        ORDER BY revision DESC
+        LIMIT 256`;
   return {
     history: await Promise.all(
-      (rows.results ?? []).map(async (row) => {
+      rows.map(async (row) => {
         const profile = parseCurrentWorkerProfile({
           worker_type_id: row.worker_type_id,
           schema_version: row.schema_version,
@@ -531,15 +519,11 @@ export async function restoreWorkerProfile(args: {
   if (!current || current.revision !== args.expectedRevision) {
     throw new ToolProfileRegistryError(409, "Worker Profile revision is stale");
   }
-  const history = await args.env.SYNTILA_DB.prepare(
-    `SELECT worker_type_id, schema_version, profile_json, revision,
+  const history = await dataOf(args.env).read.row<CurrentWorkerProfileRow>`SELECT worker_type_id, schema_version, profile_json, revision,
               digest, actor_user_id,
               published_at AS updated_at
          FROM worker_profile_history
-        WHERE worker_type_id = ?1 AND revision = ?2`,
-  )
-    .bind(args.workerTypeId, args.targetRevision)
-    .first<CurrentWorkerProfileRow>();
+        WHERE worker_type_id = ${args.workerTypeId} AND revision = ${args.targetRevision}`;
   if (!history)
     throw new ToolProfileRegistryError(404, "Profile revision was not found");
   const profile = parseCurrentWorkerProfile(history);

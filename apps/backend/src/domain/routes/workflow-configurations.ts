@@ -1,3 +1,4 @@
+import { dataOf, queryOf } from "../../platform/data.js";
 import {
   loadWorkflowWorkspace,
   resolveUserWorkflowWorkspace,
@@ -42,12 +43,7 @@ export async function handleWorkflowConfigurations(
   const context = await securityContext(request, env, ctx);
   const db = env.SYNTILA_DB;
   if (spaceId) {
-    const membership = await db
-      .prepare(
-        `SELECT s.owner_user_id AS ownerUserId, COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id JOIN users u ON u.id = m.user_id WHERE s.id = ?1 AND m.user_id = ?2 AND u.status = 'active'`,
-      )
-      .bind(spaceId, context.userId)
-      .first<{ ownerUserId: string; kind: string }>();
+    const membership = await queryOf(db).row<{ ownerUserId: string; kind: string }>`SELECT s.owner_user_id AS "ownerUserId", COALESCE(s.kind, 'group') AS kind FROM spaces s JOIN space_memberships m ON m.space_id = s.id JOIN users u ON u.id = m.user_id WHERE s.id = ${spaceId} AND m.user_id = ${context.userId} AND u.status = 'active'`;
     if (!membership) throw new HttpError(403, "Space membership required");
     if (membership.kind === "direct") {
       if (request.method !== "GET") {
@@ -94,13 +90,8 @@ export async function handleWorkflowConfigurations(
         configurations: effective.configurations,
       });
     }
-    const rows = await db
-      .prepare(
-        `SELECT configuration_json FROM user_workflow_configurations
-      WHERE user_id = ?1 AND workspace_id = ?3 AND (?2::text IS NULL OR workflow_id = ?2)`,
-      )
-      .bind(context.userId, workflowId ?? null, userWorkspaceId)
-      .all<{ configuration_json: string }>();
+    const rows = await queryOf(db).rows<{ configuration_json: string }>`SELECT configuration_json FROM user_workflow_configurations
+      WHERE user_id = ${context.userId} AND workspace_id = ${userWorkspaceId} AND (${workflowId ?? null}::text IS NULL OR workflow_id = ${workflowId ?? null})`;
     return json({
       schemaVersion: 1,
       workspaceId: userWorkspaceId,
@@ -109,7 +100,7 @@ export async function handleWorkflowConfigurations(
         context.userId,
         userWorkspaceId,
       ),
-      configurations: rows.results.map((row) =>
+      configurations: rows.map((row) =>
         JSON.parse(row.configuration_json),
       ),
     });
@@ -318,21 +309,13 @@ export async function handleWorkflowConfigurations(
     : await loadUserWorkflowDefault(env, context.userId, userWorkspaceId);
   if (defaultWorkflowId === workflowId && !configuration.enabled) {
     if (spaceId) {
-      await env.SYNTILA_DB.prepare(
-        `INSERT INTO space_workflow_defaults(space_id,workflow_id,updated_at)
-         VALUES(?1,'chat',?2)
-         ON CONFLICT(space_id) DO UPDATE SET workflow_id='chat',updated_at=excluded.updated_at`,
-      )
-        .bind(spaceId, new Date().toISOString())
-        .run();
+      await dataOf(env).read.run`INSERT INTO space_workflow_defaults(space_id,workflow_id,updated_at)
+         VALUES(${spaceId},'chat',${new Date().toISOString()})
+         ON CONFLICT(space_id) DO UPDATE SET workflow_id='chat',updated_at=excluded.updated_at`;
     } else {
-      await env.SYNTILA_DB.prepare(
-        `INSERT INTO user_workflow_defaults(user_id,workspace_id,workflow_id,updated_at)
-         VALUES(?1,?3,'chat',?2)
-         ON CONFLICT(user_id,workspace_id) DO UPDATE SET workflow_id='chat',updated_at=excluded.updated_at`,
-      )
-        .bind(context.userId, new Date().toISOString(), userWorkspaceId)
-        .run();
+      await dataOf(env).read.run`INSERT INTO user_workflow_defaults(user_id,workspace_id,workflow_id,updated_at)
+         VALUES(${context.userId},${userWorkspaceId},'chat',${new Date().toISOString()})
+         ON CONFLICT(user_id,workspace_id) DO UPDATE SET workflow_id='chat',updated_at=excluded.updated_at`;
     }
   }
   return json({ configuration });

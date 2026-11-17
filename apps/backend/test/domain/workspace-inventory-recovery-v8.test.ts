@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { pgD1 } from "./helpers/pg-d1";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { readFileSync } from "node:fs";
@@ -81,7 +82,7 @@ describe("v8 Workspace inventory recovery", () => {
 
     const gateway = new WorkspaceGateway(
       {} as never,
-      { SYNTILA_DB: new LocalD1(database) } as never,
+      { SYNTILA_DB: withSql(new LocalD1(database)) } as never,
     );
     const internal = gateway as unknown as {
       executionWorkspaceId: string;
@@ -233,7 +234,7 @@ describe("v8 Workspace inventory recovery", () => {
     `);
     const gateway = new WorkspaceGateway(
       {} as never,
-      { SYNTILA_DB: new LocalD1(database) } as never,
+      { SYNTILA_DB: withSql(new LocalD1(database)) } as never,
     );
     const internal = gateway as unknown as {
       executionWorkspaceId: string;

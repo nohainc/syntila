@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { expect, it } from "./helpers/vitest-compat";
 import {
   recoverStaleAssignments,
@@ -23,6 +24,7 @@ it("does not rewrite a terminal assignment or accept a stale attempt", async () 
       };
     },
   };
+  withSql(db);
   await recordAssignmentResult(
     db as never,
     "assignment-1",
@@ -56,6 +58,7 @@ it("persists timeout as a terminal Cloud outcome", async () => {
       };
     },
   };
+  withSql(db);
   await recordAssignmentError(
     db as never,
     "assignment-1",
@@ -108,6 +111,7 @@ it("does not fail an assignment that advanced after the recovery decision", asyn
       };
     },
   };
+  withSql(db);
   await recoverStaleAssignments(db as never, now);
   expect(writes).toHaveLength(0);
 });
@@ -149,6 +153,7 @@ it("measures queue wait from admission, not from assignment creation", async () 
       };
     },
   };
+  withSql(db);
   await recoverStaleAssignments(db as never, now);
   expect(writes).toHaveLength(0);
 });

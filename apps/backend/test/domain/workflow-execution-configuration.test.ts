@@ -90,6 +90,9 @@ function fixture(
   const env = {
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const text = strings.join("?");
+      if (text.includes("space_workflow_settings") || text.includes("user_workflow_settings")) return [{ workspaceId }];
+      if (text.includes("FROM workspace_worker_inventory i") && !text.includes("JOIN")) return inventory.filter((w) => w.workspaceId === values[0]);
+      if (text.includes("FROM execution_workspaces WHERE id")) return [{ ownerUserId: "user" }];
       if (text.includes("owner_user_id")) return [{ ownerUserId: "user" }]; // spaceOwnerOf
       if (text.includes("settings_json")) return [{ role: "owner", settingsJson: "{}", kind: "group", isSupport: false }]; // loadSpacePermissions
       if (!text.includes("UNION ALL")) return []; // workflow defaults, membership: none

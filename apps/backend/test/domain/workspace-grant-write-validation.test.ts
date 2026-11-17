@@ -52,7 +52,12 @@ function environment(
       };
     },
   };
-  const data = new Data((async (strings: TemplateStringsArray) => {
+  const data = new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const t = strings.join("?");
+    if (t.includes("FROM spaces WHERE id")) return [{ id: "space-1" }];
+    if (t.includes("FROM execution_workspaces WHERE id")) return [{ id: "workspace-1", owner_user_id: "owner-1", status: "online" }];
+    if (t.includes("FROM workspace_space_grants")) return [];
+    if (t.includes("FROM workspace_worker_inventory")) { const ids = values.flat().slice(1) as string[]; return inventoryWorkerIds.filter((w) => ids.includes(w)).map((worker_id) => ({ worker_id })); }
     if (strings.join("?").includes("FROM space_memberships")) {
       if (membershipError) throw membershipError;
     }

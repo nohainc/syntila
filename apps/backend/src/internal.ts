@@ -1,3 +1,4 @@
+import { dataOf } from "./platform/data.js";
 import { userAccount } from "./domain/queries.js";
 /**
  * Server-to-server endpoints for the Cloudflare auth Worker, which owns the
@@ -43,15 +44,13 @@ export async function handleInternal(request: Request, env: Env, verifier: Token
 
   if (action === "deletion") {
     // Idempotent: the Worker retries until this succeeds, then deletes the account.
-    const user = await userAccount(env.SYNTILA_DB, userId);
+    const user = await userAccount(dataOf(env).read, userId);
     if (user) {
       await prepareAccountDeletion(env, userId);
       // Authored content stays (RESTRICT foreign keys), attributed to an
       // anonymized, deactivated user; the address is free for a new account.
-      await env.SYNTILA_DB.prepare(
-        `UPDATE users SET status = 'deactivated', email = ?2, display_name = 'Deleted user', avatar_url = NULL,
-           email_verified = FALSE, updated_at = ?3 WHERE id = ?1`,
-      ).bind(userId, `deleted+${userId}@syntila.invalid`, now).run();
+      await dataOf(env).read.run`UPDATE users SET status = 'deactivated', email = ${`deleted+${userId}@syntila.invalid`}, display_name = 'Deleted user', avatar_url = NULL,
+           email_verified = FALSE, updated_at = ${now} WHERE id = ${userId}`;
     }
     return json({ ok: true, existed: Boolean(user) });
   }
@@ -119,11 +118,9 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
   const email = typeof body.email === "string" && body.email.includes("@") ? body.email.trim().toLowerCase() : null;
   if (grant === null || !email) return json({ error: "action (grant_paid|revoke_paid) and email are required" }, 400);
   // The plan can be granted before the account first used the product.
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO users (id, email, display_name, status, created_at, updated_at)
-       VALUES (?1, ?2, ?3, 'active', ?4, ?4) ON CONFLICT (id) DO NOTHING`,
-  ).bind(userId, email, email.split("@")[0], now).run();
-  const owner = await env.SYNTILA_DB.prepare("SELECT email FROM users WHERE id = ?1").bind(userId).first<{ email: string }>();
+  await dataOf(env).read.run`INSERT INTO users (id, email, display_name, status, created_at, updated_at)
+       VALUES (${userId}, ${email}, ${email.split("@")[0]}, 'active', ${now}, ${now}) ON CONFLICT (id) DO NOTHING`;
+  const owner = await dataOf(env).read.row<{ email: string }>`SELECT email FROM users WHERE id = ${userId}`;
   if (owner?.email.toLowerCase() !== email) return json({ error: "Account email does not match" }, 409);
   const changed = await env.SYNTILA_DB.prepare(
     `INSERT INTO account_plans (user_id, tier, status, source, current_period_end, created_at, updated_at)

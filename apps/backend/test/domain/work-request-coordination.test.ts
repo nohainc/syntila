@@ -1,3 +1,4 @@
+import { chainData } from "./helpers/fake-sql";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { Data } from "../../src/platform/data.js";
 
@@ -34,6 +35,11 @@ function fixture(coordinatorAvailable = true) {
   const env = {
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const text = strings.join("?");
+      if (text.includes("space_workflow_settings")) return [{ workspaceId: "workspace" }];
+      if (text.includes("FROM workspace_worker_inventory i") && !text.includes("JOIN")) return [{ workerId: "worker-a", workspaceId: "workspace" }];
+      if (text.includes("FROM execution_workspaces WHERE id")) return [{ ownerUserId: "owner" }];
+      if (text.includes("thread_execution_policies")) return [{ mode: "stateful", primaryWorkspaceId: "different-workspace" }];
+      if (text.includes("FROM spaces") && text.includes("owner_user_id")) return [{ ownerUserId: "owner", kind: "group" }];
       if (text.includes("owner_user_id")) return [{ ownerUserId: "owner" }]; // spaceOwnerOf
       if (text.includes("FROM space_memberships")) return [{ role: "owner" }]; // spaceMembership
       if (!text.includes("UNION ALL")) return [];
@@ -128,7 +134,7 @@ function fixture(coordinatorAvailable = true) {
         }
       : {}),
   };
-  return { env, enqueue, create, writes };
+  return { env: chainData(env as any) as typeof env, enqueue, create, writes };
 }
 
 describe("Work Request mutation coordination", () => {

@@ -1,3 +1,4 @@
+import { chainData } from "./helpers/fake-sql";
 import { expect, it, vi } from "./helpers/vitest-compat";
 vi.mock("../../src/domain/routes/thread-policy.js", () => ({
   authorizeThreadAccess: vi.fn(async () => ({
@@ -35,13 +36,13 @@ it("requires reset approval before reserving or changing a failed request", asyn
         sessionStrategy: "resume",
       }),
     }),
-    { SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) =>
+    chainData({ SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) =>
       {
       const text = strings.join("?");
       if (text.includes('thread_id AS "threadId" FROM work_requests')) return [{ threadId: "T" }]; // workRequestThread
       if (text.includes("FROM space_memberships")) return [{ role: "owner" }]; // spaceMembership
       return [];
-    }) as any), SYNTILA_DB: { prepare } } as unknown as SecurityEnv,
+    }) as any), SYNTILA_DB: { prepare } } as any) as unknown as SecurityEnv,
     "R",
   );
   expect(response.status).toBe(409);

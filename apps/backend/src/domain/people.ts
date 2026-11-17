@@ -13,15 +13,11 @@ export async function peoplePeers(
   env: Pick<EventPublisherEnv, "SYNTILA_DB">,
   userId: string,
 ) {
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT user_high_id AS userId FROM people_relationships WHERE user_low_id=?1
-    UNION SELECT user_low_id AS userId FROM people_relationships WHERE user_high_id=?1
-    UNION SELECT user_high_id AS userId FROM person_connections WHERE user_low_id=?1 AND status='connected'
-    UNION SELECT user_low_id AS userId FROM person_connections WHERE user_high_id=?1 AND status='connected'`,
-  )
-    .bind(userId)
-    .all<{ userId: string }>();
-  return rows.results.map((row) => row.userId);
+  const rows = await dataOf(env).read.rows<{ userId: string }>`SELECT user_high_id AS "userId" FROM people_relationships WHERE user_low_id=${userId}
+    UNION SELECT user_low_id AS "userId" FROM people_relationships WHERE user_high_id=${userId}
+    UNION SELECT user_high_id AS "userId" FROM person_connections WHERE user_low_id=${userId} AND status='connected'
+    UNION SELECT user_low_id AS "userId" FROM person_connections WHERE user_high_id=${userId} AND status='connected'`;
+  return rows.map((row) => row.userId);
 }
 
 export async function publishPeopleProfileChanged(
@@ -63,11 +59,7 @@ export async function ensureSupportSpace(
 ): Promise<{ spaceId: string; supportUserId: string; created: boolean }> {
   const email = env.SYNTILA_SUPPORT_ACCOUNT_EMAIL?.trim().toLowerCase();
   if (!email) throw new SupportSpaceError(503, "Support is not configured");
-  const support = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM users WHERE LOWER(email) = ?1 AND status = 'active'",
-  )
-    .bind(email)
-    .first<{ id: string }>();
+  const support = await dataOf(env).read.row<{ id: string }>`SELECT id FROM users WHERE LOWER(email) = ${email} AND status = 'active'`;
   if (!support)
     throw new SupportSpaceError(503, "Support account is unavailable");
   if (support.id === userId)
@@ -80,18 +72,10 @@ export async function ensureSupportSpace(
   if (blocked) throw new SupportSpaceError(403, "Support is unavailable");
 
   const lookup = async () => {
-    const marked = await env.SYNTILA_DB.prepare(
-      "SELECT space_id AS spaceId FROM support_spaces WHERE user_id = ?1 AND support_user_id = ?2",
-    )
-      .bind(userId, support.id)
-      .first<{ spaceId: string }>();
+    const marked = await dataOf(env).read.row<{ spaceId: string }>`SELECT space_id AS "spaceId" FROM support_spaces WHERE user_id = ${userId} AND support_user_id = ${support.id}`;
     if (marked) return marked.spaceId;
     const { userLowId, userHighId } = normalizeUserPair(userId, support.id);
-    const direct = await env.SYNTILA_DB.prepare(
-      "SELECT space_id AS spaceId FROM direct_spaces WHERE user_low_id = ?1 AND user_high_id = ?2",
-    )
-      .bind(userLowId, userHighId)
-      .first<{ spaceId: string }>();
+    const direct = await dataOf(env).read.row<{ spaceId: string }>`SELECT space_id AS "spaceId" FROM direct_spaces WHERE user_low_id = ${userLowId} AND user_high_id = ${userHighId}`;
     return direct?.spaceId ?? null;
   };
   const adopt = (spaceId: string, now: string) =>

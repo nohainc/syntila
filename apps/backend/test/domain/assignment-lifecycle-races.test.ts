@@ -49,9 +49,9 @@ async function seed(status: AssignmentLifecycleStatus = "dispatched") {
     executionWorkspaceId: "WS",
     runtimeIdentityId: "RT",
   };
-  const admit = () => transitionAssignment(f.db, { fence, to: "acknowledged" });
+  const admit = () => transitionAssignment(f.read, { fence, to: "acknowledged" });
   const providerStarted = () =>
-    transitionAssignment(f.db, { fence, to: "running", startTaskId: "T" });
+    transitionAssignment(f.read, { fence, to: "running", startTaskId: "T" });
   return { ...f, row, task, fence, admit, providerStarted };
 }
 
@@ -301,7 +301,7 @@ describe("assignment identity fencing", () => {
       .run();
 
     // The old attempt's Service reuses A2's assignment id with its own attempt.
-    const stale = await transitionAssignment(f.db, {
+    const stale = await transitionAssignment(f.read, {
       to: "running",
       fence: { ...f.fence, assignmentId: "A2" },
     });
@@ -324,11 +324,11 @@ describe("assignment identity fencing", () => {
 
   it("rejects a previous runtime identity and another Workspace", async () => {
     const f = await seed("dispatched");
-    const oldRuntime = await transitionAssignment(f.db, {
+    const oldRuntime = await transitionAssignment(f.read, {
       to: "acknowledged",
       fence: { ...f.fence, runtimeIdentityId: "RT-OLD" },
     });
-    const otherWorkspace = await transitionAssignment(f.db, {
+    const otherWorkspace = await transitionAssignment(f.read, {
       to: "acknowledged",
       fence: { ...f.fence, executionWorkspaceId: "WS-OTHER" },
     });
@@ -339,7 +339,7 @@ describe("assignment identity fencing", () => {
 
   it("reports an unknown assignment without writing", async () => {
     const f = await seed("dispatched");
-    const missing = await transitionAssignment(f.db, {
+    const missing = await transitionAssignment(f.read, {
       to: "acknowledged",
       fence: { ...f.fence, assignmentId: "NOPE" },
     });

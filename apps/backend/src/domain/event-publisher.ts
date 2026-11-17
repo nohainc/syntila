@@ -1,3 +1,4 @@
+import { dataOf, queryOf } from "../platform/data.js";
 import {
   isDurableRealtimeEventType,
   parseRealtimeEvent,
@@ -242,15 +243,10 @@ export class CloudEventPublisher implements EventPublisher {
       return { event: realtimeEventFromRow(inserted), persisted: true };
     }
 
-    const duplicate = await db
-      .prepare(
-        `SELECT * FROM realtime_events
-         WHERE stream_kind = ?1 AND COALESCE(stream_id, workspace_id) = ?2
-           AND (event_id = ?3 OR idempotency_key = ?4)
-         LIMIT 1`,
-      )
-      .bind(stream.kind, stream.id, input.eventId, input.idempotencyKey)
-      .first<Record<string, unknown>>();
+    const duplicate = await queryOf(db).row<Record<string, unknown>>`SELECT * FROM realtime_events
+         WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+           AND (event_id = ${input.eventId} OR idempotency_key = ${input.idempotencyKey})
+         LIMIT 1`;
     if (duplicate)
       return { event: realtimeEventFromRow(duplicate), persisted: false };
     throw new Error("Could not persist durable realtime event");
@@ -265,26 +261,18 @@ export class CloudEventPublisher implements EventPublisher {
     if (!gateway) return 0;
     const stream = realtimeEventStream(event);
     const members = recipientUserIds
-      ? { results: recipientUserIds.map((user_id) => ({ user_id })) }
+      ? recipientUserIds.map((user_id) => ({ user_id }))
       : stream.kind === "user"
-        ? { results: [{ user_id: stream.id }] }
+        ? [{ user_id: stream.id }]
         : event.spaceId
-          ? await this.env.SYNTILA_DB.prepare(
-              `SELECT user_id FROM space_memberships
-           WHERE space_id = ?1`,
-            )
-              .bind(event.spaceId)
-              .all<{ user_id: string }>()
-          : await this.env.SYNTILA_DB.prepare(
-              `SELECT owner_user_id AS user_id FROM execution_workspaces
-           WHERE id = ?1 AND status <> 'revoked'`,
-            )
-              .bind(event.workspaceId)
-              .all<{ user_id: string }>();
+          ? await dataOf(this.env).read.rows<{ user_id: string }>`SELECT user_id FROM space_memberships
+           WHERE space_id = ${event.spaceId}`
+          : await dataOf(this.env).read.rows<{ user_id: string }>`SELECT owner_user_id AS user_id FROM execution_workspaces
+           WHERE id = ${event.workspaceId} AND status <> 'revoked'`;
     const results = await Promise.all(
       [
         ...new Set([
-          ...(members.results ?? []).map((row) => row.user_id),
+          ...members.map((row) => row.user_id),
           ...additionalRecipientUserIds,
         ]),
       ].map(async (userId) => {

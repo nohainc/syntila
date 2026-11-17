@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const { sqlite, db } = sqliteD1();
+  const { sqlite, db, read } = sqliteD1();
   closers.push(() => sqlite.close());
   sqlite.exec(`
  INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('U','u@test','User','now','now');
@@ -24,7 +24,7 @@ function fixture() {
  INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
  VALUES('tool','R','tool_call','stateless_read',1000,'tool:v1','running','now','now'),
        ('chat','R','chat','stateless_read',1000,'chat:v1','running','now','now');`);
-  const d1 = db as unknown as D1Database;
+  const d1 = read as unknown as D1Database;
   const input = {
     taskId: "tool",
     workspaceId: "WS",

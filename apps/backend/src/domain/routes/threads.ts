@@ -187,7 +187,7 @@ export async function handleListSpaceThreads(
       ...threadMetadata(row, context.userId),
       canDestroy:
         policy.role === "owner" ||
-        (leadUserId === context.userId && row.hasOtherContributions === 0),
+        (leadUserId === context.userId && Number(row.hasOtherContributions) === 0),
       canConfigureWork: canManageThread(
         context.userId,
         effectiveMembership,
@@ -257,13 +257,9 @@ export async function handleCreateThread(
   const replay = await receipt?.replay();
   if (replay) return replay;
   const name = requiredString(body.name, "name");
-  const duplicate = await env.SYNTILA_DB.prepare(
-    `SELECT id FROM threads
-     WHERE space_id = ?1 AND LOWER(TRIM(name)) = LOWER(TRIM(?2))
-     LIMIT 1`,
-  )
-    .bind(spaceId, name)
-    .first<{ id: string }>();
+  const duplicate = await dataOf(env).read.row<{ id: string }>`SELECT id FROM threads
+     WHERE space_id = ${spaceId} AND LOWER(TRIM(name)) = LOWER(TRIM(${name}))
+     LIMIT 1`;
   if (duplicate) {
     const concurrentReplay = await receipt?.replay();
     if (concurrentReplay) return concurrentReplay;
@@ -396,14 +392,10 @@ export async function handleUpdateThread(
     metadataPatch !== undefined &&
     Object.keys(body).every((key) => key === "metadata");
   if (name.trim().toLowerCase() !== thread.name.trim().toLowerCase()) {
-    const duplicate = await env.SYNTILA_DB.prepare(
-      `SELECT id FROM threads
-       WHERE space_id = ?1 AND id <> ?2
-         AND LOWER(TRIM(name)) = LOWER(TRIM(?3))
-       LIMIT 1`,
-    )
-      .bind(thread.spaceId, threadId, name)
-      .first<{ id: string }>();
+    const duplicate = await dataOf(env).read.row<{ id: string }>`SELECT id FROM threads
+       WHERE space_id = ${thread.spaceId} AND id <> ${threadId}
+         AND LOWER(TRIM(name)) = LOWER(TRIM(${name}))
+       LIMIT 1`;
     if (duplicate) {
       throw new HttpError(
         409,
@@ -489,11 +481,7 @@ export async function handleUpdateThread(
     context.userId,
     thread.spaceId,
   );
-  const creator = await env.SYNTILA_DB.prepare(
-    "SELECT u.email, s.owner_user_id AS ownerUserId FROM users u JOIN spaces s ON s.id = ?1 WHERE u.id = ?2",
-  )
-    .bind(thread.spaceId, thread.lead.userId)
-    .first<{ email: string; ownerUserId: string }>();
+  const creator = await dataOf(env).read.row<{ email: string; ownerUserId: string }>`SELECT u.email, s.owner_user_id AS "ownerUserId" FROM users u JOIN spaces s ON s.id = ${thread.spaceId} WHERE u.id = ${thread.lead.userId}`;
   const updatedThread: Thread = {
     ...thread,
     name,
@@ -530,13 +518,11 @@ export async function handleUpdateThread(
       canDestroy:
         policy.role === "owner" ||
         (thread.lead.userId === context.userId &&
-          (
-            await env.SYNTILA_DB.prepare(
-              "SELECT has_other_contributions AS contributed FROM threads WHERE id = ?1",
-            )
-              .bind(threadId)
-              .first<{ contributed: number }>()
-          )?.contributed === 0),
+          Number(
+            (
+              await dataOf(env).read.row<{ contributed: number }>`SELECT has_other_contributions AS contributed FROM threads WHERE id = ${threadId}`
+            )?.contributed,
+          ) === 0),
       canConfigureWork: canManageThread(
         context.userId,
         member ? { ...member, permissions: policy.rights } : null,
@@ -766,11 +752,7 @@ export async function handleCreateDiscussionMessage(
   );
   const now = new Date().toISOString();
   const id = `discussion-${crypto.randomUUID()}`;
-  const userRow = await env.SYNTILA_DB.prepare(
-    `SELECT display_name AS displayName FROM users WHERE id = ?1`,
-  )
-    .bind(context.userId)
-    .first<{ displayName: string | null }>();
+  const userRow = await dataOf(env).read.row<{ displayName: string | null }>`SELECT display_name AS "displayName" FROM users WHERE id = ${context.userId}`;
   const authorName = userRow?.displayName || "Member";
   const mutations: D1PreparedStatement[] = [];
   mutations.push(
@@ -926,13 +908,9 @@ export async function handleDeleteDiscussionMessage(
   messageId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const message = await env.SYNTILA_DB.prepare(
-    `SELECT id, thread_id AS threadId, author_user_id AS authorUserId, event_type AS eventType, kind
+  const message = await dataOf(env).read.row<Record<string, unknown>>`SELECT id, thread_id AS "threadId", author_user_id AS "authorUserId", event_type AS "eventType", kind
      FROM discussion_messages
-     WHERE id = ?1`,
-  )
-    .bind(messageId)
-    .first<Record<string, unknown>>();
+     WHERE id = ${messageId}`;
   if (!message) throw new HttpError(404, "Discussion message not found");
   const { context, spaceId } = await authorizeThreadAccess(
     request,
@@ -1107,16 +1085,12 @@ export async function handleListThreadReadStates(
   );
   // Reciprocal privacy: only people who share receipts are listed, and only
   // to a viewer who shares theirs.
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT r.user_id AS userId, u.display_name AS displayName, r.read_at AS readAt
+  const rows = await dataOf(env).read.rows`SELECT r.user_id AS "userId", u.display_name AS "displayName", r.read_at AS "readAt"
        FROM thread_read_states r
-       JOIN space_memberships m ON m.space_id = ?2 AND m.user_id = r.user_id
+       JOIN space_memberships m ON m.space_id = ${spaceId} AND m.user_id = r.user_id
        JOIN users u ON u.id = r.user_id AND u.share_read_receipts
-      WHERE r.thread_id = ?1 AND r.user_id != ?3
-        AND EXISTS (SELECT 1 FROM users me WHERE me.id = ?3 AND me.share_read_receipts)
-      ORDER BY r.read_at DESC`,
-  )
-    .bind(threadId, spaceId, context.userId)
-    .all();
-  return json({ readStates: rows.results ?? [] });
+      WHERE r.thread_id = ${threadId} AND r.user_id != ${context.userId}
+        AND EXISTS (SELECT 1 FROM users me WHERE me.id = ${context.userId} AND me.share_read_receipts)
+      ORDER BY r.read_at DESC`;
+  return json({ readStates: rows });
 }

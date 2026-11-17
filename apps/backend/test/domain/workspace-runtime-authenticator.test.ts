@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { hashToken } from "@syntila/security";
 import { WorkspaceRuntimeAuthenticator } from "../../src/domain/workspace-gateway/runtime-authenticator.js";
@@ -35,6 +36,7 @@ describe("WorkspaceRuntimeAuthenticator", () => {
         };
       },
     } as never;
+    withSql(db);
     const authenticator = new WorkspaceRuntimeAuthenticator(db);
 
     await expect(

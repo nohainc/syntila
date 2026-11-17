@@ -1,3 +1,4 @@
+import type { Query } from "../platform/data.js";
 export const ASSIGNMENT_ACCEPTANCE_DEADLINE_MS = 30_000;
 export const ASSIGNMENT_STARTUP_DEADLINE_MS = 30_000;
 /** Default time an accepted assignment may remain queued before startup. */
@@ -115,42 +116,34 @@ export function isResearchCapacityQueue(
 
 /** Gateway-only compare-and-set. Repeated polls do not reset the wait clock. */
 export async function recordCloudQueueReason(
-  db: D1Database,
+  q: Query,
   assignmentId: string,
   attemptId: string,
   reason: "workspace_capacity" | "service_not_ready",
   now = new Date().toISOString(),
 ): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE worker_assignments
-    SET cloud_queue_since = CASE WHEN cloud_queue_reason = ?1
-          THEN COALESCE(cloud_queue_since, ?2) ELSE ?2 END,
-        cloud_queue_reason = ?1
-    WHERE id = ?3 AND attempt_id = ?4 AND status = 'created'`,
-    )
-    .bind(reason, now, assignmentId, attemptId)
-    .run();
+  await q.run`
+    UPDATE worker_assignments
+       SET cloud_queue_since = CASE WHEN cloud_queue_reason = ${reason}
+             THEN COALESCE(cloud_queue_since, ${now}::timestamptz) ELSE ${now}::timestamptz END,
+           cloud_queue_reason = ${reason}
+     WHERE id = ${assignmentId} AND attempt_id = ${attemptId} AND status = 'created'`;
 }
 
 /** Readiness loss applies to the entire persisted queue, including after a restart. */
 export async function recordCloudQueueNotReady(
-  db: D1Database,
+  q: Query,
   workspaceId: string,
   runtimeId: string,
   now = new Date().toISOString(),
 ): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE worker_assignments
-    SET cloud_queue_since = CASE WHEN cloud_queue_reason = 'service_not_ready'
-          THEN COALESCE(cloud_queue_since, ?1) ELSE ?1 END,
-        cloud_queue_reason = 'service_not_ready'
-    WHERE execution_workspace_id = ?2 AND runtime_identity_id = ?3
-      AND status = 'created'`,
-    )
-    .bind(now, workspaceId, runtimeId)
-    .run();
+  await q.run`
+    UPDATE worker_assignments
+       SET cloud_queue_since = CASE WHEN cloud_queue_reason = 'service_not_ready'
+             THEN COALESCE(cloud_queue_since, ${now}::timestamptz) ELSE ${now}::timestamptz END,
+           cloud_queue_reason = 'service_not_ready'
+     WHERE execution_workspace_id = ${workspaceId} AND runtime_identity_id = ${runtimeId}
+       AND status = 'created'`;
 }
 
 export interface AssignmentDeadlineViolation {

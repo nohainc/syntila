@@ -70,7 +70,7 @@ import {
   DEFAULT_QUEUE_WAIT_TIMEOUT_MS,
   type AssignmentDeadlinePhase,
 } from "./assignment-delivery.js";
-import { dataOf } from "../platform/data.js";
+import { dataOf, queryOf } from "../platform/data.js";
 
 /**
  * Number of wait rounds (10 s each) the Workflow waits for the Service to
@@ -410,12 +410,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     const db = (this.env as ExecutionEnv).SYNTILA_DB;
     if (!db) return;
     const now = new Date().toISOString();
-    await db
-      .prepare(
-        "UPDATE runs SET status = ?1, finished_at = ?2, updated_at = ?2 WHERE id = ?3",
-      )
-      .bind(status, now, runId)
-      .run();
+    await queryOf(db).run`UPDATE runs SET status = ${status}, finished_at = ${now}, updated_at = ${now} WHERE id = ${runId}`;
   }
 
   /** Extends the active Thread lease of this Work Request. Best effort. */
@@ -426,7 +421,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       const db = runtimeEnv.SYNTILA_DB;
       const namespace = runtimeEnv.SYNTILA_THREAD_COORDINATOR;
       if (!db || !namespace) return;
-      const lease = await activeThreadLease(db, params.workRequestId, params.threadId);
+      const lease = await activeThreadLease(queryOf(db), params.workRequestId, params.threadId);
       if (!lease) return;
       await namespace
         .getByName(params.threadId)
@@ -474,24 +469,14 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     const db = runtimeEnv.SYNTILA_DB;
     const namespace = runtimeEnv.SYNTILA_THREAD_COORDINATOR;
     if (!db) return;
-    const request = await db
-      .prepare(
-        "SELECT mode FROM work_requests WHERE id = ?1 AND thread_id = ?2",
-      )
-      .bind(params.workRequestId, params.threadId)
-      .first<{ mode: string }>();
+    const request = await queryOf(db).row<{ mode: string }>`SELECT mode FROM work_requests WHERE id = ${params.workRequestId} AND thread_id = ${params.threadId}`;
     if (request?.mode === "stateless") {
       const now = new Date().toISOString();
-      await db
-        .prepare(
-          "UPDATE work_requests SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status IN ('queued', 'running')",
-        )
-        .bind(status, now, params.workRequestId)
-        .run();
+      await queryOf(db).run`UPDATE work_requests SET status = ${status}, updated_at = ${now} WHERE id = ${params.workRequestId} AND status IN ('queued', 'running')`;
       return;
     }
     if (!namespace) return;
-    const lease = await activeThreadLease(db, params.workRequestId, params.threadId);
+    const lease = await activeThreadLease(queryOf(db), params.workRequestId, params.threadId);
     if (!lease) {
       // The lease is already gone (an earlier failure path released it, or it
       // expired). A Workflow that still finished every step completed the
@@ -702,7 +687,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       return { outcome: "none" };
     for (let round = 0; ; round += 1) {
       const rows = await loadWorkRequestInputs(db, params.workRequestId);
-      const request = await workRequestCancelRequest(db, params.workRequestId);
+      const request = await workRequestCancelRequest(queryOf(db), params.workRequestId);
       const decision = inputGateDecision(
         rows,
         !!request?.cancelRequestedAt,
@@ -738,10 +723,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     > = {};
     const db = (this.env as ExecutionEnv).SYNTILA_DB;
     if (db && params.workRequestId) {
-      const requestMode = await db
-        .prepare("SELECT mode FROM work_requests WHERE id = ?1")
-        .bind(params.workRequestId)
-        .first<{ mode: string }>();
+      const requestMode = await queryOf(db).row<{ mode: string }>`SELECT mode FROM work_requests WHERE id = ${params.workRequestId}`;
       if (requestMode?.mode === "stateless") {
         const now = new Date().toISOString();
         await db.batch(startQueuedWorkRequest(db, params.workRequestId, now));
@@ -749,15 +731,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     }
     await this.persistWorkflowTasks(params, tasks);
     if (params.retryStepKind && db && params.workRequestId) {
-      const persistedRows = await db
-        .prepare(
-          `SELECT step_id AS kind, status, attempt, output_json AS outputJson
-           FROM workflow_tasks WHERE work_request_id = ?1`,
-        )
-        .bind(params.workRequestId)
-        .all<Record<string, unknown>>();
+      const persistedRows = await queryOf(db).rows<Record<string, unknown>>`SELECT step_id AS kind, status, attempt, output_json AS "outputJson"
+           FROM workflow_tasks WHERE work_request_id = ${params.workRequestId}`;
       const persistedByKind = new Map(
-        (persistedRows.results ?? []).map((row) => [String(row.kind), row]),
+        persistedRows.map((row) => [String(row.kind), row]),
       );
       const missingStepIds: string[] = [];
       tasks = tasks.map((task) => {
@@ -920,9 +897,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           if (result.toolOutput && result.status === "completed") {
             toolOutputs[stepInstanceId(result.task.step)] = result.toolOutput;
           }
-          const cancellationRequested = await workRequestCancelRequest((
-            this.env as ExecutionEnv
-          ).SYNTILA_DB, params.workRequestId);
+          const cancellationRequested = await workRequestCancelRequest(
+            dataOf(this.env as ExecutionEnv).read,
+            params.workRequestId,
+          );
           const resultStatus = cancellationRequested?.cancelRequestedAt
             ? "cancelled"
             : result.status;
@@ -1259,23 +1237,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 // In particular, a near-limit Research prompt may not have
                 // room for the additional structured representation.
               }
-              const context = await db
-                .prepare(
-                  `SELECT wr.thread_id AS threadId,
-                      wr.requested_by_user_id AS requesterUserId,
-                      wr.status AS workRequestStatus,
-                      wr.cancel_requested_at AS cancelRequestedAt,
-                      ws.space_id AS spaceId,
-                      s.name AS spaceName,
-                      s.owner_user_id AS spaceOwnerUserId,
-                      CASE WHEN wr.ai_context_generation = ws.ai_context_generation THEN ws.work_session_generation
-                        ELSE -1 - wr.ai_context_generation END AS workSessionGeneration
-                 FROM work_requests wr JOIN threads ws ON ws.id = wr.thread_id
-                 JOIN spaces s ON s.id = ws.space_id
-                WHERE wr.id = ?1`,
-                )
-                .bind(params.workRequestId)
-                .first<{
+              const context = await queryOf(db).row<{
                   threadId: string;
                   requesterUserId: string;
                   workRequestStatus: string;
@@ -1284,7 +1246,18 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                   spaceName: string;
                   spaceOwnerUserId: string | null;
                   workSessionGeneration: number;
-                }>();
+                }>`SELECT wr.thread_id AS "threadId",
+                      wr.requested_by_user_id AS "requesterUserId",
+                      wr.status AS "workRequestStatus",
+                      wr.cancel_requested_at AS "cancelRequestedAt",
+                      ws.space_id AS "spaceId",
+                      s.name AS "spaceName",
+                      s.owner_user_id AS "spaceOwnerUserId",
+                      CASE WHEN wr.ai_context_generation = ws.ai_context_generation THEN ws.work_session_generation
+                        ELSE -1 - wr.ai_context_generation END AS "workSessionGeneration"
+                 FROM work_requests wr JOIN threads ws ON ws.id = wr.thread_id
+                 JOIN spaces s ON s.id = ws.space_id
+                WHERE wr.id = ${params.workRequestId}`;
               if (!context) throw new Error("Work Request was not found");
               if (
                 context.workRequestStatus === "cancelled" ||
@@ -1408,7 +1381,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             await workflowStep.do(
               `workflow:${stepInstanceId(task.step)}:slot-wait-expired:${attempt}`,
               stepConfig,
-              () => clearExecutionWaiter(db, task.id),
+              () => clearExecutionWaiter(queryOf(db), task.id),
             );
             return {
               task,
@@ -1768,17 +1741,12 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     if (!params.workRequestId) return callerInput;
     const db = (this.env as ExecutionEnv).SYNTILA_DB;
     if (!db) return callerInput;
-    const row = await db
-      .prepare(
-        `SELECT wr.input_json AS inputJson, wr.snapshot_json AS snapshotJson
-         FROM work_requests wr
-         WHERE wr.id = ?1`,
-      )
-      .bind(params.workRequestId)
-      .first<{
+    const row = await queryOf(db).row<{
         inputJson: string;
         snapshotJson: string | null;
-      }>();
+      }>`SELECT wr.input_json AS "inputJson", wr.snapshot_json AS "snapshotJson"
+         FROM work_requests wr
+         WHERE wr.id = ${params.workRequestId}`;
     if (!row) return callerInput;
     const parseRecord = (value: string | null | undefined) => {
       if (!value) return {};
@@ -1832,14 +1800,9 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
   ): Promise<WorkRequestSnapshot | null> {
     const db = (this.env as ExecutionEnv).SYNTILA_DB;
     if (!db) return null;
-    const row = await db
-      .prepare(
-        `SELECT snapshot_json AS snapshotJson,
-                workflow_snapshot_json AS workflowSnapshotJson
-         FROM work_requests WHERE id = ?1`,
-      )
-      .bind(workRequestId)
-      .first<{ snapshotJson: string | null; workflowSnapshotJson: string }>();
+    const row = await queryOf(db).row<{ snapshotJson: string | null; workflowSnapshotJson: string }>`SELECT snapshot_json AS "snapshotJson",
+                workflow_snapshot_json AS "workflowSnapshotJson"
+         FROM work_requests WHERE id = ${workRequestId}`;
     if (!row?.snapshotJson) return null;
     try {
       const snapshot = JSON.parse(row.snapshotJson) as WorkRequestSnapshot;

@@ -56,11 +56,7 @@ async function publishWorkspaceInvitationChanged(
 }
 
 async function userIdByEmail(env: SecurityEnv, email: string) {
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM users WHERE LOWER(email) = ?1 LIMIT 1",
-  )
-    .bind(email.trim().toLowerCase())
-    .first<{ id: string }>();
+  const row = await dataOf(env).read.row<{ id: string }>`SELECT id FROM users WHERE LOWER(email) = ${email.trim().toLowerCase()} LIMIT 1`;
   return row?.id;
 }
 
@@ -101,11 +97,7 @@ export async function handleWorkspaceInvitations(
       .run();
     if (!revoked.meta?.changes)
       throw new HttpError(404, "Pending invitation not found");
-    const invitee = await env.SYNTILA_DB.prepare(
-      "SELECT email FROM workspace_invitations WHERE id = ?1",
-    )
-      .bind(invitationId)
-      .first<{ email: string }>();
+    const invitee = await dataOf(env).read.row<{ email: string }>`SELECT email FROM workspace_invitations WHERE id = ${invitationId}`;
     await publishWorkspaceInvitationChanged(env, invitationId, [
       context.userId,
       invitee ? await userIdByEmail(env, invitee.email) : undefined,
@@ -113,13 +105,9 @@ export async function handleWorkspaceInvitations(
     return json({ revoked: true });
   }
   if (request.method === "GET") {
-    const rows = await env.SYNTILA_DB.prepare(
-      `SELECT id, email, status, expires_at AS expiresAt, created_at AS createdAt
-       FROM workspace_invitations WHERE workspace_id = ?1 ORDER BY created_at DESC LIMIT 100`,
-    )
-      .bind(workspaceId)
-      .all();
-    return json({ invitations: rows.results ?? [] });
+    const rows = await dataOf(env).read.rows`SELECT id, email, status, expires_at AS "expiresAt", created_at AS "createdAt"
+       FROM workspace_invitations WHERE workspace_id = ${workspaceId} ORDER BY created_at DESC LIMIT 100`;
+    return json({ invitations: rows });
   }
   if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
   // Inviting people is the paid part of sharing; listing and revoking stay
@@ -143,23 +131,11 @@ export async function handleWorkspaceInvitations(
     throw new HttpError(400, "Enter a valid email address");
   if (email === context.user.email.trim().toLowerCase())
     throw new HttpError(400, "You cannot invite yourself");
-  await env.SYNTILA_DB.prepare(
-    "UPDATE workspace_invitations SET status='expired',updated_at=?2 WHERE workspace_id=?1 AND status='pending' AND expires_at<=?2",
-  )
-    .bind(workspaceId, now)
-    .run();
-  const already = await env.SYNTILA_DB.prepare(
-    `SELECT 1 AS found FROM workspace_person_grants g JOIN users u ON u.id = g.user_id
-     WHERE g.workspace_id = ?1 AND g.status = 'active' AND LOWER(u.email) = ?2`,
-  )
-    .bind(workspaceId, email)
-    .first();
+  await dataOf(env).read.run`UPDATE workspace_invitations SET status='expired',updated_at=${now} WHERE workspace_id=${workspaceId} AND status='pending' AND expires_at<=${now}`;
+  const already = await dataOf(env).read.row`SELECT 1 AS found FROM workspace_person_grants g JOIN users u ON u.id = g.user_id
+     WHERE g.workspace_id = ${workspaceId} AND g.status = 'active' AND LOWER(u.email) = ${email}`;
   if (already) throw new HttpError(409, "This person already has access");
-  const pending = await env.SYNTILA_DB.prepare(
-    "SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE LOWER(email) = ?2) AS same FROM workspace_invitations WHERE workspace_id = ?1 AND status = 'pending'",
-  )
-    .bind(workspaceId, email)
-    .first<{ n: number; same: number | null }>();
+  const pending = await dataOf(env).read.row<{ n: number; same: number | null }>`SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE LOWER(email) = ${email}) AS same FROM workspace_invitations WHERE workspace_id = ${workspaceId} AND status = 'pending'`;
   if (pending?.same)
     throw new HttpError(409, "An invitation is already pending");
   if ((pending?.n ?? 0) >= MAX_PENDING_PER_WORKSPACE)
@@ -201,17 +177,13 @@ export async function handleMyWorkspaceInvitations(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   if (request.method !== "GET") throw new HttpError(405, "Unsupported method");
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT i.id, ew.name AS workspaceName, u.display_name AS ownerName, i.expires_at AS expiresAt
+  const rows = await dataOf(env).read.rows`SELECT i.id, ew.name AS "workspaceName", u.display_name AS "ownerName", i.expires_at AS "expiresAt"
      FROM workspace_invitations i
      JOIN execution_workspaces ew ON ew.id = i.workspace_id AND ew.status != 'revoked'
      JOIN users u ON u.id = ew.owner_user_id
-     WHERE LOWER(i.email) = ?1 AND i.status = 'pending' AND i.expires_at > ?2
-     ORDER BY i.created_at DESC`,
-  )
-    .bind(context.user.email.trim().toLowerCase(), new Date().toISOString())
-    .all();
-  return json({ invitations: rows.results ?? [] });
+     WHERE LOWER(i.email) = ${context.user.email.trim().toLowerCase()} AND i.status = 'pending' AND i.expires_at > ${new Date().toISOString()}
+     ORDER BY i.created_at DESC`;
+  return json({ invitations: rows });
 }
 
 /**
@@ -227,16 +199,7 @@ export async function handleAcceptWorkspaceInvitation(
 ): Promise<Response> {
   const context = await securityContext(request, env, ctx);
   if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
-  const invitation = await env.SYNTILA_DB.prepare(
-    `SELECT i.id, i.workspace_id AS workspaceId, i.email, i.status, i.expires_at AS expiresAt,
-            i.invited_by_user_id AS invitedBy, ew.owner_user_id AS ownerId,
-            i.accepted_by_user_id AS acceptedBy
-     FROM workspace_invitations i
-     JOIN execution_workspaces ew ON ew.id = i.workspace_id AND ew.status != 'revoked'
-     WHERE i.id = ?1`,
-  )
-    .bind(invitationId)
-    .first<{
+  const invitation = await dataOf(env).read.row<{
       id: string;
       workspaceId: string;
       email: string;
@@ -245,7 +208,12 @@ export async function handleAcceptWorkspaceInvitation(
       invitedBy: string;
       ownerId: string;
       acceptedBy: string | null;
-    }>();
+    }>`SELECT i.id, i.workspace_id AS "workspaceId", i.email, i.status, i.expires_at AS "expiresAt",
+            i.invited_by_user_id AS "invitedBy", ew.owner_user_id AS "ownerId",
+            i.accepted_by_user_id AS "acceptedBy"
+     FROM workspace_invitations i
+     JOIN execution_workspaces ew ON ew.id = i.workspace_id AND ew.status != 'revoked'
+     WHERE i.id = ${invitationId}`;
   // A retried accept by the same person repeats the first result.
   if (
     invitation?.status === "accepted" &&
@@ -407,19 +375,11 @@ export async function handleDeclineWorkspaceInvitation(
     .run();
   if (!result.meta?.changes) {
     // A retried decline: the invitation is already closed for this person.
-    const closed = await env.SYNTILA_DB.prepare(
-      "SELECT 1 AS found FROM workspace_invitations WHERE id=?1 AND status='revoked' AND LOWER(email)=?2",
-    )
-      .bind(invitationId, context.user.email.trim().toLowerCase())
-      .first();
+    const closed = await dataOf(env).read.row`SELECT 1 AS found FROM workspace_invitations WHERE id=${invitationId} AND status='revoked' AND LOWER(email)=${context.user.email.trim().toLowerCase()}`;
     if (closed) return json({ status: "declined" });
     throw new HttpError(404, "Workspace invitation not found");
   }
-  const owner = await env.SYNTILA_DB.prepare(
-    "SELECT invited_by_user_id AS userId FROM workspace_invitations WHERE id = ?1",
-  )
-    .bind(invitationId)
-    .first<{ userId: string }>();
+  const owner = await dataOf(env).read.row<{ userId: string }>`SELECT invited_by_user_id AS "userId" FROM workspace_invitations WHERE id = ${invitationId}`;
   await publishWorkspaceInvitationChanged(env, invitationId, [
     owner?.userId,
     context.userId,

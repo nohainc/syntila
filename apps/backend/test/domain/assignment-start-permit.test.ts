@@ -58,7 +58,7 @@ async function seed(status: string, permitRequired = true) {
     executionWorkspaceId: "WS",
     runtimeIdentityId: "RT",
   };
-  const permit = () => grantStartPermit(f.db as never, fence, NOW);
+  const permit = () => grantStartPermit(f.read, fence, NOW);
   /** A Gateway whose Workspace is unreachable. */
   const offline = {
     SYNTILA_DB: f.db as never,
@@ -79,7 +79,7 @@ describe("start permit", () => {
     try {
       const first = await f.permit();
       const replay = await grantStartPermit(
-        f.db as never,
+        f.read,
         f.fence,
         new Date(NOW.getTime() + 60_000),
       );
@@ -95,11 +95,13 @@ describe("start permit", () => {
     async (interruption) => {
       for (let iteration = 0; iteration < 3; iteration += 1) {
         const f = await seed("acknowledged");
-        const original = f.db.prepare.bind(f.db);
+        const original = f.read;
         let interrupted = false;
+        // The race is injected just before the grant statement runs.
         const db = {
-          prepare(sql: string) {
-            if (sql.includes("SET start_permit_issued_at") && !interrupted) {
+          ...original,
+          row(strings: TemplateStringsArray, ...values: unknown[]) {
+            if (strings.join("?").includes("SET start_permit_issued_at") && !interrupted) {
               interrupted = true;
               if (interruption === "replace-runtime") {
                 f.sqlite.exec(
@@ -114,7 +116,7 @@ describe("start permit", () => {
                 );
               }
             }
-            return original(sql);
+            return original.row(strings, ...values);
           },
         };
         try {
@@ -174,7 +176,7 @@ describe("start permit", () => {
     const other = await seed("acknowledged");
     expect(
       await grantStartPermit(
-        other.db as never,
+        other.read,
         { ...other.fence, attemptId: "OTHER" },
         NOW,
       ),

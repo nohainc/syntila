@@ -1,3 +1,4 @@
+import { dataOf, queryOf } from "../../platform/data.js";
 import {
   InputAttemptSchema,
   InputDeliveredSchema,
@@ -158,12 +159,7 @@ async function requestIsOpen(
   db: D1Database,
   workRequestId: string,
 ): Promise<boolean> {
-  const row = await db
-    .prepare(
-      "SELECT status, cancel_requested_at AS cancelRequestedAt FROM work_requests WHERE id = ?1",
-    )
-    .bind(workRequestId)
-    .first<{ status: string; cancelRequestedAt: string | null }>();
+  const row = await queryOf(db).row<{ status: string; cancelRequestedAt: string | null }>`SELECT status, cancel_requested_at AS "cancelRequestedAt" FROM work_requests WHERE id = ${workRequestId}`;
   return (
     !!row &&
     !row.cancelRequestedAt &&
@@ -184,13 +180,9 @@ async function announceInputProgress(
   state: WorkRequestInputState,
 ): Promise<void> {
   try {
-    const run = await env.SYNTILA_DB.prepare(
-      `SELECT workflow_instance_id AS instanceId FROM runs
-        WHERE work_request_id = ?1 AND workflow_instance_id IS NOT NULL
-        ORDER BY created_at DESC LIMIT 1`,
-    )
-      .bind(row.workRequestId)
-      .first<{ instanceId: string }>();
+    const run = await dataOf(env).read.row<{ instanceId: string }>`SELECT workflow_instance_id AS "instanceId" FROM runs
+        WHERE work_request_id = ${row.workRequestId} AND workflow_instance_id IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1`;
     if (run?.instanceId && env.SYNTILA_RUN_WORKFLOW) {
       const instance = await env.SYNTILA_RUN_WORKFLOW.get(run.instanceId);
       await instance.sendEvent({
@@ -202,13 +194,9 @@ async function announceInputProgress(
     // The Workflow's bounded wait re-reads D1.
   }
   try {
-    const thread = await env.SYNTILA_DB.prepare(
-      `SELECT t.space_id AS spaceId, wr.primary_workspace_id AS workspaceId
+    const thread = await dataOf(env).read.row<{ spaceId: string; workspaceId: string | null }>`SELECT t.space_id AS "spaceId", wr.primary_workspace_id AS "workspaceId"
          FROM threads t JOIN work_requests wr ON wr.thread_id = t.id
-        WHERE wr.id = ?1`,
-    )
-      .bind(row.workRequestId)
-      .first<{ spaceId: string; workspaceId: string | null }>();
+        WHERE wr.id = ${row.workRequestId}`;
     if (!thread?.workspaceId) return;
     await createEventPublisher(env).publish({
       type: "work_request.input_updated",
@@ -298,21 +286,11 @@ export async function handleUploadWorkRequestInput(
     upload: { ...upload, mediaType: row.mediaType },
     workRequestId,
   });
-  await env.SYNTILA_DB.prepare(
-    `UPDATE work_request_inputs
-        SET state = 'uploaded', content_digest = ?1, preview_text = ?2,
-            preview_image = ?3, error_message = NULL,
-            upload_attempts = upload_attempts + 1, updated_at = ?4
-      WHERE id = ?5 AND state IN ('awaiting_upload', 'failed')`,
-  )
-    .bind(
-      stored.digest,
-      stored.previewText ?? null,
-      stored.previewImage ?? null,
-      new Date().toISOString(),
-      fileId,
-    )
-    .run();
+  await dataOf(env).read.run`UPDATE work_request_inputs
+        SET state = 'uploaded', content_digest = ${stored.digest}, preview_text = ${stored.previewText ?? null},
+            preview_image = ${stored.previewImage ?? null}, error_message = NULL,
+            upload_attempts = upload_attempts + 1, updated_at = ${new Date().toISOString()}
+      WHERE id = ${fileId} AND state IN ('awaiting_upload', 'failed')`;
   await announceInputProgress(env, row, "uploaded");
   await wakeWorkspace(env, row.workspaceId);
   return json({ fileId, state: "uploaded" });
@@ -329,13 +307,9 @@ async function failInput(
   row: WorkRequestInputRow,
   message: string,
 ): Promise<void> {
-  await env.SYNTILA_DB.prepare(
-    `UPDATE work_request_inputs
-        SET state = 'failed', error_message = ?1, updated_at = ?2
-      WHERE id = ?3 AND state <> 'delivered'`,
-  )
-    .bind(message, new Date().toISOString(), row.fileId)
-    .run();
+  await dataOf(env).read.run`UPDATE work_request_inputs
+        SET state = 'failed', error_message = ${message}, updated_at = ${new Date().toISOString()}
+      WHERE id = ${row.fileId} AND state <> 'delivered'`;
   await announceInputProgress(env, row, "failed");
 }
 
@@ -399,21 +373,17 @@ export async function handleListRuntimeInputs(
   env: SecurityEnv,
 ): Promise<Response> {
   const workspaceId = await requireRuntime(request, env);
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT i.id AS fileId, i.work_request_id AS workRequestId, i.name,
-            i.size_bytes AS sizeBytes, i.content_digest AS contentDigest,
-            i.delivery_attempts AS deliveryAttempts
+  const rows = await dataOf(env).read.rows`SELECT i.id AS "fileId", i.work_request_id AS "workRequestId", i.name,
+            i.size_bytes AS "sizeBytes", i.content_digest AS "contentDigest",
+            i.delivery_attempts AS "deliveryAttempts"
        FROM work_request_inputs i
        JOIN work_requests wr ON wr.id = i.work_request_id
-      WHERE i.workspace_id = ?1 AND i.state = 'uploaded'
+      WHERE i.workspace_id = ${workspaceId} AND i.state = 'uploaded'
         AND wr.status IN ('queued', 'running', 'waiting')
         AND wr.cancel_requested_at IS NULL
       ORDER BY i.created_at, i.position
-      LIMIT 50`,
-  )
-    .bind(workspaceId)
-    .all();
-  return json({ inputs: rows.results ?? [] });
+      LIMIT 50`;
+  return json({ inputs: rows });
 }
 
 /**
@@ -461,14 +431,10 @@ export async function handleConfirmRuntimeInput(
   if (row.state === "delivered") return json({ fileId, state: "delivered" });
   if (row.state !== "uploaded" || body?.contentDigest !== row.contentDigest)
     throw new HttpError(409, "Input does not match the uploaded file");
-  await env.SYNTILA_DB.prepare(
-    `UPDATE work_request_inputs
+  await dataOf(env).read.run`UPDATE work_request_inputs
         SET state = 'delivered', delivery_attempts = delivery_attempts + 1,
-            error_message = NULL, updated_at = ?1
-      WHERE id = ?2 AND state = 'uploaded'`,
-  )
-    .bind(new Date().toISOString(), fileId)
-    .run();
+            error_message = NULL, updated_at = ${new Date().toISOString()}
+      WHERE id = ${fileId} AND state = 'uploaded'`;
   await announceInputProgress(env, row, "delivered");
   return json({ fileId, state: "delivered" });
 }
@@ -494,14 +460,10 @@ export async function handleReportRuntimeInputAttempt(
     );
     return json({ fileId, state: "failed" });
   }
-  await env.SYNTILA_DB.prepare(
-    `UPDATE work_request_inputs
-        SET delivery_attempts = delivery_attempts + 1, error_message = ?1,
-            updated_at = ?2
-      WHERE id = ?3 AND state = 'uploaded'`,
-  )
-    .bind(message, new Date().toISOString(), fileId)
-    .run();
+  await dataOf(env).read.run`UPDATE work_request_inputs
+        SET delivery_attempts = delivery_attempts + 1, error_message = ${message},
+            updated_at = ${new Date().toISOString()}
+      WHERE id = ${fileId} AND state = 'uploaded'`;
   await announceInputProgress(env, row, "uploaded");
   return json({ fileId, state: "uploaded" });
 }

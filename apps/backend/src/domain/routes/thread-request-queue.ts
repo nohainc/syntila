@@ -10,7 +10,7 @@ import {
   authorizeThreadAccessAsUser,
 } from "./thread-policy.js";
 import { createWorkRequestForUser } from "./work-creation.js";
-import { dataOf } from "../../platform/data.js";
+import { dataOf, queryOf } from "../../platform/data.js";
 
 const SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID =
   "SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1";
@@ -173,25 +173,17 @@ async function pause(
   userId: string | null,
   message: string | null,
 ) {
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO thread_request_queue_state
+  await dataOf(env).read.run`INSERT INTO thread_request_queue_state
        (thread_id, paused_reason, paused_by_user_id, failure_message, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5)
+     VALUES (${threadId}, ${reason}, ${userId}, ${message}, ${new Date().toISOString()})
      ON CONFLICT(thread_id) DO UPDATE SET paused_reason = excluded.paused_reason,
        paused_by_user_id = excluded.paused_by_user_id,
        failure_message = excluded.failure_message,
-       updated_at = excluded.updated_at`,
-  )
-    .bind(threadId, reason, userId, message, new Date().toISOString())
-    .run();
+       updated_at = excluded.updated_at`;
 }
 
 async function resume(env: SecurityEnv, threadId: string) {
-  await env.SYNTILA_DB.prepare(
-    "DELETE FROM thread_request_queue_state WHERE thread_id = ?1",
-  )
-    .bind(threadId)
-    .run();
+  await dataOf(env).read.run`DELETE FROM thread_request_queue_state WHERE thread_id = ${threadId}`;
 }
 
 async function errorMessageOf(response: Response) {
@@ -241,14 +233,9 @@ async function withApprovedPlan(
     request.includes(APPROVED_PLAN_HEADING)
   )
     return body;
-  const plan = await db
-    .prepare(
-      `SELECT output_json AS outputJson FROM workflow_tasks
-        WHERE work_request_id = ?1 AND step_kind = 'plan' AND status = 'completed'
-        ORDER BY attempt DESC LIMIT 1`,
-    )
-    .bind(planId)
-    .first<{ outputJson: string | null }>();
+  const plan = await queryOf(db).row<{ outputJson: string | null }>`SELECT output_json AS "outputJson" FROM workflow_tasks
+        WHERE work_request_id = ${planId} AND step_kind = 'plan' AND status = 'completed'
+        ORDER BY attempt DESC LIMIT 1`;
   let planText = plan?.outputJson ?? "";
   try {
     const parsed = JSON.parse(planText) as unknown;
@@ -288,14 +275,9 @@ export async function advanceThreadQueue(
   } = {},
 ): Promise<void> {
   const db = env.SYNTILA_DB;
-  const head = await db
-    .prepare(
-      `SELECT id, author_user_id AS authorUserId, request_json AS requestJson, status
-         FROM thread_request_queue WHERE thread_id = ?1
-        ORDER BY position, created_at, id LIMIT 1`,
-    )
-    .bind(threadId)
-    .first<Pick<QueueRow, "id" | "authorUserId" | "requestJson" | "status">>();
+  const head = await queryOf(db).row<Pick<QueueRow, "id" | "authorUserId" | "requestJson" | "status">>`SELECT id, author_user_id AS "authorUserId", request_json AS "requestJson", status
+         FROM thread_request_queue WHERE thread_id = ${threadId}
+        ORDER BY position, created_at, id LIMIT 1`;
   if (!head) return;
   if (failedRequest) {
     await pause(
@@ -310,12 +292,7 @@ export async function advanceThreadQueue(
     return;
   }
   if (head.status === "sending") return;
-  const paused = await db
-    .prepare(
-      "SELECT 1 AS found FROM thread_request_queue_state WHERE thread_id = ?1",
-    )
-    .bind(threadId)
-    .first();
+  const paused = await queryOf(db).row`SELECT 1 AS found FROM thread_request_queue_state WHERE thread_id = ${threadId}`;
   if (paused && !forceHead) return;
   const active = await db
     .prepare(
@@ -363,10 +340,7 @@ export async function advanceThreadQueue(
       error instanceof Error ? error.message : "The request could not be sent";
   }
   if (failure === null) {
-    await db
-      .prepare("DELETE FROM thread_request_queue WHERE id = ?1")
-      .bind(head.id)
-      .run();
+    await queryOf(db).run`DELETE FROM thread_request_queue WHERE id = ${head.id}`;
   } else {
     // Keep the request first in line and wait for people to decide.
     await db.batch([
@@ -386,10 +360,7 @@ export async function advanceThreadQueue(
  * (409) or was removed meanwhile (404). Throws either way.
  */
 async function lostQueuedItem(db: D1Database, itemId: string): Promise<never> {
-  const still = await db
-    .prepare("SELECT 1 AS found FROM thread_request_queue WHERE id = ?1")
-    .bind(itemId)
-    .first();
+  const still = await queryOf(db).row`SELECT 1 AS found FROM thread_request_queue WHERE id = ${itemId}`;
   if (still) throw new HttpError(409, "This request is already being sent");
   throw new HttpError(404, "Queued request not found");
 }
@@ -418,12 +389,8 @@ export async function advanceThreadQueueSafely(
  */
 export async function sweepThreadRequestQueues(env: SecurityEnv) {
   const stale = new Date(Date.now() - STALE_SENDING_MS).toISOString();
-  await env.SYNTILA_DB.prepare(
-    `UPDATE thread_request_queue SET status = 'queued', updated_at = ?2
-      WHERE status = 'sending' AND updated_at < ?1`,
-  )
-    .bind(stale, new Date().toISOString())
-    .run();
+  await dataOf(env).read.run`UPDATE thread_request_queue SET status = 'queued', updated_at = ${new Date().toISOString()}
+      WHERE status = 'sending' AND updated_at < ${stale}`;
   const threads = await env.SYNTILA_DB.prepare(
     `SELECT DISTINCT q.thread_id AS threadId FROM thread_request_queue q
       WHERE NOT EXISTS (SELECT 1 FROM thread_request_queue_state s
@@ -495,15 +462,10 @@ export async function handleThreadRequestQueue(
     // until someone resumes them.
     const planPaused =
       !body.isPhased &&
-      !!(await db
-        .prepare(
-          `SELECT 1 AS found FROM thread_request_queue_state s
-            WHERE s.thread_id = ?1 AND EXISTS (
-              SELECT 1 FROM thread_request_queue q WHERE q.thread_id = ?1
-                 AND (q.request_json::jsonb #>> '{isPhased}') IN ('true', '1'))`,
-        )
-        .bind(threadId)
-        .first());
+      !!(await queryOf(db).row`SELECT 1 AS found FROM thread_request_queue_state s
+            WHERE s.thread_id = ${threadId} AND EXISTS (
+              SELECT 1 FROM thread_request_queue q WHERE q.thread_id = ${threadId}
+                 AND (q.request_json::jsonb #>> '{isPhased}') IN ('true', '1'))`);
     const item = {
       id: `trq-${crypto.randomUUID()}`,
       threadId,
@@ -533,13 +495,8 @@ export async function handleThreadRequestQueue(
   }
 
   if (!itemId) throw new HttpError(405, "Unsupported method");
-  const item = await db
-    .prepare(
-      `SELECT author_user_id AS authorUserId, status, request_json AS requestJson FROM thread_request_queue
-        WHERE id = ?1 AND thread_id = ?2`,
-    )
-    .bind(itemId, threadId)
-    .first<{ authorUserId: string; status: string; requestJson: string }>();
+  const item = await queryOf(db).row<{ authorUserId: string; status: string; requestJson: string }>`SELECT author_user_id AS "authorUserId", status, request_json AS "requestJson" FROM thread_request_queue
+        WHERE id = ${itemId} AND thread_id = ${threadId}`;
   if (!item) throw new HttpError(404, "Queued request not found");
   // Members share the queue but act only on their own requests.
   if (item.authorUserId !== context.userId)
@@ -572,13 +529,8 @@ export async function handleThreadRequestQueue(
       spaceId,
       String(body.workflowId),
     );
-    const edited = await db
-      .prepare(
-        `UPDATE thread_request_queue SET request_json = ?1, updated_at = ?2
-          WHERE id = ?3 AND status = 'queued' RETURNING id`,
-      )
-      .bind(JSON.stringify(body), now, itemId)
-      .first<{ id: string }>();
+    const edited = await queryOf(db).row<{ id: string }>`UPDATE thread_request_queue SET request_json = ${JSON.stringify(body)}, updated_at = ${now}
+          WHERE id = ${itemId} AND status = 'queued' RETURNING id`;
     if (!edited) await lostQueuedItem(db, itemId);
   } else if (method === "DELETE" && !action) {
     if (existingRequest.isPhased)
@@ -586,12 +538,7 @@ export async function handleThreadRequestQueue(
         400,
         "A single implementation phase cannot be removed. Stop all phases instead.",
       );
-    const removed = await db
-      .prepare(
-        "DELETE FROM thread_request_queue WHERE id = ?1 AND status = 'queued' RETURNING id",
-      )
-      .bind(itemId)
-      .first<{ id: string }>();
+    const removed = await queryOf(db).row<{ id: string }>`DELETE FROM thread_request_queue WHERE id = ${itemId} AND status = 'queued' RETURNING id`;
     if (!removed) await lostQueuedItem(db, itemId);
     const left = await db
       .prepare(

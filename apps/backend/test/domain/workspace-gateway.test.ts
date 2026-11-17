@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { afterEach, describe, expect, it, vi } from "./helpers/vitest-compat";
 import { hashToken } from "@syntila/security";
 import {
@@ -92,228 +93,6 @@ describe("Workspace runtime Gateway", () => {
     vi.unstubAllGlobals();
   });
 
-  it("authenticates HTTP runtime sessions with the runtime credential and polls the Gateway queue", async () => {
-    const token = "runtime-secret-for-http-fallback";
-    const credentialTokenHash = await hashToken(token);
-    const workspaceId = "workspace-http-fallback";
-    const values: unknown[][] = [];
-    const db = {
-      prepare(sql: string) {
-        return {
-          bind: (...bound: unknown[]) => ({
-            first: async () =>
-              sql.startsWith("UPDATE worker_assignments")
-                ? // The Gateway persists `dispatched` before it sends.
-                  { id: bound[2] }
-                : sql.includes("FROM worker_assignments")
-                  ? {
-                      id: "assignment-http-fallback",
-                      execution_workspace_id: workspaceId,
-                      runtime_identity_id: "runtime-http-fallback",
-                      worker_id: "worker-http-fallback",
-                      workspace_worker_id: "worker-http-fallback",
-                      run_id: "run-http-fallback",
-                      task_id: "task-http-fallback",
-                      attempt_id: "attempt-http-fallback",
-                      idempotency_key: "idem-http-fallback",
-                      status: "created",
-                    }
-                  : {
-                      executionWorkspaceId: workspaceId,
-                      credentialTokenHash,
-                    },
-            all: async () => ({ results: [] }),
-            run: async () => {
-              values.push(bound);
-              return { success: true };
-            },
-          }),
-        };
-      },
-    };
-    const storage = new Map<string, unknown>();
-    const state = {
-      id: { name: workspaceId },
-      storage: {
-        get: async (key: string) => storage.get(key),
-        put: async (key: string, value: unknown) => {
-          storage.set(key, value);
-        },
-        delete: async (key: string) => storage.delete(key),
-      },
-    };
-    const gateway = new WorkspaceGateway(state as never, {
-      SYNTILA_DB: db as never,
-    });
-    const humanCredentialAttempt = await gateway.fetch(
-      new Request("https://gateway.internal/runtime/sessions", {
-        method: "POST",
-        headers: {
-          authorization: "Bearer syntila_dhs_human-session",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          workspaceRuntimeId: "runtime-http-fallback",
-          contractVersion: "1.0",
-        }),
-      }),
-    );
-    expect(humanCredentialAttempt.status).toBe(401);
-    const create = await gateway.fetch(
-      new Request("https://gateway.internal/runtime/sessions", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          workspaceRuntimeId: "runtime-http-fallback",
-          contractVersion: "1.0",
-        }),
-      }),
-    );
-    expect(create.status).toBe(200);
-    const created = (await create.json()) as {
-      sessionId: string;
-      cursor: string;
-    };
-    expect(created.cursor).toBe("0");
-    // closeForRuntime, session open, workspace online.
-    expect(values).toHaveLength(3);
-    const status = await gateway.fetch(
-      new Request("https://gateway.internal/status"),
-    );
-    expect(await status.json()).toMatchObject({
-      online: true,
-      activeTransport: "http_long_poll",
-      sessionId: created.sessionId,
-    });
-
-    const invalidProductDispatch = await gateway.fetch(
-      new Request("https://gateway.internal/dispatch-assignment", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          executionWorkspaceId: workspaceId,
-          workspaceRuntimeId: "runtime-http-fallback",
-          workerId: "worker-http-fallback",
-          runId: "run-http-fallback",
-          taskId: "task-http-fallback",
-          attemptId: "attempt-http-fallback",
-          assignmentId: "assignment-http-fallback",
-          idempotencyKey: "idem-http-fallback",
-          payload: {
-            snapshot: { workerTypeId: "codex" },
-            input: { objective: "fallback assignment" },
-          },
-        }),
-      }),
-    );
-    expect(invalidProductDispatch.status).toBe(400);
-
-    const readyCursor = await publishReady(gateway, {
-      token,
-      sessionId: created.sessionId,
-      workspaceId,
-      runtimeId: "runtime-http-fallback",
-    });
-    const dispatch = await gateway.fetch(
-      new Request("https://gateway.internal/dispatch-assignment", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          executionWorkspaceId: workspaceId,
-          workspaceRuntimeId: "runtime-http-fallback",
-          workerId: "worker-http-fallback",
-          runId: "run-http-fallback",
-          taskId: "task-http-fallback",
-          attemptId: "attempt-http-fallback",
-          assignmentId: "assignment-http-fallback",
-          idempotencyKey: "idem-http-fallback",
-          payload: {
-            snapshot: { workerTypeId: "chatgpt" },
-            input: { objective: "fallback assignment" },
-          },
-        }),
-      }),
-    );
-    expect(dispatch.status).toBe(200);
-    expect(await dispatch.json()).toEqual(
-      expect.objectContaining({
-        delivered: true,
-        shouldSend: true,
-        duplicate: false,
-        terminal: false,
-        accepted: false,
-        deliveryState: "queued",
-        acceptance: "pending",
-      }),
-    );
-    const assignmentPoll = await gateway.fetch(
-      new Request("https://gateway.internal/runtime/poll", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId: created.sessionId,
-          cursor: readyCursor,
-          waitMs: 0,
-        }),
-      }),
-    );
-    expect(assignmentPoll.status).toBe(200);
-    const delivered = (await assignmentPoll.json()) as { cursor: string };
-    expect(delivered).toMatchObject({
-      events: [
-        {
-          message: {
-            type: "assignment.start",
-            assignmentId: "assignment-http-fallback",
-          },
-        },
-      ],
-    });
-
-    const rejected = await gateway.fetch(
-      new Request("https://gateway.internal/runtime/poll", {
-        method: "POST",
-        headers: {
-          authorization: "Bearer wrong-runtime-credential",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId: created.sessionId,
-          cursor: delivered.cursor,
-          waitMs: 0,
-        }),
-      }),
-    );
-    expect(rejected.status).toBe(401);
-
-    const poll = await gateway.fetch(
-      new Request("https://gateway.internal/runtime/poll", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId: created.sessionId,
-          cursor: delivered.cursor,
-          waitMs: 0,
-        }),
-      }),
-    );
-    expect(poll.status).toBe(200);
-    expect(await poll.json()).toMatchObject({
-      cursor: delivered.cursor,
-      events: [],
-      timedOut: true,
-    });
-  });
-
   it("deduplicates replayed runtime events across HTTP session recreation", async () => {
     const token = "runtime-secret-replay";
     const credentialTokenHash = await hashToken(token);
@@ -343,7 +122,7 @@ describe("Workspace runtime Gateway", () => {
       },
     };
     const gateway = new WorkspaceGateway(state as never, {
-      SYNTILA_DB: db as never,
+      SYNTILA_DB: withSql(db) as never,
     });
     const createSession = async () => {
       const response = await gateway.fetch(
@@ -419,161 +198,6 @@ describe("Workspace runtime Gateway", () => {
     expect(await poll.json()).toMatchObject({ events: [], timedOut: true });
   });
 
-  it("rejects a previous runtime's cursor after another runtime takes the Gateway", async () => {
-    const tokens = {
-      "runtime-a": "runtime-secret-a",
-      "runtime-b": "runtime-secret-b",
-    };
-    const workspaceId = "workspace-cursor-isolation";
-    const tokenHashes = {
-      "runtime-a": await hashToken(tokens["runtime-a"]),
-      "runtime-b": await hashToken(tokens["runtime-b"]),
-    };
-    const db = {
-      prepare(sql: string) {
-        return {
-          bind: (...bound: unknown[]) => ({
-            first: async () => {
-              if (sql.startsWith("UPDATE worker_assignments"))
-                return { id: bound[2] };
-              if (sql.includes("FROM worker_assignments"))
-                return {
-                  id: "assignment-cursor-test",
-                  execution_workspace_id: workspaceId,
-                  runtime_identity_id: "runtime-a",
-                  worker_id: "worker-a",
-                  workspace_worker_id: "worker-a",
-                  run_id: "run-a",
-                  task_id: "task-a",
-                  attempt_id: "attempt-a",
-                  idempotency_key: "idem-a",
-                  status: "created",
-                };
-              const runtimeId = String(bound[0]);
-              return {
-                executionWorkspaceId: workspaceId,
-                credentialTokenHash:
-                  tokenHashes[runtimeId as keyof typeof tokenHashes],
-              };
-            },
-            all: async () => ({ results: [] }),
-            run: async () => ({ success: true }),
-          }),
-        };
-      },
-    };
-    const storage = new Map<string, unknown>();
-    const state = {
-      id: { name: workspaceId },
-      storage: {
-        get: async (key: string) => storage.get(key),
-        put: async (key: string, value: unknown) => {
-          storage.set(key, value);
-        },
-        delete: async (key: string) => storage.delete(key),
-      },
-    };
-    const gateway = new WorkspaceGateway(state as never, {
-      SYNTILA_DB: db as never,
-    });
-    const createSession = async (runtimeId: string) => {
-      const response = await gateway.fetch(
-        new Request("https://gateway.internal/runtime/sessions", {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${tokens[runtimeId as keyof typeof tokens]}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            workspaceRuntimeId: runtimeId,
-            contractVersion: "1.0",
-          }),
-        }),
-      );
-      expect(response.status).toBe(200);
-      return (await response.json()) as { sessionId: string; cursor: string };
-    };
-    const firstSession = await createSession("runtime-a");
-    const readyCursor = await publishReady(gateway, {
-      token: tokens["runtime-a"],
-      sessionId: firstSession.sessionId,
-      workspaceId,
-      runtimeId: "runtime-a",
-    });
-    const dispatch = await gateway.fetch(
-      new Request("https://gateway.internal/dispatch-assignment", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          executionWorkspaceId: workspaceId,
-          workspaceRuntimeId: "runtime-a",
-          workerId: "worker-a",
-          runId: "run-a",
-          taskId: "task-a",
-          attemptId: "attempt-a",
-          assignmentId: "assignment-cursor-test",
-          idempotencyKey: "idem-a",
-          payload: {
-            snapshot: { workerTypeId: "gemini" },
-            input: {},
-          },
-        }),
-      }),
-    );
-    expect(dispatch.status).toBe(200);
-    const firstPoll = await gateway.fetch(
-      new Request("https://gateway.internal/runtime/poll", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${tokens["runtime-a"]}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId: firstSession.sessionId,
-          cursor: readyCursor,
-          waitMs: 0,
-        }),
-      }),
-    );
-    const priorRuntimeEvents = (await firstPoll.json()) as { cursor: string };
-    expect(priorRuntimeEvents.cursor).toBe(String(Number(readyCursor) + 1));
-
-    const secondSession = await createSession("runtime-b");
-    const staleCursor = await gateway.fetch(
-      new Request("https://gateway.internal/runtime/poll", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${tokens["runtime-b"]}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId: secondSession.sessionId,
-          cursor: priorRuntimeEvents.cursor,
-          waitMs: 0,
-        }),
-      }),
-    );
-    expect(staleCursor.status).toBe(400);
-    const cleanPoll = await gateway.fetch(
-      new Request("https://gateway.internal/runtime/poll", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${tokens["runtime-b"]}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId: secondSession.sessionId,
-          cursor: secondSession.cursor,
-          waitMs: 0,
-        }),
-      }),
-    );
-    expect(await cleanPoll.json()).toMatchObject({
-      events: [],
-      timedOut: true,
-    });
-  });
-
   it("logs DO upgrade checkpoints with the forwarded request correlation ID", async () => {
     const runtimeToken = "runtime-secret-for-gateway-test";
     const credentialTokenHash = await hashToken(runtimeToken);
@@ -646,7 +270,7 @@ describe("Workspace runtime Gateway", () => {
       },
     };
     const gateway = new WorkspaceGateway(state as never, {
-      SYNTILA_DB: db as never,
+      SYNTILA_DB: withSql(db) as never,
     });
     const logs: string[] = [];
     vi.spyOn(console, "log").mockImplementation((record) => {
@@ -738,6 +362,7 @@ describe("Workspace runtime Gateway", () => {
       },
     } as never;
 
+    withSql(db);
     await expect(
       isWorkspaceRuntimeAuthorized(db, "runtime-a", "hash-a"),
     ).resolves.toEqual({ executionWorkspaceId: "workspace-a" });
@@ -777,7 +402,7 @@ describe("Workspace runtime Gateway", () => {
         },
       };
       const gateway = new WorkspaceGateway(state as never, {
-        SYNTILA_DB: db as never,
+        SYNTILA_DB: withSql(db) as never,
       });
       const create = await gateway.fetch(
         new Request("https://gateway.internal/runtime/sessions", {

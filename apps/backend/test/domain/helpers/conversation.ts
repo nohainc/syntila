@@ -8,7 +8,7 @@ import { loadConversationTurns } from "../../../src/domain/routes/conversation-t
 export async function conversationFixture(
   options: { beforeTurnLifecycleRepair?: boolean; research?: boolean } = {},
 ) {
-  const { sqlite, db } = sqliteD1(options);
+  const { sqlite, db, read } = sqliteD1(options);
   sqlite.exec(`
  INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('U','u@test','User','now','now');
  INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','U','Space','now','now');
@@ -69,5 +69,5 @@ export async function conversationFixture(
         "UPDATE worker_assignments SET status='running', updated_at=? WHERE id=?",
       )
       .run(updatedAt, id);
-  return { sqlite, db, assign, start, turns };
+  return { sqlite, db, read, assign, start, turns };
 }

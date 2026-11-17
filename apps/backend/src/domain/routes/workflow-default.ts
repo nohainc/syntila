@@ -62,15 +62,11 @@ export async function handleWorkflowDefault(
   const context = await securityContext(request, env, ctx);
   let ownerUserId = context.userId;
   if (spaceId) {
-    const membership = await env.SYNTILA_DB.prepare(
-      `SELECT s.owner_user_id AS ownerUserId, COALESCE(s.kind, 'group') AS kind
+    const membership = await dataOf(env).read.row<{ ownerUserId: string; kind: string }>`SELECT s.owner_user_id AS "ownerUserId", COALESCE(s.kind, 'group') AS kind
          FROM spaces s
          JOIN space_memberships m ON m.space_id = s.id
          JOIN users u ON u.id = m.user_id
-        WHERE s.id = ?1 AND m.user_id = ?2 AND u.status = 'active'`,
-    )
-      .bind(spaceId, context.userId)
-      .first<{ ownerUserId: string; kind: string }>();
+        WHERE s.id = ${spaceId} AND m.user_id = ${context.userId} AND u.status = 'active'`;
     if (!membership) throw new HttpError(403, "Space membership required");
     if (membership.kind === "direct") {
       if (request.method !== "GET") {
@@ -155,21 +151,13 @@ export async function handleWorkflowDefault(
     );
   const now = new Date().toISOString();
   if (spaceId) {
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO space_workflow_defaults(space_id,workflow_id,updated_at)
-       VALUES(?1,?2,?3)
-       ON CONFLICT(space_id) DO UPDATE SET workflow_id=excluded.workflow_id,updated_at=excluded.updated_at`,
-    )
-      .bind(spaceId, workflowId, now)
-      .run();
+    await dataOf(env).read.run`INSERT INTO space_workflow_defaults(space_id,workflow_id,updated_at)
+       VALUES(${spaceId},${workflowId},${now})
+       ON CONFLICT(space_id) DO UPDATE SET workflow_id=excluded.workflow_id,updated_at=excluded.updated_at`;
   } else {
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO user_workflow_defaults(user_id,workspace_id,workflow_id,updated_at)
-       VALUES(?1,?4,?2,?3)
-       ON CONFLICT(user_id,workspace_id) DO UPDATE SET workflow_id=excluded.workflow_id,updated_at=excluded.updated_at`,
-    )
-      .bind(ownerUserId, workflowId, now, userWorkspaceId)
-      .run();
+    await dataOf(env).read.run`INSERT INTO user_workflow_defaults(user_id,workspace_id,workflow_id,updated_at)
+       VALUES(${ownerUserId},${userWorkspaceId},${workflowId},${now})
+       ON CONFLICT(user_id,workspace_id) DO UPDATE SET workflow_id=excluded.workflow_id,updated_at=excluded.updated_at`;
   }
   return json({ schemaVersion: 1, defaultWorkflowId: workflowId });
 }

@@ -116,35 +116,18 @@ export async function handleWorkspaceWorkerPreferences(
   const workspace = await ownsActiveWorkspace(dataOf(env).read, workspaceId, userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
   if (request.method === "GET") {
-    const row = await env.SYNTILA_DB.prepare(
-      "SELECT preferences_json AS preferencesJson FROM workspace_worker_preferences WHERE user_id = ?1 AND workspace_id = ?2",
-    )
-      .bind(userId, workspaceId)
-      .first<{ preferencesJson: string }>();
+    const row = await dataOf(env).read.row<{ preferencesJson: string }>`SELECT preferences_json AS "preferencesJson" FROM workspace_worker_preferences WHERE user_id = ${userId} AND workspace_id = ${workspaceId}`;
     return json({
       preferences: row ? JSON.parse(row.preferencesJson) : emptyPreferences(),
     });
   }
   if (request.method === "DELETE") {
-    await env.SYNTILA_DB.prepare(
-      "DELETE FROM workspace_worker_preferences WHERE user_id = ?1 AND workspace_id = ?2",
-    )
-      .bind(userId, workspaceId)
-      .run();
+    await dataOf(env).read.run`DELETE FROM workspace_worker_preferences WHERE user_id = ${userId} AND workspace_id = ${workspaceId}`;
     return json({ preferences: emptyPreferences() });
   }
   if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
   const preferences = parsePreferences(await readBody(request));
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO workspace_worker_preferences(user_id,workspace_id,preferences_json,updated_at) VALUES(?1,?2,?3,?4)
-    ON CONFLICT(user_id,workspace_id) DO UPDATE SET preferences_json=excluded.preferences_json,updated_at=excluded.updated_at`,
-  )
-    .bind(
-      userId,
-      workspaceId,
-      JSON.stringify(preferences),
-      new Date().toISOString(),
-    )
-    .run();
+  await dataOf(env).read.run`INSERT INTO workspace_worker_preferences(user_id,workspace_id,preferences_json,updated_at) VALUES(${userId},${workspaceId},${JSON.stringify(preferences)},${new Date().toISOString()})
+    ON CONFLICT(user_id,workspace_id) DO UPDATE SET preferences_json=excluded.preferences_json,updated_at=excluded.updated_at`;
   return json({ preferences });
 }

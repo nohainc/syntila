@@ -1,3 +1,4 @@
+import { dataOf } from "../../platform/data.js";
 import type { SecurityEnv } from "./http-security.js";
 import { HttpError } from "./http-security.js";
 
@@ -29,23 +30,19 @@ export async function requireDestructiveThreadAccess(
   threadId: string,
   userId: string,
 ) {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT t.lead_user_id AS creator,
-    t.has_other_contributions AS contributed, s.owner_user_id AS owner,
-    COALESCE(s.kind, 'group') AS spaceKind
-    FROM threads t JOIN spaces s ON s.id = t.space_id WHERE t.id = ?1`,
-  )
-    .bind(threadId)
-    .first<{
+  const row = await dataOf(env).read.row<{
       creator: string;
       contributed: number;
       owner: string;
       spaceKind: string;
-    }>();
+    }>`SELECT t.lead_user_id AS creator,
+    t.has_other_contributions AS contributed, s.owner_user_id AS owner,
+    COALESCE(s.kind, 'group') AS "spaceKind"
+    FROM threads t JOIN spaces s ON s.id = t.space_id WHERE t.id = ${threadId}`;
   if (!row) throw new HttpError(404, "Thread not found");
 
   if (row.spaceKind === "direct") {
-    if (row.creator !== userId || row.contributed !== 0) {
+    if (row.creator !== userId || Number(row.contributed) !== 0) {
       throw new HttpError(
         403,
         "In a Direct Space, only the Thread creator with no other contributions may delete or clear this Thread",
@@ -54,7 +51,7 @@ export async function requireDestructiveThreadAccess(
     return;
   }
 
-  if (row.owner !== userId && (row.creator !== userId || row.contributed !== 0))
+  if (row.owner !== userId && (row.creator !== userId || Number(row.contributed) !== 0))
     throw new HttpError(
       403,
       "Only the Space owner or a creator without other people's contributions may clear or delete this Thread",

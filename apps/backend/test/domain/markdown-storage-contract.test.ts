@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { pgD1 } from "./helpers/pg-d1";
 import { basicThread } from "./helpers/seed";
 vi.mock("../../src/domain/collaboration-events.js", () => ({
@@ -118,7 +119,7 @@ it.each(
         new Request(
           "https://syntila.test/api/threads/stream-test/work-requests",
         ),
-        { SYNTILA_DB: db } as unknown as Parameters<
+        { SYNTILA_DB: withSql(db) } as unknown as Parameters<
           typeof handleListWorkRequests
         >[1],
         "stream-test",
@@ -142,7 +143,7 @@ it.each(
       expect(body.workRequests[0]?.workflowVersion).toBe(definition.version);
       const detail = await handleGetWorkRequest(
         new Request("https://syntila.test/api/work-requests/request-test"),
-        { SYNTILA_DB: db } as unknown as Parameters<
+        { SYNTILA_DB: withSql(db) } as unknown as Parameters<
           typeof handleGetWorkRequest
         >[1],
         "request-test",
@@ -193,7 +194,7 @@ it("persists and returns exact Markdown through Chat create, edit and list", asy
       };
     },
   };
-  const env = { SYNTILA_DB: db } as unknown as Parameters<
+  const env = { SYNTILA_DB: withSql(db) } as unknown as Parameters<
     typeof handleCreateDiscussionMessage
   >[1];
   const request = (body: string, method = "POST") =>

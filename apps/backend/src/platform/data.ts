@@ -248,3 +248,23 @@ export function dataOf(env: { SYNTILA_DATA?: unknown; SYNTILA_DB: unknown }): Da
   if (!data) instances.set(db, (data = new Data(db.sql)));
   return data;
 }
+
+/**
+ * Query interface over an adapter instance (`SYNTILA_DB`), for modules that
+ * still receive the adapter instead of an env. An adapter joined to a
+ * transaction (`within`) hands out that transaction's connection, so reads and
+ * writes through it stay inside the transaction. Goes away with the adapter.
+ */
+export function queryOf(db: unknown): Query {
+  const joined = (db as { connection?: Sql } | null)?.connection;
+  return joined ? queryOn(joined) : dataOf({ SYNTILA_DB: db }).read;
+}
+
+/**
+ * Runs `fn` as one unit on an adapter instance: its own transaction, or the
+ * open one when the adapter is joined to a transaction.
+ */
+export function atomically<T>(db: unknown, label: string, fn: (q: Query) => Promise<T>): Promise<T> {
+  const joined = (db as { connection?: Sql } | null)?.connection;
+  return joined ? fn(queryOn(joined)) : dataOf({ SYNTILA_DB: db }).tx(label, fn);
+}

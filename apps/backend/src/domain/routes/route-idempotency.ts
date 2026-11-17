@@ -1,3 +1,4 @@
+import { queryOf } from "../../platform/data.js";
 /**
  * Idempotency for create endpoints marked `idempotent: "route"` in the route
  * table. A client that sends `Idempotency-Key` and retries (lost response,
@@ -62,13 +63,8 @@ export async function withRouteIdempotency(
 
   let claimed = await claim();
   if (!claimed) {
-    const existing = await db
-      .prepare(
-        `SELECT request_hash AS hash, response_json AS body, response_status AS status, created_at AS createdAt
-           FROM mutation_receipts WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3`,
-      )
-      .bind(userId, scope, key)
-      .first<{ hash: string; body: string; status: number; createdAt: string }>();
+    const existing = await queryOf(db).row<{ hash: string; body: string; status: number; createdAt: string }>`SELECT request_hash AS hash, response_json AS body, response_status AS status, created_at AS "createdAt"
+           FROM mutation_receipts WHERE user_id = ${userId} AND scope = ${scope} AND idempotency_key = ${key}`;
     if (existing && existing.hash !== hash)
       throw Object.assign(new HttpError(409, "Idempotency-Key was already used for a different request"), {
         code: "idempotency_key_reused",
@@ -113,12 +109,7 @@ export async function withRouteIdempotency(
     return response;
   }
   const text = await response.text();
-  await db
-    .prepare(
-      `UPDATE mutation_receipts SET response_json = ?4, response_status = ?5
-        WHERE user_id = ?1 AND scope = ?2 AND idempotency_key = ?3`,
-    )
-    .bind(userId, scope, key, text, response.status)
-    .run();
+  await queryOf(db).run`UPDATE mutation_receipts SET response_json = ${text}, response_status = ${response.status}
+        WHERE user_id = ${userId} AND scope = ${scope} AND idempotency_key = ${key}`;
   return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
 }

@@ -210,7 +210,7 @@ export async function handleListSpaces(
         description: row.description,
         role: row.role,
         kind: row.kind ?? "group",
-        isSupport: row.isSupport === 1,
+        isSupport: Number(row.isSupport) === 1,
         avatarUrl:
           isDirect && row.peerUserId
             ? avatarUrlFor(request, row.peerUserId, row.peerAvatarUrl)
@@ -231,11 +231,11 @@ export async function handleListSpaces(
               originalName: row.peerDisplayName,
             }
           : settings,
-        archived: row.hidden === 1 || settings.archived === true,
+        archived: Number(row.hidden) === 1 || settings.archived === true,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
-        hasActiveWork: row.hasActiveWork === 1,
-        hasUnread: row.hasUnread === 1,
+        hasActiveWork: Number(row.hasActiveWork) === 1,
+        hasUnread: Number(row.hasUnread) === 1,
         pinnedAt: row.pinnedAt ?? null,
         pinPosition: row.pinPosition ?? 0,
       };
@@ -285,13 +285,9 @@ export async function handleCreateSpace(
   // with another create by the same person.
   return inTransaction(env, "space.create", async (env, tx) => {
     await tx.lock("syntila.spaces_of", context.userId);
-    const duplicate = await env.SYNTILA_DB.prepare(
-      `SELECT id FROM spaces
-       WHERE owner_user_id = ?1 AND LOWER(TRIM(name)) = LOWER(TRIM(?2))
-       LIMIT 1`,
-    )
-      .bind(context.userId, name)
-      .first<{ id: string }>();
+    const duplicate = await dataOf(env).read.row<{ id: string }>`SELECT id FROM spaces
+       WHERE owner_user_id = ${context.userId} AND LOWER(TRIM(name)) = LOWER(TRIM(${name}))
+       LIMIT 1`;
     if (duplicate) {
       throw new HttpError(409, "You already have a Space with this name");
     }
@@ -365,23 +361,7 @@ export async function handleGetSpace(
     spaceId,
     accessContext,
   );
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT p.id, p.name, p.description, pm.role, COALESCE(p.kind, 'group') AS kind,
-            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id) AS isSupport,
-            p.settings_json AS settingsJson, p.created_at AS createdAt, p.updated_at AS updatedAt,
-            peer_u.id AS peerUserId,
-            peer_u.display_name AS peerDisplayName,
-            dsus.personal_name AS personalName,
-            peer_u.avatar_url AS peerAvatarUrl
-     FROM spaces p
-     JOIN space_memberships pm ON pm.space_id = p.id
-     LEFT JOIN direct_spaces ds ON ds.space_id = p.id
-     LEFT JOIN users peer_u ON peer_u.id = (CASE WHEN ds.user_low_id = ?2 THEN ds.user_high_id ELSE ds.user_low_id END)
-     LEFT JOIN direct_space_user_state dsus ON dsus.space_id = p.id AND dsus.user_id = ?2
-     WHERE p.id = ?1 AND pm.user_id = ?2`,
-  )
-    .bind(spaceId, context.userId)
-    .first<{
+  const row = await dataOf(env).read.row<{
       id: string;
       name: string;
       description: string | null;
@@ -395,23 +375,31 @@ export async function handleGetSpace(
       personalName: string | null;
       peerAvatarUrl: string | null;
       isSupport: number;
-    }>();
+    }>`SELECT p.id, p.name, p.description, pm.role, COALESCE(p.kind, 'group') AS kind,
+            EXISTS (SELECT 1 FROM support_spaces ss WHERE ss.space_id = p.id) AS "isSupport",
+            p.settings_json AS "settingsJson", p.created_at AS "createdAt", p.updated_at AS "updatedAt",
+            peer_u.id AS "peerUserId",
+            peer_u.display_name AS "peerDisplayName",
+            dsus.personal_name AS "personalName",
+            peer_u.avatar_url AS "peerAvatarUrl"
+     FROM spaces p
+     JOIN space_memberships pm ON pm.space_id = p.id
+     LEFT JOIN direct_spaces ds ON ds.space_id = p.id
+     LEFT JOIN users peer_u ON peer_u.id = (CASE WHEN ds.user_low_id = ${context.userId} THEN ds.user_high_id ELSE ds.user_low_id END)
+     LEFT JOIN direct_space_user_state dsus ON dsus.space_id = p.id AND dsus.user_id = ${context.userId}
+     WHERE p.id = ${spaceId} AND pm.user_id = ${context.userId}`;
   if (!row) throw new HttpError(404, "Space not found");
   const settings = publicSpaceSettings(row.settingsJson);
   const isDirect = row.kind === "direct";
   if (isDirect) {
     const now = new Date().toISOString();
     // Opening a support Space must not change the user's sidebar preference.
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO direct_space_user_state (space_id, user_id, hidden, last_opened_at, created_at, updated_at)
-       VALUES (?1, ?2, EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2), ?3, ?3, ?3)
+    await dataOf(env).read.run`INSERT INTO direct_space_user_state (space_id, user_id, hidden, last_opened_at, created_at, updated_at)
+       VALUES (${spaceId}, ${context.userId}, EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ${spaceId} AND user_id = ${context.userId}), ${now}, ${now}, ${now})
        ON CONFLICT(space_id, user_id) DO UPDATE SET
          last_opened_at = excluded.last_opened_at,
-         hidden = CASE WHEN EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2) THEN direct_space_user_state.hidden ELSE FALSE END,
-         updated_at = excluded.updated_at`,
-    )
-      .bind(spaceId, context.userId, now)
-      .run();
+         hidden = CASE WHEN EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ${spaceId} AND user_id = ${context.userId}) THEN direct_space_user_state.hidden ELSE FALSE END,
+         updated_at = excluded.updated_at`;
   }
   return conditionalJson(request, {
     space: {
@@ -422,7 +410,7 @@ export async function handleGetSpace(
       description: row.description,
       role: row.role,
       kind: row.kind ?? "group",
-      isSupport: row.isSupport === 1,
+      isSupport: Number(row.isSupport) === 1,
       avatarUrl:
         isDirect && row.peerUserId
           ? avatarUrlFor(request, row.peerUserId, row.peerAvatarUrl)
@@ -460,15 +448,7 @@ export async function handleUpdateSpace(
     spaceId,
     accessContext,
   );
-  const existing = await env.SYNTILA_DB.prepare(
-    `SELECT id, owner_user_id AS ownerUserId, name, description,
-            COALESCE(kind, 'group') AS kind,
-            settings_json AS settingsJson,
-            created_at AS createdAt, updated_at AS updatedAt
-     FROM spaces WHERE id = ?1`,
-  )
-    .bind(spaceId)
-    .first<{
+  const existing = await dataOf(env).read.row<{
       id: string;
       ownerUserId: string;
       name: string;
@@ -477,7 +457,11 @@ export async function handleUpdateSpace(
       settingsJson: string;
       createdAt: string;
       updatedAt: string;
-    }>();
+    }>`SELECT id, owner_user_id AS "ownerUserId", name, description,
+            COALESCE(kind, 'group') AS kind,
+            settings_json AS "settingsJson",
+            created_at AS "createdAt", updated_at AS "updatedAt"
+     FROM spaces WHERE id = ${spaceId}`;
   if (!existing) throw new HttpError(404, "Space not found");
 
   const body = await readBody(request, UpdateSpaceSchema);
@@ -509,29 +493,17 @@ export async function handleUpdateSpace(
       );
     }
     const personalName = typeof input === "string" ? input.trim() : null;
-    const member = await env.SYNTILA_DB.prepare(
-      "SELECT role, EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1) AS isSupport FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-    )
-      .bind(spaceId, context.userId)
-      .first<{ role: string; isSupport: number }>();
+    const member = await dataOf(env).read.row<{ role: string; isSupport: number }>`SELECT role, EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ${spaceId}) AS "isSupport" FROM space_memberships WHERE space_id = ${spaceId} AND user_id = ${context.userId}`;
     if (!member) throw new HttpError(403, "Forbidden");
-    const peer = await env.SYNTILA_DB.prepare(
-      `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl
+    const peer = await dataOf(env).read.row<{ id: string; displayName: string; avatarUrl: string | null }>`SELECT u.id, u.display_name AS "displayName", u.avatar_url AS "avatarUrl"
        FROM direct_spaces ds JOIN users u
-         ON u.id = CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END
-       WHERE ds.space_id = ?2`,
-    )
-      .bind(context.userId, spaceId)
-      .first<{ id: string; displayName: string; avatarUrl: string | null }>();
+         ON u.id = CASE WHEN ds.user_low_id = ${context.userId} THEN ds.user_high_id ELSE ds.user_low_id END
+       WHERE ds.space_id = ${spaceId}`;
     if (!peer) throw new HttpError(404, "Person not found");
     const now = new Date().toISOString();
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO direct_space_user_state (space_id, user_id, hidden, personal_name, created_at, updated_at)
-       VALUES (?1, ?2, EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ?1 AND user_id = ?2), ?3, ?4, ?4)
-       ON CONFLICT(space_id, user_id) DO UPDATE SET personal_name = excluded.personal_name, updated_at = excluded.updated_at`,
-    )
-      .bind(spaceId, context.userId, personalName, now)
-      .run();
+    await dataOf(env).read.run`INSERT INTO direct_space_user_state (space_id, user_id, hidden, personal_name, created_at, updated_at)
+       VALUES (${spaceId}, ${context.userId}, EXISTS (SELECT 1 FROM support_spaces WHERE space_id = ${spaceId} AND user_id = ${context.userId}), ${personalName}, ${now}, ${now})
+       ON CONFLICT(space_id, user_id) DO UPDATE SET personal_name = excluded.personal_name, updated_at = excluded.updated_at`;
     await publishCollaborationEvent(env, "space.updated", spaceId, spaceId, {
       recipientUserIds: [context.userId],
     });
@@ -543,7 +515,7 @@ export async function handleUpdateSpace(
         description: existing.description,
         role: member.role,
         kind: "direct",
-        isSupport: member.isSupport === 1,
+        isSupport: Number(member.isSupport) === 1,
         avatarUrl: avatarUrlFor(request, peer.id, peer.avatarUrl),
         permissions: spaceMemberPermissions(
           member.role,
@@ -609,15 +581,11 @@ export async function handleUpdateSpace(
     const now = new Date().toISOString();
     // This existing per-user state table also stores shared Space visibility;
     // last_opened_at remains specific to Direct Space discovery.
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at)
-       VALUES (?1, ?2, ?3::int::boolean, ?4, ?4)
+    await dataOf(env).read.run`INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at)
+       VALUES (${spaceId}, ${context.userId}, ${targetHidden ? 1 : 0}::int::boolean, ${now}, ${now})
        ON CONFLICT(space_id, user_id) DO UPDATE SET
          hidden = excluded.hidden,
-         updated_at = excluded.updated_at`,
-    )
-      .bind(spaceId, context.userId, targetHidden ? 1 : 0, now)
-      .run();
+         updated_at = excluded.updated_at`;
 
     await publishCollaborationEvent(
       env,
@@ -779,14 +747,10 @@ export async function handleUpdateSpace(
     updatedAt: now,
   };
   if (space.name.trim().toLowerCase() !== existing.name.trim().toLowerCase()) {
-    const duplicate = await env.SYNTILA_DB.prepare(
-      `SELECT id FROM spaces
-       WHERE owner_user_id = ?1 AND id <> ?2
-         AND LOWER(TRIM(name)) = LOWER(TRIM(?3))
-       LIMIT 1`,
-    )
-      .bind(existing.ownerUserId, spaceId, space.name)
-      .first<{ id: string }>();
+    const duplicate = await dataOf(env).read.row<{ id: string }>`SELECT id FROM spaces
+       WHERE owner_user_id = ${existing.ownerUserId} AND id <> ${spaceId}
+         AND LOWER(TRIM(name)) = LOWER(TRIM(${space.name}))
+       LIMIT 1`;
     if (duplicate) {
       throw new HttpError(409, "You already have a Space with this name");
     }
@@ -899,16 +863,12 @@ export async function handleDeleteSpace(
         );
       }
     }
-    const audience = await env.SYNTILA_DB.prepare(
-      "SELECT user_id FROM space_memberships WHERE space_id = ?1",
-    )
-      .bind(spaceId)
-      .all<{ user_id: string }>();
+    const audience = await dataOf(env).read.rows<{ user_id: string }>`SELECT user_id FROM space_memberships WHERE space_id = ${spaceId}`;
     // Every row that belongs to the Space (Threads with their Work history,
     // members, invitations, grants, audit, artifacts) is removed by cascade,
     // committed together with the deletion event.
     await publishCollaborationEvent(env, "space.deleted", spaceId, spaceId, {
-      recipientUserIds: (audience.results ?? []).map((row) => row.user_id),
+      recipientUserIds: audience.map((row) => row.user_id),
       mutations: [
         env.SYNTILA_DB.prepare("DELETE FROM spaces WHERE id = ?1").bind(spaceId),
       ],
@@ -924,22 +884,14 @@ export async function handleListSpaceMembers(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   await authorizeRequest(request, env, "spaces:read", spaceId, accessContext);
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT pm.user_id AS userId, u.display_name AS displayName, u.email, pm.role, pm.created_at AS createdAt
+  const rows = await dataOf(env).read.rows`SELECT pm.user_id AS "userId", u.display_name AS "displayName", u.email, pm.role, pm.created_at AS "createdAt"
      FROM space_memberships pm JOIN users u ON u.id = pm.user_id
-     WHERE pm.space_id = ?1 ORDER BY CASE pm.role WHEN 'owner' THEN 0 WHEN 'collaborator' THEN 1 ELSE 2 END, u.display_name`,
-  )
-    .bind(spaceId)
-    .all();
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT settings_json AS settingsJson FROM spaces WHERE id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ settingsJson: string }>();
+     WHERE pm.space_id = ${spaceId} ORDER BY CASE pm.role WHEN 'owner' THEN 0 WHEN 'collaborator' THEN 1 ELSE 2 END, u.display_name`;
+  const space = await dataOf(env).read.row<{ settingsJson: string }>`SELECT settings_json AS "settingsJson" FROM spaces WHERE id = ${spaceId}`;
   return json({
     // Usage against the owner's plan; pending invitations reserve a slot.
     usage: await getSpaceMemberUsage(env as unknown as Env, spaceId),
-    members: (rows.results ?? []).map((row) => ({
+    members: rows.map((row) => ({
       ...row,
       permissions: spaceMemberPermissions(
         String(row.role),
@@ -965,17 +917,13 @@ export async function handleListSpaceInvitations(
   );
   const policy = await loadSpacePermissions(env, context.userId, spaceId);
   if (policy.role !== "owner") return json({ invitations: [] });
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT id, email, invitee_user_id AS inviteeUserId, role, status, expires_at AS expiresAt, created_at AS createdAt
-     FROM space_invitations WHERE space_id = ?1 AND status = 'pending' ORDER BY created_at DESC`,
-  )
-    .bind(spaceId)
-    .all();
+  const rows = await dataOf(env).read.rows`SELECT id, email, invitee_user_id AS "inviteeUserId", role, status, expires_at AS "expiresAt", created_at AS "createdAt"
+     FROM space_invitations WHERE space_id = ${spaceId} AND status = 'pending' ORDER BY created_at DESC`;
   const snapshots = parseSpaceSettings(
     parseSpaceSettings(policy.settingsJson).invitationPermissions,
   );
   return json({
-    invitations: (rows.results ?? []).map((row) => ({
+    invitations: rows.map((row) => ({
       ...row,
       permissions: normalizeSpaceMemberSnapshot(
         String(row.role),
@@ -1051,12 +999,8 @@ export async function handleCreateSpaceInvitation(
     const userId = requiredString(body.userId, "userId");
     if (userId === context.userId)
       throw new HttpError(400, "You cannot invite yourself");
-    const person = await env.SYNTILA_DB.prepare(
-      `SELECT u.email FROM people_relationships p JOIN users u ON u.id=?2 AND u.status='active'
-      WHERE p.user_low_id=LEAST(?1::text,?2::text) AND p.user_high_id=GREATEST(?1::text,?2::text)`,
-    )
-      .bind(context.userId, userId)
-      .first<{ email: string }>();
+    const person = await dataOf(env).read.row<{ email: string }>`SELECT u.email FROM people_relationships p JOIN users u ON u.id=${userId} AND u.status='active'
+      WHERE p.user_low_id=LEAST(${context.userId}::text,${userId}::text) AND p.user_high_id=GREATEST(${context.userId}::text,${userId}::text)`;
     if (!person)
       throw new HttpError(
         403,
@@ -1091,14 +1035,10 @@ export async function handleCreateSpaceInvitation(
       403,
       "You cannot invite a member with rights you do not hold",
     );
-  const existingMember = await env.SYNTILA_DB.prepare(
-    `SELECT pm.user_id FROM space_memberships pm
+  const existingMember = await dataOf(env).read.row<{ user_id: string }>`SELECT pm.user_id FROM space_memberships pm
      JOIN users u ON u.id = pm.user_id
-     WHERE pm.space_id = ?1 AND (pm.user_id = ?3 OR LOWER(u.email) = LOWER(?2))
-     LIMIT 1`,
-  )
-    .bind(spaceId, email, inviteeUserId)
-    .first<{ user_id: string }>();
+     WHERE pm.space_id = ${spaceId} AND (pm.user_id = ${inviteeUserId} OR LOWER(u.email) = LOWER(${email}))
+     LIMIT 1`;
   if (existingMember) {
     throw new HttpError(409, "This user is already a Space member");
   }
@@ -1107,13 +1047,9 @@ export async function handleCreateSpaceInvitation(
   )
     .bind(spaceId, email, new Date().toISOString(), inviteeUserId)
     .run();
-  const existingInvitation = await env.SYNTILA_DB.prepare(
-    `SELECT id FROM space_invitations
-     WHERE space_id = ?1 AND status = 'pending' AND (LOWER(email) = LOWER(?2) OR invitee_user_id = ?3)
-     LIMIT 1`,
-  )
-    .bind(spaceId, email, inviteeUserId)
-    .first<{ id: string }>();
+  const existingInvitation = await dataOf(env).read.row<{ id: string }>`SELECT id FROM space_invitations
+     WHERE space_id = ${spaceId} AND status = 'pending' AND (LOWER(email) = LOWER(${email}) OR invitee_user_id = ${inviteeUserId})
+     LIMIT 1`;
   if (existingInvitation) {
     throw new HttpError(
       409,
@@ -1197,19 +1133,8 @@ export async function handleCreateSpaceInvitation(
       );
     throw error;
   }
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-     VALUES (?1, ?2, 'user', ?3, 'space.invitation.created', 'invitation', ?4, ?5, ?6)`,
-  )
-    .bind(
-      `pa-${crypto.randomUUID()}`,
-      spaceId,
-      context.userId,
-      id,
-      JSON.stringify({ email, role }),
-      now.toISOString(),
-    )
-    .run();
+  await dataOf(env).read.run`INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
+     VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'space.invitation.created', 'invitation', ${id}, ${JSON.stringify({ email, role })}::text::jsonb, ${now.toISOString()})`;
   const recipient = inviteeUserId
     ? { id: inviteeUserId }
     : await userByEmail(dataOf(env).read, email);
@@ -1301,18 +1226,7 @@ export async function handleChangeSpaceMemberRole(
       spaceId,
     ),
   ]);
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (?1, ?2, 'user', ?3, 'space.member.role_changed', 'user', ?4, ?5, ?6)`,
-  )
-    .bind(
-      `pa-${crypto.randomUUID()}`,
-      spaceId,
-      context.userId,
-      userId,
-      JSON.stringify({ role, permissions }),
-      new Date().toISOString(),
-    )
-    .run();
+  await dataOf(env).read.run`INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'space.member.role_changed', 'user', ${userId}, ${JSON.stringify({ role, permissions })}::text::jsonb, ${new Date().toISOString()})`;
   await publishCollaborationEvent(env, "space.updated", spaceId, userId, {
     additionalRecipientUserIds: [userId],
   });
@@ -1359,25 +1273,11 @@ export async function handleRemoveSpaceMember(
   // A contributed execution Workspace is owned by the departing user. Revoke
   // that user's Space Grants with the membership removal so the scheduler
   // cannot continue using infrastructure after collaboration ends.
-  await env.SYNTILA_DB.prepare(
-    `UPDATE workspace_space_grants
-        SET status = 'revoked', updated_at = ?1
-      WHERE space_id = ?2 AND granted_by_user_id = ?3
-        AND status IN ('active', 'suspended')`,
-  )
-    .bind(new Date().toISOString(), spaceId, userId)
-    .run();
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (?1, ?2, 'user', ?3, 'space.member.removed', 'user', ?4, '{}', ?5)`,
-  )
-    .bind(
-      `pa-${crypto.randomUUID()}`,
-      spaceId,
-      context.userId,
-      userId,
-      new Date().toISOString(),
-    )
-    .run();
+  await dataOf(env).read.run`UPDATE workspace_space_grants
+        SET status = 'revoked', updated_at = ${new Date().toISOString()}
+      WHERE space_id = ${spaceId} AND granted_by_user_id = ${userId}
+        AND status IN ('active', 'suspended')`;
+  await dataOf(env).read.run`INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'space.member.removed', 'user', ${userId}, '{}', ${new Date().toISOString()})`;
   await publishCollaborationEvent(env, "space.updated", spaceId, userId, {
     additionalRecipientUserIds: [userId],
   });
@@ -1399,15 +1299,11 @@ export async function handleExpireSpaceInvitation(
     accessContext,
   );
   await requireSpaceOwner(env, context, spaceId);
-  const existing = await env.SYNTILA_DB.prepare(
-    `SELECT id, email, invitee_user_id AS inviteeUserId FROM space_invitations WHERE id = ?1 AND space_id = ?2 AND status = 'pending'`,
-  )
-    .bind(invitationId, spaceId)
-    .first<{
+  const existing = await dataOf(env).read.row<{
       id: string;
       email: string;
       inviteeUserId: string | null;
-    }>();
+    }>`SELECT id, email, invitee_user_id AS "inviteeUserId" FROM space_invitations WHERE id = ${invitationId} AND space_id = ${spaceId} AND status = 'pending'`;
   if (!existing) throw new HttpError(404, "Pending invitation not found");
 
   const result = await env.SYNTILA_DB.prepare(
@@ -1422,17 +1318,7 @@ export async function handleExpireSpaceInvitation(
   )
     .bind(permissionJsonPath("invitationPermissions", invitationId), spaceId)
     .run();
-  await env.SYNTILA_DB.prepare(
-    `INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (?1, ?2, 'user', ?3, 'space.invitation.expired', 'invitation', ?4, '{}', ?5)`,
-  )
-    .bind(
-      `pa-${crypto.randomUUID()}`,
-      spaceId,
-      context.userId,
-      invitationId,
-      new Date().toISOString(),
-    )
-    .run();
+  await dataOf(env).read.run`INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'space.invitation.expired', 'invitation', ${invitationId}, '{}', ${new Date().toISOString()})`;
   const recipient = existing.inviteeUserId
     ? { id: existing.inviteeUserId }
     : await userByEmail(dataOf(env).read, existing.email);
@@ -1454,29 +1340,25 @@ export async function handleListCurrentUserInvitations(
   const context = await securityContext(request, env, accessContext);
   const email = context.user.email.trim().toLowerCase();
   const now = new Date().toISOString();
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT 
+  const rows = await dataOf(env).read.rows`SELECT 
        pi.id,
-       pi.space_id AS spaceId,
-       p.name AS spaceName,
+       pi.space_id AS "spaceId",
+       p.name AS "spaceName",
        pi.email,
-       pi.invitee_user_id AS inviteeUserId,
+       pi.invitee_user_id AS "inviteeUserId",
        pi.role,
        pi.status,
-       pi.invited_by_user_id AS invitedByUserId,
-       u.display_name AS invitedByUserName,
-       u.email AS invitedByUserEmail,
-       pi.expires_at AS expiresAt,
-       pi.created_at AS createdAt
+       pi.invited_by_user_id AS "invitedByUserId",
+       u.display_name AS "invitedByUserName",
+       u.email AS "invitedByUserEmail",
+       pi.expires_at AS "expiresAt",
+       pi.created_at AS "createdAt"
      FROM space_invitations pi
      JOIN spaces p ON p.id = pi.space_id
      JOIN users u ON u.id = pi.invited_by_user_id
-     WHERE (pi.invitee_user_id = ?3 OR (pi.invitee_user_id IS NULL AND LOWER(pi.email) = ?1)) AND pi.status = 'pending' AND pi.expires_at > ?2
-     ORDER BY pi.created_at DESC`,
-  )
-    .bind(email, now, context.userId)
-    .all();
-  return json({ invitations: rows.results ?? [] });
+     WHERE (pi.invitee_user_id = ${context.userId} OR (pi.invitee_user_id IS NULL AND LOWER(pi.email) = ${email})) AND pi.status = 'pending' AND pi.expires_at > ${now}
+     ORDER BY pi.created_at DESC`;
+  return json({ invitations: rows });
 }
 
 export async function handleAcceptSpaceInvitation(
@@ -1486,12 +1368,7 @@ export async function handleAcceptSpaceInvitation(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   const context = await securityContext(request, env, accessContext);
-  const invitation = await env.SYNTILA_DB.prepare(
-    `SELECT id, space_id AS spaceId, email, invitee_user_id AS inviteeUserId, role, status, invited_by_user_id AS invitedByUserId, accepted_by_user_id AS acceptedByUserId, expires_at AS expiresAt
-     FROM space_invitations WHERE id = ?1`,
-  )
-    .bind(invitationId)
-    .first<{
+  const invitation = await dataOf(env).read.row<{
       invitedByUserId: string;
       acceptedByUserId: string | null;
       id: string;
@@ -1501,7 +1378,8 @@ export async function handleAcceptSpaceInvitation(
       role: "collaborator" | "viewer";
       status: string;
       expiresAt: string;
-    }>();
+    }>`SELECT id, space_id AS "spaceId", email, invitee_user_id AS "inviteeUserId", role, status, invited_by_user_id AS "invitedByUserId", accepted_by_user_id AS "acceptedByUserId", expires_at AS "expiresAt"
+     FROM space_invitations WHERE id = ${invitationId}`;
   // A retried accept by the same person repeats the first result.
   if (
     invitation?.status === "accepted" &&
@@ -1546,11 +1424,7 @@ export async function handleAcceptSpaceInvitation(
     manageOwnThreads:
       snapshot.manageOwnThreads && inviter.rights.manageOwnThreads,
   });
-  const existingMember = await env.SYNTILA_DB.prepare(
-    "SELECT user_id FROM space_memberships WHERE space_id = ?1 AND user_id = ?2",
-  )
-    .bind(invitation.spaceId, context.userId)
-    .first();
+  const existingMember = await dataOf(env).read.row`SELECT user_id FROM space_memberships WHERE space_id = ${invitation.spaceId} AND user_id = ${context.userId}`;
   if (existingMember)
     throw new HttpError(409, "You are already a member of this Space");
   // The invitation's own reservation becomes the membership, so it is not
@@ -1645,12 +1519,7 @@ export async function handleDeclineSpaceInvitation(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   const context = await securityContext(request, env, accessContext);
-  const invitation = await env.SYNTILA_DB.prepare(
-    `SELECT id, space_id AS spaceId, email, invitee_user_id AS inviteeUserId, role, status, invited_by_user_id AS invitedByUserId, expires_at AS expiresAt
-     FROM space_invitations WHERE id = ?1`,
-  )
-    .bind(invitationId)
-    .first<{
+  const invitation = await dataOf(env).read.row<{
       invitedByUserId: string;
       id: string;
       spaceId: string;
@@ -1659,7 +1528,8 @@ export async function handleDeclineSpaceInvitation(
       role: "collaborator" | "viewer";
       status: string;
       expiresAt: string;
-    }>();
+    }>`SELECT id, space_id AS "spaceId", email, invitee_user_id AS "inviteeUserId", role, status, invited_by_user_id AS "invitedByUserId", expires_at AS "expiresAt"
+     FROM space_invitations WHERE id = ${invitationId}`;
   const isRecipient =
     !!invitation &&
     (invitation.inviteeUserId !== null

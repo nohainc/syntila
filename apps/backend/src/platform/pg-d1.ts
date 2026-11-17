@@ -326,6 +326,11 @@ export class PgD1Database {
     return new PgD1TxDatabase(this, tx);
   }
 
+  /** The open transaction's connection when joined to one (see `within`), else undefined. */
+  get connection(): Sql | undefined {
+    return undefined;
+  }
+
   /** @internal */
   async execute<T>(stmt: PgD1PreparedStatement, tx?: Sql): Promise<D1Result<T>> {
     const text = translatePlaceholders(stmt.sql);
@@ -439,6 +444,10 @@ function toResult<T>(result: any, duration: number): D1Result<T> {
 class PgD1TxDatabase extends PgD1Database {
   constructor(private readonly base: PgD1Database, private readonly tx: Sql) {
     super(base.sql);
+  }
+
+  override get connection(): Sql {
+    return this.tx;
   }
 
   override execute<T>(stmt: PgD1PreparedStatement): Promise<D1Result<T>> {

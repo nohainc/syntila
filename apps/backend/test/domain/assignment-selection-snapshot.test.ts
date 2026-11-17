@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { dispatchTaskAssignment } from "../../src/domain/assignment-dispatcher.js";
 import {
@@ -86,7 +87,7 @@ it.each([null, "low"])(
     };
     const result = await dispatchTaskAssignment(
       {
-        SYNTILA_DB: db as unknown as D1Database,
+        SYNTILA_DB: withSql(db) as unknown as D1Database,
         SYNTILA_WORKSPACE_GATEWAY:
           namespace as unknown as DurableObjectNamespace,
       },

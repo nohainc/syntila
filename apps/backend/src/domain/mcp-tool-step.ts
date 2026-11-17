@@ -1,3 +1,4 @@
+import { dataOf } from "../platform/data.js";
 import type { StepResult } from "@syntila/core";
 
 /** The tool target accepted with a Chat-with-tool request (`input.toolCall`). */
@@ -115,21 +116,14 @@ export async function runMcpToolStep(
   scope: { workRequestId: string; taskId: string },
   input: McpToolStepInput,
 ): Promise<McpToolStepOutcome> {
-  const grant = await env.SYNTILA_DB.prepare(
-    `SELECT 1 AS ok
-       FROM work_requests wr
-       JOIN threads t ON t.id = wr.thread_id
-       JOIN workspace_space_grants g
-         ON g.space_id = t.space_id AND g.workspace_id = ?2
-      WHERE wr.id = ?1 AND g.status = 'active'
-        AND (g.expires_at IS NULL OR g.expires_at > ?3)`,
-  )
-    .bind(
-      scope.workRequestId,
-      input.executionWorkspaceId,
-      new Date().toISOString(),
-    )
-    .first();
+  const grant = await dataOf(env).read.row`
+    SELECT 1 AS ok
+      FROM work_requests wr
+      JOIN threads t ON t.id = wr.thread_id
+      JOIN workspace_space_grants g
+        ON g.space_id = t.space_id AND g.workspace_id = ${input.executionWorkspaceId}
+     WHERE wr.id = ${scope.workRequestId} AND g.status = 'active'
+       AND (g.expires_at IS NULL OR g.expires_at > ${new Date().toISOString()}::timestamptz)`;
   const gateways = env.SYNTILA_WORKSPACE_GATEWAY;
   if (!grant || !gateways)
     return { state: "rejected", code: "workspace_not_granted" };

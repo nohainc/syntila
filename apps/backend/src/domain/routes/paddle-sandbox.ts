@@ -1,3 +1,4 @@
+import { dataOf } from "../../platform/data.js";
 import { signCheckoutReference, verifyCheckoutReference } from '../../paddle-reference.js';
 import { verifyPaddleSignature } from '../../paddle-signature.js';
 import { HttpError, json, securityContext, type SecurityEnv } from './http-security.js';
@@ -33,8 +34,7 @@ export async function handleSandboxPortal(request: Request, env: SandboxEnv, ctx
   const apiKey = env.PADDLE_SANDBOX_API_KEY;
   if (!apiKey?.startsWith('pdl_sdbx_')) throw new HttpError(503, 'Sandbox customer portal is not configured');
   const context = await securityContext(request, env, ctx);
-  const customer = await env.SYNTILA_DB.prepare('SELECT customer_id FROM paddle_sandbox_subscriptions WHERE user_id=?1 ORDER BY occurred_at DESC LIMIT 1')
-    .bind(context.userId).first<{ customer_id: string }>();
+  const customer = await dataOf(env).read.row<{ customer_id: string }>`SELECT customer_id FROM paddle_sandbox_subscriptions WHERE user_id=${context.userId} ORDER BY occurred_at DESC LIMIT 1`;
   if (!customer) throw new HttpError(404, 'No sandbox subscription found');
   const response = await requestPaddle(`https://sandbox-api.paddle.com/customers/${encodeURIComponent(customer.customer_id)}/portal-sessions`, {
     method: 'POST', redirect: 'error', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: '{}',

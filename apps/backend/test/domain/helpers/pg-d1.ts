@@ -9,6 +9,7 @@
 import { SQL } from "bun";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
+import { dataOf } from "../../../src/platform/data";
 import { PgD1Database } from "../../../src/platform/pg-d1";
 import { SyncPostgres } from "./pg-sync";
 
@@ -78,7 +79,8 @@ export function pgD1(options: PgD1TestOptions = {}) {
   for (const old of live.slice(0, Math.max(0, live.length - LIVE_LIMIT))) {
     old.closed = true; old.sync.close(); void old.sql.close({ timeout: 0 }).catch(() => {});
   }
-  return { db: new PgD1Database(sql) as unknown as D1Database, sqlite: sync, sql, url: urlFor(name) };
+  const db = new PgD1Database(sql) as unknown as D1Database;
+  return { db, read: dataOf({ SYNTILA_DB: db }).read, sqlite: sync, sql, url: urlFor(name) };
 }
 
 /** Drops databases created by this process (call from afterAll or rely on exit hook). */

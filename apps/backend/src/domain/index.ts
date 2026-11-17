@@ -1,3 +1,4 @@
+import { dataOf } from "../platform/data.js";
 import { sweepThreadRequestQueues } from "./routes/thread-request-queue.js";
 import type { SecurityEnv } from "./routes/http-security.js";
 export { SyntilaRunWorkflow } from "./workflow.js";
@@ -216,7 +217,7 @@ export default {
     }));
     // Waiting-list rows of Workflows that stopped heartbeating. Waiters never
     // hold execution capacity, so this only tidies bookkeeping.
-    await sweepStaleExecutionWaiters(env.SYNTILA_DB).catch((error) =>
+    await sweepStaleExecutionWaiters(dataOf(env).read).catch((error) =>
       console.error("Execution waiter sweep failed", error),
     );
     // Expired upload reservations already count for nothing; this tidies rows.

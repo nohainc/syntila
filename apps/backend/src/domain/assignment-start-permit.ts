@@ -1,3 +1,4 @@
+import type { Query } from "../platform/data.js";
 import { assignmentStatus } from "./queries.js";
 import {
   isRevocationAssignmentStatus,
@@ -62,11 +63,11 @@ export function startPermitId(
  * granted again while the assignment is still Acknowledged.
  */
 export async function grantStartPermit(
-  db: D1Database,
+  q: Query,
   fence: AssignmentFence & { attemptId: string },
   now = new Date(),
 ): Promise<StartPermitDecision> {
-  const admitted = await transitionAssignment(db, {
+  const admitted = await transitionAssignment(q, {
     fence,
     to: "acknowledged",
     now: now.toISOString(),
@@ -87,27 +88,19 @@ export async function grantStartPermit(
 
   // The grant itself: it must observe Acknowledged at the instant it writes.
   const issuedAt = now.toISOString();
-  const row = await db
-    .prepare(
-      `UPDATE worker_assignments SET start_permit_issued_at = COALESCE(start_permit_issued_at, ?1)
-        WHERE id = ?2 AND attempt_id = ?3 AND status = 'acknowledged'
-          AND (?4::text IS NULL OR execution_workspace_id = ?4)
-          AND (?5::text IS NULL OR runtime_identity_id = ?5)
-          AND (workspace_space_grant_id IS NULL OR EXISTS (
-            SELECT 1 FROM workspace_space_grants g
-             WHERE g.id = worker_assignments.workspace_space_grant_id
-               AND g.status = 'active'
-               AND (g.expires_at IS NULL OR g.expires_at > ?1)))
-        RETURNING id, start_permit_issued_at`,
-    )
-    .bind(
-      issuedAt,
-      fence.assignmentId,
-      fence.attemptId,
-      fence.executionWorkspaceId ?? null,
-      fence.runtimeIdentityId ?? null,
-    )
-    .first<{ id: string; start_permit_issued_at: string }>();
+  const executionWorkspaceId = fence.executionWorkspaceId ?? null;
+  const runtimeIdentityId = fence.runtimeIdentityId ?? null;
+  const row = await q.row<{ id: string; start_permit_issued_at: string }>`
+    UPDATE worker_assignments SET start_permit_issued_at = COALESCE(start_permit_issued_at, ${issuedAt}::timestamptz)
+     WHERE id = ${fence.assignmentId} AND attempt_id = ${fence.attemptId} AND status = 'acknowledged'
+       AND (${executionWorkspaceId}::text IS NULL OR execution_workspace_id = ${executionWorkspaceId})
+       AND (${runtimeIdentityId}::text IS NULL OR runtime_identity_id = ${runtimeIdentityId})
+       AND (workspace_space_grant_id IS NULL OR EXISTS (
+         SELECT 1 FROM workspace_space_grants g
+          WHERE g.id = worker_assignments.workspace_space_grant_id
+            AND g.status = 'active'
+            AND (g.expires_at IS NULL OR g.expires_at > ${issuedAt}::timestamptz)))
+     RETURNING id, start_permit_issued_at`;
   if (row?.id === fence.assignmentId) {
     const issuedAtMs = Date.parse(row.start_permit_issued_at);
     return {
@@ -117,7 +110,7 @@ export async function grantStartPermit(
     };
   }
   // Lost the race: re-read to report why.
-  const current = await assignmentStatus(db, fence.assignmentId);
+  const current = await assignmentStatus(q, fence.assignmentId);
   return { granted: false, reason: denialFor(current?.status) };
 }
 

@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import {
   authorizeRealtimeScope,
@@ -252,6 +253,7 @@ describe("realtime gateway contract", () => {
         };
       },
     } as never;
+    withSql(db);
     await expect(
       authorizeRealtimeScope(db, "user-1", {
         workspaceId: "workspace-1",
@@ -288,6 +290,7 @@ describe("realtime gateway contract", () => {
         };
       },
     } as never;
+    withSql(db);
     await expect(
       isRealtimeIdentityAuthorized(db, "user-1", [
         { workspaceId: "workspace-removed" },

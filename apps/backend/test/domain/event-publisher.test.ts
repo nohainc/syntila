@@ -1,4 +1,5 @@
 import { pgD1 } from "./helpers/pg-d1";
+import { withSql } from "./helpers/fake-sql";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "./helpers/vitest-compat";
@@ -133,7 +134,7 @@ function createHarness(options: { duplicate?: boolean } = {}) {
   } as unknown as DurableObjectNamespace;
   return {
     env: {
-      SYNTILA_DB: db,
+      SYNTILA_DB: withSql(db),
       SYNTILA_REALTIME_GATEWAY: gateway,
     } satisfies EventPublisherEnv,
     get insertCount() {
@@ -360,7 +361,7 @@ describe("Cloud event publisher", () => {
     );
     const db = new SqliteD1(database);
     const publisher = new CloudEventPublisher({
-      SYNTILA_DB: db as unknown as D1Database,
+      SYNTILA_DB: withSql(db) as unknown as D1Database,
     });
     const input = {
       ...baseEvent,

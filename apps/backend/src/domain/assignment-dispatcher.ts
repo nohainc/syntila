@@ -1,3 +1,4 @@
+import { dataOf, queryOf } from "../platform/data.js";
 import { inTransaction } from "../platform/tx-env.js";
 import { assignmentProgress, assignmentStatus } from "./queries.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
@@ -250,7 +251,7 @@ async function dispatchWorkspaceWorkerAssignment(
   const { runId, taskId, task } = params;
   let rejectionReasons: readonly string[] = [];
   const target = await selectSpaceExecutionTarget(
-    env.SYNTILA_DB,
+    dataOf(env).read,
     {
       spaceId: task.spaceId!,
       requesterUserId: task.requestedByUserId!,
@@ -305,7 +306,7 @@ async function dispatchWorkspaceWorkerAssignment(
   // transient condition: wait durably for it, as for a Service that is not
   // ready yet, instead of failing the step on the first dispatch.
   if (!target && rejectionReasons.includes("workspace_offline")) {
-    await recordExecutionWaiter(env.SYNTILA_DB, {
+    await recordExecutionWaiter(dataOf(env).read, {
       taskId,
       requesterUserId: task.requestedByUserId!,
       runId,
@@ -348,9 +349,9 @@ async function dispatchWorkspaceWorkerAssignment(
     { readiness?: unknown } | undefined;
   if (
     workspaceState?.readiness === "connected" &&
-    !(await isPaidRequester(env.SYNTILA_DB, task.requestedByUserId!))
+    !(await isPaidRequester(dataOf(env).read, task.requestedByUserId!))
   ) {
-    await recordExecutionWaiter(env.SYNTILA_DB, {
+    await recordExecutionWaiter(dataOf(env).read, {
       taskId,
       requesterUserId: task.requestedByUserId!,
       runId,
@@ -518,14 +519,14 @@ async function dispatchWorkspaceWorkerAssignment(
   if (
     insertion?.id !== assignmentId &&
     (await executionSlotRefused(
-      env.SYNTILA_DB,
+      dataOf(env).read,
       task.requestedByUserId!,
       taskId,
     ))
   ) {
     // The requester's Free allowance (or an earlier waiting request) refused
     // the reservation. Nothing was written; the task waits durably in order.
-    await recordExecutionWaiter(env.SYNTILA_DB, {
+    await recordExecutionWaiter(dataOf(env).read, {
       taskId,
       requesterUserId: task.requestedByUserId!,
       runId,
@@ -613,14 +614,10 @@ async function dispatchWorkspaceWorkerAssignment(
       error: "Worker capacity was claimed by another assignment",
     };
   }
-  await clearExecutionWaiter(env.SYNTILA_DB, taskId);
+  await clearExecutionWaiter(dataOf(env).read, taskId);
   const workRequestId = target.workRequestId ?? task.workRequestId;
   if (workRequestId) {
-    const cancellation = await env.SYNTILA_DB.prepare(
-      "SELECT cancel_requested_at FROM work_requests WHERE id = ?1 AND status IN ('running', 'cancelled')",
-    )
-      .bind(workRequestId)
-      .first<{ cancel_requested_at: string | null }>();
+    const cancellation = await dataOf(env).read.row<{ cancel_requested_at: string | null }>`SELECT cancel_requested_at FROM work_requests WHERE id = ${workRequestId} AND status IN ('running', 'cancelled')`;
     if (cancellation?.cancel_requested_at) {
       await recordAssignmentCancelled(env.SYNTILA_DB, assignmentId, {
         status: "cancelled",
@@ -638,13 +635,9 @@ async function dispatchWorkspaceWorkerAssignment(
       };
     }
   }
-  const workspaceOwner = await env.SYNTILA_DB.prepare(
-    "SELECT owner_user_id FROM execution_workspaces WHERE id = ?1",
-  )
-    .bind(target.workspaceId)
-    .first<{ owner_user_id: string }>();
+  const workspaceOwner = await dataOf(env).read.row<{ owner_user_id: string }>`SELECT owner_user_id FROM execution_workspaces WHERE id = ${target.workspaceId}`;
   if (workspaceOwner) {
-    await recordExecutionWorkspaceAudit(env.SYNTILA_DB, {
+    await recordExecutionWorkspaceAudit(dataOf(env).read, {
       workspaceId: target.workspaceId,
       ownerUserId: workspaceOwner.owner_user_id,
       actorType: "user",
@@ -734,12 +727,8 @@ async function dispatchWorkspaceWorkerAssignment(
   // Persist the complete command before any delivery attempt. Work for a
   // Service that is not ready yet then waits in this durable queue and is
   // flushed, unchanged, when the Service reports ready.
-  await env.SYNTILA_DB.prepare(
-    `UPDATE worker_assignments SET command_payload_json = ?1
-      WHERE id = ?2 AND status = 'created' AND command_payload_json IS NULL`,
-  )
-    .bind(JSON.stringify(payload), assignmentId)
-    .run();
+  await dataOf(env).read.run`UPDATE worker_assignments SET command_payload_json = ${JSON.stringify(payload)}
+      WHERE id = ${assignmentId} AND status = 'created' AND command_payload_json IS NULL`;
   if (!env.SYNTILA_WORKSPACE_GATEWAY) {
     const code = "provider_unavailable";
     const error = executionErrorMessage(code);
@@ -968,7 +957,7 @@ export async function failOrRevokeDispatch(
   attemptId: string,
   failure: AssignmentFailurePayload,
 ): Promise<void> {
-  const row = await assignmentStatus(env.SYNTILA_DB, assignmentId);
+  const row = await assignmentStatus(dataOf(env).read, assignmentId);
   if (!row || row.status === "created") {
     await recordAssignmentError(
       env.SYNTILA_DB,
@@ -1057,7 +1046,7 @@ export async function recordAssignmentResult(
 ): Promise<boolean> {
   const now = new Date().toISOString();
 
-  const existing = await assignmentProgress(db, assignmentId);
+  const existing = await assignmentProgress(queryOf(db), assignmentId);
   if (!existing) return false;
   if (expectedAttemptId && existing.attempt_id !== expectedAttemptId)
     return false;
@@ -1115,7 +1104,7 @@ export async function recordAssignmentError(
     failedAt: now,
   };
 
-  const existing = await assignmentProgress(db, assignmentId);
+  const existing = await assignmentProgress(queryOf(db), assignmentId);
   if (!existing) return false;
   if (expectedAttemptId && existing.attempt_id !== expectedAttemptId)
     return false;
@@ -1173,7 +1162,7 @@ export async function recordAssignmentCancelled(
   options?: { onlyFrom?: readonly AssignmentLifecycleStatus[] },
 ): Promise<boolean> {
   const now = new Date().toISOString();
-  const existing = await assignmentProgress(db, assignmentId);
+  const existing = await assignmentProgress(queryOf(db), assignmentId);
   if (!existing) return false;
   if (expectedAttemptId && existing.attempt_id !== expectedAttemptId)
     return false;
@@ -1403,7 +1392,7 @@ export async function recoverStaleAssignments(
         dispatchedAt: row.dispatchedAt,
         acknowledgedAt: row.acknowledgedAt,
         startPermitIssuedAt: row.permitIssuedAt,
-        startPermitRequired: row.permitRequired === 1,
+        startPermitRequired: Number(row.permitRequired) === 1,
         runningAt: row.runningAt,
         queueWaitTimeoutMs: row.queueWaitTimeoutMs,
         cloudQueueReason: row.cloudQueueReason,
@@ -1482,13 +1471,9 @@ export async function cancelTaskAssignment(
   assignmentId: string,
   reason: string,
 ): Promise<{ cancelled: boolean }> {
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT status, attempt_id
+  const row = await dataOf(env).read.row<{ status: string; attempt_id: string }>`SELECT status, attempt_id
        FROM worker_assignments
-      WHERE id = ?1 AND execution_workspace_id = ?2`,
-  )
-    .bind(assignmentId, workspaceId)
-    .first<{ status: string; attempt_id: string }>();
+      WHERE id = ${assignmentId} AND execution_workspace_id = ${workspaceId}`;
   if (!row) return { cancelled: false };
   if (row.status === "cancelled") return { cancelled: true };
   if (["completed", "failed", "timed_out", "lost"].includes(row.status))
@@ -1513,21 +1498,16 @@ export async function loadAssignmentAdditionalFolderIds(
   workspaceId: string,
 ): Promise<string[]> {
   if (!spaceId) return [];
-  const rows = await db
-    .prepare(
-      `SELECT a.folder_id AS folderId
+  const rows = await queryOf(db).rows<{ folderId: string }>`SELECT a.folder_id AS "folderId"
          FROM space_additional_folders a
          JOIN workspace_allowed_folders f
            ON f.workspace_id = a.workspace_id AND f.folder_id = a.folder_id
          JOIN spaces s ON s.id = a.space_id
          JOIN execution_workspaces w
            ON w.id = a.workspace_id AND w.owner_user_id = s.owner_user_id
-        WHERE a.space_id = ?1 AND a.workspace_id = ?2
-        ORDER BY a.folder_id`,
-    )
-    .bind(spaceId, workspaceId)
-    .all<{ folderId: string }>();
-  return (rows.results ?? []).map((row) => row.folderId);
+        WHERE a.space_id = ${spaceId} AND a.workspace_id = ${workspaceId}
+        ORDER BY a.folder_id`;
+  return rows.map((row) => row.folderId);
 }
 
 /** True when the Worker is a plugin whose Workspace owner is not entitled. */

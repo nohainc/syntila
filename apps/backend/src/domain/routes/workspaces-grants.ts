@@ -1,3 +1,4 @@
+import { dataOf } from "../../platform/data.js";
 import { WorkspaceGrantUpdateSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
@@ -39,15 +40,11 @@ export async function handleListWorkspaceSpaceGrants(
     workspaceId,
     "workspace:manage",
   );
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT g.*, ew.name AS workspace_name, ew.owner_user_id
+  const rows = await dataOf(env).read.rows<Record<string, unknown>>`SELECT g.*, ew.name AS workspace_name, ew.owner_user_id
      FROM workspace_space_grants g JOIN execution_workspaces ew ON ew.id = g.workspace_id
-     WHERE g.workspace_id = ?1 ORDER BY g.created_at DESC`,
-  )
-    .bind(workspaceId)
-    .all<Record<string, unknown>>();
+     WHERE g.workspace_id = ${workspaceId} ORDER BY g.created_at DESC`;
   return json({
-    grants: (rows.results ?? []).map(workspaceSpaceGrantMetadata),
+    grants: rows.map(workspaceSpaceGrantMetadata),
   });
 }
 

@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { Data } from "../../src/platform/data.js";
 import {
@@ -59,7 +60,7 @@ describe("Space creation", () => {
         }),
         {
           SYNTILA_ENVIRONMENT: "development",
-          SYNTILA_DB: db,
+          SYNTILA_DB: withSql(db),
           TEST_AUTHENTICATION: async () => ({
             userId: "user-1",
             user: {
@@ -111,7 +112,7 @@ describe("Space creation", () => {
       }),
       {
         SYNTILA_ENVIRONMENT: "development",
-        SYNTILA_DB: db,
+        SYNTILA_DB: withSql(db),
         TEST_AUTHENTICATION: async () => ({
           userId: "user-1",
           user: {
@@ -174,8 +175,8 @@ describe("Space creation", () => {
       }),
       {
         SYNTILA_ENVIRONMENT: "development",
-        SYNTILA_DB: db,
-        SYNTILA_DATA: new Data((async () => [{ role: "owner", settingsJson: "{}", kind: "group", isSupport: false }]) as never),
+        SYNTILA_DB: withSql(db),
+        SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) => strings.join("?").includes("FROM threads") ? [] : [{ role: "owner", settingsJson: "{}", kind: "group", isSupport: false }]) as never),
         TEST_AUTHENTICATION: async () => ({
           userId: "user-1",
           user: {
@@ -294,7 +295,7 @@ describe("Space creation", () => {
       new Request("https://syntila.test/api/spaces/space-1"),
       {
         SYNTILA_ENVIRONMENT: "development",
-        SYNTILA_DB: db,
+        SYNTILA_DB: withSql(db),
         TEST_AUTHENTICATION: auth,
       } as never,
       "space-1",
@@ -322,7 +323,7 @@ describe("Space creation", () => {
       }),
       {
         SYNTILA_ENVIRONMENT: "development",
-        SYNTILA_DB: db,
+        SYNTILA_DB: withSql(db),
         TEST_AUTHENTICATION: auth,
       } as never,
       "space-1",
@@ -348,7 +349,7 @@ describe("Space creation", () => {
         }),
         {
           SYNTILA_ENVIRONMENT: "development",
-          SYNTILA_DB: db,
+          SYNTILA_DB: withSql(db),
           TEST_AUTHENTICATION: auth,
         } as never,
         "space-1",

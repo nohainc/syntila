@@ -94,12 +94,8 @@ export async function handleValidateWorkRequest(
     "execute",
     accessContext,
   );
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT wc.config_json AS configJson FROM threads ws
-       LEFT JOIN thread_work_configs wc ON wc.thread_id = ws.id WHERE ws.id = ?1`,
-  )
-    .bind(threadId)
-    .first<{ configJson: string | null }>();
+  const row = await dataOf(env).read.row<{ configJson: string | null }>`SELECT wc.config_json AS "configJson" FROM threads ws
+       LEFT JOIN thread_work_configs wc ON wc.thread_id = ws.id WHERE ws.id = ${threadId}`;
   const config = parseJson<Record<string, unknown>>(row?.configJson, {
     defaultWorkflowId: "direct",
     bindings: {},
@@ -258,15 +254,11 @@ export async function createWorkRequestForUser(
       : body.mode === "stateless"
         ? "stateless"
         : null;
-  const workConfigRow = await env.SYNTILA_DB.prepare(
-    `SELECT wc.config_json AS configJson, p.settings_json AS settingsJson
+  const workConfigRow = await dataOf(env).read.row<{ configJson: string | null; settingsJson: string | null }>`SELECT wc.config_json AS "configJson", p.settings_json AS "settingsJson"
      FROM threads ws
      JOIN spaces p ON p.id = ws.space_id
      LEFT JOIN thread_work_configs wc ON wc.thread_id = ws.id
-     WHERE ws.id = ?1`,
-  )
-    .bind(threadId)
-    .first<{ configJson: string | null; settingsJson: string | null }>();
+     WHERE ws.id = ${threadId}`;
   const workConfig = parseJson<Record<string, unknown>>(
     workConfigRow?.configJson,
     { defaultWorkflowId: "direct", bindings: {} },
@@ -653,11 +645,7 @@ export async function createWorkRequestForUser(
     stepAdditionalInstructions,
     promptProfileVersions,
   };
-  const policyRow = await env.SYNTILA_DB.prepare(
-    "SELECT mode, primary_workspace_id AS primaryWorkspaceId FROM thread_execution_policies WHERE thread_id = ?1",
-  )
-    .bind(threadId)
-    .first<ThreadExecutionPolicy>();
+  const policyRow = await dataOf(env).read.row<ThreadExecutionPolicy>`SELECT mode, primary_workspace_id AS "primaryWorkspaceId" FROM thread_execution_policies WHERE thread_id = ${threadId}`;
   const policy: ThreadExecutionPolicy =
     canonicalWorkflow.steps.length === 1
       ? {
@@ -861,11 +849,7 @@ async function resumeSubmission(
     run: { id: string; spaceId: string; threadId: string };
   };
   if (replay) {
-    const row = await env.SYNTILA_DB.prepare(
-      "SELECT status FROM work_requests WHERE id = ?1",
-    )
-      .bind(workRequest.id)
-      .first<{ status: string }>();
+    const row = await dataOf(env).read.row<{ status: string }>`SELECT status FROM work_requests WHERE id = ${workRequest.id}`;
     if (!row || ["completed", "failed", "cancelled"].includes(row.status))
       return response;
   }
@@ -913,19 +897,15 @@ async function requireToolCallAuthority(
 ): Promise<void> {
   const target = parseMcpToolStepInput(toolCall);
   if (!target) throw new HttpError(400, "input.toolCall is invalid");
-  const row = await env.SYNTILA_DB.prepare(
-    `SELECT p.owner_user_id AS spaceOwner, COALESCE(p.kind, 'group') AS spaceKind,
-            ew.owner_user_id AS workspaceOwner
-     FROM spaces p
-     LEFT JOIN execution_workspaces ew ON ew.id = ?2
-     WHERE p.id = ?1`,
-  )
-    .bind(spaceId, target.executionWorkspaceId)
-    .first<{
+  const row = await dataOf(env).read.row<{
       spaceOwner: string;
       spaceKind: string;
       workspaceOwner: string | null;
-    }>();
+    }>`SELECT p.owner_user_id AS "spaceOwner", COALESCE(p.kind, 'group') AS "spaceKind",
+            ew.owner_user_id AS "workspaceOwner"
+     FROM spaces p
+     LEFT JOIN execution_workspaces ew ON ew.id = ${target.executionWorkspaceId}
+     WHERE p.id = ${spaceId}`;
   if (!row || row.workspaceOwner !== userId)
     throw new HttpError(
       403,

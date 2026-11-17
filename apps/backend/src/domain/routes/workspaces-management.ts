@@ -126,17 +126,13 @@ export async function handleGetWorkspace(
 ): Promise<Response> {
   const context = await securityContext(request, env, accessContext);
   await requireWorkspaceContext(context, env, workspaceId);
-  const row = await env.SYNTILA_DB.prepare(
-    "SELECT id, name, status, created_at AS createdAt, updated_at AS updatedAt FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2",
-  )
-    .bind(workspaceId, context.userId)
-    .first<{
+  const row = await dataOf(env).read.row<{
       id: string;
       name: string;
       status: string;
       createdAt: string;
       updatedAt: string;
-    }>();
+    }>`SELECT id, name, status, created_at AS "createdAt", updated_at AS "updatedAt" FROM execution_workspaces WHERE id = ${workspaceId} AND owner_user_id = ${context.userId}`;
   if (!row) throw new HttpError(404, "Workspace not found");
   return json({ workspace: row });
 }
@@ -259,11 +255,7 @@ export async function handleRevokeWorkspace(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   const context = await securityContext(request, env, accessContext);
-  const workspace = await env.SYNTILA_DB.prepare(
-    "SELECT id, status FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2",
-  )
-    .bind(workspaceId, context.userId)
-    .first<{ id: string; status: string }>();
+  const workspace = await dataOf(env).read.row<{ id: string; status: string }>`SELECT id, status FROM execution_workspaces WHERE id = ${workspaceId} AND owner_user_id = ${context.userId}`;
   if (!workspace) throw new HttpError(404, "Workspace not found");
 
   const now = new Date().toISOString();
@@ -279,23 +271,11 @@ export async function handleRevokeWorkspace(
     }
   }
 
-  await env.SYNTILA_DB.prepare(
-    "UPDATE workspace_space_grants SET status = 'revoked', updated_at = ?1 WHERE workspace_id = ?2 AND status IN ('active', 'suspended')",
-  )
-    .bind(now, workspaceId)
-    .run();
+  await dataOf(env).read.run`UPDATE workspace_space_grants SET status = 'revoked', updated_at = ${now} WHERE workspace_id = ${workspaceId} AND status IN ('active', 'suspended')`;
 
-  await env.SYNTILA_DB.prepare(
-    "UPDATE workspace_runtime_identities SET revoked_at = ?1 WHERE workspace_id = ?2 AND revoked_at IS NULL",
-  )
-    .bind(now, workspaceId)
-    .run();
+  await dataOf(env).read.run`UPDATE workspace_runtime_identities SET revoked_at = ${now} WHERE workspace_id = ${workspaceId} AND revoked_at IS NULL`;
 
-  await env.SYNTILA_DB.prepare(
-    "UPDATE workspace_installations SET status = 'released', released_at = ?1, updated_at = ?1 WHERE workspace_id = ?2 AND status = 'active'",
-  )
-    .bind(now, workspaceId)
-    .run();
+  await dataOf(env).read.run`UPDATE workspace_installations SET status = 'released', released_at = ${now}, updated_at = ${now} WHERE workspace_id = ${workspaceId} AND status = 'active'`;
 
   await env.SYNTILA_DB.batch(
     releasedWorkspaceCleanup(env.SYNTILA_DB, workspaceId),
@@ -336,18 +316,7 @@ export async function handleExportWorkspaceAudit(
   const limit = Number.isFinite(requestedLimit)
     ? Math.min(Math.max(requestedLimit, 1), 500)
     : 100;
-  const rows = await env.SYNTILA_DB.prepare(
-    `SELECT id, workspace_id AS workspaceId, actor_type AS actorType,
-            actor_id AS actorId, action, target_type AS targetType,
-            target_id AS targetId, details_json AS detailsJson,
-            created_at AS createdAt
-     FROM workspace_audit_log
-     WHERE workspace_id = ?1
-     ORDER BY created_at DESC, id DESC
-     LIMIT ?2`,
-  )
-    .bind(workspaceId, limit)
-    .all<{
+  const rows = await dataOf(env).read.rows<{
       id: string;
       workspaceId: string;
       actorType: string;
@@ -357,12 +326,19 @@ export async function handleExportWorkspaceAudit(
       targetId: string;
       detailsJson: string;
       createdAt: string;
-    }>();
+    }>`SELECT id, workspace_id AS "workspaceId", actor_type AS "actorType",
+            actor_id AS "actorId", action, target_type AS "targetType",
+            target_id AS "targetId", details_json::text AS "detailsJson",
+            created_at AS "createdAt"
+     FROM workspace_audit_log
+     WHERE workspace_id = ${workspaceId}
+     ORDER BY created_at DESC, id DESC
+     LIMIT ${limit}`;
   return json({
     format: "syntila-audit-log-v1",
     workspaceId,
     exportedAt: new Date().toISOString(),
-    entries: (rows.results ?? []).map((row) => ({
+    entries: rows.map((row) => ({
       id: row.id,
       workspaceId: row.workspaceId,
       actorType: row.actorType,

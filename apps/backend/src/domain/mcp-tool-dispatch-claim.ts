@@ -1,3 +1,4 @@
+import type { Query } from "../platform/data.js";
 /**
  * Durable Cloud-side at-most-once claim and outcome record for one logical MCP
  * tool step. A claim is not authorization, delivery, or proof that the remote
@@ -15,7 +16,7 @@ export interface McpToolCallRecord {
 }
 
 export async function claimMcpToolDispatch(
-  db: D1Database,
+  q: Query,
   input: { taskId: string; workspaceId: string; claimedAt: string },
 ): Promise<{ dispatchKey: string } | null> {
   if (
@@ -28,23 +29,19 @@ export async function claimMcpToolDispatch(
   }
   // Task IDs are immutable logical-step identities, unlike attempt IDs.
   const dispatchKey = `mcp-tool-v1:${input.taskId}`;
-  const row = await db
-    .prepare(
-      `INSERT INTO mcp_tool_calls (task_id, workspace_id, dispatch_key, claimed_at)
-       SELECT t.id, ?2, ?3, ?4
-       FROM workflow_tasks t
-       WHERE t.id = ?1 AND t.step_kind = 'tool_call'
-       ON CONFLICT(task_id) DO NOTHING
-       RETURNING dispatch_key`,
-    )
-    .bind(input.taskId, input.workspaceId, dispatchKey, input.claimedAt)
-    .first<{ dispatch_key: string }>();
+  const row = await q.row<{ dispatch_key: string }>`
+    INSERT INTO mcp_tool_calls (task_id, workspace_id, dispatch_key, claimed_at)
+    SELECT t.id, ${input.workspaceId}, ${dispatchKey}, ${input.claimedAt}::timestamptz
+    FROM workflow_tasks t
+    WHERE t.id = ${input.taskId} AND t.step_kind = 'tool_call'
+    ON CONFLICT(task_id) DO NOTHING
+    RETURNING dispatch_key`;
   return row ? { dispatchKey: row.dispatch_key } : null;
 }
 
 /** First outcome wins; a later report can never overwrite a recorded one. */
 export async function recordMcpToolOutcome(
-  db: D1Database,
+  q: Query,
   input: {
     taskId: string;
     state: McpToolState;
@@ -57,36 +54,28 @@ export async function recordMcpToolOutcome(
     input.result && (input.state === "completed" || input.state === "toolError")
       ? JSON.stringify(input.result)
       : null;
-  const row = await db
-    .prepare(
-      `UPDATE mcp_tool_calls
-       SET state = ?2, code = ?3, result_json = ?4, completed_at = ?5
-       WHERE task_id = ?1 AND state IS NULL
-       RETURNING task_id`,
-    )
-    .bind(input.taskId, input.state, input.code, carried, input.completedAt)
-    .first<{ task_id: string }>();
+  const row = await q.row<{ task_id: string }>`
+    UPDATE mcp_tool_calls
+       SET state = ${input.state}, code = ${input.code}, result_json = ${carried}, completed_at = ${input.completedAt}::timestamptz
+     WHERE task_id = ${input.taskId} AND state IS NULL
+     RETURNING task_id`;
   return row !== null;
 }
 
 export async function loadMcpToolCall(
-  db: D1Database,
+  q: Query,
   taskId: string,
 ): Promise<McpToolCallRecord | null> {
-  const row = await db
-    .prepare(
-      `SELECT task_id, workspace_id, dispatch_key, state, code, result_json
-       FROM mcp_tool_calls WHERE task_id = ?1`,
-    )
-    .bind(taskId)
-    .first<{
-      task_id: string;
-      workspace_id: string;
-      dispatch_key: string;
-      state: McpToolState | null;
-      code: string | null;
-      result_json: string | null;
-    }>();
+  const row = await q.row<{
+    task_id: string;
+    workspace_id: string;
+    dispatch_key: string;
+    state: McpToolState | null;
+    code: string | null;
+    result_json: string | null;
+  }>`
+    SELECT task_id, workspace_id, dispatch_key, state, code, result_json
+      FROM mcp_tool_calls WHERE task_id = ${taskId}`;
   return row
     ? {
         taskId: row.task_id,

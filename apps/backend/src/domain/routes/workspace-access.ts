@@ -180,17 +180,9 @@ export async function createWorkspaceSpaceGrant(
   if (body.workspaceId !== undefined && body.workspaceId !== workspaceId) {
     throw new HttpError(400, "workspaceId does not match the grant target");
   }
-  const space = await env.SYNTILA_DB.prepare(
-    "SELECT id FROM spaces WHERE id = ?1",
-  )
-    .bind(spaceId)
-    .first<{ id: string }>();
+  const space = await dataOf(env).read.row<{ id: string }>`SELECT id FROM spaces WHERE id = ${spaceId}`;
   if (!space) throw new HttpError(404, "Space not found");
-  const workspace = await env.SYNTILA_DB.prepare(
-    "SELECT id, owner_user_id, status FROM execution_workspaces WHERE id = ?1",
-  )
-    .bind(workspaceId)
-    .first<{ id: string; owner_user_id: string; status: string }>();
+  const workspace = await dataOf(env).read.row<{ id: string; owner_user_id: string; status: string }>`SELECT id, owner_user_id, status FROM execution_workspaces WHERE id = ${workspaceId}`;
   if (!workspace) throw new HttpError(404, "Workspace not found");
   if (
     workspace.owner_user_id !== context.userId ||
@@ -215,14 +207,10 @@ export async function createWorkspaceSpaceGrant(
     workspaceId,
     "workspace:manage",
   );
-  const existingGrant = await env.SYNTILA_DB.prepare(
-    `SELECT id FROM workspace_space_grants
-     WHERE space_id = ?1 AND workspace_id = ?2
+  const existingGrant = await dataOf(env).read.row<{ id: string }>`SELECT id FROM workspace_space_grants
+     WHERE space_id = ${spaceId} AND workspace_id = ${workspaceId}
        AND status IN ('active', 'suspended')
-     LIMIT 1`,
-  )
-    .bind(spaceId, workspaceId)
-    .first<{ id: string }>();
+     LIMIT 1`;
   if (existingGrant) {
     throw new HttpError(
       409,

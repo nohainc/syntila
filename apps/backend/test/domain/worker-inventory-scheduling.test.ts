@@ -1,3 +1,4 @@
+import { withSql } from "./helpers/fake-sql";
 import { pgD1 } from "./helpers/pg-d1";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { readFileSync } from "node:fs";
@@ -37,7 +38,7 @@ describe("inventory scheduling for Workers configured after Workspace selection"
       all: async () => ({ results: sqlite.prepare(sql).all(...values) }),
     });
     env = {
-      SYNTILA_DB: { prepare: (sql: string) => statement(sql) },
+      SYNTILA_DB: withSql({ prepare: (sql: string) => statement(sql) }),
     } as unknown as typeof env;
   });
   afterEach(() => sqlite.close());

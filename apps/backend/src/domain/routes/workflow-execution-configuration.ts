@@ -106,13 +106,9 @@ export async function resolveWorkflowExecutionBindings(
     if (definition.id !== "chat")
       throw new HttpError(403, "Personal Spaces support Chat only");
     const ownedWorker = override?.workerId
-      ? await env.SYNTILA_DB.prepare(
-          `SELECT i.workspace_id AS workspaceId FROM workspace_worker_inventory i
+      ? await dataOf(env).read.row`SELECT i.workspace_id AS "workspaceId" FROM workspace_worker_inventory i
            JOIN execution_workspaces ew ON ew.id = i.workspace_id
-           WHERE i.worker_id = ?1 AND ew.owner_user_id = ?2 AND ew.status != 'revoked'`,
-        )
-          .bind(override.workerId, userId)
-          .first()
+           WHERE i.worker_id = ${override.workerId} AND ew.owner_user_id = ${userId} AND ew.status != 'revoked'`
       : null;
     if (!ownedWorker)
       throw new HttpError(403, "Choose a Worker from your own Workspace");
@@ -151,19 +147,11 @@ export async function resolveWorkflowExecutionBindings(
       422,
       "Choose a Workspace in Workflows before sending a request",
     );
-  const inventory = await env.SYNTILA_DB.prepare(
-    `SELECT i.worker_id AS workerId, i.workspace_id AS workspaceId
+  const inventory = await dataOf(env).read.rows<{ workerId: string; workspaceId: string }>`SELECT i.worker_id AS "workerId", i.workspace_id AS "workspaceId"
      FROM workspace_worker_inventory i
-     WHERE i.workspace_id = ?1 ORDER BY i.workspace_id, i.worker_id`,
-  )
-    .bind(ownWorkspaceId ?? space.workspaceId)
-    .all<{ workerId: string; workspaceId: string }>();
+     WHERE i.workspace_id = ${ownWorkspaceId ?? space.workspaceId} ORDER BY i.workspace_id, i.worker_id`;
   // Invited members may only use what the Workspace owner shares with them.
-  const workspaceOwner = await env.SYNTILA_DB.prepare(
-    "SELECT owner_user_id AS ownerUserId FROM execution_workspaces WHERE id = ?1",
-  )
-    .bind(space.workspaceId)
-    .first<{ ownerUserId: string }>();
+  const workspaceOwner = await dataOf(env).read.row<{ ownerUserId: string }>`SELECT owner_user_id AS "ownerUserId" FROM execution_workspaces WHERE id = ${space.workspaceId}`;
   // A Workspace lent to the Space owner is used only by people who hold their
   // own Person Grant (ADR-020); Space membership and the Space owner's grant
   // never extend to other members.
@@ -212,11 +200,7 @@ export async function resolveWorkflowExecutionBindings(
         403,
         "This Workspace is no longer shared; its owner's plan does not include sharing",
       );
-    const inFlight = await env.SYNTILA_DB.prepare(
-      "SELECT COUNT(*) AS n FROM work_requests WHERE requested_by_user_id = ?1 AND primary_workspace_id = ?2 AND status IN ('queued','running','waiting')",
-    )
-      .bind(userId, space.workspaceId)
-      .first<{ n: number }>();
+    const inFlight = await dataOf(env).read.row<{ n: number }>`SELECT COUNT(*) AS n FROM work_requests WHERE requested_by_user_id = ${userId} AND primary_workspace_id = ${space.workspaceId} AND status IN ('queued','running','waiting')`;
     if (grant.maxRunSeconds !== null) {
       const used = await env.SYNTILA_DB.prepare(MONTHLY_RUN_SECONDS_SQL)
         .bind(space.workspaceId, userId, monthStartIso())
@@ -309,7 +293,7 @@ export async function resolveWorkflowExecutionBindings(
         `${step.kind}: Select a Worker before sending this Workflow`,
       );
     if (
-      !inventory.results.some(
+      !inventory.some(
         (candidate) => candidate.workerId === selection.worker,
       )
     )
@@ -396,15 +380,11 @@ async function ownChatWorkerWorkspace(
   workerId: string | null | undefined,
 ): Promise<string | null> {
   if (definition.id !== "chat" || !workerId) return null;
-  const worker = await env.SYNTILA_DB.prepare(
-    `SELECT i.workspace_id AS workspaceId
+  const worker = await dataOf(env).read.row<{ workspaceId: string }>`SELECT i.workspace_id AS "workspaceId"
        FROM workspace_worker_inventory i
        JOIN execution_workspaces ew ON ew.id = i.workspace_id
-      WHERE i.worker_id = ?1 AND ew.owner_user_id = ?2
-        AND ew.status != 'revoked'`,
-  )
-    .bind(workerId, userId)
-    .first<{ workspaceId: string }>();
+      WHERE i.worker_id = ${workerId} AND ew.owner_user_id = ${userId}
+        AND ew.status != 'revoked'`;
   if (!worker?.workspaceId || worker.workspaceId === spaceWorkspaceId)
     return null;
   const policy = await loadSpacePermissions(env, userId, spaceId);
@@ -426,11 +406,7 @@ async function ensureOwnChatWorkspaceGrant(
   spaceId: string,
   workspaceId: string,
 ) {
-  const existing = await env.SYNTILA_DB.prepare(
-    "SELECT status, expires_at AS expiresAt FROM workspace_space_grants WHERE space_id=?1 AND workspace_id=?2 AND status IN ('active','suspended')",
-  )
-    .bind(spaceId, workspaceId)
-    .first<{ status: string; expiresAt: string | null }>();
+  const existing = await dataOf(env).read.row<{ status: string; expiresAt: string | null }>`SELECT status, expires_at AS "expiresAt" FROM workspace_space_grants WHERE space_id=${spaceId} AND workspace_id=${workspaceId} AND status IN ('active','suspended')`;
   const now = new Date().toISOString();
   if (existing) {
     if (

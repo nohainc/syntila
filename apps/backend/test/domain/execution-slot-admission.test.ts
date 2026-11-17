@@ -112,7 +112,7 @@ async function fixture() {
         "SELECT task_id, reason FROM account_execution_waiters ORDER BY enqueued_at, task_id",
       )
       .all();
-  const held = (user = "U") => countHeldExecutionSlots(f.db, user);
+  const held = (user = "U") => countHeldExecutionSlots(f.read, user);
   return { ...f, dispatch, setStatus, plan, waiters, held, fetch };
 }
 let currentWorkspace = "WS";
@@ -257,7 +257,7 @@ it("lets a stale or cancelled waiter stop blocking eligible work", async () => {
   // A cancelled request clears its place immediately.
   await f.dispatch("T4");
   await f.dispatch("T5");
-  await clearExecutionWaiter(f.db, "T5");
+  await clearExecutionWaiter(f.read, "T5");
   f.setStatus("T4", "completed");
   expect(await f.dispatch("T2")).toMatchObject({ accepted: true });
 });
@@ -311,7 +311,7 @@ it("wakes the oldest eligible waiter after a slot is released", async () => {
   f.sqlite.exec(
     "UPDATE runs SET workflow_instance_id = 'instance-1' WHERE id = 'RUN'",
   );
-  await recordExecutionWaiter(f.db, {
+  await recordExecutionWaiter(f.read, {
     taskId: "T2",
     requesterUserId: "U",
     runId: "RUN",
@@ -332,7 +332,7 @@ it("wakes the oldest eligible waiter after a slot is released", async () => {
   expect(await wakeNextExecutionWaiter({ SYNTILA_DB: f.db }, "U", "x")).toBe(
     false,
   );
-  await clearExecutionWaiter(f.db, "T2");
+  await clearExecutionWaiter(f.read, "T2");
   expect(
     await wakeNextExecutionWaiter(
       { SYNTILA_DB: f.db, SYNTILA_RUN_WORKFLOW: { get } },
