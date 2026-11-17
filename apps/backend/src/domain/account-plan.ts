@@ -41,20 +41,6 @@ export function personalWorkspaceLimit(tier: AccountTier): number | null {
   return tier === "paid" ? null : FREE_PERSONAL_WORKSPACE_LIMIT;
 }
 
-/**
- * SQL condition, for the WHERE of an INSERT ... SELECT, that `userParam` may
- * register one more Workspace: the owner is on Plus now, or owns fewer than the
- * Free allowance of non-removed registrations (offline ones included; Workspaces
- * shared with the owner are not owned and never counted). Evaluating it inside
- * the INSERT makes admission atomic with the write.
- */
-export function personalWorkspaceAdmissionSql(userParam: string): string {
-  return `(${paidOwnerSql(userParam)}
-    OR (SELECT COUNT(*) FROM execution_workspaces ow
-         WHERE ow.owner_user_id = ${userParam} AND ow.status != 'revoked')
-       < ${FREE_PERSONAL_WORKSPACE_LIMIT})`;
-}
-
 export async function countOwnedWorkspaces(
   env: Env,
   userId: string,
@@ -92,41 +78,6 @@ export function concurrentExecutionLimit(tier: AccountTier): number | null {
 }
 
 /**
- * SQL condition, for the WHERE of the assignment INSERT ... SELECT, that
- * `userParam` may start one more execution for `taskParam`: the requester is
- * on Plus now, or holds fewer than the Free limit of live assignments and no
- * earlier eligible request is waiting for the slot (`cutoffParam` is the
- * oldest heartbeat that still counts). Evaluated inside the INSERT, it makes
- * the check and the reservation one atomic write.
- */
-export function executionSlotAdmissionSql(
-  userParam: string,
-  taskParam: string,
-  cutoffParam: string,
-): string {
-  return `(${paidOwnerSql(userParam)}
-    OR ((SELECT COUNT(*) FROM worker_assignments sa
-          WHERE sa.requested_by_user_id = ${userParam}
-            AND sa.status IN (${ACTIVE_ASSIGNMENT_STATUS_SQL}))
-        < ${FREE_CONCURRENT_EXECUTION_LIMIT}
-        AND NOT EXISTS (
-          SELECT 1 FROM account_execution_waiters w
-           WHERE w.requester_user_id = ${userParam}
-             AND w.task_id != ${taskParam}
-             AND w.reason = 'account_concurrency_limit'
-             AND w.heartbeat_at >= ${cutoffParam}
-             AND (NOT EXISTS (SELECT 1 FROM account_execution_waiters me
-                               WHERE me.task_id = ${taskParam})
-                  OR w.enqueued_at < (SELECT me.enqueued_at
-                                        FROM account_execution_waiters me
-                                       WHERE me.task_id = ${taskParam})
-                  OR (w.enqueued_at = (SELECT me.enqueued_at
-                                         FROM account_execution_waiters me
-                                        WHERE me.task_id = ${taskParam})
-                      AND w.task_id < ${taskParam})))))`;
-}
-
-/**
  * People a Free-owned Space allows, the owner included. The Space *owner's*
  * effective plan decides: Plus-owned Spaces have no subscription-based cap, and
  * a Free person may join a larger Plus-owned Space. Each Space is counted on
@@ -151,20 +102,6 @@ export function spaceMemberUsageSql(
     + (SELECT COUNT(*) FROM space_invitations pi
         WHERE pi.space_id = ${spaceParam} AND pi.status = 'pending'
           AND pi.expires_at > now()${exclude}))`;
-}
-
-/**
- * SQL condition that one more person (a new invitation, or the acceptance of
- * `excludeInvitationParam`, whose own reservation is not counted twice) fits in
- * the Space: its owner is on Plus now, or members plus reservations are below
- * the Free allowance.
- */
-export function spaceMemberAdmissionSql(
-  spaceParam: string,
-  excludeInvitationParam: string | null = null,
-): string {
-  return `(${paidOwnerSql(`(SELECT so.owner_user_id FROM spaces so WHERE so.id = ${spaceParam})`)}
-    OR ${spaceMemberUsageSql(spaceParam, excludeInvitationParam)} < ${FREE_SPACE_MEMBER_LIMIT})`;
 }
 
 /** Rejected because a Free-owned Space has no free person slot. */

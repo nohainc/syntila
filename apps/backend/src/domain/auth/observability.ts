@@ -77,19 +77,3 @@ export async function recordAuthAuditEvent(
       ${event.action}, ${event.outcome}, ${details}, ${new Date().toISOString()})`;
 }
 
-/** Structured edge log suitable for metrics aggregation; never include identity or token data. */
-export function recordAuthMetric(
-  provider: unknown,
-  outcome: "success" | "failure",
-  reason?: unknown,
-): void {
-  const payload = {
-    metric: "syntila.auth.sign_in",
-    provider: safeAuthProvider(provider) ?? "unknown",
-    outcome,
-    ...(outcome === "failure" ? { reason: safeAuthReason(reason) } : {}),
-  };
-  (outcome === "failure" ? console.warn : console.info)(
-    JSON.stringify(payload),
-  );
-}
