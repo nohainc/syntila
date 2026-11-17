@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@better-auth/passkey": "^1.7.5",
+    "@syntila/email": "workspace:*",
     "@syntila/protocol": "workspace:*",
     "@syntila/security": "workspace:*",
     "better-auth": "^1.7.5"

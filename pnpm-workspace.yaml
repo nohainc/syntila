@@ -3,6 +3,7 @@ packages:
   # their native package managers and are intentionally not workspace entries.
   - packages/workspace-runtime-protocol
   - packages/core
+  - packages/email
   - packages/tool-profile
   - packages/protocol
   - packages/security

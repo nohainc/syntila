@@ -1,6 +1,5 @@
 import type { SecurityEnv } from "./routes/handlers.js";
-import { classifyEmailDeliveryFailure } from "./email/email-config.js";
-import { sendTemplateEmail } from "./email/email-service.js";
+import { classifyEmailDeliveryFailure, sendTemplateEmail } from "@syntila/email";
 
 export function resolveAppUrl(request: Request, env: SecurityEnv): string {
   if (env.SYNTILA_APP_URL && env.SYNTILA_APP_URL.trim().length > 0) {

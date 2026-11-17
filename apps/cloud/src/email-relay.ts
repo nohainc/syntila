@@ -8,7 +8,7 @@
  * backend's outbox may retry, so a resend after a lost answer is possible —
  * acceptable for invitation-style email.
  */
-import { EmailDeliveryError, sendConfiguredEmail, type EmailSenderEnvironment } from "./email/email-config.js";
+import { EmailDeliveryError, sendConfiguredEmail, type EmailSenderEnvironment } from "@syntila/email";
 
 type RelayEnv = EmailSenderEnvironment & { EMAIL_RELAY_SECRET?: string };
 const WINDOW_SECONDS = 300;

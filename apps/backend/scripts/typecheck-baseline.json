@@ -8,9 +8,6 @@
   "src/domain/account-execution-slots.ts": {
     "TS2345": 1
   },
-  "src/domain/email/email-config.ts": {
-    "TS2339": 2
-  },
   "src/domain/index.ts": {
     "TS2339": 2
   },

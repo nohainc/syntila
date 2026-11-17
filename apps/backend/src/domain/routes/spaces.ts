@@ -42,7 +42,7 @@ import {
   sendSpaceInvitationEmail,
 } from "../invitation-email.js";
 import { avatarUrlFor } from "./profile.js";
-import { classifyEmailDeliveryFailure } from "../email/email-config.js";
+import { classifyEmailDeliveryFailure } from "@syntila/email";
 import { hashToken, authorizeSpaceOwner } from "@syntila/security";
 import {
   HttpError,

@@ -22,8 +22,8 @@ describe("email preview command", () => {
       );
       expect(result.status).toBe(0);
       const files = readdirSync(root);
-      expect(files.filter((file) => file.endsWith(".html"))).toHaveLength(12);
-      expect(files.filter((file) => file.endsWith(".txt"))).toHaveLength(11);
+      expect(files.filter((file) => file.endsWith(".html"))).toHaveLength(13); // 12 templates + index.html
+      expect(files.filter((file) => file.endsWith(".txt"))).toHaveLength(12);
       expect(readFileSync(join(root, "index.html"), "utf8")).toContain(
         "Synthetic data only",
       );

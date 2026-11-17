@@ -5,7 +5,7 @@ import {
   emailPreviewFixtures,
   emailTemplateCatalog,
   renderEmail,
-} from "../apps/cloud/src/email/index.ts";
+} from "../packages/email/src/index.ts";
 
 const outputArgumentIndex = process.argv.indexOf("--out");
 const outputDirectory = resolve(

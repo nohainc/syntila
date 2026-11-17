@@ -1,12 +1,12 @@
-import { describe, expect, it, vi } from "../helpers/vitest-compat";
+import { describe, expect, it, vi } from "vitest";
 import {
   createMockEmailTransport,
   sendPolicyControlledTemplateEmail,
-} from "../../../src/domain/email/email-service.js";
+} from "../src/email-service.js";
 import {
   decideEmailNotification,
   shouldSendEmailNotification,
-} from "../../../src/domain/email/notification-policy.js";
+} from "../src/notification-policy.js";
 
 describe("email notification policy", () => {
   it("always permits essential messages", () => {

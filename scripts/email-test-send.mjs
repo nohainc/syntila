@@ -2,7 +2,7 @@ import {
   emailPreviewFixtures,
   renderEmail,
   sendRenderedEmail,
-} from "../apps/cloud/src/email/index.ts";
+} from "../packages/email/src/index.ts";
 
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 1) {

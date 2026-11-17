@@ -1,0 +1,15 @@
+{
+  "name": "@syntila/email",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "Email templates, rendering, configuration and sending. Rendered by the backend, sent by the cloud Worker.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

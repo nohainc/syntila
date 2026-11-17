@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@syntila/core": "workspace:*",
+    "@syntila/email": "workspace:*",
     "@syntila/protocol": "workspace:*",
     "@syntila/security": "workspace:*",
     "@syntila/tool-profile": "workspace:*",

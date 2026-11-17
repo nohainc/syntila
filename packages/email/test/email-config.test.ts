@@ -4,7 +4,7 @@ import {
   isPreAcceptanceSenderRejection,
   resolveEmailSenderConfig,
   sendConfiguredEmail,
-} from "../src/email/email-config.js";
+} from "../src/email-config.js";
 
 describe("centralized email sender configuration", () => {
   it("uses the Syntila primary and Vitalii fallback by default", () => {

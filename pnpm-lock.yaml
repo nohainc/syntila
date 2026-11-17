@@ -38,6 +38,9 @@ importers:
       '@syntila/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@syntila/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@syntila/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -56,6 +59,9 @@ importers:
       '@better-auth/passkey':
         specifier: ^1.7.5
         version: 1.7.5(@better-auth/core@1.7.5(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-call@1.4.0(zod@4.6.5))(jose@6.2.12)(kysely@0.29.6)(nanostores@1.5.3))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.2)(better-auth@1.7.5(vitest@4.1.11(@types/node@24.13.6)(vite@7.3.6(@types/node@24.13.6)(yaml@2.9.1))))(better-call@1.4.0(zod@4.6.5))(nanostores@1.5.3)
+      '@syntila/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@syntila/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -95,6 +101,8 @@ importers:
       '@syntila/protocol':
         specifier: workspace:*
         version: link:../protocol
+
+  packages/email: {}
 
   packages/protocol:
     dependencies:

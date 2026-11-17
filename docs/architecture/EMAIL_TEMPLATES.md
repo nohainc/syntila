@@ -66,7 +66,7 @@ the deployed email-safe public asset path, with a text identity fallback.
 
 ## Source organization and contract
 
-The implementation lives under `apps/cloud/src/email/`:
+The implementation lives under `packages/email/src/` (the `@syntila/email` package, used by the cloud Worker and the backend):
 
 - `email-types.ts` defines the versioned IDs, event-specific inputs and the
   `RenderedEmail` result, including the four shared presentation variants:

@@ -2,10 +2,10 @@ import { prepareBackendAccountDeletion, syncBackendProfile } from "../backend-ca
 import {
   classifyEmailDeliveryFailure,
   EmailDeliveryError,
+  sendTemplateEmail,
   type EmailSenderEnvironment,
-} from "../email/email-config.js";
-import { sendTemplateEmail } from "../email/email-service.js";
-import type { EmailTemplateInputMap } from "../email/email-types.js";
+  type EmailTemplateInputMap,
+} from "@syntila/email";
 import { betterAuth } from "better-auth";
 import { passkey } from "@better-auth/passkey";
 import {

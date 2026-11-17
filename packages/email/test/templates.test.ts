@@ -3,16 +3,16 @@ import {
   createMockEmailTransport,
   sendRenderedEmail,
   sendTemplateEmail,
-} from "../../src/email/email-service.js";
+} from "../src/email-service.js";
 import {
   emailTemplateCatalog,
   renderEmail,
   renderEmailTemplate,
-} from "../../src/email/templates/index.js";
+} from "../src/templates/index.js";
 import {
   EMAIL_PREVIEW_ORIGIN,
   emailPreviewFixtures,
-} from "../../src/email/preview-fixtures.js";
+} from "../src/preview-fixtures.js";
 
 describe("email template architecture", () => {
   it("keeps every initial template uniquely identified and renderable", () => {
