@@ -1,4 +1,5 @@
-import { withSql } from "./helpers/fake-sql";
+import { pgD1 } from "./helpers/pg-d1";
+import { member as membership, space, user, workspace } from "./helpers/seed";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { RealtimeGateway } from "../../src/domain/realtime-gateway.js";
 import { BoundedRealtimeQueue } from "../../src/domain/realtime-queue.js";
@@ -17,26 +18,14 @@ function harness(member = true) {
     },
   };
   const cursors = new Map<string, number>();
-  const db = {
-    prepare(query: string) {
-      return {
-        bind() {
-          return this;
-        },
-        async first() {
-          return query.includes("FROM users")
-            ? { status: "active" }
-            : member && query.includes("space_memberships")
-              ? { member: 1 }
-              : null;
-        },
-        async all() {
-          return { results: [] };
-        },
-      };
-    },
-  };
-  const gateway = new RealtimeGateway({} as never, { SYNTILA_DB: withSql(db) } as never);
+  const { db, sqlite } = pgD1();
+  sqlite.exec(
+    user("owner") +
+      user("other") +
+      space("same", "other") +
+      (member ? membership("same", "owner", "collaborator") : ""),
+  );
+  const gateway = new RealtimeGateway({} as never, { SYNTILA_DB: db } as never);
   const clients = Reflect.get(gateway, "clients") as Map<string, unknown>;
   clients.set("client", {
     socket,
@@ -118,54 +107,36 @@ describe("durable stream delivery", () => {
       },
       close() {},
     };
-    const rows = [2, 3].map((sequence) => ({
-      event_id: `activity-${sequence}`,
-      stream_kind: "execution_workspace",
-      stream_id: "workspace-activity",
-      workspace_id: "workspace-activity",
-      thread_id: "thread-activity",
-      space_id: "space-activity",
-      run_id: "run-activity",
-      task_id: "task-activity",
-      attempt_id: "attempt-activity",
-      assignment_id: "assignment-activity",
-      workspace_runtime_id: "runtime-activity",
-      sequence,
-      event_type: "assignment.activity",
-      payload_json: JSON.stringify({
-        entityId: "assignment-activity",
-        workerId: "chatgpt",
-        sourceEventId: `source-${sequence}`,
-        executionId: "execution-activity",
-        activitySequence: sequence,
-        activityType: "tool.started",
-        activityStatus: "running",
-        title: "Running tool",
-      }),
-      idempotency_key: `activity-${sequence}`,
-      occurred_at: `2026-10-12T18:00:0${sequence}.000Z`,
-    }));
-    const db = {
-      prepare(query: string) {
-        return {
-          bind(...args: unknown[]) {
-            return {
-              first: async () => {
-                if (query.includes("FROM users")) return { status: "active" };
-                if (query.includes("execution_workspaces"))
-                  return args[0] === "workspace-activity" ? { owner: 1 } : null;
-                return null;
-              },
-              all: async () => ({ results: /FROM (realtime_events|worker_activity)/.test(query) ? rows : [] }),
-            };
-          },
-        };
-      },
-    };
-    const gateway = new RealtimeGateway(
-      {} as never,
-      { SYNTILA_DB: withSql(db) } as never,
-    );
+    const { db, sqlite } = pgD1();
+    sqlite.exec(user("owner") + workspace("workspace-activity", "owner"));
+    for (const sequence of [1, 2, 3])
+      sqlite
+        .prepare(
+          `INSERT INTO realtime_events (
+             event_id, stream_kind, stream_id, workspace_id, thread_id, space_id, run_id, task_id,
+             attempt_id, assignment_id, workspace_runtime_id, sequence, event_type, payload_json,
+             idempotency_key, occurred_at
+           ) VALUES (?, 'execution_workspace', 'workspace-activity', 'workspace-activity', 'thread-activity',
+             'space-activity', 'run-activity', 'task-activity', 'attempt-activity', 'assignment-activity',
+             'runtime-activity', ?, 'assignment.activity', ?, ?, ?)`,
+        )
+        .run(
+          `activity-${sequence}`,
+          sequence,
+          JSON.stringify({
+            entityId: "assignment-activity",
+            workerId: "chatgpt",
+            sourceEventId: `source-${sequence}`,
+            executionId: "execution-activity",
+            activitySequence: sequence,
+            activityType: "tool.started",
+            activityStatus: "running",
+            title: "Running tool",
+          }),
+          `activity-${sequence}`,
+          `2026-10-12T18:00:0${sequence}.000Z`,
+        );
+    const gateway = new RealtimeGateway({} as never, { SYNTILA_DB: db } as never);
     const clients = Reflect.get(gateway, "clients") as Map<string, unknown>;
     clients.set("client", {
       socket,
@@ -230,20 +201,12 @@ describe("durable stream delivery", () => {
           void [keys].flat().forEach((key) => stored.delete(key)),
       },
     };
-    const db = {
-      prepare: (query: string) => ({
-        bind() {
-          return this;
-        },
-        first: async () =>
-          query.includes("FROM users") ? { status: "active" } : null,
-        all: async () => ({ results: [] }),
-      }),
-    };
+    const { db, sqlite } = pgD1();
+    sqlite.exec(user("owner"));
     // A woken Durable Object starts with no memory of its connections.
     const gateway = new RealtimeGateway(
       state as never,
-      { SYNTILA_DB: withSql(db) } as never,
+      { SYNTILA_DB: db } as never,
     );
     const publish = (sequence: number) =>
       gateway.fetch(

@@ -1,4 +1,5 @@
-import { withSql } from "./helpers/fake-sql";
+import { pgD1 } from "./helpers/pg-d1";
+import { user, workspace } from "./helpers/seed";
 import { afterEach, describe, expect, it, vi } from "./helpers/vitest-compat";
 import { hashToken } from "@syntila/security";
 import {
@@ -8,6 +9,23 @@ import {
   WorkspaceGateway,
   workspaceAssignmentContextMatches,
 } from "../../src/domain/workspace-gateway.js";
+
+/** A real database holding one Workspace and the runtime identity that holds `credentialTokenHash`. */
+function runtimeDatabase(
+  workspaceId: string,
+  runtimeId: string,
+  credentialTokenHash: string,
+) {
+  const { db, sqlite } = pgD1();
+  sqlite.exec(user("owner") + workspace(workspaceId, "owner"));
+  sqlite
+    .prepare(
+      `INSERT INTO workspace_runtime_identities (id, workspace_id, installation_id, credential_token_hash, created_at)
+       VALUES (?, ?, 'installation', ?, now())`,
+    )
+    .run(runtimeId, workspaceId, credentialTokenHash);
+  return { db, sqlite };
+}
 
 /**
  * Completes a Service's synchronization over the HTTP fallback and publishes
@@ -97,19 +115,7 @@ describe("Workspace runtime Gateway", () => {
     const token = "runtime-secret-replay";
     const credentialTokenHash = await hashToken(token);
     const workspaceId = "workspace-replay";
-    const db = {
-      prepare(_sql: string) {
-        return {
-          bind: () => ({
-            first: async () => ({
-              executionWorkspaceId: workspaceId,
-              credentialTokenHash,
-            }),
-            run: async () => ({ success: true }),
-          }),
-        };
-      },
-    };
+    const { db } = runtimeDatabase(workspaceId, "runtime-replay", credentialTokenHash);
     const storage = new Map<string, unknown>();
     const state = {
       id: { name: workspaceId },
@@ -122,7 +128,7 @@ describe("Workspace runtime Gateway", () => {
       },
     };
     const gateway = new WorkspaceGateway(state as never, {
-      SYNTILA_DB: withSql(db) as never,
+      SYNTILA_DB: db as never,
     });
     const createSession = async () => {
       const response = await gateway.fetch(
@@ -245,19 +251,7 @@ describe("Workspace runtime Gateway", () => {
     }
     vi.stubGlobal("WebSocketPair", TestWebSocketPair);
     vi.stubGlobal("Response", TestResponse);
-    const db = {
-      prepare(_sql: string) {
-        return {
-          bind: (..._values: unknown[]) => ({
-            first: async () => ({
-              executionWorkspaceId: workspaceId,
-              credentialTokenHash,
-            }),
-            run: async () => ({ success: true }),
-          }),
-        };
-      },
-    };
+    const { db } = runtimeDatabase(workspaceId, "runtime-gateway-test", credentialTokenHash);
     const state = {
       id: { name: workspaceId },
       storage: {
@@ -270,7 +264,7 @@ describe("Workspace runtime Gateway", () => {
       },
     };
     const gateway = new WorkspaceGateway(state as never, {
-      SYNTILA_DB: withSql(db) as never,
+      SYNTILA_DB: db as never,
     });
     const logs: string[] = [];
     vi.spyOn(console, "log").mockImplementation((record) => {
@@ -345,24 +339,12 @@ describe("Workspace runtime Gateway", () => {
   });
 
   it("accepts only the runtime credential for one execution Workspace", async () => {
-    const db = {
-      prepare(query: string) {
-        return {
-          bind(runtimeId: string, tokenHash: string) {
-            return {
-              first: async () =>
-                query.includes("credential_token_hash") &&
-                runtimeId === "runtime-a" &&
-                tokenHash === "hash-a"
-                  ? { executionWorkspaceId: "workspace-a" }
-                  : null,
-            };
-          },
-        };
-      },
-    } as never;
-
-    withSql(db);
+    const { db, sqlite } = runtimeDatabase("workspace-a", "runtime-a", "hash-a");
+    // A revoked runtime is refused even with its own correct credential hash.
+    sqlite.exec(
+      `INSERT INTO workspace_runtime_identities (id, workspace_id, installation_id, credential_token_hash, revoked_at, created_at)
+       VALUES ('runtime-revoked', 'workspace-a', 'installation-2', 'hash-revoked', now(), now())`,
+    );
     await expect(
       isWorkspaceRuntimeAuthorized(db, "runtime-a", "hash-a"),
     ).resolves.toEqual({ executionWorkspaceId: "workspace-a" });
@@ -370,26 +352,14 @@ describe("Workspace runtime Gateway", () => {
       isWorkspaceRuntimeAuthorized(db, "runtime-a", "wrong-token"),
     ).resolves.toBeNull();
     await expect(
-      isWorkspaceRuntimeAuthorized(db, "runtime-revoked", "hash-a"),
+      isWorkspaceRuntimeAuthorized(db, "runtime-revoked", "hash-revoked"),
     ).resolves.toBeNull();
   });
 
   describe("delivery probe", () => {
     async function connectedHttpGateway(workspaceId: string, token: string) {
       const credentialTokenHash = await hashToken(token);
-      const db = {
-        prepare(_sql: string) {
-          return {
-            bind: () => ({
-              first: async () => ({
-                executionWorkspaceId: workspaceId,
-                credentialTokenHash,
-              }),
-              run: async () => ({ success: true }),
-            }),
-          };
-        },
-      };
+      const { db } = runtimeDatabase(workspaceId, "runtime-probe", credentialTokenHash);
       const storage = new Map<string, unknown>();
       const state = {
         id: { name: workspaceId },
@@ -402,7 +372,7 @@ describe("Workspace runtime Gateway", () => {
         },
       };
       const gateway = new WorkspaceGateway(state as never, {
-        SYNTILA_DB: withSql(db) as never,
+        SYNTILA_DB: db as never,
       });
       const create = await gateway.fetch(
         new Request("https://gateway.internal/runtime/sessions", {

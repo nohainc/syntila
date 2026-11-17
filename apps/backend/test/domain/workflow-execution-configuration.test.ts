@@ -5,7 +5,8 @@ import {
   type BuiltinWorkflowDefinition,
 } from "@syntila/core";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
-import { Data } from "../../src/platform/data.js";
+import { pgD1 } from "./helpers/pg-d1";
+import { member, space, T0, user, workspace } from "./helpers/seed";
 const admission = vi.hoisted(() => vi.fn());
 vi.mock("../../src/domain/routes/handlers.js", () => ({
   validateWorkflowWorkerEligibility: admission,
@@ -76,10 +77,24 @@ function fixture(
     ? "first"
     : "second",
 ) {
-  const inventory = [
-    { workerId: "a", workspaceId: "first" },
-    { workerId: "b", workspaceId: "second" },
-  ];
+  const { db, sqlite } = pgD1();
+  const inventory = (worker: string, ws: string) =>
+    `INSERT INTO workspace_worker_inventory (
+       worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
+       local_concurrency_limit, revision, created_at, updated_at, last_seen_at
+     ) VALUES ('${worker}', '${ws}', 'user', 'chatgpt-codex', 'enabled', 'ready', 1, 1, '${T0}', '${T0}', '${T0}');`;
+  sqlite.exec(
+    user("user") +
+      user("another-member") +
+      space("space", "user") +
+      member("space", "user", "owner") +
+      member("space", "another-member", "collaborator") +
+      workspace("first", "user") +
+      workspace("second", "user") +
+      inventory("a", "first") +
+      inventory("b", "second") +
+      `INSERT INTO space_workflow_settings(space_id, workspace_id, updated_at) VALUES ('space', '${workspaceId}', '${T0}');`,
+  );
   const configuration = {
     schemaVersion: 1,
     workflowId: "plan_implement",
@@ -87,86 +102,38 @@ function fixture(
     defaults,
     stepOverrides,
   };
-  const env = {
-    SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const text = strings.join("?");
-      if (text.includes("space_workflow_settings") || text.includes("user_workflow_settings")) return [{ workspaceId }];
-      if (text.includes("FROM workspace_worker_inventory i") && !text.includes("JOIN")) return inventory.filter((w) => w.workspaceId === values[0]);
-      if (text.includes("FROM execution_workspaces WHERE id")) return [{ ownerUserId: "user" }];
-      if (text.includes("owner_user_id")) return [{ ownerUserId: "user" }]; // spaceOwnerOf
-      if (text.includes("settings_json")) return [{ role: "owner", settingsJson: "{}", kind: "group", isSupport: false }]; // loadSpacePermissions
-      if (!text.includes("UNION ALL")) return []; // workflow defaults, membership: none
-      expect(values[0]).toBe("user");
-      expect(values[1]).toBe(workspaceId);
-      expect(values[4]).toBe("space");
-      return [{
-        workflow_id: configuration.workflowId,
-        configuration_json: JSON.stringify(
-          spaceDefaults ? { ...configuration, defaults: spaceDefaults } : configuration,
-        ),
-      }];
-    }) as any),
-    SYNTILA_DB: {
-      prepare(sql: string) {
-        return {
-          values: [] as unknown[],
-          bind(user: string, ...rest: unknown[]) {
-            this.values = [user, ...rest];
-            if (
-              !sql.includes("workspace_worker_inventory") &&
-              !sql.includes("workspace_member_access") &&
-              !sql.includes("workspace_member_overrides") &&
-              !sql.includes("FROM execution_workspaces")
-            )
-              expect(user).toBe(
-                sql.includes("WHERE id = ?1") ||
-                  sql.includes("workspace_space_grants") ||
-                  sql.includes("FROM spaces WHERE id = ?1") ||
-                  sql.includes("space_id = ?1") ||
-                  sql.startsWith(
-                    "SELECT workspace_id AS workspaceId FROM space_workflow_settings",
-                  )
-                  ? "space"
-                  : "user",
-              );
-            return this;
-          },
-          async first() {
-            if (
-              sql.includes("workspace_member_access") ||
-              sql.includes("workspace_member_overrides")
-            )
-              return null;
-            if (sql.includes("space_workflow_settings")) return { workspaceId };
-            return { ownerUserId: "user" };
-          },
-          async all() {
-            return {
-              results: sql.includes("UNION ALL")
-                ? [
-                    {
-                      workflow_id: configuration.workflowId,
-                      configuration_json: JSON.stringify(
-                        spaceDefaults
-                          ? { ...configuration, defaults: spaceDefaults }
-                          : configuration,
-                      ),
-                    },
-                  ]
-                : inventory.filter((w) => w.workspaceId === this.values[0]),
-            };
-          },
-        };
-      },
-    },
-  } as unknown as SecurityEnv;
+  /**
+   * Stores the configuration as the Space owner's own setting for the Space's
+   * Workspace; Space defaults, when given, replace it as a Space-wide row.
+   * Tests change `configuration` after creation, so it is saved on every resolve.
+   */
+  const save = () => {
+    sqlite.exec(
+      "DELETE FROM user_workflow_configurations; DELETE FROM space_workflow_configurations;",
+    );
+    const insert = (table: string, keys: string, json: object) =>
+      sqlite
+        .prepare(
+          `INSERT INTO ${table} (${keys}, workflow_id, schema_version, configuration_json, updated_at) VALUES (${keys.split(",").map(() => "?").join(",")}, ?, 1, ?, '${T0}')`,
+        )
+        .run(
+          ...(table === "space_workflow_configurations" ? ["space"] : ["user", workspaceId]),
+          configuration.workflowId,
+          JSON.stringify(json),
+        );
+    insert("user_workflow_configurations", "user_id,workspace_id", configuration);
+    if (spaceDefaults)
+      insert("space_workflow_configurations", "space_id", { ...configuration, defaults: spaceDefaults });
+  };
+  const env = { SYNTILA_DB: db } as unknown as SecurityEnv;
   const resolve = (
     requester = "user",
     threadId = "thread",
     definition = testMultiStepDefinition,
     executionSelection?: unknown,
-  ) =>
-    resolveWorkflowExecutionBindings(
+  ) => {
+    save();
+    return resolveWorkflowExecutionBindings(
       env,
       requester,
       "space",
@@ -176,6 +143,7 @@ function fixture(
       [],
       executionSelection,
     );
+  };
   admission.mockImplementation(
     async (_env, _space, _thread, definition, bindings) => {
       const binding = Object.values(bindings)[0] as { workerId: string };

@@ -1,4 +1,5 @@
-import { withSql } from "./helpers/fake-sql";
+import { pgD1, recordStatements } from "./helpers/pg-d1";
+import { space, user, workspace } from "./helpers/seed";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import {
   authorizeRealtimeScope,
@@ -232,28 +233,18 @@ describe("realtime gateway contract", () => {
   });
 
   it("requires Workspace ownership and validates active Space grants", async () => {
-    const queries: string[] = [];
-    const db = {
-      prepare(query: string) {
-        queries.push(query);
-        return {
-          bind(...args: unknown[]) {
-            return {
-              first: async () => {
-                if (query.includes("execution_workspaces"))
-                  return args[0] === "workspace-1" ? { owner: 1 } : null;
-                if (query.includes("workspace_space_grants"))
-                  return args[0] === "space-1" && args[1] === "workspace-1"
-                    ? { granted: 1 }
-                    : null;
-                return null;
-              },
-            };
-          },
-        };
-      },
-    } as never;
-    withSql(db);
+    const { db: real, sqlite } = pgD1();
+    sqlite.exec(
+      user("user-1") +
+        user("other") +
+        workspace("workspace-1", "user-1") +
+        workspace("workspace-other", "other") +
+        space("space-1", "user-1") +
+        space("space-2", "user-1") +
+        `INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,created_at,updated_at)
+           VALUES ('grant-1','space-1','workspace-1','user-1','now','now');`,
+    );
+    const { db, statements } = recordStatements(real);
     await expect(
       authorizeRealtimeScope(db, "user-1", {
         workspaceId: "workspace-1",
@@ -266,36 +257,30 @@ describe("realtime gateway contract", () => {
         spaceId: "space-2",
       }),
     ).resolves.toEqual({ allowed: false, reason: "space_access_denied" });
+    // A Workspace owned by someone else is refused outright.
+    await expect(
+      authorizeRealtimeScope(db, "user-1", { workspaceId: "workspace-other" }),
+    ).resolves.toMatchObject({ allowed: false });
     expect(
-      queries.some((query) => query.includes("workspace_space_grants")),
+      statements.some((query) => query.includes("workspace_space_grants")),
     ).toBe(true);
     expect(
-      queries.some((query) => query.includes("workspace_memberships")),
+      statements.some((query) => query.includes("workspace_memberships")),
     ).toBe(false);
   });
 
   it("revalidates suspended users and removed subscriptions", async () => {
-    const db = {
-      prepare(query: string) {
-        return {
-          bind() {
-            return {
-              first: async () => {
-                if (query.includes("FROM users")) return { status: "active" };
-                if (query.includes("execution_workspaces")) return null;
-                return null;
-              },
-            };
-          },
-        };
-      },
-    } as never;
-    withSql(db);
+    const { db, sqlite } = pgD1();
+    sqlite.exec(user("user-1"));
     await expect(
       isRealtimeIdentityAuthorized(db, "user-1", [
         { workspaceId: "workspace-removed" },
       ]),
     ).resolves.toBe(false);
+    // Control: the same user with no subscriptions to revalidate stays authorized.
+    await expect(isRealtimeIdentityAuthorized(db, "user-1", [])).resolves.toBe(true);
+    sqlite.exec("UPDATE users SET status = 'suspended' WHERE id = 'user-1'");
+    await expect(isRealtimeIdentityAuthorized(db, "user-1", [])).resolves.toBe(false);
   });
 });
 
