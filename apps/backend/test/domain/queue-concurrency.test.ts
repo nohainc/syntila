@@ -60,7 +60,7 @@ const roles: Record<string, string> = {
 };
 
 function fixture() {
-  const { sqlite, db, sql } = pgD1({ writerLock: false, max: 24 });
+  const { sqlite, db, sql } = pgD1({ max: 24 });
   cleanups.push(() => sqlite.close());
   for (const id of Object.keys(roles))
     sqlite

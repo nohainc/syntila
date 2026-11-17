@@ -24,7 +24,7 @@ it("admits one assignment for parallel dispatches of a Free requester", async ()
     permissionSnapshot: { profileDefinitionId: "chatgpt-codex", profileReleaseVersion: 3 },
     selectionExplanation: {}, executionClass: "stateless_read", readOnly: true,
   });
-  const db = new PgD1Database((f.db as unknown as { sql: any }).sql, { writerLock: false });
+  const db = new PgD1Database((f.db as unknown as { sql: any }).sql);
   const env = {
     SYNTILA_DB: db,
     SYNTILA_WORKSPACE_GATEWAY: { idFromName: () => "WS", get: () => ({ fetch: async () => Response.json({}) }) },

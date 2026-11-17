@@ -60,8 +60,6 @@ function ensureTemplate(a: SyncPostgres) {
 }
 
 export interface PgD1TestOptions {
-  /** Global writer lock (default on, like production); off in concurrency tests. */
-  writerLock?: boolean;
   /** Pool size (default 3); concurrency tests need real parallel connections. */
   max?: number;
 }
@@ -80,7 +78,7 @@ export function pgD1(options: PgD1TestOptions = {}) {
   for (const old of live.slice(0, Math.max(0, live.length - LIVE_LIMIT))) {
     old.closed = true; old.sync.close(); void old.sql.close({ timeout: 0 }).catch(() => {});
   }
-  return { db: new PgD1Database(sql, { writerLock: options.writerLock }) as unknown as D1Database, sqlite: sync, sql, url: urlFor(name) };
+  return { db: new PgD1Database(sql) as unknown as D1Database, sqlite: sync, sql, url: urlFor(name) };
 }
 
 /** Drops databases created by this process (call from afterAll or rely on exit hook). */

@@ -25,7 +25,7 @@ export async function brokenInvariants(sql: Sql): Promise<string[]> {
 
 let sql: Sql, base = "", stop = async () => {}, mint: (sub: string, extra?: Record<string, unknown>) => Promise<string>;
 beforeAll(async () => {
-  const db = pgD1({ writerLock: false, max: 24 });
+  const db = pgD1({ max: 24 });
   sql = db.sql;
   const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
   const pub = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k" };
@@ -33,7 +33,7 @@ beforeAll(async () => {
   configureIdentityVerifier(new TokenVerifier([pub], "https://syntila.app", "syntila-backend"));
   const now = Math.floor(Date.now() / 1000);
   mint = (sub, extra = {}) => signToken(priv, { iss: "https://syntila.app", aud: "syntila-backend", sub, typ: "user", email: `${sub}@test`, name: sub, iat: now, exp: now + 600, sid: `s-${sub}`, client: "web", ...extra });
-  const runtime = createRuntime(sql, new PgD1Database(sql, { writerLock: false }), {
+  const runtime = createRuntime(sql, new PgD1Database(sql), {
     SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app",
     SYNTILA_RATE_LIMIT_PER_MINUTE: "0", SYNTILA_MUTATION_RATE_LIMIT_PER_MINUTE: "0",
   });
@@ -177,7 +177,7 @@ describe("storage quota", () => {
     // 980 MB used of the free 1 GB: room for exactly two 10 MB uploads.
     await sql`INSERT INTO user_files (id, user_id, name, media_type, size_bytes, created_at)
               VALUES ('wrf-used', 'conc-quota', 'big', 'application/octet-stream', 980000000, now())`;
-    const env = { SYNTILA_DB: new PgD1Database(sql, { writerLock: false }) } as any;
+    const env = { SYNTILA_DB: new PgD1Database(sql) } as any;
     const results = await Promise.allSettled(Array.from({ length: 10 }, (_, i) =>
       reserveUpload(env, { fileId: `wrf-q${i}`, userId: "conc-quota", sizeBytes: 10_000_000 })));
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);

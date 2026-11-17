@@ -1,7 +1,7 @@
 /**
  * What PostgreSQL itself says about contention (claude/concurrency-plan.md,
  * Phase 3). Sampled every five minutes into one `db.health` log line; these
- * numbers replace `db.writer_lock` once the global writer lock is gone.
+ * numbers describe contention now that there is no global writer lock.
  *
  *  - lockWaiting / lockWaitMaxMs: backends of this database waiting for a
  *    lock right now, and how long the longest has waited;

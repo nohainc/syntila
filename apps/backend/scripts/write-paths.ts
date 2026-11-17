@@ -143,7 +143,7 @@ export function renderWritePaths(paths: Path[]): string {
     "- **numbering**: `MAX(...) + 1` numbering; races once writes run in parallel.",
     "- **read-write**: the function reads before it writes (check-then-act); needs a row lock or a constraint.",
     "- **guarded**: every write carries its own condition (`NOT EXISTS`, `ON CONFLICT`, a status/version check).",
-    "- **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; the global writer lock applies only with SYNTILA_DB_WRITER_LOCK=on).",
+    "- **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).",
     "- **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.",
     "",
     `Totals: ${paths.length} write paths, ${tables.size} tables; ` +

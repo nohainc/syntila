@@ -6,7 +6,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **numbering**: `MAX(...) + 1` numbering; races once writes run in parallel.
 - **read-write**: the function reads before it writes (check-then-act); needs a row lock or a constraint.
 - **guarded**: every write carries its own condition (`NOT EXISTS`, `ON CONFLICT`, a status/version check).
-- **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; the global writer lock applies only with SYNTILA_DB_WRITER_LOCK=on).
+- **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
 Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 134 adapter-only, 27 in data-layer transactions.

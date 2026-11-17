@@ -30,8 +30,6 @@ export interface D1Result<T = Record<string, unknown>> {
 
 const RETRYABLE = new Set(["40001", "40P01"]); // serialization_failure, deadlock_detected
 const MAX_ATTEMPTS = 25;
-/** Advisory lock key for the global writer lock ("syntila.writer"). */
-const WRITER_LOCK = 0x5359_4e57;
 const translated = new Map<string, string>();
 
 /**
@@ -99,10 +97,10 @@ function findQuoteEnd(sql: string, start: number, quote: string): number {
   return sql.length;
 }
 
-/* ------------------------------------------------------- writer-lock metrics */
+/* --------------------------------------------------------------- write metrics */
 
-export interface WriterLockStat { label: string; count: number; waitMs: number; holdMs: number; maxHoldMs: number }
-const lockStats = new Map<string, WriterLockStat>();
+export interface WriteStat { label: string; count: number; waitMs: number; holdMs: number; maxHoldMs: number }
+const writeStats = new Map<string, WriteStat>();
 const SLOW_WRITE_MS = Number(process.env.PG_SLOW_WRITE_MS ?? 250);
 
 /** "insert realtime_events", "update worker_assignments", … for one statement. */
@@ -112,11 +110,11 @@ export function statementLabel(sql: string): string {
 }
 
 function recordWrite(label: string, waitMs: number, holdMs: number): void {
-  let stat = lockStats.get(label);
+  let stat = writeStats.get(label);
   if (!stat) {
-    if (lockStats.size >= 500) return; // labels are a closed set in practice; never grow unbounded
+    if (writeStats.size >= 500) return; // labels are a closed set in practice; never grow unbounded
     stat = { label, count: 0, waitMs: 0, holdMs: 0, maxHoldMs: 0 };
-    lockStats.set(label, stat);
+    writeStats.set(label, stat);
   }
   stat.count++; stat.waitMs += waitMs; stat.holdMs += holdMs;
   if (holdMs > stat.maxHoldMs) stat.maxHoldMs = holdMs;
@@ -125,15 +123,15 @@ function recordWrite(label: string, waitMs: number, holdMs: number): void {
 }
 
 /**
- * What held the global writer lock since the last call, heaviest first.
- * `waitMs` is time spent queueing for the lock (plus BEGIN); `holdMs` is the
- * time every other writer in the system was blocked.
+ * Adapter write transactions since the last call, heaviest first. `waitMs` is
+ * time spent waiting for a pool connection (plus BEGIN); `holdMs` is the
+ * time the transaction ran.
  */
-export function drainWriterLockStats(): WriterLockStat[] {
-  const out = [...lockStats.values()]
+export function drainWriteStats(): WriteStat[] {
+  const out = [...writeStats.values()]
     .map((s) => ({ ...s, waitMs: Math.round(s.waitMs), holdMs: Math.round(s.holdMs), maxHoldMs: Math.round(s.maxHoldMs) }))
     .sort((a, b) => b.holdMs - a.holdMs);
-  lockStats.clear();
+  writeStats.clear();
   return out;
 }
 
@@ -250,22 +248,8 @@ export class PgD1PreparedStatement {
   }
 }
 
-export interface PgD1Options {
-  /**
-   * Take the global writer lock before every write (D1's single-writer model).
-   * Default off since the concurrency plan's audit (claude/concurrency-plan.md):
-   * every write that depends on other rows locks exactly what it needs.
-   * The server can turn it back on with SYNTILA_DB_WRITER_LOCK=on as an
-   * emergency fallback, without a deploy.
-   */
-  writerLock?: boolean;
-}
-
 export class PgD1Database {
-  readonly writerLock: boolean;
-  constructor(readonly sql: Sql, options: PgD1Options = {}) {
-    this.writerLock = options.writerLock ?? false;
-  }
+  constructor(readonly sql: Sql) {}
 
   private readonly kinds = new Map<string, Promise<ParamKinds>>();
 
@@ -392,7 +376,7 @@ export class PgD1Database {
 
   /**
    * Runs one already-translated statement with the adapter's value
-   * conventions but outside the writer lock. For test fixtures and tools;
+   * conventions, outside the retrying write transaction. For test fixtures and tools;
    * application writes go through `prepare()` / `batch()`.
    */
   async unlocked(text: string, values: unknown[] = []): Promise<{ rows: Record<string, unknown>[]; count: number; command: string }> {
@@ -413,11 +397,10 @@ export class PgD1Database {
   }
 
   /**
-   * D1's write model: write transactions run one at a time. Each takes a
-   * transaction-scoped global writer lock first and then runs READ COMMITTED,
-   * so every statement sees all earlier writes (SERIALIZABLE would freeze its
-   * snapshot while waiting for the lock and compute stale sequence numbers).
-   * Reads never wait. Deadlocks with writers outside this adapter are retried.
+   * One write transaction at READ COMMITTED. There is no global writer lock:
+   * every write that depends on other rows locks exactly what it needs
+   * (claude/concurrency-plan.md). Serialization failures and deadlocks are
+   * retried.
    */
   private async serializable<R>(fn: (tx: Sql) => Promise<R>, label = "other"): Promise<R> {
     for (let attempt = 1; ; attempt++) {
@@ -425,11 +408,9 @@ export class PgD1Database {
       let locked = 0;
       try {
         const result = await this.sql.begin(async (tx) => {
-          if (this.writerLock) await (tx as unknown as Sql).unsafe("SELECT pg_advisory_xact_lock($1)", [WRITER_LOCK]);
           locked = performance.now();
           return fn(tx as unknown as Sql);
         }) as R;
-        // The lock is released by COMMIT, so the hold time includes it.
         recordWrite(label, locked - queued, performance.now() - locked);
         return result;
       } catch (e: any) {
@@ -457,7 +438,7 @@ function toResult<T>(result: any, duration: number): D1Result<T> {
 /** See `PgD1Database.within`. */
 class PgD1TxDatabase extends PgD1Database {
   constructor(private readonly base: PgD1Database, private readonly tx: Sql) {
-    super(base.sql, { writerLock: false });
+    super(base.sql);
   }
 
   override execute<T>(stmt: PgD1PreparedStatement): Promise<D1Result<T>> {

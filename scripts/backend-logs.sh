@@ -37,7 +37,7 @@ show() { # title, pattern
 
 case "$topic" in
   errors)    show "unexpected errors" '"http.unhandled_error"';;
-  lock)      show "writes" '"db.writes"'; show "writer lock (fallback on)" '"db.writer_lock"'; show "data-layer transactions" '"db.tx"';;
+  lock)      show "writes" '"db.writes"'; show "data-layer transactions" '"db.tx"';;
   slow)      show "slow writes" '"db.slow_write"'; show "slow transactions" '"db.slow_tx"';;
   db)
     show "database health (every 5 minutes)" '"db.health"'
@@ -58,7 +58,6 @@ case "$topic" in
     show "database health" '"db.health"'
     show "rate limited" '"http.rate_limited"'
     show "retention" '"retention.'
-    show "writer lock" '"db.writer_lock"'
     show "data-layer transactions" '"db.tx"';;
   follow)    exec ssh -t "$host" "journalctl -u syntila-backend -f -o cat";;
   *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2;;

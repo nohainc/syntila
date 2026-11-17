@@ -62,8 +62,7 @@ createdb syntila_lock && PGDATABASE=syntila_lock bun run migrate \
 ## Writes that run in parallel
 
 The backend runs without a global writer lock (project doc
-`claude/concurrency-plan.md`; `SYNTILA_DB_WRITER_LOCK=on` is the emergency
-fallback). Rules that keep parallel writes correct:
+`claude/concurrency-plan.md`). Rules that keep parallel writes correct:
 
 - **Every invariant is a constraint.** If two rows must never coexist, add a
   unique (or partial unique) index; a race then fails loudly instead of

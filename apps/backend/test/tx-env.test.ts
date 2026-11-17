@@ -5,7 +5,7 @@ import { dataOf } from "../src/platform/data";
 import { createEventPublisher } from "../src/domain/event-publisher";
 
 function fixture() {
-  const { db, sql, sqlite } = pgD1({ writerLock: true, max: 6 });
+  const { db, sql, sqlite } = pgD1({ max: 6 });
   sqlite.exec(`
     INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('u', 'u@t', 'u', now(), now());
     INSERT INTO spaces (id, owner_user_id, name, created_at, updated_at) VALUES ('S', 'u', 'S', now(), now());

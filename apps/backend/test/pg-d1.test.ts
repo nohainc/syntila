@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
-import { drainWriterLockStats, PgD1Database, PgD1Error, statementLabel, translatePlaceholders } from "../src/platform/pg-d1";
+import { drainWriteStats, PgD1Database, PgD1Error, statementLabel, translatePlaceholders } from "../src/platform/pg-d1";
 import { pgD1 } from "./domain/helpers/pg-d1";
 
 let sql: InstanceType<typeof SQL>;
 let db: PgD1Database;
 beforeAll(async () => {
   sql = pgD1().sql;
-  db = new PgD1Database(sql, { writerLock: true }); // these tests describe the lock itself
+  db = new PgD1Database(sql);
   await sql.unsafe(`DROP TABLE IF EXISTS d1t_child, d1t;
     CREATE TABLE d1t (id text PRIMARY KEY, n bigint NOT NULL DEFAULT 0, flag smallint NOT NULL DEFAULT 0 CHECK (flag IN (0,1)),
       at timestamptz, body text, data bytea);
@@ -77,11 +77,10 @@ describe("D1 API on PostgreSQL", () => {
     expect(chk.message).toStartWith("CHECK constraint failed");
   });
 
-  test("concurrent read-modify-write statements serialise like D1 (no lost updates, retries succeed)", async () => {
+  test("concurrent increments lose no update (the row lock serialises them)", async () => {
     await db.prepare("INSERT INTO d1t (id, n) VALUES ('ctr', 0)").run();
-    // Conditional increment that relies on single-writer semantics.
     await Promise.all(Array.from({ length: 40 }, () =>
-      db.prepare("UPDATE d1t SET n = (SELECT n FROM d1t WHERE id = 'ctr') + 1 WHERE id = 'ctr'").run()));
+      db.prepare("UPDATE d1t SET n = n + 1 WHERE id = 'ctr'").run()));
     expect(await db.prepare("SELECT n FROM d1t WHERE id = 'ctr'").first("n")).toBe(40);
   });
 
@@ -122,12 +121,13 @@ describe("pipelined batch", () => {
       db.prepare("UPDATE d1t SET n = (SELECT count(*) FROM d1t WHERE id LIKE 'pipe-%') WHERE id = ?1").bind(`pipe-${i}`),
     ])));
     const { results } = await db.prepare("SELECT n FROM d1t WHERE id LIKE 'pipe-%' ORDER BY n").all<{ n: number }>();
-    // Under the writer lock each batch saw exactly the batches before it.
-    expect(results.map((r) => r.n)).toEqual(Array.from({ length: 40 }, (_, i) => i + 1));
+    // Each batch saw at least its own insert (its statements ran together), and all 40 landed.
+    expect(results).toHaveLength(40);
+    for (const r of results) { expect(r.n).toBeGreaterThanOrEqual(1); expect(r.n).toBeLessThanOrEqual(40); }
   });
 });
 
-describe("writer-lock metrics", () => {
+describe("write metrics", () => {
   test("labels name the verb and table", () => {
     expect(statementLabel("INSERT INTO realtime_events (a) VALUES ($1)")).toBe("insert realtime_events");
     expect(statementLabel("  update worker_assignments SET x = 1")).toBe("update worker_assignments");
@@ -136,13 +136,13 @@ describe("writer-lock metrics", () => {
     expect(statementLabel("SELECT set_config('x', 'y', true)")).toBe("other");
   });
   test("writes are counted per label and drained", async () => {
-    drainWriterLockStats();
+    drainWriteStats();
     await db.prepare("INSERT INTO d1t (id) VALUES ('m1')").run();
     await db.batch([db.prepare("UPDATE d1t SET n = 1 WHERE id = 'm1'"), db.prepare("UPDATE d1t SET n = 2 WHERE id = 'm1'")]);
-    await db.prepare("SELECT 1").all(); // reads never take the lock
-    const stats = drainWriterLockStats();
+    await db.prepare("SELECT 1").all(); // reads are not counted
+    const stats = drainWriteStats();
     expect(stats.map((s) => [s.label, s.count]).sort()).toEqual([["batch(2) update d1t", 1], ["insert d1t", 1]]);
-    expect(drainWriterLockStats()).toEqual([]);
+    expect(drainWriteStats()).toEqual([]);
   });
 });
 

@@ -10,7 +10,7 @@ import { pendingMigrations } from "./migrate";
 import { pruneOperationalTables } from "./retention";
 import { backgroundTaskCount, drainBackgroundTasks, executionContext } from "./platform/background";
 import { AuthWorkerSync, EmailOutbox, EmailRelay } from "./platform/email";
-import { drainWriterLockStats, PgD1Database } from "./platform/pg-d1";
+import { drainWriteStats, PgD1Database } from "./platform/pg-d1";
 import { drainTxStats } from "./platform/data";
 import { sampleDbHealth } from "./platform/db-health";
 import { S3R2Bucket, unconfiguredBucket } from "./platform/r2";
@@ -46,11 +46,7 @@ const sql = new SQL({
   bigint: true, connectionTimeout: 5, idleTimeout: 60,
   connection: { application_name: "syntila-backend", statement_timeout: "30000" },
 });
-// The global writer lock is off (concurrency plan); SYNTILA_DB_WRITER_LOCK=on
-// in /etc/syntila/backend.env turns it back on after a restart.
-const writerLock = process.env.SYNTILA_DB_WRITER_LOCK === "on";
-const db = new PgD1Database(sql, { writerLock });
-if (writerLock) console.warn("SYNTILA_DB_WRITER_LOCK=on: every write takes the global writer lock");
+const db = new PgD1Database(sql);
 
 const verifier = new TokenVerifier(config.auth.publicKeys, config.auth.issuer, config.auth.audience);
 configureIdentityVerifier(config.auth.publicKeys.length ? verifier : null);
@@ -151,16 +147,15 @@ async function logDbHealth() {
     console.error(JSON.stringify({ level: "error", message: "db.health_failed", error: String(e) }));
   }
 }
-function logWriterLock() {
-  const stats = drainWriterLockStats();
+function logWrites() {
+  const stats = drainWriteStats();
   if (!stats.length) return;
   const total = stats.reduce((sum, s) => ({ count: sum.count + s.count, waitMs: sum.waitMs + s.waitMs, holdMs: sum.holdMs + s.holdMs }), { count: 0, waitMs: 0, holdMs: 0 });
-  // With the lock on, holdMs / 300000 is the share of the last five minutes it
-  // was taken. With it off the same numbers describe adapter write
-  // transactions: waitMs is waiting for a pool connection, holdMs their time.
-  console.log(JSON.stringify({ level: "info", message: writerLock ? "db.writer_lock" : "db.writes", details: { ...total, top: stats.slice(0, 12) } }));
+  // Adapter write transactions: waitMs is waiting for a pool connection,
+  // holdMs their running time.
+  console.log(JSON.stringify({ level: "info", message: "db.writes", details: { ...total, top: stats.slice(0, 12) } }));
 }
-const every5 = setInterval(() => { void runScheduled("*/5 * * * *"); logWriterLock(); void logDbHealth(); }, 5 * 60_000);
+const every5 = setInterval(() => { void runScheduled("*/5 * * * *"); logWrites(); void logDbHealth(); }, 5 * 60_000);
 let lastDaily = "";
 const daily = setInterval(() => {
   const now = new Date();
@@ -182,7 +177,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     stopping = true;
     console.log(`${signal}: draining (${backgroundTaskCount()} background tasks)`);
     clearInterval(every5); clearInterval(daily);
-    logWriterLock();
+    logWrites();
     await logDbHealth();
     // Stop accepting; in-flight HTTP requests get a short drain. Open
     // WebSockets never finish on their own, so they are closed after that and
