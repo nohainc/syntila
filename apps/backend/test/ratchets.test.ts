@@ -25,7 +25,7 @@ const LIMITS = {
   prepareCalls: 0,
   batchCalls: 0,
   d1DatabaseReferences: 0,
-  mockBasedTestFiles: 11, // test files that define a fake `prepare` database by hand
+  mockBasedTestFiles: 7,  // test files that define a fake `prepare` database by hand
 };
 
 test("ratchet: .prepare( call sites only go down", () => {

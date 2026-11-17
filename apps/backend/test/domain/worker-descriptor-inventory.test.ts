@@ -1,45 +1,83 @@
-import { withSql } from "./helpers/fake-sql";
-import { describe, expect, it, vi } from "./helpers/vitest-compat";
+import { pgD1 } from "./helpers/pg-d1";
+import { T0, user, workspace } from "./helpers/seed";
+import { beforeEach, describe, expect, it } from "./helpers/vitest-compat";
+import { hashToken } from "@syntila/security";
 import {
   handleListWorkspaceWorkerCatalog,
   handleListWorkspaceWorkerInventory,
   handleListWorkerCatalog,
 } from "../../src/domain/routes/profiles.js";
 
+const LAST_SEEN = "2026-10-02T00:00:00.000Z";
+const DIGEST = "a".repeat(64);
+
 describe("Workspace Worker inventory catalog metadata", () => {
-  it("returns Cloud metadata separately from local readiness", async () => {
-    const row = {
-      worker_id: "workspace-worker-dynamic",
-      workspace_id: "workspace-1",
-      workspace_name: "Vitalii’s MacBook Pro",
-      worker_type_id: "dynamic-test-worker",
-      activation_state: "enabled",
-      readiness_state: "setup_required",
-      readiness_issue_code: "provider_tool_missing",
-      capabilities_json: '["text"]',
-      local_concurrency_limit: 1,
-      engine_version: null,
-      profile_definition_id: null,
-      profile_release_version: null,
-      provider_tool_name: null,
-      provider_tool_version: null,
-      last_seen_at: "2026-10-02T00:00:00.000Z",
-      catalog_display_name: "Dynamic Test Worker",
-      catalog_description: "Catalog-created acceptance Worker.",
-      catalog_lifecycle_state: "active",
-      catalog_visibility_state: "visible",
-    };
-    const statement = {
-      bind: vi.fn(function (this: unknown) {
-        return this;
-      }),
-      all: vi.fn(async () => ({ results: [row] })),
-    };
-    const env = {
+  let handle: ReturnType<typeof pgD1>;
+  let env: Env;
+
+  const inventory = (o: {
+    id: string;
+    type: string;
+    readiness: string;
+    issue?: string;
+    profile?: { definition: string; release: number; tool: string; version: string };
+    engineVersion?: string;
+  }) =>
+    handle.sqlite
+      .prepare(
+        `INSERT INTO workspace_worker_inventory (
+           worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
+           readiness_issue_code, local_concurrency_limit, engine_version, profile_definition_id,
+           profile_release_version, provider_tool_name, provider_tool_version,
+           revision, created_at, updated_at, last_seen_at
+         ) VALUES (?, 'workspace-1', 'user-1', ?, 'enabled', ?, ?, 1, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+      )
+      .run(
+        o.id,
+        o.type,
+        o.readiness,
+        o.issue ?? null,
+        o.engineVersion ?? null,
+        o.profile?.definition ?? null,
+        o.profile?.release ?? null,
+        o.profile?.tool ?? null,
+        o.profile?.version ?? null,
+        T0,
+        T0,
+        LAST_SEEN,
+      );
+
+  const dynamicWorker = (revision: number) =>
+    handle.sqlite.exec(
+      `INSERT INTO worker_catalog (worker_type_id, display_name, description, lifecycle_state, sort_order, created_at, updated_at)
+         VALUES ('dynamic-test-worker', 'Dynamic Test Worker', 'Catalog-created acceptance Worker.', 'active', 30, '${T0}', '${T0}');
+       INSERT INTO worker_profiles (worker_type_id, schema_version, profile_json, revision, digest, updated_at)
+         VALUES ('dynamic-test-worker', 1, '{"schemaVersion":1}', ${revision}, '${DIGEST}', '${LAST_SEEN}');`,
+    );
+
+  beforeEach(() => {
+    handle = pgD1();
+    handle.sqlite.exec(
+      user("user-1") + workspace("workspace-1", "user-1", "Vitalii’s MacBook Pro"),
+    );
+    env = {
       SYNTILA_ENVIRONMENT: "development",
-      SYNTILA_DB: withSql({ prepare: vi.fn(() => statement) }),
+      SYNTILA_DB: handle.db,
       TEST_AUTHENTICATION: async () => ({ userId: "user-1" }),
     } as unknown as Env;
+  });
+
+  it("returns Cloud metadata separately from local readiness", async () => {
+    handle.sqlite.exec(
+      `INSERT INTO worker_catalog (worker_type_id, display_name, description, lifecycle_state, created_at, updated_at)
+       VALUES ('dynamic-test-worker', 'Dynamic Test Worker', 'Catalog-created acceptance Worker.', 'active', '${T0}', '${T0}');`,
+    );
+    inventory({
+      id: "workspace-worker-dynamic",
+      type: "dynamic-test-worker",
+      readiness: "setup_required",
+      issue: "provider_tool_missing",
+    });
 
     const response = await handleListWorkspaceWorkerInventory(
       new Request("https://syntila.test/api/workers"),
@@ -69,7 +107,9 @@ describe("Workspace Worker inventory catalog metadata", () => {
     });
     expect(body.workers[0]).not.toHaveProperty("descriptor");
 
-    row.catalog_lifecycle_state = "retired";
+    handle.sqlite.exec(
+      "UPDATE worker_catalog SET lifecycle_state = 'retired' WHERE worker_type_id = 'dynamic-test-worker'",
+    );
     const retiredResponse = await handleListWorkspaceWorkerInventory(
       new Request("https://syntila.test/api/workers"),
       env,
@@ -81,51 +121,30 @@ describe("Workspace Worker inventory catalog metadata", () => {
   });
 
   it("does not invent model choices from an authoring template", async () => {
-    const row = {
-      worker_id: "workspace-worker-chatgpt",
-      workspace_id: "workspace-1",
-      workspace_name: "Workspace",
-      worker_type_id: "chatgpt",
-      activation_state: "enabled",
-      readiness_state: "ready",
-      readiness_issue_code: null,
-      capabilities_json: '["text","thread_read"]',
-      local_concurrency_limit: 1,
-      engine_version: "1.0.0",
-      profile_definition_id: "chatgpt-codex",
-      profile_release_version: 2,
-      provider_tool_name: "Codex CLI",
-      provider_tool_version: "0.160.0",
-      last_seen_at: "2026-10-02T00:00:00.000Z",
-      catalog_display_name: "ChatGPT",
-      catalog_description: "",
-      catalog_lifecycle_state: "active",
-      catalog_visibility_state: "visible",
-      model_profile_json: JSON.stringify({
-        model: {
-          supported: true,
-          unknownModelPolicy: "profile_allowlist",
-          allowlist: ["gpt-test"],
-        },
-      }),
-      starter_profile_json: JSON.stringify({
-        model: {
-          supported: true,
-          catalog: [{ id: "gpt-test", name: "GPT Test" }],
-        },
-      }),
-    };
-    const statement = {
-      bind: vi.fn(function (this: unknown) {
-        return this;
-      }),
-      all: vi.fn(async () => ({ results: [row] })),
-    };
-    const env = {
-      SYNTILA_ENVIRONMENT: "development",
-      SYNTILA_DB: withSql({ prepare: vi.fn(() => statement) }),
-      TEST_AUTHENTICATION: async () => ({ userId: "user-1" }),
-    } as unknown as Env;
+    // The stored Profile allows one model but lists no catalog of choices.
+    const profile = JSON.stringify({
+      schemaVersion: 1,
+      model: {
+        supported: true,
+        unknownModelPolicy: "profile_allowlist",
+        allowlist: ["gpt-test"],
+      },
+    });
+    handle.sqlite
+      .prepare(
+        `INSERT INTO worker_profiles (worker_type_id, schema_version, profile_json, revision, digest, updated_at)
+         VALUES ('chatgpt', 1, ?, 2, ?, ?)
+         ON CONFLICT (worker_type_id) DO UPDATE
+           SET profile_json = excluded.profile_json, revision = 2, digest = excluded.digest`,
+      )
+      .run(profile, DIGEST, LAST_SEEN);
+    inventory({
+      id: "workspace-worker-chatgpt",
+      type: "chatgpt",
+      readiness: "ready",
+      engineVersion: "1.0.0",
+      profile: { definition: "chatgpt-codex", release: 2, tool: "Codex CLI", version: "0.160.0" },
+    });
 
     const response = await handleListWorkspaceWorkerInventory(
       new Request("https://syntila.test/api/workers"),
@@ -134,70 +153,25 @@ describe("Workspace Worker inventory catalog metadata", () => {
     const body = (await response.json()) as {
       workers: Array<{ modelOptions: { catalog: Array<{ id: string }> } }>;
     };
+    expect(response.status).toBe(200);
     expect(body.workers[0]?.modelOptions.catalog).toEqual([]);
   });
 
   it("discovers a managed Cloud Worker from the current Profile catalog", async () => {
-    const queries: string[] = [];
-    const db = {
-      prepare: vi.fn((sql: string) => {
-        queries.push(sql);
-        return {
-          bind: vi.fn((..._values: unknown[]) => {
-            return {
-              first: async () =>
-                sql.includes("workspace_runtime_identities")
-                  ? { workspaceId: "workspace-1" }
-                  : null,
-              all: async () => ({
-                results: [
-                  {
-                    worker_type_id: "dynamic-test-worker",
-                    display_name: "Dynamic Test Worker",
-                    description: "Catalog-created acceptance Worker.",
-                    lifecycle_state: "active",
-                    engine_family: "cli",
-                    visibility_state: "visible",
-                    sort_order: 30,
-                    current_revision: 4,
-                    current_digest: "a".repeat(64),
-                    current_updated_at: "2026-10-02T00:00:00.000Z",
-                  },
-                ],
-              }),
-            };
-          }),
-          all: async () => ({
-            results: [
-              {
-                worker_type_id: "dynamic-test-worker",
-                display_name: "Dynamic Test Worker",
-                description: "Catalog-created acceptance Worker.",
-                lifecycle_state: "active",
-                engine_family: "cli",
-                visibility_state: "visible",
-                sort_order: 30,
-                current_revision: 4,
-                current_digest: "a".repeat(64),
-                current_updated_at: "2026-10-02T00:00:00.000Z",
-              },
-            ],
-          }),
-        };
-      }),
-    };
-    const env = {
-      SYNTILA_DB: withSql(db),
-    } as unknown as Env;
+    dynamicWorker(4);
+    handle.sqlite
+      .prepare(
+        `INSERT INTO workspace_runtime_identities (id, workspace_id, installation_id, credential_token_hash, created_at)
+         VALUES ('runtime-1', 'workspace-1', 'installation-1', ?, now())`,
+      )
+      .run(await hashToken("runtime-secret"));
 
     const response = await handleListWorkspaceWorkerCatalog(
       new Request(
         "https://syntila.test/api/workspace-runtime/workers/catalog?workspaceRuntimeId=runtime-1",
-        {
-          headers: { authorization: "Bearer runtime-secret" },
-        },
+        { headers: { authorization: "Bearer runtime-secret" } },
       ),
-      env,
+      { SYNTILA_DB: handle.db } as unknown as Env,
     );
     const body = (await response.json()) as {
       workers: Array<Record<string, unknown>>;
@@ -209,66 +183,24 @@ describe("Workspace Worker inventory catalog metadata", () => {
         workerTypeId: "dynamic-test-worker",
         displayName: "Dynamic Test Worker",
         currentRevision: 4,
-        currentDigest: "a".repeat(64),
+        currentDigest: DIGEST,
       }),
     );
-    const catalogQuery = queries.find((sql) =>
-      sql.includes("FROM worker_catalog worker"),
-    );
-    expect(catalogQuery).toContain("worker.visibility_state");
-    expect(catalogQuery).toContain("current_profile.revision");
+
+    // The same route refuses a wrong credential.
+    await expect(
+      handleListWorkspaceWorkerCatalog(
+        new Request(
+          "https://syntila.test/api/workspace-runtime/workers/catalog?workspaceRuntimeId=runtime-1",
+          { headers: { authorization: "Bearer wrong" } },
+        ),
+        { SYNTILA_DB: handle.db } as unknown as Env,
+      ),
+    ).rejects.toMatchObject({ status: 401 });
   });
 
   it("serves the current Worker catalog through the authenticated human API", async () => {
-    const queries: string[] = [];
-    const db = {
-      prepare: vi.fn((sql: string) => {
-        queries.push(sql);
-        return {
-          bind: vi.fn((..._values: unknown[]) => {
-            return {
-              all: async () => ({
-                results: [
-                  {
-                    worker_type_id: "dynamic-test-worker",
-                    display_name: "Dynamic Test Worker",
-                    description: "Catalog-created acceptance Worker.",
-                    engine_family: "cli",
-                    visibility_state: "visible",
-                    lifecycle_state: "active",
-                    sort_order: 30,
-                    current_revision: 4,
-                    current_digest: "a".repeat(64),
-                    current_updated_at: "2026-10-02T00:00:00.000Z",
-                  },
-                ],
-              }),
-            };
-          }),
-          all: async () => ({
-            results: [
-              {
-                worker_type_id: "dynamic-test-worker",
-                display_name: "Dynamic Test Worker",
-                description: "Catalog-created acceptance Worker.",
-                lifecycle_state: "active",
-                engine_family: "cli",
-                visibility_state: "visible",
-                sort_order: 30,
-                current_revision: 4,
-                current_digest: "a".repeat(64),
-                current_updated_at: "2026-10-02T00:00:00.000Z",
-              },
-            ],
-          }),
-        };
-      }),
-    };
-    const env = {
-      SYNTILA_ENVIRONMENT: "development",
-      SYNTILA_DB: withSql(db),
-      TEST_AUTHENTICATION: async () => ({ userId: "user-1" }),
-    } as unknown as Env;
+    dynamicWorker(4);
 
     const response = await handleListWorkerCatalog(
       new Request("https://syntila.test/api/workers/catalog"),
@@ -284,9 +216,8 @@ describe("Workspace Worker inventory catalog metadata", () => {
         workerTypeId: "dynamic-test-worker",
         displayName: "Dynamic Test Worker",
         currentRevision: 4,
-        currentDigest: "a".repeat(64),
+        currentDigest: DIGEST,
       }),
     );
-    expect(queries[0]).toContain("FROM worker_catalog worker");
   });
 });

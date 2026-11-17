@@ -1,7 +1,8 @@
+import { pgD1 } from "./helpers/pg-d1";
+import { member, T0, user, workspace } from "./helpers/seed";
 import { beforeEach, expect, it, vi } from "./helpers/vitest-compat";
 import { BUILTIN_WORKFLOWS } from "@syntila/core";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
-import { Data } from "../../src/platform/data.js";
 const admission = vi.hoisted(() => vi.fn());
 vi.mock("../../src/domain/routes/handlers.js", () => ({
   validateWorkflowWorkerEligibility: admission,
@@ -14,100 +15,32 @@ import { requireWorkflowPermission } from "../../src/domain/routes/space-permiss
  * "own-ws" with Worker "mine" and borrows "lent-ws" with Worker "lent".
  */
 function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
-  const inventory = [
-    { workerId: "shared", workspaceId: "space-ws", ownerUserId: "owner" },
-    { workerId: "mine", workspaceId: "own-ws", ownerUserId: "member" },
-    { workerId: "lent", workspaceId: "lent-ws", ownerUserId: "lender" },
-  ];
-  const writes: Array<{ sql: string; values: unknown[] }> = [];
+  const { db, sqlite } = pgD1();
   const settings = memberRights
     ? { memberPermissions: { member: memberRights } }
     : {};
-  const env = {
-    SYNTILA_DATA: new Data(Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const text = strings.join("?");
-      if (/^\s*(INSERT|UPDATE|DELETE)\b/i.test(text)) {
-        writes.push({ sql: text, values });
-        return Object.assign([], { count: 1 });
-      }
-      if (text.includes("space_workflow_settings")) return [{ workspaceId: "space-ws" }];
-      if (text.includes("FROM workspace_worker_inventory i") && text.includes("JOIN execution_workspaces"))
-        return inventory.filter((w) => w.workerId === values[0] && w.ownerUserId === values[1]);
-      if (text.includes("FROM workspace_worker_inventory i"))
-        return inventory.filter((w) => w.workspaceId === values[0]);
-      if (text.includes("FROM execution_workspaces WHERE id"))
-        return [{ ownerUserId: inventory.find((w) => w.workspaceId === values[0])?.ownerUserId }];
-      if (text.includes("FROM workspace_space_grants")) return [];
-      if (text.includes("owner_user_id")) return [{ ownerUserId: "owner" }]; // spaceOwnerOf
-      if (text.includes("settings_json")) return [{ role: "collaborator", settingsJson: JSON.stringify(settings), kind, isSupport: false }]; // loadSpacePermissions
-      if (text.includes("FROM space_memberships")) return [{ role: "collaborator" }]; // spaceMembership
-      return [];
-    }, { begin: async (cb: (c: any) => unknown) => cb((env as any).SYNTILA_DATA.sql) }) as any),
-    SYNTILA_DB: {
-      prepare(sql: string) {
-        return {
-          sql,
-          values: [] as unknown[],
-          bind(...values: unknown[]) {
-            this.values = values;
-            return this;
-          },
-          async first() {
-            if (sql.includes("space_workflow_settings"))
-              return { workspaceId: "space-ws" };
-            if (sql.includes("space_memberships"))
-              return {
-                role: "collaborator",
-                settingsJson: JSON.stringify(settings),
-                kind,
-              };
-            if (
-              sql.includes(
-                "SELECT i.workspace_id AS workspaceId FROM workspace_worker_inventory",
-              )
-            )
-              return (
-                inventory.find(
-                  (worker) =>
-                    worker.workerId === this.values[0] &&
-                    worker.ownerUserId === this.values[1],
-                ) ?? null
-              );
-            if (sql.includes("FROM workspace_worker_inventory i\n       JOIN"))
-              return (
-                inventory.find(
-                  (worker) =>
-                    worker.workerId === this.values[0] &&
-                    worker.ownerUserId === this.values[1],
-                ) ?? null
-              );
-            if (sql.includes("FROM workspace_space_grants")) return null;
-            if (sql.includes("FROM spaces WHERE id"))
-              return { ownerUserId: "owner" };
-            if (sql.includes("FROM execution_workspaces WHERE id"))
-              return {
-                ownerUserId: inventory.find(
-                  (worker) => worker.workspaceId === this.values[0],
-                )?.ownerUserId,
-              };
-            return null;
-          },
-          async all() {
-            if (sql.includes("UNION ALL")) return { results: [] };
-            return {
-              results: inventory.filter(
-                (worker) => worker.workspaceId === this.values[0],
-              ),
-            };
-          },
-        };
-      },
-      async batch(statements: Array<{ sql: string; values: unknown[] }>) {
-        writes.push(...statements);
-        return [];
-      },
-    },
-  } as unknown as SecurityEnv;
+  const inventory = (worker: string, ws: string, owner: string) =>
+    `INSERT INTO workspace_worker_inventory (
+       worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
+       local_concurrency_limit, revision, created_at, updated_at, last_seen_at
+     ) VALUES ('${worker}', '${ws}', '${owner}', 'chatgpt-codex', 'enabled', 'ready', 1, 1, '${T0}', '${T0}', '${T0}');`;
+  sqlite.exec(
+    user("owner") +
+      user("member") +
+      user("lender") +
+      `INSERT INTO spaces(id,owner_user_id,name,settings_json,kind,created_at,updated_at)
+         VALUES ('space','owner','space','${JSON.stringify(settings)}','${kind}','${T0}','${T0}');` +
+      member("space", "owner") +
+      member("space", "member", "collaborator") +
+      workspace("space-ws", "owner") +
+      workspace("own-ws", "member") +
+      workspace("lent-ws", "lender") +
+      inventory("shared", "space-ws", "owner") +
+      inventory("mine", "own-ws", "member") +
+      inventory("lent", "lent-ws", "lender") +
+      `INSERT INTO space_workflow_settings(space_id, workspace_id, updated_at) VALUES ('space', 'space-ws', '${T0}');`,
+  );
+  const env = { SYNTILA_DB: db } as unknown as SecurityEnv;
   const resolve = (
     workerId: string | undefined,
     workflow = BUILTIN_WORKFLOWS.chat,
@@ -122,7 +55,16 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
       [],
       { workerId },
     );
-  return { resolve, writes, env };
+  const grants = () =>
+    sqlite
+      .prepare(
+        `SELECT workspace_id AS "workspaceId", granted_by_user_id AS "grantedBy", allowed_permissions_json AS permissions
+           FROM workspace_space_grants WHERE space_id = 'space'`,
+      )
+      .all() as { workspaceId: string; grantedBy: string; permissions: string }[];
+  const audits = () =>
+    sqlite.prepare("SELECT action FROM space_audit_log WHERE space_id = 'space'").all() as { action: string }[];
+  return { resolve, grants, audits, env };
 }
 
 beforeEach(() => {
@@ -140,17 +82,17 @@ it("admits the member's own Worker for Chat through a read-only grant", async ()
   await expect(f.resolve("mine")).resolves.toEqual({
     chat: { workerId: "mine" },
   });
-  const grant = f.writes.find((write) =>
-    write.sql.includes("INSERT INTO workspace_space_grants"),
-  );
-  expect(grant?.sql).toContain("'[\"repository:read\"]'");
-  expect(grant?.values.slice(1, 4)).toEqual(["space", "own-ws", "member"]);
+  const grants = f.grants();
+  expect(grants).toHaveLength(1);
+  expect(grants[0]).toMatchObject({ workspaceId: "own-ws", grantedBy: "member" });
+  expect(JSON.parse(grants[0]!.permissions)).toEqual(["repository:read"]);
+  expect(f.audits().map((a) => a.action)).toEqual(["chat.own_workspace.authorized"]);
 });
 
 it("rejects own Workers when the member lacks Chat", async () => {
   const f = fixture({ chat: false, work: true });
   await expect(f.resolve("mine")).rejects.toMatchObject({ status: 403 });
-  expect(f.writes).toEqual([]);
+  expect(f.grants()).toEqual([]);
 });
 
 it("ignores a legacy stored useOwnWorkers: false while Chat is granted", async () => {
@@ -161,7 +103,7 @@ it("ignores a legacy stored useOwnWorkers: false while Chat is granted", async (
 it("never treats a Worker shared with the member as their own", async () => {
   const f = fixture(null);
   await expect(f.resolve("lent")).rejects.toMatchObject({ status: 422 });
-  expect(f.writes).toEqual([]);
+  expect(f.grants()).toEqual([]);
 });
 
 it("requires an owned Worker in a personal Space", async () => {

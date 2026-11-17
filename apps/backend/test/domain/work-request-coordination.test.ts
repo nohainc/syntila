@@ -1,6 +1,6 @@
-import { chainData } from "./helpers/fake-sql";
+import { pgD1 } from "./helpers/pg-d1";
+import { member, space, thread, user, workspace } from "./helpers/seed";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
-import { Data } from "../../src/platform/data.js";
 
 vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
   ...(await original<Record<string, unknown>>()),
@@ -23,128 +23,61 @@ vi.mock("../../src/domain/event-publisher.js", () => ({
   createEventPublisher: (env: unknown) => ({
     publish: async (input?: { mutate?: (tx: never) => Promise<unknown> }) => {
       if (!input?.mutate) return;
-      const { fakeTx } = await import("./helpers/fake-sql");
-      await input.mutate!(fakeTx((env as { SYNTILA_DB: unknown }).SYNTILA_DB) as never);
+      const { dataOf } = await import("../../src/platform/data.js");
+      await dataOf(env as never).tx("test.publish", (tx) => input.mutate!(tx as never));
     },
   }),
 }));
 import { handleCreateWorkRequest } from "../../src/domain/routes/work-creation.js";
 
+const NOW = "2026-01-01T00:00:00.000Z";
+const configuration = (workflowId: string) =>
+  JSON.stringify({
+    schemaVersion: 1,
+    workflowId,
+    enabled: true,
+    defaults: { worker: "worker-a" },
+    stepOverrides: {},
+  });
+
 function fixture(coordinatorAvailable = true) {
-  const writes: { sql: string; values: unknown[] }[] = [];
+  const { db, sqlite } = pgD1();
+  sqlite.exec(
+    user("owner") +
+      space("space", "owner") +
+      member("space", "owner") +
+      workspace("workspace", "owner") +
+      thread("stream", "space", "owner") +
+      `INSERT INTO workspace_worker_inventory (
+         worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
+         local_concurrency_limit, revision, created_at, updated_at, last_seen_at
+       ) VALUES ('worker-a', 'workspace', 'owner', 'chatgpt-codex', 'enabled', 'ready', 1, 1, '${NOW}', '${NOW}', '${NOW}');
+       INSERT INTO space_workflow_settings(space_id, workspace_id, updated_at) VALUES ('space', 'workspace', '${NOW}');
+       INSERT INTO space_workflow_configurations(space_id, workflow_id, schema_version, configuration_json, updated_at) VALUES
+         ('space', 'chat', 1, '${configuration("chat")}', '${NOW}'),
+         ('space', 'direct', 1, '${configuration("direct")}', '${NOW}');`,
+  );
   const enqueue = vi.fn(async () => new Response("{}"));
   const create = vi.fn(async () => ({ status: async () => "queued" }));
   const env = {
-    SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const text = strings.join("?");
-      if (text.includes("space_workflow_settings")) return [{ workspaceId: "workspace" }];
-      if (text.includes("FROM workspace_worker_inventory i") && !text.includes("JOIN")) return [{ workerId: "worker-a", workspaceId: "workspace" }];
-      if (text.includes("FROM execution_workspaces WHERE id")) return [{ ownerUserId: "owner" }];
-      if (text.includes("thread_execution_policies")) return [{ mode: "stateful", primaryWorkspaceId: "different-workspace" }];
-      if (text.includes("FROM spaces") && text.includes("owner_user_id")) return [{ ownerUserId: "owner", kind: "group" }];
-      if (text.includes("owner_user_id")) return [{ ownerUserId: "owner" }]; // spaceOwnerOf
-      if (text.includes("FROM space_memberships")) return [{ role: "owner" }]; // spaceMembership
-      if (!text.includes("UNION ALL")) return [];
-      const target = typeof values[2] === "string" ? values[2] : null;
-      const rows = ["chat", "direct"].map((workflowId) => ({
-        workflow_id: workflowId,
-        configuration_json: JSON.stringify({
-          schemaVersion: 1, workflowId, enabled: true,
-          defaults: { worker: "worker-a" }, stepOverrides: {},
-        }),
-      }));
-      return target ? rows.filter((row) => row.workflow_id === target) : rows;
-    }) as any),
-    SYNTILA_DB: {
-      prepare(sql: string) {
-        const statement = {
-          values: [] as unknown[],
-          bind(...values: unknown[]) {
-            this.values = values;
-            return this;
-          },
-          async first() {
-            if (sql.includes("space_workflow_settings"))
-              return { workspaceId: "workspace" };
-            if (
-              sql.includes("owner_user_id AS ownerUserId") &&
-              sql.includes("FROM spaces")
-            )
-              return { ownerUserId: "owner", kind: "group" };
-            if (sql.includes("space_memberships"))
-              return { role: "owner", settingsJson: "{}" };
-            if (sql.includes("thread_execution_policies"))
-              return {
-                mode: "stateful",
-                primaryWorkspaceId: "different-workspace",
-              };
-            return null;
-          },
-          async all() {
-            if (sql.includes("direct_spaces")) return { results: [] };
-            if (sql.includes("UNION ALL")) {
-              const target =
-                typeof this.values[1] === "string" ? this.values[1] : null;
-              const rows = [
-                {
-                  workflow_id: "chat",
-                  configuration_json: JSON.stringify({
-                    schemaVersion: 1,
-                    workflowId: "chat",
-                    enabled: true,
-                    defaults: { worker: "worker-a" },
-                    stepOverrides: {},
-                  }),
-                },
-                {
-                  workflow_id: "direct",
-                  configuration_json: JSON.stringify({
-                    schemaVersion: 1,
-                    workflowId: "direct",
-                    enabled: true,
-                    defaults: { worker: "worker-a" },
-                    stepOverrides: {},
-                  }),
-                },
-              ];
-              return {
-                results: target
-                  ? rows.filter((r) => r.workflow_id === target)
-                  : rows,
-              };
-            }
-            return {
-              results: [{ workerId: "worker-a", workspaceId: "workspace" }],
-            };
-          },
-          async run() {
-            writes.push({ sql, values: this.values });
-            return {};
-          },
-        };
-        return statement;
-      },
-      async batch(statements: { run(): Promise<unknown> }[]) {
-        return Promise.all(statements.map((s) => s.run()));
-      },
-    },
+    SYNTILA_DB: db,
     SYNTILA_RUN_WORKFLOW: { create },
     ...(coordinatorAvailable
-      ? {
-          SYNTILA_THREAD_COORDINATOR: {
-            getByName: () => ({ fetch: enqueue }),
-          },
-        }
+      ? { SYNTILA_THREAD_COORDINATOR: { getByName: () => ({ fetch: enqueue }) } }
       : {}),
   };
-  return { env: chainData(env as any) as typeof env, enqueue, create, writes };
+  const requests = () =>
+    sqlite.prepare("SELECT mode FROM work_requests").all() as { mode: string }[];
+  const leases = () =>
+    Number((sqlite.prepare("SELECT count(*) AS n FROM thread_runtime_leases").get() as { n: number | string }).n);
+  return { env, enqueue, create, requests, leases };
 }
 
 describe("Work Request mutation coordination", () => {
   it.each([true, false])(
     "creates Chat without a mutation lease (coordinator available: %s)",
     async (available) => {
-      const { env, enqueue, create, writes } = fixture(available);
+      const { env, enqueue, create, requests, leases } = fixture(available);
       const response = await handleCreateWorkRequest(
         new Request("https://syntila.test/work", {
           method: "POST",
@@ -166,18 +99,13 @@ describe("Work Request mutation coordination", () => {
       });
       expect(enqueue).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledOnce();
-      expect(
-        writes.find((w) => w.sql.includes("INSERT INTO work_requests"))
-          ?.values[3],
-      ).toBe("stateless");
-      expect(writes.some((w) => w.sql.includes("thread_runtime_leases"))).toBe(
-        false,
-      );
+      expect(requests().map((r) => r.mode)).toEqual(["stateless"]);
+      expect(leases()).toBe(0);
     },
   );
 
   it("keeps Work stateful and enqueues it for coordination", async () => {
-    const { env, enqueue } = fixture();
+    const { env, enqueue, requests } = fixture();
     const response = await handleCreateWorkRequest(
       new Request("https://syntila.test/work", {
         method: "POST",
@@ -195,10 +123,11 @@ describe("Work Request mutation coordination", () => {
         .mode,
     ).toBe("stateful");
     expect(enqueue).toHaveBeenCalledOnce();
+    expect(requests().map((r) => r.mode)).toEqual(["stateful"]);
   });
 
   it("rejects a caller attempting to make Chat stateful", async () => {
-    const { env, enqueue, create } = fixture();
+    const { env, enqueue, create, requests } = fixture();
     await expect(
       handleCreateWorkRequest(
         new Request("https://syntila.test/work", {
@@ -211,5 +140,6 @@ describe("Work Request mutation coordination", () => {
     ).rejects.toThrow("requires stateless mode");
     expect(enqueue).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+    expect(requests()).toEqual([]);
   });
 });
