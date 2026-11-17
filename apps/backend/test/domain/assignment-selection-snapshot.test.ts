@@ -1,4 +1,4 @@
-import { withSql } from "./helpers/fake-sql";
+import { conversationFixture } from "./helpers/conversation";
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { dispatchTaskAssignment } from "../../src/domain/assignment-dispatcher.js";
 import {
@@ -26,11 +26,11 @@ it.each([null, "low"])(
       effortSource: effort === null ? "provider_default" : "explicit",
     };
     scheduler.selectSpaceExecutionTarget.mockResolvedValue({
-      spaceId: "space",
-      workspaceId: "workspace",
-      workspaceRuntimeIdentityId: "runtime",
-      workspaceSpaceGrantId: "grant",
-      workerId: "worker",
+      spaceId: "P",
+      workspaceId: "WS",
+      workspaceRuntimeIdentityId: "RT",
+      workspaceSpaceGrantId: "G",
+      workerId: "worker-a",
       workerTypeId: "gemini",
       engineVersion: "1.3.0",
       profileDefinitionId: "profile",
@@ -41,6 +41,9 @@ it.each([null, "low"])(
       reasoningEffort: effort,
       effectivePermissions: ["repository:read"],
       permissionSnapshot: {
+        profileDefinitionId: "profile",
+        profileReleaseVersion: 2,
+        workerDisplayName: "Original Worker",
         executionSelection: selection,
         permissions: ["repository:read"],
       },
@@ -48,29 +51,14 @@ it.each([null, "low"])(
       executionClass: "stateless_read",
       readOnly: true,
     });
-    let persisted: unknown[] = [];
-    const db = {
-      prepare(sql: string) {
-        return {
-          bind(...values: unknown[]) {
-            if (sql.includes("INSERT INTO worker_assignments"))
-              persisted = values;
-            return this;
-          },
-          async first() {
-            if (sql.includes("INSERT INTO worker_assignments"))
-              return { id: persisted[0] };
-            return null;
-          },
-          async run() {
-            return {};
-          },
-          async all() {
-            return { results: [] };
-          },
-        };
-      },
-    };
+    const f = await conversationFixture();
+    f.sqlite.exec(`
+      INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
+      INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,created_at,updated_at) VALUES('G','P','WS','U','now','now');
+      INSERT INTO workspace_worker_inventory (
+        worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
+        local_concurrency_limit, revision, created_at, updated_at, last_seen_at
+      ) VALUES ('worker-a', 'WS', 'U', 'gemini', 'enabled', 'ready', 1, 1, now(), now(), now());`);
     let sent: Record<string, unknown> | undefined;
     const namespace = {
       idFromName() {
@@ -87,20 +75,20 @@ it.each([null, "low"])(
     };
     const result = await dispatchTaskAssignment(
       {
-        SYNTILA_DB: withSql(db) as unknown as D1Database,
+        SYNTILA_DB: f.db,
         SYNTILA_WORKSPACE_GATEWAY:
           namespace as unknown as DurableObjectNamespace,
       },
       {
-        workspaceId: "workspace",
-        runId: "run",
-        taskId: "task",
+        workspaceId: "WS",
+        runId: "RUN",
+        taskId: "T",
         task: {
-          id: "task",
+          id: "T",
           role: "collaborator",
           objective: "Prompt",
-          spaceId: "space",
-          requestedByUserId: "user",
+          spaceId: "P",
+          requestedByUserId: "U",
           model: "changed-later",
           reasoningEffort: "high",
         },
@@ -122,8 +110,11 @@ it.each([null, "low"])(
       reasoningEffort: effort,
       executionSelection: selection,
     });
-    expect(JSON.parse(persisted[15] as string).executionSelection).toEqual(
-      selection,
-    );
+    const stored = f.sqlite
+      .prepare(
+        "SELECT permission_snapshot_json AS snapshot FROM worker_assignments WHERE task_id = 'T' AND run_id = 'RUN'",
+      )
+      .get() as { snapshot: string };
+    expect(JSON.parse(stored.snapshot).executionSelection).toEqual(selection);
   },
 );

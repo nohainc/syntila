@@ -1,4 +1,3 @@
-import { withSql } from "./helpers/fake-sql";
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { dispatchTaskAssignment } from "../../src/domain/assignment-dispatcher.js";
 import { conversationFixture } from "./helpers/conversation.js";
@@ -33,52 +32,13 @@ async function fixture() {
   const fetch = vi.fn(async (_url: string, _init?: RequestInit) =>
     Response.json({}),
   );
-  const insertMetadata: number[] = [];
-  const db = {
-    prepare(sql: string) {
-      const stmt = f.db.prepare(sql);
-      let values: unknown[] = [];
-      const wrapped = {
-        bind(...next: unknown[]) {
-          values = next;
-          return wrapped;
-        },
-        async first() {
-          const before = Number(
-            0,
-          );
-          const row = await stmt.bind(...values).first();
-          if (sql.includes("INSERT INTO worker_assignments"))
-            insertMetadata.push(
-              Number(0) -
-                before,
-            );
-          return row;
-        },
-        async all() {
-          return stmt.bind(...values).all();
-        },
-        async run() {
-          const before = 0;
-          const result = await stmt.bind(...values).run();
-          const after = 0;
-          if (sql.includes("INSERT INTO worker_assignments"))
-            insertMetadata.push(after - before);
-          // Match actual D1 metadata, including writes in production triggers.
-          return { ...result, meta: { changes: after - before } };
-        },
-      };
-      return wrapped;
-    },
-  } as unknown as D1Database;
   return {
     ...f,
     fetch,
-    insertMetadata,
     dispatch: () =>
       dispatchTaskAssignment(
         {
-          SYNTILA_DB: withSql(db),
+          SYNTILA_DB: f.db,
           SYNTILA_WORKSPACE_GATEWAY: {
             idFromName: () => "WS",
             get: () => ({ fetch }),
@@ -146,9 +106,6 @@ it.each([
 it("dispatches an inserted assignment despite conversation and history trigger writes", async () => {
   const f = await fixture();
   try {
-    const before = Number(
-      0,
-    );
     const result = await f.dispatch();
     expect(result.accepted).toBe(true);
     expect(f.fetch).toHaveBeenCalledTimes(1);
