@@ -424,6 +424,13 @@ export async function handleWorkspaceDeliveryProbe(
     1000,
     "intervalMs",
   );
+  const payloadBytes = parseBoundedInt(
+    url.searchParams.get("payloadBytes"),
+    0,
+    0,
+    49152,
+    "payloadBytes",
+  );
   if (!env.SYNTILA_WORKSPACE_GATEWAY)
     return json(
       { error: "Workspace Gateway is not configured" },
@@ -436,10 +443,16 @@ export async function handleWorkspaceDeliveryProbe(
     );
   }
   activeProbeBatches.add(workspaceId);
-  const probeUrl =
-    options?.timeoutMs !== undefined
-      ? `https://workspace-gateway/diagnostic-probe?timeoutMs=${options.timeoutMs}`
-      : "https://workspace-gateway/diagnostic-probe";
+  const probeParams = new URLSearchParams();
+  if (options?.timeoutMs !== undefined) {
+    probeParams.set("timeoutMs", String(options.timeoutMs));
+  }
+  if (payloadBytes > 0) {
+    probeParams.set("payloadBytes", String(payloadBytes));
+  }
+  const probeUrl = `https://workspace-gateway/diagnostic-probe${
+    probeParams.size > 0 ? `?${probeParams.toString()}` : ""
+  }`;
   try {
     const stub = env.SYNTILA_WORKSPACE_GATEWAY.getByName(workspaceId);
     if (count === 1) {

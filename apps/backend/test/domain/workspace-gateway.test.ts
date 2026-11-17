@@ -612,7 +612,9 @@ describe("Workspace runtime Gateway", () => {
           } as unknown as DurableObjectNamespace,
         };
 
-        const connectRuntime = async () => {
+        const connectRuntime = async (options?: {
+          capabilities?: readonly string[];
+        }) => {
           const gateway = getGateway(workspaceId);
           const create = await gateway.fetch(
             new Request("https://gateway.internal/runtime/sessions", {
@@ -632,7 +634,47 @@ describe("Workspace runtime Gateway", () => {
             sessionId: string;
             cursor: string;
           };
-          const pollAndAckOnce = async () => {
+          if (options?.capabilities !== undefined) {
+            const now = new Date().toISOString();
+            const helloRes = await gateway.fetch(
+              new Request("https://gateway.internal/runtime/events", {
+                method: "POST",
+                headers: {
+                  authorization: `Bearer ${runtimeToken}`,
+                  "content-type": "application/json",
+                },
+                body: JSON.stringify({
+                  sessionId,
+                  events: [
+                    {
+                      contract: "syntila.desktop-auth-transport",
+                      version: "1.0",
+                      eventId: `hello-${workspaceId}`,
+                      occurredAt: now,
+                      message: {
+                        protocol: "syntila.workspace-runtime-protocol",
+                        protocolVersion: "5.1",
+                        messageId: `msg-hello-${workspaceId}`,
+                        timestamp: now,
+                        type: "workspace.hello",
+                        executionWorkspaceId: workspaceId,
+                        workspaceRuntimeId: "runtime-probe",
+                        payload: {
+                          capabilities: {
+                            customCapabilities: [...options.capabilities],
+                          },
+                        },
+                      },
+                    },
+                  ],
+                }),
+              }),
+            );
+            expect(helloRes.status).toBe(200);
+          }
+          const pollAndAckOnce = async (ackOptions?: {
+            overrideEcho?: string | null;
+          }) => {
             for (let attempt = 0; attempt < 100; attempt += 1) {
               const polledRes = await gateway.fetch(
                 new Request("https://gateway.internal/runtime/poll", {
@@ -653,8 +695,15 @@ describe("Workspace runtime Gateway", () => {
                 .map((e) => e.message)
                 .find((m) => m.type === "diagnostic.probe");
               if (probe) {
-                const payload = probe.payload as { probeId: string };
+                const payload = probe.payload as {
+                  probeId: string;
+                  echo?: string;
+                };
                 const now = new Date().toISOString();
+                const ackEcho =
+                  ackOptions?.overrideEcho !== undefined
+                    ? ackOptions.overrideEcho ?? undefined
+                    : payload.echo;
                 const ackRes = await gateway.fetch(
                   new Request("https://gateway.internal/runtime/events", {
                     method: "POST",
@@ -683,6 +732,9 @@ describe("Workspace runtime Gateway", () => {
                               probeId: payload.probeId,
                               receivedAt: now,
                               ackedAt: now,
+                              ...(ackEcho !== undefined
+                                ? { echo: ackEcho }
+                                : {}),
                               syncState: "ready",
                               localQueueLength: 0,
                               activeAssignments: 0,
@@ -696,7 +748,7 @@ describe("Workspace runtime Gateway", () => {
                   }),
                 );
                 expect(ackRes.status).toBe(200);
-                return payload.probeId;
+                return payload;
               }
               await new Promise((resolve) => setTimeout(resolve, 5));
             }
@@ -731,12 +783,12 @@ describe("Workspace runtime Gateway", () => {
           ),
           env,
         );
-        const ackedProbeId = await pollAndAckOnce();
+        const ackedProbe = await pollAndAckOnce();
         const response = await responsePromise;
         expect(response.status).toBe(200);
         const body = (await response.json()) as Record<string, unknown>;
         expect(body).toMatchObject({
-          probeId: ackedProbeId,
+          probeId: ackedProbe.probeId,
           transport: "http_long_poll",
           outcome: "acknowledged",
           syncState: "ready",
@@ -876,6 +928,9 @@ describe("Workspace runtime Gateway", () => {
           "intervalMs=-1",
           "intervalMs=1001",
           "intervalMs=abc",
+          "payloadBytes=-1",
+          "payloadBytes=49153",
+          "payloadBytes=abc",
         ]) {
           const response = await worker.fetch(
             new Request(
@@ -950,6 +1005,86 @@ describe("Workspace runtime Gateway", () => {
           transport: "http_long_poll",
           outcome: "timeout",
           timeoutMs: 25,
+        });
+      });
+
+      it("sends a base64 echo of payloadBytes when the Service advertises workspace.probe_payload.v1", async () => {
+        const workspaceId = "ws-route-payload-ok";
+        const { env, connectRuntime } = await setupProbeRouteTest(workspaceId);
+        const { pollAndAckOnce } = await connectRuntime({
+          capabilities: ["workspace.probe_payload.v1"],
+        });
+
+        const responsePromise = worker.fetch(
+          new Request(
+            `https://app.syntila.test/api/workspaces/${workspaceId}/delivery-probe?payloadBytes=1024`,
+            {
+              method: "POST",
+              headers: { authorization: "Bearer owner" },
+            },
+          ),
+          env,
+        );
+        const sentProbe = await pollAndAckOnce();
+        expect(typeof sentProbe.echo).toBe("string");
+        expect(Buffer.from(sentProbe.echo!, "base64").byteLength).toBe(1024);
+
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          probeId: sentProbe.probeId,
+          outcome: "acknowledged",
+          payloadBytes: 1024,
+        });
+      });
+
+      it("returns 409 when payloadBytes > 0 and the Service lacks workspace.probe_payload.v1", async () => {
+        const workspaceId = "ws-route-payload-incapable";
+        const { env, connectRuntime } = await setupProbeRouteTest(workspaceId);
+        await connectRuntime({ capabilities: ["workspace.readiness.v1"] });
+
+        const response = await worker.fetch(
+          new Request(
+            `https://app.syntila.test/api/workspaces/${workspaceId}/delivery-probe?payloadBytes=256`,
+            {
+              method: "POST",
+              headers: { authorization: "Bearer owner" },
+            },
+          ),
+          env,
+        );
+        expect(response.status).toBe(409);
+        expect(await response.json()).toMatchObject({
+          error: expect.stringContaining("workspace.probe_payload.v1"),
+        });
+      });
+
+      it("reports outcome 'echo_mismatch' when the Service returns a different or missing echo", async () => {
+        const workspaceId = "ws-route-payload-mismatch";
+        const { env, connectRuntime } = await setupProbeRouteTest(workspaceId);
+        const { pollAndAckOnce } = await connectRuntime({
+          capabilities: ["workspace.probe_payload.v1"],
+        });
+
+        const responsePromise = worker.fetch(
+          new Request(
+            `https://app.syntila.test/api/workspaces/${workspaceId}/delivery-probe?payloadBytes=64`,
+            {
+              method: "POST",
+              headers: { authorization: "Bearer owner" },
+            },
+          ),
+          env,
+        );
+        const sentProbe = await pollAndAckOnce({
+          overrideEcho: "bWlzbWF0Y2g=",
+        });
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          probeId: sentProbe.probeId,
+          outcome: "echo_mismatch",
+          payloadBytes: 64,
         });
       });
     });

@@ -24,6 +24,7 @@ import {
   McpToolCallStatusResultSchema,
   SERVICE_MCP_TOOL_CALL_STATUS_CAPABILITY,
   SERVICE_MCP_ACTION_CAPABILITY,
+  SERVICE_PROBE_PAYLOAD_CAPABILITY,
   McpActionRequestSchema,
   McpActionResultSchema,
   type McpActionResult,
@@ -359,9 +360,13 @@ export class WorkspaceGateway implements DurableObject {
     }
     if (request.method === "POST" && url.pathname === "/diagnostic-probe") {
       const timeoutMs = Number(url.searchParams.get("timeoutMs"));
-      return this.diagnosticProbe(
-        Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined,
-      );
+      const payloadBytes = Number(url.searchParams.get("payloadBytes") ?? "0");
+      return this.diagnosticProbe({
+        ...(Number.isFinite(timeoutMs) && timeoutMs > 0 ? { timeoutMs } : {}),
+        ...(Number.isFinite(payloadBytes) && payloadBytes > 0
+          ? { payloadBytes }
+          : {}),
+      });
     }
     if (request.method === "POST" && url.pathname === "/worker-usage") {
       return this.requestWorkerUsage(request);
@@ -3077,16 +3082,37 @@ export class WorkspaceGateway implements DurableObject {
    * latency. A Service that predates probes simply never answers; the probe
    * then reports `timeout` rather than failing the Workspace.
    */
-  private async diagnosticProbe(
-    timeoutMs = WorkspaceGateway.PROBE_TIMEOUT_MS,
-  ): Promise<Response> {
+  private async diagnosticProbe(options?: {
+    timeoutMs?: number;
+    payloadBytes?: number;
+  }): Promise<Response> {
+    const timeoutMs = options?.timeoutMs ?? WorkspaceGateway.PROBE_TIMEOUT_MS;
+    const payloadBytes = options?.payloadBytes ?? 0;
     if (!(await this.isRuntimeLive()))
       return Response.json({ error: "Workspace is offline" }, { status: 503 });
+    if (
+      payloadBytes > 0 &&
+      !(await this.serviceHasCapability(SERVICE_PROBE_PAYLOAD_CAPABILITY))
+    ) {
+      return Response.json(
+        {
+          error:
+            "Workspace Service does not support delivery probe payloads (workspace.probe_payload.v1)",
+        },
+        { status: 409 },
+      );
+    }
     if (this.pendingProbes.size >= WorkspaceGateway.MAX_PENDING_PROBES)
       return Response.json(
         { error: "Too many delivery probes are in progress" },
         { status: 429 },
       );
+    let echo: string | undefined;
+    if (payloadBytes > 0) {
+      const bytes = new Uint8Array(payloadBytes);
+      crypto.getRandomValues(bytes);
+      echo = Buffer.from(bytes).toString("base64");
+    }
     const probeId = `probe-${crypto.randomUUID()}`;
     const transport = this.socket ? "websocket" : "http_long_poll";
     const sentAt = new Date().toISOString();
@@ -3112,7 +3138,11 @@ export class WorkspaceGateway implements DurableObject {
         type: "diagnostic.probe",
         executionWorkspaceId: this.executionWorkspaceId ?? undefined,
         workspaceRuntimeId: this.workspaceRuntimeId ?? undefined,
-        payload: { probeId, sentAt },
+        payload: {
+          probeId,
+          sentAt,
+          ...(echo !== undefined ? { echo } : {}),
+        },
       });
     } catch (error) {
       const pending = this.pendingProbes.get(probeId);
@@ -3139,6 +3169,10 @@ export class WorkspaceGateway implements DurableObject {
     try {
       const ack = await acknowledgement;
       const roundTripMs = Date.now() - startedAt;
+      const outcome =
+        echo !== undefined && ack.echo !== echo
+          ? "echo_mismatch"
+          : "acknowledged";
       tryLogTraceEvent({
         traceStage: "probe_acknowledged",
         workspaceId: this.executionWorkspaceId ?? undefined,
@@ -3149,7 +3183,8 @@ export class WorkspaceGateway implements DurableObject {
       return Response.json({
         probeId,
         transport,
-        outcome: "acknowledged",
+        outcome,
+        ...(payloadBytes > 0 ? { payloadBytes } : {}),
         roundTripMs,
         sentAt,
         serviceReceivedAt: ack.receivedAt,

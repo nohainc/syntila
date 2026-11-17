@@ -67,11 +67,16 @@ trip, Service receive/acknowledge times, clock offset, sync state, local queue
 length and active assignment count. A Service that does not implement probes
 never answers and the route returns `outcome: "timeout"` (status 504).
 
-Optional query parameters `count` (1–20, default 1) and `intervalMs` (0–1000,
-default 0) run multiple probes sequentially and return
+Optional query parameters `count` (1–20, default 1), `intervalMs` (0–1000,
+default 0) and `payloadBytes` (0–49152, default 0) configure the probe run.
+With `count > 1`, probes run sequentially and return
 `{ results: [...], summary: { n, ok, timeouts, minMs, p50Ms, p95Ms, maxMs } }`.
-At most one probe batch may be in flight per Workspace (concurrent batches
-receive 429).
+When `payloadBytes > 0`, the gateway requires the connected Service to have
+advertised `workspace.probe_payload.v1` in `workspace.hello` (otherwise
+returning 409) and attaches a random base64 `echo` string (up to 65 536 ASCII
+characters) to `diagnostic.probe`, verifying that `diagnostic.probe.ack` echoes
+it verbatim (`outcome: "echo_mismatch"` if not). At most one probe batch may be
+in flight per Workspace (concurrent batches receive 429).
 
 Both message types are additive within Workspace protocol 5.1: an older Cloud
 never sends a probe, and a newer Service only answers one.
