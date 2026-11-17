@@ -18,6 +18,9 @@ export * from "./diagnostic-events.js";
 export * from "./execution-events.js";
 export * from "./execution-activity.js";
 export * from "./api-requests.js";
+// zod's types for consumers that type a schema parameter (the backend does not
+// depend on zod itself).
+export type { z } from "zod";
 
 export type ExecutionErrorCode = (typeof EXECUTION_ERROR_CODES)[number];
 

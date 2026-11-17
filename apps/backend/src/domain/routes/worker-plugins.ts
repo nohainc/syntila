@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import type { z } from "@syntila/protocol";
 import { PluginPinSchema, PluginUploadSchema } from "@syntila/protocol";
 import { readBody, RequestValidationError } from "./validation.js";
 import { ownsActiveWorkspace } from "../queries.js";

@@ -2,7 +2,7 @@
  * One way to read a request body: parse JSON, validate it against a schema
  * from @syntila/protocol, and answer 400 with every problem at once.
  */
-import type { z } from "zod";
+import type { z } from "@syntila/protocol";
 import { HttpError, readBodyText } from "./http-security.js";
 
 export interface ValidationIssue {

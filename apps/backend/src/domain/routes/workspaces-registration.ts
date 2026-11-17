@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import type { z } from "@syntila/protocol";
 import { RegisterWorkspaceSchema, RuntimeIdentitySchema } from "@syntila/protocol";
 import { readBody, RequestValidationError } from "./validation.js";
 import { inTransaction, lockStatement } from "../../platform/tx-env.js";
