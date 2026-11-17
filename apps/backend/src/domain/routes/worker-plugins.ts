@@ -6,7 +6,7 @@ import { PluginManifestSchema } from "@syntila/workspace-runtime-protocol";
 import { pluginManifestDigest } from "../plugin-manifest-digest.js";
 import { HttpError, json, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
-import { dataOf, queryOf, type Query } from "../../platform/data.js";
+import { dataOf, queryOf, type Query, atomically } from "../../platform/data.js";
 
 const selectAccountWorkerPluginVersionsByPlugin = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
   q.row<T>`SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ${p1} AND version = ${p2}`;
@@ -200,46 +200,24 @@ export async function handlePluginLibrary(
         `A library holds at most ${PLUGIN_LIBRARY_LIMIT} plugins`,
       );
     ref = allocatePluginRef();
-    await db.batch([
-      db
-        .prepare(
-          `INSERT INTO account_worker_plugins
+    await atomically(db, "worker-plugins.register", async (q) => {
+      await q.run`INSERT INTO account_worker_plugins
              (plugin_ref, owner_user_id, plugin_id, display_name, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?5)`,
-        )
-        .bind(ref, userId, manifest.pluginId, manifest.displayName, now),
+           VALUES (${ref}, ${userId}, ${manifest.pluginId}, ${manifest.displayName}, ${now}, ${now})`;
       // The catalog row lets assignments reference the plugin Worker. Only its
       // owner's Workspaces ever list it (readers filter on origin/owner).
-      db
-        .prepare(
-          `INSERT INTO worker_catalog
+      await q.run`INSERT INTO worker_catalog
              (worker_type_id, display_name, description, lifecycle_state,
               created_at, updated_at, engine_family, visibility_state,
               release_stage, sort_order, origin, owner_user_id)
-           VALUES (?1, ?2, ?3, 'active', ?4, ?4, 'cli', 'visible', 'stable',
-                   1000, 'plugin', ?5)`,
-        )
-        .bind(
-          ref,
-          manifest.displayName,
-          manifest.description.slice(0, 500),
-          now,
-          userId,
-        ),
-    ]);
+           VALUES (${ref}, ${manifest.displayName}, ${manifest.description.slice(0, 500)}, 'active', ${now}, ${now}, 'cli', 'visible', 'stable',
+                   1000, 'plugin', ${userId})`;
+    });
   } else if (existing && existing.displayName !== manifest.displayName) {
-    await db.batch([
-      db
-        .prepare(
-          "UPDATE account_worker_plugins SET display_name = ?2, updated_at = ?3 WHERE plugin_ref = ?1",
-        )
-        .bind(ref, manifest.displayName, now),
-      db
-        .prepare(
-          "UPDATE worker_catalog SET display_name = ?2, updated_at = ?3 WHERE worker_type_id = ?1",
-        )
-        .bind(ref, manifest.displayName, now),
-    ]);
+    await atomically(db, "worker-plugins.batch231", async (q) => {
+      await q.run`UPDATE account_worker_plugins SET display_name = ${manifest.displayName}, updated_at = ${now} WHERE plugin_ref = ${ref}`;
+      await q.run`UPDATE worker_catalog SET display_name = ${manifest.displayName}, updated_at = ${now} WHERE worker_type_id = ${ref}`;
+    });
   }
 
   const version = await selectAccountWorkerPluginVersionsByPlugin<{ digest: string }>(queryOf(db), ref, manifest.version);
@@ -309,21 +287,11 @@ async function removeFromLibrary(
       "This plugin still has running work",
     );
   const now = new Date().toISOString();
-  await db.batch([
-    db
-      .prepare(
-        "DELETE FROM workspace_worker_inventory WHERE worker_type_id = ?1",
-      )
-      .bind(pluginRef),
-    db
-      .prepare(
-        "UPDATE worker_catalog SET lifecycle_state = 'retired', visibility_state = 'hidden', updated_at = ?2 WHERE worker_type_id = ?1",
-      )
-      .bind(pluginRef, now),
-    db
-      .prepare("DELETE FROM account_worker_plugins WHERE plugin_ref = ?1")
-      .bind(pluginRef),
-  ]);
+  await atomically(db, "worker-plugins.batch312", async (q) => {
+    await q.run`DELETE FROM workspace_worker_inventory WHERE worker_type_id = ${pluginRef}`;
+    await q.run`UPDATE worker_catalog SET lifecycle_state = 'retired', visibility_state = 'hidden', updated_at = ${now} WHERE worker_type_id = ${pluginRef}`;
+    await q.run`DELETE FROM account_worker_plugins WHERE plugin_ref = ${pluginRef}`;
+  });
   return json({ removed: true });
 }
 

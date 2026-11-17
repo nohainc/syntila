@@ -70,7 +70,7 @@ import {
   DEFAULT_QUEUE_WAIT_TIMEOUT_MS,
   type AssignmentDeadlinePhase,
 } from "./assignment-delivery.js";
-import { dataOf, queryOf } from "../platform/data.js";
+import { dataOf, queryOf, atomically } from "../platform/data.js";
 
 /**
  * Number of wait rounds (10 s each) the Workflow waits for the Service to
@@ -483,16 +483,12 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       // request; do not leave a finished result marked failed.
       if (status === "completed") {
         const now = new Date().toISOString();
-        await db.batch([
-          db
-            .prepare(
-              `UPDATE work_requests SET status = 'completed', updated_at = ?1
-                WHERE id = ?2 AND status = 'failed'
+        await atomically(db, "workflow.batch486", async (q) => {
+          await q.run`UPDATE work_requests SET status = 'completed', updated_at = ${now}
+                WHERE id = ${params.workRequestId} AND status = 'failed'
                   AND NOT EXISTS (SELECT 1 FROM workflow_tasks
-                                   WHERE work_request_id = ?2 AND status != 'completed')`,
-            )
-            .bind(now, params.workRequestId),
-        ]);
+                                   WHERE work_request_id = ${params.workRequestId} AND status != 'completed')`;
+        });
       }
       return;
     }
@@ -519,36 +515,20 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     const db = (this.env as ExecutionEnv).SYNTILA_DB;
     if (!db || !params.workRequestId) return;
     const now = new Date().toISOString();
-    const statements = tasks.flatMap((task) => [
-      db
-        .prepare(
-          `INSERT INTO workflow_tasks
+    if (tasks.length === 0) return;
+    await atomically(db, "workflow.persist-tasks", async (q) => {
+      for (const task of tasks) {
+        await q.run`INSERT INTO workflow_tasks
          (id, work_request_id, step_kind, execution_mode,
           timeout_ms, prompt_profile_version,
           status, attempt, created_at, updated_at, step_instance_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', 0, ?7, ?7, ?8)
-         ON CONFLICT(work_request_id, step_id) DO NOTHING`,
-        )
-        .bind(
-          task.id,
-          task.workRequestId,
-          task.step.kind,
-          task.step.executionMode,
-          task.step.timeoutMs,
-          task.step.promptProfileVersion,
-          now,
-          task.step.id ?? null,
-        ),
-      ...task.dependencyTaskIds.map((dependencyId) =>
-        db
-          .prepare(
-            `INSERT INTO workflow_task_dependencies (task_id, depends_on_task_id)
-           VALUES (?1, ?2) ON CONFLICT(task_id, depends_on_task_id) DO NOTHING`,
-          )
-          .bind(task.id, dependencyId),
-      ),
-    ]);
-    if (statements.length > 0) await db.batch(statements);
+         VALUES (${task.id}, ${task.workRequestId}, ${task.step.kind}, ${task.step.executionMode}, ${task.step.timeoutMs}, ${task.step.promptProfileVersion}, 'queued', 0, ${now}, ${now}, ${task.step.id ?? null})
+         ON CONFLICT(work_request_id, step_id) DO NOTHING`;
+        for (const dependencyId of task.dependencyTaskIds)
+          await q.run`INSERT INTO workflow_task_dependencies (task_id, depends_on_task_id)
+           VALUES (${task.id}, ${dependencyId}) ON CONFLICT(task_id, depends_on_task_id) DO NOTHING`;
+      }
+    });
   }
 
   private async publishWorkEvent(
@@ -726,7 +706,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       const requestMode = await queryOf(db).row<{ mode: string }>`SELECT mode FROM work_requests WHERE id = ${params.workRequestId}`;
       if (requestMode?.mode === "stateless") {
         const now = new Date().toISOString();
-        await db.batch(startQueuedWorkRequest(db, params.workRequestId, now));
+        await atomically(db, "workflow.start", (q) => startQueuedWorkRequest(q, params.workRequestId, now));
       }
     }
     await this.persistWorkflowTasks(params, tasks);

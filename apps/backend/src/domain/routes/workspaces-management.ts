@@ -1,4 +1,4 @@
-import { dataOf } from "../../platform/data.js";
+import { atomically, dataOf } from "../../platform/data.js";
 import { UpdateWorkspaceSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { paidOwnerSql } from "../account-plan.js";
@@ -273,8 +273,8 @@ export async function handleRevokeWorkspace(
 
   await dataOf(env).read.run`UPDATE workspace_installations SET status = 'released', released_at = ${now}, updated_at = ${now} WHERE workspace_id = ${workspaceId} AND status = 'active'`;
 
-  await env.SYNTILA_DB.batch(
-    releasedWorkspaceCleanup(env.SYNTILA_DB, workspaceId),
+  await atomically(env.SYNTILA_DB, "workspace.release-cleanup", (q) =>
+    releasedWorkspaceCleanup(q, workspaceId),
   );
 
   if (!alreadyRevoked) {

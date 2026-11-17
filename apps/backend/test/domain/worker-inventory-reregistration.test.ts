@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, it } from "./helpers/vitest-compat";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 import { recordWorkspaceWorkerInventory } from "../../src/domain/workspace-gateway/inventory.js";
+import { atomically } from "../../src/platform/data.js";
 import { releasedWorkspaceCleanup } from "../../src/domain/workspace-gateway/release-cleanup.js";
 
 it("deletes a released Workspace's Workers; Worker IDs never change Workspace", async () => {
@@ -43,7 +44,7 @@ it("deletes a released Workspace's Workers; Worker IDs never change Workspace", 
     await publish("other");
     expect(owner()).toBe("old");
     // Releasing deletes the Workspace's Workers.
-    await db.batch(releasedWorkspaceCleanup(db as never, "old"));
+    await atomically(db, "test.cleanup", (q) => releasedWorkspaceCleanup(q, "old"));
     expect(
       sqlite
         .prepare("SELECT COUNT(*) AS n FROM workspace_worker_inventory")

@@ -1,4 +1,4 @@
-import { dataOf } from "../../platform/data.js";
+import { atomically, dataOf } from "../../platform/data.js";
 import { batchAlone, inTransaction, writeAlone } from "../../platform/tx-env.js";
 import { createHash } from "node:crypto";
 import type { SecurityContext } from "@syntila/security";
@@ -1085,63 +1085,28 @@ export async function handlePatchAdminIssueReport(
     if (!group) throw new HttpError(404, "Incident group not found");
   }
   const now = new Date().toISOString();
-  const statements = [
-    txEnv.SYNTILA_DB.prepare(
-      "UPDATE issue_reports SET status = ?1, incident_group_id = ?2, updated_at = ?3 WHERE id = ?4",
-    ).bind(
-      nextStatus,
-      requestedGroupId === undefined
-        ? existing.incidentGroupId
-        : requestedGroupId,
-      now,
-      reportId,
-    ),
-    txEnv.SYNTILA_DB.prepare(
-      `INSERT INTO issue_report_events
-         (id, report_id, actor_user_id, event_type, from_status, to_status, details_json, created_at)
-       VALUES (?1, ?2, ?3, 'report.status_changed', ?4, ?5, ?6, ?7)`,
-    ).bind(
-      `ire-${crypto.randomUUID()}`,
-      reportId,
-      actor.userId,
-      existing.status,
-      nextStatus,
-      JSON.stringify(note ? { note } : {}),
-      now,
-    ),
-  ];
   const nextGroupId =
     requestedGroupId === undefined
       ? existing.incidentGroupId
       : requestedGroupId;
-  if (existing.incidentGroupId !== nextGroupId) {
-    statements.push(
-      txEnv.SYNTILA_DB.prepare(
-        `INSERT INTO issue_report_events
+  await atomically(txEnv.SYNTILA_DB, "issue-report.update", async (q) => {
+    await q.run`UPDATE issue_reports SET status = ${nextStatus}, incident_group_id = ${nextGroupId}, updated_at = ${now} WHERE id = ${reportId}`;
+    await q.run`INSERT INTO issue_report_events
+         (id, report_id, actor_user_id, event_type, from_status, to_status, details_json, created_at)
+       VALUES (${`ire-${crypto.randomUUID()}`}, ${reportId}, ${actor.userId}, 'report.status_changed', ${existing.status}, ${nextStatus}, ${JSON.stringify(note ? { note } : {})}::text::jsonb, ${now})`;
+    if (existing.incidentGroupId !== nextGroupId) {
+      await q.run`INSERT INTO issue_report_events
            (id, report_id, actor_user_id, event_type, details_json, created_at)
-         VALUES (?1, ?2, ?3, 'report.group_changed', ?4, ?5)`,
-      ).bind(
-        `ire-${crypto.randomUUID()}`,
-        reportId,
-        actor.userId,
-        JSON.stringify({
-          fromGroupId: existing.incidentGroupId ?? null,
-          toGroupId: nextGroupId,
-        }),
-        now,
-      ),
-    );
-    for (const groupId of [existing.incidentGroupId, nextGroupId]) {
-      if (groupId != null) {
-        statements.push(
-          txEnv.SYNTILA_DB.prepare(
-            "UPDATE issue_report_groups SET updated_at = ?1 WHERE id = ?2",
-          ).bind(now, groupId),
-        );
+         VALUES (${`ire-${crypto.randomUUID()}`}, ${reportId}, ${actor.userId}, 'report.group_changed', ${JSON.stringify({
+           fromGroupId: existing.incidentGroupId ?? null,
+           toGroupId: nextGroupId,
+         })}::text::jsonb, ${now})`;
+      for (const groupId of [existing.incidentGroupId, nextGroupId]) {
+        if (groupId != null)
+          await q.run`UPDATE issue_report_groups SET updated_at = ${now} WHERE id = ${groupId}`;
       }
     }
-  }
-  await txEnv.SYNTILA_DB.batch(statements);
+  });
   });
   const updated = await env.SYNTILA_DB.prepare(
     `${reportSelect()} WHERE ir.id = ?1`,

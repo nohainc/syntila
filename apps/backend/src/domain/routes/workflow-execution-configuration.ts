@@ -419,21 +419,10 @@ async function ensureOwnChatWorkspaceGrant(
       );
     return;
   }
-  await env.SYNTILA_DB.batch([
-    env.SYNTILA_DB.prepare(
-      "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(?1,?2,?3,?4,'active','[\"repository:read\"]','{\"maxConcurrentAssignments\":1}',?5,?5) ON CONFLICT DO NOTHING",
-    ).bind(crypto.randomUUID(), spaceId, workspaceId, userId, now),
-    env.SYNTILA_DB.prepare(
-      "INSERT INTO space_audit_log(id,space_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at) VALUES(?1,?2,'user',?3,'chat.own_workspace.authorized','execution_workspace',?4,?5,?6)",
-    ).bind(
-      crypto.randomUUID(),
-      spaceId,
-      userId,
-      workspaceId,
-      JSON.stringify({ workspaceId, permissions: ["repository:read"] }),
-      now,
-    ),
-  ]);
+  await dataOf(env).tx("workflow.own-chat-grant", async (q) => {
+    await q.run`INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,allowed_permissions_json,concurrency_json,created_at,updated_at) VALUES(${crypto.randomUUID()},${spaceId},${workspaceId},${userId},'active','[\"repository:read\"]','{\"maxConcurrentAssignments\":1}',${now},${now}) ON CONFLICT DO NOTHING`;
+    await q.run`INSERT INTO space_audit_log(id,space_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at) VALUES(${crypto.randomUUID()},${spaceId},'user',${userId},'chat.own_workspace.authorized','execution_workspace',${workspaceId},${JSON.stringify({ workspaceId, permissions: ["repository:read"] })}::text::jsonb,${now})`;
+  });
 }
 
 /** Research roles are invalid for acceptance (see ADR-026). */

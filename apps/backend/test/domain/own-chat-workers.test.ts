@@ -24,8 +24,12 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
     ? { memberPermissions: { member: memberRights } }
     : {};
   const env = {
-    SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    SYNTILA_DATA: new Data(Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const text = strings.join("?");
+      if (/^\s*(INSERT|UPDATE|DELETE)\b/i.test(text)) {
+        writes.push({ sql: text, values });
+        return Object.assign([], { count: 1 });
+      }
       if (text.includes("space_workflow_settings")) return [{ workspaceId: "space-ws" }];
       if (text.includes("FROM workspace_worker_inventory i") && text.includes("JOIN execution_workspaces"))
         return inventory.filter((w) => w.workerId === values[0] && w.ownerUserId === values[1]);
@@ -38,7 +42,7 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
       if (text.includes("settings_json")) return [{ role: "collaborator", settingsJson: JSON.stringify(settings), kind, isSupport: false }]; // loadSpacePermissions
       if (text.includes("FROM space_memberships")) return [{ role: "collaborator" }]; // spaceMembership
       return [];
-    }) as any),
+    }, { begin: async (cb: (c: any) => unknown) => cb((env as any).SYNTILA_DATA.sql) }) as any),
     SYNTILA_DB: {
       prepare(sql: string) {
         return {

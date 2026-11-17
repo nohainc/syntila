@@ -1,3 +1,4 @@
+import { atomically } from "../../platform/data.js";
 import type { AuthenticatedIdentity } from "./identity-service.js";
 
 export interface ProvisioningStatement {
@@ -40,20 +41,14 @@ export async function provisionSyntilaUser(
   // One transaction: a per-user lock, then the upsert. Without the lock, the
   // first parallel requests of a new user both insert, and the second fails
   // on users_email_key (ON CONFLICT (id) does not cover the email index).
-  await db.batch([
-    db
-      .prepare("SELECT pg_advisory_xact_lock(hashtextextended('syntila.user:' || ?1, 0))")
-      .bind(identity.userId),
-    db
-      .prepare(
-        `INSERT INTO users (id, email, display_name, status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'active', ?4, ?4)
+  await atomically(db, "provisioning-service.batch43", async (q) => {
+    await q.run`SELECT pg_advisory_xact_lock(hashtextextended('syntila.user:' || ${identity.userId}, 0))`;
+    await q.run`INSERT INTO users (id, email, display_name, status, created_at, updated_at)
+         VALUES (${identity.userId}, ${identity.email}, ${identity.name}, 'active', ${now}, ${now})
          ON CONFLICT(id) DO UPDATE SET
            email = excluded.email,
            display_name = excluded.display_name,
-           updated_at = excluded.updated_at`,
-      )
-      .bind(identity.userId, identity.email, identity.name, now),
-  ]);
+           updated_at = excluded.updated_at`;
+  });
   provisioned.set(identity.userId, { at: Date.now(), key });
 }

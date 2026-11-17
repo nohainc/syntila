@@ -124,30 +124,26 @@ export function userWorkflowDefault(q: Query, userId: string, workspaceId: strin
 
 /* ------------------------------------------------------------------------
  * Work Request state changes shared by the request routes, the Thread
- * coordinator and the Workflow runner. They return statements so callers
- * can put them in one batch with their own writes.
+ * coordinator and the Workflow runner. They run on the caller's
+ * Query, so callers can put them in one transaction with their own writes.
  * --------------------------------------------------------------------- */
 
+type Runner = Pick<Query, "run">;
+
 /** Cancels a Work Request's tasks that have not started. */
-export function cancelPendingTasks(db: D1Database, workRequestId: string, now: string) {
-  return db
-    .prepare("UPDATE workflow_tasks SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status IN ('queued', 'waiting')")
-    .bind(now, workRequestId);
+export async function cancelPendingTasks(q: Runner, workRequestId: string, now: string): Promise<void> {
+  await q.run`UPDATE workflow_tasks SET status = 'cancelled', finished_at = ${now}, updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status IN ('queued', 'waiting')`;
 }
 
 /** Cancels a queued Work Request with its Run and its tasks. */
-export function cancelQueuedWorkRequest(db: D1Database, workRequestId: string, now: string): D1PreparedStatement[] {
-  return [
-    db.prepare("UPDATE work_requests SET status = 'cancelled', updated_at = ?1 WHERE id = ?2 AND status = 'queued'").bind(now, workRequestId),
-    db.prepare("UPDATE runs SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status = 'created'").bind(now, workRequestId),
-    cancelPendingTasks(db, workRequestId, now),
-  ];
+export async function cancelQueuedWorkRequest(q: Runner, workRequestId: string, now: string): Promise<void> {
+  await q.run`UPDATE work_requests SET status = 'cancelled', updated_at = ${now} WHERE id = ${workRequestId} AND status = 'queued'`;
+  await q.run`UPDATE runs SET status = 'cancelled', finished_at = ${now}, updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status = 'created'`;
+  await cancelPendingTasks(q, workRequestId, now);
 }
 
 /** Marks a queued Work Request and its Run as running. */
-export function startQueuedWorkRequest(db: D1Database, workRequestId: string, now: string): D1PreparedStatement[] {
-  return [
-    db.prepare("UPDATE work_requests SET status = 'running', updated_at = ?1 WHERE id = ?2 AND status = 'queued'").bind(now, workRequestId),
-    db.prepare("UPDATE runs SET status = 'running', updated_at = ?1 WHERE work_request_id = ?2 AND status = 'created'").bind(now, workRequestId),
-  ];
+export async function startQueuedWorkRequest(q: Runner, workRequestId: string, now: string): Promise<void> {
+  await q.run`UPDATE work_requests SET status = 'running', updated_at = ${now} WHERE id = ${workRequestId} AND status = 'queued'`;
+  await q.run`UPDATE runs SET status = 'running', updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status = 'created'`;
 }

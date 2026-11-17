@@ -175,22 +175,27 @@ describe("grant revocation ownership", () => {
   it("does not finalize as never-delivered if dispatch wins the created cancellation race", async () => {
     for (let i = 0; i < 10; i += 1) {
       const f = await gatewayFixture("created");
-      const prepare = f.db.prepare.bind(f.db);
       let dispatched = false;
-      const spy = vi.spyOn(f.db, "prepare").mockImplementation((sql) => {
-        if (
-          !dispatched &&
-          sql.includes("UPDATE worker_assignments SET status = 'cancelled'")
-        ) {
-          dispatched = true;
-          f.sqlite.exec(
-            "UPDATE worker_assignments SET status='dispatched' WHERE id='A1'",
-          );
-        }
-        return prepare(sql);
-      });
+      // Dispatch wins the race: it flips the row just before the cancellation UPDATE runs.
+      const wrap = (target: any): any =>
+        new Proxy(target, {
+          apply(t, thisArg, args) {
+            const text = Array.isArray(args[0]) ? (args[0] as string[]).join("?") : "";
+            if (!dispatched && text.includes("UPDATE worker_assignments SET status = 'cancelled'")) {
+              dispatched = true;
+              f.sqlite.exec("UPDATE worker_assignments SET status='dispatched' WHERE id='A1'");
+            }
+            return Reflect.apply(t, thisArg, args);
+          },
+          get(t, prop) {
+            if (prop === "begin") return (cb: (c: unknown) => unknown) => t.begin((conn: unknown) => cb(wrap(conn)));
+            return Reflect.get(t, prop);
+          },
+        });
+      const racing = Object.create(f.db, { sql: { value: wrap((f.db as any).sql) } });
+      const spy = { mockRestore() {} };
       try {
-        const g = grantEnv(f);
+        const g = grantEnv({ ...f, db: racing } as typeof f);
         await g.revoke();
         expect(dispatched).toBe(true);
         expect(f.status().status).toBe("revocation_pending");

@@ -1,4 +1,4 @@
-import { queryOf } from "../../platform/data.js";
+import { dataOf, queryOf } from "../../platform/data.js";
 import { ApprovePlanSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { appendToQueue, lockQueue, prependToQueue } from "./queue-positions.js";
@@ -475,27 +475,20 @@ export async function handleApprovePlan(
   }
 
   // All phases at the end of the queue, in order, in one transaction.
-  await db.batch([
-    lockQueue(db, workRequest.threadId),
+  await dataOf(env).tx("plan.approve", async (tx) => {
+    await lockQueue(tx, workRequest.threadId);
     // The claim comes first: a second approval fails here and rolls back the
-    // whole batch, so no phase of the loser is ever queued.
-    db
-      .prepare(
-        "INSERT INTO plan_approvals (plan_work_request_id, thread_id, approved_by_user_id, created_at) VALUES (?1, ?2, ?3, ?4)",
-      )
-      .bind(workRequestId, workRequest.threadId, context.userId, now),
-    ...[...queueInserts]
-      .sort((a, b) => a.position - b.position)
-      .map((item) =>
-        appendToQueue(db, {
-          id: item.id,
-          threadId: item.threadId,
-          authorUserId: item.userId,
-          requestJson: item.requestJson,
-          now,
-        }),
-      ),
-  ]);
+    // whole transaction, so no phase of the loser is ever queued.
+    await tx.run`INSERT INTO plan_approvals (plan_work_request_id, thread_id, approved_by_user_id, created_at) VALUES (${workRequestId}, ${workRequest.threadId}, ${context.userId}, ${now})`;
+    for (const item of [...queueInserts].sort((a, b) => a.position - b.position))
+      await appendToQueue(tx, {
+        id: item.id,
+        threadId: item.threadId,
+        authorUserId: item.userId,
+        requestJson: item.requestJson,
+        now,
+      });
+  });
 
   // Trigger safe advance so Phase 1 starts immediately if nothing is running
   await advanceThreadQueueSafely(env, workRequest.threadId);
@@ -765,15 +758,15 @@ async function enqueueVerificationStatusFollowUp(
     isVerification: true,
     ...(inputData.isFinalVerification ? { isFinalVerification: true } : {}),
   };
-  await db.batch([
-    lockQueue(db, threadId),
-    prependToQueue(db, {
+  await dataOf(env).tx("plan.verify-follow-up", async (tx) => {
+    await lockQueue(tx, threadId);
+    await prependToQueue(tx, {
       id: `trq-verify-status-${crypto.randomUUID()}`,
       threadId,
-      authorUserId: row.userId,
+      authorUserId: row.userId!,
       requestJson: JSON.stringify(request),
       now: new Date().toISOString(),
-    }),
-  ]);
+    });
+  });
   return true;
 }

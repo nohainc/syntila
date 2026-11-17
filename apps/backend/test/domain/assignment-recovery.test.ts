@@ -59,6 +59,7 @@ it("persists timeout as a terminal Cloud outcome", async () => {
     },
   };
   withSql(db);
+  (db as any).sql.begin = async (cb: (c: unknown) => unknown) => cb((db as any).sql);
   await recordAssignmentError(
     db as never,
     "assignment-1",
@@ -72,7 +73,8 @@ it("persists timeout as a terminal Cloud outcome", async () => {
     },
     "attempt-1",
   );
-  expect(updates[0]?.[0]).toBe("timed_out");
+  // The terminal assignment UPDATE returns a row (read path); the task UPDATE that follows carries the message.
+  expect(updates[0]?.[0]).toBe("The assignment exceeded its time limit.");
 });
 
 it("does not fail an assignment that advanced after the recovery decision", async () => {

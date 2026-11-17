@@ -1,4 +1,4 @@
-import { dataOf, queryOf } from "../platform/data.js";
+import { atomically, dataOf, queryOf, type Query } from "../platform/data.js";
 import { inTransaction } from "../platform/tx-env.js";
 import { assignmentProgress, assignmentStatus } from "./queries.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
@@ -1061,24 +1061,17 @@ export async function recordAssignmentResult(
     return false;
   }
 
-  return runTerminalTransition(db, [
-    db
-      .prepare(
-        `UPDATE worker_assignments SET status = 'completed', output_json = ?1, updated_at = ?2
-         WHERE id = ?3 AND status IN (${assignmentSourceStatusList("completed")})
-         RETURNING id`,
-      )
-      .bind(JSON.stringify(result), now, assignmentId),
-    db
-      .prepare(
-        `UPDATE workflow_tasks SET status = 'completed', output_json = ?1,
-                finished_at = ?2, updated_at = ?2
-         WHERE id = ?3 AND status IN ('queued', 'waiting', 'running')
+  return runTerminalTransition(db, "assignment.complete", async (q) => {
+    const first = await q.run`UPDATE worker_assignments SET status = 'completed', output_json = ${JSON.stringify(result)}, updated_at = ${now}
+         WHERE id = ${assignmentId} AND status IN (${q.raw(assignmentSourceStatusList("completed"))})
+         RETURNING id`;
+    await q.run`UPDATE workflow_tasks SET status = 'completed', output_json = ${JSON.stringify(result)},
+                finished_at = ${now}, updated_at = ${now}
+         WHERE id = ${existing.task_id} AND status IN ('queued', 'waiting', 'running')
            AND EXISTS (SELECT 1 FROM worker_assignments
-                       WHERE id = ?4 AND status = 'completed')`,
-      )
-      .bind(JSON.stringify(result), now, existing.task_id, assignmentId),
-  ]);
+                       WHERE id = ${assignmentId} AND status = 'completed')`;
+    return first === 1;
+  });
 }
 
 /**
@@ -1123,35 +1116,17 @@ export async function recordAssignmentError(
     return false;
   }
 
-  return runTerminalTransition(db, [
-    db
-      .prepare(
-        `UPDATE worker_assignments SET status = ?1, error_json = ?2, updated_at = ?3
-         WHERE id = ?4 AND status IN (${sourceList(terminalStatus, options?.onlyFrom)})
-         RETURNING id`,
-      )
-      .bind(
-        terminalStatus,
-        JSON.stringify(normalizedFailure),
-        now,
-        assignmentId,
-      ),
-    db
-      .prepare(
-        `UPDATE workflow_tasks SET status = 'failed', error = ?1,
-                finished_at = ?2, updated_at = ?2
-         WHERE id = ?3 AND status IN ('queued', 'waiting', 'running')
+  return runTerminalTransition(db, "assignment.fail", async (q) => {
+    const first = await q.run`UPDATE worker_assignments SET status = ${terminalStatus}, error_json = ${JSON.stringify(normalizedFailure)}::text::jsonb, updated_at = ${now}
+         WHERE id = ${assignmentId} AND status IN (${q.raw(sourceList(terminalStatus, options?.onlyFrom))})
+         RETURNING id`;
+    await q.run`UPDATE workflow_tasks SET status = 'failed', error = ${normalizedFailure.error.message},
+                finished_at = ${now}, updated_at = ${now}
+         WHERE id = ${existing.task_id} AND status IN ('queued', 'waiting', 'running')
            AND EXISTS (SELECT 1 FROM worker_assignments
-                       WHERE id = ?4 AND status = ?5)`,
-      )
-      .bind(
-        normalizedFailure.error.message,
-        now,
-        existing.task_id,
-        assignmentId,
-        terminalStatus,
-      ),
-  ]);
+                       WHERE id = ${assignmentId} AND status = ${terminalStatus})`;
+    return first === 1;
+  });
 }
 
 export async function recordAssignmentCancelled(
@@ -1176,30 +1151,18 @@ export async function recordAssignmentCancelled(
   ) {
     return false;
   }
-  return runTerminalTransition(db, [
-    db
-      .prepare(
-        `UPDATE worker_assignments SET status = 'cancelled', error_json = ?1, updated_at = ?2
-         WHERE id = ?3 AND status IN (${sourceList("cancelled", options?.onlyFrom)})
-           AND (?4::text IS NULL OR attempt_id = ?4)
-         RETURNING id`,
-      )
-      .bind(
-        JSON.stringify(cancellation),
-        now,
-        assignmentId,
-        expectedAttemptId ?? null,
-      ),
-    db
-      .prepare(
-        `UPDATE workflow_tasks SET status = 'cancelled', finished_at = ?1,
-                updated_at = ?1
-         WHERE id = ?2 AND status IN ('queued', 'waiting', 'running')
+  return runTerminalTransition(db, "assignment.cancel", async (q) => {
+    const first = await q.run`UPDATE worker_assignments SET status = 'cancelled', error_json = ${JSON.stringify(cancellation)}::text::jsonb, updated_at = ${now}
+         WHERE id = ${assignmentId} AND status IN (${q.raw(sourceList("cancelled", options?.onlyFrom))})
+           AND (${expectedAttemptId ?? null}::text IS NULL OR attempt_id = ${expectedAttemptId ?? null})
+         RETURNING id`;
+    await q.run`UPDATE workflow_tasks SET status = 'cancelled', finished_at = ${now},
+                updated_at = ${now}
+         WHERE id = ${existing.task_id} AND status IN ('queued', 'waiting', 'running')
            AND EXISTS (SELECT 1 FROM worker_assignments
-                       WHERE id = ?3 AND status = 'cancelled')`,
-      )
-      .bind(now, existing.task_id, assignmentId),
-  ]);
+                       WHERE id = ${assignmentId} AND status = 'cancelled')`;
+    return first === 1;
+  });
 }
 
 function sourceList(
@@ -1223,25 +1186,13 @@ function isKnownAssignmentStatus(
 
 async function runTerminalTransition(
   db: D1Database,
-  statements: D1PreparedStatement[],
+  label: string,
+  body: (q: Query) => Promise<boolean>,
 ): Promise<boolean> {
-  // The first statement is the assignment update ending in RETURNING id. D1
-  // `meta.changes` counts trigger writes, so only a returned row proves that
-  // this call (and not a concurrent handler) made the terminal transition.
-  if (typeof db.batch === "function") {
-    const results = await db.batch(statements);
-    return (results[0]?.results?.length ?? 0) === 1;
-  }
-  // Sequential fallback for stores without batch support. Without a
-  // RETURNING result to inspect, a completed statement counts as applied.
-  let applied = true;
-  for (const [index, statement] of statements.entries()) {
-    const result = (await statement.run()) as
-      { results?: unknown[] } | undefined;
-    if (index === 0 && Array.isArray(result?.results))
-      applied = result.results.length === 1;
-  }
-  return applied;
+  // The first statement is the assignment update ending in RETURNING id: only
+  // a returned row proves that this call (and not a concurrent handler) made
+  // the terminal transition. Everything commits together or not at all.
+  return atomically(db, label, body);
 }
 
 /**

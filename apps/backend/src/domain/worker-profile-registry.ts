@@ -1,4 +1,4 @@
-import { dataOf, queryOf } from "../platform/data.js";
+import { atomically, dataOf, queryOf } from "../platform/data.js";
 import { canonicalJson } from "./canonical-json.js";
 import type { ToolProfileV1 } from "@syntila/tool-profile";
 import {
@@ -391,43 +391,20 @@ async function persistWorkerProfileSnapshot(args: {
     return 1;
   }
 
-  const results = await db.batch([
-    db
-      .prepare(
-        `INSERT INTO worker_profile_history
+  const changed = await atomically(db, "worker-profile.restore", async (q) => {
+    await q.run`INSERT INTO worker_profile_history
            (worker_type_id, revision, schema_version, profile_json, digest,
             actor_user_id, published_at, restoration_reason)
          SELECT worker_type_id, revision, schema_version, profile_json, digest,
-                updated_by_user_id, updated_at, ?4
+                updated_by_user_id, updated_at, ${args.restorationReason}::text
            FROM worker_profiles
-          WHERE worker_type_id = ?1 AND revision = ?2 AND digest = ?3`,
-      )
-      .bind(
-        args.workerTypeId,
-        args.expectedRevision,
-        args.current.digest,
-        args.restorationReason,
-      ),
-    db
-      .prepare(
-        `UPDATE worker_profiles
-            SET schema_version = ?1, profile_json = ?2, revision = ?3,
-                digest = ?4, updated_by_user_id = ?5, updated_at = ?6
-          WHERE worker_type_id = ?7 AND revision = ?8 AND digest = ?9`,
-      )
-      .bind(
-        args.profile.schemaVersion,
-        args.canonicalJson,
-        nextRevision,
-        args.digest,
-        args.actorUserId,
-        args.updatedAt,
-        args.workerTypeId,
-        args.expectedRevision,
-        args.current.digest,
-      ),
-  ]);
-  if (Number(results[1]?.meta?.changes ?? 0) !== 1) {
+          WHERE worker_type_id = ${args.workerTypeId} AND revision = ${args.expectedRevision} AND digest = ${args.current.digest}`;
+    return q.run`UPDATE worker_profiles
+            SET schema_version = ${args.profile.schemaVersion}, profile_json = ${args.canonicalJson}, revision = ${nextRevision},
+                digest = ${args.digest}, updated_by_user_id = ${args.actorUserId}, updated_at = ${args.updatedAt}
+          WHERE worker_type_id = ${args.workerTypeId} AND revision = ${args.expectedRevision} AND digest = ${args.current.digest}`;
+  });
+  if (changed !== 1) {
     throw new ToolProfileRegistryError(409, "Worker Profile revision is stale");
   }
   return nextRevision;

@@ -65,7 +65,7 @@ import {
   presentExecution,
   type ExecutionPhase,
 } from "../execution-phase.js";
-import { dataOf, queryOf, type Tx, type Query } from "../../platform/data.js";
+import { atomically, dataOf, queryOf, type Tx, type Query } from "../../platform/data.js";
 
 const selectRunsByWorkRequestId = <T = Record<string, unknown>>(q: Query, p1: unknown) =>
   q.row<T>`SELECT policy_snapshot_json AS "policySnapshotJson"
@@ -1471,17 +1471,13 @@ async function cancelWorkRequest(
     return json({ workRequestId, status: "cancelled" });
   if (row.status === "failed") {
     const now = new Date().toISOString();
-    await env.SYNTILA_DB.batch([
-      env.SYNTILA_DB.prepare(
-        "UPDATE work_requests SET status = 'cancelled', updated_at = ?1 WHERE id = ?2 AND status = 'failed'",
-      ).bind(now, workRequestId),
-      env.SYNTILA_DB.prepare(
-        `UPDATE runs SET status = 'cancelled', finished_at = ?1, updated_at = ?1
-          WHERE id = (SELECT id FROM runs WHERE work_request_id = ?2 AND status = 'failed'
-                     ORDER BY created_at DESC, id DESC LIMIT 1)`,
-      ).bind(now, workRequestId),
-      cancelPendingTasks(env.SYNTILA_DB, workRequestId, now),
-    ]);
+    await atomically(env.SYNTILA_DB, "work.cancel.failed", async (q) => {
+      await q.run`UPDATE work_requests SET status = 'cancelled', updated_at = ${now} WHERE id = ${workRequestId} AND status = 'failed'`;
+      await q.run`UPDATE runs SET status = 'cancelled', finished_at = ${now}, updated_at = ${now}
+          WHERE id = (SELECT id FROM runs WHERE work_request_id = ${workRequestId} AND status = 'failed'
+                     ORDER BY created_at DESC, id DESC LIMIT 1)`;
+      await cancelPendingTasks(q, workRequestId, now);
+    });
     return json({ workRequestId, status: "cancelled" });
   }
   if (row.status === "queued" && row.mode === "stateful") {
@@ -1501,7 +1497,7 @@ async function cancelWorkRequest(
   }
   if (row.status === "queued") {
     const now = new Date().toISOString();
-    await env.SYNTILA_DB.batch(cancelQueuedWorkRequest(env.SYNTILA_DB, workRequestId, now));
+    await atomically(env.SYNTILA_DB, "work.cancel.queued", (q) => cancelQueuedWorkRequest(q, workRequestId, now));
     return json({ workRequestId, status: "cancelled" });
   }
   if (row.status !== "running")
@@ -1540,15 +1536,11 @@ async function cancelWorkRequest(
   }
 
   const now = new Date().toISOString();
-  await env.SYNTILA_DB.batch([
-    env.SYNTILA_DB.prepare(
-      "UPDATE work_requests SET status = 'cancelled', updated_at = ?1 WHERE id = ?2 AND status = 'running'",
-    ).bind(now, workRequestId),
-    env.SYNTILA_DB.prepare(
-      "UPDATE runs SET status = 'cancelled', finished_at = ?1, updated_at = ?1 WHERE work_request_id = ?2 AND status IN ('created', 'running')",
-    ).bind(now, workRequestId),
-    cancelPendingTasks(env.SYNTILA_DB, workRequestId, now),
-  ]);
+  await atomically(env.SYNTILA_DB, "work.cancel.running", async (q) => {
+    await q.run`UPDATE work_requests SET status = 'cancelled', updated_at = ${now} WHERE id = ${workRequestId} AND status = 'running'`;
+    await q.run`UPDATE runs SET status = 'cancelled', finished_at = ${now}, updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status IN ('created', 'running')`;
+    await cancelPendingTasks(q, workRequestId, now);
+  });
   await releaseThreadLeaseAfterCancel(env, row.threadId, workRequestId);
   if (!active) {
     await dataOf(env).read.run`UPDATE workflow_tasks SET status = 'cancelled', finished_at = ${now}, updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status = 'running'`;

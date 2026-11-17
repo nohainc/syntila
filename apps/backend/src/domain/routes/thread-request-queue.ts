@@ -10,7 +10,7 @@ import {
   authorizeThreadAccessAsUser,
 } from "./thread-policy.js";
 import { createWorkRequestForUser } from "./work-creation.js";
-import { dataOf, queryOf, type Query } from "../../platform/data.js";
+import { dataOf, queryOf, type Query, atomically } from "../../platform/data.js";
 
 const selectThreadRequestQueueByThreadId = <T = Record<string, unknown>>(q: Query, p1: unknown) =>
   q.row<T>`SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ${p1}`;
@@ -286,13 +286,8 @@ export async function advanceThreadQueue(
   if (head.status === "sending") return;
   const paused = await queryOf(db).row`SELECT 1 AS found FROM thread_request_queue_state WHERE thread_id = ${threadId}`;
   if (paused && !forceHead) return;
-  const active = await db
-    .prepare(
-      `SELECT 1 AS found FROM work_requests w
-        WHERE w.thread_id = ?1 AND ${processingWork("w")} LIMIT 1`,
-    )
-    .bind(threadId)
-    .first();
+  const active = await queryOf(db).row`SELECT 1 AS found FROM work_requests w
+        WHERE w.thread_id = ${threadId} AND ${dataOf(env).read.raw(processingWork("w"))} LIMIT 1`;
   if (active) return;
   const claimed = await queryOf(db).run`UPDATE thread_request_queue SET status = 'sending', updated_at = ${new Date().toISOString()}
         WHERE id = ${head.id} AND status = 'queued'`;
@@ -330,13 +325,9 @@ export async function advanceThreadQueue(
     await queryOf(db).run`DELETE FROM thread_request_queue WHERE id = ${head.id}`;
   } else {
     // Keep the request first in line and wait for people to decide.
-    await db.batch([
-      db
-        .prepare(
-          "UPDATE thread_request_queue SET status = 'queued', updated_at = ?1 WHERE id = ?2",
-        )
-        .bind(new Date().toISOString(), head.id),
-    ]);
+    await atomically(db, "thread-request-queue.batch333", async (q) => {
+      await q.run`UPDATE thread_request_queue SET status = 'queued', updated_at = ${new Date().toISOString()} WHERE id = ${head.id}`;
+    });
     await pause(env, threadId, "failure", null, failure);
   }
   await publishQueueUpdated(env, threadId, spaceId);
@@ -378,16 +369,15 @@ export async function sweepThreadRequestQueues(env: SecurityEnv) {
   const stale = new Date(Date.now() - STALE_SENDING_MS).toISOString();
   await dataOf(env).read.run`UPDATE thread_request_queue SET status = 'queued', updated_at = ${new Date().toISOString()}
       WHERE status = 'sending' AND updated_at < ${stale}`;
-  const threads = await env.SYNTILA_DB.prepare(
-    `SELECT DISTINCT q.thread_id AS threadId FROM thread_request_queue q
+  const read = dataOf(env).read;
+  const threads = await read.rows<{ threadId: string }>`SELECT DISTINCT q.thread_id AS "threadId" FROM thread_request_queue q
       WHERE NOT EXISTS (SELECT 1 FROM thread_request_queue_state s
                          WHERE s.thread_id = q.thread_id)
         AND NOT EXISTS (SELECT 1 FROM work_requests w
                          WHERE w.thread_id = q.thread_id
-                           AND ${processingWork("w")})
-      LIMIT 50`,
-  ).all<{ threadId: string }>();
-  for (const { threadId } of threads.results ?? [])
+                           AND ${read.raw(processingWork("w"))})
+      LIMIT 50`;
+  for (const { threadId } of threads)
     await advanceThreadQueueSafely(env, threadId);
 }
 
@@ -457,10 +447,10 @@ export async function handleThreadRequestQueue(
       requestJson: JSON.stringify(body),
       now,
     };
-    await db.batch([
-      lockQueue(db, threadId),
-      body.isPhased ? appendToQueue(db, item) : enqueueBeforePhases(db, item),
-    ]);
+    await dataOf(env).tx("queue.enqueue", async (tx) => {
+      await lockQueue(tx, threadId);
+      await (body.isPhased ? appendToQueue(tx, item) : enqueueBeforePhases(tx, item));
+    });
     await advanceThreadQueueSafely(env, threadId, { forceHead: planPaused });
     await publishQueueUpdated(env, threadId, spaceId);
     return queueResponse(await loadQueue(env, threadId), 201);
@@ -530,15 +520,9 @@ export async function handleThreadRequestQueue(
     const planId = existingRequest.planWorkRequestId;
     if (!existingRequest.isPhased || typeof planId !== "string")
       throw new HttpError(400, "This request is not an implementation phase");
-    await db
-      .prepare(
-        `DELETE FROM thread_request_queue
-          WHERE thread_id = ?1 AND status = 'queued' AND author_user_id = ?2
-            AND (request_json::jsonb #>> '{planWorkRequestId}') = ?3`,
-      )
-      // D1 rejects LIKE patterns over 50 bytes, which a plan id exceeds.
-      .bind(threadId, context.userId, planId)
-      .run();
+    await queryOf(db).run`DELETE FROM thread_request_queue
+          WHERE thread_id = ${threadId} AND status = 'queued' AND author_user_id = ${context.userId}
+            AND (request_json::jsonb #>> '{planWorkRequestId}') = ${planId}`;
     const left = await selectThreadRequestQueueByThreadId<{ n: number }>(queryOf(db), threadId);
     if (!left?.n) await resume(env, threadId);
   } else if (method === "POST" && action === "send-now") {
@@ -550,12 +534,12 @@ export async function handleThreadRequestQueue(
     }
     // First in line and running again. Requests still processing finish
     // first: members cannot cancel each other's requests.
-    const moved = await db.batch([
-      lockQueue(db, threadId),
-      moveToFront(db, threadId, itemId, now),
-    ]);
+    const moved = await dataOf(env).tx("queue.send-now", async (tx) => {
+      await lockQueue(tx, threadId);
+      return moveToFront(tx, threadId, itemId, now);
+    });
     // Side effects (advancing the queue) only after this request won the item.
-    if (!moved[1]?.meta?.changes) await lostQueuedItem(db, itemId);
+    if (!moved) await lostQueuedItem(db, itemId);
     // A paused queue (for example after a failed phase) stays paused: only
     // this request is sent, the remaining phases wait for an explicit resume.
     await advanceThreadQueueSafely(env, threadId, { forceHead: true });

@@ -9,7 +9,7 @@ import {
   type SecurityEnv,
 } from "./http-security.js";
 import { loadWorkflowWorkspace } from "./workflow-workspace.js";
-import { dataOf } from "../../platform/data.js";
+import { atomically, dataOf } from "../../platform/data.js";
 
 
 type Eligibility =
@@ -114,18 +114,11 @@ export async function handleSpaceAdditionalFolders(
     throw new HttpError(409, "A selected folder is no longer allowed");
   const db = env.SYNTILA_DB;
   const now = new Date().toISOString();
-  await db.batch([
-    db
-      .prepare("DELETE FROM space_additional_folders WHERE space_id = ?1")
-      .bind(spaceId),
-    ...(folderIds as string[]).map((folderId) =>
-      db
-        .prepare(
-          "INSERT INTO space_additional_folders(space_id,workspace_id,folder_id,created_at) VALUES(?1,?2,?3,?4)",
-        )
-        .bind(spaceId, access.workspaceId, folderId, now),
-    ),
-  ]);
+  await atomically(db, "space.additional-folders", async (q) => {
+    await q.run`DELETE FROM space_additional_folders WHERE space_id = ${spaceId}`;
+    for (const folderId of folderIds as string[])
+      await q.run`INSERT INTO space_additional_folders(space_id,workspace_id,folder_id,created_at) VALUES(${spaceId},${access.workspaceId},${folderId},${now})`;
+  });
   await publishCollaborationEvent(env, "space.updated", spaceId, spaceId);
   return json({
     eligible: true,

@@ -11,7 +11,7 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
-import { dataOf } from "../../platform/data.js";
+import { atomically, dataOf } from "../../platform/data.js";
 
 /** First instant of the current UTC month, as an ISO timestamp. */
 export function monthStartIso(now = new Date()): string {
@@ -231,28 +231,17 @@ export async function handleAcceptWorkspaceInvitation(
   if (!(await hasPaidFeature(env, invitation.ownerId, "workspace.sharing")))
     throw new HttpError(403, "This Workspace can no longer be shared");
   const now = new Date().toISOString();
-  const results = await env.SYNTILA_DB.batch([
-    env.SYNTILA_DB.prepare(
-      "UPDATE workspace_invitations SET status='accepted',accepted_by_user_id=?1,accepted_at=?2,updated_at=?2 WHERE id=?3 AND status='pending' AND expires_at>?2",
-    ).bind(context.userId, now, invitation.id),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO workspace_person_grants(workspace_id,user_id,granted_by_user_id,status,created_at,updated_at)
-       SELECT ?1,?2,?3,'active',?4,?4 WHERE EXISTS (SELECT 1 FROM workspace_invitations WHERE id=?5 AND status='accepted' AND accepted_by_user_id=?2 AND accepted_at=?4)
-       ON CONFLICT(workspace_id,user_id) DO UPDATE SET status='active',granted_by_user_id=excluded.granted_by_user_id,updated_at=excluded.updated_at`,
-    ).bind(
-      invitation.workspaceId,
-      context.userId,
-      invitation.ownerId,
-      now,
-      invitation.id,
-    ),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO workspace_audit_log(id,workspace_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at)
-       SELECT ?1,?2,'user',?3,'workspace.person_grant.created','user',?3,'{}',?4
-       WHERE EXISTS (SELECT 1 FROM workspace_person_grants WHERE workspace_id=?2 AND user_id=?3 AND updated_at=?4)`,
-    ).bind(crypto.randomUUID(), invitation.workspaceId, context.userId, now),
-  ]);
-  if (!results[0]?.meta?.changes)
+  const accepted = await atomically(env.SYNTILA_DB, "workspace-invitation.accept", async (q) => {
+    const changed = await q.run`UPDATE workspace_invitations SET status='accepted',accepted_by_user_id=${context.userId},accepted_at=${now},updated_at=${now} WHERE id=${invitation.id} AND status='pending' AND expires_at>${now}`;
+    await q.run`INSERT INTO workspace_person_grants(workspace_id,user_id,granted_by_user_id,status,created_at,updated_at)
+       SELECT ${invitation.workspaceId},${context.userId},${invitation.ownerId},'active',${now}::timestamptz,${now}::timestamptz WHERE EXISTS (SELECT 1 FROM workspace_invitations WHERE id=${invitation.id} AND status='accepted' AND accepted_by_user_id=${context.userId} AND accepted_at=${now}::timestamptz)
+       ON CONFLICT(workspace_id,user_id) DO UPDATE SET status='active',granted_by_user_id=excluded.granted_by_user_id,updated_at=excluded.updated_at`;
+    await q.run`INSERT INTO workspace_audit_log(id,workspace_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at)
+       SELECT ${crypto.randomUUID()},${invitation.workspaceId},'user',${context.userId},'workspace.person_grant.created','user',${context.userId},'{}'::jsonb,${now}::timestamptz
+       WHERE EXISTS (SELECT 1 FROM workspace_person_grants WHERE workspace_id=${invitation.workspaceId} AND user_id=${context.userId} AND updated_at=${now}::timestamptz)`;
+    return changed;
+  });
+  if (!accepted)
     throw new HttpError(409, "Workspace invitation is no longer pending");
   await publishWorkspaceInvitationChanged(env, invitation.id, [
     invitation.ownerId,
@@ -279,22 +268,17 @@ export async function handleRevokePersonGrant(
   else await ownedWorkspace(env, workspaceId, context.userId);
   if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
   const now = new Date().toISOString();
-  const results = await env.SYNTILA_DB.batch([
-    env.SYNTILA_DB.prepare(
-      "UPDATE workspace_person_grants SET status='revoked',updated_at=?3 WHERE workspace_id=?1 AND user_id=?2 AND status='active'",
-    ).bind(workspaceId, personId, now),
-    env.SYNTILA_DB.prepare(
-      `UPDATE workspace_space_grants SET status='revoked',updated_at=?3
-       WHERE workspace_id=?1 AND status IN ('active','suspended')
-         AND space_id IN (SELECT id FROM spaces WHERE owner_user_id=?2)`,
-    ).bind(workspaceId, personId, now),
-    env.SYNTILA_DB.prepare(
-      `INSERT INTO workspace_audit_log(id,workspace_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at)
-       SELECT ?1,?2,'user',?3,'workspace.person_grant.revoked','user',?4,'{}',?5
-       WHERE EXISTS (SELECT 1 FROM workspace_person_grants WHERE workspace_id=?2 AND user_id=?4 AND status='revoked' AND updated_at=?5)`,
-    ).bind(crypto.randomUUID(), workspaceId, context.userId, personId, now),
-  ]);
-  if (!results[0]?.meta?.changes)
+  const revoked = await atomically(env.SYNTILA_DB, "workspace-person-grant.revoke", async (q) => {
+    const changed = await q.run`UPDATE workspace_person_grants SET status='revoked',updated_at=${now} WHERE workspace_id=${workspaceId} AND user_id=${personId} AND status='active'`;
+    await q.run`UPDATE workspace_space_grants SET status='revoked',updated_at=${now}
+       WHERE workspace_id=${workspaceId} AND status IN ('active','suspended')
+         AND space_id IN (SELECT id FROM spaces WHERE owner_user_id=${personId})`;
+    await q.run`INSERT INTO workspace_audit_log(id,workspace_id,actor_type,actor_id,action,target_type,target_id,details_json,created_at)
+       SELECT ${crypto.randomUUID()},${workspaceId},'user',${context.userId},'workspace.person_grant.revoked','user',${personId},'{}'::jsonb,${now}::timestamptz
+       WHERE EXISTS (SELECT 1 FROM workspace_person_grants WHERE workspace_id=${workspaceId} AND user_id=${personId} AND status='revoked' AND updated_at=${now}::timestamptz)`;
+    return changed;
+  });
+  if (!revoked)
     throw new HttpError(404, "Active grant not found");
   return json({ revoked: true });
 }

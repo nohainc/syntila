@@ -368,28 +368,15 @@ export async function storeWorkRequestFile(
       sizeBytes: stored.size,
     });
     // The reservation becomes the file in one transaction (quota-neutral).
-    await inTransaction(env, "files.finalize", (txEnv) => txEnv.SYNTILA_DB.batch([
-      txEnv.SYNTILA_DB.prepare(
-        `INSERT INTO user_files
+    await dataOf(env).tx("files.finalize", async (tx) => {
+      await tx.run`INSERT INTO user_files
           (id, user_id, thread_id, space_id, name, media_type, size_bytes, created_at)
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+          VALUES (${input.fileId}, ${input.userId}, ${input.threadId}, ${input.spaceId}, ${input.name}, ${mediaType}, ${stored.size}, ${new Date().toISOString()})
           ON CONFLICT (id) DO UPDATE SET user_id = excluded.user_id, thread_id = excluded.thread_id,
             space_id = excluded.space_id, name = excluded.name, media_type = excluded.media_type,
-            size_bytes = excluded.size_bytes, created_at = excluded.created_at`,
-      ).bind(
-        input.fileId,
-        input.userId,
-        input.threadId,
-        input.spaceId,
-        input.name,
-        mediaType,
-        stored.size,
-        new Date().toISOString(),
-      ),
-      txEnv.SYNTILA_DB.prepare(
-        "DELETE FROM user_file_reservations WHERE id = ?1 AND user_id = ?2",
-      ).bind(input.fileId, input.userId),
-    ]));
+            size_bytes = excluded.size_bytes, created_at = excluded.created_at`;
+      await tx.run`DELETE FROM user_file_reservations WHERE id = ${input.fileId} AND user_id = ${input.userId}`;
+    });
     return {
       digest,
       sizeBytes: stored.size,

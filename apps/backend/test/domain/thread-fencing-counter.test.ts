@@ -10,7 +10,8 @@ vi.mock("../../src/domain/routes/thread-policy.js", async (original) => ({
 vi.mock("../../src/domain/collaboration-events.js", () => ({
   publishCollaborationEvent: vi.fn(async () => {}),
 }));
-import { startStatefulLeaseStatements } from "../../src/domain/thread-coordinator.js";
+import { atomically } from "../../src/platform/data.js";
+import { startStatefulLease } from "../../src/domain/thread-coordinator.js";
 import { handleClearWorkHistory } from "../../src/domain/routes/work-lifecycle.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
@@ -35,15 +36,15 @@ function fixture() {
       )
       .run(id);
   const acquire = async (workRequestId: string, leaseId: string) => {
-    await db.batch(
-      startStatefulLeaseStatements(db as unknown as D1Database, {
+    await atomically(db, "test.lease", (q) =>
+      startStatefulLease(q, {
         threadId: "W",
         workRequestId,
         workspaceId: "WS",
         leaseId,
-        now: "now",
-        expiresAt: "2030-01-01T00:00:00.000Z",
-      }) as never,
+        now: "2030-01-01T00:00:00.000Z",
+        expiresAt: "2030-01-02T00:00:00.000Z",
+      }),
     );
     return sqlite
       .prepare(
