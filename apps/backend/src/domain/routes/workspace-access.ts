@@ -18,6 +18,7 @@ import type { SecurityEnv } from "./http-security.js";
 import { parseJson, recordAudit } from "./http-security.js";
 
 import { HttpError, json } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 export async function disconnectWorkspaceRuntime(
   env: SecurityEnv,
@@ -200,7 +201,7 @@ export async function createWorkspaceSpaceGrant(
       "Only the Workspace owner can grant this Workspace",
     );
   }
-  const rawMembership = await spaceMembership(env.SYNTILA_DB, spaceId, context.userId);
+  const rawMembership = await spaceMembership(dataOf(env).read, spaceId, context.userId);
   const membership = rawMembership;
   if (!membership && body.confirmContribution !== true) {
     throw new HttpError(

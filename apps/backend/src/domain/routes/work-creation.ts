@@ -60,6 +60,7 @@ import {
 import type { SecurityEnv } from "./handlers.js";
 import type { SyntilaWorkflowParams } from "../workflow.js";
 import { parseMcpToolStepInput } from "../mcp-tool-step.js";
+import { dataOf } from "../../platform/data.js";
 
 export async function createOrGetRun(
   env: Env,
@@ -237,7 +238,7 @@ export async function createWorkRequestForUser(
     .first<{ status: string | null; userLowId: string; userHighId: string }>()
     .catch(() => null);
   if (directSpace) {
-    const isBlocked = await usersBlocked(env.SYNTILA_DB, directSpace.userLowId, directSpace.userHighId);
+    const isBlocked = await usersBlocked(dataOf(env).read, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }

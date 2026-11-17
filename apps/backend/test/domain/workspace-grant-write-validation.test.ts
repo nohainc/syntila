@@ -3,6 +3,7 @@ vi.mock("../../src/domain/collaboration-events.js", () => ({
 }));
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { createWorkspaceSpaceGrant } from "../../src/domain/routes/workspace-access.js";
+import { Data } from "../../src/platform/data.js";
 
 function environment(
   inventoryWorkerIds: readonly string[] = [],
@@ -51,7 +52,13 @@ function environment(
       };
     },
   };
-  return { env: { SYNTILA_DB: db } as never, writes };
+  const data = new Data((async (strings: TemplateStringsArray) => {
+    if (strings.join("?").includes("FROM space_memberships")) {
+      if (membershipError) throw membershipError;
+    }
+    return []; // no membership
+  }) as any);
+  return { env: { SYNTILA_DB: db, SYNTILA_DATA: data } as never, writes };
 }
 
 const context = {

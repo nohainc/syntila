@@ -10,6 +10,7 @@ import {
   authorizeThreadAccessAsUser,
 } from "./thread-policy.js";
 import { createWorkRequestForUser } from "./work-creation.js";
+import { dataOf } from "../../platform/data.js";
 
 const SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID =
   "SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1";
@@ -141,7 +142,7 @@ function queueResponse(
 }
 
 async function threadSpaceId(env: SecurityEnv, threadId: string) {
-  const row = await threadSpace(env.SYNTILA_DB, threadId);
+  const row = await threadSpace(dataOf(env).read, threadId);
   return row?.spaceId ?? null;
 }
 

@@ -70,6 +70,7 @@ import {
   DEFAULT_QUEUE_WAIT_TIMEOUT_MS,
   type AssignmentDeadlinePhase,
 } from "./assignment-delivery.js";
+import { dataOf } from "../platform/data.js";
 
 /**
  * Number of wait rounds (10 s each) the Workflow waits for the Service to
@@ -596,7 +597,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       const spaceId =
         params.spaceId ??
         (
-          await threadSpace((this.env as ExecutionEnv).SYNTILA_DB, threadId)
+          await threadSpace(dataOf(this.env as ExecutionEnv).read, threadId)
         )?.spaceId;
       if (!spaceId) return;
       // Lets clients skip "finished" notices for the person who asked.

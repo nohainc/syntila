@@ -5,6 +5,7 @@ import {
 } from "./event-publisher.js";
 import { publishCollaborationEvent } from "./collaboration-events.js";
 import { normalizeUserPair } from "@syntila/core";
+import { dataOf } from "../platform/data.js";
 export { normalizeUserPair, type NormalizedUserPair } from "@syntila/core";
 
 /** Read IDs only from the authenticated user's established graph, never a global directory. */
@@ -75,7 +76,7 @@ export async function ensureSupportSpace(
       "The support account has no support Space",
     );
 
-  const blocked = await usersBlocked(env.SYNTILA_DB, userId, support.id);
+  const blocked = await usersBlocked(dataOf(env).read, userId, support.id);
   if (blocked) throw new SupportSpaceError(403, "Support is unavailable");
 
   const lookup = async () => {

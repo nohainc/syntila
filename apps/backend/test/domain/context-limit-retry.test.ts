@@ -36,7 +36,12 @@ it("requires reset approval before reserving or changing a failed request", asyn
       }),
     }),
     { SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) =>
-      strings.join("?").includes("FROM work_requests") ? [{ threadId: "T" }] : []) as any), SYNTILA_DB: { prepare } } as unknown as SecurityEnv,
+      {
+      const text = strings.join("?");
+      if (text.includes('thread_id AS "threadId" FROM work_requests')) return [{ threadId: "T" }]; // workRequestThread
+      if (text.includes("FROM space_memberships")) return [{ role: "owner" }]; // spaceMembership
+      return [];
+    }) as any), SYNTILA_DB: { prepare } } as unknown as SecurityEnv,
     "R",
   );
   expect(response.status).toBe(409);

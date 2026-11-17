@@ -89,8 +89,9 @@ function fixture(
   };
   const env = {
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      if (strings.join("?").includes("owner_user_id")) return [{ ownerUserId: "user" }]; // spaceOwnerOf
-      expect(strings.join("?")).toContain("UNION ALL");
+      const text = strings.join("?");
+      if (text.includes("owner_user_id")) return [{ ownerUserId: "user" }]; // spaceOwnerOf
+      if (!text.includes("UNION ALL")) return []; // workflow defaults, membership: none
       expect(values[0]).toBe("user");
       expect(values[1]).toBe(workspaceId);
       expect(values[4]).toBe("space");

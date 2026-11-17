@@ -338,7 +338,7 @@ async function provisionDirectConnection(
   recipientUserId: string,
   invitationId: string | null,
 ): Promise<{ directSpaceId: string; userLowId: string; userHighId: string }> {
-  const isBlocked = await usersBlocked(env.SYNTILA_DB, inviterUserId, recipientUserId);
+  const isBlocked = await usersBlocked(dataOf(env).read, inviterUserId, recipientUserId);
   if (isBlocked) {
     throw new HttpError(403, "Cannot accept invitation from a blocked user");
   }
@@ -580,7 +580,7 @@ export async function handleCreatePersonInvitation(
 
   // Check if blocked
   if (inviteeUserId) {
-    const isBlocked = await usersBlocked(env.SYNTILA_DB, context.userId, inviteeUserId);
+    const isBlocked = await usersBlocked(dataOf(env).read, context.userId, inviteeUserId);
     if (isBlocked) {
       throw new HttpError(403, "Cannot send invitation to a blocked user");
     }

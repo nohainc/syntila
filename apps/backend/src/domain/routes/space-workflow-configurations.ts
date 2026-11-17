@@ -37,10 +37,10 @@ export async function loadSpaceWorkflowConfigurations(
     ownerUserId: space.ownerUserId,
     defaultWorkflowId:
       (
-        await spaceWorkflowDefault(env.SYNTILA_DB, spaceId)
+        await spaceWorkflowDefault(dataOf(env).read, spaceId)
       )?.workflowId ??
       (
-        await userWorkflowDefault(env.SYNTILA_DB, space.ownerUserId, workspace.workspaceId)
+        await userWorkflowDefault(dataOf(env).read, space.ownerUserId, workspace.workspaceId)
       )?.workflowId ??
       "chat",
     configurations: [...configurations.values()],

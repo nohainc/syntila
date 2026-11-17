@@ -604,7 +604,7 @@ export async function handleUpdateSpace(
     ) {
       throw new HttpError(403, "Only personal archive state can be changed");
     }
-    const membership = await spaceMembership(env.SYNTILA_DB, spaceId, context.userId);
+    const membership = await spaceMembership(dataOf(env).read, spaceId, context.userId);
     if (!membership) throw new HttpError(403, "Forbidden");
     const now = new Date().toISOString();
     // This existing per-user state table also stores shared Space visibility;
@@ -683,7 +683,7 @@ export async function handleUpdateSpace(
 
   await authorizeRequest(request, env, "spaces:write", spaceId, accessContext);
   if (isDirect) {
-    const membership = await spaceMembership(env.SYNTILA_DB, spaceId, context.userId);
+    const membership = await spaceMembership(dataOf(env).read, spaceId, context.userId);
     if (!membership) throw new HttpError(403, "Forbidden");
   } else if (context.userId !== existing.ownerUserId) {
     throw new HttpError(403, "Only the Space owner can update Space settings");
@@ -882,7 +882,7 @@ export async function handleDeleteSpace(
     if (space?.kind === "direct") {
       // Either participant may delete a personal Space; the connection stays
       // and messaging again creates a fresh one.
-      const member = await isSpaceMember(env.SYNTILA_DB, spaceId, context.userId);
+      const member = await isSpaceMember(dataOf(env).read, spaceId, context.userId);
       if (!member) throw new HttpError(403, "Forbidden");
     } else {
       try {
@@ -1280,7 +1280,7 @@ export async function handleChangeSpaceMemberRole(
       : null;
   if (!role)
     throw new HttpError(400, "Space role or member permissions are required");
-  const member = await spaceMembership(env.SYNTILA_DB, spaceId, userId);
+  const member = await spaceMembership(dataOf(env).read, spaceId, userId);
   if (!member) throw new HttpError(404, "Space member not found");
   if (member.role === "owner")
     throw new HttpError(403, "Owner permissions cannot be changed");

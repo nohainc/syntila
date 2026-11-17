@@ -5,28 +5,20 @@
 import type { Query } from "../platform/data.js";
 
 /** True when either user has blocked the other. */
-export async function usersBlocked(db: D1Database, userA: string, userB: string): Promise<boolean> {
-  const row = await db
-    .prepare(
-      `SELECT 1 FROM user_blocks
-        WHERE (blocker_user_id = ?1 AND blocked_user_id = ?2) OR (blocker_user_id = ?2 AND blocked_user_id = ?1)`,
-    )
-    .bind(userA, userB)
-    .first();
+export async function usersBlocked(q: Query, userA: string, userB: string): Promise<boolean> {
+  const row = await q.row`SELECT 1 FROM user_blocks
+        WHERE (blocker_user_id = ${userA} AND blocked_user_id = ${userB}) OR (blocker_user_id = ${userB} AND blocked_user_id = ${userA})`;
   return row !== null;
 }
 
 /** The user's membership in a Space, or null when they are not a member. */
-export async function spaceMembership(db: D1Database, spaceId: string, userId: string): Promise<{ role: string } | null> {
-  return db
-    .prepare("SELECT role FROM space_memberships WHERE space_id = ?1 AND user_id = ?2")
-    .bind(spaceId, userId)
-    .first<{ role: string }>();
+export async function spaceMembership(q: Query, spaceId: string, userId: string): Promise<{ role: string } | null> {
+  return q.row<{ role: string }>`SELECT role FROM space_memberships WHERE space_id = ${spaceId} AND user_id = ${userId}`;
 }
 
 /** True when the user is a member of the Space. */
-export async function isSpaceMember(db: D1Database, spaceId: string, userId: string): Promise<boolean> {
-  return (await spaceMembership(db, spaceId, userId)) !== null;
+export async function isSpaceMember(q: Query, spaceId: string, userId: string): Promise<boolean> {
+  return (await spaceMembership(q, spaceId, userId)) !== null;
 }
 
 /** True when the user owns the Workspace and it has not been revoked. */
@@ -64,13 +56,13 @@ export function assignmentProgress(db: D1Database, assignmentId: string) {
 }
 
 /** The Space a Thread belongs to. */
-export function threadSpace(db: D1Database, threadId: string) {
-  return db.prepare("SELECT space_id AS spaceId FROM threads WHERE id = ?1").bind(threadId).first<{ spaceId: string }>();
+export function threadSpace(q: Query, threadId: string) {
+  return q.row<{ spaceId: string }>`SELECT space_id AS "spaceId" FROM threads WHERE id = ${threadId}`;
 }
 
 /** Work Requests of a Thread that are queued, running or waiting. */
-export function activeWorkCount(db: D1Database, threadId: string) {
-  return db.prepare("SELECT COUNT(*) AS count FROM work_requests WHERE thread_id = ?1 AND status IN ('queued', 'running', 'waiting')").bind(threadId).first<{ count: number }>();
+export function activeWorkCount(q: Query, threadId: string) {
+  return q.row<{ count: number }>`SELECT COUNT(*) AS count FROM work_requests WHERE thread_id = ${threadId} AND status IN ('queued', 'running', 'waiting')`;
 }
 
 /** The Thread a Work Request belongs to. */
@@ -124,13 +116,13 @@ export function accountPlanRow<T = { tier: string; status: string; current_perio
 }
 
 /** The default Workflow a Space chose. */
-export function spaceWorkflowDefault(db: D1Database, spaceId: string) {
-  return db.prepare("SELECT workflow_id AS workflowId FROM space_workflow_defaults WHERE space_id = ?1").bind(spaceId).first<{ workflowId: string }>();
+export function spaceWorkflowDefault(q: Query, spaceId: string) {
+  return q.row<{ workflowId: string }>`SELECT workflow_id AS "workflowId" FROM space_workflow_defaults WHERE space_id = ${spaceId}`;
 }
 
 /** The default Workflow a user chose for a Workspace. */
-export function userWorkflowDefault(db: D1Database, userId: string, workspaceId: string) {
-  return db.prepare("SELECT workflow_id AS workflowId FROM user_workflow_defaults WHERE user_id = ?1 AND workspace_id = ?2").bind(userId, workspaceId).first<{ workflowId: string }>();
+export function userWorkflowDefault(q: Query, userId: string, workspaceId: string) {
+  return q.row<{ workflowId: string }>`SELECT workflow_id AS "workflowId" FROM user_workflow_defaults WHERE user_id = ${userId} AND workspace_id = ${workspaceId}`;
 }
 
 /* ------------------------------------------------------------------------

@@ -78,7 +78,12 @@ function database(options: {
   });
   const env = {
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) =>
-      strings.join("?").includes("FROM work_requests") ? [{ threadId: "T" }] : []) as any), // workRequestThread
+      {
+      const text = strings.join("?");
+      if (text.includes('thread_id AS "threadId" FROM work_requests')) return [{ threadId: "T" }]; // workRequestThread
+      if (text.includes("FROM space_memberships")) return [{ role: "owner" }]; // spaceMembership
+      return [];
+    }) as any),
     SYNTILA_DB: { prepare, batch: vi.fn(async () => []) },
   } as unknown as SecurityEnv;
   return { env, writes };

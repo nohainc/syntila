@@ -174,7 +174,7 @@ export async function handleRetryWorkRequest(
     "execute",
     accessContext,
   );
-  const membership = await spaceMembership(env.SYNTILA_DB, spaceId, context.userId);
+  const membership = await spaceMembership(dataOf(env).read, spaceId, context.userId);
   if (!membership || membership.role === "viewer")
     throw new HttpError(
       403,
@@ -357,7 +357,7 @@ export async function handleRetryWorkRequest(
     contextLimitExceeded && contextResolution === "compact";
   const clearAiHistory = contextLimitExceeded && !compactContext;
   if (clearAiHistory) {
-    const active = await activeWorkCount(env.SYNTILA_DB, String(row.threadId));
+    const active = await activeWorkCount(dataOf(env).read, String(row.threadId));
     if (active && active.count > 0)
       throw new HttpError(
         409,
@@ -1680,7 +1680,7 @@ export async function handleClearWorkHistory(
     `thread:${threadId}:clear-work-history`,
     {},
   );
-  const thread = await threadSpace(env.SYNTILA_DB, threadId);
+  const thread = await threadSpace(dataOf(env).read, threadId);
   if (!thread) throw new HttpError(404, "Thread not found");
 
   // A retried request may follow a commit whose event was never published, so

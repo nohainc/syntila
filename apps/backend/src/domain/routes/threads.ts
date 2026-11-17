@@ -235,7 +235,7 @@ export async function handleCreateThread(
     }>()
     .catch(() => null);
   if (directSpace) {
-    const isBlocked = await usersBlocked(env.SYNTILA_DB, directSpace.userLowId, directSpace.userHighId);
+    const isBlocked = await usersBlocked(dataOf(env).read, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }
@@ -573,7 +573,7 @@ export async function handleDeleteThread(
       "The default General Thread of a Direct Space cannot be deleted",
     );
   }
-  const active = await activeWorkCount(env.SYNTILA_DB, threadId);
+  const active = await activeWorkCount(dataOf(env).read, threadId);
   if (active && active.count > 0)
     throw new HttpError(
       409,
@@ -721,7 +721,7 @@ export async function handleCreateDiscussionMessage(
     }>()
     .catch(() => null);
   if (directSpace) {
-    const isBlocked = await usersBlocked(env.SYNTILA_DB, directSpace.userLowId, directSpace.userHighId);
+    const isBlocked = await usersBlocked(dataOf(env).read, directSpace.userLowId, directSpace.userHighId);
     if (isBlocked) {
       throw new HttpError(403, "Messaging is blocked between participants");
     }
@@ -994,7 +994,7 @@ export async function handleClearChatHistory(
     accessContext,
   );
   await requireDestructiveThreadAccess(env, threadId, context.userId);
-  const active = await activeWorkCount(env.SYNTILA_DB, threadId);
+  const active = await activeWorkCount(dataOf(env).read, threadId);
   if (active && active.count > 0) {
     throw new HttpError(
       409,

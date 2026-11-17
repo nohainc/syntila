@@ -13,6 +13,7 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
+import { dataOf } from "../../platform/data.js";
 
 const SELECT_USER_WORKFLOW_CONFIGURATIONS_BY_USER_ID =
   "SELECT configuration_json AS configurationJson FROM user_workflow_configurations WHERE user_id = ?1 AND workflow_id = ?2 AND workspace_id = ?3";
@@ -33,7 +34,7 @@ export async function loadUserWorkflowDefault(
   workspaceId: string | null,
 ) {
   if (!workspaceId) return CHAT_WORKFLOW_ID;
-  const row = await userWorkflowDefault(env.SYNTILA_DB, userId, workspaceId);
+  const row = await userWorkflowDefault(dataOf(env).read, userId, workspaceId);
   return row?.workflowId ?? CHAT_WORKFLOW_ID;
 }
 
@@ -42,7 +43,7 @@ export async function loadSpaceWorkflowDefault(
   spaceId: string,
   ownerUserId: string,
 ) {
-  const row = await spaceWorkflowDefault(env.SYNTILA_DB, spaceId);
+  const row = await spaceWorkflowDefault(dataOf(env).read, spaceId);
   if (row) return row.workflowId;
   const { workspaceId } = await loadWorkflowWorkspace(
     env,

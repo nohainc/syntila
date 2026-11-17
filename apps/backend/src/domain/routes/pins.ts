@@ -6,6 +6,7 @@ import { HttpError, authorizeThreadAccess, json } from "./handlers.js";
 import { authorizeRequest } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
 import { inTransaction } from "../../platform/tx-env.js";
+import { dataOf } from "../../platform/data.js";
 
 /** Pins of one user and kind are written under a per-user lock (no global
  * writer lock): positions are computed from the user's current pins. */
@@ -39,7 +40,7 @@ export async function handleSetPin(
     );
     userId = context.userId;
     spaceId = targetId;
-    const member = await isSpaceMember(env.SYNTILA_DB, targetId, userId);
+    const member = await isSpaceMember(dataOf(env).read, targetId, userId);
     if (!member) throw new HttpError(404, "Space not found");
   } else {
     const access = await authorizeThreadAccess(
@@ -100,7 +101,7 @@ export async function handleSetPinOrder(
     spaceId,
     accessContext,
   );
-  const member = await isSpaceMember(env.SYNTILA_DB, spaceId, context.userId);
+  const member = await isSpaceMember(dataOf(env).read, spaceId, context.userId);
   if (!member) throw new HttpError(404, "Space not found");
   await inTransaction(env, "pin.order", async (txEnv, tx) => {
     await lockPins(tx, context.userId);
