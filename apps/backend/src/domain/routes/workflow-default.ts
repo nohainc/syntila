@@ -13,10 +13,10 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
-import { dataOf } from "../../platform/data.js";
+import { dataOf, type Query } from "../../platform/data.js";
 
-const SELECT_USER_WORKFLOW_CONFIGURATIONS_BY_USER_ID =
-  "SELECT configuration_json AS configurationJson FROM user_workflow_configurations WHERE user_id = ?1 AND workflow_id = ?2 AND workspace_id = ?3";
+const selectUserWorkflowConfigurationsByUserId = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown, p3: unknown) =>
+  q.row<T>`SELECT configuration_json AS "configurationJson" FROM user_workflow_configurations WHERE user_id = ${p1} AND workflow_id = ${p2} AND workspace_id = ${p3}`;
 
 const CHAT_WORKFLOW_ID = "chat";
 
@@ -102,11 +102,7 @@ export async function handleWorkflowDefault(
         ).configurations.find((value) => value.workflowId === selected)
       : JSON.parse(
           (
-            await env.SYNTILA_DB.prepare(
-              SELECT_USER_WORKFLOW_CONFIGURATIONS_BY_USER_ID,
-            )
-              .bind(ownerUserId, selected, userWorkspaceId)
-              .first<{ configurationJson: string }>()
+            await selectUserWorkflowConfigurationsByUserId<{ configurationJson: string }>(dataOf(env).read, ownerUserId, selected, userWorkspaceId)
           )?.configurationJson ?? "null",
         );
     return json({
@@ -137,11 +133,7 @@ export async function handleWorkflowDefault(
       )
     : JSON.parse(
         (
-          await env.SYNTILA_DB.prepare(
-            SELECT_USER_WORKFLOW_CONFIGURATIONS_BY_USER_ID,
-          )
-            .bind(ownerUserId, workflowId, userWorkspaceId)
-            .first<{ configurationJson: string }>()
+          await selectUserWorkflowConfigurationsByUserId<{ configurationJson: string }>(dataOf(env).read, ownerUserId, workflowId, userWorkspaceId)
         )?.configurationJson ?? "null",
       );
   if (configuration?.enabled === false)

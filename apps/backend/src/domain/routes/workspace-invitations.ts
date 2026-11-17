@@ -90,12 +90,8 @@ export async function handleWorkspaceInvitations(
   if (invitationId !== undefined) {
     if (request.method !== "POST")
       throw new HttpError(405, "Unsupported method");
-    const revoked = await env.SYNTILA_DB.prepare(
-      "UPDATE workspace_invitations SET status='revoked',updated_at=?3 WHERE id=?1 AND workspace_id=?2 AND status='pending'",
-    )
-      .bind(invitationId, workspaceId, now)
-      .run();
-    if (!revoked.meta?.changes)
+    const revoked = await dataOf(env).read.run`UPDATE workspace_invitations SET status='revoked',updated_at=${now} WHERE id=${invitationId} AND workspace_id=${workspaceId} AND status='pending'`;
+    if (!revoked)
       throw new HttpError(404, "Pending invitation not found");
     const invitee = await dataOf(env).read.row<{ email: string }>`SELECT email FROM workspace_invitations WHERE id = ${invitationId}`;
     await publishWorkspaceInvitationChanged(env, invitationId, [
@@ -323,23 +319,12 @@ export async function handlePersonGrantQuota(
   });
   const limit = body.maxConcurrentRequests;
   const runSeconds = body.maxRunSecondsPerMonth;
-  const updated = await env.SYNTILA_DB.prepare(
-    `UPDATE workspace_person_grants
-        SET max_concurrent_requests = COALESCE(?3, max_concurrent_requests),
-            max_run_seconds_per_month = CASE WHEN ?4 = 1 THEN ?5 ELSE max_run_seconds_per_month END,
-            updated_at = ?6
-      WHERE workspace_id=?1 AND user_id=?2 AND status='active'`,
-  )
-    .bind(
-      workspaceId,
-      personId,
-      limit ?? null,
-      runSeconds === undefined ? 0 : 1,
-      runSeconds ?? null,
-      new Date().toISOString(),
-    )
-    .run();
-  if (!updated.meta?.changes)
+  const updated = await dataOf(env).read.run`UPDATE workspace_person_grants
+        SET max_concurrent_requests = COALESCE(${limit ?? null}, max_concurrent_requests),
+            max_run_seconds_per_month = CASE WHEN ${runSeconds === undefined ? 0 : 1} = 1 THEN ${runSeconds ?? null} ELSE max_run_seconds_per_month END,
+            updated_at = ${new Date().toISOString()}
+      WHERE workspace_id=${workspaceId} AND user_id=${personId} AND status='active'`;
+  if (!updated)
     throw new HttpError(404, "Active grant not found");
   return json({
     ...(limit !== undefined ? { maxConcurrentRequests: limit } : {}),
@@ -361,12 +346,8 @@ export async function handleDeclineWorkspaceInvitation(
   const context = await securityContext(request, env, ctx);
   if (request.method !== "POST") throw new HttpError(405, "Unsupported method");
   const now = new Date().toISOString();
-  const result = await env.SYNTILA_DB.prepare(
-    "UPDATE workspace_invitations SET status='revoked',updated_at=?1 WHERE id=?2 AND status='pending' AND LOWER(email)=?3",
-  )
-    .bind(now, invitationId, context.user.email.trim().toLowerCase())
-    .run();
-  if (!result.meta?.changes) {
+  const result = await dataOf(env).read.run`UPDATE workspace_invitations SET status='revoked',updated_at=${now} WHERE id=${invitationId} AND status='pending' AND LOWER(email)=${context.user.email.trim().toLowerCase()}`;
+  if (!result) {
     // A retried decline: the invitation is already closed for this person.
     const closed = await dataOf(env).read.row`SELECT 1 AS found FROM workspace_invitations WHERE id=${invitationId} AND status='revoked' AND LOWER(email)=${context.user.email.trim().toLowerCase()}`;
     if (closed) return json({ status: "declined" });

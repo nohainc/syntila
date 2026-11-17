@@ -1,4 +1,4 @@
-import { dataOf } from "../platform/data.js";
+import { dataOf, type Query } from "../platform/data.js";
 import { cancelQueuedWorkRequest, startQueuedWorkRequest } from "./queries.js";
 /**
  * Durable Object coordinator for one Thread.
@@ -12,8 +12,8 @@ import { STEP_HARD_CAP_MS } from "@syntila/core";
 import { revokeAssignment } from "./assignment-revocation.js";
 import { createEventPublisher } from "./event-publisher.js";
 
-const UPDATE_THREAD_RUNTIME_LEASES_SET_EXPIRES_AT =
-  "UPDATE thread_runtime_leases SET expires_at = ?1 WHERE id = ?2 AND status = 'active'";
+const updateThreadRuntimeLeasesSetExpiresAtRun = (q: Query, p1: unknown, p2: unknown) =>
+  q.run`UPDATE thread_runtime_leases SET expires_at = ${p1} WHERE id = ${p2} AND status = 'active'`;
 
 export interface ThreadCoordinatorEnv {
   readonly SYNTILA_DB: D1Database;
@@ -390,11 +390,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
     if (!lease || !leaseIsCurrent(lease, Number(body.fencingToken)))
       return conflict("Stale or expired lease");
     const expiresAt = new Date(Date.now() + THREAD_LEASE_MS).toISOString();
-    await this.env.SYNTILA_DB.prepare(
-      UPDATE_THREAD_RUNTIME_LEASES_SET_EXPIRES_AT,
-    )
-      .bind(expiresAt, lease.id)
-      .run();
+    await updateThreadRuntimeLeasesSetExpiresAtRun(dataOf(this.env).read, expiresAt, lease.id);
     await this.state.storage.setAlarm(Date.parse(expiresAt));
     return json({
       leaseId: lease.id,
@@ -583,11 +579,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
       );
       if (decision.action === "extend") {
         const expiresAt = new Date(nowMs + THREAD_LEASE_MS).toISOString();
-        await this.env.SYNTILA_DB.prepare(
-          UPDATE_THREAD_RUNTIME_LEASES_SET_EXPIRES_AT,
-        )
-          .bind(expiresAt, lease.id)
-          .run();
+        await updateThreadRuntimeLeasesSetExpiresAtRun(dataOf(this.env).read, expiresAt, lease.id);
         console.warn(
           `Thread lease ${lease.id} expired while its Worker is alive; extended.`,
         );
@@ -714,13 +706,9 @@ export class ThreadExecutionCoordinator implements DurableObject {
   }
 
   private async requestRow(id: string): Promise<CoordinatorRequestRow | null> {
-    return this.env.SYNTILA_DB.prepare(
-      `SELECT id, thread_id AS threadId, mode, status,
-              primary_workspace_id AS primaryWorkspaceId,
-              created_at AS createdAt FROM work_requests WHERE id = ?1`,
-    )
-      .bind(id)
-      .first<CoordinatorRequestRow>();
+    return dataOf(this.env).read.row<CoordinatorRequestRow>`SELECT id, thread_id AS "threadId", mode, status,
+              primary_workspace_id AS "primaryWorkspaceId",
+              created_at AS "createdAt" FROM work_requests WHERE id = ${id}`;
   }
 
   private async currentLease(
@@ -728,15 +716,11 @@ export class ThreadExecutionCoordinator implements DurableObject {
     workRequestId: string,
     token: number,
   ) {
-    return this.env.SYNTILA_DB.prepare(
-      `SELECT l.id, l.thread_id AS threadId, l.work_request_id AS workRequestId,
-              workspace_id AS workspaceId,
-              fencing_token AS fencingToken, l.status, l.expires_at AS expiresAt
+    return dataOf(this.env).read.row<CoordinatorLeaseRow>`SELECT l.id, l.thread_id AS "threadId", l.work_request_id AS "workRequestId",
+              workspace_id AS "workspaceId",
+              fencing_token AS "fencingToken", l.status, l.expires_at AS "expiresAt"
        FROM thread_runtime_leases l
-       WHERE l.id = ?1 AND l.work_request_id = ?2 AND l.fencing_token = ?3`,
-    )
-      .bind(leaseId, workRequestId, token)
-      .first<CoordinatorLeaseRow>();
+       WHERE l.id = ${leaseId} AND l.work_request_id = ${workRequestId} AND l.fencing_token = ${token}`;
   }
 
   private async threadId(): Promise<string> {

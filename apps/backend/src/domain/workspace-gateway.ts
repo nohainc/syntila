@@ -1,4 +1,4 @@
-import { dataOf, queryOf , type Tx } from "../platform/data.js";
+import { dataOf, queryOf, type Tx } from "../platform/data.js";
 import { assignmentStatus } from "./queries.js";
 import {
   applyEngineLivenessReport,
@@ -596,11 +596,7 @@ export class WorkspaceGateway implements DurableObject {
       if (this.executionWorkspaceId)
         this.queueProjectionWrite(
           () =>
-            this.env.SYNTILA_DB.prepare(
-              "UPDATE execution_workspaces SET status = 'offline', updated_at = ?1 WHERE id = ?2",
-            )
-              .bind(now, this.executionWorkspaceId)
-              .run(),
+            dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'offline', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}`,
           "workspace_offline_projection_failed",
           { workspaceId: this.executionWorkspaceId, runtimeId },
         );
@@ -930,11 +926,7 @@ export class WorkspaceGateway implements DurableObject {
 
     this.queueProjectionWrite(
       () =>
-        this.env.SYNTILA_DB.prepare(
-          "UPDATE execution_workspaces SET status = 'online', updated_at = ?1 WHERE id = ?2",
-        )
-          .bind(now, runtimeIdentity.executionWorkspaceId)
-          .run(),
+        dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'online', updated_at = ${now} WHERE id = ${runtimeIdentity.executionWorkspaceId}`,
       "workspace_online_projection_failed",
       {
         requestId: correlationId,
@@ -1054,11 +1046,7 @@ export class WorkspaceGateway implements DurableObject {
     if (this.executionWorkspaceId) {
       this.queueProjectionWrite(
         () =>
-          this.env.SYNTILA_DB.prepare(
-            "UPDATE execution_workspaces SET status = 'offline', updated_at = ?1 WHERE id = ?2",
-          )
-            .bind(now, this.executionWorkspaceId)
-            .run(),
+          dataOf(this.env).read.run`UPDATE execution_workspaces SET status = 'offline', updated_at = ${now} WHERE id = ${this.executionWorkspaceId}`,
         "workspace_offline_projection_failed",
         {
           requestId: this.correlationId ?? undefined,

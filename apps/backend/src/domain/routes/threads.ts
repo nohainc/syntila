@@ -50,12 +50,12 @@ import {
   threadMetadata,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
-import { dataOf, type Tx } from "../../platform/data.js";
+import { dataOf, type Tx, type Query } from "../../platform/data.js";
 
-const SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID =
-  `SELECT id, space_id AS spaceId, user_id AS userId, role,
-            created_at AS createdAt, updated_at AS updatedAt
-       FROM space_memberships WHERE space_id = ?1 AND user_id = ?2`;
+const selectSpaceMembershipsBySpaceIdUserId = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
+  q.row<T>`SELECT id, space_id AS "spaceId", user_id AS "userId", role,
+            created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM space_memberships WHERE space_id = ${p1} AND user_id = ${p2}`;
 
 const SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO =
   `SELECT pc.status, ds.user_low_id AS userLowId, ds.user_high_id AS userHighId,
@@ -64,14 +64,14 @@ const SELECT_SUPPORT_SPACES_BY_SPACE_ID_JO =
      LEFT JOIN person_connections pc ON pc.user_low_id = ds.user_low_id AND pc.user_high_id = ds.user_high_id
      WHERE ds.space_id = ?1`;
 
-const SELECT_DISCUSSION_MESSAGES_BY_ID =
-  `SELECT dm.id, dm.thread_id AS threadId, dm.author_user_id AS authorUserId,
-      COALESCE(u.display_name, 'Member') AS authorName,
-      dm.body, dm.attachments_json AS attachmentsJson, dm.references_json AS referencesJson, dm.reply_to_json AS replyToJson, dm.edited_at AS editedAt, dm.created_at AS createdAt,
-            dm.event_type AS eventType, dm.kind, dm.work_request_id AS workRequestId, dm.worker_display_name AS workerDisplayName
+const selectDiscussionMessagesById = <T = Record<string, unknown>>(q: Query, p1: unknown) =>
+  q.row<T>`SELECT dm.id, dm.thread_id AS "threadId", dm.author_user_id AS "authorUserId",
+      COALESCE(u.display_name, 'Member') AS "authorName",
+      dm.body, dm.attachments_json AS "attachmentsJson", dm.references_json AS "referencesJson", dm.reply_to_json AS "replyToJson", dm.edited_at AS "editedAt", dm.created_at AS "createdAt",
+            dm.event_type AS "eventType", dm.kind, dm.work_request_id AS "workRequestId", dm.worker_display_name AS "workerDisplayName"
      FROM discussion_messages dm
      LEFT JOIN users u ON u.id = dm.author_user_id
-     WHERE dm.id = ?1`;
+     WHERE dm.id = ${p1}`;
 
 export async function handleListSpaceThreads(
   request: Request,
@@ -154,11 +154,7 @@ export async function handleListSpaceThreads(
     .bind(spaceId, context.userId)
     .all<Record<string, unknown>>();
 
-  const membership = await env.SYNTILA_DB.prepare(
-    SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID,
-  )
-    .bind(spaceId, context.userId)
-    .first<SpaceMembership>();
+  const membership = await selectSpaceMembershipsBySpaceIdUserId<SpaceMembership>(dataOf(env).read, spaceId, context.userId);
   const policy = await loadSpacePermissions(env, context.userId, spaceId);
   const effectiveMembership = membership
     ? { ...membership, permissions: policy.rights }
@@ -454,11 +450,7 @@ export async function handleUpdateThread(
       );
       return JSON.stringify(mergeMetadata(current, metadataPatch ?? {}));
     });
-  const member = await env.SYNTILA_DB.prepare(
-    SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID,
-  )
-    .bind(thread.spaceId, context.userId)
-    .first<SpaceMembership>();
+  const member = await selectSpaceMembershipsBySpaceIdUserId<SpaceMembership>(dataOf(env).read, thread.spaceId, context.userId);
   const policy = await loadSpacePermissions(
     env,
     context.userId,
@@ -784,11 +776,7 @@ export async function handleGetDiscussionMessage(
   messageId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const message = await env.SYNTILA_DB.prepare(
-    SELECT_DISCUSSION_MESSAGES_BY_ID,
-  )
-    .bind(messageId)
-    .first<Record<string, unknown>>();
+  const message = await selectDiscussionMessagesById<Record<string, unknown>>(dataOf(env).read, messageId);
   if (!message) throw new HttpError(404, "Discussion message not found");
   await authorizeThreadAccess(
     request,
@@ -811,11 +799,7 @@ export async function handleEditDiscussionMessage(
   messageId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const message = await env.SYNTILA_DB.prepare(
-    SELECT_DISCUSSION_MESSAGES_BY_ID,
-  )
-    .bind(messageId)
-    .first<Record<string, unknown>>();
+  const message = await selectDiscussionMessagesById<Record<string, unknown>>(dataOf(env).read, messageId);
   if (!message) throw new HttpError(404, "Discussion message not found");
   const { context, spaceId } = await authorizeThreadAccess(
     request,

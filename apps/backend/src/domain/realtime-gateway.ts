@@ -1,4 +1,4 @@
-import { dataOf, queryOf } from "../platform/data.js";
+import { dataOf, queryOf, type Query } from "../platform/data.js";
 import { userAccount } from "./queries.js";
 import {
   isReplayableRealtimeEvent,
@@ -20,8 +20,8 @@ import {
   type RealtimeQueueEnqueueResult,
 } from "./realtime-queue.js";
 
-const SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID =
-  "SELECT 1 AS owner FROM execution_workspaces WHERE id = ?1 AND owner_user_id = ?2 AND status <> 'revoked'";
+const selectExecutionWorkspacesByIdOwnerUserId = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
+  q.row<T>`SELECT 1 AS owner FROM execution_workspaces WHERE id = ${p1} AND owner_user_id = ${p2} AND status <> 'revoked'`;
 
 export interface RealtimeScope {
   kind?: "user" | "space" | "thread" | "run" | "execution_workspace";
@@ -306,12 +306,7 @@ export async function authorizeRealtimeScope(
       : { allowed: false, reason: "thread_access_denied" };
   }
   if (scope.kind === "execution_workspace") {
-    const owner = await db
-      .prepare(
-        SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
-      )
-      .bind(scope.executionWorkspaceId, userId)
-      .first<{ owner: number }>();
+    const owner = await selectExecutionWorkspacesByIdOwnerUserId<{ owner: number }>(queryOf(db), scope.executionWorkspaceId, userId);
     return owner
       ? { allowed: true }
       : { allowed: false, reason: "execution_workspace_access_denied" };
@@ -324,12 +319,7 @@ export async function authorizeRealtimeScope(
       ? { allowed: true }
       : { allowed: false, reason: `${scope.kind}_access_denied` };
   }
-  const owner = await db
-    .prepare(
-      SELECT_EXECUTION_WORKSPACES_BY_ID_OWNER_USER_ID,
-    )
-    .bind(scope.workspaceId, userId)
-    .first<{ owner: number }>();
+  const owner = await selectExecutionWorkspacesByIdOwnerUserId<{ owner: number }>(queryOf(db), scope.workspaceId, userId);
   if (!owner)
     return { allowed: false, reason: "execution_workspace_access_denied" };
 

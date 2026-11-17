@@ -2,6 +2,7 @@ vi.mock("../../src/domain/collaboration-events.js", () => ({
   publishCollaborationEvent: vi.fn(async () => {}),
 }));
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
+import { withSql } from "./helpers/fake-sql";
 
 const state = vi.hoisted(() => ({ status: "active", owner: true }));
 vi.mock("../../src/domain/routes/handlers.js", async (importOriginal) => ({
@@ -30,7 +31,7 @@ describe("Workspace grant access editing", () => {
   async function update(permissions: unknown) {
     const writes: unknown[][] = [];
     const env = {
-      SYNTILA_DB: {
+      SYNTILA_DB: withSql({
         prepare: () => ({
           bind(...values: unknown[]) {
             writes.push(values);
@@ -38,7 +39,7 @@ describe("Workspace grant access editing", () => {
           },
           run: async () => ({ meta: { changes: 1 } }),
         }),
-      },
+      }),
     } as never;
     const result = handleUpdateWorkspaceSpaceGrant(
       new Request("https://cloud.test/api/workspace-space-grants/grant-1", {
@@ -58,7 +59,7 @@ describe("Workspace grant access editing", () => {
       "repository:write",
     ]);
     expect((await result).status).toBe(200);
-    expect(writes[0]?.[5]).toBe('["repository:read","repository:write"]');
+    expect(writes[0]?.[3]).toBe('["repository:read","repository:write"]');
   });
   it("rejects invalid permissions without a write", async () => {
     state.status = "active";

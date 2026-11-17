@@ -6,13 +6,13 @@ import { PluginManifestSchema } from "@syntila/workspace-runtime-protocol";
 import { pluginManifestDigest } from "../plugin-manifest-digest.js";
 import { HttpError, json, securityContext } from "./http-security.js";
 import type { SecurityEnv } from "./http-security.js";
-import { dataOf, queryOf } from "../../platform/data.js";
+import { dataOf, queryOf, type Query } from "../../platform/data.js";
 
-const SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN =
-  "SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ?1 AND version = ?2";
+const selectAccountWorkerPluginVersionsByPlugin = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
+  q.row<T>`SELECT manifest_digest AS digest FROM account_worker_plugin_versions WHERE plugin_ref = ${p1} AND version = ${p2}`;
 
-const SELECT_ACCOUNT_WORKER_PLUGINS_BY_PLUGIN_REF =
-  "SELECT 1 AS ok FROM account_worker_plugins WHERE plugin_ref = ?1 AND owner_user_id = ?2";
+const selectAccountWorkerPluginsByPluginRef = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
+  q.row<T>`SELECT 1 AS ok FROM account_worker_plugins WHERE plugin_ref = ${p1} AND owner_user_id = ${p2}`;
 
 /**
  * Account library and Workspace enablement for custom Worker plugins
@@ -242,12 +242,7 @@ export async function handlePluginLibrary(
     ]);
   }
 
-  const version = await db
-    .prepare(
-      SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN,
-    )
-    .bind(ref, manifest.version)
-    .first<{ digest: string }>();
+  const version = await selectAccountWorkerPluginVersionsByPlugin<{ digest: string }>(queryOf(db), ref, manifest.version);
   if (version && version.digest !== digest)
     throw new PluginRouteError(
       409,
@@ -289,12 +284,7 @@ async function removeFromLibrary(
   pluginRef: string,
 ): Promise<Response> {
   const db = env.SYNTILA_DB;
-  const owned = await db
-    .prepare(
-      SELECT_ACCOUNT_WORKER_PLUGINS_BY_PLUGIN_REF,
-    )
-    .bind(pluginRef, userId)
-    .first();
+  const owned = await selectAccountWorkerPluginsByPluginRef(queryOf(db), pluginRef, userId);
   if (!owned)
     throw new PluginRouteError(404, "plugin_not_found", "Plugin not found");
   const enabled = await queryOf(db).row`SELECT 1 AS ok FROM workspace_worker_plugin_enablements WHERE plugin_ref = ${pluginRef} AND intent = 'enabled'`;
@@ -355,12 +345,7 @@ export async function handleWorkspacePluginPin(
   const ref = requireRef(pluginRef);
   const workspace = await ownsActiveWorkspace(dataOf(env).read, workspaceId, userId);
   if (!workspace) throw new HttpError(404, "Workspace not found");
-  const owned = await db
-    .prepare(
-      SELECT_ACCOUNT_WORKER_PLUGINS_BY_PLUGIN_REF,
-    )
-    .bind(ref, userId)
-    .first();
+  const owned = await selectAccountWorkerPluginsByPluginRef(queryOf(db), ref, userId);
   if (!owned)
     throw new PluginRouteError(404, "plugin_not_found", "Plugin not found");
 
@@ -388,12 +373,7 @@ export async function handleWorkspacePluginPin(
     typeof body.shareable !== "boolean"
   )
     throw new PluginRouteError(400, "invalid_request", "Invalid enablement");
-  const version = await db
-    .prepare(
-      SELECT_ACCOUNT_WORKER_PLUGIN_VERSIONS_BY_PLUGIN,
-    )
-    .bind(ref, body.version)
-    .first<{ digest: string }>();
+  const version = await selectAccountWorkerPluginVersionsByPlugin<{ digest: string }>(queryOf(db), ref, body.version);
   if (!version)
     throw new PluginRouteError(
       404,

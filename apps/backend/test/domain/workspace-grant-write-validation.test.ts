@@ -61,6 +61,10 @@ function environment(
     if (strings.join("?").includes("FROM space_memberships")) {
       if (membershipError) throw membershipError;
     }
+    if (/^\s*INSERT/i.test(t)) {
+      writes.push(t);
+      return Object.assign([], { count: 1 });
+    }
     return []; // no membership
   }) as any);
   return { env: { SYNTILA_DB: db, SYNTILA_DATA: data } as never, writes };

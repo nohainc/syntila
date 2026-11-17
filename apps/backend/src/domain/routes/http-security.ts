@@ -1,4 +1,4 @@
-import { dataOf } from "../../platform/data.js";
+import { dataOf, type Query } from "../../platform/data.js";
 import {
   hasProfileLabPermission,
   isProfileLabOwner,
@@ -21,8 +21,8 @@ import {
   type SecurityContext,
 } from "@syntila/security";
 
-const SELECT_RUNS_BY_ID =
-  "SELECT workflow_instance_id FROM runs WHERE id = ?1";
+const selectRunsById = <T = Record<string, unknown>>(q: Query, p1: unknown) =>
+  q.row<T>`SELECT workflow_instance_id FROM runs WHERE id = ${p1}`;
 
 /** Largest JSON request body any handler buffers (notes are 200 000 characters; messages and Work inputs are smaller). */
 export const JSON_BODY_LIMIT = 2 * 1024 * 1024;
@@ -138,21 +138,13 @@ export async function resolveWorkflowInstanceId(
   runId: string,
   idempotencyKey?: string,
 ): Promise<string> {
-  const run = await env.SYNTILA_DB.prepare(
-    SELECT_RUNS_BY_ID,
-  )
-    .bind(runId)
-    .first<{ workflow_instance_id?: string | null }>();
+  const run = await selectRunsById<{ workflow_instance_id?: string | null }>(dataOf(env).read, runId);
   if (run?.workflow_instance_id) return run.workflow_instance_id;
   if (!idempotencyKey) return workflowInstanceId(runId);
   const candidate = workflowInstanceId(idempotencyKey);
   const now = new Date().toISOString();
   await dataOf(env).read.run`UPDATE runs SET workflow_instance_id = COALESCE(workflow_instance_id, ${candidate}), updated_at = ${now} WHERE id = ${runId}`;
-  const stored = await env.SYNTILA_DB.prepare(
-    SELECT_RUNS_BY_ID,
-  )
-    .bind(runId)
-    .first<{ workflow_instance_id?: string | null }>();
+  const stored = await selectRunsById<{ workflow_instance_id?: string | null }>(dataOf(env).read, runId);
   return stored?.workflow_instance_id ?? candidate;
 }
 

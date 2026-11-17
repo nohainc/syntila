@@ -1408,27 +1408,22 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           };
         }
         const readAssignment = () =>
-          db
-            .prepare(
-              `SELECT wa.id AS assignmentId, wa.status, wa.output_json AS outputJson,
-                      wa.error_json AS errorJson, wa.workspace_worker_id AS workerId,
-                      wa.worker_type_id AS workerTypeId, wa.engine_version AS engineVersion,
-                      wa.model, wa.permission_snapshot_json AS permissionSnapshotJson,
-                      wa.attempt_id AS attemptId,
-                      wa.execution_workspace_id AS workspaceId,
-                      wa.created_at AS createdAt, wa.updated_at AS updatedAt,
-                      wa.queue_wait_timeout_ms AS queueWaitTimeoutMs,
-                      wa.cloud_queue_reason AS cloudQueueReason,
-                      wa.cloud_queue_since AS cloudQueueSince,
-                      wa.start_permit_issued_at AS permitIssuedAt,
-                      wa.start_permit_required AS permitRequired,
-                      wa.dispatched_at AS dispatchedAt,
-                      wa.acknowledged_at AS acknowledgedAt,
-                      wa.running_at AS runningAt
-                 FROM worker_assignments wa WHERE wa.id = ?1`,
-            )
-            .bind(assignment.assignmentId)
-            .first<AssignmentRow>();
+          queryOf(db).row<AssignmentRow>`SELECT wa.id AS "assignmentId", wa.status, wa.output_json AS "outputJson",
+                      wa.error_json::text AS "errorJson", wa.workspace_worker_id AS "workerId",
+                      wa.worker_type_id AS "workerTypeId", wa.engine_version AS "engineVersion",
+                      wa.model, wa.permission_snapshot_json AS "permissionSnapshotJson",
+                      wa.attempt_id AS "attemptId",
+                      wa.execution_workspace_id AS "workspaceId",
+                      wa.created_at AS "createdAt", wa.updated_at AS "updatedAt",
+                      wa.queue_wait_timeout_ms AS "queueWaitTimeoutMs",
+                      wa.cloud_queue_reason AS "cloudQueueReason",
+                      wa.cloud_queue_since AS "cloudQueueSince",
+                      wa.start_permit_issued_at AS "permitIssuedAt",
+                      wa.start_permit_required AS "permitRequired",
+                      wa.dispatched_at AS "dispatchedAt",
+                      wa.acknowledged_at AS "acknowledgedAt",
+                      wa.running_at AS "runningAt"
+                 FROM worker_assignments wa WHERE wa.id = ${assignment.assignmentId}`;
         let terminal: AssignmentRow | null = null;
         // Status the assignment had when Cloud began revoking it. `running`
         // means the provider may have acted, so the step is not replayed.

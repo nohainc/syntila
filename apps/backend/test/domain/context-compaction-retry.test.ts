@@ -61,7 +61,7 @@ function database(options: {
             profile_json: options.profileJson,
           }
         : null;
-    else if (sql.includes("policy_snapshot_json AS policySnapshotJson"))
+    else if (sql.includes('policy_snapshot_json AS "policySnapshotJson"'))
       row = options.latestRunPolicy
         ? { policySnapshotJson: JSON.stringify(options.latestRunPolicy) }
         : null;

@@ -88,14 +88,10 @@ export async function loadWorkspaceSpaceGrant(
   env: SecurityEnv,
   grantId: string,
 ): Promise<Record<string, unknown> | null> {
-  return env.SYNTILA_DB.prepare(
-    `SELECT g.*, ew.name AS workspace_name, ew.owner_user_id
+  return dataOf(env).read.row<Record<string, unknown>>`SELECT g.*, ew.name AS workspace_name, ew.owner_user_id
      FROM workspace_space_grants g
      JOIN execution_workspaces ew ON ew.id = g.workspace_id
-     WHERE g.id = ?1`,
-  )
-    .bind(grantId)
-    .first<Record<string, unknown>>();
+     WHERE g.id = ${grantId}`;
 }
 
 export function grantStringArray(value: unknown, field: string): string {
@@ -268,30 +264,15 @@ export async function createWorkspaceSpaceGrant(
   const concurrency = JSON.stringify(concurrencyValue);
   const expiresAt = grantExpiry(body.expiresAt, new Date(now));
   const id = `workspace-space-grant-${crypto.randomUUID().slice(0, 16)}`;
-  const inserted = await env.SYNTILA_DB.prepare(
-    `INSERT INTO workspace_space_grants
+  const inserted = await dataOf(env).read.run`INSERT INTO workspace_space_grants
        (id, space_id, workspace_id, granted_by_user_id, status,
         allowed_worker_ids_json, allowed_permissions_json,
         network_policy_json, concurrency_json,
         expires_at, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, 'active', ?5, ?6, ?7, ?8, ?9, ?10, ?10)
-     ON CONFLICT DO NOTHING`,
-  )
-    .bind(
-      id,
-      spaceId,
-      workspaceId,
-      context.userId,
-      allowedWorkerIds,
-      allowedPermissions,
-      networkPolicy,
-      concurrency,
-      expiresAt,
-      now,
-    )
-    .run();
+     VALUES (${id}, ${spaceId}, ${workspaceId}, ${context.userId}, 'active', ${allowedWorkerIds}, ${allowedPermissions}, ${networkPolicy}, ${concurrency}, ${expiresAt}, ${now}, ${now})
+     ON CONFLICT DO NOTHING`;
   // A parallel request connected the same Workspace first.
-  if (inserted?.meta?.changes === 0)
+  if (inserted === 0)
     throw new HttpError(409, "This Workspace is already connected to the Space");
   await recordAudit(
     env,

@@ -10,10 +10,10 @@ import {
   authorizeThreadAccessAsUser,
 } from "./thread-policy.js";
 import { createWorkRequestForUser } from "./work-creation.js";
-import { dataOf, queryOf } from "../../platform/data.js";
+import { dataOf, queryOf, type Query } from "../../platform/data.js";
 
-const SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID =
-  "SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ?1";
+const selectThreadRequestQueueByThreadId = <T = Record<string, unknown>>(q: Query, p1: unknown) =>
+  q.row<T>`SELECT COUNT(*) AS n FROM thread_request_queue WHERE thread_id = ${p1}`;
 
 /**
  * Thread request queue: requests members send while earlier ones are still
@@ -94,27 +94,19 @@ function requestBody(value: unknown): Record<string, unknown> {
 
 async function loadQueue(env: SecurityEnv, threadId: string) {
   const [items, state] = await Promise.all([
-    env.SYNTILA_DB.prepare(
-      `SELECT q.id, q.thread_id AS threadId, q.author_user_id AS authorUserId,
-              u.display_name AS authorName, q.request_json AS requestJson,
-              q.position, q.status, q.created_at AS createdAt,
-              q.updated_at AS updatedAt
+    dataOf(env).read.rows<QueueRow>`SELECT q.id, q.thread_id AS "threadId", q.author_user_id AS "authorUserId",
+              u.display_name AS "authorName", q.request_json AS "requestJson",
+              q.position, q.status, q.created_at AS "createdAt",
+              q.updated_at AS "updatedAt"
          FROM thread_request_queue q
          LEFT JOIN users u ON u.id = q.author_user_id
-        WHERE q.thread_id = ?1
+        WHERE q.thread_id = ${threadId}
         ORDER BY q.position, q.created_at, q.id`,
-    )
-      .bind(threadId)
-      .all<QueueRow>(),
-    env.SYNTILA_DB.prepare(
-      `SELECT paused_reason AS pausedReason, paused_by_user_id AS pausedByUserId,
-              failure_message AS failureMessage
-         FROM thread_request_queue_state WHERE thread_id = ?1`,
-    )
-      .bind(threadId)
-      .first<StateRow>(),
+    dataOf(env).read.row<StateRow>`SELECT paused_reason AS "pausedReason", paused_by_user_id AS "pausedByUserId",
+              failure_message AS "failureMessage"
+         FROM thread_request_queue_state WHERE thread_id = ${threadId}`,
   ]);
-  return { items: items.results ?? [], state: state ?? null };
+  return { items, state: state ?? null };
 }
 
 function queueResponse(
@@ -302,14 +294,9 @@ export async function advanceThreadQueue(
     .bind(threadId)
     .first();
   if (active) return;
-  const claimed = await db
-    .prepare(
-      `UPDATE thread_request_queue SET status = 'sending', updated_at = ?1
-        WHERE id = ?2 AND status = 'queued'`,
-    )
-    .bind(new Date().toISOString(), head.id)
-    .run();
-  if (!claimed.meta?.changes) return;
+  const claimed = await queryOf(db).run`UPDATE thread_request_queue SET status = 'sending', updated_at = ${new Date().toISOString()}
+        WHERE id = ${head.id} AND status = 'queued'`;
+  if (!claimed) return;
 
   let failure: string | null = null;
   let spaceId: string | null = null;
@@ -450,10 +437,7 @@ export async function handleThreadRequestQueue(
       spaceId,
       String(body.workflowId),
     );
-    const last = await db
-      .prepare(SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID)
-      .bind(threadId)
-      .first<{ n: number }>();
+    const last = await selectThreadRequestQueueByThreadId<{ n: number }>(queryOf(db), threadId);
     // A pause belongs to the requests it held; a new queue starts running.
     if (!last?.n) await resume(env, threadId);
     // People's requests run between implementation phases instead of after
@@ -540,12 +524,7 @@ export async function handleThreadRequestQueue(
       );
     const removed = await queryOf(db).row<{ id: string }>`DELETE FROM thread_request_queue WHERE id = ${itemId} AND status = 'queued' RETURNING id`;
     if (!removed) await lostQueuedItem(db, itemId);
-    const left = await db
-      .prepare(
-        SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID,
-      )
-      .bind(threadId)
-      .first<{ n: number }>();
+    const left = await selectThreadRequestQueueByThreadId<{ n: number }>(queryOf(db), threadId);
     if (!left?.n) await resume(env, threadId);
   } else if (method === "POST" && action === "stop-phases") {
     const planId = existingRequest.planWorkRequestId;
@@ -560,12 +539,7 @@ export async function handleThreadRequestQueue(
       // D1 rejects LIKE patterns over 50 bytes, which a plan id exceeds.
       .bind(threadId, context.userId, planId)
       .run();
-    const left = await db
-      .prepare(
-        SELECT_THREAD_REQUEST_QUEUE_BY_THREAD_ID,
-      )
-      .bind(threadId)
-      .first<{ n: number }>();
+    const left = await selectThreadRequestQueueByThreadId<{ n: number }>(queryOf(db), threadId);
     if (!left?.n) await resume(env, threadId);
   } else if (method === "POST" && action === "send-now") {
     if (existingRequest.isPhased) {

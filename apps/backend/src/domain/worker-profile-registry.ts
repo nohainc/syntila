@@ -185,15 +185,10 @@ async function loadCurrentWorkerProfileRow(
   db: D1Database,
   workerTypeId: string,
 ): Promise<CurrentWorkerProfileRow | null> {
-  return db
-    .prepare(
-      `SELECT worker_type_id, schema_version, profile_json, revision,
+  return queryOf(db).row<CurrentWorkerProfileRow>`SELECT worker_type_id, schema_version, profile_json, revision,
               digest, updated_by_user_id, updated_at
          FROM worker_profiles
-        WHERE worker_type_id = ?1`,
-    )
-    .bind(workerTypeId)
-    .first<CurrentWorkerProfileRow>();
+        WHERE worker_type_id = ${workerTypeId}`;
 }
 
 /** Whether the Worker's current Profile can compact its native session. */
@@ -382,24 +377,12 @@ async function persistWorkerProfileSnapshot(args: {
         "Worker Profile revision is stale",
       );
     }
-    const result = await db
-      .prepare(
-        `INSERT INTO worker_profiles
+    const result = await queryOf(db).run`INSERT INTO worker_profiles
            (worker_type_id, schema_version, profile_json, revision, digest,
             updated_by_user_id, updated_at)
-         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6)
-         ON CONFLICT(worker_type_id) DO NOTHING`,
-      )
-      .bind(
-        args.workerTypeId,
-        args.profile.schemaVersion,
-        args.canonicalJson,
-        args.digest,
-        args.actorUserId,
-        args.updatedAt,
-      )
-      .run();
-    if (Number(result.meta?.changes ?? 0) !== 1) {
+         VALUES (${args.workerTypeId}, ${args.profile.schemaVersion}, ${args.canonicalJson}, 1, ${args.digest}, ${args.actorUserId}, ${args.updatedAt})
+         ON CONFLICT(worker_type_id) DO NOTHING`;
+    if (Number(result) !== 1) {
       throw new ToolProfileRegistryError(
         409,
         "Worker Profile revision is stale",

@@ -22,7 +22,7 @@ const countFiles = (list: string[], pattern: RegExp) =>
   list.filter((f) => pattern.test(readFileSync(f, "utf8"))).length;
 
 const LIMITS = {
-  prepareCalls: 227,
+  prepareCalls: 136,
   batchCalls: 48,
   d1DatabaseReferences: 115,
   mockBasedTestFiles: 47, // test files that mention prepare but use no PostgreSQL helper

@@ -112,13 +112,8 @@ async function readRow(
   db: D1Database,
   assignmentId: string,
 ): Promise<RevocationRow | null> {
-  return db
-    .prepare(
-      `SELECT status, task_id, attempt_id, error_json::text AS error_json
-         FROM worker_assignments WHERE id = ?1`,
-    )
-    .bind(assignmentId)
-    .first<RevocationRow>();
+  return queryOf(db).row<RevocationRow>`SELECT status, task_id, attempt_id, error_json::text AS error_json
+         FROM worker_assignments WHERE id = ${assignmentId}`;
 }
 
 function failureFor(intent: RevocationIntent): AssignmentFailurePayload {

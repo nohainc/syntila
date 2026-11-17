@@ -65,11 +65,11 @@ import {
   presentExecution,
   type ExecutionPhase,
 } from "../execution-phase.js";
-import { dataOf, queryOf, type Tx } from "../../platform/data.js";
+import { dataOf, queryOf, type Tx, type Query } from "../../platform/data.js";
 
-const SELECT_RUNS_BY_WORK_REQUEST_ID =
-  `SELECT policy_snapshot_json AS policySnapshotJson
-       FROM runs WHERE work_request_id = ?1
+const selectRunsByWorkRequestId = <T = Record<string, unknown>>(q: Query, p1: unknown) =>
+  q.row<T>`SELECT policy_snapshot_json AS "policySnapshotJson"
+       FROM runs WHERE work_request_id = ${p1}
       ORDER BY created_at DESC, id DESC LIMIT 1`;
 
 function historicalWorkflowName(
@@ -568,11 +568,7 @@ async function contextCompactionUnavailable(
     !(await workerProfileSupportsCompaction(env.SYNTILA_DB, args.workerTypeId))
   )
     return "This Worker cannot compact its session. Clear AI History instead.";
-  const latestRun = await env.SYNTILA_DB.prepare(
-    SELECT_RUNS_BY_WORK_REQUEST_ID,
-  )
-    .bind(args.workRequestId)
-    .first<{ policySnapshotJson: string | null }>();
+  const latestRun = await selectRunsByWorkRequestId<{ policySnapshotJson: string | null }>(dataOf(env).read, args.workRequestId);
   const manualRetry = parseJson<{
     manualRetry?: { stepKind?: unknown; contextResolution?: unknown };
   }>(latestRun?.policySnapshotJson, {}).manualRetry;
@@ -628,11 +624,7 @@ export async function handleGetWorkRequest(
     String(row.workflowSnapshotJson),
     {},
   );
-  const latestRun = await env.SYNTILA_DB.prepare(
-    SELECT_RUNS_BY_WORK_REQUEST_ID,
-  )
-    .bind(workRequestId)
-    .first<{ policySnapshotJson: string | null }>();
+  const latestRun = await selectRunsByWorkRequestId<{ policySnapshotJson: string | null }>(dataOf(env).read, workRequestId);
   const latestRunPolicy = parseJson<Record<string, unknown>>(
     latestRun?.policySnapshotJson,
     {},

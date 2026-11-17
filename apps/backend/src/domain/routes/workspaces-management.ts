@@ -261,12 +261,8 @@ export async function handleRevokeWorkspace(
   const now = new Date().toISOString();
   const alreadyRevoked = workspace.status === "revoked";
   if (!alreadyRevoked) {
-    const workspaceUpdate = await env.SYNTILA_DB.prepare(
-      "UPDATE execution_workspaces SET status = 'revoked', updated_at = ?1 WHERE id = ?2 AND owner_user_id = ?3",
-    )
-      .bind(now, workspaceId, context.userId)
-      .run();
-    if (!workspaceUpdate.success || workspaceUpdate.meta.changes === 0) {
+    const workspaceUpdate = await dataOf(env).read.run`UPDATE execution_workspaces SET status = 'revoked', updated_at = ${now} WHERE id = ${workspaceId} AND owner_user_id = ${context.userId}`;
+    if (workspaceUpdate === 0) {
       throw new HttpError(404, "Workspace not found");
     }
   }

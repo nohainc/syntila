@@ -55,7 +55,7 @@ import {
   securityEnv,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
-import { dataOf, type Tx } from "../../platform/data.js";
+import { dataOf, type Tx, type Query } from "../../platform/data.js";
 
 type Runner = Pick<Tx, "run">;
 /** Stores one JSON value in the Space settings (a member or invitation permission snapshot). */
@@ -65,13 +65,13 @@ const putSpaceSetting = (q: Runner, spaceId: string, path: string, value: unknow
 const dropSpaceSetting = (q: Runner, spaceId: string, path: string) =>
   q.run`UPDATE spaces SET settings_json = syntila_json_remove(settings_json, ${path}) WHERE id = ${spaceId}`;
 
-const SELECT_DIRECT_SPACES_BY_SPACE_ID =
-  `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl,
-                  state.personal_name AS personalName
+const selectDirectSpacesBySpaceId = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
+  q.row<T>`SELECT u.id, u.display_name AS "displayName", u.avatar_url AS "avatarUrl",
+                  state.personal_name AS "personalName"
        FROM direct_spaces ds
-       JOIN users u ON u.id = (CASE WHEN ds.user_low_id = ?1 THEN ds.user_high_id ELSE ds.user_low_id END)
-       LEFT JOIN direct_space_user_state state ON state.space_id = ds.space_id AND state.user_id = ?1
-       WHERE ds.space_id = ?2`;
+       JOIN users u ON u.id = (CASE WHEN ds.user_low_id = ${p1} THEN ds.user_high_id ELSE ds.user_low_id END)
+       LEFT JOIN direct_space_user_state state ON state.space_id = ds.space_id AND state.user_id = ${p1}
+       WHERE ds.space_id = ${p2}`;
 
 /** A NOT NULL violation of one column (SQLSTATE 23502), as the driver or the adapter reports it. */
 function isNullViolation(error: unknown, column: string): boolean {
@@ -597,16 +597,12 @@ export async function handleUpdateSpace(
     let dynamicName = existing.name;
     let avatarUrl: string | null = null;
     const peer = isDirect
-      ? await env.SYNTILA_DB.prepare(
-          SELECT_DIRECT_SPACES_BY_SPACE_ID,
-        )
-          .bind(context.userId, spaceId)
-          .first<{
+      ? await selectDirectSpacesBySpaceId<{
             id: string;
             displayName: string;
             avatarUrl: string | null;
             personalName: string | null;
-          }>()
+          }>(dataOf(env).read, context.userId, spaceId)
       : null;
     if (peer) {
       dynamicName = peer.personalName ?? peer.displayName;
@@ -777,16 +773,12 @@ export async function handleUpdateSpace(
   let personalName: string | null = null;
   let originalName: string | null = null;
   if (existing.kind === "direct") {
-    const peer = await env.SYNTILA_DB.prepare(
-      SELECT_DIRECT_SPACES_BY_SPACE_ID,
-    )
-      .bind(context.userId, spaceId)
-      .first<{
+    const peer = await selectDirectSpacesBySpaceId<{
         id: string;
         displayName: string;
         avatarUrl: string | null;
         personalName: string | null;
-      }>();
+      }>(dataOf(env).read, context.userId, spaceId);
     if (peer) {
       personalName = peer.personalName;
       originalName = peer.displayName;

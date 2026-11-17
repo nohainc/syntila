@@ -109,14 +109,10 @@ export async function handleUpdateWorkspaceSpaceGrant(
   if (existingStatus !== "active" && existingStatus !== "suspended") {
     throw new HttpError(409, "Terminal Workspace Grants cannot be updated");
   }
-  const updatedRow = await env.SYNTILA_DB.prepare(
-    `UPDATE workspace_space_grants SET
-       status = ?1, expires_at = ?2, updated_at = ?3, allowed_permissions_json = ?6
-     WHERE id = ?4 AND status = ?5`,
-  )
-    .bind(status, expiresAt, now, grantId, existingStatus, permissions)
-    .run();
-  if (updatedRow.meta?.changes === 0) {
+  const updatedRow = await dataOf(env).read.run`UPDATE workspace_space_grants SET
+       status = ${status}, expires_at = ${expiresAt}, updated_at = ${now}, allowed_permissions_json = ${permissions}
+     WHERE id = ${grantId} AND status = ${existingStatus}`;
+  if (updatedRow === 0) {
     throw new HttpError(409, "Workspace Grant changed concurrently");
   }
   await recordAudit(
@@ -174,12 +170,8 @@ export async function handleRevokeWorkspaceSpaceGrant(
     throw new HttpError(409, "Terminal Workspace Grants cannot be revoked");
   }
   const now = new Date().toISOString();
-  const revoked = await env.SYNTILA_DB.prepare(
-    "UPDATE workspace_space_grants SET status = 'revoked', updated_at = ?1 WHERE id = ?2 AND status = ?3",
-  )
-    .bind(now, grantId, existing.status)
-    .run();
-  if (revoked.meta?.changes === 0) {
+  const revoked = await dataOf(env).read.run`UPDATE workspace_space_grants SET status = 'revoked', updated_at = ${now} WHERE id = ${grantId} AND status = ${existing.status}`;
+  if (revoked === 0) {
     const current = await loadWorkspaceSpaceGrant(env, grantId);
     if (current?.status !== "revoked") {
       throw new HttpError(409, "Workspace Grant changed concurrently");

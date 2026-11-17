@@ -58,17 +58,14 @@ export async function handleInternal(request: Request, env: Env, verifier: Token
   const email = typeof body.email === "string" && body.email.includes("@") ? body.email.trim().toLowerCase() : null;
   const name = typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, 200) : null;
   const image = typeof body.image === "string" ? body.image.slice(0, 2048) : body.image === null ? null : undefined;
-  const result = await env.SYNTILA_DB.prepare(
-    `UPDATE users SET email = COALESCE(?2, email), display_name = COALESCE(?3, display_name),
-       avatar_url = CASE WHEN ?4::int = 1 THEN ?5 ELSE avatar_url END,
-       email_verified = COALESCE(?6::int::boolean, email_verified),
-       updated_at = ?7
-     WHERE id = ?1 AND status <> 'deactivated'`,
-  ).bind(userId, email, name, image !== undefined ? 1 : 0, image ?? null,
-    typeof body.emailVerified === "boolean" ? (body.emailVerified ? 1 : 0) : null, now).run();
+  const result = await dataOf(env).read.run`UPDATE users SET email = COALESCE(${email}, email), display_name = COALESCE(${name}, display_name),
+       avatar_url = CASE WHEN ${image !== undefined ? 1 : 0}::int = 1 THEN ${image ?? null} ELSE avatar_url END,
+       email_verified = COALESCE(${typeof body.emailVerified === "boolean" ? (body.emailVerified ? 1 : 0) : null}::int::boolean, email_verified),
+       updated_at = ${now}
+     WHERE id = ${userId} AND status <> 'deactivated'`;
   // A user who never called the backend has no row yet: nothing to sync.
-  if (Number(result.meta?.changes ?? 0) > 0) await handleAccountProfileUpdated(env, userId);
-  return json({ ok: true, updated: Number(result.meta?.changes ?? 0) > 0 });
+  if (Number(result) > 0) await handleAccountProfileUpdated(env, userId);
+  return json({ ok: true, updated: Number(result) > 0 });
 }
 
 const PAID = `(ap.tier = 'paid' AND ap.status IN ('active','trialing','past_due')
@@ -107,11 +104,9 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
   if (action === "status") {
     const status = body.status === "suspended" ? "suspended" : body.status === "active" ? "active" : null;
     if (!status) return json({ error: "status must be active or suspended" }, 400);
-    const result = await env.SYNTILA_DB.prepare(
-      "UPDATE users SET status = ?2, updated_at = ?3 WHERE id = ?1 AND status IN ('active','suspended')",
-    ).bind(userId, status, now).run();
+    const result = await dataOf(env).read.run`UPDATE users SET status = ${status}, updated_at = ${now} WHERE id = ${userId} AND status IN ('active','suspended')`;
     // No backend row yet: the account never used the product, nothing to mirror.
-    return json({ ok: true, updated: Number(result.meta?.changes ?? 0) > 0 });
+    return json({ ok: true, updated: Number(result) > 0 });
   }
 
   const grant = body.action === "grant_paid" ? true : body.action === "revoke_paid" ? false : null;
@@ -122,16 +117,14 @@ async function handleAdmin(request: Request, env: Env, pathname: string): Promis
        VALUES (${userId}, ${email}, ${email.split("@")[0]}, 'active', ${now}, ${now}) ON CONFLICT (id) DO NOTHING`;
   const owner = await dataOf(env).read.row<{ email: string }>`SELECT email FROM users WHERE id = ${userId}`;
   if (owner?.email.toLowerCase() !== email) return json({ error: "Account email does not match" }, 409);
-  const changed = await env.SYNTILA_DB.prepare(
-    `INSERT INTO account_plans (user_id, tier, status, source, current_period_end, created_at, updated_at)
-       SELECT ?1, ?2, ?3, 'manual', NULL, ?4, ?4
-       WHERE NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ?1)
+  const changed = await dataOf(env).read.run`INSERT INTO account_plans (user_id, tier, status, source, current_period_end, created_at, updated_at)
+       SELECT ${userId}, ${grant ? "paid" : "free"}, ${grant ? "active" : "canceled"}, 'manual', NULL, ${now}, ${now}
+       WHERE NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ${userId})
      ON CONFLICT (user_id) DO UPDATE SET tier = excluded.tier, status = excluded.status, source = 'manual',
        current_period_end = NULL, updated_at = excluded.updated_at
      WHERE account_plans.source = 'manual' AND account_plans.provider_customer_id IS NULL AND account_plans.provider_subscription_id IS NULL
-       AND NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ?1)`,
-  ).bind(userId, grant ? "paid" : "free", grant ? "active" : "canceled", now).run();
-  if (Number(changed.meta?.changes ?? 0) !== 1)
+       AND NOT EXISTS (SELECT 1 FROM paddle_sandbox_subscriptions ps WHERE ps.user_id = ${userId})`;
+  if (Number(changed) !== 1)
     return json({ error: "This account has a provider-linked subscription. Manage it through the payment provider.", code: "provider_subscription_managed" }, 409);
   const plan = await env.SYNTILA_DB.prepare(
     `SELECT CASE WHEN EXISTS (SELECT 1 FROM account_plans ap WHERE ap.user_id = ?1 AND ${PAID}) THEN 'paid' ELSE 'free' END AS plan`,
