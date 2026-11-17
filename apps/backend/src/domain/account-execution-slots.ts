@@ -127,18 +127,6 @@ export async function sweepStaleExecutionWaiters(
     .run();
 }
 
-/** The waiter's current reason, for read models. */
-export async function executionWaitReason(
-  db: D1Database,
-  taskId: string,
-): Promise<ExecutionWaitReason | null> {
-  const row = await db
-    .prepare("SELECT reason FROM account_execution_waiters WHERE task_id = ?1")
-    .bind(taskId)
-    .first<{ reason: ExecutionWaitReason }>();
-  return row?.reason ?? null;
-}
-
 interface WakeableWorkflow {
   get(id: string): Promise<{
     sendEvent(event: { type: string; payload?: unknown }): Promise<void>;

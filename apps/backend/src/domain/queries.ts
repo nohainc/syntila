@@ -117,11 +117,6 @@ export function activeRuntimeIdentityCount(db: D1Database, workspaceId: string) 
   return db.prepare("SELECT COUNT(*) AS count FROM workspace_runtime_identities WHERE workspace_id = ?1 AND revoked_at IS NULL").bind(workspaceId).first<{ count: number }>();
 }
 
-/** A person invitation row. */
-export function personInvitation<T = Record<string, unknown>>(db: D1Database, invitationId: string) {
-  return db.prepare("SELECT * FROM person_invitations WHERE id = ?1").bind(invitationId).first<T>();
-}
-
 /** A user's plan row (missing row means Free). */
 export function accountPlanRow<T = { tier: string; status: string; current_period_end: string | null }>(db: D1Database, userId: string) {
   return db.prepare("SELECT tier, status, current_period_end FROM account_plans WHERE user_id = ?1").bind(userId).first<T>();

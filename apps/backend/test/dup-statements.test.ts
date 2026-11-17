@@ -115,8 +115,9 @@ test("the real source tree scans reproducibly and every group is a same-file rep
   for (const g of first.groupList) expect(g.lines.length).toBeGreaterThan(1);
   // Every .prepare( call is either compared or reported as skipped.
   const { statements, skipped } = scanWithSkips(src);
-  // The tagged SQL migration removes one legacy call from each migrated site.
-  expect(statements.filter((s) => s.kind === "prepare").length + skipped.length).toBeGreaterThanOrEqual(701);
+  // The count of legacy calls only goes down (test/ratchets.test.ts owns that limit);
+  // here it is enough that the scan sees them while any remain.
+  expect(statements.filter((s) => s.kind === "prepare").length + skipped.length).toBeGreaterThan(0);
 });
 
 // ---- Regression ceiling (Package 2, Phase 4) -----------------------------------

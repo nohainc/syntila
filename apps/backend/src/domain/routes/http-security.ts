@@ -373,9 +373,6 @@ export async function requireWorkspaceContext(
   }
 }
 
-
-export const MAX_ARTIFACT_UPLOAD_BYTES = 64 * 1024 * 1024;
-
 export function artifactName(value: string | null): string {
   const normalized = (value ?? "artifact").replace(/[^a-zA-Z0-9._-]/g, "_");
   return normalized.slice(0, 160) || "artifact";
