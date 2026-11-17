@@ -570,9 +570,6 @@ column worker_profiles.updated_at timestamptz not-null default
 column worker_profiles.updated_by_user_id text
 column worker_profiles.worker_type_id text not-null
 column worker_scheduling.cloud_concurrency_limit int8
-column worker_scheduling.drain_completed_at timestamptz
-column worker_scheduling.drain_requested_at timestamptz
-column worker_scheduling.drain_requested_by_user_id text
 column worker_scheduling.state text not-null default
 column worker_scheduling.updated_at timestamptz not-null default
 column worker_scheduling.updated_by_user_id text
@@ -1111,7 +1108,6 @@ constraint worker_profiles.worker_profiles_updated_by_user_id_fkey foreign-key -
 constraint worker_profiles.worker_profiles_worker_type_id_fkey foreign-key -> worker_catalog on-delete-restrict
 constraint worker_profiles.worker_profiles_worker_type_id_revision_key unique
 constraint worker_scheduling.worker_scheduling_cloud_concurrency_limit_check check
-constraint worker_scheduling.worker_scheduling_drain_requested_by_user_id_fkey foreign-key -> users on-delete-set-null
 constraint worker_scheduling.worker_scheduling_pkey primary-key
 constraint worker_scheduling.worker_scheduling_state_check check
 constraint worker_scheduling.worker_scheduling_updated_by_user_id_fkey foreign-key -> users on-delete-set-null
@@ -1493,7 +1489,6 @@ index worker_profile_history.worker_profile_history_pkey (worker_type_id,revisio
 index worker_profiles.worker_profiles_pkey (worker_type_id) unique
 index worker_profiles.worker_profiles_updated_by_user_id_fkidx (updated_by_user_id)
 index worker_profiles.worker_profiles_worker_type_id_revision_key (worker_type_id,revision) unique
-index worker_scheduling.worker_scheduling_drain_requested_by_user_id_fkidx (drain_requested_by_user_id)
 index worker_scheduling.worker_scheduling_pkey (worker_id) unique
 index worker_scheduling.worker_scheduling_updated_by_user_id_fkidx (updated_by_user_id)
 index workflow_events.workflow_events_instance_id_fkidx (instance_id)
