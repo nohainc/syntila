@@ -46,7 +46,6 @@ export {
   handleRegisterWorkspaceFromDesktop,
   handleGetWorkspace,
   handleUpdateWorkspace,
-  handleWorkspaceDeliveryProbe,
   handleWorkerUsage,
   handleRevokeWorkspace,
   handleExportWorkspaceAudit,

@@ -249,11 +249,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("*", "/api/workspace-invitations/:id/decline", (c) => handleDeclineWorkspaceInvitation(c.request, c.env, c.params.id!, c.ctx)),
     r("*", "/api/workspaces/:workspaceId/mcp-inventory", (c) => handleWorkspaceMcpInventory(c.request, c.env, c.params.workspaceId!, c.ctx)),
     r("*", "/api/workspaces/:workspaceId/mcp-action", (c) => handleWorkspaceMcpAction(c.request, c.env, c.params.workspaceId!, c.ctx)),
-    // `/external-workers` is the current name; `/worker-plugins` stays for
-    // Workspaces released before the rename.
-    r("*", "/api/workspaces/:workspaceId/external-workers/:pluginRef", (c) => handleWorkspacePluginPin(c.request, c.env, c.params.workspaceId!, c.params.pluginRef!, c.ctx)),
     r("*", "/api/workspaces/:workspaceId/worker-plugins/:pluginRef", (c) => handleWorkspacePluginPin(c.request, c.env, c.params.workspaceId!, c.params.pluginRef!, c.ctx)),
-    r("POST", "/api/workspaces/:workspaceId/delivery-probe", call("handleWorkspaceDeliveryProbe", p("workspaceId"), ctx)),
     r("GET", "/api/workspaces/:workspaceId/audit-export", call("handleExportWorkspaceAudit", p("workspaceId"), ctx)),
     r("POST", "/api/workspaces/:workspaceId/workers/:workerId/usage", call("handleWorkerUsage", p("workspaceId"), p("workerId"), ctx)),
     r("GET", "/api/workspaces/:workspaceId", call("handleGetWorkspace", p("workspaceId"), ctx)),
@@ -283,9 +279,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("GET", "/api/release-trust", (c) => h.handleGetReleaseTrustState!(c.env)),
     r("POST", "/api/admin/release-trust/keys/:keyId/revoke", call("handleRevokeReleaseSigningKey", p("keyId"), ctx)),
     r("GET", "/api/workers/catalog", call("handleListWorkerCatalog", ctx)),
-    r("*", "/api/me/external-workers", (c) => handlePluginLibrary(c.request, c.env, undefined, c.ctx)),
     r("*", "/api/me/worker-plugins", (c) => handlePluginLibrary(c.request, c.env, undefined, c.ctx)),
-    r("*", "/api/me/external-workers/:pluginRef", (c) => handlePluginLibrary(c.request, c.env, c.params.pluginRef, c.ctx)),
     r("*", "/api/me/worker-plugins/:pluginRef", (c) => handlePluginLibrary(c.request, c.env, c.params.pluginRef, c.ctx)),
     r("GET", "/api/workers", call("handleListWorkspaceWorkerInventory", ctx)),
     r("GET", "/api/workers/:workerTypeId/profile", call("handleGetWorkspaceV9WorkerProfile", p("workerTypeId"))),

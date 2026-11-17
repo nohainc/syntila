@@ -57,8 +57,9 @@ synchronization deferral, so time spent waiting for the Service to reach
 
 ## Delivery probe
 
-`POST /api/workspaces/:workspaceId/delivery-probe` (requires
-`workspace:manage`) sends `diagnostic.probe` over the Workspace's live
+The Workspace Gateway's `diagnostic-probe` (the public route
+`POST /api/workspaces/:workspaceId/delivery-probe` was removed in the backend
+cleanup) sends `diagnostic.probe` over the Workspace's live
 transport and waits up to 5 s for `diagnostic.probe.ack`. No assignment,
 Worker, Engine or provider process is involved. The response reports the
 transport, round trip, Service receive/acknowledge times, clock offset, sync
@@ -100,7 +101,7 @@ Capture a baseline with the current system before changing delivery or
 startup behavior, and record it with the build under test.
 
 1. Run 20-30 Work requests: a mix against an idle Service and against one with
-   an active assignment, plus a few `delivery-probe` calls.
+   an active assignment, plus a few gateway `diagnostic-probe` calls.
 2. Collect Cloud logs (`wrangler tail --format json > cloud.log`), the
    Service `worker.jsonl*` files, and the browser console lines.
 3. Run `pnpm latency:baseline -- --cloud cloud.log --service worker.jsonl
