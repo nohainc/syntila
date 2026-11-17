@@ -1,3 +1,4 @@
+import { fixtureStatement, fixtureBatch } from "./helpers/fixture-sql";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { BUILTIN_WORKFLOWS } from "@syntila/core";
 import { pgD1 } from "./helpers/pg-d1";
@@ -174,15 +175,9 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     };
     const generalThreadId = `legacy-gen-${directSpaceId}`;
     const now = new Date().toISOString();
-    await (env as { SYNTILA_DB: D1Database }).SYNTILA_DB.prepare(
-      "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?1, ?2, 'General', 'active', 'user-alice', TRUE, ?3, ?3)",
-    )
-      .bind(generalThreadId, directSpaceId, now)
+    await fixtureStatement((env as { SYNTILA_DB: D1Database }).SYNTILA_DB, "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?1, ?2, 'General', 'active', 'user-alice', TRUE, ?3, ?3)", [generalThreadId, directSpaceId, now])
       .run();
-    await (env as { SYNTILA_DB: D1Database }).SYNTILA_DB.prepare(
-      "UPDATE direct_spaces SET general_thread_id = ?1 WHERE space_id = ?2",
-    )
-      .bind(generalThreadId, directSpaceId)
+    await fixtureStatement((env as { SYNTILA_DB: D1Database }).SYNTILA_DB, "UPDATE direct_spaces SET general_thread_id = ?1 WHERE space_id = ?2", [generalThreadId, directSpaceId])
       .run();
     return { directSpaceId, generalThreadId };
   }
@@ -395,10 +390,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     expect(aliceChatBindings.chat?.workerId).toBe("worker-a");
 
     // Verify workspace grant for Alice's workspace was created
-    const aliceGrant = await env.SYNTILA_DB.prepare(
-      "SELECT workspace_id, granted_by_user_id, status FROM workspace_space_grants WHERE space_id = ?1 AND workspace_id = ?2",
-    )
-      .bind(directSpaceId, "ws-alice")
+    const aliceGrant = await fixtureStatement(env.SYNTILA_DB, "SELECT workspace_id, granted_by_user_id, status FROM workspace_space_grants WHERE space_id = ?1 AND workspace_id = ?2", [directSpaceId, "ws-alice"])
       .first<{
         workspace_id: string;
         granted_by_user_id: string;
@@ -422,10 +414,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     expect(bobChatBindings.chat?.workerId).toBe("worker-b");
 
     // Verify workspace grant for Bob's workspace was created and coexists with Alice's
-    const bobGrant = await env.SYNTILA_DB.prepare(
-      "SELECT workspace_id, granted_by_user_id, status FROM workspace_space_grants WHERE space_id = ?1 AND workspace_id = ?2",
-    )
-      .bind(directSpaceId, "ws-bob")
+    const bobGrant = await fixtureStatement(env.SYNTILA_DB, "SELECT workspace_id, granted_by_user_id, status FROM workspace_space_grants WHERE space_id = ?1 AND workspace_id = ?2", [directSpaceId, "ws-bob"])
       .first<{
         workspace_id: string;
         granted_by_user_id: string;
@@ -515,13 +504,10 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     const now = new Date().toISOString();
 
     // Bob grants ws-bob to Alice via Person Grant
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO workspace_person_grants (
+    await fixtureStatement(env.SYNTILA_DB, `INSERT INTO workspace_person_grants (
         workspace_id, user_id, granted_by_user_id, status, max_concurrent_requests,
         created_at, updated_at
-      ) VALUES ('ws-bob', 'user-alice', 'user-bob', 'active', 2, ?1, ?1)`,
-    )
-      .bind(now)
+      ) VALUES ('ws-bob', 'user-alice', 'user-bob', 'active', 2, ?1, ?1)`, [now])
       .run();
 
     // Under ADR-029/AUTHORIZATION_MODEL, personal spaces require own Workers; Person Grants do not confer Worker access in personal Spaces
@@ -576,10 +562,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
     const customThreadId = thread.id;
 
     // Verify both threads have distinct conversation identities
-    const row = await env.SYNTILA_DB.prepare(
-      "SELECT id, is_general FROM threads WHERE space_id = ?1 ORDER BY is_general DESC",
-    )
-      .bind(directSpaceId)
+    const row = await fixtureStatement(env.SYNTILA_DB, "SELECT id, is_general FROM threads WHERE space_id = ?1 ORDER BY is_general DESC", [directSpaceId])
       .all<{ id: string; is_general: number }>();
     expect(row.results.length).toBe(2);
     expect(row.results[0]?.id).toBe(generalThreadId);
@@ -594,49 +577,31 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
 
     const now = new Date().toISOString();
     // Simulate conversation history in General Thread
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO conversations (id, thread_id, workflow_id, workflow_version, conversation_revision, context_revision, created_at, updated_at)
-       VALUES (?1, ?2, 'chat', 1, 1, 1, ?3, ?3)`,
-    )
-      .bind(genConvId, generalThreadId, now)
+    await fixtureStatement(env.SYNTILA_DB, `INSERT INTO conversations (id, thread_id, workflow_id, workflow_version, conversation_revision, context_revision, created_at, updated_at)
+       VALUES (?1, ?2, 'chat', 1, 1, 1, ?3, ?3)`, [genConvId, generalThreadId, now])
       .run();
 
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO conversation_history_entries (conversation_id, sequence, kind, event_type, actor_type, actor_id, source_id, text, occurred_at)
-       VALUES (?1, 1, 'user_message', 'message', 'user', 'user-alice', 'src-gen', 'General Thread Question', ?2)`,
-    )
-      .bind(genConvId, now)
+    await fixtureStatement(env.SYNTILA_DB, `INSERT INTO conversation_history_entries (conversation_id, sequence, kind, event_type, actor_type, actor_id, source_id, text, occurred_at)
+       VALUES (?1, 1, 'user_message', 'message', 'user', 'user-alice', 'src-gen', 'General Thread Question', ?2)`, [genConvId, now])
       .run();
 
     // Simulate conversation history in Custom Topic Thread
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO conversations (id, thread_id, workflow_id, workflow_version, conversation_revision, context_revision, created_at, updated_at)
-       VALUES (?1, ?2, 'chat', 1, 1, 1, ?3, ?3)`,
-    )
-      .bind(customConvId, customThreadId, now)
+    await fixtureStatement(env.SYNTILA_DB, `INSERT INTO conversations (id, thread_id, workflow_id, workflow_version, conversation_revision, context_revision, created_at, updated_at)
+       VALUES (?1, ?2, 'chat', 1, 1, 1, ?3, ?3)`, [customConvId, customThreadId, now])
       .run();
 
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO conversation_history_entries (conversation_id, sequence, kind, event_type, actor_type, actor_id, source_id, text, occurred_at)
-       VALUES (?1, 1, 'user_message', 'message', 'user', 'user-bob', 'src-custom', 'Project Idea Discussion', ?2)`,
-    )
-      .bind(customConvId, now)
+    await fixtureStatement(env.SYNTILA_DB, `INSERT INTO conversation_history_entries (conversation_id, sequence, kind, event_type, actor_type, actor_id, source_id, text, occurred_at)
+       VALUES (?1, 1, 'user_message', 'message', 'user', 'user-bob', 'src-custom', 'Project Idea Discussion', ?2)`, [customConvId, now])
       .run();
 
     // Verify history entries are completely isolated per Thread
-    const genEntries = await env.SYNTILA_DB.prepare(
-      "SELECT text FROM conversation_history_entries WHERE conversation_id = ?1",
-    )
-      .bind(genConvId)
+    const genEntries = await fixtureStatement(env.SYNTILA_DB, "SELECT text FROM conversation_history_entries WHERE conversation_id = ?1", [genConvId])
       .all<{ text: string }>();
     expect(genEntries.results.map((e) => e.text)).toEqual([
       "General Thread Question",
     ]);
 
-    const customEntries = await env.SYNTILA_DB.prepare(
-      "SELECT text FROM conversation_history_entries WHERE conversation_id = ?1",
-    )
-      .bind(customConvId)
+    const customEntries = await fixtureStatement(env.SYNTILA_DB, "SELECT text FROM conversation_history_entries WHERE conversation_id = ?1", [customConvId])
       .all<{ text: string }>();
     expect(customEntries.results.map((e) => e.text)).toEqual([
       "Project Idea Discussion",

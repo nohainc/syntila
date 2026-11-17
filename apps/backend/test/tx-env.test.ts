@@ -35,15 +35,11 @@ const publish = (env: any, mutate?: (tx: any) => Promise<unknown>) =>
   });
 
 describe("inTransaction", () => {
-  test("adapter statements, data-layer queries and events commit together; fan-out waits for the commit", async () => {
+  test("data-layer statements, queries and events commit together; fan-out waits for the commit", async () => {
     const { env, sql, delivered } = fixture();
     await inTransaction(env, "test.commit", async (txEnv, tx) => {
-      await txEnv.SYNTILA_DB.prepare(
-        "UPDATE spaces SET name = ?1 WHERE id = 'S'",
-      )
-        .bind("A")
-        .run();
-      // The data layer inside sees the adapter's uncommitted write.
+      await dataOf(txEnv).read.run`UPDATE spaces SET name = ${"A"} WHERE id = 'S'`;
+      // The data layer inside sees the transaction's uncommitted write.
       expect(
         (
           await dataOf(txEnv).read.row<{
@@ -90,7 +86,7 @@ describe("inTransaction", () => {
     expect(delivered).toEqual([]);
   });
 
-  test("statements inside never take the global writer lock", async () => {
+  test("statements inside do not wait for the old global writer lock", async () => {
     const { env, sql } = fixture();
     // Hold the global writer lock from another connection.
     const holder = await sql.reserve();
@@ -99,14 +95,8 @@ describe("inTransaction", () => {
     try {
       await inTransaction(env, "test.nolock", async (txEnv, tx) => {
         await tx.run`SET LOCAL lock_timeout = '500ms'`;
-        await txEnv.SYNTILA_DB.batch([
-          txEnv.SYNTILA_DB.prepare(
-            "UPDATE spaces SET name = 'C' WHERE id = 'S'",
-          ),
-          txEnv.SYNTILA_DB.prepare(
-            "UPDATE spaces SET description = 'c' WHERE id = 'S'",
-          ),
-        ]);
+        await tx.run`UPDATE spaces SET name = 'C' WHERE id = 'S'`;
+        await tx.run`UPDATE spaces SET description = 'c' WHERE id = 'S'`;
       });
     } finally {
       await holder`ROLLBACK`;
@@ -118,29 +108,14 @@ describe("inTransaction", () => {
   });
 });
 
-describe("adapter statements inside a transaction", () => {
-  test("a statement the type probe cannot prepare still runs, and the transaction stays usable", async () => {
-    const { env, sql } = fixture();
-    await inTransaction(env, "test.probe", async (txEnv) => {
-      // $1 is used as text and as a number: PREPARE fails with inconsistent types.
-      const row = await txEnv.SYNTILA_DB.prepare("SELECT ?1::text AS a, length(?1::text) AS b")
-        .bind("abc")
-        .first<{ a: string; b: number }>();
-      expect(row).toEqual({ a: "abc", b: 3 });
-      await txEnv.SYNTILA_DB.prepare("UPDATE spaces SET name = 'P' WHERE id = 'S'").run();
-    });
-    const [row] = await sql`SELECT name FROM spaces WHERE id = 'S'`;
-    expect(row.name).toBe("P");
-  });
-
+describe("transactions on a small pool", () => {
   test("many parallel transactions on a small pool do not starve each other", async () => {
     const { db } = pgD1({ max: 2 });
     const env = { SYNTILA_DB: db } as any;
     const results = await Promise.all(Array.from({ length: 12 }, (_, i) =>
       inTransaction(env, "test.pool", async (txEnv, tx) => {
         await tx.lock("test.pool", "one");
-        // A fresh statement text each time forces a type probe inside the transaction.
-        return txEnv.SYNTILA_DB.prepare(`SELECT ?1::int + ${i} AS n`).bind(1).first<{ n: number }>();
+        return dataOf(txEnv).read.row<{ n: number }>`SELECT ${1}::int + ${i}::int AS n`;
       })));
     expect(results.map((r) => r?.n)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
   });

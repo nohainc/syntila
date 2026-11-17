@@ -1,3 +1,4 @@
+import { fixtureStatement, fixtureBatch } from "./helpers/fixture-sql";
 import { afterEach, beforeEach, expect, it, vi } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
@@ -19,11 +20,8 @@ vi.mock("../../src/domain/routes/work-creation.js", () => ({
     created.calls.push({ userId: args.userId, body: args.body });
     if (created.fail)
       return Response.json({ error: created.fail }, { status: 422 });
-    await env.SYNTILA_DB.prepare(
-      `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
-       VALUES(?1,?2,?3,'stateless','chat',1,'{}','{}','queued','{}','now','now')`,
-    )
-      .bind(`wr-${created.calls.length}`, args.threadId, args.userId)
+    await fixtureStatement(env.SYNTILA_DB, `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
+       VALUES(?1,?2,?3,'stateless','chat',1,'{}','{}','queued','{}','now','now')`, [`wr-${created.calls.length}`, args.threadId, args.userId])
       .run();
     return Response.json({}, { status: 202 });
   },

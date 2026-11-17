@@ -10,7 +10,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { signToken, TokenVerifier } from "../src/auth";
 import { configureIdentityVerifier } from "../src/domain/auth/identity-service";
 import { routeTable, type WorkerRouteHandlers } from "../src/domain/routes/table";
-import { PgD1Database } from "./domain/helpers/pg-d1-adapter";
+import { PgDb } from "../src/platform/data";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 import { member, message, space, thread, user, workRequest, workspace } from "./domain/helpers/seed";
@@ -26,7 +26,7 @@ beforeAll(async () => {
   configureIdentityVerifier(new TokenVerifier([pub], "https://syntila.app", "syntila-backend"));
   const now = Math.floor(Date.now() / 1000);
   mint = (sub) => signToken(priv, { iss: "https://syntila.app", aud: "syntila-backend", sub, typ: "user", email: `${sub}@test`, name: sub, iat: now, exp: now + 3600, sid: `s-${sub}`, client: "web" });
-  const runtime = createRuntime(sql, new PgD1Database(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app", SYNTILA_RATE_LIMIT_PER_MINUTE: "0", SYNTILA_MUTATION_RATE_LIMIT_PER_MINUTE: "0" });
+  const runtime = createRuntime(sql, new PgDb(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app", SYNTILA_RATE_LIMIT_PER_MINUTE: "0", SYNTILA_MUTATION_RATE_LIMIT_PER_MINUTE: "0" });
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (r, s) => runtime.fetch(r, s as any), websocket: runtime.websocket as any });
   await runtime.start();
   base = `http://127.0.0.1:${server.port}`;

@@ -9,7 +9,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { signToken, TokenVerifier } from "../src/auth";
 import { configureIdentityVerifier } from "../src/domain/auth/identity-service";
 import { JSON_BODY_LIMIT } from "../src/domain/routes/http-security";
-import { PgD1Database } from "./domain/helpers/pg-d1-adapter";
+import { PgDb } from "../src/platform/data";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 
@@ -22,7 +22,7 @@ beforeAll(async () => {
   configureIdentityVerifier(new TokenVerifier([pub], "https://syntila.app", "syntila-backend"));
   const now = Math.floor(Date.now() / 1000);
   mint = (sub) => signToken(priv, { iss: "https://syntila.app", aud: "syntila-backend", sub, typ: "user", email: `${sub}@test`, name: sub, iat: now, exp: now + 3600, sid: `s-${sub}`, client: "web" });
-  const runtime = createRuntime(sql, new PgD1Database(sql), {
+  const runtime = createRuntime(sql, new PgDb(sql), {
     SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app",
     SYNTILA_RATE_LIMIT_PER_MINUTE: "0", SYNTILA_MUTATION_RATE_LIMIT_PER_MINUTE: "0",
     SYNTILA_PROFILE_RELEASE_MANAGER_USER_IDS: "release-manager",

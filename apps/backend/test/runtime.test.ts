@@ -1,3 +1,4 @@
+import { fixtureStatement, fixtureBatch } from "./domain/helpers/fixture-sql";
 /**
  * End to end on the real server stack: Bun.serve + domain router + PostgreSQL
  * + in-process Durable Objects + WebSocket bridging + backend JWT auth.
@@ -5,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { signToken, TokenVerifier } from "../src/auth";
 import { configureIdentityVerifier } from "../src/domain/auth/identity-service";
-import { PgD1Database } from "./domain/helpers/pg-d1-adapter";
+import { PgDb } from "../src/platform/data";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 
@@ -18,7 +19,7 @@ beforeAll(async () => {
   configureIdentityVerifier(new TokenVerifier([pub], "https://syntila.app", "syntila-backend"));
   const now = Math.floor(Date.now() / 1000);
   mint = (sub, extra = {}) => signToken(priv, { iss: "https://syntila.app", aud: "syntila-backend", sub, typ: "user", email: `${sub}@test`, name: sub, iat: now, exp: now + 600, sid: `s-${sub}`, client: "web", ...extra });
-  runtime = createRuntime(sql as any, new PgD1Database(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app" });
+  runtime = createRuntime(sql as any, new PgDb(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app" });
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (r, s) => runtime.fetch(r, s as any), websocket: runtime.websocket as any });
   await runtime.start();
   base = `http://127.0.0.1:${server.port}`;
@@ -93,7 +94,7 @@ describe("runtime", () => {
     const ws = new WebSocket(`${base.replace("http", "ws")}/api/workspace-gateway/connect?workspaceRuntimeId=${encodeURIComponent(runtimeId)}`, { headers: { authorization: `Bearer ${credential}` } } as any);
     await new Promise<void>((resolve, reject) => { ws.onopen = () => resolve(); ws.onerror = () => reject(new Error("gateway socket failed")); });
     for (let i = 0; i < 80; i++) {
-      const [row] = await runtime.env.SYNTILA_DB.prepare("SELECT status FROM execution_workspaces WHERE id = ?1").bind(reg.body.workspaceId ?? reg.body.workspace?.id).all().then((r: any) => r.results);
+      const [row] = await fixtureStatement(runtime.env.SYNTILA_DB, "SELECT status FROM execution_workspaces WHERE id = ?1", [reg.body.workspaceId ?? reg.body.workspace?.id]).all().then((r: any) => r.results);
       if (row?.status === "online") break;
       await Bun.sleep(25);
     }

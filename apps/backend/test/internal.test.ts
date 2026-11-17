@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { signToken, TokenVerifier } from "../src/auth";
 import { configureIdentityVerifier } from "../src/domain/auth/identity-service";
 import { EmailOutbox } from "../src/platform/email";
-import { PgD1Database } from "./domain/helpers/pg-d1-adapter";
+import { PgDb } from "../src/platform/data";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 
@@ -14,7 +14,7 @@ beforeAll(async () => {
   const priv = { ...(await crypto.subtle.exportKey("jwk", pair.privateKey)), kid: "k" } as JsonWebKey & { kid: string };
   configureIdentityVerifier(new TokenVerifier([pub], "https://syntila.app", "syntila-backend"));
   sign = (claims) => { const now = Math.floor(Date.now() / 1000); return signToken(priv, { iss: "https://syntila.app", aud: "syntila-backend", iat: now, exp: now + 60, ...claims }); };
-  const runtime = createRuntime(sql, new PgD1Database(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app" });
+  const runtime = createRuntime(sql, new PgDb(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app" });
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (r, s) => runtime.fetch(r, s as any), websocket: runtime.websocket as any });
   await runtime.start();
   base = `http://127.0.0.1:${server.port}`;

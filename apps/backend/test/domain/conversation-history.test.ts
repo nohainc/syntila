@@ -1,3 +1,4 @@
+import { fixtureStatement, fixtureBatch } from "./helpers/fixture-sql";
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { readFileSync } from "node:fs";
 import { conversationFixture } from "./helpers/conversation.js";
@@ -150,9 +151,9 @@ it("rolls canonical events back with failed source mutations", async () => {
     .prepare("SELECT count(*) AS n FROM conversation_history_entries")
     .get()?.n;
   await expect(
-    f.db.batch([
-      f.db.prepare("UPDATE work_requests SET status='waiting'"),
-      f.db.prepare("INSERT INTO conversations(id) VALUES('invalid')"),
+    fixtureBatch(f.db, [
+      fixtureStatement(f.db, "UPDATE work_requests SET status='waiting'", []),
+      fixtureStatement(f.db, "INSERT INTO conversations(id) VALUES('invalid')", []),
     ]),
   ).rejects.toThrow();
   expect(

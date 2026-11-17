@@ -1,3 +1,4 @@
+import { fixtureStatement, fixtureBatch } from "./helpers/fixture-sql";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import {
   sendSpaceInvitationEmail,
@@ -281,11 +282,7 @@ describe("Invitation Email Delivery", () => {
 
     const res = await handleCreateSpaceInvitation(req, env as never, "proj-1");
     expect(res.status).toBe(201);
-    const invitation = await db
-      .prepare(
-        "SELECT status FROM space_invitations WHERE space_id = ?1 AND email = ?2",
-      )
-      .bind("proj-1", "person@example.com")
+    const invitation = await fixtureStatement(db, "SELECT status FROM space_invitations WHERE space_id = ?1 AND email = ?2", ["proj-1", "person@example.com"])
       .first<{ status: string }>();
     expect(invitation).toEqual({ status: "pending" });
   });

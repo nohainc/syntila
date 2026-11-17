@@ -40,7 +40,7 @@ test("ratchet: D1Database references only go down", () => {
 test("ratchet: test files that fake prepare/bind by hand only go down", () => {
   // A fake database: a `prepare` method or property defined in the test itself.
   const fake = /prepare:|prepare\((sql|text|query|_?s)\b[^)]*\)\s*\{|prepare = |prepare\(\) *\{|const prepare|vi\.fn\(\(sql|spyOn\([^)]*prepare/;
-  const faked = tests.filter((f) => !f.includes("/helpers/") && !f.endsWith("pg-d1.test.ts") && fake.test(readFileSync(f, "utf8")));
+  const faked = tests.filter((f) => !f.includes("/helpers/") && fake.test(readFileSync(f, "utf8")));
   expect(faked.length).toBeLessThanOrEqual(LIMITS.mockBasedTestFiles);
 });
 test("ratchet: the sqliteD1 alias is gone", () => {

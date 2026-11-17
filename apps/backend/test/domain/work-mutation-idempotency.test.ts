@@ -1,3 +1,4 @@
+import { fixtureStatement, fixtureBatch } from "./helpers/fixture-sql";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
@@ -15,10 +16,7 @@ vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
     bindings: Record<string, { workerId: string }>,
   ) => ({
     issues: [],
-    primaryWorkspaceId: (await env.SYNTILA_DB.prepare(
-      "SELECT workspace_id AS workspaceId FROM workspace_worker_inventory WHERE worker_id=?1",
-    )
-      .bind(Object.values(bindings)[0]!.workerId)
+    primaryWorkspaceId: (await fixtureStatement(env.SYNTILA_DB, "SELECT workspace_id AS workspaceId FROM workspace_worker_inventory WHERE worker_id=?1", [Object.values(bindings)[0]!.workerId])
       .first<{ workspaceId: string }>())!.workspaceId,
     workerProfiles: {
       direct: { profileId: "chatgpt-codex", profileReleaseVersion: 1 },

@@ -1,9 +1,10 @@
+import { fixtureStatement, fixtureBatch } from "./domain/helpers/fixture-sql";
 // Full product journey on the Bun runtime: a Workspace Service registers and
 // connects, a user sends a Chat request, the Workflow dispatches the
 // assignment over the gateway WebSocket, the fake Service answers, and the
 // answer reaches the Thread over realtime.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { PgD1Database } from "./domain/helpers/pg-d1-adapter";
+import { PgDb } from "../src/platform/data";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 import { testTokens } from "./domain/helpers/tokens";
@@ -13,7 +14,7 @@ let sql: any, base = "", stop = async () => {}, mint: Awaited<ReturnType<typeof 
 beforeAll(async () => {
   ({ sql } = pgD1());
   mint = await testTokens();
-  runtime = createRuntime(sql as any, new PgD1Database(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app" });
+  runtime = createRuntime(sql as any, new PgDb(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app" });
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (r, s) => runtime.fetch(r, s as any), websocket: runtime.websocket as any });
   await runtime.start();
   base = `http://127.0.0.1:${server.port}`;
@@ -60,10 +61,8 @@ describe("journey", () => {
     // Operator step (Profile Lab publication): the released ChatGPT Tool Profile.
     const candidate = JSON.parse(await Bun.file(new URL("../../profile_lab/assets/profiles/chatgpt.json", import.meta.url)).text());
     const profile = await validateWorkerProfileCandidate("chatgpt", candidate);
-    await runtime.env.SYNTILA_DB.prepare(
-      `INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at)
-       VALUES ('chatgpt',?1,?2,?3,?4,now()) ON CONFLICT (worker_type_id) DO NOTHING`,
-    ).bind(profile.profile.schemaVersion, profile.canonicalJson, candidate.releaseVersion, profile.digest).run();
+    await fixtureStatement(runtime.env.SYNTILA_DB, `INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at)
+       VALUES ('chatgpt',?1,?2,?3,?4,now()) ON CONFLICT (worker_type_id) DO NOTHING`, [profile.profile.schemaVersion, profile.canonicalJson, candidate.releaseVersion, profile.digest]).run();
     const worker = {
       workerId: "worker-codex", workerTypeId: "chatgpt", activationState: "enabled", readinessState: "ready", revision: 1,
       localConcurrencyLimit: 1, engineVersion: "1.4.0", profileDefinitionId: "chatgpt-codex", profileReleaseVersion: candidate.releaseVersion,
@@ -81,7 +80,7 @@ describe("journey", () => {
     send("workspace.sync.request", {});
     const sync = await waitFor("sync result", () => frames.find((f) => f.type === "workspace.sync.result"));
     send("workspace.readiness", { state: "ready", readyForAssignments: true, syncGeneration: sync.payload.syncGeneration ?? 1 });
-    await waitFor("inventory", async () => (await runtime.env.SYNTILA_DB.prepare("SELECT 1 AS ok FROM workspace_worker_inventory WHERE worker_id=?1").bind("worker-codex").first()) ?? undefined);
+    await waitFor("inventory", async () => (await fixtureStatement(runtime.env.SYNTILA_DB, "SELECT 1 AS ok FROM workspace_worker_inventory WHERE worker_id=?1", ["worker-codex"]).first()) ?? undefined);
 
     // The user picks this Workspace for Workflows: grants it and enables its Workers.
     const pick = await api(web, "PUT", "/api/user/workflow-workspace", { workspaceId });

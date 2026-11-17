@@ -1,9 +1,8 @@
 // Worker side of SyncPostgres: runs queries for the blocked main thread.
 import { SQL } from "bun";
-import { PgD1Database } from "./pg-d1-adapter";
+import { runFixtureStatement } from "./fixture-sql";
 declare const self: Worker;
 let sql: InstanceType<typeof SQL> | null = null;
-let db: PgD1Database | null = null;
 self.onmessage = async (e: MessageEvent) => {
   const { url, text, params, multi, signal, buffer } = e.data as { url: string; text: string; params: unknown[]; multi: boolean; signal: SharedArrayBuffer; buffer: SharedArrayBuffer };
   const flag = new Int32Array(signal);
@@ -14,10 +13,8 @@ self.onmessage = async (e: MessageEvent) => {
       const rows: any = await sql.unsafe(text);
       payload = { ok: true, rows: Array.isArray(rows) ? rows : [], count: rows?.count ?? 0, command: rows?.command ?? "" };
     } else {
-      // Same value conventions as the application adapter: JSON documents in
-      // and out as text, booleans as 1/0.
-      db ??= new PgD1Database(sql);
-      payload = { ok: true, ...(await db.unlocked(text, params)) };
+      // Fixture value conventions: JSON documents in and out as text, booleans as 1/0.
+      payload = { ok: true, ...(await runFixtureStatement(sql, text, params)) };
     }
   } catch (err: any) {
     payload = { ok: false, message: err?.message, code: err?.errno ?? err?.code, constraint: err?.constraint, table: err?.table, column: err?.column, detail: err?.detail };

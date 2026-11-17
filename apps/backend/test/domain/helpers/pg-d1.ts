@@ -2,7 +2,7 @@
  * Test database helper: every call returns a fresh PostgreSQL database cloned
  * from a template built from every file in apps/backend/migrations.
  *   const { db, sqlite } = pgD1();
- *   db     — D1-compatible async API (production adapter)
+ *   db     — the production holder (PgDb); `db.sql` is the pool
  *   sqlite — synchronous fixture API: exec(sql) / prepare(sql).run|get|all(...)
  * Requires TEST_DATABASE_URL (role with CREATEDB), default local dev settings.
  */
@@ -10,7 +10,7 @@ import { SQL } from "bun";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { dataOf } from "../../../src/platform/data";
-import { PgD1Database } from "./pg-d1-adapter";
+import { PgDb } from "../../../src/platform/data";
 import { SyncPostgres } from "./pg-sync";
 
 const BASE_URL = process.env.TEST_DATABASE_URL ?? "postgres://syntila_app:devpass@127.0.0.1:5432/postgres";
@@ -79,7 +79,7 @@ export function pgD1(options: PgD1TestOptions = {}) {
   for (const old of live.slice(0, Math.max(0, live.length - LIVE_LIMIT))) {
     old.closed = true; old.sync.close(); void old.sql.close({ timeout: 0 }).catch(() => {});
   }
-  const db = new PgD1Database(sql) as unknown as D1Database;
+  const db = new PgDb(sql as never);
   return { db, read: dataOf({ SYNTILA_DB: db }).read, sqlite: sync, sql, url: urlFor(name) };
 }
 

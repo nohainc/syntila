@@ -1,3 +1,4 @@
+import { fixtureStatement, fixtureBatch } from "./helpers/fixture-sql";
 import { readFileSync } from "node:fs";
 import { expect, it, vi } from "./helpers/vitest-compat";
 import { CONVERSATION_WORKFLOWS } from "@syntila/core";
@@ -46,14 +47,10 @@ it("shares one Thread Conversation across workflows, preserves context revision,
       insertConversationSubmission(tx, ...args),
     );
   const insertRequest = (id: string) =>
-    db
-      .prepare(
-        `INSERT INTO work_requests
+    fixtureStatement(db, `INSERT INTO work_requests
     (id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
-    VALUES (?1,'W','U','stateful','direct',2,'{}','queued','now','now')`,
-      )
-      .bind(id);
-  await db.batch([insertRequest("R1")]);
+    VALUES (?1,'W','U','stateful','direct',2,'{}','queued','now','now')`, [id]);
+  await fixtureBatch(db, [insertRequest("R1")]);
   await submitTx(
     threadConversationId("W"),
     "W",
@@ -111,18 +108,14 @@ it("continues Chat and Work in one Thread Conversation and keeps a legacy one ca
   const d1 = db as unknown as D1Database;
   const submit = async (id: string, workflow: "chat" | "work") => {
     const conversation = await resolveThreadConversationId(d1, "W");
-    await db.batch([
-      db
-        .prepare(
-          `INSERT INTO work_requests
+    await fixtureBatch(db, [
+      fixtureStatement(db, `INSERT INTO work_requests
       (id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
-      VALUES (?1,'W','U','stateful',?2,?3,'{}','queued','now','now')`,
-        )
-        .bind(
+      VALUES (?1,'W','U','stateful',?2,?3,'{}','queued','now','now')`, [
           id,
           CONVERSATION_WORKFLOWS[workflow]!.execution.workflowId,
           CONVERSATION_WORKFLOWS[workflow]!.execution.workflowVersion,
-        ),
+        ]),
     ]);
     await dataOf({ SYNTILA_DB: db } as never).tx("test.submit", (tx) =>
       insertConversationSubmission(
