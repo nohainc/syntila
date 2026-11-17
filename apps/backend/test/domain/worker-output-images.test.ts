@@ -120,9 +120,7 @@ describe("generated output upload", () => {
         }),
       );
       status = "completed";
-      await expect(
-        handleUploadWorkerOutputImage(request(), env),
-      ).rejects.toThrow("already finished");
+      await expect(handleUploadWorkerOutputImage(request(), env),).rejects.toThrow("already finished");
       expect(storeSpy).toHaveBeenCalledTimes(1);
     } finally {
       runtimeSpy.mockRestore();

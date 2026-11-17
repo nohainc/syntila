@@ -5,7 +5,7 @@ import { RealtimeGateway } from "../../src/domain/realtime-gateway.js";
 import { BoundedRealtimeQueue } from "../../src/domain/realtime-queue.js";
 import type { RealtimeEventEnvelope } from "@syntila/protocol";
 
-function harness(member = true) {
+async function harness(member = true) {
   const frames: Record<string, unknown>[] = [];
   const socket = {
     readyState: 1,
@@ -18,8 +18,8 @@ function harness(member = true) {
     },
   };
   const cursors = new Map<string, number>();
-  const { db, sqlite } = pgD1();
-  sqlite.exec(
+  const { db, sqlite } = await pgD1();
+  await sqlite.exec(
     user("owner") +
       user("other") +
       space("same", "other") +
@@ -64,7 +64,7 @@ function harness(member = true) {
 
 describe("durable stream delivery", () => {
   it("isolates execution and Space sequences, scopes gaps, and never regresses cursors", async () => {
-    const f = harness();
+    const f = await harness();
     for (const event of [
       f.event("execution_workspace", 1),
       f.event("space", 1),
@@ -107,10 +107,10 @@ describe("durable stream delivery", () => {
       },
       close() {},
     };
-    const { db, sqlite } = pgD1();
-    sqlite.exec(user("owner") + workspace("workspace-activity", "owner"));
+    const { db, sqlite } = await pgD1();
+    await sqlite.exec(user("owner") + workspace("workspace-activity", "owner"));
     for (const sequence of [1, 2, 3])
-      sqlite
+      (await sqlite
         .prepare(
           `INSERT INTO realtime_events (
              event_id, stream_kind, stream_id, workspace_id, thread_id, space_id, run_id, task_id,
@@ -135,7 +135,7 @@ describe("durable stream delivery", () => {
           }),
           `activity-${sequence}`,
           `2026-10-12T18:00:0${sequence}.000Z`,
-        );
+        ));
     const gateway = new RealtimeGateway({} as never, { SYNTILA_DB: db } as never);
     const clients = Reflect.get(gateway, "clients") as Map<string, unknown>;
     clients.set("client", {
@@ -201,8 +201,8 @@ describe("durable stream delivery", () => {
           void [keys].flat().forEach((key) => stored.delete(key)),
       },
     };
-    const { db, sqlite } = pgD1();
-    sqlite.exec(user("owner"));
+    const { db, sqlite } = await pgD1();
+    await sqlite.exec(user("owner"));
     // A woken Durable Object starts with no memory of its connections.
     const gateway = new RealtimeGateway(
       state as never,
@@ -240,12 +240,12 @@ describe("durable stream delivery", () => {
     expect(frames).toHaveLength(1);
   });
   it("does not deliver a live Space signal to a removed member on user scope", async () => {
-    const f = harness(false);
+    const f = await harness(false);
     await f.publish(f.event("space", 1));
     expect(f.frames).toHaveLength(0);
   });
   it("delivers Space deletion to an active user after its focused membership disappears", async () => {
-    const f = harness();
+    const f = await harness();
     const client = f.clients.get("client") as {
       subscriptions: Map<string, unknown>;
     };

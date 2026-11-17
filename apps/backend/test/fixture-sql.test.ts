@@ -16,33 +16,33 @@ describe("placeholder translation", () => {
   });
 });
 
-describe("values through the synchronous bridge", () => {
-  const { sqlite } = pgD1();
-  sqlite.exec(`CREATE TABLE fx (id text PRIMARY KEY, n bigint NOT NULL DEFAULT 0, flag boolean NOT NULL DEFAULT false,
+describe("values through the synchronous bridge", async () => {
+  const { sqlite } = await pgD1();
+  await sqlite.exec(`CREATE TABLE fx (id text PRIMARY KEY, n bigint NOT NULL DEFAULT 0, flag boolean NOT NULL DEFAULT false,
     at timestamptz, doc jsonb, parent text REFERENCES fx(id))`);
 
-  test("bigint, boolean and timestamp come back as number, 1/0 and ISO text", () => {
-    sqlite.prepare("INSERT INTO fx (id, n, flag, at) VALUES (?1, ?2, ?3, ?4)").run("a", 42, true, "2026-01-02T03:04:05.678Z");
-    expect(sqlite.prepare("SELECT n, flag, at FROM fx WHERE id = ?").get("a")).toEqual({ n: 42, flag: 1, at: "2026-01-02T03:04:05.678Z" });
-    expect(sqlite.prepare("SELECT * FROM fx WHERE id = ?").get("missing")).toBeUndefined();
+  test("bigint, boolean and timestamp come back as number, 1/0 and ISO text", async () => {
+    await sqlite.prepare("INSERT INTO fx (id, n, flag, at) VALUES (?1, ?2, ?3, ?4)").run("a", 42, true, "2026-01-02T03:04:05.678Z");
+    expect(await sqlite.prepare("SELECT n, flag, at FROM fx WHERE id = ?").get("a")).toEqual({ n: 42, flag: 1, at: "2026-01-02T03:04:05.678Z" });
+    expect(await sqlite.prepare("SELECT * FROM fx WHERE id = ?").get("missing")).toBeUndefined();
   });
 
-  test("JSON text bound to a jsonb column is stored as the document and read back as text", () => {
-    sqlite.prepare("INSERT INTO fx (id, doc) VALUES (?1, ?2)").run("j", '{"a":"x"}');
-    expect(sqlite.prepare("SELECT doc ->> 'a' AS a, jsonb_typeof(doc) AS t FROM fx WHERE id = ?").get("j")).toEqual({ a: "x", t: "object" });
-    expect(JSON.parse((sqlite.prepare("SELECT doc FROM fx WHERE id = ?").get("j") as { doc: string }).doc)).toEqual({ a: "x" });
-    expect(() => sqlite.prepare("INSERT INTO fx (id, doc) VALUES (?1, ?2)").run("bad", "{nope")).toThrow();
+  test("JSON text bound to a jsonb column is stored as the document and read back as text", async () => {
+    await sqlite.prepare("INSERT INTO fx (id, doc) VALUES (?1, ?2)").run("j", '{"a":"x"}');
+    expect(await sqlite.prepare("SELECT doc ->> 'a' AS a, jsonb_typeof(doc) AS t FROM fx WHERE id = ?").get("j")).toEqual({ a: "x", t: "object" });
+    expect(JSON.parse(((await sqlite.prepare("SELECT doc FROM fx WHERE id = ?").get("j")) as { doc: string }).doc)).toEqual({ a: "x" });
+    await expect(sqlite.prepare("INSERT INTO fx (id, doc) VALUES (?1, ?2)").run("bad", "{nope")).rejects.toThrow();
   });
 
-  test("camelCase aliases come back in their original case", () => {
-    expect(sqlite.prepare("SELECT n AS rowCount FROM fx WHERE id = ?").get("a")).toEqual({ rowCount: 42 });
+  test("camelCase aliases come back in their original case", async () => {
+    expect(await sqlite.prepare("SELECT n AS rowCount FROM fx WHERE id = ?").get("a")).toEqual({ rowCount: 42 });
   });
 
-  test("constraint failures carry a readable prefix and the PostgreSQL fields", () => {
-    const failure = (fn: () => void) => { try { fn(); } catch (e) { return e as PgD1Error; } throw new Error("expected a failure"); };
-    expect(failure(() => sqlite.prepare("INSERT INTO fx (id) VALUES (?)").run("a")).message).toContain("UNIQUE constraint failed");
-    expect(failure(() => sqlite.prepare("INSERT INTO fx (id, parent) VALUES (?, ?)").run("c", "nope")).message).toContain("FOREIGN KEY constraint failed");
-    expect(failure(() => sqlite.prepare("INSERT INTO fx (id, n) VALUES (?, ?)").run("d", null)).message).toContain("NOT NULL constraint failed");
-    expect(failure(() => sqlite.prepare("INSERT INTO fx (id) VALUES (?)").run("a")).code).toBe("23505");
+  test("constraint failures carry a readable prefix and the PostgreSQL fields", async () => {
+    const failure = async (fn: () => Promise<unknown>) => { try { await fn(); } catch (e) { return e as PgD1Error; } throw new Error("expected a failure"); };
+    expect((await failure(() => sqlite.prepare("INSERT INTO fx (id) VALUES (?)").run("a"))).message).toContain("UNIQUE constraint failed");
+    expect((await failure(() => sqlite.prepare("INSERT INTO fx (id, parent) VALUES (?, ?)").run("c", "nope"))).message).toContain("FOREIGN KEY constraint failed");
+    expect((await failure(() => sqlite.prepare("INSERT INTO fx (id, n) VALUES (?, ?)").run("d", null))).message).toContain("NOT NULL constraint failed");
+    expect((await failure(() => sqlite.prepare("INSERT INTO fx (id) VALUES (?)").run("a"))).code).toBe("23505");
   });
 });

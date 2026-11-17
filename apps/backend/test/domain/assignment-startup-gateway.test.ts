@@ -2,12 +2,12 @@ import { describe, expect, it } from "./helpers/vitest-compat";
 import { startupReportAdvances } from "../../src/domain/assignment-startup.js";
 import { gatewayFixture } from "./helpers/assignment-gateway.js";
 
-const startup = (f: Awaited<ReturnType<typeof gatewayFixture>>) =>
-  f.sqlite
+const startup = async (f: Awaited<ReturnType<typeof gatewayFixture>>) =>
+  (await f.sqlite
     .prepare(
       "SELECT status, startup_stage AS stage, startup_detail_json AS detail FROM worker_assignments WHERE id='A1'",
     )
-    .get() as { status: string; stage: string | null; detail: string | null };
+    .get()) as { status: string; stage: string | null; detail: string | null };
 
 describe("assignment.startup progress", () => {
   it("never moves the stage backwards", () => {
@@ -26,7 +26,7 @@ describe("assignment.startup progress", () => {
   it("records the furthest stage for a dispatched assignment", async () => {
     const f = await gatewayFixture("dispatched");
     await f.send("assignment.startup", { stage: "profile_ready" });
-    expect(startup(f).stage).toBe("profile_ready");
+    expect((await startup(f)).stage).toBe("profile_ready");
     await f.send("assignment.startup", {
       stage: "queued_for_slot",
       queuePosition: 2,
@@ -35,7 +35,7 @@ describe("assignment.startup progress", () => {
       waitingForSession: false,
       queueWaitTimeoutMs: 120000,
     });
-    const row = startup(f);
+    const row = await startup(f);
     expect(row.stage).toBe("queued_for_slot");
     expect(JSON.parse(row.detail ?? "{}")).toMatchObject({
       queuePosition: 2,
@@ -43,13 +43,13 @@ describe("assignment.startup progress", () => {
     });
     // A late, older report is ignored.
     await f.send("assignment.startup", { stage: "worker_resolved" });
-    expect(startup(f).stage).toBe("queued_for_slot");
+    expect((await startup(f)).stage).toBe("queued_for_slot");
     expect(row.status).toBe("dispatched");
   });
 
   it("ignores progress once the assignment is running", async () => {
     const f = await gatewayFixture("running");
     await f.send("assignment.startup", { stage: "engine_spawned" });
-    expect(startup(f).stage).toBeNull();
+    expect((await startup(f)).stage).toBeNull();
   });
 });

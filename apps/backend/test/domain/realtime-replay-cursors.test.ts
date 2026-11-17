@@ -7,9 +7,9 @@ import {
 } from "../../src/domain/realtime-gateway.js";
 import { BoundedRealtimeQueue } from "../../src/domain/realtime-queue.js";
 
-function harness() {
-  const { sqlite: database, db } = pgD1();
-  database.exec(`
+async function harness() {
+  const { sqlite: database, db } = await pgD1();
+  await database.exec(`
     INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('U','u@test','U','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES ('S','U','S','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES ('M','S','U','owner','now','now');
@@ -36,7 +36,7 @@ function harness() {
       connected,
       scope,
     ) as Promise<void>;
-  function insert(
+  async function insert(
     kind: string,
     id: string,
     count: number,
@@ -47,7 +47,7 @@ function harness() {
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'S', 'T', 'R', ?1)`,
     );
     for (let sequence = 1; sequence <= count; sequence++) {
-      statement.run(
+      await statement.run(
         `${kind}-${id}-${sequence}`,
         kind === "execution_workspace" ? "run.completed" : type,
         '{"entityId":"message","threadId":"T"}',
@@ -77,15 +77,15 @@ const cases: Array<[string, RealtimeScope, string, string]> = [
 describe("cursor-aware SQL replay", () => {
   for (const [name, scope, kind, id] of cases) {
     it(`${name}: replays event 301 after cursor 300 instead of the oldest 256`, async () => {
-      const f = harness();
-      f.insert(kind, id, 301);
+      const f = await harness();
+      await f.insert(kind, id, 301);
       f.cursors.set(JSON.stringify([kind, id]), 300);
       await f.replay(scope);
       expect(f.frames.map((frame) => frame.event?.sequence)).toEqual([301]);
     });
     it(`${name}: a full replay page reports possible truncation`, async () => {
-      const f = harness();
-      f.insert(kind, id, 257);
+      const f = await harness();
+      await f.insert(kind, id, 257);
       f.cursors.set(JSON.stringify([kind, id]), 0);
       await f.replay(scope);
       expect(f.frames.filter((frame) => frame.type === "event")).toHaveLength(
@@ -99,8 +99,8 @@ describe("cursor-aware SQL replay", () => {
       expect(f.cursors.get(JSON.stringify([kind, id]))).toBe(256);
     });
     it(`${name}: an unknown stream starts at its newest event without replaying history`, async () => {
-      const f = harness();
-      f.insert(kind, id, 300, "discussion.deleted");
+      const f = await harness();
+      await f.insert(kind, id, 300, "discussion.deleted");
       f.cursors.set('["space","unrelated"]', 900);
       await f.replay(scope);
       expect(f.frames).toEqual([]);
@@ -109,11 +109,11 @@ describe("cursor-aware SQL replay", () => {
     });
   }
   it("user scope filters every audience branch and excludes unauthorized streams", async () => {
-    const f = harness();
-    f.insert("user", "U", 301);
-    f.insert("space", "S", 301);
-    f.insert("execution_workspace", "W", 301);
-    f.insert("space", "private", 1);
+    const f = await harness();
+    await f.insert("user", "U", 301);
+    await f.insert("space", "S", 301);
+    await f.insert("execution_workspace", "W", 301);
+    await f.insert("space", "private", 1);
     for (const [kind, id] of [
       ["user", "U"],
       ["space", "S"],
@@ -126,8 +126,8 @@ describe("cursor-aware SQL replay", () => {
     expect(f.frames.every((frame) => frame.event.sequence === 301)).toBe(true);
   });
   it("exactly 256 rows conservatively signals a gap", async () => {
-    const f = harness();
-    f.insert("space", "S", 256);
+    const f = await harness();
+    await f.insert("space", "S", 256);
     f.cursors.set(JSON.stringify(["space", "S"]), 0);
     await f.replay({ kind: "space", spaceId: "S" });
     expect(f.frames.at(-1)?.reason).toBe("replay_limit");

@@ -6,7 +6,7 @@ import { handleWorkflowWorkspace } from "../../src/domain/routes/workflow-worksp
 import { loadSpaceWorkflowConfigurations } from "../../src/domain/routes/space-workflow-configurations.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 it("attaches Workspaces only by explicit per-Space choice, never by inheritance", async () => {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   const identity = vi
     .spyOn(identityService, "resolve")
     .mockImplementation(async (request) => {
@@ -16,7 +16,7 @@ it("attaches Workspaces only by explicit per-Space choice, never by inheritance"
         : null;
     });
   try {
-    sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','o@test','Owner','now','now'),('member','m@test','Member','now','now');
+    await sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','o@test','Owner','now','now'),('member','m@test','Member','now','now');
  INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('a','owner','First','now','now'),('b','owner','Second','now','now'),('foreign','member','Foreign','now','now');
  INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at) VALUES('worker-a','a','owner','chatgpt','enabled','ready',1,1,'now','now','now');
  INSERT INTO worker_scheduling(worker_id,state,updated_at) VALUES('worker-a','disabled','now');
@@ -40,10 +40,10 @@ it("attaches Workspaces only by explicit per-Space choice, never by inheritance"
       status: 403,
     });
     expect(
-      sqlite.prepare("SELECT COUNT(*) AS n FROM workspace_space_grants").get(),
+      await sqlite.prepare("SELECT COUNT(*) AS n FROM workspace_space_grants").get(),
     ).toEqual({ n: 0 });
     expect(
-      sqlite
+      await sqlite
         .prepare(
           "SELECT state FROM worker_scheduling WHERE worker_id='worker-a'",
         )
@@ -68,14 +68,14 @@ it("attaches Workspaces only by explicit per-Space choice, never by inheritance"
       space: { id: string };
     };
     expect(
-      sqlite
+      await sqlite
         .prepare(
           "SELECT workspace_id FROM space_workflow_settings WHERE space_id=?",
         )
         .get(plain.space.id),
     ).toEqual({ workspace_id: null });
     expect(
-      sqlite
+      await sqlite
         .prepare(
           "SELECT COUNT(*) AS n FROM workspace_space_grants WHERE space_id=?",
         )
@@ -85,20 +85,16 @@ it("attaches Workspaces only by explicit per-Space choice, never by inheritance"
       await create({ name: "Chosen", workspaceId: "a" })
     ).json()) as { space: { id: string } };
     expect(
-      sqlite
+      await sqlite
         .prepare(
           "SELECT workspace_id,status FROM workspace_space_grants WHERE space_id=?",
         )
         .get(chosen.space.id),
     ).toEqual({ workspace_id: "a", status: "active" });
-    await expect(
-      create({ name: "Foreign", workspaceId: "foreign" }),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(create({ name: "Foreign", workspaceId: "foreign" }),).rejects.toMatchObject({ status: 403 });
 
     // Only the owner chooses a Space's Workspace, with reset confirmation.
-    await expect(
-      handle({ workspaceId: "a", confirmReset: true }, "s", "member"),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(handle({ workspaceId: "a", confirmReset: true }, "s", "member"),).rejects.toMatchObject({ status: 403 });
     await expect(handle({ workspaceId: "a" }, "s")).rejects.toMatchObject({
       status: 409,
     });
@@ -107,16 +103,14 @@ it("attaches Workspaces only by explicit per-Space choice, never by inheritance"
       { workspaceId: "a", workspaces: [{ id: "a", name: "First" }] },
     );
     expect(
-      sqlite
+      await sqlite
         .prepare(
           "SELECT state FROM worker_scheduling WHERE worker_id='worker-a'",
         )
         .get(),
     ).toEqual({ state: "enabled" });
     // There is no inheritance any more.
-    await expect(
-      handle({ inherit: true, confirmReset: true }, "s"),
-    ).rejects.toMatchObject({ status: 400 });
+    await expect(handle({ inherit: true, confirmReset: true }, "s"),).rejects.toMatchObject({ status: 400 });
 
     // Switching a Space resets only that Space's overrides.
     const config = JSON.stringify({
@@ -126,17 +120,17 @@ it("attaches Workspaces only by explicit per-Space choice, never by inheritance"
       defaults: {},
       stepOverrides: {},
     });
-    sqlite.exec(
+    await sqlite.exec(
       "INSERT INTO space_workflow_settings VALUES('independent','b','now')",
     );
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO space_workflow_configurations VALUES('independent','chat',1,?,'now'),('s','chat',1,?,'now')",
       )
       .run(config, config);
     await handle({ workspaceId: "b", confirmReset: true }, "s");
     expect(
-      sqlite
+      await sqlite
         .prepare(
           "SELECT space_id FROM space_workflow_configurations ORDER BY space_id",
         )
@@ -147,6 +141,6 @@ it("attaches Workspaces only by explicit per-Space choice, never by inheritance"
     );
   } finally {
     identity.mockRestore();
-    sqlite.close();
+    await sqlite.close();
   }
 });

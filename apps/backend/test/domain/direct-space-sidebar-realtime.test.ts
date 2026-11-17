@@ -4,11 +4,11 @@ import { pgD1 } from "./helpers/pg-d1";
 import worker from "../../src/domain/index.js";
 
 describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
-  function createTestEnv() {
-    const { sqlite, db } = pgD1();
+  async function createTestEnv() {
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, avatar_url, status, created_at, updated_at) VALUES
         ('user-alice', 'alice@test.com', 'Alice User', 'r2://avatars/user-alice/alice-v1', 'active', '${now}', '${now}'),
         ('user-bob', 'bob@test.com', 'Bob User', 'r2://avatars/user-bob/bob-v1', 'active', '${now}', '${now}');
@@ -110,7 +110,7 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
   }
 
   it("keeps a People Space name personal and resets to the current profile name", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
     const url = `https://syntila.test/api/spaces/${directSpaceId}`;
     const requestAs = (user: string, body?: object) =>
@@ -135,7 +135,7 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
     expect(((await (await requestAs("bob")).json()) as any).space.name).toBe(
       "Alice User",
     );
-    sqlite.exec(
+    await sqlite.exec(
       "UPDATE users SET display_name = 'Robert' WHERE id = 'user-bob'",
     );
     const listed = await worker.fetch(
@@ -172,8 +172,8 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
 
   for (const role of ["viewer", "collaborator"]) {
     it(`archives and restores a shared Space for the ${role} only`, async () => {
-      const { env, sqlite } = createTestEnv();
-      sqlite.exec(`
+      const { env, sqlite } = await createTestEnv();
+      await sqlite.exec(`
         INSERT INTO spaces (id, name, kind, owner_user_id, created_at, updated_at)
         VALUES ('shared', 'Shared', 'group', 'user-alice', 'now', 'now');
         INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES
@@ -235,7 +235,7 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
   }
 
   it("archives and restores a People Space for the caller only", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
     const url = `https://syntila.test/api/spaces/${directSpaceId}`;
     await worker.fetch(
@@ -285,7 +285,7 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
   });
 
   it("inactive/unused Direct Space is not in sidebar until opened, messaged, or pinned", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
 
     // Alice lists spaces (sidebar query with archived=false)
@@ -340,7 +340,7 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
   });
 
   it("dynamic titles & avatar URL reflect peer's latest profile", async () => {
-    const { env, sqlite, users } = createTestEnv();
+    const { env, sqlite, users } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
 
     // Alice opens direct space
@@ -364,9 +364,9 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
     expect(directSpace.avatarUrl).toContain("user-bob");
 
     // Bob updates his display name in users table
-    sqlite.exec(
+    (await sqlite.exec(
       "UPDATE users SET display_name = 'Robert Marley' WHERE id = 'user-bob'",
-    );
+    ));
     users.bob!.displayName = "Robert Marley";
 
     listRes = await worker.fetch(
@@ -382,7 +382,7 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
   });
 
   it("personal hide removes conversation from active sidebar and incoming message unhides it", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
 
     // Alice opens direct space
@@ -483,7 +483,7 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
   });
 
   it("invitation and connection lifecycle emits privacy-safe realtime events with ID payloads only", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
 
     // Alice creates personal invitation
     const inviteRes = await worker.fetch(
@@ -501,7 +501,7 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
     const { invitation } = (await inviteRes.json()) as any;
 
     // Verify people.updated events in realtime_events table
-    const inviteEvents = sqlite
+    const inviteEvents = await sqlite
       .prepare(
         "SELECT stream_kind, stream_id, event_type, payload_json FROM realtime_events WHERE event_type = 'people.updated'",
       )
@@ -540,7 +540,7 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
     );
     expect(discRes.status).toBe(200);
 
-    const allPeopleEvents = sqlite
+    const allPeopleEvents = await sqlite
       .prepare(
         "SELECT payload_json FROM realtime_events WHERE event_type = 'people.updated'",
       )
@@ -556,9 +556,9 @@ describe("Direct Space Sidebar, Realtime & Synchronization (Phase 8)", () => {
 describe("Support Space sidebar visibility", () => {
   async function setup() {
     const { pgD1 } = await import("./helpers/pg-d1");
-    const { sqlite, db } = pgD1();
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, avatar_url, status, created_at, updated_at) VALUES
         ('user-alice','alice@test.com','Alice',NULL,'active','${now}','${now}'),
         ('user-support','support@syntila.test','Support',NULL,'active','${now}','${now}');
@@ -632,7 +632,7 @@ describe("Support Space sidebar visibility", () => {
     ).toBe(200);
     expect(await ids("alice")).toContain(spaceId);
     expect(
-      sqlite
+      await sqlite
         .prepare(
           "SELECT hidden FROM direct_space_user_state WHERE space_id=? AND user_id='user-alice'",
         )
@@ -645,7 +645,7 @@ describe("Support Space sidebar visibility", () => {
     });
     expect(await ids("alice")).not.toContain(spaceId);
     expect(
-      sqlite
+      await sqlite
         .prepare(
           "SELECT hidden FROM direct_space_user_state WHERE space_id=? AND user_id='user-alice'",
         )

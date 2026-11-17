@@ -16,7 +16,7 @@ describe("durable workflow runner", () => {
   });
 
   test("memoises steps across replays, buffers events, resumes on events and times out waits", async () => {
-    const { sql } = pgD1();
+    const { sql } = await pgD1();
     const calls: string[] = [];
     let host!: WorkflowHost;
     host = new WorkflowHost("demo", sql as any, () => ({
@@ -52,7 +52,7 @@ describe("durable workflow runner", () => {
   });
 
   test("a wait inside try/catch still parks the instance (the catch sees only a real timeout)", async () => {
-    const { sql } = pgD1();
+    const { sql } = await pgD1();
     const seen: string[] = [];
     const host = new WorkflowHost("demo3", sql as any, () => ({
       async run(_event: any, step: any) {
@@ -76,7 +76,7 @@ describe("durable workflow runner", () => {
   });
 
   test("graceful stop hands a still-running instance back at once", async () => {
-    const { sql } = pgD1();
+    const { sql } = await pgD1();
     const host = new WorkflowHost("demo4", sql as any, () => ({
       async run(_e: any, step: any) { await step.do("slow", async () => { await Bun.sleep(60_000); }); },
     }), () => ({}));
@@ -89,7 +89,7 @@ describe("durable workflow runner", () => {
   });
 
   test("a crashed process's instance is resumed after its lease expires; failures are recorded", async () => {
-    const { sql } = pgD1();
+    const { sql } = await pgD1();
     await sql.unsafe(`INSERT INTO workflow_instances(id, workflow, params, status, lease_owner, lease_until)
       VALUES ('wf-crash', 'demo2', '{}'::jsonb, 'running', 'dead-process', now() - interval '1 second')`);
     const host = new WorkflowHost("demo2", sql as any, () => ({

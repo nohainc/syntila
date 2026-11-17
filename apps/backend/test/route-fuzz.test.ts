@@ -16,10 +16,10 @@ import { pgD1 } from "./domain/helpers/pg-d1";
 import { member, message, space, thread, user, workRequest, workspace } from "./domain/helpers/seed";
 import { threadConversationId } from "../src/domain/routes/conversations";
 
-let base = "", stop = async () => {}, mint: (sub: string) => Promise<string>, db: ReturnType<typeof pgD1>["sql"];
+let base = "", stop = async () => {}, mint: (sub: string) => Promise<string>, db: Awaited<ReturnType<typeof pgD1>>["sql"];
 const logged: string[] = [];
 beforeAll(async () => {
-  const sql = db = pgD1().sql;
+  const sql = db = (await pgD1()).sql;
   const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
   const pub = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k" };
   const priv = { ...(await crypto.subtle.exportKey("jwk", pair.privateKey)), kid: "k" } as JsonWebKey & { kid: string };

@@ -6,7 +6,7 @@ const config = (extra: object = {}) => ({
   hostname: url.hostname, port: Number(url.port || 5432), username: decodeURIComponent(url.username),
   database: url.pathname.slice(1), password: decodeURIComponent(url.password), max: 4, ...extra,
 });
-const show = async (db: ReturnType<typeof createDb>, name: string) => (await db.unsafe(`SHOW ${name}`))[0][name] as string;
+const show = async (db: Awaited<ReturnType<typeof createDb>>, name: string) => (await db.unsafe(`SHOW ${name}`))[0][name] as string;
 
 test("the API's sessions carry the lock-wait and idle-in-transaction limits; the migration runner's do not", async () => {
   const api = createDb(config());

@@ -26,29 +26,29 @@ const timeoutIntent: RevocationIntent = {
 
 async function seed(status: string, permitRequired = true) {
   const f = await conversationFixture();
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now')",
   );
-  f.assign("A1");
-  f.sqlite
+  await f.assign("A1");
+  await f.sqlite
     .prepare(
       `UPDATE worker_assignments
           SET run_id='RUN', attempt_id='ATT1', idempotency_key='IDEM1',
               status=?, updated_at=?, start_permit_required=? WHERE id='A1'`,
     )
     .run(status, T0, permitRequired ? 1 : 0);
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "UPDATE workflow_tasks SET status='queued', started_at=NULL WHERE id='T'",
   );
-  const row = () =>
-    f.sqlite
+  const row = async () =>
+    (await f.sqlite
       .prepare(
         "SELECT status, start_permit_issued_at AS issued FROM worker_assignments WHERE id='A1'",
       )
-      .get() as { status: string; issued: string | null };
-  const task = () =>
+      .get()) as { status: string; issued: string | null };
+  const task = async () =>
     (
-      f.sqlite
+      await f.sqlite
         .prepare("SELECT status FROM workflow_tasks WHERE id='T'")
         .get() as { status: string }
     ).status;
@@ -84,9 +84,9 @@ describe("start permit", () => {
         new Date(NOW.getTime() + 60_000),
       );
       expect(replay).toEqual(first);
-      expect(f.row().issued).toBe(NOW.toISOString());
+      expect((await f.row()).issued).toBe(NOW.toISOString());
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
@@ -100,18 +100,18 @@ describe("start permit", () => {
         // The race is injected just before the grant statement runs.
         const db = {
           ...original,
-          row(strings: TemplateStringsArray, ...values: unknown[]) {
+          async row(strings: TemplateStringsArray, ...values: unknown[]) {
             if (strings.join("?").includes("SET start_permit_issued_at") && !interrupted) {
               interrupted = true;
               if (interruption === "replace-runtime") {
-                f.sqlite.exec(
+                await f.sqlite.exec(
                   "UPDATE workspace_runtime_identities SET revoked_at='now' WHERE workspace_id='WS' AND revoked_at IS NULL; INSERT INTO workspace_runtime_identities(id,workspace_id,credential_token_hash,installation_id,created_at) VALUES('replacement','WS','replacement-hash','replacement-installation','now')",
                 );
-                f.sqlite.exec(
+                await f.sqlite.exec(
                   "UPDATE worker_assignments SET runtime_identity_id = 'replacement' WHERE id='A1'",
                 );
               } else {
-                f.sqlite.exec(
+                await f.sqlite.exec(
                   "UPDATE worker_assignments SET status = 'revocation_pending' WHERE id='A1'",
                 );
               }
@@ -124,9 +124,9 @@ describe("start permit", () => {
             await grantStartPermit(db as never, f.fence, NOW),
           ).toMatchObject({ granted: false });
           expect(interrupted).toBe(true);
-          expect(f.row().issued).toBeNull();
+          expect((await f.row()).issued).toBeNull();
         } finally {
-          f.sqlite.close();
+          await f.sqlite.close();
         }
       }
     },
@@ -139,7 +139,7 @@ describe("start permit", () => {
     if (!decision.granted) throw new Error("expected a grant");
     expect(decision.permitId).toBe(`permit:A1:ATT1:${NOW.getTime()}`);
     expect(Date.parse(decision.expiresAt)).toBe(NOW.getTime() + 30_000);
-    expect(f.row().issued).toBe(NOW.toISOString());
+    expect((await f.row()).issued).toBe(NOW.toISOString());
     // A repeated request after a lost grant is granted again.
     expect((await f.permit()).granted).toBe(true);
   });
@@ -147,7 +147,7 @@ describe("start permit", () => {
   it("treats a permit request that overtakes admission as admission evidence", async () => {
     const f = await seed("dispatched");
     expect((await f.permit()).granted).toBe(true);
-    expect(f.row().status).toBe("acknowledged");
+    expect((await f.row()).status).toBe("acknowledged");
   });
 
   it("is denied for every revoked, finished or foreign assignment", async () => {
@@ -181,7 +181,7 @@ describe("start permit", () => {
         NOW,
       ),
     ).toEqual({ granted: false, reason: "stale" });
-    expect(other.row().issued).toBeNull();
+    expect((await other.row()).issued).toBeNull();
   });
 });
 
@@ -201,8 +201,8 @@ describe("revocation with start fencing", () => {
       confirmed: true,
       permitIssued: false,
     });
-    expect(f.row().status).toBe("timed_out");
-    expect(f.task()).toBe("failed");
+    expect((await f.row()).status).toBe("timed_out");
+    expect(await f.task()).toBe("failed");
     // The queued command can no longer start.
     expect(await f.permit()).toEqual({ granted: false, reason: "terminal" });
   });
@@ -215,7 +215,7 @@ describe("revocation with start fencing", () => {
       intent: timeoutIntent,
     });
     expect(result).toMatchObject({ outcome: "finalized", fenced: true });
-    expect(f.row().status).toBe("timed_out");
+    expect((await f.row()).status).toBe("timed_out");
   });
 
   it("waits for the Service once a permit was issued", async () => {
@@ -231,8 +231,8 @@ describe("revocation with start fencing", () => {
       permitIssued: true,
       confirmed: false,
     });
-    expect(f.row().status).toBe("revocation_pending");
-    expect(f.task()).toBe("queued");
+    expect((await f.row()).status).toBe("revocation_pending");
+    expect(await f.task()).toBe("queued");
   });
 
   it("never fences a Service that does not use permits", async () => {
@@ -243,7 +243,7 @@ describe("revocation with start fencing", () => {
       intent: timeoutIntent,
     });
     expect(result).toMatchObject({ outcome: "pending", confirmed: false });
-    expect(f.row().status).toBe("revocation_pending");
+    expect((await f.row()).status).toBe("revocation_pending");
   });
 
   it("never fences an assignment that was already running", async () => {
@@ -254,7 +254,7 @@ describe("revocation with start fencing", () => {
       intent: timeoutIntent,
     });
     expect(result).toMatchObject({ outcome: "pending", confirmed: false });
-    expect(f.row().status).toBe("revocation_pending");
+    expect((await f.row()).status).toBe("revocation_pending");
   });
 
   it("lets only one of a racing grant and revocation win", async () => {
@@ -272,19 +272,19 @@ describe("revocation with start fencing", () => {
           ? await Promise.all([grant(), revoke()])
           : await Promise.all([revoke(), grant()]);
       const granted = (order === "grant-first" ? first : second) as Awaited<
-        ReturnType<typeof grant>
+        Awaited<ReturnType<typeof grant>>
       >;
       const revoked = (order === "grant-first" ? second : first) as Awaited<
-        ReturnType<typeof revoke>
+        Awaited<ReturnType<typeof revoke>>
       >;
       // Invariant, whatever the interleaving: a fenced finalization and a
       // granted permit never both happen.
       expect(Boolean(granted.granted) && Boolean(revoked.fenced)).toBe(false);
       if (!granted.granted) {
-        expect(f.row().issued).toBeNull();
+        expect((await f.row()).issued).toBeNull();
       } else {
-        expect(f.row().issued).not.toBeNull();
-        expect(f.row().status).toBe("revocation_pending");
+        expect((await f.row()).issued).not.toBeNull();
+        expect((await f.row()).status).toBe("revocation_pending");
       }
     }
   });

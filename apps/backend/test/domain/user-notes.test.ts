@@ -20,24 +20,24 @@ type Note = {
   revision: number;
 };
 
-function fixture() {
-  const { sqlite, db } = pgD1();
+async function fixture() {
+  const { sqlite, db } = await pgD1();
   for (const id of ["alice", "bob", "eve"])
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
-      .run(id, `${id}@test`, id);
-  sqlite.exec(
+      .run(id, `${id}@test`, id));
+  await sqlite.exec(
     "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','alice','Space','now','now')",
   );
   for (const id of ["alice", "bob"])
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES(?,'S',?,?,'2020-01-01T00:00:00Z','2020-01-01T00:00:00Z')",
       )
-      .run(`m-${id}`, id, id === "alice" ? "owner" : "collaborator");
-  sqlite.exec(
+      .run(`m-${id}`, id, id === "alice" ? "owner" : "collaborator"));
+  await sqlite.exec(
     "INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('T','S','Thread','active','alice','2020-01-01T00:00:00Z','2020-01-01T00:00:00Z')",
   );
   const env = {
@@ -82,7 +82,7 @@ function fixture() {
 }
 
 it("keeps a Thread note private to its owner", async () => {
-  const { threadNote, list } = fixture();
+  const { threadNote, list } = await fixture();
   expect(await threadNote("bob")).toBeNull();
   const created = await threadNote("bob", "PUT", { body: "remember" });
   expect(created).toMatchObject({
@@ -101,7 +101,7 @@ it("keeps a Thread note private to its owner", async () => {
 });
 
 it("rejects stale saves and outsiders", async () => {
-  const { env, as, threadNote } = fixture();
+  const { env, as, threadNote } = await fixture();
   const created = await threadNote("bob", "PUT", { body: "one" });
   await threadNote("bob", "PUT", { body: "two", revision: 1 });
   await expect(
@@ -124,7 +124,7 @@ it("rejects stale saves and outsiders", async () => {
 });
 
 it("keeps notes, detached, when the Thread is deleted", async () => {
-  const { env, as, threadNote, list } = fixture();
+  const { env, as, threadNote, list } = await fixture();
   await threadNote("bob", "PUT", { body: "keep me" });
   await handleDeleteThread(as("alice", "DELETE"), env, "T");
   const [note] = await list("bob");
@@ -138,7 +138,7 @@ it("keeps notes, detached, when the Thread is deleted", async () => {
 });
 
 it("creates, edits and deletes standalone notes", async () => {
-  const { env, as, list } = fixture();
+  const { env, as, list } = await fixture();
   const response = await handleCreateNote(
     as("bob", "POST", { title: "Ideas", body: "a" }),
     env,

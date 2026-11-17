@@ -24,9 +24,9 @@ const folder = (id: string, displayName: string, status = "available") => ({
 const API = "folder-00000000000000a1";
 const DOCS = "folder-00000000000000b2";
 
-function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite.exec(
+async function fixture() {
+  const { sqlite, db } = await pgD1();
+  await sqlite.exec(
     `INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
        ('U','u@test','U','now','now'),('V','v@test','V','now','now');
      INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES
@@ -77,7 +77,7 @@ function fixture() {
 }
 
 it("lets the Space and Workspace owner attach published folders only", async () => {
-  const { sqlite, env, call } = fixture();
+  const { sqlite, env, call } = await fixture();
   try {
     await recordWorkspaceAllowedFolders(
       env,
@@ -105,12 +105,12 @@ it("lets the Space and Workspace owner attach published folders only", async () 
       400,
     );
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });
 
 it("hides folders from collaborators and from Spaces on foreign Workspaces", async () => {
-  const { sqlite, env, call } = fixture();
+  const { sqlite, env, call } = await fixture();
   try {
     await recordWorkspaceAllowedFolders(env, "A", [folder(API, "api")], "now");
     await recordWorkspaceAllowedFolders(env, "F", [folder(DOCS, "x")], "now");
@@ -124,18 +124,18 @@ it("hides folders from collaborators and from Spaces on foreign Workspaces", asy
       eligible: true,
       workspaceId: "F",
     });
-    sqlite.exec("UPDATE spaces SET owner_user_id='U' WHERE id='T'");
+    await sqlite.exec("UPDATE spaces SET owner_user_id='U' WHERE id='T'");
     expect((await call("U", "T")).body).toMatchObject({
       eligible: false,
       reason: "not_workspace_owner",
     });
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });
 
 it("detaches folders when the folder is removed or the Space changes Workspace", async () => {
-  const { sqlite, env, call } = fixture();
+  const { sqlite, env, call } = await fixture();
   try {
     await recordWorkspaceAllowedFolders(
       env,
@@ -171,16 +171,16 @@ it("detaches folders when the folder is removed or the Space changes Workspace",
     );
     expect(switched.status).toBe(200);
     expect(
-      sqlite
+      await sqlite
         .prepare("SELECT COUNT(*) AS n FROM space_additional_folders")
         .get(),
     ).toEqual({ n: 0 });
     expect(
-      sqlite
+      await sqlite
         .prepare("SELECT COUNT(*) AS n FROM workspace_allowed_folders")
         .get(),
     ).toEqual({ n: 1 });
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });

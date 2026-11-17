@@ -4,7 +4,7 @@ import { identityService } from "../../src/domain/auth/identity-service.js";
 import { handleWorkspaceMcpInventory } from "../../src/domain/routes/mcp-inventory.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 
-let store: ReturnType<typeof pgD1>;
+let store: Awaited<ReturnType<typeof pgD1>>;
 let gatewayReplies: Record<string, unknown>;
 let env: SecurityEnv;
 
@@ -35,9 +35,9 @@ const get = (user: string, workspace: string, method = "GET") =>
     workspace,
   );
 
-beforeEach(() => {
-  store = pgD1();
-  store.sqlite.exec(`
+beforeEach(async () => {
+  store = await pgD1();
+  await store.sqlite.exec(`
     INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
       ('owner','o@test','Owner','now','now'),
       ('other','x@test','Other','now','now');
@@ -70,9 +70,9 @@ beforeEach(() => {
     },
   } as unknown as SecurityEnv;
 });
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  store.sqlite.close();
+  await store.sqlite.close();
 });
 
 describe("GET /api/workspaces/:id/mcp-inventory", () => {

@@ -11,13 +11,13 @@ import {
 } from "../../src/domain/account-plan.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 
-let store: ReturnType<typeof pgD1>;
+let store: Awaited<ReturnType<typeof pgD1>>;
 let env: SecurityEnv;
 const now = new Date("2026-10-31T12:00:00Z");
 
-beforeEach(() => {
-  store = pgD1();
-  store.sqlite
+beforeEach(async () => {
+  store = await pgD1();
+  await store.sqlite
     .exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('free','f@test','Free','now','now'),('paid','p@test','Paid','now','now');
  INSERT INTO account_plans(user_id,tier,status,source,current_period_end,created_at,updated_at) VALUES('paid','paid','active','manual',NULL,'now','now');`);
   vi.spyOn(identityService, "resolve").mockImplementation(async (req) => {
@@ -32,9 +32,9 @@ beforeEach(() => {
     SYNTILA_ENVIRONMENT: "development",
   } as SecurityEnv;
 });
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  store.sqlite.close();
+  await store.sqlite.close();
 });
 
 it("treats only current paid subscriptions as the paid tier", () => {
@@ -134,7 +134,7 @@ it("gates custom Worker plugins on the paid tier only (ADR-027)", async () => {
   });
 });
 
-it("keeps the SQL owner check in step with effectiveTier", () => {
+it("keeps the SQL owner check in step with effectiveTier", async () => {
   const cases = [
     ["paid", "active", null],
     ["paid", "trialing", "2999-01-01T00:00:00Z"],
@@ -144,13 +144,13 @@ it("keeps the SQL owner check in step with effectiveTier", () => {
     ["free", "active", null],
   ] as const;
   for (const [tier, status, end] of cases) {
-    store.sqlite.exec("DELETE FROM account_plans WHERE user_id='free'");
-    store.sqlite
+    await store.sqlite.exec("DELETE FROM account_plans WHERE user_id='free'");
+    await store.sqlite
       .prepare(
         "INSERT INTO account_plans(user_id,tier,status,source,current_period_end,created_at,updated_at) VALUES('free',?,?,'manual',?,'now','now')",
       )
       .run(tier, status, end);
-    const sql = store.sqlite
+    const sql = await store.sqlite
       .prepare(`SELECT ${paidOwnerSql("'free'")} AS paid`)
       .get() as { paid: number };
     expect(sql.paid === 1).toBe(

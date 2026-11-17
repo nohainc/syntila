@@ -165,10 +165,10 @@ describe("Invitation Email Delivery", () => {
   });
 
   it("sends email and creates invitation on handleCreateSpaceInvitation", async () => {
-    const { sqlite, db } = pgD1();
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, status, created_at, updated_at)
       VALUES ('user-vitalii', 'vitalii@nohainc.com', 'Vitalii Noha', 'active', '${now}', '${now}');
       INSERT INTO spaces (id, name, owner_user_id, created_at, updated_at)
@@ -231,10 +231,10 @@ describe("Invitation Email Delivery", () => {
   });
 
   it("keeps a pending invitation when email delivery is rejected", async () => {
-    const { sqlite, db } = pgD1();
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, status, created_at, updated_at)
       VALUES ('user-vitalii', 'vitalii@nohainc.com', 'Vitalii Noha', 'active', '${now}', '${now}');
       INSERT INTO spaces (id, name, owner_user_id, created_at, updated_at)

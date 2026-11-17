@@ -3,7 +3,7 @@ import { pgD1 } from "./helpers/pg-d1";
 import worker, { routeHandlers } from "../../src/domain/index.js";
 
 // A real, empty database: no user, Space or Workspace rows exist.
-const database = pgD1();
+const database = await pgD1();
 
 const env = {
   SYNTILA_ENVIRONMENT: "development",

@@ -233,8 +233,8 @@ describe("realtime gateway contract", () => {
   });
 
   it("requires Workspace ownership and validates active Space grants", async () => {
-    const { db: real, sqlite } = pgD1();
-    sqlite.exec(
+    const { db: real, sqlite } = await pgD1();
+    await sqlite.exec(
       user("user-1") +
         user("other") +
         workspace("workspace-1", "user-1") +
@@ -270,8 +270,8 @@ describe("realtime gateway contract", () => {
   });
 
   it("revalidates suspended users and removed subscriptions", async () => {
-    const { db, sqlite } = pgD1();
-    sqlite.exec(user("user-1"));
+    const { db, sqlite } = await pgD1();
+    await sqlite.exec(user("user-1"));
     await expect(
       isRealtimeIdentityAuthorized(db, "user-1", [
         { workspaceId: "workspace-removed" },
@@ -279,7 +279,7 @@ describe("realtime gateway contract", () => {
     ).resolves.toBe(false);
     // Control: the same user with no subscriptions to revalidate stays authorized.
     await expect(isRealtimeIdentityAuthorized(db, "user-1", [])).resolves.toBe(true);
-    sqlite.exec("UPDATE users SET status = 'suspended' WHERE id = 'user-1'");
+    await sqlite.exec("UPDATE users SET status = 'suspended' WHERE id = 'user-1'");
     await expect(isRealtimeIdentityAuthorized(db, "user-1", [])).resolves.toBe(false);
   });
 });

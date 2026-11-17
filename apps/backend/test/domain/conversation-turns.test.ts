@@ -10,7 +10,7 @@ import {
 
 it("snapshots every actual invocation and links retries to the immutable original user message", async () => {
   const f = await conversationFixture();
-  f.assign("A");
+  await f.assign("A");
   const first = (await f.turns())[0]!;
   expect(first).toMatchObject({
     id: "turn-A",
@@ -32,13 +32,13 @@ it("snapshots every actual invocation and links retries to the immutable origina
     completedAt: null,
   });
   expect(
-    f.sqlite.prepare("SELECT text FROM conversation_user_messages").get()?.text,
+    (await f.sqlite.prepare("SELECT text FROM conversation_user_messages").get())?.text,
   ).toBe("**Exact user text**");
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "UPDATE worker_catalog SET display_name = 'Renamed today' WHERE worker_type_id = 'chatgpt'",
   );
   expect((await f.turns())[0]).toEqual(first);
-  f.assign("B", "model-y", "high");
+  await f.assign("B", "model-y", "high");
   const records = await f.turns();
   expect(records).toHaveLength(2);
   expect(records[1]).toMatchObject({
@@ -48,19 +48,15 @@ it("snapshots every actual invocation and links retries to the immutable origina
     effort: "high",
   });
   expect(() => f.assign("A")).toThrow();
-  expect(() =>
-    f.sqlite.exec("UPDATE conversation_turns SET model_id = 'new-model'"),
-  ).toThrow("attribution is immutable");
-  expect(() =>
-    f.sqlite.exec("UPDATE conversation_user_messages SET text = 'changed'"),
-  ).toThrow("messages are immutable");
-  f.sqlite.close();
+  await expect(f.sqlite.exec("UPDATE conversation_turns SET model_id = 'new-model'")).rejects.toThrow("attribution is immutable");
+  await expect(f.sqlite.exec("UPDATE conversation_user_messages SET text = 'changed'")).rejects.toThrow("messages are immutable");
+  await f.sqlite.close();
 });
 
 it("records start acknowledgement, exact terminal evidence, and prevents completion replay rewrites", async () => {
   const f = await conversationFixture();
-  f.assign("A", null, null);
-  f.start("A", "2026-10-07T10:02:00Z");
+  await f.assign("A", null, null);
+  await f.start("A", "2026-10-07T10:02:00Z");
   expect((await f.turns())[0]).toMatchObject({
     status: "running",
     startedAt: "2026-10-07T10:02:00.000Z",
@@ -89,23 +85,23 @@ it("records start acknowledgement, exact terminal evidence, and prevents complet
     completedAt: "2030-01-01T00:00:00.000Z",
   });
   expect((await f.turns())[0]).toEqual(before);
-  f.sqlite.exec("UPDATE worker_assignments SET status='running' WHERE id='A'");
+  await f.sqlite.exec("UPDATE worker_assignments SET status='running' WHERE id='A'");
   expect((await f.turns())[0]).toEqual(before);
-  f.sqlite.close();
+  await f.sqlite.close();
 });
 
 it("keeps admission queued and records provider start only from explicit evidence", async () => {
   const f = await conversationFixture();
   try {
-    f.assign("A");
-    f.sqlite.exec(
+    await f.assign("A");
+    await f.sqlite.exec(
       "UPDATE worker_assignments SET status='acknowledged', acknowledged_at='2029-01-01T00:00:00.000Z', updated_at='2029-01-01T00:00:00.000Z' WHERE id='A'",
     );
     expect((await f.turns())[0]).toMatchObject({
       status: "queued",
       startedAt: null,
     });
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE worker_assignments SET status='running', running_at='2029-06-01T00:00:00.000Z', updated_at='2030-01-01T00:00:00.000Z' WHERE id='A'",
     );
     expect((await f.turns())[0]).toMatchObject({
@@ -113,7 +109,7 @@ it("keeps admission queued and records provider start only from explicit evidenc
       startedAt: "2029-06-01T00:00:00.000Z",
     });
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
@@ -122,8 +118,8 @@ it.each(["completed", "failed", "cancelled", "timed_out", "lost"])(
   async (status) => {
     const f = await conversationFixture();
     try {
-      f.assign("A");
-      f.sqlite
+      await f.assign("A");
+      await f.sqlite
         .prepare(
           "UPDATE worker_assignments SET status=?, updated_at='2031-01-01T00:00:00.000Z', output_json=? WHERE id='A'",
         )
@@ -135,17 +131,15 @@ it.each(["completed", "failed", "cancelled", "timed_out", "lost"])(
         completedAt: "2031-01-01T00:00:00.000Z",
         resultText: status === "completed" ? "**exact**" : null,
       });
-      f.sqlite.exec(
+      await f.sqlite.exec(
         "UPDATE worker_assignments SET status='acknowledged',updated_at='2032-01-01T00:00:00Z' WHERE id='A'",
       );
       expect((await f.turns())[0]).toEqual(turn);
-      expect(() =>
-        f.sqlite.exec(
+      await expect(f.sqlite.exec(
           "UPDATE conversation_turns SET result_text='rewrite' WHERE assignment_id='A'",
-        ),
-      ).toThrow("lifecycle");
+        )).rejects.toThrow("lifecycle");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   },
 );
@@ -154,7 +148,7 @@ it.each(["failed", "cancelled"] as const)(
   "retains a terminal %s attempt independently of a subsequent retry",
   async (status) => {
     const f = await conversationFixture();
-    f.assign("A");
+    await f.assign("A");
     if (status === "failed")
       await recordAssignmentError(f.db as unknown as D1Database, "A", {
         error: {
@@ -172,28 +166,26 @@ it.each(["failed", "cancelled"] as const)(
     const original = (await f.turns())[0]!;
     expect(original.status).toBe(status);
     expect(original.completedAt).not.toBeNull();
-    f.assign("B");
+    await f.assign("B");
     expect((await f.turns())[0]).toEqual(original);
-    f.sqlite.close();
+    await f.sqlite.close();
   },
 );
 
 it("creates no worker turn before actual dispatch and rolls invalid attribution back atomically", async () => {
   const f = await conversationFixture();
   expect(await f.turns()).toEqual([]);
-  expect(() =>
-    f.sqlite.exec(
+  await expect(f.sqlite.exec(
       `INSERT INTO worker_assignments(id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,status,created_at,updated_at) VALUES('invalid','P','WS','RT','chatgpt','worker-a','T','created','now','now')`,
-    ),
-  ).toThrow();
+    )).rejects.toThrow();
   expect(
-    f.sqlite
+    (await f.sqlite
       .prepare(
         "SELECT count(*) AS n FROM worker_assignments WHERE id='invalid'",
       )
-      .get()?.n,
+      .get())?.n,
   ).toBe(0);
-  f.sqlite.close();
+  await f.sqlite.close();
 });
 
 it("opaque session references are stable per scope and never expose logical keys", () => {
@@ -237,9 +229,9 @@ it("opaque session references are stable per scope and never expose logical keys
 
 it("stateless turns have no durable worker-session reference", async () => {
   const f = await conversationFixture();
-  f.assign("S", null, null, "stateless");
+  await f.assign("S", null, null, "stateless");
   expect((await f.turns())[0]!.workerSessionId).toBeNull();
-  f.sqlite.close();
+  await f.sqlite.close();
 });
 
 it("session identity survives model choices and compatible Profile release changes", () => {
@@ -281,15 +273,15 @@ it("session identity survives model choices and compatible Profile release chang
 
 it("preserves the dispatched context revision when the Conversation advances before assignment insertion", async () => {
   const f = await conversationFixture();
-  f.sqlite.exec("UPDATE conversations SET context_revision = 1");
-  f.assign("A-frozen", "model-x", "medium", "durable_session", 0);
+  await f.sqlite.exec("UPDATE conversations SET context_revision = 1");
+  await f.assign("A-frozen", "model-x", "medium", "durable_session", 0);
   expect((await f.turns())[0]!.baseContextRevision).toBe(0);
 });
 
 it("effort changes preserve Conversation and Worker Session while freezing each turn's effort", async () => {
   const f = await conversationFixture();
-  f.assign("effort-medium", "model-x", "medium");
-  f.assign("effort-high", "model-x", "high");
+  await f.assign("effort-medium", "model-x", "medium");
+  await f.assign("effort-high", "model-x", "high");
   const [first, second] = await f.turns();
   expect(first!.conversationId).toBe(second!.conversationId);
   expect(first!.workerSessionId).toBe(second!.workerSessionId);
@@ -297,16 +289,16 @@ it("effort changes preserve Conversation and Worker Session while freezing each 
   expect(first!.effort).toBe("medium");
   expect(second!.effort).toBe("high");
   expect(
-    f.sqlite.prepare("SELECT count(*) AS n FROM conversations").get(),
+    await f.sqlite.prepare("SELECT count(*) AS n FROM conversations").get(),
   ).toEqual({ n: 1 });
-  f.sqlite.close();
+  await f.sqlite.close();
 });
 
 it("next-request defaults do not rewrite completed turn attribution or create extra Chat steps", async () => {
   const f = await conversationFixture();
   try {
-    f.assign("original", "model-x", "medium");
-    f.start("original");
+    await f.assign("original", "model-x", "medium");
+    await f.start("original");
     await recordAssignmentResult(f.db as unknown as D1Database, "original", {
       assignmentId: "original",
       status: "completed",
@@ -315,7 +307,7 @@ it("next-request defaults do not rewrite completed turn attribution or create ex
       completedAt: "now",
     });
     const before = (await f.turns())[0];
-    f.sqlite
+    await f.sqlite
       .prepare(
         "INSERT INTO thread_work_configs(thread_id,config_json,updated_at) VALUES('W',?,'2030-01-01T00:00:00Z')",
       )
@@ -337,21 +329,21 @@ it("next-request defaults do not rewrite completed turn attribution or create ex
       status: "completed",
     });
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT count(*) AS n FROM conversation_workflow_runs WHERE work_request_id='R'",
         )
         .get(),
     ).toEqual({ n: 1 });
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT count(*) AS n FROM conversation_workflow_step_runs WHERE workflow_run_id='workflow-run-R'",
         )
         .get(),
     ).toEqual({ n: 1 });
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
@@ -367,7 +359,7 @@ it("freezes friendly selection labels and catalog identity despite later invento
     profileReleaseVersion: 3,
     catalogRevision: "a".repeat(64),
   };
-  f.assign(
+  await f.assign(
     "FROZEN",
     "model-x",
     "medium",
@@ -376,27 +368,23 @@ it("freezes friendly selection labels and catalog identity despite later invento
     undefined,
     snapshot,
   );
-  f.start("FROZEN");
+  await f.start("FROZEN");
   const original = (await f.turns())[0]!;
   expect(original).toMatchObject({
     modelName: "Original Model",
     workerDisplayName: "Original Worker",
     catalogRevision: snapshot.catalogRevision,
   });
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "UPDATE worker_catalog SET display_name='New Worker' WHERE worker_type_id='chatgpt'",
   );
   expect((await f.turns())[0]).toEqual(original);
-  expect(() =>
-    f.sqlite.exec(
+  await expect(f.sqlite.exec(
       "UPDATE worker_assignments SET permission_snapshot_json=syntila_json_set(permission_snapshot_json,'$.executionSelection.modelName','\"Changed\"') WHERE id='FROZEN'",
-    ),
-  ).toThrow("selection is immutable");
-  expect(() =>
-    f.sqlite.exec(
+    )).rejects.toThrow("selection is immutable");
+  await expect(f.sqlite.exec(
       "UPDATE worker_assignments SET model='new-model' WHERE id='FROZEN'",
-    ),
-  ).toThrow("selection is immutable");
+    )).rejects.toThrow("selection is immutable");
   await recordAssignmentResult(f.db as unknown as D1Database, "FROZEN", {
     assignmentId: "FROZEN",
     completedAt: "2026-10-11T00:00:00.000Z",
@@ -408,5 +396,5 @@ it("freezes friendly selection labels and catalog identity despite later invento
     modelName: "Original Model",
     status: "completed",
   });
-  f.sqlite.close();
+  await f.sqlite.close();
 });

@@ -11,14 +11,14 @@ import {
 } from "../../src/domain/workspace-gateway.js";
 
 /** A real database holding one Workspace and the runtime identity that holds `credentialTokenHash`. */
-function runtimeDatabase(
+async function runtimeDatabase(
   workspaceId: string,
   runtimeId: string,
   credentialTokenHash: string,
 ) {
-  const { db, sqlite } = pgD1();
-  sqlite.exec(user("owner") + workspace(workspaceId, "owner"));
-  sqlite
+  const { db, sqlite } = await pgD1();
+  await sqlite.exec(user("owner") + workspace(workspaceId, "owner"));
+  await sqlite
     .prepare(
       `INSERT INTO workspace_runtime_identities (id, workspace_id, installation_id, credential_token_hash, created_at)
        VALUES (?, ?, 'installation', ?, now())`,
@@ -115,7 +115,7 @@ describe("Workspace runtime Gateway", () => {
     const token = "runtime-secret-replay";
     const credentialTokenHash = await hashToken(token);
     const workspaceId = "workspace-replay";
-    const { db } = runtimeDatabase(workspaceId, "runtime-replay", credentialTokenHash);
+    const { db } = await runtimeDatabase(workspaceId, "runtime-replay", credentialTokenHash);
     const storage = new Map<string, unknown>();
     const state = {
       id: { name: workspaceId },
@@ -251,7 +251,7 @@ describe("Workspace runtime Gateway", () => {
     }
     vi.stubGlobal("WebSocketPair", TestWebSocketPair);
     vi.stubGlobal("Response", TestResponse);
-    const { db } = runtimeDatabase(workspaceId, "runtime-gateway-test", credentialTokenHash);
+    const { db } = await runtimeDatabase(workspaceId, "runtime-gateway-test", credentialTokenHash);
     const state = {
       id: { name: workspaceId },
       storage: {
@@ -339,12 +339,12 @@ describe("Workspace runtime Gateway", () => {
   });
 
   it("accepts only the runtime credential for one execution Workspace", async () => {
-    const { db, sqlite } = runtimeDatabase("workspace-a", "runtime-a", "hash-a");
+    const { db, sqlite } = await runtimeDatabase("workspace-a", "runtime-a", "hash-a");
     // A revoked runtime is refused even with its own correct credential hash.
-    sqlite.exec(
+    (await sqlite.exec(
       `INSERT INTO workspace_runtime_identities (id, workspace_id, installation_id, credential_token_hash, revoked_at, created_at)
        VALUES ('runtime-revoked', 'workspace-a', 'installation-2', 'hash-revoked', now(), now())`,
-    );
+    ));
     await expect(
       isWorkspaceRuntimeAuthorized(db, "runtime-a", "hash-a"),
     ).resolves.toEqual({ executionWorkspaceId: "workspace-a" });
@@ -359,7 +359,7 @@ describe("Workspace runtime Gateway", () => {
   describe("delivery probe", () => {
     async function connectedHttpGateway(workspaceId: string, token: string) {
       const credentialTokenHash = await hashToken(token);
-      const { db } = runtimeDatabase(workspaceId, "runtime-probe", credentialTokenHash);
+      const { db } = await runtimeDatabase(workspaceId, "runtime-probe", credentialTokenHash);
       const storage = new Map<string, unknown>();
       const state = {
         id: { name: workspaceId },

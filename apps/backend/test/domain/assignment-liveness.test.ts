@@ -10,11 +10,11 @@ const NOW = "2026-10-17T10:00:00.000Z";
 
 async function seed(status = "running") {
   const f = await conversationFixture();
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now')",
   );
-  f.assign("A1");
-  f.sqlite
+  await f.assign("A1");
+  await f.sqlite
     .prepare(
       `UPDATE worker_assignments
           SET run_id='RUN', attempt_id='ATT1', idempotency_key='IDEM1',
@@ -22,15 +22,15 @@ async function seed(status = "running") {
     )
     .run(status, NOW);
   const workspaceId = (
-    f.sqlite
+    await f.sqlite
       .prepare(
         "SELECT execution_workspace_id AS w FROM worker_assignments WHERE id='A1'",
       )
       .get() as { w: string }
   ).w;
-  const status_ = () =>
+  const status_ = async () =>
     (
-      f.sqlite
+      await f.sqlite
         .prepare("SELECT status FROM worker_assignments WHERE id='A1'")
         .get() as { status: string }
     ).status;
@@ -61,34 +61,34 @@ describe("engine liveness", () => {
            VALUES('L','W','R','WS',1,'active',?,?)`,
         )
         .run(NOW, expiresAt);
-    const expiry = () =>
+    const expiry = async () =>
       (
-        f.sqlite
+        await f.sqlite
           .prepare(
             "SELECT expires_at AS e FROM thread_runtime_leases WHERE id='L'",
           )
           .get() as { e: string }
       ).e;
     // Less than half the lease left: extended to a full lease from now.
-    lease("2026-10-17T10:01:00.000Z");
+    await lease("2026-10-17T10:01:00.000Z");
     await applyEngineLivenessReport(
       f.db as never,
       workspaceId,
       report(["A1"]),
       NOW,
     );
-    expect(expiry()).toBe("2026-10-17T10:30:00.000Z");
+    expect(await expiry()).toBe("2026-10-17T10:30:00.000Z");
     // Plenty left: unchanged.
-    f.sqlite.exec(
+    (await f.sqlite.exec(
       "UPDATE thread_runtime_leases SET expires_at='2026-10-17T10:25:00.000Z'",
-    );
+    ));
     await applyEngineLivenessReport(
       f.db as never,
       workspaceId,
       report(["A1"]),
       NOW,
     );
-    expect(expiry()).toBe("2026-10-17T10:25:00.000Z");
+    expect(await expiry()).toBe("2026-10-17T10:25:00.000Z");
   });
 
   it("waits for repeated missing reports before declaring the Engine lost", async () => {
@@ -160,7 +160,7 @@ describe("engine liveness", () => {
       NOW,
     );
     expect(await failLostEngineAssignments(f.db as never, lost, NOW)).toBe(1);
-    expect(status()).not.toBe("running");
+    expect(await status()).not.toBe("running");
   });
 
   it("does not touch assignments that are not running", async () => {

@@ -3,11 +3,11 @@ import { pgD1 } from "./helpers/pg-d1";
 import worker from "../../src/domain/index.js";
 
 describe("Personal Invitations API (Phase 2)", () => {
-  function createTestEnv() {
-    const { sqlite, db } = pgD1();
+  async function createTestEnv() {
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, status, created_at, updated_at) VALUES
         ('user-alice', 'alice@test.com', 'Alice User', 'active', '${now}', '${now}'),
         ('user-bob', 'bob@test.com', 'Bob User', 'active', '${now}', '${now}'),
@@ -86,7 +86,7 @@ describe("Personal Invitations API (Phase 2)", () => {
   }
 
   it("sends a new email invitation and lists incoming/outgoing", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
 
     const sendReq = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
@@ -124,7 +124,7 @@ describe("Personal Invitations API (Phase 2)", () => {
   });
 
   it("sends invitation to existing known collaborator by userId", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
 
     const req = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
@@ -158,7 +158,7 @@ describe("Personal Invitations API (Phase 2)", () => {
   });
 
   it("handles same-person retry idempotently", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
 
     const post1 = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
@@ -192,7 +192,7 @@ describe("Personal Invitations API (Phase 2)", () => {
   });
 
   it("automatically connects reciprocal simultaneous invitations", async () => {
-    const { sqlite, env } = createTestEnv();
+    const { sqlite, env } = await createTestEnv();
 
     // Alice invites Bob
     const req1 = new Request("https://syntila.test/api/people/invitations", {
@@ -226,7 +226,7 @@ describe("Personal Invitations API (Phase 2)", () => {
     expect(body2.directSpaceId).toBeDefined();
 
     // The Direct Space starts without an automatically created Thread.
-    const ds = sqlite
+    const ds = await sqlite
       .prepare("SELECT * FROM direct_spaces WHERE space_id = ?")
       .get(body2.directSpaceId) as {
       space_id: string;
@@ -235,13 +235,13 @@ describe("Personal Invitations API (Phase 2)", () => {
     expect(ds).toBeDefined();
     expect(ds.general_thread_id).toBeNull();
     expect(
-      sqlite
+      await sqlite
         .prepare("SELECT id FROM threads WHERE space_id = ?")
         .all(body2.directSpaceId),
     ).toHaveLength(0);
 
     // Verify both participants are in space_memberships
-    const members = sqlite
+    const members = await sqlite
       .prepare("SELECT user_id, role FROM space_memberships WHERE space_id = ?")
       .all(body2.directSpaceId) as { user_id: string; role: string }[];
     expect(members).toHaveLength(2);
@@ -269,7 +269,7 @@ describe("Personal Invitations API (Phase 2)", () => {
   });
 
   it("handles decline, cancel, and expiration", async () => {
-    const { sqlite, env } = createTestEnv();
+    const { sqlite, env } = await createTestEnv();
 
     // Decline flow
     const req1 = new Request("https://syntila.test/api/people/invitations", {
@@ -329,7 +329,7 @@ describe("Personal Invitations API (Phase 2)", () => {
 
     // Expiration flow
     const past = new Date(Date.now() - 1000).toISOString();
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO person_invitations (id, inviter_user_id, invitee_user_id, status, created_at, expires_at, updated_at)
       VALUES ('inv-expired', 'user-alice', 'user-bob', 'pending', '${past}', '${past}', '${past}');
     `);
@@ -342,7 +342,7 @@ describe("Personal Invitations API (Phase 2)", () => {
   });
 
   it("prevents acceptance by the wrong account", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
 
     const req = new Request("https://syntila.test/api/people/invitations", {
       method: "POST",
@@ -365,7 +365,7 @@ describe("Personal Invitations API (Phase 2)", () => {
   });
 
   it("retains recipient identity through email change before acceptance", async () => {
-    const { sqlite, env } = createTestEnv();
+    const { sqlite, env } = await createTestEnv();
 
     // Alice invites Bob by userId
     const req = new Request("https://syntila.test/api/people/invitations", {
@@ -380,9 +380,9 @@ describe("Personal Invitations API (Phase 2)", () => {
     const { invitation } = (await res.json()) as { invitation: { id: string } };
 
     // Bob changes his email in database
-    sqlite.exec(
+    (await sqlite.exec(
       "UPDATE users SET email = 'bob-new@test.com' WHERE id = 'user-bob'",
-    );
+    ));
 
     // Bob accepts
     const acceptReq = new Request(
@@ -400,7 +400,7 @@ describe("Personal Invitations API (Phase 2)", () => {
   });
 
   it("supports unknown email invitation followed by registration and acceptance", async () => {
-    const { sqlite, env } = createTestEnv();
+    const { sqlite, env } = await createTestEnv();
 
     // Alice invites non-registered email eva@test.com
     const req = new Request("https://syntila.test/api/people/invitations", {
@@ -417,7 +417,7 @@ describe("Personal Invitations API (Phase 2)", () => {
 
     // Eva registers
     const now = new Date().toISOString();
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, status, created_at, updated_at)
       VALUES ('user-eva', 'eva@test.com', 'Eva User', 'active', '${now}', '${now}');
     `);
@@ -462,7 +462,7 @@ describe("Personal Invitations API (Phase 2)", () => {
     expect(acceptBody.directSpaceId).toBeDefined();
 
     // Connection exists in DB for (alice, eva)
-    const conn = sqlite
+    const conn = await sqlite
       .prepare(
         "SELECT * FROM person_connections WHERE user_low_id = 'user-alice' AND user_high_id = 'user-eva'",
       )
@@ -471,7 +471,7 @@ describe("Personal Invitations API (Phase 2)", () => {
   });
 
   it("handles deleted or deactivated recipient and inviter", async () => {
-    const { sqlite, env } = createTestEnv();
+    const { sqlite, env } = await createTestEnv();
 
     // Trying to invite inactive recipient returns 400
     const req1 = new Request("https://syntila.test/api/people/invitations", {
@@ -499,7 +499,7 @@ describe("Personal Invitations API (Phase 2)", () => {
       invitation: { id: string };
     };
 
-    sqlite.exec(
+    await sqlite.exec(
       "UPDATE users SET status = 'deactivated' WHERE id = 'user-alice'",
     );
 
@@ -512,12 +512,12 @@ describe("Personal Invitations API (Phase 2)", () => {
   });
 
   it("enforces rate limiting on invitation creation", async () => {
-    const { sqlite, env } = createTestEnv();
+    const { sqlite, env } = await createTestEnv();
     const now = new Date().toISOString();
 
     // Insert 20 invitations in the last hour
     for (let i = 0; i < 20; i++) {
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO person_invitations (id, inviter_user_id, email, status, created_at, expires_at, updated_at)
         VALUES ('rate-${i}', 'user-alice', 'target${i}@test.com', 'pending', '${now}', '${now}', '${now}');
       `);

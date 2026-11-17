@@ -6,12 +6,12 @@ import { createWorkspaceSpaceGrant } from "../../src/domain/routes/workspace-acc
 import { pgD1 } from "./helpers/pg-d1";
 import { space, T0, user, workspace } from "./helpers/seed";
 
-function environment(
+async function environment(
   inventoryWorkerIds: readonly string[] = [],
   membershipError?: Error,
 ) {
-  const { db, sqlite } = pgD1();
-  sqlite.exec(
+  const { db, sqlite } = await pgD1();
+  await sqlite.exec(
     user("owner-1") +
       space("space-1", "owner-1") +
       workspace("workspace-1", "owner-1") +
@@ -41,9 +41,9 @@ function environment(
         },
       })
     : db;
-  const grants = () =>
+  const grants = async () =>
     Number(
-      (sqlite.prepare("SELECT count(*) AS n FROM workspace_space_grants").get() as { n: number | string }).n,
+      (await sqlite.prepare("SELECT count(*) AS n FROM workspace_space_grants").get() as { n: number | string }).n,
     );
   return { env: { SYNTILA_DB: database } as never, grants };
 }
@@ -61,7 +61,7 @@ async function createGrant(
   workerIds: string[] = [],
   membershipError?: Error,
 ) {
-  const { env, grants } = environment(workerIds, membershipError);
+  const { env, grants } = await environment(workerIds, membershipError);
   await createWorkspaceSpaceGrant(
     new Request("https://cloud.test", {
       method: "POST",
@@ -83,7 +83,7 @@ describe("Workspace Grant write validation", () => {
     ["concurrency", { concurrency: { maxConcurrentAssignments: 0 } }],
     ["unknown fields", { legacyScope: "all" }],
   ])("rejects invalid %s before storing a Grant", async (_field, body) => {
-    const { env, grants } = environment();
+    const { env, grants } = await environment();
     await expect(
       createWorkspaceSpaceGrant(
         new Request("https://cloud.test", {
@@ -97,13 +97,11 @@ describe("Workspace Grant write validation", () => {
         "workspace-1",
       ),
     ).rejects.toMatchObject({ status: 400 });
-    expect(grants()).toBe(0);
+    expect(await grants()).toBe(0);
   });
 
   it("requires every explicit Worker ID to belong to the granted Workspace", async () => {
-    await expect(
-      createGrant({ allowedWorkerIds: ["worker-foreign"] }),
-    ).rejects.toMatchObject({ status: 400 });
+    await expect(createGrant({ allowedWorkerIds: ["worker-foreign"] }),).rejects.toMatchObject({ status: 400 });
   });
 
   it("propagates membership database failures instead of treating them as no membership", async () => {

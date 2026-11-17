@@ -30,15 +30,15 @@ const json = (url: string, method: string, body: unknown) =>
   });
 
 describe("Space creation", () => {
-  let handle: ReturnType<typeof pgD1>;
-  const count = (table: string, where = "TRUE") =>
+  let handle: Awaited<ReturnType<typeof pgD1>>;
+  const count = async (table: string, where = "TRUE") =>
     Number(
-      (handle.sqlite.prepare(`SELECT count(*) AS n FROM ${table} WHERE ${where}`).get() as { n: number | string }).n,
+      (await handle.sqlite.prepare(`SELECT count(*) AS n FROM ${table} WHERE ${where}`).get() as { n: number | string }).n,
     );
 
-  beforeEach(() => {
-    handle = pgD1();
-    handle.sqlite.exec(user("user-1", { email: "owner@example.test", name: "Owner" }) + user("other"));
+  beforeEach(async () => {
+    handle = await pgD1();
+    await handle.sqlite.exec(user("user-1", { email: "owner@example.test", name: "Owner" }) + user("other"));
   });
   const envWith = (spaceRoles: Record<string, string> = {}) =>
     ({
@@ -48,7 +48,7 @@ describe("Space creation", () => {
     }) as never;
 
   it("refuses a Workspace the creator does not own and creates nothing", async () => {
-    handle.sqlite.exec(
+    await handle.sqlite.exec(
       `INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at)
        VALUES ('ws-revoked','other','Theirs','online','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');`,
     );
@@ -61,8 +61,8 @@ describe("Space creation", () => {
         envWith(),
       ),
     ).rejects.toMatchObject({ status: 403 });
-    expect(count("spaces")).toBe(0);
-    expect(count("space_memberships")).toBe(0);
+    expect(await count("spaces")).toBe(0);
+    expect(await count("space_memberships")).toBe(0);
   });
 
   it("creates a Space without requiring an execution Workspace", async () => {
@@ -74,14 +74,14 @@ describe("Space creation", () => {
     expect(response.status).toBe(201);
     const { space: created } = (await response.json()) as { space: { id: string; name: string } };
     expect(created.name).toBe("Unattached Space");
-    expect(count("spaces", `id = '${created.id}' AND owner_user_id = 'user-1'`)).toBe(1);
-    expect(count("space_memberships", `space_id = '${created.id}' AND user_id = 'user-1' AND role = 'owner'`)).toBe(1);
+    expect(await count("spaces", `id = '${created.id}' AND owner_user_id = 'user-1'`)).toBe(1);
+    expect(await count("space_memberships", `space_id = '${created.id}' AND user_id = 'user-1' AND role = 'owner'`)).toBe(1);
     // The Space records "no Workspace" explicitly; nothing is inherited.
-    expect(count("space_workflow_settings", `space_id = '${created.id}' AND workspace_id IS NULL`)).toBe(1);
+    expect(await count("space_workflow_settings", `space_id = '${created.id}' AND workspace_id IS NULL`)).toBe(1);
   });
 
   it("creates a persisted Thread with its Space lead", async () => {
-    handle.sqlite.exec(space("space-1", "user-1") + member("space-1", "user-1"));
+    await handle.sqlite.exec(space("space-1", "user-1") + member("space-1", "user-1"));
     const response = await handleCreateThread(
       json("https://syntila.test/api/spaces/space-1/threads", "POST", { name: "Authentication work" }),
       envWith({ "space-1": "owner" }),
@@ -98,11 +98,11 @@ describe("Space creation", () => {
         lead: "user-1",
       },
     });
-    expect(count("threads", `id = '${body.thread.id}' AND space_id = 'space-1' AND lead_user_id = 'user-1'`)).toBe(1);
+    expect(await count("threads", `id = '${body.thread.id}' AND space_id = 'space-1' AND lead_user_id = 'user-1'`)).toBe(1);
   });
 
   it("gets and updates a Space with custom settings", async () => {
-    handle.sqlite.exec(
+    await handle.sqlite.exec(
       `INSERT INTO spaces(id,owner_user_id,name,description,settings_json,created_at,updated_at)
          VALUES ('space-1','user-1','Original Name','Original Desc','{"threadOrder":["ws-1","ws-2"]}','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');` +
         member("space-1", "user-1"),
@@ -137,7 +137,7 @@ describe("Space creation", () => {
     expect(updateBody.space.name).toBe("Updated Name");
     expect(updateBody.space.settings.threadOrder).toEqual(["ws-2", "ws-1"]);
 
-    const stored = handle.sqlite
+    const stored = await handle.sqlite
       .prepare("SELECT name, settings_json AS settings FROM spaces WHERE id = 'space-1'")
       .get() as { name: string; settings: string };
     expect(stored.name).toBe("Updated Name");
@@ -154,7 +154,7 @@ describe("Space creation", () => {
     ).rejects.toMatchObject({ status: 400 });
     // The rejected update left the stored Space untouched.
     expect(
-      (handle.sqlite.prepare("SELECT name FROM spaces WHERE id = 'space-1'").get() as { name: string }).name,
+      (await handle.sqlite.prepare("SELECT name FROM spaces WHERE id = 'space-1'").get() as { name: string }).name,
     ).toBe("Updated Name");
   });
 });

@@ -18,8 +18,8 @@ import { loadConversationTurns } from "../../../src/domain/routes/conversation-t
 export async function conversationFixture(
   options: { beforeTurnLifecycleRepair?: boolean; research?: boolean } = {},
 ) {
-  const { sqlite, db, read } = pgD1();
-  sqlite.exec(`
+  const { sqlite, db, read } = await pgD1();
+  await sqlite.exec(`
  INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('U','u@test','User','now','now');
  INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','U','Space','now','now');
  INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','Stream','active','U','now','now');

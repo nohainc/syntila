@@ -26,9 +26,9 @@ import {
 } from "../../src/domain/routes/handlers.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 
-function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
+async function fixture() {
+  const { sqlite, db } = await pgD1();
+  await sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
     ('owner','owner@test','Owner','now','now'), ('member','member@test','Member','now','now'), ('outsider','outsider@test','Outsider','now','now');`);
   const deliveries: { user: string; event: Record<string, unknown> }[] = [];
   const env = {
@@ -66,19 +66,19 @@ function fixture() {
       method,
       body: JSON.stringify(body),
     });
-  const events = () =>
-    sqlite
+  const events = async () =>
+    (await sqlite
       .prepare("SELECT * FROM realtime_events ORDER BY sequence")
-      .all() as Record<string, unknown>[];
+      .all()) as Record<string, unknown>[];
   return { sqlite, db, env, deliveries, request, events };
 }
 
 describe("collaboration durable signals", () => {
   it("space list preserves the viewer's owner and shared membership roles", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       await handleCreateSpace(f.request({ name: "Owned" }), f.env);
-      f.sqlite.exec(
+      await f.sqlite.exec(
         "INSERT INTO spaces(id,name,owner_user_id,created_at,updated_at) VALUES('shared','Shared','member','now','now'); INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('shared-access','shared','owner','collaborator','now','now');",
       );
       const response = await handleListSpaces(
@@ -103,11 +103,11 @@ describe("collaboration durable signals", () => {
         space: { role: "collaborator" },
       });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("delivers a durable recipient signal without granting Space membership", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const response = await handleCreateSpace(
         f.request({ name: "Private space" }),
@@ -156,26 +156,26 @@ describe("collaboration durable signals", () => {
         }),
       ).toBe(true);
       expect(
-        f
-          .events()
+        (await f
+          .events())
           .filter(
             (event) =>
               event.stream_kind === "user" && event.stream_id === "outsider",
           ),
       ).toHaveLength(1);
       expect(
-        f.sqlite
+        await f.sqlite
           .prepare(
             "SELECT count(*) AS n FROM space_memberships WHERE user_id='outsider'",
           )
           .get(),
       ).toEqual({ n: 0 });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("publishes all collaboration CRUD signals with real authorization and no execution Workspace", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const created = await handleCreateSpace(
         f.request({ name: "Space" }),
@@ -183,7 +183,7 @@ describe("collaboration durable signals", () => {
       );
       const { space } = (await created.json()) as { space: { id: string } };
       const p = space.id;
-      f.sqlite
+      await f.sqlite
         .prepare(
           "INSERT INTO space_memberships VALUES('member-p', ?, 'member', 'collaborator', 'now', 'now')",
         )
@@ -236,7 +236,7 @@ describe("collaboration durable signals", () => {
       });
       await handleDeleteThread(f.request({}, "DELETE"), f.env, w);
       await handleDeleteSpace(f.request({}, "DELETE"), f.env, p);
-      const events = f.events();
+      const events = await f.events();
       expect(events.map((row) => row.event_type)).toEqual([
         "space.created",
         "space.updated",
@@ -261,9 +261,9 @@ describe("collaboration durable signals", () => {
         expect(row.payload_json).not.toContain("text");
       }
       expect(
-        f.sqlite
+        (await f.sqlite
           .prepare("SELECT COUNT(*) AS n FROM execution_workspaces")
-          .get()!.n,
+          .get())!.n,
       ).toBe(0);
       expect(
         f.deliveries
@@ -275,21 +275,21 @@ describe("collaboration durable signals", () => {
         false,
       );
       expect(
-        f.sqlite.prepare("SELECT COUNT(*) AS n FROM space_memberships").get()!
+        (await f.sqlite.prepare("SELECT COUNT(*) AS n FROM space_memberships").get())!
           .n,
       ).toBe(0);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("signals grant creation, editing and revocation on the Space stream", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const response = await handleCreateSpace(f.request({ name: "P" }), f.env);
       const { space } = (await response.json()) as {
         space: { id: string };
       };
-      f.sqlite.exec(
+      await f.sqlite.exec(
         "INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES('ws','owner','Workspace','online','now','now')",
       );
       const granted = await handleCreateWorkspaceSpaceGrant(
@@ -309,8 +309,8 @@ describe("collaboration durable signals", () => {
         f.env,
         grant.id,
       );
-      const grants = f
-        .events()
+      const grants = (await f
+        .events())
         .filter(
           (row) =>
             row.event_type === "workspace_space_grant.updated" &&
@@ -326,11 +326,11 @@ describe("collaboration durable signals", () => {
         ),
       ).toBe(true);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("isolates same-named execution, Space and user streams and idempotency keys", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const publisher = new CloudEventPublisher({ SYNTILA_DB: f.db });
       const input = {
@@ -373,11 +373,11 @@ describe("collaboration durable signals", () => {
       });
       expect(next.event.sequence).toBe(2);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("retains Space sequence counters after expired events are pruned", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const publisher = new CloudEventPublisher({ SYNTILA_DB: f.db });
       const input = {
@@ -398,11 +398,11 @@ describe("collaboration durable signals", () => {
       ).toBe(1);
       expect((await publisher.publish(input)).event.sequence).toBe(2);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("denies message reads/edits without Thread access or authorship and emits no signal", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const { space } = (await (
         await handleCreateSpace(f.request({ name: "P" }), f.env)
@@ -417,7 +417,7 @@ describe("collaboration durable signals", () => {
           thread.id,
         )
       ).json()) as { message: { id: string } };
-      const count = f.events().length;
+      const count = (await f.events()).length;
       Object.assign(f.env, {
         TEST_AUTHENTICATION: async () => ({ userId: "outsider" }),
       });
@@ -430,7 +430,7 @@ describe("collaboration durable signals", () => {
           message.id,
         ),
       ).rejects.toMatchObject({ status: 403 });
-      f.sqlite
+      await f.sqlite
         .prepare(
           "INSERT INTO space_memberships VALUES('member-p',?,'member','collaborator','now','now')",
         )
@@ -445,36 +445,36 @@ describe("collaboration durable signals", () => {
           message.id,
         ),
       ).rejects.toMatchObject({ status: 403 });
-      expect(f.events()).toHaveLength(count);
+      expect(await f.events()).toHaveLength(count);
       expect(
-        f.sqlite
+        (await f.sqlite
           .prepare("SELECT body FROM discussion_messages WHERE id = ?")
-          .get(message.id)!.body,
+          .get(message.id))!.body,
       ).toBe("Private");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("rolls back a domain write and sequence together when event persistence fails", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
-      f.sqlite.exec(
+      await f.sqlite.exec(
         "CREATE FUNCTION fail_realtime_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END $$; CREATE TRIGGER fail_realtime BEFORE INSERT ON realtime_events FOR EACH ROW EXECUTE FUNCTION fail_realtime_fn();",
       );
       await expect(
         handleCreateSpace(f.request({ name: "P" }), f.env),
       ).rejects.toThrow("test failure");
       expect(
-        f.sqlite.prepare("SELECT COUNT(*) AS n FROM spaces").get()!.n,
+        (await f.sqlite.prepare("SELECT COUNT(*) AS n FROM spaces").get())!.n,
       ).toBe(0);
       expect(
-        f.sqlite
+        (await f.sqlite
           .prepare("SELECT COUNT(*) AS n FROM realtime_event_cursors")
-          .get()!.n,
+          .get())!.n,
       ).toBe(0);
       expect(f.deliveries).toHaveLength(0);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 });

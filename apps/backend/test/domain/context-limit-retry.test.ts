@@ -11,9 +11,9 @@ import { handleRetryWorkRequest } from "../../src/domain/routes/work-lifecycle.j
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 
 it("requires reset approval before reserving or changing a failed request", async () => {
-  const f = pgD1();
+  const f = await pgD1();
   try {
-    f.sqlite.exec(`${basicThread({ user: "U", space: "S", thread: "T" })}
+    await f.sqlite.exec(`${basicThread({ user: "U", space: "S", thread: "T" })}
       INSERT INTO work_requests(id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, status, created_at, updated_at)
         VALUES ('R', 'T', 'U', 'stateful', 'chat', 1, '${JSON.stringify({ steps: [{ kind: "implement" }] })}', 'failed', '${T0}', '${T0}');
       INSERT INTO workflow_tasks(id, work_request_id, step_kind, execution_mode, timeout_ms, prompt_profile_version, status, error, created_at, updated_at)
@@ -37,9 +37,9 @@ it("requires reset approval before reserving or changing a failed request", asyn
     // Nothing was reserved or changed before the user agreed.
     expect(recorded.statements.length).toBeGreaterThan(0);
     expect(recorded.statements.every((text) => /^\s*(SELECT|WITH)/i.test(text))).toBe(true);
-    const [{ status }] = [f.sqlite.prepare("SELECT status FROM workflow_tasks WHERE id = 'task-1'").get() as { status: string }];
+    const [{ status }] = [await f.sqlite.prepare("SELECT status FROM workflow_tasks WHERE id = 'task-1'").get() as { status: string }];
     expect(status).toBe("failed");
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });

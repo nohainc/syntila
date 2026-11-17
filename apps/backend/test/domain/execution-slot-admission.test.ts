@@ -18,15 +18,15 @@ vi.mock("../../src/domain/scheduler.js", () => scheduler);
 const NOW = "2026-10-07T10:00:00Z";
 let readiness: "ready" | "connected" = "ready";
 const open: Array<{ close(): void }> = [];
-afterEach(() => {
+afterEach(async () => {
   readiness = "ready";
-  for (const sqlite of open.splice(0)) sqlite.close();
+  for (const sqlite of open.splice(0)) (await sqlite.close());
 });
 
 async function fixture() {
   const f = await conversationFixture();
   open.push(f.sqlite);
-  f.sqlite.exec(`
+  await f.sqlite.exec(`
     INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('OWNER','o@test','Owner','now','now'),('V','v@test','Visitor','now','now');
     INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W2','P','Other','active','U','now','now');
@@ -34,7 +34,7 @@ async function fixture() {
     INSERT INTO workspace_runtime_identities(id,workspace_id,credential_token_hash,installation_id,created_at) VALUES('RT2','WS2','hash2','installation2','now');
     INSERT INTO account_plans(user_id,tier,status,source,current_period_end,created_at,updated_at) VALUES('OWNER','paid','active','manual',NULL,'now','now');`);
   for (const id of ["T2", "T3", "T4", "T5"])
-    f.sqlite
+    (await f.sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
          VALUES(?, 'R', ?, 'stateless_read', 1000, 'v1', 'queued', 'now', 'now')`,
@@ -48,7 +48,7 @@ async function fixture() {
             : id === "T4"
               ? "test"
               : "verify",
-      );
+      ));
   scheduler.selectSpaceExecutionTarget.mockImplementation(async () => ({
     spaceId: "P",
     workspaceId: currentWorkspace,
@@ -137,7 +137,7 @@ it("admits one Free execution across Threads and Workspaces and defers the rest"
   expect(await f.held()).toBe(1);
   // A deferral writes no assignment and sends nothing to the Service.
   expect(f.fetch).toHaveBeenCalledTimes(1);
-  expect(f.waiters()).toEqual([
+  expect(await f.waiters()).toEqual([
     { task_id: "T2", reason: "account_concurrency_limit" },
   ]);
 });
@@ -154,7 +154,7 @@ it("lets only one of many simultaneous Free reservations win", async () => {
 
 it("has no plan-based cap on Plus, and the cap follows the requester not the Workspace owner", async () => {
   const f = await fixture();
-  f.plan("U");
+  await f.plan("U");
   const results = await Promise.all(
     ["T", "T2", "T3"].map((id) => f.dispatch(id)),
   );
@@ -186,19 +186,19 @@ it("releases the slot only on a terminal status, never on a cancellation request
   const f = await fixture();
   await f.dispatch("T");
   for (const pending of ["revocation_pending", "reconciling"]) {
-    f.setStatus("T", pending);
+    await f.setStatus("T", pending);
     expect(await f.dispatch("T2")).toMatchObject({ status: "deferred" });
     expect(await f.held()).toBe(1);
   }
-  f.setStatus("T", "lost");
+  await f.setStatus("T", "lost");
   expect(await f.dispatch("T2")).toMatchObject({ accepted: true });
   expect(await f.held()).toBe(1);
   for (const terminal of ["completed", "failed", "cancelled", "timed_out"]) {
-    f.setStatus("T2", terminal);
+    await f.setStatus("T2", terminal);
     expect(await f.held()).toBe(0);
     const next = await f.dispatch("T3");
     expect(next.accepted).toBe(true);
-    f.setStatus("T3", "completed");
+    await f.setStatus("T3", "completed");
   }
 });
 
@@ -208,7 +208,7 @@ it("does not double count a retried or duplicated dispatch of the same task", as
   expect(await f.dispatch("T")).toMatchObject({ status: "deferred" });
   expect(await f.dispatch("T")).toMatchObject({ status: "deferred" });
   expect(await f.held()).toBe(1);
-  expect(f.waiters()).toHaveLength(1);
+  expect(await f.waiters()).toHaveLength(1);
 });
 
 it("starts waiting requests in order and never lets a new request jump the queue", async () => {
@@ -221,21 +221,21 @@ it("starts waiting requests in order and never lets a new request jump the queue
     await f.dispatch("T2");
     vi.setSystemTime(new Date(Date.parse(NOW) + 2_000));
     await f.dispatch("T3");
-    expect(f.waiters().map((w) => (w as { task_id: string }).task_id)).toEqual([
+    expect((await f.waiters()).map((w) => (w as { task_id: string }).task_id)).toEqual([
       "T2",
       "T3",
     ]);
-    f.setStatus("T", "completed");
+    await f.setStatus("T", "completed");
     vi.setSystemTime(new Date(Date.parse(NOW) + 3_000));
     // The younger waiter and a brand-new request both lose to the oldest.
     expect(await f.dispatch("T3")).toMatchObject({ status: "deferred" });
     expect(await f.dispatch("T4")).toMatchObject({ status: "deferred" });
     expect(await f.dispatch("T2")).toMatchObject({ accepted: true });
-    expect(f.waiters().map((w) => (w as { task_id: string }).task_id)).toEqual([
+    expect((await f.waiters()).map((w) => (w as { task_id: string }).task_id)).toEqual([
       "T3",
       "T4",
     ]);
-    f.setStatus("T2", "completed");
+    await f.setStatus("T2", "completed");
     expect(await f.dispatch("T4")).toMatchObject({ status: "deferred" });
     expect(await f.dispatch("T3")).toMatchObject({ accepted: true });
   } finally {
@@ -247,18 +247,18 @@ it("lets a stale or cancelled waiter stop blocking eligible work", async () => {
   const f = await fixture();
   await f.dispatch("T");
   await f.dispatch("T2");
-  f.setStatus("T", "completed");
+  await f.setStatus("T", "completed");
   // T2's Workflow vanished (no heartbeat): it must not block T3.
-  f.sqlite.exec(
+  (await f.sqlite.exec(
     "UPDATE account_execution_waiters SET heartbeat_at = '2000-01-01T00:00:00Z'",
-  );
+  ));
   expect(await f.dispatch("T3")).toMatchObject({ accepted: true });
-  f.setStatus("T3", "completed");
+  await f.setStatus("T3", "completed");
   // A cancelled request clears its place immediately.
   await f.dispatch("T4");
   await f.dispatch("T5");
   await clearExecutionWaiter(f.read, "T5");
-  f.setStatus("T4", "completed");
+  await f.setStatus("T4", "completed");
   expect(await f.dispatch("T2")).toMatchObject({ accepted: true });
 });
 
@@ -266,21 +266,21 @@ it("re-evaluates the plan on every dispatch: upgrade, downgrade and expiry", asy
   const f = await fixture();
   await f.dispatch("T");
   expect(await f.dispatch("T2")).toMatchObject({ status: "deferred" });
-  f.plan("U"); // upgrade: the queued request proceeds immediately
+  await f.plan("U"); // upgrade: the queued request proceeds immediately
   expect(await f.dispatch("T2")).toMatchObject({ accepted: true });
   expect(await f.dispatch("T3")).toMatchObject({ accepted: true });
-  f.sqlite.exec("DELETE FROM account_plans WHERE user_id = 'U'"); // downgrade
+  await f.sqlite.exec("DELETE FROM account_plans WHERE user_id = 'U'"); // downgrade
   expect(await f.held()).toBe(3); // executing work finishes, nothing is cut
   expect(await f.dispatch("T4")).toMatchObject({ status: "deferred" });
-  for (const id of ["T", "T2", "T3"]) f.setStatus(id, "completed");
+  for (const id of ["T", "T2", "T3"]) await f.setStatus(id, "completed");
   expect(await f.dispatch("T4")).toMatchObject({ accepted: true });
-  f.setStatus("T4", "completed");
+  await f.setStatus("T4", "completed");
   // An expired subscription is Free; past_due inside its period stays Plus.
-  f.plan("U", "active", "2000-01-01T00:00:00Z");
+  await f.plan("U", "active", "2000-01-01T00:00:00Z");
   await f.dispatch("T5");
   expect(await f.dispatch("T")).toMatchObject({ status: "deferred" });
-  f.setStatus("T5", "completed");
-  f.plan("U", "past_due", "2999-01-01T00:00:00Z");
+  await f.setStatus("T5", "completed");
+  await f.plan("U", "past_due", "2999-01-01T00:00:00Z");
   expect(await f.dispatch("T")).toMatchObject({ accepted: true });
   expect(await f.dispatch("T2")).toMatchObject({ accepted: true });
 });
@@ -301,14 +301,14 @@ it("never holds a Free slot while the Service is only connected", async () => {
     waitReason: "account_concurrency_limit",
   });
   // Plus keeps the existing behaviour: the work queues behind the Service.
-  f.plan("U");
+  await f.plan("U");
   readiness = "connected";
   expect(await f.dispatch("T3")).toMatchObject({ accepted: true });
 });
 
 it("wakes the oldest eligible waiter after a slot is released", async () => {
   const f = await fixture();
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "UPDATE runs SET workflow_instance_id = 'instance-1' WHERE id = 'RUN'",
   );
   await recordExecutionWaiter(f.read, {

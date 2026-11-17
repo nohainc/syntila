@@ -22,7 +22,7 @@ it("one Work StepRun snapshots pending choices and spaces actual provider defaul
         },
       },
     });
-    f.sqlite
+    await f.sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
     VALUES('WORK','W','U','stateful','direct',2,'{}',?,'queued','{}','now','now')`,
@@ -36,7 +36,7 @@ it("one Work StepRun snapshots pending choices and spaces actual provider defaul
         "WORK",
         "now",
     );
-    f.sqlite.exec(
+    await f.sqlite.exec(
       `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at) VALUES('IMPLEMENT','WORK','implement','stateful_thread',1000,'implement:v1','queued','now','now')`,
     );
     const pending = (
@@ -46,7 +46,7 @@ it("one Work StepRun snapshots pending choices and spaces actual provider defaul
     ).get("WORK")!;
     expect(pending.stepRuns).toHaveLength(1);
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT count(*) AS n FROM conversation_workflow_runs WHERE work_request_id='WORK'",
         )
@@ -65,7 +65,7 @@ it("one Work StepRun snapshots pending choices and spaces actual provider defaul
       baseContextRevision: 1,
       result: null,
     });
-    f.sqlite
+    await f.sqlite
       .exec(`INSERT INTO worker_assignments(id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,status,session_policy,permission_snapshot_json,created_at,updated_at)
     VALUES('WORKER','P','WS','RT','chatgpt','actual-worker','IMPLEMENT','created','durable_session','{"profileDefinitionId":"chatgpt-codex","profileReleaseVersion":1,"workerSessionId":"logical-session"}','now','now')`);
     const actual = (
@@ -80,38 +80,32 @@ it("one Work StepRun snapshots pending choices and spaces actual provider defaul
       workerSessionId: "logical-session",
       workerTurnIds: ["turn-WORKER"],
     });
-    expect(() =>
-      f.sqlite.exec(
+    await expect(f.sqlite.exec(
         "UPDATE conversation_workflow_step_runs SET role='verify' WHERE id='step-run-IMPLEMENT'",
-      ),
-    ).toThrow(/immutable/);
-    expect(() =>
-      f.sqlite.exec(
+      )).rejects.toThrow(/immutable/);
+    await expect(f.sqlite.exec(
         "UPDATE conversation_turns SET workflow_step_run_id='step-run-T' WHERE id='turn-WORKER'",
-      ),
-    ).toThrow(/immutable/);
-    expect(() =>
-      f.sqlite.exec(
+      )).rejects.toThrow(/immutable/);
+    await expect(f.sqlite.exec(
         "INSERT INTO conversation_workflow_step_runs(id,workflow_run_id,task_id,step_id,role,created_at) VALUES('foreign','workflow-run-R','IMPLEMENT','implement','implement','now')",
-      ),
-    ).toThrow(/scoped/);
+      )).rejects.toThrow(/scoped/);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("retries retain one StepRun and first-start evidence while clearing stale terminal results", async () => {
   const f = await conversationFixture();
   try {
-    f.assign("A");
-    f.sqlite.exec(
+    await f.assign("A");
+    await f.sqlite.exec(
       "UPDATE workflow_tasks SET started_at='2029-02-01T00:00:00.000Z' WHERE id='T'",
     );
     await recordAssignmentError(f.db as unknown as D1Database, "A", {
       error: { code: "execution_failed", message: "failure", retryable: true },
       failedAt: "failed",
     });
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE work_requests SET status='failed',updated_at='2034-01-01T00:00:00Z' WHERE id='R'",
     );
     const failed = (
@@ -120,7 +114,7 @@ it("retries retain one StepRun and first-start evidence while clearing stale ter
     expect(failed.completedAt).toBe("2034-01-01T00:00:00.000Z");
     expect(failed.stepRuns[0]?.status).toBe("failed");
     const firstStart = failed.startedAt;
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE work_requests SET status='queued',updated_at='2036-01-01T00:00:00Z' WHERE id='R'; UPDATE workflow_tasks SET status='queued',output_json=NULL,started_at=NULL,finished_at=NULL WHERE id='T'",
     );
     const queued = (
@@ -128,9 +122,9 @@ it("retries retain one StepRun and first-start evidence while clearing stale ter
     ).get("R")!;
     expect(queued.completedAt).toBeNull();
     expect(queued.stepRuns[0]?.result).toBeNull();
-    f.assign("B", "model-y", "high");
-    f.start("B");
-    f.sqlite.exec(
+    await f.assign("B", "model-y", "high");
+    await f.start("B");
+    await f.sqlite.exec(
       "UPDATE work_requests SET status='running',updated_at='2031-06-01T00:00:00Z' WHERE id='R'",
     );
     await recordAssignmentResult(f.db as unknown as D1Database, "B", {
@@ -140,7 +134,7 @@ it("retries retain one StepRun and first-start evidence while clearing stale ter
       artifactIds: [],
       completedAt: "untrusted",
     });
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE work_requests SET status='completed',updated_at='2032-06-01T00:00:00Z' WHERE id='R'",
     );
     const completed = (
@@ -158,7 +152,7 @@ it("retries retain one StepRun and first-start evidence while clearing stale ter
       workerTurnIds: ["turn-A", "turn-B"],
     });
     expect((await f.turns())[0]?.status).toBe("failed");
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE work_requests SET updated_at='2032-07-01T00:00:00Z' WHERE id='R'",
     );
     expect(
@@ -166,20 +160,18 @@ it("retries retain one StepRun and first-start evidence while clearing stale ter
         await loadConversationWorkflowRuns(f.db as unknown as D1Database, ["R"])
       ).get("R")!.completedAt,
     ).toBe("2032-06-01T00:00:00.000Z");
-    expect(() =>
-      f.sqlite.exec(
+    await expect(f.sqlite.exec(
         "UPDATE conversation_workflow_runs SET started_at='2040-01-01T00:00:00Z'",
-      ),
-    ).toThrow(/immutable/);
+      )).rejects.toThrow(/immutable/);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("persists only bounded private assignment diagnostics", async () => {
   const f = await conversationFixture();
   try {
-    f.assign("DIAGNOSTIC");
+    await f.assign("DIAGNOSTIC");
     await recordAssignmentError(f.db as unknown as D1Database, "DIAGNOSTIC", {
       error: {
         code: "execution_failed",
@@ -192,7 +184,7 @@ it("persists only bounded private assignment diagnostics", async () => {
       },
       failedAt: "failed",
     });
-    const row = f.sqlite
+    const row = await f.sqlite
       .prepare(
         "SELECT error_json FROM worker_assignments WHERE id='DIAGNOSTIC'",
       )
@@ -202,7 +194,7 @@ it("persists only bounded private assignment diagnostics", async () => {
     expect(row.error_json).not.toContain("secret");
     expect(row.error_json).not.toContain("/Users/tester");
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
@@ -214,21 +206,21 @@ it("StepRun and immutable turns retain their accepted context boundary as the Co
         await loadConversationWorkflowRuns(f.db as unknown as D1Database, ["R"])
       ).get("R")!.stepRuns[0]!;
     expect((await read()).baseContextRevision).toBe(0);
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE conversations SET conversation_revision=104,context_revision=104",
     );
     expect(() =>
       f.assign("wrong-revision", "model-x", "medium", "durable_session", 104),
     ).toThrow(/context revision.*boundary/);
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT count(*) AS n FROM worker_assignments WHERE id='wrong-revision'",
         )
         .get(),
     ).toEqual({ n: 0 });
-    f.assign("frozen-revision", "model-x", "medium", "durable_session", 0);
-    f.start("frozen-revision");
+    await f.assign("frozen-revision", "model-x", "medium", "durable_session", 0);
+    await f.start("frozen-revision");
     await recordAssignmentResult(
       f.db as unknown as D1Database,
       "frozen-revision",
@@ -242,12 +234,10 @@ it("StepRun and immutable turns retain their accepted context boundary as the Co
     );
     expect((await read()).baseContextRevision).toBe(0);
     expect((await f.turns())[0]!.baseContextRevision).toBe(0);
-    expect(() =>
-      f.sqlite.exec(
+    await expect(f.sqlite.exec(
         "UPDATE conversation_turns SET base_context_revision=104 WHERE assignment_id='frozen-revision'",
-      ),
-    ).toThrow(/immutable/);
+      )).rejects.toThrow(/immutable/);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });

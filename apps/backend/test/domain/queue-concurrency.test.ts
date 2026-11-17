@@ -46,8 +46,8 @@ import {
 
 const INVARIANTS = await Bun.file(new URL("../../scripts/check-invariants.sql", import.meta.url)).text();
 const cleanups: (() => void)[] = [];
-afterEach(() => {
-  for (const close of cleanups.splice(0)) close();
+afterEach(async () => {
+  for (const close of cleanups.splice(0)) await close();
 });
 beforeEach(() => {
   created.calls = [];
@@ -59,16 +59,16 @@ const roles: Record<string, string> = {
   member: "collaborator",
 };
 
-function fixture() {
-  const { sqlite, db, sql } = pgD1({ max: 24 });
+async function fixture() {
+  const { sqlite, db, sql } = await pgD1({ max: 24 });
   cleanups.push(() => sqlite.close());
   for (const id of Object.keys(roles))
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
-      .run(id, `${id}@test`, id.toUpperCase());
-  sqlite.exec(`
+      .run(id, `${id}@test`, id.toUpperCase()));
+  await sqlite.exec(`
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','owner','Space','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m1','S','owner','owner','now','now'),('m2','S','member','collaborator','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('T','S','Thread','active','owner','now','now');`);
@@ -136,8 +136,8 @@ function fixture() {
 }
 
 it("parallel requests queued in one Thread get distinct positions", async () => {
-  const { sql, call, enqueue, busy } = fixture();
-  busy();
+  const { sql, call, enqueue, busy } = await fixture();
+  await busy();
   await Promise.all(Array.from({ length: 20 }, (_, i) => enqueue(i % 2 ? "owner" : "member", `r${i}`)));
   const items = (await call("owner", "GET")).items;
   expect(items).toHaveLength(20);

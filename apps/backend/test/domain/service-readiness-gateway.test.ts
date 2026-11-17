@@ -12,7 +12,7 @@ const queuedPayload = {
 
 async function queued(initial = "created") {
   const f = await gatewayFixture(initial, { ready: false });
-  f.sqlite
+  await f.sqlite
     .prepare(
       "UPDATE worker_assignments SET command_payload_json = ? WHERE id = 'A1'",
     )
@@ -52,13 +52,13 @@ describe("Gateway Service readiness", () => {
         delivered: false,
         acceptance: "none",
       });
-      expect(f.status().status).toBe("dispatched");
+      expect((await f.status()).status).toBe("dispatched");
       expect(
-        f.sqlite
+        (await f.sqlite
           .prepare(
             "SELECT start_permit_required FROM worker_assignments WHERE id='A1'",
           )
-          .get()?.start_permit_required,
+          .get())?.start_permit_required,
       ).toBe(1);
       // The replacement session's durable transport contains no executable command.
       const status = (await f.gatewayStatus()) as { sessionId?: string };
@@ -81,7 +81,7 @@ describe("Gateway Service readiness", () => {
       );
     } finally {
       read.run = realRun;
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("keeps legacy Services excluded on queued flush, including after a Cloud restart", async () => {
@@ -90,7 +90,7 @@ describe("Gateway Service readiness", () => {
       capabilities: [],
     });
     try {
-      f.sqlite
+      await f.sqlite
         .prepare(
           "UPDATE worker_assignments SET command_payload_json = ? WHERE id='A1'",
         )
@@ -104,10 +104,10 @@ describe("Gateway Service readiness", () => {
           }),
         );
       }
-      expect(f.status().status).toBe("created");
+      expect((await f.status()).status).toBe("created");
       expect(types(await f.outbound())).not.toContain("assignment.start");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
@@ -135,16 +135,16 @@ describe("Gateway Service readiness", () => {
         deliveryState: "service_upgrade_required",
         acceptance: "none",
       });
-      expect(f.status().status).toBe("created");
+      expect((await f.status()).status).toBe("created");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
   it("preserves a capable session and delivers a burst of identical nudges once across restart", async () => {
     const f = await gatewayFixture("created");
     try {
-      f.sqlite
+      await f.sqlite
         .prepare(
           "UPDATE worker_assignments SET command_payload_json = ? WHERE id='A1'",
         )
@@ -166,9 +166,9 @@ describe("Gateway Service readiness", () => {
       expect(starts[0]!.payload).toMatchObject({
         snapshot: { startPermit: { required: true } },
       });
-      expect(f.status().status).toBe("dispatched");
+      expect((await f.status()).status).toBe("dispatched");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("separates liveness from readiness for a connected, unsynchronized Service", async () => {
@@ -196,7 +196,7 @@ describe("Gateway Service readiness", () => {
       deliveryState: "waiting_for_service_ready",
       acceptance: "none",
     });
-    expect(f.status().status).toBe("created");
+    expect((await f.status()).status).toBe("created");
     expect(types(await f.outbound())).not.toContain("assignment.start");
   });
 
@@ -208,7 +208,7 @@ describe("Gateway Service readiness", () => {
       (message) => message.type === "assignment.start",
     );
     expect(sent).toHaveLength(1);
-    expect(f.status().status).toBe("dispatched");
+    expect((await f.status()).status).toBe("dispatched");
     // A redundant nudge or a second ready report sends nothing more.
     await f.gateway.fetch(
       new Request("https://gateway.internal/flush-queued", { method: "POST" }),
@@ -253,7 +253,7 @@ describe("Gateway Service readiness", () => {
     // Ready from the start; the payload is stored only after becoming ready so
     // the ready transition itself does not flush the assignment.
     const f = await gatewayFixture("created");
-    f.sqlite
+    await f.sqlite
       .prepare(
         "UPDATE worker_assignments SET command_payload_json = ? WHERE id = 'A1'",
       )
@@ -270,7 +270,7 @@ describe("Gateway Service readiness", () => {
       serviceState: "paused",
     });
     expect((await f.dispatch()).status).toBe(202);
-    expect(f.status().status).toBe("created");
+    expect((await f.status()).status).toBe("created");
     await f.send("workspace.readiness", {
       state: "ready",
       readyForAssignments: true,

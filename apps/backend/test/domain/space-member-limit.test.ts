@@ -17,32 +17,32 @@ import {
 const MESSAGE =
   "Free includes up to 4 people in each Space, including the owner.";
 const open: Array<{ close(): void }> = [];
-afterEach(() => {
-  for (const sqlite of open.splice(0)) sqlite.close();
+afterEach(async () => {
+  for (const sqlite of open.splice(0)) (await sqlite.close());
 });
 
-function fixture() {
-  const { sqlite, db } = pgD1();
+async function fixture() {
+  const { sqlite, db } = await pgD1();
   open.push(sqlite);
   const now = new Date().toISOString();
   const ids = ["O", "O2", "A", "B", "C", "D", "E", "F", "PLUS", "V"];
   for (const id of ids)
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO users (id,email,display_name,status,created_at,updated_at) VALUES (?,?,?,'active',?,?)",
       )
-      .run(id, `${id.toLowerCase()}@example.test`, id, now, now);
+      .run(id, `${id.toLowerCase()}@example.test`, id, now, now));
   for (const [space, owner] of [
     ["S1", "O"],
     ["S2", "O"],
     ["S3", "O2"],
   ] as const) {
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO spaces (id,name,owner_user_id,created_at,updated_at) VALUES (?,?,?,?,?)",
       )
       .run(space, space, owner, now, now);
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO space_memberships (id,space_id,user_id,role,created_at,updated_at) VALUES (?,?,?,'owner',?,?)",
       )
@@ -53,10 +53,10 @@ function fixture() {
     SYNTILA_DB: db,
     TEST_AUTHENTICATION: async (request: Request) => {
       const id = request.headers.get("authorization")!.replace("Bearer ", "");
-      const row = sqlite
+      const row = await sqlite
         .prepare("SELECT id,email,display_name FROM users WHERE id = ?")
         .get(id) as { id: string; email: string; display_name: string };
-      const roles = sqlite
+      const roles = await sqlite
         .prepare(
           "SELECT space_id, role FROM space_memberships WHERE user_id = ?",
         )
@@ -110,9 +110,9 @@ function fixture() {
       env as never,
       space,
     );
-  const invitationId = (who: string, space = "S1") =>
+  const invitationId = async (who: string, space = "S1") =>
     (
-      sqlite
+      await sqlite
         .prepare(
           "SELECT id FROM space_invitations WHERE space_id=? AND LOWER(email)=? AND status='pending'",
         )
@@ -144,19 +144,19 @@ function fixture() {
       space,
       user,
     );
-  const invite = (...a: Parameters<typeof raw_invite>) =>
+  const invite = async (...a: Parameters<typeof raw_invite>) =>
     response(raw_invite(...a));
-  const accept = (...a: Parameters<typeof raw_accept>) =>
+  const accept = async (...a: Parameters<typeof raw_accept>) =>
     response(raw_accept(...a));
-  const decline = (...a: Parameters<typeof raw_decline>) =>
+  const decline = async (...a: Parameters<typeof raw_decline>) =>
     response(raw_decline(...a));
-  const revoke = (...a: Parameters<typeof raw_revoke>) =>
+  const revoke = async (...a: Parameters<typeof raw_revoke>) =>
     response(raw_revoke(...a));
-  const remove = (...a: Parameters<typeof raw_remove>) =>
+  const remove = async (...a: Parameters<typeof raw_remove>) =>
     response(raw_remove(...a));
   const join = async (who: string, space = "S1", role = "collaborator") => {
     expect((await invite(who, space, role)).status).toBe(201);
-    expect((await accept(who, invitationId(who, space))).status).toBe(200);
+    expect((await accept(who, await invitationId(who, space))).status).toBe(200);
   };
   const plan = (user: string, status = "active", end: string | null = null) =>
     sqlite
@@ -207,7 +207,7 @@ describe("Free Space member allowance", () => {
   });
 
   it("counts the owner, allows the fourth person and blocks the fifth", async () => {
-    const f = fixture();
+    const f = await fixture();
     expect(await f.usage()).toEqual({
       members: 1,
       pendingInvitations: 0,
@@ -226,7 +226,7 @@ describe("Free Space member allowance", () => {
   });
 
   it("reserves a slot for each pending invitation and counts AI Workers nowhere", async () => {
-    const f = fixture();
+    const f = await fixture();
     await f.join("A");
     expect((await f.invite("B")).status).toBe(201);
     expect((await f.invite("C")).status).toBe(201);
@@ -237,7 +237,7 @@ describe("Free Space member allowance", () => {
     expect((await f.invite("D")).status).toBe(402);
     // Workers are not Space members: they never appear in the count.
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT COUNT(*) AS n FROM space_memberships WHERE space_id='S1'",
         )
@@ -246,18 +246,18 @@ describe("Free Space member allowance", () => {
   });
 
   it("converts a reservation to membership on acceptance without a second slot", async () => {
-    const f = fixture();
+    const f = await fixture();
     await f.join("A");
     expect((await f.invite("C")).status).toBe(201); // 2 members + 1 pending
     expect((await f.invite("D")).status).toBe(201); // 4 reserved
     expect((await f.invite("E")).status).toBe(402);
-    expect((await f.accept("C", f.invitationId("C"))).status).toBe(200);
+    expect((await f.accept("C", await f.invitationId("C"))).status).toBe(200);
     expect(await f.usage()).toMatchObject({
       members: 3,
       pendingInvitations: 1,
     });
     expect((await f.invite("E")).status).toBe(402); // still 4 reserved
-    expect((await f.accept("D", f.invitationId("D"))).status).toBe(200);
+    expect((await f.accept("D", await f.invitationId("D"))).status).toBe(200);
     expect(await f.usage()).toMatchObject({
       members: 4,
       pendingInvitations: 0,
@@ -265,20 +265,20 @@ describe("Free Space member allowance", () => {
   });
 
   it("releases capacity on decline, revocation, expiry and member removal", async () => {
-    const f = fixture();
+    const f = await fixture();
     await f.join("A");
     await f.invite("B");
     await f.invite("C");
     expect((await f.invite("D")).status).toBe(402);
-    expect((await f.decline("B", f.invitationId("B"))).status).toBe(200);
+    expect((await f.decline("B", await f.invitationId("B"))).status).toBe(200);
     expect((await f.invite("D")).status).toBe(201);
     expect((await f.invite("E")).status).toBe(402);
-    await f.revoke(f.invitationId("C"));
+    await f.revoke(await f.invitationId("C"));
     expect((await f.invite("E")).status).toBe(201);
     // An invitation past its expiry no longer reserves a slot.
-    f.sqlite.exec(
+    (await f.sqlite.exec(
       "UPDATE space_invitations SET expires_at='2000-01-01T00:00:00.000Z' WHERE LOWER(email)='d@example.test'",
-    );
+    ));
     expect(await f.usage()).toMatchObject({ pendingInvitations: 1 });
     expect((await f.invite("F")).status).toBe(201);
     // Removing a member frees a slot.
@@ -288,7 +288,7 @@ describe("Free Space member allowance", () => {
   });
 
   it("does not consume a slot for duplicates, existing members or retried requests", async () => {
-    const f = fixture();
+    const f = await fixture();
     await f.join("A");
     expect((await f.invite("B")).status).toBe(201);
     expect((await f.invite("B")).status).toBe(409); // already pending
@@ -307,7 +307,7 @@ describe("Free Space member allowance", () => {
   });
 
   it("allows one reservation when many invitations race for the last slot", async () => {
-    const f = fixture();
+    const f = await fixture();
     await f.join("A"); // two slots left
     const results = await Promise.all(
       ["C", "D", "E", "F"].map((who) => f.invite(who)),
@@ -320,7 +320,7 @@ describe("Free Space member allowance", () => {
   });
 
   it("counts every Space on its own", async () => {
-    const f = fixture();
+    const f = await fixture();
     await f.join("A", "S1");
     await f.join("B", "S1");
     await f.join("C", "S1");
@@ -333,57 +333,57 @@ describe("Free Space member allowance", () => {
   });
 
   it("follows the Space owner's plan, not the inviter's or recipient's", async () => {
-    const f = fixture();
+    const f = await fixture();
     // A Plus recipient does not lift a Free owner's limit...
-    f.plan("PLUS");
+    await f.plan("PLUS");
     await f.join("A");
     await f.join("B");
     await f.join("C");
     expect((await f.invite("PLUS")).status).toBe(402);
     // ...but a Free person can join a larger Plus-owned Space.
-    f.plan("O2");
+    await f.plan("O2");
     for (const who of ["A", "B", "C", "D", "E"]) await f.join(who, "S3");
     expect((await f.usage("S3")).limit).toBeNull();
     expect((await f.usage("S3")).members).toBe(6);
   });
 
   it("re-evaluates the owner's plan: upgrade, expiry, grace and downgrade", async () => {
-    const f = fixture();
+    const f = await fixture();
     await f.join("A");
     await f.join("B");
     await f.join("C");
     expect((await f.invite("D")).status).toBe(402);
-    f.plan("O"); // upgrade
+    await f.plan("O"); // upgrade
     expect((await f.invite("D")).status).toBe(201);
     expect((await f.invite("E")).status).toBe(201);
-    f.plan("O", "active", "2000-01-01T00:00:00Z"); // expired: Free again
+    await f.plan("O", "active", "2000-01-01T00:00:00Z"); // expired: Free again
     expect((await f.usage()).limit).toBe(4);
     expect((await f.invite("F")).status).toBe(402);
-    f.plan("O", "past_due", "2999-01-01T00:00:00Z"); // grace keeps Plus
+    await f.plan("O", "past_due", "2999-01-01T00:00:00Z"); // grace keeps Plus
     expect((await f.invite("F")).status).toBe(201);
     expect((await f.usage()).limit).toBeNull();
   });
 
   it("preserves an over-limit Space after a downgrade, but blocks additions and acceptance", async () => {
-    const f = fixture();
-    f.plan("O");
+    const f = await fixture();
+    await f.plan("O");
     for (const who of ["A", "B", "C"]) await f.join(who);
     await f.invite("D");
     await f.invite("E");
-    f.sqlite.exec("DELETE FROM account_plans WHERE user_id='O'"); // downgrade
+    await f.sqlite.exec("DELETE FROM account_plans WHERE user_id='O'"); // downgrade
     // Nobody is removed and nothing is revoked.
     expect(await f.usage()).toMatchObject({
       members: 4,
       pendingInvitations: 2,
     });
     // Pending invitations are kept but cannot be accepted while over the limit.
-    const refused = await f.accept("D", f.invitationId("D"));
+    const refused = await f.accept("D", await f.invitationId("D"));
     expect(refused.status).toBe(402);
     const body = await code(refused);
     expect(body.code).toBe("space_member_limit_reached");
     expect(body.error).toContain("owner needs to upgrade");
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT status FROM space_invitations WHERE LOWER(email)='d@example.test'",
         )
@@ -391,10 +391,10 @@ describe("Free Space member allowance", () => {
     ).toEqual({ status: "pending" });
     expect((await f.invite("F")).status).toBe(402);
     // Management stays available: revoke and remove still work.
-    await f.revoke(f.invitationId("E"));
+    await f.revoke(await f.invitationId("E"));
     expect((await f.remove("C")).status).toBeLessThan(300);
     // 3 members + 1 pending (D) = 4: D's own reservation is not counted twice.
-    expect((await f.accept("D", f.invitationId("D"))).status).toBe(200);
+    expect((await f.accept("D", await f.invitationId("D"))).status).toBe(200);
     expect(await f.usage()).toMatchObject({
       members: 4,
       pendingInvitations: 0,
@@ -412,7 +412,7 @@ describe("Free Space member allowance", () => {
   });
 
   it("reports usage with the members list", async () => {
-    const f = fixture();
+    const f = await fixture();
     await f.join("A");
     await f.invite("B");
     const response = await handleListSpaceMembers(
@@ -428,14 +428,14 @@ describe("Free Space member allowance", () => {
   });
 
   it("accepts simultaneous invitations that exactly fill the allowance, each counted once", async () => {
-    const f = fixture();
-    f.plan("O");
+    const f = await fixture();
+    await f.plan("O");
     await f.join("D");
     await f.invite("A");
     await f.invite("B"); // O + D + two pending = 4 reserved
-    f.sqlite.exec("DELETE FROM account_plans WHERE user_id='O'");
+    (await f.sqlite.exec("DELETE FROM account_plans WHERE user_id='O'"));
     const results = await Promise.all(
-      ["A", "B"].map((who) => f.accept(who, f.invitationId(who))),
+      ["A", "B"].map(async (who) => f.accept(who, await f.invitationId(who))),
     );
     expect(results.map((r) => r.status)).toEqual([200, 200]);
     expect(await f.usage()).toMatchObject({

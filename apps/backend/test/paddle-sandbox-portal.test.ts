@@ -2,8 +2,8 @@ import { afterAll, expect, test } from 'bun:test';
 import { pgD1, dropTestDatabases } from './domain/helpers/pg-d1';
 import { handleSandboxPortal } from '../src/domain/routes/paddle-sandbox';
 
-const store = pgD1();
-store.sqlite.exec("INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('alice','a@example.test','Alice',now(),now()); INSERT INTO paddle_sandbox_subscriptions(subscription_id,user_id,customer_id,status,occurred_at) VALUES('sub_test','alice','ctm_owned','canceled',now())");
+const store = await pgD1();
+await store.sqlite.exec("INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('alice','a@example.test','Alice',now(),now()); INSERT INTO paddle_sandbox_subscriptions(subscription_id,user_id,customer_id,status,occurred_at) VALUES('sub_test','alice','ctm_owned','canceled',now())");
 afterAll(dropTestDatabases);
 const env = { SYNTILA_DB: store.db, SYNTILA_ENVIRONMENT: 'development', PADDLE_SANDBOX_API_KEY: 'pdl_sdbx_test', TEST_AUTHENTICATION: async () => ({ userId: 'alice' }) } as any;
 const request = new Request('http://localhost/api/billing/sandbox/portal', { method: 'POST', body: JSON.stringify({ customerId: 'ctm_attacker' }) });

@@ -27,10 +27,10 @@ import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 it("routes through production handler registration and clears remote history", async () => {
   const f = await conversationFixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-    f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
+    await f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
     const response = await routeWorkerRequest(
       new Request("https://test/api/threads/W/work-history/clear", {
         method: "POST",
@@ -57,31 +57,31 @@ it("routes through production handler registration and clears remote history", a
       "conversation_history_entries",
     ]) {
       expect(
-        f.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()!.count,
+        (await f.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get())!.count,
       ).toBeGreaterThan(0);
     }
     expect(
-      f.sqlite
+      (await f.sqlite
         .prepare(
           "SELECT ai_history_cleared_at AS clearedAt FROM threads WHERE id='W'",
         )
-        .get()!.clearedAt,
+        .get())!.clearedAt,
     ).toBe(body.aiHistoryClearedAt);
     // Later Worker context starts after everything that existed at the clear.
-    const floors = f.sqlite
+    const floors = (await f.sqlite
       .prepare(
         `SELECT c.context_floor_sequence AS floor,
            (SELECT MAX(sequence) FROM conversation_history_entries) AS latest
          FROM conversations c`,
       )
-      .get()!;
+      .get())!;
     expect(floors.floor).toBe(floors.latest);
     expect(
-      f.sqlite
+      (await f.sqlite
         .prepare(
           "SELECT work_session_generation AS generation FROM threads WHERE id='W'",
         )
-        .get()!.generation,
+        .get())!.generation,
     ).toBe(1);
     expect(publishCollaborationEvent).toHaveBeenCalledWith(
       expect.anything(),
@@ -91,14 +91,14 @@ it("routes through production handler registration and clears remote history", a
       { threadId: "W" },
     );
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("resets AI context during active work without deleting remote history", async () => {
   const f = await conversationFixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "ALTER TABLE threads ADD COLUMN work_session_generation INTEGER NOT NULL DEFAULT 0",
     );
     await handleClearWorkHistory(
@@ -109,27 +109,27 @@ it("resets AI context during active work without deleting remote history", async
       "W",
     );
     expect(
-      f.sqlite.prepare("SELECT COUNT(*) AS count FROM work_requests").get()!
+      (await f.sqlite.prepare("SELECT COUNT(*) AS count FROM work_requests").get())!
         .count,
     ).toBe(1);
     expect(
-      f.sqlite
+      (await f.sqlite
         .prepare("SELECT COUNT(*) AS count FROM conversation_history_entries")
-        .get()!.count,
+        .get())!.count,
     ).toBeGreaterThan(0);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("emits a clear event that the protocol's realtime envelope accepts", async () => {
   const f = await conversationFixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-    f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
-    f.sqlite.exec(
+    await f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
+    await f.sqlite.exec(
       "INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at) VALUES('T2','R','plan','stateless_read',1000,'plan:v1','completed','now','now'); INSERT INTO workflow_task_dependencies(task_id, depends_on_task_id) VALUES('T2', 'T');",
     );
     vi.mocked(publishCollaborationEvent).mockClear();
@@ -160,21 +160,21 @@ it("emits a clear event that the protocol's realtime envelope accepts", async ()
     });
     expect(envelope.type).toBe("thread.work_cleared");
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("clears the whole Conversation remotely, including Work history", async () => {
   const f = await conversationFixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       `INSERT INTO discussion_messages(id,thread_id,author_user_id,body,created_at) VALUES('M1','W','U','hi','now'),('M2','W','U','there','now')`,
     );
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-    f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
-    f.sqlite.exec(
+    await f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
+    await f.sqlite.exec(
       "INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at) VALUES('T2','R','plan','stateless_read',1000,'plan:v1','completed','now','now'); INSERT INTO workflow_task_dependencies(task_id, depends_on_task_id) VALUES('T2', 'T');",
     );
     vi.mocked(publishCollaborationEvent).mockClear();
@@ -195,9 +195,9 @@ it("clears the whole Conversation remotely, including Work history", async () =>
       (options as unknown as { mutate: (tx: unknown) => Promise<unknown> }).mutate(tx),
     );
     expect(
-      f.sqlite
+      (await f.sqlite
         .prepare("SELECT COUNT(*) AS count FROM discussion_messages")
-        .get()!.count,
+        .get())!.count,
     ).toBe(1);
     for (const table of [
       "work_requests",
@@ -207,11 +207,11 @@ it("clears the whole Conversation remotely, including Work history", async () =>
       "conversation_history_entries",
     ]) {
       expect(
-        f.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()!.count,
+        (await f.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get())!.count,
       ).toBe(0);
     }
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
@@ -228,17 +228,17 @@ it("refuses to clear the Conversation while Work is active", async () => {
       ),
     ).rejects.toMatchObject({ status: 409 });
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("announces a retried work-history clear even when the receipt replays", async () => {
   const f = await conversationFixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-    f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
+    await f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
     const env = { SYNTILA_DB: f.db } as unknown as SecurityEnv;
     const clear = () =>
       handleClearWorkHistory(
@@ -258,19 +258,19 @@ it("announces a retried work-history clear even when the receipt replays", async
       .mock.calls.map((call) => call[1]);
     expect(types).toEqual(["thread.work_cleared", "thread.work_cleared"]);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("keeps cleared AI exchanges readable but out of later Worker context", async () => {
   const f = await conversationFixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-    f.assign("A");
-    f.start("A");
-    f.sqlite.exec(`
+    await f.assign("A");
+    await f.start("A");
+    await f.sqlite.exec(`
       UPDATE worker_assignments SET status='completed', updated_at='2026-10-07T10:02:00Z', output_json='{"output":{"text":"The answer"}}' WHERE id='A';
       UPDATE work_requests SET status='completed' WHERE id='R';`);
     const before = await f.turns();
@@ -286,20 +286,20 @@ it("keeps cleared AI exchanges readable but out of later Worker context", async 
 
     // Nothing is copied into Chat and the original exchange is untouched.
     expect(
-      f.sqlite
+      (await f.sqlite
         .prepare("SELECT COUNT(*) AS count FROM discussion_messages")
-        .get()!.count,
+        .get())!.count,
     ).toBe(1);
     expect(await f.turns()).toEqual(before);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("refuses to edit an archived AI entry", async () => {
   const f = await conversationFixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       `INSERT INTO discussion_messages(id,thread_id,author_user_id,body,kind,work_request_id,worker_display_name,created_at)
        VALUES('A1','W','U','answer','ai_answer','R','ChatGPT','now')`,
     );
@@ -311,17 +311,15 @@ it("refuses to edit an archived AI entry", async () => {
     } as never);
     const { handleEditDiscussionMessage } =
       await import("../../src/domain/routes/threads.js");
-    await expect(
-      handleEditDiscussionMessage(
+    await expect(handleEditDiscussionMessage(
         new Request("https://test/api/discussion/A1", {
           method: "PATCH",
           body: JSON.stringify({ body: "changed" }),
         }),
         { SYNTILA_DB: f.db } as unknown as SecurityEnv,
         "A1",
-      ),
-    ).rejects.toMatchObject({ status: 409 });
+      ),).rejects.toMatchObject({ status: 409 });
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });

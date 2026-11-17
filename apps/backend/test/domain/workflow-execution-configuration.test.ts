@@ -69,7 +69,7 @@ const testMultiStepDefinition: BuiltinWorkflowDefinition = {
   ],
 };
 
-function fixture(
+async function fixture(
   defaults: object = {},
   stepOverrides: object = {},
   spaceDefaults?: object,
@@ -77,13 +77,13 @@ function fixture(
     ? "first"
     : "second",
 ) {
-  const { db, sqlite } = pgD1();
+  const { db, sqlite } = await pgD1();
   const inventory = (worker: string, ws: string) =>
     `INSERT INTO workspace_worker_inventory (
        worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
        local_concurrency_limit, revision, created_at, updated_at, last_seen_at
      ) VALUES ('${worker}', '${ws}', 'user', 'chatgpt-codex', 'enabled', 'ready', 1, 1, '${T0}', '${T0}', '${T0}');`;
-  sqlite.exec(
+  await sqlite.exec(
     user("user") +
       user("another-member") +
       space("space", "user") +
@@ -107,8 +107,8 @@ function fixture(
    * Workspace; Space defaults, when given, replace it as a Space-wide row.
    * Tests change `configuration` after creation, so it is saved on every resolve.
    */
-  const save = () => {
-    sqlite.exec(
+  const save = async () => {
+    await sqlite.exec(
       "DELETE FROM user_workflow_configurations; DELETE FROM space_workflow_configurations;",
     );
     const insert = (table: string, keys: string, json: object) =>
@@ -121,18 +121,18 @@ function fixture(
           configuration.workflowId,
           JSON.stringify(json),
         );
-    insert("user_workflow_configurations", "user_id,workspace_id", configuration);
+    await insert("user_workflow_configurations", "user_id,workspace_id", configuration);
     if (spaceDefaults)
-      insert("space_workflow_configurations", "space_id", { ...configuration, defaults: spaceDefaults });
+      await insert("space_workflow_configurations", "space_id", { ...configuration, defaults: spaceDefaults });
   };
   const env = { SYNTILA_DB: db } as unknown as SecurityEnv;
-  const resolve = (
+  const resolve = async (
     requester = "user",
     threadId = "thread",
     definition = testMultiStepDefinition,
     executionSelection?: unknown,
   ) => {
-    save();
+    await save();
     return resolveWorkflowExecutionBindings(
       env,
       requester,
@@ -160,7 +160,7 @@ function fixture(
   return { configuration, resolve };
 }
 it("uses the explicitly configured Worker across the whole workflow", async () => {
-  const f = fixture(
+  const f = await fixture(
     { worker: "b", model: "model", effort: "medium" },
     { verify: { effort: "high" } },
   );
@@ -170,18 +170,18 @@ it("uses the explicitly configured Worker across the whole workflow", async () =
   });
 });
 it("retains an explicit Worker and fails admission without silently choosing another", async () => {
-  const f = fixture({ worker: "a" });
+  const f = await fixture({ worker: "a" });
   await expect(f.resolve()).rejects.toMatchObject({
     status: 422,
     message: "Unsupported capability",
   });
 });
 it("rejects a saved Worker missing from current user ownership", async () => {
-  const f = fixture({ worker: "foreign" });
+  const f = await fixture({ worker: "foreign" });
   await expect(f.resolve()).rejects.toMatchObject({ status: 422 });
 });
 it("rejects disabled workflows before admission", async () => {
-  const f = fixture();
+  const f = await fixture();
   f.configuration.enabled = false;
   admission.mockClear();
   await expect(f.resolve()).rejects.toMatchObject({ status: 422 });
@@ -189,7 +189,7 @@ it("rejects disabled workflows before admission", async () => {
 });
 
 it("uses shared Space defaults for every requester and Thread rather than each requester's globals", async () => {
-  const f = fixture(
+  const f = await fixture(
     { model: "global-model" },
     {},
     { worker: "b", model: "space-model", effort: "high" },
@@ -205,15 +205,11 @@ it("uses shared Space defaults for every requester and Thread rather than each r
 });
 
 it("requires an explicit Worker and does not fall back to another Workspace", async () => {
-  await expect(
-    fixture({}, {}, undefined, "first").resolve(),
-  ).rejects.toMatchObject({
+  await expect((await fixture({}, {}, undefined, "first")).resolve(),).rejects.toMatchObject({
     status: 422,
     message: expect.stringContaining("Select a Worker"),
   });
-  await expect(
-    fixture({ worker: "b" }, {}, undefined, "first").resolve(),
-  ).rejects.toMatchObject({ status: 422 });
+  await expect((await fixture({ worker: "b" }, {}, undefined, "first")).resolve(),).rejects.toMatchObject({ status: 422 });
 });
 
 it("accepts observed catalog revisions on transient selections", () => {
@@ -231,7 +227,7 @@ it("accepts observed catalog revisions on transient selections", () => {
 it("revalidates inherited preferences and pins current revisions without rewriting settings", async () => {
   const oldRevision = "a".repeat(64);
   const currentRevision = "b".repeat(64);
-  const f = fixture(
+  const f = await fixture(
     {
       worker: "b",
       model: "model",
@@ -282,7 +278,7 @@ it("revalidates inherited preferences and pins current revisions without rewriti
 });
 
 it("revalidates restored composer choices against current capabilities", async () => {
-  const f = fixture({ worker: "b" });
+  const f = await fixture({ worker: "b" });
   f.configuration.workflowId = "chat";
   admission.mockImplementation(
     async (_env, _space, _thread, _definition, bindings) => {
@@ -317,12 +313,12 @@ it("revalidates restored composer choices against current capabilities", async (
 });
 
 describe("Research v2 role configuration at acceptance", () => {
-  function researchFixture(
+  async function researchFixture(
     defaults: object,
     stepOverrides: object,
     researcherCount = 2,
   ) {
-    const f = fixture(defaults, stepOverrides);
+    const f = await fixture(defaults, stepOverrides);
     Object.assign(f.configuration, {
       schemaVersion: 2,
       workflowId: "research",
@@ -355,7 +351,7 @@ describe("Research v2 role configuration at acceptance", () => {
   }
 
   it("freezes a Worker, model and effort per role, inheriting Space defaults", async () => {
-    const f = researchFixture(
+    const f = await researchFixture(
       { worker: "b", effort: "medium" },
       {
         "research-1": { model: "model-a" },
@@ -385,7 +381,7 @@ describe("Research v2 role configuration at acceptance", () => {
   });
 
   it("uses the configured researcher count", async () => {
-    const f = researchFixture(
+    const f = await researchFixture(
       { worker: "b" },
       {
         "research-1": { model: "model-a" },
@@ -417,10 +413,8 @@ describe("Research v2 role configuration at acceptance", () => {
   ])(
     "rejects %s before acceptance, without substituting",
     async (_case, overrides, message) => {
-      const f = researchFixture({ worker: "b" }, overrides);
-      await expect(
-        f.resolve("user", "thread", f.definition),
-      ).rejects.toMatchObject({
+      const f = await researchFixture({ worker: "b" }, overrides);
+      await expect(f.resolve("user", "thread", f.definition),).rejects.toMatchObject({
         status: 422,
         code: "research_configuration_invalid",
         message: expect.stringMatching(message),

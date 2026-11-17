@@ -39,8 +39,8 @@ import {
 } from "../../src/domain/routes/thread-request-queue.js";
 
 const cleanups: (() => void)[] = [];
-afterEach(() => {
-  for (const close of cleanups.splice(0)) close();
+afterEach(async () => {
+  for (const close of cleanups.splice(0)) await close();
 });
 beforeEach(() => {
   created.calls = [];
@@ -52,16 +52,16 @@ const roles: Record<string, string> = {
   member: "collaborator",
 };
 
-function fixture() {
-  const { sqlite, db } = pgD1();
+async function fixture() {
+  const { sqlite, db } = await pgD1();
   cleanups.push(() => sqlite.close());
   for (const id of Object.keys(roles))
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
-      .run(id, `${id}@test`, id.toUpperCase());
-  sqlite.exec(`
+      .run(id, `${id}@test`, id.toUpperCase()));
+  await sqlite.exec(`
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','owner','Space','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m1','S','owner','owner','now','now'),('m2','S','member','collaborator','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('T','S','Thread','active','owner','now','now');`);
@@ -129,8 +129,8 @@ function fixture() {
 }
 
 it("is shared by members and sent by Cloud as each author, in order", async () => {
-  const { env, call, enqueue, busy, finish } = fixture();
-  busy();
+  const { env, call, enqueue, busy, finish } = await fixture();
+  await busy();
   await enqueue("owner", "first");
   const shared = await enqueue("member", "second");
   // Both members see both requests, with their authors.
@@ -141,7 +141,7 @@ it("is shared by members and sent by Cloud as each author, in order", async () =
   expect(shared.items).toHaveLength(2);
   expect(created.calls).toHaveLength(0);
 
-  finish("running");
+  await finish("running");
   await advanceThreadQueue(env, "T");
   expect(created.calls).toEqual([
     {
@@ -152,15 +152,15 @@ it("is shared by members and sent by Cloud as each author, in order", async () =
   // The sent request is processing now, so the next one waits for it.
   await advanceThreadQueue(env, "T");
   expect(created.calls).toHaveLength(1);
-  finish("wr-1");
+  await finish("wr-1");
   await advanceThreadQueue(env, "T");
   expect(created.calls.map((c) => c.userId)).toEqual(["owner", "member"]);
   expect((await call("member", "GET")).items).toHaveLength(0);
 });
 
 it("lets only the author edit, remove or send their request now", async () => {
-  const { call, enqueue, busy } = fixture();
-  busy();
+  const { call, enqueue, busy } = await fixture();
+  await busy();
   const { items } = await enqueue("owner", "mine");
   const id = items[0]!.id;
   for (const [method, action] of [
@@ -168,13 +168,11 @@ it("lets only the author edit, remove or send their request now", async () => {
     ["PUT", null],
     ["POST", "send-now"],
   ] as const)
-    await expect(
-      call("member", method, {
+    await expect(call("member", method, {
         item: id,
         action,
         body: { request: { workflowId: "chat" } },
-      }),
-    ).rejects.toMatchObject({ status: 403 });
+      }),).rejects.toMatchObject({ status: 403 });
   const edited = await call("owner", "PUT", {
     item: id,
     body: { request: { workflowId: "chat", input: { originalRequest: "x" } } },
@@ -186,11 +184,11 @@ it("lets only the author edit, remove or send their request now", async () => {
 });
 
 it("lets any member pause and resume the shared queue", async () => {
-  const { env, call, enqueue, busy, finish } = fixture();
-  busy();
+  const { env, call, enqueue, busy, finish } = await fixture();
+  await busy();
   await enqueue("owner", "first");
   expect((await call("member", "POST", { action: "pause" })).paused).toBe(true);
-  finish("running");
+  await finish("running");
   await advanceThreadQueue(env, "T");
   expect(created.calls).toHaveLength(0);
   const resumed = await call("member", "POST", { action: "resume" });
@@ -199,15 +197,15 @@ it("lets any member pause and resume the shared queue", async () => {
 });
 
 it("pauses with the reason when a request fails or cannot be sent", async () => {
-  const { env, call, enqueue, busy, finish } = fixture();
-  busy();
+  const { env, call, enqueue, busy, finish } = await fixture();
+  await busy();
   await enqueue("member", "next");
   await advanceThreadQueue(env, "T", { failedRequest: true });
   let queue = await call("owner", "GET");
   expect(queue.pauseReason).toBe("failure");
   expect(queue.items).toHaveLength(1);
 
-  finish("running");
+  await finish("running");
   created.fail = "Chat: choose a Worker.";
   await call("owner", "POST", { action: "resume" });
   queue = await call("owner", "GET");
@@ -217,30 +215,28 @@ it("pauses with the reason when a request fails or cannot be sent", async () => 
 });
 
 it("rejects device files, which Cloud could not upload later", async () => {
-  const { call } = fixture();
-  await expect(
-    call("owner", "POST", {
+  const { call } = await fixture();
+  await expect(call("owner", "POST", {
       body: {
         request: {
           workflowId: "chat",
           input: { attachments: [{ kind: "file", delivery: "upload" }] },
         },
       },
-    }),
-  ).rejects.toMatchObject({ status: 400 });
+    }),).rejects.toMatchObject({ status: 400 });
 });
 
 it("sends a reply to a plan paused for input before its remaining phases", async () => {
-  const { sqlite, env, call, enqueue } = fixture();
+  const { sqlite, env, call, enqueue } = await fixture();
   // Phase 1 paused for input: its Workflow finished, the request stays waiting.
-  sqlite.exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
+  (await sqlite.exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
       VALUES('phase-1','T','owner','stateless','direct',2,'{}','{}','waiting','{"isPhased":true}','now','now');
     INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,attempt,created_at,updated_at)
       VALUES('task-1','phase-1','implement','stateful_thread',60000,'v1','completed',1,'now','now');
     INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
       VALUES('phase-2','T','owner','{"workflowId":"direct","isPhased":true,"input":{"isPhased":true}}',1,'queued','now','now');
     INSERT INTO thread_request_queue_state(thread_id,paused_reason,failure_message,updated_at)
-      VALUES('T','failure','Phase 1 paused','now');`);
+      VALUES('T','failure','Phase 1 paused','now');`));
   const queue = await enqueue("owner", "tools are installed, try again");
   // The reply is sent; nothing is cancelled and phase 2 stays paused.
   expect(created.calls.map((c) => c.body.input)).toEqual([
@@ -249,7 +245,7 @@ it("sends a reply to a plan paused for input before its remaining phases", async
   expect(queue.paused).toBe(true);
   expect(queue.items.map((i) => i.id)).toEqual(["phase-2"]);
   expect(
-    sqlite
+    await sqlite
       .prepare("SELECT status FROM work_requests WHERE id = 'phase-1'")
       .get(),
   ).toEqual({ status: "waiting" });

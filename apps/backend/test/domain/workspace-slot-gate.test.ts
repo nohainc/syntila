@@ -17,13 +17,13 @@ const payload = {
 /** One slot, already held by a running assignment B1. */
 async function fullWorkspace(research = false) {
   const f = await gatewayFixture("created", { research });
-  f.sqlite.exec(`
+  await f.sqlite.exec(`
     UPDATE execution_workspaces SET parallel_slots = 1 WHERE id = 'WS';
     CREATE TEMP TABLE occupant AS SELECT * FROM worker_assignments WHERE id = 'A1';
     UPDATE occupant SET id = 'B1', attempt_id = 'ATT2', idempotency_key = 'IDEM2', status = 'running';
     INSERT INTO worker_assignments SELECT * FROM occupant;
   `);
-  f.sqlite
+  await f.sqlite
     .prepare(
       "UPDATE worker_assignments SET command_payload_json = ? WHERE id = 'A1'",
     )
@@ -44,11 +44,11 @@ describe("Cloud-owned Workspace slots", () => {
         "RT",
         new Date(Date.parse(now) + 1000).toISOString(),
       );
-      const row = f.sqlite
+      const row = (await f.sqlite
         .prepare(
           "SELECT cloud_queue_reason AS reason,cloud_queue_since AS since FROM worker_assignments WHERE id='A1'",
         )
-        .get()!;
+        .get())!;
       expect(row).toMatchObject({ reason: "service_not_ready", since: now });
       expect(
         assignmentDeadlineViolation(
@@ -64,7 +64,7 @@ describe("Cloud-owned Workspace slots", () => {
         ),
       ).toMatchObject({ phase: "readiness_wait" });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("resumes a persisted capacity queue after Gateway restart without duplicate starts", async () => {
@@ -72,7 +72,7 @@ describe("Cloud-owned Workspace slots", () => {
     try {
       await f.dispatch();
       const restarted = f.restart();
-      f.sqlite.exec(
+      await f.sqlite.exec(
         "UPDATE worker_assignments SET status='completed' WHERE id='B1'",
       );
       for (let i = 0; i < 2; i++) {
@@ -87,45 +87,45 @@ describe("Cloud-owned Workspace slots", () => {
           (m) => m.type === "assignment.start",
         ),
       ).toHaveLength(1);
-      expect(f.status().status).toBe("dispatched");
+      expect((await f.status()).status).toBe("dispatched");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("keeps a Research branch queued past the normal deadline without holding a slot", async () => {
     const f = await fullWorkspace(true);
     try {
       await f.dispatch();
-      const row = () =>
-        f.sqlite
+      const row = async () =>
+        (await f.sqlite
           .prepare(
             "SELECT status AS assignmentStatus,cloud_queue_reason AS cloudQueueReason,cloud_queue_since AS cloudQueueSince FROM worker_assignments WHERE id='A1'",
           )
-          .get()!;
-      expect(presentExecution(row())).toMatchObject({
+          .get())!;
+      expect(presentExecution(await row())).toMatchObject({
         executionPhase: "queued",
         executionPhaseDetail:
           "All Worker slots are busy; starting when one is free",
       });
-      const since = row().cloudQueueSince;
+      const since = (await row()).cloudQueueSince;
       await f.dispatch();
-      expect(row().cloudQueueSince).toBe(since);
+      expect((await row()).cloudQueueSince).toBe(since);
       // The ordinary queue deadline is two minutes. A long-running sibling
       // must not make this queued branch fail after that time.
-      f.sqlite
+      (await f.sqlite
         .prepare(
           "UPDATE worker_assignments SET timeout_ms=?,running_at=? WHERE id='B1'",
         )
-        .run(8 * 60 * 60_000, new Date().toISOString());
+        .run(8 * 60 * 60_000, new Date().toISOString()));
       await recoverStaleAssignments(f.db, new Date(Date.now() + 10 * 60_000));
-      expect(f.status().status).toBe("created");
+      expect((await f.status()).status).toBe("created");
       expect(
         (await f.outbound()).filter((m) => m.type === "assignment.start"),
       ).toHaveLength(0);
       // Increasing the configured slot total admits the next branch immediately.
-      f.sqlite.exec(
+      (await f.sqlite.exec(
         "UPDATE execution_workspaces SET parallel_slots=2 WHERE id='WS'",
-      );
+      ));
       await f.gateway.fetch(
         new Request("https://gateway.internal/flush-queued", {
           method: "POST",
@@ -134,9 +134,9 @@ describe("Cloud-owned Workspace slots", () => {
       expect(
         (await f.outbound()).filter((m) => m.type === "assignment.start"),
       ).toHaveLength(1);
-      expect(f.status().status).toBe("dispatched");
+      expect((await f.status()).status).toBe("dispatched");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
@@ -154,8 +154,8 @@ describe("Cloud-owned Workspace slots", () => {
         },
       });
       await recordCloudQueueReason(f.read, "A1", "ATT1", "service_not_ready");
-      expect(f.status().status).toBe("cancelled");
-      f.sqlite.exec(
+      expect((await f.status()).status).toBe("cancelled");
+      await f.sqlite.exec(
         "UPDATE worker_assignments SET status='completed' WHERE id='B1'",
       );
       await f.gateway.fetch(
@@ -167,7 +167,7 @@ describe("Cloud-owned Workspace slots", () => {
         (await f.outbound()).filter((m) => m.type === "assignment.start"),
       ).toHaveLength(0);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("keeps work in the Cloud queue while every slot is taken", async () => {
@@ -179,7 +179,7 @@ describe("Cloud-owned Workspace slots", () => {
       queued: true,
       deliveryState: "waiting_for_slot",
     });
-    expect(f.status().status).toBe("created");
+    expect((await f.status()).status).toBe("created");
     expect(
       (await f.outbound()).filter((m) => m.type === "assignment.start"),
     ).toHaveLength(0);
@@ -188,7 +188,7 @@ describe("Cloud-owned Workspace slots", () => {
   it("starts queued work once a slot frees, stamped with the slot total", async () => {
     const f = await fullWorkspace();
     await f.dispatch();
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE worker_assignments SET status = 'completed' WHERE id = 'B1'",
     );
     await f.gateway.fetch(
@@ -202,6 +202,6 @@ describe("Cloud-owned Workspace slots", () => {
       (started[0]!.payload.snapshot as Record<string, unknown>)
         .maxConcurrentAssignments,
     ).toBe(1);
-    expect(f.status().status).toBe("dispatched");
+    expect((await f.status()).status).toBe("dispatched");
   });
 });

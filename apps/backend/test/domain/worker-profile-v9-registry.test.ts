@@ -45,22 +45,22 @@ function makeEvidence(profile: Record<string, unknown>, digest: string) {
   };
 }
 
-function setup() {
-  const { db, sqlite } = pgD1();
-  sqlite.exec(
+async function setup() {
+  const { db, sqlite } = await pgD1();
+  await sqlite.exec(
     "" /* D1 migration: schema is final in PostgreSQL */,
   );
-  sqlite.exec(
+  await sqlite.exec(
     "" /* D1 migration: schema is final in PostgreSQL */,
   );
   const now = new Date().toISOString();
-  sqlite
+  await sqlite
     .prepare(
       `INSERT INTO users (id, email, display_name, status, created_at, updated_at)
        VALUES (?, ?, ?, 'active', ?, ?)`,
     )
     .run("profile-lab", "profile-lab@test", "Profile Lab", now, now);
-  sqlite
+  await sqlite
     .prepare(
       `INSERT INTO worker_catalog
          (worker_type_id, display_name, description, lifecycle_state,
@@ -86,7 +86,7 @@ function setup() {
 
 describe("V9 Worker Profile registry", () => {
   it("publishes one current snapshot, keeps history, and restores atomically", async () => {
-    const { env, sqlite } = setup();
+    const { env, sqlite } = await setup();
     try {
       const first = makeProfile("fixture-worker", 1);
       delete (first.providerTool as Record<string, unknown>).supportedVersions;
@@ -146,7 +146,7 @@ describe("V9 Worker Profile registry", () => {
         actorUserId: "profile-lab",
       });
 
-      sqlite
+      await sqlite
         .prepare(
           "UPDATE worker_profile_history SET digest = ? WHERE worker_type_id = ? AND revision = ?",
         )
@@ -161,7 +161,7 @@ describe("V9 Worker Profile registry", () => {
           actorUserId: "profile-lab",
         }),
       ).rejects.toMatchObject({ status: 409 });
-      sqlite
+      await sqlite
         .prepare(
           "UPDATE worker_profile_history SET digest = ? WHERE worker_type_id = ? AND revision = ?",
         )
@@ -212,12 +212,12 @@ describe("V9 Worker Profile registry", () => {
         (await getCurrentWorkerProfile(env, "fixture-worker")).revision,
       ).toBe(3);
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 
   it("lists every managed Worker without channel-pointer resolution", async () => {
-    const { env, sqlite } = setup();
+    const { env, sqlite } = await setup();
     try {
       const result = await listWorkerProfiles(env.SYNTILA_DB);
       expect(result.workers).toEqual(
@@ -232,7 +232,7 @@ describe("V9 Worker Profile registry", () => {
         ]),
       );
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 });

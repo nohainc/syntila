@@ -13,7 +13,7 @@ vi.mock("../../src/domain/scheduler.js", () => scheduler);
 
 it("admits one assignment for parallel dispatches of a Free requester", async () => {
   const f = await conversationFixture();
-  f.sqlite.exec(`
+  await f.sqlite.exec(`
     INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
     INSERT INTO workflow_tasks(id,work_request_id,step_instance_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
     SELECT 'T' || n, 'R', 'step-' || n, 'chat', 'stateless_read', 1000, 'chat:v1', 'running', 'now', 'now' FROM generate_series(2, 6) n;`);
@@ -35,7 +35,7 @@ it("admits one assignment for parallel dispatches of a Free requester", async ()
       workspaceId: "WS", runId: "RUN", taskId,
       task: { id: taskId, spaceId: "P", requestedByUserId: "U", role: "collaborator", objective: "x", workRequestId: "R", sessionPolicy: "stateless" },
     } as any)));
-  const live = f.sqlite.prepare(
+  const live = await f.sqlite.prepare(
     "SELECT count(*)::int AS n FROM worker_assignments WHERE requested_by_user_id = 'U' AND status NOT IN ('completed','failed','cancelled','timed_out')",
   ).get() as { n: number };
   expect(live.n).toBe(1);

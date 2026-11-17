@@ -33,11 +33,11 @@ import { resolveWorkflowExecutionBindings } from "../../src/domain/routes/workfl
 import { threadConversationId } from "../../src/domain/routes/conversations.js";
 
 describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
-  function createTestEnv() {
-    const { sqlite, db } = pgD1();
+  async function createTestEnv() {
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, status, created_at, updated_at) VALUES
         ('user-alice', 'alice@test.com', 'Alice User', 'active', '${now}', '${now}'),
         ('user-bob', 'bob@test.com', 'Bob User', 'active', '${now}', '${now}'),
@@ -183,7 +183,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
   }
 
   it("7.1 Human messaging: both participants share discussion messages and see each other's messages", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { generalThreadId } = await establishDirectSpace(env);
 
     // Alice posts a message
@@ -266,7 +266,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
   });
 
   it("7.2 & 7.3 Direct Space workflow configuration & personal workspace resolution", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
 
     // Workflow configurations query on Direct Space returns 200 with schemaVersion
@@ -373,7 +373,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
   });
 
   it("7.2 & 7.4 Both participants can execute Chat with their own Workers; grants are provisioned on demand; non-chat workflows rejected", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(env);
 
     // Alice resolves execution bindings for Chat with her own worker
@@ -453,7 +453,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
   });
 
   it("7.4 Strict Workspace boundary: participant cannot access the other's Workspace without owning the worker", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(env);
 
     // Alice attempts to use Bob's worker-b without owning it
@@ -499,7 +499,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
   });
 
   it("7.4 Personal Spaces require own Worker: shared workspace cannot be used in personal space", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(env);
     const now = new Date().toISOString();
 
@@ -540,7 +540,7 @@ describe("Direct Space AI Workers, Workflows, and Workspaces (Phase 7)", () => {
   });
 
   it("7.5 AI sessions and context: Threads maintain independent AI history and session state", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(env);
 
     // Create a custom topic thread in the Direct Space

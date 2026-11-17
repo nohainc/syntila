@@ -57,22 +57,22 @@ vi.mock("../../src/domain/event-publisher.js", () => ({
   }),
 }));
 import { handleCreateWorkRequest } from "../../src/domain/routes/work-creation.js";
-function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','owner@test','Owner','now','now');
+async function fixture() {
+  const { sqlite, db } = await pgD1();
+  await sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','owner@test','Owner','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','owner','Space','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('member','P','owner','owner','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','Stream','active','owner','now','now');
     INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('workspace','owner','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('owner','workspace','now'); INSERT INTO space_workflow_settings VALUES('P','workspace','now');`);
-  sqlite.exec(`INSERT INTO user_workflow_configurations(user_id,workspace_id,workflow_id,schema_version,configuration_json,updated_at)
+  await sqlite.exec(`INSERT INTO user_workflow_configurations(user_id,workspace_id,workflow_id,schema_version,configuration_json,updated_at)
     VALUES('owner','workspace','chat',1,'{"schemaVersion":1,"workflowId":"chat","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now'),
     ('owner','workspace','direct',1,'{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now');`);
-  sqlite.exec(
+  await sqlite.exec(
     `INSERT INTO thread_work_configs(thread_id,config_json,updated_at) VALUES('W','{"bindings":{"direct":{"workerId":"worker-a"},"chat":{"workerId":"worker-a"}}}','now')`,
   );
-  sqlite.exec(`INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at)
+  await sqlite.exec(`INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at)
     VALUES('worker-a','workspace','owner','chatgpt','enabled','ready',1,1,'now','now','now');`);
-  sqlite.exec(
+  await sqlite.exec(
     "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,created_at,updated_at) VALUES('grant','P','workspace','owner','active','now','now')",
   );
   const instances = new Set<string>();
@@ -136,7 +136,7 @@ function fixture() {
 it.each(["chat", "direct"])(
   "accepts %s with one StepRun before scheduling and preserves it on replay",
   async (workflowId) => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const first = await f.submit(
         "Request",
@@ -154,7 +154,7 @@ it.each(["chat", "direct"])(
           }),
         }),
       );
-      const step = f.sqlite
+      const step = await f.sqlite
         .prepare(
           `SELECT s.id,s.step_id,s.role,t.status FROM conversation_workflow_step_runs s
     JOIN conversation_workflow_runs r ON r.id=s.workflow_run_id JOIN workflow_tasks t ON t.id=s.task_id WHERE r.work_request_id=?`,
@@ -168,27 +168,27 @@ it.each(["chat", "direct"])(
       });
       await f.submit("Request", "phase19-operation-000001", workflowId);
       expect(
-        f.sqlite
+        (await f.sqlite
           .prepare(
             "SELECT COUNT(*) AS count FROM conversation_workflow_step_runs",
           )
-          .get()?.count,
+          .get())?.count,
       ).toBe(1);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   },
 );
 
 it("moves a Thread and its Space to the top when a Work Request is accepted", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE spaces SET updated_at='2020-01-01T00:00:00.000Z' WHERE id='P'; UPDATE threads SET updated_at='2020-01-01T00:00:00.000Z' WHERE id='W'",
     );
     const response = await f.submit("Move this Thread up");
     expect(response.status).toBe(202);
-    const timestamps = f.sqlite
+    const timestamps = await f.sqlite
       .prepare(
         `SELECT spaces.updated_at AS spaceUpdatedAt, threads.updated_at AS threadUpdatedAt
            FROM spaces JOIN threads ON threads.space_id=spaces.id
@@ -199,13 +199,13 @@ it("moves a Thread and its Space to the top when a Work Request is accepted", as
     expect(timestamps.threadUpdatedAt).not.toBe("2020-01-01T00:00:00.000Z");
     expect(timestamps.spaceUpdatedAt).toBe(timestamps.threadUpdatedAt);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 describe("Work mutation identity through response loss", () => {
   it("rejects another Conversation scope without accepting a request", async () => {
-    const f = fixture();
+    const f = await fixture();
     await expect(
       handleCreateWorkRequest(
         new Request("https://cloud.test/threads/W/work-requests", {
@@ -221,15 +221,15 @@ describe("Work mutation identity through response loss", () => {
       ),
     ).rejects.toMatchObject({ status: 400 });
     expect(
-      f.sqlite.prepare("SELECT count(*) AS n FROM conversations").get(),
+      await f.sqlite.prepare("SELECT count(*) AS n FROM conversations").get(),
     ).toEqual({ n: 0 });
     expect(
-      f.sqlite.prepare("SELECT count(*) AS n FROM work_requests").get(),
+      await f.sqlite.prepare("SELECT count(*) AS n FROM work_requests").get(),
     ).toEqual({ n: 0 });
-    f.sqlite.close();
+    await f.sqlite.close();
   });
   it("continues one Thread Conversation across Chat and Work requests", async () => {
-    const f = fixture();
+    const f = await fixture();
     const work = (await (await f.submit()).json()) as {
       workRequest: { conversationId: string };
     };
@@ -240,16 +240,16 @@ describe("Work mutation identity through response loss", () => {
       work.workRequest.conversationId,
     );
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT workflow_id, conversation_revision FROM conversations ORDER BY workflow_id",
         )
         .all(),
     ).toEqual([{ workflow_id: "work", conversation_revision: 2 }]);
-    f.sqlite.close();
+    await f.sqlite.close();
   });
   it("concurrent and later explicit retries create one request, Run, audit record and runtime instance", async () => {
-    const f = fixture();
+    const f = await fixture();
     const responses = await Promise.all(
       Array.from({ length: 5 }, () => f.submit()),
     );
@@ -269,13 +269,13 @@ describe("Work mutation identity through response loss", () => {
       "conversation_work_requests",
     ]) {
       expect(
-        f.sqlite.prepare(`SELECT count(*) AS n FROM ${table}`).get()?.n,
+        (await f.sqlite.prepare(`SELECT count(*) AS n FROM ${table}`).get())?.n,
       ).toBe(1);
     }
     expect(await (await f.submit()).json()).toEqual(values[0]);
     expect(f.instances.size).toBe(1);
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT conversation_revision, context_revision FROM conversations",
         )
@@ -284,14 +284,14 @@ describe("Work mutation identity through response loss", () => {
     await expect(f.submit("Different prompt")).rejects.toMatchObject({
       status: 409,
     });
-    f.sqlite.close();
+    await f.sqlite.close();
   });
   it("keeps a Work Conversation across new requests and selection changes", async () => {
-    const f = fixture();
+    const f = await fixture();
     const first = (await (await f.submit()).json()) as {
       workRequest: { id: string; conversationId: string };
     };
-    f.sqlite.exec(
+    await f.sqlite.exec(
       `UPDATE thread_work_configs SET config_json = '{"bindings":{"direct":{"workerId":"another-worker","model":"another-model","reasoningEffort":"high"}}}' WHERE thread_id = 'W'`,
     );
     const second = (await (
@@ -302,7 +302,7 @@ describe("Work mutation identity through response loss", () => {
       first.workRequest.conversationId,
     );
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT workflow_id, workflow_version, conversation_revision, context_revision FROM conversations",
         )
@@ -314,27 +314,27 @@ describe("Work mutation identity through response loss", () => {
       context_revision: 2,
     });
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT conversation_revision FROM conversation_work_requests ORDER BY conversation_revision",
         )
         .all(),
     ).toEqual([{ conversation_revision: 1 }, { conversation_revision: 2 }]);
-    const snapshot = f.sqlite
+    const snapshot = (await f.sqlite
       .prepare("SELECT snapshot_json FROM work_requests WHERE id = ?")
-      .get(first.workRequest.id)!;
+      .get(first.workRequest.id))!;
     expect(
       JSON.parse(String(snapshot.snapshot_json)).resolvedBindings.direct,
     ).toEqual({ workerId: "worker-a" });
-    f.sqlite.close();
+    await f.sqlite.close();
   });
   it("a retry resumes interrupted dispatch with the same committed identities", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.setFail(true);
     await expect(f.submit()).rejects.toThrow(
       "dispatch temporarily unavailable",
     );
-    const before = f.sqlite.prepare("SELECT id FROM work_requests").get()?.id;
+    const before = (await f.sqlite.prepare("SELECT id FROM work_requests").get())?.id;
     expect(f.instances.size).toBe(0);
     f.setFail(false);
     const accepted = (await (await f.submit()).json()) as {
@@ -342,26 +342,26 @@ describe("Work mutation identity through response loss", () => {
     };
     expect(accepted.workRequest.id).toBe(before);
     expect(f.instances.size).toBe(1);
-    expect(f.sqlite.prepare("SELECT count(*) AS n FROM runs").get()?.n).toBe(1);
-    f.sqlite.close();
+    expect((await f.sqlite.prepare("SELECT count(*) AS n FROM runs").get())?.n).toBe(1);
+    await f.sqlite.close();
   });
   it("replaying a cancelled/finished request never starts execution again", async () => {
-    const f = fixture();
+    const f = await fixture();
     await f.submit();
-    f.sqlite.exec("UPDATE work_requests SET status='cancelled'");
+    await f.sqlite.exec("UPDATE work_requests SET status='cancelled'");
     f.create.mockClear();
     f.enqueue.mockClear();
     expect((await f.submit()).status).toBe(202);
     expect(f.create).not.toHaveBeenCalled();
     expect(f.enqueue).not.toHaveBeenCalled();
-    f.sqlite.close();
+    await f.sqlite.close();
   });
 });
 
 it("global workflow choices beat stale Thread values and freeze Profile and step history", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       `INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at) VALUES('global-worker','workspace','owner','chatgpt','enabled','ready',1,1,'now','now','now')`,
     );
     const preference = {
@@ -375,7 +375,7 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
       },
       stepOverrides: { implement: { effort: "low" } },
     };
-    f.sqlite
+    await f.sqlite
       .prepare(
         "UPDATE user_workflow_configurations SET configuration_json=? WHERE user_id='owner' AND workflow_id='direct'",
       )
@@ -392,14 +392,14 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
       f.env,
       "W",
     );
-    const read = () =>
+    const read = async () =>
       JSON.parse(
         String(
-          f.sqlite.prepare("SELECT snapshot_json FROM work_requests").get()!
+          (await f.sqlite.prepare("SELECT snapshot_json FROM work_requests").get())!
             .snapshot_json,
         ),
       );
-    const before = read();
+    const before = await read();
     expect(before.resolvedBindings.direct).toEqual({
       workerId: "global-worker",
       model: "global-model",
@@ -415,7 +415,7 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
     const { loadConversationWorkflowRuns } =
       await import("../../src/domain/routes/conversation-workflow-runs.js");
     const id = String(
-      f.sqlite.prepare("SELECT id FROM work_requests").get()!.id,
+      (await f.sqlite.prepare("SELECT id FROM work_requests").get())!.id,
     );
     const history = (await loadConversationWorkflowRuns(f.db, [id])).get(id)!;
     expect(history.executionConfigs?.implement).toEqual(
@@ -425,7 +425,7 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
       before.stepExecutionConfigs.implement,
     );
     expect(history.stepRuns[0]!.profileReleaseVersion).toBe(1);
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE workspace_worker_inventory SET profile_definition_id='future-profile',profile_release_version=99 WHERE worker_id='global-worker'",
     );
     const { identityService } = await import("../../src/domain/auth/identity-service.js");
@@ -463,19 +463,19 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
       expect(step.profileReleaseVersion).toBe(1);
     }
     identity.mockRestore();
-    f.sqlite.exec("DELETE FROM user_workflow_configurations");
-    expect(read()).toEqual(before);
+    await f.sqlite.exec("DELETE FROM user_workflow_configurations");
+    expect(await read()).toEqual(before);
     expect((await loadConversationWorkflowRuns(f.db, [id])).get(id)).toEqual(
       history,
     );
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 it("disabled user workflow cannot create execution even with a composer selection", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
-    f.sqlite
+    await f.sqlite
       .prepare(
         "UPDATE user_workflow_configurations SET configuration_json=? WHERE user_id='owner' AND workflow_id='direct'",
       )
@@ -490,20 +490,20 @@ it("disabled user workflow cannot create execution even with a composer selectio
       );
     await expect(f.submit()).rejects.toMatchObject({ status: 403 });
     expect(
-      f.sqlite.prepare("SELECT count(*) n FROM work_requests").get()!.n,
+      (await f.sqlite.prepare("SELECT count(*) n FROM work_requests").get())!.n,
     ).toBe(0);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("accepts Research v2 through request creation with every role frozen in the snapshot", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('owner','paid','active','manual','now','now')",
     );
-    f.sqlite
+    await f.sqlite
       .prepare(
         "INSERT INTO user_workflow_configurations(user_id,workspace_id,workflow_id,schema_version,configuration_json,updated_at) VALUES('owner','workspace','research',1,?,'now')",
       )
@@ -523,9 +523,9 @@ it("accepts Research v2 through request creation with every role frozen in the s
       "research",
     );
     expect(response.status).toBe(202);
-    const row = f.sqlite
+    const row = (await f.sqlite
       .prepare("SELECT snapshot_json AS snapshot FROM work_requests")
-      .get()!;
+      .get())!;
     const snapshot = JSON.parse(String(row.snapshot));
     expect(Object.keys(snapshot.resolvedBindings)).toEqual([
       "research-1",
@@ -539,7 +539,7 @@ it("accepts Research v2 through request creation with every role frozen in the s
       "synthesis",
     ]);
     expect(snapshot.workflowSnapshot.steps).toHaveLength(3);
-    const conversation = f.sqlite
+    const conversation = await f.sqlite
       .prepare(
         `SELECT cr.conversation_id AS conversationId, cr.conversation_revision AS revision,
         r.workflow_id AS workflowId, COUNT(s.id) AS stepCount
@@ -554,12 +554,12 @@ it("accepts Research v2 through request creation with every role frozen in the s
       stepCount: 3,
     });
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("accepts one-step composer overrides without changing saved preferences", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const response = await handleCreateWorkRequest(
       new Request("https://cloud.test/work", {
@@ -576,11 +576,11 @@ it("accepts one-step composer overrides without changing saved preferences", asy
     );
     expect(response.status).toBe(202);
     expect(
-      f.sqlite.prepare("SELECT snapshot_json FROM work_requests").get()!
+      (await f.sqlite.prepare("SELECT snapshot_json FROM work_requests").get())!
         .snapshot_json,
     ).toEqual(expect.stringContaining('"workerId":"worker-a"'));
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT configuration_json FROM user_workflow_configurations WHERE user_id='owner' AND workflow_id='direct'",
         )
@@ -591,12 +591,12 @@ it("accepts one-step composer overrides without changing saved preferences", asy
       }),
     );
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("Workspace changes use the new Workspace for every Thread request while preserving earlier Run and Step snapshots", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const first = await f.submit("Before switch", "workspace-before-00001");
     const id = ((await first.json()) as { workRequest: { id: string } })
@@ -604,7 +604,7 @@ it("Workspace changes use the new Workspace for every Thread request while prese
     const { loadConversationWorkflowRuns } =
       await import("../../src/domain/routes/conversation-workflow-runs.js");
     const before = (await loadConversationWorkflowRuns(f.db, [id])).get(id);
-    f.sqlite
+    await f.sqlite
       .exec(`INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('new-workspace','owner','New Workspace','now','now');
       INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at) VALUES('new-worker','new-workspace','owner','chatgpt','enabled','ready',1,1,'now','now','now');
       INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,created_at,updated_at) VALUES('new-grant','P','new-workspace','owner','active','now','now');
@@ -620,9 +620,9 @@ it("Workspace changes use the new Workspace for every Thread request while prese
       .workRequest.id;
     const snapshot = JSON.parse(
       String(
-        f.sqlite
+        (await f.sqlite
           .prepare("SELECT snapshot_json FROM work_requests WHERE id=?")
-          .get(nextId)!.snapshot_json,
+          .get(nextId))!.snapshot_json,
       ),
     );
     expect(snapshot.resolvedBindings.direct.workerId).toBe("new-worker");
@@ -635,18 +635,16 @@ it("Workspace changes use the new Workspace for every Thread request while prese
       before,
     );
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 describe("Research plan admission", () => {
   it("denies a Free requester before any request, run or execution exists", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       publish.mockClear();
-      await expect(
-        f.submit("Investigate", "research-free-000000001", "research"),
-      ).rejects.toMatchObject({
+      await expect(f.submit("Investigate", "research-free-000000001", "research"),).rejects.toMatchObject({
         status: 402,
         code: "paid_plan_required",
         feature: "workflow.research",
@@ -658,17 +656,17 @@ describe("Research plan admission", () => {
         "worker_assignments",
       ])
         expect(
-          f.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get(),
+          await f.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get(),
         ).toEqual({ n: 0 });
       expect(f.create).not.toHaveBeenCalled();
       expect(publish).not.toHaveBeenCalled();
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
   it("gates Implement for a Free requester but not Chat or Work", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       expect(
         (await f.submit("Hi", "research-chat-00000001", "chat")).status,
@@ -676,22 +674,20 @@ describe("Research plan admission", () => {
       expect(
         (await f.submit("Do", "research-work-00000001", "direct")).status,
       ).toBe(202);
-      await expect(
-        f.submit("All", "research-plan-00000001", "plan_implement"),
-      ).rejects.toMatchObject({
+      await expect(f.submit("All", "research-plan-00000001", "plan_implement"),).rejects.toMatchObject({
         status: 402,
         code: "paid_plan_required",
         feature: "workflow.implement",
       });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
   it("requires the current plan for a user-triggered retry of a Research request", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
-      f.sqlite
+      await f.sqlite
         .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
         VALUES('R','W','owner','stateless','research',1,'{}','failed','{"originalRequest":"x"}','now','now')`);
       const { handleRetryWorkRequest } =
@@ -711,21 +707,21 @@ describe("Research plan admission", () => {
       });
       // Upgrading enables it again with no other change; the retry then
       // proceeds to the existing retry rules (here: no failed Step row).
-      f.sqlite.exec(
+      (await f.sqlite.exec(
         "INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('owner','paid','active','manual','now','now')",
-      );
+      ));
       await expect(retry()).rejects.not.toMatchObject({
         code: "paid_plan_required",
       });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
   it("offers and validates a user-requested partial synthesis of a failed Research request", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
-      f.sqlite.exec(
+      await f.sqlite.exec(
         "INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('owner','paid','active','manual','now','now')",
       );
       const workflowSnapshot = JSON.stringify({
@@ -735,7 +731,7 @@ describe("Research plan admission", () => {
           { kind: "synthesis", id: "synthesis" },
         ],
       });
-      f.sqlite
+      await f.sqlite
         .prepare(
           `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
         VALUES('R','W','owner','stateless','research',2,?,'failed','{"originalRequest":"x"}','now','now')`,
@@ -748,9 +744,9 @@ describe("Research plan admission", () => {
              VALUES(?, 'R', ?, 'stateless_read', 1000, 'v', ?, 1, 'now', 'now', ?)`,
           )
           .run(`t-${id}`, kind, status, id);
-      task("research-1", "research", "completed");
-      task("research-2", "research", "failed");
-      task("synthesis", "synthesis", "queued");
+      await task("research-1", "research", "completed");
+      await task("research-2", "research", "failed");
+      await task("synthesis", "synthesis", "queued");
       const { handleRetryWorkRequest } =
         await import("../../src/domain/routes/work-lifecycle.js");
       const retry = (body: object) =>
@@ -763,20 +759,16 @@ describe("Research plan admission", () => {
           "R",
         );
       // Continuing without any successful report is not allowed.
-      f.sqlite
+      (await f.sqlite
         .prepare(
           "UPDATE workflow_tasks SET status = 'failed' WHERE id = 't-research-1'",
         )
-        .run();
-      await expect(
-        retry({ stepKind: "synthesis", stepId: "synthesis", partial: true }),
-      ).rejects.toMatchObject({ status: 409 });
+        .run());
+      await expect(retry({ stepKind: "synthesis", stepId: "synthesis", partial: true }),).rejects.toMatchObject({ status: 409 });
       // Only the synthesis can be partial.
-      await expect(
-        retry({ stepKind: "research", stepId: "research-2", partial: true }),
-      ).rejects.toMatchObject({ status: 400 });
+      await expect(retry({ stepKind: "research", stepId: "research-2", partial: true }),).rejects.toMatchObject({ status: 400 });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 });
@@ -871,7 +863,7 @@ describe("tool call admission (chat:v2)", () => {
     arguments: { path: "a.txt" },
   });
   const post = (
-    f: ReturnType<typeof fixture>,
+    f: Awaited<ReturnType<typeof fixture>>,
     key: string,
     body: Record<string, unknown>,
   ) =>
@@ -886,14 +878,14 @@ describe("tool call admission (chat:v2)", () => {
     );
 
   it("accepts input.toolCall from the Space owner as chat version 2", async () => {
-    const f = fixture();
+    const f = await fixture();
     const response = await post(f, "toolcall-operation-00001", {
       workflowId: "chat",
       input: { originalRequest: "Read it", toolCall: toolCall() },
     });
     expect(response.status).toBe(202);
     const body = (await response.json()) as { workRequest: { id: string } };
-    const row = f.sqlite
+    const row = await f.sqlite
       .prepare(
         "SELECT workflow_id AS id, workflow_version AS version FROM work_requests WHERE id=?",
       )
@@ -902,26 +894,22 @@ describe("tool call admission (chat:v2)", () => {
   });
 
   it("refuses a tool on a Workspace the user does not own", async () => {
-    const f = fixture();
-    f.sqlite.exec(
+    const f = await fixture();
+    await f.sqlite.exec(
       `INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('other','o@test','O','now','now');
        INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('theirs','other','T','now','now');`,
     );
-    await expect(
-      post(f, "toolcall-operation-00002", {
+    await expect(post(f, "toolcall-operation-00002", {
         workflowId: "chat",
         input: { originalRequest: "x", toolCall: toolCall("theirs") },
-      }),
-    ).rejects.toMatchObject({ status: 403 });
+      }),).rejects.toMatchObject({ status: 403 });
   });
 
   it("refuses a tool call outside Chat", async () => {
-    const f = fixture();
-    await expect(
-      post(f, "toolcall-operation-00003", {
+    const f = await fixture();
+    await expect(post(f, "toolcall-operation-00003", {
         workflowId: "direct",
         input: { originalRequest: "x", toolCall: toolCall() },
-      }),
-    ).rejects.toMatchObject({ status: 400 });
+      }),).rejects.toMatchObject({ status: 400 });
   });
 });

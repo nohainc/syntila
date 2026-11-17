@@ -1,6 +1,6 @@
+import type { FixtureDb } from "./helpers/fixture-db";
 import { pgD1 } from "./helpers/pg-d1";
 import { readFileSync } from "node:fs";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "./helpers/vitest-compat";
 import { hashToken } from "@syntila/security";
 import { canonicalJson } from "../../src/domain/canonical-json.js";
@@ -8,21 +8,21 @@ import { handleGetWorkspaceV9WorkerProfile } from "../../src/domain/routes/profi
 import { validateWorkerProfileCandidate } from "../../src/domain/worker-profile-registry.js";
 
 describe("Workspace Profile download before Worker configuration", () => {
-  let sqlite: DatabaseSync;
+  let sqlite: FixtureDb;
   let env: Env;
   let digest: string;
 
   beforeEach(async () => {
-    const handle = pgD1();
-    sqlite = handle.sqlite as unknown as DatabaseSync;
+    const handle = await pgD1();
+    sqlite = handle.sqlite as unknown as FixtureDb;
     // Only the read boundary's tables are needed. In particular, inventory
     // exists but stays empty, as on a newly connected Workspace.
-    sqlite.exec(`
+    (await sqlite.exec(`
       INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('owner','o@test','O','now','now');
       INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES ('workspace','owner','Mac','online','now','now');
       INSERT INTO worker_catalog (worker_type_id, display_name, created_at, updated_at) VALUES ('fixture-worker', 'Fixture', 'now', 'now');
-    `);
-    sqlite
+    `));
+    await sqlite
       .prepare(
         "INSERT INTO workspace_runtime_identities (id, workspace_id, installation_id, credential_token_hash, created_at) VALUES (?, ?, ?, ?, now())",
       )
@@ -47,7 +47,7 @@ describe("Workspace Profile download before Worker configuration", () => {
       profile,
     );
     digest = validated.digest;
-    sqlite
+    await sqlite
       .prepare("INSERT INTO worker_profiles (worker_type_id, schema_version, profile_json, revision, digest, updated_by_user_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(
         "fixture-worker",
@@ -89,9 +89,9 @@ describe("Workspace Profile download before Worker configuration", () => {
       digest,
     });
     expect(
-      sqlite
+      (await sqlite
         .prepare("SELECT count(*) AS count FROM workspace_worker_inventory")
-        .get()?.count,
+        .get())?.count,
     ).toBe(0);
   });
 
@@ -105,7 +105,7 @@ describe("Workspace Profile download before Worker configuration", () => {
   });
 
   it.each(["runtime", "workspace"])("rejects a revoked %s", async (kind) => {
-    sqlite.exec(
+    await sqlite.exec(
       kind === "runtime"
         ? "UPDATE workspace_runtime_identities SET revoked_at = 'now'"
         : "UPDATE execution_workspaces SET status = 'revoked'",
@@ -117,7 +117,7 @@ describe("Workspace Profile download before Worker configuration", () => {
     await expect(download({ workerTypeId: "unknown" })).rejects.toMatchObject({
       status: 404,
     });
-    sqlite.exec("DELETE FROM worker_profiles");
+    await sqlite.exec("DELETE FROM worker_profiles");
     await expect(download()).rejects.toMatchObject({
       status: 404,
       message: "The Worker does not have a published Profile",
@@ -125,7 +125,7 @@ describe("Workspace Profile download before Worker configuration", () => {
   });
 
   it("still rejects a corrupt published Profile", async () => {
-    sqlite.exec(`UPDATE worker_profiles SET digest = '${"0".repeat(64)}'`);
+    await sqlite.exec(`UPDATE worker_profiles SET digest = '${"0".repeat(64)}'`);
     await expect(download()).rejects.toMatchObject({ status: 409 });
   });
 });

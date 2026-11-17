@@ -17,8 +17,8 @@ vi.mock("../../src/domain/routes/space-permissions.js", async (original) => ({
 }));
 
 const cleanups: (() => void)[] = [];
-afterEach(() => {
-  for (const close of cleanups.splice(0)) close();
+afterEach(async () => {
+  for (const close of cleanups.splice(0)) await close();
 });
 
 describe("Implement workflow: plan parsing", () => {
@@ -101,17 +101,17 @@ Completion Criteria: Profile renders avatar and bio.
   });
 });
 
-function fixture() {
-  const { sqlite, db } = pgD1();
+async function fixture() {
+  const { sqlite, db } = await pgD1();
   cleanups.push(() => sqlite.close());
 
-  sqlite
+  await sqlite
     .prepare(
       "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
     )
     .run("owner", "owner@test", "OWNER");
 
-  sqlite.exec(`
+  await sqlite.exec(`
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','owner','Space','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m1','S','owner','owner','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('T','S','Thread','active','owner','now','now');
@@ -139,8 +139,8 @@ function fixture() {
 
 describe("Implement workflow: plan approval and queue restrictions", () => {
   it("enforces that phased items in thread_request_queue cannot be edited", async () => {
-    const { sqlite, env } = fixture();
-    sqlite
+    const { sqlite, env } = await fixture();
+    await sqlite
       .prepare(
         `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
          VALUES('trq-phase-1','T','owner',?,'1','queued','now','now')`,
@@ -176,8 +176,8 @@ describe("Implement workflow: plan approval and queue restrictions", () => {
   });
 
   it("enforces that phased items cannot be forced (send-now) out of sequence", async () => {
-    const { sqlite, env } = fixture();
-    sqlite
+    const { sqlite, env } = await fixture();
+    await sqlite
       .prepare(
         `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
          VALUES('trq-phase-1','T','owner',?,'1','queued','now','now')`,
@@ -208,8 +208,8 @@ describe("Implement workflow: plan approval and queue restrictions", () => {
   });
 
   it("rejects removing a single phased item and removes all with stop-phases", async () => {
-    const { sqlite, env } = fixture();
-    sqlite
+    const { sqlite, env } = await fixture();
+    await sqlite
       .prepare(
         `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
          VALUES('trq-phase-1','T','owner',?,'1','queued','now','now')`,
@@ -256,14 +256,14 @@ describe("Implement workflow: plan approval and queue restrictions", () => {
     );
     expect(res.status).toBe(200);
 
-    const row = sqlite
+    const row = await sqlite
       .prepare("SELECT 1 FROM thread_request_queue WHERE id = 'trq-phase-1'")
       .get();
     expect(row).toBeUndefined();
   });
 
   it("handleApprovePlan validates plan, parses phases, and enqueues locked requests with verification", async () => {
-    const { sqlite, env } = fixture();
+    const { sqlite, env } = await fixture();
 
     const planJson = JSON.stringify({
       text: `
@@ -283,14 +283,14 @@ phases:
       `,
     });
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
          VALUES('wr-plan-1','T','owner','stateless','plan_implement',2,'{}','{}','completed','{}','now','now')`,
       )
       .run();
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
          VALUES('task-plan-1','wr-plan-1','plan','stateless_read',60000,'plan:v2','completed',?,'now','now')`,
@@ -319,7 +319,7 @@ phases:
     // 2 phases + 2 per-phase verifications = 4 items enqueued
     expect(body.enqueuedCount).toBe(4);
 
-    const queuedRows = sqlite
+    const queuedRows = await sqlite
       .prepare(
         "SELECT request_json, position FROM thread_request_queue WHERE thread_id = 'T' ORDER BY position",
       )
@@ -349,10 +349,10 @@ phases:
   });
 
   it("handleApprovePlan attaches executionSelection for implementer and verifier from space config and overrides", async () => {
-    const { sqlite, env } = fixture();
+    const { sqlite, env } = await fixture();
 
     // Configure space workflow for plan_implement with custom roles
-    sqlite
+    (await sqlite
       .prepare(
         `INSERT INTO space_workflow_configurations(space_id,workflow_id,schema_version,configuration_json,updated_at)
          VALUES('S','plan_implement',1,?,'now')`,
@@ -372,7 +372,7 @@ phases:
             },
           },
         }),
-      );
+      ));
 
     const planJson = JSON.stringify({
       text: `
@@ -385,14 +385,14 @@ phases:
       `,
     });
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
          VALUES('wr-plan-2','T','owner','stateless','plan_implement',2,'{}','{}','completed','{}','now','now')`,
       )
       .run();
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
          VALUES('task-plan-2','wr-plan-2','plan','stateless_read',60000,'plan:v2','completed',?,'now','now')`,
@@ -418,7 +418,7 @@ phases:
     const response = await handleApprovePlan(req, env, "wr-plan-2");
     expect(response.status).toBe(200);
 
-    const queuedRows = sqlite
+    const queuedRows = await sqlite
       .prepare(
         "SELECT request_json FROM thread_request_queue WHERE thread_id = 'T' ORDER BY position",
       )
@@ -445,16 +445,16 @@ phases:
 
 describe("Implement workflow: phase completion and auto-pause", () => {
   it("pauses the remaining phases and finishes the phase when output has STATUS: NEEDS_INPUT", async () => {
-    const { sqlite, env } = fixture();
+    const { sqlite, env } = await fixture();
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
          VALUES('trq-phase-2','T','owner','{}',2,'queued','now','now')`,
       )
       .run();
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
          VALUES('wr-phase-1','T','owner','stateless','direct',2,'{}','{}','running',?,'now','now')`,
@@ -467,7 +467,7 @@ describe("Implement workflow: phase completion and auto-pause", () => {
         }),
       );
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
          VALUES('task-phase-1','wr-phase-1','implement','stateless_read',60000,'implement:v2','completed',?,'now','now')`,
@@ -490,13 +490,13 @@ describe("Implement workflow: phase completion and auto-pause", () => {
       "Database credentials not specified in env",
     );
 
-    const wrRow = sqlite
+    const wrRow = await sqlite
       .prepare("SELECT status FROM work_requests WHERE id = 'wr-phase-1'")
       .get() as { status: string };
     // Not left half-open: a reply runs as a normal request.
     expect(wrRow.status).not.toBe("waiting");
 
-    const queueState = sqlite
+    const queueState = await sqlite
       .prepare(
         "SELECT paused_reason, failure_message FROM thread_request_queue_state WHERE thread_id = 'T'",
       )
@@ -509,16 +509,16 @@ describe("Implement workflow: phase completion and auto-pause", () => {
   });
 
   it("pauses the queue and marks work request as failed when verification output has STATUS: FAILED", async () => {
-    const { sqlite, env } = fixture();
+    const { sqlite, env } = await fixture();
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
          VALUES('trq-phase-2','T','owner','{}',2,'queued','now','now')`,
       )
       .run();
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
          VALUES('wr-verify-1','T','owner','stateless','direct',2,'{}','{}','running',?,'now','now')`,
@@ -532,7 +532,7 @@ describe("Implement workflow: phase completion and auto-pause", () => {
         }),
       );
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
          VALUES('task-verify-1','wr-verify-1','verify','stateless_read',60000,'verify:v2','completed',?,'now','now')`,
@@ -553,12 +553,12 @@ describe("Implement workflow: phase completion and auto-pause", () => {
     expect(result.paused).toBe(true);
     expect(result.reason).toContain("2 unit tests failed in db-test.ts");
 
-    const wrRow = sqlite
+    const wrRow = await sqlite
       .prepare("SELECT status FROM work_requests WHERE id = 'wr-verify-1'")
       .get() as { status: string };
     expect(wrRow.status).toBe("failed");
 
-    const queueState = sqlite
+    const queueState = await sqlite
       .prepare(
         "SELECT paused_reason, failure_message FROM thread_request_queue_state WHERE thread_id = 'T'",
       )
@@ -570,9 +570,9 @@ describe("Implement workflow: phase completion and auto-pause", () => {
   });
 
   it("does not pause the queue when a phase completes with STATUS: COMPLETED", async () => {
-    const { sqlite, env } = fixture();
+    const { sqlite, env } = await fixture();
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
          VALUES('wr-phase-ok','T','owner','stateless','direct',2,'{}','{}','completed',?,'now','now')`,
@@ -585,7 +585,7 @@ describe("Implement workflow: phase completion and auto-pause", () => {
         }),
       );
 
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
          VALUES('task-phase-ok','wr-phase-ok','implement','stateless_read',60000,'implement:v2','completed',?,'now','now')`,
@@ -605,7 +605,7 @@ describe("Implement workflow: phase completion and auto-pause", () => {
 
     expect(result.paused).toBe(false);
 
-    const queueState = sqlite
+    const queueState = await sqlite
       .prepare("SELECT 1 FROM thread_request_queue_state WHERE thread_id = 'T'")
       .get();
     expect(queueState).toBeUndefined();
@@ -641,13 +641,13 @@ describe("Implement workflow: hardening", () => {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function seedPlan(sqlite: any, workflowId = "plan_implement") {
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
          VALUES('wr-h','T','owner','stateless',?,2,'{}','{}','completed','{}','now','now')`,
       )
       .run(workflowId);
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
          VALUES('task-h','wr-h','plan','stateless_read',60000,'plan:v2','completed',?,'now','now')`,
@@ -670,24 +670,18 @@ describe("Implement workflow: hardening", () => {
     );
 
   it("rejects non-Implement requests, bad modes and double approval", async () => {
-    const a = fixture();
+    const a = await fixture();
     await seedPlan(a.sqlite, "direct");
     await expect(approve(a.env, {})).rejects.toMatchObject({ status: 400 });
 
-    const b = fixture();
+    const b = await fixture();
     await seedPlan(b.sqlite);
-    await expect(
-      approve(b.env, { verificationMode: "bogus" }),
-    ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      approve(b.env, { customPhases: [{ title: 1 }] }),
-    ).rejects.toMatchObject({ status: 400 });
+    await expect(approve(b.env, { verificationMode: "bogus" }),).rejects.toMatchObject({ status: 400 });
+    await expect(approve(b.env, { customPhases: [{ title: 1 }] }),).rejects.toMatchObject({ status: 400 });
     expect((await approve(b.env, { verificationMode: "none" })).status).toBe(
       200,
     );
-    await expect(
-      approve(b.env, { verificationMode: "none" }),
-    ).rejects.toMatchObject({ status: 409 });
+    await expect(approve(b.env, { verificationMode: "none" }),).rejects.toMatchObject({ status: 409 });
   });
 
   it("pauses when a phase, or a status follow-up, reports no status marker", async () => {
@@ -695,8 +689,8 @@ describe("Implement workflow: hardening", () => {
       [false, "implement", false],
       [true, "verify", true],
     ] as const) {
-      const { sqlite, env } = fixture();
-      sqlite
+      const { sqlite, env } = await fixture();
+      await sqlite
         .prepare(
           `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
            VALUES('wr-x','T','owner','stateless','direct',2,'{}','{}','completed',?,'now','now')`,
@@ -710,7 +704,7 @@ describe("Implement workflow: hardening", () => {
             ...(isStatusFollowUp ? { isStatusFollowUp: true } : {}),
           }),
         );
-      sqlite
+      await sqlite
         .prepare(
           `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
            VALUES('task-x','wr-x',?,'stateless_read',60000,'x','completed',?,'now','now')`,
@@ -727,21 +721,21 @@ describe("Implement workflow: hardening", () => {
   });
 
   it("asks the same verifier once for a missing status block", async () => {
-    const { sqlite, env } = fixture();
-    sqlite
+    const { sqlite, env } = await fixture();
+    await sqlite
       .prepare(
         `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at)
          VALUES('trq-next','T','owner','{}',5,'queued','now','now')`,
       )
       .run();
     // Held by the user, so the follow-up stays in the queue to inspect.
-    sqlite
+    (await sqlite
       .prepare(
         `INSERT INTO thread_request_queue_state(thread_id,paused_reason,paused_by_user_id,failure_message,updated_at)
          VALUES('T','user','owner',NULL,'now')`,
       )
-      .run();
-    sqlite
+      .run());
+    await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
          VALUES('wr-v','T','owner','stateful','direct',2,'{}',?,'completed',?,'now','now')`,
@@ -764,7 +758,7 @@ describe("Implement workflow: hardening", () => {
           isFinalVerification: true,
         }),
       );
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
          VALUES('task-v','wr-v','implement','stateful_thread',60000,'implement:v1','completed',?,'now','now')`,
@@ -779,11 +773,11 @@ describe("Implement workflow: hardening", () => {
     );
 
     expect(result.paused).toBe(false);
-    const wr = sqlite
+    const wr = await sqlite
       .prepare("SELECT status FROM work_requests WHERE id = 'wr-v'")
       .get() as { status: string };
     expect(wr.status).toBe("completed");
-    const rows = sqlite
+    const rows = await sqlite
       .prepare(
         "SELECT id, request_json AS requestJson FROM thread_request_queue WHERE thread_id = 'T' ORDER BY position",
       )
@@ -805,12 +799,12 @@ describe("Implement workflow: hardening", () => {
   });
 
   it("marks the verified phase failed when its verification fails", async () => {
-    const { sqlite, env } = fixture();
+    const { sqlite, env } = await fixture();
     const ins = sqlite.prepare(
       `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
        VALUES(?,'T','owner','stateless','direct',2,'{}','{}','completed',?,'now','now')`,
     );
-    ins.run(
+    await ins.run(
       "wr-impl",
       JSON.stringify({
         isPhased: true,
@@ -819,7 +813,7 @@ describe("Implement workflow: hardening", () => {
         isVerification: false,
       }),
     );
-    ins.run(
+    await ins.run(
       "wr-ver",
       JSON.stringify({
         isPhased: true,
@@ -828,7 +822,7 @@ describe("Implement workflow: hardening", () => {
         isVerification: true,
       }),
     );
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,output_json,created_at,updated_at)
          VALUES('task-ver','wr-ver','verify','stateless_read',60000,'x','completed',?,'now','now')`,
@@ -840,7 +834,7 @@ describe("Implement workflow: hardening", () => {
       "wr-ver",
       "work_request.completed",
     );
-    const row = sqlite
+    const row = await sqlite
       .prepare("SELECT status FROM work_requests WHERE id='wr-impl'")
       .get() as { status: string };
     expect(row.status).toBe("failed");

@@ -7,14 +7,14 @@ import {
 import { pgD1 } from "./helpers/pg-d1";
 
 const closers: Array<() => void> = [];
-afterEach(() => {
-  for (const close of closers.splice(0)) close();
+afterEach(async () => {
+  for (const close of closers.splice(0)) await close();
 });
 
-function fixture() {
-  const { sqlite, db, read } = pgD1();
+async function fixture() {
+  const { sqlite, db, read } = await pgD1();
   closers.push(() => sqlite.close());
-  sqlite.exec(`
+  await sqlite.exec(`
  INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('U','u@test','User','now','now');
  INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','U','Space','now','now');
  INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','Stream','active','U','now','now');
@@ -34,7 +34,7 @@ function fixture() {
 }
 
 it("claims one logical task once, even for another Workspace", async () => {
-  const { d1, input, sqlite } = fixture();
+  const { d1, input, sqlite } = await fixture();
   expect(await claimMcpToolDispatch(d1, input)).toEqual({
     dispatchKey: "mcp-tool-v1:tool",
   });
@@ -42,20 +42,20 @@ it("claims one logical task once, even for another Workspace", async () => {
   expect(
     await claimMcpToolDispatch(d1, { ...input, workspaceId: "WS2" }),
   ).toBeNull();
-  expect(sqlite.prepare("SELECT count(*) n FROM mcp_tool_calls").get()).toEqual(
+  expect(await sqlite.prepare("SELECT count(*) n FROM mcp_tool_calls").get()).toEqual(
     { n: 1 },
   );
 });
 
 it("refuses a non-tool step", async () => {
-  const { d1, input } = fixture();
+  const { d1, input } = await fixture();
   expect(
     await claimMcpToolDispatch(d1, { ...input, taskId: "chat" }),
   ).toBeNull();
 });
 
 it("records the first outcome only, and keeps results to known outcomes", async () => {
-  const { d1, input } = fixture();
+  const { d1, input } = await fixture();
   await claimMcpToolDispatch(d1, input);
   expect((await loadMcpToolCall(d1, "tool"))?.state).toBeNull();
   expect(

@@ -3,11 +3,11 @@ import { pgD1 } from "./helpers/pg-d1";
 import worker from "../../src/domain/index.js";
 
 describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () => {
-  function createTestEnv() {
-    const { sqlite, db } = pgD1();
+  async function createTestEnv() {
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, status, created_at, updated_at) VALUES
         ('user-alice', 'alice@test.com', 'Alice User', 'active', '${now}', '${now}'),
         ('user-bob', 'bob@test.com', 'Bob User', 'active', '${now}', '${now}'),
@@ -85,7 +85,7 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
 
   async function establishDirectSpace(
     env: unknown,
-    sqlite?: ReturnType<typeof pgD1>["sqlite"],
+    sqlite?: Awaited<ReturnType<typeof pgD1>>["sqlite"],
   ) {
     const inviteRes = await worker.fetch(
       new Request("https://syntila.test/api/people/invitations", {
@@ -118,12 +118,12 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
     if (sqlite) {
       const general_thread_id = `legacy-gen-${directSpaceId}`;
       const now = new Date().toISOString();
-      sqlite
+      await sqlite
         .prepare(
           "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?, ?, 'General', 'active', 'user-alice', TRUE, ?, ?)",
         )
         .run(general_thread_id, directSpaceId, now, now);
-      sqlite
+      await sqlite
         .prepare(
           "UPDATE direct_spaces SET general_thread_id = ? WHERE space_id = ?",
         )
@@ -133,7 +133,7 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
   }
 
   it("4.1 Fixed membership: strictly rejects invitations, member removals, role changes, conversions, and ownership transfers", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
 
     // 1. Inviting a third member -> 403
@@ -282,9 +282,9 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
   });
 
   it("4.2 & 4.4 Symmetric conversation permissions & thread management boundaries", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env, sqlite);
-    const { general_thread_id } = sqlite
+    const { general_thread_id } = await sqlite
       .prepare("SELECT general_thread_id FROM direct_spaces WHERE space_id = ?")
       .get(directSpaceId) as { general_thread_id: string };
 
@@ -402,9 +402,9 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
   });
 
   it("4.4 Message removal: technical owner cannot delete the other participant's messages", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env, sqlite);
-    const { general_thread_id } = sqlite
+    const { general_thread_id } = await sqlite
       .prepare("SELECT general_thread_id FROM direct_spaces WHERE space_id = ?")
       .get(directSpaceId) as { general_thread_id: string };
 
@@ -452,7 +452,7 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
   });
 
   it("4.3 & 4.5 Workspace & tool call authorization boundaries", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
 
     // Attempting to attach a Space-wide execution Workspace to a Direct Space -> 403
@@ -477,18 +477,18 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
   });
 
   it("disconnected personal connection becomes read-only and rejects new mutations", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env, sqlite);
-    const { general_thread_id } = sqlite
+    const { general_thread_id } = await sqlite
       .prepare("SELECT general_thread_id FROM direct_spaces WHERE space_id = ?")
       .get(directSpaceId) as { general_thread_id: string };
 
     // Disconnect connection
-    sqlite
+    (await sqlite
       .prepare(
         "UPDATE person_connections SET status = 'disconnected', disconnected_at = 'now' WHERE direct_space_id = ?",
       )
-      .run(directSpaceId);
+      .run(directSpaceId));
 
     // Reading messages is still allowed for audit retention
     const readRes = await worker.fetch(
@@ -541,7 +541,7 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
   });
 
   it("isolates unrelated users (Charlie) completely from Direct Spaces", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
 
     // Charlie lists spaces -> Direct Space is not included

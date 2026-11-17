@@ -1,3 +1,4 @@
+import type { FixtureDb } from "./helpers/fixture-db";
 import { pgD1 } from "./helpers/pg-d1";
 import { basicThread } from "./helpers/seed";
 vi.mock("../../src/domain/collaboration-events.js", () => ({
@@ -15,7 +16,6 @@ vi.mock("../../src/domain/collaboration-events.js", () => ({
   },
 }));
 import { readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "./helpers/vitest-compat";
 
 vi.mock("../../src/domain/routes/thread-policy.js", async (original) => ({
@@ -56,15 +56,15 @@ it.each(
 )(
   "$definition.name v$definition.version history preserves names and Markdown (snapshot name: $snapshotName)",
   async ({ definition, snapshotName }) => {
-    const handle = pgD1();
-    const sqlite = handle.sqlite as unknown as DatabaseSync;
-    sqlite.exec(
+    const handle = await pgD1();
+    const sqlite = handle.sqlite as unknown as FixtureDb;
+    await sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-    sqlite.exec(basicThread({ user: "user-owner", space: "space-test", thread: "stream-test" }));
+    await sqlite.exec(basicThread({ user: "user-owner", space: "space-test", thread: "stream-test" }));
     const source = '\n**Original**\n```bash\nprintf "hello"\n```\n  ';
     const result = '  ## Result\n\n```json\n{"ok":true}\n```\n';
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO work_requests(id, requested_by_user_id, thread_id, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, input_json, status, created_at, updated_at, mode) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'stateless')",
       )
@@ -84,7 +84,7 @@ it.each(
         "2026-10-06T00:00:00Z",
         "2026-10-06T00:00:01Z",
       );
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO workflow_tasks(id, work_request_id, step_kind, status, output_json, error, started_at, created_at, finished_at, updated_at, execution_mode, timeout_ms, prompt_profile_version) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'stateless_read', 60000, 'v1')",
       )
@@ -151,15 +151,15 @@ it.each(
       expect(detailBody.workRequest.workflowVersion).toBe(definition.version);
       expect(detailBody.steps[0]?.resultText).toBe(result);
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   },
 );
 
 it("persists and returns exact Markdown through Chat create, edit and list", async () => {
-  const handle = pgD1();
-  const sqlite = handle.sqlite as unknown as DatabaseSync;
-  sqlite.exec(basicThread({ user: "user-owner", space: "space-test", thread: "stream-test" }));
+  const handle = await pgD1();
+  const sqlite = handle.sqlite as unknown as FixtureDb;
+  await sqlite.exec(basicThread({ user: "user-owner", space: "space-test", thread: "stream-test" }));
   const env = { SYNTILA_DB: handle.db } as unknown as Parameters<
     typeof handleCreateDiscussionMessage
   >[1];
@@ -182,7 +182,7 @@ it("persists and returns exact Markdown through Chat create, edit and list", asy
     };
     expect(message.body).toBe(source);
     expect(
-      sqlite.prepare("SELECT body FROM discussion_messages").get()?.body,
+      (await sqlite.prepare("SELECT body FROM discussion_messages").get())?.body,
     ).toBe(source);
     const edited = `\n> Edited\n${source}\n- [ ] Task\n`;
     const response = await handleEditDiscussionMessage(
@@ -203,9 +203,9 @@ it("persists and returns exact Markdown through Chat create, edit and list", asy
         ?.body,
     ).toBe(edited);
     expect(
-      sqlite.prepare("SELECT body FROM discussion_messages").get()?.body,
+      (await sqlite.prepare("SELECT body FROM discussion_messages").get())?.body,
     ).toBe(edited);
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });

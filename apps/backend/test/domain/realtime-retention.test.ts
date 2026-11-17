@@ -1,5 +1,5 @@
+import type { FixtureDb } from "./helpers/fixture-db";
 import { pgD1 } from "./helpers/pg-d1";
-import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { Data, drainTxStats, type Tx } from "../../src/platform/data";
@@ -39,12 +39,12 @@ describe("durable realtime event retention", () => {
   });
 
   it("prunes expired rows without resetting the durable sequence cursor", async () => {
-    const fixture = pgD1();
-    const database = (fixture.sqlite as unknown as DatabaseSync);
-    database.exec(
+    const fixture = await pgD1();
+    const database = (fixture.sqlite as unknown as FixtureDb);
+    await database.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-    database
+    await database
       .prepare(
         `INSERT INTO realtime_event_cursors (workspace_id, next_sequence)
          VALUES ('workspace-1', 12)`,
@@ -56,8 +56,8 @@ describe("durable realtime event retention", () => {
         idempotency_key, occurred_at)
        VALUES (?, 'workspace-1', ?, 'work_request.created', '{}', ?, ?)`,
     );
-    insert.run("event-expired", 10, "idem-expired", "2026-09-24T23:59:59.999Z");
-    insert.run(
+    await insert.run("event-expired", 10, "idem-expired", "2026-09-24T23:59:59.999Z");
+    await insert.run(
       "event-retained",
       11,
       "idem-retained",
@@ -69,21 +69,21 @@ describe("durable realtime event retention", () => {
         { SYNTILA_DB: fixture.db },
         new Date("2026-10-02T00:00:00.000Z"),
       );
-      const rows = database
+      const rows = (await database
         .prepare("SELECT event_id FROM realtime_events ORDER BY sequence")
-        .all() as Array<{ event_id: string }>;
-      const cursor = database
+        .all()) as Array<{ event_id: string }>;
+      const cursor = (await database
         .prepare(
           "SELECT next_sequence FROM realtime_event_cursors WHERE workspace_id = 'workspace-1'",
         )
-        .get() as { next_sequence: number };
+        .get()) as { next_sequence: number };
 
       expect(deleted).toBe(1);
       expect(drainTxStats().some((stat) => stat.label === "retention.realtime" && stat.count === 1)).toBe(true);
       expect(rows.map((row) => row.event_id)).toEqual(["event-retained"]);
       expect(cursor.next_sequence).toBe(12);
     } finally {
-      database.close();
+      await database.close();
     }
   });
 });

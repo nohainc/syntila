@@ -10,9 +10,9 @@ import { pgD1 } from "./domain/helpers/pg-d1";
 import { testTokens } from "./domain/helpers/tokens";
 import { validateWorkerProfileCandidate } from "../src/domain/worker-profile-registry";
 
-let sql: any, base = "", stop = async () => {}, mint: Awaited<ReturnType<typeof testTokens>>, runtime: ReturnType<typeof createRuntime>;
+let sql: any, base = "", stop = async () => {}, mint: Awaited<ReturnType<typeof testTokens>>, runtime: Awaited<ReturnType<typeof createRuntime>>;
 beforeAll(async () => {
-  ({ sql } = pgD1());
+  ({ sql } = await pgD1());
   mint = await testTokens();
   runtime = createRuntime(sql as any, new PgDb(sql), { SYNTILA_ENVIRONMENT: "production", BETTER_AUTH_TRUSTED_ORIGINS: "https://syntila.app" });
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (r, s) => runtime.fetch(r, s as any), websocket: runtime.websocket as any });

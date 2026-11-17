@@ -40,9 +40,9 @@ const configuration = (workflowId: string) =>
     stepOverrides: {},
   });
 
-function fixture(coordinatorAvailable = true) {
-  const { db, sqlite } = pgD1();
-  sqlite.exec(
+async function fixture(coordinatorAvailable = true) {
+  const { db, sqlite } = await pgD1();
+  await sqlite.exec(
     user("owner") +
       space("space", "owner") +
       member("space", "owner") +
@@ -66,10 +66,10 @@ function fixture(coordinatorAvailable = true) {
       ? { SYNTILA_THREAD_COORDINATOR: { getByName: () => ({ fetch: enqueue }) } }
       : {}),
   };
-  const requests = () =>
-    sqlite.prepare("SELECT mode FROM work_requests").all() as { mode: string }[];
-  const leases = () =>
-    Number((sqlite.prepare("SELECT count(*) AS n FROM thread_runtime_leases").get() as { n: number | string }).n);
+  const requests = async () =>
+    (await sqlite.prepare("SELECT mode FROM work_requests").all()) as { mode: string }[];
+  const leases = async () =>
+    Number((await sqlite.prepare("SELECT count(*) AS n FROM thread_runtime_leases").get() as { n: number | string }).n);
   return { env, enqueue, create, requests, leases };
 }
 
@@ -77,7 +77,7 @@ describe("Work Request mutation coordination", () => {
   it.each([true, false])(
     "creates Chat without a mutation lease (coordinator available: %s)",
     async (available) => {
-      const { env, enqueue, create, requests, leases } = fixture(available);
+      const { env, enqueue, create, requests, leases } = await fixture(available);
       const response = await handleCreateWorkRequest(
         new Request("https://syntila.test/work", {
           method: "POST",
@@ -99,13 +99,13 @@ describe("Work Request mutation coordination", () => {
       });
       expect(enqueue).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledOnce();
-      expect(requests().map((r) => r.mode)).toEqual(["stateless"]);
-      expect(leases()).toBe(0);
+      expect((await requests()).map((r) => r.mode)).toEqual(["stateless"]);
+      expect(await leases()).toBe(0);
     },
   );
 
   it("keeps Work stateful and enqueues it for coordination", async () => {
-    const { env, enqueue, requests } = fixture();
+    const { env, enqueue, requests } = await fixture();
     const response = await handleCreateWorkRequest(
       new Request("https://syntila.test/work", {
         method: "POST",
@@ -123,11 +123,11 @@ describe("Work Request mutation coordination", () => {
         .mode,
     ).toBe("stateful");
     expect(enqueue).toHaveBeenCalledOnce();
-    expect(requests().map((r) => r.mode)).toEqual(["stateful"]);
+    expect((await requests()).map((r) => r.mode)).toEqual(["stateful"]);
   });
 
   it("rejects a caller attempting to make Chat stateful", async () => {
-    const { env, enqueue, create, requests } = fixture();
+    const { env, enqueue, create, requests } = await fixture();
     await expect(
       handleCreateWorkRequest(
         new Request("https://syntila.test/work", {
@@ -140,6 +140,6 @@ describe("Work Request mutation coordination", () => {
     ).rejects.toThrow("requires stateless mode");
     expect(enqueue).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
-    expect(requests()).toEqual([]);
+    expect(await requests()).toEqual([]);
   });
 });

@@ -26,13 +26,13 @@ const compactingProfile = JSON.stringify({
 });
 
 /** A failed Work Request whose Step stopped over the context limit, with the Worker's Profile and latest Run. */
-function database(options: {
+async function database(options: {
   profileJson?: string;
   latestRunPolicy?: Record<string, unknown>;
 }) {
-  const f = pgD1();
+  const f = await pgD1();
   const q = (text: string) => `'${text.replace(/'/g, "''")}'`;
-  f.sqlite.exec(`${basicThread({ user: "U", space: "S", thread: "T" })}${workspace("WS", "U")}
+  await f.sqlite.exec(`${basicThread({ user: "U", space: "S", thread: "T" })}${workspace("WS", "U")}
     INSERT INTO workspace_runtime_identities(id, workspace_id, credential_token_hash, installation_id, created_at)
       VALUES ('RT', 'WS', 'hash', 'installation', '${T0}');
     INSERT INTO work_requests(id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, status, primary_workspace_id, created_at, updated_at)
@@ -43,15 +43,15 @@ function database(options: {
     INSERT INTO worker_assignments(id, space_id, execution_workspace_id, runtime_identity_id, worker_type_id, workspace_worker_id, task_id, status, created_at, updated_at)
       VALUES ('A1', 'S', 'WS', 'RT', 'claude', 'worker-a', 'task-1', 'failed', '${T0}', '${T0}');`);
   if (options.profileJson)
-    f.sqlite.exec(`INSERT INTO worker_profiles(worker_type_id, schema_version, profile_json, digest) VALUES ('claude', 1, ${q(options.profileJson)}, '${"a".repeat(64)}')
-      ON CONFLICT (worker_type_id) DO UPDATE SET profile_json = EXCLUDED.profile_json`);
+    (await f.sqlite.exec(`INSERT INTO worker_profiles(worker_type_id, schema_version, profile_json, digest) VALUES ('claude', 1, ${q(options.profileJson)}, '${"a".repeat(64)}')
+      ON CONFLICT (worker_type_id) DO UPDATE SET profile_json = EXCLUDED.profile_json`));
   if (options.latestRunPolicy)
-    f.sqlite.exec(`INSERT INTO runs(id, space_id, thread_id, work_request_id, status, created_at, updated_at, policy_snapshot_json)
-      VALUES ('run-1', 'S', 'T', 'R', 'failed', '${T0}', '${T0}', ${q(JSON.stringify(options.latestRunPolicy))})`);
+    (await f.sqlite.exec(`INSERT INTO runs(id, space_id, thread_id, work_request_id, status, created_at, updated_at, policy_snapshot_json)
+      VALUES ('run-1', 'S', 'T', 'R', 'failed', '${T0}', '${T0}', ${q(JSON.stringify(options.latestRunPolicy))})`));
   const recorded = recordStatements(f.db);
   const env = { SYNTILA_DB: recorded.db } as unknown as SecurityEnv;
   const writes = () => recorded.statements.filter((text) => !/^\s*(SELECT|WITH)/i.test(text));
-  const requestStatus = () => (f.sqlite.prepare("SELECT status FROM work_requests WHERE id = 'R'").get() as { status: string }).status;
+  const requestStatus = async () => (await f.sqlite.prepare("SELECT status FROM work_requests WHERE id = 'R'").get() as { status: string }).status;
   return { env, writes, requestStatus, close: () => f.sqlite.close() };
 }
 
@@ -71,7 +71,7 @@ beforeEach(() => {
 });
 
 it("refuses to compact for a Worker whose Profile cannot compact", async () => {
-  const { env, writes, requestStatus, close } = database({ profileJson: JSON.stringify({ schemaVersion: 1 }) });
+  const { env, writes, requestStatus, close } = await database({ profileJson: JSON.stringify({ schemaVersion: 1 }) });
   try {
     const response = await retry(env, { contextResolution: "compact" });
     expect(response.status).toBe(409);
@@ -79,14 +79,14 @@ it("refuses to compact for a Worker whose Profile cannot compact", async () => {
       error: "context_compaction_unavailable",
     });
     expect(writes()).toEqual([]);
-    expect(requestStatus()).toBe("failed");
+    expect(await requestStatus()).toBe("failed");
   } finally {
-    close();
+    await close();
   }
 });
 
 it("offers only clearing once a compacting retry still overflowed", async () => {
-  const { env, writes, requestStatus, close } = database({
+  const { env, writes, requestStatus, close } = await database({
     profileJson: compactingProfile,
     latestRunPolicy: {
       manualRetry: { stepKind: "implement", contextResolution: "compact" },
@@ -100,8 +100,8 @@ it("offers only clearing once a compacting retry still overflowed", async () => 
       message: expect.stringContaining("Clear AI History"),
     });
     expect(writes()).toEqual([]);
-    expect(requestStatus()).toBe("failed");
+    expect(await requestStatus()).toBe("failed");
   } finally {
-    close();
+    await close();
   }
 });

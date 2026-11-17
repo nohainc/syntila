@@ -52,7 +52,7 @@ it.each([null, "low"])(
       readOnly: true,
     });
     const f = await conversationFixture();
-    f.sqlite.exec(`
+    await f.sqlite.exec(`
       INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
       INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,created_at,updated_at) VALUES('G','P','WS','U','now','now');
       INSERT INTO workspace_worker_inventory (
@@ -110,7 +110,7 @@ it.each([null, "low"])(
       reasoningEffort: effort,
       executionSelection: selection,
     });
-    const stored = f.sqlite
+    const stored = await f.sqlite
       .prepare(
         "SELECT permission_snapshot_json AS snapshot FROM worker_assignments WHERE task_id = 'T' AND run_id = 'RUN'",
       )

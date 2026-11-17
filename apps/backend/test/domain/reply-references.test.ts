@@ -11,10 +11,10 @@ import {
   workStepPromptInputs,
 } from "../../src/domain/workflow-prompts.js";
 
-function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite.exec("PRAGMA foreign_keys = OFF");
-  sqlite.exec(`
+async function fixture() {
+  const { sqlite, db } = await pgD1();
+  await sqlite.exec("PRAGMA foreign_keys = OFF");
+  await sqlite.exec(`
     INSERT INTO users(id,email,display_name,created_at,updated_at)
       VALUES ('ann','a@test','Ann','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES ('S','ann','S','now','now');
@@ -39,18 +39,18 @@ function fixture() {
         '{"originalRequest":"Still running"}', 'now', 'now');
   `);
   const workerTypeId = (
-    sqlite
+    await sqlite
       .prepare("SELECT worker_type_id AS id FROM worker_catalog LIMIT 1")
       .get() as { id: string }
   ).id;
   const workerName = (
-    sqlite
+    await sqlite
       .prepare(
         "SELECT display_name AS name FROM worker_catalog WHERE worker_type_id = ?",
       )
       .get(workerTypeId) as { name: string }
   ).name;
-  sqlite
+  await sqlite
     .prepare(
       `INSERT INTO workflow_tasks (id, work_request_id, step_kind, execution_mode,
         timeout_ms, prompt_profile_version, status, output_json, created_at, updated_at)
@@ -65,7 +65,7 @@ function fixture() {
 
 describe("Reply v1 references", () => {
   it("snapshots a person's message, an AI entry and a file-only message", async () => {
-    const { sqlite, resolve } = fixture();
+    const { sqlite, resolve } = await fixture();
     try {
       expect(await resolve({ kind: "message", id: "m1" })).toEqual({
         kind: "message",
@@ -81,12 +81,12 @@ describe("Reply v1 references", () => {
         excerpt: "📎 spec.pdf",
       });
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 
   it("snapshots a request and its AI response", async () => {
-    const { sqlite, resolve, workerName } = fixture();
+    const { sqlite, resolve, workerName } = await fixture();
     try {
       expect(await resolve({ kind: "request", id: "wr" })).toEqual({
         kind: "request",
@@ -101,45 +101,39 @@ describe("Reply v1 references", () => {
         excerpt: "Here is the summary.",
       });
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 
   it("rejects targets outside the Thread, removed messages and empty responses", async () => {
-    const { sqlite, resolve } = fixture();
+    const { sqlite, resolve } = await fixture();
     try {
       await expect(resolve({ kind: "message", id: "m-other" })).rejects.toThrow(
         "not in this Thread",
       );
-      await expect(
-        resolve({ kind: "request", id: "wr" }, "Other"),
-      ).rejects.toThrow("not in this Thread");
-      await expect(
-        resolve({ kind: "message", id: "m-removed" }),
-      ).rejects.toThrow("removed message");
-      await expect(
-        resolve({ kind: "response", id: "wr-open" }),
-      ).rejects.toThrow("no text");
+      await expect(resolve({ kind: "request", id: "wr" }, "Other"),).rejects.toThrow("not in this Thread");
+      await expect(resolve({ kind: "message", id: "m-removed" }),).rejects.toThrow("removed message");
+      await expect(resolve({ kind: "response", id: "wr-open" }),).rejects.toThrow("no text");
       await expect(resolve({ kind: "user", id: "m1" })).rejects.toThrow(
         "replyTo must name",
       );
       expect(await resolve(undefined)).toBeNull();
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 
   it("bounds long excerpts", async () => {
-    const { sqlite, resolve } = fixture();
+    const { sqlite, resolve } = await fixture();
     try {
-      sqlite.exec(
+      await sqlite.exec(
         `UPDATE discussion_messages SET body = '${"x".repeat(5000)}' WHERE id = 'm1'`,
       );
       const reply = await resolve({ kind: "message", id: "m1" });
       expect(reply!.excerpt.length).toBe(REPLY_EXCERPT_MAX_CHARS);
       expect(reply!.excerpt.endsWith("…")).toBe(true);
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 

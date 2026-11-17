@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { handleAccountDeletionCleanup } from "../../src/domain/auth/account-lifecycle";
 import { pgD1 } from "./helpers/pg-d1";
 
-function seed() {
-  const { db, sqlite } = pgD1();
-  sqlite.exec(`
+async function seed() {
+  const { db, sqlite } = await pgD1();
+  await sqlite.exec(`
     INSERT INTO users (id, email, display_name, status) VALUES
       ('gone', 'gone@test', 'Gone', 'active'), ('peer', 'peer@test', 'Peer', 'active'),
       ('idle', 'idle@test', 'Idle', 'deactivated'), ('first', 'first@test', 'First', 'active'),
@@ -40,17 +40,17 @@ function seed() {
 
 describe("account deletion cleanup", () => {
   test("hands over or deletes owned Spaces and detaches the user, in one transaction", async () => {
-    const { db, sqlite } = seed();
+    const { db, sqlite } = await seed();
     await handleAccountDeletionCleanup(db, "gone");
     const rows = (sql: string) => sqlite.prepare(sql).all();
 
-    expect(rows("SELECT id, owner_user_id FROM spaces ORDER BY id")).toEqual([
+    expect(await rows("SELECT id, owner_user_id FROM spaces ORDER BY id")).toEqual([
       { id: "d-active", owner_user_id: "peer" },
       { id: "d-peer-owned", owner_user_id: "first" },
       { id: "g-other", owner_user_id: "first" },
       { id: "g-shared", owner_user_id: "first" }, // earliest other member
     ]);
-    expect(rows("SELECT space_id, user_id, role FROM space_memberships ORDER BY space_id, user_id")).toEqual([
+    expect(await rows("SELECT space_id, user_id, role FROM space_memberships ORDER BY space_id, user_id")).toEqual([
       { space_id: "d-active", user_id: "peer", role: "owner" },
       { space_id: "d-peer-owned", user_id: "first", role: "owner" }, // the user only leaves it
       { space_id: "g-other", user_id: "first", role: "owner" },
@@ -58,26 +58,26 @@ describe("account deletion cleanup", () => {
       { space_id: "g-shared", user_id: "first", role: "owner" },
       { space_id: "g-shared", user_id: "second", role: "viewer" },
     ]);
-    expect(rows("SELECT id, lead_user_id FROM threads ORDER BY id")).toEqual([
+    expect(await rows("SELECT id, lead_user_id FROM threads ORDER BY id")).toEqual([
       { id: "t-other", lead_user_id: "first" },
       { id: "t-shared", lead_user_id: "first" },
     ]);
-    expect(rows("SELECT user_low_id, status FROM person_connections ORDER BY user_low_id")).toEqual([
+    expect(await rows("SELECT user_low_id, status FROM person_connections ORDER BY user_low_id")).toEqual([
       { user_low_id: "first", status: "connected" },
       { user_low_id: "gone", status: "disconnected" },
     ]);
-    expect(rows("SELECT id, status FROM person_invitations ORDER BY id")).toEqual([
+    expect(await rows("SELECT id, status FROM person_invitations ORDER BY id")).toEqual([
       { id: "i1", status: "cancelled" },
       { id: "i2", status: "pending" },
     ]);
   });
 
   test("a failure leaves everything as it was", async () => {
-    const { db, sqlite } = seed();
-    sqlite.exec(`CREATE FUNCTION fail_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'boom'; END $$;
+    const { db, sqlite } = await seed();
+    await sqlite.exec(`CREATE FUNCTION fail_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'boom'; END $$;
       CREATE TRIGGER fail_threads BEFORE UPDATE ON threads FOR EACH ROW EXECUTE FUNCTION fail_fn();`);
     await expect(handleAccountDeletionCleanup(db, "gone")).rejects.toThrow(/boom/);
-    expect(sqlite.prepare("SELECT count(*)::int AS n FROM spaces WHERE owner_user_id = 'gone'").get()).toEqual({ n: 4 });
-    expect(sqlite.prepare("SELECT status FROM person_connections WHERE user_low_id = 'gone'").get()).toEqual({ status: "connected" });
+    expect(await sqlite.prepare("SELECT count(*)::int AS n FROM spaces WHERE owner_user_id = 'gone'").get()).toEqual({ n: 4 });
+    expect(await sqlite.prepare("SELECT status FROM person_connections WHERE user_low_id = 'gone'").get()).toEqual({ status: "connected" });
   });
 });

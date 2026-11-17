@@ -15,13 +15,13 @@ import {
 import { handleClearWorkHistory } from "../../src/domain/routes/work-lifecycle.js";
 
 const cleanups: (() => void)[] = [];
-afterEach(() => {
-  for (const close of cleanups.splice(0)) close();
+afterEach(async () => {
+  for (const close of cleanups.splice(0)) await close();
 });
 async function fixture() {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   cleanups.push(() => sqlite.close());
-  sqlite.exec(
+  await sqlite.exec(
     "ALTER TABLE threads ADD COLUMN work_session_generation INTEGER NOT NULL DEFAULT 0",
   );
   const roles: Record<string, string> = {
@@ -31,20 +31,20 @@ async function fixture() {
     viewer: "viewer",
   };
   for (const id of Object.keys(roles))
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
-      .run(id, `${id}@test`, id);
-  sqlite.exec(
+      .run(id, `${id}@test`, id));
+  await sqlite.exec(
     "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','owner','Space','now','now')",
   );
   for (const [id, role] of Object.entries(roles))
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES(?,'S',?,?,'now','now')",
       )
-      .run(`m-${id}`, id, role);
+      .run(`m-${id}`, id, role));
   const env = {
     SYNTILA_ENVIRONMENT: "development",
     SYNTILA_DB: db,
@@ -98,7 +98,7 @@ describe("shared thread history permissions", () => {
     ).rejects.toMatchObject({ status: 403 });
     await handleDeleteDiscussionMessage(f.request("owner"), f.env, message);
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT author_user_id, body, event_type, attachments_json, references_json FROM discussion_messages WHERE id=?",
         )
@@ -135,7 +135,7 @@ describe("shared thread history permissions", () => {
       f.env,
       f.id,
     );
-    expect(f.notices().map((n) => n.body)).toEqual([
+    expect((await f.notices()).map((n) => n.body)).toEqual([
       "viewer archived this thread.",
       "other restored this thread.",
     ]);
@@ -163,20 +163,20 @@ describe("shared thread history permissions", () => {
   it("allows creator cleanup of their own AI exchanges and leaves one clear notice", async () => {
     const f = await fixture();
     await f.send("creator");
-    f.sqlite
+    await f.sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R',?,'creator','stateless','chat',1,'{}','completed','{}','now','now')`,
       )
       .run(f.id);
-    f.sqlite
+    await f.sqlite
       .prepare(
         "INSERT INTO discussion_messages(id,thread_id,author_user_id,body,kind,created_at) VALUES('answer',?,'creator','AI answer','ai_answer','now')",
       )
       .run(f.id);
     for (let i = 0; i < 2; i++)
       await handleClearChatHistory(f.request("creator"), f.env, f.id);
-    expect(f.notices()).toEqual([
+    expect(await f.notices()).toEqual([
       {
         event_type: "conversation.cleared",
         body: "creator cleared the conversation.",
@@ -186,7 +186,7 @@ describe("shared thread history permissions", () => {
   });
   it("permits a viewer to reset during active work and records one notice on idempotent retry", async () => {
     const f = await fixture();
-    f.sqlite
+    await f.sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R',?,'creator','stateless','chat',1,'{}','running','{}','now','now')`,
@@ -199,15 +199,15 @@ describe("shared thread history permissions", () => {
     };
     await handleClearWorkHistory(request(), f.env, f.id);
     await handleClearWorkHistory(request(), f.env, f.id);
-    expect(f.notices()).toHaveLength(1);
-    expect(f.notices()[0]!.event_type).toBe("ai.context_reset");
+    expect(await f.notices()).toHaveLength(1);
+    expect((await f.notices())[0]!.event_type).toBe("ai.context_reset");
     expect(
-      f.sqlite
+      (await f.sqlite
         .prepare("SELECT ai_context_generation FROM threads WHERE id=?")
-        .get(f.id)!.ai_context_generation,
+        .get(f.id))!.ai_context_generation,
     ).toBe(1);
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT status,ai_context_generation FROM work_requests WHERE id='R'",
         )
@@ -227,7 +227,7 @@ describe("shared thread history permissions", () => {
   });
   it("counts requests from another human as a lasting contribution", async () => {
     const f = await fixture();
-    f.sqlite
+    await f.sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R',?,'other','stateless','chat',1,'{}','completed','{}','now','now')`,
@@ -246,7 +246,7 @@ it("atomically refuses cleanup when another contribution arrives after authoriza
   // Another contribution arrives after authorization, before the deletion runs.
   data.tx = (label: string, fn: (tx: unknown) => Promise<unknown>) =>
     begin(label, async (tx: unknown) => {
-      f.sqlite
+      await f.sqlite
         .prepare(
           "INSERT INTO discussion_messages(id,thread_id,author_user_id,body,created_at) VALUES('racing',?,'other','Keep this','now')",
         )
@@ -257,11 +257,11 @@ it("atomically refuses cleanup when another contribution arrives after authoriza
     handleDeleteThread(f.request("creator"), f.env, f.id),
   ).rejects.toThrow(/thread_not_destructible/);
   expect(
-    f.sqlite.prepare("SELECT id FROM threads WHERE id=?").get(f.id),
+    await f.sqlite.prepare("SELECT id FROM threads WHERE id=?").get(f.id),
   ).toBeTruthy();
   expect(
-    f.sqlite
+    (await f.sqlite
       .prepare("SELECT body FROM discussion_messages WHERE id='racing'")
-      .get()!.body,
+      .get())!.body,
   ).toBe("Keep this");
 });

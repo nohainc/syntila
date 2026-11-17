@@ -10,9 +10,9 @@ import { recordAssignmentResult } from "../../src/domain/assignment-dispatcher.j
 it("includes late prior replies while excluding the current request", async () => {
   const f = await conversationFixture();
   try {
-    f.assign("A");
-    f.start("A");
-    f.sqlite
+    await f.assign("A");
+    await f.start("A");
+    await f.sqlite
       .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R2','W','U','stateless','chat',1,'{}','running','{"originalRequest":"Current request"}','now','now')`);
     await submitConversation(
@@ -30,7 +30,7 @@ it("includes late prior replies while excluding the current request", async () =
       artifactIds: [],
       completedAt: "2026-10-07T10:02:00.000Z",
     });
-    const conversation = f.sqlite
+    const conversation = await f.sqlite
       .prepare("SELECT id FROM conversations")
       .get() as { id: string };
     const bootstrap = await loadConversationBootstrap(
@@ -93,7 +93,7 @@ it("includes late prior replies while excluding the current request", async () =
         0,
       ),
     ).rejects.toThrow(/boundary/);
-    f.sqlite
+    await f.sqlite
       .prepare(
         `INSERT INTO conversation_history_entries
       (conversation_id, sequence, kind, event_type, actor_type, source_id, text, metadata_json, occurred_at)
@@ -101,7 +101,7 @@ it("includes late prior replies while excluding the current request", async () =
       FROM conversation_history_entries WHERE conversation_id = ?1`,
       )
       .run(conversation.id, "x".repeat(256 * 1024 + 1));
-    f.sqlite
+    await f.sqlite
       .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R3','W','U','stateless','chat',1,'{}','running','{"originalRequest":"Next request"}','now','now')`);
     await submitConversation(
@@ -132,7 +132,7 @@ it("includes late prior replies while excluding the current request", async () =
       SELECT ?1, MAX(sequence)+1, 'user_message', 'user_message', 'user', ?2, 'prior detail', '{}', 'now'
       FROM conversation_history_entries WHERE conversation_id = ?1`);
     for (let index = 0; index < 1005; index++)
-      insert.run(conversation.id, `prior-${index}`);
+      await insert.run(conversation.id, `prior-${index}`);
     const capped = JSON.parse(
       (
         await loadConversationBootstrap(
@@ -154,7 +154,7 @@ it("includes late prior replies while excluding the current request", async () =
       256 * 1024,
     );
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
@@ -166,7 +166,7 @@ it("assembles Work environment and scoped prerequisite results for the receiving
       threadInstructions: "Stream rules",
       resolvedBindings: { direct: { workerId: "worker-chatgpt" } },
     });
-    f.sqlite
+    await f.sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,primary_workspace_id,status,input_json,created_at,updated_at)
       VALUES('RW','W','U','stateful','direct',2,'{}',?,'WS','running','{}','now','now')`,
@@ -180,7 +180,7 @@ it("assembles Work environment and scoped prerequisite results for the receiving
         "RW",
         "now",
     );
-    f.sqlite
+    await f.sqlite
       .exec(`INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,attempt,output_json,created_at,updated_at) VALUES
       ('IMPLEMENT','RW','implement','stateful_thread',1000,'implement:v1','completed',1,'{"text":"Implementation result","workerId":"ChatGPT"}','now','now'),
       ('VERIFY','RW','verify','stateless_read',1000,'verify:v1','queued',0,NULL,'now','now'),
@@ -243,17 +243,17 @@ it("assembles Work environment and scoped prerequisite results for the receiving
     expect(chat.workflowExecutionContext.environment).toBeNull();
     expect(chat.workflowExecutionContext.artifacts).toEqual([]);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("parallel worker steps preserve one base and never acquire a sibling's response retroactively", async () => {
   const f = await conversationFixture();
   try {
-    f.sqlite
+    await f.sqlite
       .exec(`INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
       VALUES('VERIFY','R','verify','stateless_read',1000,'verify:v1','running','now','now')`);
-    const { id } = f.sqlite.prepare("SELECT id FROM conversations").get() as {
+    const { id } = await f.sqlite.prepare("SELECT id FROM conversations").get() as {
       id: string;
     };
     const first = await loadConversationBootstrap(
@@ -278,7 +278,7 @@ it("parallel worker steps preserve one base and never acquire a sibling's respon
       turnRevision: snapshot.turnRevision,
       throughSequence: snapshot.throughSequence,
     });
-    f.assign(
+    await f.assign(
       "PARALLEL-A",
       "model-x",
       "medium",
@@ -286,8 +286,8 @@ it("parallel worker steps preserve one base and never acquire a sibling's respon
       0,
       evidence(first),
     );
-    f.start("PARALLEL-A");
-    f.sqlite
+    await f.start("PARALLEL-A");
+    await f.sqlite
       .prepare(
         `INSERT INTO worker_assignments
       (id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,status,model,permission_snapshot_json,session_policy,created_at,updated_at)
@@ -302,7 +302,7 @@ it("parallel worker steps preserve one base and never acquire a sibling's respon
           contextSnapshot: evidence(second),
         }),
       );
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE worker_assignments SET status='running' WHERE id='PARALLEL-B'",
     );
     await recordAssignmentResult(f.db as unknown as D1Database, "PARALLEL-B", {
@@ -323,7 +323,7 @@ it("parallel worker steps preserve one base and never acquire a sibling's respon
     expect(first.text).not.toContain("Sibling private response");
     expect(second.text).not.toContain("Sibling private response");
     expect(afterSibling.text).not.toContain("Sibling private response");
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE conversations SET conversation_revision=107,context_revision=107",
     );
     await recordAssignmentResult(f.db as unknown as D1Database, "PARALLEL-A", {
@@ -336,7 +336,7 @@ it("parallel worker steps preserve one base and never acquire a sibling's respon
     const turns = await f.turns();
     expect(turns).toHaveLength(2);
     expect(turns.map((t) => t.baseContextRevision)).toEqual([0, 0]);
-    const metadata = f.sqlite
+    const metadata = await f.sqlite
       .prepare(
         "SELECT metadata_json FROM conversation_history_entries WHERE kind='worker_response'",
       )
@@ -344,21 +344,19 @@ it("parallel worker steps preserve one base and never acquire a sibling's respon
     expect(
       metadata.map((row) => JSON.parse(row.metadata_json).baseContextRevision),
     ).toEqual([0, 0]);
-    expect(() =>
-      f.sqlite.exec(
+    await expect(f.sqlite.exec(
         `UPDATE worker_assignments SET permission_snapshot_json=syntila_json_set(permission_snapshot_json,'$.contextSnapshot.baseContextRevision','107') WHERE id='PARALLEL-B'`,
-      ),
-    ).toThrow(/snapshot is immutable/);
+      )).rejects.toThrow(/snapshot is immutable/);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("leaves exchanges before an AI History clear out of later context", async () => {
   const f = await conversationFixture();
   try {
-    f.assign("A");
-    f.start("A");
+    await f.assign("A");
+    await f.start("A");
     await recordAssignmentResult(f.db as unknown as D1Database, "A", {
       assignmentId: "A",
       status: "completed",
@@ -367,9 +365,9 @@ it("leaves exchanges before an AI History clear out of later context", async () 
       completedAt: "2026-10-07T10:02:00.000Z",
     });
     // Clearing AI History moves the context floor past everything so far.
-    f.sqlite.exec(`UPDATE conversations SET context_floor_sequence =
-      (SELECT MAX(sequence) FROM conversation_history_entries)`);
-    f.sqlite
+    (await f.sqlite.exec(`UPDATE conversations SET context_floor_sequence =
+      (SELECT MAX(sequence) FROM conversation_history_entries)`));
+    await f.sqlite
       .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R2','W','U','stateless','chat',1,'{}','running','{"originalRequest":"Current request"}','now','now')`);
     await submitConversation(
@@ -380,7 +378,7 @@ it("leaves exchanges before an AI History clear out of later context", async () 
         "R2",
         "now",
     );
-    const conversation = f.sqlite
+    const conversation = await f.sqlite
       .prepare("SELECT id FROM conversations")
       .get() as { id: string };
     const bootstrap = await loadConversationBootstrap(
@@ -396,8 +394,8 @@ it("leaves exchanges before an AI History clear out of later context", async () 
       omittedEntries: 0,
     });
     // Context-limit recovery retains the latest answer as the only prior text.
-    f.sqlite.exec(`UPDATE conversations SET context_floor_sequence =
-      (SELECT MAX(sequence) - 1 FROM conversation_history_entries WHERE kind='worker_response')`);
+    (await f.sqlite.exec(`UPDATE conversations SET context_floor_sequence =
+      (SELECT MAX(sequence) - 1 FROM conversation_history_entries WHERE kind='worker_response')`));
     const recovered = await loadConversationBootstrap(
       f.db as unknown as D1Database,
       conversation.id,
@@ -412,16 +410,16 @@ it("leaves exchanges before an AI History clear out of later context", async () 
     ).toEqual(["Previous answer"]);
     expect(recovered.text).not.toContain("Exact user text");
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
 it("excludes late pre-reset replies from fresh context while retaining visible history", async () => {
   const f = await conversationFixture();
   try {
-    f.assign("A");
-    f.start("A");
-    f.sqlite.exec(`UPDATE conversations SET context_floor_sequence =
+    await f.assign("A");
+    await f.start("A");
+    await f.sqlite.exec(`UPDATE conversations SET context_floor_sequence =
       (SELECT MAX(sequence) FROM conversation_history_entries WHERE conversation_id = conversations.id);
       UPDATE threads SET ai_context_generation = ai_context_generation + 1 WHERE id='W';`);
     await recordAssignmentResult(f.db as unknown as D1Database, "A", {
@@ -431,7 +429,7 @@ it("excludes late pre-reset replies from fresh context while retaining visible h
       artifactIds: [],
       completedAt: "2026-10-07T10:02:00.000Z",
     });
-    f.sqlite
+    await f.sqlite
       .exec(`INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('R2','W','U','stateless','chat',1,'{}','running','{"originalRequest":"Fresh request"}','now','now')`);
     await submitConversation(
@@ -450,14 +448,14 @@ it("excludes late pre-reset replies from fresh context while retaining visible h
     );
     expect(result.text).not.toContain("Late old answer");
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT text FROM conversation_history_entries WHERE text = 'Late old answer'",
         )
         .get(),
     ).toBeTruthy();
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
@@ -466,8 +464,8 @@ it.each(["chat", "direct", "research"])(
   async (workflowId) => {
     const f = await conversationFixture({ research: true });
     try {
-      f.assign("researcher");
-      f.start("researcher");
+      await f.assign("researcher");
+      await f.start("researcher");
       await recordAssignmentResult(
         f.db as unknown as D1Database,
         "researcher",
@@ -479,7 +477,7 @@ it.each(["chat", "direct", "research"])(
           completedAt: "2026-10-07T10:02:00.000Z",
         },
       );
-      f.sqlite
+      await f.sqlite
         .exec(`INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at,step_instance_id)
       VALUES('S','R','synthesis','stateless_read',1000,'synthesis:v1','running','now','now','synthesis');
       INSERT INTO worker_assignments(id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,status,model,permission_snapshot_json,session_policy,created_at,updated_at)
@@ -492,7 +490,7 @@ it.each(["chat", "direct", "research"])(
         artifactIds: [],
         completedAt: "2026-10-07T10:03:00.000Z",
       });
-      f.sqlite
+      await f.sqlite
         .prepare(
           `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at)
       VALUES('next','W','U','stateless',?,?,'{}','running','{"originalRequest":"Follow up"}','now','now')`,
@@ -520,7 +518,7 @@ it.each(["chat", "direct", "research"])(
       expect(bootstrap.text).toContain("Exact user text");
       expect(bootstrap.text).not.toContain("Follow up");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   },
 );

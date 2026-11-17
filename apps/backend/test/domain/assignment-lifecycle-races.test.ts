@@ -17,30 +17,30 @@ const T0 = "2026-10-14T10:00:00.000Z";
 
 async function seed(status: AssignmentLifecycleStatus = "dispatched") {
   const f = await conversationFixture();
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now')",
   );
-  f.assign("A1");
-  f.sqlite
+  await f.assign("A1");
+  await f.sqlite
     .prepare(
       `UPDATE worker_assignments
           SET run_id='RUN', attempt_id='ATT1', idempotency_key='IDEM1',
               status=?, updated_at=? WHERE id='A1'`,
     )
     .run(status, T0);
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "UPDATE workflow_tasks SET status='queued', started_at=NULL WHERE id='T'",
   );
-  const row = () =>
-    f.sqlite
+  const row = async () =>
+    (await f.sqlite
       .prepare(
         "SELECT status, updated_at FROM worker_assignments WHERE id='A1'",
       )
-      .get() as { status: string; updated_at: string };
-  const task = () =>
-    f.sqlite
+      .get()) as { status: string; updated_at: string };
+  const task = async () =>
+    (await f.sqlite
       .prepare("SELECT status FROM workflow_tasks WHERE id='T'")
-      .get() as {
+      .get()) as {
       status: string;
     };
   const fence = {
@@ -63,9 +63,9 @@ describe("assignment lifecycle ordering", () => {
     const f = await seed("dispatched");
     const started = await f.providerStarted();
     expect(started).toMatchObject({ outcome: "applied", applied: true });
-    expect(f.row().status).toBe("running");
-    expect(f.task().status).toBe("running");
-    const updatedAt = f.row().updated_at;
+    expect((await f.row()).status).toBe("running");
+    expect((await f.task()).status).toBe("running");
+    const updatedAt = (await f.row()).updated_at;
 
     const late = await f.admit();
     expect(late).toMatchObject({
@@ -76,7 +76,7 @@ describe("assignment lifecycle ordering", () => {
     // The late acknowledgement neither downgrades nor refreshes the row, so
     // the startup deadline (which reads updated_at while Acknowledged) is not
     // reset or applied to a Running assignment.
-    expect({ ...f.row() }).toEqual({
+    expect({ ...(await f.row()) }).toEqual({
       status: "running",
       updated_at: updatedAt,
     });
@@ -85,17 +85,17 @@ describe("assignment lifecycle ordering", () => {
   it("keeps the provider-start evidence when it overtakes dispatch bookkeeping", async () => {
     const f = await seed("created");
     expect((await f.providerStarted()).applied).toBe(true);
-    expect(f.row().status).toBe("running");
-    expect(f.task().status).toBe("running");
+    expect((await f.row()).status).toBe("running");
+    expect((await f.task()).status).toBe("running");
   });
 
   it("treats a duplicate acceptance acknowledgement as a no-op", async () => {
     const f = await seed("dispatched");
     expect((await f.admit()).outcome).toBe("applied");
-    const updatedAt = f.row().updated_at;
+    const updatedAt = (await f.row()).updated_at;
     const second = await f.admit();
     expect(second).toMatchObject({ outcome: "duplicate", applied: false });
-    expect(f.row().updated_at).toBe(updatedAt);
+    expect((await f.row()).updated_at).toBe(updatedAt);
   });
 
   it("ignores a late provider-start acknowledgement after cancellation", async () => {
@@ -114,8 +114,8 @@ describe("assignment lifecycle ordering", () => {
       applied: false,
       currentStatus: "cancelled",
     });
-    expect(f.row().status).toBe("cancelled");
-    expect(f.task().status).toBe("cancelled");
+    expect((await f.row()).status).toBe("cancelled");
+    expect((await f.task()).status).toBe("cancelled");
     expect((await f.admit()).outcome).toBe("terminal");
   });
 
@@ -128,8 +128,8 @@ describe("assignment lifecycle ordering", () => {
       const results = await Promise.all(order.map((name) => f[name]()));
       // Whichever handler runs second, Running always wins and exactly the
       // transitions that moved the row report `applied`.
-      expect(f.row().status).toBe("running");
-      expect(f.task().status).toBe("running");
+      expect((await f.row()).status).toBe("running");
+      expect((await f.task()).status).toBe("running");
       expect(results.filter((r) => r.applied).length).toBeLessThanOrEqual(2);
       expect(
         results.find((_, i) => order[i] === "providerStarted")!.applied,
@@ -175,7 +175,7 @@ describe("assignment lifecycle ordering", () => {
         } else {
           await f[step as "admit" | "providerStarted"]();
         }
-        const { status } = f.row();
+        const { status } = await f.row();
         expect(rank(status), key).toBeGreaterThanOrEqual(previous);
         if (terminalSeen) expect(status, key).toBe(terminalSeen);
         if (isTerminalAssignmentStatus(status as AssignmentLifecycleStatus))
@@ -184,7 +184,7 @@ describe("assignment lifecycle ordering", () => {
       }
       // A completed result always converges to Completed, whatever arrived
       // before or after it.
-      expect(f.row().status, key).toBe("completed");
+      expect((await f.row()).status, key).toBe("completed");
     }
   }, 60_000);
 
@@ -198,7 +198,7 @@ describe("assignment lifecycle ordering", () => {
         "ATT1",
       ),
     ).toBe(true);
-    const completedAt = f.row().updated_at;
+    const completedAt = (await f.row()).updated_at;
     expect(
       await recordAssignmentResult(
         f.db,
@@ -230,7 +230,7 @@ describe("assignment lifecycle ordering", () => {
         "ATT1",
       ),
     ).toBe(false);
-    const stored = f.sqlite
+    const stored = await f.sqlite
       .prepare(
         "SELECT status, output_json, updated_at FROM worker_assignments WHERE id='A1'",
       )
@@ -252,7 +252,7 @@ describe("assignment lifecycle ordering", () => {
       ),
     ).toBe(true);
     expect((await f.providerStarted()).outcome).toBe("terminal");
-    expect(f.row().status).toBe("completed");
+    expect((await f.row()).status).toBe("completed");
   });
 
   it("only lets a rejection fail an assignment that was never accepted", async () => {
@@ -268,7 +268,7 @@ describe("assignment lifecycle ordering", () => {
       { onlyFrom: ["created", "dispatched"] },
     );
     expect(rejected).toBe(false);
-    expect(f.row().status).toBe("running");
+    expect((await f.row()).status).toBe("running");
 
     const g = await seed("dispatched");
     expect(
@@ -283,7 +283,7 @@ describe("assignment lifecycle ordering", () => {
         { onlyFrom: ["created", "dispatched"] },
       ),
     ).toBe(true);
-    expect(g.row().status).toBe("failed");
+    expect((await g.row()).status).toBe("failed");
   });
 });
 
@@ -291,8 +291,8 @@ describe("assignment identity fencing", () => {
   it("rejects messages from an old attempt after a newer attempt begins", async () => {
     const f = await seed("running");
     // A newer attempt of the same task has its own assignment.
-    f.assign("A2");
-    f.sqlite
+    await f.assign("A2");
+    await f.sqlite
       .prepare(
         `UPDATE worker_assignments
             SET run_id='RUN', attempt_id='ATT2', idempotency_key='IDEM2',
@@ -316,7 +316,7 @@ describe("assignment identity fencing", () => {
         "ATT1",
       ),
     ).toBe(false);
-    const a2 = f.sqlite
+    const a2 = await f.sqlite
       .prepare("SELECT status FROM worker_assignments WHERE id='A2'")
       .get() as { status: string };
     expect(a2.status).toBe("running");
@@ -334,7 +334,7 @@ describe("assignment identity fencing", () => {
     });
     expect(oldRuntime.outcome).toBe("stale");
     expect(otherWorkspace.outcome).toBe("stale");
-    expect(f.row().status).toBe("dispatched");
+    expect((await f.row()).status).toBe("dispatched");
   });
 
   it("reports an unknown assignment without writing", async () => {
@@ -365,6 +365,6 @@ describe("Service reconnect and replay", () => {
     // A replayed `dispatched` command is re-sent, but never reopens a row.
     const f = await seed("acknowledged");
     expect((await f.admit()).outcome).toBe("duplicate");
-    expect(f.row().status).toBe("acknowledged");
+    expect((await f.row()).status).toBe("acknowledged");
   });
 });

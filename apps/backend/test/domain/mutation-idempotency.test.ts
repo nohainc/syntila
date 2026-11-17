@@ -19,9 +19,9 @@ function request(body: unknown, idempotencyKey = key) {
     body: JSON.stringify(body),
   });
 }
-function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
+async function fixture() {
+  const { sqlite, db } = await pgD1();
+  await sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
     ('owner','owner@test','Owner','now','now'), ('other','other@test','Other','now','now')`);
   const env = {
     SYNTILA_ENVIRONMENT: "development",
@@ -42,9 +42,9 @@ function fixture() {
   } as unknown as SecurityEnv;
   return { sqlite, db, env };
 }
-describe("durable mutation receipts", () => {
+describe("durable mutation receipts", async () => {
   it("canonicalizes object order, scopes by user/endpoint, rejects changed input and malformed keys", async () => {
-    const f = fixture();
+    const f = await fixture();
     const receipt = (await MutationIdempotency.from(
       request({ a: 1, b: 2 }),
       f.db,
@@ -95,10 +95,10 @@ describe("durable mutation receipts", () => {
         {},
       ),
     ).rejects.toMatchObject({ status: 400 });
-    f.sqlite.close();
+    await f.sqlite.close();
   });
   it("rolls back domain writes and the receipt together on a failed batch", async () => {
-    const f = fixture();
+    const f = await fixture();
     const receipt = (await MutationIdempotency.from(
       request({}),
       f.db,
@@ -115,17 +115,17 @@ describe("durable mutation receipts", () => {
       ),
     ).rejects.toThrow();
     expect(await receipt.replay()).toBeNull();
-    expect(f.sqlite.prepare("SELECT count(*) AS n FROM spaces").get()?.n).toBe(
+    expect((await f.sqlite.prepare("SELECT count(*) AS n FROM spaces").get())?.n).toBe(
       0,
     );
     await receipt.commit({ id: "one" }, 201, (write) =>
       dataOf({ SYNTILA_DB: f.db } as never).tx("test.receipt", write),
     );
     expect(await receipt.replay()).not.toBeNull();
-    f.sqlite.close();
+    await f.sqlite.close();
   });
   it("concurrent lost-response retries create one Thread, one Discussion and one event each", async () => {
-    const f = fixture();
+    const f = await fixture();
     const p = (
       (await (
         await handleCreateSpace(
@@ -158,15 +158,15 @@ describe("durable mutation receipts", () => {
     }[];
     expect(new Set(messages.map((b) => b.message.id)).size).toBe(1);
     expect(
-      f.sqlite.prepare("SELECT count(*) AS n FROM discussion_messages").get()
+      await (await f.sqlite.prepare("SELECT count(*) AS n FROM discussion_messages").get())
         ?.n,
     ).toBe(1);
     expect(
-      f.sqlite
+      (await f.sqlite
         .prepare(
           "SELECT count(*) AS n FROM realtime_events WHERE event_type='discussion.created'",
         )
-        .get()?.n,
+        .get())?.n,
     ).toBe(1);
     await expect(
       handleCreateThread(request({ name: "Changed" }), f.env, p),
@@ -175,9 +175,9 @@ describe("durable mutation receipts", () => {
       handleCreateDiscussionMessage(request({ body: "Changed" }), f.env, w),
     ).rejects.toMatchObject({ status: 409 });
     // Receipt survives deletion; retry cannot resurrect user data.
-    f.sqlite
+    (await f.sqlite
       .prepare("DELETE FROM discussion_messages WHERE id=?")
-      .run(messages[0]!.message.id);
+      .run(messages[0]!.message.id));
     expect(
       (
         await handleCreateDiscussionMessage(
@@ -188,13 +188,13 @@ describe("durable mutation receipts", () => {
       ).status,
     ).toBe(201);
     expect(
-      f.sqlite.prepare("SELECT count(*) AS n FROM discussion_messages").get()
+      await (await f.sqlite.prepare("SELECT count(*) AS n FROM discussion_messages").get())
         ?.n,
     ).toBe(0);
-    f.sqlite.close();
+    await f.sqlite.close();
   });
   it("rechecks authorization before disclosing a stored response", async () => {
-    const f = fixture();
+    const f = await fixture();
     const p = (
       (await (
         await handleCreateSpace(
@@ -214,10 +214,10 @@ describe("durable mutation receipts", () => {
       return r;
     };
     await handleCreateThread(authorized(), env, p);
-    f.sqlite.prepare("DELETE FROM space_memberships WHERE space_id=?").run(p);
+    await f.sqlite.prepare("DELETE FROM space_memberships WHERE space_id=?").run(p);
     await expect(
       handleCreateThread(authorized(), env, p),
     ).rejects.toMatchObject({ status: 404 });
-    f.sqlite.close();
+    await f.sqlite.close();
   });
 });

@@ -20,7 +20,7 @@ vi.mock("../../src/domain/routes/profiles.js", () => ({
 }));
 
 it("persists scoped defaults, rejects disabled workflows, and falls back to Chat", async () => {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   const identity = vi
     .spyOn(identityService, "resolve")
     .mockImplementation(async (request) => {
@@ -30,7 +30,7 @@ it("persists scoped defaults, rejects disabled workflows, and falls back to Chat
         : null;
     });
   try {
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users(id,email,display_name,created_at,updated_at)
       VALUES ('owner','owner@test','Owner','now','now'),('other','other@test','Other','now','now');
       INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at)
@@ -113,6 +113,6 @@ it("persists scoped defaults, rejects disabled workflows, and falls back to Chat
     ).toMatchObject({ defaultWorkflowId: "chat" });
   } finally {
     identity.mockRestore();
-    sqlite.close();
+    await sqlite.close();
   }
 });

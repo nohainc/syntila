@@ -8,7 +8,7 @@ vi.mock("../../src/domain/routes/profiles.js", () => ({
     Response.json({ workers: [] }),
 }));
 it("authenticates actual human sessions and isolates GET/PUT/DELETE ownership", async () => {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   const identity = vi
     .spyOn(identityService, "resolve")
     .mockImplementation(async (request) => {
@@ -23,10 +23,10 @@ it("authenticates actual human sessions and isolates GET/PUT/DELETE ownership", 
         : null;
     });
   try {
-    sqlite.exec(
+    await sqlite.exec(
       "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('one','one@test','One','now','now'),('two','two@test','Two','now','now')",
     );
-    sqlite.exec(
+    await sqlite.exec(
       "INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws','one','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('one','ws','now'); INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws-two','two','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('two','ws-two','now');",
     );
     const configuration = (enabled: boolean) => ({
@@ -36,7 +36,7 @@ it("authenticates actual human sessions and isolates GET/PUT/DELETE ownership", 
       defaults: {},
       stepOverrides: {},
     });
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO user_workflow_configurations VALUES('two','ws-two','direct',1,?,'now')",
       )
@@ -81,7 +81,7 @@ it("authenticates actual human sessions and isolates GET/PUT/DELETE ownership", 
       ).json(),
     ).toMatchObject({ configurations: [configuration(false)] });
     expect(
-      sqlite.prepare("SELECT user_id FROM user_workflow_configurations").all(),
+      await sqlite.prepare("SELECT user_id FROM user_workflow_configurations").all(),
     ).toEqual([{ user_id: "two" }]);
     await expect(
       handleWorkflowConfigurations(
@@ -95,6 +95,6 @@ it("authenticates actual human sessions and isolates GET/PUT/DELETE ownership", 
     ).rejects.toMatchObject({ status: 400 });
   } finally {
     identity.mockRestore();
-    sqlite.close();
+    await sqlite.close();
   }
 });

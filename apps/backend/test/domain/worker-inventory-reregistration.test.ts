@@ -6,12 +6,12 @@ import { atomically } from "../../src/platform/data.js";
 import { releasedWorkspaceCleanup } from "../../src/domain/workspace-gateway/release-cleanup.js";
 
 it("deletes a released Workspace's Workers; Worker IDs never change Workspace", async () => {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   try {
-    sqlite.exec(
+    await sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-    sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('u','u@test','U','now','now'),('o','o@test','O','now','now');
+    await sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('u','u@test','U','now','now'),('o','o@test','O','now','now');
       INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES
         ('old','u','Old','online','now','now'),
         ('new','u','New','online','now','now'),
@@ -28,29 +28,29 @@ it("deletes a released Workspace's Workers; Worker IDs never change Workspace", 
     const env = { SYNTILA_DB: db } as never;
     const publish = (ws: string) =>
       recordWorkspaceWorkerInventory(env, ws, { workers: [worker] });
-    const owner = () =>
+    const owner = async () =>
       (
-        sqlite
+        await sqlite
           .prepare(
             "SELECT workspace_id AS w FROM workspace_worker_inventory WHERE worker_id = 'worker'",
           )
           .get() as { w: string }
       ).w;
     await publish("old");
-    expect(owner()).toBe("old");
+    expect(await owner()).toBe("old");
     // Worker IDs stay with the Workspace that first synced them.
     await publish("new");
-    expect(owner()).toBe("old");
+    expect(await owner()).toBe("old");
     await publish("other");
-    expect(owner()).toBe("old");
+    expect(await owner()).toBe("old");
     // Releasing deletes the Workspace's Workers.
     await atomically(db, "test.cleanup", (q) => releasedWorkspaceCleanup(q, "old"));
     expect(
-      sqlite
+      await sqlite
         .prepare("SELECT COUNT(*) AS n FROM workspace_worker_inventory")
         .get(),
     ).toEqual({ n: 0 });
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });

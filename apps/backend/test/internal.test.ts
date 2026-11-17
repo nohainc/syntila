@@ -8,7 +8,7 @@ import { pgD1 } from "./domain/helpers/pg-d1";
 
 let base = "", stop = async () => {}, sign: (claims: Record<string, unknown>) => Promise<string>, sql: any;
 beforeAll(async () => {
-  ({ sql } = pgD1());
+  ({ sql } = await pgD1());
   const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
   const pub = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k" };
   const priv = { ...(await crypto.subtle.exportKey("jwk", pair.privateKey)), kid: "k" } as JsonWebKey & { kid: string };

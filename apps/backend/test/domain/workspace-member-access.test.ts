@@ -26,9 +26,9 @@ import {
 } from "../../src/domain/routes/workspace-member-access.js";
 import { resolveWorkflowExecutionBindings } from "../../src/domain/routes/workflow-execution-configuration.js";
 
-function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','o@test','O','now','now'),('member','m@test','M','now','now');
+async function fixture() {
+  const { sqlite, db } = await pgD1();
+  await sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','o@test','O','now','now'),('member','m@test','M','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','owner','Space','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('o','P','owner','owner','now','now'),('m','P','member','collaborator','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','Stream','active','owner','now','now');
@@ -160,7 +160,7 @@ describe("memberSelectionError", () => {
 });
 
 it("lets only the Workspace owner manage member access and validates Workers", async () => {
-  const { sqlite, call } = fixture();
+  const { sqlite, call } = await fixture();
   try {
     expect(await (await call("GET", "owner", "workspace")).json()).toEqual({
       restricted: false,
@@ -169,15 +169,11 @@ it("lets only the Workspace owner manage member access and validates Workers", a
     await expect(call("GET", "member", "workspace")).rejects.toMatchObject({
       status: 404,
     });
-    await expect(
-      call("PUT", "member", "workspace", { restricted: false }),
-    ).rejects.toMatchObject({ status: 404 });
-    await expect(
-      call("PUT", "owner", "workspace", {
+    await expect(call("PUT", "member", "workspace", { restricted: false }),).rejects.toMatchObject({ status: 404 });
+    await expect(call("PUT", "owner", "workspace", {
         restricted: true,
         workers: { stranger: { models: null, efforts: null } },
-      }),
-    ).rejects.toMatchObject({ status: 400 });
+      }),).rejects.toMatchObject({ status: 400 });
     await call("PUT", "owner", "workspace", {
       restricted: true,
       workers: { "worker-a": { models: ["fast"], efforts: null } },
@@ -191,15 +187,15 @@ it("lets only the Workspace owner manage member access and validates Workers", a
     });
     await call("PUT", "owner", "workspace", { restricted: false });
     expect(
-      sqlite.prepare("SELECT COUNT(*) n FROM workspace_member_access").get(),
+      await sqlite.prepare("SELECT COUNT(*) n FROM workspace_member_access").get(),
     ).toEqual({ n: 0 });
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });
 
 it("restricts members, not the owner, when Work resolves its Worker, model and effort", async () => {
-  const { sqlite, call, bind } = fixture();
+  const { sqlite, call, bind } = await fixture();
   try {
     // No policy: members use the configured selection.
     expect((await bind("member")).direct).toMatchObject({
@@ -216,26 +212,22 @@ it("restricts members, not the owner, when Work resolves its Worker, model and e
       reasoningEffort: "low",
     });
     // A Worker, model or effort outside the share is rejected for members...
-    await expect(
-      bind("member", { workerId: "worker-b" }),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(bind("member", { workerId: "worker-b" }),).rejects.toMatchObject({ status: 403 });
     await expect(bind("member", { model: "slow" })).rejects.toMatchObject({
       status: 403,
     });
-    await expect(
-      bind("member", { reasoningEffort: "high" }),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(bind("member", { reasoningEffort: "high" }),).rejects.toMatchObject({ status: 403 });
     // ...but never for the Workspace owner.
     expect(
       (await bind("owner", { workerId: "worker-b", model: "slow" })).direct,
     ).toMatchObject({ workerId: "worker-b", model: "slow" });
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });
 
 it("lets a per-person override replace the default and enforces the mode ceiling", async () => {
-  const { sqlite, env, call, bind } = fixture();
+  const { sqlite, env, call, bind } = await fixture();
   const person = (method: string, user: string, id: string, body?: unknown) =>
     handleWorkspaceMemberAccess(
       new Request(
@@ -264,9 +256,7 @@ it("lets a per-person override replace the default and enforces the mode ceiling
       workerId: "worker-a",
     });
     // Only the owner manages overrides.
-    await expect(
-      person("PUT", "member", "member", { mode: "work", workers: {} }),
-    ).rejects.toMatchObject({ status: 404 });
+    await expect(person("PUT", "member", "member", { mode: "work", workers: {} }),).rejects.toMatchObject({ status: 404 });
     // A per-person override enforces the mode ceiling.
     await person("PUT", "owner", "member", {
       mode: "chat",
@@ -298,15 +288,11 @@ it("lets a per-person override replace the default and enforces the mode ceiling
       workerId: "worker-a",
     });
     // Invalid input and unknown people are rejected; the owner is never restricted.
-    await expect(
-      person("PUT", "owner", "member", { mode: "root", workers: {} }),
-    ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      person("PUT", "owner", "ghost", { workers: {} }),
-    ).rejects.toMatchObject({ status: 404 });
+    await expect(person("PUT", "owner", "member", { mode: "root", workers: {} }),).rejects.toMatchObject({ status: 400 });
+    await expect(person("PUT", "owner", "ghost", { workers: {} }),).rejects.toMatchObject({ status: 404 });
     expect((await bind("owner")).direct).toBeDefined();
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });
 
@@ -326,7 +312,7 @@ it("blocks commands in work mode but allows them in work+shell", () => {
 
 describe("shared Worker inventory", () => {
   async function inventory(
-    f: ReturnType<typeof fixture>,
+    f: Awaited<ReturnType<typeof fixture>>,
     user: string,
     shared = true,
   ) {
@@ -348,14 +334,14 @@ describe("shared Worker inventory", () => {
   const ids = (workers: { id: string }[]) => workers.map((w) => w.id).sort();
 
   it("shows members the Workers their Space's Workspace shares, filtered and masked", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       // The shared test schema omits the Profile tables the inventory joins.
-      f.sqlite
+      (await f.sqlite
         .exec(`CREATE TABLE worker_profiles(worker_type_id TEXT, revision INTEGER, profile_json TEXT, digest TEXT);
         CREATE TABLE worker_profile_history(worker_type_id TEXT, revision INTEGER, profile_json TEXT, digest TEXT);
         ALTER TABLE workspace_worker_inventory ADD COLUMN model_catalog_json TEXT;
-        UPDATE workspace_worker_inventory SET provider_tool_name='codex';`);
+        UPDATE workspace_worker_inventory SET provider_tool_name='codex';`));
       // Only clients that ask for shared Workers receive them.
       expect(ids(await inventory(f, "member", false))).toEqual([]);
       // No policy: every Worker of the Workspace is available to members.
@@ -379,17 +365,17 @@ describe("shared Worker inventory", () => {
         "worker-b",
       ]);
       // People outside the Space see nothing.
-      f.sqlite.exec(
+      (await f.sqlite.exec(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('stranger','s@test','S','now','now')",
-      );
+      ));
       expect(ids(await inventory(f, "stranger"))).toEqual([]);
       // Switching the Space to another Workspace shares that one instead.
-      f.sqlite.exec(
+      (await f.sqlite.exec(
         "UPDATE space_workflow_settings SET workspace_id='other' WHERE space_id='P'",
-      );
+      ));
       expect(ids(await inventory(f, "member"))).toEqual([]);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 

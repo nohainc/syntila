@@ -21,25 +21,25 @@ export async function gatewayFixture(
   } = {},
 ) {
   const f = await conversationFixture({ research: options.research });
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now')",
   );
-  f.assign("A1");
+  await f.assign("A1");
   // Dispatch only delivers to assignments backed by an active Space grant.
-  f.sqlite.exec(
+  (await f.sqlite.exec(
     "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,created_at,updated_at) VALUES('G','P','WS','U','now','now')",
-  );
-  f.sqlite.exec(
+  ));
+  await f.sqlite.exec(
     "UPDATE worker_assignments SET workspace_space_grant_id='G' WHERE id='A1'",
   );
-  f.sqlite
+  await f.sqlite
     .prepare(
       `UPDATE worker_assignments
           SET run_id='RUN', attempt_id='ATT1', idempotency_key='IDEM1', status=?
         WHERE id='A1'`,
     )
     .run(initialStatus);
-  f.sqlite
+  await f.sqlite
     .prepare(
       "UPDATE workspace_runtime_identities SET credential_token_hash=? WHERE id='RT'",
     )
@@ -122,12 +122,12 @@ export async function gatewayFixture(
     );
     expect(response.status).toBe(200);
   };
-  const status = () =>
-    f.sqlite
+  const status = async () =>
+    (await f.sqlite
       .prepare(
         "SELECT status, updated_at FROM worker_assignments WHERE id='A1'",
       )
-      .get() as { status: string; updated_at: string };
+      .get()) as { status: string; updated_at: string };
   let pollCursor = 0;
   /** Messages the Gateway has queued for the Service since the last call. */
   const outbound = async (target: WorkspaceGateway = gateway) => {

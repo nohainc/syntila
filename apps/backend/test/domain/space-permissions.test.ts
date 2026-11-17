@@ -23,7 +23,7 @@ import { requireWorkflowPermission } from "../../src/domain/routes/space-permiss
 
 const all = defaultSpaceMemberPermissions("owner");
 const none = defaultSpaceMemberPermissions("viewer");
-let store: ReturnType<typeof pgD1>;
+let store: Awaited<ReturnType<typeof pgD1>>;
 let env: SecurityEnv;
 const req = (user: string, body: unknown = {}, method = "POST") =>
   new Request("https://test/api", {
@@ -54,24 +54,24 @@ async function rights(id: string, permissions: typeof all) {
   );
 }
 
-beforeEach(() => {
-  store = pgD1();
+beforeEach(async () => {
+  store = await pgD1();
   for (const id of ["owner", "member", "other", "recipient"])
-    store.sqlite
+    (await store.sqlite
       .prepare(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
-      .run(id, `${id}@example.test`, id);
-  store.sqlite.exec(
+      .run(id, `${id}@example.test`, id));
+  await store.sqlite.exec(
     "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','owner','Space','now','now')",
   );
   for (const id of ["owner", "member", "other"])
-    store.sqlite
+    (await store.sqlite
       .prepare(
         "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES(?,'S',?,?,'now','now')",
       )
-      .run("m-" + id, id, id === "owner" ? "owner" : "collaborator");
-  store.sqlite.exec(
+      .run("m-" + id, id, id === "owner" ? "owner" : "collaborator"));
+  await store.sqlite.exec(
     "INSERT INTO threads(id,space_id,name,status,access_policy_json,lead_user_id,created_at,updated_at) VALUES('T','S','Member thread','active','{\"allowedUserIds\":[],\"allowedSpaceRoles\":[],\"allowedPermissions\":[\"view\",\"discuss\",\"execute\"]}','member','now','now')",
   );
   env = {
@@ -225,7 +225,7 @@ describe("Space member permissions contract v1", () => {
         "S",
       ),
     ).rejects.toMatchObject({ status: 400 });
-    store.sqlite
+    await store.sqlite
       .prepare(
         "INSERT INTO space_workflow_configurations VALUES('S','direct',1,?,'now')",
       )
@@ -245,7 +245,7 @@ describe("Space member permissions contract v1", () => {
       requireWorkflowPermission(env, "member", "S", "chat"),
     ).resolves.toBeDefined();
     expect(
-      store.sqlite.prepare("SELECT COUNT(*) AS count FROM threads").get(),
+      await store.sqlite.prepare("SELECT COUNT(*) AS count FROM threads").get(),
     ).toEqual({ count: 1 });
     await handleUpdateSpace(
       req("owner", { instructions: "Updated" }, "PATCH"),
@@ -254,7 +254,7 @@ describe("Space member permissions contract v1", () => {
     );
     const stored = JSON.parse(
       (
-        store.sqlite
+        await store.sqlite
           .prepare("SELECT settings_json FROM spaces WHERE id='S'")
           .get() as { settings_json: string }
       ).settings_json,
@@ -281,7 +281,7 @@ describe("Space member permissions contract v1", () => {
         "S",
       ),
     ).rejects.toMatchObject({ status: 400 });
-    store.sqlite.exec(
+    await store.sqlite.exec(
       "DELETE FROM space_workflow_configurations WHERE space_id='S'",
     );
     await expect(
@@ -289,7 +289,7 @@ describe("Space member permissions contract v1", () => {
     ).resolves.toBeDefined();
   });
   it("keeps Workspace grants independent from member permission snapshots", async () => {
-    store.sqlite.exec(
+    await store.sqlite.exec(
       "INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES('W','other','Other workspace','online','now','now')",
     );
     await expect(
@@ -302,7 +302,7 @@ describe("Space member permissions contract v1", () => {
     ).rejects.toMatchObject({ status: 403 });
   });
   it("allows an authorized member to contribute their own Workspace and lets the Space owner revoke it", async () => {
-    store.sqlite.exec(
+    await store.sqlite.exec(
       "INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES('W','member','Member workspace','online','now','now')",
     );
     await expect(
@@ -328,7 +328,7 @@ describe("Space member permissions contract v1", () => {
       "S",
     );
     expect(response.status).toBe(201);
-    const grant = store.sqlite
+    const grant = await store.sqlite
       .prepare(
         "SELECT id, status FROM workspace_space_grants WHERE space_id='S' AND workspace_id='W'",
       )
@@ -340,12 +340,12 @@ describe("Space member permissions contract v1", () => {
       grant.id,
     );
     expect(
-      store.sqlite
+      await store.sqlite
         .prepare("SELECT status FROM workspace_space_grants WHERE id=?")
         .get(grant.id),
     ).toEqual({ status: "revoked" });
     expect(
-      store.sqlite
+      await store.sqlite
         .prepare("SELECT owner_user_id FROM execution_workspaces WHERE id='W'")
         .get(),
     ).toEqual({ owner_user_id: "member" });
@@ -383,7 +383,7 @@ describe("Space member permissions contract v1", () => {
       requireWorkflowPermission(env, "recipient", "S", "direct"),
     ).resolves.toBeDefined();
     expect(
-      store.sqlite
+      await store.sqlite
         .prepare("SELECT role FROM space_memberships WHERE user_id='recipient'")
         .get(),
     ).toEqual({ role: "collaborator" });

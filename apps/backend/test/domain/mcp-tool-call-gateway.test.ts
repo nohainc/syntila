@@ -14,11 +14,11 @@ const call = (taskId: string) => ({
 
 async function fixture(capable = true) {
   const f = await gatewayFixture("created");
-  f.sqlite.exec(
+  await f.sqlite.exec(
     `INSERT OR REPLACE INTO workspace_runtime_facts(workspace_id,runtime_capabilities_json,updated_at)
      VALUES('WS','${capable ? '["workspace.mcp_tool_call.v1","workspace.mcp_tool_call_status.v1"]' : "[]"}','now')`,
   );
-  f.sqlite.exec(
+  await f.sqlite.exec(
     `INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
      VALUES('tool','R','tool_call','stateless_read',5000,'tool:v1','running','now','now')`,
   );
@@ -71,7 +71,7 @@ describe("Gateway MCP tool call", () => {
         (await f.outbound()).filter((m) => m.type === "mcp.tool_call.request"),
       ).toHaveLength(0);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
@@ -81,20 +81,20 @@ describe("Gateway MCP tool call", () => {
       const response = await request(call("tool"));
       expect(response.status).toBe(503);
       expect(
-        f.sqlite.prepare("SELECT COUNT(*) AS n FROM mcp_tool_calls").get(),
+        await f.sqlite.prepare("SELECT COUNT(*) AS n FROM mcp_tool_calls").get(),
       ).toEqual({ n: 0 });
       expect(
         (await f.outbound()).filter((m) => m.type === "mcp.tool_call.request"),
       ).toHaveLength(0);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
   it("answers unknown, not retryable, when a claimed call has no outcome", async () => {
     const { f, request } = await fixture();
     try {
-      f.sqlite.exec(
+      await f.sqlite.exec(
         "INSERT INTO mcp_tool_calls(task_id,workspace_id,dispatch_key,claimed_at) VALUES('tool','WS','mcp-tool-v1:tool','now')",
       );
       const response = await request(call("tool"));
@@ -103,14 +103,14 @@ describe("Gateway MCP tool call", () => {
         code: "dispatch_already_claimed",
       });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
   it("does not return another Workspace's claimed outcome or dispatch again", async () => {
     const { f, request } = await fixture();
     try {
-      f.sqlite
+      await f.sqlite
         .exec(`INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('WS2','U','Other','now','now');
         INSERT INTO mcp_tool_calls(task_id,workspace_id,dispatch_key,claimed_at,state,code,result_json,completed_at)
         VALUES('tool','WS2','mcp-tool-v1:tool','now','completed','completed','{"content":[{"text":"private"}]}','now')`);
@@ -121,7 +121,7 @@ describe("Gateway MCP tool call", () => {
         (await f.outbound()).filter((m) => m.type === "mcp.tool_call.request"),
       ).toHaveLength(0);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
@@ -139,10 +139,10 @@ describe("Gateway MCP tool call", () => {
         code: "completed",
       });
       expect(
-        f.sqlite.prepare("SELECT count(*) n FROM mcp_tool_calls").get(),
+        await f.sqlite.prepare("SELECT count(*) n FROM mcp_tool_calls").get(),
       ).toEqual({ n: 0 });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
@@ -166,12 +166,12 @@ describe("Gateway MCP tool call", () => {
             ...bad,
           })
           .catch(() => undefined);
-        const row = f.sqlite
+        const row = await f.sqlite
           .prepare("SELECT state FROM mcp_tool_calls WHERE task_id = 'tool'")
           .get() as { state: string | null } | undefined;
         expect(row?.state ?? null).not.toBe("completed");
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     }
   });
@@ -201,7 +201,7 @@ describe("Gateway MCP tool call", () => {
     it("asks the Workspace and returns its answer next to Cloud's record", async () => {
       const { f } = await fixture();
       try {
-        claim(f);
+        await claim(f);
         const pending = status(f, query("tool"));
         let sent;
         for (let i = 0; i < 50 && !sent; i += 1) {
@@ -228,7 +228,7 @@ describe("Gateway MCP tool call", () => {
         });
         // Read-only: Cloud's own record is untouched and nothing was dispatched.
         expect(
-          f.sqlite.prepare("SELECT state FROM mcp_tool_calls").get(),
+          await f.sqlite.prepare("SELECT state FROM mcp_tool_calls").get(),
         ).toEqual({ state: null });
         expect(
           (await f.outbound()).filter(
@@ -236,7 +236,7 @@ describe("Gateway MCP tool call", () => {
           ),
         ).toHaveLength(0);
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     });
 
@@ -244,10 +244,10 @@ describe("Gateway MCP tool call", () => {
       const { f } = await fixture();
       try {
         expect((await status(f, query("tool"))).status).toBe(404);
-        f.sqlite.exec(
+        await f.sqlite.exec(
           `INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('OTHER','U','Other','now','now')`,
         );
-        claim(f, "OTHER");
+        await claim(f, "OTHER");
         expect((await status(f, query("tool"))).status).toBe(409);
         expect(
           (await f.outbound()).filter(
@@ -258,14 +258,14 @@ describe("Gateway MCP tool call", () => {
           (await status(f, { ...query("tool"), dispatchKey: "x" })).status,
         ).toBe(400);
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     });
 
     it("reports unsupported without asking an older Service", async () => {
       const { f } = await fixture(false);
       try {
-        claim(f);
+        await claim(f);
         const body = (await (await status(f, query("tool"))).json()) as {
           workspace: unknown;
           reason: unknown;
@@ -278,7 +278,7 @@ describe("Gateway MCP tool call", () => {
           ),
         ).toHaveLength(0);
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     });
   });
@@ -326,7 +326,7 @@ describe("Gateway MCP tool call", () => {
           "Files six",
         );
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     });
 
@@ -338,7 +338,7 @@ describe("Gateway MCP tool call", () => {
         await f.send("mcp.inventory", bad).catch(() => undefined);
         expect(await read(f)).toBeNull();
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     });
   });

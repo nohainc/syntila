@@ -3,9 +3,9 @@ import { pgD1 } from "./helpers/pg-d1";
 import { loadAssignmentAdditionalFolderIds } from "../../src/domain/assignment-dispatcher.js";
 
 it("sends only folders attached by the owner of both Space and Workspace", async () => {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   try {
-    sqlite.exec(
+    await sqlite.exec(
       `INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
          ('U','u@test','U','now','now'),('V','v@test','V','now','now');
        INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES
@@ -32,9 +32,9 @@ it("sends only folders attached by the owner of both Space and Workspace", async
     expect(await load("S", "B")).toEqual([]);
     expect(await load(undefined, "A")).toEqual([]);
     // A Space handed to another person never carries the old owner's folders.
-    sqlite.exec("UPDATE spaces SET owner_user_id='V' WHERE id='S'");
+    (await sqlite.exec("UPDATE spaces SET owner_user_id='V' WHERE id='S'"));
     expect(await load("S", "A")).toEqual([]);
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });

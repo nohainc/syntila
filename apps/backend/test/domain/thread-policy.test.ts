@@ -106,8 +106,8 @@ it("validates selected effort and models against the selected Worker Profile", a
       ],
     },
   });
-  const { db, sqlite } = pgD1();
-  sqlite.exec(
+  const { db, sqlite } = await pgD1();
+  await sqlite.exec(
     user("owner") +
       workspace("WS", "owner") +
       `INSERT INTO worker_catalog (worker_type_id, display_name, created_at, updated_at)
@@ -119,7 +119,7 @@ it("validates selected effort and models against the selected Worker Profile", a
        ) VALUES ('worker', 'WS', 'owner', 'generic-worker', 'enabled', 'ready', 1, 1,
          'generic-profile', 1, '${T0}', '${T0}', '${T0}');`,
   );
-  sqlite
+  await sqlite
     .prepare(
       `INSERT INTO worker_profiles (worker_type_id, schema_version, profile_json, revision, digest, updated_at)
        VALUES ('generic-worker', 1, ?, 1, ?, '${T0}')`,
@@ -169,9 +169,9 @@ it("validates selected effort and models against the selected Worker Profile", a
     },
   };
   // The Profile is republished with a renamed model: same revision, new content.
-  sqlite
+  (await sqlite
     .prepare("UPDATE worker_profiles SET profile_json = ?, digest = ? WHERE worker_type_id = 'generic-worker'")
-    .run(executionProfile.replace('"name":"A"', '"name":"Renamed A"'), "b".repeat(64));
+    .run(executionProfile.replace('"name":"A"', '"name":"Renamed A"'), "b".repeat(64)));
   const changed = await validateWorkflowWorkerEligibility(
     env,
     "P",

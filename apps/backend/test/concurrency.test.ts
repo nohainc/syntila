@@ -25,7 +25,7 @@ export async function brokenInvariants(sql: Sql): Promise<string[]> {
 
 let sql: Sql, base = "", stop = async () => {}, mint: (sub: string, extra?: Record<string, unknown>) => Promise<string>;
 beforeAll(async () => {
-  const db = pgD1({ max: 24 });
+  const db = await pgD1({ max: 24 });
   sql = db.sql;
   const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
   const pub = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k" };

@@ -45,11 +45,11 @@ vi.mock("../../src/domain/routes/handlers.js", async (importOriginal) => {
 import worker from "../../src/domain/index.js";
 
 describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
-  function createTestEnv() {
-    const { sqlite, db } = pgD1();
+  async function createTestEnv() {
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, status, created_at, updated_at) VALUES
         ('user-alice', 'alice@test.com', 'Alice User', 'active', '${now}', '${now}'),
         ('user-bob', 'bob@test.com', 'Bob User', 'active', '${now}', '${now}'),
@@ -160,7 +160,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
   }
 
   it("Scenario A — New personal connection: email invite, acceptance, messaging, multi-threading", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
 
     // 1. Alice opens People -> empty connections
     const alicePeopleBefore = await worker.fetch(
@@ -219,7 +219,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
     };
 
     // 5. One Direct Space exists; under migration 0107, general_thread_id is null on new provision
-    const directSpaces = sqlite
+    const directSpaces = await sqlite
       .prepare(
         "SELECT space_id, user_low_id, user_high_id, general_thread_id FROM direct_spaces WHERE space_id = ?",
       )
@@ -251,7 +251,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
     const generalThreadId = createdGeneralThread.id;
     expect(generalThreadId).toBeTruthy();
 
-    const generalThread = sqlite
+    const generalThread = await sqlite
       .prepare("SELECT id, is_general, name FROM threads WHERE id = ?")
       .get(generalThreadId) as { id: string; is_general: number; name: string };
     expect(generalThread.name).toBe("General");
@@ -376,7 +376,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
   });
 
   it("Scenario B — AI collaboration: symmetric execution, visibility, separate context, unauthorized isolation", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
 
     // Connect Alice and Bob
     const inviteRes = await worker.fetch(
@@ -569,7 +569,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
   });
 
   it("Scenario C — Security: third-party invitation rejected, direct read rejected, destructive deletion blocked, hiding isolated", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
 
     // Establish Direct Space between Alice and Bob
     const inviteRes = await worker.fetch(
@@ -733,11 +733,11 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
   });
 
   it("Scenario D — Existing collaboration: Group Space remains unchanged through connect and disconnect", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
     const now = new Date().toISOString();
 
     // Alice and Bob share a normal Group Space
-    sqlite.exec(`
+    (await sqlite.exec(`
       INSERT INTO spaces (id, name, kind, owner_user_id, created_at, updated_at) VALUES
         ('group-project', 'Shared Project', 'group', 'user-alice', '${now}', '${now}');
       INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES
@@ -745,7 +745,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
         ('sm-b', 'group-project', 'user-bob', 'collaborator', '${now}', '${now}');
       INSERT INTO threads (id, space_id, name, status, lead_user_id, created_at, updated_at) VALUES
         ('th-project', 'group-project', 'General Project', 'active', 'user-alice', '${now}', '${now}');
-    `);
+    `));
 
     // Verify collaborator relationship is visible
     const peopleAlice = await worker.fetch(
@@ -801,7 +801,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
     expect(acceptRes.status).toBe(200);
 
     // Group Space remains untouched
-    const groupSpaceAfter = sqlite
+    const groupSpaceAfter = await sqlite
       .prepare(
         "SELECT kind, owner_user_id FROM spaces WHERE id = 'group-project'",
       )
@@ -809,7 +809,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
     expect(groupSpaceAfter.kind).toBe("group");
     expect(groupSpaceAfter.owner_user_id).toBe("user-alice");
 
-    const groupMemberships = sqlite
+    const groupMemberships = await sqlite
       .prepare(
         "SELECT user_id, role FROM space_memberships WHERE space_id = 'group-project' ORDER BY user_id",
       )
@@ -833,7 +833,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
     expect(disconnectRes.status).toBe(200);
 
     // Group Space memberships and thread access remain completely unaffected
-    const groupMembershipsAfterDisconnect = sqlite
+    const groupMembershipsAfterDisconnect = await sqlite
       .prepare(
         "SELECT user_id, role FROM space_memberships WHERE space_id = 'group-project' ORDER BY user_id",
       )
@@ -853,7 +853,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
   });
 
   it("Scenario E — Reliability: racing invitations establish one canonical connection and stable Direct Space", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
 
     // Alice and Bob both send invitations to each other simultaneously
     const [inviteAlice, inviteBob] = await Promise.all([
@@ -924,7 +924,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
     expect(spaceId1).toBe(spaceId2);
 
     // Exactly one Direct Space record exists in the database
-    const directSpaces = sqlite
+    const directSpaces = await sqlite
       .prepare(
         "SELECT space_id FROM direct_spaces WHERE (user_low_id = 'user-alice' AND user_high_id = 'user-bob') OR (user_low_id = 'user-bob' AND user_high_id = 'user-alice')",
       )
@@ -932,7 +932,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
     expect(directSpaces.length).toBe(1);
 
     // Exactly one active connection exists in person_connections
-    const connections = sqlite
+    const connections = await sqlite
       .prepare(
         "SELECT status, direct_space_id FROM person_connections WHERE user_low_id = 'user-alice' AND user_high_id = 'user-bob'",
       )

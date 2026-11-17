@@ -6,7 +6,7 @@ describe("Workspace WebSocket runtime authentication", () => {
   it.each(["token", "authToken"])(
     "does not accept the %s query parameter as a credential",
     async (parameter) => {
-      const f = pgD1();
+      const f = await pgD1();
       try {
         const recorded = recordStatements(f.db);
         const response = await handleWorkspaceGatewayConnect(
@@ -20,7 +20,7 @@ describe("Workspace WebSocket runtime authentication", () => {
         expect(response.status).toBe(401);
         expect(recorded.statements).toEqual([]);
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     },
   );

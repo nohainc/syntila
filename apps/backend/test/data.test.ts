@@ -2,14 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { Data, drainTxStats } from "../src/platform/data";
 import { pgD1 } from "./domain/helpers/pg-d1";
 
-const fresh = () => {
-  const { sql } = pgD1({ max: 8 });
+const fresh = async () => {
+  const { sql } = await pgD1({ max: 8 });
   return new Data(sql);
 };
 
 describe("data layer values", () => {
   test("rows come back as plain JS values", async () => {
-    const data = fresh();
+    const data = await fresh();
     const row = await data.read.row<Record<string, unknown>>`
       SELECT 7::int8 AS n, true AS b, '2026-01-02T03:04:05.678Z'::timestamptz AS at,
              ${{ b: 1, a: [1, "x"] }}::jsonb AS doc, NULL::text AS empty`;
@@ -17,12 +17,12 @@ describe("data layer values", () => {
   });
 
   test("undefined parameters are rejected", async () => {
-    const data = fresh();
+    const data = await fresh();
     await expect(data.read.rows`SELECT ${undefined} AS x`).rejects.toThrow("undefined");
   });
 
   test("fragments preserve values, repeated inputs, nulls and row counts", async () => {
-    const data = fresh();
+    const data = await fresh();
     const value = "same";
     const clause = data.read.frag`SELECT ${value}::text AS "firstValue", ${value}::text AS "secondValue", ${null}::text AS absent`;
     expect(await data.read.row`${clause}`).toEqual({ firstValue: value, secondValue: value, absent: null });
@@ -31,7 +31,7 @@ describe("data layer values", () => {
   });
 
   test("lists work for IN and multi-row inserts", async () => {
-    const data = fresh();
+    const data = await fresh();
     await data.read.run`CREATE TEMP TABLE IF NOT EXISTS t (id text, n int)`;
     const rows = [{ id: "a", n: 1 }, { id: "b", n: 2 }, { id: "c", n: 3 }];
     await data.tx("test.insert", async (tx) => {
@@ -44,7 +44,7 @@ describe("data layer values", () => {
 
 describe("data layer transactions", () => {
   test("commit runs afterCommit; rollback discards writes and afterCommit", async () => {
-    const data = fresh();
+    const data = await fresh();
     await data.read.run`CREATE TABLE IF NOT EXISTS tx_probe (id text PRIMARY KEY)`;
     const ran: string[] = [];
     await data.tx("test.commit", async (tx) => {
@@ -61,7 +61,7 @@ describe("data layer transactions", () => {
   });
 
   test("a deadlock retries the whole transaction", async () => {
-    const data = fresh();
+    const data = await fresh();
     await data.read.run`CREATE TABLE IF NOT EXISTS dl (id int PRIMARY KEY, n int NOT NULL)`;
     await data.read.run`INSERT INTO dl VALUES (1, 0), (2, 0)`;
     drainTxStats();
@@ -83,7 +83,7 @@ describe("data layer transactions", () => {
   });
 
   test("tx.lock orders writers of one key and leaves other keys free", async () => {
-    const data = fresh();
+    const data = await fresh();
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     let inside!: () => void;
@@ -108,7 +108,7 @@ describe("data layer transactions", () => {
 describe("database health sample", () => {
   test("reports lock waits and transaction ages", async () => {
     const { sampleDbHealth } = await import("../src/platform/db-health");
-    const { sql } = pgD1({ max: 6 });
+    const { sql } = await pgD1({ max: 6 });
     const data = new Data(sql);
     await data.read.run`CREATE TABLE IF NOT EXISTS hl (id int PRIMARY KEY)`;
     await data.read.run`INSERT INTO hl VALUES (1)`;
@@ -131,7 +131,7 @@ describe("database health sample", () => {
 });
 
 test("an unquoted camelCase result name is an error", async () => {
-  const data = fresh();
+  const data = await fresh();
   await expect(data.read.rows`SELECT 1 AS threadId`).rejects.toThrow('AS "threadId"');
   expect(() => data.read.raw("x AS spaceId")).toThrow('AS "spaceId"');
   expect(await data.read.row`SELECT 1 AS "threadId", 2 AS plain_name`).toEqual({ threadId: 1, plain_name: 2 });

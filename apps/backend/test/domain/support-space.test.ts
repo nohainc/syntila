@@ -6,10 +6,10 @@ import {
   requireWorkflowPermission,
 } from "../../src/domain/routes/space-permissions.js";
 
-function setup(support: string | null = "support@syntila.test") {
-  const { sqlite, db } = pgD1();
+async function setup(support: string | null = "support@syntila.test") {
+  const { sqlite, db } = await pgD1();
   const now = new Date().toISOString();
-  sqlite.exec(`
+  await sqlite.exec(`
     INSERT INTO users (id, email, display_name, avatar_url, status, created_at, updated_at) VALUES
       ('user-alice', 'alice@test.com', 'Alice', NULL, 'active', '${now}', '${now}'),
       ('user-bob', 'bob@test.com', 'Bob', NULL, 'active', '${now}', '${now}'),
@@ -78,7 +78,7 @@ function setup(support: string | null = "support@syntila.test") {
 
 describe("support Space provisioning", () => {
   it("creates one authorized Space and is idempotent", async () => {
-    const { sqlite, call } = setup(" SUPPORT@syntila.test ");
+    const { sqlite, call } = await setup(" SUPPORT@syntila.test ");
     const first = await call("alice");
     expect(first.status).toBe(201);
     const { spaceId } = (await first.json()) as { spaceId: string };
@@ -87,7 +87,7 @@ describe("support Space provisioning", () => {
     expect(((await second.json()) as { spaceId: string }).spaceId).toBe(
       spaceId,
     );
-    const members = sqlite
+    const members = await sqlite
       .prepare(
         "SELECT user_id FROM space_memberships WHERE space_id=? ORDER BY user_id",
       )
@@ -97,16 +97,16 @@ describe("support Space provisioning", () => {
       { user_id: "user-support" },
     ]);
     expect(
-      sqlite.prepare("SELECT COUNT(*) c FROM support_spaces").get(),
+      await sqlite.prepare("SELECT COUNT(*) c FROM support_spaces").get(),
     ).toEqual({ c: 1 });
     expect(
-      sqlite.prepare("SELECT COUNT(*) c FROM person_connections").get(),
+      await sqlite.prepare("SELECT COUNT(*) c FROM person_connections").get(),
     ).toEqual({ c: 0 });
   });
 
   it("excludes the configured support account from People while retaining other people", async () => {
-    const { sqlite, env } = setup(" SUPPORT@syntila.test ");
-    sqlite.exec(
+    const { sqlite, env } = await setup(" SUPPORT@syntila.test ");
+    await sqlite.exec(
       `INSERT INTO people_relationships (user_low_id, user_high_id, established_at) VALUES ('user-alice', 'user-support', '2026-01-01'), ('user-alice', 'user-bob', '2026-01-01')`,
     );
     const res = await worker.fetch(
@@ -120,7 +120,7 @@ describe("support Space provisioning", () => {
   });
 
   it("recreates support after deletion", async () => {
-    const { env, call } = setup();
+    const { env, call } = await setup();
     const { spaceId } = (await (await call("alice")).json()) as {
       spaceId: string;
     };
@@ -140,7 +140,7 @@ describe("support Space provisioning", () => {
   });
 
   it("converges under concurrent requests", async () => {
-    const { sqlite, call } = setup();
+    const { sqlite, call } = await setup();
     const res = await Promise.all([
       call("alice"),
       call("alice"),
@@ -154,44 +154,44 @@ describe("support Space provisioning", () => {
     );
     expect(ids.size).toBe(1);
     expect(
-      sqlite.prepare("SELECT COUNT(*) c FROM direct_spaces").get(),
+      await sqlite.prepare("SELECT COUNT(*) c FROM direct_spaces").get(),
     ).toEqual({ c: 1 });
     expect(
-      sqlite.prepare("SELECT COUNT(*) c FROM spaces WHERE kind='direct'").get(),
+      await sqlite.prepare("SELECT COUNT(*) c FROM spaces WHERE kind='direct'").get(),
     ).toEqual({ c: 1 });
   });
 
   it("adopts an existing Direct Space and keeps its history", async () => {
-    const { sqlite, call } = setup();
+    const { sqlite, call } = await setup();
     const first = await call("alice");
     const { spaceId } = (await first.json()) as { spaceId: string };
-    sqlite.exec("DELETE FROM support_spaces");
+    await sqlite.exec("DELETE FROM support_spaces");
     const again = await call("alice");
     expect(again.status).toBe(200);
     expect(((await again.json()) as { spaceId: string }).spaceId).toBe(spaceId);
     expect(
-      sqlite.prepare("SELECT COUNT(*) c FROM support_spaces").get(),
+      await sqlite.prepare("SELECT COUNT(*) c FROM support_spaces").get(),
     ).toEqual({ c: 1 });
   });
 
   it("gives each user a separate Space", async () => {
-    const { call } = setup();
+    const { call } = await setup();
     const a = (await (await call("alice")).json()) as { spaceId: string };
     const b = (await (await call("bob")).json()) as { spaceId: string };
     expect(a.spaceId).not.toBe(b.spaceId);
   });
 
   it("fails safely on missing/unknown config, self, and blocks", async () => {
-    expect((await setup(null).call("alice")).status).toBe(503);
-    expect((await setup("nobody@syntila.test").call("alice")).status).toBe(503);
-    expect((await setup().call("support")).status).toBe(409);
-    const s = setup();
-    s.sqlite.exec(
+    expect((await (await setup(null)).call("alice")).status).toBe(503);
+    expect((await (await setup("nobody@syntila.test")).call("alice")).status).toBe(503);
+    expect((await (await setup()).call("support")).status).toBe(409);
+    const s = await setup();
+    await s.sqlite.exec(
       "INSERT INTO user_blocks (blocker_user_id, blocked_user_id, created_at) VALUES ('user-support','user-alice','2024-01-01T00:00:00Z')",
     );
     expect((await s.call("alice")).status).toBe(403);
-    const inactive = setup();
-    inactive.sqlite.exec(
+    const inactive = await setup();
+    await inactive.sqlite.exec(
       "UPDATE users SET status='suspended' WHERE id='user-support'",
     );
     expect((await inactive.call("alice")).status).toBe(503);
@@ -200,7 +200,7 @@ describe("support Space provisioning", () => {
 
 describe("support Space state endpoint", () => {
   it("reports no Space and hidden before provisioning, then the stored state", async () => {
-    const { env } = setup();
+    const { env } = await setup();
     const get = () =>
       worker.fetch(
         new Request("https://syntila.test/api/people/support", {
@@ -223,7 +223,7 @@ describe("support Space state endpoint", () => {
 
 describe("support Space is human messaging only", () => {
   it("denies Chat, Work and own Workers to both participants and flags the Space", async () => {
-    const { env, call } = setup();
+    const { env, call } = await setup();
     const { spaceId } = (await (await call("alice")).json()) as {
       spaceId: string;
     };
@@ -255,9 +255,9 @@ describe("support Space is human messaging only", () => {
   });
 
   it("leaves ordinary Direct Spaces unchanged", async () => {
-    const { sqlite, env } = setup();
+    const { sqlite, env } = await setup();
     const now = new Date().toISOString();
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO spaces (id, owner_user_id, name, kind, settings_json, created_at, updated_at) VALUES ('space-d', 'user-alice', 'D', 'direct', '{}', '${now}', '${now}');
       INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES ('pm-1','space-d','user-alice','owner','${now}','${now}');
     `);

@@ -9,27 +9,27 @@ import {
 
 const created = "2020-01-01T00:00:00.000Z";
 
-function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite
+async function fixture() {
+  const { sqlite, db } = await pgD1();
+  await sqlite
     .prepare(
       "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('alice','alice@test','alice','now','now')",
     )
     .run();
-  sqlite.exec(
+  await sqlite.exec(
     "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','alice','Space','now','now')",
   );
-  sqlite
+  await sqlite
     .prepare(
       "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('bob','bob@test','bob','now','now')",
     )
     .run();
-  sqlite
+  await sqlite
     .prepare(
       "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m','S','alice','owner',?,?),('m2','S','bob','collaborator',?,?)",
     )
     .run(created, created, created, created);
-  sqlite
+  await sqlite
     .prepare(
       "INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('T','S','T','active','alice',?,?)",
     )
@@ -63,7 +63,7 @@ function fixture() {
 }
 
 it("stores Thread view state in metadata without touching updatedAt", async () => {
-  const { env, patch } = fixture();
+  const { env, patch } = await fixture();
   const first = await handleUpdateThread(
     patch({
       metadata: {
@@ -104,7 +104,7 @@ it("stores Thread view state in metadata without touching updatedAt", async () =
 });
 
 it("rejects unsupported Thread metadata", async () => {
-  const { env, patch } = fixture();
+  const { env, patch } = await fixture();
   for (const metadata of [
     { other: 1 },
     { viewState: { tabIndex: 2 } },
@@ -118,7 +118,7 @@ it("rejects unsupported Thread metadata", async () => {
 });
 
 it("stores Space sidebar state in Space settings and validates it", async () => {
-  const { env, patch } = fixture();
+  const { env, patch } = await fixture();
   const response = await handleUpdateSpace(
     patch({ settings: { threadOrder: ["T"], sidebarExpanded: true } }),
     env,
@@ -148,10 +148,10 @@ it("stores Space sidebar state in Space settings and validates it", async () => 
 });
 
 it("keeps each member's Thread view state separate", async () => {
-  const { env, envFor, patch, sqlite } = fixture();
+  const { env, envFor, patch, sqlite } = await fixture();
   const bob = envFor("bob");
   // Both members can manage the Thread: Alice owns the Space, Bob leads it.
-  sqlite.exec("UPDATE threads SET lead_user_id = 'bob'");
+  (await sqlite.exec("UPDATE threads SET lead_user_id = 'bob'"));
   const select = (workerId: string) =>
     patch({
       metadata: {
@@ -173,14 +173,14 @@ it("keeps each member's Thread view state separate", async () => {
   expect(await viewState(env)).toBe("alice-worker");
   expect(await viewState(bob)).toBe("bob-worker");
   // A shared copy from before per-user storage is never shown to anyone.
-  sqlite.exec(
+  (await sqlite.exec(
     `UPDATE threads SET metadata_json = syntila_json_set(metadata_json, '$.viewState', '{"workerId":"shared"}')`,
-  );
+  ));
   expect(await viewState(env)).toBe("alice-worker");
 });
 
 it("clamps a future selection time to the server clock", async () => {
-  const { env, patch } = fixture();
+  const { env, patch } = await fixture();
   const response = await handleUpdateThread(
     patch({
       metadata: {

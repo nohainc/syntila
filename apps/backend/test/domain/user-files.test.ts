@@ -1,7 +1,7 @@
+import type { FixtureDb } from "./helpers/fixture-db";
 import { pgD1 } from "./helpers/pg-d1";
 import { basicThread, user, workRequest } from "./helpers/seed";
 import { readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "./helpers/vitest-compat";
 
 let userId = "owner";
@@ -29,20 +29,20 @@ import {
   pruneOrphanUserFiles,
 } from "../../src/domain/routes/user-files.js";
 
-function fixture() {
-  const { sqlite: fixtureSqlite, db: fixtureDb } = pgD1();
-  const sqlite = fixtureSqlite as unknown as DatabaseSync;
-  sqlite.exec([user("owner"), user("other"), basicThread({ user: "owner", space: "space", thread: "thread", spaceName: "Team", threadName: "Plan" })].join("\n"));
-  sqlite.exec(
+async function fixture() {
+  const { sqlite: fixtureSqlite, db: fixtureDb } = await pgD1();
+  const sqlite = fixtureSqlite as unknown as FixtureDb;
+  await sqlite.exec([user("owner"), user("other"), basicThread({ user: "owner", space: "space", thread: "thread", spaceName: "Team", threadName: "Plan" })].join("\n"));
+  await sqlite.exec(
     "" /* D1 migration: schema is final in PostgreSQL */,
   );
   for (const migration of [
     "0094_account_plans.sql",
     "0098_user_file_reservations.sql",
   ])
-    sqlite.exec(
+    (await sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
-    );
+    ));
   // The real adapter: writes run in data-layer transactions (tx-env.ts).
   const db = fixtureDb;
   const objects = new Map<string, Uint8Array>();
@@ -147,13 +147,13 @@ beforeEach(() => {
 
 describe("My Files", () => {
   it("reconciles paginated storage, recovers legacy uploads and removes only missing owned records", async () => {
-    const { sqlite, env, upload, list, objects } = fixture();
+    const { sqlite, env, upload, list, objects } = await fixture();
     for (const text of ["one", "two", "three"]) await upload(text);
     const files = (await list()).files;
     const missing = files[0]!.fileId;
     const legacy = files[1]!.fileId;
     const resized = files[2]!.fileId;
-    sqlite.prepare("DELETE FROM user_files WHERE id = ?").run(legacy);
+    await sqlite.prepare("DELETE FROM user_files WHERE id = ?").run(legacy);
     objects.delete(workRequestFileKey(missing));
     objects.set(workRequestFileKey(resized), new Uint8Array(12));
     userId = "other";
@@ -183,7 +183,7 @@ describe("My Files", () => {
       objects.get(workRequestFileKey(legacy))!.byteLength + 12,
     );
     expect(
-      sqlite.prepare("SELECT id FROM user_files WHERE id = ?").get(other),
+      await sqlite.prepare("SELECT id FROM user_files WHERE id = ?").get(other),
     ).toBeTruthy();
     expect(objects.has(workRequestFileKey(legacy))).toBe(true);
     await handleSyncUserFiles(
@@ -194,9 +194,9 @@ describe("My Files", () => {
   });
 
   it("continues record batches without skipping rows removed in earlier batches", async () => {
-    const { sqlite, env, list } = fixture();
+    const { sqlite, env, list } = await fixture();
     for (let i = 0; i < 51; i++) {
-      sqlite
+      await sqlite
         .prepare(
           `INSERT INTO user_files VALUES (?, 'owner', 'thread', 'space', 'missing', 'x', 1, '2026-01-01')`,
         )
@@ -223,7 +223,7 @@ describe("My Files", () => {
   });
 
   it("does not prune records when storage reads fail", async () => {
-    const { env, upload, list, bucket } = fixture();
+    const { env, upload, list, bucket } = await fixture();
     await upload();
     bucket.head = async () => {
       throw new Error("Storage unavailable");
@@ -240,7 +240,7 @@ describe("My Files", () => {
   });
 
   it("counts each user's uploads and lists only the caller's files", async () => {
-    const { upload, list } = fixture();
+    const { upload, list } = await fixture();
     expect((await upload("hello")).status).toBe(201);
     expect((await upload("abc")).status).toBe(201);
     const mine = await list();
@@ -258,8 +258,8 @@ describe("My Files", () => {
   });
 
   it("rejects an upload that would exceed the total quota", async () => {
-    const { sqlite, upload, objects } = fixture();
-    sqlite
+    const { sqlite, upload, objects } = await fixture();
+    await sqlite
       .prepare(
         `INSERT INTO user_files VALUES ('wrf-x', 'owner', 'thread', 'space', 'big', 'x', ?, '2026-01-01')`,
       )
@@ -273,11 +273,11 @@ describe("My Files", () => {
   });
 
   it("downloads owned bytes with safe attachment headers and hides unavailable files", async () => {
-    const { upload, env, objects, sqlite } = fixture();
+    const { upload, env, objects, sqlite } = await fixture();
     const { file } = (await (await upload("hello")).json()) as {
       file: { fileId: string };
     };
-    sqlite
+    await sqlite
       .prepare("UPDATE user_files SET name = ? WHERE id = ?")
       .run('a"\r\né.txt', file.fileId);
     const download = (id = file.fileId) =>
@@ -301,9 +301,9 @@ describe("My Files", () => {
     await expect(download()).rejects.toMatchObject({ status: 404 });
     userId = "owner";
     await expect(download("invalid")).rejects.toMatchObject({ status: 404 });
-    sqlite.prepare("DELETE FROM user_files WHERE id = ?").run(file.fileId);
+    await sqlite.prepare("DELETE FROM user_files WHERE id = ?").run(file.fileId);
     await expect(download()).rejects.toMatchObject({ status: 404 });
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO user_files VALUES (?, 'owner', 'thread', 'space', 'a', 'text/plain', 5, '2026-01-01')",
       )
@@ -313,7 +313,7 @@ describe("My Files", () => {
   });
 
   it("lets only the owner delete a file, freeing its bytes and quota", async () => {
-    const { upload, list, env, objects } = fixture();
+    const { upload, list, env, objects } = await fixture();
     const { file } = (await (await upload()).json()) as {
       file: { fileId: string };
     };
@@ -334,14 +334,14 @@ describe("My Files", () => {
   });
 
   it("prunes day-old uploads that nothing references and keeps cited ones", async () => {
-    const { sqlite, upload, list, env } = fixture();
+    const { sqlite, upload, list, env } = await fixture();
     const ids: string[] = [];
     for (const text of ["one", "two"])
       ids.push(
         ((await (await upload(text)).json()) as { file: { fileId: string } })
           .file.fileId,
       );
-    sqlite
+    await sqlite
       .prepare(workRequest("thread", "owner"))
       .run(JSON.stringify({ attachments: [{ kind: "file", fileId: ids[0] }] }));
     expect((await list()).files.find((f) => f.fileId === ids[0])!.inUse).toBe(

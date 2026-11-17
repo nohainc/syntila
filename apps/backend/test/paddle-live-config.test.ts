@@ -4,7 +4,7 @@ import { verifyCheckoutReference } from '../src/paddle-reference';
 import { pgD1, dropTestDatabases } from './domain/helpers/pg-d1';
 import { testTokens } from './domain/helpers/tokens';
 
-const store = pgD1();
+const store = await pgD1();
 const secret = 'a'.repeat(32);
 let authenticated: Request;
 beforeAll(async () => {

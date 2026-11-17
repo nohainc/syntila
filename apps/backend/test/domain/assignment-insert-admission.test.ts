@@ -7,7 +7,7 @@ vi.mock("../../src/domain/scheduler.js", () => scheduler);
 
 async function fixture() {
   const f = await conversationFixture();
-  f.sqlite.exec(
+  await f.sqlite.exec(
     "INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now')",
   );
   scheduler.selectSpaceExecutionTarget.mockResolvedValue({
@@ -70,10 +70,10 @@ it.each([
   async (bytes, kept) => {
     const f = await fixture();
     try {
-      const conversation = f.sqlite
+      const conversation = (await f.sqlite
         .prepare("SELECT id FROM conversations")
-        .get()!;
-      f.sqlite
+        .get())!;
+      await f.sqlite
         .prepare(
           `INSERT INTO conversation_history_entries
         (conversation_id,sequence,kind,event_type,actor_type,source_id,text,metadata_json,occurred_at)
@@ -98,7 +98,7 @@ it.each([
         256 * 1024,
       );
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   },
 );
@@ -110,19 +110,19 @@ it("dispatches an inserted assignment despite conversation and history trigger w
     expect(result.accepted).toBe(true);
     expect(f.fetch).toHaveBeenCalledTimes(1);
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare("SELECT status FROM worker_assignments WHERE id=?")
         .get(result.assignmentId),
     ).toEqual({ status: "dispatched" });
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT assignment_id FROM conversation_turns WHERE assignment_id=?",
         )
         .get(result.assignmentId),
     ).toEqual({ assignment_id: result.assignmentId });
     expect(
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT count(*) AS n FROM conversation_history_entries WHERE turn_id=?",
         )
@@ -131,7 +131,7 @@ it("dispatches an inserted assignment despite conversation and history trigger w
     const payload = JSON.parse(String(f.fetch.mock.calls[0]?.[1]?.body));
     expect(payload.payload.snapshot.maxConcurrentAssignments).toBe(1);
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });
 
@@ -139,10 +139,10 @@ it("rejects an insert refused by an atomic capacity guard without sending to the
   const f = await fixture();
   try {
     // Model a capacity race after selection: the insert itself admits no row.
-    f.sqlite.exec(
+    (await f.sqlite.exec(
       `CREATE FUNCTION full_capacity_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$;
        CREATE TRIGGER full_capacity BEFORE INSERT ON worker_assignments FOR EACH ROW EXECUTE FUNCTION full_capacity_fn()`,
-    );
+    ));
     const result = await f.dispatch();
     expect(result).toMatchObject({
       accepted: false,
@@ -152,12 +152,12 @@ it("rejects an insert refused by an atomic capacity guard without sending to the
     expect(result.error).toContain("capacity");
     expect(f.fetch).not.toHaveBeenCalled();
     expect(
-      f.sqlite.prepare("SELECT count(*) AS n FROM worker_assignments").get(),
+      await f.sqlite.prepare("SELECT count(*) AS n FROM worker_assignments").get(),
     ).toEqual({ n: 0 });
     expect(
-      f.sqlite.prepare("SELECT count(*) AS n FROM conversation_turns").get(),
+      await f.sqlite.prepare("SELECT count(*) AS n FROM conversation_turns").get(),
     ).toEqual({ n: 0 });
   } finally {
-    f.sqlite.close();
+    await f.sqlite.close();
   }
 });

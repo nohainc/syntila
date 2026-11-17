@@ -21,12 +21,12 @@ vi.mock("../../src/domain/routes/profiles.js", () => ({
   handleListWorkspaceWorkerInventory: async () => Response.json(inventory),
 }));
 it("persists only user overrides, isolates users, retains offline choices, resets and rejects foreign writes", async () => {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   try {
-    sqlite.exec(
+    await sqlite.exec(
       "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('U','u@test','U','now','now'),('V','v@test','V','now','now')",
     );
-    sqlite.exec(
+    await sqlite.exec(
       "INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws','U','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('U','ws','now');",
     );
     const env = { SYNTILA_DB: db } as SecurityEnv;
@@ -91,21 +91,21 @@ it("persists only user overrides, isolates users, retains offline choices, reset
       "chat",
     );
     expect(
-      sqlite
+      (await sqlite
         .prepare("SELECT count(*) n FROM user_workflow_configurations")
-        .get()!.n,
+        .get())!.n,
     ).toBe(1);
     await handleWorkflowConfigurations(request("DELETE", "V"), env, "chat");
     expect(
-      sqlite
+      (await sqlite
         .prepare("SELECT count(*) n FROM user_workflow_configurations")
-        .get()!.n,
+        .get())!.n,
     ).toBe(1);
     await handleWorkflowConfigurations(request("DELETE"), env, "chat");
     expect(
-      sqlite
+      (await sqlite
         .prepare("SELECT count(*) n FROM user_workflow_configurations")
-        .get()!.n,
+        .get())!.n,
     ).toBe(0);
     await expect(
       handleWorkflowConfigurations(
@@ -119,9 +119,9 @@ it("persists only user overrides, isolates users, retains offline choices, reset
       ),
     ).rejects.toThrow("Worker must be selected explicitly");
     expect(
-      sqlite
+      (await sqlite
         .prepare("SELECT count(*) n FROM user_workflow_configurations")
-        .get()!.n,
+        .get())!.n,
     ).toBe(0);
     inventory.workers.push({
       id: "elsewhere",
@@ -351,6 +351,6 @@ it("persists only user overrides, isolates users, retains offline choices, reset
     ).rejects.toThrow("execution options");
     await handleWorkflowConfigurations(request("DELETE"), env, "chat");
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });

@@ -17,18 +17,18 @@ const input = {
 };
 
 const closers: Array<() => void> = [];
-afterEach(() => {
-  for (const close of closers.splice(0)) close();
+afterEach(async () => {
+  for (const close of closers.splice(0)) await close();
 });
 
 async function fixture(grant: string | null, reply: () => Promise<Response>) {
   const f = await conversationFixture();
   closers.push(() => f.sqlite.close());
   if (grant)
-    f.sqlite.exec(
+    (await f.sqlite.exec(
       `INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,created_at,updated_at)
        VALUES('G','P','WS','U','${grant}','now','now')`,
-    );
+    ));
   const sent: unknown[] = [];
   const env = {
     SYNTILA_DB: f.db as unknown as D1Database,
@@ -76,7 +76,7 @@ it("refuses without an active Space grant, before contacting the Workspace", asy
       code: "workspace_not_granted",
     });
     expect(sent).toHaveLength(0);
-    closers.pop()!();
+    await closers.pop()!();
   }
 });
 

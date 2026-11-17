@@ -10,9 +10,9 @@ import { PgDb } from "../src/platform/data";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 
-let base = "", stop = async () => {}, mint: (sub: string, extra?: Record<string, unknown>) => Promise<string>, runtime: ReturnType<typeof createRuntime>;
+let base = "", stop = async () => {}, mint: (sub: string, extra?: Record<string, unknown>) => Promise<string>, runtime: Awaited<ReturnType<typeof createRuntime>>;
 beforeAll(async () => {
-  const { sql } = pgD1();
+  const { sql } = await pgD1();
   const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
   const pub = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k" };
   const priv = { ...(await crypto.subtle.exportKey("jwk", pair.privateKey)), kid: "k" } as JsonWebKey & { kid: string };
@@ -94,7 +94,7 @@ describe("runtime", () => {
     const ws = new WebSocket(`${base.replace("http", "ws")}/api/workspace-gateway/connect?workspaceRuntimeId=${encodeURIComponent(runtimeId)}`, { headers: { authorization: `Bearer ${credential}` } } as any);
     await new Promise<void>((resolve, reject) => { ws.onopen = () => resolve(); ws.onerror = () => reject(new Error("gateway socket failed")); });
     for (let i = 0; i < 80; i++) {
-      const [row] = await fixtureStatement(runtime.env.SYNTILA_DB, "SELECT status FROM execution_workspaces WHERE id = ?1", [reg.body.workspaceId ?? reg.body.workspace?.id]).all().then((r: any) => r.results);
+      const [row] = (await fixtureStatement(runtime.env.SYNTILA_DB, "SELECT status FROM execution_workspaces WHERE id = ?1", [reg.body.workspaceId ?? reg.body.workspace?.id]).all()).results;
       if (row?.status === "online") break;
       await Bun.sleep(25);
     }

@@ -8,9 +8,9 @@ describe("WorkspaceRuntimeAuthenticator", () => {
   it("authenticates credentials and binds sessions to the same Workspace", async () => {
     const token = "runtime-secret";
     const tokenHash = await hashToken(token);
-    const f = pgD1();
+    const f = await pgD1();
     try {
-      f.sqlite.exec(`${user("owner")}
+      await f.sqlite.exec(`${user("owner")}
         ${workspace("workspace-1", "owner")}
         INSERT INTO workspace_runtime_identities(id, workspace_id, credential_token_hash, installation_id)
           VALUES ('runtime-1', 'workspace-1', '${tokenHash}', 'install-1');
@@ -31,12 +31,12 @@ describe("WorkspaceRuntimeAuthenticator", () => {
         authenticator.authenticateSession("missing", token),
       ).resolves.toBeNull();
       // A revoked Workspace no longer authenticates its runtime.
-      f.sqlite.exec("UPDATE execution_workspaces SET status = 'revoked' WHERE id = 'workspace-1'");
+      (await f.sqlite.exec("UPDATE execution_workspaces SET status = 'revoked' WHERE id = 'workspace-1'"));
       await expect(
         authenticator.authenticateRuntime("runtime-1", token),
       ).resolves.toBeNull();
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 });

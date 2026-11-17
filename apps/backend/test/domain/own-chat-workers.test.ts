@@ -14,8 +14,8 @@ import { requireWorkflowPermission } from "../../src/domain/routes/space-permiss
  * Space "space" uses Workspace "space-ws" (owned by "owner"). "member" owns
  * "own-ws" with Worker "mine" and borrows "lent-ws" with Worker "lent".
  */
-function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
-  const { db, sqlite } = pgD1();
+async function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
+  const { db, sqlite } = await pgD1();
   const settings = memberRights
     ? { memberPermissions: { member: memberRights } }
     : {};
@@ -24,7 +24,7 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
        worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
        local_concurrency_limit, revision, created_at, updated_at, last_seen_at
      ) VALUES ('${worker}', '${ws}', '${owner}', 'chatgpt-codex', 'enabled', 'ready', 1, 1, '${T0}', '${T0}', '${T0}');`;
-  sqlite.exec(
+  await sqlite.exec(
     user("owner") +
       user("member") +
       user("lender") +
@@ -55,15 +55,15 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
       [],
       { workerId },
     );
-  const grants = () =>
-    sqlite
+  const grants = async () =>
+    (await sqlite
       .prepare(
         `SELECT workspace_id AS "workspaceId", granted_by_user_id AS "grantedBy", allowed_permissions_json AS permissions
            FROM workspace_space_grants WHERE space_id = 'space'`,
       )
-      .all() as { workspaceId: string; grantedBy: string; permissions: string }[];
-  const audits = () =>
-    sqlite.prepare("SELECT action FROM space_audit_log WHERE space_id = 'space'").all() as { action: string }[];
+      .all()) as { workspaceId: string; grantedBy: string; permissions: string }[];
+  const audits = async () =>
+    (await sqlite.prepare("SELECT action FROM space_audit_log WHERE space_id = 'space'").all()) as { action: string }[];
   return { resolve, grants, audits, env };
 }
 
@@ -78,47 +78,45 @@ beforeEach(() => {
 });
 
 it("admits the member's own Worker for Chat through a read-only grant", async () => {
-  const f = fixture(null);
+  const f = await fixture(null);
   await expect(f.resolve("mine")).resolves.toEqual({
     chat: { workerId: "mine" },
   });
-  const grants = f.grants();
+  const grants = await f.grants();
   expect(grants).toHaveLength(1);
   expect(grants[0]).toMatchObject({ workspaceId: "own-ws", grantedBy: "member" });
   expect(JSON.parse(grants[0]!.permissions)).toEqual(["repository:read"]);
-  expect(f.audits().map((a) => a.action)).toEqual(["chat.own_workspace.authorized"]);
+  expect((await f.audits()).map((a) => a.action)).toEqual(["chat.own_workspace.authorized"]);
 });
 
 it("rejects own Workers when the member lacks Chat", async () => {
-  const f = fixture({ chat: false, work: true });
+  const f = await fixture({ chat: false, work: true });
   await expect(f.resolve("mine")).rejects.toMatchObject({ status: 403 });
-  expect(f.grants()).toEqual([]);
+  expect(await f.grants()).toEqual([]);
 });
 
 it("ignores a legacy stored useOwnWorkers: false while Chat is granted", async () => {
-  const f = fixture({ chat: true, useOwnWorkers: false });
+  const f = await fixture({ chat: true, useOwnWorkers: false });
   await expect(f.resolve("mine")).resolves.toBeDefined();
 });
 
 it("never treats a Worker shared with the member as their own", async () => {
-  const f = fixture(null);
+  const f = await fixture(null);
   await expect(f.resolve("lent")).rejects.toMatchObject({ status: 422 });
-  expect(f.grants()).toEqual([]);
+  expect(await f.grants()).toEqual([]);
 });
 
 it("requires an owned Worker in a personal Space", async () => {
-  const f = fixture(null, "direct");
+  const f = await fixture(null, "direct");
   await expect(f.resolve("shared")).rejects.toMatchObject({ status: 403 });
   await expect(f.resolve("lent")).rejects.toMatchObject({ status: 403 });
   await expect(f.resolve(undefined)).rejects.toMatchObject({ status: 403 });
-  await expect(
-    f.resolve("mine", BUILTIN_WORKFLOWS.direct),
-  ).rejects.toMatchObject({ status: 403 });
+  await expect(f.resolve("mine", BUILTIN_WORKFLOWS.direct),).rejects.toMatchObject({ status: 403 });
   await expect(f.resolve("mine")).resolves.toBeDefined();
 });
 
 it("rejects non-Chat workflow admission in a personal Space", async () => {
-  const f = fixture(null, "direct");
+  const f = await fixture(null, "direct");
   await expect(
     requireWorkflowPermission(f.env, "member", "space", "direct"),
   ).rejects.toMatchObject({ status: 403 });

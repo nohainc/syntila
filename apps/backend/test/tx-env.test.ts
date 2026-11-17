@@ -4,9 +4,9 @@ import { inTransaction } from "../src/platform/tx-env";
 import { dataOf } from "../src/platform/data";
 import { createEventPublisher } from "../src/domain/event-publisher";
 
-function fixture() {
-  const { db, sql, sqlite } = pgD1({ max: 6 });
-  sqlite.exec(`
+async function fixture() {
+  const { db, sql, sqlite } = await pgD1({ max: 6 });
+  await sqlite.exec(`
     INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('u', 'u@t', 'u', now(), now());
     INSERT INTO spaces (id, owner_user_id, name, created_at, updated_at) VALUES ('S', 'u', 'S', now(), now());
     INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES ('m', 'S', 'u', 'owner', now(), now());`);
@@ -36,7 +36,7 @@ const publish = (env: any, mutate?: (tx: any) => Promise<unknown>) =>
 
 describe("inTransaction", () => {
   test("data-layer statements, queries and events commit together; fan-out waits for the commit", async () => {
-    const { env, sql, delivered } = fixture();
+    const { env, sql, delivered } = await fixture();
     await inTransaction(env, "test.commit", async (txEnv, tx) => {
       await dataOf(txEnv).read.run`UPDATE spaces SET name = ${"A"} WHERE id = 'S'`;
       // The data layer inside sees the transaction's uncommitted write.
@@ -69,7 +69,7 @@ describe("inTransaction", () => {
   });
 
   test("a rollback keeps neither the writes nor the event, and nobody is told", async () => {
-    const { env, sql, delivered } = fixture();
+    const { env, sql, delivered } = await fixture();
     await expect(
       inTransaction(env, "test.rollback", async (txEnv) => {
         await publish(txEnv, (t) =>
@@ -87,7 +87,7 @@ describe("inTransaction", () => {
   });
 
   test("statements inside do not wait for the old global writer lock", async () => {
-    const { env, sql } = fixture();
+    const { env, sql } = await fixture();
     // Hold the global writer lock from another connection.
     const holder = await sql.reserve();
     await holder`BEGIN`;
@@ -110,7 +110,7 @@ describe("inTransaction", () => {
 
 describe("transactions on a small pool", () => {
   test("many parallel transactions on a small pool do not starve each other", async () => {
-    const { db } = pgD1({ max: 2 });
+    const { db } = await pgD1({ max: 2 });
     const env = { SYNTILA_DB: db } as any;
     const results = await Promise.all(Array.from({ length: 12 }, (_, i) =>
       inTransaction(env, "test.pool", async (txEnv, tx) => {

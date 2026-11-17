@@ -10,7 +10,7 @@ import {
 } from "../../src/domain/routes/handlers.js";
 
 it("owners manage all Threads while collaborators manage only their assigned Threads", async () => {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   const roles = {
     owner: "owner",
     lead: "collaborator",
@@ -18,21 +18,21 @@ it("owners manage all Threads while collaborators manage only their assigned Thr
     viewer: "viewer",
   };
   for (const id of Object.keys(roles)) {
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
       .run(id, `${id}@test`, id);
   }
-  sqlite.exec(
+  await sqlite.exec(
     "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','owner','Space','now','now')",
   );
   for (const [id, role] of Object.entries(roles))
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES(?,'P',?,?,'now','now')",
       )
-      .run(`m-${id}`, id, role);
+      .run(`m-${id}`, id, role));
   const env = {
     SYNTILA_ENVIRONMENT: "development",
     SYNTILA_DB: db,
@@ -70,7 +70,7 @@ it("owners manage all Threads while collaborators manage only their assigned Thr
     };
     expect(thread.canConfigureWork).toBe(true);
     expect(
-      sqlite
+      await sqlite
         .prepare("SELECT lead_user_id FROM threads WHERE id=?")
         .get(thread.id),
     ).toEqual({ lead_user_id: "lead" });
@@ -146,6 +146,6 @@ it("owners manage all Threads while collaborators manage only their assigned Thr
       result.thread.id,
     );
   } finally {
-    sqlite.close();
+    await sqlite.close();
   }
 });

@@ -25,12 +25,12 @@ const defaults = {
   hiddenModels: {},
   hiddenEfforts: {},
 };
-function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite.exec(
+async function fixture() {
+  const { sqlite, db } = await pgD1();
+  await sqlite.exec(
     "" /* D1 migration: schema is final in PostgreSQL */,
   );
-  sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','o@test','O','now','now'),('other','x@test','X','now','now');
+  await sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','o@test','O','now','now'),('other','x@test','X','now','now');
     INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('workspace','owner','Workspace','now','now');
     INSERT INTO workspace_member_access(workspace_id,policy_json,updated_at) VALUES('workspace','{"schemaVersion":1,"workers":{}}','now');
     INSERT INTO workspace_member_overrides(workspace_id,user_id,policy_json,updated_at) VALUES('workspace','other','{"schemaVersion":1,"workers":{}}','now');`);
@@ -51,10 +51,10 @@ function fixture() {
 }
 describe("personal Worker preferences", () => {
   it("persists and resets without changing sharing or member policies", async () => {
-    const { sqlite, call } = fixture();
+    const { sqlite, call } = await fixture();
     const before = [
-      sqlite.prepare("SELECT * FROM workspace_member_access").all(),
-      sqlite.prepare("SELECT * FROM workspace_member_overrides").all(),
+      await sqlite.prepare("SELECT * FROM workspace_member_access").all(),
+      await sqlite.prepare("SELECT * FROM workspace_member_overrides").all(),
     ];
     expect(await (await call("GET", "owner")).json()).toEqual({
       preferences: defaults,
@@ -64,8 +64,8 @@ describe("personal Worker preferences", () => {
     });
     expect(await (await call("GET", "owner")).json()).toEqual({ preferences });
     expect([
-      sqlite.prepare("SELECT * FROM workspace_member_access").all(),
-      sqlite.prepare("SELECT * FROM workspace_member_overrides").all(),
+      await sqlite.prepare("SELECT * FROM workspace_member_access").all(),
+      await sqlite.prepare("SELECT * FROM workspace_member_overrides").all(),
     ]).toEqual(before);
     expect(await (await call("DELETE", "owner")).json()).toEqual({
       preferences: defaults,
@@ -75,17 +75,15 @@ describe("personal Worker preferences", () => {
     });
   });
   it("rejects other users and unauthenticated requests", async () => {
-    const { call } = fixture();
+    const { call } = await fixture();
     await call("PUT", "owner", preferences);
     for (const method of ["GET", "PUT", "DELETE"])
-      await expect(
-        call(method, "other", method === "PUT" ? preferences : undefined),
-      ).rejects.toMatchObject({ status: 404 });
+      await expect(call(method, "other", method === "PUT" ? preferences : undefined),).rejects.toMatchObject({ status: 404 });
     await expect(call("GET", null)).rejects.toThrow("Unauthenticated");
     expect(await (await call("GET", "owner")).json()).toEqual({ preferences });
   });
   it("rejects malformed, unsupported and oversized documents", async () => {
-    const { call } = fixture();
+    const { call } = await fixture();
     for (const body of [
       { ...preferences, schemaVersion: 2 },
       { ...preferences, hiddenWorkers: [""] },
@@ -95,21 +93,19 @@ describe("personal Worker preferences", () => {
       await expect(call("PUT", "owner", body)).rejects.toMatchObject({
         status: 400,
       });
-    await expect(
-      call("PUT", "owner", { ...preferences, extra: "x".repeat(70000) }),
-    ).rejects.toMatchObject({ status: 413 });
+    await expect(call("PUT", "owner", { ...preferences, extra: "x".repeat(70000) }),).rejects.toMatchObject({ status: 413 });
     expect(await (await call("GET", "owner")).json()).toEqual({
       preferences: defaults,
     });
   });
   it("removes preferences when the Workspace is deleted", async () => {
-    const { sqlite, call } = fixture();
+    const { sqlite, call } = await fixture();
     await call("PUT", "owner", preferences);
-    sqlite
+    await sqlite
       .prepare("DELETE FROM execution_workspaces WHERE id = ?")
       .run("workspace");
     expect(
-      sqlite.prepare("SELECT * FROM workspace_worker_preferences").all(),
+      await sqlite.prepare("SELECT * FROM workspace_worker_preferences").all(),
     ).toHaveLength(0);
   });
 });

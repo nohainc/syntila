@@ -45,13 +45,13 @@ class MemoryAvatarBucket {
 }
 
 describe("profile avatars", () => {
-  let store: ReturnType<typeof pgD1>;
+  let store: Awaited<ReturnType<typeof pgD1>>;
   let bucket: MemoryAvatarBucket;
   let env: SecurityEnv;
 
-  beforeEach(() => {
-    store = pgD1();
-    store.sqlite.exec(
+  beforeEach(async () => {
+    store = await pgD1();
+    await store.sqlite.exec(
       `INSERT INTO users(id,email,display_name,created_at,updated_at)
        VALUES ('a','a@test','Alice','now','now'),('b','b@test','Bob','now','now')`,
     );
@@ -112,7 +112,7 @@ describe("profile avatars", () => {
       /^https:\/\/syntila\.test\/api\/users\/a\/avatar\?v=[0-9a-f-]+$/,
     );
     expect(
-      store.sqlite.prepare("SELECT avatar_url FROM users WHERE id='a'").get(),
+      await store.sqlite.prepare("SELECT avatar_url FROM users WHERE id='a'").get(),
     ).toMatchObject({ avatar_url: expect.stringMatching(/^r2:\/\//) });
 
     const avatar = await handleGetAvatar(
@@ -162,7 +162,7 @@ describe("profile avatars", () => {
   });
 
   it("rolls back both files when persistence fails", async () => {
-    store.sqlite.exec(
+    await store.sqlite.exec(
       "CREATE TRIGGER fail_avatar BEFORE UPDATE ON users BEGIN SELECT RAISE(ABORT, 'failed'); END",
     );
     await expect(
@@ -190,7 +190,7 @@ describe("profile avatars", () => {
       ),
     ).rejects.toMatchObject({ status: 404 });
 
-    store.sqlite.exec(
+    await store.sqlite.exec(
       "INSERT INTO people_relationships(user_low_id,user_high_id,established_at) VALUES ('a','b','now')",
     );
     const shared = await handleGetAvatar(

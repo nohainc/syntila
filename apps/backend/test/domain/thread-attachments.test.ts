@@ -1,7 +1,7 @@
+import type { FixtureDb } from "./helpers/fixture-db";
 import { pgD1 } from "./helpers/pg-d1";
 import { basicThread, user, workRequest, message } from "./helpers/seed";
 import { readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "./helpers/vitest-compat";
 const authorize = vi.fn(async (..._args: unknown[]) => ({
   context: { userId: "owner" },
@@ -41,17 +41,17 @@ import {
   handleEditDiscussionMessage,
 } from "../../src/domain/routes/threads.js";
 
-function fixture() {
-  const fixtureDb = pgD1();
-  const sqlite = (fixtureDb.sqlite as unknown as DatabaseSync);
-  sqlite.exec(basicThread({ user: "owner", space: "space", thread: "thread" }));
+async function fixture() {
+  const fixtureDb = await pgD1();
+  const sqlite = (fixtureDb.sqlite as unknown as FixtureDb);
+  await sqlite.exec(basicThread({ user: "owner", space: "space", thread: "thread" }));
   for (const migration of [
     "0094_account_plans.sql",
     "0098_user_file_reservations.sql",
   ])
-    sqlite.exec(
+    (await sqlite.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
-    );
+    ));
   const db = fixtureDb.db;
   const objects = new Map<
     string,
@@ -136,12 +136,12 @@ describe("Thread attachments", () => {
   ])(
     "%s accepts exactly its file limit and rejects one byte more with file_too_large",
     async (_plan, tier, limit) => {
-      const f = fixture();
+      const f = await fixture();
       try {
         if (tier)
-          f.sqlite.exec(
+          (await f.sqlite.exec(
             "INSERT INTO account_plans(user_id,tier,status,source,created_at,updated_at) VALUES('owner','paid','active','manual','now','now')",
-          );
+          ));
         const send = (size: number, body: BodyInit) =>
           handleUploadWorkRequestFile(
             new Request("https://test?name=boundary.bin", {
@@ -166,18 +166,18 @@ describe("Thread attachments", () => {
         });
         // The refusal reserved and stored nothing.
         expect(
-          f.sqlite
+          await f.sqlite
             .prepare("SELECT COUNT(*) AS n FROM user_file_reservations")
             .get(),
         ).toEqual({ n: 0 });
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     },
   );
 
   it("never trusts a declared size: short, long and truncated bodies store nothing", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const send = (declared: number, body: string) =>
         handleUploadWorkRequestFile(
@@ -197,21 +197,21 @@ describe("Thread attachments", () => {
       });
       expect(f.objects.size).toBe(0);
       expect(
-        f.sqlite.prepare("SELECT COUNT(*) AS n FROM user_files").get(),
+        await f.sqlite.prepare("SELECT COUNT(*) AS n FROM user_files").get(),
       ).toEqual({ n: 0 });
       expect(
-        f.sqlite
+        await f.sqlite
           .prepare("SELECT COUNT(*) AS n FROM user_file_reservations")
           .get(),
       ).toEqual({ n: 0 });
       expect((await send(5, "hello")).status).toBe(201);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
   it("accepts a file-only human message, retains previews through history and edits, and downloads the original", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const file = await f.upload();
       expect(authorize.mock.calls[0]?.[3]).toBe("discuss");
@@ -294,11 +294,11 @@ describe("Thread attachments", () => {
         ),
       ).rejects.toThrow("not found");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("stores image previews once and rejects oversized or non-JPEG preview payloads", async () => {
-    const f = fixture();
+    const f = await fixture();
     try {
       const form = new FormData();
       form.set("file", new Blob(["original"]), "photo.png");
@@ -350,7 +350,7 @@ describe("Thread attachments", () => {
       }
       expect(f.objects.size).toBe(2);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("bounds text previews, rejects invalid references, and requires either a message or file", async () => {
@@ -364,7 +364,7 @@ describe("Thread attachments", () => {
     expect(
       fileTextPreview("a.pdf", "application/pdf", new ArrayBuffer(0)),
     ).toBeUndefined();
-    const f = fixture();
+    const f = await fixture();
     try {
       await expect(
         handleCreateDiscussionMessage(request({ body: "" }), f.env, "thread"),
@@ -397,7 +397,7 @@ describe("Thread attachments", () => {
         ),
       ).rejects.toMatchObject({ code: "file_too_large" });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 });

@@ -4,11 +4,11 @@ import worker from "../../src/domain/index.js";
 import { handleAccountDeletionCleanup } from "../../src/domain/auth/account-lifecycle.js";
 
 describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () => {
-  function createTestEnv() {
-    const { sqlite, db } = pgD1();
+  async function createTestEnv() {
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, status, created_at, updated_at) VALUES
         ('user-alice', 'alice@test.com', 'Alice User', 'active', '${now}', '${now}'),
         ('user-bob', 'bob@test.com', 'Bob User', 'active', '${now}', '${now}'),
@@ -116,12 +116,12 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
     };
     const generalThreadId = `legacy-gen-${directSpaceId}`;
     const now = new Date().toISOString();
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?, ?, 'General', 'active', 'user-alice', TRUE, ?, ?)",
       )
       .run(generalThreadId, directSpaceId, now, now);
-    sqlite
+    await sqlite
       .prepare(
         "UPDATE direct_spaces SET general_thread_id = ? WHERE space_id = ?",
       )
@@ -130,7 +130,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
   }
 
   it("9.1 Hide & unhide: Alice hides conversation; Bob still sees it; Bob's new message unhides it for Alice", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(
       env,
       sqlite,
@@ -237,7 +237,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
   });
 
   it("9.2 & 9.3 Contact removal & destructive deletion prevention: Group Spaces unchanged, generic delete blocked, messaging frozen", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(
       env,
       sqlite,
@@ -245,7 +245,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
 
     // Put Alice and Bob into a shared Group Space
     const now = new Date().toISOString();
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO spaces (id, name, kind, owner_user_id, created_at, updated_at) VALUES
         ('space-shared-team', 'Team Project', 'group', 'user-alice', '${now}', '${now}');
       INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at) VALUES
@@ -277,7 +277,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
     expect(disconnectRes.status).toBe(200);
 
     // 3. Shared Group Space membership remains completely intact
-    const sharedMembers = sqlite
+    const sharedMembers = await sqlite
       .prepare(
         "SELECT user_id FROM space_memberships WHERE space_id = 'space-shared-team' ORDER BY user_id ASC",
       )
@@ -349,7 +349,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
   });
 
   it("9.4 Reconnection reuses canonical pair and existing Direct Space without duplicating", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(
       env,
       sqlite,
@@ -420,7 +420,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
   });
 
   it("9.1 & 9.2 Blocking: Alice blocks Bob; Bob cannot send invitations, messages, or AI requests; unblocking restores capability", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(
       env,
       sqlite,
@@ -535,7 +535,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
   });
 
   it("9.5 Account deletion: technical owner deletion safely transfers Direct Space ownership without FK violation or history loss", async () => {
-    const { env, db, sqlite, users } = createTestEnv();
+    const { env, db, sqlite, users } = await createTestEnv();
     const { directSpaceId, generalThreadId } = await establishDirectSpace(
       env,
       sqlite,
@@ -572,7 +572,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
     );
 
     // Verify initial owner is Alice
-    const spaceBefore = sqlite
+    const spaceBefore = await sqlite
       .prepare("SELECT owner_user_id FROM spaces WHERE id = ?")
       .get(directSpaceId) as {
       owner_user_id: string;
@@ -583,7 +583,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
     await handleAccountDeletionCleanup(db, "user-alice");
 
     // Foreign key check: spaces.owner_user_id must now be user-bob
-    const spaceAfter = sqlite
+    const spaceAfter = await sqlite
       .prepare("SELECT owner_user_id FROM spaces WHERE id = ?")
       .get(directSpaceId) as {
       owner_user_id: string;
@@ -591,7 +591,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
     expect(spaceAfter.owner_user_id).toBe("user-bob");
 
     // Bob's membership in Direct Space is now 'owner'
-    const bobMembership = sqlite
+    const bobMembership = await sqlite
       .prepare(
         "SELECT role FROM space_memberships WHERE space_id = ? AND user_id = 'user-bob'",
       )
@@ -599,7 +599,7 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
     expect(bobMembership.role).toBe("owner");
 
     // Alice's membership is removed
-    const aliceMembership = sqlite
+    const aliceMembership = await sqlite
       .prepare(
         "SELECT role FROM space_memberships WHERE space_id = ? AND user_id = 'user-alice'",
       )
@@ -607,9 +607,9 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
     expect(aliceMembership).toBeUndefined();
 
     // Alice account transitions to deactivated
-    sqlite.exec(
+    (await sqlite.exec(
       "UPDATE users SET status = 'deactivated', display_name = 'Deactivated User' WHERE id = 'user-alice'",
-    );
+    ));
     users.alice!.status = "deactivated";
 
     // Bob can still fetch thread messages and retains all conversation history

@@ -6,24 +6,24 @@ import {
   type SecurityEnv,
 } from "../../src/domain/routes/handlers.js";
 
-function fixture() {
-  const { sqlite, db } = pgD1();
+async function fixture() {
+  const { sqlite, db } = await pgD1();
   for (const id of ["alice", "bob", "eve"])
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
-      .run(id, `${id}@test`, id);
-  sqlite.exec(
+      .run(id, `${id}@test`, id));
+  await sqlite.exec(
     "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','alice','Space','now','now')",
   );
   for (const id of ["alice", "bob"])
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES(?,'S',?,?,'2020-01-01T00:00:00Z','2020-01-01T00:00:00Z')",
       )
-      .run(`m-${id}`, id, id === "alice" ? "owner" : "collaborator");
-  sqlite.exec(
+      .run(`m-${id}`, id, id === "alice" ? "owner" : "collaborator"));
+  await sqlite.exec(
     "INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('T','S','Thread','active','alice','2020-01-01T00:00:00Z','2020-01-01T00:00:00Z')",
   );
   const now = new Date().toISOString();
@@ -32,12 +32,12 @@ function fixture() {
     ["w-fail", "failed"],
     ["w-run", "running"],
   ] as const)
-    sqlite
+    (await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
          VALUES(?,'T','alice','stateless','direct',1,'{}',?,?,?)`,
       )
-      .run(id, status, now, now);
+      .run(id, status, now, now));
   const env = {
     SYNTILA_ENVIRONMENT: "development",
     SYNTILA_DB: db,
@@ -74,10 +74,10 @@ function fixture() {
 }
 
 it("returns the latest failure per thread before applying the feed limit", async () => {
-  const { list, sqlite } = fixture();
+  const { list, sqlite } = await fixture();
   const now = new Date().toISOString();
   for (let i = 0; i < 55; i++) {
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
       VALUES(?,'T','alice','stateless','direct',1,'{}','failed',?,?)`,
@@ -88,7 +88,7 @@ it("returns the latest failure per thread before applying the feed limit", async
 });
 
 it("lists finished Work for Space members and keeps others out", async () => {
-  const { list } = fixture();
+  const { list } = await fixture();
   const bob = await list("bob");
   expect(bob.map((n) => n.id).sort()).toEqual(["w-done", "w-fail"]);
   expect(bob.find((n) => n.id === "w-fail")!.type).toBe("work_request.failed");
@@ -97,13 +97,13 @@ it("lists finished Work for Space members and keeps others out", async () => {
 });
 
 it("leaves out the caller's own successful Work but keeps their failures", async () => {
-  const { list } = fixture();
+  const { list } = await fixture();
   const alice = await list("alice");
   expect(alice.map((n) => n.id)).toEqual(["w-fail"]);
 });
 
 it("marks selected or all notifications read per user", async () => {
-  const { env, as, list } = fixture();
+  const { env, as, list } = await fixture();
   await handleMarkNotificationsRead(
     as("bob", "POST", { ids: ["w-done", "nope"] }),
     env,
@@ -117,7 +117,7 @@ it("marks selected or all notifications read per user", async () => {
 });
 
 it("refuses a wrong-typed ids list instead of marking everything read", async () => {
-  const { env, as, list } = fixture();
+  const { env, as, list } = await fixture();
   for (const ids of ["w-done", [1], { a: 1 }, Array.from({ length: 501 }, (_, i) => `w-${i}`)]) {
     await expect(
       handleMarkNotificationsRead(as("bob", "POST", { ids }), env),

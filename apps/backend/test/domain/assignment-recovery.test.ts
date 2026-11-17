@@ -12,25 +12,25 @@ async function fixture(
   columns: Record<string, string | number | null> = {},
 ) {
   const f = await conversationFixture();
-  f.sqlite.exec("UPDATE execution_workspaces SET status = 'online', updated_at = now() WHERE id = 'WS'");
-  f.assign("A1");
-  f.start("A1");
+  await f.sqlite.exec("UPDATE execution_workspaces SET status = 'online', updated_at = now() WHERE id = 'WS'");
+  await f.assign("A1");
+  await f.start("A1");
   const set = Object.entries({ attempt_id: "attempt-1", ...columns })
     .map(([column]) => `${column} = ?`)
     .join(", ");
-  f.sqlite
+  await f.sqlite
     .prepare(`UPDATE worker_assignments SET ${set} WHERE id = 'A1'`)
     .run(...Object.values({ attempt_id: "attempt-1", ...columns }));
   if (status !== "running")
-    f.sqlite.prepare("UPDATE worker_assignments SET status = ? WHERE id = 'A1'").run(status);
-  const assignment = () =>
-    f.sqlite
+    (await f.sqlite.prepare("UPDATE worker_assignments SET status = ? WHERE id = 'A1'").run(status));
+  const assignment = async () =>
+    (await f.sqlite
       .prepare(
         "SELECT status, output_json AS output, updated_at AS \"updatedAt\" FROM worker_assignments WHERE id = 'A1'",
       )
-      .get() as { status: string; output: unknown; updatedAt: string };
-  const task = () =>
-    f.sqlite.prepare("SELECT status, error FROM workflow_tasks WHERE id = 'T'").get() as {
+      .get()) as { status: string; output: unknown; updatedAt: string };
+  const task = async () =>
+    (await f.sqlite.prepare("SELECT status, error FROM workflow_tasks WHERE id = 'T'").get()) as {
       status: string;
       error: string | null;
     };
@@ -40,7 +40,7 @@ async function fixture(
 it("does not rewrite a terminal assignment or accept a stale attempt", async () => {
   const f = await fixture("running");
   // The assignment finished under attempt-2; a late result from attempt-1 arrives.
-  f.sqlite.exec("UPDATE worker_assignments SET attempt_id = 'attempt-2' WHERE id = 'A1'");
+  (await f.sqlite.exec("UPDATE worker_assignments SET attempt_id = 'attempt-2' WHERE id = 'A1'"));
   await recordAssignmentResult(
     f.db as never,
     "A1",
@@ -53,8 +53,8 @@ it("does not rewrite a terminal assignment or accept a stale attempt", async () 
     },
     "attempt-1",
   );
-  expect(f.assignment()).toMatchObject({ status: "running", output: null });
-  expect(f.task().status).toBe("running");
+  expect(await f.assignment()).toMatchObject({ status: "running", output: null });
+  expect((await f.task()).status).toBe("running");
 });
 
 it("persists timeout as a terminal Cloud outcome", async () => {
@@ -73,8 +73,8 @@ it("persists timeout as a terminal Cloud outcome", async () => {
     "attempt-1",
   );
   expect(recorded).toBe(true);
-  expect(f.assignment().status).toBe("timed_out");
-  expect(f.task()).toEqual({
+  expect((await f.assignment()).status).toBe("timed_out");
+  expect(await f.task()).toEqual({
     status: "failed",
     error: "The assignment exceeded its time limit.",
   });
@@ -97,17 +97,17 @@ it("does not fail an assignment that advanced after the recovery decision", asyn
         async apply(fn, thisArg, args) {
           const rows = await Reflect.apply(fn, thisArg, args);
           if (Array.isArray(args[0]) && args[0].join("?").includes("FROM worker_assignments wa"))
-            f.sqlite.exec(
+            (await f.sqlite.exec(
               "UPDATE worker_assignments SET status = 'running', running_at = now(), updated_at = now() WHERE id = 'A1' AND status = 'acknowledged'",
-            );
+            ));
           return rows;
         },
       });
     },
   });
   await recoverStaleAssignments(racing as never, now);
-  expect(f.assignment().status).toBe("running");
-  expect(f.task().status).toBe("running");
+  expect((await f.assignment()).status).toBe("running");
+  expect((await f.task()).status).toBe("running");
 });
 
 it("measures queue wait from admission, not from assignment creation", async () => {
@@ -123,7 +123,7 @@ it("measures queue wait from admission, not from assignment creation", async () 
   };
   const f = await fixture("acknowledged", columns);
   await recoverStaleAssignments(f.db as never, now);
-  expect(f.assignment().status).toBe("acknowledged");
+  expect((await f.assignment()).status).toBe("acknowledged");
 
   // Control: the same assignment admitted ten minutes ago has waited too long.
   const late = await fixture("acknowledged", {
@@ -133,5 +133,5 @@ it("measures queue wait from admission, not from assignment creation", async () 
     acknowledged_at: "2026-10-13T11:50:00.000Z",
   });
   await recoverStaleAssignments(late.db as never, now);
-  expect(late.assignment().status).not.toBe("acknowledged");
+  expect((await late.assignment()).status).not.toBe("acknowledged");
 });

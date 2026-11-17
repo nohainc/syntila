@@ -4,7 +4,7 @@ import { identityService } from "../../src/domain/auth/identity-service.js";
 import { handleWorkspaceMcpAction } from "../../src/domain/routes/mcp-action.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
 
-let store: ReturnType<typeof pgD1>;
+let store: Awaited<ReturnType<typeof pgD1>>;
 let lastForwardedBody: unknown;
 let gatewayStatus: number;
 let gatewayReply: unknown;
@@ -31,9 +31,9 @@ const postAction = (
     workspace,
   );
 
-beforeEach(() => {
-  store = pgD1();
-  store.sqlite.exec(`
+beforeEach(async () => {
+  store = await pgD1();
+  await store.sqlite.exec(`
     INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
       ('owner','o@test','Owner','now','now'),
       ('other','x@test','Other','now','now');
@@ -77,36 +77,30 @@ beforeEach(() => {
   } as unknown as SecurityEnv;
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  store.sqlite.close();
+  await store.sqlite.close();
 });
 
 describe("POST /api/workspaces/:id/mcp-action", () => {
   it("rejects non-POST methods with 405", async () => {
-    await expect(
-      postAction("owner", "ws-owner", undefined, "GET"),
-    ).rejects.toMatchObject({ status: 405 });
+    await expect(postAction("owner", "ws-owner", undefined, "GET"),).rejects.toMatchObject({ status: 405 });
   });
 
   it("refuses callers who do not own the Workspace with 404", async () => {
-    await expect(
-      postAction("other", "ws-owner", {
+    await expect(postAction("other", "ws-owner", {
         actionId: "1",
         action: "enable",
         serverId: "srv",
-      }),
-    ).rejects.toMatchObject({ status: 404 });
+      }),).rejects.toMatchObject({ status: 404 });
   });
 
   it("refuses revoked Workspaces with 404", async () => {
-    await expect(
-      postAction("owner", "ws-gone", {
+    await expect(postAction("owner", "ws-gone", {
         actionId: "1",
         action: "enable",
         serverId: "srv",
-      }),
-    ).rejects.toMatchObject({ status: 404 });
+      }),).rejects.toMatchObject({ status: 404 });
   });
 
   it("forwards the action to the Workspace Gateway and returns the outcome", async () => {

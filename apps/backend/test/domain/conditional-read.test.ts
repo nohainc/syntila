@@ -11,9 +11,9 @@ function request(etag?: string) {
     headers: etag ? { "if-none-match": etag } : {},
   });
 }
-function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('u','u@test','User','now','now');
+async function fixture() {
+  const { sqlite, db } = await pgD1();
+  await sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('u','u@test','User','now','now');
     INSERT INTO spaces(id,owner_user_id,name,settings_json,created_at,updated_at) VALUES ('p','u','Space','{}','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES ('m','p','u','owner','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES ('w','p','Work','active','u','now','now');`);
@@ -61,50 +61,50 @@ describe("stable read revisions v1", () => {
     }
   });
   it("Space edits with unchanged timestamps change the revision", async () => {
-    const { sqlite, env } = fixture();
+    const { sqlite, env } = await fixture();
     try {
       const first = await handleGetSpace(request(), env, "p");
       const etag = first.headers.get("etag")!;
       expect((await handleGetSpace(request(etag), env, "p")).status).toBe(304);
-      sqlite.exec("UPDATE spaces SET name = 'Renamed' WHERE id = 'p'");
+      await sqlite.exec("UPDATE spaces SET name = 'Renamed' WHERE id = 'p'");
       const changed = await handleGetSpace(request(etag), env, "p");
       expect(changed.status).toBe(200);
       expect(
         ((await changed.json()) as { space: { name: string } }).space.name,
       ).toBe("Renamed");
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
   it("Thread creation/deletion and permission changes change collection revisions", async () => {
-    const { sqlite, env } = fixture();
+    const { sqlite, env } = await fixture();
     try {
       const first = await handleListSpaceThreads(request(), env, "p");
       const etag = first.headers.get("etag")!;
       expect(
         (await handleListSpaceThreads(request(etag), env, "p")).status,
       ).toBe(304);
-      sqlite.exec(
+      await sqlite.exec(
         "UPDATE space_memberships SET role = 'viewer' WHERE id = 'm'",
       );
       expect(
         (await handleListSpaceThreads(request(etag), env, "p")).status,
       ).toBe(200);
-      sqlite.exec("DELETE FROM threads WHERE id = 'w'");
+      await sqlite.exec("DELETE FROM threads WHERE id = 'w'");
       expect(
         (await handleListSpaceThreads(request(etag), env, "p")).status,
       ).toBe(200);
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
   it("membership revocation is checked before returning 304", async () => {
-    const { sqlite, env } = fixture();
+    const { sqlite, env } = await fixture();
     try {
       const etag = (await handleGetSpace(request(), env, "p")).headers.get(
         "etag",
       )!;
-      sqlite.exec("DELETE FROM space_memberships WHERE id = 'm'");
+      await sqlite.exec("DELETE FROM space_memberships WHERE id = 'm'");
       // TEST_AUTHENTICATION intentionally bypasses membership authorization.
       // Simulate its denied outcome at the real authorization boundary.
       const denied = vi
@@ -118,7 +118,7 @@ describe("stable read revisions v1", () => {
       denied.mockRestore();
     } finally {
       vi.restoreAllMocks();
-      sqlite.close();
+      await sqlite.close();
     }
   });
 });

@@ -13,7 +13,7 @@ import {
 import { publishPeopleProfileChanged } from "../../src/domain/people.js";
 import { handleAccountProfileUpdated } from "../../src/domain/auth/account-lifecycle.js";
 import type { SecurityEnv } from "../../src/domain/routes/http-security.js";
-let store: ReturnType<typeof pgD1>;
+let store: Awaited<ReturnType<typeof pgD1>>;
 let env: SecurityEnv;
 const request = (
   user: string,
@@ -39,16 +39,16 @@ const invite = async (user: string, body: object, space = "A") =>
   ).invitation.id;
 const accept = (user: string, id: string) =>
   handleAcceptSpaceInvitation(request(user, {}), env, id);
-beforeEach(() => {
-  store = pgD1();
-  store.sqlite
+beforeEach(async () => {
+  store = await pgD1();
+  await store.sqlite
     .exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('a','a@test','Alice','now','now'),('b','b@test','Bob','now','now'),('c','c@test','Carol','now','now'),('z','z@test','Unrelated','now','now');
  INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('A','a','First','now','now'),('B','b','Second','now','now');
  INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('ma','A','a','owner','now','now'),('mb','B','b','owner','now','now');`);
   vi.spyOn(identityService, "resolve").mockImplementation(async (req) => {
     const id = req.headers.get("authorization");
     const user = id
-      ? store.sqlite
+      ? await store.sqlite
           .prepare("SELECT email,display_name FROM users WHERE id=?")
           .get(id)
       : null;
@@ -67,9 +67,9 @@ beforeEach(() => {
     SYNTILA_ENVIRONMENT: "development",
   } as SecurityEnv;
 });
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  store.sqlite.close();
+  await store.sqlite.close();
 });
 it("establishes symmetric People only after acceptance, connects all members once, and retains them without shared Spaces", async () => {
   const id = await invite("a", { email: "b@test", role: "collaborator" });
@@ -89,7 +89,7 @@ it("establishes symmetric People only after acceptance, connects all members onc
   await accept("a", second);
   expect((await people("a"))[0]!.sharedSpaceCount).toBe(2);
   expect(
-    store.sqlite.prepare("SELECT COUNT(*) n FROM people_relationships").get(),
+    await store.sqlite.prepare("SELECT COUNT(*) n FROM people_relationships").get(),
   ).toEqual({ n: 1 });
   const third = await invite("a", { email: "c@test", role: "viewer" });
   await accept("c", third);
@@ -120,18 +120,14 @@ it("uses current profile email for stable Person invitations and prevents owners
       env,
     ),
   ).rejects.toMatchObject({ status: 400 });
-  await expect(
-    invite("a", { userId: "c", role: "viewer" }),
-  ).rejects.toMatchObject({ status: 403 });
-  await expect(
-    invite("a", { userId: "a", role: "viewer" }),
-  ).rejects.toMatchObject({ status: 400 });
+  await expect(invite("a", { userId: "c", role: "viewer" }),).rejects.toMatchObject({ status: 403 });
+  await expect(invite("a", { userId: "a", role: "viewer" }),).rejects.toMatchObject({ status: 400 });
   await accept(
     "b",
     await invite("a", { email: "b@test", role: "collaborator" }),
   );
   await handleRemoveSpaceMember(request("a", {}), env, "A", "b");
-  store.sqlite.exec(
+  await store.sqlite.exec(
     "UPDATE users SET email='new-b@test',display_name='Robert',avatar_url='https://test/avatar' WHERE id='b'",
   );
   expect(await people("a")).toMatchObject([
@@ -145,21 +141,15 @@ it("uses current profile email for stable Person invitations and prevents owners
   ]);
   const id = await invite("a", { userId: "b", role: "viewer" });
   expect(
-    store.sqlite
+    await store.sqlite
       .prepare("SELECT email FROM space_invitations WHERE id=?")
       .get(id),
   ).toEqual({ email: "new-b@test" });
-  await expect(
-    invite("z", { userId: "b", role: "viewer" }),
-  ).rejects.toMatchObject({ status: 404 });
-  await expect(
-    invite("a", { userId: "b", email: "someone@test", role: "viewer" }),
-  ).rejects.toMatchObject({ status: 400 });
+  await expect(invite("z", { userId: "b", role: "viewer" }),).rejects.toMatchObject({ status: 404 });
+  await expect(invite("a", { userId: "b", email: "someone@test", role: "viewer" }),).rejects.toMatchObject({ status: 400 });
 });
 it("enforces pair identity and pending-invitation uniqueness under concurrent requests", async () => {
-  expect(() =>
-    store.sqlite.exec("INSERT INTO people_relationships VALUES('a','a','now')"),
-  ).toThrow();
+  await expect(store.sqlite.exec("INSERT INTO people_relationships VALUES('a','a','now')")).rejects.toThrow();
   const attempts = await Promise.allSettled([
     invite("a", { email: "B@test", role: "viewer" }),
     invite("a", { email: "b@test", role: "viewer" }),
@@ -177,29 +167,25 @@ it("enforces pair identity and pending-invitation uniqueness under concurrent re
   const accepts = await Promise.allSettled([accept("b", id), accept("b", id)]);
   expect(accepts.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   expect(
-    store.sqlite.prepare("SELECT COUNT(*) n FROM people_relationships").get(),
+    await store.sqlite.prepare("SELECT COUNT(*) n FROM people_relationships").get(),
   ).toEqual({ n: 1 });
   expect(
-    store.sqlite
+    await store.sqlite
       .prepare(
         "SELECT COUNT(*) n FROM space_audit_log WHERE action='space.invitation.accepted'",
       )
       .get(),
   ).toEqual({ n: 1 });
-  expect(() =>
-    store.sqlite.exec(
+  await expect(store.sqlite.exec(
       "INSERT INTO people_relationships VALUES('a','b','2030-01-01T00:00:00Z')",
-    ),
-  ).toThrow();
-  expect(() =>
-    store.sqlite.exec(
+    )).rejects.toThrow();
+  await expect(store.sqlite.exec(
       "INSERT INTO people_relationships VALUES('b','a','2030-01-01T00:00:00Z')",
-    ),
-  ).toThrow();
+    )).rejects.toThrow();
 });
 it("expired invitations do not establish People and may be replaced", async () => {
   const id = await invite("a", { email: "b@test", role: "viewer" });
-  store.sqlite
+  await store.sqlite
     .prepare("UPDATE space_invitations SET expires_at='2000-01-01' WHERE id=?")
     .run(id);
   await expect(accept("b", id)).rejects.toMatchObject({ status: 410 });
@@ -207,7 +193,7 @@ it("expired invitations do not establish People and may be replaced", async () =
   const fresh = await invite("a", { email: "b@test", role: "viewer" });
   expect(fresh).not.toBe(id);
   expect(
-    store.sqlite
+    await store.sqlite
       .prepare("SELECT status FROM space_invitations WHERE id=?")
       .get(id),
   ).toEqual({ status: "expired" });
@@ -215,7 +201,7 @@ it("expired invitations do not establish People and may be replaced", async () =
 it("profile hooks publish replayable ID-only signals solely to established peers", async () => {
   await accept("b", await invite("a", { email: "b@test", role: "viewer" }));
   await publishPeopleProfileChanged(env, "b");
-  const events = store.sqlite
+  const events = await store.sqlite
     .prepare(
       "SELECT stream_kind,stream_id,payload_json FROM realtime_events WHERE event_type='people.updated'",
     )
@@ -229,7 +215,7 @@ it("profile hooks publish replayable ID-only signals solely to established peers
   ]);
   await handleAccountProfileUpdated(env as never, "b");
   expect(
-    store.sqlite
+    await store.sqlite
       .prepare(
         "SELECT COUNT(*) n FROM realtime_events WHERE event_type='people.updated'",
       )
@@ -239,7 +225,7 @@ it("profile hooks publish replayable ID-only signals solely to established peers
 
 it("returns only shared Spaces and authorized invitation destinations, excluding members, pending invitations, and private Spaces", async () => {
   await accept("b", await invite("a", { email: "b@test", role: "viewer" }));
-  store.sqlite
+  await store.sqlite
     .exec(`INSERT INTO spaces(id,owner_user_id,name,settings_json,created_at,updated_at) VALUES('C','a','Candidate','{}','now','now'),('D','c','Restricted','{}','now','now'),('E','a','Archived','{"archived":true}','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('mc','C','a','owner','now','now'),('mdc','D','c','owner','now','now'),('mda','D','a','viewer','now','now'),('me','E','a','owner','now','now');`);
   const bob = async () =>
@@ -255,10 +241,10 @@ it("returns only shared Spaces and authorized invitation destinations, excluding
   expect((await bob()).invitableSpaces.map((s) => s.id)).toEqual(["C"]);
   const id = await invite("a", { userId: "b", role: "viewer" }, "C");
   expect((await bob()).invitableSpaces).toEqual([]);
-  store.sqlite
+  await store.sqlite
     .prepare("UPDATE space_invitations SET expires_at='2000-01-01' WHERE id=?")
     .run(id);
-  store.sqlite.exec(
+  await store.sqlite.exec(
     `UPDATE spaces SET name='Renamed' WHERE id='C'; UPDATE spaces SET settings_json='{"memberPermissions":{"a":{"work":false}}}' WHERE id='D'`,
   );
   expect((await bob()).invitableSpaces).toMatchObject([
@@ -276,18 +262,18 @@ it("known invitations retain recipient identity through email changes and requir
   await handleRemoveSpaceMember(request("a", {}), env, "A", "b");
   const id = await invite("a", { userId: "b", role: "viewer" });
   expect(
-    store.sqlite
+    await store.sqlite
       .prepare("SELECT invitee_user_id FROM space_invitations WHERE id=?")
       .get(id),
   ).toEqual({ invitee_user_id: "b" });
   expect(
-    store.sqlite
+    await store.sqlite
       .prepare(
         "SELECT COUNT(*) n FROM space_memberships WHERE space_id='A' AND user_id='b'",
       )
       .get(),
   ).toEqual({ n: 0 });
-  store.sqlite.exec(
+  await store.sqlite.exec(
     "UPDATE users SET email='new@test' WHERE id='b'; UPDATE users SET email='b@test' WHERE id='c'",
   );
   const inbox = async (user: string) =>
@@ -300,52 +286,44 @@ it("known invitations retain recipient identity through email changes and requir
   await expect(
     handleDeclineSpaceInvitation(request("c", {}), env, id),
   ).rejects.toMatchObject({ status: 403 });
-  await expect(
-    invite("a", { userId: "b", role: "viewer" }),
-  ).rejects.toMatchObject({ status: 409 });
+  await expect(invite("a", { userId: "b", role: "viewer" }),).rejects.toMatchObject({ status: 409 });
   expect(
     (await people("a")).find((p) => p.userId === "b")
       ?.pendingInvitationSpaceIds,
   ).toEqual(["A"]);
   await handleDeclineSpaceInvitation(request("b", {}), env, id);
   expect(
-    store.sqlite
+    await store.sqlite
       .prepare(
         "SELECT COUNT(*) n FROM space_memberships WHERE space_id='A' AND user_id='b'",
       )
       .get(),
   ).toEqual({ n: 0 });
   const next = await invite("a", { userId: "b", role: "viewer" });
-  store.sqlite.exec("UPDATE users SET email='another@test' WHERE id='b'");
+  await store.sqlite.exec("UPDATE users SET email='another@test' WHERE id='b'");
   await accept("b", next);
   expect(
     (await people("a")).find((p) => p.userId === "b")?.sharedSpaceCount,
   ).toBe(1);
   expect(
-    store.sqlite.prepare("SELECT COUNT(*) n FROM people_relationships").get(),
+    await store.sqlite.prepare("SELECT COUNT(*) n FROM people_relationships").get(),
   ).toEqual({ n: 1 });
 });
 it("email invitations support a new user who registers later, while permissions and self guards remain authoritative", async () => {
   const id = await invite("a", { email: "john@test", role: "viewer" });
   expect(
-    store.sqlite
+    await store.sqlite
       .prepare("SELECT invitee_user_id FROM space_invitations WHERE id=?")
       .get(id),
   ).toEqual({ invitee_user_id: null });
   expect(await people("a")).toEqual([]);
-  store.sqlite.exec(
+  await store.sqlite.exec(
     "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('john','john@test','John','now','now')",
   );
   await accept("john", id);
   expect((await people("a")).map((p) => p.userId)).toEqual(["john"]);
   expect((await people("john")).map((p) => p.userId)).toEqual(["a"]);
-  await expect(
-    invite("a", { email: "A@test", role: "viewer" }),
-  ).rejects.toMatchObject({ status: 400 });
-  await expect(
-    invite("a", { userId: "john", role: "viewer" }),
-  ).rejects.toMatchObject({ status: 409 });
-  await expect(
-    invite("john", { userId: "a", role: "viewer" }),
-  ).rejects.toMatchObject({ status: 403 });
+  await expect(invite("a", { email: "A@test", role: "viewer" }),).rejects.toMatchObject({ status: 400 });
+  await expect(invite("a", { userId: "john", role: "viewer" }),).rejects.toMatchObject({ status: 409 });
+  await expect(invite("john", { userId: "a", role: "viewer" }),).rejects.toMatchObject({ status: 403 });
 });

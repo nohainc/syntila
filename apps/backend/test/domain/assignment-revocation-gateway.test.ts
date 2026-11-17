@@ -95,13 +95,13 @@ describe("grant revocation ownership", () => {
         env,
         "G",
       );
-      expect(f.status().status).toBe("completed");
+      expect((await f.status()).status).toBe("completed");
       expect((await f.turns())[0]).toMatchObject({
         status: "completed",
         resultText: "finished before stop",
       });
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
@@ -109,17 +109,17 @@ describe("grant revocation ownership", () => {
     for (const issued of [true, false]) {
       const f = await gatewayFixture("acknowledged");
       try {
-        f.sqlite
+        await f.sqlite
           .prepare(
             "UPDATE worker_assignments SET start_permit_required=1, start_permit_issued_at=? WHERE id='A1'",
           )
           .run(issued ? "2026-01-01T00:00:00.000Z" : null);
         await grantEnv(f).revoke();
-        expect(f.status().status).toBe(
+        expect((await f.status()).status).toBe(
           issued ? "revocation_pending" : "cancelled",
         );
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     }
   });
@@ -137,7 +137,7 @@ describe("grant revocation ownership", () => {
       try {
         const g = grantEnv(f);
         expect((await g.revoke()).status).toBe(200);
-        expect(f.status().status).toBe(
+        expect((await f.status()).status).toBe(
           initial === "created"
             ? "cancelled"
             : ["revocation_pending", "reconciling"].includes(initial)
@@ -149,13 +149,13 @@ describe("grant revocation ownership", () => {
           expect(g.commands[0]?.payload).toMatchObject({
             commandId: "revoke:A1:ATT1",
           });
-          const old = f.status();
+          const old = await f.status();
           await g.revoke();
-          expect(f.status()).toEqual(old);
+          expect(await f.status()).toEqual(old);
           expect(g.commands).toHaveLength(2);
         }
       } finally {
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     },
   );
@@ -166,9 +166,9 @@ describe("grant revocation ownership", () => {
       const g = grantEnv(f, true);
       await g.revoke();
       expect(g.commands).toHaveLength(1);
-      expect(f.status().status).toBe("cancelled");
+      expect((await f.status()).status).toBe("cancelled");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
@@ -183,7 +183,11 @@ describe("grant revocation ownership", () => {
             const text = Array.isArray(args[0]) ? (args[0] as string[]).join("?") : "";
             if (!dispatched && text.includes("UPDATE worker_assignments SET status = 'cancelled'")) {
               dispatched = true;
-              f.sqlite.exec("UPDATE worker_assignments SET status='dispatched' WHERE id='A1'");
+              // Only this statement is deferred; every other call returns the query synchronously.
+              return (async () => {
+                await f.sqlite.exec("UPDATE worker_assignments SET status='dispatched' WHERE id='A1'");
+                return Reflect.apply(t, thisArg, args);
+              })();
             }
             return Reflect.apply(t, thisArg, args);
           },
@@ -198,11 +202,11 @@ describe("grant revocation ownership", () => {
         const g = grantEnv({ ...f, db: racing } as typeof f);
         await g.revoke();
         expect(dispatched).toBe(true);
-        expect(f.status().status).toBe("revocation_pending");
+        expect((await f.status()).status).toBe("revocation_pending");
         expect(g.commands).toHaveLength(1);
       } finally {
         spy.mockRestore();
-        f.sqlite.close();
+        await f.sqlite.close();
       }
     }
   });
@@ -210,7 +214,7 @@ describe("grant revocation ownership", () => {
   it("denies startup after the grant commit and recovers a crash before assignment revocation", async () => {
     const f = await gatewayFixture("acknowledged");
     try {
-      f.sqlite.exec(
+      await f.sqlite.exec(
         "UPDATE workspace_space_grants SET status='revoked' WHERE id='G'",
       );
       expect(
@@ -221,30 +225,30 @@ describe("grant revocation ownership", () => {
           runtimeIdentityId: "RT",
         }),
       ).toMatchObject({ granted: false });
-      expect(f.status().status).toBe("acknowledged");
+      expect((await f.status()).status).toBe("acknowledged");
       const g = grantEnv(f);
       await recoverStaleAssignments(f.db, new Date(), g.env);
-      expect(f.status().status).toBe("revocation_pending");
+      expect((await f.status()).status).toBe("revocation_pending");
       expect(g.commands).toHaveLength(1);
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 
   it("preserves terminal outcomes and assignments backed by a different grant", async () => {
     const f = await gatewayFixture("completed");
     try {
-      f.assign("other");
-      const before = f.status();
+      await f.assign("other");
+      const before = await f.status();
       await grantEnv(f).revoke();
-      expect(f.status()).toEqual(before);
+      expect(await f.status()).toEqual(before);
       expect(
-        f.sqlite
+        (await f.sqlite
           .prepare("SELECT status FROM worker_assignments WHERE id='other'")
-          .get()?.status,
+          .get())?.status,
       ).toBe("created");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 });
@@ -263,10 +267,10 @@ async function revoked(initial: string) {
 describe("Gateway delivery and revocation", () => {
   it("persists delivery before it writes the command, and queues exactly one start", async () => {
     const f = await gatewayFixture("created");
-    expect(f.status().status).toBe("created");
+    expect((await f.status()).status).toBe("created");
     const response = await f.dispatch();
     expect(response.status).toBe(200);
-    expect(f.status().status).toBe("dispatched");
+    expect((await f.status()).status).toBe("dispatched");
     expect(types(await f.outbound())).toEqual(["assignment.start"]);
   });
 
@@ -280,7 +284,7 @@ describe("Gateway delivery and revocation", () => {
         shouldSend: false,
       });
       expect(types(await f.outbound())).not.toContain("assignment.start");
-      expect(f.status().status).toBe("revocation_pending");
+      expect((await f.status()).status).toBe("revocation_pending");
     }
   });
 
@@ -292,7 +296,7 @@ describe("Gateway delivery and revocation", () => {
       intent: timeoutIntent,
     });
     // `created` means nothing was delivered, so revocation finalized at once.
-    expect(f.status().status).toBe("timed_out");
+    expect((await f.status()).status).toBe("timed_out");
     const response = await f.dispatch();
     expect(response.status).toBe(409);
     expect(types(await f.outbound())).not.toContain("assignment.start");
@@ -302,7 +306,7 @@ describe("Gateway delivery and revocation", () => {
     const f = await revoked("acknowledged");
     await f.send("assignment.start.ack", started);
     await f.send("assignment.ack", { accepted: true });
-    expect(f.status().status).toBe("revocation_pending");
+    expect((await f.status()).status).toBe("revocation_pending");
   });
 
   it("re-sends the cancel with a stable command id when the Service syncs", async () => {
@@ -325,12 +329,12 @@ describe("Gateway delivery and revocation", () => {
     );
     expect(second).toHaveLength(1);
     expect(second[0]!.payload).toMatchObject({ commandId: "revoke:A1:ATT1" });
-    expect(f.status().status).toBe("revocation_pending");
+    expect((await f.status()).status).toBe("revocation_pending");
   });
 
   it("reports an old unconfirmed revocation as reconciling in the sync result", async () => {
     const f = await revoked("running");
-    f.sqlite
+    await f.sqlite
       .prepare("UPDATE worker_assignments SET updated_at=? WHERE id='A1'")
       .run("2026-10-14T09:00:00.000Z");
     await f.outbound();
@@ -338,7 +342,7 @@ describe("Gateway delivery and revocation", () => {
     const messages = await f.outbound();
     const sync = messages.find((m) => m.type === "workspace.sync.result");
     expect(sync).toBeDefined();
-    expect(f.status().status).toBe("reconciling");
+    expect((await f.status()).status).toBe("reconciling");
     // Still being re-sent after the escalation.
     expect(types(messages)).toContain("assignment.cancel");
   });
@@ -349,8 +353,8 @@ describe("Gateway delivery and revocation", () => {
       cancelled: true,
       alreadyTerminated: false,
     });
-    expect(f.status().status).toBe("timed_out");
-    const task = f.sqlite
+    expect((await f.status()).status).toBe("timed_out");
+    const task = await f.sqlite
       .prepare("SELECT status FROM workflow_tasks WHERE id='T'")
       .get() as { status: string };
     expect(task.status).toBe("failed");
@@ -359,7 +363,7 @@ describe("Gateway delivery and revocation", () => {
   it("does not finalize on a cancel acknowledgement that says the stop failed", async () => {
     const f = await revoked("running");
     await f.send("assignment.cancel.ack", { cancelled: false });
-    expect(f.status().status).toBe("revocation_pending");
+    expect((await f.status()).status).toBe("revocation_pending");
   });
 
   it("treats the Service's own cancelled report as the stop confirmation", async () => {
@@ -368,7 +372,7 @@ describe("Gateway delivery and revocation", () => {
       status: "cancelled",
       reason: "Assignment cancelled before terminal completion.",
     });
-    expect(f.status().status).toBe("timed_out");
+    expect((await f.status()).status).toBe("timed_out");
   });
 
   it("still treats an unrequested cancellation as an ordinary cancellation", async () => {
@@ -377,7 +381,7 @@ describe("Gateway delivery and revocation", () => {
       status: "cancelled",
       reason: "User cancelled",
     });
-    expect(f.status().status).toBe("cancelled");
+    expect((await f.status()).status).toBe("cancelled");
   });
 
   it("accepts a result that arrives while the stop is outstanding", async () => {
@@ -388,7 +392,7 @@ describe("Gateway delivery and revocation", () => {
       output: { text: "finished first" },
       artifactIds: [],
     });
-    expect(f.status().status).toBe("completed");
+    expect((await f.status()).status).toBe("completed");
   });
 });
 
@@ -402,9 +406,9 @@ describe("Gateway start fencing", () => {
     });
     await f.outbound();
   }
-  const required = (f: Awaited<ReturnType<typeof gatewayFixture>>) =>
+  const required = async (f: Awaited<ReturnType<typeof gatewayFixture>>) =>
     (
-      f.sqlite
+      await f.sqlite
         .prepare(
           "SELECT start_permit_required AS r FROM worker_assignments WHERE id='A1'",
         )
@@ -423,7 +427,7 @@ describe("Gateway start fencing", () => {
       (start!.payload as { snapshot: { startPermit?: unknown } }).snapshot
         .startPermit,
     ).toEqual({ required: true });
-    expect(required(f)).toBe(1);
+    expect(await required(f)).toBe(1);
     // Redelivery keeps the requirement.
     await f.dispatch();
     const again = (await f.outbound()).find(
@@ -449,8 +453,8 @@ describe("Gateway start fencing", () => {
       (m) => m.type === "assignment.start",
     );
     expect(start).toBeUndefined();
-    expect(f.status().status).toBe("created");
-    expect(required(f)).toBe(0);
+    expect((await f.status()).status).toBe("created");
+    expect(await required(f)).toBe(0);
   });
 
   it("answers a permit request with a grant while the assignment is live", async () => {
@@ -465,12 +469,12 @@ describe("Gateway start fencing", () => {
     expect(typeof (grant!.payload as { permitId: string }).permitId).toBe(
       "string",
     );
-    expect(f.status().status).toBe("acknowledged");
+    expect((await f.status()).status).toBe("acknowledged");
   });
 
   it("denies the permit once Cloud has revoked the assignment, so a queued command cannot launch", async () => {
     const f = await gatewayFixture("acknowledged");
-    f.sqlite.exec(
+    await f.sqlite.exec(
       "UPDATE worker_assignments SET start_permit_required = 1 WHERE id='A1'",
     );
     // The startup deadline passes while the command waits in the Service queue.
@@ -480,7 +484,7 @@ describe("Gateway start fencing", () => {
       intent: timeoutIntent,
     });
     expect(begun).toMatchObject({ outcome: "finalized", fenced: true });
-    expect(f.status().status).toBe("timed_out");
+    expect((await f.status()).status).toBe("timed_out");
     await f.outbound();
     // The Service reaches the front of its queue and asks to start.
     await f.send("assignment.start.permit.request", {});
@@ -488,7 +492,7 @@ describe("Gateway start fencing", () => {
       (m) => m.type === "assignment.start.permit.grant",
     );
     expect(grant!.payload).toEqual({ granted: false, reason: "terminal" });
-    expect(f.status().status).toBe("timed_out");
+    expect((await f.status()).status).toBe("timed_out");
   });
 
   it("denies a permit request for an assignment that is being revoked", async () => {

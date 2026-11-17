@@ -1,5 +1,5 @@
+import type { FixtureDb } from "./helpers/fixture-db";
 import { readdirSync, readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import {
   BUILTIN_WORKFLOW_CATALOG,

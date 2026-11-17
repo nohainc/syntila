@@ -51,10 +51,10 @@ const fileA = "wrf-11111111-2222-3333-4444-555555555555";
 const fileB = "wrf-11111111-2222-3333-4444-666666666666";
 
 async function fixture() {
-  const { sqlite, db } = pgD1();
-  sqlite.exec("PRAGMA foreign_keys = OFF");
-  sqlite.exec(basicThread({ user: "owner", space: "space", thread: "thread", threadName: "T" }) + workspace("ws", "owner"));
-  sqlite.exec(
+  const { sqlite, db } = await pgD1();
+  await sqlite.exec("PRAGMA foreign_keys = OFF");
+  await sqlite.exec(basicThread({ user: "owner", space: "space", thread: "thread", threadName: "T" }) + workspace("ws", "owner"));
+  await sqlite.exec(
     "" /* D1 migration: schema is final in PostgreSQL */,
   );
   const attachments = [
@@ -73,7 +73,7 @@ async function fixture() {
       sizeBytes: 3,
     },
   ];
-  sqlite
+  await sqlite
     .prepare(
       `INSERT INTO work_requests (id, thread_id, requested_by_user_id, mode,
         workflow_id, workflow_version, workflow_snapshot_json, status,
@@ -232,7 +232,7 @@ describe("Input Delivery v1", () => {
       const stored = JSON.parse(
         String(
           (
-            sqlite
+            await sqlite
               .prepare(
                 "SELECT input_json AS v FROM work_requests WHERE id='wr'",
               )
@@ -259,7 +259,7 @@ describe("Input Delivery v1", () => {
         state: "delivered",
       });
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 
@@ -273,7 +273,7 @@ describe("Input Delivery v1", () => {
       expect((await put(fileB, "abc")).status).toBe(200);
       expect(await states()).toContainEqual([fileB, "uploaded"]);
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 
@@ -293,7 +293,7 @@ describe("Input Delivery v1", () => {
       await attempt(false);
       expect(await states()).toContainEqual([fileA, "uploaded"]);
       await attempt(true);
-      const rows = sqlite
+      const rows = await sqlite
         .prepare(
           "SELECT state, delivery_attempts AS n, error_message AS e FROM work_request_inputs WHERE id = ?",
         )
@@ -304,7 +304,7 @@ describe("Input Delivery v1", () => {
         e: "a.txt could not be delivered to the Workspace: digest mismatch",
       });
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 
@@ -322,7 +322,7 @@ describe("Input Delivery v1", () => {
       );
       expect(await states()).toContainEqual([fileB, "failed"]);
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 
@@ -330,14 +330,14 @@ describe("Input Delivery v1", () => {
     const { sqlite, env, put, runtime } = await fixture();
     try {
       await put(fileA, "hello");
-      sqlite.exec("UPDATE work_requests SET cancel_requested_at = 'now'");
+      await sqlite.exec("UPDATE work_requests SET cancel_requested_at = 'now'");
       const listed = (await (
         await handleListRuntimeInputs(runtime(""), env)
       ).json()) as { inputs: unknown[] };
       expect(listed.inputs).toEqual([]);
       await expect(put(fileB, "abc")).rejects.toThrow("no longer waiting");
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 });

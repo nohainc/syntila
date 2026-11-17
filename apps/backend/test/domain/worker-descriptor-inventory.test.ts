@@ -12,7 +12,7 @@ const LAST_SEEN = "2026-10-02T00:00:00.000Z";
 const DIGEST = "a".repeat(64);
 
 describe("Workspace Worker inventory catalog metadata", () => {
-  let handle: ReturnType<typeof pgD1>;
+  let handle: Awaited<ReturnType<typeof pgD1>>;
   let env: Env;
 
   const inventory = (o: {
@@ -55,9 +55,9 @@ describe("Workspace Worker inventory catalog metadata", () => {
          VALUES ('dynamic-test-worker', 1, '{"schemaVersion":1}', ${revision}, '${DIGEST}', '${LAST_SEEN}');`,
     );
 
-  beforeEach(() => {
-    handle = pgD1();
-    handle.sqlite.exec(
+  beforeEach(async () => {
+    handle = await pgD1();
+    await handle.sqlite.exec(
       user("user-1") + workspace("workspace-1", "user-1", "Vitalii’s MacBook Pro"),
     );
     env = {
@@ -68,11 +68,11 @@ describe("Workspace Worker inventory catalog metadata", () => {
   });
 
   it("returns Cloud metadata separately from local readiness", async () => {
-    handle.sqlite.exec(
+    await handle.sqlite.exec(
       `INSERT INTO worker_catalog (worker_type_id, display_name, description, lifecycle_state, created_at, updated_at)
        VALUES ('dynamic-test-worker', 'Dynamic Test Worker', 'Catalog-created acceptance Worker.', 'active', '${T0}', '${T0}');`,
     );
-    inventory({
+    await inventory({
       id: "workspace-worker-dynamic",
       type: "dynamic-test-worker",
       readiness: "setup_required",
@@ -107,7 +107,7 @@ describe("Workspace Worker inventory catalog metadata", () => {
     });
     expect(body.workers[0]).not.toHaveProperty("descriptor");
 
-    handle.sqlite.exec(
+    await handle.sqlite.exec(
       "UPDATE worker_catalog SET lifecycle_state = 'retired' WHERE worker_type_id = 'dynamic-test-worker'",
     );
     const retiredResponse = await handleListWorkspaceWorkerInventory(
@@ -130,7 +130,7 @@ describe("Workspace Worker inventory catalog metadata", () => {
         allowlist: ["gpt-test"],
       },
     });
-    handle.sqlite
+    await handle.sqlite
       .prepare(
         `INSERT INTO worker_profiles (worker_type_id, schema_version, profile_json, revision, digest, updated_at)
          VALUES ('chatgpt', 1, ?, 2, ?, ?)
@@ -138,7 +138,7 @@ describe("Workspace Worker inventory catalog metadata", () => {
            SET profile_json = excluded.profile_json, revision = 2, digest = excluded.digest`,
       )
       .run(profile, DIGEST, LAST_SEEN);
-    inventory({
+    await inventory({
       id: "workspace-worker-chatgpt",
       type: "chatgpt",
       readiness: "ready",
@@ -158,8 +158,8 @@ describe("Workspace Worker inventory catalog metadata", () => {
   });
 
   it("discovers a managed Cloud Worker from the current Profile catalog", async () => {
-    dynamicWorker(4);
-    handle.sqlite
+    await dynamicWorker(4);
+    await handle.sqlite
       .prepare(
         `INSERT INTO workspace_runtime_identities (id, workspace_id, installation_id, credential_token_hash, created_at)
          VALUES ('runtime-1', 'workspace-1', 'installation-1', ?, now())`,
@@ -200,7 +200,7 @@ describe("Workspace Worker inventory catalog metadata", () => {
   });
 
   it("serves the current Worker catalog through the authenticated human API", async () => {
-    dynamicWorker(4);
+    await dynamicWorker(4);
 
     const response = await handleListWorkerCatalog(
       new Request("https://syntila.test/api/workers/catalog"),

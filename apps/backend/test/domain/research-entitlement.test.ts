@@ -3,14 +3,14 @@ import { pgD1 } from "./helpers/pg-d1";
 import { requireWorkflowPermission } from "../../src/domain/routes/space-permissions.js";
 
 const open: Array<{ close(): void }> = [];
-afterEach(() => {
-  for (const sqlite of open.splice(0)) sqlite.close();
+afterEach(async () => {
+  for (const sqlite of open.splice(0)) (await sqlite.close());
 });
 
-function fixture() {
-  const { sqlite, db } = pgD1();
+async function fixture() {
+  const { sqlite, db } = await pgD1();
   open.push(sqlite);
-  sqlite.exec(`
+  await sqlite.exec(`
     INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES
       ('owner','o@t','Owner','now','now'),('member','m@t','Member','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','owner','S','now','now');
@@ -23,7 +23,7 @@ function fixture() {
 }
 
 it("requires the requester's own Syntila Plus for Research and Implement, not the Space owner's", async () => {
-  const { env, sqlite } = fixture();
+  const { env, sqlite } = await fixture();
   await expect(
     requireWorkflowPermission(env, "owner", "S", "research"),
   ).resolves.toBeTruthy();
@@ -46,13 +46,13 @@ it("requires the requester's own Syntila Plus for Research and Implement, not th
     requireWorkflowPermission(env, "member", "S", "direct"),
   ).resolves.toBeTruthy();
   // Expired plans follow the existing effective-tier rules.
-  sqlite.exec(
+  (await sqlite.exec(
     "INSERT INTO account_plans(user_id,tier,status,source,current_period_end,created_at,updated_at) VALUES('member','paid','active','manual','2000-01-01T00:00:00Z','now','now')",
-  );
+  ));
   await expect(
     requireWorkflowPermission(env, "member", "S", "research"),
   ).rejects.toMatchObject({ code: "paid_plan_required" });
-  sqlite.exec(
+  await sqlite.exec(
     "UPDATE account_plans SET current_period_end='2999-01-01T00:00:00Z', status='past_due' WHERE user_id='member'",
   );
   await expect(

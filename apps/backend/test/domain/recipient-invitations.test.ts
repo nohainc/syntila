@@ -8,26 +8,26 @@ import {
 import worker from "../../src/domain/index.js";
 
 describe("Recipient Invitations API", () => {
-  function createTestEnv() {
-    const { sqlite, db } = pgD1();
+  async function createTestEnv() {
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
     // Seed users
-    sqlite.exec(`
+    (await sqlite.exec(`
       INSERT INTO users (id, email, display_name, status, created_at, updated_at)
       VALUES 
         ('user-vitalii', 'vitalii@nohainc.com', 'Vitalii Noha', 'active', '${now}', '${now}'),
         ('user-ulikoss', 'ulikossnokia@gmail.com', 'Ulikoss Nokia', 'active', '${now}', '${now}'),
         ('user-other', 'other@example.com', 'Other Person', 'active', '${now}', '${now}');
-    `);
+    `));
 
     // Seed space owned by vitalii
-    sqlite.exec(`
+    (await sqlite.exec(`
       INSERT INTO spaces (id, name, owner_user_id, created_at, updated_at)
       VALUES ('proj-1', 'Syntila Development', 'user-vitalii', '${now}', '${now}');
       INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at)
       VALUES ('pm-1', 'proj-1', 'user-vitalii', 'owner', '${now}', '${now}');
-    `);
+    `));
 
     const env = {
       SYNTILA_ENVIRONMENT: "development",
@@ -85,30 +85,30 @@ describe("Recipient Invitations API", () => {
 
   describe("GET /api/me/invitations", () => {
     it("returns active pending invitations for authenticated recipient", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const future = new Date(Date.now() + 86400000).toISOString();
       const past = new Date(Date.now() - 86400000).toISOString();
 
       // Active invitation to ulikoss
-      sqlite.exec(`
+      (await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-1', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-1', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
-      `);
+      `));
 
       // An expired pending invitation in another Space (one pending per Space/email).
-      sqlite.exec(
+      (await sqlite.exec(
         `INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('proj-expired','user-vitalii','Expired','now','now')`,
-      );
-      sqlite.exec(`
+      ));
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-expired', 'proj-expired', 'ulikossnokia@gmail.com', 'collaborator', 'hash-exp', 'user-vitalii', 'pending', '${past}', '${past}', '${past}');
       `);
 
       // Invitation to someone else
-      sqlite.exec(`
+      (await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-other', 'proj-1', 'other@example.com', 'collaborator', 'hash-other', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
-      `);
+      `));
 
       const req = new Request("https://syntila.test/api/me/invitations", {
         headers: { authorization: "Bearer ulikoss" },
@@ -134,10 +134,10 @@ describe("Recipient Invitations API", () => {
     });
 
     it("works via appRouter dispatch", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const future = new Date(Date.now() + 86400000).toISOString();
 
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-router', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-r', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
       `);
@@ -154,10 +154,10 @@ describe("Recipient Invitations API", () => {
 
   describe("POST /api/invitations/:id/accept", () => {
     it("atomically creates space membership and marks invitation accepted", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const future = new Date(Date.now() + 86400000).toISOString();
 
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-accept-1', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-acc', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
       `);
@@ -185,7 +185,7 @@ describe("Recipient Invitations API", () => {
       });
 
       // Verify DB membership was created
-      const membership = sqlite
+      const membership = await sqlite
         .prepare(
           "SELECT user_id, space_id, role FROM space_memberships WHERE space_id = 'proj-1' AND user_id = 'user-ulikoss'",
         )
@@ -197,7 +197,7 @@ describe("Recipient Invitations API", () => {
       });
 
       // Verify invitation status updated
-      const invitation = sqlite
+      const invitation = await sqlite
         .prepare(
           "SELECT status, accepted_by_user_id FROM space_invitations WHERE id = 'pinv-accept-1'",
         )
@@ -207,10 +207,10 @@ describe("Recipient Invitations API", () => {
     });
 
     it("rejects acceptance by a different authenticated user", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const future = new Date(Date.now() + 86400000).toISOString();
 
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-wrong', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-w', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
       `);
@@ -228,10 +228,10 @@ describe("Recipient Invitations API", () => {
     });
 
     it("rejects acceptance of expired invitation", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const past = new Date(Date.now() - 86400000).toISOString();
 
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-exp-acc', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-ea', 'user-vitalii', 'pending', '${past}', '${past}', '${past}');
       `);
@@ -251,10 +251,10 @@ describe("Recipient Invitations API", () => {
 
   describe("POST /api/invitations/:id/decline", () => {
     it("marks invitation declined and records audit entry", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const future = new Date(Date.now() + 86400000).toISOString();
 
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-dec-1', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-dec', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
       `);
@@ -281,13 +281,13 @@ describe("Recipient Invitations API", () => {
       });
 
       // Verify DB status
-      const invitation = sqlite
+      const invitation = await sqlite
         .prepare("SELECT status FROM space_invitations WHERE id = 'pinv-dec-1'")
         .get() as { status: string };
       expect(invitation.status).toBe("declined");
 
       // Verify audit log
-      const audit = sqlite
+      const audit = await sqlite
         .prepare(
           "SELECT action, target_id FROM space_audit_log WHERE action = 'space.invitation.declined'",
         )
@@ -299,10 +299,10 @@ describe("Recipient Invitations API", () => {
     });
 
     it("rejects decline by non-recipient user", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const future = new Date(Date.now() + 86400000).toISOString();
 
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-dec-wrong', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-dw', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
       `);
@@ -320,10 +320,10 @@ describe("Recipient Invitations API", () => {
     });
 
     it("publishes realtime events for invitation lifecycle actions", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const future = new Date(Date.now() + 86400000).toISOString();
 
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-rt-1', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-rt', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
       `);
@@ -337,7 +337,7 @@ describe("Recipient Invitations API", () => {
       );
       await handleAcceptSpaceInvitation(req, env as never, "pinv-rt-1");
 
-      const event = sqlite
+      const event = await sqlite
         .prepare(
           "SELECT event_type, space_id, payload_json FROM realtime_events WHERE space_id = 'proj-1' ORDER BY sequence DESC LIMIT 1",
         )
@@ -356,21 +356,21 @@ describe("Recipient Invitations API", () => {
 
   describe("End-to-End Invitation Lifecycle & Edge Cases", () => {
     it("handles new user invited before account creation, who signs in later", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const now = new Date().toISOString();
       const future = new Date(Date.now() + 86400000).toISOString();
 
       // Vitalii invites newuser@example.com (does not exist in users table yet)
-      sqlite.exec(`
+      (await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-newuser', 'proj-1', 'newuser@example.com', 'collaborator', 'hash-nu', 'user-vitalii', 'pending', '${future}', '${now}', '${now}');
-      `);
+      `));
 
       // Later, user signs up / authenticates
-      sqlite.exec(`
+      (await sqlite.exec(`
         INSERT INTO users (id, email, display_name, status, created_at, updated_at)
         VALUES ('user-new', 'newuser@example.com', 'New User', 'active', '${now}', '${now}');
-      `);
+      `));
 
       const reqAuth = new Request("https://syntila.test/api/me/invitations", {
         headers: { authorization: "Bearer newuser" },
@@ -418,7 +418,7 @@ describe("Recipient Invitations API", () => {
       expect(acceptRes.status).toBe(200);
 
       // Verify membership
-      const member = sqlite
+      const member = await sqlite
         .prepare(
           "SELECT user_id, role FROM space_memberships WHERE space_id = 'proj-1' AND user_id = 'user-new'",
         )
@@ -427,10 +427,10 @@ describe("Recipient Invitations API", () => {
     });
 
     it("prevents duplicate pending invitation to the same email", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const future = new Date(Date.now() + 86400000).toISOString();
 
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-dup-1', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-d1', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
       `);
@@ -452,13 +452,11 @@ describe("Recipient Invitations API", () => {
 
       const { handleCreateSpaceInvitation } =
         await import("../../src/domain/routes/spaces.js");
-      await expect(
-        handleCreateSpaceInvitation(req, env as never, "proj-1"),
-      ).rejects.toThrow("A pending invitation already exists for this user");
+      await expect(handleCreateSpaceInvitation(req, env as never, "proj-1"),).rejects.toThrow("A pending invitation already exists for this user");
     });
 
     it("prevents self invitations", async () => {
-      const { env } = createTestEnv();
+      const { env } = await createTestEnv();
       const req = new Request(
         "https://syntila.test/api/spaces/proj-1/invitations",
         {
@@ -476,16 +474,14 @@ describe("Recipient Invitations API", () => {
 
       const { handleCreateSpaceInvitation } =
         await import("../../src/domain/routes/spaces.js");
-      await expect(
-        handleCreateSpaceInvitation(req, env as never, "proj-1"),
-      ).rejects.toThrow("You cannot invite yourself");
+      await expect(handleCreateSpaceInvitation(req, env as never, "proj-1"),).rejects.toThrow("You cannot invite yourself");
     });
 
     it("handles simultaneous accept and revoke race conditions", async () => {
-      const { sqlite, env } = createTestEnv();
+      const { sqlite, env } = await createTestEnv();
       const future = new Date(Date.now() + 86400000).toISOString();
 
-      sqlite.exec(`
+      await sqlite.exec(`
         INSERT INTO space_invitations (id, space_id, email, role, token_hash, invited_by_user_id, status, expires_at, created_at, updated_at)
         VALUES ('pinv-race-1', 'proj-1', 'ulikossnokia@gmail.com', 'collaborator', 'hash-rc', 'user-vitalii', 'pending', '${future}', '${future}', '${future}');
       `);

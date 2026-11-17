@@ -3,11 +3,11 @@ import { pgD1 } from "./helpers/pg-d1";
 import worker from "../../src/domain/index.js";
 
 describe("Direct Space provisioning", () => {
-  function createTestEnv() {
-    const { sqlite, db } = pgD1();
+  async function createTestEnv() {
+    const { sqlite, db } = await pgD1();
     const now = new Date().toISOString();
 
-    sqlite.exec(`
+    await sqlite.exec(`
       INSERT INTO users (id, email, display_name, avatar_url, status, created_at, updated_at) VALUES
         ('user-alice', 'alice@test.com', 'Alice User', 'r2://avatars/user-alice/alice-v1', 'active', '${now}', '${now}'),
         ('user-bob', 'bob@test.com', 'Bob User', 'r2://avatars/user-bob/bob-v1', 'active', '${now}', '${now}'),
@@ -88,8 +88,8 @@ describe("Direct Space provisioning", () => {
   }
 
   it("creates a missing personal Space for a connected person and reuses it", async () => {
-    const { env, sqlite } = createTestEnv();
-    sqlite.exec(
+    const { env, sqlite } = await createTestEnv();
+    await sqlite.exec(
       `INSERT INTO person_connections (user_low_id, user_high_id, status, established_at) VALUES ('user-alice', 'user-bob', 'connected', '2026-01-01')`,
     );
     const open = (who: string, peer: string) =>
@@ -108,17 +108,17 @@ describe("Direct Space provisioning", () => {
     const second = await open("bob", "user-alice");
     expect(await second.json()).toEqual({ spaceId });
     expect(
-      sqlite.prepare("SELECT COUNT(*) AS n FROM direct_spaces").get(),
+      await sqlite.prepare("SELECT COUNT(*) AS n FROM direct_spaces").get(),
     ).toEqual({ n: 1 });
     expect(
-      sqlite
+      await sqlite
         .prepare("SELECT COUNT(*) AS n FROM threads WHERE space_id = ?")
         .get(spaceId),
     ).toEqual({ n: 0 });
   });
 
   it("provisions a Direct Space without a Thread and allows participants to create one", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
 
     // 1. Alice invites Bob
     const inviteRes = await worker.fetch(
@@ -161,7 +161,7 @@ describe("Direct Space provisioning", () => {
     expect(acceptBody.connection.userHighId).toBe("user-bob");
 
     // 3. Verify Database entities
-    const directSpaceRow = sqlite
+    const directSpaceRow = await sqlite
       .prepare("SELECT * FROM direct_spaces WHERE space_id = ?")
       .get(acceptBody.directSpaceId) as {
       space_id: string;
@@ -193,7 +193,7 @@ describe("Direct Space provisioning", () => {
       generalThreadId: null,
     });
 
-    const spaceRow = sqlite
+    const spaceRow = await sqlite
       .prepare("SELECT * FROM spaces WHERE id = ?")
       .get(acceptBody.directSpaceId) as {
       id: string;
@@ -205,7 +205,7 @@ describe("Direct Space provisioning", () => {
     expect(spaceRow.owner_user_id).toBe("user-alice");
 
     expect(
-      sqlite
+      await sqlite
         .prepare("SELECT id FROM threads WHERE space_id = ?")
         .all(acceptBody.directSpaceId),
     ).toHaveLength(0);
@@ -227,7 +227,7 @@ describe("Direct Space provisioning", () => {
       expect(response.status).toBe(201);
     }
 
-    const memberships = sqlite
+    const memberships = await sqlite
       .prepare(
         "SELECT user_id, role FROM space_memberships WHERE space_id = ? ORDER BY user_id",
       )
@@ -243,7 +243,7 @@ describe("Direct Space provisioning", () => {
   });
 
   it("handles acceptance retry idempotently without duplicating resources", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
 
     const inviteRes = await worker.fetch(
       new Request("https://syntila.test/api/people/invitations", {
@@ -289,19 +289,19 @@ describe("Direct Space provisioning", () => {
     expect(acceptBody2.directSpaceId).toBe(acceptBody1.directSpaceId);
 
     // Verify exactly one Direct Space and no automatically created Threads.
-    const spaceCount = sqlite
+    const spaceCount = await sqlite
       .prepare("SELECT COUNT(*) AS count FROM spaces WHERE kind = 'direct'")
       .get() as { count: number };
     expect(spaceCount.count).toBe(1);
 
-    const threadCount = sqlite
+    const threadCount = await sqlite
       .prepare("SELECT COUNT(*) AS count FROM threads WHERE space_id = ?")
       .get(acceptBody1.directSpaceId) as { count: number };
     expect(threadCount.count).toBe(0);
   });
 
   it("automatically provisions Direct Space on reciprocal invitations", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
 
     // Alice invites Bob
     await worker.fetch(
@@ -336,14 +336,14 @@ describe("Direct Space provisioning", () => {
     expect(body.status).toBe("connected");
     expect(body.directSpaceId).toBeDefined();
 
-    const directSpace = sqlite
+    const directSpace = await sqlite
       .prepare("SELECT * FROM direct_spaces WHERE space_id = ?")
       .get(body.directSpaceId);
     expect(directSpace).toBeDefined();
   });
 
   it("safeguards ordinary POST /api/spaces from creating direct spaces manually", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
 
     // Trying to pass kind = 'direct' to normal space creation
     const res = await worker.fetch(
@@ -379,7 +379,7 @@ describe("Direct Space provisioning", () => {
   });
 
   it("protects General Thread from deletion while allowing custom threads", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
 
     // Connect Alice & Bob
     const inviteRes = await worker.fetch(
@@ -412,12 +412,12 @@ describe("Direct Space provisioning", () => {
     // Simulate an existing connection from before migration 0107.
     const general_thread_id = "legacy-general";
     const now = new Date().toISOString();
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO threads (id, space_id, name, status, lead_user_id, is_general, created_at, updated_at) VALUES (?, ?, 'General', 'active', 'user-alice', TRUE, ?, ?)",
       )
       .run(general_thread_id, directSpaceId, now, now);
-    sqlite
+    await sqlite
       .prepare(
         "UPDATE direct_spaces SET general_thread_id = ? WHERE space_id = ?",
       )
@@ -469,7 +469,7 @@ describe("Direct Space provisioning", () => {
   });
 
   it("provides dynamic viewer-specific display identity and peer avatar", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
 
     // Connect Alice & Bob
     const inviteRes = await worker.fetch(
@@ -551,11 +551,11 @@ describe("Direct Space provisioning", () => {
 
     // Dynamic profile display name change:
     // Bob updates his profile displayName in users table
-    sqlite
+    (await sqlite
       .prepare(
         "UPDATE users SET display_name = 'Robert (Bob) User' WHERE id = 'user-bob'",
       )
-      .run();
+      .run());
 
     // Alice fetches space again: name is immediately updated to Bob's new display name
     const aliceGetAfterRes = await worker.fetch(
@@ -570,14 +570,14 @@ describe("Direct Space provisioning", () => {
     expect(aliceViewAfter.space.name).toBe("Robert (Bob) User");
 
     // Underlying spaces table name was NOT altered
-    const rawSpace = sqlite
+    const rawSpace = await sqlite
       .prepare("SELECT name FROM spaces WHERE id = ?")
       .get(directSpaceId) as { name: string };
     expect(rawSpace.name).toBe("Direct Space");
   });
 
   it("enforces discovery isolation and access control against unrelated users", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
 
     // Connect Alice & Bob
     const inviteRes = await worker.fetch(
@@ -640,7 +640,7 @@ describe("Direct Space provisioning", () => {
   });
 
   it("restricts administrative owner actions that disrupt the other participant", async () => {
-    const { env } = createTestEnv();
+    const { env } = await createTestEnv();
 
     // Connect Alice & Bob
     const inviteRes = await worker.fetch(
@@ -761,7 +761,7 @@ describe("Direct Space provisioning", () => {
   });
 
   it("publishes space.created and people.updated realtime events atomically upon provisioning", async () => {
-    const { env, sqlite } = createTestEnv();
+    const { env, sqlite } = await createTestEnv();
 
     const inviteRes = await worker.fetch(
       new Request("https://syntila.test/api/people/invitations", {
@@ -792,14 +792,14 @@ describe("Direct Space provisioning", () => {
     };
 
     // Check realtime_events
-    const spaceCreatedEvents = sqlite
+    const spaceCreatedEvents = await sqlite
       .prepare(
         "SELECT * FROM realtime_events WHERE event_type = 'space.created' AND space_id = ?",
       )
       .all(directSpaceId);
     expect(spaceCreatedEvents.length).toBeGreaterThan(0);
 
-    const peopleUpdatedEvents = sqlite
+    const peopleUpdatedEvents = await sqlite
       .prepare(
         "SELECT * FROM realtime_events WHERE event_type = 'people.updated'",
       )

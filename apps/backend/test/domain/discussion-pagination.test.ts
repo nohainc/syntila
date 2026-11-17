@@ -1,6 +1,6 @@
+import type { FixtureDb } from "./helpers/fixture-db";
 import { pgD1 } from "./helpers/pg-d1";
 import { basicThread, thread } from "./helpers/seed";
-import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 
 const authorize = vi.fn(async () => ({
@@ -20,22 +20,22 @@ type Page = {
   newestCursor: string | null;
 };
 
-function fixture(count = 7) {
-  const handle = pgD1();
-  const sqlite = handle.sqlite as unknown as DatabaseSync;
-  sqlite.exec([basicThread({ user: "owner", space: "p", thread: "w" }), thread("other-w", "p", "owner")].join("\n"));
+async function fixture(count = 7) {
+  const handle = await pgD1();
+  const sqlite = handle.sqlite as unknown as FixtureDb;
+  await sqlite.exec([basicThread({ user: "owner", space: "p", thread: "w" }), thread("other-w", "p", "owner")].join("\n"));
   const insert = sqlite.prepare(
     "INSERT INTO discussion_messages(id, thread_id, author_user_id, body, references_json, edited_at, created_at) VALUES(?, ?, 'owner', ?, '[]', NULL, ?)",
   );
   // Identical timestamps exercise the stable ID tie-breaker.
   for (let i = 1; i <= count; i++)
-    insert.run(
+    await insert.run(
       `m${String(i).padStart(3, "0")}`,
       "w",
       `  **${i}**\n`,
       "2026-10-06T00:00:00.000Z",
     );
-  insert.run("other", "other-w", "private", "2026-10-06T00:00:00.000Z");
+  await insert.run("other", "other-w", "private", "2026-10-06T00:00:00.000Z");
   const env = { SYNTILA_DB: handle.db } as unknown as Parameters<
     typeof handleListDiscussionMessages
   >[1];
@@ -54,7 +54,7 @@ function fixture(count = 7) {
 
 describe("Discussion paging contract 1", () => {
   it("defaults to newest 50 in display order, with older cursor and exact Markdown", async () => {
-    const { sqlite, page } = fixture(55);
+    const { sqlite, page } = await fixture(55);
     try {
       const result = await page();
       expect(result.schemaVersion).toBe(1);
@@ -75,11 +75,11 @@ describe("Discussion paging contract 1", () => {
       ]);
       expect(older.nextCursor).toBeNull();
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
   it("walks all older pages without skipping duplicate timestamps", async () => {
-    const { sqlite, page } = fixture();
+    const { sqlite, page } = await fixture();
     try {
       const ids: string[] = [];
       let cursor: string | null = null;
@@ -100,15 +100,15 @@ describe("Discussion paging contract 1", () => {
         "m007",
       ]);
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
   it("catches up new messages in forward pages and returns stable empty anchor", async () => {
-    const { sqlite, page, insert } = fixture(2);
+    const { sqlite, page, insert } = await fixture(2);
     try {
       const head = await page();
       for (let i = 3; i <= 7; i++)
-        insert.run(`m00${i}`, "w", `new ${i}`, "2026-10-06T00:00:00.000Z");
+        await insert.run(`m00${i}`, "w", `new ${i}`, "2026-10-06T00:00:00.000Z");
       let cursor = head.newestCursor!;
       const ids: string[] = [];
       let next: string | null;
@@ -125,11 +125,11 @@ describe("Discussion paging contract 1", () => {
       expect(empty.messages).toEqual([]);
       expect(empty.newestCursor).toBe(cursor);
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
   it("rejects invalid limits, malformed and cross-Thread cursors", async () => {
-    const { sqlite, page } = fixture();
+    const { sqlite, page } = await fixture();
     try {
       for (const query of [
         "?limit=0",
@@ -143,20 +143,18 @@ describe("Discussion paging contract 1", () => {
         await expect(page(query)).rejects.toMatchObject({ status: 400 });
       }
       const head = await page("?limit=2");
-      await expect(
-        page(`?cursor=${encodeURIComponent(head.nextCursor!)}`, "other-w"),
-      ).rejects.toMatchObject({ status: 400 });
+      await expect(page(`?cursor=${encodeURIComponent(head.nextCursor!)}`, "other-w"),).rejects.toMatchObject({ status: 400 });
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
   it("authorizes every page before accessing Discussion data", async () => {
-    const { sqlite, page } = fixture();
+    const { sqlite, page } = await fixture();
     try {
       authorize.mockRejectedValueOnce(new Error("denied"));
       await expect(page()).rejects.toThrow("denied");
     } finally {
-      sqlite.close();
+      await sqlite.close();
     }
   });
 });

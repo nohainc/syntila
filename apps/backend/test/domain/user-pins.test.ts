@@ -9,24 +9,24 @@ import {
   type SecurityEnv,
 } from "../../src/domain/routes/handlers.js";
 
-function fixture() {
-  const { sqlite, db } = pgD1();
+async function fixture() {
+  const { sqlite, db } = await pgD1();
   for (const id of ["alice", "bob", "eve"])
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
-      .run(id, `${id}@test`, id);
-  sqlite.exec(
+      .run(id, `${id}@test`, id));
+  await sqlite.exec(
     "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','alice','Space','now','now')",
   );
   for (const id of ["alice", "bob"])
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES(?,'S',?,?,'2020-01-01T00:00:00Z','2020-01-01T00:00:00Z')",
       )
-      .run(`m-${id}`, id, id === "alice" ? "owner" : "collaborator");
-  sqlite.exec(
+      .run(`m-${id}`, id, id === "alice" ? "owner" : "collaborator"));
+  await sqlite.exec(
     "INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('T','S','Thread','active','alice','2020-01-01T00:00:00Z','2020-01-01T00:00:00Z')",
   );
   const env = {
@@ -69,7 +69,7 @@ function fixture() {
 }
 
 it("pins a Space and a Thread for the caller only, idempotently", async () => {
-  const { env, as, pins } = fixture();
+  const { env, as, pins } = await fixture();
   expect(await pins("bob")).toEqual([false, false]);
   expect((await handleSetPin(as("bob", "PUT"), env, "space", "S")).status).toBe(
     200,
@@ -84,7 +84,7 @@ it("pins a Space and a Thread for the caller only, idempotently", async () => {
 });
 
 it("rejects pins from people outside the Space and unknown kinds", async () => {
-  const { env, as } = fixture();
+  const { env, as } = await fixture();
   await expect(
     handleSetPin(as("eve", "PUT"), env, "space", "S"),
   ).rejects.toMatchObject({});
@@ -97,22 +97,22 @@ it("rejects pins from people outside the Space and unknown kinds", async () => {
 });
 
 it("rolls back a pin when its durable event cannot be stored", async () => {
-  const { env, as, sqlite } = fixture();
-  sqlite.exec("ALTER TABLE realtime_events ADD CONSTRAINT test_reject_event CHECK (false) NOT VALID");
+  const { env, as, sqlite } = await fixture();
+  await sqlite.exec("ALTER TABLE realtime_events ADD CONSTRAINT test_reject_event CHECK (false) NOT VALID");
   await expect(handleSetPin(as("bob", "PUT"), env, "space", "S")).rejects.toThrow();
-  expect(sqlite.prepare("SELECT count(*) AS n FROM user_pins WHERE user_id = ?").get("bob")).toEqual({ n: 0 });
+  expect(await sqlite.prepare("SELECT count(*) AS n FROM user_pins WHERE user_id = ?").get("bob")).toEqual({ n: 0 });
 });
 
 it("keeps concurrent pin positions distinct for the same user", async () => {
-  const { env, as, sqlite } = fixture();
-  sqlite.exec("INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S2','alice','Two','now','now'); INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m2','S2','bob','collaborator','now','now')");
+  const { env, as, sqlite } = await fixture();
+  await sqlite.exec("INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S2','alice','Two','now','now'); INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m2','S2','bob','collaborator','now','now')");
   await Promise.all(["S", "S2"].map((id) => handleSetPin(as("bob", "PUT"), env, "space", id)));
-  const rows = sqlite.prepare("SELECT position FROM user_pins WHERE user_id = ? ORDER BY position").all("bob") as { position: number }[];
+  const rows = await sqlite.prepare("SELECT position FROM user_pins WHERE user_id = ? ORDER BY position").all("bob") as { position: number }[];
   expect(rows.map((row) => row.position)).toEqual([-2, -1]);
 });
 
 it("keeps a Space's position when only sidebar view state changes", async () => {
-  const { env, sqlite } = fixture();
+  const { env, sqlite } = await fixture();
   const update = (body: unknown) =>
     handleUpdateSpace(
       new Request("https://test/api", {
@@ -123,44 +123,44 @@ it("keeps a Space's position when only sidebar view state changes", async () => 
       env,
       "S",
     );
-  const updatedAt = () =>
+  const updatedAt = async () =>
     (
-      sqlite
+      await sqlite
         .prepare("SELECT updated_at AS u FROM spaces WHERE id='S'")
         .get() as {
         u: string;
       }
     ).u;
-  const before = updatedAt();
+  const before = await updatedAt();
   expect((await update({ settings: { sidebarExpanded: true } })).status).toBe(
     200,
   );
-  expect(updatedAt()).toBe(before);
+  expect(await updatedAt()).toBe(before);
   expect((await update({ description: "changed" })).status).toBe(200);
-  expect(updatedAt()).not.toBe(before);
+  expect(await updatedAt()).not.toBe(before);
 });
 
 it("orders pins per user, newest pin first until moved", async () => {
-  const { env, as, sqlite } = fixture();
-  sqlite.exec(
+  const { env, as, sqlite } = await fixture();
+  await sqlite.exec(
     "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S2','alice','Two','now','now')",
   );
-  sqlite.exec(
+  await sqlite.exec(
     "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m2','S2','bob','collaborator','2020-01-01T00:00:00Z','2020-01-01T00:00:00Z')",
   );
   await handleSetPin(as("bob", "PUT"), env, "space", "S");
   await handleSetPin(as("bob", "PUT"), env, "space", "S2");
-  const positions = () =>
+  const positions = async () =>
     Object.fromEntries(
       (
-        sqlite
+        await sqlite
           .prepare(
             "SELECT target_id AS id, position AS p FROM user_pins WHERE user_id='bob' AND kind='space'",
           )
           .all() as { id: string; p: number }[]
       ).map((r) => [r.id, r.p]),
     );
-  const before = positions();
+  const before = await positions();
   expect(before.S2!).toBeLessThan(before.S!);
   const order = (user: string, ids: string[]) =>
     handleSetPinOrder(
@@ -172,7 +172,7 @@ it("orders pins per user, newest pin first until moved", async () => {
       env,
     );
   expect((await order("bob", ["S", "S2"])).status).toBe(200);
-  expect(positions()).toEqual({ S: 0, S2: 1 });
+  expect(await positions()).toEqual({ S: 0, S2: 1 });
   await expect(order("eve", ["S"])).rejects.toMatchObject({});
-  expect(positions()).toEqual({ S: 0, S2: 1 });
+  expect(await positions()).toEqual({ S: 0, S2: 1 });
 });

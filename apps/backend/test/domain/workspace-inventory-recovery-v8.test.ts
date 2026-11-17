@@ -1,5 +1,5 @@
+import type { FixtureDb } from "./helpers/fixture-db";
 import { pgD1 } from "./helpers/pg-d1";
-import type { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "./helpers/vitest-compat";
@@ -7,10 +7,10 @@ import { WorkspaceGateway } from "../../src/domain/workspace-gateway.js";
 
 describe("v8 Workspace inventory recovery", () => {
   it("reconciles duplicate snapshots, omissions, reconnects, and foreign Worker IDs", async () => {
-    const handle = pgD1();
-    const database = handle.sqlite as unknown as DatabaseSync;
-    database.exec("PRAGMA foreign_keys = ON");
-    database.exec(
+    const handle = await pgD1();
+    const database = handle.sqlite as unknown as FixtureDb;
+    await database.exec("PRAGMA foreign_keys = ON");
+    await database.exec(
       "",
     );
     for (const migration of [
@@ -18,18 +18,18 @@ describe("v8 Workspace inventory recovery", () => {
       "0020_space_workflow_configurations.sql",
       "0022_workflow_workspace_selection.sql",
     ]) {
-      database.exec(
+      await database.exec(
         "" /* D1 migration: schema is final in PostgreSQL */,
       );
     }
-    database.exec(
+    await database.exec(
       "",
     );
     // Inventory ingestion now also writes the plugin executor column.
-    database.exec(
+    await database.exec(
       "" /* D1 migration: schema is final in PostgreSQL */,
     );
-    database.exec(`
+    await database.exec(`
       INSERT INTO users (id, email, display_name, created_at, updated_at)
         VALUES ('owner-a', 'a@example.test', 'Owner A', '2026-01-01', '2026-01-01');
       INSERT INTO users (id, email, display_name, created_at, updated_at)
@@ -72,7 +72,7 @@ describe("v8 Workspace inventory recovery", () => {
     await fullSnapshot([worker]);
     await fullSnapshot([worker]);
     expect(
-      database
+      await database
         .prepare(
           `SELECT workspace_id, activation_state, readiness_state,
                   engine_version, profile_definition_id, profile_release_version,
@@ -104,7 +104,7 @@ describe("v8 Workspace inventory recovery", () => {
       ],
     });
     expect(
-      database
+      await database
         .prepare(
           `SELECT activation_state, readiness_state, readiness_issue_code
              FROM workspace_worker_inventory WHERE worker_id = ?`,
@@ -119,7 +119,7 @@ describe("v8 Workspace inventory recovery", () => {
     await fullSnapshot([worker]);
     await fullSnapshot([worker]);
     expect(
-      database
+      await database
         .prepare("SELECT COUNT(*) AS count FROM workspace_worker_inventory")
         .get(),
     ).toMatchObject({ count: 1 });
@@ -127,13 +127,13 @@ describe("v8 Workspace inventory recovery", () => {
     // Reconnecting recreates a deleted slot with Cloud scheduling disabled.
     await fullSnapshot([]);
     expect(
-      database
+      await database
         .prepare("SELECT COUNT(*) AS count FROM workspace_worker_inventory")
         .get(),
     ).toMatchObject({ count: 0 });
     await fullSnapshot([worker]);
     expect(
-      database
+      await database
         .prepare(
           `SELECT activation_state, revision FROM workspace_worker_inventory
             WHERE worker_id = ?`,
@@ -141,7 +141,7 @@ describe("v8 Workspace inventory recovery", () => {
         .get(worker.workerId),
     ).toMatchObject({ activation_state: "enabled", revision: 1 });
     expect(
-      database
+      await database
         .prepare("SELECT state FROM worker_scheduling WHERE worker_id = ?")
         .get(worker.workerId),
     ).toMatchObject({ state: "disabled" });
@@ -150,7 +150,7 @@ describe("v8 Workspace inventory recovery", () => {
     internal.executionWorkspaceId = "workspace-b";
     await fullSnapshot([{ ...worker, revision: 99 }]);
     expect(
-      database
+      await database
         .prepare(
           `SELECT workspace_id, revision FROM workspace_worker_inventory
             WHERE worker_id = ?`,
@@ -161,18 +161,18 @@ describe("v8 Workspace inventory recovery", () => {
     internal.executionWorkspaceId = "workspace-a";
     await fullSnapshot([{ ...worker, revision: Number.NaN }]);
     expect(
-      database
+      await database
         .prepare(
           "SELECT worker_id FROM workspace_worker_inventory WHERE worker_id = ?",
         )
         .get(worker.workerId),
     ).toBeUndefined();
-    database.close();
+    await database.close();
   });
   it("stores the Workspace-wide parallel slot total and ignores invalid values", async () => {
-    const handle = pgD1();
-    const database = handle.sqlite as unknown as DatabaseSync;
-    database.exec("PRAGMA foreign_keys = ON");
+    const handle = await pgD1();
+    const database = handle.sqlite as unknown as FixtureDb;
+    await database.exec("PRAGMA foreign_keys = ON");
     for (const migration of [
       "0001_syntila_v8.sql",
       "0018_user_workflow_configurations.sql",
@@ -183,11 +183,11 @@ describe("v8 Workspace inventory recovery", () => {
       "0071_assignment_engine_liveness.sql",
       "0101_worker_plugins.sql",
     ]) {
-      database.exec(
+      await database.exec(
         "",
       );
     }
-    database.exec(`
+    await database.exec(`
       INSERT INTO users (id, email, display_name, created_at, updated_at)
         VALUES ('owner-a', 'a@example.test', 'Owner A', '2026-01-01', '2026-01-01');
       INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at)
@@ -202,24 +202,24 @@ describe("v8 Workspace inventory recovery", () => {
       recordWorkerInventory(payload: unknown): Promise<void>;
     };
     internal.executionWorkspaceId = "workspace-a";
-    const slots = () =>
+    const slots = async () =>
       (
-        database
+        (await database
           .prepare(
             "SELECT parallel_slots FROM execution_workspaces WHERE id = 'workspace-a'",
           )
-          .get() as { parallel_slots: number | null }
+          .get()) as { parallel_slots: number | null }
       ).parallel_slots;
 
     // An older Service omits the field: Cloud keeps the per-Worker fallback.
     await internal.recordWorkerInventory({ fullSnapshot: true, workers: [] });
-    expect(slots()).toBeNull();
+    expect(await slots()).toBeNull();
     await internal.recordWorkerInventory({
       fullSnapshot: true,
       parallelSlots: 5,
       workers: [],
     });
-    expect(slots()).toBe(5);
+    expect(await slots()).toBe(5);
     // Cloud owns slots once set (the web Workspaces page): a Service's
     // reported value only seeds an unset Workspace and never overrides it.
     await internal.recordWorkerInventory({
@@ -227,15 +227,15 @@ describe("v8 Workspace inventory recovery", () => {
       parallelSlots: 3,
       workers: [],
     });
-    expect(slots()).toBe(5);
+    expect(await slots()).toBe(5);
     for (const invalid of [0, 1025, 2.5, "7", null]) {
       await internal.recordWorkerInventory({
         fullSnapshot: true,
         parallelSlots: invalid,
         workers: [],
       });
-      expect(slots()).toBe(5);
+      expect(await slots()).toBe(5);
     }
-    database.close();
+    await database.close();
   });
 });

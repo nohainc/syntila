@@ -4,16 +4,16 @@ import { handleCreateThread, type SecurityEnv } from "../../src/domain/routes/ha
 import { handleListWorkRequests } from "../../src/domain/routes/work-lifecycle.js";
 
 const cleanups: (() => void)[] = [];
-afterEach(() => {
-  for (const close of cleanups.splice(0)) close();
+afterEach(async () => {
+  for (const close of cleanups.splice(0)) await close();
 });
 
 it("pages Work Requests newest first with an opaque cursor and an id tie-break", async () => {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   cleanups.push(() => sqlite.close());
-  sqlite.exec("INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('u','u@test','u','now','now')");
-  sqlite.exec("INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','u','Space','now','now')");
-  sqlite.exec("INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m','S','u','owner','now','now')");
+  await sqlite.exec("INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('u','u@test','u','now','now')");
+  await sqlite.exec("INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','u','Space','now','now')");
+  await sqlite.exec("INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m','S','u','owner','now','now')");
   const env = {
     SYNTILA_ENVIRONMENT: "development",
     SYNTILA_DB: db,
@@ -38,7 +38,7 @@ it("pages Work Requests newest first with an opaque cursor and an id tie-break",
   );
   // r1..r3 share one millisecond (with extra microseconds on r2).
   const at = ["2026-01-01T00:00:01.000Z", "2026-01-01T00:00:01.000400Z", "2026-01-01T00:00:01.000Z", "2026-01-01T00:00:02Z", "2026-01-01T00:00:03Z"];
-  at.forEach((t, i) => insert.run(`r${i + 1}`, thread.id, t, t));
+  for (const [i, t] of at.entries()) await insert.run(`r${i + 1}`, thread.id, t, t);
   const list = async (query: string) => {
     const response = await handleListWorkRequests(
       new Request(`https://test/api/threads/${thread.id}/work-requests${query}`, { headers: { "test-user": "u" } }),

@@ -29,11 +29,11 @@ vi.mock("@syntila/security", async (importOriginal) => ({
 import { handleUpdateWorkspaceSpaceGrant } from "../../src/domain/routes/workspaces-grants.js";
 
 describe("Workspace grant access editing", () => {
-  const stored = (f: ReturnType<typeof pgD1>) =>
-    (f.sqlite.prepare("SELECT allowed_permissions_json AS p FROM workspace_space_grants WHERE id = 'grant-1'").get() as { p: string }).p;
-  function fixture() {
-    const f = pgD1();
-    f.sqlite.exec(`${user("owner-1")}${space("space-1", "owner-1")}${workspace("workspace-1", "owner-1")}
+  const stored = async (f: Awaited<ReturnType<typeof pgD1>>) =>
+    (await f.sqlite.prepare("SELECT allowed_permissions_json AS p FROM workspace_space_grants WHERE id = 'grant-1'").get() as { p: string }).p;
+  async function fixture() {
+    const f = await pgD1();
+    await f.sqlite.exec(`${user("owner-1")}${space("space-1", "owner-1")}${workspace("workspace-1", "owner-1")}
       INSERT INTO workspace_space_grants(id, space_id, workspace_id, granted_by_user_id, created_at, updated_at)
         VALUES ('grant-1', 'space-1', 'workspace-1', 'owner-1', '${T0}', '${T0}');`);
     const update = (permissions: unknown) =>
@@ -50,47 +50,47 @@ describe("Workspace grant access editing", () => {
   it("stores explicitly confirmed Direct permissions", async () => {
     state.status = "active";
     state.owner = true;
-    const { f, update } = fixture();
+    const { f, update } = await fixture();
     try {
       expect((await update(["repository:read", "repository:write"])).status).toBe(200);
-      expect(stored(f)).toBe('["repository:read","repository:write"]');
+      expect(await stored(f)).toBe('["repository:read","repository:write"]');
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("rejects invalid permissions without a write", async () => {
     state.status = "active";
     state.owner = true;
-    const { f, update } = fixture();
+    const { f, update } = await fixture();
     try {
       await expect(update(["full_access"])).rejects.toMatchObject({ status: 400 });
-      expect(stored(f)).toBe("[]");
+      expect(await stored(f)).toBe("[]");
     } finally {
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("requires Workspace ownership", async () => {
     state.status = "active";
     state.owner = false;
-    const { f, update } = fixture();
+    const { f, update } = await fixture();
     try {
       await expect(update(["repository:write"])).rejects.toMatchObject({ status: 403 });
-      expect(stored(f)).toBe("[]");
+      expect(await stored(f)).toBe("[]");
     } finally {
       state.owner = true;
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
   it("cannot widen a revoked grant", async () => {
     state.status = "revoked";
     state.owner = true;
-    const { f, update } = fixture();
+    const { f, update } = await fixture();
     try {
       await expect(update(["repository:read", "repository:write"])).rejects.toMatchObject({ status: 409 });
-      expect(stored(f)).toBe("[]");
+      expect(await stored(f)).toBe("[]");
     } finally {
       state.status = "active";
-      f.sqlite.close();
+      await f.sqlite.close();
     }
   });
 });

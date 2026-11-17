@@ -9,20 +9,20 @@ import {
 
 const joined = "2020-01-01T00:00:00.000Z";
 
-function fixture() {
-  const { sqlite, db } = pgD1();
+async function fixture() {
+  const { sqlite, db } = await pgD1();
   for (const id of ["alice", "bob"]) {
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES(?,?,?,'now','now')",
       )
       .run(id, `${id}@test`, id);
   }
-  sqlite.exec(
+  await sqlite.exec(
     "INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('S','alice','Space','now','now')",
   );
   for (const id of ["alice", "bob"])
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES(?,'S',?,?,?,?)",
       )
@@ -32,13 +32,13 @@ function fixture() {
         id === "alice" ? "owner" : "collaborator",
         joined,
         joined,
-      );
+      ));
   for (const id of ["T1", "T2"])
-    sqlite
+    (await sqlite
       .prepare(
         "INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES(?,'S',?,'active','alice',?,?)",
       )
-      .run(id, id, joined, joined);
+      .run(id, id, joined, joined));
   const env = {
     SYNTILA_ENVIRONMENT: "development",
     SYNTILA_DB: db,
@@ -84,8 +84,8 @@ function fixture() {
 }
 
 it("marks a Thread unread for other members until they read it", async () => {
-  const { sqlite, env, as, flags, spaceFlags } = fixture();
-  sqlite
+  const { sqlite, env, as, flags, spaceFlags } = await fixture();
+  await sqlite
     .prepare(
       "INSERT INTO discussion_messages(id,thread_id,author_user_id,body,created_at) VALUES('m1','T1','alice','hello',?)",
     )
@@ -108,9 +108,9 @@ it("marks a Thread unread for other members until they read it", async () => {
 });
 
 it("flags a Thread while Work is active and unread when it finishes", async () => {
-  const { sqlite, flags, spaceFlags } = fixture();
+  const { sqlite, flags, spaceFlags } = await fixture();
   const now = new Date().toISOString();
-  sqlite
+  await sqlite
     .prepare(
       `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
        VALUES('w1','T2','alice','stateless','direct',1,'{}','running',?,?)`,
@@ -124,7 +124,7 @@ it("flags a Thread while Work is active and unread when it finishes", async () =
     T2: [true, false],
   });
 
-  sqlite
+  await sqlite
     .prepare("UPDATE work_requests SET status='completed', updated_at=?")
     .run(new Date(Date.now() + 1000).toISOString());
   expect(await flags("bob")).toEqual({ T1: [false, false], T2: [false, true] });
@@ -133,9 +133,9 @@ it("flags a Thread while Work is active and unread when it finishes", async () =
 it.each(["queued", "running", "cancelled"])(
   "marks another member's %s prompt unread until read",
   async (status) => {
-    const { sqlite, as, env, flags } = fixture();
+    const { sqlite, as, env, flags } = await fixture();
     const now = new Date().toISOString();
-    sqlite
+    await sqlite
       .prepare(
         `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
          VALUES('w1','T2','alice','stateless','direct',1,'{}',?,?,?)`,
@@ -149,8 +149,8 @@ it.each(["queued", "running", "cancelled"])(
 );
 
 it("does not mark prompts sent before the member joined", async () => {
-  const { sqlite, flags } = fixture();
-  sqlite
+  const { sqlite, flags } = await fixture();
+  await sqlite
     .prepare(
       `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
        VALUES('w1','T2','alice','stateless','direct',1,'{}','cancelled','2019-01-01T00:00:00.000Z','2019-01-01T00:00:00.000Z')`,
@@ -160,9 +160,9 @@ it("does not mark prompts sent before the member joined", async () => {
 });
 
 it("ignores abandoned Work older than a day", async () => {
-  const { sqlite, flags } = fixture();
+  const { sqlite, flags } = await fixture();
   const old = new Date(Date.now() - 2 * 86_400_000).toISOString();
-  sqlite
+  await sqlite
     .prepare(
       `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
        VALUES('w1','T1','alice','stateless','direct',1,'{}','queued',?,?)`,
@@ -172,8 +172,8 @@ it("ignores abandoned Work older than a day", async () => {
 });
 
 it("orders Thread and Space lists by messages and request lifecycle activity", async () => {
-  const { sqlite, env, as } = fixture();
-  sqlite.exec(`UPDATE spaces SET updated_at='2020-01-01T00:00:00.000Z';
+  const { sqlite, env, as } = await fixture();
+  await sqlite.exec(`UPDATE spaces SET updated_at='2020-01-01T00:00:00.000Z';
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at)
       VALUES('S2','alice','Other','2021-01-01T00:00:00.000Z','2021-01-01T00:00:00.000Z');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at)
@@ -189,7 +189,7 @@ it("orders Thread and Space lists by messages and request lifecycle activity", a
     expect(spaceBody.spaces[0]).toMatchObject({ id: "S", updatedAt: stamp });
   }
   const sent = "2022-01-01T00:00:00.000Z";
-  sqlite
+  await sqlite
     .prepare(
       `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,created_at,updated_at)
     VALUES('recent','T2','alice','stateless','direct',1,'{}','queued',?,?)`,
@@ -197,14 +197,14 @@ it("orders Thread and Space lists by messages and request lifecycle activity", a
     .run(sent, sent);
   await order(sent);
   const message = "2023-01-01T00:00:00.000Z";
-  sqlite
+  await sqlite
     .prepare(
       "INSERT INTO discussion_messages(id,thread_id,author_user_id,body,created_at) VALUES('recent-message','T2','bob','hello',?)",
     )
     .run(message);
   await order(message);
   const completed = "2024-01-01T00:00:00.000Z";
-  sqlite
+  await sqlite
     .prepare(
       "UPDATE work_requests SET status='completed',updated_at=? WHERE id='recent'",
     )

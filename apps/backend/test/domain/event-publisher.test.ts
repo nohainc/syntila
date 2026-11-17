@@ -5,14 +5,14 @@ import {
   type EventPublisherEnv,
 } from "../../src/domain/event-publisher.js";
 
-function createHarness(options: { duplicate?: boolean } = {}) {
-  const { db, sqlite } = pgD1();
+async function createHarness(options: { duplicate?: boolean } = {}) {
+  const { db, sqlite } = await pgD1();
   let fanoutCount = 0;
   if (options.duplicate)
-    sqlite.exec(
+    (await sqlite.exec(
       `INSERT INTO realtime_events (event_id, workspace_id, space_id, sequence, event_type, payload_json, idempotency_key, occurred_at)
        VALUES ('event-existing', 'workspace-1', 'space-1', 7, 'work_request.created', '{"entityId":"message-1"}', 'message-1', '2026-09-23T00:00:00.000Z')`,
-    );
+    ));
   const gateway = {
     getByName() {
       return {
@@ -29,9 +29,9 @@ function createHarness(options: { duplicate?: boolean } = {}) {
       SYNTILA_REALTIME_GATEWAY: gateway,
     } satisfies EventPublisherEnv,
     sqlite,
-    get insertCount() {
+    async insertCount() {
       return Number(
-        (sqlite.prepare("SELECT COUNT(*) AS n FROM realtime_events").get() as { n: number }).n,
+        (await sqlite.prepare("SELECT COUNT(*) AS n FROM realtime_events").get() as { n: number }).n,
       ) - (options.duplicate ? 1 : 0);
     },
     get fanoutCount() {
@@ -50,7 +50,7 @@ const baseEvent = {
 
 describe("Cloud event publisher", () => {
   it("persists failure events with requester attribution", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const result = await new CloudEventPublisher(harness.env).publish({
       ...baseEvent,
       type: "work_request.failed",
@@ -64,11 +64,11 @@ describe("Cloud event publisher", () => {
     });
     expect(result.persisted).toBe(true);
     expect(result.event.payload.requestedByUserId).toBe("user-1");
-    expect(harness.insertCount).toBe(1);
+    expect(await harness.insertCount()).toBe(1);
   });
 
   it("allocates a sequence and inserts the durable event in one D1 batch", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const result = await new CloudEventPublisher(harness.env).publish({
       ...baseEvent,
       idempotencyKey: "message-1",
@@ -77,12 +77,12 @@ describe("Cloud event publisher", () => {
     expect(result.persisted).toBe(true);
     expect(result.event.sequence).toBe(1);
     expect(result.deliveredSubscribers).toBe(2);
-    expect(harness.insertCount).toBe(1);
+    expect(await harness.insertCount()).toBe(1);
     expect(harness.fanoutCount).toBe(2);
   });
 
   it("does not write ephemeral events but still attempts fanout", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const result = await new CloudEventPublisher(harness.env).publish({
       ...baseEvent,
       type: "assignment.activity",
@@ -106,12 +106,12 @@ describe("Cloud event publisher", () => {
 
     expect(result.persisted).toBe(false);
     expect(result.event.sequence).toBe(0);
-    expect(harness.insertCount).toBe(0);
+    expect(await harness.insertCount()).toBe(0);
     expect(harness.fanoutCount).toBe(2);
   });
 
   it("persists replayable Worker Activity with assignment correlation", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const result = await new CloudEventPublisher(harness.env).publish({
       type: "assignment.activity",
       durable: true,
@@ -140,7 +140,7 @@ describe("Cloud event publisher", () => {
   });
 
   it("returns safely when a subscriber is disconnected", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const namespace = harness.env.SYNTILA_REALTIME_GATEWAY as unknown as {
       getByName: () => { fetch: () => Promise<Response> };
     };
@@ -160,19 +160,19 @@ describe("Cloud event publisher", () => {
   });
 
   it("reuses an existing durable event for duplicate idempotency keys", async () => {
-    const harness = createHarness({ duplicate: true });
+    const harness = await createHarness({ duplicate: true });
     const result = await new CloudEventPublisher(harness.env).publish({
       ...baseEvent,
       eventId: "event-existing",
       idempotencyKey: "message-1",
     });
     expect(result.persisted).toBe(false);
-    expect(harness.insertCount).toBe(0);
+    expect(await harness.insertCount()).toBe(0);
     expect(result.event.eventId).toBe("event-existing");
   });
 
   it("serializes concurrent idempotent publishes without consuming a second sequence", async () => {
-    const harness = createHarness();
+    const harness = await createHarness();
     const publisher = new CloudEventPublisher(harness.env);
     const input = {
       ...baseEvent,
@@ -187,11 +187,11 @@ describe("Cloud event publisher", () => {
 
     expect([first.event.sequence, second.event.sequence]).toEqual([1, 1]);
     expect([first.persisted, second.persisted].sort()).toEqual([false, true]);
-    expect(harness.insertCount).toBe(1);
+    expect(await harness.insertCount()).toBe(1);
   });
 
   it("deduplicates and advances sequences in the real schema", async () => {
-    const h = createHarness();
+    const h = await createHarness();
     const publisher = new CloudEventPublisher(h.env);
     const input = {
       ...baseEvent,
@@ -211,9 +211,9 @@ describe("Cloud event publisher", () => {
     expect(duplicate.event.sequence).toBe(1);
     expect([first.persisted, duplicate.persisted].sort()).toEqual([false, true]);
     expect(next.event.sequence).toBe(2);
-    expect(h.insertCount).toBe(2);
+    expect(await h.insertCount()).toBe(2);
 
-    h.sqlite.exec(
+    await h.sqlite.exec(
       `INSERT INTO realtime_events (event_id, workspace_id, sequence, event_type, payload_json, idempotency_key, occurred_at)
        VALUES ('event-retained', 'workspace-retained', 12, 'work_request.created', '{}', 'idem-retained', '2026-09-01T00:00:00.000Z')`,
     );

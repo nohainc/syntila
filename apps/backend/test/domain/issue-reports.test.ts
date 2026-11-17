@@ -12,8 +12,8 @@ import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 import { pruneExpiredIssueReports } from "../../src/domain/issue-report-retention.js";
 import { pgD1 } from "./helpers/pg-d1";
 
-function seedExecution(sqlite: ReturnType<typeof pgD1>["sqlite"]) {
-  sqlite.exec(`
+async function seedExecution(sqlite: Awaited<ReturnType<typeof pgD1>>["sqlite"]) {
+  await sqlite.exec(`
     INSERT INTO users(id,email,display_name,status,created_at,updated_at)
       VALUES ('owner','owner@example.test','Owner','active','now','now'),
              ('outsider','outsider@example.test','Outsider','active','now','now'),
@@ -93,8 +93,8 @@ function envFor(
 
 describe("issue reports", () => {
   it("creates one trusted partial report and deduplicates repeated submission", async () => {
-    const fixture = pgD1();
-    seedExecution(fixture.sqlite);
+    const fixture = await pgD1();
+    await seedExecution(fixture.sqlite);
     const bundles = new Map<string, string>();
     const bucket = {
       async put(key: string, value: string) {
@@ -126,7 +126,7 @@ describe("issue reports", () => {
     expect(bundles.size).toBe(1);
     expect(
       (
-        fixture.sqlite
+        await fixture.sqlite
           .prepare("SELECT bundle_key FROM issue_report_diagnostics")
           .get() as { bundle_key: string }
       ).bundle_key,
@@ -150,7 +150,7 @@ describe("issue reports", () => {
     expect(duplicateBody.report.id).toBe(firstBody.report.id);
     expect(
       (
-        fixture.sqlite
+        await fixture.sqlite
           .prepare("SELECT COUNT(*) AS count FROM issue_reports")
           .get() as { count: number }
       ).count,
@@ -174,7 +174,7 @@ describe("issue reports", () => {
     expect(diagnosticText).not.toContain("secret");
     expect(diagnosticText).not.toContain("Prompt");
 
-    fixture.sqlite.exec(`
+    await fixture.sqlite.exec(`
       INSERT INTO worker_assignments(
         id,space_id,run_id,thread_id,work_request_id,execution_workspace_id,
         runtime_identity_id,worker_type_id,status,created_at,updated_at,
@@ -190,7 +190,7 @@ describe("issue reports", () => {
     expect(second.status).toBe(201);
     expect(
       (
-        fixture.sqlite
+        await fixture.sqlite
           .prepare("SELECT COUNT(*) AS count FROM issue_reports")
           .get() as { count: number }
       ).count,
@@ -198,9 +198,9 @@ describe("issue reports", () => {
   });
 
   it("uses structured private Engine diagnostics for stage and Workspace evidence", async () => {
-    const fixture = pgD1();
-    seedExecution(fixture.sqlite);
-    fixture.sqlite
+    const fixture = await pgD1();
+    await seedExecution(fixture.sqlite);
+    await fixture.sqlite
       .prepare("UPDATE worker_assignments SET error_json = ? WHERE id = ?")
       .run(
         JSON.stringify({
@@ -254,8 +254,8 @@ describe("issue reports", () => {
   });
 
   it("rejects browser-supplied authority and unauthorized report access", async () => {
-    const fixture = pgD1();
-    seedExecution(fixture.sqlite);
+    const fixture = await pgD1();
+    await seedExecution(fixture.sqlite);
     const outsiderEnv = envFor(fixture.db, "outsider");
     await expect(
       handleCreateIssueReport(
@@ -283,8 +283,8 @@ describe("issue reports", () => {
   });
 
   it("keeps report diagnostics private and records support status changes", async () => {
-    const fixture = pgD1();
-    seedExecution(fixture.sqlite);
+    const fixture = await pgD1();
+    await seedExecution(fixture.sqlite);
     const create = await handleCreateIssueReport(
       new Request("https://syntila.test/api/issue-reports", {
         method: "POST",
@@ -324,7 +324,7 @@ describe("issue reports", () => {
     expect(listed.reports[0]?.status).toBe("investigating");
     expect(
       (
-        fixture.sqlite
+        await fixture.sqlite
           .prepare(
             "SELECT COUNT(*) AS count FROM issue_report_events WHERE event_type = 'report.status_changed'",
           )
@@ -334,8 +334,8 @@ describe("issue reports", () => {
   });
 
   it("retains reports until their private diagnostic attachment can be deleted", async () => {
-    const fixture = pgD1();
-    seedExecution(fixture.sqlite);
+    const fixture = await pgD1();
+    await seedExecution(fixture.sqlite);
     const create = await handleCreateIssueReport(
       new Request("https://syntila.test/api/issue-reports", {
         method: "POST",
@@ -345,7 +345,7 @@ describe("issue reports", () => {
       envFor(fixture.db, "owner"),
     );
     const body = (await create.json()) as { report: { id: string } };
-    fixture.sqlite
+    await fixture.sqlite
       .prepare(
         "UPDATE issue_reports SET created_at = '2000-01-01T00:00:00.000Z'",
       )
@@ -358,15 +358,15 @@ describe("issue reports", () => {
       ),
     ).toBe(1);
     expect(
-      fixture.sqlite
+      await fixture.sqlite
         .prepare("SELECT id FROM issue_reports WHERE id = ?")
         .get(body.report.id),
     ).toBeUndefined();
   });
 
   it("supports filtered investigation, timelines, status transitions and explicit groups", async () => {
-    const fixture = pgD1();
-    seedExecution(fixture.sqlite);
+    const fixture = await pgD1();
+    await seedExecution(fixture.sqlite);
     const owner = envFor(fixture.db, "owner");
     const support = envFor(fixture.db, "support", { support: true });
     const created = await handleCreateIssueReport(
@@ -470,8 +470,8 @@ describe("issue reports", () => {
   });
 
   it("keeps the report durable when R2 fails and enforces the per-user rate limit", async () => {
-    const fixture = pgD1();
-    seedExecution(fixture.sqlite);
+    const fixture = await pgD1();
+    await seedExecution(fixture.sqlite);
     const failingBucket = {
       async put() {
         throw new Error("R2 unavailable");
@@ -489,7 +489,7 @@ describe("issue reports", () => {
     expect(created.status).toBe(201);
     expect(
       (
-        fixture.sqlite
+        await fixture.sqlite
           .prepare("SELECT bundle_key FROM issue_report_diagnostics")
           .get() as { bundle_key: string | null }
       ).bundle_key,
@@ -504,7 +504,7 @@ describe("issue reports", () => {
        VALUES (?, ?, 'owner', ?, ?, 'cloud', 'execution_failed', 'admission', ?, 'open', 'partial', ?, ?)`,
     );
     for (let index = 0; index < 19; index++) {
-      insert.run(
+      await insert.run(
         `issue-existing-${index}`,
         `ISS-EXISTING-${index}`,
         `request-existing-${index}`,
@@ -514,7 +514,7 @@ describe("issue reports", () => {
         now,
       );
     }
-    fixture.sqlite.exec(`
+    await fixture.sqlite.exec(`
       INSERT INTO worker_assignments(
         id,space_id,run_id,thread_id,work_request_id,execution_workspace_id,
         runtime_identity_id,worker_type_id,status,created_at,updated_at,

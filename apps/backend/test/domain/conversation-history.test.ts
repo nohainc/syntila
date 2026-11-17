@@ -15,10 +15,10 @@ import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 
 it("records all five canonical fact kinds atomically and preserves exact response text once", async () => {
   const f = await conversationFixture();
-  f.assign("A");
-  f.start("A");
+  await f.assign("A");
+  await f.start("A");
   const conversation = String(
-    f.sqlite.prepare("SELECT id FROM conversations").get()!.id,
+    (await f.sqlite.prepare("SELECT id FROM conversations").get())!.id,
   );
   const reply = "**Full reply**\n" + "x".repeat(26000);
   await recordAssignmentResult(f.db as unknown as D1Database, "A", {
@@ -35,9 +35,9 @@ it("records all five canonical fact kinds atomically and preserves exact respons
     artifactIds: [],
     completedAt: "2030-01-01T00:00:00.000Z",
   });
-  f.sqlite
+  await f.sqlite
     .exec(`UPDATE conversations SET conversation_revision = 2, context_revision = 2;`);
-  const rows = f.sqlite
+  const rows = await f.sqlite
     .prepare(
       "SELECT sequence,kind,text,metadata_json FROM conversation_history_entries WHERE conversation_id=? ORDER BY sequence",
     )
@@ -59,38 +59,34 @@ it("records all five canonical fact kinds atomically and preserves exact respons
     "**Exact user text**",
   );
   expect(JSON.stringify(rows)).not.toContain("private-storage-key");
-  expect(() =>
-    f.sqlite.exec("UPDATE conversation_history_entries SET text='rewritten'"),
-  ).toThrow("append-only");
-  expect(() =>
-    f.sqlite.exec("DELETE FROM conversation_history_entries"),
-  ).toThrow("cannot be deleted");
+  await expect(f.sqlite.exec("UPDATE conversation_history_entries SET text='rewritten'")).rejects.toThrow("append-only");
+  await expect(f.sqlite.exec("DELETE FROM conversation_history_entries")).rejects.toThrow("cannot be deleted");
   // Canonical facts survive execution/session-cache cleanup.
-  f.sqlite.exec(
+  (await f.sqlite.exec(
     "DELETE FROM worker_assignments WHERE id='A'; DELETE FROM work_requests WHERE id='R';",
-  );
+  ));
   expect(
-    f.sqlite
+    (await f.sqlite
       .prepare(
         "SELECT text FROM conversation_history_entries WHERE kind='worker_response'",
       )
-      .get()?.text,
+      .get())?.text,
   ).toBe(reply);
-  f.sqlite.exec("DELETE FROM conversations");
+  await f.sqlite.exec("DELETE FROM conversations");
   expect(
-    f.sqlite
+    (await f.sqlite
       .prepare("SELECT count(*) AS n FROM conversation_history_entries")
-      .get()?.n,
+      .get())?.n,
   ).toBe(0);
-  f.sqlite.close();
+  await f.sqlite.close();
 });
 
 it("scopes reads before history access and paginates against a stable high-water mark", async () => {
   const f = await conversationFixture();
-  f.assign("A");
-  f.start("A");
+  await f.assign("A");
+  await f.start("A");
   const conversation = String(
-    f.sqlite.prepare("SELECT id FROM conversations").get()!.id,
+    (await f.sqlite.prepare("SELECT id FROM conversations").get())!.id,
   );
   const env = { SYNTILA_DB: f.db } as unknown as SecurityEnv;
   const req = (query = "") =>
@@ -105,7 +101,7 @@ it("scopes reads before history access and paginates against a stable high-water
     nextCursor: string | null;
   };
   expect(first.entries).toHaveLength(1);
-  f.sqlite.exec("UPDATE work_requests SET status='waiting',updated_at='2030-01-01T00:00:00.000Z'");
+  await f.sqlite.exec("UPDATE work_requests SET status='waiting',updated_at='2030-01-01T00:00:00.000Z'");
   const seen = [first.entries[0]!.sequence];
   let cursor = first.nextCursor;
   while (cursor) {
@@ -142,28 +138,26 @@ it("scopes reads before history access and paginates against a stable high-water
   await expect(
     handleListConversationHistory(req(), env, "W", conversation),
   ).rejects.toThrow("access denied");
-  f.sqlite.close();
+  await f.sqlite.close();
 });
 
 it("rolls canonical events back with failed source mutations", async () => {
   const f = await conversationFixture();
-  const before = f.sqlite
+  const before = (await f.sqlite
     .prepare("SELECT count(*) AS n FROM conversation_history_entries")
-    .get()?.n;
-  await expect(
-    fixtureBatch(f.db, [
+    .get())?.n;
+  await expect(fixtureBatch(f.db, [
       fixtureStatement(f.db, "UPDATE work_requests SET status='waiting'", []),
       fixtureStatement(f.db, "INSERT INTO conversations(id) VALUES('invalid')", []),
-    ]),
-  ).rejects.toThrow();
+    ]),).rejects.toThrow();
   expect(
-    f.sqlite
+    (await f.sqlite
       .prepare("SELECT count(*) AS n FROM conversation_history_entries")
-      .get()?.n,
+      .get())?.n,
   ).toBe(before);
   expect(
-    f.sqlite.prepare("SELECT status FROM work_requests").get()?.status,
+    (await f.sqlite.prepare("SELECT status FROM work_requests").get())?.status,
   ).toBe("running");
-  f.sqlite.close();
+  await f.sqlite.close();
 });
 

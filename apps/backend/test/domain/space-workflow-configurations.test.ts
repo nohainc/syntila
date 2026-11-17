@@ -18,7 +18,7 @@ vi.mock("../../src/domain/routes/profiles.js", () => ({
     }),
 }));
 it("shares owner defaults across members, isolates Spaces, restricts writes, and resets to inheritance", async () => {
-  const { sqlite, db } = pgD1();
+  const { sqlite, db } = await pgD1();
   const identity = vi
     .spyOn(identityService, "resolve")
     .mockImplementation(async (request) => {
@@ -28,10 +28,10 @@ it("shares owner defaults across members, isolates Spaces, restricts writes, and
         : null;
     });
   try {
-    sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','owner@test','Owner','now','now'),('member','member@test','Member','now','now'),('outsider','out@test','Out','now','now');
+    await sqlite.exec(`INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('owner','owner@test','Owner','now','now'),('member','member@test','Member','now','now'),('outsider','out@test','Out','now','now');
       INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('s','owner','Space','now','now'),('other','outsider','Other','now','now');
       INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('o','s','owner','owner','now','now'),('m','s','member','collaborator','now','now');`);
-    sqlite.exec(
+    await sqlite.exec(
       "INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws','owner','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('owner','ws','now'); INSERT INTO space_workflow_settings VALUES('s','ws','now'); INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws-member','member','Member Workspace','now','now');",
     );
     const config = (enabled: boolean) => ({
@@ -41,12 +41,12 @@ it("shares owner defaults across members, isolates Spaces, restricts writes, and
       defaults: enabled ? { worker: "worker" } : {},
       stepOverrides: {},
     });
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO user_workflow_configurations VALUES('owner','ws','chat',1,?,'now')",
       )
       .run(JSON.stringify(config(false)));
-    sqlite
+    await sqlite
       .prepare(
         "INSERT INTO user_workflow_configurations VALUES('member','ws-member','chat',1,?,'now')",
       )
@@ -90,12 +90,8 @@ it("shares owner defaults across members, isolates Spaces, restricts writes, and
     await expect(handle("DELETE", "member")).rejects.toMatchObject({
       status: 403,
     });
-    await expect(
-      handle("PUT", "owner", { ...config(true), spaceId: "other" }),
-    ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      handle("PUT", "owner", config(true), "other"),
-    ).rejects.toMatchObject({ status: 403 });
+    await expect(handle("PUT", "owner", { ...config(true), spaceId: "other" }),).rejects.toMatchObject({ status: 400 });
+    await expect(handle("PUT", "owner", config(true), "other"),).rejects.toMatchObject({ status: 403 });
     await handle("PUT", "owner", config(true));
     expect(await (await handle("GET", "member")).json()).toMatchObject({
       configurations: [config(true)],
@@ -105,7 +101,7 @@ it("shares owner defaults across members, isolates Spaces, restricts writes, and
     ).toEqual([]);
     // An explicit Worker override is stored: it can replace disabled global defaults.
     expect(
-      sqlite
+      await sqlite
         .prepare("SELECT COUNT(*) AS count FROM space_workflow_configurations")
         .get(),
     ).toEqual({ count: 1 });
@@ -114,12 +110,12 @@ it("shares owner defaults across members, isolates Spaces, restricts writes, and
       configurations: [config(false)],
     });
     expect(
-      sqlite
+      await sqlite
         .prepare("SELECT COUNT(*) AS count FROM space_workflow_configurations")
         .get(),
     ).toEqual({ count: 0 });
   } finally {
     identity.mockRestore();
-    sqlite.close();
+    await sqlite.close();
   }
 });

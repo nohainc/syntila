@@ -1,5 +1,5 @@
+import type { FixtureDb } from "./helpers/fixture-db";
 import { readFileSync, readdirSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { expect, it } from "./helpers/vitest-compat";
 import { parseProfile } from "../../src/domain/tool-profile-validation.js";
