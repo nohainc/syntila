@@ -50,6 +50,7 @@ import {
   threadMetadata,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
+import { dataOf } from "../../platform/data.js";
 
 const SELECT_SPACE_MEMBERSHIPS_BY_SPACE_ID_USER_ID =
   `SELECT id, space_id AS spaceId, user_id AS userId, role,
@@ -342,7 +343,7 @@ export async function handleUpdateThread(
       accessContext,
     );
 
-  const isDirectGeneral = await directSpaceOfGeneralThread(env.SYNTILA_DB, threadId);
+  const isDirectGeneral = await directSpaceOfGeneralThread(dataOf(env).read, threadId);
   if (isDirectGeneral) {
     if (body.name !== undefined && body.name !== thread.name) {
       throw new HttpError(
@@ -565,7 +566,7 @@ export async function handleDeleteThread(
     accessContext,
   );
   await requireDestructiveThreadAccess(env, threadId, context.userId);
-  const isDirectGeneral = await directSpaceOfGeneralThread(env.SYNTILA_DB, threadId);
+  const isDirectGeneral = await directSpaceOfGeneralThread(dataOf(env).read, threadId);
   if (isDirectGeneral) {
     throw new HttpError(
       403,

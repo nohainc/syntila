@@ -20,6 +20,7 @@ import {
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { createEventPublisher } from "../event-publisher.js";
 import { ensureSupportSpace, SupportSpaceError } from "../people.js";
+import { dataOf } from "../../platform/data.js";
 
 const INSERT_DIRECT_SPACE_USER_STATE =
   "INSERT INTO direct_space_user_state (space_id, user_id, hidden, created_at, updated_at) VALUES (?1, ?2, FALSE, ?3, ?3) ON CONFLICT(space_id, user_id) DO NOTHING";
@@ -348,7 +349,7 @@ async function provisionDirectConnection(
   );
   const now = new Date().toISOString();
 
-  const existing = await directSpaceOfPair(env.SYNTILA_DB, userLowId, userHighId);
+  const existing = await directSpaceOfPair(dataOf(env).read, userLowId, userHighId);
 
   let directSpaceId = existing?.space_id;
   const isNewSpace = !directSpaceId;
@@ -424,7 +425,7 @@ async function provisionDirectConnection(
       await env.SYNTILA_DB.batch(statements);
     }
   } catch (error) {
-    const rechecked = await directSpaceOfPair(env.SYNTILA_DB, userLowId, userHighId);
+    const rechecked = await directSpaceOfPair(dataOf(env).read, userLowId, userHighId);
     if (rechecked) {
       directSpaceId = rechecked.space_id;
       if (invitationId)

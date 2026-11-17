@@ -20,6 +20,7 @@ import {
   PersonalWorkspaceLimitError,
   personalWorkspaceAdmissionSql,
 } from "../account-plan.js";
+import { dataOf } from "../../platform/data.js";
 
 const COUNT_ACTIVE_ASSIGNMENTS =
   `SELECT COUNT(*) AS count FROM worker_assignments
@@ -110,7 +111,7 @@ async function workspaceInstallationBindingIssue(
       409,
     );
   }
-  const activeRuntime = await activeRuntimeIdentityCount(env.SYNTILA_DB, installation.workspaceId);
+  const activeRuntime = await activeRuntimeIdentityCount(dataOf(env).read, installation.workspaceId);
   if ((activeRuntime?.count ?? 0) > 1) {
     return workspaceOwnershipFailure(
       "installation_binding_ambiguous",
@@ -256,7 +257,7 @@ export async function handleCheckWorkspaceOwnership(
     if (installation.ownerUserId !== session.userId) {
       return json({ state: "owned_by_other_user" });
     }
-    const activeRuntimeCount = await activeRuntimeIdentityCount(env.SYNTILA_DB, installation.workspaceId);
+    const activeRuntimeCount = await activeRuntimeIdentityCount(dataOf(env).read, installation.workspaceId);
     if ((activeRuntimeCount?.count ?? 0) > 1) {
       return json({ state: "corrupt_or_ambiguous" });
     }
@@ -974,7 +975,7 @@ export async function handleRegisterWorkspaceFromDesktop(
     );
   }
   if (existing) {
-    const activeRuntime = await activeRuntimeIdentityCount(env.SYNTILA_DB, existing.workspaceId);
+    const activeRuntime = await activeRuntimeIdentityCount(tx, existing.workspaceId);
     if ((activeRuntime?.count ?? 0) > 1) {
       return workspaceOwnershipFailure(
         "installation_binding_ambiguous",

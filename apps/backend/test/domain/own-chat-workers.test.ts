@@ -25,6 +25,7 @@ function fixture(memberRights: Record<string, boolean> | null, kind = "group") {
     : {};
   const env = {
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) => {
+      if (strings.join("?").includes("owner_user_id")) return [{ ownerUserId: "owner" }]; // spaceOwnerOf
       expect(strings.join("?")).toContain("UNION ALL");
       return [];
     }) as any),

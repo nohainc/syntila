@@ -65,6 +65,7 @@ import {
   presentExecution,
   type ExecutionPhase,
 } from "../execution-phase.js";
+import { dataOf } from "../../platform/data.js";
 
 const SELECT_RUNS_BY_WORK_REQUEST_ID =
   `SELECT policy_snapshot_json AS policySnapshotJson
@@ -164,7 +165,7 @@ export async function handleRetryWorkRequest(
   workRequestId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  const parent = await workRequestThread(env.SYNTILA_DB, workRequestId);
+  const parent = await workRequestThread(dataOf(env).read, workRequestId);
   if (!parent) throw new HttpError(404, "Work Request not found");
   const { context, spaceId } = await authorizeThreadAccess(
     request,
@@ -1515,7 +1516,7 @@ export async function handleCancelWorkRequest(
     accessContext,
   );
   // A cancelled request may free the Thread for its next queued request.
-  const thread = await workRequestThread(env.SYNTILA_DB, workRequestId);
+  const thread = await workRequestThread(dataOf(env).read, workRequestId);
   if (thread) await advanceThreadQueueSafely(env, thread.threadId);
   return response;
 }

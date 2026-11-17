@@ -6,6 +6,7 @@ vi.mock("../../src/domain/routes/thread-policy.js", () => ({
   })),
 }));
 import { handleRetryWorkRequest } from "../../src/domain/routes/work-lifecycle.js";
+import { Data } from "../../src/platform/data.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 
 it("requires reset approval before reserving or changing a failed request", async () => {
@@ -34,7 +35,8 @@ it("requires reset approval before reserving or changing a failed request", asyn
         sessionStrategy: "resume",
       }),
     }),
-    { SYNTILA_DB: { prepare } } as unknown as SecurityEnv,
+    { SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) =>
+      strings.join("?").includes("FROM work_requests") ? [{ threadId: "T" }] : []) as any), SYNTILA_DB: { prepare } } as unknown as SecurityEnv,
     "R",
   );
   expect(response.status).toBe(409);

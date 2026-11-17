@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 134 adapter-only, 27 in data-layer transactions.
+Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 129 adapter-only, 32 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -91,7 +91,7 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 134 ad
 | `domain/routes/people.ts` | `handleDeclinePersonInvitation` | UPDATE person_invitations | read-write, lock |
 | `domain/routes/people.ts` | `handleDisconnectPersonConnection` | UPDATE person_connections | guarded, lock |
 | `domain/routes/people.ts` | `handleUnblockPerson` | DELETE user_blocks | lock |
-| `domain/routes/people.ts` | `provisionDirectConnection` | INSERT direct_space_user_state, INSERT direct_spaces, INSERT people_relationships, INSERT person_connections, INSERT space_memberships, INSERT spaces, UPDATE person_connections, UPDATE person_invitations | batch, lock |
+| `domain/routes/people.ts` | `provisionDirectConnection` | INSERT direct_space_user_state, INSERT direct_spaces, INSERT people_relationships, INSERT person_connections, INSERT space_memberships, INSERT spaces, UPDATE person_connections, UPDATE person_invitations | batch, data |
 | `domain/routes/space-additional-folders.ts` | `handleSpaceAdditionalFolders` | DELETE space_additional_folders, INSERT space_additional_folders | batch, lock |
 | `domain/routes/spaces.ts` | `handleAcceptSpaceInvitation` | INSERT space_audit_log, INSERT space_memberships, UPDATE space_invitations, UPDATE spaces | read-write, batch, lock |
 | `domain/routes/spaces.ts` | `handleChangeSpaceMemberRole` | INSERT space_audit_log, UPDATE space_memberships, UPDATE spaces | batch, lock |
@@ -99,11 +99,11 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 134 ad
 | `domain/routes/spaces.ts` | `handleCreateSpaceInvitation` | UPDATE space_invitations | read-write, guarded, lock |
 | `domain/routes/spaces.ts` | `handleDeclineSpaceInvitation` | INSERT space_audit_log, UPDATE space_invitations, UPDATE spaces | read-write, batch, lock |
 | `domain/routes/spaces.ts` | `handleDeleteSpace` | DELETE spaces | read-write, lock |
-| `domain/routes/spaces.ts` | `handleExpireSpaceInvitation` | INSERT space_audit_log, UPDATE space_invitations, UPDATE spaces | read-write, lock |
+| `domain/routes/spaces.ts` | `handleExpireSpaceInvitation` | INSERT space_audit_log, UPDATE space_invitations, UPDATE spaces | read-write, data |
 | `domain/routes/spaces.ts` | `handleGetSpace` | INSERT direct_space_user_state | read-write, guarded, lock |
 | `domain/routes/spaces.ts` | `handleRemoveSpaceMember` | DELETE space_memberships, INSERT space_audit_log, UPDATE spaces, UPDATE workspace_space_grants | lock |
 | `domain/routes/spaces.ts` | `handleUpdateSpace` | INSERT direct_space_user_state, UPDATE spaces | read-write, lock |
-| `domain/routes/spaces.ts` | `write` | INSERT space_audit_log, INSERT space_invitations, UPDATE spaces | batch, lock |
+| `domain/routes/spaces.ts` | `write` | INSERT space_audit_log, INSERT space_invitations, UPDATE spaces | batch, data |
 | `domain/routes/workspace-access.ts` | `createWorkspaceSpaceGrant` | INSERT workspace_space_grants | read-write, guarded, lock |
 | `domain/routes/workspace-invitations.ts` | `handleAcceptWorkspaceInvitation` | INSERT workspace_audit_log, INSERT workspace_person_grants, UPDATE workspace_invitations | read-write, batch, lock |
 | `domain/routes/workspace-invitations.ts` | `handleDeclineWorkspaceInvitation` | UPDATE workspace_invitations | read-write, guarded, lock |
@@ -148,10 +148,10 @@ Totals: 178 write paths, 82 tables; 1 numbering, 47 unguarded read-write, 134 ad
 | `domain/routes/threads.ts` | `handleCreateDiscussionMessage` | INSERT discussion_messages, INSERT space_audit_log, UPDATE direct_space_user_state | read-write, lock |
 | `domain/routes/threads.ts` | `handleCreateThread` | INSERT threads | read-write, lock |
 | `domain/routes/threads.ts` | `handleDeleteDiscussionMessage` | UPDATE discussion_messages | read-write, lock |
-| `domain/routes/threads.ts` | `handleDeleteThread` | DELETE threads | lock |
+| `domain/routes/threads.ts` | `handleDeleteThread` | DELETE threads | data |
 | `domain/routes/threads.ts` | `handleEditDiscussionMessage` | UPDATE discussion_messages | read-write, lock |
 | `domain/routes/threads.ts` | `handleMarkThreadRead` | INSERT thread_read_states | guarded, lock |
-| `domain/routes/threads.ts` | `handleUpdateThread` | INSERT thread_work_configs, UPDATE threads | read-write, lock |
+| `domain/routes/threads.ts` | `handleUpdateThread` | INSERT thread_work_configs, UPDATE threads | read-write, data |
 
 ## 4 work core
 

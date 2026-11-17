@@ -89,6 +89,7 @@ function fixture(
   };
   const env = {
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      if (strings.join("?").includes("owner_user_id")) return [{ ownerUserId: "user" }]; // spaceOwnerOf
       expect(strings.join("?")).toContain("UNION ALL");
       expect(values[0]).toBe("user");
       expect(values[1]).toBe(workspaceId);

@@ -25,6 +25,7 @@ import {
   memberModeError,
   memberSelectionError,
 } from "./workspace-member-access.js";
+import { dataOf } from "../../platform/data.js";
 
 export interface WorkflowExecutionSelectionOverride {
   readonly workerId?: string | null;
@@ -166,7 +167,7 @@ export async function resolveWorkflowExecutionBindings(
   // A Workspace lent to the Space owner is used only by people who hold their
   // own Person Grant (ADR-020); Space membership and the Space owner's grant
   // never extend to other members.
-  const spaceOwner = await spaceOwnerOf(env.SYNTILA_DB, spaceId);
+  const spaceOwner = await spaceOwnerOf(dataOf(env).read, spaceId);
   const lent = Boolean(
     !ownWorkspaceId &&
     workspaceOwner &&

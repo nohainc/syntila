@@ -189,7 +189,7 @@ export async function handleThreadNote(
   const input = await noteInput(request);
   // Saved names keep the note's Space and Thread path after the Thread is
   // deleted or the owner loses access.
-  const space = await spaceNameOf(env.SYNTILA_DB, spaceId);
+  const space = await spaceNameOf(dataOf(env).read, spaceId);
   const linked = { thread: thread.name, space: space?.name ?? "" };
   if (existing)
     return json({

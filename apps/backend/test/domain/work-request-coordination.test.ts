@@ -33,6 +33,7 @@ function fixture(coordinatorAvailable = true) {
   const create = vi.fn(async () => ({ status: async () => "queued" }));
   const env = {
     SYNTILA_DATA: new Data((async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      if (strings.join("?").includes("owner_user_id")) return [{ ownerUserId: "owner" }]; // spaceOwnerOf
       expect(strings.join("?")).toContain("UNION ALL");
       const target = typeof values[2] === "string" ? values[2] : null;
       const rows = ["chat", "direct"].map((workflowId) => ({

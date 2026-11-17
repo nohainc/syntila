@@ -16,6 +16,7 @@ vi.mock("../../src/domain/routes/work-creation.js", () => creation);
 const events = vi.hoisted(() => ({ publishCollaborationEvent: vi.fn() }));
 vi.mock("../../src/domain/collaboration-events.js", () => events);
 import { handleRetryWorkRequest } from "../../src/domain/routes/work-lifecycle.js";
+import { Data } from "../../src/platform/data.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 
 const compactingProfile = JSON.stringify({
@@ -76,6 +77,8 @@ function database(options: {
     return statement;
   });
   const env = {
+    SYNTILA_DATA: new Data((async (strings: TemplateStringsArray) =>
+      strings.join("?").includes("FROM work_requests") ? [{ threadId: "T" }] : []) as any), // workRequestThread
     SYNTILA_DB: { prepare, batch: vi.fn(async () => []) },
   } as unknown as SecurityEnv;
   return { env, writes };

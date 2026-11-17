@@ -10,7 +10,7 @@ export async function loadSpaceWorkflowConfigurations(
   spaceId: string,
   workflowId?: string,
 ) {
-  const space = await spaceOwnerOf(env.SYNTILA_DB, spaceId);
+  const space = await spaceOwnerOf(dataOf(env).read, spaceId);
   if (!space) throw new HttpError(404, "Space not found");
   const workspace = await loadWorkflowWorkspace(
     env,

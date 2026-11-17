@@ -2,6 +2,7 @@
  * Small lookups that many handlers need. One definition each, so the SQL
  * lives in one place instead of being repeated in every route file.
  */
+import type { Query } from "../platform/data.js";
 
 /** True when either user has blocked the other. */
 export async function usersBlocked(db: D1Database, userA: string, userB: string): Promise<boolean> {
@@ -73,8 +74,8 @@ export function activeWorkCount(db: D1Database, threadId: string) {
 }
 
 /** The Thread a Work Request belongs to. */
-export function workRequestThread(db: D1Database, workRequestId: string) {
-  return db.prepare("SELECT thread_id AS threadId FROM work_requests WHERE id = ?1").bind(workRequestId).first<{ threadId: string }>();
+export function workRequestThread(q: Query, workRequestId: string) {
+  return q.row<{ threadId: string }>`SELECT thread_id AS "threadId" FROM work_requests WHERE id = ${workRequestId}`;
 }
 
 /** When cancellation of a Work Request was requested, if it was. */
@@ -88,33 +89,33 @@ export function activeThreadLease(db: D1Database, workRequestId: string, threadI
 }
 
 /** Owner of a Space. */
-export function spaceOwnerOf(db: D1Database, spaceId: string) {
-  return db.prepare("SELECT owner_user_id AS ownerUserId FROM spaces WHERE id = ?1").bind(spaceId).first<{ ownerUserId: string }>();
+export function spaceOwnerOf(q: Query, spaceId: string) {
+  return q.row<{ ownerUserId: string }>`SELECT owner_user_id AS "ownerUserId" FROM spaces WHERE id = ${spaceId}`;
 }
 
 /** Name of a Space. */
-export function spaceNameOf(db: D1Database, spaceId: string) {
-  return db.prepare("SELECT name FROM spaces WHERE id = ?1").bind(spaceId).first<{ name: string }>();
+export function spaceNameOf(q: Query, spaceId: string) {
+  return q.row<{ name: string }>`SELECT name FROM spaces WHERE id = ${spaceId}`;
 }
 
 /** A user by email address, ignoring case. */
-export function userByEmail(db: D1Database, email: string) {
-  return db.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?1) LIMIT 1").bind(email).first<{ id: string }>();
+export function userByEmail(q: Query, email: string) {
+  return q.row<{ id: string }>`SELECT id FROM users WHERE LOWER(email) = LOWER(${email}) LIMIT 1`;
 }
 
 /** The Direct Space of a pair of people (ids in low/high order). */
-export function directSpaceOfPair(db: D1Database, userLowId: string, userHighId: string) {
-  return db.prepare("SELECT space_id FROM direct_spaces WHERE user_low_id = ?1 AND user_high_id = ?2").bind(userLowId, userHighId).first<{ space_id: string }>();
+export function directSpaceOfPair(q: Query, userLowId: string, userHighId: string) {
+  return q.row<{ space_id: string }>`SELECT space_id FROM direct_spaces WHERE user_low_id = ${userLowId} AND user_high_id = ${userHighId}`;
 }
 
 /** The Direct Space whose General Thread this is. */
-export function directSpaceOfGeneralThread(db: D1Database, threadId: string) {
-  return db.prepare("SELECT space_id FROM direct_spaces WHERE general_thread_id = ?1").bind(threadId).first<{ space_id: string }>();
+export function directSpaceOfGeneralThread(q: Query, threadId: string) {
+  return q.row<{ space_id: string }>`SELECT space_id FROM direct_spaces WHERE general_thread_id = ${threadId}`;
 }
 
 /** Runtime identities of a Workspace that are not revoked. */
-export function activeRuntimeIdentityCount(db: D1Database, workspaceId: string) {
-  return db.prepare("SELECT COUNT(*) AS count FROM workspace_runtime_identities WHERE workspace_id = ?1 AND revoked_at IS NULL").bind(workspaceId).first<{ count: number }>();
+export function activeRuntimeIdentityCount(q: Query, workspaceId: string) {
+  return q.row<{ count: number }>`SELECT COUNT(*) AS count FROM workspace_runtime_identities WHERE workspace_id = ${workspaceId} AND revoked_at IS NULL`;
 }
 
 /** A user's plan row (missing row means Free). */

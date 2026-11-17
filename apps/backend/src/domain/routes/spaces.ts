@@ -55,6 +55,7 @@ import {
   securityEnv,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
+import { dataOf } from "../../platform/data.js";
 
 const SELECT_DIRECT_SPACES_BY_SPACE_ID =
   `SELECT u.id, u.display_name AS displayName, u.avatar_url AS avatarUrl,
@@ -1211,7 +1212,7 @@ export async function handleCreateSpaceInvitation(
     .run();
   const recipient = inviteeUserId
     ? { id: inviteeUserId }
-    : await userByEmail(env.SYNTILA_DB, email);
+    : await userByEmail(dataOf(env).read, email);
   await publishCollaborationEvent(env, "space.updated", spaceId, id, {
     additionalRecipientUserIds: inviteeUserId
       ? [inviteeUserId]
@@ -1220,7 +1221,7 @@ export async function handleCreateSpaceInvitation(
         : [],
   });
 
-  const spaceRow = await spaceNameOf(env.SYNTILA_DB, spaceId);
+  const spaceRow = await spaceNameOf(dataOf(env).read, spaceId);
   const spaceName = spaceRow?.name ?? "Space";
   const appUrl = resolveAppUrl(request, env);
   const invitationLink = `${appUrl}/?invitation=${id}`;
@@ -1434,7 +1435,7 @@ export async function handleExpireSpaceInvitation(
     .run();
   const recipient = existing.inviteeUserId
     ? { id: existing.inviteeUserId }
-    : await userByEmail(env.SYNTILA_DB, existing.email);
+    : await userByEmail(dataOf(env).read, existing.email);
   await publishCollaborationEvent(env, "space.updated", spaceId, invitationId, {
     additionalRecipientUserIds: existing.inviteeUserId
       ? [existing.inviteeUserId]
