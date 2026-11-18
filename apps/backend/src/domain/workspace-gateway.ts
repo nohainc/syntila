@@ -2603,6 +2603,13 @@ export class WorkspaceGateway implements DurableObject {
     // Every readiness report from a ready Service re-checks the durable queue
     // so such an assignment is delivered instead of timing out.
     if (this.readiness?.readyForAssignments === true) {
+      // Requests parked on "waiting for the Workspace Service to be ready"
+      // (including when a Service briefly exceeded the 60 s activity window
+      // without changing its readiness state) wake on any ready report.
+      void wakeWorkspaceReadyWaiters(
+        this.env,
+        ASSIGNMENT_TERMINAL_EVENT_TYPE,
+      );
       await this.flushQueuedAssignments().catch((error: unknown) =>
         logStructured(
           "error",

@@ -1,5 +1,11 @@
 import { pgD1, recordStatements } from "./helpers/pg-d1";
-import { DurableObjectNamespaceHost } from "../../src/platform/durable-objects";
+import {
+  DurableObjectNamespaceHost,
+  hostedWebSocketHandlers,
+  installWebSocketGlobals,
+  upgradeContext,
+} from "../../src/platform/durable-objects";
+import { WORKSPACE_IDLE_PING_FRAME } from "@syntila/workspace-runtime-protocol";
 import { user, workspace } from "./helpers/seed";
 import { afterEach, describe, expect, it, vi } from "./helpers/vitest-compat";
 import { hashToken } from "@syntila/security";
@@ -1231,5 +1237,66 @@ describe("Workspace runtime Gateway", () => {
     expect(normalizeWorkspaceWorkerInstallationStatus("unknown")).toBe(
       "failed",
     );
+  });
+
+  it("keeps a WebSocket Workspace online past 60s when hosted auto-response answers idle pings", async () => {
+    installWebSocketGlobals();
+    const workspaceId = "workspace-idle-ping-hosted";
+    const token = "runtime-secret-idle-ping-hosted";
+    const { db, sql } = await runtimeDatabase(
+      workspaceId,
+      "runtime-idle",
+      await hashToken(token),
+    );
+    const host = new DurableObjectNamespaceHost(
+      "WorkspaceGateway",
+      sql as never,
+      (state) => new WorkspaceGateway(state as never, { SYNTILA_DB: db as never }),
+      () => ({}),
+    );
+    try {
+      const gateway = host.getByName(workspaceId);
+      const pairs: { client: unknown; server: unknown }[] = [];
+      const res = await upgradeContext.run({ pairs: pairs as never }, () =>
+        gateway.fetch(
+          new Request(
+            "https://gateway.internal/connect?workspaceRuntimeId=runtime-idle",
+            {
+              headers: {
+                upgrade: "websocket",
+                authorization: `Bearer ${token}`,
+              },
+            },
+          ),
+        ),
+      );
+      expect(res.status).toBe(101);
+      expect(pairs.length).toBe(1);
+      const serverSocket = pairs[0]!.server as {
+        autoResponseAt: Date | null;
+        deserializeAttachment(): Record<string, unknown>;
+        serializeAttachment(v: unknown): void;
+      };
+      // Age the initial connection timestamp past the 60 s liveness window.
+      const twoMinutesAgo = new Date(Date.now() - 120_000).toISOString();
+      serverSocket.serializeAttachment({
+        ...serverSocket.deserializeAttachment(),
+        connectedAt: twoMinutesAgo,
+        lastHeartbeatAt: twoMinutesAgo,
+      });
+      // Simulate the Service sending an idle ping through the hosted WebSocket handler.
+      await hostedWebSocketHandlers.message(
+        { data: { hosted: serverSocket } } as never,
+        WORKSPACE_IDLE_PING_FRAME,
+      );
+      expect(serverSocket.autoResponseAt).toBeInstanceOf(Date);
+      const statusRes = await gateway.fetch(
+        new Request("https://gateway.internal/status"),
+      );
+      const status = (await statusRes.json()) as { online?: boolean };
+      expect(status.online).toBe(true);
+    } finally {
+      await sql.close();
+    }
   });
 });

@@ -485,6 +485,22 @@ void main() {
           isEmpty);
       expect(skipped.single, contains('cannot use MCP servers'));
     });
+
+    test('skips hashing command binaries when the Profile does not support MCP',
+        () async {
+      await addServer();
+      await consentFully();
+      service.enable('files');
+      // Remove the command binary after consent; a Profile without the MCP slot
+      // must short-circuit before reading or hashing the binary.
+      server.deleteSync();
+      final skipped = <String>[];
+      expect(
+          await mcpLaunchesForExecution(service, withoutSlot,
+              requestedByOwner: true, onSkipped: skipped.add),
+          isEmpty);
+      expect(skipped.single, contains('cannot use MCP servers'));
+    });
   });
 }
 

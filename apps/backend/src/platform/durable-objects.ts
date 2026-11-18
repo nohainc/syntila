@@ -29,6 +29,7 @@ export class HostedWebSocket {
   private bun: ServerWebSocket<UpgradeData> | null = null;
   private outbox: (string | ArrayBuffer | Uint8Array)[] = [];
   private attachment: unknown = null;
+  autoResponseAt: Date | null = null;
   owner: HostedObject | null = null;
   readonly isClientEnd: boolean;
   peer: HostedWebSocket | null = null;
@@ -95,6 +96,7 @@ export const hostedWebSocketHandlers = {
     if (!owner) return;
     const data = typeof message === "string" ? message : message.buffer.slice(message.byteOffset, message.byteOffset + message.byteLength) as ArrayBuffer;
     if (typeof data === "string" && owner.autoResponse && data === owner.autoResponse.request) {
+      hosted.autoResponseAt = new Date();
       hosted.send(owner.autoResponse.response);
       return;
     }
@@ -235,6 +237,7 @@ class HostedObject {
       getWebSockets() { return [...self.sockets].filter((s) => s.readyState <= OPEN); },
       setWebSocketAutoResponse(pair?: WebSocketRequestResponsePairShim) { self.autoResponse = pair ?? null; },
       getWebSocketAutoResponse() { return self.autoResponse; },
+      getWebSocketAutoResponseTimestamp(ws: HostedWebSocket) { return ws.autoResponseAt; },
       blockConcurrencyWhile<T>(fn: () => Promise<T>) { return fn(); },
       waitUntil(p: Promise<unknown>) { void p.catch(() => {}); },
     };

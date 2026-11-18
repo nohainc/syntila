@@ -85,9 +85,39 @@ class McpService {
   static final _idPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
   static final _envPattern = RegExp(r'^[A-Za-z_][A-Za-z0-9_]{0,127}$');
 
+  /// Cache of verified binary SHA-256 digests keyed by file path, invalidated
+  /// whenever the file's size or modification timestamp changes. A large runtime
+  /// executable (e.g. a 115 MB `node` binary) takes ~2 seconds to hash in pure
+  /// Dart; caching by stat metadata keeps repeated launches instant while
+  /// re-hashing immediately if the binary is modified or replaced.
+  final Map<String, ({int size, DateTime modified, String sha256})>
+      _binaryDigestCache = {};
+
   Future<String> _sha256OfFile(String path) async {
+    final stat = await File(path).stat();
+    if (stat.type == FileSystemEntityType.notFound) {
+      throw FileSystemException('Cannot open file', path);
+    }
+    final cached = _binaryDigestCache[path];
+    if (cached != null &&
+        cached.size == stat.size &&
+        cached.modified.isAtSameMomentAs(stat.modified)) {
+      return cached.sha256;
+    }
     // Raw bytes: this must equal the Engine's ExternalWorkerProcessHost.sha256OfFile.
-    return (await crypto.sha256.bind(File(path).openRead()).first).toString();
+    final digest =
+        (await crypto.sha256.bind(File(path).openRead()).first).toString();
+    final after = await File(path).stat();
+    if (after.type != FileSystemEntityType.notFound &&
+        after.size == stat.size &&
+        after.modified.isAtSameMomentAs(stat.modified)) {
+      _binaryDigestCache[path] = (
+        size: after.size,
+        modified: after.modified,
+        sha256: digest,
+      );
+    }
+    return digest;
   }
 
   List<Map<String, Object?>> list() => [
@@ -298,6 +328,21 @@ class McpService {
       'toolsCount': tools.length,
       'tools': definitions,
     };
+  }
+
+  /// True when the registry contains at least one enabled, consented server,
+  /// without reading or hashing any command binaries.
+  bool _hasEnabledConsentedServers() {
+    final List<McpServerRecord> servers;
+    try {
+      servers = _registry.list();
+    } on McpRegistryUnreadable {
+      throw const McpPolicyException(
+        'mcp_registry_unreadable',
+        'The MCP server registry could not be read.',
+      );
+    }
+    return servers.any((s) => s.enabled && s.consented);
   }
 
   /// Launches for one execution of the Workspace owner's own work (ADR-028):
@@ -581,18 +626,22 @@ Future<List<McpServerLaunch>> mcpLaunchesForExecution(
   void Function(String message)? onSkipped,
 }) async {
   if (!requestedByOwner) return const [];
-  final List<McpServerLaunch> launches;
+  if (!profileSupportsMcpServers(profile)) {
+    try {
+      if (service._hasEnabledConsentedServers()) {
+        onSkipped?.call('This Worker cannot use MCP servers yet.');
+      }
+    } on McpPolicyException catch (error) {
+      onSkipped?.call(error.message);
+    }
+    return const [];
+  }
   try {
-    launches = await service.launchesForOwnerExecution(onSkipped: onSkipped);
+    return await service.launchesForOwnerExecution(onSkipped: onSkipped);
   } on McpPolicyException catch (error) {
     onSkipped?.call(error.message);
     return const [];
   }
-  if (launches.isNotEmpty && !profileSupportsMcpServers(profile)) {
-    onSkipped?.call('This Worker cannot use MCP servers yet.');
-    return const [];
-  }
-  return launches;
 }
 
 /// True only when the authenticated requester of this assignment is the
