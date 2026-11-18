@@ -61,10 +61,11 @@ synchronization deferral, so time spent waiting for the Service to reach
 owner only, requiring `workspace:manage`) calls the Workspace Gateway's
 `diagnostic-probe`, which sends `diagnostic.probe` over the Workspace's live
 transport and waits up to 5 s for `diagnostic.probe.ack`. No assignment,
-Worker, Engine or provider process is involved. On WebSocket the probe itself
-is held in memory. On HTTP long-poll, the gateway currently persists its
-session snapshot, including the queued probe, in `durable_object_storage`;
-this does not meet the intended no-database-write requirement. With the default `count=1`, the response reports the transport, round
+Worker, Engine or provider process is involved. Probes and their acknowledgements
+are held in memory, including on HTTP long-poll; they do not advance the durable
+command cursor or write a probe to the database. A lost poll response or gateway
+restart can cause a probe to time out. Normal HTTP session and command traffic
+continues to persist independently. With the default `count=1`, the response reports the transport, round
 trip, Service receive/acknowledge times, clock offset, sync state, local queue
 length and active assignment count. A Service that does not implement probes
 never answers and the route returns `outcome: "timeout"` (status 504).

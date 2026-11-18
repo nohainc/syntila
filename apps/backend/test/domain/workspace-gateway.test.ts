@@ -1,4 +1,5 @@
 import { pgD1, recordStatements } from "./helpers/pg-d1";
+import { DurableObjectNamespaceHost } from "../../src/platform/durable-objects";
 import { user, workspace } from "./helpers/seed";
 import { afterEach, describe, expect, it, vi } from "./helpers/vitest-compat";
 import { hashToken } from "@syntila/security";
@@ -20,7 +21,7 @@ async function runtimeDatabase(
   runtimeId: string,
   credentialTokenHash: string,
 ) {
-  const { db, sqlite } = await pgD1();
+  const { db, sqlite, sql } = await pgD1();
   await sqlite.exec(user("owner") + workspace(workspaceId, "owner"));
   await sqlite
     .prepare(
@@ -28,7 +29,7 @@ async function runtimeDatabase(
        VALUES (?, ?, 'installation', ?, now())`,
     )
     .run(runtimeId, workspaceId, credentialTokenHash);
-  return { db, sqlite };
+  return { db, sqlite, sql };
 }
 
 /**
@@ -536,10 +537,94 @@ describe("Workspace runtime Gateway", () => {
       });
     });
 
+    it("keeps HTTP probes out of PostgreSQL while preserving durable command recovery", async () => {
+      const workspaceId = "workspace-probe-ephemeral";
+      const token = "runtime-secret-ephemeral";
+      const { db, sql } = await runtimeDatabase(workspaceId, "runtime-probe", await hashToken(token));
+      const makeHost = () => new DurableObjectNamespaceHost(
+        "WorkspaceGateway", sql as never,
+        (state) => new WorkspaceGateway(state as never, { SYNTILA_DB: db as never }),
+        () => ({}),
+      );
+      let host = makeHost();
+      const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+      const post = (path: string, body: unknown) => new Request(`https://gateway.internal${path}`, {
+        method: "POST", headers, body: JSON.stringify(body),
+      });
+      try {
+        let gateway = host.getByName(workspaceId);
+        const created = await gateway.fetch(post("/runtime/sessions", {
+          workspaceRuntimeId: "runtime-probe", contractVersion: "1.0",
+        }));
+        expect(created.status).toBe(200);
+        const session = await created.json() as { sessionId: string; cursor: string };
+        const snapshot = async () => (await sql`
+          SELECT value::text AS value, updated_at::text AS updated_at
+          FROM durable_object_storage
+          WHERE namespace = 'WorkspaceGateway' AND object_name = ${workspaceId} AND key = 'http-runtime'
+        `)[0];
+        const before = await snapshot();
+        const outcome = gateway.fetch(probeRequest());
+        const poll = await gateway.fetch(post("/runtime/poll", {
+          sessionId: session.sessionId, cursor: session.cursor, waitMs: 1000,
+        }));
+        const page = await poll.json() as { cursor: string; events: Array<{ message: any }> };
+        const probe = page.events.find((event) => event.message.type === "diagnostic.probe")?.message;
+        expect(probe).toBeDefined();
+        expect(page.cursor).toBe(session.cursor);
+        expect(await snapshot()).toEqual(before);
+        const now = new Date().toISOString();
+        const ack = await gateway.fetch(post("/runtime/events", {
+          sessionId: session.sessionId,
+          events: [{
+            contract: "syntila.desktop-auth-transport", version: "1.0", eventId: "ephemeral-ack", occurredAt: now,
+            message: {
+              protocol: "syntila.workspace-runtime-protocol", protocolVersion: "5.1", messageId: "probe-ack", timestamp: now,
+              type: "diagnostic.probe.ack", executionWorkspaceId: workspaceId, workspaceRuntimeId: "runtime-probe",
+              payload: { probeId: probe.payload.probeId, receivedAt: now, ackedAt: now },
+            },
+          }],
+        }));
+        expect(ack.status).toBe(200);
+        expect((await (await outcome).json()).outcome).toBe("acknowledged");
+        expect(await snapshot()).toEqual(before);
+
+        // A mixed response persists only the normal command, which remains
+        // recoverable even when the diagnostic response is lost.
+        await gateway.fetch(new Request("https://gateway.internal/inputs-available", { method: "POST" }));
+        const lostProbe = gateway.fetch(new Request("https://gateway.internal/diagnostic-probe?timeoutMs=500", { method: "POST" }));
+        let mixed: { events: Array<{ message: { type: string } }> } = { events: [] };
+        for (let attempt = 0; attempt < 50; attempt++) {
+          const mixedResponse = await gateway.fetch(post("/runtime/poll", {
+            sessionId: session.sessionId, cursor: session.cursor, waitMs: 0,
+          }));
+          mixed = await mixedResponse.json() as typeof mixed;
+          if (mixed.events.some((event) => event.message.type === "diagnostic.probe")) break;
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        expect(mixed.events.map((event) => event.message.type)).toContain("input.available");
+        expect(mixed.events.map((event) => event.message.type)).toContain("diagnostic.probe");
+        expect(JSON.stringify(await snapshot())).not.toContain("diagnostic.probe");
+        expect((await lostProbe).status).toBe(504);
+        await host.flush();
+        host.stop();
+        host = makeHost();
+        gateway = host.getByName(workspaceId);
+        const recovered = await gateway.fetch(post("/runtime/poll", {
+          sessionId: session.sessionId, cursor: session.cursor, waitMs: 0,
+        }));
+        const recoveredPage = await recovered.json() as { events: Array<{ message: { type: string } }> };
+        expect(recoveredPage.events.map((event) => event.message.type)).toContain("input.available");
+        expect(recoveredPage.events.map((event) => event.message.type)).not.toContain("diagnostic.probe");
+      } finally {
+        host.stop();
+      }
+    });
+
     it("reports a timeout when an older Service never acknowledges", async () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       try {
-        const { gateway } = await connectedHttpGateway(
+        const { gateway, poll } = await connectedHttpGateway(
           "workspace-probe-timeout",
           "runtime-secret-probe-timeout",
         );
@@ -552,6 +637,7 @@ describe("Workspace runtime Gateway", () => {
           outcome: "timeout",
           timeoutMs: 5000,
         });
+        expect((await poll()).events.some((event) => event.message.type === "diagnostic.probe")).toBe(false);
       } finally {
         vi.useRealTimers();
       }
@@ -815,12 +901,8 @@ describe("Workspace runtime Gateway", () => {
         expect(traceStages).toContain("probe_sent");
         expect(traceStages).toContain("probe_acknowledged");
 
-        // Handle probe route does not write to the database (only user provision/read on auth).
-        const probeWrites = statements.filter(
-          (s) =>
-            /\b(INSERT|UPDATE|DELETE)\b/i.test(s) &&
-            !/\bINSERT INTO users\b/i.test(s),
-        );
+        // This includes cold authentication and HTTP delivery/acknowledgement.
+        const probeWrites = statements.filter((s) => /\b(INSERT|UPDATE|DELETE)\b/i.test(s));
         expect(probeWrites).toEqual([]);
       });
 

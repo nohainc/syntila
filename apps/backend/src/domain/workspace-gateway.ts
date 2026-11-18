@@ -282,6 +282,9 @@ export class WorkspaceGateway implements DurableObject {
     cursor: number;
     envelope: Record<string, unknown>;
   }> = [];
+  // Probes are best-effort diagnostics. They must not enter durable HTTP
+  // snapshots or advance the cursor used to recover ordinary commands.
+  private readonly httpProbes = new Map<string, Record<string, unknown>>();
   private httpCursor = 0;
   private httpWaiter: (() => void) | null = null;
   private httpEventIds = new Set<string>();
@@ -475,6 +478,7 @@ export class WorkspaceGateway implements DurableObject {
       this.workspaceRuntimeId = runtimeId;
       this.sessionId = `session-${crypto.randomUUID()}`;
       this.httpEvents = [];
+      this.httpProbes.clear();
       this.httpCursor = 0;
       this.httpLastActivityAt = new Date().toISOString();
       const now = new Date().toISOString();
@@ -509,6 +513,7 @@ export class WorkspaceGateway implements DurableObject {
           { status: 400 },
         );
       const acceptedEventIds: string[] = [];
+      let onlyProbeAcks = true;
       const rejected: Array<{ eventId: string; code: string }> = [];
       for (const raw of body.events) {
         if (!raw || typeof raw !== "object") continue;
@@ -519,6 +524,7 @@ export class WorkspaceGateway implements DurableObject {
           typeof envelope.eventId !== "string" ||
           !envelope.message
         ) {
+          onlyProbeAcks = false;
           if (typeof envelope.eventId === "string")
             rejected.push({
               eventId: envelope.eventId,
@@ -527,15 +533,19 @@ export class WorkspaceGateway implements DurableObject {
           continue;
         }
         if (this.httpEventIds.has(envelope.eventId)) {
+          onlyProbeAcks = false;
           acceptedEventIds.push(envelope.eventId);
           continue;
         }
         try {
           const message = parseWorkspaceRuntimeMessage(envelope.message);
+          const isProbeAck = message.type === "diagnostic.probe.ack";
+          if (!isProbeAck) onlyProbeAcks = false;
           await this.handleMessage(JSON.stringify(message), sessionId!);
-          this.httpEventIds.add(envelope.eventId);
+          if (!isProbeAck) this.httpEventIds.add(envelope.eventId);
           acceptedEventIds.push(envelope.eventId);
         } catch {
+          onlyProbeAcks = false;
           rejected.push({
             eventId: envelope.eventId,
             code: "invalid_or_unprocessed_message",
@@ -543,7 +553,7 @@ export class WorkspaceGateway implements DurableObject {
         }
       }
       this.httpLastActivityAt = new Date().toISOString();
-      await this.persistHttpRuntime();
+      if (!onlyProbeAcks) await this.persistHttpRuntime();
       return Response.json({
         acceptedEventIds,
         rejected,
@@ -567,13 +577,16 @@ export class WorkspaceGateway implements DurableObject {
       // The request cursor acknowledges events from the previous successful
       // response. Keep newly returned events queued until that acknowledgement
       // arrives so a dropped poll response can be retried without data loss.
+      const hadDurableAcknowledgements = this.httpEvents.some(
+        (entry) => entry.cursor <= cursor,
+      );
       this.httpEvents = this.httpEvents.filter(
         (entry) => entry.cursor > cursor,
       );
       let events = this.httpEvents
         .filter((entry) => entry.cursor > cursor)
         .slice(0, 100);
-      if (!events.length && body.waitMs) {
+      if (!events.length && this.httpProbes.size === 0 && body.waitMs) {
         // A newer poll supersedes an older one (for example after a client
         // retry or transport hiccup). The older waiter is released and returns
         // an empty, timed-out page; it must never block command delivery.
@@ -598,13 +611,18 @@ export class WorkspaceGateway implements DurableObject {
       const nextCursor = events.length
         ? events[events.length - 1]!.cursor
         : cursor;
+      // Emit probes once, without changing the durable command cursor. A lost
+      // response or process restart may therefore cause a probe timeout.
+      const probes = [...this.httpProbes.values()].slice(0, 100 - events.length);
+      for (const probe of probes) this.httpProbes.delete(String(probe.eventId));
       this.httpLastActivityAt = new Date().toISOString();
-      await this.persistHttpRuntime();
+      if (!probes.length || events.length || hadDurableAcknowledgements)
+        await this.persistHttpRuntime();
       return Response.json({
         cursor: String(nextCursor),
-        events: events.map((entry) => entry.envelope),
+        events: [...events.map((entry) => entry.envelope), ...probes],
         serverTime: new Date().toISOString(),
-        timedOut: events.length === 0,
+        timedOut: events.length === 0 && probes.length === 0,
       });
     }
     if (
@@ -1383,6 +1401,7 @@ export class WorkspaceGateway implements DurableObject {
         if (!pending) return;
         clearTimeout(pending.timer);
         this.pendingProbes.delete(probeId);
+        this.httpProbes.delete(probeId);
         pending.resolve(payload);
         return;
       }
@@ -3129,6 +3148,7 @@ export class WorkspaceGateway implements DurableObject {
       (resolve, reject) => {
         const timer = setTimeout(() => {
           this.pendingProbes.delete(probeId);
+          this.httpProbes.delete(probeId);
           reject(new Error("probe timeout"));
         }, timeoutMs);
         this.pendingProbes.set(probeId, { resolve, timer });
@@ -3138,7 +3158,7 @@ export class WorkspaceGateway implements DurableObject {
     // surface as an unhandled rejection.
     acknowledgement.catch(() => undefined);
     try {
-      await this.send({
+      const probe = {
         protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
         protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
         messageId: `message-${crypto.randomUUID()}`,
@@ -3151,7 +3171,20 @@ export class WorkspaceGateway implements DurableObject {
           sentAt,
           ...(echo !== undefined ? { echo } : {}),
         },
-      });
+      };
+      if (this.socket) {
+        await this.send(probe);
+      } else {
+        this.httpProbes.set(probeId, {
+          contract: "syntila.desktop-auth-transport",
+          version: "1.0",
+          eventId: probeId,
+          occurredAt: sentAt,
+          message: JSON.parse(serializeWorkspaceRuntimeMessage(probe as never)),
+        });
+        this.httpWaiter?.();
+        this.httpWaiter = null;
+      }
     } catch (error) {
       const pending = this.pendingProbes.get(probeId);
       if (pending) {

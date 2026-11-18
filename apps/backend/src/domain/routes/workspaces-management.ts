@@ -414,6 +414,7 @@ export async function handleWorkspaceDeliveryProbe(
     workspaceId,
     "workspace:manage",
     accessContext,
+    { provisionUser: false },
   );
   const url = new URL(request.url);
   const count = parseBoundedInt(url.searchParams.get("count"), 1, 1, 20, "count");

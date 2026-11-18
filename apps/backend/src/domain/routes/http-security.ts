@@ -213,6 +213,7 @@ export async function securityContext(
   request: Request,
   env: SecurityEnv,
   accessContext?: ExecutionContext,
+  options?: { provisionUser?: boolean },
 ): Promise<SecurityContext> {
   // Preserve the route-handler context contract for callers that also use it
   // for non-authentication infrastructure; human identity never comes from it.
@@ -229,7 +230,8 @@ export async function securityContext(
     const identity = await identityService.resolve(request, env);
     if (!identity) throw new HttpError(401, "Authentication required");
     try {
-      await provisionSyntilaUser(env.SYNTILA_DB, identity);
+      if (options?.provisionUser !== false)
+        await provisionSyntilaUser(env.SYNTILA_DB, identity);
       if (
         identity.audience === "syntila.profile-lab.management" &&
         env.SYNTILA_PROFILE_LAB_OWNER_EMAIL !== undefined &&
@@ -346,8 +348,9 @@ export async function workspaceOwnerContext(
   workspaceId: string,
   permission: Permission,
   accessContext?: ExecutionContext,
+  options?: { provisionUser?: boolean },
 ): Promise<SecurityContext> {
-  const context = await securityContext(request, env, accessContext);
+  const context = await securityContext(request, env, accessContext, options);
   try {
     await authorizeWorkspaceOwner(
       dataOf(env).read,
