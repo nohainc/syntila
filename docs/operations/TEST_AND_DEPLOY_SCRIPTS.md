@@ -27,6 +27,7 @@ A file that fails under parallel load is re-run once alone; if it then passes it
 | --- | --- |
 | `scripts/perf-local.sh` | Runs the local performance suite against `pnpm start:local` (`:8788`) and checks p95 latency limits in `scripts/perf-thresholds.json`. Exits 1 when a threshold is exceeded. |
 | `scripts/perf-local.sh --no-thresholds --json out.json` | Prints latency numbers and writes the full JSON report (commit, date, CPU/OS info, and per-stage percentiles) without failing on threshold limits. |
+| `scripts/test-perf.sh` | Short perf run with history in `_perf/` and a comparison with the previous run. `scripts/test-all.sh --perf` adds it as the last step (opt-in). See [PERFORMANCE_TESTS.md](PERFORMANCE_TESTS.md). |
 
 Options (`--probes N`, `--users N`, `--messages N`, `--chats N`, `--json out.json`, `--thresholds file.json`, `--no-thresholds`) control the three scenarios:
 

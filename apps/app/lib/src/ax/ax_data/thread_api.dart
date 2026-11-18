@@ -40,13 +40,13 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     // One key for both attempts: the retry must replay, not create again.
     final key = idempotencyKey ?? newAxIdempotencyKey();
     final response = await _retryOnceIfBusy(() => client.post(
-      Uri.parse('$baseUrl/spaces/$spaceId/threads'),
-      headers: {
-        ..._headers(contentType: 'application/json'),
-        'Idempotency-Key': key
-      },
-      body: jsonEncode({'name': name}),
-    ));
+          Uri.parse('$baseUrl/spaces/$spaceId/threads'),
+          headers: {
+            ..._headers(contentType: 'application/json'),
+            'Idempotency-Key': key
+          },
+          body: jsonEncode({'name': name}),
+        ));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       var detail = '';
       try {
@@ -628,19 +628,19 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     AxWorkLatencyTrace.instance.submitted(submissionId);
     final picked = attachments;
     final response = await _retryOnceIfBusy(() => client.post(
-      Uri.parse('$baseUrl/threads/$threadId/work-requests'),
-      headers: {
-        ..._headers(contentType: 'application/json'),
-        'Idempotency-Key': submissionId
-      },
-      body: jsonEncode({
-        'workflowId': workflowId,
-        'input': {
-          'originalRequest': prompt,
-          'attachments': _workRequestManifest(picked)
-        },
-      }),
-    ));
+          Uri.parse('$baseUrl/threads/$threadId/work-requests'),
+          headers: {
+            ..._headers(contentType: 'application/json'),
+            'Idempotency-Key': submissionId
+          },
+          body: jsonEncode({
+            'workflowId': workflowId,
+            'input': {
+              'originalRequest': prompt,
+              'attachments': _workRequestManifest(picked)
+            },
+          }),
+        ));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       AxWorkLatencyTrace.instance.failed(submissionId);
       if (response.statusCode == 422) {
@@ -704,22 +704,22 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     AxWorkLatencyTrace.instance.submitted(submissionId);
     final picked = attachments;
     final response = await _retryOnceIfBusy(() => client.post(
-      Uri.parse('$baseUrl/threads/$threadId/work-requests'),
-      headers: {
-        ..._headers(contentType: 'application/json'),
-        'Idempotency-Key': submissionId
-      },
-      body: jsonEncode({
-        'workflowId': workflowId,
-        if (executionSelection.isNotEmpty)
-          'executionSelection': executionSelection,
-        'input': {
-          'originalRequest': prompt,
-          'attachments': _workRequestManifest(picked),
-          if (replyTo != null) 'replyTo': replyTo,
-        },
-      }),
-    ));
+          Uri.parse('$baseUrl/threads/$threadId/work-requests'),
+          headers: {
+            ..._headers(contentType: 'application/json'),
+            'Idempotency-Key': submissionId
+          },
+          body: jsonEncode({
+            'workflowId': workflowId,
+            if (executionSelection.isNotEmpty)
+              'executionSelection': executionSelection,
+            'input': {
+              'originalRequest': prompt,
+              'attachments': _workRequestManifest(picked),
+              if (replyTo != null) 'replyTo': replyTo,
+            },
+          }),
+        ));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       AxWorkLatencyTrace.instance.failed(submissionId);
       var detail = '';
@@ -1191,18 +1191,18 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
         await _uploadWorkRequestFiles(threadId, attachments, discussion: true);
     final key = idempotencyKey ?? newAxIdempotencyKey();
     final response = await _retryOnceIfBusy(() => client.post(
-      Uri.parse('$baseUrl/threads/$threadId/discussion-messages'),
-      headers: {
-        ..._headers(contentType: 'application/json'),
-        'Idempotency-Key': key
-      },
-      body: jsonEncode({
-        'body': text,
-        'attachments': attachments,
-        'references': references,
-        if (replyTo != null) 'replyTo': replyTo,
-      }),
-    ));
+          Uri.parse('$baseUrl/threads/$threadId/discussion-messages'),
+          headers: {
+            ..._headers(contentType: 'application/json'),
+            'Idempotency-Key': key
+          },
+          body: jsonEncode({
+            'body': text,
+            'attachments': attachments,
+            'references': references,
+            if (replyTo != null) 'replyTo': replyTo,
+          }),
+        ));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       var detail = '';
       try {

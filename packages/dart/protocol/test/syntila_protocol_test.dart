@@ -30,6 +30,18 @@ void main() {
       },
     };
     expect(WorkspaceRuntimeMessage.parse(envelope).type, 'assignment.error');
+    final details = envelope['payload'];
+    envelope['payload'] = {'providerFailureUnavailable': true};
+    expect(WorkspaceRuntimeMessage.parse(envelope).type, 'assignment.error');
+    envelope['payload'] = {'providerFailureUnavailable': false};
+    expect(() => WorkspaceRuntimeMessage.parse(envelope),
+        throwsA(isA<ProtocolException>()));
+    envelope['payload'] = {
+      ...(details as Map<String, Object?>),
+      'providerFailureUnavailable': true,
+    };
+    expect(() => WorkspaceRuntimeMessage.parse(envelope),
+        throwsA(isA<ProtocolException>()));
     envelope['payload'] = {
       'providerFailure': {
         'schemaVersion': 1,

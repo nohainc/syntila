@@ -305,10 +305,8 @@ class _WorkspaceWorkerVisibilitySectionState
                   value: isModelVisible,
                   onChanged: !isWorkerVisible || _saving
                       ? null
-                      : (v) => _toggle(
-                          _models.putIfAbsent(worker.id, () => {}),
-                          model.id,
-                          v ?? false),
+                      : (v) => _toggle(_models.putIfAbsent(worker.id, () => {}),
+                          model.id, v ?? false),
                 ),
               )),
               for (final eff in allEfforts)
@@ -319,9 +317,9 @@ class _WorkspaceWorkerVisibilitySectionState
                       ? Checkbox(
                           key: ValueKey(
                               'visibility-effort-${model.id}-$eff-${worker.id}'),
-                          value: !(_efforts[worker.id]?[model.id]
-                                  ?.contains(eff) ??
-                              false),
+                          value:
+                              !(_efforts[worker.id]?[model.id]?.contains(eff) ??
+                                  false),
                           onChanged: _saving
                               ? null
                               : (v) => _toggle(

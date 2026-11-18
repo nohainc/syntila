@@ -454,7 +454,8 @@ void main() {
         expect(tester.widget<InkWell>(tap).onTap, isNotNull);
         expect(
             find.descendant(
-                of: card, matching: find.text(linked ? 'Linked' : 'Not linked')),
+                of: card,
+                matching: find.text(linked ? 'Linked' : 'Not linked')),
             findsOneWidget);
         expect(find.descendant(of: card, matching: find.text(label)),
             findsOneWidget);
@@ -1024,7 +1025,7 @@ void main() {
           findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
       expect(find.text('Appearance'), findsNothing);
-      expect(find.text('Documentation'), findsOneWidget);
+      expect(find.text('Documentation'), findsNothing);
       expect(find.text('About Syntila'), findsOneWidget);
       expect(find.text('Log out'), findsOneWidget);
       expect(find.text('Usage'), findsNothing);
@@ -1104,7 +1105,7 @@ void main() {
           findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
       expect(find.text('Appearance'), findsNothing);
-      expect(find.text('Documentation'), findsOneWidget);
+      expect(find.text('Documentation'), findsNothing);
       expect(find.text('About Syntila'), findsOneWidget);
       expect(find.text('Log out'), findsOneWidget);
       expect(find.text('Usage'), findsNothing);
@@ -1117,7 +1118,6 @@ void main() {
         (tester) async {
       var logoutTriggered = false;
       var aboutTriggered = false;
-      Uri? openedExternalUri;
 
       final shellContext = AxShellContext(
         navigation: const AxNavigation.home(),
@@ -1138,7 +1138,7 @@ void main() {
               onCreateSpace: () {},
               onLogout: () => logoutTriggered = true,
               onOpenAbout: () => aboutTriggered = true,
-              onOpenExternal: (uri) => openedExternalUri = uri,
+              onOpenExternal: (_) {},
             ),
           ),
         ),
@@ -1156,16 +1156,6 @@ void main() {
               ?.backgroundColor
               ?.resolve({}),
           SyntilaColors.navigationBackgroundDark);
-
-      // Test 2: Documentation
-      await tester.tap(find.text('Documentation'));
-      await tester.pumpAndSettle();
-      expect(
-          openedExternalUri, Uri.parse('https://syntila.app/how-it-works/'));
-
-      // Re-open menu
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
 
       // Test 3: About Syntila
       await tester.tap(find.text('About Syntila'));
@@ -1188,7 +1178,6 @@ void main() {
       AxNavigation? navigatedTo;
       var logoutTriggered = false;
       var aboutTriggered = false;
-      Uri? openedExternalUri;
 
       final shellContext = AxShellContext(
         navigation: const AxNavigation.home(),
@@ -1208,7 +1197,7 @@ void main() {
               onOpenDrawer: () {},
               onLogout: () => logoutTriggered = true,
               onOpenAbout: () => aboutTriggered = true,
-              onOpenExternal: (uri) => openedExternalUri = uri,
+              onOpenExternal: (_) {},
             ),
           ),
         ),
@@ -1223,7 +1212,7 @@ void main() {
       expect(find.text('Workspaces'), findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
       expect(find.text('Appearance'), findsNothing);
-      expect(find.text('Documentation'), findsOneWidget);
+      expect(find.text('Documentation'), findsNothing);
       expect(find.text('About Syntila'), findsOneWidget);
       expect(find.text('Log out'), findsOneWidget);
       expect(find.text('Usage'), findsNothing);
@@ -1234,14 +1223,6 @@ void main() {
       await tester.tap(find.text('Workspaces'));
       await tester.pumpAndSettle();
       expect(navigatedTo?.kind, AxRouteKind.workspaces);
-
-      // Reopen and check Documentation
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Documentation'));
-      await tester.pumpAndSettle();
-      expect(
-          openedExternalUri, Uri.parse('https://syntila.app/how-it-works/'));
 
       // Reopen and check About Syntila
       await tester.tap(find.byTooltip('Application menu'));

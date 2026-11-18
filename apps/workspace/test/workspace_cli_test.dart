@@ -1227,9 +1227,12 @@ void main() {
       expect(regStore.readSync(), isNull);
       expect(workersFile.existsSync(), isTrue);
       await regStore.write(const WorkspaceRegistration(
-        workspaceRuntimeId: 'rt-1', workspaceId: 'ws-1',
-        cloudUrl: 'https://syntila.test', name: 'Test WS',
-        hostname: 'testhost', installationId: 'inst-1',
+        workspaceRuntimeId: 'rt-1',
+        workspaceId: 'ws-1',
+        cloudUrl: 'https://syntila.test',
+        name: 'Test WS',
+        hostname: 'testhost',
+        installationId: 'inst-1',
       ));
 
       // Cloud accepts: local state is cleared.

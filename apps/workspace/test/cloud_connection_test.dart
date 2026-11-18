@@ -1242,6 +1242,7 @@ void main() {
   test('retries a failed reconnect with backoff', () async {
     final first = FakeSocket();
     final recovered = FakeSocket();
+    final reconnected = Completer<void>();
     var factoryCalls = 0;
     final connection = WorkspaceCloudConnection(
       uri: Uri.parse(
@@ -1251,6 +1252,7 @@ void main() {
       factory: (_) async {
         factoryCalls += 1;
         if (factoryCalls == 2) throw const SocketException('temporary loss');
+        if (factoryCalls == 3) reconnected.complete();
         return factoryCalls == 1 ? first : recovered;
       },
       heartbeat: const Duration(hours: 1),
@@ -1259,7 +1261,7 @@ void main() {
     );
     await connection.connect();
     await first.controller.close();
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await reconnected.future.timeout(const Duration(seconds: 5));
     expect(factoryCalls, greaterThanOrEqualTo(3));
     expect(connection.reconnectCount, greaterThanOrEqualTo(2));
     await connection.close();
@@ -1466,7 +1468,8 @@ void main() {
     await connection.close();
   });
 
-  test('echoes base64 payload in diagnostic.probe.ack and advertises capability',
+  test(
+      'echoes base64 payload in diagnostic.probe.ack and advertises capability',
       () async {
     final socket = FakeSocket();
     final connection = WorkspaceCloudConnection(
@@ -1479,9 +1482,9 @@ void main() {
     await connection.connect();
     final hello =
         jsonDecode(socket.sent.single as String) as Map<String, dynamic>;
-    final customCapabilities = ((hello['payload']
-            as Map<String, dynamic>)['capabilities']
-        as Map<String, dynamic>)['customCapabilities'] as List<dynamic>;
+    final customCapabilities =
+        ((hello['payload'] as Map<String, dynamic>)['capabilities']
+            as Map<String, dynamic>)['customCapabilities'] as List<dynamic>;
     expect(customCapabilities, contains('workspace.probe_payload.v1'));
     await completeHandshake(connection, socket);
 

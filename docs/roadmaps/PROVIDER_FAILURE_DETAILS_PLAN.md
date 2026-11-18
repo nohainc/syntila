@@ -165,3 +165,52 @@ current implementation.
   The complete Engine-to-UI acceptance fixture, another CLI
   output shape, real-device secure-store evidence and component validations
   remain open; these results do not constitute Phase 5 acceptance.
+- On 2026-11-18, App validation passed 1,354 tests, backend validation passed
+  1,185 tests, Workspace validation passed 658 tests (22 skipped), and Engine
+  component validation passed (246 Engine tests plus its protocol and
+  dependent package checks). A macOS command-line probe using a unique temporary
+  service verified a platform credential-store write, uncached read and
+  cleanup. This does not verify a signed Workspace build or an encrypted
+  journal through a device restart. The complete cross-service fixture and
+  second CLI shape remain open, so Phase 5 is not accepted.
+- `scripts/test-provider-failure-chain.sh` runs AGY-shaped and Codex-shaped
+  fixtures through the generic Engine, Workspace supervisor, encrypted journal,
+  duplicate delivery and restart replay, then passes the captured terminal
+  payload into the backend Gateway's HTTP-fallback test harness and a real
+  database. A reloaded authorized Work read is passed to a UI panel widget
+  test; a shared Space viewer can read it and a non-member is rejected.
+  Duplicate delivery cannot overwrite it, and a later assignment does not
+  inherit the preceding attempt's details. The harness uses a fake Workspace socket,
+  remaps envelope identities to the isolated Gateway fixture, and transfers
+  JSON between processes; it does not exercise a live WebSocket, browser,
+  signed Profile, or the full Work timeline. Its test Profiles are modified
+  fixtures, not published releases. It also runs an AGY-shaped case with a
+  detected credential and a multibyte response beyond the limit, asserting
+  omission and exact truncation through the UI, and checks canonical-only
+  replay when Cloud does not advertise the capability. A nonzero-exit,
+  stderr-only case verifies that stderr is labelled as such and the exit code
+  is not presented as a native provider code. A separate case preserves stderr
+  alongside a structured native code and failed-run response. A whitespace-only
+  error and response are preserved exactly. The failure panel labels text
+  sourced from stderr or stdout accordingly. The test also verifies
+  provider-controlled JSON keys and stderr context are absent from Engine
+  diagnostics and the Workspace journal. Engine failure diagnostics now report
+  counts and byte lengths instead of those values. The full live
+  transport, browser and signed-release acceptance matrix remains open.
+  Run the script from the repository root with Dart, Flutter, Bun and the
+  backend test PostgreSQL service available. It uses temporary files and
+  synthetic provider output, and removes the files on exit.
+- The Codex Profile acceptance fixture also exercises a distinct `turn.failed`
+  event with 4.4 failure extraction, preserving its message without inventing
+  a native code. This uses a modified test Profile and does not establish the
+  live deployment or change an existing signed release.
+- `SYNTILA_TEST_MACOS_KEYCHAIN=1 dart test
+  test/provider_failure_platform_store_test.dart` verifies that an encrypted
+  journal written through the macOS platform credential store is recovered by
+  a fresh process, then removes its isolated test key. This is a local
+  command-line test, not evidence of a signed build or a machine restart.
+- When local journal details cannot be decrypted, replay reports a content-free
+  unavailable marker to Cloud if it advertises
+  `assignment.provider_failure_unavailable.v1`; older Cloud versions receive
+  the canonical failure alone. Tests cover negotiation, Gateway persistence,
+  and the authorized Work read.

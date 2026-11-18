@@ -44,8 +44,34 @@ void main() {
     final restored = (await journal().find('assignment-1'))!
         .result!['providerFailure'] as Map;
     expect(restored['providerErrorText'], 'secret output');
+    final savedCredentials = Map<String, String>.of(store.values);
     store.values.clear();
-    await expectLater(journal().reconcile(), throwsStateError);
+    // Losing the key must not make the journal unreadable.
+    await journal().append(AssignmentRecord(
+      assignmentId: 'unrelated',
+      status: AssignmentStatus.completed,
+      updatedAt: DateTime.utc(2026),
+      result: {'summary': 'ok'},
+    ));
+    final degraded = journal();
+    final lost = (await degraded.find('assignment-1'))!;
+    expect(lost.status, AssignmentStatus.failed);
+    expect(lost.result!['error'], 'failed');
+    expect(lost.result!.containsKey('providerFailure'), isFalse);
+    expect(lost.result!['providerFailureUnavailable'], true);
+    expect(
+        (await degraded.find('unrelated'))!.status, AssignmentStatus.completed);
+    expect(await file.readAsString(), isNot(contains('secret output')));
+    final lines = await file.readAsLines();
+    await file
+        .writeAsString('${List.filled(500, lines.join('\n')).join('\n')}\n');
+    expect(await journal().compactIfNeeded(), isFalse);
+    store.values.addAll(savedCredentials);
+    expect(
+        ((await journal().find('assignment-1'))!.result!['providerFailure']
+            as Map)['providerErrorText'],
+        'secret output');
+    store.values.clear();
     await expectLater(
         journal().append(AssignmentRecord(
           assignmentId: 'another',

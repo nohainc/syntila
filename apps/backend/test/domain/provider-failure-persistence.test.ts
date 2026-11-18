@@ -5,6 +5,8 @@ import { conversationFixture } from "./helpers/conversation.js";
 import { recordAssignmentError } from "../../src/domain/assignment-dispatcher.js";
 import {
   decryptProviderFailure,
+  previousProviderFailureKeys,
+  providerFailureKeyId,
   encryptProviderFailure,
   providerFailureKey,
 } from "../../src/domain/provider-failure-encryption.js";
@@ -16,6 +18,73 @@ import {
 const testKey = "12".repeat(32);
 
 describe("ProviderFailure persistence, credential boundary, and isolation", () => {
+  it("retains a capability-gated unavailable marker on the matching failed attempt", async () => {
+    const f = await conversationFixture({ failureDetailsSnapshot: true });
+    await f.sqlite.exec(
+      "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('M','P','U','owner','now','now')",
+    );
+    await f.assign("A1");
+    const recorded = await recordAssignmentError(f.db as never, "A1", {
+      error: {
+        code: "execution_failed",
+        message: executionErrorMessage("execution_failed"),
+        retryable: false,
+      },
+      failedAt: new Date().toISOString(),
+      providerFailureUnavailable: true,
+    });
+    expect(recorded).toBe(true);
+    const env = {
+      SYNTILA_ENVIRONMENT: "development",
+      SYNTILA_DB: f.db,
+      TEST_AUTHENTICATION: async () => ({
+        userId: "U",
+        user: {
+          id: "U",
+          email: "u@test",
+          displayName: "User",
+          status: "active",
+        },
+        workspaceId: "",
+        spaceRoles: {},
+        sessionId: "test",
+        clientType: "web",
+      }),
+    } as never;
+    const response = await handleGetWorkRequest(
+      new Request("https://test/api/work-requests/R"),
+      env,
+      "R",
+    );
+    const work = (await response.json()) as any;
+    expect(work.steps[0].status).toBe("failed");
+    expect(work.steps[0].providerFailure).toBeNull();
+    expect(work.steps[0].providerFailureUnavailable).toBe(true);
+    expect(work.steps[0].errorCode).toBe("execution_failed");
+  });
+  it("reads details after key rotation through a decrypt-only previous key", () => {
+    const oldKey = providerFailureKey("12".repeat(32))!;
+    const newKey = providerFailureKey("56".repeat(32))!;
+    const encrypted = encryptProviderFailure(
+      { schemaVersion: 1, source: "stderr", providerErrorText: "kept" },
+      "A1",
+      oldKey,
+    );
+    expect(encrypted.keyId).toBe(providerFailureKeyId(oldKey));
+    expect(decryptProviderFailure(encrypted, "A1", newKey)).toBeNull();
+    expect(
+      decryptProviderFailure(encrypted, "A1", [
+        newKey,
+        ...previousProviderFailureKeys(`bad, ${"12".repeat(32)}`),
+      ])?.providerErrorText,
+    ).toBe("kept");
+    // Envelopes written before keyId existed still decrypt.
+    const { keyId: _ignored, ...legacy } = encrypted;
+    expect(
+      decryptProviderFailure(legacy, "A1", [newKey, oldKey])?.providerErrorText,
+    ).toBe("kept");
+  });
+
   it("authenticates ciphertext and binds it to the assignment", () => {
     const key = providerFailureKey(testKey)!;
     const encrypted = encryptProviderFailure(
@@ -210,11 +279,12 @@ describe("ProviderFailure persistence, credential boundary, and isolation", () =
       undefined,
       { providerFailureKey: testKey },
     );
-    const env = (userId: string, key = testKey) =>
+    const env = (userId: string, key = testKey, previousKeys?: string) =>
       ({
         SYNTILA_ENVIRONMENT: "development",
         SYNTILA_DB: f.db,
         SYNTILA_PROVIDER_FAILURE_KEY: key,
+        SYNTILA_PROVIDER_FAILURE_PREVIOUS_KEYS: previousKeys,
         TEST_AUTHENTICATION: async () => ({
           userId,
           user: {
@@ -253,6 +323,23 @@ describe("ProviderFailure persistence, credential boundary, and isolation", () =
     ).json()) as any;
     expect(unavailable.steps[0].providerFailure).toBeNull();
     expect(unavailable.steps[0].providerFailureUnavailable).toBe(true);
+    const rotated = (await (
+      await handleGetWorkRequest(
+        request,
+        env("U", "00".repeat(32), testKey),
+        "R",
+      )
+    ).json()) as any;
+    expect(rotated.steps[0].providerFailure.providerErrorText).toBe(
+      "exact error",
+    );
+    await expect(
+      handleGetWorkRequest(
+        request,
+        env("other", "00".repeat(32), testKey),
+        "R",
+      ),
+    ).rejects.toThrow();
     await expect(
       handleGetWorkRequest(request, env("other"), "R"),
     ).rejects.toThrow();

@@ -21,6 +21,7 @@ export const WORKSPACE_RUNTIME_PROTOCOL_NAME =
   "syntila.workspace-runtime-protocol" as const;
 export const WORKSPACE_RUNTIME_PROTOCOL_VERSION = "5.1" as const;
 export const PROVIDER_FAILURE_DETAILS_CAPABILITY = "assignment.provider_failure.v1" as const;
+export const PROVIDER_FAILURE_UNAVAILABLE_CAPABILITY = "assignment.provider_failure_unavailable.v1" as const;
 export const WORKSPACE_RUNTIME_PROTOCOL_SUPPORTED_VERSIONS = [
   "5.0",
   "5.1",
@@ -689,6 +690,7 @@ export const workspaceRuntimeEnvelopeSchema = z
       const payload = z
         .object({
           providerFailure: ProviderFailureDetailsSchema.optional(),
+          providerFailureUnavailable: z.literal(true).optional(),
           error: z
             .object({
               code: executionErrorCode,
@@ -719,6 +721,9 @@ export const workspaceRuntimeEnvelopeSchema = z
             }),
         })
         .passthrough()
+        .refine((value) => !(value.providerFailure && value.providerFailureUnavailable), {
+          message: "provider failure details and unavailable marker are mutually exclusive",
+        })
         .safeParse(message.payload);
       if (!payload.success) {
         for (const issue of payload.error.issues) {

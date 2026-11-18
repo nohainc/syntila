@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import '../../platform/view_preferences.dart';
 
 /// Sidebar with an inset resize grip; width belongs to the shell so
 /// collapsing the sidebar or navigating does not reset it.
@@ -12,8 +13,8 @@ class ResizableSidebar extends StatefulWidget {
     required this.child,
   });
 
-  static const minWidth = 210.0;
-  static const maxWidth = 400.0;
+  static const minWidth = ViewPreferences.minSidebarWidth;
+  static const maxWidth = ViewPreferences.maxSidebarWidth;
   final double width;
   final ValueChanged<double> onWidthChanged;
   final Widget child;

@@ -35,6 +35,11 @@ class _ProviderFailurePanelState extends State<ProviderFailurePanel> {
     final hasNativeCode = details?.nativeErrorCode != null;
     final hasProviderError = details?.providerErrorText != null;
     final hasFailedResponse = details?.failedRunResponse != null;
+    final errorLabel = details?.source == 'stderr'
+        ? 'Provider stderr'
+        : details?.source == 'stdout'
+            ? 'Provider stdout'
+            : 'Provider error';
 
     return Semantics(
       container: true,
@@ -115,7 +120,7 @@ class _ProviderFailurePanelState extends State<ProviderFailurePanel> {
                   if (hasProviderError) ...[
                     const SizedBox(height: 6),
                     Text(
-                      'Provider error',
+                      errorLabel,
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -124,7 +129,7 @@ class _ProviderFailurePanelState extends State<ProviderFailurePanel> {
                     ),
                     const SizedBox(height: 2),
                     Semantics(
-                      label: 'Provider error text',
+                      label: '$errorLabel text',
                       child: SelectableText(
                         details.providerErrorText!,
                         key: const ValueKey('provider-error-text'),

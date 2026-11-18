@@ -4,7 +4,10 @@ import 'dart:io';
 
 import 'secure_credentials.dart';
 import 'workspace_registration_models.dart'
-    show backendBearerForHumanSession, workspaceAuthOrigin, workspaceCloudApiUri;
+    show
+        backendBearerForHumanSession,
+        workspaceAuthOrigin,
+        workspaceCloudApiUri;
 
 const desktopHumanCredentialKey = 'desktop-human-session';
 const desktopAuthIntentContractVersion = '1.1';
@@ -334,10 +337,11 @@ class DesktopAuthClient {
 
   /// Workspace ownership calls are served by the backend, which accepts a
   /// short-lived backend token exchanged for the desktop session.
-  Future<Map<String, dynamic>> _backendJson(
-      String path, DesktopHumanSession session, Map<String, Object?> body) async {
+  Future<Map<String, dynamic>> _backendJson(String path,
+      DesktopHumanSession session, Map<String, Object?> body) async {
     final origin = _cloudOrigin.toString();
-    final bearer = await backendBearerForHumanSession(origin, session.credential,
+    final bearer = await backendBearerForHumanSession(
+        origin, session.credential,
         client: _http);
     return _requestJson('POST', workspaceCloudApiUri(origin, '/api$path'),
         bearer: bearer, body: body);
@@ -527,7 +531,10 @@ class DesktopAuthClient {
     String? workspaceId,
     String? runtimeId,
   }) async {
-    final response = await _backendJson('/workspace-runtime/ownership', session, {
+    final response = await _backendJson(
+      '/workspace-runtime/ownership',
+      session,
+      {
         'contractVersion': '1.0',
         'installationId': installationId,
         if (workspaceId != null) 'workspaceId': workspaceId,
@@ -543,7 +550,10 @@ class DesktopAuthClient {
     required String workspaceId,
     required String runtimeId,
   }) async {
-    final response = await _backendJson('/workspace-runtime/ownership/reconcile', session, {
+    final response = await _backendJson(
+      '/workspace-runtime/ownership/reconcile',
+      session,
+      {
         'contractVersion': '1.0',
         'installationId': installationId,
         'workspaceId': workspaceId,
@@ -559,7 +569,10 @@ class DesktopAuthClient {
     required String workspaceId,
     required String runtimeId,
   }) async {
-    await _backendJson('/workspace-runtime/release', session, {
+    await _backendJson(
+      '/workspace-runtime/release',
+      session,
+      {
         'installationId': installationId,
         'workspaceId': workspaceId,
         'runtimeId': runtimeId,
@@ -573,7 +586,10 @@ class DesktopAuthClient {
     required String workspaceId,
     required String runtimeId,
   }) async {
-    await _backendJson('/workspace-runtime/disconnect', session, {
+    await _backendJson(
+      '/workspace-runtime/disconnect',
+      session,
+      {
         'installationId': installationId,
         'workspaceId': workspaceId,
         'runtimeId': runtimeId,

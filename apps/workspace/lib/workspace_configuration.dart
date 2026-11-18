@@ -6,7 +6,8 @@ import 'secure_credentials.dart';
 import 'workspace_paths.dart';
 import 'platform_runtime.dart';
 import 'workspace_settings.dart';
-import 'workspace_registration_models.dart' show workspaceAuthOrigin, workspaceBackendOrigin;
+import 'workspace_registration_models.dart'
+    show workspaceAuthOrigin, workspaceBackendOrigin;
 
 /// The inputs consumed by the headless Workspace Service. These values are
 /// resolved once at process startup instead of being reread independently by
@@ -132,7 +133,8 @@ class WorkspaceConfigurationResolver {
   }
 
   /// The auth (`cloudUrl`) origin for a gateway URI on the backend.
-  static String cloudHttpOrigin(Uri gateway) => workspaceAuthOrigin(_gatewayHttpOrigin(gateway));
+  static String cloudHttpOrigin(Uri gateway) =>
+      workspaceAuthOrigin(_gatewayHttpOrigin(gateway));
 
   static String _gatewayHttpOrigin(Uri gateway) => Uri(
         scheme: switch (gateway.scheme) {
@@ -148,7 +150,8 @@ class WorkspaceConfigurationResolver {
     var uri = Uri.tryParse(value);
     // The auth Worker's origin (syntila.app) in any form — https origin or a
     // saved wss gateway URL — maps to the backend, where the gateway runs.
-    if (uri != null && uri.host.isNotEmpty &&
+    if (uri != null &&
+        uri.host.isNotEmpty &&
         const {'http', 'https', 'ws', 'wss'}.contains(uri.scheme)) {
       try {
         final secure = uri.scheme == 'https' || uri.scheme == 'wss';

@@ -1474,7 +1474,8 @@ class WorkspaceCli {
     }
     if (failure != null) {
       if (force) {
-        err.writeln('Cloud did not release this Workspace ($failure); forcing local unregistration.');
+        err.writeln(
+            'Cloud did not release this Workspace ($failure); forcing local unregistration.');
       } else {
         err.writeln('Cloud did not release this Workspace: $failure');
         err.writeln(
@@ -1510,7 +1511,8 @@ class WorkspaceCli {
     ]);
     // Preserve the local registration if Cloud cannot release it, unless --local-only is set.
     try {
-      if (await _unregister(dataDir, true, quiet: true, force: localOnly) != 0) {
+      if (await _unregister(dataDir, true, quiet: true, force: localOnly) !=
+          0) {
         err.writeln('Reset incomplete: Workspace could not be unregistered.');
         return 1;
       }

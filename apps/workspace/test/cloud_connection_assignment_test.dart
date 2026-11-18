@@ -123,6 +123,99 @@ void main() {
       await connection.close();
     });
   }
+  for (final supported in [false, true]) {
+    test('reports unavailable replay details only to capable Cloud: $supported',
+        () async {
+      final dir = await Directory.systemTemp.createTemp('failure-key-loss-');
+      addTearDown(() => dir.delete(recursive: true));
+      final file = File('${dir.path}/assignments.jsonl');
+      final credentials = _MemoryCredentials();
+      AssignmentJournal journal() => AssignmentJournal(file,
+          providerFailureCipher:
+              ProviderFailureCipher(credentials, file, 'installation'));
+      await journal().append(AssignmentRecord(
+        assignmentId: 'assignment-1',
+        status: AssignmentStatus.failed,
+        updatedAt: DateTime.utc(2026),
+        workspaceId: 'workspace-1',
+        workspaceRuntimeId: 'workspace-1',
+        workerId: 'worker-1',
+        runId: 'run-1',
+        taskId: 'task-1',
+        attemptId: 'attempt-1',
+        idempotencyKey: 'idem-1',
+        errorCode: 'execution_failed',
+        result: {
+          'error': 'The assignment could not be completed.',
+          'providerFailure': {
+            'schemaVersion': 1,
+            'source': 'stderr',
+            'providerErrorText': 'private failure',
+          },
+        },
+      ));
+      credentials.values.clear();
+      final socket = FakeSocket();
+      final connection = WorkspaceCloudConnection(
+        uri: Uri.parse(
+            'wss://cloud.test/api/workspace-gateway/connect?workspaceRuntimeId=workspace-1'),
+        workspaceRuntimeId: 'workspace-1',
+        workspaceId: 'workspace-1',
+        factory: (_) async => socket,
+        assignmentJournal: journal(),
+        assignmentHandler: (_) async =>
+            throw StateError('Replay must not execute'),
+      );
+      addTearDown(connection.close);
+      await connection.connect();
+      await completeHandshake(connection, socket,
+          extraCloudCapabilities: supported
+              ? [
+                  providerFailureDetailsCapability,
+                  providerFailureUnavailableCapability
+                ]
+              : [providerFailureDetailsCapability]);
+      final assignment = {
+        'protocol': 'syntila.workspace-runtime-protocol',
+        'protocolVersion': workspaceRuntimeProtocolVersion,
+        'messageId': 'key-loss',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'type': 'assignment.start',
+        'workspaceId': 'workspace-1',
+        'workspaceRuntimeId': 'workspace-1',
+        'workerId': 'worker-1',
+        'runId': 'run-1',
+        'taskId': 'task-1',
+        'attemptId': 'attempt-1',
+        'assignmentId': 'assignment-1',
+        'idempotencyKey': 'idem-1',
+        'payload': {
+          'objective': 'test',
+          'role': 'implementer',
+          'workerId': 'chatgpt',
+          'engineVersion': '1.0.0',
+          'profileDefinitionId': 'chatgpt-codex',
+          'profileReleaseVersion': 1,
+          'input': {},
+          'contextArtifactIds': [],
+          'timeoutMs': 1000
+        },
+      };
+      socket.controller.add(jsonEncode(assignment));
+      await waitFor(() => socket.sent.any((line) =>
+          (jsonDecode(line as String) as Map)['type'] == 'assignment.error'));
+      final sent = socket.sent
+          .map((line) => jsonDecode(line as String) as Map)
+          .firstWhere((message) => message['type'] == 'assignment.error');
+      final payload = sent['payload'] as Map;
+      expect(payload['status'], 'failed');
+      expect((payload['error'] as Map)['code'], 'execution_failed');
+      expect(payload.containsKey('providerFailureUnavailable'), supported);
+      if (supported) expect(payload['providerFailureUnavailable'], true);
+      expect(payload.containsKey('providerFailure'), isFalse);
+      expect(await file.readAsString(), isNot(contains('private failure')));
+    });
+  }
   test('retains provider failure details during normalization', () {
     const details = <String, Object?>{
       'schemaVersion': 1,

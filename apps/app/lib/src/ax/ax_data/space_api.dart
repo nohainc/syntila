@@ -259,8 +259,8 @@ mixin _SpaceApi on _AxApiClientCore {
     // Follow `nextCursor`; the cap keeps a very long history from loading
     // without end (newest entries come first).
     for (var page = 0; page < _maxAuditPages; page++) {
-      final body = await _spaceJson(Uri.parse('$baseUrl/spaces/$spaceId/audit')
-          .replace(queryParameters: {
+      final body = await _spaceJson(
+          Uri.parse('$baseUrl/spaces/$spaceId/audit').replace(queryParameters: {
         'limit': '200',
         if (cursor != null) 'cursor': cursor,
       }));

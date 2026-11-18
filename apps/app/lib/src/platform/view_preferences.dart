@@ -40,9 +40,9 @@ class ViewPreferences {
   });
 
   static const defaultRecentThreadsCount = 7;
-  static const defaultSidebarWidth = 200.0;
-  static const minSidebarWidth = 200.0;
-  static const maxSidebarWidth = 300.0;
+  static const defaultSidebarWidth = 210.0;
+  static const minSidebarWidth = 210.0;
+  static const maxSidebarWidth = 400.0;
 
   /// Fixed choices offered in Settings; stored values snap to the nearest one.
   static const recentThreadsCountOptions = [4, 7, 10];

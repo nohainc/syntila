@@ -552,11 +552,10 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
               .workspaces
           : const <AxWorkflowWorkspace>[],
       // The dialog stays open on failure and shows the problems itself.
-      create: (values) async => created = await store.collaboration
-          .createSpace(
-              name: values.name,
-              description: values.description,
-              workspaceId: values.workspaceId),
+      create: (values) async => created = await store.collaboration.createSpace(
+          name: values.name,
+          description: values.description,
+          workspaceId: values.workspaceId),
     );
     final space = created;
     if (values == null || space == null || !mounted) return;

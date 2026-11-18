@@ -167,7 +167,8 @@ void main() {
       Uri.parse('https://syntila.app/api/desktop-auth/session'),
     );
     expect(
-      workspaceCloudApiUri('https://cloud.example.test', '/api/workspace-runtime/register'),
+      workspaceCloudApiUri(
+          'https://cloud.example.test', '/api/workspace-runtime/register'),
       Uri.parse('https://cloud.example.test/api/workspace-runtime/register'),
     );
   });
@@ -178,7 +179,8 @@ void main() {
       expect(workspaceCloudApiUri(origin, '/api/desktop-auth/session'),
           Uri.parse('$origin/api/desktop-auth/session'));
     }
-    expect(workspaceAuthOrigin('https://api.syntila.app'), 'https://app.syntila.app');
+    expect(workspaceAuthOrigin('https://api.syntila.app'),
+        'https://app.syntila.app');
   });
 
   test('desktop ownership check uses the authenticated human session',

@@ -100,7 +100,8 @@ Future<String> backendBearerForHumanSession(
 }) async {
   final trimmed = credential.trim();
   final auth = workspaceAuthOrigin(cloudUrl);
-  if (!trimmed.startsWith('syntila_dhs_') || workspaceBackendOrigin(auth) == auth) {
+  if (!trimmed.startsWith('syntila_dhs_') ||
+      workspaceBackendOrigin(auth) == auth) {
     return trimmed;
   }
   final http = client ?? HttpClient();
@@ -115,7 +116,8 @@ Future<String> backendBearerForHumanSession(
     final response = await request.close().timeout(timeout);
     final body = await utf8.decoder.bind(response).join().timeout(timeout);
     if (response.statusCode != HttpStatus.ok) {
-      throw HttpException('Backend token request failed (${response.statusCode})');
+      throw HttpException(
+          'Backend token request failed (${response.statusCode})');
     }
     final decoded = jsonDecode(body);
     if (decoded is! Map || decoded['token'] is! String) {

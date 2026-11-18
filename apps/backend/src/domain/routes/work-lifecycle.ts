@@ -1,5 +1,5 @@
 import { inTransaction } from "../../platform/tx-env.js";
-import { decryptProviderFailure, providerFailureKey } from "../provider-failure-encryption.js";
+import { decryptProviderFailure, previousProviderFailureKeys, providerFailureKey } from "../provider-failure-encryption.js";
 import {
   RetryWorkRequestSchema,
   type ProviderFailureDetails,
@@ -935,7 +935,6 @@ export async function handleGetWorkRequest(
   });
 }
 
-/** Cloud-derived execution state for one step; see execution-phase.ts. */
 function extractProviderFailure(
   assignmentError: Record<string, unknown>,
   assignmentId: unknown,
@@ -944,10 +943,16 @@ function extractProviderFailure(
   const encrypted = assignmentError.providerFailureEncrypted;
   if (!encrypted) return { providerFailure: null, ...(assignmentError.providerFailureUnavailable === true ? { providerFailureUnavailable: true } : {}) };
   const value = typeof assignmentId === "string"
-    ? decryptProviderFailure(encrypted, assignmentId, providerFailureKey(env.SYNTILA_PROVIDER_FAILURE_KEY)) : null;
+    ? decryptProviderFailure(encrypted, assignmentId, [
+        ...[providerFailureKey(env.SYNTILA_PROVIDER_FAILURE_KEY)].filter(
+          (key): key is Buffer => key !== null,
+        ),
+        ...previousProviderFailureKeys(env.SYNTILA_PROVIDER_FAILURE_PREVIOUS_KEYS),
+      ]) : null;
   return { providerFailure: value, ...(!value ? { providerFailureUnavailable: true } : {}) };
 }
 
+/** Cloud-derived execution state for one step; see execution-phase.ts. */
 function stepExecutionFields(
   task: Record<string, unknown> | undefined,
   errorCode: string | null,

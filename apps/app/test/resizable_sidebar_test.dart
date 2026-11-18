@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'ax_fixture_data.dart';
 
 void main() {
-  testWidgets('resize line is visible only while the mouse is over the handle',
+  testWidgets('resize handle remains usable while its line is hidden',
       (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
@@ -22,7 +22,7 @@ void main() {
         ),
       ),
     ));
-    expect(tester.getSize(find.byType(ResizableSidebar)).width, 200);
+    expect(tester.getSize(find.byType(ResizableSidebar)).width, 210);
     final handle = find.byKey(const ValueKey('sidebar-resize-handle'));
     final line = find.byKey(const ValueKey('sidebar-resize-line'));
     Color? lineColor() => tester.widget<Container>(line).color;
@@ -32,7 +32,7 @@ void main() {
     await mouse.addPointer(location: const Offset(400, 100));
     await mouse.moveTo(tester.getCenter(handle));
     await tester.pump();
-    expect(lineColor(), Colors.white24);
+    expect(lineColor(), Colors.transparent);
     expect(
         find.descendant(
             of: find.byType(ResizableSidebar), matching: find.byType(Tooltip)),
@@ -40,7 +40,7 @@ void main() {
     await mouse.down(tester.getCenter(handle));
     await mouse.up();
     await tester.pump();
-    expect(lineColor(), Colors.white24);
+    expect(lineColor(), Colors.transparent);
     await mouse.moveTo(const Offset(400, 100));
     await tester.pump();
     expect(lineColor(), Colors.transparent);
@@ -64,11 +64,11 @@ void main() {
     await tester.pumpAndSettle();
     final sidebar = find.byType(ResizableSidebar);
     final handle = find.byKey(const ValueKey('sidebar-resize-handle'));
-    expect(tester.getSize(sidebar).width, 200);
+    expect(tester.getSize(sidebar).width, 210);
 
     await tester.drag(handle, const Offset(-300, 0));
     await tester.pumpAndSettle();
-    expect(tester.getSize(sidebar).width, 200);
+    expect(tester.getSize(sidebar).width, 210);
     expect(tester.takeException(), isNull);
     expect(find.byTooltip('New Space'), findsOneWidget);
     expect(find.byTooltip('Notifications'), findsOneWidget);
@@ -77,33 +77,33 @@ void main() {
     await tester.tap(handle);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
-    expect(tester.getSize(sidebar).width, 210);
+    expect(tester.getSize(sidebar).width, 220);
     await tester.sendKeyEvent(LogicalKeyboardKey.end);
     await tester.pumpAndSettle();
-    expect(tester.getSize(sidebar).width, 300);
+    expect(tester.getSize(sidebar).width, 400);
     await tester.sendKeyEvent(LogicalKeyboardKey.home);
     await tester.pumpAndSettle();
-    expect(tester.getSize(sidebar).width, 200);
+    expect(tester.getSize(sidebar).width, 210);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pumpAndSettle();
-    expect(tester.getSize(sidebar).width, 200);
+    expect(tester.getSize(sidebar).width, 210);
 
     await tester.drag(handle, const Offset(30, 0));
     await tester.pumpAndSettle();
-    expect(tester.getSize(sidebar).width, 230);
+    expect(tester.getSize(sidebar).width, 240);
     await tester.tap(find.byTooltip('Hide sidebar'));
     await tester.pumpAndSettle();
     expect(sidebar, findsNothing);
     await tester.tap(find.byTooltip('Expand sidebar'));
     await tester.pumpAndSettle();
-    expect(tester.getSize(sidebar).width, 230);
+    expect(tester.getSize(sidebar).width, 240);
 
     await tester.tap(find.byTooltip('Profile & Settings'));
     await tester.pumpAndSettle();
-    expect(tester.getSize(sidebar).width, 230);
+    expect(tester.getSize(sidebar).width, 240);
     await tester.drag(handle, const Offset(300, 0));
     await tester.pumpAndSettle();
-    expect(tester.getSize(sidebar).width, 300);
+    expect(tester.getSize(sidebar).width, 400);
     expect(tester.takeException(), isNull);
 
     tester.view.physicalSize = const Size(400, 900);
@@ -113,7 +113,7 @@ void main() {
     tester.view.physicalSize = const Size(1200, 900);
     await tester.pumpAndSettle();
     expect(find.byType(AxSidebar), findsOneWidget);
-    expect(tester.getSize(sidebar).width, 300);
+    expect(tester.getSize(sidebar).width, 400);
   });
 
   testWidgets('sidebar collapsed state and width survive shell recreation',
@@ -141,12 +141,12 @@ void main() {
     final handle = find.byKey(const ValueKey('sidebar-resize-handle'));
     await tester.drag(handle, const Offset(40, 0));
     await tester.pumpAndSettle();
-    expect(tester.getSize(find.byType(ResizableSidebar)).width, 240);
+    expect(tester.getSize(find.byType(ResizableSidebar)).width, 250);
     await tester.tap(find.byTooltip('Hide sidebar'));
     await tester.pumpAndSettle();
     expect(find.byType(ResizableSidebar), findsNothing);
     expect(preferences.load().sidebarCollapsed, isTrue);
-    expect(preferences.load().sidebarWidth, 240);
+    expect(preferences.load().sidebarWidth, 250);
     await tester.tap(find.byTooltip('Your spaces'));
     await tester.pumpAndSettle();
     expect(find.byType(AxSidebar), findsOneWidget);
@@ -154,7 +154,7 @@ void main() {
     expect(peekHandle, findsOneWidget);
     await tester.drag(peekHandle, const Offset(30, 0));
     await tester.pumpAndSettle();
-    expect(preferences.load().sidebarWidth, 270);
+    expect(preferences.load().sidebarWidth, 280);
     // Tapping outside dismisses peeking sidebar
     await tester.tap(find.byKey(const ValueKey('sidebar-peek-barrier')));
     await tester.pumpAndSettle();
@@ -165,7 +165,7 @@ void main() {
     expect(find.byType(ResizableSidebar), findsNothing);
     await tester.tap(find.byTooltip('Expand sidebar'));
     await tester.pumpAndSettle();
-    expect(tester.getSize(find.byType(ResizableSidebar)).width, 270);
+    expect(tester.getSize(find.byType(ResizableSidebar)).width, 280);
     expect(preferences.load().sidebarCollapsed, isFalse);
   });
 }

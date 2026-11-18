@@ -1216,17 +1216,6 @@ class CliWorkerEngine {
     );
   }
 
-  String? _safeProviderStderr(String stderr) {
-    if (stderr.trim().isEmpty) return null;
-    final lines = stderr
-        .split(RegExp(r'\r?\n'))
-        .where((line) => line.trim().isNotEmpty)
-        .take(16)
-        .map(SafeProviderDiagnostics.parseStderrLine)
-        .toList(growable: false);
-    return lines.isEmpty ? null : jsonEncode(lines);
-  }
-
   bool _canReconstructCorruptSession(String message) =>
       message == 'Engine session state is invalid' ||
       message == 'Missing local Worker Session' ||
@@ -1887,7 +1876,8 @@ class CliWorkerEngine {
             'selectionObservation': 'unavailable',
           }, completion: true);
           final failureDetail = [
-            if (_safeProviderStderr(result.stderr) case final stderr?) stderr,
+            if (result.stderr.isNotEmpty)
+              'provider stderr bytes: ${utf8.encode(result.stderr).length}',
             if (interpreted.reason case final reason?)
               'interpretation: $reason',
           ].join(' | ');
@@ -3025,8 +3015,7 @@ class CliWorkerEngine {
         providerFailure: failureDetails,
         reason: [
           'exit=$exitCode',
-          'denied actions without a usable answer: ${deniedActions.join(', ')}',
-          if (terminalStatus != null) 'status=$terminalStatus',
+          'denied actions without a usable answer: ${deniedActions.length}',
           _eventShape(events),
         ].join(', '),
       );
@@ -3042,7 +3031,6 @@ class CliWorkerEngine {
         reason: [
           'exit=$exitCode',
           'matched context overflow marker',
-          if (terminalStatus != null) 'status=$terminalStatus',
         ].join(', '),
       );
     }
@@ -3079,7 +3067,6 @@ class CliWorkerEngine {
           reason: [
             'exit=$exitCode',
             'matched $kind',
-            if (terminalStatus != null) 'status=$terminalStatus',
             if (!terminalObserved) 'no terminal event',
             if (providerError) 'provider error reported',
             if (skippedLines > 0) 'skipped $skippedLines non-JSON lines',
@@ -3104,7 +3091,6 @@ class CliWorkerEngine {
         if (markedFailure) 'provider marked failure',
         if (providerError) 'provider error reported',
         if (!markedSuccess && !implicitTextSuccess) 'no success marker',
-        if (terminalStatus != null) 'status=$terminalStatus',
         if (!terminalObserved) 'no terminal event',
         if (skippedLines > 0) 'skipped $skippedLines non-JSON lines',
         if (text == null || text.isEmpty) 'empty final text',
@@ -3124,14 +3110,17 @@ class CliWorkerEngine {
     required bool plainTextMode,
     String? sourceHint,
   }) {
-    final hasError = providerErrorText.trim().isNotEmpty;
-    final hasStderr = stderr.trim().isNotEmpty;
-    final hasResponse = failedRunResponse?.trim().isNotEmpty == true;
+    final hasError = providerErrorText.isNotEmpty;
+    final hasStderr = stderr.isNotEmpty;
+    final hasResponse = failedRunResponse?.isNotEmpty == true;
     if (!hasError && !hasStderr && !hasResponse && nativeErrorCode == null)
       return null;
 
+    // A Profile's structured source must not relabel the error text when it
+    // comes from stderr, even when a separate response or native code exists.
+    final usesStderr = !hasError && hasStderr;
     final source =
-        sourceHint ??
+        (usesStderr ? 'stderr' : sourceHint) ??
         (structuredError || hasError
             ? 'structured_error'
             : hasStderr
@@ -3151,38 +3140,20 @@ class CliWorkerEngine {
   }
 
   String _eventShape(List<Object?> events) {
-    final kinds = <String, int>{};
     Map? result;
     for (final event in events) {
       if (event is! Map) continue;
-      final name = _safeShapeName(event['event'] ?? event['type']);
-      final step = event['step_update'];
-      final kind = step is Map
-          ? '$name/${_safeShapeName(step['step_type'])}'
-          : name;
-      kinds[kind] = (kinds[kind] ?? 0) + 1;
       if (event['event'] == 'result' && event['result'] is Map) {
         result = event['result'] as Map;
       }
     }
-    final usage = result?['usage'];
     final parts = <String>[
-      'events: ${kinds.entries.map((e) => '${e.key}=${e.value}').join(' ')}',
-      if (result != null) 'result keys: ${result.keys.take(12).join(',')}',
+      'events: ${events.length}',
+      if (result != null) 'result field count: ${result.length}',
       if (result?['response'] is String)
         'response chars: ${(result!['response'] as String).length}',
-      if (result?['num_turns'] is int) 'turns: ${result!['num_turns']}',
-      if (usage is Map && usage['output_tokens'] is int)
-        'output tokens: ${usage['output_tokens']}',
-      if (usage is Map && usage['thinking_tokens'] is int)
-        'thinking tokens: ${usage['thinking_tokens']}',
     ];
     return parts.join('; ');
-  }
-
-  String _safeShapeName(Object? value) {
-    final text = value is String ? value : 'unknown';
-    return RegExp(r'^[A-Za-z0-9_.:-]{1,40}$').hasMatch(text) ? text : 'other';
   }
 
   List<String> _deniedActionNames(List<Object?> entries) {

@@ -1,5 +1,6 @@
 export interface Config {
   providerFailureKey?: string;
+  providerFailurePreviousKeys?: string;
   port: number;
   hostname: string;
   db: {
@@ -63,8 +64,13 @@ export async function loadConfig(): Promise<Config> {
   const providerFailureKey = keyFile && await keyFile.exists()
     ? (await keyFile.text()).trim()
     : process.env.SYNTILA_PROVIDER_FAILURE_KEY;
+  const previousFile = credentialDir ? Bun.file(`${credentialDir}/provider-failure-previous-keys`) : null;
+  const providerFailurePreviousKeys = previousFile && await previousFile.exists()
+    ? (await previousFile.text()).trim()
+    : process.env.SYNTILA_PROVIDER_FAILURE_PREVIOUS_KEYS;
   return {
     providerFailureKey,
+    providerFailurePreviousKeys,
     port: int("PORT", 3000),
     hostname: process.env.BIND_HOST || "127.0.0.1",
     db: {

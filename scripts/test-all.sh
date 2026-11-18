@@ -2,13 +2,15 @@
 # Every check that gates a commit, with a one-line verdict per step.
 #   scripts/test-all.sh            full run (about 4 minutes)
 #   scripts/test-all.sh --quick    typecheck + backend suite only
+#   scripts/test-all.sh --perf     add scripts/test-perf.sh as the last step (needs pnpm start:local; never default)
 # Full output of each step: $TEST_LOG_DIR (default /tmp/syntila-tests). Exit code 1 if any step failed.
 set -uo pipefail
 export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOGS="${TEST_LOG_DIR:-/tmp/syntila-tests}"
 mkdir -p "$LOGS"
-quick=0; [ "${1:-}" = "--quick" ] && quick=1
+quick=0; perf=0
+for a in "$@"; do case "$a" in --quick) quick=1;; --perf) perf=1;; esac; done
 failed=0
 
 step() { # name, command...
@@ -47,6 +49,7 @@ if [ "$quick" = 0 ]; then
   step packages-tsc packages_tsc
   step root-vitest root_vitest
 fi
+if [ "$perf" = 1 ]; then step perf "$ROOT/scripts/test-perf.sh"; fi
 grep -hE '^[0-9]+ pass, [0-9]+ fail' "$LOGS/backend.log" 2>/dev/null | sed 's/^/backend: /'
 [ "$failed" = 0 ] && echo "ALL GREEN" || echo "FAILED"
 exit "$failed"

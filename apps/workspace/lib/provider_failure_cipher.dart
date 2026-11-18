@@ -34,10 +34,7 @@ class ProviderFailureCipher {
   Future<SecretKey> _loadKey({required bool allowCreate}) async {
     var encoded = await credentials.read(_keyName);
     if (encoded == null) {
-      if (!allowCreate ||
-          (await journal.exists() &&
-              (await journal.readAsString())
-                  .contains('"providerFailureEncrypted"'))) {
+      if (!allowCreate || await _journalHoldsEncryptedFailures()) {
         throw StateError('Provider failure encryption key is unavailable');
       }
       final key = await _cipher.newSecretKey();
@@ -52,6 +49,21 @@ class ProviderFailureCipher {
       throw const FormatException('Invalid encryption key');
     }
     return SecretKey(bytes);
+  }
+
+  /// Scans the journal in chunks so a large file is never held in memory.
+  Future<bool> _journalHoldsEncryptedFailures() async {
+    if (!await journal.exists()) return false;
+    const marker = '"providerFailureEncrypted"';
+    var carry = '';
+    await for (final chunk in journal.openRead().transform(utf8.decoder)) {
+      final window = carry + chunk;
+      if (window.contains(marker)) return true;
+      carry = window.length < marker.length
+          ? window
+          : window.substring(window.length - marker.length + 1);
+    }
+    return false;
   }
 
   Future<Map<String, Object?>> encrypt(

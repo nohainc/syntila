@@ -65,7 +65,8 @@ class McpConfigFile {
                 : {
                     'command': server.command,
                     'args': server.arguments,
-                    if (server.environment.isNotEmpty) 'env': server.environment,
+                    if (server.environment.isNotEmpty)
+                      'env': server.environment,
                   },
         },
       }),
@@ -111,8 +112,8 @@ class McpInlineToml {
           'url=${_string(server.url!)}',
           'default_tools_approval_mode="approve"',
         ];
-        final auth = server.headers['Authorization'] ??
-            server.headers['authorization'];
+        final auth =
+            server.headers['Authorization'] ?? server.headers['authorization'];
         if (auth != null && auth.startsWith('Bearer ')) {
           final tokenVar =
               'SYNTILA_MCP_TOKEN_${server.name.toUpperCase().replaceAll('-', '_')}';

@@ -32,8 +32,8 @@ void main() {
     expect(
         ViewPreferences.decode('{"recentThreadsCount":8}').recentThreadsCount,
         7);
-    expect(ViewPreferences.decode('{"sidebarWidth":150}').sidebarWidth, 200);
-    expect(ViewPreferences.decode('{"sidebarWidth":350}').sidebarWidth, 300);
+    expect(ViewPreferences.decode('{"sidebarWidth":150}').sidebarWidth, 210);
+    expect(ViewPreferences.decode('{"sidebarWidth":450}').sidebarWidth, 400);
     expect(
         ViewPreferences.decode('{"sidebarCollapsed":true,"sidebarWidth":245.5}')
             .sidebarCollapsed,

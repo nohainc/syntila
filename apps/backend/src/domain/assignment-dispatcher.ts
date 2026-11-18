@@ -1092,7 +1092,7 @@ export async function recordAssignmentError(
     },
     failedAt: now,
     ...(providerFailure && key ? { providerFailureEncrypted: encryptProviderFailure(providerFailure, assignmentId, key) } : {}),
-    ...(providerFailure && !key ? { providerFailureUnavailable: true } : {}),
+    ...((providerFailure && !key) || (!providerFailure && failure.providerFailureUnavailable === true) ? { providerFailureUnavailable: true as const } : {}),
   };
 
   const existing = await assignmentProgress(queryOf(db), assignmentId);

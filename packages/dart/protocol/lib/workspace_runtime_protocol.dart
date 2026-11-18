@@ -100,6 +100,11 @@ class WorkspaceRuntimeMessage {
     }
     if (type == 'assignment.error') {
       final payloadMap = Map<String, Object?>.from(map['payload'] as Map);
+      if (payloadMap.containsKey('providerFailureUnavailable') &&
+          (payloadMap['providerFailureUnavailable'] != true ||
+              payloadMap.containsKey('providerFailure'))) {
+        throw const ProtocolException('Invalid providerFailureUnavailable');
+      }
       if (payloadMap.containsKey('providerFailure')) {
         final details = payloadMap['providerFailure'];
         if (details is! Map) {

@@ -255,6 +255,12 @@ class AssignmentJournal {
           _lineCount < records.length * compactionHistoryFactor) {
         return false;
       }
+      // Rewriting an unavailable failure would discard its ciphertext and
+      // prevent recovery if the credential store becomes available again.
+      if (records.values.any(
+          (record) => record.result?['providerFailureUnavailable'] == true)) {
+        return false;
+      }
       final ordered = records.values.toList()
         ..sort((left, right) => left.updatedAt.compareTo(right.updatedAt));
       final buffer = StringBuffer();
@@ -309,14 +315,20 @@ class AssignmentJournal {
           final result = Map<String, Object?>.from(rawResult);
           final encrypted = result.remove('providerFailureEncrypted');
           final cipher = providerFailureCipher;
-          if (encrypted is! Map ||
-              cipher == null ||
-              json['assignmentId'] is! String) {
-            throw StateError('Provider failure decryption is unavailable');
+          if (encrypted is! Map || json['assignmentId'] is! String) {
+            throw const FormatException('Invalid encrypted provider failure');
           }
-          result['providerFailure'] = await cipher.decrypt(
-              json['assignmentId'] as String,
-              Map<String, Object?>.from(encrypted));
+          // Provider details are optional. A missing or changed key, or a
+          // tampered envelope, must not make the rest of the journal
+          // unreadable: keep the canonical record, never expose plaintext,
+          // and mark the details as unavailable.
+          try {
+            result['providerFailure'] = await cipher!.decrypt(
+                json['assignmentId'] as String,
+                Map<String, Object?>.from(encrypted));
+          } on Object {
+            result['providerFailureUnavailable'] = true;
+          }
           json['result'] = result;
         }
         final record = AssignmentRecord.fromJson(json);

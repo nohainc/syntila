@@ -245,7 +245,6 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       AxNavigation? navigated;
       bool aboutOpened = false;
-      Uri? openedUrl;
       bool loggedOut = false;
       bool archivedSpacesOpened = false;
 
@@ -258,7 +257,7 @@ void main() {
                 onNavigateTo: (nav) => navigated = nav,
                 onLogout: () => loggedOut = true,
                 onOpenAbout: () => aboutOpened = true,
-                onOpenExternal: (uri) => openedUrl = uri,
+                onOpenExternal: (_) {},
                 onOpenArchivedSpaces: () => archivedSpacesOpened = true,
                 onMessageSupport: () {},
               ),
@@ -276,8 +275,8 @@ void main() {
       expect(find.text('Workspaces'), findsOneWidget);
       expect(find.text('Archived Spaces'), findsOneWidget);
       expect(find.text('Appearance'), findsNothing);
-      expect(find.text('Downloads'), findsOneWidget);
-      expect(find.text('Documentation'), findsOneWidget);
+      expect(find.text('Downloads'), findsNothing);
+      expect(find.text('Documentation'), findsNothing);
       expect(find.text('About Syntila'), findsOneWidget);
       expect(find.text('Log out'), findsOneWidget);
 
@@ -288,9 +287,7 @@ void main() {
         'Workspaces',
         'Archived Spaces',
         'Settings',
-        'Documentation',
         'Message Syntila',
-        'Downloads',
         'About Syntila',
         'Log out',
       ];
@@ -319,20 +316,6 @@ void main() {
       await tester.tap(find.text('Archived Spaces'));
       await tester.pumpAndSettle();
       expect(archivedSpacesOpened, isTrue);
-
-      // Re-open and test Downloads
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Downloads'));
-      await tester.pumpAndSettle();
-      expect(openedUrl, Uri.parse('https://syntila.app/downloads/'));
-
-      // Re-open and test Documentation
-      await tester.tap(find.byTooltip('Application menu'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Documentation'));
-      await tester.pumpAndSettle();
-      expect(openedUrl, Uri.parse('https://syntila.app/how-it-works/'));
 
       // Re-open and test About Syntila
       await tester.tap(find.byTooltip('Application menu'));

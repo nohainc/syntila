@@ -11,10 +11,16 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 /// Paths (relative to the auth `/api` base) served by the auth Worker.
-const _authOwnedPrefixes = <String>['/session', '/auth', '/desktop-auth', '/backend-token', '/dev'];
+const _authOwnedPrefixes = <String>[
+  '/session',
+  '/auth',
+  '/desktop-auth',
+  '/backend-token',
+  '/dev'
+];
 
-bool isAuthOwnedApiPath(String path) =>
-    _authOwnedPrefixes.any((prefix) => path == prefix || path.startsWith('$prefix/'));
+bool isAuthOwnedApiPath(String path) => _authOwnedPrefixes
+    .any((prefix) => path == prefix || path.startsWith('$prefix/'));
 
 /// Backend API base: `--dart-define=SYNTILA_BACKEND_API_URL=...`, otherwise
 /// derived from where the app runs (production web → api.syntila.app).
@@ -32,7 +38,8 @@ class AxBackendToken {
   AxBackendToken(this.token, this.expiresAt);
   final String token;
   final DateTime expiresAt;
-  bool get fresh => DateTime.now().isBefore(expiresAt.subtract(const Duration(seconds: 60)));
+  bool get fresh =>
+      DateTime.now().isBefore(expiresAt.subtract(const Duration(seconds: 60)));
 }
 
 /// Caches the backend token and fetches a new one from the auth Worker.
@@ -75,7 +82,8 @@ class AxBackendRoutingClient extends http.BaseClient {
     required String authBaseUrl,
     required String backendBaseUrl,
     required this.tokens,
-  })  : authBase = Uri.base.resolve(authBaseUrl.replaceFirst(RegExp(r'/$'), '')),
+  })  : authBase =
+            Uri.base.resolve(authBaseUrl.replaceFirst(RegExp(r'/$'), '')),
         backendBase = Uri.parse(backendBaseUrl.replaceFirst(RegExp(r'/$'), ''));
 
   final http.Client inner;
@@ -87,7 +95,9 @@ class AxBackendRoutingClient extends http.BaseClient {
   String? _apiPath(Uri url) {
     // On the web the auth base is relative (`/api`), so request URLs can be too.
     if (!url.hasScheme) url = Uri.base.resolveUri(url);
-    if (url.scheme != authBase.scheme || url.authority != authBase.authority) return null;
+    if (url.scheme != authBase.scheme || url.authority != authBase.authority) {
+      return null;
+    }
     final prefix = authBase.path;
     if (url.path != prefix && !url.path.startsWith('$prefix/')) return null;
     return url.path.substring(prefix.length);
@@ -119,7 +129,9 @@ class AxBackendRoutingClient extends http.BaseClient {
     request.headers.forEach((name, value) {
       final lower = name.toLowerCase();
       // Auth-Worker credentials never travel to the backend.
-      if (lower == 'cookie' || lower == 'authorization' || lower == 'origin') return;
+      if (lower == 'cookie' || lower == 'authorization' || lower == 'origin') {
+        return;
+      }
       routed.headers[name] = value;
     });
     if (token != null) routed.headers['authorization'] = 'Bearer $token';

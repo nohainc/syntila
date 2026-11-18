@@ -43,6 +43,10 @@ void main() {
       },
     ];
     final execution = profile['execution']! as Map<String, Object?>;
+    execution['failureExtraction'] = {
+      'providerErrorText': r'$.error.message',
+      'source': 'structured_error',
+    };
     execution['arguments'] = [
       'run',
       providerScript,
@@ -142,6 +146,7 @@ void main() {
         profileDefinitionId: 'chatgpt-codex',
         profileReleaseVersion: '1',
         profileDigest: sha256.convert(profileBytes).toString(),
+        protocolVersion: providerFailureDetailsProtocolVersion,
       ),
     );
     expect(initialized.terminal, isA<InitializeResult>());
@@ -360,6 +365,7 @@ void main() {
         prompt: 'Provider event failure',
         timeoutMs: 10000,
         sessionPolicy: WorkerSessionPolicy.stateless,
+        protocolVersion: providerFailureDetailsProtocolVersion,
       ),
     );
     expect(
@@ -368,6 +374,11 @@ void main() {
       reason:
           '${providerEventFailure.terminal.toJson()} diagnostics=${(providerEventFailure.terminal as WorkerErrorFrame).diagnostics} stderr=$engineStderr',
     );
+    final details =
+        (providerEventFailure.terminal as WorkerErrorFrame).providerFailure;
+    expect(details?['providerErrorText'], 'permission denied by sandbox');
+    expect(details?['source'], 'structured_error');
+    expect(details?.containsKey('nativeErrorCode'), isFalse);
     expect(progress, isNotEmpty);
   });
 }

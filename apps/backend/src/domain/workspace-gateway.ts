@@ -40,6 +40,7 @@ import {
   SERVICE_MCP_TOOL_CALL_CAPABILITY,
   SERVICE_READINESS_CAPABILITY,
   PROVIDER_FAILURE_DETAILS_CAPABILITY,
+  PROVIDER_FAILURE_UNAVAILABLE_CAPABILITY,
   assignmentStartupPayload,
   serviceReadinessPayload,
   type AssignmentCancelPayload,
@@ -1211,7 +1212,7 @@ export class WorkspaceGateway implements DurableObject {
             // Lets a Service know it may publish `workspace.readiness` and
             // `assignment.startup`.
             cloudCapabilities: [
-              ...(providerFailureKey(this.env.SYNTILA_PROVIDER_FAILURE_KEY) ? [PROVIDER_FAILURE_DETAILS_CAPABILITY] : []),
+              ...(providerFailureKey(this.env.SYNTILA_PROVIDER_FAILURE_KEY) ? [PROVIDER_FAILURE_DETAILS_CAPABILITY, PROVIDER_FAILURE_UNAVAILABLE_CAPABILITY] : []),
               SERVICE_READINESS_CAPABILITY,
               ASSIGNMENT_STARTUP_CAPABILITY,
               ALLOWED_FOLDERS_CAPABILITY,

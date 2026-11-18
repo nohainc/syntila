@@ -53,15 +53,59 @@ gemini-3.1-pro-low\tGemini 3.1 Pro (Low)\n''');
       : transportedPrompt.substring(
           separator + '\n\nCurrent user request:\n'.length,
         );
-  if (prompt == 'Failure with response') {
+  if (prompt == 'Failure on stderr only') {
+    stderr.write('fixture stderr-only failure');
+    exitCode = 7;
+    return;
+  }
+  if (prompt == 'Failure stderr with response') {
+    stderr.write('fixture stderr-only failure');
     stdout.writeln(
       jsonEncode({
         'event': 'result',
         'result': {
           'status': 'ERROR',
-          'error': 'Output limit reached',
           'response': 'Partial answer',
           'code': 'OUTPUT_LIMIT',
+        },
+      }),
+    );
+    return;
+  }
+  if (prompt == 'Failure with whitespace') {
+    stdout.writeln(
+      jsonEncode({
+        'event': 'result',
+        'result': {
+          'status': 'ERROR',
+          'error': '  ',
+          'response': '\n \n',
+          'code': 'OUTPUT_LIMIT',
+        },
+      }),
+    );
+    return;
+  }
+  if (prompt == 'Failure with response' ||
+      prompt == 'Failure with sensitive oversized response') {
+    final sensitive = prompt == 'Failure with sensitive oversized response';
+    stderr.writeln(
+      jsonEncode({
+        'event': 'provider.failure',
+        'context': {'note': 'fixture_stderr_private_marker'},
+      }),
+    );
+    stdout.writeln(
+      jsonEncode({
+        'event': 'result',
+        'result': {
+          'status': 'ERROR',
+          'error': sensitive
+              ? 'Bearer secret_token_1234567890'
+              : 'Output limit reached',
+          'response': sensitive ? '界' * 12000 : 'Partial answer',
+          'code': 'OUTPUT_LIMIT',
+          'fixture_private_diagnostic_marker': 'fixture value',
         },
       }),
     );

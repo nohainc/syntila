@@ -5,9 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 
-http.Response _json(Object body, int status) => http.Response(
-    jsonEncode(body), status,
-    headers: const {'content-type': 'application/json'});
+http.Response _json(Object body, int status) =>
+    http.Response(jsonEncode(body), status,
+        headers: const {'content-type': 'application/json'});
 
 void main() {
   test('invalid_request errors list every problem the server found', () {
@@ -34,8 +34,7 @@ void main() {
       () {
     expect(
         axApiErrorFrom('Creating the note', 403,
-                jsonEncode({'error': 'Forbidden', 'code': 'forbidden'}))
-            .message,
+            jsonEncode({'error': 'Forbidden', 'code': 'forbidden'})).message,
         'Creating the note failed (403): Forbidden');
     final proxy = axApiErrorFrom('Creating the note', 502, '<html>');
     expect(proxy.message, 'Creating the note failed (502)');
@@ -59,7 +58,8 @@ void main() {
         }
       }, 201);
     });
-    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    final api =
+        AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
     final space = await api.createSpace(name: 'Trip');
     expect(space.id, 's1');
     expect(keys, hasLength(2));
@@ -108,7 +108,8 @@ void main() {
               'nextCursor': null
             }, 200);
     });
-    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    final api =
+        AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
     final notes = await api.loadNotes();
     expect(notes.map((n) => n.id), ['n1', 'n2', 'n3']);
     expect(cursors, [null, 'page-2']);
@@ -133,7 +134,8 @@ void main() {
         }
       }, 201);
     });
-    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    final api =
+        AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
     await api.createThread(spaceId: 's1', name: 'T');
     expect(keys, hasLength(2));
     expect(keys.first, isNotNull);
@@ -148,7 +150,8 @@ void main() {
       if (calls == 1) return _json({'error': 'busy', 'code': 'busy'}, 503);
       return _json({'notes': [], 'nextCursor': null}, 200);
     });
-    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    final api =
+        AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
     expect(await api.loadNotes(), isEmpty);
     expect(calls, 2);
   });
@@ -160,7 +163,8 @@ void main() {
       calls++;
       return _json({'error': 'busy', 'code': 'busy'}, 503);
     });
-    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    final api =
+        AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
     await expectLater(
         api.createNote(title: 'n'),
         throwsA(isA<AxApiException>()
@@ -169,17 +173,16 @@ void main() {
     expect(calls, 2);
   });
 
-  test('marking many notifications read sends them in chunks of 200',
-      () async {
+  test('marking many notifications read sends them in chunks of 200', () async {
     final sizes = <int?>[];
     final client = MockClient((request) async {
       final ids = (jsonDecode(request.body) as Map)['ids'] as List?;
       sizes.add(ids?.length);
       return _json({'readAt': '2026-11-16T00:00:00.000Z'}, 200);
     });
-    final api = AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
-    await api.markNotificationsRead(
-        ids: List.generate(450, (i) => 'w-$i'));
+    final api =
+        AxApiClient(baseUrl: 'https://syntila.test/api', client: client);
+    await api.markNotificationsRead(ids: List.generate(450, (i) => 'w-$i'));
     expect(sizes, [200, 200, 50]);
     sizes.clear();
     await api.markNotificationsRead();

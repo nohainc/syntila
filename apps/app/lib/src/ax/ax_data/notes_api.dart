@@ -17,11 +17,11 @@ mixin _NotesApi on _AxApiClientCore implements AxNotesDataSource {
     String? cursor;
     // Follow `nextCursor` (500 per page); the cap bounds a runaway loop.
     for (var page = 0; page < 20; page++) {
-      final body = await _getJson(Uri.parse('$baseUrl/notes').replace(
-          queryParameters: {
-            'limit': '500',
-            if (cursor != null) 'cursor': cursor,
-          }));
+      final body =
+          await _getJson(Uri.parse('$baseUrl/notes').replace(queryParameters: {
+        'limit': '500',
+        if (cursor != null) 'cursor': cursor,
+      }));
       notes.addAll((body['notes'] as List? ?? const [])
           .whereType<Map>()
           .map((item) => AxNote.fromJson(Map<String, dynamic>.from(item))));

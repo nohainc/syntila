@@ -121,7 +121,8 @@ abstract interface class AxConditionalReadCache {
 
 abstract class _AxApiClientCore
     implements AxDataSource, AxConditionalReadCache {
-  _AxApiClientCore({String? baseUrl, http.Client? client, String? backendBaseUrl})
+  _AxApiClientCore(
+      {String? baseUrl, http.Client? client, String? backendBaseUrl})
       : baseUrl = baseUrl ??
             (const String.fromEnvironment('SYNTILA_API_URL').isNotEmpty
                 ? const String.fromEnvironment('SYNTILA_API_URL')
@@ -157,14 +158,15 @@ abstract class _AxApiClientCore
 
   /// Every API call goes through here. An injected client (tests) is used
   /// as-is; production routes non-auth calls to the backend.
-  late final http.Client client = _injectedClient != null && _backendBaseUrl == null
-      ? _injectedClient
-      : AxBackendRoutingClient(
-          inner: authClient,
-          authBaseUrl: baseUrl,
-          backendBaseUrl: backendBaseUrl,
-          tokens: backendTokens,
-        );
+  late final http.Client client =
+      _injectedClient != null && _backendBaseUrl == null
+          ? _injectedClient
+          : AxBackendRoutingClient(
+              inner: authClient,
+              authBaseUrl: baseUrl,
+              backendBaseUrl: backendBaseUrl,
+              tokens: backendTokens,
+            );
 
   /// Single-use ticket for the backend realtime WebSocket (browsers cannot
   /// send an Authorization header on a WebSocket upgrade).
@@ -172,7 +174,8 @@ abstract class _AxApiClientCore
     final response = await client.post(Uri.parse('$baseUrl/realtime/tickets'),
         headers: _headers(contentType: 'application/json'), body: '{}');
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException('Realtime ticket request failed (${response.statusCode})',
+      throw AxApiException(
+          'Realtime ticket request failed (${response.statusCode})',
           statusCode: response.statusCode);
     }
     final decoded = jsonDecode(response.body);
@@ -181,6 +184,7 @@ abstract class _AxApiClientCore
     }
     return decoded['ticket'] as String;
   }
+
   // Transport references are separate from immutable authored request inputs.
   final _uploadedWorkFiles = <String, String>{};
   String? _nativeSessionCookie;

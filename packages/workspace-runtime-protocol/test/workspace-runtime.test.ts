@@ -624,6 +624,32 @@ describe("Workspace Runtime protocol", () => {
     expect(parseWorkspaceRuntimeMessage(withProvider).payload).toMatchObject(
       withProvider.payload,
     );
+    expect(
+      parseWorkspaceRuntimeMessage({
+        ...assignmentError,
+        payload: {
+          ...assignmentError.payload,
+          providerFailureUnavailable: true,
+        },
+      }).payload,
+    ).toMatchObject({ providerFailureUnavailable: true });
+    for (const invalid of [false, "true"]) {
+      expect(() =>
+        parseWorkspaceRuntimeMessage({
+          ...assignmentError,
+          payload: {
+            ...assignmentError.payload,
+            providerFailureUnavailable: invalid,
+          },
+        }),
+      ).toThrow();
+    }
+    expect(() =>
+      parseWorkspaceRuntimeMessage({
+        ...withProvider,
+        payload: { ...withProvider.payload, providerFailureUnavailable: true },
+      }),
+    ).toThrow();
     expect(() =>
       parseWorkspaceRuntimeMessage({
         ...withProvider,

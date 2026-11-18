@@ -80,8 +80,6 @@ void main() {
 
     testWidgets('Workspace page keeps download actions out of its UI',
         (tester) async {
-      Uri? openedExternalUri;
-
       await tester.pumpWidget(scaffold(WorkspacesPage(
         workspaces: const [initialWorkspace],
         onAdd: () {},
@@ -107,7 +105,7 @@ void main() {
                   ),
                   onNavigateTo: (_) {},
                   onOpenAbout: () {},
-                  onOpenExternal: (uri) => openedExternalUri = uri,
+                  onOpenExternal: (_) {},
                   onLogout: () {},
                 ),
               ],
@@ -120,10 +118,8 @@ void main() {
       await tester.tap(find.byTooltip('Application menu'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Documentation'));
-      await tester.pumpAndSettle();
-      expect(
-          openedExternalUri, Uri.parse('https://syntila.app/how-it-works/'));
+      expect(find.text('Documentation'), findsNothing);
+      expect(find.text('Downloads'), findsNothing);
     });
 
     testWidgets('Platform reporting maps runtime OS and architectures cleanly',

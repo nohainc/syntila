@@ -705,37 +705,37 @@ extension _AxAppViews on _AxAppStateMixin {
             final cards = [
               for (final provider in ['google', 'github'])
                 Builder(builder: (context) {
-                    final theme = Theme.of(context);
-                    final colors = theme.colorScheme;
-                    final isLinked = linkedProviders.contains(provider);
-                    final account = isLinked
-                        ? linkedAccounts.firstWhere(
-                            (a) => a.providerId.toLowerCase() == provider)
-                        : null;
-                    final isUnlinking = account != null &&
-                        unlinkingAccountIds.contains(account.id);
-                    final isUnlinkBusy = unlinkingAccountIds.isNotEmpty;
-                    final label = _providerLabel(provider);
-                    final onTap = isLinked
-                        ? (isUnlinkBusy
-                            ? null
-                            : () => _unlinkAccountProvider(account!))
-                        : () => _linkAccountProvider(provider);
-                    final badgeText = isUnlinking
-                        ? 'Unlinking…'
-                        : isLinked
-                            ? 'Linked'
-                            : 'Not linked';
-                    // The tooltip names the action for screen readers,
-                    // hover and tests: "Link Google", "Unlink GitHub".
-                    final action = isUnlinking
-                        ? 'Unlinking…'
-                        : isLinked
-                            ? 'Unlink $label'
-                            : 'Link $label';
-                    return Tooltip(
-                      message: action,
-                      child: Material(
+                  final theme = Theme.of(context);
+                  final colors = theme.colorScheme;
+                  final isLinked = linkedProviders.contains(provider);
+                  final account = isLinked
+                      ? linkedAccounts.firstWhere(
+                          (a) => a.providerId.toLowerCase() == provider)
+                      : null;
+                  final isUnlinking = account != null &&
+                      unlinkingAccountIds.contains(account.id);
+                  final isUnlinkBusy = unlinkingAccountIds.isNotEmpty;
+                  final label = _providerLabel(provider);
+                  final onTap = isLinked
+                      ? (isUnlinkBusy
+                          ? null
+                          : () => _unlinkAccountProvider(account!))
+                      : () => _linkAccountProvider(provider);
+                  final badgeText = isUnlinking
+                      ? 'Unlinking…'
+                      : isLinked
+                          ? 'Linked'
+                          : 'Not linked';
+                  // The tooltip names the action for screen readers,
+                  // hover and tests: "Link Google", "Unlink GitHub".
+                  final action = isUnlinking
+                      ? 'Unlinking…'
+                      : isLinked
+                          ? 'Unlink $label'
+                          : 'Link $label';
+                  return Tooltip(
+                    message: action,
+                    child: Material(
                       color: colors.surfaceContainerLow,
                       shape: RoundedRectangleBorder(
                         borderRadius: SyntilaRadius.radiusLg,
@@ -754,8 +754,8 @@ extension _AxAppViews on _AxAppStateMixin {
                               Expanded(
                                 child: Text(
                                   label,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w600),
+                                  style: theme.textTheme.bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w600),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -764,33 +764,33 @@ extension _AxAppViews on _AxAppStateMixin {
                               // can overflow on narrow screens.
                               Flexible(
                                 child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: isLinked
-                                      ? colors.primaryContainer
-                                      : colors.surfaceContainerHighest,
-                                  borderRadius: SyntilaRadius.radiusLg,
-                                ),
-                                child: Text(
-                                  badgeText,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.labelSmall?.copyWith(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
                                     color: isLinked
-                                        ? colors.onPrimaryContainer
-                                        : colors.onSurfaceVariant,
-                                    fontWeight: FontWeight.w600,
+                                        ? colors.primaryContainer
+                                        : colors.surfaceContainerHighest,
+                                    borderRadius: SyntilaRadius.radiusLg,
+                                  ),
+                                  child: Text(
+                                    badgeText,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: isLinked
+                                          ? colors.onPrimaryContainer
+                                          : colors.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
                               ),
                             ],
                           ),
                         ),
                       ),
                     ),
-                    );
+                  );
                 }),
             ];
             return stacked

@@ -37,6 +37,7 @@ export interface AssignmentFailurePayload {
   };
   readonly failedAt: string;
   readonly providerFailure?: ProviderFailureDetails;
+  readonly providerFailureUnavailable?: true;
 }
 
 export interface AssignmentCancelPayload {

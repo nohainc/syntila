@@ -314,10 +314,7 @@ void main() {
     final source =
         AxApiClient(baseUrl: 'https://cloud.test/api', client: client);
     final page = await source.loadConversationHistory(
-        threadId: 'W',
-        conversationId: 'C',
-        cursor: 'this-page',
-        limit: 1);
+        threadId: 'W', conversationId: 'C', cursor: 'this-page', limit: 1);
     expect(page.entries.single.text, text);
     expect(page.nextCursor, 'next-page');
     expect(
@@ -579,9 +576,9 @@ void main() {
         },
         {'id': 'a', 'createdAt': '2026-10-06T01:00:00Z'}
       ],
-      'nextCursor': const AxWorkRequestCursor(
-              createdAt: '2026-10-06T01:00:00Z', id: 'a')
-          .toWire()
+      'nextCursor':
+          const AxWorkRequestCursor(createdAt: '2026-10-06T01:00:00Z', id: 'a')
+              .toWire()
     });
     final api = AxApiClient(baseUrl: 'https://example.test', client: client);
     final page = await api.loadThreadWorkRequestPage(
@@ -594,8 +591,10 @@ void main() {
     expect(sent.keys.toSet(), {'limit', 'cursor', 'activeOnly'});
     expect(sent['limit'], '40');
     expect(sent['activeOnly'], 'true');
-    expect(AxWorkRequestCursor.fromWire(sent['cursor']!),
-        const AxWorkRequestCursor(createdAt: '2026-10-07T00:00:00Z', id: 'id+/='));
+    expect(
+        AxWorkRequestCursor.fromWire(sent['cursor']!),
+        const AxWorkRequestCursor(
+            createdAt: '2026-10-07T00:00:00Z', id: 'id+/='));
     expect(page.requests.map((r) => r.id), ['a', 'b']);
     expect(page.requests.last.prompt, '# Exact Markdown');
     expect(page.nextCursor!.id, 'a');
@@ -607,10 +606,7 @@ void main() {
         throwsArgumentError);
   });
   for (final body in [
-    <String, dynamic>{
-      'workRequests': [],
-      'nextCursor': 'not-a-cursor'
-    },
+    <String, dynamic>{'workRequests': [], 'nextCursor': 'not-a-cursor'},
     <String, dynamic>{
       'workRequests': [null]
     },

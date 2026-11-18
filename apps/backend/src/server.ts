@@ -58,6 +58,7 @@ if (!emailOutbox) console.warn("EMAIL_RELAY_URL / EMAIL_RELAY_SECRET are not con
 
 const runtime = createRuntime(sql, db, {
   SYNTILA_PROVIDER_FAILURE_KEY: config.providerFailureKey,
+  SYNTILA_PROVIDER_FAILURE_PREVIOUS_KEYS: config.providerFailurePreviousKeys,
   SYNTILA_ENVIRONMENT: process.env.SYNTILA_ENVIRONMENT ?? "production",
   PADDLE_LIVE_CHECKOUT_ENABLED: process.env.PADDLE_LIVE_CHECKOUT_ENABLED,
   PADDLE_LIVE_CLIENT_TOKEN: process.env.PADDLE_LIVE_CLIENT_TOKEN,

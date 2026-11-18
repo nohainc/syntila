@@ -103,7 +103,8 @@ void main() {
 
   test('rejects invalid remote MCP server configurations', () {
     final bad = <McpServerLaunch Function()>[
-      () => McpServerLaunch(name: 'both', command: '/bin/x', url: 'https://a.test'),
+      () => McpServerLaunch(
+          name: 'both', command: '/bin/x', url: 'https://a.test'),
       () => McpServerLaunch(name: 'neither'),
       () => McpServerLaunch(name: 'http', url: 'http://example.com/mcp'),
       () => McpServerLaunch(name: 'creds', url: 'https://u:p@example.com/mcp'),

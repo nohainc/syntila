@@ -99,25 +99,28 @@ void main() {
     expect(toml.environment, {'SYNTILA_MCP_TOKEN_ACME_API': 'super-secret'});
   });
 
-  test('McpConfigFile.write emits http url and headers for remote servers',
-      () async {
-    final cfg = await McpConfigFile.write([
-      McpServerLaunch(
-        name: 'acme',
-        url: 'https://mcp.example.com/mcp',
-        headers: {'Authorization': 'Bearer tok'},
-      ),
-    ]);
-    addTearDown(cfg.delete);
-    final decoded =
-        jsonDecode(await File(cfg.path).readAsString()) as Map<String, Object?>;
-    final servers = decoded['mcpServers'] as Map<String, Object?>;
-    expect(servers['acme'], {
-      'type': 'http',
-      'url': 'https://mcp.example.com/mcp',
-      'headers': {'Authorization': 'Bearer tok'},
-    });
-  });
+  test(
+    'McpConfigFile.write emits http url and headers for remote servers',
+    () async {
+      final cfg = await McpConfigFile.write([
+        McpServerLaunch(
+          name: 'acme',
+          url: 'https://mcp.example.com/mcp',
+          headers: {'Authorization': 'Bearer tok'},
+        ),
+      ]);
+      addTearDown(cfg.delete);
+      final decoded =
+          jsonDecode(await File(cfg.path).readAsString())
+              as Map<String, Object?>;
+      final servers = decoded['mcpServers'] as Map<String, Object?>;
+      expect(servers['acme'], {
+        'type': 'http',
+        'url': 'https://mcp.example.com/mcp',
+        'headers': {'Authorization': 'Bearer tok'},
+      });
+    },
+  );
 }
 
 void sweepTests() {

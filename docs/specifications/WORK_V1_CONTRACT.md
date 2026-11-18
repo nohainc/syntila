@@ -508,7 +508,7 @@ message, and failed status:
 | `nativeErrorCode` | `string` (optional) | 128 | Provider-supplied error code only; single-line, no control chars. Never fabricated from process exit code or Engine classification. |
 | `providerErrorText` | `string` (optional) | 4,096 | Provider-supplied error message. |
 | `failedRunResponse` | `string` (optional) | 32,768 | Provider-supplied final response text returned alongside a failure. Never promotes failure to success. |
-| `source` | `enum` (required) | — | One of `structured_error`, `result_message`, `stderr`, `stdout`, `plugin`. Separates provider data from Engine diagnostics and process exit evidence. |
+| `source` | `enum` (required) | — | One of `structured_error`, `result_message`, `stderr`, `stdout`, `plugin`. Identifies the error text's source when present; otherwise it identifies the available response or code. A response can coexist with an error from stderr. It separates provider data from Engine diagnostics and process exit evidence. |
 | `truncated` | `boolean` (optional) | — | `true` if any field was truncated to fit UTF-8 byte limits (always sliced on valid UTF-8 codepoint boundaries). |
 | `omitted` | `boolean` (optional) | — | `true` if any field was omitted due to credential detection. |
 | `omittedFields` | `string[]` (optional) | — | Explicit list of omitted field names (`nativeErrorCode`, `providerErrorText`, `failedRunResponse`) when `omitted` is `true`. |
@@ -533,10 +533,26 @@ message, and failed status:
   retain a separate secure recovery copy. Missing or invalid keys disable the
   capability and cause unexpectedly received details to be omitted; the
   canonical failure is retained. A wrong or lost key makes historical details
-  unavailable. Version 1 has no online rotation or re-encryption tooling: do not
-  replace the key while its data must remain readable. Plan and verify a separate
-  maintenance migration before rotation; database restoration requires the
-  corresponding key.
+  unavailable. Each stored envelope records a non-secret `keyId` (first 8 bytes
+  of the key's SHA-256, hex). To rotate, set the new key as
+  `provider-failure-key` and list the old key(s) in the decrypt-only
+  `provider-failure-previous-keys` credential (or
+  `SYNTILA_PROVIDER_FAILURE_PREVIOUS_KEYS`; comma/whitespace separated). New
+  failures use the current key; older envelopes stay readable until their
+  retention ends and the previous key is removed. There is no re-encryption
+  tool; envelopes without a `keyId` try every configured key. Database
+  restoration requires the corresponding keys. Workspace replay treats an
+  undecryptable local record as "details unavailable" and keeps the canonical
+  failure and the rest of the journal readable. Journal compaction is deferred
+  while a current record has unavailable details, preserving ciphertext for
+  recovery if the original key becomes available again.
+  Cloud may advertise `assignment.provider_failure_unavailable.v1` when its
+  failure encryption key is configured. A Workspace replaying a failure whose
+  details cannot be decrypted sends `providerFailureUnavailable: true` only
+  with that capability, and never alongside `providerFailure`. Cloud retains
+  this content-free marker with the matching attempt and exposes it only on
+  authorized Work reads. With older Cloud versions the canonical failure alone
+  is delivered; deploy Cloud first to enable the marker.
   Scan known credential patterns as an additional precaution, not as the
   security boundary. If detected, omit the entire affected field and set
   `omitted` and `omittedFields` instead of presenting altered text as original.

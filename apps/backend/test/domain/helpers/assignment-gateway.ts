@@ -16,11 +16,12 @@ export async function gatewayFixture(
     readonly ready?: boolean;
     readonly capabilities?: string[];
     readonly research?: boolean;
+    readonly failureDetailsSnapshot?: boolean;
     /** Extra bindings for the Gateway's environment (e.g. a Workflow). */
     readonly env?: Record<string, unknown>;
   } = {},
 ) {
-  const f = await conversationFixture({ research: options.research });
+  const f = await conversationFixture({ research: options.research, failureDetailsSnapshot: options.failureDetailsSnapshot });
   await f.sqlite.exec(
     "INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now')",
   );

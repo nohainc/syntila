@@ -380,8 +380,7 @@ extension _AxAppController on _AxAppStateMixin {
           FilledButton(
             onPressed: () {
               Navigator.of(dialogContext).pop();
-              browserNavigation
-                  .openExternal(Uri.parse('https://syntila.app'));
+              browserNavigation.openExternal(Uri.parse('https://syntila.app'));
             },
             child: const Text('Visit website'),
           ),
@@ -960,7 +959,11 @@ extension _AxAppController on _AxAppStateMixin {
     final width = navigatorKey.currentState?.overlay?.context.size?.width ??
         MediaQuery.sizeOf(dialogContext).width;
     final isDesktop = SyntilaBrand.isDesktop(width);
-    final sidebarWidth = _desktopSidebarCollapsed ? 50.0 : _desktopSidebarWidth;
+    final sidebarWidth = _desktopSidebarCollapsed
+        ? 50.0
+        : _desktopSidebarWidth
+            .clamp(ResizableSidebar.minWidth, ResizableSidebar.maxWidth)
+            .toDouble();
     Widget buildInbox(BuildContext context) => ListenableBuilder(
           listenable: Listenable.merge([
             store.invitations,

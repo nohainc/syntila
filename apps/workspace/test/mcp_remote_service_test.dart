@@ -260,7 +260,8 @@ void main() {
       expect(service.pinsFor('acme').hashes.keys, ['search']);
     });
 
-    test('official Workers receive enabled, consented remote servers with token',
+    test(
+        'official Workers receive enabled, consented remote servers with token',
         () async {
       addAcme();
       await consentFully();
