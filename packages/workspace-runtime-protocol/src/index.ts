@@ -1,4 +1,7 @@
-import type { ExecutionErrorCode } from "@syntila/protocol";
+import type {
+  ExecutionErrorCode,
+  ProviderFailureDetails,
+} from "@syntila/protocol";
 
 export * from "./workspace-runtime.js";
 export * from "./desktop-auth-transport.js";
@@ -33,6 +36,7 @@ export interface AssignmentFailurePayload {
     };
   };
   readonly failedAt: string;
+  readonly providerFailure?: ProviderFailureDetails;
 }
 
 export interface AssignmentCancelPayload {

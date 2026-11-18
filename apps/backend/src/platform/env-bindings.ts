@@ -8,6 +8,7 @@ import type { WorkflowHost } from "./workflows";
 
 declare global {
   interface Env {
+    SYNTILA_PROVIDER_FAILURE_KEY?: string;
     SYNTILA_ARTIFACTS?: R2Bucket;
     SYNTILA_RUN_WORKFLOW: ReturnType<WorkflowHost["binding"]>;
     SYNTILA_REALTIME_GATEWAY: DurableObjectNamespace;

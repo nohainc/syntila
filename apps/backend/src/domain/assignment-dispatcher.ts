@@ -3,6 +3,7 @@ import { inTransaction } from "../platform/tx-env.js";
 import { assignmentProgress, assignmentStatus } from "./queries.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
 import { createHash } from "node:crypto";
+import { encryptProviderFailure, providerFailureKey } from "./provider-failure-encryption.js";
 import {
   type AssignmentResultPayload,
   type AssignmentFailurePayload,
@@ -16,8 +17,11 @@ import {
   type AssignmentLifecycleStatus,
 } from "@syntila/core";
 import {
+  ProviderFailureDetailsSchema,
   canonicalExecutionErrorCode,
   executionErrorMessage,
+  sanitizeProviderFailureDetails,
+  type ProviderFailureDetails,
 } from "@syntila/protocol";
 import {
   selectSpaceExecutionTarget,
@@ -101,6 +105,25 @@ function safeFailureDetails(
         ...(processExitCode !== undefined ? { processExitCode } : {}),
       }
     : undefined;
+}
+
+function safeProviderFailure(
+  value: unknown,
+): ProviderFailureDetails | undefined {
+  const parsed = ProviderFailureDetailsSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const sanitized = sanitizeProviderFailureDetails({
+    nativeErrorCode: parsed.data.nativeErrorCode,
+    providerErrorText: parsed.data.providerErrorText,
+    failedRunResponse: parsed.data.failedRunResponse,
+    source: parsed.data.source,
+  });
+  const omittedFields = [...new Set([...(parsed.data.omittedFields ?? []), ...(sanitized.omittedFields ?? [])])];
+  return { ...sanitized,
+    ...(parsed.data.truncated || sanitized.truncated ? { truncated: true } : {}),
+    ...(parsed.data.omitted || sanitized.omitted ? { omitted: true } : {}),
+    ...(omittedFields.length ? { omittedFields } : {}),
+  };
 }
 
 function cloudFailureDiagnostic(
@@ -1053,10 +1076,12 @@ export async function recordAssignmentError(
   assignmentId: string,
   failure: AssignmentFailurePayload,
   expectedAttemptId?: string,
-  options?: { onlyFrom?: readonly AssignmentLifecycleStatus[] },
+  options?: { onlyFrom?: readonly AssignmentLifecycleStatus[]; providerFailureKey?: string },
 ): Promise<boolean> {
   const now = new Date().toISOString();
   const details = safeFailureDetails(failure.error?.details);
+  const providerFailure = safeProviderFailure(failure.providerFailure);
+  const key = providerFailureKey(options?.providerFailureKey);
   const code = canonicalExecutionErrorCode(failure.error?.code);
   const normalizedFailure: AssignmentFailurePayload = {
     error: {
@@ -1066,6 +1091,8 @@ export async function recordAssignmentError(
       ...(details ? { details } : {}),
     },
     failedAt: now,
+    ...(providerFailure && key ? { providerFailureEncrypted: encryptProviderFailure(providerFailure, assignmentId, key) } : {}),
+    ...(providerFailure && !key ? { providerFailureUnavailable: true } : {}),
   };
 
   const existing = await assignmentProgress(queryOf(db), assignmentId);

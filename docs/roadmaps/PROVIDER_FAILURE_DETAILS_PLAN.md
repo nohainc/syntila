@@ -1,6 +1,6 @@
 # Provider failure details: implementation phases
 
-Status: **Phases 1 and 2 in progress; end-to-end behavior not implemented**. This plan changes the current error and
+Status: **Phase 3 implementation in progress; end-to-end behavior not implemented**. This plan changes the current error and
 privacy contract in [Work v1](../specifications/WORK_V1_CONTRACT.md#run-details-and-observability).
 The existing canonical-only behavior remains authoritative until the relevant
 phase is implemented and deployed. Each phase must be independently reviewable;
@@ -70,8 +70,8 @@ advertises it. Failure details are encrypted with AES-256-GCM in the local
 assignment journal using an installation-specific key in the platform credential
 store. Missing keys and authentication failures must not create replacement keys
 or expose plaintext. Cloud delivery is gated on its `assignment.provider_failure.v1`
-capability; an older Cloud receives only the canonical failure. Cloud storage
-and the capability advertisement are Phase 3 work. The AGY starter Profile
+capability; an older Cloud receives only the canonical failure. Cloud advertises
+the capability only when its encryption key is configured. The AGY starter Profile
 declares failure extraction; signed releases remain immutable. Additional
 provider and plugin coverage and real-device secure-store verification remain
 necessary before considering this phase complete.
@@ -93,6 +93,13 @@ replay and mixed-version fallback. Run Workspace Service checks and component
 validations required by repository policy where the environment permits.
 
 ## Phase 3: Cloud persistence and reads
+
+Cloud encrypts bounded provider failures with AES-256-GCM and the assignment ID
+as authenticated data. Only authorized Work detail and history reads decrypt
+them. The envelope follows assignment and Work retention. The gateway publishes
+a content-free phase update so clients re-read the authorized Work record. Key
+provisioning, recovery, the online rotation limitation and fail-closed behavior
+are specified in the [Work contract](../specifications/WORK_V1_CONTRACT.md#provider-failure-details-contract-phase-1).
 
 Validate and persist the new fields with the matching assignment attempt;
 retain stable error classification and terminal transition/idempotency rules.

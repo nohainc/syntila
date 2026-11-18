@@ -20,6 +20,7 @@ import {
 export const WORKSPACE_RUNTIME_PROTOCOL_NAME =
   "syntila.workspace-runtime-protocol" as const;
 export const WORKSPACE_RUNTIME_PROTOCOL_VERSION = "5.1" as const;
+export const PROVIDER_FAILURE_DETAILS_CAPABILITY = "assignment.provider_failure.v1" as const;
 export const WORKSPACE_RUNTIME_PROTOCOL_SUPPORTED_VERSIONS = [
   "5.0",
   "5.1",

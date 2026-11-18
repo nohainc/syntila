@@ -99,6 +99,7 @@ export function normalizeWorkspaceWorkerInstallationStatus(
 }
 
 export interface WorkspaceGatewayEnv {
+  readonly SYNTILA_PROVIDER_FAILURE_KEY?: string;
   SYNTILA_DB: Db;
   SYNTILA_REALTIME_GATEWAY?: DurableObjectNamespace;
   /** Holds Work Request input files delivered with `assignment.start`. */

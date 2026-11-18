@@ -143,12 +143,16 @@ The Engine owns provider execution through one Workspace-admitted Worker Profile
 
 Tool Profiles are not protocol peers. They are immutable behavior configuration consumed locally by the Engine after Workspace digest/schema/compatibility admission. Profiles cannot disable Engine security invariants or add arbitrary process execution.
 
-Provider credentials, provider session IDs, arbitrary Cloud executable paths, shell commands, and raw provider output are not Local Worker Protocol fields.
+Provider credentials and provider session IDs are not intentionally sent as
+Local Worker Protocol fields; arbitrary Cloud executable paths and shell commands
+are not protocol fields. Protocol 4.4 permits bounded provider failure details
+and failed-run responses as a separately identified terminal error field when
+both local peers support it. Arbitrary provider text can contain sensitive data
+that pattern-based credential detection does not recognize.
 
-The planned [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
-proposes a narrowly scoped exception for provider-supplied failure text and
-responses accompanying failures. This is not implemented; the current boundary
-above remains in force until the versioned protocol and rollout are complete.
+The [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
+specifies its negotiation, credential boundary, limits and rollout. Arbitrary
+raw provider streams are not protocol fields.
 
 Durable execute requests may carry version 1 `workerSession` metadata: Syntila
 session, Conversation, and Worker IDs plus a frozen context target revision.

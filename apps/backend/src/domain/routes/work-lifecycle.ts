@@ -1,5 +1,9 @@
 import { inTransaction } from "../../platform/tx-env.js";
-import { RetryWorkRequestSchema } from "@syntila/protocol";
+import { decryptProviderFailure, providerFailureKey } from "../provider-failure-encryption.js";
+import {
+  RetryWorkRequestSchema,
+  type ProviderFailureDetails,
+} from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { afterCursor, cursorOrder, decodeCursor, encodeCursor } from "./pagination.js";
 import { activeThreadLease, activeWorkCount, cancelPendingTasks, cancelQueuedWorkRequest, spaceMembership, threadSpace, workRequestThread } from "../queries.js";
@@ -855,6 +859,7 @@ export async function handleGetWorkRequest(
             typeof task?.sessionPolicy === "string" ? task.sessionPolicy : null,
           errorCode,
           errorMessage: errorCode ? executionErrorMessage(errorCode) : null,
+          ...extractProviderFailure(assignmentError, task?.assignmentId, env),
           ...stepExecutionFields(task, errorCode),
           ...(manualRetry.stepKind === kind &&
           (manualRetry.sessionStrategy === "resume" ||
@@ -931,6 +936,18 @@ export async function handleGetWorkRequest(
 }
 
 /** Cloud-derived execution state for one step; see execution-phase.ts. */
+function extractProviderFailure(
+  assignmentError: Record<string, unknown>,
+  assignmentId: unknown,
+  env: SecurityEnv,
+): { providerFailure: ProviderFailureDetails | null; providerFailureUnavailable?: boolean } {
+  const encrypted = assignmentError.providerFailureEncrypted;
+  if (!encrypted) return { providerFailure: null, ...(assignmentError.providerFailureUnavailable === true ? { providerFailureUnavailable: true } : {}) };
+  const value = typeof assignmentId === "string"
+    ? decryptProviderFailure(encrypted, assignmentId, providerFailureKey(env.SYNTILA_PROVIDER_FAILURE_KEY)) : null;
+  return { providerFailure: value, ...(!value ? { providerFailureUnavailable: true } : {}) };
+}
+
 function stepExecutionFields(
   task: Record<string, unknown> | undefined,
   errorCode: string | null,
@@ -1332,6 +1349,7 @@ export async function handleListWorkRequests(
               ? executionErrorMessage(stableErrorCode)
               : null,
             error: typeof task?.error === "string" ? task.error : null,
+            ...extractProviderFailure(assignmentError, task?.assignmentId, env),
             ...stepExecutionFields(task, stableErrorCode),
           },
         ];

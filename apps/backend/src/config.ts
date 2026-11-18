@@ -1,4 +1,5 @@
 export interface Config {
+  providerFailureKey?: string;
   port: number;
   hostname: string;
   db: {
@@ -57,7 +58,13 @@ export async function readPublicKeys(): Promise<JsonWebKey[]> {
 }
 
 export async function loadConfig(): Promise<Config> {
+  const credentialDir = process.env.CREDENTIALS_DIRECTORY;
+  const keyFile = credentialDir ? Bun.file(`${credentialDir}/provider-failure-key`) : null;
+  const providerFailureKey = keyFile && await keyFile.exists()
+    ? (await keyFile.text()).trim()
+    : process.env.SYNTILA_PROVIDER_FAILURE_KEY;
   return {
+    providerFailureKey,
     port: int("PORT", 3000),
     hostname: process.env.BIND_HOST || "127.0.0.1",
     db: {

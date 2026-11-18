@@ -1,4 +1,5 @@
 import { dataOf, queryOf, type Tx } from "../platform/data.js";
+import { providerFailureKey } from "./provider-failure-encryption.js";
 import { assignmentStatus } from "./queries.js";
 import {
   applyEngineLivenessReport,
@@ -38,6 +39,7 @@ import {
   ASSIGNMENT_STARTUP_CAPABILITY,
   SERVICE_MCP_TOOL_CALL_CAPABILITY,
   SERVICE_READINESS_CAPABILITY,
+  PROVIDER_FAILURE_DETAILS_CAPABILITY,
   assignmentStartupPayload,
   serviceReadinessPayload,
   type AssignmentCancelPayload,
@@ -1209,6 +1211,7 @@ export class WorkspaceGateway implements DurableObject {
             // Lets a Service know it may publish `workspace.readiness` and
             // `assignment.startup`.
             cloudCapabilities: [
+              ...(providerFailureKey(this.env.SYNTILA_PROVIDER_FAILURE_KEY) ? [PROVIDER_FAILURE_DETAILS_CAPABILITY] : []),
               SERVICE_READINESS_CAPABILITY,
               ASSIGNMENT_STARTUP_CAPABILITY,
               ALLOWED_FOLDERS_CAPABILITY,
@@ -1913,8 +1916,12 @@ export class WorkspaceGateway implements DurableObject {
           message.assignmentId!,
           message.payload as never,
           message.attemptId,
+          { providerFailureKey: this.env.SYNTILA_PROVIDER_FAILURE_KEY },
         );
-        if (failed) this.traceTerminalPersisted(message, "failed");
+        if (failed) {
+          this.traceTerminalPersisted(message, "failed");
+          await publishAssignmentPhase(this.env, message.assignmentId!);
+        }
         await this.sendTerminalAcknowledgement(message, "failed");
         await this.slotFreed();
         return;

@@ -46,10 +46,10 @@ when Cloud assembles private issue-report evidence; it is not copied into the
 Work result, public report response, or AX UI. Cloud sanitizes this field again
 before persistence.
 
-The planned [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
-adds a separate Work-visible channel. It does not automatically add provider
-text or failed-run responses to support reports or their diagnostics. The
-current two-channel behavior above remains in effect until implemented.
+The [provider failure details contract](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md)
+adds a separate Work-visible channel when Cloud encryption is configured. It
+does not add provider text or failed-run responses to support reports or their
+diagnostics; the private diagnostic channel above remains separate.
 
 The Profile Lab's Issues area is the internal investigation console. It is
 shown only to users with the issue-support permission and provides report

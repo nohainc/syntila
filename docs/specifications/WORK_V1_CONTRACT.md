@@ -489,11 +489,10 @@ surfaces those counts separately as a short Test summary.
 
 ## Run details and observability
 
-**Planned contract change:** The owner-approved target is to show provider
-failure information and a response returned with an error to users authorized to
-view the Work. The existing canonical-only behavior below remains in effect
-until implemented. The target semantics, credential boundary, rollout and
-verification phases are specified in
+**Rollout status:** Local Workspace and Cloud can carry provider failure
+details when encryption is configured. Display in the Work UI is a separate
+phase. The target semantics, credential boundary, rollout and verification are
+specified in
 [Provider failure details](../roadmaps/PROVIDER_FAILURE_DETAILS_PLAN.md).
 
 ### Provider failure details contract (Phase 1)
@@ -527,8 +526,17 @@ message, and failed status:
   pattern scanning cannot reliably detect all credentials. Before Cloud or
   local table persistence, encrypt the entire provider failure object using an
   authenticated encryption scheme and a key held outside application tables.
-  The persistence phase must define key provisioning, rotation, backup, access,
-  deletion and fail-closed behavior; do not enable storage without them.
+  Cloud uses the `provider-failure-key` systemd credential (or the
+  `SYNTILA_PROVIDER_FAILURE_KEY` environment variable for local development):
+  64 hexadecimal characters representing a random 256-bit key. Keep it out of
+  the database, source tree and logs; restrict it to the backend service and
+  retain a separate secure recovery copy. Missing or invalid keys disable the
+  capability and cause unexpectedly received details to be omitted; the
+  canonical failure is retained. A wrong or lost key makes historical details
+  unavailable. Version 1 has no online rotation or re-encryption tooling: do not
+  replace the key while its data must remain readable. Plan and verify a separate
+  maintenance migration before rotation; database restoration requires the
+  corresponding key.
   Scan known credential patterns as an additional precaution, not as the
   security boundary. If detected, omit the entire affected field and set
   `omitted` and `omittedFields` instead of presenting altered text as original.
@@ -558,11 +566,11 @@ Workspace and Engine versions, provider tool version when known, start/end/durat
 and bounded final result text. A queued Step may have no start time; a running
 Step has elapsed time through the time details are loaded and no end time.
 
-Advanced details may show the latest assignment ID, session policy, and stable
-error code. Raw provider error strings, provider secrets, credential
-environment, prompts/files by default, and local Worker logs are not included
-in Run details. Results are truncated to a fixed safe display bound. Logs stay
-local to Workspace and require an explicit diagnostic workflow to retrieve.
+Advanced details may show the latest assignment ID, session policy, stable error
+code, and provider failure fields when available. Provider text may contain
+sensitive data and is visible to users authorized to view the Work; the owner
+controls sharing. Detected credentials cause the affected field to be omitted.
+Local Worker logs remain local and require an explicit diagnostic workflow.
 
 Cloud persists Step start and finish timestamps so duration reflects execution
 rather than queue time. Older in-development records without these timestamps

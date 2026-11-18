@@ -208,7 +208,8 @@ describe("Workspace runtime Gateway", () => {
     expect(await poll.json()).toMatchObject({ events: [], timedOut: true });
   });
 
-  it("logs DO upgrade checkpoints with the forwarded request correlation ID", async () => {
+  it.each([false, true])("logs upgrade checkpoints and gates provider failures on key availability (%s)", async (hasKey) => {
+    const providerKey = hasKey ? "12".repeat(32) : undefined;
     const runtimeToken = "runtime-secret-for-gateway-test";
     const credentialTokenHash = await hashToken(runtimeToken);
     const workspaceId = "workspace-gateway-test";
@@ -269,6 +270,7 @@ describe("Workspace runtime Gateway", () => {
     };
     const gateway = new WorkspaceGateway(state as never, {
       SYNTILA_DB: db as never,
+      SYNTILA_PROVIDER_FAILURE_KEY: providerKey,
     });
     const logs: string[] = [];
     vi.spyOn(console, "log").mockImplementation((record) => {
@@ -314,7 +316,8 @@ describe("Workspace runtime Gateway", () => {
         payload: {},
       }),
     );
-    await helloAck;
+    const acknowledgement = JSON.parse(await helloAck) as { payload: { cloudCapabilities: string[] } };
+    expect(acknowledgement.payload.cloudCapabilities.includes("assignment.provider_failure.v1")).toBe(providerKey !== undefined);
     // Message handling awaits durable outbound delivery before logging the ack.
     await Promise.resolve();
     await Promise.resolve();
