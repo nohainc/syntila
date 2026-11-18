@@ -119,6 +119,16 @@ class McpServerSpec {
     if (remote?.bearerToken case final token?) token,
   ];
 
+  /// Credentials supplied to the Worker, excluding ordinary inherited
+  /// environment values such as HOME and PATH that may occur in useful text.
+  Iterable<String> get failureSecrets => [
+    if (launch case final local?)
+      for (final entry in local.environment.entries)
+        if (!ExternalWorkerProcessHost.inheritedParentKeys.contains(entry.key))
+          entry.value,
+    if (remote?.bearerToken case final token?) token,
+  ];
+
   String get key {
     final l = launch;
     if (l != null) {

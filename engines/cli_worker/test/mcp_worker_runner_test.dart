@@ -238,6 +238,8 @@ void main() {
               as ExternalWorkerRunFailure;
       expect(outcome.message, isNot(contains('sup3r-s3cret-value')));
       expect(outcome.message, contains('<redacted>'));
+      expect(outcome.originalMessage, isNull);
+      expect(outcome.omittedFields, contains('providerErrorText'));
     },
   );
 }

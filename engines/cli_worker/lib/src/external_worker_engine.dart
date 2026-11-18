@@ -83,6 +83,24 @@ class ExternalWorkerEngine {
   final ConversationExecutionRouter _router;
   InitializeRequest? _admitted;
 
+  Map<String, Object?> _pluginFailureDetails(ExternalWorkerRunFailure failure) {
+    final details = sanitizeProviderFailureDetails(
+      nativeErrorCode: failure.originalCode,
+      providerErrorText: failure.originalMessage,
+      failedRunResponse: failure.failedRunResponse,
+      source: 'plugin',
+    ).toJson();
+    final omitted = <String>{
+      ...?((details['omittedFields'] as List?)?.cast<String>()),
+      ...failure.omittedFields,
+    };
+    if (omitted.isNotEmpty) {
+      details['omitted'] = true;
+      details['omittedFields'] = omitted.toList();
+    }
+    return details;
+  }
+
   /// Stable Worker issue codes for plugin outcomes; no new wire codes.
   static (String code, bool retryable) mapFailure(
     ExternalWorkerRunFailure failure,
@@ -227,6 +245,7 @@ class ExternalWorkerEngine {
         capabilities: const [
           'external_conversation_v1',
           'external_execution_v1',
+          providerFailureDetailsCapability,
         ],
       ),
     );
@@ -439,6 +458,16 @@ class ExternalWorkerEngine {
           message: failure.message,
           diagnostics: 'plugin_code=${failure.code}',
           retryable: retryable,
+          providerFailure:
+              request.protocolVersion ==
+                      providerFailureDetailsProtocolVersion &&
+                  failure.fromPlugin
+              ? _pluginFailureDetails(failure)
+              : null,
+          protocolVersion:
+              request.protocolVersion == providerFailureDetailsProtocolVersion
+              ? providerFailureDetailsProtocolVersion
+              : localWorkerProtocolVersion,
         ),
       );
       return;
@@ -687,6 +716,17 @@ class ExternalWorkerEngine {
               diagnostics:
                   'plugin_code=${outcome.code}'
                   '${outcome.code == 'context_limit_exceeded' ? '\nModel context window exceeded' : ''}',
+              providerFailure:
+                  request.protocolVersion ==
+                          providerFailureDetailsProtocolVersion &&
+                      outcome.fromPlugin
+                  ? _pluginFailureDetails(outcome)
+                  : null,
+              protocolVersion:
+                  request.protocolVersion ==
+                      providerFailureDetailsProtocolVersion
+                  ? providerFailureDetailsProtocolVersion
+                  : localWorkerProtocolVersion,
             ),
           );
         case ExternalWorkerProbeSuccess() || ExternalWorkerModelsSuccess():

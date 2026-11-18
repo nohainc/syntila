@@ -810,10 +810,7 @@ final class CliWorkerEngineSupervisor {
         compactContext: compactContext,
         executor: identity.executor,
         protocolVersion:
-            identity.executor == null &&
-                initialized.capabilities.contains(
-                  providerFailureDetailsCapability,
-                )
+            initialized.capabilities.contains(providerFailureDetailsCapability)
             ? providerFailureDetailsProtocolVersion
             : identity.protocolVersion,
       );

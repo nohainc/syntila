@@ -2503,13 +2503,17 @@ class _WorkTimelineCard extends StatelessWidget {
                                             onCancelRun != null))
                                       const SizedBox(width: 8),
                                     if (timeLabel.isNotEmpty)
-                                      Tooltip(
-                                        message: _chatTimestamp(timestamp!),
-                                        child: Text(
-                                          timeLabel,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: metaColor,
+                                      Flexible(
+                                        child: Tooltip(
+                                          message: _chatTimestamp(timestamp!),
+                                          child: Text(
+                                            timeLabel,
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: metaColor,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -2543,11 +2547,31 @@ class _WorkTimelineCard extends StatelessWidget {
                               children: [
                                 if (message != null) ...[
                                   isError
-                                      ? SelectableText(
-                                          message,
-                                          style: SyntilaMessageTypography
-                                                  .fromTheme(Theme.of(context))
-                                              .copyWith(color: colors.error),
+                                      ? ProviderFailurePanel(
+                                          canonicalMessage: message,
+                                          canonicalStyle:
+                                              SyntilaMessageTypography
+                                                      .fromTheme(
+                                                          Theme.of(context))
+                                                  .copyWith(
+                                                      color: colors.error),
+                                          errorCode: failedStep?.errorCode,
+                                          providerFailure:
+                                              failedStep?.kind == 'tool_call' ||
+                                                      (isResearchV2 &&
+                                                          failedStep?.id !=
+                                                              'synthesis')
+                                                  ? null
+                                                  : failedStep?.providerFailure,
+                                          providerFailureUnavailable: failedStep
+                                                      ?.kind !=
+                                                  'tool_call' &&
+                                              !(isResearchV2 &&
+                                                  failedStep?.id !=
+                                                      'synthesis') &&
+                                              (failedStep
+                                                      ?.providerFailureUnavailable ??
+                                                  false),
                                         )
                                       : _MemoizedWorkMarkdown(
                                           key: ValueKey((request.id, message)),
@@ -2790,6 +2814,15 @@ class AxResearchStepCards extends StatelessWidget {
                             style: TextStyle(fontSize: 12, color: color),
                           ),
                         ),
+                      if (step.status == 'failed')
+                        ProviderFailurePanel(
+                          canonicalMessage: step.errorMessage ??
+                              'The assignment could not be completed.',
+                          errorCode: step.errorCode,
+                          providerFailure: step.providerFailure,
+                          providerFailureUnavailable:
+                              step.providerFailureUnavailable,
+                        ),
                       if (step.status == 'failed' && onRetryStep != null)
                         Align(
                           alignment: Alignment.centerLeft,
@@ -2937,13 +2970,13 @@ class AxToolCallStepCards extends StatelessWidget {
                       if (step.status == 'failed')
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Text(
-                            step.errorMessage ??
+                          child: ProviderFailurePanel(
+                            canonicalMessage: step.errorMessage ??
                                 'The tool call failed or its outcome was uncertain. Mutating side-effects are not automatically replayed.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: scheme.error,
-                            ),
+                            errorCode: step.errorCode,
+                            providerFailure: step.providerFailure,
+                            providerFailureUnavailable:
+                                step.providerFailureUnavailable,
                           ),
                         ),
                     ],

@@ -136,7 +136,11 @@ class McpWorkerRunner {
         await lease.discard();
         return _cancelled();
       }
-      return _outcome(result, redactor);
+      return _outcome(
+        result,
+        redactor,
+        ExternalWorkerRedactor(secrets: spec.failureSecrets),
+      );
     } finally {
       finished = true;
       lease.release();
@@ -300,12 +304,25 @@ class McpWorkerRunner {
   ExternalWorkerRunOutcome _outcome(
     Map<String, Object?> result,
     ExternalWorkerRedactor redactor,
+    ExternalWorkerRedactor failureRedactor,
   ) {
     final data = _structured(result);
     if (result['isError'] == true) {
       final issue = data['issue'];
       final issueMap = issue is Map ? issue : const {};
       final rawCode = issueMap['code'];
+      final rawMessage = issueMap['message'];
+      final rawResponse = data['text'];
+      final omittedFields = <String>[];
+      String? preserve(Object? value, String field) {
+        if (value is! String) return null;
+        if (failureRedactor.redactSecrets(value) != value) {
+          omittedFields.add(field);
+          return null;
+        }
+        return value;
+      }
+
       final code =
           rawCode is String && externalWorkerErrorCodes.contains(rawCode)
           ? rawCode
@@ -321,6 +338,10 @@ class McpWorkerRunner {
             code == 'rate_limited' ||
             code == 'timeout',
         fromPlugin: true,
+        originalCode: preserve(rawCode, 'nativeErrorCode'),
+        originalMessage: preserve(rawMessage, 'providerErrorText'),
+        failedRunResponse: preserve(rawResponse, 'failedRunResponse'),
+        omittedFields: omittedFields,
       );
     }
     var text = data['text'];

@@ -89,7 +89,10 @@ class EngineProcess {
   }
 }
 
-InitializeRequest initialize(WorkerExecutor e) => InitializeRequest(
+InitializeRequest initialize(
+  WorkerExecutor e, {
+  String protocolVersion = mcpExecutorProtocolVersion,
+}) => InitializeRequest(
   requestId: 'init-1',
   workerTypeId: 'plugin-3fa91c04b2d7',
   expectedEngineVersion: '1.4.0',
@@ -97,20 +100,23 @@ InitializeRequest initialize(WorkerExecutor e) => InitializeRequest(
   profileReleaseVersion: '1.0.0',
   profileDigest: e.manifestDigest,
   executor: e,
-  protocolVersion: mcpExecutorProtocolVersion,
+  protocolVersion: protocolVersion,
 );
 
-ExecuteRequest execute(WorkerExecutor e, {String prompt = 'hi'}) =>
-    ExecuteRequest(
-      requestId: 'req-1',
-      assignmentId: 'asg-1',
-      prompt: prompt,
-      timeoutMs: 30000,
-      sessionPolicy: WorkerSessionPolicy.stateless,
-      executionPolicy: WorkerExecutionPolicy.restricted,
-      executor: e,
-      protocolVersion: mcpExecutorProtocolVersion,
-    );
+ExecuteRequest execute(
+  WorkerExecutor e, {
+  String prompt = 'hi',
+  String protocolVersion = mcpExecutorProtocolVersion,
+}) => ExecuteRequest(
+  requestId: 'req-1',
+  assignmentId: 'asg-1',
+  prompt: prompt,
+  timeoutMs: 30000,
+  sessionPolicy: WorkerSessionPolicy.stateless,
+  executionPolicy: WorkerExecutionPolicy.restricted,
+  executor: e,
+  protocolVersion: protocolVersion,
+);
 
 void main() {
   setUpAll(() async {
@@ -121,6 +127,55 @@ void main() {
     engineBinary = (await ExternalWorkerTestBinaries.ensure()).engine;
   });
   tearDownAll(() => root.deleteSync(recursive: true));
+
+  test(
+    'plugin failures preserve original details only for negotiated 4.4',
+    () async {
+      for (final version in [
+        mcpExecutorProtocolVersion,
+        providerFailureDetailsProtocolVersion,
+      ]) {
+        final engine = await EngineProcess.start();
+        try {
+          final e = executor();
+          engine.send(initialize(e));
+          final initialized = await engine.next() as InitializeResult;
+          expect(
+            initialized.capabilities,
+            contains(providerFailureDetailsCapability),
+          );
+          engine.send(
+            execute(
+              e,
+              prompt: 'BADCODE WITH_RESPONSE PATH_ERROR',
+              protocolVersion: version,
+            ),
+          );
+          final failure =
+              (await engine.untilTerminal()).last as WorkerErrorFrame;
+          if (version == providerFailureDetailsProtocolVersion) {
+            expect(
+              failure.providerFailure,
+              containsPair('nativeErrorCode', 'weird'),
+            );
+            expect(
+              failure.providerFailure,
+              containsPair('providerErrorText', contains('/project/file.dart')),
+            );
+            expect(failure.providerFailure, containsPair('source', 'plugin'));
+            expect(
+              failure.providerFailure,
+              containsPair('failedRunResponse', 'Partial answer'),
+            );
+          } else {
+            expect(failure.providerFailure, isNull);
+          }
+        } finally {
+          await engine.close();
+        }
+      }
+    },
+  );
 
   test('an MCP executor needs protocol 4.3 on every frame that carries it', () {
     final e = executor();

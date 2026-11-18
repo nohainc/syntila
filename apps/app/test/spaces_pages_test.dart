@@ -22,6 +22,67 @@ import 'package:syntila_app/src/features/common/markdown_composer.dart';
 
 void main() {
   tearDown(ThreadPage.resetWorkQueues);
+  for (final role in ['owner', 'member']) {
+    testWidgets(
+        'failed Worker Work shows provider error and response for $role',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      const step = AxWorkRequestStep(
+        kind: 'implement',
+        status: 'failed',
+        workerId: 'worker-a',
+        errorCode: 'execution_failed',
+        errorMessage: 'Execution failed.',
+        providerFailure: AxProviderFailureDetails(
+          schemaVersion: 1,
+          source: 'structured_error',
+          nativeErrorCode: 'OUTPUT_LIMIT',
+          providerErrorText: 'Output limit reached',
+          failedRunResponse: 'Partial answer\nSecond line',
+        ),
+      );
+      const request = AxWorkRequest(
+        id: 'failed-worker',
+        requestedByName: 'User',
+        prompt: 'Continue',
+        workflowId: 'direct',
+        workflowVersion: 2,
+        status: 'failed',
+        createdAt: '2026-10-07T10:00:00Z',
+        steps: [step],
+      );
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: ThreadPage(
+        initialTab: 1,
+        space: AxSpace(
+            id: 'space-1',
+            name: 'Space',
+            branch: '',
+            lastActivity: '',
+            role: role),
+        thread: const AxThread(
+            id: 'stream-1',
+            spaceId: 'space-1',
+            name: 'Stream',
+            lead: '',
+            status: 'active',
+            brief: '',
+            primaryWorkspace: '',
+            queueStatus: ''),
+        dataSource: _ContinuityFailureDataSource(request, step),
+        onBackToSpace: _noop,
+        onArchive: _noop,
+      ))));
+      await tester.pumpAndSettle();
+      expect(find.text('Output limit reached'), findsOneWidget);
+      expect(find.text('Native code: OUTPUT_LIMIT'), findsOneWidget);
+      expect(find.text('Response from failed run'), findsOneWidget);
+      expect(find.text('Partial answer\nSecond line'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets('Embedded Space lists active Threads and opens the selected one',
       (tester) async {
     String? opened;

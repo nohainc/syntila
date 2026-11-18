@@ -28,7 +28,7 @@ class ExternalWorkerRedactor {
     r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n\s]+\\?)+',
   );
 
-  String redact(String text) {
+  String redactSecrets(String text) {
     var out = text;
     for (final secret in _secrets) {
       out = out.replaceAll(secret, '<redacted>');
@@ -36,6 +36,11 @@ class ExternalWorkerRedactor {
     for (final pattern in _patterns) {
       out = out.replaceAll(pattern, '<redacted>');
     }
+    return out;
+  }
+
+  String redact(String text) {
+    var out = redactSecrets(text);
     out = out.replaceAll(_windowsPath, '<path>');
     out = out.replaceAll(_unixPath, '<path>');
     return out;

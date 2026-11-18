@@ -29,8 +29,7 @@ async function worker() {
   }
 }
 await Promise.all(Array.from({ length: Math.min(jobs, files.length) }, worker));
-// The synchronous fixture bridge can deadlock against a background async
-// transaction under heavy parallel load (test-harness only). Re-run failed
+// Heavy parallel load can make a timing-sensitive test fail once. Re-run failed
 // files once, alone, and report the ones that pass as flaky.
 const flaky: string[] = [];
 for (const failed of [...failedFiles]) {

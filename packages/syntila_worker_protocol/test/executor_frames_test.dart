@@ -40,6 +40,16 @@ void main() {
     expect(decoded.executor?.environmentNames, ['ACME_ENDPOINT']);
   });
 
+  test('round-trips a plugin execute request on protocol 4.4', () {
+    final frame = request(
+      withExecutor: executor(),
+      protocolVersion: providerFailureDetailsProtocolVersion,
+    );
+    final decoded = decodeWorkerFrame(frame.encode()) as ExecuteRequest;
+    expect(decoded.protocolVersion, providerFailureDetailsProtocolVersion);
+    expect(decoded.executor?.pluginId, 'acme-reviewer');
+  });
+
   test('profile execution is unchanged and carries no executor key', () {
     final frame = request(protocolVersion: '4.1');
     expect(frame.toJson().containsKey('executor'), isFalse);

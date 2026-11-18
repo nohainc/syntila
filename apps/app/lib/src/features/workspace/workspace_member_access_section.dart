@@ -215,7 +215,7 @@ class _WorkspaceMemberAccessSectionState
               ? (_custom
                   ? 'Custom access replaces the Workspace default for this person.'
                   : 'This person follows the Workspace default until you save custom access.')
-              : 'Default Workers, models and efforts that invited Space members can use on this Workspace. Per-person access overrides it. What members may do (chat, work, commands) is set per Space.',
+              : 'Default Workers, models and efforts that invited Space members can use on this Workspace. Per-person access overrides it. What members may do (chat, work, commands) is set per Space. Failed Work records, including provider error messages and failed-run responses, are visible to members authorized to view that Work.',
           style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
       const SizedBox(height: 8),
       if (_loading)

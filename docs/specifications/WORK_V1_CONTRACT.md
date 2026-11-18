@@ -548,11 +548,13 @@ message, and failed status:
   support reports as a side effect.
 - **Compatibility & rollout:** The Local Worker Protocol `4.4` frame contract
   permits `providerFailure`; the sending implementation must gate its emission
-  on the peer's negotiated support. Until that gate is implemented and tested,
-  send only canonical failures to all peers. Protocol 4.4 does not by itself
-  establish plugin or MCP executor compatibility: those currently require 4.2
-  and 4.3 respectively. Their negotiated extension and old-peer tests are a
-  prerequisite to sending details through those executors.
+  on the peer's negotiated support. Plugin and MCP executor initialization uses
+  4.2 and 4.3 respectively; an Engine advertising
+  `provider_failure_details_v1` may receive execution requests using 4.4.
+  Engines without that capability continue to receive the executor's original
+  version and send canonical-only failures. For MCP Worker failures, original
+  plugin-supplied fields use source `plugin`; fields containing detected launch
+  secrets are omitted and identified in `omittedFields`.
   Workspace <-> Cloud `assignment.error` carries `providerFailure` as an
   optional field; old peers ignore or omit it without rejecting terminal
   messages or losing the canonical failure. Rollout order: (1) Protocol &
@@ -571,6 +573,12 @@ code, and provider failure fields when available. Provider text may contain
 sensitive data and is visible to users authorized to view the Work; the owner
 controls sharing. Detected credentials cause the affected field to be omitted.
 Local Worker logs remain local and require an explicit diagnostic workflow.
+
+The Work timeline shows provider errors, native codes and responses from failed
+runs separately from the canonical failure. Provider text is rendered as plain,
+selectable text, and truncation, omission and unavailable details are identified.
+Long responses can be expanded. The browser read cache does not persist provider
+failure fields; an authenticated Cloud refresh restores them after reload.
 
 Cloud persists Step start and finish timestamps so duration reflects execution
 rather than queue time. Older in-development records without these timestamps

@@ -175,8 +175,11 @@ Future<void> main(List<String> args) async {
               'structuredContent': {
                 'issue': {
                   'code': prompt.contains('FAIL') ? 'rate_limited' : 'weird',
-                  'message': 'worker said no',
+                  'message': prompt.contains('PATH_ERROR')
+                      ? 'Could not read ${Platform.environment['HOME']}/project/file.dart'
+                      : 'worker said no',
                 },
+                if (prompt.contains('WITH_RESPONSE')) 'text': 'Partial answer',
               },
             },
           });

@@ -42,6 +42,10 @@ Future<void> main(List<String> args) async {
     stdout.writeln(jsonEncode({'event':'result','result':{'status':'SUCCESS','response':'plan from read_file','conversation_id':'fixture','denied_actions':[{'action':'run_command'}]}}));
     return;
   }
+  if (input.contains('deny-command-always')) {
+    stdout.writeln(jsonEncode({'event':'result','result':{'status':'SUCCESS','response':'','conversation_id':'fixture','denied_actions':[{'action':'run_command','display_name':'RunCommand'}]}}));
+    return;
+  }
   if (input.contains('deny-command-empty')) {
     final retry = input.contains('Note from Syntila');
     stdout.writeln(jsonEncode({'event':'result','result':{'status':'SUCCESS','response': retry ? 'answered without rg' : '','conversation_id':'fixture','denied_actions': retry ? [] : [{'action':'run_command'}]}}));
@@ -288,6 +292,26 @@ Future<void> main(List<String> args) async {
         ),
       );
       expect(commandDeniedEmpty, isA<WorkerResult>());
+      final deniedAfterRetry =
+          await exchange(
+                ExecuteRequest(
+                  requestId: 'deny-command-always',
+                  assignmentId: 'assignment',
+                  prompt: 'deny-command-always',
+                  model: 'gemini-3.8-flash',
+                  reasoningEffort: 'low',
+                  sessionPolicy: WorkerSessionPolicy.stateless,
+                  timeoutMs: 20000,
+                  executionPolicy: WorkerExecutionPolicy.providerDefault,
+                  protocolVersion: providerFailureDetailsProtocolVersion,
+                ),
+              )
+              as WorkerErrorFrame;
+      expect(deniedAfterRetry.code, WorkerIssueCode.permissionDenied);
+      expect(
+        deniedAfterRetry.providerFailure?['providerErrorText'],
+        '[{"action":"run_command","display_name":"RunCommand"}]',
+      );
       // Write steps are not forgiven: the denied command may hide unfinished work.
       final writeStepDenied = await exchange(
         ExecuteRequest(

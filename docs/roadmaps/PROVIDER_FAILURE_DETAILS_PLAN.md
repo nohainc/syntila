@@ -1,6 +1,6 @@
 # Provider failure details: implementation phases
 
-Status: **Phase 3 implementation in progress; end-to-end behavior not implemented**. This plan changes the current error and
+Status: **Phase 4 implementation in progress; end-to-end verification remains**. This plan changes the current error and
 privacy contract in [Work v1](../specifications/WORK_V1_CONTRACT.md#run-details-and-observability).
 The existing canonical-only behavior remains authoritative until the relevant
 phase is implemented and deployed. Each phase must be independently reviewable;
@@ -65,8 +65,8 @@ binding checks. Document any rollout order and its mixed-version behavior.
 ## Phase 2: Engine and Workspace delivery
 
 The generic Engine advertises `provider_failure_details_v1` during initialization;
-Workspace selects Local Worker Protocol 4.4 only for a CLI Engine that
-advertises it. Failure details are encrypted with AES-256-GCM in the local
+Workspace selects Local Worker Protocol 4.4 only for an Engine that
+advertises it, including MCP Worker executors. Failure details are encrypted with AES-256-GCM in the local
 assignment journal using an installation-specific key in the platform credential
 store. Missing keys and authentication failures must not create replacement keys
 or expose plaintext. Cloud delivery is gated on its `assignment.provider_failure.v1`
@@ -116,6 +116,12 @@ for older records. Validate direct protocol consumers and the backend component.
 
 ## Phase 4: Work UI
 
+The Work timeline renders provider details as plain selectable text, including
+per-step research failures and unavailable-data notices. Provider failure text
+is excluded from the persistent browser read cache and is restored by an
+authenticated Cloud refresh. Phase 5 still verifies the complete cross-service
+path and real-device constraints.
+
 Display the canonical failure and separately labelled provider error/code and
 failed-run response where Work failure details are shown. Render text safely,
 preserve line breaks, show explicit truncation/omission, and make long responses
@@ -139,3 +145,23 @@ results, limitations and rollout. Use real-provider evidence separately where
 available; do not treat a provider's claim that tests passed as verification.
 Historical failed assignments cannot recover text already discarded by the
 current implementation.
+
+### Local verification in progress
+
+- Focused Engine tests cover the AGY-shaped error and response, and retain the
+  structured denial data after a read-only retry also fails. Dart protocol
+  tests cover 4.4 executor frames and canonical-only older frames; Workspace
+  tests cover encrypted journal replay and the Cloud capability gate.
+- MCP Worker execution now negotiates 4.4 only when the Engine advertises the
+  capability. Plugin-supplied codes and messages are bounded and protected by
+  the same failure-details policy; detected launch secrets cause an explicit
+  field omission. Focused MCP Engine and runner tests pass when process
+  inspection is allowed; the sandbox denies `/bin/ps`, causing even existing
+  MCP fixture servers to be terminated.
+- The Workspace Service smoke check compiled and passed with access to its
+  default Work Root; the sandbox denied that access. The prepared Workspace
+  component validation stopped at pre-existing formatting differences in ten
+  unrelated files. The `pnpm` wrapper stalled even for `pnpm --version`.
+  The complete Engine-to-UI acceptance fixture, another CLI
+  output shape, real-device secure-store evidence and component validations
+  remain open; these results do not constitute Phase 5 acceptance.

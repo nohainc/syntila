@@ -296,6 +296,7 @@ class AxConversationHistoryPage {
   final int historyRevision;
   final int throughSequence;
   final List<AxConversationHistoryEntry> entries;
+
   /// Opaque; pass back as `cursor`. Pages read the history as of the first
   /// page.
   final String? nextCursor;
@@ -311,8 +312,9 @@ class AxWorkRequestCursor {
   final String createdAt;
   final String id;
 
-  String toWire() =>
-      base64Url.encode(utf8.encode(jsonEncode([createdAt, id]))).replaceAll('=', '');
+  String toWire() => base64Url
+      .encode(utf8.encode(jsonEncode([createdAt, id])))
+      .replaceAll('=', '');
 
   /// Null when [value] is not a timestamp cursor.
   static AxWorkRequestCursor? fromWire(String value) {
@@ -411,6 +413,7 @@ class AxWorkRequestStatus {
     this.error,
     this.errorCode,
     this.errorMessage,
+    this.providerFailure,
     this.workflowId,
     this.workflowVersion,
     this.workflowName,
@@ -438,6 +441,7 @@ class AxWorkRequestStatus {
   final String? error;
   final String? errorCode;
   final String? errorMessage;
+  final AxProviderFailureDetails? providerFailure;
   final String? workflowId;
   final int? workflowVersion;
   final String? workflowName;
@@ -449,6 +453,69 @@ class AxWorkRequestStatus {
   final List<AxWorkRequestStep> steps;
   final List<Map<String, dynamic>> activityHistory;
   final String? executionPhase;
+}
+
+class AxProviderFailureDetails {
+  const AxProviderFailureDetails({
+    required this.schemaVersion,
+    this.nativeErrorCode,
+    this.providerErrorText,
+    this.failedRunResponse,
+    required this.source,
+    this.truncated = false,
+    this.omitted = false,
+    this.omittedFields = const [],
+  });
+
+  final int schemaVersion;
+  final String? nativeErrorCode;
+  final String? providerErrorText;
+  final String? failedRunResponse;
+  final String source;
+  final bool truncated;
+  final bool omitted;
+  final List<String> omittedFields;
+
+  static AxProviderFailureDetails? maybeFromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final source = raw['source']?.toString();
+    if (source == null || source.isEmpty) return null;
+    final omittedFields = raw['omittedFields'] is List
+        ? (raw['omittedFields'] as List)
+            .whereType<String>()
+            .toList(growable: false)
+        : const <String>[];
+    return AxProviderFailureDetails(
+      schemaVersion: (raw['schemaVersion'] as int?) ?? 1,
+      nativeErrorCode: raw['nativeErrorCode'] is String &&
+              (raw['nativeErrorCode'] as String).isNotEmpty
+          ? raw['nativeErrorCode'] as String
+          : null,
+      providerErrorText: raw['providerErrorText'] is String &&
+              (raw['providerErrorText'] as String).isNotEmpty
+          ? raw['providerErrorText'] as String
+          : null,
+      failedRunResponse: raw['failedRunResponse'] is String &&
+              (raw['failedRunResponse'] as String).isNotEmpty
+          ? raw['failedRunResponse'] as String
+          : null,
+      source: source,
+      truncated: raw['truncated'] == true,
+      omitted: raw['omitted'] == true,
+      omittedFields: omittedFields,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'schemaVersion': schemaVersion,
+        if (nativeErrorCode != null) 'nativeErrorCode': nativeErrorCode,
+        if (providerErrorText != null) 'providerErrorText': providerErrorText,
+        if (failedRunResponse != null) 'failedRunResponse': failedRunResponse,
+        'source': source,
+        if (truncated) 'truncated': true,
+        if (omitted) 'omitted': true,
+        if (omittedFields.isNotEmpty) 'omittedFields': omittedFields,
+      };
 }
 
 class AxWorkRequestStep {
@@ -478,6 +545,8 @@ class AxWorkRequestStep {
     this.sessionPolicy,
     this.errorCode,
     this.errorMessage,
+    this.providerFailure,
+    this.providerFailureUnavailable = false,
     this.retrySessionStrategy,
     this.executionPhase,
     this.executionPhaseDetail,
@@ -516,6 +585,8 @@ class AxWorkRequestStep {
   final String? sessionPolicy;
   final String? errorCode;
   final String? errorMessage;
+  final AxProviderFailureDetails? providerFailure;
+  final bool providerFailureUnavailable;
   final String? retrySessionStrategy;
 
   /// Cloud-derived execution state; see [AxExecutionPhase]. Null only for
@@ -615,6 +686,8 @@ class AxWorkRequestStep {
           sessionPolicy: sessionPolicy,
           errorCode: errorCode,
           errorMessage: errorMessage,
+          providerFailure: providerFailure,
+          providerFailureUnavailable: providerFailureUnavailable,
           retrySessionStrategy: retrySessionStrategy,
           executionPhase: executionPhase,
           executionPhaseDetail: executionPhaseDetail,
@@ -652,6 +725,9 @@ class AxWorkRequestStep {
         sessionPolicy: json['sessionPolicy']?.toString(),
         errorCode: json['errorCode']?.toString(),
         errorMessage: json['errorMessage']?.toString(),
+        providerFailure:
+            AxProviderFailureDetails.maybeFromJson(json['providerFailure']),
+        providerFailureUnavailable: json['providerFailureUnavailable'] == true,
         retrySessionStrategy: json['retrySessionStrategy']?.toString(),
         executionPhase: json['executionPhase']?.toString(),
         executionPhaseDetail: json['executionPhaseDetail']?.toString(),

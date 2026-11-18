@@ -928,7 +928,8 @@ final class ExecuteRequest extends WorkerFrame {
       final required = executor!.isMcp
           ? mcpExecutorProtocolVersion
           : pluginExecutorProtocolVersion;
-      if (protocolVersion != required) {
+      if (protocolVersion != required &&
+          protocolVersion != providerFailureDetailsProtocolVersion) {
         throw FormatException('executor requires protocol $required');
       }
     }

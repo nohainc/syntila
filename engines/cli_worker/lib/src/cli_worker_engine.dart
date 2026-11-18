@@ -2894,9 +2894,9 @@ class CliWorkerEngine {
               providerError = true;
               final names = _deniedActionNames(value);
               deniedActions.addAll(names.isEmpty ? const ['action'] : names);
-              providerErrorText =
-                  'Permission denied for: '
-                  '${names.isEmpty ? 'an action' : names.join(', ')}';
+              // Keep the provider's structured denial data, rather than
+              // presenting our summary as if it were a provider message.
+              providerErrorText = jsonEncode(value);
             }
           } else if (type == 'set_provider_error' &&
               value != null &&
@@ -2991,26 +2991,6 @@ class CliWorkerEngine {
         deniedActions: providerError ? deniedActions : const [],
       );
     }
-    if (readOnly && deniedOnly && exitCode == 0 && !markedFailure) {
-      // Every problem the provider reported is a denied action and it gave no
-      // usable answer: the run can be retried with guidance to work without
-      // them and to answer as text.
-      return _InterpretedOutput(
-        null,
-        null,
-        WorkerIssueCode.permissionDenied,
-        providerFailed: true,
-        terminalObserved: terminalObserved,
-        deniedActions: deniedActions,
-        reason: [
-          'exit=$exitCode',
-          'denied actions without a usable answer: ${deniedActions.join(', ')}',
-          if (terminalStatus != null) 'status=$terminalStatus',
-          _eventShape(events),
-        ].join(', '),
-      );
-    }
-
     final extraction = execution['failureExtraction'];
     String? extract(String key) {
       if (extraction is! Map || extraction[key] is! String) return null;
@@ -3032,6 +3012,25 @@ class CliWorkerEngine {
           ? extraction['source'] as String
           : null,
     );
+    if (readOnly && deniedOnly && exitCode == 0 && !markedFailure) {
+      // Retry once with guidance, retaining the final failure's details if
+      // the provider still cannot produce an answer.
+      return _InterpretedOutput(
+        null,
+        null,
+        WorkerIssueCode.permissionDenied,
+        providerFailed: true,
+        terminalObserved: terminalObserved,
+        deniedActions: deniedActions,
+        providerFailure: failureDetails,
+        reason: [
+          'exit=$exitCode',
+          'denied actions without a usable answer: ${deniedActions.join(', ')}',
+          if (terminalStatus != null) 'status=$terminalStatus',
+          _eventShape(events),
+        ].join(', '),
+      );
+    }
     if (_contextOverflow([stderr, providerErrorText, terminalStatus])) {
       return _InterpretedOutput(
         null,

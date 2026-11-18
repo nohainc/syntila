@@ -154,6 +154,10 @@ final class ExternalWorkerRunFailure extends ExternalWorkerRunOutcome {
     this.retryable = false,
     this.fromPlugin = false,
     this.stderrTail = '',
+    this.originalCode,
+    this.originalMessage,
+    this.failedRunResponse,
+    this.omittedFields = const [],
   });
 
   /// A `ExternalWorkerHostFailure` code, or a normalized plugin error code when
@@ -163,6 +167,10 @@ final class ExternalWorkerRunFailure extends ExternalWorkerRunOutcome {
   final bool retryable;
   final bool fromPlugin;
   final String stderrTail;
+  final String? originalCode;
+  final String? originalMessage;
+  final String? failedRunResponse;
+  final List<String> omittedFields;
 }
 
 /// Starts and supervises External Worker processes: digest re-check, built

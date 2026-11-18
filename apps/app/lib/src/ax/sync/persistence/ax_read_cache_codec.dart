@@ -377,14 +377,18 @@ class AxReadCacheCodec {
         parts.last == 'work-requests') {
       final value = map(data);
       final requests = list(value['requests'])
-          .map(AxWorkRequest.fromJson)
+          // Reapply the allowlist to records written by older clients before
+          // exposing them to the live cache.
+          .map((entry) =>
+              AxWorkRequest.fromJson(work(AxWorkRequest.fromJson(entry))))
           .where((r) => serverId(r.id))
           .toList();
       final cursor =
           value['olderCursor'] == null ? null : map(value['olderCursor']);
       final newest = value['newestPageRequest'] == null
           ? null
-          : AxWorkRequest.fromJson(map(value['newestPageRequest']));
+          : AxWorkRequest.fromJson(
+              work(AxWorkRequest.fromJson(map(value['newestPageRequest']))));
       return seed<AxWorkHistory>(
           AxWorkHistoryCache(source, engine: engine, registerRetention: false)
               .query(parts[1]),

@@ -46,6 +46,15 @@ class SessionSource extends AxFixtureDataSource {
   Future<AxSession> loadSession() => pending.future;
 }
 
+class _FailureSource extends AxFixtureDataSource {
+  _FailureSource(this.row);
+  final AxWorkRequest row;
+  @override
+  Future<List<AxWorkRequest>> workRequestRows(
+          {required String threadId, bool activeOnly = false}) async =>
+      [row];
+}
+
 class BrokenBackend implements AxReadCacheBackend {
   @override
   Future<AxReadCacheSnapshot> read(String userId) async =>
@@ -68,6 +77,68 @@ class DelayedBackend extends MemoryAxReadCacheBackend {
 }
 
 void main() {
+  test('provider failure text stays out of cache and reloads from Cloud',
+      () async {
+    final backend = MemoryAxReadCacheBackend();
+    final row = AxWorkRequest.fromJson({
+      'id': 'R',
+      'requestedByName': 'User',
+      'prompt': 'Work',
+      'workflowId': 'direct',
+      'workflowVersion': 2,
+      'status': 'failed',
+      'createdAt': '2026-10-06T00:00:00Z',
+      'steps': [
+        {
+          'kind': 'implement',
+          'status': 'failed',
+          'workerId': 'worker-a',
+          'providerFailure': {
+            'schemaVersion': 1,
+            'source': 'stderr',
+            'providerErrorText': 'private provider error',
+            'failedRunResponse': 'private response'
+          },
+        }
+      ],
+    });
+    final first = store(backend);
+    await first.hydrateReadCache();
+    first.syncEngine.update(first.workHistory.query('W'),
+        (_) => AxWorkHistory(requests: [row], initialLoaded: true));
+    await first.persistence.flush();
+    final saved = jsonEncode((await backend.read('A')).records);
+    expect(saved, isNot(contains('private provider error')));
+    expect(saved, isNot(contains('private response')));
+    first.dispose();
+
+    final second = AxStore(_FailureSource(row), readCacheBackend: backend);
+    second.auth.session = const AxSession(
+        authenticated: true,
+        viewer: AxViewer(id: 'A', displayName: 'A', email: 'private@test'));
+    await second.hydrateReadCache();
+    expect(
+        second.workHistory
+            .peek('W')
+            .requests
+            .single
+            .steps
+            .single
+            .providerFailure,
+        isNull);
+    await second.workHistory.refresh('W');
+    expect(
+        second.workHistory
+            .peek('W')
+            .requests
+            .single
+            .steps
+            .single
+            .providerFailure
+            ?.providerErrorText,
+        'private provider error');
+    second.dispose();
+  });
   test('per-turn attribution survives authenticated history persistence',
       () async {
     final backend = MemoryAxReadCacheBackend();
