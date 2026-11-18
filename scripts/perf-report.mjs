@@ -47,11 +47,14 @@ function compare(newRun, prevRun) {
     const prev = b[name]?.p95;
     let change = "n/a";
     let mark = "";
-    if (typeof prev === "number" && prev > 0) {
+    if (prev === 0 && cur > 0) {
+      change = "+∞%";
+      mark = "  <-- REGRESSION";
+      regressions++;
+    } else if (typeof prev === "number" && prev > 0) {
       const pct = ((cur - prev) / prev) * 100;
       change = `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
-      // ignore sub-5ms movements: timer jitter, not a regression
-      if (pct > REGRESSION_PCT && cur - prev >= 5) {
+      if (pct > REGRESSION_PCT) {
         mark = "  <-- REGRESSION";
         regressions++;
       }

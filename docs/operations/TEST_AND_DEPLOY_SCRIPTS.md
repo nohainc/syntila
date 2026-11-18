@@ -26,14 +26,14 @@ A file that fails under parallel load is re-run once alone; if it then passes it
 | Command | Purpose |
 | --- | --- |
 | `scripts/perf-local.sh` | Runs the local performance suite against `pnpm start:local` (`:8788`) and checks p95 latency limits in `scripts/perf-thresholds.json`. Exits 1 when a threshold is exceeded. |
-| `scripts/perf-local.sh --no-thresholds --json out.json` | Prints latency numbers and writes the full JSON report (commit, date, CPU/OS info, and per-stage percentiles) without failing on threshold limits. |
+| `scripts/perf-local.sh --no-thresholds --json out.json` | Prints latency numbers and writes the full JSON report (commit, date, CPU/OS info, and available timing percentiles) without failing on threshold limits. |
 | `scripts/test-perf.sh` | Short perf run with history in `_perf/` and a comparison with the previous run. `scripts/test-all.sh --perf` adds it as the last step (opt-in). See [PERFORMANCE_TESTS.md](PERFORMANCE_TESTS.md). |
 
 Options (`--probes N`, `--users N`, `--messages N`, `--chats N`, `--json out.json`, `--thresholds file.json`, `--no-thresholds`) control the three scenarios:
 
 1. **Transport (`Scenario A`)**: Calls `POST /api/workspaces/:workspaceId/delivery-probe` on the developer account's live Workspace (`0`, `1024`, and `32768` payload bytes) and reports `p50`/`p95`/`p99`/`max` of `roundTripMs` and timeout counts (warns and skips if the Workspace is offline or unresponsive).
 2. **Messages (`Scenario B`)**: Creates synthetic `perf-<runid>` users and Spaces with live realtime WebSockets, posts messages concurrently, and reports REST post latency, post-to-socket fan-out latency, and throughput.
-3. **Workflows (`Scenario C`)**: Runs concurrent Chat requests and a single-Free-account serial queue run through an in-process `FakeWorkspace` (no AI), reporting Latency Trace v1 intervals (`web_submitted -> ... -> web_received`) and per-request orchestration overhead. All synthetic `perf-` data is deleted on exit.
+3. **Workflows (`Scenario C`)**: Runs concurrent Chat requests and a single-Free-account serial queue run through an in-process `FakeWorkspace` (no AI), reporting request totals, Service receive-to-accept time, and estimated per-request overhead. Synthetic data from the current run is deleted on exit.
 
 ## Production deploys (`prod-*.sh`)
 

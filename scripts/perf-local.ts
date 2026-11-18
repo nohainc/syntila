@@ -12,7 +12,7 @@
  *                  with a live realtime WebSocket; reports REST and fan-out latency.
  *   C "workflows": C concurrent Chat requests and a Free-account serial queue
  *                  benchmark through an immediate-answering FakeWorkspace,
- *                  reporting Latency Trace v1 stage intervals.
+ *                  reporting observed Service timings and request totals.
  *
  * Cleanup removes all synthetic spaces, workspaces, workflow instances, events,
  * and users created during the run without touching the developer account's data.
@@ -142,7 +142,12 @@ function loadLocalSigningKey(): Jwk {
 }
 
 function openDb(): SQL {
-  return process.env.DATABASE_URL ? new SQL(process.env.DATABASE_URL) : new SQL({});
+  const databaseUrl = process.env.DATABASE_URL;
+  const host = databaseUrl ? new URL(databaseUrl).hostname : (process.env.PGHOST ?? "127.0.0.1");
+  if (!["localhost", "127.0.0.1", "[::1]", "::1"].includes(host)) {
+    throw new Error("Performance runner requires a local PostgreSQL host");
+  }
+  return databaseUrl ? new SQL(databaseUrl) : new SQL({});
 }
 
 function getGitCommit(): string {
@@ -310,6 +315,11 @@ async function runScenarioA(
     };
   }
 
+  if (firstProbe.status !== 200 || firstProbe.body?.outcome !== "acknowledged" ||
+      typeof firstProbe.body?.roundTripMs !== "number") {
+    throw new Error(`Initial delivery probe failed (HTTP ${firstProbe.status}, outcome ${String(firstProbe.body?.outcome ?? "unknown")})`);
+  }
+
   const variants: Record<string, ProbeVariantReport> = {};
   for (const payloadBytes of [0, 1024, 32768]) {
     const key = `probe_${payloadBytes}b`;
@@ -346,21 +356,29 @@ async function runScenarioA(
         console.warn(`  WARN [${key}]: ${skippedReason}`);
         break;
       }
+      if (res.status !== 200 && res.status !== 504) {
+        throw new Error(`Delivery probe failed (HTTP ${res.status})`);
+      }
       if (batch === 1) {
         probed += 1;
         if (res.body?.outcome === "acknowledged" && typeof res.body?.roundTripMs === "number") {
           rtts.push(res.body.roundTripMs);
         } else if (res.body?.outcome === "timeout" || res.status === 504) {
           timeouts += 1;
+        } else {
+          throw new Error(`Delivery probe failed (outcome ${String(res.body?.outcome ?? "unknown")})`);
         }
       } else {
         const list = Array.isArray(res.body?.results) ? res.body.results : [];
+        if (list.length !== batch) throw new Error("Delivery probe returned an incomplete batch");
         probed += list.length;
         for (const item of list) {
           if (item?.outcome === "acknowledged" && typeof item.roundTripMs === "number") {
             rtts.push(item.roundTripMs);
           } else if (item?.outcome === "timeout") {
             timeouts += 1;
+          } else {
+            throw new Error(`Delivery probe failed (outcome ${String(item?.outcome ?? "unknown")})`);
           }
         }
       }
@@ -401,6 +419,12 @@ async function runScenarioA(
   };
 }
 
+async function waitForAll<T>(tasks: Promise<T>[]): Promise<void> {
+  const settled = await Promise.allSettled(tasks);
+  const failed = settled.find((result) => result.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
+}
+
 async function runScenarioB(
   base: string,
   mint: ReturnType<typeof tokenMinter>,
@@ -437,7 +461,7 @@ async function runScenarioB(
 
   const clients: Client[] = [];
   try {
-    await Promise.all(
+    await waitForAll(
       Array.from({ length: usersCount }, async (_, i) => {
         const sub = `perf-${runId}-u${i}`;
         createdUserIds.add(sub);
@@ -527,9 +551,8 @@ async function runScenarioC(
     `\n== Scenario C: workflows (${chatsCount} concurrent Chat requests + Free-account serial queue)`,
   );
   const emptyStat = roundStat(summarize([]));
-  const profile = await publishedChatgptProfile();
-  if (!profile || chatsCount <= 0) {
-    console.log("  skipped (no ChatGPT Tool Profile published or chats=0)");
+  if (chatsCount <= 0) {
+    console.log("  skipped (chats=0)");
     return {
       concurrent: { requests: 0, errors: 0, totalMs: emptyStat, intervals: {} },
       serialFreeAccount: {
@@ -540,6 +563,9 @@ async function runScenarioC(
       },
     };
   }
+
+  const profile = await publishedChatgptProfile();
+  if (!profile) throw new Error("No ChatGPT Tool Profile published; cannot run workflows");
 
   const ownerSub = `perf-${runId}-wf-owner`;
   const ownerEmail = `${ownerSub}@syntila.invalid`;
@@ -634,24 +660,17 @@ async function runScenarioC(
     await ownerLive.waitFor("subscription", (f) => f.type === "subscription.confirmed", 30_000);
 
     // 1. Concurrent Chat requests
+    // Only report trace endpoints observed by this runner. Database row timestamps
+    // are not the corresponding Latency Trace events.
     const intervalSamples: Record<string, number[]> = {
-      "web_submitted->cloud_accepted": [],
-      "cloud_accepted->workflow_dispatch_started": [],
-      "workflow_dispatch_started->gateway_queued": [],
-      "gateway_queued->service_received": [],
       "service_received->service_accepted": [],
-      "service_accepted->provider_started": [],
-      "provider_started->terminal_persisted": [],
-      "terminal_persisted->web_received": [],
     };
     const concurrentTotals: number[] = [];
     let concurrentErrors = 0;
 
-    await Promise.all(
+    await waitForAll(
       Array.from({ length: chatsCount }, async (_, i) => {
-        const webSubmittedMs = Date.now();
         const t0 = performance.now();
-        const mark = ownerLive!.state.frames.length;
         const submit = await owner.api("POST", `/api/threads/${threadId}/work-requests`, {
           workflowId: "chat",
           objective: `perf-${runId}-chat-${i}`,
@@ -663,21 +682,10 @@ async function runScenarioC(
         }
         const reqId = String(submit.body.workRequest.id);
 
-        // Wait for either realtime completion event or GET polling completion.
-        let webReceivedMs: number | null = null;
+        // Measure until polling observes the completed result.
         const done = await waitFor(
           "chat done",
           async () => {
-            const eventFrame = ownerLive!.state.frames
-              .slice(mark)
-              .find(
-                (f) =>
-                  f.type === "work_request.completed" &&
-                  (f.payload?.workRequestId === reqId || f.payload?.entityId === reqId),
-              );
-            if (eventFrame && webReceivedMs === null) {
-              webReceivedMs = Date.now();
-            }
             const r = await owner.api("GET", `/api/work-requests/${reqId}`);
             return ["completed", "failed", "cancelled"].includes(r.body?.workRequest?.status)
               ? r.body.workRequest
@@ -691,55 +699,20 @@ async function runScenarioC(
           return;
         }
         const totalElapsed = performance.now() - t0;
-        if (webReceivedMs === null) webReceivedMs = Date.now();
         concurrentTotals.push(totalElapsed);
 
-        // Read Latency Trace v1 stage timestamps from database + local FakeWorkspace trace.
-        const [dbTrace] = await sql<
-          {
-            req_created_at: Date;
-            task_created_at: Date | null;
-            asg_id: string | null;
-            dispatched_at: Date | null;
-            acknowledged_at: Date | null;
-            running_at: Date | null;
-            asg_updated_at: Date | null;
-          }[]
-        >`
-          SELECT wr.created_at AS req_created_at,
-                 wt.created_at AS task_created_at,
-                 wa.id AS asg_id,
-                 wa.dispatched_at,
-                 wa.acknowledged_at,
-                 wa.running_at,
-                 wa.updated_at AS asg_updated_at
-          FROM work_requests wr
-          LEFT JOIN workflow_tasks wt ON wt.work_request_id = wr.id
-          LEFT JOIN worker_assignments wa ON wa.task_id = wt.id
-          WHERE wr.id = ${reqId}
-          LIMIT 1
+        // These two endpoints are recorded by the FakeWorkspace itself. Other
+        // trace events are not available here; do not synthesize their timestamps.
+        const [assignment] = await sql<{ id: string }[]>`
+          SELECT wa.id FROM worker_assignments wa
+          JOIN workflow_tasks wt ON wt.id = wa.task_id
+          WHERE wt.work_request_id = ${reqId} LIMIT 1
         `;
-        if (dbTrace) {
-          const t1 = webSubmittedMs;
-          const t2 = new Date(dbTrace.req_created_at).getTime();
-          const t3 = dbTrace.task_created_at ? new Date(dbTrace.task_created_at).getTime() : t2;
-          const t4 = dbTrace.dispatched_at ? new Date(dbTrace.dispatched_at).getTime() : t3;
-          const svc = dbTrace.asg_id ? serviceTraces.get(dbTrace.asg_id) : undefined;
-          const t5 = svc?.receivedMs ?? t4;
-          const t6 = svc?.acceptedMs ?? (dbTrace.acknowledged_at ? new Date(dbTrace.acknowledged_at).getTime() : t5);
-          const t10 = svc?.startedMs ?? (dbTrace.running_at ? new Date(dbTrace.running_at).getTime() : t6);
-          const t11 = dbTrace.asg_updated_at ? new Date(dbTrace.asg_updated_at).getTime() : t10;
-          const t12 = webReceivedMs;
-
-          const clamp = (a: number, b: number) => Math.max(0, b - a);
-          intervalSamples["web_submitted->cloud_accepted"]!.push(clamp(t1, t2));
-          intervalSamples["cloud_accepted->workflow_dispatch_started"]!.push(clamp(t2, t3));
-          intervalSamples["workflow_dispatch_started->gateway_queued"]!.push(clamp(t3, t4));
-          intervalSamples["gateway_queued->service_received"]!.push(clamp(t4, t5));
-          intervalSamples["service_received->service_accepted"]!.push(clamp(t5, t6));
-          intervalSamples["service_accepted->provider_started"]!.push(clamp(t6, t10));
-          intervalSamples["provider_started->terminal_persisted"]!.push(clamp(t10, t11));
-          intervalSamples["terminal_persisted->web_received"]!.push(clamp(t11, t12));
+        const svc = assignment ? serviceTraces.get(assignment.id) : undefined;
+        if (svc) {
+          intervalSamples["service_received->service_accepted"]!.push(
+            Math.max(0, svc.acceptedMs - svc.receivedMs),
+          );
         }
       }),
     );
@@ -817,7 +790,7 @@ async function runScenarioC(
       const totalMs = performance.now() - start;
       serialDurations.push(totalMs);
 
-      // Overhead per request = total request->result time minus the Service execution time (T5->T10).
+      // Estimate overhead by subtracting the fake Service receive-to-start interval.
       const [asgRow] = await sql<{ id: string }[]>`
         SELECT wa.id FROM worker_assignments wa
         JOIN workflow_tasks wt ON wt.id = wa.task_id
@@ -834,7 +807,7 @@ async function runScenarioC(
       formatStatLine("Free account serial chat (per request)", serialTotalStat),
     );
     console.log(
-      formatStatLine("Free account serial orchestration overhead", serialOverheadStat),
+      formatStatLine("Free account serial overhead (estimate)", serialOverheadStat),
     );
 
     return {
@@ -878,24 +851,11 @@ async function cleanupRun(
   console.log(`\n== Cleanup (run perf-${runId})`);
   let spacesDeletedViaApi = 0;
 
-  // First delete synthetic Spaces through the API using their owners' tokens.
-  for (const spaceId of createdSpaceIds) {
-    const [row] = await sql<{ owner_user_id: string }[]>`
-      SELECT owner_user_id FROM spaces WHERE id = ${spaceId}
-    `;
-    if (row && row.owner_user_id.startsWith("perf-")) {
-      const owner = new User(base, await mint(row.owner_user_id));
-      const res = await owner.api("DELETE", `/api/spaces/${spaceId}`).catch(() => null);
-      if (res && res.status < 300) spacesDeletedViaApi++;
-    }
-  }
-
-  // Wait briefly for any in-flight background workflow/realtime tasks to settle.
+  // Let in-flight background workflow/realtime tasks settle before cleanup.
   await sleep(150);
 
-  // Clean up any remaining synthetic perf- rows in PostgreSQL so no `perf-` rows remain anywhere.
-  // Never touch any row not prefixed with `perf-`.
-  const perfPattern = "perf-%";
+  // Recover resources created before a request failed, but only for this run.
+  const perfPattern = `perf-${runId}-%`;
 
   // Find all synthetic user IDs, space IDs, workspace IDs, thread IDs, work request IDs, and run IDs.
   const perfUsers = await sql<{ id: string }[]>`
@@ -921,18 +881,29 @@ async function cleanupRun(
   let workspacesRemoved = 0;
   let usersRemoved = 0;
 
-  // Delete workflow instances and events created for synthetic runs/requests.
-  await sql`
-    DELETE FROM workflow_instances
-    WHERE id IN (
-      SELECT COALESCE(r.workflow_instance_id, 'workflow-' || r.work_request_id)
-      FROM runs r
-      JOIN spaces s ON s.id = r.space_id
-      WHERE s.name LIKE ${perfPattern} OR s.owner_user_id LIKE ${perfPattern}
-    )
-    OR params::text LIKE ${`%perf-${runId}%`}
-    OR params::text LIKE '%"perf-%'
-  `;
+  // Capture workflow instances while the Space and run records still exist.
+  // Deleting Spaces first cascades away the links needed to identify them.
+  if (spaceList.length > 0) {
+    await sql`
+      DELETE FROM workflow_instances
+      WHERE params::jsonb ->> 'spaceId' IN ${sql(spaceList)}
+         OR id IN (
+           SELECT COALESCE(r.workflow_instance_id, 'workflow-' || r.work_request_id)
+           FROM runs r WHERE r.space_id IN ${sql(spaceList)}
+         )
+    `;
+  }
+
+  for (const spaceId of createdSpaceIds) {
+    const [row] = await sql<{ owner_user_id: string }[]>`
+      SELECT owner_user_id FROM spaces WHERE id = ${spaceId}
+    `;
+    if (row && userList.includes(row.owner_user_id)) {
+      const owner = new User(base, await mint(row.owner_user_id));
+      const res = await owner.api("DELETE", `/api/spaces/${spaceId}`).catch(() => null);
+      if (res && res.status < 300) spacesDeletedViaApi++;
+    }
+  }
 
   if (wsList.length > 0) {
     await sql`DELETE FROM account_execution_waiters WHERE requester_user_id IN ${sql(userList.length ? userList : ["__none__"])}`;
@@ -975,7 +946,7 @@ async function cleanupRun(
   if (userList.length > 0) {
     await sql`DELETE FROM mutation_receipts WHERE user_id IN ${sql(userList)}`;
     await sql`DELETE FROM auth_audit_events WHERE user_id IN ${sql(userList)}`;
-    await sql`DELETE FROM email_outbox WHERE message::text LIKE '%perf-%@syntila.invalid%'`;
+    await sql`DELETE FROM email_outbox WHERE message::text LIKE ${`%perf-${runId}-%@syntila.invalid%`}`;
     await sql`DELETE FROM realtime_events WHERE stream_id IN ${sql(userList)}`;
     await sql`DELETE FROM realtime_event_cursors WHERE stream_key IN ${sql(userList)} OR stream_id IN ${sql(userList)}`;
     await sql`DELETE FROM conversation_user_messages WHERE author_user_id IN ${sql(userList)}`;
@@ -987,18 +958,19 @@ async function cleanupRun(
 
   const [remRow] = await sql<{ remaining: number | bigint }[]>`
     SELECT (
-      (SELECT count(*) FROM users WHERE id LIKE 'perf-%' OR email LIKE 'perf-%') +
-      (SELECT count(*) FROM spaces WHERE name LIKE 'perf-%' OR owner_user_id LIKE 'perf-%') +
-      (SELECT count(*) FROM execution_workspaces WHERE name LIKE 'perf-%' OR owner_user_id LIKE 'perf-%') +
-      (SELECT count(*) FROM discussion_messages WHERE author_user_id LIKE 'perf-%' OR body LIKE 'perf-%') +
-      (SELECT count(*) FROM work_requests WHERE requested_by_user_id LIKE 'perf-%') +
-      (SELECT count(*) FROM worker_assignments WHERE requested_by_user_id LIKE 'perf-%')
+      (SELECT count(*) FROM users WHERE id LIKE ${perfPattern} OR email LIKE ${perfPattern}) +
+      (SELECT count(*) FROM spaces WHERE name LIKE ${perfPattern} OR owner_user_id LIKE ${perfPattern}) +
+      (SELECT count(*) FROM execution_workspaces WHERE name LIKE ${perfPattern} OR owner_user_id LIKE ${perfPattern}) +
+      (SELECT count(*) FROM discussion_messages WHERE author_user_id LIKE ${perfPattern} OR body LIKE ${perfPattern}) +
+      (SELECT count(*) FROM work_requests WHERE requested_by_user_id LIKE ${perfPattern}) +
+      (SELECT count(*) FROM worker_assignments WHERE requested_by_user_id LIKE ${perfPattern}) +
+      (SELECT count(*) FROM workflow_instances WHERE params::jsonb ->> 'spaceId' IN ${sql(spaceList.length ? spaceList : ["__none__"])})
     ) AS remaining
   `;
   const remainingPerfRows = Number(remRow?.remaining ?? 0);
 
   console.log(
-    `  cleaned: ${spacesDeletedViaApi} space(s) via API (+${spacesDeletedInDb} in DB), ${workspacesRemoved} fake workspace(s), ${usersRemoved} synthetic user(s); remaining perf- rows: ${remainingPerfRows}`,
+    `  cleaned: ${spacesDeletedViaApi} space(s) via API (+${spacesDeletedInDb} in DB), ${workspacesRemoved} fake workspace(s), ${usersRemoved} synthetic user(s); remaining rows for this run: ${remainingPerfRows}`,
   );
 
   return {
