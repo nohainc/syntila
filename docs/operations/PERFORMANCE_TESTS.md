@@ -16,6 +16,7 @@ Local latency measurements for real user actions. Nothing here touches productio
 - **A transport**: delivery probe (backend -> live Workspace Service -> backend) on the developer account's Workspace, with payloads 0, 1024 and 32768 bytes. Skipped with a warning if the Workspace is offline or its Service does not answer probes (an old Service build; restart it with the current build).
 - **B messages**: synthetic users post messages with a live realtime socket; REST latency, post -> socket fan-out, throughput.
 - **C workflows**: concurrent Chat requests through an in-process FakeWorkspace (total latency and the Service receive-to-accept interval), plus one Free account submitting serially. Serial overhead is an estimate: total time less the fake Service receive-to-start interval. Other Latency Trace v1 stages are omitted when their events are unavailable.
+- **D real requests** (read-only): the last 50 real requests of the developer account, from stored assignment timestamps: request -> assignment ("Waiting for the Workspace Service to be ready"), dispatch -> ack, and ack -> running ("Starting your worker"). Scenarios A-C use a fake or idle Service, so only D shows the waits users see. It is informational (it includes every local Service restart) and has no threshold; it warns when a request waited more than 5 s.
 
 ## Reading the numbers
 

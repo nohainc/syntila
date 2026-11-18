@@ -875,6 +875,54 @@ interface CleanupReport {
   remainingPerfRows: number;
 }
 
+/**
+ * Scenario D: what real requests of the developer's Workspace experienced
+ * recently. Read-only. Scenarios A-C use a fake or idle Service, so they
+ * cannot show the waits users see: "Waiting for the Workspace Service to be
+ * ready" (request accepted, no assignment yet, Service offline or not ready)
+ * and "Starting your worker" (acknowledged, provider not yet running). Both
+ * are measured here from the stored assignment timestamps. Informational:
+ * the numbers include every restart of the local Service, so they are not
+ * threshold-gated.
+ */
+async function runScenarioD(sql: SQL, limit: number) {
+  console.log(`\n== Scenario D: real requests of the developer Workspace (last ${limit}, read-only)`);
+  const rows = (await sql`
+    SELECT EXTRACT(EPOCH FROM (a.created_at - w.created_at)) * 1000 AS wait_ms,
+           EXTRACT(EPOCH FROM (a.acknowledged_at - a.dispatched_at)) * 1000 AS delivery_ms,
+           EXTRACT(EPOCH FROM (a.running_at - a.acknowledged_at)) * 1000 AS start_ms
+      FROM worker_assignments a
+      JOIN work_requests w ON a.id LIKE 'asg-task-' || w.id || '-%'
+      JOIN users u ON u.id = a.requested_by_user_id
+     WHERE LOWER(u.email) = LOWER(${DEV_EMAIL})
+     ORDER BY a.created_at DESC LIMIT ${limit}`) as Array<{
+    wait_ms: string | number | null;
+    delivery_ms: string | number | null;
+    start_ms: string | number | null;
+  }>;
+  const col = (k: "wait_ms" | "delivery_ms" | "start_ms") =>
+    rows.map((r) => (r[k] === null ? NaN : Number(r[k]))).filter((v) => Number.isFinite(v));
+  const waiting = roundStat(summarize(col("wait_ms")));
+  const delivery = roundStat(summarize(col("delivery_ms")));
+  const starting = roundStat(summarize(col("start_ms")));
+  console.log(formatStatLine("waiting for Service (request -> assignment)", waiting));
+  console.log(formatStatLine("delivery to Service (dispatch -> ack)", delivery));
+  console.log(formatStatLine("starting worker (ack -> running)", starting));
+  const slow = col("wait_ms").filter((v) => v > 5_000).length;
+  if (slow > 0) {
+    console.warn(
+      `  WARN: ${slow} of ${rows.length} recent requests waited more than 5 s for the Service to be ready`,
+    );
+  }
+  return {
+    requests: rows.length,
+    waitingForServiceMs: waiting,
+    deliveryMs: delivery,
+    startingWorkerMs: starting,
+    requestsWaitingOver5s: slow,
+  };
+}
+
 async function cleanupRun(
   sql: SQL,
   base: string,
@@ -1087,6 +1135,7 @@ async function main() {
   let scenarioA: Awaited<ReturnType<typeof runScenarioA>> | null = null;
   let scenarioB: Awaited<ReturnType<typeof runScenarioB>> | null = null;
   let scenarioC: Awaited<ReturnType<typeof runScenarioC>> | null = null;
+  let scenarioD: Awaited<ReturnType<typeof runScenarioD>> | null = null;
   let cleanupReport: CleanupReport | null = null;
   let fatalError: Error | null = null;
 
@@ -1111,6 +1160,10 @@ async function main() {
       createdSpaceIds,
       createdWorkspaceIds,
     );
+    scenarioD = await runScenarioD(sql, 50).catch((err: Error) => {
+      console.warn(`  WARN: real-request scenario skipped: ${err.message}`);
+      return null;
+    });
   } catch (err) {
     fatalError = err as Error;
     console.error(`\nERROR: ${fatalError.message}`);
@@ -1185,6 +1238,7 @@ async function main() {
       transport: scenarioA,
       messages: scenarioB,
       workflows: scenarioC,
+      realRequests: scenarioD,
     },
     cleanup: cleanupReport,
     thresholds: {

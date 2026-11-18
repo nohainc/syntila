@@ -63,3 +63,7 @@ Deploy Cloud first (additive fields and the new event type; older apps ignore th
 
 - Cloud: `execution-phase.test.ts` (phase mapping, categories, retry advice, request-level terminal-wins, no diagnostic leakage).
 - App: `ax_execution_phase_test.dart` (forward-only advance, terminal wins, parsing, never Running before provider start).
+
+## Waiting for the Service to be ready
+
+When the Service is offline or still synchronizing, the Workflow parks the request ("Waiting for the Workspace Service to be ready"; no assignment exists yet) and re-dispatches every 15 s. A Service that reports ready also wakes these requests immediately (`wakeWorkspaceReadyWaiters`, called from the Gateway when readiness becomes ready), so the wait ends when the Service is ready instead of at the next poll. The poll stays as the durable fallback.

@@ -13,7 +13,11 @@ import {
   type McpToolCallRecord,
   type McpToolState,
 } from "./mcp-tool-dispatch-claim.js";
-import { signalAssignmentTerminal } from "./assignment-workflow-signal.js";
+import {
+  ASSIGNMENT_TERMINAL_EVENT_TYPE,
+  signalAssignmentTerminal,
+} from "./assignment-workflow-signal.js";
+import { wakeWorkspaceReadyWaiters } from "./account-execution-slots.js";
 import {
   parseWorkspaceRuntimeMessage,
   serializeWorkspaceRuntimeMessage,
@@ -2541,6 +2545,12 @@ export class WorkspaceGateway implements DurableObject {
     this.readinessChain = run.catch(() => undefined);
     const result = await run;
     if (result.becameReady) {
+      // Requests parked on "waiting for the Workspace Service to be ready"
+      // start now instead of at their next poll.
+      void wakeWorkspaceReadyWaiters(
+        this.env,
+        ASSIGNMENT_TERMINAL_EVENT_TYPE,
+      );
       await this.flushQueuedAssignments().catch((error: unknown) =>
         logStructured(
           "error",
