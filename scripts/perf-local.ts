@@ -161,6 +161,14 @@ function getGitCommit(): string {
   }
 }
 
+function isGitDirty(): boolean | null {
+  try {
+    return execFileSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf8" }).trim().length > 0;
+  } catch {
+    return null;
+  }
+}
+
 function getMachineInfo() {
   const cpus = os.cpus();
   return {
@@ -1067,11 +1075,12 @@ async function main() {
   const createdWorkspaceIds = new Set<string>();
 
   const commit = getGitCommit();
+  const gitDirty = isGitDirty();
   const date = new Date().toISOString();
   const machine = getMachineInfo();
 
   console.log(`Syntila Local Performance Runner`);
-  console.log(`  commit: ${commit}  date: ${date}`);
+  console.log(`  commit: ${commit}${gitDirty ? " (working tree modified)" : ""}  date: ${date}`);
   console.log(`  machine: ${machine.cpu} (${machine.cores} cores, ${machine.memoryGb} GB) — ${machine.os}`);
   console.log(`  backend: ${opts.baseUrl}  run: perf-${runId}`);
 
@@ -1162,6 +1171,7 @@ async function main() {
   const reportJson = {
     schemaVersion: 1,
     commit,
+    gitDirty,
     date,
     machine,
     parameters: {

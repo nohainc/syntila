@@ -819,6 +819,7 @@ describe("Workspace runtime Gateway", () => {
                             workspaceRuntimeId: "runtime-probe",
                             payload: {
                               probeId: payload.probeId,
+                              traceEpochId: "trace-1760000000000000-1234",
                               receivedAt: now,
                               ackedAt: now,
                               ...(ackEcho !== undefined

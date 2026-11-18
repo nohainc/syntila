@@ -696,6 +696,8 @@ describe("Workspace Runtime protocol", () => {
 
     expect(parseProbe({ echo: "YWJjZA==" }).type).toBe("diagnostic.probe");
     expect(parseAck({ echo: "YWJjZA==" }).type).toBe("diagnostic.probe.ack");
+    expect(parseAck({ traceEpochId: "trace-1760000000000000-1234" }).type).toBe("diagnostic.probe.ack");
+    expect(() => parseAck({ traceEpochId: "not valid!" })).toThrow();
 
     const maxEcho = "A".repeat(DIAGNOSTIC_PROBE_ECHO_MAX_CHARS);
     expect(parseProbe({ echo: maxEcho }).type).toBe("diagnostic.probe");

@@ -19,11 +19,11 @@ Local latency measurements for real user actions. Nothing here touches productio
 
 ## Reading the numbers
 
-p50 is the typical request; p95 means 95% of requests were at least this fast; p99 and max show the tail. With small samples (n < 20) p95, p99 and max are nearly the same value. Compare runs on a quiet machine; small absolute differences can be timer jitter. The comparison flags all increases above 25%.
+p50 is the typical request; p95 means 95% of requests were at least this fast; p99 and max show the tail. With small samples (n < 20) p95, p99 and max are nearly the same value. Compare runs on a quiet machine; small absolute differences can be timer jitter. JSON reports mark modified working trees with `gitDirty`, so the commit alone is not mistaken for the exact code measured. The comparison flags all increases above 25%.
 
 ## Thresholds
 
-`scripts/perf-thresholds.json` holds p95 limits in ms. Measured limits use twice the highest p95 of three earlier runs; transport limits are provisional until a responsive Workspace can be measured. The file explains the choices. A limit is a failure gate, not a target. Change one only with the reason in the commit message.
+`scripts/perf-thresholds.json` holds p95 limits in ms. Limits use twice the highest p95 of three local runs, with a 5 ms floor for timer jitter. Those runs had an active Workspace assignment and showed substantial variation; repeat them on a quiet machine when recalibrating. The file records the measurements. A limit is a failure gate, not a target. Change one only with the reason in the commit message.
 
 ## Safety
 

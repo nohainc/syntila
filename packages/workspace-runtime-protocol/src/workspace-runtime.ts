@@ -756,6 +756,7 @@ export const workspaceRuntimeEnvelopeSchema = z
                 receivedAt: timestamp,
                 ackedAt: timestamp,
                 echo: echo.optional(),
+                traceEpochId: probeId.optional(),
                 transport: probeId.optional(),
                 syncState: probeId.optional(),
                 localQueueLength: z
