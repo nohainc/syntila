@@ -32,7 +32,9 @@ export async function provisionSyntilaUser(
          ON CONFLICT(id) DO UPDATE SET
            email = excluded.email,
            display_name = excluded.display_name,
-           updated_at = excluded.updated_at`;
+           updated_at = excluded.updated_at
+         WHERE users.email IS DISTINCT FROM excluded.email
+            OR users.display_name IS DISTINCT FROM excluded.display_name`;
   });
   provisioned.set(identity.userId, { at: Date.now(), key });
 }

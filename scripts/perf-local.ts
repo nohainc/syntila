@@ -171,6 +171,28 @@ function getMachineInfo() {
   };
 }
 
+/** Verify the running backend will not update an unchanged account on reads. */
+async function verifyReadOnlyDiscovery(
+  sql: SQL, base: string, mint: ReturnType<typeof tokenMinter>, runId: string, createdUserIds: Set<string>,
+): Promise<void> {
+  const id = `perf-${runId}-discovery`;
+  createdUserIds.add(id);
+  const email = `${id}@syntila.invalid`;
+  const timestamp = "2000-01-01T00:00:00.000Z";
+  await sql`INSERT INTO users (id, email, display_name, status, created_at, updated_at)
+            VALUES (${id}, ${email}, ${id}, 'active', ${timestamp}, ${timestamp})`;
+  try {
+    const user = new User(base, await mint(id, { email, name: id }));
+    const response = await user.api("GET", "/api/session");
+    const [row] = await sql<{ updated_at: Date | string }[]>`SELECT updated_at FROM users WHERE id = ${id}`;
+    if (response.status !== 200 || !row || new Date(row.updated_at).toISOString() !== timestamp) {
+      throw new Error("Local backend updates user data during discovery. Restart it on the current build before running transport probes.");
+    }
+  } finally {
+    await sql`DELETE FROM users WHERE id = ${id}`;
+  }
+}
+
 /**
  * Discovers the developer account's user ID and Workspace ID without
  * hard-coding them or modifying the developer account's rows.
@@ -179,6 +201,8 @@ async function resolveDeveloperIdentity(
   sql: SQL,
   base: string,
   mint: ReturnType<typeof tokenMinter>,
+  runId: string,
+  createdUserIds: Set<string>,
 ): Promise<{
   userId: string | null;
   workspace: {
@@ -189,14 +213,16 @@ async function resolveDeveloperIdentity(
   } | null;
   token: string | null;
 }> {
-  const rows = await sql<{ id: string; display_name: string }[]>`
-    SELECT id, display_name FROM users WHERE LOWER(email) = LOWER(${DEV_EMAIL}) AND status = 'active' LIMIT 1
+  const rows = await sql<{ id: string; email: string; display_name: string }[]>`
+    SELECT id, email, display_name FROM users WHERE LOWER(email) = LOWER(${DEV_EMAIL}) AND status = 'active' LIMIT 1
   `;
   const devRow = rows[0];
   if (!devRow) return { userId: null, workspace: null, token: null };
+  if (!devRow.display_name) throw new Error("Developer account has no display name; cannot safely mint a matching token.");
+  await verifyReadOnlyDiscovery(sql, base, mint, runId, createdUserIds);
   const token = await mint(devRow.id, {
-    email: DEV_EMAIL,
-    name: devRow.display_name || "Developer",
+    email: devRow.email,
+    name: devRow.display_name,
   });
   const devUser = new User(base, token);
   // Confirm user id through /api/session and find Workspace id through /api/workspaces.
@@ -245,6 +271,8 @@ async function runScenarioA(
   sql: SQL,
   mint: ReturnType<typeof tokenMinter>,
   probesCount: number,
+  runId: string,
+  createdUserIds: Set<string>,
 ): Promise<{
   status: "completed" | "skipped";
   warning?: string;
@@ -257,7 +285,7 @@ async function runScenarioA(
     console.log("  skipped (--probes 0)");
     return { status: "skipped", warning: "probes=0", workspaceId: null, transport: null, variants: {} };
   }
-  const dev = await resolveDeveloperIdentity(sql, base, mint);
+  const dev = await resolveDeveloperIdentity(sql, base, mint, runId, createdUserIds);
   if (!dev.userId || !dev.token) {
     const warning = `Developer account (${DEV_EMAIL}) was not found in the local database; skipping transport probes.`;
     console.warn(`  WARN: ${warning}`);
@@ -1054,7 +1082,7 @@ async function main() {
   let fatalError: Error | null = null;
 
   try {
-    scenarioA = await runScenarioA(opts.baseUrl, sql, mint, opts.probes);
+    scenarioA = await runScenarioA(opts.baseUrl, sql, mint, opts.probes, runId, createdUserIds);
     scenarioB = await runScenarioB(
       opts.baseUrl,
       mint,
