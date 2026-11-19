@@ -6,18 +6,19 @@ import { join } from "node:path";
 
 // Exercises the actual Dart Agent and Bun WebSocket adapter together.
 describe.skipIf(!Bun.which("dart"))("Agent compatibility gateway", () => {
-  it("pairs and completes hello and reconciliation against the real backend", async () => {
+  it.each([false, true])("pairs and reconciles against the real backend (standalone=%s)", async (standalone) => {
     const f = await pgD1();
-    await f.sqlite.exec(`${user("alice")} ${workspace("WS", "alice")}
+    await f.sqlite.exec(`${user("alice")}
+      ${standalone ? `INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES ('worker-live-01','','alice','chatgpt','Worker');` : `${workspace("WS", "alice")}
       INSERT INTO workspace_runtime_identities(id,workspace_id,credential_token_hash,installation_id,created_at) VALUES('RT','WS','h','inst',now());
       INSERT INTO workspace_worker_inventory (worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at)
-      VALUES ('worker-live-01','WS','alice','chatgpt','enabled','ready',1,1,now(),now(),now())`);
+      VALUES ('worker-live-01','WS','alice','chatgpt','enabled','ready',1,1,now(),now(),now());`}`);
     const challenge = await createPairingChallenge({ SYNTILA_DB: f.db }, { ownerUserId: "alice", workerId: "worker-live-01", kind: "pair" });
     const port = 40_000 + Math.floor(Math.random() * 20_000);
     const url = new URL(f.url);
     const server = Bun.spawn(["bun", "src/server.ts"], {
       cwd: join(import.meta.dir, "../.."),
-      env: { ...process.env, CREDENTIALS_DIRECTORY: "", SYNTILA_ENVIRONMENT: "test", SYNTILA_FEATURE_FLAGS: "worker_identity,worker_agent_connect", PGHOST: url.hostname, PGPORT: url.port, PGUSER: decodeURIComponent(url.username), PGPASSWORD: decodeURIComponent(url.password) || "test", PGDATABASE: url.pathname.slice(1), PG_POOL_MAX: "5", BIND_HOST: "127.0.0.1", PORT: String(port) },
+      env: { ...process.env, CREDENTIALS_DIRECTORY: "", SYNTILA_ENVIRONMENT: "test", SYNTILA_FEATURE_FLAGS: `worker_identity,worker_agent_connect${standalone ? ",worker_target_dispatch" : ""}`, PGHOST: url.hostname, PGPORT: url.port, PGUSER: decodeURIComponent(url.username), PGPASSWORD: decodeURIComponent(url.password) || "test", PGDATABASE: url.pathname.slice(1), PG_POOL_MAX: "5", BIND_HOST: "127.0.0.1", PORT: String(port) },
       stdout: "inherit", stderr: "inherit",
     });
     try {

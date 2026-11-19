@@ -179,7 +179,17 @@ class FakeCloud {
     'attemptId': a.attemptId,
     'assignmentId': a.id,
     'idempotencyKey': 'idem-${a.id}',
-    'payload': payload,
+    'payload': type == 'assignment.start'
+        ? {
+            'snapshot': {
+              'assignmentId': a.id,
+              'attemptId': a.attemptId,
+              'workerId': a.workerId,
+              ...payload,
+            },
+            'input': {'prompt': payload['prompt']},
+          }
+        : payload,
   };
 
   _Socket? _current(String workerId) {

@@ -74,6 +74,15 @@ void main() {
       expect(await cache.lastKnownGood(), isNull);
       expect(await cache.has(digest), isFalse);
     });
+
+    test('rejects malformed digests before resolving a cache path', () async {
+      final cache = ProfileCache(
+        Directory('${dir.path}/profiles'),
+        StubVerifier(true),
+      );
+      expect(await cache.read('../../outside'), isNull);
+      expect(await cache.has('sha256:../outside'), isFalse);
+    });
   });
 
   group('readiness', () {

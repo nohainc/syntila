@@ -28,7 +28,7 @@ Implements the client side of ADR-034 (Worker-first P4). Package: `apps/worker_a
 ## Reconnect sequence
 
 1. **Claim the epoch:** request a nonce, sign `actionMessage('session', …)`, create the session (the server increments the epoch).
-2. Open `/api/workspace-gateway/connect?workerId=…&workerSessionId=…` with `Authorization: Bearer <sessionToken>`; send `workspace.hello`; wait for `workspace.hello.ack`.
+2. Open `/api/workspace-gateway/connect?workerId=…&workerSessionId=…` with `Authorization: Bearer <sessionToken>`. With `worker_target_dispatch` enabled the server routes the Agent to its own Worker gateway; otherwise it uses the mapped Workspace compatibility gateway. Send `workspace.hello` and wait for `workspace.hello.ack`.
 3. **Report the journal:** `workspace.sync.request` with `unreconciledAssignmentIds` (every journal entry not yet acknowledged).
 4. **Reconcile** with `workspace.sync.result`: an entry the server already ended is closed locally (a running Engine is stopped); an entry unknown to the server is settled without sending.
 5. Only then `ready`: commands that arrived meanwhile are released, unacknowledged terminal results are re-sent, and admitted work that never started is started.
@@ -56,11 +56,11 @@ Every Agent gets its own service (name and data directory per Worker id). **Auto
 
 Agents under the same OS user can read each other's data directories and share the provider CLIs' stored logins. A separate user closes that for files and credentials. It does not isolate CPU, memory, the network or folders the Agent is allowed to use. Use containers or VMs for stronger isolation.
 
-## Not done in P4
+## Current implementation and remaining work
 
-- **Engine adapter is written but unproven.** `CliEngineLauncher` (`cli_engine.dart`) runs assignments through `CliWorkerEngineSupervisor.execute` with the pinned Profile, stateless sessions and `restricted` access; set `config set engineExecutable PATH` (and optionally `workRoot`). It was never compiled or run against a real Engine. Not carried over from the Workspace: durable sessions, additional folders, MCP servers, plugin Workers, input staging, progress and activity streaming. The payload keys that name the Profile (`profileDigest`, `workerTypeId`, `profileRevision`) are provisional until P5 defines the execution snapshot. Without `engineExecutable`, `run` reports `engine_unavailable` and refuses work.
-- **Profile delivery:** nothing downloads or verifies a Profile into the cache yet (signed Tool Profile trust roots, refresh from the server). The cache rejects every write from the CLI, so with an empty cache every assignment fails with `worker_not_ready`.
+- `CliEngineLauncher` uses the pinned snapshot and verified cached Profile file, passes session context to the generic Engine, and sends provider-start evidence only when the Engine reports it. Its controlled-provider test executes the real Engine from source with a locally provisioned fixture Profile. This does not prove signed Profile delivery, real provider execution, or durable-session recovery. Set `config set engineExecutable PATH` (and optionally `workRoot`); without it the Agent refuses work. Additional folders, MCP, plugin Workers, input staging, and progress streaming are not carried over.
+- **Profile delivery:** nothing downloads and verifies a trusted Profile into the cache yet. The cache rejects every write from the CLI. A missing pinned Profile is refused before admission; an empty cache therefore prevents real assignments. The cache uses the canonical hexadecimal digest and still reads existing `sha256:`-prefixed local pointers.
 - **Platform secret store** for the key (macOS Keychain, Windows DPAPI, libsecret). The key is a private file today.
 - **Readiness publication** (`workspace.readiness`, inventory) and MCP, plugins, input delivery, outputs (parity items 7 to 10, 17 of the P0 inventory).
 - **Swap of the running binary** for staged updates; Windows separate user.
-- Until P5 the gateway adapter allows one Agent per Workspace gateway.
+- On the compatibility path the gateway allows one Agent per Workspace gateway. The standalone Worker gateway is used when Worker-targeted dispatch is enabled.

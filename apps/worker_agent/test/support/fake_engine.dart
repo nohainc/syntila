@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:syntila_worker_agent/syntila_worker_agent.dart';
 
-class FakeRun implements EngineRun {
+class FakeRun implements EngineRun, EngineStartEvidence {
   FakeRun(this.assignmentId, this._owner);
 
   final String assignmentId;
@@ -13,6 +13,9 @@ class FakeRun implements EngineRun {
   Future<EngineOutcome> get outcome => _outcome.future;
 
   bool get isRunning => !_outcome.isCompleted;
+
+  @override
+  Future<bool> get providerStarted async => !_owner.failBeforeProviderStart;
 
   void finish(EngineOutcome outcome) {
     if (_outcome.isCompleted) return;
@@ -36,10 +39,12 @@ class FakeEngine implements EngineLauncher {
   /// Every launch, in order.
   final List<String> launches = [];
   final Map<String, FakeRun> runs = {};
+  final Map<String, EngineRequest> requests = {};
   final List<FakeRun> _orphans = [];
 
   /// Keep work running until [finish] is called.
   bool hold = false;
+  bool failBeforeProviderStart = false;
   String? unavailable;
   int recovered = 0;
 
@@ -57,9 +62,19 @@ class FakeEngine implements EngineLauncher {
   @override
   Future<EngineRun> launch(EngineRequest request) async {
     launches.add(request.assignmentId);
+    requests[request.assignmentId] = request;
     final run = FakeRun(request.assignmentId, this);
     runs[request.assignmentId] = run;
-    if (!hold) {
+    if (failBeforeProviderStart) {
+      scheduleMicrotask(
+        () => run.finish(
+          const EngineOutcome(TerminalKind.failed, {
+            'errorCode': 'engine_failed',
+            'retryable': false,
+          }),
+        ),
+      );
+    } else if (!hold) {
       scheduleMicrotask(
         () => run.finish(
           EngineOutcome(TerminalKind.completed, {

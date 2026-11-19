@@ -17,7 +17,12 @@ class ProfileRejectedException implements Exception {
   String toString() => 'Profile rejected: $reason';
 }
 
-String profileDigest(List<int> bytes) => 'sha256:${sha256.convert(bytes)}';
+String profileDigest(List<int> bytes) => sha256.convert(bytes).toString();
+
+String? _digestHex(String value) {
+  final hex = value.startsWith('sha256:') ? value.substring(7) : value;
+  return RegExp(r'^[0-9a-f]{64}$').hasMatch(hex) ? hex : null;
+}
 
 /// Last-known-good signed Profile cache. Entries are content-addressed, are
 /// re-hashed when read, and a bad update never replaces a good one.
@@ -27,8 +32,7 @@ class ProfileCache {
   final Directory directory;
   final ProfileVerifier verifier;
 
-  File _file(String digest) =>
-      File('${directory.path}/${digest.replaceFirst(':', '-')}.profile');
+  File _file(String digest) => File('${directory.path}/sha256-$digest.profile');
   File get _pointer => File('${directory.path}/last-known-good.json');
 
   /// Verifies and stores a Profile; promotes it to last-known-good only when
@@ -40,7 +44,7 @@ class ProfileCache {
     String? expectedDigest,
   }) async {
     final digest = profileDigest(bytes);
-    if (expectedDigest != null && expectedDigest != digest) {
+    if (expectedDigest != null && _digestHex(expectedDigest) != digest) {
       throw ProfileRejectedException('digest mismatch');
     }
     if (!await verifier.verify(bytes, signature)) {
@@ -63,10 +67,12 @@ class ProfileCache {
   /// The bytes for [digest], or null when missing or when the stored bytes no
   /// longer hash to it (tampering or corruption).
   Future<List<int>?> read(String digest) async {
-    final file = _file(digest);
+    final hex = _digestHex(digest);
+    if (hex == null) return null;
+    final file = _file(hex);
     if (!await file.exists()) return null;
     final bytes = await file.readAsBytes();
-    return profileDigest(bytes) == digest ? bytes : null;
+    return profileDigest(bytes) == hex ? bytes : null;
   }
 
   Future<({String digest, int revision})?> _readPointer() async {
@@ -98,4 +104,11 @@ class ProfileCache {
 
   /// Whether an assignment's pinned [digest] can be served from the cache.
   Future<bool> has(String digest) async => await read(digest) != null;
+
+  /// The Engine revalidates the profile digest during initialization.
+  Future<File?> verifiedFile(String digest) async {
+    final hex = _digestHex(digest);
+    if (hex == null || await read(hex) == null) return null;
+    return _file(hex);
+  }
 }

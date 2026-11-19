@@ -326,8 +326,25 @@ class AgentRuntime {
     final payload = message['payload'];
     if (correlation == null || payload is! Map<String, Object?>) return;
     final id = correlation['assignmentId'] as String;
+    if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$').hasMatch(id)) {
+      _ack(correlation, false, reason: 'invalid_assignment');
+      return;
+    }
     if (correlation['workerId'] != identity.workerId) {
       _ack(correlation, false, reason: 'wrong_worker');
+      return;
+    }
+    final snapshot = payload['snapshot'];
+    if (snapshot is! Map<String, Object?> ||
+        snapshot['assignmentId'] != id ||
+        snapshot['workerId'] != identity.workerId ||
+        snapshot['attemptId'] != correlation['attemptId'] ||
+        (snapshot['profileDigest'] != null &&
+            snapshot['profileDigest'] is! String) ||
+        snapshot['timeoutMs'] is! int ||
+        (snapshot['timeoutMs'] as int) < 1000 ||
+        (snapshot['timeoutMs'] as int) > 2147483647) {
+      _ack(correlation, false, reason: 'invalid_assignment');
       return;
     }
     final existing = journal.find(id);
@@ -354,7 +371,7 @@ class AgentRuntime {
         _ack(correlation, false, reason: 'worker_busy');
         return;
       }
-      final blocked = await _admissionBlock(payload);
+      final blocked = await _admissionBlock(snapshot);
       if (blocked != null) {
         _ack(correlation, false, reason: blocked);
         return;
@@ -364,7 +381,7 @@ class AgentRuntime {
         taskId: correlation['taskId'] as String,
         attemptId: correlation['attemptId'] as String,
         idempotencyKey: correlation['idempotencyKey'] as String,
-        snapshotDigest: payload['profileDigest'] as String?,
+        snapshotDigest: snapshot['profileDigest'] as String?,
       );
       // Durable before acknowledged.
       await journal.record(
@@ -387,8 +404,10 @@ class AgentRuntime {
     final report = await readiness.evaluate();
     if (!report.ready) return 'worker_not_ready';
     final digest = payload['profileDigest'];
-    if (digest is String && profiles != null && !await profiles!.has(digest)) {
-      return 'profile_unavailable';
+    if (profiles != null) {
+      if (digest is! String || !await profiles!.has(digest)) {
+        return 'profile_unavailable';
+      }
     }
     return null;
   }
@@ -529,7 +548,16 @@ class AgentRuntime {
         });
         return;
       }
-      final timeoutMs = payload['timeoutMs'];
+      final snapshot = payload['snapshot'];
+      if (snapshot is! Map<String, Object?>) {
+        await _settle(
+          first,
+          TerminalKind.failed,
+          _failure('command_unavailable', retryable: false),
+        );
+        return;
+      }
+      final timeoutMs = snapshot['timeoutMs'];
       final request = EngineRequest(
         assignmentId: id,
         attemptId: first.context.attemptId,
@@ -581,13 +609,19 @@ class AgentRuntime {
         return;
       }
       await _point('after-engine-launch', id);
-      await journal.record(id, LocalStatus.running);
-      _send('assignment.start.ack', launched.correlation, {
-        'started': true,
-        'engineStarted': true,
-        'providerStarted': true,
-        'startedAt': DateTime.now().toUtc().toIso8601String(),
-      });
+      final providerStarted = run is EngineStartEvidence
+          ? await (run as EngineStartEvidence).providerStarted
+          : true;
+      if (_dead) return;
+      if (providerStarted) {
+        await journal.record(id, LocalStatus.running);
+        _send('assignment.start.ack', launched.correlation, {
+          'started': true,
+          'engineStarted': true,
+          'providerStarted': true,
+          'startedAt': DateTime.now().toUtc().toIso8601String(),
+        });
+      }
       final outcome = await run.outcome;
       if (_dead) return;
       final running = journal.find(id)!;

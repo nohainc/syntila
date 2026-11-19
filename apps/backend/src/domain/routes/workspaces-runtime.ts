@@ -9,6 +9,7 @@ import type { SecurityEnv } from "./handlers.js";
 import { WorkspaceRuntimeAuthenticator } from "../workspace-gateway/runtime-authenticator.js";
 import { authenticateAgentSession } from "../worker-agents.js";
 import { isFeatureEnabled } from "../../feature-flags.js";
+import { handleWorkerGatewayConnect } from "./worker-agent-gateway.js";
 
 export async function handleWorkspaceGatewayConnect(
   request: Request,
@@ -53,6 +54,10 @@ export async function handleWorkspaceGatewayConnect(
   if (workerId || workerSessionId) {
     if (!isFeatureEnabled("worker_agent_connect") || !workerId || !workerSessionId || !authToken || workspaceRuntimeId)
       return json({ error: "Invalid Worker session" }, { status: 401 });
+    // Once Worker-targeted dispatch is enabled, this same Agent URL routes to
+    // the Worker's own gateway. The Agent does not need rollout-specific URLs.
+    if (isFeatureEnabled("worker_target_dispatch"))
+      return handleWorkerGatewayConnect(request, env);
     const principal = await authenticateAgentSession(env, { workerId, sessionId: workerSessionId, sessionToken: authToken });
     if (!principal?.executionWorkspaceId)
       return json({ error: "Invalid Worker session" }, { status: 401 });

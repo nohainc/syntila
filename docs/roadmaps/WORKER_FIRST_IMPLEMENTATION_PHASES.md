@@ -236,13 +236,13 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 - Tests: `test/domain/worker-agents.test.ts` covers stale cancellation and permits and a concurrent session replacement. `test/domain/worker-agent-live.test.ts` runs the Dart Agent against a real local backend through the Workspace compatibility WebSocket and exercises pairing, signed login, hello and reconciliation. It does not cover standalone dispatch or a provider run.
 - Run: `bun run schema:lock` (scratch database, see P1/P2 notes), `bun scripts/write-paths.ts --write`, `bun run routes`, `scripts/test-backend.sh`, `scripts/test-two-node.sh`.
 
-## P4 status (implemented, awaiting `dart analyze` and `dart test`)
+## P4 status (implementation in progress)
 
 - New pure-Dart package `apps/worker_agent` (`syntila-worker`); it does not import `apps/workspace`. Details and limits: [`WORKER_AGENT_CLI_AND_SERVICES.md`](../specifications/WORKER_AGENT_CLI_AND_SERVICES.md).
 - Done: per-Worker data directory, local lock, Ed25519 key store, fsync journal, Profile cache, readiness checks, allowed folders, Engine supervisor (slots, never twice), CLI (`install --pairing-code`, `run`, `status`, `logs`, `config`, `permissions`, `rotate-credential`, `update stage`, `uninstall`), launchd/systemd/Task Scheduler adapters with opt-in auto-start, separate-OS-user plan, signed update check, reconnect sequence.
 - Tests: fake cloud (pairing, signed nonces, epoch fence, command inbox), fake Engine, crash matrix over every journal write point, two Agents on two hosts, two Agents on one host, no-Workspace check.
-- **Written, unproven:** `CliEngineLauncher` over `syntila_cli_worker_runtime` (no sessions, folders, MCP, plugins or streaming).
-- **Not done:** Profile download and verification, platform secret store, readiness/inventory publication, binary swap for updates. `run` without an Engine adapter fails closed (`engine_unavailable`). The exit gate is met against the fake Engine only.
+- `CliEngineLauncher` has a controlled-provider test against the real generic Engine, consumes the server's nested snapshot, and reports provider start only on Engine evidence. The real Agent also pairs and reconciles over the Worker gateway without a Workspace row. Those are separate tests, not an end-to-end provider run.
+- **Not done:** trusted Profile download and verification, platform secret store, readiness/inventory publication, binary swap for updates, Windows separate-user setup and real-platform service evidence. `run` without an Engine or a verified cached pinned Profile fails closed. Complete crash/reconnect and two-host evidence with real Agents and Engine processes is still needed before the exit gate closes.
 
 ## P5 status (implemented, not yet run)
 
@@ -253,6 +253,6 @@ Built (ADR-035):
 - Worker-keyed gateway (`worker-gateway.ts`, route `GET /api/worker-agent/gateway`): one Durable Object per Worker (`worker:<id>`), speaking the Agent side of the wire protocol with the Agent session fence on every write (hello, heartbeat, sync, ack, start permit, start ack, result, error, cancelled, cancel ack). The envelope workspace fields carry `worker:<id>` as a correlation token only.
 - Revocation, recovery and cancel route by `execution_path` (`assignment-revocation.ts`, `recoverStaleAssignments`, `cancelTaskAssignment`). An Agent offline past 30 s fails its in-flight assignments; revocations are resent on reconnect sync.
 
-Known limits: stateless workflows only (stateful needs a Primary Workspace); files and tool calls are rejected on this path (P8); no plugin Types; models and efforts are not validated against a Profile catalog; the Agent runs stateless sessions only; `assignment-liveness` and Workspace delivery stay Workspace-scoped and never touch Worker rows.
+Known limits: stateless workflows only (stateful needs a Primary Workspace); files and tool calls are rejected on this path (P8); no plugin Types; models and efforts are not validated against a Profile catalog; Agent durable-session recovery has not been proven; `assignment-liveness` and Workspace delivery stay Workspace-scoped and never touch Worker rows.
 
 Not yet done: backend tests for this phase, and running anything (no bun or Postgres in the authoring VM; only `tsc` against the baseline was clean). Before commit, on the Mac: `bun run schema:lock`, `bun scripts/write-paths.ts --write`, `bun run routes`, `./scripts/test-all.sh --quick`, `dart format` / `dart analyze` / `dart test`, `scripts/check-dart-packages.sh`. Point the Agent `gatewayUrl` at `/api/worker-agent/gateway` with `workerId` and `workerSessionId` query parameters.

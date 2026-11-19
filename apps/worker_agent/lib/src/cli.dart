@@ -288,14 +288,16 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     final api =
         apiFor?.call(identity.serverUrl) ?? ServerApi(identity.serverUrl);
     final settings = await AgentConfig.load(paths.configFile);
+    final profiles = ProfileCache(paths.profilesDir, const _NoNewProfiles());
     final runtime = await AgentRuntime.open(
       paths: paths,
       identity: identity,
       keyStore: keyStore,
       engine:
           engineFactory?.call(paths) ??
-          _defaultEngine(paths, identity, settings),
+          _defaultEngine(paths, identity, settings, profiles),
       api: api,
+      profiles: profiles,
       clientVersion: agentVersion,
     );
     await recoverPendingRotation(
@@ -339,11 +341,11 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     AgentPaths paths,
     AgentIdentity identity,
     AgentConfig config,
+    ProfileCache cache,
   ) {
     final executable = config.engineExecutable;
     if (executable == null) return UnconfiguredEngineLauncher();
     final home = environment['HOME'] ?? environment['USERPROFILE'] ?? '.';
-    final cache = ProfileCache(paths.profilesDir, const _NoNewProfiles());
     return CliEngineLauncher(
       supervisor: CliWorkerEngineSupervisor(
         engineExecutable: executable,
@@ -364,15 +366,20 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         if (digest is! String || type is! String) return null;
         final bytes = await cache.read(digest);
         if (bytes == null) return null;
+        final profileFile = await cache.verifiedFile(digest);
+        if (profileFile == null) return null;
         try {
           final decoded = jsonDecode(utf8.decode(bytes));
           if (decoded is! Map<String, Object?>) return null;
           final revision = payload['profileRevision'];
-          return WorkerProfileSnapshotAdmission(
-            profile: decoded,
-            workerTypeId: type,
-            revision: revision is int ? revision : 0,
-            payloadDigest: digest,
+          return (
+            candidate: WorkerProfileSnapshotAdmission(
+              profile: decoded,
+              workerTypeId: type,
+              revision: revision is int ? revision : 0,
+              payloadDigest: digest,
+            ),
+            profileFile: profileFile,
           );
         } on FormatException {
           return null;

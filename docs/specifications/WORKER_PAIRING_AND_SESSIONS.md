@@ -66,9 +66,10 @@ Limits until P5 retires the Workspace gateway:
 - WebSocket only (no HTTP long-poll).
 - An Agent may send only its own contract: hello, heartbeat, sync, readiness, `assignment.*` and `thread.status`. Workspace-wide messages (inventory, usage, MCP) are refused.
 
-The public WebSocket route authenticates an Agent's bearer session and routes
-the request to its mapped Workspace. The gateway then authenticates the same
-session again before accepting it. The Dart Agent consumes the server's
+With `worker_target_dispatch` off, the public WebSocket route authenticates an Agent's bearer session and routes
+the request to its mapped Workspace. With the flag on it routes to the Worker
+gateway instead; that gateway authenticates the session before accepting it.
+The Dart Agent consumes the server's
 `{nonce: ...}` and `{session: ...}` response envelopes. The real Agent/backend
 pairing and hello/reconciliation path is exercised by
 `apps/backend/test/domain/worker-agent-live.test.ts` with local PostgreSQL and

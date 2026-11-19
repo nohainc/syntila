@@ -15,7 +15,9 @@ import 'journal.dart';
 /// `workerTypeId`) are provisional until ADR-035 fixes the execution snapshot
 /// in P5.
 typedef ProfileResolver =
-    Future<ToolProfileCandidate?> Function(Map<String, Object?> payload);
+    Future<({ToolProfileCandidate candidate, File profileFile})?> Function(
+      Map<String, Object?> payload,
+    );
 
 /// The adapter between the Agent and the existing generic CLI Worker Engine.
 /// The Engine stays a separately supervised child process, and the provider
@@ -50,8 +52,19 @@ class CliEngineLauncher implements EngineLauncher {
   @override
   Future<EngineRun> launch(EngineRequest request) async {
     final run = _CliRun(request.assignmentId, supervisor);
-    final candidate = await resolveProfile(request.payload);
-    if (candidate == null) {
+    final snapshot = request.payload['snapshot'];
+    if (snapshot is! Map<String, Object?>) {
+      run._finish(
+        const EngineOutcome(TerminalKind.failed, {
+          'errorCode': 'execution_failed',
+          'message': 'The assignment snapshot is invalid',
+          'retryable': false,
+        }),
+      );
+      return run;
+    }
+    final resolved = await resolveProfile(snapshot);
+    if (resolved == null) {
       run._finish(
         const EngineOutcome(TerminalKind.failed, {
           'errorCode': 'worker_not_ready',
@@ -64,8 +77,8 @@ class CliEngineLauncher implements EngineLauncher {
     final input = request.payload['input'];
     final prompt = input is Map && input['prompt'] is String
         ? input['prompt'] as String
-        : request.payload['prompt'] is String
-        ? request.payload['prompt'] as String
+        : snapshot['objective'] is String
+        ? snapshot['objective'] as String
         : null;
     if (prompt == null) {
       run._finish(
@@ -78,15 +91,67 @@ class CliEngineLauncher implements EngineLauncher {
       return run;
     }
     String? text(String key) {
-      final value = request.payload[key] ?? (input is Map ? input[key] : null);
+      final value = snapshot[key];
       return value is String && value.trim().isNotEmpty ? value.trim() : null;
     }
 
-    final queueWait = request.payload['queueWaitTimeoutMs'];
+    final queueWait = snapshot['queueWaitTimeoutMs'];
+    final policy = snapshot['sessionPolicy'];
+    final key = snapshot['sessionKey'];
+    WorkerSessionContext? workerSession;
+    ConversationBootstrap? statelessContext;
+    try {
+      if (policy == 'durable_session') {
+        if (key is! String ||
+            key.isEmpty ||
+            snapshot['statelessContext'] != null) {
+          throw const FormatException('Invalid durable session');
+        }
+        final raw = snapshot['workerSession'];
+        if (raw == null && snapshot['workRequestId'] != null) {
+          throw const FormatException('Missing Worker session context');
+        }
+        if (raw != null) {
+          if (raw is! Map<String, Object?>) {
+            throw const FormatException('Invalid Worker session');
+          }
+          workerSession = WorkerSessionContext.fromJson(raw);
+          if (workerSession.workerId != workerId) {
+            throw const FormatException('Wrong Worker session');
+          }
+        }
+      } else if (policy == 'stateless') {
+        if (key != null || snapshot['workerSession'] != null) {
+          throw const FormatException('Invalid stateless session');
+        }
+        final raw = snapshot['statelessContext'];
+        if (raw == null && snapshot['workRequestId'] != null) {
+          throw const FormatException('Missing conversation context');
+        }
+        if (raw != null) {
+          if (raw is! Map<String, Object?>) {
+            throw const FormatException('Invalid conversation context');
+          }
+          statelessContext = ConversationBootstrap.fromJson(raw);
+        }
+      } else {
+        throw const FormatException('Invalid session policy');
+      }
+    } on FormatException {
+      run._finish(
+        const EngineOutcome(TerminalKind.failed, {
+          'errorCode': 'execution_failed',
+          'message': 'The assignment session is invalid',
+          'retryable': false,
+        }),
+      );
+      return run;
+    }
     unawaited(
       supervisor
           .execute(
-            candidate,
+            resolved.candidate,
+            profileFile: resolved.profileFile,
             stateDirectory: stateDirectory,
             workingDirectory: Directory(
               '${workRoot.path}/${request.assignmentId}',
@@ -100,16 +165,22 @@ class CliEngineLauncher implements EngineLauncher {
             queueWaitTimeout: queueWait is int
                 ? Duration(milliseconds: queueWait)
                 : null,
-            sessionPolicy: WorkerSessionPolicy.stateless,
+            sessionPolicy: policy == 'durable_session'
+                ? WorkerSessionPolicy.durableSession
+                : WorkerSessionPolicy.stateless,
+            sessionKey: key as String?,
+            workerSession: workerSession,
+            statelessContext: statelessContext,
             model: text('model'),
             reasoningEffort: text('reasoningEffort'),
             executionPolicy: WorkerExecutionPolicy.restricted,
+            onExecutionStarted: run._providerDidStart,
           )
           .then<void>(
             (result) => run._finish(
               EngineOutcome(TerminalKind.completed, {
                 'summary': 'Completed',
-                'output': result.output,
+                'output': {'text': result.output},
                 'artifactIds': result.artifacts,
               }),
             ),
@@ -149,18 +220,27 @@ EngineOutcome outcomeForError(Object error, {required bool cancelled}) {
   });
 }
 
-class _CliRun implements EngineRun {
+class _CliRun implements EngineRun, EngineStartEvidence {
   _CliRun(this.assignmentId, this._supervisor);
 
   final String assignmentId;
   final CliWorkerEngineSupervisor _supervisor;
   final Completer<EngineOutcome> _outcome = Completer();
+  final Completer<bool> _started = Completer();
   bool cancelRequested = false;
 
   @override
   Future<EngineOutcome> get outcome => _outcome.future;
 
+  @override
+  Future<bool> get providerStarted => _started.future;
+
+  void _providerDidStart() {
+    if (!_started.isCompleted) _started.complete(true);
+  }
+
   void _finish(EngineOutcome outcome) {
+    if (!_started.isCompleted) _started.complete(false);
     if (!_outcome.isCompleted) _outcome.complete(outcome);
   }
 

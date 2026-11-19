@@ -10,6 +10,11 @@ import 'support/fake_cloud.dart';
 import 'support/fake_engine.dart';
 import 'support/harness.dart';
 
+class _RejectProfiles implements ProfileVerifier {
+  @override
+  Future<bool> verify(List<int> profileBytes, String? signature) async => false;
+}
+
 void main() {
   late FakeCloud cloud;
   late Directory root;
@@ -61,6 +66,73 @@ void main() {
   );
 
   group('crash and reconnect matrix', () {
+    test(
+      'does not report provider start when the Engine fails first',
+      () async {
+        engine.failBeforeProviderStart = true;
+        await host.startReady(engine);
+        final a = cloud.dispatch(worker.id);
+        await settled(a);
+        expect(a.status, 'failed');
+        expect(a.startAcks, 0);
+      },
+    );
+    test('uses the server snapshot and its timeout for the Engine', () async {
+      await host.startReady(engine);
+      final a = cloud.dispatch(
+        worker.id,
+        payload: {
+          'timeoutMs': 12000,
+          'model': 'test-model',
+          'profileDigest': 'd' * 64,
+        },
+      );
+      await settled(a);
+      final request = engine.requests[a.id]!;
+      expect(request.timeout, const Duration(seconds: 12));
+      expect((request.payload['snapshot'] as Map)['model'], 'test-model');
+      expect(
+        host.runtime!.journal.find(a.id)!.context.snapshotDigest,
+        'd' * 64,
+      );
+    });
+
+    test('rejects a snapshot belonging to another Worker', () async {
+      await host.startReady(engine);
+      final a = cloud.dispatch(
+        worker.id,
+        payload: {'workerId': 'another-worker'},
+      );
+      await waitFor(() => a.acks > 0);
+      expect(a.status, 'created');
+      expect(engine.launchCount(a.id), 0);
+      expect(host.runtime!.journal.find(a.id), isNull);
+    });
+
+    test(
+      'rejects an assignment identifier that could escape the Work Root',
+      () async {
+        await host.startReady(engine);
+        final a = cloud.dispatch(worker.id, assignmentId: '../escape');
+        await waitFor(() => a.acks > 0);
+        expect(engine.launchCount(a.id), 0);
+        expect(host.runtime!.journal.find(a.id), isNull);
+      },
+    );
+
+    test('does not admit an assignment without its pinned Profile', () async {
+      final cache = ProfileCache(
+        Directory('${root.path}/profiles'),
+        _RejectProfiles(),
+      );
+      final agent = await host.open(engine, profiles: cache);
+      await agent.start();
+      await agent.connection.whenReady();
+      final a = cloud.dispatch(worker.id, payload: {'profileDigest': 'a' * 64});
+      await waitFor(() => a.acks > 0);
+      expect(engine.launchCount(a.id), 0);
+      expect(agent.journal.find(a.id), isNull);
+    });
     test(
       'server crash before the committed command arrives: the inbox is reconciled',
       () async {

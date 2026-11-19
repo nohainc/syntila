@@ -36,6 +36,11 @@ abstract class EngineRun {
   Future<void> cancel();
 }
 
+/// Optional provider-start evidence, separate from starting the Engine process.
+abstract interface class EngineStartEvidence {
+  Future<bool> get providerStarted;
+}
+
 /// Starts the generic CLI Worker Engine as a supervised child. The provider CLI
 /// runs inside it, on demand. The adapter over the existing
 /// `CliWorkerEngineSupervisor` implements this interface.
