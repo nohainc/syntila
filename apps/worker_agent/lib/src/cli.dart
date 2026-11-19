@@ -585,8 +585,8 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
   }
 }
 
-/// Reading the cache needs no verifier; Profiles are put there by a verified
-/// download. This one refuses every write, so nothing unverified can enter.
+/// Until signed downloads and trust roots exist, fail closed for new and
+/// previously cached Profiles.
 class _NoNewProfiles implements ProfileVerifier {
   const _NoNewProfiles();
 

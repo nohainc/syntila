@@ -14,6 +14,7 @@ export 'src/lock.dart';
 export 'src/pairing.dart';
 export 'src/paths.dart';
 export 'src/profile_cache.dart';
+export 'src/profile_signature.dart';
 export 'src/readiness.dart';
 export 'src/runtime.dart';
 export 'src/server_api.dart';

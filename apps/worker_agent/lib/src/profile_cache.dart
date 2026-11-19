@@ -33,6 +33,8 @@ class ProfileCache {
   final ProfileVerifier verifier;
 
   File _file(String digest) => File('${directory.path}/sha256-$digest.profile');
+  File _signatureFile(String digest) =>
+      File('${directory.path}/sha256-$digest.signature.json');
   File get _pointer => File('${directory.path}/last-known-good.json');
 
   /// Verifies and stores a Profile; promotes it to last-known-good only when
@@ -51,7 +53,20 @@ class ProfileCache {
       throw ProfileRejectedException('signature not valid');
     }
     await directory.create(recursive: true);
-    await _file(digest).writeAsBytes(bytes, flush: true);
+    // A cache entry must retain the proof that was verified at admission.
+    // Write the proof before publishing the payload; interrupted writes fail
+    // closed when the entry is read again.
+    final proof = _signatureFile(digest);
+    final proofTemp = File('${proof.path}.tmp');
+    await proofTemp.writeAsString(
+      jsonEncode({'signature': signature}),
+      flush: true,
+    );
+    await proofTemp.rename(proof.path);
+    final file = _file(digest);
+    final fileTemp = File('${file.path}.tmp');
+    await fileTemp.writeAsBytes(bytes, flush: true);
+    await fileTemp.rename(file.path);
     final current = await _readPointer();
     if (current == null || revision >= current.revision) {
       final temp = File('${_pointer.path}.tmp');
@@ -65,14 +80,29 @@ class ProfileCache {
   }
 
   /// The bytes for [digest], or null when missing or when the stored bytes no
-  /// longer hash to it (tampering or corruption).
+  /// longer hash to it, lack their proof, or fail current trust policy.
   Future<List<int>?> read(String digest) async {
     final hex = _digestHex(digest);
     if (hex == null) return null;
     final file = _file(hex);
     if (!await file.exists()) return null;
-    final bytes = await file.readAsBytes();
-    return profileDigest(bytes) == hex ? bytes : null;
+    try {
+      final bytes = await file.readAsBytes();
+      if (profileDigest(bytes) != hex) return null;
+      final proof = jsonDecode(await _signatureFile(hex).readAsString());
+      if (proof is! Map ||
+          !proof.containsKey('signature') ||
+          (proof['signature'] != null && proof['signature'] is! String)) {
+        return null;
+      }
+      return await verifier.verify(bytes, proof['signature'] as String?)
+          ? bytes
+          : null;
+    } on FormatException {
+      return null;
+    } on FileSystemException {
+      return null;
+    }
   }
 
   Future<({String digest, int revision})?> _readPointer() async {

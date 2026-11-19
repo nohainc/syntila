@@ -14,6 +14,8 @@ import {
 } from "./assignment-dispatcher.js";
 import { transitionAssignment } from "./assignment-transitions.js";
 import type { AgentSessionFence } from "./agent-session-fence.js";
+import { inTransaction } from "../platform/tx-env.js";
+import { publishAssignmentPhase } from "./assignment-phase-events.js";
 
 /**
  * Safe revocation of an assignment that must not run (or must stop running).
@@ -347,10 +349,15 @@ export async function escalateUnconfirmedRevocations(
   now = new Date(),
 ): Promise<string[]> {
   const cutoff = new Date(now.getTime() - olderThanMs).toISOString();
-  const results = await queryOf(db).rows<{ id: string }>`UPDATE worker_assignments SET status = 'reconciling', updated_at = ${now.toISOString()}
-        WHERE status = 'revocation_pending' AND updated_at <= ${cutoff}
-        RETURNING id`;
-  return (results ?? []).map((row) => row.id);
+  return inTransaction({ SYNTILA_DB: db }, "assignment.revocation.escalate", async (env) => {
+    const results = await queryOf(env.SYNTILA_DB).rows<{ id: string }>`UPDATE worker_assignments SET status = 'reconciling', updated_at = ${now.toISOString()}
+          WHERE status = 'revocation_pending' AND updated_at <= ${cutoff}
+          RETURNING id`;
+    for (const row of results) {
+      await publishAssignmentPhase(env, row.id, { strict: true });
+    }
+    return results.map((row) => row.id);
+  });
 }
 
 /**

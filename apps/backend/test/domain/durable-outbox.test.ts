@@ -54,6 +54,22 @@ async function fixture(options: { withGateway?: boolean; max?: number } = {}) {
 }
 
 describe("one transaction: domain change, sequence, event and outbox", () => {
+  it("rolls back revocation escalation when its phase event cannot be stored", async () => {
+    const f = await conversationFixture();
+    await f.assign("A1");
+    await f.sqlite.exec(`ALTER TABLE work_requests DISABLE TRIGGER trg_work_requests_snapshot_immutable;
+      UPDATE work_requests SET primary_workspace_id='WS' WHERE id='R';
+      ALTER TABLE work_requests ENABLE TRIGGER trg_work_requests_snapshot_immutable;
+      UPDATE worker_assignments SET status='revocation_pending', updated_at='2026-01-01' WHERE id='A1';
+      CREATE FUNCTION reject_escalation_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type = 'step.phase' THEN RAISE EXCEPTION 'event unavailable'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER reject_escalation_event BEFORE INSERT ON realtime_events FOR EACH ROW EXECUTE FUNCTION reject_escalation_event()`);
+    const { escalateUnconfirmedRevocations } = await import("../../src/domain/assignment-revocation.js");
+    await expect(escalateUnconfirmedRevocations(f.db, 0)).rejects.toThrow("event unavailable");
+    expect(await f.sqlite.prepare("SELECT status FROM worker_assignments WHERE id='A1'").get()).toMatchObject({ status: "revocation_pending" });
+    await f.sqlite.exec("DROP TRIGGER reject_escalation_event ON realtime_events");
+    expect(await escalateUnconfirmedRevocations(f.db, 0)).toEqual(["A1"]);
+    expect(await f.sqlite.prepare("SELECT e.event_type FROM realtime_events e JOIN outbox o ON o.event_id=e.event_id WHERE e.event_type='step.phase'").all()).toHaveLength(1);
+  });
   it("commits assignment admission with its phase event, and rolls both back when the event fails", async () => {
     const f = await conversationFixture();
     await f.assign("A1");

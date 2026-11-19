@@ -34,8 +34,9 @@ void main() {
           cache.put(utf8.encode('profile v2'), revision: 2),
           throwsA(isA<ProfileRejectedException>()),
         );
-        expect((await cache.lastKnownGood())!.digest, digest1);
+        expect(await cache.lastKnownGood(), isNull);
         verifier.accept = true;
+        expect((await cache.lastKnownGood())!.digest, digest1);
         await expectLater(
           cache.put(utf8.encode('x'), revision: 3, expectedDigest: 'sha256:00'),
           throwsA(isA<ProfileRejectedException>()),
@@ -73,6 +74,21 @@ void main() {
       expect(await cache.read(digest), isNull);
       expect(await cache.lastKnownGood(), isNull);
       expect(await cache.has(digest), isFalse);
+    });
+
+    test('requires an admission proof and rechecks current trust', () async {
+      final verifier = StubVerifier(true);
+      final directory = Directory('${dir.path}/profiles');
+      final cache = ProfileCache(directory, verifier);
+      final bytes = utf8.encode('profile');
+      final digest = await cache.put(bytes, signature: 'proof', revision: 1);
+      expect(await cache.read(digest), bytes);
+      verifier.accept = false;
+      expect(await cache.read(digest), isNull);
+      verifier.accept = true;
+      await File('${directory.path}/sha256-$digest.signature.json').delete();
+      expect(await cache.read(digest), isNull);
+      expect(await cache.verifiedFile(digest), isNull);
     });
 
     test('rejects malformed digests before resolving a cache path', () async {
