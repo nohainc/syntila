@@ -4247,7 +4247,7 @@ class _RequestHistoryPanelState extends State<_RequestHistoryPanel> {
       horizontalInset: 0,
       background: SyntilaColors.composerBackground(isDark),
       child: SizedBox(
-        height: 180,
+        height: 6 * 48,
         child: TapRegion(
           onTapOutside: (_) => widget.onClosed(),
           child: Focus(
@@ -4378,7 +4378,7 @@ enum _WorkQueuePause {
 }
 
 /// A queued-work panel layered above the active composer.
-class _QueuedMessagesPanel extends StatelessWidget {
+class _QueuedMessagesPanel extends StatefulWidget {
   const _QueuedMessagesPanel({
     required this.messages,
     required this.pause,
@@ -4398,6 +4398,13 @@ class _QueuedMessagesPanel extends StatelessWidget {
   final bool hasPanelAbove;
 
   @override
+  State<_QueuedMessagesPanel> createState() => _QueuedMessagesPanelState();
+}
+
+class _QueuedMessagesPanelState extends State<_QueuedMessagesPanel> {
+  bool _collapsed = false;
+
+  @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -4409,15 +4416,17 @@ class _QueuedMessagesPanel extends StatelessWidget {
       child: Container(
         key: const ValueKey('work-queue-panel'),
         // Fits the content; shows at most 4 items before scrolling.
-        constraints:
-            BoxConstraints(maxHeight: (hasPanelAbove ? 1 : 0) + 30 + 4 * 48),
+        constraints: BoxConstraints(
+            maxHeight: (widget.hasPanelAbove ? 1 : 0) +
+                30 +
+                (_collapsed ? 0 : 4 * 48)),
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (hasPanelAbove)
+            if (widget.hasPanelAbove)
               Divider(
                 key: const ValueKey('work-queue-panel-divider'),
                 height: 1,
@@ -4431,17 +4440,17 @@ class _QueuedMessagesPanel extends StatelessWidget {
               child: Row(children: [
                 Expanded(
                   child: Text(
-                    switch (pause) {
+                    switch (widget.pause) {
                       _WorkQueuePause.failure =>
-                        'Queued · ${messages.length} — paused after an error',
+                        'Queued · ${widget.messages.length} — paused after an error',
                       _WorkQueuePause.user =>
-                        'Queued · ${messages.length} — paused',
-                      null => 'Queued · ${messages.length}',
+                        'Queued · ${widget.messages.length} — paused',
+                      null => 'Queued · ${widget.messages.length}',
                     },
                     key: const ValueKey('work-queue-status'),
                     style: TextStyle(
                       fontSize: 11,
-                      color: pause == _WorkQueuePause.failure
+                      color: widget.pause == _WorkQueuePause.failure
                           ? colors.error
                           : colors.onSurfaceVariant,
                     ),
@@ -4449,120 +4458,133 @@ class _QueuedMessagesPanel extends StatelessWidget {
                 ),
                 IconButton(
                   key: const ValueKey('work-queue-pause-toggle'),
-                  tooltip: pause == null ? 'Pause queue' : 'Resume queue',
+                  tooltip:
+                      widget.pause == null ? 'Pause queue' : 'Resume queue',
                   iconSize: 16,
                   constraints: iconConstraints,
                   padding: EdgeInsets.zero,
-                  onPressed: () => onPauseChanged(pause == null),
-                  icon: Icon(pause == null
+                  onPressed: () => widget.onPauseChanged(widget.pause == null),
+                  icon: Icon(widget.pause == null
                       ? Icons.pause_rounded
                       : Icons.play_arrow_rounded),
                 ),
+                IconButton(
+                  key: const ValueKey('work-queue-collapse-toggle'),
+                  tooltip: _collapsed ? 'Expand queue' : 'Collapse queue',
+                  iconSize: 16,
+                  constraints: iconConstraints,
+                  padding: EdgeInsets.zero,
+                  onPressed: () => setState(() => _collapsed = !_collapsed),
+                  icon: Icon(_collapsed
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded),
+                ),
               ]),
             ),
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemExtent: 48,
-                itemCount: messages.length,
-                itemBuilder: (context, index) {
-                  final message = messages[index];
-                  final isPhased = message.isPhased;
-                  final body = message.text.trim().isEmpty
-                      ? '${message.attachments.length} attachment(s)'
-                      : message.text.trim();
-                  // Other members' requests are shown, never changed.
-                  final text = message.own || message.authorName.isEmpty
-                      ? body
-                      : '${message.authorName}: $body';
-                  return InkWell(
-                    key: ValueKey('work-queue-item-$index'),
-                    onTap: (!isPhased && message.own)
-                        ? () => onEdit(message)
-                        : null,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 12, right: 4),
-                      child: Row(children: [
-                        if (isPhased)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: Tooltip(
-                              message:
-                                  'Phased implementation step (runs in planned sequence)',
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 5, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: colors.primaryContainer
-                                      .withValues(alpha: 0.5),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.lock_outline,
-                                        size: 11,
-                                        color: colors.onPrimaryContainer),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      'Phase',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: colors.onPrimaryContainer,
+            if (!_collapsed)
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemExtent: 48,
+                  itemCount: widget.messages.length,
+                  itemBuilder: (context, index) {
+                    final message = widget.messages[index];
+                    final isPhased = message.isPhased;
+                    final body = message.text.trim().isEmpty
+                        ? '${message.attachments.length} attachment(s)'
+                        : message.text.trim();
+                    // Other members' requests are shown, never changed.
+                    final text = message.own || message.authorName.isEmpty
+                        ? body
+                        : '${message.authorName}: $body';
+                    return InkWell(
+                      key: ValueKey('work-queue-item-$index'),
+                      onTap: (!isPhased && message.own)
+                          ? () => widget.onEdit(message)
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 12, right: 4),
+                        child: Row(children: [
+                          if (isPhased)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Tooltip(
+                                message:
+                                    'Phased implementation step (runs in planned sequence)',
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 5, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: colors.primaryContainer
+                                        .withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.lock_outline,
+                                          size: 11,
+                                          color: colors.onPrimaryContainer),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        'Phase',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: colors.onPrimaryContainer,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        Expanded(
-                          child: Text(
-                            text,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                        if (message.own) ...[
-                          if (!isPhased) ...[
-                            IconButton(
-                              tooltip: 'Edit',
-                              iconSize: 16,
-                              constraints: iconConstraints,
-                              padding: EdgeInsets.zero,
-                              icon: const Icon(Icons.edit_outlined),
-                              onPressed: () => onEdit(message),
+                          Expanded(
+                            child: Text(
+                              text,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
                             ),
+                          ),
+                          if (message.own) ...[
+                            if (!isPhased) ...[
+                              IconButton(
+                                tooltip: 'Edit',
+                                iconSize: 16,
+                                constraints: iconConstraints,
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.edit_outlined),
+                                onPressed: () => widget.onEdit(message),
+                              ),
+                              IconButton(
+                                tooltip: 'Send now',
+                                iconSize: 16,
+                                constraints: iconConstraints,
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.arrow_upward_rounded),
+                                onPressed: () => widget.onSendNow(message),
+                              ),
+                            ],
                             IconButton(
-                              tooltip: 'Send now',
+                              tooltip: isPhased
+                                  ? 'Stop all phases'
+                                  : 'Remove from queue',
                               iconSize: 16,
                               constraints: iconConstraints,
                               padding: EdgeInsets.zero,
-                              icon: const Icon(Icons.arrow_upward_rounded),
-                              onPressed: () => onSendNow(message),
+                              icon: Icon(isPhased
+                                  ? Icons.stop_circle_outlined
+                                  : Icons.close_rounded),
+                              onPressed: () => widget.onRemove(message),
                             ),
                           ],
-                          IconButton(
-                            tooltip: isPhased
-                                ? 'Stop all phases'
-                                : 'Remove from queue',
-                            iconSize: 16,
-                            constraints: iconConstraints,
-                            padding: EdgeInsets.zero,
-                            icon: Icon(isPhased
-                                ? Icons.stop_circle_outlined
-                                : Icons.close_rounded),
-                            onPressed: () => onRemove(message),
-                          ),
-                        ],
-                      ]),
-                    ),
-                  );
-                },
+                        ]),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
           ],
         ),
       ),

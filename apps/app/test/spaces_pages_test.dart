@@ -3628,7 +3628,7 @@ void main() {
       expect(history.bottom, input.top);
       expect(history.left, input.left);
       expect(history.right, input.right);
-      expect(history.height, 180);
+      expect(history.height, 6 * 48);
       expect(layer.bottom, input.top + 10);
       expect(older.hitTestable(), findsOneWidget);
       expect(newer.hitTestable(), findsOneWidget);
