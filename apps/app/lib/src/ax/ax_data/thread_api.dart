@@ -1327,9 +1327,109 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   }
 
   @override
+  Future<bool> workersUxEnabled() async {
+    final features = await _getJson(Uri.parse('$baseUrl/features'));
+    return (features['flags'] as List? ?? const []).contains('workers_ux');
+  }
+
+  @override
   Future<List<WorkerInstance>> loadWorkerInstances() async {
     if (!await workerIdentityEnabled()) return const [];
     return parseWorkerInstances(await _getJson(Uri.parse('$baseUrl/workers')));
+  }
+
+  @override
+  Future<List<({String id, String name})>> loadWorkerTypes() async {
+    final body = await _getJson(Uri.parse('$baseUrl/workers/catalog'));
+    return [
+      for (final item in (body['workers'] as List? ?? const []))
+        if (item is Map &&
+            item['workerTypeId'] is String &&
+            item['displayName'] is String &&
+            item['lifecycleState'] == 'active' &&
+            item['visibilityState'] == 'visible')
+          (
+            id: item['workerTypeId'] as String,
+            name: item['displayName'] as String
+          )
+    ];
+  }
+
+  @override
+  Future<void> createWorkerInstance(String typeId, String name) async {
+    final response = await client.post(Uri.parse('$baseUrl/workers'),
+        headers: _headers(contentType: 'application/json'),
+        body: jsonEncode({'workerTypeId': typeId, 'name': name}));
+    if (response.statusCode != 201) {
+      throw AxApiException('Could not add Worker (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
+  @override
+  Future<void> updateWorkerInstance(
+      String id, Map<String, Object?> changes) async {
+    final response = await client.patch(
+      Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode(changes),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException('Could not update Worker (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
+  @override
+  Future<void> removeWorkerInstance(String id) async {
+    final response = await client.delete(
+        Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}'),
+        headers: _headers());
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException('Could not remove Worker (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
+  @override
+  Future<String> pairWorkerInstance(String id) async {
+    final response = await client.post(
+        Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/pairing'),
+        headers: _headers(contentType: 'application/json'),
+        body: '{}');
+    if (response.statusCode != 201) {
+      throw AxApiException(
+          'Could not create pairing code (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+    final body = jsonDecode(response.body);
+    final challenge = body is Map ? body['challenge'] : null;
+    if (challenge is! Map ||
+        challenge['challengeId'] is! String ||
+        challenge['secret'] is! String ||
+        challenge['workerId'] != id) {
+      throw const AxApiException('Pairing response is malformed');
+    }
+    final server = backendBaseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+    final payload = jsonEncode({
+      's': server,
+      'w': id,
+      'c': challenge['challengeId'],
+      'k': challenge['secret']
+    });
+    return 'syntila-pair:v1:${base64Url.encode(utf8.encode(payload)).replaceAll('=', '')}';
+  }
+
+  @override
+  Future<void> revokeWorkerCredential(String id) async {
+    final response = await client.delete(
+        Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/credential'),
+        headers: _headers());
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+          'Could not revoke Worker credential (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
   }
 }
 

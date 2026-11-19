@@ -136,6 +136,13 @@ exit gate has not been demonstrated. The existing Worker-targeted admission
 also rejects stateful Workflows, including Work; it does not yet implement the
 full per-step Worker path described in P5.
 
+The existing Worker Instance section now offers creation from the active Type
+catalog, pairing, renaming, alias editing (stored as the existing description),
+enable/disable, credential revocation, and removal when `workers_ux` is enabled.
+It is still embedded in Workspaces; a standalone Workers page and the
+Workspace-free path are not yet implemented. Pairing alone does not overcome
+the P4 trusted Profile delivery gap.
+
 ## P7: Canonical timeline and attribution (ADR-036) ∥ P6, P8
 
 - Add `author_actor_id`, `worker_instance_id` and `author_display_snapshot` to `discussion_messages`. Backfill.

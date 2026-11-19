@@ -1,11 +1,48 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:syntila_app/src/features/workspace/worker_instances_section.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/sync/ax_session_catalogs.dart';
 import 'package:syntila_protocol/syntila_protocol.dart';
 
 void main() {
+  test('pairing code addresses the configured backend and selected Worker',
+      () async {
+    final api = AxApiClient(
+        baseUrl: 'https://auth.example/api',
+        backendBaseUrl: 'https://backend.example/api',
+        client: MockClient((request) async {
+          if (request.url.path == '/api/backend-token') {
+            return http.Response('{}', 401);
+          }
+          expect(request.method, 'POST');
+          expect(request.url.path, '/api/workers/worker-1/pairing');
+          return http.Response(
+              jsonEncode({
+                'challenge': {
+                  'challengeId': 'challenge',
+                  'secret': 'secret',
+                  'workerId': 'worker-1'
+                }
+              }),
+              201);
+        }));
+    final code = await api.pairWorkerInstance('worker-1');
+    expect(code, startsWith('syntila-pair:v1:'));
+    final payload = code.substring('syntila-pair:v1:'.length);
+    expect(
+        jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(payload)))),
+        {
+          's': 'https://backend.example',
+          'w': 'worker-1',
+          'c': 'challenge',
+          'k': 'secret'
+        });
+  });
   testWidgets('only loads and shows Workers when the identity flag is enabled',
       (tester) async {
     final source = _IdentitySource(false);
@@ -62,6 +99,92 @@ void main() {
         findsOneWidget);
     expect(find.textContaining('Not ready · ijklmnop'), findsOneWidget);
   });
+
+  testWidgets('adds a Worker from the server Type list', (tester) async {
+    final source = _ManagementSource();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: WorkerInstancesList(
+                workers: const [],
+                error: null,
+                onRefresh: () async => null,
+                management: source))));
+    await tester.tap(find.text('Add Worker'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'My Worker');
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(source.created, [('type', 'My Worker')]);
+  });
+
+  testWidgets('renames, disables and confirms removal by Worker ID',
+      (tester) async {
+    final source = _ManagementSource();
+    const worker = WorkerInstance(
+        id: 'worker-12345678',
+        actorId: 'actor',
+        workerTypeId: 'type',
+        workerTypeName: 'Type',
+        name: 'Writer',
+        description: '',
+        enabled: true,
+        online: false,
+        ready: false,
+        createdAt: 'now',
+        updatedAt: 'now');
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: WorkerInstancesList(
+                workers: [worker],
+                error: null,
+                onRefresh: () async => null,
+                management: source))));
+    await tester.tap(find.byTooltip('Manage Writer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Renamed');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(source.updates.single.$1, 'worker-12345678');
+    expect(source.updates.single.$2, {'name': 'Renamed'});
+    await tester.tap(find.byTooltip('Manage Writer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Disable'));
+    await tester.pumpAndSettle();
+    expect(source.updates.last.$1, 'worker-12345678');
+    expect(source.updates.last.$2, {'enabled': false});
+    await tester.tap(find.byTooltip('Manage Writer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+    expect(source.removed, isEmpty);
+    await tester.tap(find.text('Remove').last);
+    await tester.pumpAndSettle();
+    expect(source.removed, ['worker-12345678']);
+  });
+}
+
+class _ManagementSource implements AxWorkerManagementSource {
+  final updates = <(String, Map<String, Object?>)>[];
+  final removed = <String>[];
+  final created = <(String, String)>[];
+  @override
+  Future<List<({String id, String name})>> loadWorkerTypes() async =>
+      [(id: 'type', name: 'Type')];
+  @override
+  Future<void> createWorkerInstance(String typeId, String name) async =>
+      created.add((typeId, name));
+  @override
+  Future<String> pairWorkerInstance(String id) async => 'pairing-code';
+  @override
+  Future<void> revokeWorkerCredential(String id) async {}
+  @override
+  Future<void> updateWorkerInstance(
+          String id, Map<String, Object?> changes) async =>
+      updates.add((id, changes));
+  @override
+  Future<void> removeWorkerInstance(String id) async => removed.add(id);
 }
 
 class _IdentitySource implements AxDataSource, AxWorkerIdentityFeatureSource {

@@ -125,11 +125,26 @@ abstract interface class AxWorkerIdentityFeatureSource {
   Future<bool> workerIdentityEnabled();
 }
 
+abstract interface class AxWorkersUxFeatureSource {
+  Future<bool> workersUxEnabled();
+}
+
+abstract interface class AxWorkerManagementSource {
+  Future<List<({String id, String name})>> loadWorkerTypes();
+  Future<void> createWorkerInstance(String typeId, String name);
+  Future<void> updateWorkerInstance(String id, Map<String, Object?> changes);
+  Future<void> removeWorkerInstance(String id);
+  Future<String> pairWorkerInstance(String id);
+  Future<void> revokeWorkerCredential(String id);
+}
+
 abstract class _AxApiClientCore
     implements
         AxDataSource,
         AxConditionalReadCache,
-        AxWorkerIdentityFeatureSource {
+        AxWorkerIdentityFeatureSource,
+        AxWorkersUxFeatureSource,
+        AxWorkerManagementSource {
   _AxApiClientCore(
       {String? baseUrl, http.Client? client, String? backendBaseUrl})
       : baseUrl = baseUrl ??

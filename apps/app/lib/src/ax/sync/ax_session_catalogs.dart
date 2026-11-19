@@ -20,6 +20,13 @@ class AxSessionCatalogs {
   static final workerInstancesKey = AxQueryKey(['worker-instances']);
   static final workerIdentityEnabledKey =
       AxQueryKey(['worker-identity-enabled']);
+  static final workersUxEnabledKey = AxQueryKey(['workers-ux-enabled']);
+  late final workersUxEnabled = AxQuery<bool>(
+      key: workersUxEnabledKey,
+      staleTime: const Duration(minutes: 5),
+      load: () async => source is AxWorkersUxFeatureSource
+          ? (source as AxWorkersUxFeatureSource).workersUxEnabled()
+          : false);
   late final workerIdentityEnabled = AxQuery<bool>(
       key: workerIdentityEnabledKey,
       staleTime: const Duration(minutes: 5),
