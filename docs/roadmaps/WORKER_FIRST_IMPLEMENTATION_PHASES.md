@@ -227,13 +227,13 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 - Workspace-backed assignment gateway and dispatch phase events now commit with their associated mutation and outbox entry, with rollback coverage. Recovery/bulk queue writers and Workspace-free Worker phase events still need an atomic event path; the latter needs the execution event stream contract. Cross-node live wakeups remain explicitly deferred to ADR-039 and the `sync.required` wire rename to ADR-038.
 - Run: `bun scripts/write-paths.ts --write`, `bun run schema:lock` (see P1 notes), `scripts/test-backend.sh`, `scripts/test-two-node.sh`.
 
-## P3 status (implemented, awaiting test run)
+## P3 status (implementation and local integration evidence)
 
 - Migration `0028`: `worker_pairing_challenges`, `worker_credentials`, `worker_auth_nonces`, `worker_agent_sessions` (one row per Worker, epoch), `worker_audit_log`; a trigger closes the credential and session of a removed Worker.
 - `worker-agents.ts`: pairing, transfer, rotate, revoke, signed-nonce login, atomic epoch bump, `AgentLeaseKeeper`; `agent-session-fence.ts`: the fence used inside `transitionAssignment`, `recordAssignmentResult`, `recordAssignmentError`, `recordAssignmentCancelled`.
 - Routes: `/api/workers/:id/pairing|transfer|credential` (owner), `/api/worker-agent/claim|nonce|sessions|rotate` (Agent). Request schemas in `@syntila/protocol`.
 - Gateway adapter behind `worker_agent_connect` (Worker principal and fence per Agent, the Workspace runtime id only as correlation id, message allowlist, lease renewal on heartbeat, stale sessions closed). Lapsed leases are closed by the outbox sweep.
-- Tests: `test/domain/worker-agents.test.ts`. Not yet tested end to end: a real Agent over the gateway WebSocket (P4).
+- Tests: `test/domain/worker-agents.test.ts` covers stale cancellation and permits and a concurrent session replacement. `test/domain/worker-agent-live.test.ts` runs the Dart Agent against a real local backend through the Workspace compatibility WebSocket and exercises pairing, signed login, hello and reconciliation. It does not cover standalone dispatch or a provider run.
 - Run: `bun run schema:lock` (scratch database, see P1/P2 notes), `bun scripts/write-paths.ts --write`, `bun run routes`, `scripts/test-backend.sh`, `scripts/test-two-node.sh`.
 
 ## P4 status (implemented, awaiting `dart analyze` and `dart test`)

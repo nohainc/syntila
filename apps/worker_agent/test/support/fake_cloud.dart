@@ -231,13 +231,13 @@ class FakeCloud {
       Map<String, Object?> answer;
       switch (request.uri.path) {
         case '/api/worker-agent/claim':
-          answer = await _claim(body);
+          answer = {'pairing': await _claim(body)};
         case '/api/worker-agent/nonce':
-          answer = _nonce(body);
+          answer = {'nonce': _nonce(body)};
         case '/api/worker-agent/sessions':
-          answer = await _session(body);
+          answer = {'session': await _session(body)};
         case '/api/worker-agent/rotate':
-          answer = await _rotate(body);
+          answer = {'credential': await _rotate(body)};
         default:
           throw _Refusal(404, 'not found');
       }

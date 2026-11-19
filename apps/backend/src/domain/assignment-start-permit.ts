@@ -1,4 +1,5 @@
 import type { Query } from "../platform/data.js";
+import { agentFenceIsCurrent, agentFenceSql } from "./agent-session-fence.js";
 import { assignmentStatus } from "./queries.js";
 import {
   isRevocationAssignmentStatus,
@@ -95,6 +96,7 @@ export async function grantStartPermit(
      WHERE id = ${fence.assignmentId} AND attempt_id = ${fence.attemptId} AND status = 'acknowledged'
        AND (${executionWorkspaceId}::text IS NULL OR execution_workspace_id = ${executionWorkspaceId})
        AND (${runtimeIdentityId}::text IS NULL OR runtime_identity_id = ${runtimeIdentityId})
+       ${agentFenceSql(q, fence.agent)}
        AND (workspace_space_grant_id IS NULL OR EXISTS (
          SELECT 1 FROM workspace_space_grants g
           WHERE g.id = worker_assignments.workspace_space_grant_id
@@ -110,6 +112,8 @@ export async function grantStartPermit(
     };
   }
   // Lost the race: re-read to report why.
+  if (fence.agent && !(await agentFenceIsCurrent(q, fence.agent)))
+    return { granted: false, reason: "stale" };
   const current = await assignmentStatus(q, fence.assignmentId);
   return { granted: false, reason: denialFor(current?.status) };
 }

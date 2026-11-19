@@ -1655,6 +1655,7 @@ export class WorkspaceGateway implements DurableObject {
           attemptId: message.attemptId!,
           executionWorkspaceId: this.executionWorkspaceId ?? undefined,
           runtimeIdentityId: this.workspaceRuntimeId ?? undefined,
+          agent: this.agentFence ?? undefined,
         }), (result) => result.granted);
         tryLogDiagnosticEvent({
           assignmentId: message.assignmentId,
@@ -2062,6 +2063,7 @@ export class WorkspaceGateway implements DurableObject {
           message,
           message.payload as never,
         );
+        if (!cancelled && (await this.agentSessionIsStale())) return;
         if (cancelled) this.traceTerminalPersisted(message, "cancelled");
         tryLogDiagnosticEvent({
           assignmentId: message.assignmentId,
@@ -2092,6 +2094,7 @@ export class WorkspaceGateway implements DurableObject {
                 ? payload.reason
                 : "Cancelled by Workspace runtime",
           });
+          if (!recorded && (await this.agentSessionIsStale())) return;
           if (recorded) {
             await signalAssignmentTerminal(this.env, message.assignmentId!);
             await this.slotFreed();
@@ -2165,7 +2168,7 @@ export class WorkspaceGateway implements DurableObject {
     // Cancellation evidence from a session that is no longer current is ignored.
     if (this.agentFence && (await this.agentSessionIsStale())) return false;
     return withAssignmentPhase(this.env, message.assignmentId!, async (env) => {
-      const finalized = await finalizeAssignmentRevocation(env.SYNTILA_DB, message.assignmentId!, message.attemptId);
+      const finalized = await finalizeAssignmentRevocation(env.SYNTILA_DB, message.assignmentId!, message.attemptId, this.agentFence ?? undefined);
       if (finalized === "finalized") return true;
       if (finalized !== "not_revoking") return false;
       return recordAssignmentCancelled(env.SYNTILA_DB, message.assignmentId!, cancellation, message.attemptId, { agent: this.agentFence ?? undefined });

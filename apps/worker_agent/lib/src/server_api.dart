@@ -82,7 +82,13 @@ class ServerApi {
   }
 
   Future<({String nonceId, String nonce})> nonce(String workerId) async {
-    final body = await _post('/api/worker-agent/nonce', {'workerId': workerId});
+    final response = await _post('/api/worker-agent/nonce', {
+      'workerId': workerId,
+    });
+    final body = response['nonce'];
+    if (body is! Map<String, Object?>) {
+      throw ServerRefusal(502, 'the nonce answer was incomplete');
+    }
     final nonceId = body['nonceId'];
     final nonce = body['nonce'];
     if (nonceId is! String || nonce is! String) {
@@ -97,12 +103,16 @@ class ServerApi {
     required String signature,
     String? clientVersion,
   }) async {
-    final body = await _post('/api/worker-agent/sessions', {
+    final response = await _post('/api/worker-agent/sessions', {
       'workerId': workerId,
       'nonceId': nonceId,
       'signature': signature,
       if (clientVersion != null) 'clientVersion': clientVersion,
     });
+    final body = response['session'];
+    if (body is! Map<String, Object?>) {
+      throw ServerRefusal(502, 'the session answer was incomplete');
+    }
     final sessionId = body['sessionId'];
     final epoch = body['epoch'];
     final token = body['sessionToken'];

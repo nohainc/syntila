@@ -13,6 +13,7 @@ import {
   recordAssignmentError,
 } from "./assignment-dispatcher.js";
 import { transitionAssignment } from "./assignment-transitions.js";
+import type { AgentSessionFence } from "./agent-session-fence.js";
 
 /**
  * Safe revocation of an assignment that must not run (or must stop running).
@@ -137,6 +138,7 @@ async function applyIntent(
   attemptId: string | null | undefined,
   intent: RevocationIntent,
   onlyFrom?: readonly AssignmentLifecycleStatus[],
+  agent?: AgentSessionFence,
 ): Promise<boolean> {
   if (intent.status === "cancelled") {
     return recordAssignmentCancelled(
@@ -144,7 +146,7 @@ async function applyIntent(
       assignmentId,
       { status: "cancelled", reason: intent.reason },
       attemptId ?? undefined,
-      { onlyFrom },
+      { onlyFrom, agent },
     );
   }
   const failure = failureFor(intent);
@@ -155,7 +157,7 @@ async function applyIntent(
     assignmentId,
     { ...failure, error: { ...failure.error, code } },
     attemptId ?? undefined,
-    { onlyFrom },
+    { onlyFrom, agent },
   );
 }
 
@@ -311,6 +313,7 @@ export async function finalizeAssignmentRevocation(
   db: Db,
   assignmentId: string,
   attemptId?: string,
+  agent?: AgentSessionFence,
 ): Promise<RevocationFinalizeOutcome> {
   const row = await readRow(db, assignmentId);
   if (!row) return "not_found";
@@ -327,6 +330,8 @@ export async function finalizeAssignmentRevocation(
     assignmentId,
     attemptId ?? row.attempt_id,
     intent,
+    undefined,
+    agent,
   );
   return applied ? "finalized" : "terminal";
 }

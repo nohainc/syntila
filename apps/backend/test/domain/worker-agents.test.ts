@@ -3,6 +3,9 @@ import { pgD1 } from "./helpers/pg-d1";
 import { space, user, workspace } from "./helpers/seed";
 import { queryOf } from "../../src/platform/data.js";
 import { transitionAssignment } from "../../src/domain/assignment-transitions.js";
+import { grantStartPermit } from "../../src/domain/assignment-start-permit.js";
+import { finalizeAssignmentRevocation } from "../../src/domain/assignment-revocation.js";
+import { handleWorkspaceGatewayConnect } from "../../src/domain/routes/workspaces-runtime.js";
 import { recordAssignmentError, recordAssignmentResult } from "../../src/domain/assignment-dispatcher.js";
 import { agentFenceIsCurrent } from "../../src/domain/agent-session-fence.js";
 import {
@@ -233,6 +236,89 @@ describe("authentication by signed nonce", () => {
 });
 
 describe("session fencing", () => {
+  it("rejects a superseded session's revocation confirmation and start permit", async () => {
+    const f = await fixture();
+    const { key } = await f.pair();
+    await f.seedAssignment("cancel", W1, "revocation_pending");
+    await f.seedAssignment("permit", W1, "acknowledged");
+    const old = await f.login(key);
+    const current = await f.login(key);
+    expect(await finalizeAssignmentRevocation(f.db, "cancel", "att-cancel", old)).not.toBe("finalized");
+    expect((await f.one("SELECT status FROM worker_assignments WHERE id='cancel'"))[0]!.status).toBe("revocation_pending");
+    expect(await grantStartPermit(queryOf(f.db), { assignmentId: "permit", attemptId: "att-permit", agent: old })).toEqual({ granted: false, reason: "stale" });
+    expect((await f.one("SELECT start_permit_issued_at FROM worker_assignments WHERE id='permit'"))[0]!.start_permit_issued_at).toBeNull();
+    expect(await finalizeAssignmentRevocation(f.db, "cancel", "att-cancel", current)).toBe("finalized");
+    expect((await grantStartPermit(queryOf(f.db), { assignmentId: "permit", attemptId: "att-permit", agent: current })).granted).toBe(true);
+  });
+
+  it("routes an authenticated Agent session to its mapped Workspace gateway", async () => {
+    const f = await fixture();
+    const { key } = await f.pair();
+    const old = await f.login(key);
+    const current = await f.login(key);
+    const forwarded: string[] = [];
+    const env = { ...f.env, SYNTILA_WORKSPACE_GATEWAY: { getByName(name: string) { forwarded.push(name); return { fetch: async () => new Response("forwarded") }; } } } as never;
+    const connect = (session: typeof old, token = session.sessionToken) => handleWorkspaceGatewayConnect(new Request(`https://test/api/workspace-gateway/connect?workerId=${W1}&workerSessionId=${session.sessionId}`, { headers: { upgrade: "websocket", authorization: `Bearer ${token}` } }), env);
+    expect((await connect(old)).status).toBe(401);
+    expect((await connect(current, "wrong")).status).toBe(401);
+    expect((await connect(current)).status).toBe(200);
+    expect(forwarded).toEqual(["WS"]);
+  });
+
+  it("does not grant a permit if the session changes after admission", async () => {
+    const f = await fixture();
+    const { key } = await f.pair();
+    await f.seedAssignment("permit", W1, "dispatched");
+    const old = await f.login(key);
+    const query = queryOf(f.db);
+    let replaced = false;
+    const race = {
+      ...query,
+      async row<T>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T | null> {
+        if (!replaced && strings.join("?").includes("SET start_permit_issued_at")) {
+          replaced = true;
+          await f.login(key);
+        }
+        return query.row<T>(strings, ...values);
+      },
+    };
+    expect(await grantStartPermit(race, { assignmentId: "permit", attemptId: "att-permit", agent: old })).toEqual({ granted: false, reason: "stale" });
+    expect(replaced).toBe(true);
+    expect((await f.one("SELECT start_permit_issued_at FROM worker_assignments WHERE id='permit'"))[0]!.start_permit_issued_at).toBeNull();
+  });
+
+  it("serializes an Agent write against a concurrent session replacement", async () => {
+    const f = await fixture();
+    const { key } = await f.pair();
+    await f.seedAssignment("a1", W1, "running");
+    const old = await f.login(key);
+    let locked!: () => void;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => { locked = resolve; });
+    const proceed = new Promise<void>((resolve) => { release = resolve; });
+    const replace = f.db.sql.begin(async (tx) => {
+      await tx`UPDATE worker_agent_sessions SET session_epoch=session_epoch+1, session_id='replacement' WHERE worker_instance_id=${W1}`;
+      locked();
+      await proceed;
+    });
+    await ready;
+    const result = recordAssignmentResult(f.db, "a1", { output: "late" } as never, "att-a1", old);
+    try {
+      const deadline = Date.now() + 5000;
+      let waiting = false;
+      while (Date.now() < deadline && !waiting) {
+        const [row] = await f.one("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%UPDATE worker_assignments%' ");
+        waiting = Number(row!.n) > 0;
+        if (!waiting) await Bun.sleep(10);
+      }
+      expect(waiting).toBe(true);
+    } finally {
+      release();
+      await replace;
+    }
+    expect(await result).toBe(false);
+    expect((await f.one("SELECT status FROM worker_assignments WHERE id='a1'"))[0]!.status).toBe("running");
+  });
   it("makes the newer login win and rejects the older session's late result", async () => {
     const f = await fixture();
     const { key } = await f.pair();

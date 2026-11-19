@@ -7,6 +7,8 @@ import { extractBearerToken } from "@syntila/security";
 import { json } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 import { WorkspaceRuntimeAuthenticator } from "../workspace-gateway/runtime-authenticator.js";
+import { authenticateAgentSession } from "../worker-agents.js";
+import { isFeatureEnabled } from "../../feature-flags.js";
 
 export async function handleWorkspaceGatewayConnect(
   request: Request,
@@ -42,6 +44,22 @@ export async function handleWorkspaceGatewayConnect(
   }
 
   const authToken = extractBearerToken(request.headers);
+
+  // Agent identities use their own fenced session. The Workspace mapping is
+  // only used to route to the compatibility gateway, which authenticates the
+  // session again before accepting the socket.
+  const workerId = url.searchParams.get("workerId");
+  const workerSessionId = url.searchParams.get("workerSessionId");
+  if (workerId || workerSessionId) {
+    if (!isFeatureEnabled("worker_agent_connect") || !workerId || !workerSessionId || !authToken || workspaceRuntimeId)
+      return json({ error: "Invalid Worker session" }, { status: 401 });
+    const principal = await authenticateAgentSession(env, { workerId, sessionId: workerSessionId, sessionToken: authToken });
+    if (!principal?.executionWorkspaceId)
+      return json({ error: "Invalid Worker session" }, { status: 401 });
+    if (!env.SYNTILA_WORKSPACE_GATEWAY)
+      return json({ error: "Workspace Gateway is not configured" }, { status: 503 });
+    return env.SYNTILA_WORKSPACE_GATEWAY.getByName(principal.executionWorkspaceId).fetch(request);
+  }
 
   if (!workspaceRuntimeId || !authToken) {
     logStructured(

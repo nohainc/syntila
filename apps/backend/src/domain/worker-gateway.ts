@@ -359,7 +359,8 @@ export class WorkerGateway implements DurableObject {
       case "assignment.cancelled": {
         const row = await this.owned(message);
         if (!row) return;
-        await this.cancellationEvidence(row, message.payload as never);
+        const cancelled = await this.cancellationEvidence(row, message.payload as never);
+        if (!cancelled && (await this.stale())) return;
         await this.terminalAck(message, row, "cancelled");
         return;
       }
@@ -371,6 +372,7 @@ export class WorkerGateway implements DurableObject {
             status: "cancelled",
             reason: typeof payload.reason === "string" ? payload.reason : "Cancelled by the Worker Agent",
           });
+          if (!recorded && (await this.stale())) return;
           if (recorded) await signalAssignmentTerminal(this.env, row.id);
         }
         const pending = this.pendingCancelAcks.get(row.id);
@@ -402,7 +404,7 @@ export class WorkerGateway implements DurableObject {
   private async cancellationEvidence(row: AssignmentRow, cancellation: { status: "cancelled"; reason: string }): Promise<boolean> {
     if (await this.stale()) return false;
     return withAssignmentPhase(this.env, row.id, async (env) => {
-      const finalized = await finalizeAssignmentRevocation(env.SYNTILA_DB, row.id, row.attempt_id);
+      const finalized = await finalizeAssignmentRevocation(env.SYNTILA_DB, row.id, row.attempt_id, this.fence ?? undefined);
       if (finalized === "finalized") return true;
       if (finalized !== "not_revoking") return false;
       return recordAssignmentCancelled(env.SYNTILA_DB, row.id, cancellation, row.attempt_id, { agent: this.fence ?? undefined });

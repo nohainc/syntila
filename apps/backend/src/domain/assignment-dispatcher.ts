@@ -1137,8 +1137,10 @@ export async function recordAssignmentResult(
 
   return runTerminalTransition(db, "assignment.complete", async (q) => {
     const first = await q.run`UPDATE worker_assignments SET status = 'completed', output_json = ${JSON.stringify(result)}, updated_at = ${now}
-         WHERE id = ${assignmentId} AND status IN (${q.raw(assignmentSourceStatusList("completed"))})${agentFenceSql(q, agent)}
+         WHERE id = ${assignmentId} AND status IN (${q.raw(assignmentSourceStatusList("completed"))})
+           AND (${expectedAttemptId ?? null}::text IS NULL OR attempt_id = ${expectedAttemptId ?? null})${agentFenceSql(q, agent)}
          RETURNING id`;
+    if (first !== 1) return false;
     await q.run`UPDATE workflow_tasks SET status = 'completed', output_json = ${JSON.stringify(result)},
                 finished_at = ${now}, updated_at = ${now}
          WHERE id = ${existing.task_id} AND status IN ('queued', 'waiting', 'running')
@@ -1196,8 +1198,10 @@ export async function recordAssignmentError(
 
   return runTerminalTransition(db, "assignment.fail", async (q) => {
     const first = await q.run`UPDATE worker_assignments SET status = ${terminalStatus}, error_json = ${JSON.stringify(normalizedFailure)}::text::jsonb, updated_at = ${now}
-         WHERE id = ${assignmentId} AND status IN (${q.raw(sourceList(terminalStatus, options?.onlyFrom))})${agentFenceSql(q, options?.agent)}
+         WHERE id = ${assignmentId} AND status IN (${q.raw(sourceList(terminalStatus, options?.onlyFrom))})
+           AND (${expectedAttemptId ?? null}::text IS NULL OR attempt_id = ${expectedAttemptId ?? null})${agentFenceSql(q, options?.agent)}
          RETURNING id`;
+    if (first !== 1) return false;
     await q.run`UPDATE workflow_tasks SET status = 'failed', error = ${normalizedFailure.error.message},
                 finished_at = ${now}, updated_at = ${now}
          WHERE id = ${existing.task_id} AND status IN ('queued', 'waiting', 'running')
@@ -1234,6 +1238,7 @@ export async function recordAssignmentCancelled(
          WHERE id = ${assignmentId} AND status IN (${q.raw(sourceList("cancelled", options?.onlyFrom))})
            AND (${expectedAttemptId ?? null}::text IS NULL OR attempt_id = ${expectedAttemptId ?? null})${agentFenceSql(q, options?.agent)}
          RETURNING id`;
+    if (first !== 1) return false;
     await q.run`UPDATE workflow_tasks SET status = 'cancelled', finished_at = ${now},
                 updated_at = ${now}
          WHERE id = ${existing.task_id} AND status IN ('queued', 'waiting', 'running')

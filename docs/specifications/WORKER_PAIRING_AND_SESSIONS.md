@@ -46,7 +46,7 @@ Refusals:
 
 `worker_agent_sessions` has one row per Worker. Connecting runs one `INSERT … ON CONFLICT DO UPDATE` that sets `session_epoch = session_epoch + 1` and replaces `session_id`; the row is locked first, so concurrent logins get distinct epochs and the last one is current. The audit records whether a live session was superseded.
 
-Every Agent acknowledgement and terminal result carries `{workerInstanceId, sessionId, epoch}` and is written with `agentFenceSql` (`agent-session-fence.ts`) **inside the same UPDATE** of `worker_assignments`: the assignment must belong to that Worker and the session must be current and not disconnected. Covered writes: `transitionAssignment` (admission and start acknowledgements), `recordAssignmentResult`, `recordAssignmentError`, `recordAssignmentCancelled`. The attempt id is checked as before. The gateway does not send the terminal acknowledgement for a result from a session that is no longer current, and closes that socket.
+Every Agent acknowledgement, start permit and terminal result carries `{workerInstanceId, sessionId, epoch}` and is written with `agentFenceSql` (`agent-session-fence.ts`) **inside the same UPDATE** of `worker_assignments`: the assignment must belong to that Worker and the session must be current and not disconnected. The matching session row is locked for the duration of the transaction so a concurrent replacement cannot pass between the check and commit. Covered writes include `transitionAssignment`, `grantStartPermit`, `recordAssignmentResult`, `recordAssignmentError`, `recordAssignmentCancelled`, and Agent-confirmed revocation finalization. Terminal writers also check the attempt in the update. A rejected terminal update cannot project a task transition. The gateway does not send the terminal acknowledgement for a result from a session that is no longer current, and closes that socket.
 
 A result that arrives late from an older session is therefore rejected, and the older session cannot tell that it was recorded. After a lapse the Agent connects again (new epoch) and replays from its journal.
 
@@ -65,6 +65,15 @@ Limits until P5 retires the Workspace gateway:
 - One Agent per Workspace gateway at a time (the gateway holds one connection per Workspace; a second connection replaces the first).
 - WebSocket only (no HTTP long-poll).
 - An Agent may send only its own contract: hello, heartbeat, sync, readiness, `assignment.*` and `thread.status`. Workspace-wide messages (inventory, usage, MCP) are refused.
+
+The public WebSocket route authenticates an Agent's bearer session and routes
+the request to its mapped Workspace. The gateway then authenticates the same
+session again before accepting it. The Dart Agent consumes the server's
+`{nonce: ...}` and `{session: ...}` response envelopes. The real Agent/backend
+pairing and hello/reconciliation path is exercised by
+`apps/backend/test/domain/worker-agent-live.test.ts` with local PostgreSQL and
+the Dart SDK (it skips when Dart is unavailable). This test uses the compatibility path and an unconfigured
+Engine; it does not establish standalone Worker dispatch or provider execution.
 
 ## Audit (`worker_audit_log`)
 

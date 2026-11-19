@@ -16,9 +16,10 @@ export interface AgentSessionFence {
 /**
  * ` AND …` for the WHERE clause of a `worker_assignments` UPDATE: the row must
  * belong to this Worker and the session must be current. Part of the same
- * statement as the write, never an earlier SELECT, so the database decides
- * which of two racing sessions wins. Empty without a fence (legacy Workspace
- * traffic).
+ * statement as the write, never an earlier SELECT. The shared row lock is
+ * retained until the write transaction commits, so a concurrent session
+ * replacement is ordered with the Agent's write. Empty without a fence
+ * (legacy Workspace traffic).
  */
 export function agentFenceSql(q: Query, fence?: AgentSessionFence | null): unknown {
   if (!fence) return q.raw("");
@@ -27,7 +28,7 @@ export function agentFenceSql(q: Query, fence?: AgentSessionFence | null): unkno
                   WHERE s.worker_instance_id = ${fence.workerInstanceId}
                     AND s.session_id = ${fence.sessionId}
                     AND s.session_epoch = ${fence.epoch}::bigint
-                    AND s.disconnected_at IS NULL)`;
+                    AND s.disconnected_at IS NULL FOR SHARE)`;
 }
 
 /** Whether the fence still names the Worker's current session. */
