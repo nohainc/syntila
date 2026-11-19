@@ -58,7 +58,7 @@ A result that arrives late from an older session is therefore rejected, and the 
 
 ## Compatibility adapter on the Workspace gateway
 
-A Worker Agent connects to `/api/workspace-gateway/connect` with `workerId` and `workerSessionId` query parameters and `Authorization: Bearer <sessionToken>`, instead of `workspaceRuntimeId` and a runtime credential. The gateway authenticates the session, requires that the Worker was adopted from the gateway's own Workspace, and gives the Agent its **own runtime identity** (`wri-agent-<workerId>`, installation `agent:<workerId>`; its stored credential is not a hash, so it can never authenticate as a runtime). Fences and audit then use the Worker's identity, not the Workspace's.
+A Worker Agent connects to `/api/workspace-gateway/connect` with `workerId` and `workerSessionId` query parameters and `Authorization: Bearer <sessionToken>`, instead of `workspaceRuntimeId` and a runtime credential. The gateway authenticates the session, requires that the Worker was adopted from the gateway's own Workspace, and uses the Worker principal and its session fence as the Agent's identity. The Workspace's active runtime id is borrowed as a correlation id only; no runtime identity row is created for the Agent. Fences and audit use the Worker's identity, not the Workspace's.
 
 Limits until P5 retires the Workspace gateway:
 

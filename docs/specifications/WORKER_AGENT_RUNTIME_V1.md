@@ -1,6 +1,6 @@
 # Standalone Worker Agent Runtime v1
 
-- **Status:** Proposed — not yet implemented
+- **Status:** Partly implemented (P4): see `WORKER_AGENT_CLI_AND_SERVICES.md`. The extraction map in section 11 is superseded by it; the Agent is a new package, not a cut of `apps/workspace`.
 - **Purpose:** Replace Workspace-as-required-runtime with individually connected Worker Agents while retaining Syntila's existing generic CLI Worker Engine, signed Profiles and durable assignment semantics.
 - **Dependencies:** ADR-031; Worker-first Architecture; Unified Messaging Protocol v1
 

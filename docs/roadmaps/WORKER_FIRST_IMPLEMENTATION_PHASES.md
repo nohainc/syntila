@@ -222,3 +222,11 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 - Gateway adapter behind `worker_agent_connect` (Worker principal and fence per Agent, the Workspace runtime id only as correlation id, message allowlist, lease renewal on heartbeat, stale sessions closed). Lapsed leases are closed by the outbox sweep.
 - Tests: `test/domain/worker-agents.test.ts`. Not yet tested end to end: a real Agent over the gateway WebSocket (P4).
 - Run: `bun run schema:lock` (scratch database, see P1/P2 notes), `bun scripts/write-paths.ts --write`, `bun run routes`, `scripts/test-backend.sh`, `scripts/test-two-node.sh`.
+
+## P4 status (implemented, awaiting `dart analyze` and `dart test`)
+
+- New pure-Dart package `apps/worker_agent` (`syntila-worker`); it does not import `apps/workspace`. Details and limits: [`WORKER_AGENT_CLI_AND_SERVICES.md`](../specifications/WORKER_AGENT_CLI_AND_SERVICES.md).
+- Done: per-Worker data directory, local lock, Ed25519 key store, fsync journal, Profile cache, readiness checks, allowed folders, Engine supervisor (slots, never twice), CLI (`install --pairing-code`, `run`, `status`, `logs`, `config`, `permissions`, `rotate-credential`, `update stage`, `uninstall`), launchd/systemd/Task Scheduler adapters with opt-in auto-start, separate-OS-user plan, signed update check, reconnect sequence.
+- Tests: fake cloud (pairing, signed nonces, epoch fence, command inbox), fake Engine, crash matrix over every journal write point, two Agents on two hosts, two Agents on one host, no-Workspace check.
+- **Written, unproven:** `CliEngineLauncher` over `syntila_cli_worker_runtime` (no sessions, folders, MCP, plugins or streaming).
+- **Not done:** Profile download and verification, platform secret store, readiness/inventory publication, binary swap for updates. `run` without an Engine adapter fails closed (`engine_unavailable`). The exit gate is met against the fake Engine only.

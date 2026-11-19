@@ -36,3 +36,9 @@ Today one Workspace runtime holds one connection and multiplexes every local Wor
 - Key pairs are Ed25519 (the private key stays on the host); the opaque-token fallback was not needed.
 - Fencing is inside the UPDATE of the assignment write, not a prior SELECT. Heartbeats renew the lease at most once per third of the lease.
 - The compatibility adapter allows one Agent per Workspace gateway until P5.
+
+## Implementation notes (P4, client side)
+
+- `apps/worker_agent` is a new package that depends on `crypto`, `cryptography` and `path` only. It reimplements the stable subset (journal, lock, key store, reconnect) instead of moving 33,000 lines out of `apps/workspace`; the shared Engine primitives stay in `packages/syntila_cli_worker_runtime` and are reached through the `EngineLauncher` seam.
+- An attempt that may already have started an Engine after a crash is never restarted; it ends as a retryable failure and the server retries on a new attempt.
+- Details, limits and what is not done: `docs/specifications/WORKER_AGENT_CLI_AND_SERVICES.md`.
