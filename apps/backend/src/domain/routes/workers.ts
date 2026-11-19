@@ -16,24 +16,29 @@ import type { SecurityEnv } from "./handlers.js";
  * flag; with the flag off the routes do not exist.
  *
  * `enabled` is configured here. `online` and `ready` are observed and read-only;
- * until Worker Agents connect on their own (P3) they are derived from the
- * Workspace the Worker was adopted from (`legacy_worker_mapping`):
+ * On the legacy path they are derived from the Workspace the Worker was
+ * adopted from (`legacy_worker_mapping`):
  *  - ready: the inventory row's readiness state is `ready`;
  *  - online: that Workspace has an open session row with a recent heartbeat.
  *    The session row is audit history written every few minutes, so this is an
- *    approximation until sessions are first-class.
+ *    approximation. On the Worker path online comes from the Agent lease,
+ *    matching admission. Agent readiness is not yet reported to the server.
  */
 const ONLINE_WINDOW = "10 minutes";
 
-const COLUMNS = `w.id, w.actor_id AS "actorId", w.worker_type_id AS "workerTypeId",
+const columns = (workerTargetDispatch: boolean) => `w.id, w.actor_id AS "actorId", w.worker_type_id AS "workerTypeId",
   c.display_name AS "workerTypeName", w.name, w.description, w.enabled,
   w.default_model AS "defaultModel", w.created_at AS "createdAt",
   w.updated_at AS "updatedAt", w.revoked_at AS "revokedAt",
-  (w.revoked_at IS NULL AND COALESCE(inv.readiness_state = 'ready', false)) AS ready,
-  (w.revoked_at IS NULL AND EXISTS (
+  (${workerTargetDispatch ? "false" : "COALESCE(inv.readiness_state <> 'not_probed', false)"}) AS "readinessKnown",
+  (w.revoked_at IS NULL AND ${workerTargetDispatch ? "false" : "COALESCE(inv.readiness_state = 'ready', false)"}) AS ready,
+  (w.revoked_at IS NULL AND ${workerTargetDispatch ? `EXISTS (
+     SELECT 1 FROM worker_agent_sessions s
+      WHERE s.worker_instance_id = w.id AND s.disconnected_at IS NULL
+        AND s.lease_expires_at > now())` : `EXISTS (
      SELECT 1 FROM workspace_sessions s
       WHERE s.workspace_id = inv.workspace_id AND s.disconnected_at IS NULL
-        AND s.last_heartbeat_at > now() - interval '${ONLINE_WINDOW}')) AS online`;
+        AND s.last_heartbeat_at > now() - interval '${ONLINE_WINDOW}')`}) AS online`;
 const FROM = `worker_instances w
   JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
   LEFT JOIN legacy_worker_mapping m ON m.worker_instance_id = w.id
@@ -55,6 +60,7 @@ function workerView(row: Row): WorkerInstance {
     enabled: row.enabled === true,
     online: row.online === true,
     ready: row.ready === true,
+    readinessKnown: row.readinessKnown === true,
     defaultModel: row.defaultModel == null ? null : String(row.defaultModel),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
@@ -64,7 +70,7 @@ function workerView(row: Row): WorkerInstance {
 
 async function readWorker(env: SecurityEnv, userId: string, workerId: string): Promise<WorkerInstance> {
   const q = dataOf(env).read;
-  const row = await q.row`SELECT ${q.raw(COLUMNS)} FROM ${q.raw(FROM)}
+  const row = await q.row`SELECT ${q.raw(columns(isFeatureEnabled("worker_target_dispatch")))} FROM ${q.raw(FROM)}
      WHERE w.id = ${workerId} AND w.owner_user_id = ${userId}`;
   if (!row) throw new HttpError(404, "Worker not found");
   return workerView(row);
@@ -90,7 +96,7 @@ export async function handleListWorkers(
   const context = await securityContext(request, env, accessContext);
   const includeRevoked = new URL(request.url).searchParams.get("includeRevoked") === "true";
   const q = dataOf(env).read;
-  const rows = await q.rows`SELECT ${q.raw(COLUMNS)} FROM ${q.raw(FROM)}
+  const rows = await q.rows`SELECT ${q.raw(columns(isFeatureEnabled("worker_target_dispatch")))} FROM ${q.raw(FROM)}
      WHERE w.owner_user_id = ${context.userId}
        AND (${includeRevoked}::boolean OR w.revoked_at IS NULL)
      ORDER BY w.created_at, w.id`;

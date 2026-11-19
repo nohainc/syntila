@@ -2,6 +2,7 @@ import { dataOf, type Db } from "../platform/data.js";
 import { createEventPublisher } from "./event-publisher.js";
 import { presentExecution } from "./execution-phase.js";
 import { canonicalExecutionErrorCode } from "@syntila/protocol";
+import { inTransaction } from "../platform/tx-env.js";
 
 interface PhaseEnv {
   readonly SYNTILA_DB: Db;
@@ -15,13 +16,13 @@ interface PhaseEnv {
  * receipt. The idempotency key is per assignment and phase, so replays and
  * duplicate gateway messages publish at most one event per phase.
  *
- * Best effort by design. Phase notification must never fail or delay the
- * assignment transition that triggered it; a missed event is repaired by the
- * client's reconnect refresh.
+ * Transactional callers pass `strict` so failure to persist the durable event
+ * rolls back the assignment change. Delivery still happens after commit.
  */
 export async function publishAssignmentPhase(
   env: PhaseEnv,
   assignmentId: string,
+  options: { strict?: boolean } = {},
 ): Promise<void> {
   try {
     const row = await dataOf(env).read.row<Record<string, unknown>>`
@@ -78,6 +79,23 @@ export async function publishAssignmentPhase(
       },
     });
   } catch (error) {
+    if (options.strict) throw error;
     console.error("Failed to publish step.phase", error);
   }
+}
+
+/** Commit the mutation and, when a Workspace-backed phase exists, its event together. */
+export async function withAssignmentPhase<E extends PhaseEnv, T>(
+  env: E,
+  assignmentId: string,
+  mutate: (txEnv: E) => Promise<T>,
+  changed: (result: T) => boolean,
+): Promise<T> {
+  return inTransaction(env, "assignment.phase", async (txEnv) => {
+    const result = await mutate(txEnv);
+    if (changed(result)) {
+      await publishAssignmentPhase(txEnv, assignmentId, { strict: true });
+    }
+    return result;
+  });
 }

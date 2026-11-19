@@ -1307,6 +1307,7 @@ abstract interface class AxDataSource {
   }) async =>
       throw UnimplementedError('Discussion messages are not available');
   Future<List<AxWorker>> loadWorkspaceWorkerInventory() async => const [];
+
   /// Worker Instances (ADR-032); empty unless the `worker_identity` flag is on.
   Future<List<WorkerInstance>> loadWorkerInstances() async => const [];
   Future<List<AxBuiltinWorkflow>> loadBuiltinWorkflowCatalog() async =>

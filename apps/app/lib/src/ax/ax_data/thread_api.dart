@@ -1312,8 +1312,8 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   @override
   Future<List<AxWorker>> loadWorkspaceWorkerInventory() async {
     // Members also receive the Workers their Workspace owner shares with them.
-    final body =
-        await _getJson(Uri.parse('$baseUrl/workspace-workers?includeShared=true'));
+    final body = await _getJson(
+        Uri.parse('$baseUrl/workspace-workers?includeShared=true'));
     return (body['workers'] as List? ?? const [])
         .whereType<Map>()
         .map((item) => AxWorker.fromJson(Map<String, dynamic>.from(item)))
@@ -1321,10 +1321,14 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   }
 
   @override
-  Future<List<WorkerInstance>> loadWorkerInstances() async {
+  Future<bool> workerIdentityEnabled() async {
     final features = await _getJson(Uri.parse('$baseUrl/features'));
-    final flags = (features['flags'] as List? ?? const []).whereType<String>();
-    if (!flags.contains('worker_identity')) return const [];
+    return (features['flags'] as List? ?? const []).contains('worker_identity');
+  }
+
+  @override
+  Future<List<WorkerInstance>> loadWorkerInstances() async {
+    if (!await workerIdentityEnabled()) return const [];
     return parseWorkerInstances(await _getJson(Uri.parse('$baseUrl/workers')));
   }
 }

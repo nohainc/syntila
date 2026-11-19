@@ -11,6 +11,7 @@ class WorkerInstance {
     required this.enabled,
     required this.online,
     required this.ready,
+    this.readinessKnown = true,
     required this.createdAt,
     required this.updatedAt,
     this.defaultModel,
@@ -27,6 +28,7 @@ class WorkerInstance {
         enabled: json['enabled']! as bool,
         online: json['online']! as bool,
         ready: json['ready']! as bool,
+        readinessKnown: (json['readinessKnown'] as bool?) ?? true,
         defaultModel: json['defaultModel'] as String?,
         createdAt: json['createdAt']! as String,
         updatedAt: json['updatedAt']! as String,
@@ -42,6 +44,7 @@ class WorkerInstance {
   final bool enabled;
   final bool online;
   final bool ready;
+  final bool readinessKnown;
   final String? defaultModel;
   final String createdAt;
   final String updatedAt;
@@ -59,6 +62,7 @@ class WorkerInstance {
         'enabled': enabled,
         'online': online,
         'ready': ready,
+        'readinessKnown': readinessKnown,
         'defaultModel': defaultModel,
         'createdAt': createdAt,
         'updatedAt': updatedAt,

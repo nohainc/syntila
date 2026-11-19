@@ -33,7 +33,7 @@ import { isFeatureEnabled } from "../feature-flags.js";
 import { dispatchWorkerAssignment } from "./worker-dispatch.js";
 import type { WorkerTargetSnapshot } from "./worker-eligibility.js";
 import { tryLogDiagnosticEvent } from "./observability.js";
-import { publishAssignmentPhase } from "./assignment-phase-events.js";
+import { withAssignmentPhase } from "./assignment-phase-events.js";
 import {
   ASSIGNMENT_REVOCATION_CONFIRMATION_MS,
   DEFAULT_QUEUE_WAIT_TIMEOUT_MS,
@@ -894,9 +894,12 @@ async function dispatchWorkspaceWorkerAssignment(
       };
     }
     const dispatchedAt = new Date().toISOString();
-    await dataOf(env).read.run`UPDATE worker_assignments SET status = 'dispatched', updated_at = ${dispatchedAt}::timestamptz,
+    await withAssignmentPhase(env, assignmentId, async (txEnv) => {
+      const q = dataOf(txEnv).read;
+      return q.run`UPDATE worker_assignments SET status = 'dispatched', updated_at = ${dispatchedAt}::timestamptz,
               dispatched_at = COALESCE(dispatched_at, ${dispatchedAt}::timestamptz)
-        WHERE id = ${assignmentId} AND status IN (${dataOf(env).read.raw(assignmentSourceStatusList("dispatched"))})`;
+        WHERE id = ${assignmentId} AND status IN (${q.raw(assignmentSourceStatusList("dispatched"))})`;
+    }, (changed) => changed > 0);
     tryLogDiagnosticEvent({
       requestId: task.workRequestId,
       assignmentId,
@@ -914,7 +917,6 @@ async function dispatchWorkspaceWorkerAssignment(
       retryable: true,
       context: { status: "dispatched" },
     });
-    await publishAssignmentPhase(env, assignmentId);
   } catch {
     const code = "provider_unavailable";
     const message = executionErrorMessage(code);

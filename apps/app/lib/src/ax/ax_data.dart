@@ -24,7 +24,8 @@ import 'dart:convert';
 import 'ax_input_delivery.dart';
 import 'sync/ax_idempotency.dart';
 
-import 'package:syntila_protocol/syntila_protocol.dart' show WorkerInstance, parseWorkerInstances;
+import 'package:syntila_protocol/syntila_protocol.dart'
+    show WorkerInstance, parseWorkerInstances;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
@@ -120,8 +121,15 @@ abstract interface class AxConditionalReadCache {
   void clearConditionalReads();
 }
 
+abstract interface class AxWorkerIdentityFeatureSource {
+  Future<bool> workerIdentityEnabled();
+}
+
 abstract class _AxApiClientCore
-    implements AxDataSource, AxConditionalReadCache {
+    implements
+        AxDataSource,
+        AxConditionalReadCache,
+        AxWorkerIdentityFeatureSource {
   _AxApiClientCore(
       {String? baseUrl, http.Client? client, String? backendBaseUrl})
       : baseUrl = baseUrl ??

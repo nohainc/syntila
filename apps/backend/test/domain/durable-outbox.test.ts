@@ -4,6 +4,9 @@ import { member, space, user, workspace } from "./helpers/seed";
 import { dataOf } from "../../src/platform/data.js";
 import { createEventPublisher, type DomainEventInput } from "../../src/domain/event-publisher.js";
 import { OutboxDispatcher } from "../../src/domain/outbox-dispatcher.js";
+import { withAssignmentPhase } from "../../src/domain/assignment-phase-events.js";
+import { transitionAssignment } from "../../src/domain/assignment-transitions.js";
+import { conversationFixture } from "./helpers/conversation.js";
 
 // ADR-033 (P2): commit first, notify second.
 
@@ -51,6 +54,23 @@ async function fixture(options: { withGateway?: boolean; max?: number } = {}) {
 }
 
 describe("one transaction: domain change, sequence, event and outbox", () => {
+  it("commits assignment admission with its phase event, and rolls both back when the event fails", async () => {
+    const f = await conversationFixture();
+    await f.assign("A1");
+    await f.sqlite.exec("ALTER TABLE work_requests DISABLE TRIGGER trg_work_requests_snapshot_immutable; UPDATE work_requests SET primary_workspace_id='WS' WHERE id='R'; ALTER TABLE work_requests ENABLE TRIGGER trg_work_requests_snapshot_immutable; UPDATE worker_assignments SET status='dispatched', attempt_id='ATT1' WHERE id='A1'");
+    const env = { SYNTILA_DB: f.db };
+    const move = (to: "acknowledged" | "running") => withAssignmentPhase(env, "A1",
+      (txEnv) => transitionAssignment(dataOf(txEnv).read, { to, fence: { assignmentId: "A1", attemptId: "ATT1" } }),
+      (result) => result.applied);
+    expect((await move("acknowledged")).applied).toBe(true);
+    expect(await f.sqlite.prepare("SELECT e.event_type, o.status FROM realtime_events e JOIN outbox o ON o.event_id=e.event_id WHERE e.event_type='step.phase'").all()).toHaveLength(1);
+    await f.sqlite.exec(`CREATE FUNCTION reject_phase_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type = 'step.phase' THEN RAISE EXCEPTION 'event unavailable'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER reject_phase_event BEFORE INSERT ON realtime_events FOR EACH ROW EXECUTE FUNCTION reject_phase_event()`);
+    await expect(move("running")).rejects.toThrow("event unavailable");
+    const row = await f.sqlite.prepare("SELECT status FROM worker_assignments WHERE id='A1'").get() as { status: string };
+    expect(row.status).toBe("acknowledged");
+    expect(await f.sqlite.prepare("SELECT event_id FROM realtime_events WHERE event_type='step.phase'").all()).toHaveLength(1);
+  });
   it("commits all four together", async () => {
     const f = await fixture({ withGateway: false });
     await f.publish(f.event("e1", { mutate: (tx) => tx.run`UPDATE spaces SET name = 'renamed' WHERE id = 'sp'` }));

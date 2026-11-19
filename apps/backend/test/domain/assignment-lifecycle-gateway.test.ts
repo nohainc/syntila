@@ -4,6 +4,15 @@ import { gatewayFixture } from "./helpers/assignment-gateway.js";
 const started = { started: true, engineStarted: true, providerStarted: true };
 
 describe("Gateway assignment acknowledgement ordering", () => {
+  it("records durable phase events with admission and provider-start evidence", async () => {
+    const f = await gatewayFixture("dispatched");
+    await f.sqlite.exec("ALTER TABLE work_requests DISABLE TRIGGER trg_work_requests_snapshot_immutable; UPDATE work_requests SET primary_workspace_id='WS' WHERE id='R'; ALTER TABLE work_requests ENABLE TRIGGER trg_work_requests_snapshot_immutable");
+    await f.send("assignment.ack", { accepted: true });
+    await f.send("assignment.start.ack", started);
+    const rows = await f.sqlite.prepare(`SELECT e.payload_json::jsonb->>'status' AS phase FROM realtime_events e
+      JOIN outbox o ON o.event_id=e.event_id WHERE e.event_type='step.phase' ORDER BY e.sequence`).all() as { phase: string }[];
+    expect(rows.map((row) => row.phase)).toEqual(["delivered", "running"]);
+  });
   it("never reverts Running to Acknowledged when acceptance arrives late", async () => {
     const f = await gatewayFixture("dispatched");
     await f.send("assignment.start.ack", started);

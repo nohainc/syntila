@@ -1,10 +1,13 @@
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/ax_models.dart';
+import 'package:syntila_protocol/syntila_protocol.dart' show WorkerInstance;
 
 import 'ax_fixture_snapshot.dart';
 
 /// Test-only fixture source. Production Ax always uses AxApiClient.
 class AxFixtureDataSource implements AxDataSource, AxPeopleDataSource {
+  @override
+  Future<List<WorkerInstance>> loadWorkerInstances() async => const [];
   @override
   Future<List<AxPerson>> loadPeople() async => const [];
   @override

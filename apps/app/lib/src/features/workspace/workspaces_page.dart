@@ -16,6 +16,7 @@ import '../../ax/ax_workspace_member_access.dart';
 import '../workflows/workflows_page.dart';
 import 'workspace_member_access_section.dart';
 import 'workspace_sharing_section.dart';
+import 'worker_instances_section.dart';
 
 export 'workspaces_overview.dart';
 
@@ -191,6 +192,8 @@ class _WorkspacesPageState extends State<WorkspacesPage>
           const SizedBox(height: 16),
           _workspaceDetail(context, widget.workspaces[tabs.index]),
         ],
+        if (widget.workflowCatalogs != null)
+          WorkerInstancesSection(catalogs: widget.workflowCatalogs!),
       ],
     );
   }

@@ -12,6 +12,7 @@ void main() {
     'enabled': true,
     'online': false,
     'ready': false,
+    'readinessKnown': true,
     'defaultModel': null,
     'createdAt': '2026-01-01T00:00:00.000Z',
     'updatedAt': '2026-01-01T00:00:00.000Z',
@@ -26,9 +27,21 @@ void main() {
     expect(worker.toJson(), json);
   });
 
+  test('accepts older responses and preserves unknown readiness', () {
+    final older = Map<String, Object?>.of(json)..remove('readinessKnown');
+    expect(WorkerInstance.fromJson(older).readinessKnown, isTrue);
+    expect(
+        WorkerInstance.fromJson({...json, 'readinessKnown': false})
+            .readinessKnown,
+        isFalse);
+  });
+
   test('two Workers with the same name and Type stay distinct', () {
     final list = parseWorkerInstances({
-      'workers': [json, {...json, 'id': 'wrk-2', 'actorId': 'actor-worker-wrk-2'}],
+      'workers': [
+        json,
+        {...json, 'id': 'wrk-2', 'actorId': 'actor-worker-wrk-2'}
+      ],
     });
     expect(list.map((w) => w.id), ['wrk-1', 'wrk-2']);
     expect(parseWorkerInstances(null), isEmpty);

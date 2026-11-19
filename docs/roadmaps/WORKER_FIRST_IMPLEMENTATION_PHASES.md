@@ -126,6 +126,16 @@ Open before the gate closes: run the backend suite and `bun scripts/two-node.ts`
 
 **Exit gate:** a new user adds a Worker and asks from a Thread without ever seeing a Workspace.
 
+**Implementation in progress:** With `worker_target_dispatch` enabled, Worker
+list connectivity is based on the Agent session lease used by admission,
+instead of the legacy Workspace session. Agent readiness is not yet reported
+to the server, so the existing boolean `ready` remains false on this path; it
+must not be interpreted as a diagnosed readiness failure. The Workers page,
+eligible picker, configuration migration, and status flows remain open. The
+exit gate has not been demonstrated. The existing Worker-targeted admission
+also rejects stateful Workflows, including Work; it does not yet implement the
+full per-step Worker path described in P5.
+
 ## P7: Canonical timeline and attribution (ADR-036) ∥ P6, P8
 
 - Add `author_actor_id`, `worker_instance_id` and `author_display_snapshot` to `discussion_messages`. Backfill.
@@ -197,21 +207,24 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 | 038 Unified transport | P9 |
 | 039 Horizontal scaling | P11 decision, P12 |
 
-## P1 status (implemented, awaiting test run)
+## P1 status (implementation in progress; deployment gate open)
 
 - Migration `0026_worker_instances.sql`: `actors`, `worker_instances`, `legacy_worker_mapping`, trigger-maintained Actors, inventory adoption/backfill, nullable `worker_instance_id` on assignments, activity history, Thread and Workflow configuration.
 - `/api/workers` CRUD (owner-only, flag `worker_identity`), `/api/features`; the old Workspace inventory list moved to `/api/workspace-workers`.
 - Protocol: `packages/protocol/src/worker-instance.ts`, `packages/dart/protocol/lib/worker_instance.dart`; app: `AxSessionCatalogs.workerInstances`.
 - Tests: `apps/backend/test/domain/worker-instances.test.ts`, `packages/dart/protocol/test/worker_instance_test.dart`.
-- To do on a machine with bun/psql/flutter: `bun run schema:lock`, `bun run routes`, `scripts/test-all.sh --quick`.
+- A read-only Worker Instance list appears in Workspaces when `worker_identity` is enabled. It distinguishes configured enablement, connectivity and observed readiness. On the standalone Agent path readiness is explicitly unknown until the Agent can report a complete readiness assessment; `ready: false` alone must not be interpreted as a failed check. The additive `readinessKnown` response field makes this distinction.
+- For deployment data, run `psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" -f apps/backend/scripts/check-worker-identity.sql` with a read-only database role. Investigate every nonzero violation and record the counts. The audit does not change data and recognizes intentionally retained tombstone mappings. Fixture evidence is not a substitute for this deployment-specific gate.
+- Remaining: implement complete standalone Agent readiness reporting after Profile verification is available, and run the audit on each deployment's data. The fixture tests do not close the deployment gate.
 
-## P2 status (implemented, awaiting test run)
+## P2 status (implementation in progress)
 
 - Migration `0027`: wider `stream_kind` CHECK, `outbox`, `agent_commands` (trigger-driven status), `realtime_events(occurred_at)` index.
 - One transaction for domain change, sequence, event and outbox row; inline delivery plus `OutboxDispatcher` (retries, dead rows, sweep with gap report and command expiry).
 - Gateway: `lastEnqueuedSequences` apart from `appliedSequences` (hello and the new `ack` message); no cursor writes to storage; byte and item bounds; Bun `drain`; one `reconnect.required` per overflow and no more frames until the client's hello. Fixed: the non-gap path advanced the cursor for refused frames.
 - Assignment dispatch writes the `agent_commands` row with the command payload before delivery.
 - Tests: `durable-outbox.test.ts`, `realtime-backpressure.test.ts`, an assertion in `assignment-selection-snapshot.test.ts`, the rewritten hibernation test; `scripts/two-node.ts` check 5 kills a node mid-write.
+- Workspace-backed assignment gateway and dispatch phase events now commit with their associated mutation and outbox entry, with rollback coverage. Recovery/bulk queue writers and Workspace-free Worker phase events still need an atomic event path; the latter needs the execution event stream contract. Cross-node live wakeups remain explicitly deferred to ADR-039 and the `sync.required` wire rename to ADR-038.
 - Run: `bun scripts/write-paths.ts --write`, `bun run schema:lock` (see P1 notes), `scripts/test-backend.sh`, `scripts/test-two-node.sh`.
 
 ## P3 status (implemented, awaiting test run)

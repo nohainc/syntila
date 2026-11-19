@@ -32,6 +32,8 @@ export const WorkerInstanceSchema = z.object({
   online: z.boolean(),
   /** Observed: the Worker passed its readiness checks. Never set by the owner. */
   ready: z.boolean(),
+  /** False when no readiness observation is available for this execution path. */
+  readinessKnown: z.boolean().optional(),
   defaultModel: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),

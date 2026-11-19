@@ -12,7 +12,7 @@ import {
 import { acceptWorkerTarget, type WorkerTargetSnapshot } from "./worker-eligibility.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
 import { tryLogDiagnosticEvent } from "./observability.js";
-import { publishAssignmentPhase } from "./assignment-phase-events.js";
+import { withAssignmentPhase } from "./assignment-phase-events.js";
 import { DEFAULT_QUEUE_WAIT_TIMEOUT_MS } from "./assignment-delivery.js";
 import { assignmentSourceStatusList } from "./assignment-transitions.js";
 import { executionSlotAdmission } from "./account-plan.js";
@@ -350,10 +350,12 @@ export async function dispatchWorkerAssignment(
       };
     }
     const dispatchedAt = new Date().toISOString();
-    await read.run`UPDATE worker_assignments SET status = 'dispatched', updated_at = ${dispatchedAt}::timestamptz,
+    await withAssignmentPhase(env, assignmentId, async (txEnv) => {
+      const q = dataOf(txEnv).read;
+      return q.run`UPDATE worker_assignments SET status = 'dispatched', updated_at = ${dispatchedAt}::timestamptz,
               dispatched_at = COALESCE(dispatched_at, ${dispatchedAt}::timestamptz)
-        WHERE id = ${assignmentId} AND status IN (${read.raw(assignmentSourceStatusList("dispatched"))})`;
-    await publishAssignmentPhase(env, assignmentId);
+        WHERE id = ${assignmentId} AND status IN (${q.raw(assignmentSourceStatusList("dispatched"))})`;
+    }, (changed) => changed > 0);
   } catch {
     return fail("Worker gateway did not accept the assignment");
   }

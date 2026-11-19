@@ -11,7 +11,7 @@ import {
 import { assignmentStatusForEvidence, ASSIGNMENT_ACTIVE_STATUSES } from "@syntila/core";
 import { extractBearerToken } from "@syntila/security";
 import { signalAssignmentTerminal } from "./assignment-workflow-signal.js";
-import { publishAssignmentPhase } from "./assignment-phase-events.js";
+import { withAssignmentPhase } from "./assignment-phase-events.js";
 import { assignmentCommandDisposition } from "./assignment-delivery.js";
 import { grantStartPermit } from "./assignment-start-permit.js";
 import { finalizeAssignmentRevocation } from "./assignment-revocation.js";
@@ -276,15 +276,14 @@ export class WorkerGateway implements DurableObject {
         const row = await this.owned(message);
         if (!row) return;
         if ((payload.accepted ?? payload.status === "accepted") === true) {
-          const moved = await transitionAssignment(dataOf(this.env).read, {
+          await withAssignmentPhase(this.env, row.id, (env) => transitionAssignment(dataOf(env).read, {
             to: assignmentStatusForEvidence("admission"),
             now,
             fence: { assignmentId: row.id, attemptId: row.attempt_id, agent: fence },
-          });
-          if (moved.applied) await publishAssignmentPhase(this.env, row.id);
+          }), (result) => result.applied);
         } else {
-          await recordAssignmentError(
-            this.env.SYNTILA_DB,
+          await withAssignmentPhase(this.env, row.id, (env) => recordAssignmentError(
+            env.SYNTILA_DB,
             row.id,
             {
               error: { code: "worker_not_ready", message: "The Worker was not ready to accept the assignment.", retryable: true },
@@ -292,30 +291,29 @@ export class WorkerGateway implements DurableObject {
             },
             row.attempt_id,
             { onlyFrom: ["created", "dispatched"], agent: fence },
-          );
+          ), (changed) => changed);
         }
         return;
       }
       case "assignment.start.ack": {
         const row = await this.owned(message);
         if (!row) return;
-        const moved = await transitionAssignment(dataOf(this.env).read, {
+        await withAssignmentPhase(this.env, row.id, (env) => transitionAssignment(dataOf(env).read, {
           to: assignmentStatusForEvidence("provider_start"),
           now,
           startTaskId: row.task_id,
           fence: { assignmentId: row.id, attemptId: row.attempt_id, agent: fence },
-        });
-        if (moved.applied) await publishAssignmentPhase(this.env, row.id);
+        }), (result) => result.applied);
         return;
       }
       case "assignment.start.permit.request": {
         const row = await this.owned(message);
         if (!row) return;
-        const decision = await grantStartPermit(dataOf(this.env).read, {
+        const decision = await withAssignmentPhase(this.env, row.id, (env) => grantStartPermit(dataOf(env).read, {
           assignmentId: row.id,
           attemptId: row.attempt_id,
           agent: fence,
-        });
+        }), (result) => result.granted);
         tryLogDiagnosticEvent({
           assignmentId: row.id,
           workerId: this.workerId,
@@ -336,13 +334,12 @@ export class WorkerGateway implements DurableObject {
             ? { granted: true, permitId: decision.permitId, expiresAt: decision.expiresAt }
             : { granted: false, reason: (decision as { reason: string }).reason },
         );
-        if (decision.granted) await publishAssignmentPhase(this.env, row.id);
         return;
       }
       case "assignment.result": {
         const row = await this.owned(message);
         if (!row) return;
-        const done = await recordAssignmentResult(this.env.SYNTILA_DB, row.id, message.payload as never, row.attempt_id, fence);
+        const done = await withAssignmentPhase(this.env, row.id, (env) => recordAssignmentResult(env.SYNTILA_DB, row.id, message.payload as never, row.attempt_id, fence), (changed) => changed);
         // A result from a session that is no longer current is not acknowledged.
         if (!done && (await this.stale())) return;
         await this.terminalAck(message, row, "completed");
@@ -351,11 +348,10 @@ export class WorkerGateway implements DurableObject {
       case "assignment.error": {
         const row = await this.owned(message);
         if (!row) return;
-        const failed = await recordAssignmentError(this.env.SYNTILA_DB, row.id, message.payload as never, row.attempt_id, {
+        const failed = await withAssignmentPhase(this.env, row.id, (env) => recordAssignmentError(env.SYNTILA_DB, row.id, message.payload as never, row.attempt_id, {
           providerFailureKey: this.env.SYNTILA_PROVIDER_FAILURE_KEY,
           agent: fence,
-        });
-        if (failed) await publishAssignmentPhase(this.env, row.id);
+        }), (changed) => changed);
         if (!failed && (await this.stale())) return;
         await this.terminalAck(message, row, "failed");
         return;
@@ -405,10 +401,12 @@ export class WorkerGateway implements DurableObject {
   /** Cancellation evidence: finish a revocation Cloud started, else an ordinary cancel. */
   private async cancellationEvidence(row: AssignmentRow, cancellation: { status: "cancelled"; reason: string }): Promise<boolean> {
     if (await this.stale()) return false;
-    const finalized = await finalizeAssignmentRevocation(this.env.SYNTILA_DB, row.id, row.attempt_id);
-    if (finalized === "finalized") return true;
-    if (finalized !== "not_revoking") return false;
-    return recordAssignmentCancelled(this.env.SYNTILA_DB, row.id, cancellation, row.attempt_id, { agent: this.fence ?? undefined });
+    return withAssignmentPhase(this.env, row.id, async (env) => {
+      const finalized = await finalizeAssignmentRevocation(env.SYNTILA_DB, row.id, row.attempt_id);
+      if (finalized === "finalized") return true;
+      if (finalized !== "not_revoking") return false;
+      return recordAssignmentCancelled(env.SYNTILA_DB, row.id, cancellation, row.attempt_id, { agent: this.fence ?? undefined });
+    }, (changed) => changed);
   }
 
   private correlation(row: Pick<AssignmentRow, "id" | "run_id" | "task_id" | "attempt_id" | "idempotency_key">) {
@@ -550,11 +548,11 @@ export class WorkerGateway implements DurableObject {
         payload: withStartPermit(payload),
       });
       if (row.status === "created") {
-        const claim = await transitionAssignment(dataOf(this.env).read, {
+        const claim = await withAssignmentPhase(this.env, row.id, (env) => transitionAssignment(dataOf(env).read, {
           to: "dispatched",
           onlyFrom: ["created"],
           fence: { assignmentId: row.id, attemptId: row.attempt_id, agent: this.fence },
-        });
+        }), (result) => result.applied);
         if (!claim.applied && claim.outcome !== "duplicate") return { delivered: false, status: claim.currentStatus };
       }
       await this.send({ ...message });

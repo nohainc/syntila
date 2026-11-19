@@ -52,6 +52,16 @@ Every event row has one `(stream_kind, stream_id)`. Fanning one event out to sev
 
 Replayable `assignment.activity` types are the exception: they are durable and follow the table of `isReplayableRealtimeEvent`. Moving execution events to the `assignment` stream happens in P5 (targeted dispatch) and to the `thread` stream in P7 (canonical timeline); the legacy `execution_workspace` stream goes away in P10.
 
+For Workspace-backed assignments, the gateway and dispatcher commit a
+`step.phase` event and its outbox row in the same transaction as their
+dispatch, admission, start permit, startup, result, failure, or cancellation
+mutation. If event persistence fails, the mutation rolls back; socket delivery
+is still post-commit and retried by the outbox. Events use an idempotency key
+per assignment and phase. Some other recovery and bulk-queue writers do not yet
+publish a phase in their transaction. Worker-targeted requests have no primary
+Workspace and the existing `step.phase` wire contract requires one, so they do
+not yet emit these phase events; their stream contract remains open in P5/P7.
+
 ## Delivery classes
 
 | Class | Persisted | Behavior |

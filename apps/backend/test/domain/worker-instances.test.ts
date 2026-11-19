@@ -69,7 +69,7 @@ it("two Workers with the same name and Type are distinct, each with its own Acto
   const b = await f.created("alice", { workerTypeId: "chatgpt", name: "Writer" });
   expect(a.id).not.toBe(b.id);
   expect(a.actorId).not.toBe(b.actorId);
-  expect(a).toMatchObject({ name: "Writer", workerTypeId: "chatgpt", workerTypeName: "ChatGPT", enabled: true, online: false, ready: false, revokedAt: null });
+  expect(a).toMatchObject({ name: "Writer", workerTypeId: "chatgpt", workerTypeName: "ChatGPT", enabled: true, online: false, ready: false, readinessKnown: false, revokedAt: null });
   expect((await f.list("alice")).map((w) => w.id).sort()).toEqual([a.id, b.id].sort());
   const actors = await f.rows("SELECT kind, user_id FROM actors WHERE id IN (?, ?)", a.actorId, b.actorId);
   expect(actors.map((r: any) => [r.kind, r.user_id])).toEqual([["worker", null], ["worker", null]]);
@@ -124,7 +124,7 @@ it("enabled is configured; online and ready are observed from the Workspace it c
     INSERT INTO workspace_sessions (id, workspace_id, runtime_identity_id, protocol_version, client_version, connected_at, last_heartbeat_at)
     VALUES ('S1', 'WS', 'RT', '1', '1.0.0', now(), now());`);
   const [adopted] = await f.list("alice");
-  expect(adopted).toMatchObject({ id: "worker-legacy-1", enabled: true, ready: true, online: true });
+  expect(adopted).toMatchObject({ id: "worker-legacy-1", enabled: true, ready: true, readinessKnown: true, online: true });
   // Disabling it is configuration: it stays ready and online.
   const off = ((await (await f.one("alice", adopted!.id, "PATCH", { enabled: false })).json()) as { worker: Worker }).worker;
   expect(off).toMatchObject({ enabled: false, ready: true, online: true });
@@ -132,6 +132,39 @@ it("enabled is configured; online and ready are observed from the Workspace it c
   expect(((await (await f.one("alice", adopted!.id)).json()) as { worker: Worker }).worker).toMatchObject({ online: false, ready: true });
   await f.sqlite.exec("UPDATE workspace_worker_inventory SET readiness_state = 'sign_in_required' WHERE worker_id = 'worker-legacy-1'");
   expect(((await (await f.one("alice", adopted!.id)).json()) as { worker: Worker }).worker.ready).toBe(false);
+});
+
+it("reports the Agent lease on the Worker dispatch path", async () => {
+  const f = await fixture();
+  const w = await f.created("alice", { workerTypeId: "chatgpt", name: "Agent" });
+  const previous = process.env.SYNTILA_FEATURE_FLAGS;
+  process.env.SYNTILA_FEATURE_FLAGS = "worker_identity,worker_agent_connect,worker_target_dispatch";
+  try {
+    await f.sqlite.exec(`
+      INSERT INTO worker_credentials (id, worker_instance_id, public_key, key_fingerprint)
+      VALUES ('C1', '${w.id}', '${"a".repeat(43)}', '${"a".repeat(64)}');
+      INSERT INTO worker_agent_sessions (worker_instance_id, session_id, session_epoch, credential_id, token_digest, lease_expires_at)
+      VALUES ('${w.id}', 'S1', 1, 'C1', 'digest', now() + interval '1 minute');`);
+    expect((await f.list("alice"))[0]).toMatchObject({ online: true, ready: false, readinessKnown: false });
+    await f.sqlite.exec("UPDATE worker_agent_sessions SET lease_expires_at = now() - interval '1 second'");
+    expect(((await (await f.one("alice", w.id)).json()) as { worker: Worker }).worker.online).toBe(false);
+  } finally {
+    process.env.SYNTILA_FEATURE_FLAGS = previous;
+  }
+});
+
+it("identity audit detects unadoptable inventory without flagging normal tombstones", async () => {
+  const f = await fixture();
+  await f.sqlite.exec(`INSERT INTO workspace_worker_inventory (worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
+    local_concurrency_limit, revision, created_at, updated_at, last_seen_at)
+    VALUES ('worker-audit-1', 'WS', 'alice', 'chatgpt', 'enabled', 'ready', 1, 1, now(), now(), now()),
+           ('worker-audit-2', 'WS', 'alice', 'unknown-type', 'enabled', 'ready', 1, 1, now(), now(), now());`);
+  await f.sqlite.exec("DELETE FROM workspace_worker_inventory WHERE worker_id = 'worker-audit-1'");
+  const script = await Bun.file(new URL('../../scripts/check-worker-identity.sql', import.meta.url)).text();
+  const audit = await f.rows(script.split(';')[0]!);
+  const violations = new Map(audit.map((row: any) => [row.invariant, Number(row.violations)]));
+  expect(violations.get('inventory rows with unknown Worker Type')).toBe(1);
+  expect(violations.get('live mapped Workers without an inventory row')).toBe(0);
 });
 
 it("removing a Worker is a tombstone: it keeps its row and Actor, hides from the list and cannot change", async () => {

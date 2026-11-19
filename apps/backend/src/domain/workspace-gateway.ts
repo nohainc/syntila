@@ -67,7 +67,7 @@ import {
   normalizeActivityPayload,
 } from "@syntila/protocol";
 import { recordAssignmentStartup } from "./assignment-startup.js";
-import { publishAssignmentPhase } from "./assignment-phase-events.js";
+import { withAssignmentPhase } from "./assignment-phase-events.js";
 import { createEventPublisher } from "./event-publisher.js";
 import {
   ASSIGNMENT_REVOCATION_CONFIRMATION_MS,
@@ -1468,7 +1468,7 @@ export class WorkspaceGateway implements DurableObject {
           // provider-start acknowledgement or a terminal outcome got here
           // first, this late acknowledgement is recorded and ignored; it
           // must never refresh updated_at or downgrade the assignment.
-          const transition = await transitionAssignment(dataOf(this.env).read, {
+          const transition = await withAssignmentPhase(this.env, message.assignmentId!, (env) => transitionAssignment(dataOf(env).read, {
             to: assignmentStatusForEvidence("admission"),
             now,
             fence: {
@@ -1478,16 +1478,14 @@ export class WorkspaceGateway implements DurableObject {
               runtimeIdentityId: this.workspaceRuntimeId ?? undefined,
               agent: this.agentFence ?? undefined,
             },
-          });
+          }), (result) => result.applied);
           this.traceTransitionOutcome(message, "admission", transition);
-          if (transition.applied && message.assignmentId)
-            await publishAssignmentPhase(this.env, message.assignmentId);
         } else if (
           message.assignmentId &&
           (await this.terminalAssignmentMatches(message))
         ) {
-          await recordAssignmentError(
-            this.env.SYNTILA_DB,
+          await withAssignmentPhase(this.env, message.assignmentId, (env) => recordAssignmentError(
+            env.SYNTILA_DB,
             message.assignmentId,
             {
               error: {
@@ -1502,7 +1500,7 @@ export class WorkspaceGateway implements DurableObject {
             // A rejection is only meaningful before admission. A stale or
             // replayed one must not fail an accepted or running assignment.
             { onlyFrom: ["created", "dispatched"], agent: this.agentFence ?? undefined },
-          );
+          ), (changed) => changed);
         }
         return;
       }
@@ -1617,7 +1615,7 @@ export class WorkspaceGateway implements DurableObject {
         // created, dispatched or acknowledged. That keeps the evidence when
         // it overtakes the acceptance acknowledgement (HTTP fallback, replay).
         if (!(await this.assignmentContextMatches(message))) return;
-        const transition = await transitionAssignment(dataOf(this.env).read, {
+        const transition = await withAssignmentPhase(this.env, message.assignmentId!, (env) => transitionAssignment(dataOf(env).read, {
           to: assignmentStatusForEvidence("provider_start"),
           now,
           startTaskId: message.taskId,
@@ -1628,11 +1626,9 @@ export class WorkspaceGateway implements DurableObject {
             runtimeIdentityId: this.workspaceRuntimeId ?? undefined,
             agent: this.agentFence ?? undefined,
           },
-        });
+        }), (result) => result.applied);
         this.traceTransitionOutcome(message, "provider_start", transition);
         if (!transition.applied) return;
-        if (message.assignmentId)
-          await publishAssignmentPhase(this.env, message.assignmentId);
         tryLogDiagnosticEvent({
           assignmentId: message.assignmentId,
           workspaceId: message.executionWorkspaceId,
@@ -1654,12 +1650,12 @@ export class WorkspaceGateway implements DurableObject {
         // Fencing: the Service asks to launch the provider. Granted only while
         // Cloud has not revoked the assignment (see assignment-start-permit).
         if (!(await this.assignmentContextMatches(message))) return;
-        const decision = await grantStartPermit(dataOf(this.env).read, {
+        const decision = await withAssignmentPhase(this.env, message.assignmentId!, (env) => grantStartPermit(dataOf(env).read, {
           assignmentId: message.assignmentId!,
           attemptId: message.attemptId!,
           executionWorkspaceId: this.executionWorkspaceId ?? undefined,
           runtimeIdentityId: this.workspaceRuntimeId ?? undefined,
-        });
+        }), (result) => result.granted);
         tryLogDiagnosticEvent({
           assignmentId: message.assignmentId,
           workspaceId: message.executionWorkspaceId,
@@ -1700,8 +1696,6 @@ export class WorkspaceGateway implements DurableObject {
               }
             : { granted: false, reason: (decision as { reason: string }).reason },
         });
-        if (decision.granted && message.assignmentId)
-          await publishAssignmentPhase(this.env, message.assignmentId);
         return;
       }
       case "assignment.start.permit.grant":
@@ -1713,14 +1707,13 @@ export class WorkspaceGateway implements DurableObject {
         if (!(await this.assignmentContextMatches(message))) return;
         const report = assignmentStartupPayload.safeParse(message.payload);
         if (!report.success) return;
-        const outcome = await recordAssignmentStartup(dataOf(this.env).read, {
+        const outcome = await withAssignmentPhase(this.env, message.assignmentId!, (env) => recordAssignmentStartup(dataOf(env).read, {
           assignmentId: message.assignmentId!,
           attemptId: message.attemptId!,
           payload: report.data,
           now,
-        });
+        }), (result) => result.applied);
         if (!outcome.applied) return;
-        await publishAssignmentPhase(this.env, message.assignmentId!);
         tryLogDiagnosticEvent({
           assignmentId: message.assignmentId,
           workspaceId: message.executionWorkspaceId,
@@ -2008,13 +2001,13 @@ export class WorkspaceGateway implements DurableObject {
           retryable: false,
           context: { status: "completed" },
         });
-        const completed = await recordAssignmentResult(
-          this.env.SYNTILA_DB,
+        const completed = await withAssignmentPhase(this.env, message.assignmentId!, (env) => recordAssignmentResult(
+          env.SYNTILA_DB,
           message.assignmentId!,
           message.payload as never,
           message.attemptId,
           this.agentFence ?? undefined,
-        );
+        ), (changed) => changed);
         if (completed) this.traceTerminalPersisted(message, "completed");
         // A result from a session that is no longer current is not acknowledged.
         if (!completed && (await this.agentSessionIsStale())) return;
@@ -2048,16 +2041,15 @@ export class WorkspaceGateway implements DurableObject {
             context: { status: "failed" },
           });
         }
-        const failed = await recordAssignmentError(
-          this.env.SYNTILA_DB,
+        const failed = await withAssignmentPhase(this.env, message.assignmentId!, (env) => recordAssignmentError(
+          env.SYNTILA_DB,
           message.assignmentId!,
           message.payload as never,
           message.attemptId,
           { providerFailureKey: this.env.SYNTILA_PROVIDER_FAILURE_KEY, agent: this.agentFence ?? undefined },
-        );
+        ), (changed) => changed);
         if (failed) {
           this.traceTerminalPersisted(message, "failed");
-          await publishAssignmentPhase(this.env, message.assignmentId!);
         }
         if (!failed && (await this.agentSessionIsStale())) return;
         await this.sendTerminalAcknowledgement(message, "failed");
@@ -2172,20 +2164,12 @@ export class WorkspaceGateway implements DurableObject {
   ): Promise<boolean> {
     // Cancellation evidence from a session that is no longer current is ignored.
     if (this.agentFence && (await this.agentSessionIsStale())) return false;
-    const finalized = await finalizeAssignmentRevocation(
-      this.env.SYNTILA_DB,
-      message.assignmentId!,
-      message.attemptId,
-    );
-    if (finalized === "finalized") return true;
-    if (finalized !== "not_revoking") return false;
-    return recordAssignmentCancelled(
-      this.env.SYNTILA_DB,
-      message.assignmentId!,
-      cancellation,
-      message.attemptId,
-      { agent: this.agentFence ?? undefined },
-    );
+    return withAssignmentPhase(this.env, message.assignmentId!, async (env) => {
+      const finalized = await finalizeAssignmentRevocation(env.SYNTILA_DB, message.assignmentId!, message.attemptId);
+      if (finalized === "finalized") return true;
+      if (finalized !== "not_revoking") return false;
+      return recordAssignmentCancelled(env.SYNTILA_DB, message.assignmentId!, cancellation, message.attemptId, { agent: this.agentFence ?? undefined });
+    }, (changed) => changed);
   }
 
   /**
@@ -3135,12 +3119,9 @@ export class WorkspaceGateway implements DurableObject {
     // persisted: that is a durable Cloud-side queue, never a delivery. It is
     // flushed when the Service reports ready.
     if (!(await this.serviceIsReady())) {
-      await recordCloudQueueReason(
-        dataOf(this.env).read,
-        body.assignmentId,
-        body.attemptId,
-        "service_not_ready",
-      );
+      await withAssignmentPhase(this.env, body.assignmentId, async (env) => {
+        await recordCloudQueueReason(dataOf(env).read, body.assignmentId, body.attemptId, "service_not_ready");
+      }, () => true);
       await this.logNotReadyDelivery("service_not_ready", body);
       return Response.json(
         {
@@ -3166,7 +3147,7 @@ export class WorkspaceGateway implements DurableObject {
     const claim = await this.withSlotLock(async () => {
       if (currentStatus === "created" && !(await this.slotIsFree()))
         return null;
-      return transitionAssignment(dataOf(this.env).read, {
+      return withAssignmentPhase(this.env, body.assignmentId, (env) => transitionAssignment(dataOf(env).read, {
         fence: {
           assignmentId: body.assignmentId,
           attemptId: body.attemptId,
@@ -3175,16 +3156,12 @@ export class WorkspaceGateway implements DurableObject {
         },
         to: "dispatched",
         ...(options.claimCreated ? { onlyFrom: ["created"] as const } : {}),
-      });
+      }), (result) => result.applied);
     });
     if (!claim) {
-      await recordCloudQueueReason(
-        dataOf(this.env).read,
-        body.assignmentId,
-        body.attemptId,
-        "workspace_capacity",
-      );
-      await publishAssignmentPhase(this.env, body.assignmentId);
+      await withAssignmentPhase(this.env, body.assignmentId, async (env) => {
+        await recordCloudQueueReason(dataOf(env).read, body.assignmentId, body.attemptId, "workspace_capacity");
+      }, () => true);
       return Response.json(
         {
           delivered: false,
