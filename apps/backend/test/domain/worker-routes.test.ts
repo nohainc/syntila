@@ -132,7 +132,7 @@ describe("Worker API routes", () => {
       async () => new Response("inventory", { status: 200 }),
     );
     const response = await routeWorkerRequest(
-      request("/api/workers?workspaceId=workspace-1"),
+      request("/api/workspace-workers?workspaceId=workspace-1"),
       {} as Parameters<typeof routeWorkerRequest>[1],
       undefined,
       {

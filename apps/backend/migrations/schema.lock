@@ -27,6 +27,11 @@ column account_worker_plugins.owner_user_id text not-null
 column account_worker_plugins.plugin_id text not-null
 column account_worker_plugins.plugin_ref text not-null
 column account_worker_plugins.updated_at timestamptz not-null default
+column actors.created_at timestamptz not-null default
+column actors.id text not-null
+column actors.kind text not-null
+column actors.tombstoned_at timestamptz
+column actors.user_id text
 column auth_audit_events.action text not-null
 column auth_audit_events.created_at timestamptz not-null default
 column auth_audit_events.details_json jsonb not-null default
@@ -207,6 +212,9 @@ column issue_reports.status text not-null
 column issue_reports.updated_at timestamptz not-null default
 column issue_reports.worker_type_id text
 column issue_reports.workspace_id text
+column legacy_worker_mapping.created_at timestamptz not-null default
+column legacy_worker_mapping.legacy_worker_id text not-null
+column legacy_worker_mapping.worker_instance_id text not-null
 column mcp_tool_calls.claimed_at timestamptz not-null
 column mcp_tool_calls.code text
 column mcp_tool_calls.completed_at timestamptz
@@ -375,6 +383,7 @@ column thread_work_configs.config_json text not-null default
 column thread_work_configs.thread_id text not-null
 column thread_work_configs.updated_at timestamptz not-null default
 column thread_work_configs.updated_by_user_id text
+column thread_work_configs.worker_instance_id text
 column threads.access_policy_json text not-null default
 column threads.ai_context_generation int8 not-null default
 column threads.ai_history_cleared_at timestamptz
@@ -429,6 +438,7 @@ column user_workflow_configurations.configuration_json text not-null
 column user_workflow_configurations.schema_version int8 not-null
 column user_workflow_configurations.updated_at timestamptz not-null default
 column user_workflow_configurations.user_id text not-null
+column user_workflow_configurations.worker_instance_id text
 column user_workflow_configurations.workflow_id text not-null
 column user_workflow_configurations.workspace_id text not-null
 column user_workflow_defaults.updated_at timestamptz not-null default
@@ -496,6 +506,7 @@ column worker_activity_history.title text not-null
 column worker_activity_history.tool_id text
 column worker_activity_history.tool_name text
 column worker_activity_history.worker_id text not-null
+column worker_activity_history.worker_instance_id text
 column worker_activity_history.workspace_id text not-null
 column worker_assignments.acknowledged_at timestamptz
 column worker_assignments.attempt_id text
@@ -535,6 +546,7 @@ column worker_assignments.thread_id text
 column worker_assignments.timeout_ms int8
 column worker_assignments.updated_at timestamptz not-null default
 column worker_assignments.work_request_id text
+column worker_assignments.worker_instance_id text
 column worker_assignments.worker_type_id text not-null
 column worker_assignments.workflow_signal_attempts int8 not-null default
 column worker_assignments.workflow_signaled_at timestamptz
@@ -554,6 +566,18 @@ column worker_catalog.sort_order int8 not-null default
 column worker_catalog.updated_at timestamptz not-null default
 column worker_catalog.visibility_state text not-null default
 column worker_catalog.worker_type_id text not-null
+column worker_instances.actor_id text not-null
+column worker_instances.actor_kind text not-null default
+column worker_instances.created_at timestamptz not-null default
+column worker_instances.default_model text
+column worker_instances.description text not-null default
+column worker_instances.enabled bool not-null default
+column worker_instances.id text not-null
+column worker_instances.name text not-null
+column worker_instances.owner_user_id text not-null
+column worker_instances.revoked_at timestamptz
+column worker_instances.updated_at timestamptz not-null default
+column worker_instances.worker_type_id text not-null
 column worker_profile_history.actor_user_id text
 column worker_profile_history.digest text not-null
 column worker_profile_history.profile_json text not-null
@@ -771,6 +795,13 @@ constraint account_worker_plugins.account_worker_plugins_owner_user_id_fkey fore
 constraint account_worker_plugins.account_worker_plugins_owner_user_id_plugin_id_key unique
 constraint account_worker_plugins.account_worker_plugins_pkey primary-key
 constraint account_worker_plugins.account_worker_plugins_plugin_id_check check
+constraint actors.actors_check check
+constraint actors.actors_check1 check
+constraint actors.actors_id_kind_key unique
+constraint actors.actors_kind_check check
+constraint actors.actors_pkey primary-key
+constraint actors.actors_user_id_fkey foreign-key -> users on-delete-restrict
+constraint actors.actors_user_id_key unique
 constraint auth_audit_events.auth_audit_events_outcome_check check
 constraint auth_audit_events.auth_audit_events_pkey primary-key
 constraint auth_audit_events.auth_audit_events_user_id_fkey foreign-key -> users on-delete-set-null
@@ -875,6 +906,9 @@ constraint issue_reports.issue_reports_reporter_user_id_attempt_key_key unique
 constraint issue_reports.issue_reports_reporter_user_id_fkey foreign-key -> users on-delete-set-null
 constraint issue_reports.issue_reports_status_check check
 constraint issue_reports.issue_reports_workspace_id_fkey foreign-key -> execution_workspaces on-delete-set-null
+constraint legacy_worker_mapping.legacy_worker_mapping_pkey primary-key
+constraint legacy_worker_mapping.legacy_worker_mapping_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
+constraint legacy_worker_mapping.legacy_worker_mapping_worker_instance_id_key unique
 constraint mcp_tool_calls.mcp_tool_calls_check check
 constraint mcp_tool_calls.mcp_tool_calls_check1 check
 constraint mcp_tool_calls.mcp_tool_calls_dispatch_key_key unique
@@ -995,6 +1029,7 @@ constraint thread_work_configs.thread_work_configs_config_json_is_json check
 constraint thread_work_configs.thread_work_configs_pkey primary-key
 constraint thread_work_configs.thread_work_configs_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint thread_work_configs.thread_work_configs_updated_by_user_id_fkey foreign-key -> users on-delete-set-null
+constraint thread_work_configs.thread_work_configs_worker_instance_id_fkey foreign-key -> worker_instances on-delete-set-null
 constraint threads.threads_access_policy_json_is_json check
 constraint threads.threads_lead_user_id_fkey foreign-key -> users on-delete-restrict
 constraint threads.threads_lease_fence_counter_check check
@@ -1026,6 +1061,7 @@ constraint user_workflow_configurations.user_workflow_configurations_configurati
 constraint user_workflow_configurations.user_workflow_configurations_pkey primary-key
 constraint user_workflow_configurations.user_workflow_configurations_schema_version_check check
 constraint user_workflow_configurations.user_workflow_configurations_user_id_fkey foreign-key -> users on-delete-cascade
+constraint user_workflow_configurations.user_workflow_configurations_worker_instance_id_fkey foreign-key -> worker_instances on-delete-set-null
 constraint user_workflow_configurations.user_workflow_configurations_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 constraint user_workflow_defaults.user_workflow_defaults_pkey primary-key
 constraint user_workflow_defaults.user_workflow_defaults_user_id_fkey foreign-key -> users on-delete-cascade
@@ -1064,6 +1100,7 @@ constraint worker_activity_history.worker_activity_history_pkey primary-key
 constraint worker_activity_history.worker_activity_history_provider_sequence_check check
 constraint worker_activity_history.worker_activity_history_status_check check
 constraint worker_activity_history.worker_activity_history_title_check check
+constraint worker_activity_history.worker_activity_history_worker_instance_id_fkey foreign-key -> worker_instances on-delete-set-null
 constraint worker_activity_history.worker_activity_history_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 constraint worker_assignments.worker_assignments_cloud_queue_reason_check check
 constraint worker_assignments.worker_assignments_command_payload_json_is_json check
@@ -1082,6 +1119,7 @@ constraint worker_assignments.worker_assignments_space_id_fkey foreign-key -> sp
 constraint worker_assignments.worker_assignments_task_id_fkey foreign-key -> workflow_tasks on-delete-cascade
 constraint worker_assignments.worker_assignments_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint worker_assignments.worker_assignments_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
+constraint worker_assignments.worker_assignments_worker_instance_id_fkey foreign-key -> worker_instances on-delete-set-null
 constraint worker_assignments.worker_assignments_worker_type_id_fkey foreign-key -> worker_catalog on-delete-restrict
 constraint worker_assignments.worker_assignments_workspace_space_grant_id_fkey foreign-key -> workspace_space_grants on-delete-set-null
 constraint worker_catalog.worker_catalog_display_name_check check
@@ -1093,6 +1131,17 @@ constraint worker_catalog.worker_catalog_pkey primary-key
 constraint worker_catalog.worker_catalog_release_stage_check check
 constraint worker_catalog.worker_catalog_sort_order_check check
 constraint worker_catalog.worker_catalog_visibility_state_check check
+constraint worker_instances.worker_instances_actor_id_actor_kind_fkey foreign-key -> actors on-delete-restrict
+constraint worker_instances.worker_instances_actor_id_actor_kind_key unique
+constraint worker_instances.worker_instances_actor_id_key unique
+constraint worker_instances.worker_instances_actor_kind_check check
+constraint worker_instances.worker_instances_check check
+constraint worker_instances.worker_instances_default_model_check check
+constraint worker_instances.worker_instances_description_check check
+constraint worker_instances.worker_instances_name_check check
+constraint worker_instances.worker_instances_owner_user_id_fkey foreign-key -> users on-delete-cascade
+constraint worker_instances.worker_instances_pkey primary-key
+constraint worker_instances.worker_instances_worker_type_id_fkey foreign-key -> worker_catalog on-delete-restrict
 constraint worker_profile_history.worker_profile_history_actor_user_id_fkey foreign-key -> users on-delete-set-null
 constraint worker_profile_history.worker_profile_history_check check
 constraint worker_profile_history.worker_profile_history_digest_check check
@@ -1218,7 +1267,10 @@ constraint workspace_worker_preferences.workspace_worker_preferences_preferences
 constraint workspace_worker_preferences.workspace_worker_preferences_preferences_json_is_json check
 constraint workspace_worker_preferences.workspace_worker_preferences_user_id_fkey foreign-key -> users on-delete-cascade
 constraint workspace_worker_preferences.workspace_worker_preferences_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
+function adopt_inventory_worker/1
 function establish_people_on_membership_fn/0
+function inventory_adopt_worker_fn/0
+function inventory_revoke_worker_fn/0
 function syntila_guard_failed/1
 function syntila_iso/1
 function syntila_json_patch/2
@@ -1273,9 +1325,16 @@ function trg_workflow_step_run_immutable_fn/0
 function trg_workflow_step_run_run_insert_fn/0
 function trg_workflow_step_run_scope_insert_fn/0
 function trg_workflow_step_run_task_insert_fn/0
+function users_create_actor_fn/0
+function users_tombstone_actor_fn/0
 function validate_direct_space_general_thread_fn/0
 function validate_direct_space_general_thread_update_fn/0
+function worker_activity_history_set_instance_fn/0
+function worker_assignments_set_instance_fn/0
 function worker_catalog_origin_invariants_insert_fn/0
+function worker_instances_create_actor_fn/0
+function worker_instances_guard_fn/0
+function worker_instances_tombstone_actor_fn/0
 function workspace_invitations_no_active_grant_fn/0
 function workspace_person_grants_expire_invitations_fn/0
 function workspace_space_grant_status_transition_valid_fn/0
@@ -1288,6 +1347,9 @@ index account_worker_plugin_versions.account_worker_plugin_versions_pkey (plugin
 index account_worker_plugins.account_worker_plugins_owner_user_id_plugin_id_key (owner_user_id,plugin_id) unique
 index account_worker_plugins.account_worker_plugins_pkey (plugin_ref) unique
 index account_worker_plugins.idx_account_worker_plugins_owner (owner_user_id,created_at)
+index actors.actors_id_kind_key (id,kind) unique
+index actors.actors_pkey (id) unique
+index actors.actors_user_id_key (user_id) unique
 index auth_audit_events.auth_audit_events_pkey (id) unique
 index auth_audit_events.auth_audit_events_user_id_fkidx (user_id)
 index conversation_history_entries.conversation_history_entries_conversation_id_deduplication__key (conversation_id,deduplication_key) unique
@@ -1355,6 +1417,8 @@ index issue_reports.issue_reports_pkey (id) unique
 index issue_reports.issue_reports_public_reference_key (public_reference) unique
 index issue_reports.issue_reports_reporter_user_id_attempt_key_key (reporter_user_id,attempt_key) unique
 index issue_reports.issue_reports_workspace_id_fkidx (workspace_id)
+index legacy_worker_mapping.legacy_worker_mapping_pkey (legacy_worker_id) unique
+index legacy_worker_mapping.legacy_worker_mapping_worker_instance_id_key (worker_instance_id) unique
 index mcp_tool_calls.mcp_tool_calls_dispatch_key_key (dispatch_key) unique
 index mcp_tool_calls.mcp_tool_calls_pkey (task_id) unique
 index mcp_tool_calls.mcp_tool_calls_workspace_id_fkidx (workspace_id)
@@ -1432,6 +1496,7 @@ index thread_runtime_leases.thread_runtime_leases_thread_id_fencing_token_key (t
 index thread_runtime_leases.thread_runtime_leases_workspace_id_fkidx (workspace_id)
 index thread_work_configs.thread_work_configs_pkey (thread_id) unique
 index thread_work_configs.thread_work_configs_updated_by_user_id_fkidx (updated_by_user_id)
+index thread_work_configs.thread_work_configs_worker_instance_idx (worker_instance_id)
 index threads.idx_threads_space (space_id,status)
 index threads.threads_lead_user_id_fkidx (lead_user_id)
 index threads.threads_pkey (id) unique
@@ -1451,6 +1516,7 @@ index user_notification_reads.user_notification_reads_pkey (user_id,work_request
 index user_notification_reads.user_notification_reads_work_request_id_fkidx (work_request_id)
 index user_pins.user_pins_pkey (user_id,kind,target_id) unique
 index user_workflow_configurations.user_workflow_configurations_pkey (user_id,workspace_id,workflow_id) unique
+index user_workflow_configurations.user_workflow_configurations_worker_instance_idx (worker_instance_id)
 index user_workflow_configurations.user_workflow_configurations_workspace_id_fkidx (workspace_id)
 index user_workflow_defaults.user_workflow_defaults_pkey (user_id,workspace_id) unique
 index user_workflow_defaults.user_workflow_defaults_workspace_id_fkidx (workspace_id)
@@ -1473,6 +1539,7 @@ index worker_activity_history.idx_worker_activity_history_workspace (workspace_i
 index worker_activity_history.worker_activity_history_assignment_id_attempt_id_provider_s_key (assignment_id,attempt_id,provider_sequence) unique
 index worker_activity_history.worker_activity_history_assignment_id_attempt_id_source_eve_key (assignment_id,attempt_id,source_event_id) unique
 index worker_activity_history.worker_activity_history_pkey (history_id) unique
+index worker_activity_history.worker_activity_history_worker_instance_idx (worker_instance_id)
 index worker_assignments.idx_assignments_work_request (work_request_id,created_at)
 index worker_assignments.idx_assignments_workspace_worker (workspace_worker_id,status)
 index worker_assignments.idx_worker_assignments_requester (requested_by_user_id,created_at)
@@ -1485,10 +1552,16 @@ index worker_assignments.worker_assignments_runtime_identity_id_fkidx (runtime_i
 index worker_assignments.worker_assignments_space_id_fkidx (space_id)
 index worker_assignments.worker_assignments_task_id_fkidx (task_id)
 index worker_assignments.worker_assignments_thread_id_fkidx (thread_id)
+index worker_assignments.worker_assignments_worker_instance_idx (worker_instance_id)
 index worker_assignments.worker_assignments_worker_type_id_fkidx (worker_type_id)
 index worker_assignments.worker_assignments_workspace_space_grant_id_fkidx (workspace_space_grant_id)
 index worker_catalog.worker_catalog_owner_user_id_fkidx (owner_user_id)
 index worker_catalog.worker_catalog_pkey (worker_type_id) unique
+index worker_instances.worker_instances_actor_id_actor_kind_key (actor_id,actor_kind) unique
+index worker_instances.worker_instances_actor_id_key (actor_id) unique
+index worker_instances.worker_instances_owner_created_idx (owner_user_id,created_at)
+index worker_instances.worker_instances_pkey (id) unique
+index worker_instances.worker_instances_worker_type_idx (worker_type_id)
 index worker_profile_history.idx_worker_profile_history_worker_time (worker_type_id,published_at,revision)
 index worker_profile_history.worker_profile_history_actor_user_id_fkidx (actor_user_id)
 index worker_profile_history.worker_profile_history_pkey (worker_type_id,revision) unique
@@ -1587,19 +1660,29 @@ trigger discussion_messages.trg_thread_discussion_contributor -> trg_thread_disc
 trigger runs.trg_history_run_created -> trg_history_run_created_fn
 trigger runs.trg_history_run_status -> trg_history_run_status_fn
 trigger space_memberships.establish_people_on_membership -> establish_people_on_membership_fn
+trigger users.users_create_actor -> users_create_actor_fn
+trigger users.users_tombstone_actor -> users_tombstone_actor_fn
 trigger work_requests.trg_history_request_status -> trg_history_request_status_fn
 trigger work_requests.trg_request_ai_generation -> trg_request_ai_generation_fn
 trigger work_requests.trg_thread_request_contributor -> trg_thread_request_contributor_fn
 trigger work_requests.trg_work_requests_snapshot_immutable -> trg_work_requests_snapshot_immutable_fn
 trigger work_requests.trg_workflow_run_request_lifecycle -> trg_workflow_run_request_lifecycle_fn
+trigger worker_activity_history.worker_activity_history_set_instance -> worker_activity_history_set_instance_fn
 trigger worker_assignments.trg_assignment_context_snapshot_immutable -> trg_assignment_context_snapshot_immutable_fn
 trigger worker_assignments.trg_assignment_execution_selection_immutable -> trg_assignment_execution_selection_immutable_fn
 trigger worker_assignments.trg_conversation_turn_assignment_insert -> trg_conversation_turn_assignment_insert_fn
 trigger worker_assignments.trg_conversation_turn_assignment_status -> trg_conversation_turn_assignment_status_fn
+trigger worker_assignments.worker_assignments_set_instance -> worker_assignments_set_instance_fn
 trigger worker_catalog.worker_catalog_origin_invariants_insert -> worker_catalog_origin_invariants_insert_fn
+trigger worker_instances.worker_instances_create_actor -> worker_instances_create_actor_fn
+trigger worker_instances.worker_instances_guard -> worker_instances_guard_fn
+trigger worker_instances.worker_instances_tombstone_actor -> worker_instances_tombstone_actor_fn
+trigger worker_instances.worker_instances_tombstone_actor_on_delete -> worker_instances_tombstone_actor_fn
 trigger workflow_tasks.trg_history_step_created -> trg_history_step_created_fn
 trigger workflow_tasks.trg_history_step_status -> trg_history_step_status_fn
 trigger workflow_tasks.trg_workflow_step_run_task_insert -> trg_workflow_step_run_task_insert_fn
 trigger workspace_invitations.workspace_invitations_no_active_grant -> workspace_invitations_no_active_grant_fn
 trigger workspace_person_grants.workspace_person_grants_expire_invitations -> workspace_person_grants_expire_invitations_fn
 trigger workspace_space_grants.workspace_space_grant_status_transition_valid -> workspace_space_grant_status_transition_valid_fn
+trigger workspace_worker_inventory.inventory_adopt_worker -> inventory_adopt_worker_fn
+trigger workspace_worker_inventory.inventory_revoke_worker -> inventory_revoke_worker_fn

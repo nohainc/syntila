@@ -285,7 +285,7 @@ void main() {
     expect(saved.workers['a']!.models, ['analysis']);
     expect((await client.loadWorkspaceMemberAccess('ws 1')).restricted, isTrue);
     expect(requests, [
-      'GET /api/workers?includeShared=true',
+      'GET /api/workspace-workers?includeShared=true',
       'PUT /api/workspaces/ws%201/member-access',
       'GET /api/workspaces/ws%201/member-access',
     ]);

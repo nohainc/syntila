@@ -38,5 +38,5 @@ The prerequisite column is enforced in code and follows the dependency graph of 
 1. A flag guards a **new** path. The old path keeps working with the flag off and is removed in P10, together with the flag.
 2. A flag never makes two execution paths run the same assignment (ordering principle 3). Choose the path once, when the assignment is created.
 3. Schema changes are additive and not flag-dependent: migrations run regardless of flags, and the columns stay nullable until the cleanup phase.
-4. The app learns the flags it needs through an endpoint added with the phase that needs it (first use: P1, `worker_identity`). P0 adds no app-facing exposure.
+4. The app learns the flags through `GET /api/features` (added in P1); the Worker list loads only when `worker_identity` is listed.
 5. Remove a flag, its tests and its line here when its phase is final.

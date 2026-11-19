@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'ax_input_delivery.dart';
 import 'sync/ax_idempotency.dart';
 
+import 'package:syntila_protocol/syntila_protocol.dart' show WorkerInstance, parseWorkerInstances;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 

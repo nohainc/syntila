@@ -6,6 +6,7 @@ export 'realtime_events.dart';
 export 'workspace_runtime_protocol.dart';
 export 'worker_descriptor.dart';
 export 'worker_execution_options.dart';
+export 'worker_instance.dart';
 
 bool isExecutionErrorCode(Object? value) => executionErrorCodes.contains(value);
 

@@ -63,6 +63,12 @@ export {
   handleSyncUserFiles,
 } from "./user-files.js";
 export {
+  handleCreateWorker,
+  handleListFeatures,
+  handleListWorkers,
+  handleWorker,
+} from "./workers.js";
+export {
   handleCreateNote,
   handleListNotes,
   handleNote,

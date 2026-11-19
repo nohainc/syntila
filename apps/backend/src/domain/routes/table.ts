@@ -282,7 +282,15 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("GET", "/api/workers/catalog", call("handleListWorkerCatalog", ctx)),
     r("*", "/api/me/worker-plugins", (c) => handlePluginLibrary(c.request, c.env, undefined, c.ctx)),
     r("*", "/api/me/worker-plugins/:pluginRef", (c) => handlePluginLibrary(c.request, c.env, c.params.pluginRef, c.ctx)),
-    r("GET", "/api/workers", call("handleListWorkspaceWorkerInventory", ctx)),
+    // Worker Instances (ADR-032), behind the worker_identity flag. The Workspace
+    // inventory moved to /api/workspace-workers; P5/P6 retire it.
+    r("GET", "/api/features", call("handleListFeatures", ctx)),
+    r("GET", "/api/workers", call("handleListWorkers", ctx)),
+    r("POST", "/api/workers", call("handleCreateWorker", ctx), idempotent),
+    r("GET", "/api/workspace-workers", call("handleListWorkspaceWorkerInventory", ctx)),
+    r("GET", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
+    r("PATCH", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
+    r("DELETE", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("GET", "/api/workers/:workerTypeId/profile", call("handleGetWorkspaceV9WorkerProfile", p("workerTypeId"))),
     r("GET", "/api/admin/workers", call("handleListV9WorkerProfiles", ctx)),
     r("GET", "/api/admin/workers/:workerTypeId/profile", call("handleGetV9WorkerProfile", p("workerTypeId"), ctx)),

@@ -8,7 +8,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 `Workspace/server`: called with Workspace or server credentials, no browser same-origin check.
 `Idempotency-Key`: a retry with the same key returns the first response (see CONTRACT.md).
 
-135 paths.
+138 paths.
 
 | Path | Methods | Notes |
 | --- | --- | --- |
@@ -27,6 +27,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/billing/sandbox/portal` | ANY |  |
 | `/api/billing/sandbox/webhook` | ANY | Workspace/server |
 | `/api/discussion-messages/:messageId` | GET, PATCH, DELETE |  |
+| `/api/features` | GET |  |
 | `/api/files` | GET |  |
 | `/api/files/:fileId` | GET, DELETE |  |
 | `/api/files/sync` | POST |  |
@@ -103,7 +104,8 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/work-requests/:workRequestId/inputs/:inputId` | PUT |  |
 | `/api/work-requests/:workRequestId/inputs/:inputId/failed` | POST |  |
 | `/api/work-requests/:workRequestId/retry` | POST |  |
-| `/api/workers` | GET |  |
+| `/api/workers` | GET, POST | Idempotency-Key |
+| `/api/workers/:workerId` | GET, PATCH, DELETE |  |
 | `/api/workers/:workerTypeId/profile` | GET |  |
 | `/api/workers/catalog` | GET |  |
 | `/api/workflows/catalog` | GET |  |
@@ -131,6 +133,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/workspace-runtime/sessions` | POST | Workspace/server |
 | `/api/workspace-runtime/sessions/:sessionId/close` | POST | Workspace/server |
 | `/api/workspace-runtime/workers/catalog` | GET |  |
+| `/api/workspace-workers` | GET |  |
 | `/api/workspaces` | GET |  |
 | `/api/workspaces/:workspaceId` | GET, PATCH, DELETE |  |
 | `/api/workspaces/:workspaceId/audit-export` | GET |  |

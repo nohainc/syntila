@@ -1313,11 +1313,19 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   Future<List<AxWorker>> loadWorkspaceWorkerInventory() async {
     // Members also receive the Workers their Workspace owner shares with them.
     final body =
-        await _getJson(Uri.parse('$baseUrl/workers?includeShared=true'));
+        await _getJson(Uri.parse('$baseUrl/workspace-workers?includeShared=true'));
     return (body['workers'] as List? ?? const [])
         .whereType<Map>()
         .map((item) => AxWorker.fromJson(Map<String, dynamic>.from(item)))
         .toList();
+  }
+
+  @override
+  Future<List<WorkerInstance>> loadWorkerInstances() async {
+    final features = await _getJson(Uri.parse('$baseUrl/features'));
+    final flags = (features['flags'] as List? ?? const []).whereType<String>();
+    if (!flags.contains('worker_identity')) return const [];
+    return parseWorkerInstances(await _getJson(Uri.parse('$baseUrl/workers')));
   }
 }
 

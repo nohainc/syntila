@@ -196,3 +196,11 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 | 037 Files / artifacts | P8 |
 | 038 Unified transport | P9 |
 | 039 Horizontal scaling | P11 decision, P12 |
+
+## P1 status (implemented, awaiting test run)
+
+- Migration `0026_worker_instances.sql`: `actors`, `worker_instances`, `legacy_worker_mapping`, trigger-maintained Actors, inventory adoption/backfill, nullable `worker_instance_id` on assignments, activity history, Thread and Workflow configuration.
+- `/api/workers` CRUD (owner-only, flag `worker_identity`), `/api/features`; the old Workspace inventory list moved to `/api/workspace-workers`.
+- Protocol: `packages/protocol/src/worker-instance.ts`, `packages/dart/protocol/lib/worker_instance.dart`; app: `AxSessionCatalogs.workerInstances`.
+- Tests: `apps/backend/test/domain/worker-instances.test.ts`, `packages/dart/protocol/test/worker_instance_test.dart`.
+- To do on a machine with bun/psql/flutter: `bun run schema:lock`, `bun run routes`, `scripts/test-all.sh --quick`.

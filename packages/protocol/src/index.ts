@@ -18,6 +18,7 @@ export * from "./diagnostic-events.js";
 export * from "./execution-events.js";
 export * from "./execution-activity.js";
 export * from "./api-requests.js";
+export * from "./worker-instance.js";
 export * from "./provider-failure.js";
 // zod's types for consumers that type a schema parameter (the backend does not
 // depend on zod itself).
