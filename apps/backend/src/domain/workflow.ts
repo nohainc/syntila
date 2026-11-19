@@ -1381,7 +1381,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         }
         const readAssignment = () =>
           queryOf(db).row<AssignmentRow>`SELECT wa.id AS "assignmentId", wa.status, wa.output_json AS "outputJson",
-                      wa.error_json::text AS "errorJson", wa.workspace_worker_id AS "workerId",
+                      wa.error_json::text AS "errorJson", COALESCE(wa.workspace_worker_id, wa.worker_instance_id) AS "workerId",
                       wa.worker_type_id AS "workerTypeId", wa.engine_version AS "engineVersion",
                       wa.model, wa.permission_snapshot_json AS "permissionSnapshotJson",
                       wa.attempt_id AS "attemptId",

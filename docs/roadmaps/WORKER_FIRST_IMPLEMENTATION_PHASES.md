@@ -230,3 +230,16 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 - Tests: fake cloud (pairing, signed nonces, epoch fence, command inbox), fake Engine, crash matrix over every journal write point, two Agents on two hosts, two Agents on one host, no-Workspace check.
 - **Written, unproven:** `CliEngineLauncher` over `syntila_cli_worker_runtime` (no sessions, folders, MCP, plugins or streaming).
 - **Not done:** Profile download and verification, platform secret store, readiness/inventory publication, binary swap for updates. `run` without an Engine adapter fails closed (`engine_unavailable`). The exit gate is met against the fake Engine only.
+
+## P5 status (implemented, not yet run)
+
+Built (ADR-035):
+- Admission (`work-creation.ts`, `worker-eligibility.ts`): `worker_id` is resolved and authorized (owner, enabled, Type and capabilities, Thread execute right). The acceptance snapshot (Worker, Actor, Type, Profile digest, model, effort, permissions) is frozen on the task.
+- Dispatch (`assignment-dispatcher.ts`, `worker-dispatch.ts`): a task with a Worker target takes the Worker path; otherwise the legacy Workspace path. One path per assignment, enforced by a CHECK (`migrations/0029_worker_targeted_dispatch.sql`; Workspace columns are nullable). The Worker path is behind `worker_target_dispatch`. No live Agent session means the assignment is rejected with `worker_offline`; there is no fallback.
+- Per-step binding: workflows bind a Worker per step; eligibility is re-checked on each step and on retry (`worker-target-bindings.ts`, `work-lifecycle.ts`).
+- Worker-keyed gateway (`worker-gateway.ts`, route `GET /api/worker-agent/gateway`): one Durable Object per Worker (`worker:<id>`), speaking the Agent side of the wire protocol with the Agent session fence on every write (hello, heartbeat, sync, ack, start permit, start ack, result, error, cancelled, cancel ack). The envelope workspace fields carry `worker:<id>` as a correlation token only.
+- Revocation, recovery and cancel route by `execution_path` (`assignment-revocation.ts`, `recoverStaleAssignments`, `cancelTaskAssignment`). An Agent offline past 30 s fails its in-flight assignments; revocations are resent on reconnect sync.
+
+Known limits: stateless workflows only (stateful needs a Primary Workspace); files and tool calls are rejected on this path (P8); no plugin Types; models and efforts are not validated against a Profile catalog; the Agent runs stateless sessions only; `assignment-liveness` and Workspace delivery stay Workspace-scoped and never touch Worker rows.
+
+Not yet done: backend tests for this phase, and running anything (no bun or Postgres in the authoring VM; only `tsc` against the baseline was clean). Before commit, on the Mac: `bun run schema:lock`, `bun scripts/write-paths.ts --write`, `bun run routes`, `./scripts/test-all.sh --quick`, `dart format` / `dart analyze` / `dart test`, `scripts/check-dart-packages.sh`. Point the Agent `gatewayUrl` at `/api/worker-agent/gateway` with `workerId` and `workerSessionId` query parameters.

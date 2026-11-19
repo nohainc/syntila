@@ -15,6 +15,7 @@ export const EXECUTION_ERROR_CODES = [
   "execution_failed",
   "context_limit_exceeded",
   "additional_folders_unsupported",
+  "worker_offline",
 ] as const;
 export const EXECUTION_ERROR_MESSAGES = {
   worker_not_ready: "The selected Worker is not ready on its Workspace.",
@@ -36,6 +37,8 @@ export const EXECUTION_ERROR_MESSAGES = {
     "This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.",
   additional_folders_unsupported:
     "This Worker cannot use the Space's additional folders yet. Detach the additional folders or choose another Worker.",
+  worker_offline:
+    "The selected Worker is offline. Start its Agent and try again.",
 } as const;
 
 export const REALTIME_EVENTS_NAME = "syntila.realtime-events" as const;

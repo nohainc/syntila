@@ -61,6 +61,8 @@ import type { SecurityEnv } from "./handlers.js";
 import type { SyntilaWorkflowParams } from "../workflow.js";
 import { parseMcpToolStepInput } from "../mcp-tool-step.js";
 import { dataOf, type Tx } from "../../platform/data.js";
+import { isFeatureEnabled } from "../../feature-flags.js";
+import { requestsWorkerTarget, resolveWorkerTargetBindings } from "./worker-target-bindings.js";
 
 export async function createOrGetRun(
   env: Env,
@@ -520,23 +522,60 @@ export async function createWorkRequestForUser(
     }
     promptProfileVersions[step.kind] = step.promptProfileVersion;
   }
-  const resolvedBindings = await resolveWorkflowExecutionBindings(
-    env,
-    context.userId,
-    spaceId,
-    threadId,
-    workflowSnapshot,
-    instructions,
-    normalizedAttachments,
-    executionSelection,
-  );
-  const eligibility = await validateWorkflowWorkerEligibility(
-    env,
-    spaceId,
-    threadId,
-    workflowSnapshot,
-    resolvedBindings,
-  );
+  // ADR-035: a request that names a Worker runs on the Worker path, which
+  // never touches a Workspace. It is decided here, once; the accepted snapshot
+  // carries the choice and dispatch follows it. A request that names a Worker
+  // is never run on a Workspace instead.
+  const workerTargeted = requestsWorkerTarget(body);
+  if (workerTargeted) {
+    if (!isFeatureEnabled("worker_target_dispatch"))
+      throw new HttpError(400, "Worker-targeted requests are not available yet");
+    if (mode !== "stateless")
+      throw new HttpError(422, "This Workflow needs a Workspace; Worker-targeted requests run stateless Workflows only");
+    if (toolCallRequested)
+      throw new HttpError(400, "A tool call needs a Workspace");
+    if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
+      throw new HttpError(400, "Worker-targeted requests do not use a Workspace or an execution selection");
+  }
+  const workerBound = workerTargeted
+    ? await resolveWorkerTargetBindings(env, {
+        userId: context.userId,
+        spaceId,
+        threadId,
+        definition: workflowSnapshot,
+        request: body,
+        additionalInstructions: instructions,
+      })
+    : null;
+  if (workerBound && workerBound.ok === false) return workerBound.response;
+  const accepted = workerBound as Extract<NonNullable<typeof workerBound>, { ok: true }> | null;
+  const resolvedBindings: Awaited<ReturnType<typeof resolveWorkflowExecutionBindings>> = accepted
+    ? (accepted.bindings as never)
+    : await resolveWorkflowExecutionBindings(
+        env,
+        context.userId,
+        spaceId,
+        threadId,
+        workflowSnapshot,
+        instructions,
+        normalizedAttachments,
+        executionSelection,
+      );
+  const eligibility: Awaited<ReturnType<typeof validateWorkflowWorkerEligibility>> = accepted
+    ? {
+        issues: [],
+        primaryWorkspaceId: null,
+        workerCatalogRevisions: {},
+        workerModelCatalogs: {},
+        workerProfiles: accepted.workerProfiles,
+      }
+    : await validateWorkflowWorkerEligibility(
+        env,
+        spaceId,
+        threadId,
+        workflowSnapshot,
+        resolvedBindings,
+      );
   if (eligibility.issues.length > 0) {
     return json(
       {

@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 196 write paths, 91 tables; 1 numbering, 45 unguarded read-write, 0 adapter-only, 161 in data-layer transactions.
+Totals: 201 write paths, 91 tables; 1 numbering, 46 unguarded read-write, 0 adapter-only, 165 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -210,17 +210,22 @@ Totals: 196 write paths, 91 tables; 1 numbering, 45 unguarded read-write, 0 adap
 | `domain/thread-coordinator.ts` | `startStatefulLease` | INSERT thread_runtime_leases, UPDATE threads | data |
 | `domain/thread-coordinator.ts` | `updateThreadRuntimeLeasesSetExpiresAtRun` | UPDATE thread_runtime_leases | guarded, data |
 | `domain/worker-activity-history.ts` | `pruneWorkerActivityHistory` | DELETE realtime_events, DELETE worker_activity_history | data |
-| `domain/worker-agents.ts` | `audit` | INSERT worker_credentials, UPDATE worker_agent_sessions, UPDATE worker_credentials, UPDATE worker_pairing_challenges | read-write, data |
+| `domain/worker-agents.ts` | `audit` | UPDATE worker_credentials, UPDATE worker_pairing_challenges | read-write, data |
 | `domain/worker-agents.ts` | `closeSession` | UPDATE worker_agent_sessions | data |
 | `domain/worker-agents.ts` | `connectSession` | INSERT worker_agent_sessions | read-write, guarded, data |
-| `domain/worker-agents.ts` | `createPairingChallenge` | INSERT worker_pairing_challenges, UPDATE worker_pairing_challenges | read-write, data |
+| `domain/worker-agents.ts` | `createPairingChallenge` | INSERT worker_pairing_challenges | read-write, data |
 | `domain/worker-agents.ts` | `deny` | UPDATE worker_auth_nonces | read-write, data |
+| `domain/worker-agents.ts` | `endSession` | UPDATE worker_agent_sessions | data |
 | `domain/worker-agents.ts` | `expireLapsedSessions` | UPDATE worker_agent_sessions | data |
+| `domain/worker-agents.ts` | `expireOpenChallenges` | UPDATE worker_pairing_challenges | data |
+| `domain/worker-agents.ts` | `insertCredential` | INSERT worker_credentials | data |
 | `domain/worker-agents.ts` | `issueNonce` | DELETE worker_auth_nonces, INSERT worker_auth_nonces | read-write, data |
 | `domain/worker-agents.ts` | `recordWorkerAudit` | INSERT worker_audit_log | data |
 | `domain/worker-agents.ts` | `renewLease` | UPDATE worker_agent_sessions | data |
-| `domain/worker-agents.ts` | `revokeWorkerCredential` | UPDATE worker_agent_sessions, UPDATE worker_credentials, UPDATE worker_pairing_challenges | read-write, data |
-| `domain/worker-agents.ts` | `rotateCredential` | INSERT worker_credentials, UPDATE worker_agent_sessions, UPDATE worker_credentials | data |
+| `domain/worker-agents.ts` | `revokeWorkerCredential` | UPDATE worker_credentials | read-write, data |
+| `domain/worker-agents.ts` | `rotateCredential` | UPDATE worker_credentials | data |
+| `domain/worker-dispatch.ts` | `dispatchWorkerAssignment` | INSERT agent_commands, INSERT worker_assignments, UPDATE worker_assignments | read-write, data |
+| `domain/worker-dispatch.ts` | `fail` | UPDATE worker_assignments | guarded |
 | `domain/worker-profile-registry.ts` | `persistWorkerProfileSnapshot` | INSERT worker_profile_history, INSERT worker_profiles, UPDATE worker_profiles | guarded, data |
 | `domain/workflow.ts` | `finishWorkRequestNow` | UPDATE work_requests | read-write, guarded, data |
 | `domain/workflow.ts` | `persistTerminalRun` | UPDATE runs |  |

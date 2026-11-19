@@ -17,7 +17,8 @@
     "cancelled",
     "execution_failed",
     "context_limit_exceeded",
-    "additional_folders_unsupported"
+    "additional_folders_unsupported",
+    "worker_offline"
   ],
   "x-execution-error-messages": {
     "worker_not_ready": "The selected Worker is not ready on its Workspace.",
@@ -33,7 +34,8 @@
     "cancelled": "The assignment was cancelled.",
     "execution_failed": "The assignment could not be completed.",
     "context_limit_exceeded": "This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.",
-    "additional_folders_unsupported": "This Worker cannot use the Space's additional folders yet. Detach the additional folders or choose another Worker."
+    "additional_folders_unsupported": "This Worker cannot use the Space's additional folders yet. Detach the additional folders or choose another Worker.",
+    "worker_offline": "The selected Worker is offline. Start its Agent and try again."
   },
   "x-workspace-runtime-protocol": {
     "name": "syntila.workspace-runtime-protocol",

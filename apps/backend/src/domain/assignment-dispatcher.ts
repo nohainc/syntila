@@ -29,6 +29,9 @@ import {
   type ExecutionTarget,
 } from "./scheduler.js";
 import { recordExecutionWorkspaceAudit } from "./workspace-audit.js";
+import { isFeatureEnabled } from "../feature-flags.js";
+import { dispatchWorkerAssignment } from "./worker-dispatch.js";
+import type { WorkerTargetSnapshot } from "./worker-eligibility.js";
 import { tryLogDiagnosticEvent } from "./observability.js";
 import { publishAssignmentPhase } from "./assignment-phase-events.js";
 import {
@@ -208,6 +211,12 @@ export interface TaskToDispatch {
   readonly executionClass?: "stateless_read" | "stateful_thread";
   /** Restricts Worker/provider access while retaining a Thread lease. */
   readonly readOnly?: boolean;
+  /**
+   * Set when the request was accepted for a specific Worker (ADR-035). The
+   * assignment then runs on the Worker path only; it is never given to a
+   * Workspace, whatever the flag says later.
+   */
+  readonly workerTarget?: WorkerTargetSnapshot;
 }
 
 export interface DispatchAssignmentParams {
@@ -261,6 +270,7 @@ function deferredDispatch(
 export interface AssignmentDispatcherEnv {
   readonly SYNTILA_DB: Db;
   readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
+  readonly SYNTILA_WORKER_GATEWAY?: DurableObjectNamespace;
 }
 
 /**
@@ -1069,6 +1079,27 @@ export async function dispatchTaskAssignment(
       error: "Space execution context is required for assignment dispatch",
     };
   }
+  // One path per assignment, fixed by what was accepted. A request accepted for
+  // a Worker never falls back to a Workspace, and the reverse.
+  if (normalizedTask.workerTarget) {
+    if (!isFeatureEnabled("worker_target_dispatch")) {
+      return {
+        assignmentId: "",
+        attemptId: "",
+        workerId: "",
+        workspaceRuntimeId: "",
+        workerCatalogId: "",
+        status: "failed",
+        accepted: false,
+        error: "Worker-targeted dispatch is turned off",
+      };
+    }
+    return dispatchWorkerAssignment(env, {
+      ...params,
+      task: normalizedTask,
+      workerTarget: normalizedTask.workerTarget,
+    });
+  }
   return dispatchWorkspaceWorkerAssignment(env, {
     ...params,
     task: normalizedTask,
@@ -1297,12 +1328,17 @@ export async function recoverStaleAssignments(
               wa.running_at AS "runningAt",
               wa.start_permit_issued_at AS "permitIssuedAt",
               wa.start_permit_required AS "permitRequired",
-              ew.status AS "workspaceStatus", ew.updated_at AS "workspaceUpdatedAt",
+              wa.execution_path AS "executionPath",
+              COALESCE(ew.status, CASE WHEN EXISTS (SELECT 1 FROM worker_agent_sessions s
+                         WHERE s.worker_instance_id = wa.worker_instance_id
+                           AND s.disconnected_at IS NULL AND s.lease_expires_at > now())
+                       THEN 'online' ELSE 'offline' END) AS "workspaceStatus",
+              COALESCE(ew.updated_at, wa.updated_at) AS "workspaceUpdatedAt",
               g.expires_at AS "grantExpiresAt", g.status AS "grantStatus",
               wr.status AS "workRequestStatus", wr.workflow_id AS "workflowId",
               wr.workflow_version AS "workflowVersion"
          FROM worker_assignments wa
-         JOIN execution_workspaces ew ON ew.id = wa.execution_workspace_id
+         LEFT JOIN execution_workspaces ew ON ew.id = wa.execution_workspace_id
          LEFT JOIN workspace_space_grants g ON g.id = wa.workspace_space_grant_id
          LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
          LEFT JOIN work_requests wr ON wr.id = wt.work_request_id
@@ -1460,13 +1496,13 @@ export async function recoverStaleAssignments(
  */
 export async function cancelTaskAssignment(
   env: AssignmentDispatcherEnv,
-  workspaceId: string,
+  workspaceId: string | null,
   assignmentId: string,
   reason: string,
 ): Promise<{ cancelled: boolean }> {
   const row = await dataOf(env).read.row<{ status: string; attempt_id: string }>`SELECT status, attempt_id
        FROM worker_assignments
-      WHERE id = ${assignmentId} AND execution_workspace_id = ${workspaceId}`;
+      WHERE id = ${assignmentId} AND execution_workspace_id IS NOT DISTINCT FROM ${workspaceId}::text`;
   if (!row) return { cancelled: false };
   if (row.status === "cancelled") return { cancelled: true };
   if (["completed", "failed", "timed_out", "lost"].includes(row.status))

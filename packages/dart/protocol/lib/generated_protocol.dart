@@ -15,6 +15,7 @@ const executionErrorCodes = <String>{
   'execution_failed',
   'context_limit_exceeded',
   'additional_folders_unsupported',
+  'worker_offline',
 };
 const executionErrorMessages = <String, String>{
   'worker_not_ready': 'The selected Worker is not ready on its Workspace.',
@@ -37,6 +38,8 @@ const executionErrorMessages = <String, String>{
       'This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.',
   'additional_folders_unsupported':
       'This Worker cannot use the Space\'s additional folders yet. Detach the additional folders or choose another Worker.',
+  'worker_offline':
+      'The selected Worker is offline. Start its Agent and try again.',
 };
 
 const workspaceRuntimeProtocolSchemaName = 'syntila.workspace-runtime-protocol';

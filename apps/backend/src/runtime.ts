@@ -17,7 +17,7 @@ import {
 import { Data, type Db } from "./platform/data";
 import { WorkflowHost } from "./platform/workflows";
 import { OutboxDispatcher } from "./domain/outbox-dispatcher";
-import worker, { RealtimeGateway, SyntilaRunWorkflow, ThreadExecutionCoordinator, WorkspaceGateway } from "./domain/index";
+import worker, { RealtimeGateway, SyntilaRunWorkflow, ThreadExecutionCoordinator, WorkspaceGateway, WorkerGateway } from "./domain/index";
 
 type Sql = ConstructorParameters<typeof WorkflowHost>[1] & { begin(fn: (tx: any) => Promise<unknown>): Promise<unknown> };
 
@@ -27,11 +27,13 @@ export function createRuntime(sql: Sql, db: Db, bindings: Record<string, unknown
   const env: Record<string, unknown> = { SYNTILA_DB: db, SYNTILA_DATA: new Data(db.sql as any), ...bindings };
   const getEnv = () => env;
   const workspaceGateway = new DurableObjectNamespaceHost("WorkspaceGateway", sql, (s, e) => new WorkspaceGateway(s as any, e as any) as any, getEnv);
+  const workerGateway = new DurableObjectNamespaceHost("WorkerGateway", sql, (s, e) => new WorkerGateway(s as any, e as any) as any, getEnv);
   const realtimeGateway = new DurableObjectNamespaceHost("RealtimeGateway", sql, (s, e) => new RealtimeGateway(s as any, e as any) as any, getEnv);
   const threadCoordinator = new DurableObjectNamespaceHost("ThreadExecutionCoordinator", sql, (s, e) => new ThreadExecutionCoordinator(s as any, e as any) as any, getEnv);
   const runWorkflow = new WorkflowHost("syntila-run", sql, (e) => new SyntilaRunWorkflow({} as any, e as any) as any, getEnv);
   Object.assign(env, {
     SYNTILA_WORKSPACE_GATEWAY: workspaceGateway,
+    SYNTILA_WORKER_GATEWAY: workerGateway,
     SYNTILA_REALTIME_GATEWAY: realtimeGateway,
     SYNTILA_THREAD_COORDINATOR: threadCoordinator,
     SYNTILA_RUN_WORKFLOW: runWorkflow.binding(),

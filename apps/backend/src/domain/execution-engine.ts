@@ -5,6 +5,7 @@ import {
   type BuiltinWorkflowStep,
 } from "@syntila/core";
 import type { TaskToDispatch } from "./assignment-dispatcher.js";
+import type { WorkerTargetSnapshot } from "./worker-eligibility.js";
 import { workStepSessionKey } from "./work-session-key.js";
 
 /** Workflow supplies what should execute. This boundary configures how the
@@ -93,6 +94,11 @@ export function prepareWorkerStepExecution(
       readOnly: step.readWritePolicy === "read_only",
       model: option(binding.model),
       reasoningEffort: option(binding.reasoningEffort),
+      ...(binding.workerTarget &&
+      typeof binding.workerTarget === "object" &&
+      !Array.isArray(binding.workerTarget)
+        ? { workerTarget: binding.workerTarget as unknown as WorkerTargetSnapshot }
+        : {}),
     },
   };
 }

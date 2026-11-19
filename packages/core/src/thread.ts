@@ -173,6 +173,12 @@ export interface WorkflowExecutionBinding {
   readonly additionalInstructions?: string;
   /** Frozen MCP server IDs for this Step; absent = Workspace bindings alone. */
   readonly mcpTools?: readonly string[];
+  /**
+   * Worker-targeted execution (ADR-035): what was accepted for this Step
+   * (Worker, Actor, Type, Profile digest, model, effort, permissions). Present
+   * only on the Worker path; a Step with it never runs on a Workspace.
+   */
+  readonly workerTarget?: Readonly<Record<string, unknown>>;
 }
 
 /** Thread-authored context. Execution preferences belong to the user. */

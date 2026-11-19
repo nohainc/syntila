@@ -59,6 +59,7 @@ import {
 import type { SecurityEnv } from "./handlers.js";
 
 import { createOrGetRun } from "./work-creation.js";
+import { frozenWorkerTarget, recheckWorkerTarget } from "./worker-target-bindings.js";
 import { MutationIdempotency, NO_RECEIPT, type ReceiptWrite } from "./mutation-idempotency.js";
 import { advanceThreadQueueSafely } from "./thread-request-queue.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
@@ -390,15 +391,30 @@ export async function handleRetryWorkRequest(
     String(row.inputJson),
     {},
   );
-  const eligibility = await validateWorkflowWorkerEligibility(
-    env,
-    String(row.spaceId),
-    String(row.threadId),
-    { ...workflow, steps: [step] },
-    bindings,
-    snapshot.stepExecutionConfigs as
-      Record<string, import("@syntila/core").TurnExecutionConfig> | undefined,
-  );
+  // A Step frozen on a Worker is checked against that Worker, not a Workspace.
+  const frozenTarget = frozenWorkerTarget(bindings, workflow, step);
+  if (frozenTarget) {
+    const refused = await recheckWorkerTarget(env, {
+      userId: context.userId,
+      spaceId: String(row.spaceId),
+      threadId: String(row.threadId),
+      definition: workflow,
+      step,
+      target: frozenTarget,
+    });
+    if (refused) return refused;
+  }
+  const eligibility = frozenTarget
+    ? { issues: [] as { message: string }[] }
+    : await validateWorkflowWorkerEligibility(
+        env,
+        String(row.spaceId),
+        String(row.threadId),
+        { ...workflow, steps: [step] },
+        bindings,
+        snapshot.stepExecutionConfigs as
+          Record<string, import("@syntila/core").TurnExecutionConfig> | undefined,
+      );
   if (eligibility.issues.length > 0) {
     return json(
       { error: "work_request_ineligible", issues: eligibility.issues },
@@ -1509,7 +1525,7 @@ async function cancelWorkRequest(
 
   const active = await dataOf(env).read.row<{
     assignmentId: string;
-    workspaceId: string;
+    workspaceId: string | null;
     assignmentStatus: string;
   }>`SELECT wa.id AS "assignmentId", wa.execution_workspace_id AS "workspaceId",
             wa.status AS "assignmentStatus"

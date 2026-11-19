@@ -300,6 +300,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("POST", "/api/worker-agent/claim", call("handleClaimWorkerPairing", ctx), machine),
     r("POST", "/api/worker-agent/nonce", call("handleWorkerNonce"), machine),
     r("POST", "/api/worker-agent/sessions", call("handleConnectWorkerSession"), machine),
+    r("GET", "/api/worker-agent/gateway", call("handleWorkerGatewayConnect"), machine),
     r("POST", "/api/worker-agent/rotate", call("handleRotateWorkerCredential"), machine),
     r("GET", "/api/workers/:workerTypeId/profile", call("handleGetWorkspaceV9WorkerProfile", p("workerTypeId"))),
     r("GET", "/api/admin/workers", call("handleListV9WorkerProfiles", ctx)),

@@ -3,6 +3,7 @@ import { sweepThreadRequestQueues } from "./routes/thread-request-queue.js";
 import type { SecurityEnv } from "./routes/http-security.js";
 export { SyntilaRunWorkflow } from "./workflow.js";
 export { WorkspaceGateway } from "./workspace-gateway.js";
+export { WorkerGateway } from "./worker-gateway.js";
 export { ThreadExecutionCoordinator } from "./thread-coordinator.js";
 export { RealtimeGateway } from "./realtime-gateway.js";
 export {
@@ -111,6 +112,7 @@ export const routeHandlers = {
   handleListWorkspaces: handlers.handleListWorkspaces,
   handleExportWorkspaceAudit: handlers.handleExportWorkspaceAudit,
   handleWorkspaceGatewayConnect: handlers.handleWorkspaceGatewayConnect,
+  handleWorkerGatewayConnect: handlers.handleWorkerGatewayConnect,
   handleWorkspaceRuntimeTransport: handlers.handleWorkspaceRuntimeTransport,
   handleGetReleaseTrustState: handlers.handleGetReleaseTrustState,
   handleRevokeReleaseSigningKey: handlers.handleRevokeReleaseSigningKey,

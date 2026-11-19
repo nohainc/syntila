@@ -134,6 +134,8 @@ export {
   handleRevokeReleaseSigningKey,
 } from "./releases.js";
 
+export { handleWorkerGatewayConnect } from "./worker-agent-gateway.js";
+
 export {
   handleWorkspaceGatewayConnect,
   handleWorkspaceRuntimeTransport,

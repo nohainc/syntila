@@ -391,17 +391,43 @@ export async function finalizeRevocationsOfRevokedRuntimes(
 export interface RevocationEnv {
   readonly SYNTILA_DB: Db;
   readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
+  readonly SYNTILA_WORKER_GATEWAY?: DurableObjectNamespace;
 }
 
 interface RevokingAssignment {
-  execution_workspace_id: string;
-  runtime_identity_id: string;
-  workspace_worker_id: string;
+  execution_workspace_id: string | null;
+  runtime_identity_id: string | null;
+  workspace_worker_id: string | null;
+  execution_path: string;
+  worker_instance_id: string | null;
   run_id: string;
   task_id: string;
   attempt_id: string;
   idempotency_key: string;
   error_json: string | null;
+}
+
+/** The gateway object and wire ids that reach the assignment's executor. */
+function cancelTarget(env: RevocationEnv, row: RevokingAssignment) {
+  if (row.execution_path === "worker") {
+    const gateways = env.SYNTILA_WORKER_GATEWAY;
+    const workerId = row.worker_instance_id;
+    if (!gateways || !workerId) return null;
+    return {
+      stub: gateways.get(gateways.idFromName(`worker:${workerId}`)),
+      workspaceId: `worker:${workerId}`,
+      runtimeId: `worker:${workerId}`,
+      workerId,
+    };
+  }
+  const gateways = env.SYNTILA_WORKSPACE_GATEWAY;
+  if (!gateways || !row.execution_workspace_id) return null;
+  return {
+    stub: gateways.get(gateways.idFromName(row.execution_workspace_id)),
+    workspaceId: row.execution_workspace_id,
+    runtimeId: row.runtime_identity_id ?? "",
+    workerId: row.workspace_worker_id ?? "",
+  };
 }
 
 /**
@@ -414,21 +440,24 @@ export async function deliverRevocation(
   assignmentId: string,
   reason?: string,
 ): Promise<boolean> {
-  const gateway = env.SYNTILA_WORKSPACE_GATEWAY;
-  if (!gateway) return false;
   try {
-    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id,
+    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id, execution_path, worker_instance_id,
               run_id, task_id, attempt_id, idempotency_key, error_json::text AS error_json
          FROM worker_assignments
         WHERE id = ${assignmentId} AND status IN ('revocation_pending', 'reconciling')`;
     if (!row) return false;
+    const target = cancelTarget(env, row);
+    if (!target) return false;
     // A replaced runtime identity can never acknowledge: finalize instead of
-    // sending a command that the current Service ignores.
-    const finalizedIds = await finalizeRevocationsOfRevokedRuntimes(
-      env.SYNTILA_DB,
-      row.execution_workspace_id,
-    );
-    if (finalizedIds.includes(assignmentId)) return true;
+    // sending a command that the current Service ignores. A Worker-path
+    // assignment has no runtime identity; its fence is the Agent session.
+    if (row.execution_path !== "worker" && row.execution_workspace_id) {
+      const finalizedIds = await finalizeRevocationsOfRevokedRuntimes(
+        env.SYNTILA_DB,
+        row.execution_workspace_id,
+      );
+      if (finalizedIds.includes(assignmentId)) return true;
+    }
     const stored = parseStored(row.error_json);
     const payload: AssignmentCancelPayload = {
       assignmentId,
@@ -437,15 +466,14 @@ export async function deliverRevocation(
         stored?.commandId ?? revocationCommandId(assignmentId, row.attempt_id),
       deadlineMs: Date.now() + 10_000,
     };
-    const response = await gateway
-      .get(gateway.idFromName(row.execution_workspace_id))
+    const response = await target.stub
       .fetch("http://gateway/cancel-assignment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          executionWorkspaceId: row.execution_workspace_id,
-          workspaceRuntimeId: row.runtime_identity_id,
-          workerId: row.workspace_worker_id,
+          executionWorkspaceId: target.workspaceId,
+          workspaceRuntimeId: target.runtimeId,
+          workerId: target.workerId,
           runId: row.run_id,
           taskId: row.task_id,
           attemptId: row.attempt_id,
@@ -478,22 +506,21 @@ async function notifyServiceOfFence(
   assignmentId: string,
   reason: string,
 ): Promise<void> {
-  const gateway = env.SYNTILA_WORKSPACE_GATEWAY;
-  if (!gateway) return;
   try {
-    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id,
+    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id, execution_path, worker_instance_id,
               run_id, task_id, attempt_id, idempotency_key
          FROM worker_assignments WHERE id = ${assignmentId}`;
     if (!row) return;
-    const sent = gateway
-      .get(gateway.idFromName(row.execution_workspace_id))
+    const target = cancelTarget(env, row);
+    if (!target) return;
+    const sent = target.stub
       .fetch("http://gateway/cancel-assignment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          executionWorkspaceId: row.execution_workspace_id,
-          workspaceRuntimeId: row.runtime_identity_id,
-          workerId: row.workspace_worker_id,
+          executionWorkspaceId: target.workspaceId,
+          workspaceRuntimeId: target.runtimeId,
+          workerId: target.workerId,
           runId: row.run_id,
           taskId: row.task_id,
           attemptId: row.attempt_id,
