@@ -8,6 +8,7 @@ import {
 import { dataOf, type Db } from "../platform/data.js";
 import type { Query } from "../platform/data.js";
 import { ACTIVE_ASSIGNMENT_STATUS_SQL } from "./assignment-transitions.js";
+import { tryLogDiagnosticEvent } from "./observability.js";
 
 /**
  * Why a task is waiting before it has an assignment. Neither reason holds a
@@ -143,45 +144,49 @@ export async function wakeNextExecutionWaiter(
   }
 }
 
-/**
- * Wakes the requests that wait for a Workspace Service to become ready, the
- * moment a Service reports ready. Without this a request that arrived while
- * the Service was restarting or synchronizing only noticed readiness at its
- * next 15 s poll. Waiters are not tied to one Workspace in the table, so this
- * may wake a request that waits for another Workspace; that is harmless
- * because a woken request only re-evaluates dispatch. Best effort: the timed
- * re-dispatch remains the durable path.
- */
+/** Wake waiters for this Workspace in bounded pages. Unbound requests are
+ * also re-evaluated because their eventual Workspace is not yet known.
+ * Failure is best effort: each waiter retains its durable timed retry. */
 export async function wakeWorkspaceReadyWaiters(
   env: { SYNTILA_DB: Db; SYNTILA_RUN_WORKFLOW?: WakeableWorkflow },
+  workspaceId: string,
   eventType: string,
   now: Date = new Date(),
 ): Promise<number> {
   if (!env.SYNTILA_RUN_WORKFLOW) return 0;
+  let cursor = "";
+  let woken = 0;
   try {
-    const waiters = await dataOf(env).read.rows<{ taskId: string; instanceId: string | null }>`
-      SELECT w.task_id AS "taskId", r.workflow_instance_id AS "instanceId"
-        FROM account_execution_waiters w
-        LEFT JOIN runs r ON r.id = w.run_id
-       WHERE w.reason = 'workspace_not_ready'
-         AND w.heartbeat_at >= ${waiterCutoff(now)}::timestamptz
-       ORDER BY w.enqueued_at, w.task_id LIMIT 20`;
-    let woken = 0;
-    for (const waiter of waiters) {
-      if (!waiter.instanceId) continue;
-      try {
-        const instance = await env.SYNTILA_RUN_WORKFLOW.get(waiter.instanceId);
-        await instance.sendEvent({
-          type: eventType,
-          payload: { taskId: waiter.taskId, reason: "workspace_ready" },
-        });
-        woken += 1;
-      } catch {
-        // The waiter's own timed re-dispatch covers it.
-      }
+    while (true) {
+      const waiters = await dataOf(env).read.rows<{ taskId: string; instanceId: string | null; requestId: string | null }>`
+        SELECT w.task_id AS "taskId", r.workflow_instance_id AS "instanceId", w.work_request_id AS "requestId"
+          FROM account_execution_waiters w
+          LEFT JOIN runs r ON r.id = w.run_id
+          LEFT JOIN work_requests wr ON wr.id = w.work_request_id
+         WHERE w.reason = 'workspace_not_ready'
+           AND w.heartbeat_at >= ${waiterCutoff(now)}::timestamptz
+           AND (wr.primary_workspace_id = ${workspaceId} OR wr.primary_workspace_id IS NULL)
+           AND w.task_id > ${cursor}
+         ORDER BY w.task_id LIMIT 20`;
+      if (!waiters.length) break;
+      await Promise.all(waiters.map(async (waiter) => {
+        if (!waiter.instanceId) return;
+        try {
+          const instance = await env.SYNTILA_RUN_WORKFLOW!.get(waiter.instanceId);
+          await instance.sendEvent({ type: eventType, payload: { taskId: waiter.taskId, reason: "workspace_ready" } });
+          woken++;
+          tryLogDiagnosticEvent({ component: "cloud", operation: "assignment", stage: "admission", severity: "info", retryable: false,
+            requestId: waiter.requestId ?? undefined, workspaceId, taskId: waiter.taskId, context: { status: "readiness_wake_sent" } });
+        } catch {
+          tryLogDiagnosticEvent({ component: "cloud", operation: "assignment", stage: "admission", severity: "warning", retryable: true,
+            requestId: waiter.requestId ?? undefined, workspaceId, taskId: waiter.taskId, context: { status: "readiness_wake_failed" } });
+        }
+      }));
+      cursor = waiters[waiters.length - 1]!.taskId;
+      if (waiters.length < 20) break;
     }
-    return woken;
   } catch {
-    return 0;
+    // Durable timed retries remain authoritative.
   }
+  return woken;
 }

@@ -13,6 +13,17 @@ import 'worker_issue_codes.dart';
 const workerProviderExecutionStartedMessage =
     'syntila.engine.provider_execution_started.v1';
 
+/// Internal lifecycle markers; these never contain provider output.
+const workerProviderFirstOutputMessage =
+    'syntila.engine.provider_first_output.v1';
+const workerProviderProcessExitedMessage =
+    'syntila.engine.provider_process_exited.v1';
+
+const providerTimingCapability = 'provider_timing_v1';
+
+const workerProviderLastOutputAgePrefix =
+    'syntila.engine.provider_last_output_age_ms.v1:';
+
 enum WorkerProbeMode { passive, live }
 
 enum WorkerSessionPolicy { stateless, durableSession }
@@ -920,6 +931,7 @@ final class ExecuteRequest extends WorkerFrame {
     this.additionalDirectories = const [],
     this.mcpServers = const [],
     this.compactContext = false,
+    this.providerTiming = false,
     this.executor,
     this.protocolVersion = localWorkerProtocolVersion,
   }) {
@@ -1045,6 +1057,9 @@ final class ExecuteRequest extends WorkerFrame {
   /// overflow). Only sent when true, so older Engines keep accepting frames.
   final bool compactContext;
 
+  /// Opt-in: older supervisors do not receive timing progress markers.
+  final bool providerTiming;
+
   /// Set only for a plugin execution (protocol 4.2); null means the admitted
   /// Tool Profile runs a provider CLI as before.
   final WorkerExecutor? executor;
@@ -1078,6 +1093,7 @@ final class ExecuteRequest extends WorkerFrame {
         if (mcpServers.isNotEmpty)
           'mcpServers': [for (final s in mcpServers) s.toJson()],
         if (compactContext) 'compactContext': true,
+        if (providerTiming) 'providerTiming': true,
         if (executor != null) 'executor': executor!.toJson(),
       };
 
@@ -1101,12 +1117,16 @@ final class ExecuteRequest extends WorkerFrame {
       'additionalDirectories',
       'mcpServers',
       'compactContext',
+      'providerTiming',
       'executor',
     });
     _expectType(json, 'execute.request');
     if (json['executor'] != null && json['executor'] is! Map) {
       throw const FormatException('executor must be an object');
     }
+    final providerTiming = json['providerTiming'] ?? false;
+    if (providerTiming is! bool)
+      throw const FormatException('providerTiming must be a boolean');
     final compactContext = json['compactContext'] ?? false;
     if (compactContext is! bool) {
       throw const FormatException('compactContext must be a boolean');
@@ -1191,6 +1211,7 @@ final class ExecuteRequest extends WorkerFrame {
           McpServerLaunch.fromJson(Map<String, Object?>.from(s as Map)),
       ]),
       compactContext: compactContext,
+      providerTiming: providerTiming,
       executor: json['executor'] == null
           ? null
           : WorkerExecutor.fromJson(

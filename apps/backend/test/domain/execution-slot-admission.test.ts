@@ -365,6 +365,7 @@ it("wakes requests parked on Service readiness, not slot waiters", async () => {
   expect(
     await wakeWorkspaceReadyWaiters(
       { SYNTILA_DB: f.db, SYNTILA_RUN_WORKFLOW: { get } },
+      "WS",
       "assignment-terminal",
     ),
   ).toBe(1);
@@ -374,6 +375,63 @@ it("wakes requests parked on Service readiness, not slot waiters", async () => {
   });
   // Without a Workflow binding nothing happens and nothing throws.
   expect(
-    await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db }, "x"),
+    await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db }, "WS", "x"),
   ).toBe(0);
+});
+
+it("wakes every matching readiness waiter across pages and leaves other Workspaces parked", async () => {
+  const f = await fixture();
+  await f.sqlite.exec(`
+    UPDATE runs SET workflow_instance_id = 'instance-1' WHERE id = 'RUN';
+    INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at,primary_workspace_id)
+      SELECT 'R-MATCH',thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at,'WS' FROM work_requests WHERE id = 'R';
+    INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at,primary_workspace_id)
+      SELECT 'R-OTHER',thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at,'WS2'
+      FROM work_requests WHERE id = 'R';
+  `);
+  for (let i = 0; i < 25; i++) await recordExecutionWaiter(f.read, {
+    taskId: `batch-${String(i).padStart(2, '0')}`, requesterUserId: 'U', runId: 'RUN', workRequestId: 'R-MATCH', reason: 'workspace_not_ready',
+  });
+  await recordExecutionWaiter(f.read, {
+    taskId: 'other', requesterUserId: 'U', runId: 'RUN', workRequestId: 'R-OTHER', reason: 'workspace_not_ready',
+  });
+  const sendEvent = vi.fn(async () => undefined);
+  const get = vi.fn(async () => ({ sendEvent }));
+  expect(await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db, SYNTILA_RUN_WORKFLOW: { get } }, 'WS', 'assignment-terminal')).toBe(25);
+  expect(sendEvent).toHaveBeenCalledTimes(25);
+  expect(sendEvent.mock.calls.map((call) => (call[0] as { payload: { taskId: string } }).payload.taskId)).not.toContain('other');
+  expect((await f.waiters()).length).toBe(26);
+  const flakySend = vi.fn(async (event: { payload: { taskId: string } }) => {
+    if (event.payload.taskId === 'batch-00') throw new Error('unavailable');
+  });
+  const flakyGet = vi.fn(async () => ({ sendEvent: flakySend }));
+  expect(await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db, SYNTILA_RUN_WORKFLOW: { get: flakyGet } }, 'WS', 'assignment-terminal')).toBe(24);
+  expect(flakySend).toHaveBeenCalledTimes(25);
+});
+
+it("wakes and readmits a request after its Workspace becomes ready", async () => {
+  const f = await fixture();
+  await f.sqlite.exec("UPDATE runs SET workflow_instance_id = 'instance-ready' WHERE id = 'RUN'");
+  readiness = 'connected';
+  expect(await f.dispatch('T')).toMatchObject({ status: 'deferred', waitReason: 'workspace_not_ready' });
+  expect(await f.held()).toBe(0);
+  readiness = 'ready';
+  const sendEvent = vi.fn(async () => undefined);
+  expect(await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db, SYNTILA_RUN_WORKFLOW: { get: async () => ({ sendEvent }) } }, 'WS', 'assignment-terminal')).toBe(1);
+  expect(sendEvent).toHaveBeenCalledTimes(1);
+  expect(await f.dispatch('T')).toMatchObject({ accepted: true });
+});
+
+it("rechecks readiness after registration when the ready signal raced the waiter", async () => {
+  const f = await fixture();
+  readiness = 'connected';
+  f.fetch.mockImplementation(async (url: string) => {
+    if (url.endsWith('/status')) {
+      readiness = 'ready';
+      return Response.json({ online: true, readyForAssignments: true, executionWorkspaceId: 'WS' });
+    }
+    return Response.json({});
+  });
+  expect(await f.dispatch('T')).toMatchObject({ accepted: true });
+  expect(await f.waiters()).toHaveLength(0);
 });

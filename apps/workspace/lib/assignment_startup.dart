@@ -20,11 +20,16 @@ enum AssignmentStartupStage {
   workerResolved('worker_resolved'),
   profileReady('profile_ready'),
   waitingForSpace('waiting_for_space'),
+  spacePrepared('space_prepared'),
   queuedForSlot('queued_for_slot'),
   slotReserved('slot_reserved'),
   engineSpawned('engine_spawned'),
   engineInitialized('engine_initialized'),
-  providerStarted('provider_started');
+  providerStarted('provider_started'),
+  providerFirstOutput('provider_first_output'),
+  providerProcessExited('provider_process_exited'),
+  providerLastOutputReported('provider_last_output_reported'),
+  engineResultReceived('engine_result_received');
 
   const AssignmentStartupStage(this.wireName);
 

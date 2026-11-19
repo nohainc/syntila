@@ -20,6 +20,24 @@ const ev = (component, traceStage, timestamp, extra = {}, context = {}) => ({
 });
 
 describe("latency baseline", () => {
+  it("reports provider and result delivery stages in order", () => {
+    const events = [
+      ev("service", "provider_started", "2026-10-14T10:00:00.000Z", { requestId: "r1", assignmentId: "a1" }, { clockOffsetMs: 0 }),
+      ev("service", "provider_first_output", "2026-10-14T10:00:01.000Z", { assignmentId: "a1" }, { clockOffsetMs: 0 }),
+      ev("service", "provider_process_exited", "2026-10-14T10:00:03.000Z", { assignmentId: "a1" }, { clockOffsetMs: 0 }),
+      ev("service", "service_result_persisted", "2026-10-14T10:00:03.050Z", { assignmentId: "a1" }, { clockOffsetMs: 0 }),
+      ev("cloud", "terminal_persisted", "2026-10-14T10:00:03.080Z", { assignmentId: "a1" }),
+      ev("cloud", "workflow_completed", "2026-10-14T10:00:03.100Z", { requestId: "r1" }),
+    ];
+    const intervals = intervalsOf(buildTraces(events)[0]);
+    expect(intervals.map((v) => [v.name, v.ms])).toEqual([
+      ["provider_started->provider_first_output", 1000],
+      ["provider_first_output->provider_process_exited", 2000],
+      ["provider_process_exited->service_result_persisted", 50],
+      ["service_result_persisted->terminal_persisted", 30],
+      ["terminal_persisted->workflow_completed", 20],
+    ]);
+  });
   it("parses plain, wrapped and wrangler-tail lines", () => {
     const e = ev("cloud", "cloud_accepted", "2026-10-14T10:00:00.000Z", {
       requestId: "r1",

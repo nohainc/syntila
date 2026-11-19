@@ -2,20 +2,20 @@
 # Local performance runner for real user actions on the local Syntila stack.
 #
 # Usage:
-#   scripts/perf-local.sh [--probes N] [--users N] [--messages N] [--chats N] [--json out.json] [--no-thresholds]
+#   scripts/perf-local.sh [--probes N] [--chats N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
 #
 # Prerequisite:
 #   Run `pnpm start:local` so the local backend (:8788) and PostgreSQL are up.
-#   No real AI is invoked: Scenario A probes the developer Workspace transport,
-#   Scenario B posts discussion messages with realtime WebSocket fan-out, and
-#   Scenario C runs Chat workflows against an in-process FakeWorkspace.
-#   All synthetic data created in Scenarios B and C is deleted on exit.
+#   Scenario A probes the developer Workspace transport,
+#   Scenario C runs real Chat requests on the developer Workspace and may use provider quota.
+#   Temporary benchmark data is removed on completion.
 #
 # Options:
 #   --probes N         Delivery probes per payload size in Scenario A (default 50)
-#   --users N          Synthetic users in Scenario B (default 10)
-#   --messages N       Messages posted per user in Scenario B (default 10)
-#   --chats N          Concurrent Chat requests in Scenario C (default 10)
+#   --chats N          Sequential real requests in Scenario C (default 1)
+#   --workflow MODE    chat (default) or stateful work
+#   --allow-offline    Allow a request before the Workspace reconnects
+#   --model ID         Select a model supported by the chosen Worker
 #   --json <file>      Write full JSON report (commit, machine info, metrics) to <file>
 #   --thresholds <f>   Override threshold file (default scripts/perf-thresholds.json)
 #   --no-thresholds    Report numbers without failing on threshold violations

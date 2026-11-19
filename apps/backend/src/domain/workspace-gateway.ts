@@ -2209,6 +2209,10 @@ export class WorkspaceGateway implements DurableObject {
           : undefined;
       const offset = integer(serviceTrace.clockOffsetMs);
       const rtt = integer(serviceTrace.clockRttMs);
+      const receiveToAck = integer(serviceTrace.receiveToAckMs);
+      const lookup = integer(serviceTrace.journalLookupUs);
+      const receivedJournal = integer(serviceTrace.receivedJournalUs);
+      const acceptedJournal = integer(serviceTrace.acceptedJournalUs);
       const queue = integer(serviceTrace.localQueueLength);
       const active = integer(serviceTrace.activeAssignments);
       const syncState =
@@ -2239,6 +2243,10 @@ export class WorkspaceGateway implements DurableObject {
           ...(rtt !== undefined && rtt >= 0 && rtt <= 600_000
             ? { clockRttMs: rtt }
             : {}),
+          ...(receiveToAck !== undefined && receiveToAck >= 0 && receiveToAck <= 600_000 ? { receiveToAckMs: receiveToAck } : {}),
+          ...(lookup !== undefined && lookup >= 0 && lookup <= 600_000_000 ? { journalLookupUs: lookup } : {}),
+          ...(receivedJournal !== undefined && receivedJournal >= 0 && receivedJournal <= 600_000_000 ? { receivedJournalUs: receivedJournal } : {}),
+          ...(acceptedJournal !== undefined && acceptedJournal >= 0 && acceptedJournal <= 600_000_000 ? { acceptedJournalUs: acceptedJournal } : {}),
           ...(queue !== undefined && queue >= 0 && queue <= 100_000
             ? { localQueueLength: queue }
             : {}),
@@ -2545,10 +2553,14 @@ export class WorkspaceGateway implements DurableObject {
     this.readinessChain = run.catch(() => undefined);
     const result = await run;
     if (result.becameReady) {
+      tryLogDiagnosticEvent({ component: "cloud", operation: "assignment", stage: "admission", severity: "info", retryable: false,
+        workspaceId: this.executionWorkspaceId ?? undefined, workspaceRuntimeId: this.workspaceRuntimeId ?? undefined,
+        context: { status: "workspace_became_ready" } });
       // Requests parked on "waiting for the Workspace Service to be ready"
       // start now instead of at their next poll.
       void wakeWorkspaceReadyWaiters(
         this.env,
+        this.executionWorkspaceId!,
         ASSIGNMENT_TERMINAL_EVENT_TYPE,
       );
       await this.flushQueuedAssignments().catch((error: unknown) =>
@@ -2608,6 +2620,7 @@ export class WorkspaceGateway implements DurableObject {
       // without changing its readiness state) wake on any ready report.
       void wakeWorkspaceReadyWaiters(
         this.env,
+        this.executionWorkspaceId!,
         ASSIGNMENT_TERMINAL_EVENT_TYPE,
       );
       await this.flushQueuedAssignments().catch((error: unknown) =>

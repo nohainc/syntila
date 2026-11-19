@@ -111,6 +111,31 @@ void main() {
     );
   });
 
+  test('verification reports cache use and rejects a replaced binary',
+      () async {
+    await addServer();
+    await consentFully();
+    service.enable('files');
+    final timings = <Map<String, Object?>>[];
+    void record(String stage, Map<String, Object?> detail) {
+      if (stage == 'mcp_binary_verification') timings.add(detail);
+    }
+
+    expect(await service.launchesForOwnerExecution(onTiming: record),
+        hasLength(1));
+    expect(timings.single['cacheHit'], isTrue);
+    final modified = server.statSync().modified;
+    final replacement = File('${root.path}/replacement')
+      ..writeAsBytesSync([1, 2, 3, 4])
+      ..setLastModifiedSync(modified);
+    replacement.renameSync(server.path);
+    timings.clear();
+    expect(await service.launchesForOwnerExecution(onTiming: record), isEmpty);
+    expect(timings.single['cacheHit'], isFalse);
+    expect(timings.single['verified'], isFalse);
+    expect(timings.toString(), isNot(contains(server.path)));
+  });
+
   test('a server cannot be enabled or resolved before consent', () async {
     await addServer();
     expect(() => service.enable('files'), throwsA(_code('mcp_not_consented')));

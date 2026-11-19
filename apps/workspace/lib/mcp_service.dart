@@ -86,14 +86,16 @@ class McpService {
   static final _envPattern = RegExp(r'^[A-Za-z_][A-Za-z0-9_]{0,127}$');
 
   /// Cache of verified binary SHA-256 digests keyed by file path, invalidated
-  /// whenever the file's size or modification timestamp changes. A large runtime
+  /// whenever the file's size, modification or change timestamp changes. A large runtime
   /// executable (e.g. a 115 MB `node` binary) takes ~2 seconds to hash in pure
-  /// Dart; caching by stat metadata keeps repeated launches instant while
-  /// re-hashing immediately if the binary is modified or replaced.
-  final Map<String, ({int size, DateTime modified, String sha256})>
+  /// Dart; caching by stat metadata avoids repeated hashing when those values
+  /// are unchanged. Metadata alone cannot prove binary identity.
+  final Map<String,
+          ({int size, DateTime modified, DateTime changed, String sha256})>
       _binaryDigestCache = {};
 
-  Future<String> _sha256OfFile(String path) async {
+  Future<String> _sha256OfFile(String path,
+      {void Function(bool hit)? onCache}) async {
     final stat = await File(path).stat();
     if (stat.type == FileSystemEntityType.notFound) {
       throw FileSystemException('Cannot open file', path);
@@ -101,21 +103,32 @@ class McpService {
     final cached = _binaryDigestCache[path];
     if (cached != null &&
         cached.size == stat.size &&
-        cached.modified.isAtSameMomentAs(stat.modified)) {
+        cached.modified.isAtSameMomentAs(stat.modified) &&
+        cached.changed.isAtSameMomentAs(stat.changed)) {
+      onCache?.call(true);
       return cached.sha256;
     }
+    onCache?.call(false);
     // Raw bytes: this must equal the Engine's ExternalWorkerProcessHost.sha256OfFile.
     final digest =
         (await crypto.sha256.bind(File(path).openRead()).first).toString();
     final after = await File(path).stat();
     if (after.type != FileSystemEntityType.notFound &&
         after.size == stat.size &&
-        after.modified.isAtSameMomentAs(stat.modified)) {
+        after.modified.isAtSameMomentAs(stat.modified) &&
+        after.changed.isAtSameMomentAs(stat.changed)) {
       _binaryDigestCache[path] = (
         size: after.size,
         modified: after.modified,
+        changed: after.changed,
         sha256: digest,
       );
+    }
+    if (after.type == FileSystemEntityType.notFound ||
+        after.size != stat.size ||
+        !after.modified.isAtSameMomentAs(stat.modified) ||
+        !after.changed.isAtSameMomentAs(stat.changed)) {
+      throw FileSystemException('File changed during verification', path);
     }
     return digest;
   }
@@ -352,7 +365,9 @@ class McpService {
   /// [onSkipped]; it never runs and never fails the whole execution.
   Future<List<McpServerLaunch>> launchesForOwnerExecution({
     void Function(String message)? onSkipped,
+    void Function(String stage, Map<String, Object?> detail)? onTiming,
   }) async {
+    final registryTimer = Stopwatch()..start();
     final List<McpServerRecord> servers;
     try {
       servers = _registry.list();
@@ -362,6 +377,8 @@ class McpService {
         'The MCP server registry could not be read.',
       );
     }
+    onTiming?.call('mcp_registry_loaded',
+        {'elapsedMs': registryTimer.elapsedMilliseconds});
     final launches = <McpServerLaunch>[];
     for (final server in servers) {
       if (!server.enabled || !server.consented) continue;
@@ -383,11 +400,21 @@ class McpService {
         }
         continue;
       }
+      final timer = Stopwatch()..start();
+      bool? cacheHit;
+      var verified = false;
       try {
-        await _checkBinary(server);
+        await _checkBinary(server, onCache: (hit) => cacheHit = hit);
+        verified = true;
       } on McpPolicyException catch (error) {
         onSkipped?.call(error.message);
         continue;
+      } finally {
+        onTiming?.call('mcp_binary_verification', {
+          'elapsedMs': timer.elapsedMilliseconds,
+          if (cacheHit != null) 'cacheHit': cacheHit,
+          'verified': verified,
+        });
       }
       launches.add(_launchFor(server));
     }
@@ -568,10 +595,11 @@ class McpService {
         'No MCP server "$serverId".',
       ));
 
-  Future<void> _checkBinary(McpServerRecord server) async {
+  Future<void> _checkBinary(McpServerRecord server,
+      {void Function(bool hit)? onCache}) async {
     final String digest;
     try {
-      digest = await _sha256OfFile(server.command!);
+      digest = await _sha256OfFile(server.command!, onCache: onCache);
     } on FileSystemException {
       throw McpPolicyException(
         'mcp_binary_changed',
@@ -624,6 +652,7 @@ Future<List<McpServerLaunch>> mcpLaunchesForExecution(
   Map<String, Object?> profile, {
   required bool requestedByOwner,
   void Function(String message)? onSkipped,
+  void Function(String stage, Map<String, Object?> detail)? onTiming,
 }) async {
   if (!requestedByOwner) return const [];
   if (!profileSupportsMcpServers(profile)) {
@@ -637,7 +666,8 @@ Future<List<McpServerLaunch>> mcpLaunchesForExecution(
     return const [];
   }
   try {
-    return await service.launchesForOwnerExecution(onSkipped: onSkipped);
+    return await service.launchesForOwnerExecution(
+        onSkipped: onSkipped, onTiming: onTiming);
   } on McpPolicyException catch (error) {
     onSkipped?.call(error.message);
     return const [];

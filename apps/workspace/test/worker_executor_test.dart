@@ -16,6 +16,62 @@ import 'package:test/test.dart';
 import 'support/assignment_worker_fixture.dart';
 
 void main() {
+  test('records internal provider timings without exposing markers as progress',
+      () async {
+    final stages = <String>[];
+    final publicProgress = <String?>[];
+    final handler = WorkerAssignmentHandler(
+      resolveLogicalWorker: (id) => assignmentWorker(id),
+      onStartupStage: (context, stage, detail) {
+        stages.add(stage.wireName);
+        if (stage.wireName == 'provider_last_output_reported')
+          expect(detail['outputAgeMs'], 17);
+      },
+      onProgress: (context, progress) => publicProgress.add(progress.message),
+      executeWithToolProfile: (worker, directory, context, payload,
+          {onProgress}) async {
+        for (final marker in [
+          workerProviderFirstOutputMessage,
+          '${workerProviderLastOutputAgePrefix}17',
+          workerProviderProcessExitedMessage
+        ]) {
+          onProgress?.call(WorkerProgress(
+              requestId: 'r',
+              assignmentId: context.assignmentId,
+              percentage: 0,
+              message: marker));
+        }
+        return WorkerResult(
+            requestId: 'r', assignmentId: context.assignmentId, output: 'ok');
+      },
+    );
+    final context = WorkspaceAssignmentContext(
+      workspaceId: 'ws',
+      workspaceRuntimeId: 'rt',
+      workerId: 'worker',
+      runId: 'run',
+      taskId: 'task',
+      attemptId: 'attempt',
+      assignmentId: 'assignment',
+      idempotencyKey: 'key',
+      payload: {
+        'workerId': 'worker',
+        'workerTypeId': 'test-worker',
+        'executionClass': 'stateless_read'
+      },
+    );
+    await handler.call(context);
+    expect(
+        stages,
+        containsAllInOrder([
+          'provider_first_output',
+          'provider_last_output_reported',
+          'provider_process_exited',
+          'engine_result_received'
+        ]));
+    expect(publicProgress, isEmpty);
+  });
+
   test('materializes a 100 MB input and rejects one byte over', () async {
     final root = await Directory.systemTemp.createTemp('attachment-limit-');
     addTearDown(() => root.delete(recursive: true));

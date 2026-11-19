@@ -17,6 +17,13 @@ const List<String> diagnosticTraceStages = [
   'web_received',
 ];
 const List<String> diagnosticAuxiliaryTraceStages = [
+  'workflow_completed',
+  'provider_first_output',
+  'provider_last_output_reported',
+  'provider_process_exited',
+  'engine_result_received',
+  'service_result_persisted',
+  'service_result_sending',
   'cloud_ack_received',
   'workflow_observed_terminal',
   'probe_sent',
@@ -221,6 +228,7 @@ final class DiagnosticEvent {
       'failureLayer',
       'processExitCode',
       'durationMs',
+      'outputAgeMs',
       'connectionState',
       'transport',
       'status',

@@ -13,6 +13,21 @@ ExecuteRequest request(List<McpServerLaunch> servers) => ExecuteRequest(
     );
 
 void main() {
+  test('provider timing is opt-in and survives protocol round-trip', () {
+    final base = request(const []);
+    expect(base.toJson(), isNot(contains('providerTiming')));
+    expect((decodeWorkerFrame(base.encode()) as ExecuteRequest).providerTiming,
+        isFalse);
+    final timed = ExecuteRequest(
+        requestId: 'r1',
+        assignmentId: 'a1',
+        prompt: 'hi',
+        timeoutMs: 1000,
+        sessionPolicy: WorkerSessionPolicy.stateless,
+        providerTiming: true);
+    expect((decodeWorkerFrame(timed.encode()) as ExecuteRequest).providerTiming,
+        isTrue);
+  });
   test('round-trips MCP servers and omits the field when empty', () {
     final frame = request([
       McpServerLaunch(

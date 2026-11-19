@@ -168,6 +168,7 @@ void main() {
         (initialized as InitializeResult).profileDefinitionId,
         'fixture-cli',
       );
+      expect(initialized.capabilities, contains(providerTimingCapability));
       expect(initialized.workerTypeId, 'fixture-worker');
       expect(initialized.profileRevision, '7');
 
@@ -211,6 +212,7 @@ void main() {
       process.stdin.writeln(
         ExecuteRequest(
           requestId: 'engine-execute-1',
+          providerTiming: true,
           assignmentId: 'fixture-assignment',
           prompt: 'hello engine',
           timeoutMs: 60000,
@@ -219,16 +221,27 @@ void main() {
       );
       await process.stdin.flush();
       var providerStartObserved = false;
+      final lifecycleMarkers = <String>[];
       final result =
           await _nextTerminalFrame(
                 lines,
                 onProgress: (progress) {
                   providerStartObserved |=
                       progress.message == workerProviderExecutionStartedMessage;
+                  if (progress.message != null)
+                    lifecycleMarkers.add(progress.message!);
                 },
               )
               as WorkerResult;
       expect(providerStartObserved, isTrue);
+      expect(lifecycleMarkers, contains(workerProviderFirstOutputMessage));
+      expect(lifecycleMarkers, contains(workerProviderProcessExitedMessage));
+      expect(
+        lifecycleMarkers.any(
+          (m) => m.startsWith(workerProviderLastOutputAgePrefix),
+        ),
+        isTrue,
+      );
       expect(result.output, 'fixture echo: hello engine');
 
       final marker = '${stateDirectory.path}/shell-injection-marker';
@@ -243,7 +256,27 @@ void main() {
         ).encode(),
       );
       await process.stdin.flush();
-      final hostileResult = await _nextTerminalFrame(lines) as WorkerResult;
+      final legacyMarkers = <String>[];
+      final hostileResult =
+          await _nextTerminalFrame(
+                lines,
+                onProgress: (progress) {
+                  if (progress.message != null)
+                    legacyMarkers.add(progress.message!);
+                },
+              )
+              as WorkerResult;
+      expect(legacyMarkers, isNot(contains(workerProviderFirstOutputMessage)));
+      expect(
+        legacyMarkers,
+        isNot(contains(workerProviderProcessExitedMessage)),
+      );
+      expect(
+        legacyMarkers.any(
+          (m) => m.startsWith(workerProviderLastOutputAgePrefix),
+        ),
+        isFalse,
+      );
       expect(hostileResult.output, 'fixture echo: $hostilePrompt');
       expect(File(marker).existsSync(), isFalse);
       await process.stdin.close();

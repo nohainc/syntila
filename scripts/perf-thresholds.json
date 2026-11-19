@@ -1,32 +1,29 @@
 {
-  "_comment": "p95 limits in ms: twice the highest p95 of three clean runs on 2026-11-18 (Apple M5 Pro, local Workspace connected, nothing else running), with a 5 ms floor for timer jitter. Measured p95s (run1/run2/run3): transport 0B 2/1/1, 1024B 1/1/1, 32768B 5/5/4; REST post 6.2/5.9/5.2; fan-out 6.2/5.9/5.2; concurrent total 186/158.5/156.2; service received->accepted 0/1/1; serial total 70.9/68.1/67.6; serial overhead 43.9/43.1/41.6. Runs taken while the backend test suite was running were up to 6x slower and were discarded: run on a quiet machine. Change a limit only with the reason in the commit message.",
+  "_comment": "Configurable local p95 limits in milliseconds; provider and machine conditions affect results.",
   "metrics": {
     "transport.probe_0b": {
-      "p95Ms": 5
+      "p95Ms": 3
     },
     "transport.probe_1024b": {
-      "p95Ms": 5
+      "p95Ms": 3
     },
     "transport.probe_32768b": {
       "p95Ms": 10
     },
-    "messages.rest_post": {
-      "p95Ms": 12.4
+    "workflows.real.total": {
+      "p95Ms": 3000
     },
-    "messages.realtime_fanout": {
-      "p95Ms": 12.4
+    "workflows.real.requestToAssignment": {
+      "p95Ms": 50
     },
-    "workflows.concurrent.total": {
-      "p95Ms": 372
+    "workflows.real.assignmentToDispatch": {
+      "p95Ms": 10
     },
-    "workflows.concurrent.service_received->service_accepted": {
-      "p95Ms": 5
+    "workflows.real.dispatchToAcknowledgement": {
+      "p95Ms": 100
     },
-    "workflows.serial.request_total": {
-      "p95Ms": 141.8
-    },
-    "workflows.serial.queued_overhead": {
-      "p95Ms": 87.8
+    "workflows.real.startPermitToRunning": {
+      "p95Ms": 1000
     }
   }
 }

@@ -265,7 +265,10 @@ class CliWorkerEngine {
         profileSchemaVersion: _admittedProfile.schemaVersion,
         // Kept on the wire for protocol compatibility; capability metadata is
         // no longer sourced from or enforced by Tool Profiles.
-        capabilities: const [providerFailureDetailsCapability],
+        capabilities: const [
+          providerFailureDetailsCapability,
+          providerTimingCapability,
+        ],
       ),
     );
   }
@@ -1657,6 +1660,9 @@ class CliWorkerEngine {
         var toolSeen = false;
         final stdout = StringBuffer();
         var stdoutBytes = 0;
+        var observedFirstOutput = false;
+        final outputClock = Stopwatch()..start();
+        int? lastOutputMs;
         // File timestamps can be coarser than the clock; allow a little slack.
         final providerStartedAt = DateTime.now().subtract(
           const Duration(seconds: 2),
@@ -1689,6 +1695,19 @@ class CliWorkerEngine {
           },
           onStdoutLine: (line) async {
             if (!acceptingProviderEvents) return;
+            if (request.providerTiming && !observedFirstOutput) {
+              observedFirstOutput = true;
+              await _write(
+                sink,
+                WorkerProgress(
+                  requestId: request.requestId,
+                  assignmentId: request.assignmentId,
+                  percentage: 0,
+                  message: workerProviderFirstOutputMessage,
+                ),
+              );
+            }
+            lastOutputMs = outputClock.elapsedMilliseconds;
             stdoutBytes += utf8.encode(line).length + 1;
             if (stdoutBytes > 4 * 1024 * 1024) {
               throw const FormatException(
@@ -1714,6 +1733,29 @@ class CliWorkerEngine {
         );
         _providerExitCode = result.exitCode;
         acceptingProviderEvents = false;
+        if (request.providerTiming && lastOutputMs != null) {
+          await _write(
+            sink,
+            WorkerProgress(
+              requestId: request.requestId,
+              assignmentId: request.assignmentId,
+              percentage: 0,
+              message:
+                  '$workerProviderLastOutputAgePrefix${outputClock.elapsedMilliseconds - lastOutputMs!}',
+            ),
+          );
+        }
+        if (request.providerTiming) {
+          await _write(
+            sink,
+            WorkerProgress(
+              requestId: request.requestId,
+              assignmentId: request.assignmentId,
+              percentage: 0,
+              message: workerProviderProcessExitedMessage,
+            ),
+          );
+        }
         var interpreted = _interpret(
           stdout.toString(),
           result.stderr,

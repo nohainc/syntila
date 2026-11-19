@@ -38,6 +38,13 @@ export const TRACE_STAGES = [
 export type TraceStage = (typeof TRACE_STAGES)[number];
 
 export const AUXILIARY_TRACE_STAGES = [
+  "workflow_completed",
+  "provider_first_output",
+  "provider_last_output_reported",
+  "provider_process_exited",
+  "engine_result_received",
+  "service_result_persisted",
+  "service_result_sending",
   "cloud_ack_received",
   "workflow_observed_terminal",
   "probe_sent",
@@ -112,6 +119,11 @@ export const DiagnosticContextSchema = z
     clockRttMs: z.number().int().nonnegative().max(600_000).optional(),
     /** Service connection stage, e.g. ready or synchronizing. */
     syncState: boundedToken.optional(),
+    /** Service-local admission timings, measured independently of host clocks. */
+    receiveToAckMs: z.number().int().nonnegative().max(600_000).optional(),
+    journalLookupUs: z.number().int().nonnegative().max(600_000_000).optional(),
+    receivedJournalUs: z.number().int().nonnegative().max(600_000_000).optional(),
+    acceptedJournalUs: z.number().int().nonnegative().max(600_000_000).optional(),
     localQueueLength: z.number().int().nonnegative().max(100_000).optional(),
     activeAssignments: z.number().int().nonnegative().max(100_000).optional(),
     probeId: boundedToken.optional(),

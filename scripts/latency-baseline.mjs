@@ -21,7 +21,15 @@ export const STAGES = [
   "slot_reserved",
   "engine_process_created",
   "provider_started",
+  "provider_first_output",
+  "provider_last_output_reported",
+  "provider_process_exited",
+  "engine_result_received",
+  "service_result_persisted",
+  "service_result_sending",
   "terminal_persisted",
+  "workflow_observed_terminal",
+  "workflow_completed",
   "web_received",
 ];
 
@@ -35,7 +43,15 @@ const TO_PHASE = {
   slot_reserved: "queueing / slot",
   engine_process_created: "queueing / slot",
   provider_started: "after Engine launch",
-  terminal_persisted: "after Engine launch",
+  provider_first_output: "provider execution",
+  provider_last_output_reported: "provider execution",
+  provider_process_exited: "provider execution",
+  engine_result_received: "result handling",
+  service_result_persisted: "result handling",
+  service_result_sending: "result handling",
+  terminal_persisted: "result delivery",
+  workflow_observed_terminal: "result delivery",
+  workflow_completed: "result delivery",
   web_received: "result delivery to Web",
 };
 

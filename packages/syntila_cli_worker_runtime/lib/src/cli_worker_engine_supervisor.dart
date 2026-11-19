@@ -808,6 +808,9 @@ final class CliWorkerEngineSupervisor {
         additionalDirectories: additionalDirectories,
         mcpServers: mcpServers,
         compactContext: compactContext,
+        providerTiming: initialized.capabilities.contains(
+          providerTimingCapability,
+        ),
         executor: identity.executor,
         protocolVersion:
             initialized.capabilities.contains(providerFailureDetailsCapability)

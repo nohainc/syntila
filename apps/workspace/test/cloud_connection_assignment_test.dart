@@ -10,11 +10,27 @@ import 'package:syntila_workspace/cli_worker_engine_supervisor.dart'
 import 'package:syntila_workspace/cloud_connection.dart';
 import 'package:syntila_workspace/worker_diagnostic_store.dart';
 import 'package:syntila_workspace/provider_failure_cipher.dart';
+import 'package:syntila_workspace/platform_runtime.dart';
 import 'package:syntila_workspace/secure_credentials.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:test/test.dart';
 
 import 'support/cloud_connection_test_support.dart';
+
+class _BlockedDiagnosticRuntime implements PlatformRuntime {
+  final entered = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<void> restrictPermissions(String path,
+      {required bool directory}) async {
+    if (!entered.isCompleted) entered.complete();
+    await release.future;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class _MemoryCredentials implements SecureCredentialStore {
   final values = <String, String>{};
@@ -1519,7 +1535,15 @@ void main() {
       () async {
     final directory = await Directory.systemTemp.createTemp('trace-epoch-');
     addTearDown(() => directory.delete(recursive: true));
-    final store = WorkerDiagnosticStore(directory: directory);
+    final diagnosticRuntime = _BlockedDiagnosticRuntime();
+    final store = WorkerDiagnosticStore(
+        directory: directory, platformRuntime: diagnosticRuntime);
+    final journal =
+        AssignmentJournal(File('${directory.path}/assignments.jsonl'));
+    addTearDown(() {
+      if (!diagnosticRuntime.release.isCompleted)
+        diagnosticRuntime.release.complete();
+    });
     final socket = FakeSocket();
     final connection = WorkspaceCloudConnection(
       uri: Uri.parse(
@@ -1528,6 +1552,7 @@ void main() {
       workspaceId: 'workspace-1',
       factory: (_) async => socket,
       diagnosticStoreForWorkerType: (_) => store,
+      assignmentJournal: journal,
       assignmentHandler: (context) async => const WorkspaceAssignmentResult(
         summary: 'done',
         output: {'text': 'ok'},
@@ -1562,6 +1587,15 @@ void main() {
         'timeoutMs': 1000,
       },
     }));
+    await diagnosticRuntime.entered.future;
+    // The acknowledgement must not wait for diagnostics, but acceptance must
+    // already be durable for replay after a crash.
+    await waitFor(() => socket.sent.any((message) =>
+        (jsonDecode(message as String) as Map<String, dynamic>)['type'] ==
+        'assignment.ack'));
+    expect((await journal.find('assignment-trace-1'))?.status,
+        AssignmentStatus.accepted);
+    diagnosticRuntime.release.complete();
     await waitFor(() => socket.sent.any((message) =>
         (jsonDecode(message as String) as Map<String, dynamic>)['type'] ==
         'assignment.result'));
@@ -1579,6 +1613,9 @@ void main() {
         matches(RegExp(r'^[A-Za-z0-9._:-]{1,128}$')));
     expect(serviceTrace['activeAssignments'], 1);
     expect(serviceTrace['receiveToAckMs'], isA<int>());
+    expect(serviceTrace['journalLookupUs'], isA<int>());
+    expect(serviceTrace['receivedJournalUs'], isA<int>());
+    expect(serviceTrace['acceptedJournalUs'], isA<int>());
 
     final intervals = connection.latencySummary()['intervals'] as Map;
     expect(intervals.keys, contains('service_received->service_accepted'));

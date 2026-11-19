@@ -42,7 +42,7 @@ import {
   type WorkRequestInputRow,
 } from "./routes/work-request-inputs.js";
 import { createEventPublisher } from "./event-publisher.js";
-import { tryLogTraceEvent } from "./observability.js";
+import { tryLogDiagnosticEvent, tryLogTraceEvent } from "./observability.js";
 import {
   EXECUTION_WAIT_MESSAGES,
   clearExecutionWaiter,
@@ -958,6 +958,8 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     await this.publishWorkEvent(params, "work_request.completed", {
       status: "completed",
     });
+    tryLogTraceEvent({ traceStage: "workflow_completed", requestId: params.workRequestId,
+      workspaceId: params.organizationId, runId: params.runId, context: { status: "completed" } });
     workflowDiagnostic(this.env, "run_returning", { runId: params.runId });
     return { ...started, stage: "completed", status: "completed" };
   }
@@ -1359,11 +1361,14 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           }
           // A terminal event wakes the oldest waiter early; the timeout is
           // the durable re-evaluation path (it also sees upgrades).
-          await waitForTerminalEvent(
+          const wakeOutcome = await waitForTerminalEvent(
             workflowStep,
             `workflow:${stepInstanceId(task.step)}:slot-wait:${attempt}:${slotRound}`,
             slotRound < 8 ? 15_000 : 60_000,
           );
+          tryLogDiagnosticEvent({ component: "cloud", operation: "assignment", stage: "admission", severity: "info", retryable: false,
+            requestId: params.workRequestId, taskId: task.id, runId: params.runId,
+            context: { status: wakeOutcome === "event" ? "wait_woken" : "wait_timed_out" } });
           slotRound += 1;
           assignment = await dispatchOnce(slotRound);
         }

@@ -158,7 +158,7 @@ describe("observability", () => {
         taskId: "task-1",
         attemptId: "attempt-1",
         durationMs: 12.6,
-        context: { transport: "websocket" },
+        context: { transport: "websocket", receiveToAckMs: 41, journalLookupUs: 500, receivedJournalUs: 2000, acceptedJournalUs: 3000 },
       });
       expect(log).toHaveBeenCalledTimes(1);
       const record = JSON.parse(String(log.mock.calls[0]?.[0])) as {
@@ -172,6 +172,10 @@ describe("observability", () => {
       expect(event.context?.traceStage).toBe("gateway_queued");
       expect(event.context?.durationMs).toBe(13);
       expect(event.context?.transport).toBe("websocket");
+      expect(event.context?.receiveToAckMs).toBe(41);
+      expect(event.context?.journalLookupUs).toBe(500);
+      expect(event.context?.receivedJournalUs).toBe(2000);
+      expect(event.context?.acceptedJournalUs).toBe(3000);
       expect(event.context?.monotonicMs).toBeGreaterThanOrEqual(0);
     } finally {
       log.mockRestore();

@@ -270,8 +270,30 @@ export interface AssignmentDispatcherEnv {
 async function dispatchWorkspaceWorkerAssignment(
   env: AssignmentDispatcherEnv,
   params: DispatchAssignmentParams,
+  readinessRechecked = false,
 ): Promise<DispatchAssignmentResult> {
   const { runId, taskId, task } = params;
+  // Readiness can change after selection but before the waiter is registered.
+  // Recheck once after registration; a later change will wake the waiter.
+  const becameReady = async (workspaceId: string): Promise<boolean> => {
+    if (readinessRechecked || !workspaceId || !env.SYNTILA_WORKSPACE_GATEWAY) return false;
+    try {
+      const ns = env.SYNTILA_WORKSPACE_GATEWAY;
+      const response = await ns.get(ns.idFromName(workspaceId)).fetch("http://gateway/status");
+      if (!response.ok) return false;
+      const state = await response.json() as { online?: boolean; readyForAssignments?: boolean; executionWorkspaceId?: string };
+      return state.online === true && state.readyForAssignments === true && state.executionWorkspaceId === workspaceId;
+    } catch { return false; }
+  };
+  const admissionStarted = Date.now();
+  let mark = admissionStarted;
+  const timing = (status: string, workspaceId?: string) => {
+    const now = Date.now();
+    tryLogDiagnosticEvent({ component: "cloud", operation: "assignment", stage: "admission", severity: "info", retryable: false,
+      requestId: task.workRequestId, workspaceId, runId, taskId,
+      context: { status, durationMs: Math.max(0, now - mark) } });
+    mark = now;
+  };
   let rejectionReasons: readonly string[] = [];
   const target = await selectSpaceExecutionTarget(
     dataOf(env).read,
@@ -325,6 +347,7 @@ async function dispatchWorkspaceWorkerAssignment(
       rejectionReasons = reasons;
     },
   );
+  timing("target_selection_complete", target?.workspaceId ?? params.workspaceId);
   // A Workspace that is briefly offline (restart, update, reconnect) is a
   // transient condition: wait durably for it, as for a Service that is not
   // ready yet, instead of failing the step on the first dispatch.
@@ -336,6 +359,8 @@ async function dispatchWorkspaceWorkerAssignment(
       workRequestId: task.workRequestId,
       reason: "workspace_not_ready",
     });
+    timing("readiness_waiter_recorded", params.workspaceId);
+    if (await becameReady(params.workspaceId)) return dispatchWorkspaceWorkerAssignment(env, params, true);
     return deferredDispatch("workspace_not_ready");
   }
   if (!target) {
@@ -381,6 +406,8 @@ async function dispatchWorkspaceWorkerAssignment(
       workRequestId: task.workRequestId,
       reason: "workspace_not_ready",
     });
+    timing("readiness_waiter_recorded", target.workspaceId);
+    if (await becameReady(target.workspaceId)) return dispatchWorkspaceWorkerAssignment(env, params, true);
     return deferredDispatch("workspace_not_ready");
   }
   const now = new Date().toISOString();
@@ -490,6 +517,7 @@ async function dispatchWorkspaceWorkerAssignment(
       sessionKey,
     ),
   };
+  timing("assignment_preparation_complete", target.workspaceId);
   // The Free concurrency limit counts the requester's live assignments:
   // admissions of one requester run one at a time (lock first, same
   // transaction), or two parallel dispatches could both take the last slot.
@@ -506,11 +534,12 @@ async function dispatchWorkspaceWorkerAssignment(
         session_policy, idempotency_key, status,
         input_json, created_at, updated_at)
      SELECT ${assignmentId}::text, ${target.spaceId}::text, ${target.workspaceId}::text, ${target.workspaceSpaceGrantId ?? null}::text, ${runId}::text, ${taskId}::text, ${attemptId}::text, ${task.requestedByUserId ?? null}::text, ${target.workspaceRuntimeIdentityId ?? null}::text, ${target.workerTypeId}::text, ${target.workerId ?? null}::text, ${target.engineVersion ?? null}::text,
-            ${target.model ?? null}::text, ${assignmentJson}::text, ${JSON.stringify(target.effectivePermissions)}::text, ${JSON.stringify(snapshot)}::text, ${timeoutMs ?? null}::bigint, ${queueWaitTimeoutMs ?? null}::bigint, ${sessionPolicy ?? null}::text, ${idempotencyKey}::text, 'created', ${assignmentJson}::text, ${now}::timestamptz, ${now}::timestamptz
+            ${target.model ?? null}::text, ${assignmentJson}::text, ${JSON.stringify(target.effectivePermissions)}::text, ${JSON.stringify(snapshot)}::text, ${timeoutMs ?? null}::bigint, ${queueWaitTimeoutMs ?? null}::bigint, ${sessionPolicy ?? null}::text, ${idempotencyKey}::text, 'created', ${assignmentJson}::text, ${created}::timestamptz, ${created}::timestamptz
       WHERE ${executionSlotAdmission(tx, task.requestedByUserId ?? "", taskId, waiterCutoff())}
         AND ${pluginAssignmentAdmission(tx, target.workerTypeId, target.workspaceId)}
      RETURNING id`;
   });
+  timing("assignment_admission_transaction_complete", target.workspaceId);
   // D1 meta.changes includes writes made by triggers. Only the row returned
   // by this INSERT proves admission; an ignored/rejected insert returns none.
   if (

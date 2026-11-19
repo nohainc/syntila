@@ -106,12 +106,26 @@ void main() {
       retryable: true,
       context: {
         'providerToolVersion': '1.2.3',
+        'elapsedMs': 12,
+        'cacheHit': true,
+        'verified': true,
+        'mcpPreparationMs': 15,
+        'remainingPreparationMs': 5,
+        'outputAgeMs': 17,
+        'commandPath': '/private/command',
         'prompt': 'must not be exported',
       },
     );
 
     final decoded = jsonDecode(await store.currentFile.readAsString())
         as Map<String, dynamic>;
+    expect(decoded['context']['elapsedMs'], 12);
+    expect(decoded['context']['cacheHit'], true);
+    expect(decoded['context']['verified'], true);
+    expect(decoded['context']['mcpPreparationMs'], 15);
+    expect(decoded['context']['remainingPreparationMs'], 5);
+    expect(decoded['context']['outputAgeMs'], 17);
+    expect(jsonEncode(decoded), isNot(contains('/private/command')));
     expect(decoded['schemaVersion'], 1);
     expect(decoded['eventId'], startsWith('diag-'));
     expect(decoded['requestId'], 'request-1');

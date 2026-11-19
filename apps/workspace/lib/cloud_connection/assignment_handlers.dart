@@ -6,6 +6,10 @@ extension _WorkspaceAssignmentHandlers on WorkspaceCloudConnection {
   static const _defaultQueueWaitTimeout = Duration(minutes: 2);
 
   Future<void> _handleAssignmentStart(Map<String, dynamic> message) async {
+    final admissionTimer = Stopwatch()..start();
+    var journalLookupUs = 0;
+    var receivedJournalUs = 0;
+    var acceptedJournalUs = 0;
     final socket = _transport;
     final payload = message['payload'];
     final requiredFields = [
@@ -79,16 +83,18 @@ extension _WorkspaceAssignmentHandlers on WorkspaceCloudConnection {
       idempotencyKey: message['idempotencyKey'] as String,
       payload: Map<String, Object?>.from(assignmentPayload),
     );
-    await recordAssignmentDiagnostic(
+    // Informational diagnostics do not gate admission; the journal below is
+    // the durable recovery record and is still flushed before acknowledgement.
+    unawaited(recordAssignmentDiagnostic(
       context,
       event: 'assignment.validated',
       stage: 'validation',
-    );
-    await recordAssignmentDiagnostic(
+    ));
+    unawaited(recordAssignmentDiagnostic(
       context,
       event: 'assignment.received',
       stage: 'transport',
-    );
+    ));
     final correlation = _assignmentCorrelation(message);
     if (!acceptingNewWork) {
       await recordAssignmentDiagnostic(
@@ -112,7 +118,9 @@ extension _WorkspaceAssignmentHandlers on WorkspaceCloudConnection {
       )));
       return;
     }
+    var journalStarted = admissionTimer.elapsedMicroseconds;
     final previous = await assignmentJournal?.find(context.assignmentId);
+    journalLookupUs = admissionTimer.elapsedMicroseconds - journalStarted;
     if (previous != null) {
       if (previous.status == AssignmentStatus.completed &&
           previous.result != null) {
@@ -181,8 +189,10 @@ extension _WorkspaceAssignmentHandlers on WorkspaceCloudConnection {
       )));
       return;
     }
+    journalStarted = admissionTimer.elapsedMicroseconds;
     await _recordAssignment(context.assignmentId, AssignmentStatus.received,
         context: context);
+    receivedJournalUs = admissionTimer.elapsedMicroseconds - journalStarted;
 
     if (assignmentHandler == null) {
       await recordAssignmentDiagnostic(
@@ -204,18 +214,20 @@ extension _WorkspaceAssignmentHandlers on WorkspaceCloudConnection {
 
     _activeAssignments.add(context.assignmentId);
     _notifyStateChanged();
-    await recordAssignmentDiagnostic(
+    unawaited(recordAssignmentDiagnostic(
       context,
       event: 'assignment.accepted',
       stage: 'accepted',
-    );
+    ));
+    journalStarted = admissionTimer.elapsedMicroseconds;
     await _recordAssignment(context.assignmentId, AssignmentStatus.accepted,
         context: context);
-    await recordAssignmentDiagnostic(
+    acceptedJournalUs = admissionTimer.elapsedMicroseconds - journalStarted;
+    unawaited(recordAssignmentDiagnostic(
       context,
       event: 'assignment.queued',
       stage: 'admission',
-    );
+    ));
     if (_cancelledBeforeStart.remove(context.assignmentId)) {
       await _recordAssignment(
         context.assignmentId,
@@ -243,7 +255,13 @@ extension _WorkspaceAssignmentHandlers on WorkspaceCloudConnection {
       {
         'accepted': true,
         'estimatedStartMs': 0,
-        if (serviceTrace.isNotEmpty) 'serviceTrace': serviceTrace,
+        if (serviceTrace.isNotEmpty)
+          'serviceTrace': {
+            ...serviceTrace,
+            'journalLookupUs': journalLookupUs,
+            'receivedJournalUs': receivedJournalUs,
+            'acceptedJournalUs': acceptedJournalUs,
+          },
       },
     )));
     // T6: admission acknowledgement written to the transport.
@@ -424,11 +442,13 @@ extension _WorkspaceAssignmentHandlers on WorkspaceCloudConnection {
         context: context,
         result: resultPayload,
       );
+      traceAssignmentStage(context, 'service_result_persisted');
       await recordAssignmentDiagnostic(
         context,
         event: 'assignment.completed',
         stage: 'terminal_recorded',
       );
+      traceAssignmentStage(context, 'service_result_sending');
       await _sendTerminal(
         socket,
         context,

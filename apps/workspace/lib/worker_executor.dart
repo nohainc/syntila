@@ -537,6 +537,25 @@ class WorkerAssignmentHandler {
           }
           return;
         }
+        final message = progress.message;
+        if (message != null &&
+            message.startsWith(workerProviderLastOutputAgePrefix)) {
+          final age = int.tryParse(
+              message.substring(workerProviderLastOutputAgePrefix.length));
+          if (age != null && age >= 0 && age <= 86400000) {
+            _startup(context, AssignmentStartupStage.providerLastOutputReported,
+                {'outputAgeMs': age});
+          }
+          return;
+        }
+        if (progress.message == workerProviderFirstOutputMessage ||
+            progress.message == workerProviderProcessExitedMessage) {
+          final stage = progress.message == workerProviderFirstOutputMessage
+              ? AssignmentStartupStage.providerFirstOutput
+              : AssignmentStartupStage.providerProcessExited;
+          _startup(context, stage);
+          return;
+        }
         onProgress?.call(context, progress);
       }
 
@@ -567,6 +586,7 @@ class WorkerAssignmentHandler {
               workerPayload,
               onProgress: relayProgress,
             );
+      _startup(context, AssignmentStartupStage.engineResultReceived);
       await startupRelay;
       if (_cancellationRequests.remove(context.assignmentId)) {
         throw const AssignmentExecutionFailure(
@@ -632,6 +652,8 @@ class WorkerAssignmentHandler {
               fencingToken: fencingToken,
               action: (_) {
                 acquired();
+                _startup(
+                    context, AssignmentStartupStage.spacePrepared, const {});
                 return execute();
               },
             );
@@ -658,6 +680,7 @@ class WorkerAssignmentHandler {
         fencingToken: fencingToken,
         action: (_) {
           acquired();
+          _startup(context, AssignmentStartupStage.spacePrepared, const {});
           return execute();
         },
       ),

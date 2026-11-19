@@ -13,6 +13,7 @@ import 'package:syntila_workspace/platform_runtime.dart';
 import 'package:syntila_workspace/allowed_folders.dart';
 import 'package:syntila_workspace/cloud_connection.dart';
 import 'package:syntila_workspace/assignment_startup.dart';
+import 'package:syntila_workspace/assignment_trace.dart';
 import 'package:syntila_workspace/input_delivery.dart';
 import 'package:syntila_workspace/work_request_input_staging.dart';
 import 'package:syntila_workspace/worker_executor.dart';
@@ -543,6 +544,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
         );
       }
 
+      final preparationTimer = Stopwatch()..start();
       final isExternalWorker = isExternalWorkerType(worker.workerTypeId);
       ExternalWorkerExecution? externalExecution;
       if (isExternalWorker) {
@@ -708,6 +710,7 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
       // MCP servers (ADR-028): every enabled, consented server, for the
       // Workspace owner's own work only. Anything left out is reported and the
       // run continues without it.
+      final mcpTimer = Stopwatch()..start();
       var mcpServers = const <McpServerLaunch>[];
       if (!isExternalWorker) {
         mcpServers = await mcpLaunchesForExecution(
@@ -719,11 +722,23 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
                 .readSync()
                 ?.ownerUserId,
           ),
+          onTiming: (stage, detail) {
+            final currentConnection = connection;
+            if (currentConnection == null) return;
+            runDetachedTelemetry(
+                () => currentConnection.recordAssignmentDiagnostic(
+                      context,
+                      event: 'assignment.preparation_timing',
+                      stage: stage,
+                      contextData: detail,
+                    ));
+          },
           onSkipped: (message) => stderr.writeln(
             'MCP: $message Running ${worker.workerTypeId} without it.',
           ),
         );
       }
+      final mcpElapsedMs = mcpTimer.elapsedMilliseconds;
       final profileFile = plan?.profileFile;
       final rawConversation = isExternalWorker && input is Map
           ? input['externalWorkerConversation']
@@ -751,7 +766,11 @@ Future<WorkspaceRuntime> buildWorkspaceRuntime(
               ),
             );
       // T7: Profile resolved and its execution file located.
-      connection?.traceAssignmentStage(context, 'profile_resolved');
+      connection?.traceAssignmentStage(context, 'profile_resolved', extra: {
+        'mcpPreparationMs': mcpElapsedMs,
+        'remainingPreparationMs':
+            preparationTimer.elapsedMilliseconds - mcpElapsedMs,
+      });
       try {
         if (workerHandler.isCancellationRequested(context.assignmentId)) {
           throw const AssignmentExecutionFailure(

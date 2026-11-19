@@ -28,3 +28,13 @@ execution events. Activity frames carry an ordered execution sequence and are
 not deduplicated by percentage, so repeated tool calls remain visible. See
 `docs/specifications/WORKER_ACTIVITY_V1.md` for field limits, terminal
 guarantees, and declarative Tool Profile mappings.
+
+Provider timing is an optional capability negotiated by `provider_timing_v1`
+in the Engine's initialize result. A supporting Workspace may set
+`providerTiming: true` on an execute request; it omits the field otherwise.
+The Engine then emits reserved internal progress markers for the first stdout
+line, the age of the last stdout line at stream drain, and process exit plus
+stream drain. These markers contain no provider output and are consumed by the
+Workspace rather than shown as user progress. Older senders omit the opt-in;
+older Engines do not advertise it. An Engine cannot infer when a provider's
+network request was sent or when a model generated its answer from these marks.

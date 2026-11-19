@@ -3,16 +3,12 @@
  * Local performance runner for Syntila.
  *
  * Usage:
- *   scripts/perf-local.sh [--probes N] [--users N] [--messages N] [--chats N] [--json out.json] [--no-thresholds]
+ *   scripts/perf-local.sh [--probes N] [--chats N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--no-thresholds]
  *
  * Scenarios:
  *   A "transport": Delivery probes against the developer account's live Workspace
  *                  (payloadBytes 0, 1024, 32768).
- *   B "messages":  N synthetic users (prefixed perf-<runid>) each post M messages
- *                  with a live realtime WebSocket; reports REST and fan-out latency.
- *   C "workflows": C concurrent Chat requests and a Free-account serial queue
- *                  benchmark through an immediate-answering FakeWorkspace,
- *                  reporting observed Service timings and request totals.
+ *   C "workflows": sequential Chat requests on the developer’s real Workspace.
  *
  * Cleanup removes all synthetic spaces, workspaces, workflow instances, events,
  * and users created during the run without touching the developer account's data.
@@ -26,14 +22,10 @@ import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 import { SQL } from "bun";
 import {
-  FakeWorkspace,
   User,
-  publishedChatgptProfile,
-  runMessagePosts,
   sleep,
   tokenMinter,
   waitFor,
-  type Client,
   type Jwk,
 } from "../apps/backend/scripts/lib/clients";
 import { summarize } from "./latency-baseline.mjs";
@@ -44,8 +36,9 @@ const DEFAULT_THRESHOLDS_PATH = join(ROOT, "scripts/perf-thresholds.json");
 
 interface CliOptions {
   probes: number;
-  users: number;
-  messages: number;
+  workflow: "chat" | "work";
+  allowOffline: boolean;
+  model: string | null;
   chats: number;
   jsonPath: string | null;
   thresholdsPath: string;
@@ -56,9 +49,10 @@ interface CliOptions {
 function parseCli(argv: string[]): CliOptions {
   const opts: CliOptions = {
     probes: 50,
-    users: 10,
-    messages: 10,
-    chats: 10,
+    workflow: "chat",
+    allowOffline: false,
+    model: null,
+    chats: 1,
     jsonPath: null,
     thresholdsPath: DEFAULT_THRESHOLDS_PATH,
     checkThresholds: true,
@@ -82,15 +76,20 @@ function parseCli(argv: string[]): CliOptions {
       return num;
     };
     if (arg === "--probes") opts.probes = nextInt();
-    else if (arg === "--users") opts.users = nextInt();
-    else if (arg === "--messages") opts.messages = nextInt();
     else if (arg === "--chats") opts.chats = nextInt();
+    else if (arg === "--workflow") {
+      const value = next();
+      if (value !== "chat" && value !== "work") throw new Error("--workflow must be chat or work");
+      opts.workflow = value;
+    }
+    else if (arg === "--allow-offline") opts.allowOffline = true;
+    else if (arg === "--model") opts.model = next();
     else if (arg === "--json") opts.jsonPath = next();
     else if (arg === "--thresholds") opts.thresholdsPath = resolve(next());
     else if (arg === "--no-thresholds") opts.checkThresholds = false;
     else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: scripts/perf-local.sh [--probes N] [--users N] [--messages N] [--chats N] [--json out.json] [--thresholds file.json] [--no-thresholds]",
+        "Usage: scripts/perf-local.sh [--probes N] [--chats N] [--workflow chat|work] [--allow-offline] [--model ID] [--json out.json] [--thresholds file.json] [--no-thresholds]",
       );
       process.exit(0);
     } else {
@@ -455,415 +454,97 @@ async function runScenarioA(
   };
 }
 
-async function waitForAll<T>(tasks: Promise<T>[]): Promise<void> {
-  const settled = await Promise.allSettled(tasks);
-  const failed = settled.find((result) => result.status === "rejected");
-  if (failed?.status === "rejected") throw failed.reason;
-}
-
-async function runScenarioB(
-  base: string,
-  mint: ReturnType<typeof tokenMinter>,
-  runId: string,
-  usersCount: number,
-  messagesCount: number,
-  createdUserIds: Set<string>,
-  createdSpaceIds: Set<string>,
-): Promise<{
-  users: number;
-  messagesPerUser: number;
-  totalMessages: number;
-  errors: number;
-  throughputMsgPerSec: number;
-  restPostMs: StatSummary;
-  realtimeFanoutMs: StatSummary;
-}> {
-  console.log(
-    `\n== Scenario B: messages (${usersCount} synthetic users × ${messagesCount} messages with live socket)`,
-  );
-  if (usersCount <= 0 || messagesCount <= 0) {
-    console.log("  skipped (users=0 or messages=0)");
-    const empty = roundStat(summarize([]));
-    return {
-      users: usersCount,
-      messagesPerUser: messagesCount,
-      totalMessages: 0,
-      errors: 0,
-      throughputMsgPerSec: 0,
-      restPostMs: empty,
-      realtimeFanoutMs: empty,
-    };
-  }
-
-  const clients: Client[] = [];
-  try {
-    await waitForAll(
-      Array.from({ length: usersCount }, async (_, i) => {
-        const sub = `perf-${runId}-u${i}`;
-        createdUserIds.add(sub);
-        const user = new User(base, await mint(sub));
-        const { spaceId, threadId } = await user.spaceWithThread(`perf-${runId}-space-${i}`);
-        createdSpaceIds.add(spaceId);
-        const live = user.realtime([spaceId]);
-        await live.waitFor("subscription", (f) => f.type === "subscription.confirmed", 30_000);
-        clients.push({ user, spaceId, threadId, live });
-      }),
-    );
-
-    const { rest, fanout, errors, throughput } = await runMessagePosts(
-      clients,
-      messagesCount,
-      `perf-${runId}`,
-    );
-    const restStat = roundStat(summarize(rest));
-    const fanoutStat = roundStat(summarize(fanout));
-    const throughputRounded = Math.round(throughput * 10) / 10;
-
-    console.log(formatStatLine("POST message (REST)", restStat));
-    console.log(formatStatLine("post -> realtime socket fan-out", fanoutStat));
-    console.log(
-      `  throughput: ${throughputRounded.toFixed(1)} messages/s, errors: ${errors}`,
-    );
-
-    return {
-      users: usersCount,
-      messagesPerUser: messagesCount,
-      totalMessages: rest.length,
-      errors,
-      throughputMsgPerSec: throughputRounded,
-      restPostMs: restStat,
-      realtimeFanoutMs: fanoutStat,
-    };
-  } finally {
-    for (const c of clients) c.live.close();
-  }
-}
-
-interface TraceTiming {
-  assignmentId: string;
-  receivedMs: number;
-  acceptedMs: number;
-  startedMs: number;
-}
-
-async function grantPaidPlan(sql: SQL, userId: string, email: string): Promise<void> {
-  const now = new Date().toISOString();
-  await sql`
-    INSERT INTO users (id, email, display_name, status, created_at, updated_at)
-    VALUES (${userId}, ${email}, ${userId}, 'active', ${now}, ${now})
-    ON CONFLICT (id) DO NOTHING
-  `;
-  await sql`
-    INSERT INTO account_plans (user_id, tier, status, source, current_period_end, created_at, updated_at)
-    VALUES (${userId}, 'paid', 'active', 'manual', NULL, ${now}, ${now})
-    ON CONFLICT (user_id) DO UPDATE SET tier = 'paid', status = 'active', updated_at = ${now}
-  `;
-}
-
 async function runScenarioC(
-  base: string,
-  sql: SQL,
-  mint: ReturnType<typeof tokenMinter>,
-  runId: string,
-  chatsCount: number,
-  createdUserIds: Set<string>,
-  createdSpaceIds: Set<string>,
-  createdWorkspaceIds: Set<string>,
-): Promise<{
-  concurrent: {
-    requests: number;
-    errors: number;
-    totalMs: StatSummary;
-    intervals: Record<string, StatSummary>;
-  };
-  serialFreeAccount: {
-    requests: number;
-    errors: number;
-    requestTotalMs: StatSummary;
-    queuedOverheadMs: StatSummary;
-  };
-}> {
-  console.log(
-    `\n== Scenario C: workflows (${chatsCount} concurrent Chat requests + Free-account serial queue)`,
-  );
-  const emptyStat = roundStat(summarize([]));
-  if (chatsCount <= 0) {
-    console.log("  skipped (chats=0)");
-    return {
-      concurrent: { requests: 0, errors: 0, totalMs: emptyStat, intervals: {} },
-      serialFreeAccount: {
-        requests: 0,
-        errors: 0,
-        requestTotalMs: emptyStat,
-        queuedOverheadMs: emptyStat,
-      },
-    };
+  base: string, sql: SQL, mint: ReturnType<typeof tokenMinter>, runId: string,
+  chatsCount: number, workflow: "chat" | "work", allowOffline: boolean, model: string | null, createdUserIds: Set<string>, createdSpaceIds: Set<string>,
+) {
+  console.log(`\n== Scenario C: real Workspace ${workflow} workflow (${chatsCount} sequential requests)`);
+  if (chatsCount === 0) return { requests: 0, errors: 0, totalMs: roundStat(summarize([])) };
+  const dev = await resolveDeveloperIdentity(sql, base, mint, `${runId}-workflow`, createdUserIds);
+  if (!dev.token || !dev.workspace) {
+    throw new Error(`A registered Workspace for ${DEV_EMAIL} is required for the real workflow benchmark`);
   }
-
-  const profile = await publishedChatgptProfile();
-  if (!profile) throw new Error("No ChatGPT Tool Profile published; cannot run workflows");
-
-  const ownerSub = `perf-${runId}-wf-owner`;
-  const ownerEmail = `${ownerSub}@syntila.invalid`;
-  createdUserIds.add(ownerSub);
-  // Paid owner so concurrent Chat requests (and high parallelSlots) are not capped by the Free 1-task rule.
-  await grantPaidPlan(sql, ownerSub, ownerEmail);
-
-  const owner = new User(base, await mint(ownerSub));
-  const desktopToken = await mint(ownerSub, {
-    client: "desktop",
-    client_aud: "syntila.desktop.management",
-  });
-
-  const serviceTraces = new Map<string, TraceTiming>();
-  const onAssignment = async (start: Record<string, unknown>, ws: FakeWorkspace) => {
-    const receivedMs = Date.now();
-    const ids = Object.fromEntries(
-      ["workerId", "runId", "taskId", "attemptId", "assignmentId", "idempotencyKey"].map((k) => [
-        k,
-        start[k],
-      ]),
-    );
-    ws.send("assignment.ack", { accepted: true }, ids);
-    const acceptedMs = Date.now();
-    ws.send("assignment.start.permit.request", {}, ids);
-    await ws.waitFor(
-      "start permit",
-      (f) => f.type === "assignment.start.permit.grant" && f.assignmentId === start.assignmentId,
-    );
-    ws.send("assignment.start.ack", {}, ids);
-    const startedMs = Date.now();
-    serviceTraces.set(String(start.assignmentId), {
-      assignmentId: String(start.assignmentId),
-      receivedMs,
-      acceptedMs,
-      startedMs,
-    });
-    for (let attempt = 0; attempt < 40; attempt++) {
-      ws.send(
-        "assignment.result",
-        { status: "completed", summary: "ok", output: { text: "ok" }, artifactIds: [] },
-        ids,
-      );
-      const acked = await waitFor(
-        "terminal ack",
-        () =>
-          ws.frames.find(
-            (f) =>
-              f.type === "assignment.ack" &&
-              f.payload?.terminal === true &&
-              f.assignmentId === start.assignmentId,
-          ),
-        1500,
-      ).catch(() => null);
-      if (acked) return;
-    }
-  };
-
-  const workspace = await new FakeWorkspace(base, profile, onAssignment).register(
-    desktopToken,
-    `perf-${runId}-ws`,
-  );
-  createdWorkspaceIds.add(workspace.workspaceId);
-
-  let ownerLive: ReturnType<User["realtime"]> | null = null;
-  let freeLive: ReturnType<User["realtime"]> | null = null;
-
+  if (!dev.workspace.activeTransport && dev.workspace.status !== "online") {
+    if (!allowOffline) throw new Error(`A connected Workspace for ${DEV_EMAIL} is required (or use --allow-offline for a controlled readiness test)`);
+    console.log(`  Workspace ${dev.workspace.id} is offline; start it within 180 seconds to measure recovery.`);
+  }
+  const [worker] = await sql<{ worker_id: string }[]>`
+    SELECT worker_id FROM workspace_worker_inventory
+     WHERE workspace_id = ${dev.workspace.id} AND activation_state = 'enabled' AND readiness_state = 'ready'
+       AND (${process.env.SYNTILA_PERF_WORKER_ID ?? null}::text IS NULL OR worker_id = ${process.env.SYNTILA_PERF_WORKER_ID ?? null})
+     ORDER BY CASE WHEN worker_type_id = 'chatgpt' THEN 0 ELSE 1 END, worker_id LIMIT 1`;
+  if (!worker) throw new Error("No ready Worker found on the real Workspace; check SYNTILA_PERF_WORKER_ID");
+  const user = new User(base, dev.token);
+  const { spaceId, threadId } = await user.spaceWithThread(`perf-${runId}-real-workflow`);
+  createdSpaceIds.add(spaceId);
+  const totals: number[] = [];
+  const admission: number[] = [], serviceWait: number[] = [], delivery: number[] = [], startup: number[] = [];
+  let errors = 0;
   try {
-    workspace.connect();
-    await waitFor("workspace ready", () => workspace.ready);
-
-    // Raise parallelSlots to 10 (MAX_PARALLEL_SLOTS) so concurrent requests run in parallel.
-    await owner.api("PATCH", `/api/workspaces/${workspace.workspaceId}`, { parallelSlots: 10 });
-
-    const { spaceId, threadId } = await owner.spaceWithThread(`perf-${runId}-wf-space`);
-    createdSpaceIds.add(spaceId);
-
-    const pick = await owner.api("PUT", `/api/spaces/${spaceId}/workflow-workspace`, {
-      workspaceId: workspace.workspaceId,
-      confirmReset: true,
+    const pick = await user.api("PUT", `/api/spaces/${spaceId}/workflow-workspace`, {
+      workspaceId: dev.workspace.id, confirmReset: true,
     });
-    if (pick.status !== 200) throw new Error(`select workspace: ${pick.status}`);
-
-    // Raise the Space grant's maxConcurrentAssignments so all 10 slots can be used concurrently.
-    await sql`
-      UPDATE workspace_space_grants
-      SET concurrency_json = '{"maxConcurrentAssignments":10}'
-      WHERE space_id = ${spaceId} AND workspace_id = ${workspace.workspaceId}
-    `;
-
-    ownerLive = owner.realtime([spaceId]);
-    await ownerLive.waitFor("subscription", (f) => f.type === "subscription.confirmed", 30_000);
-
-    // 1. Concurrent Chat requests
-    // Only report trace endpoints observed by this runner. Database row timestamps
-    // are not the corresponding Latency Trace events.
-    const intervalSamples: Record<string, number[]> = {
-      "service_received->service_accepted": [],
-    };
-    const concurrentTotals: number[] = [];
-    let concurrentErrors = 0;
-
-    await waitForAll(
-      Array.from({ length: chatsCount }, async (_, i) => {
-        const t0 = performance.now();
-        const submit = await owner.api("POST", `/api/threads/${threadId}/work-requests`, {
-          workflowId: "chat",
-          objective: `perf-${runId}-chat-${i}`,
-          executionSelection: { workerId: workspace.workerId },
-        });
-        if (submit.status >= 300) {
-          concurrentErrors++;
-          return;
-        }
-        const reqId = String(submit.body.workRequest.id);
-
-        // Measure until polling observes the completed result.
-        const done = await waitFor(
-          "chat done",
-          async () => {
-            const r = await owner.api("GET", `/api/work-requests/${reqId}`);
-            return ["completed", "failed", "cancelled"].includes(r.body?.workRequest?.status)
-              ? r.body.workRequest
-              : undefined;
-          },
-          120_000,
-        ).catch(() => null);
-
-        if (done?.status !== "completed") {
-          concurrentErrors++;
-          return;
-        }
-        const totalElapsed = performance.now() - t0;
-        concurrentTotals.push(totalElapsed);
-
-        // These two endpoints are recorded by the FakeWorkspace itself. Other
-        // trace events are not available here; do not synthesize their timestamps.
-        const [assignment] = await sql<{ id: string }[]>`
-          SELECT wa.id FROM worker_assignments wa
-          JOIN workflow_tasks wt ON wt.id = wa.task_id
-          WHERE wt.work_request_id = ${reqId} LIMIT 1
-        `;
-        const svc = assignment ? serviceTraces.get(assignment.id) : undefined;
-        if (svc) {
-          intervalSamples["service_received->service_accepted"]!.push(
-            Math.max(0, svc.acceptedMs - svc.receivedMs),
-          );
-        }
-      }),
-    );
-
-    const concurrentTotalStat = roundStat(summarize(concurrentTotals));
-    const summarizedIntervals: Record<string, StatSummary> = {};
-    for (const [name, vals] of Object.entries(intervalSamples)) {
-      summarizedIntervals[name] = roundStat(summarize(vals));
-    }
-
-    console.log(formatStatLine("concurrent chat total (request -> result)", concurrentTotalStat));
-    for (const [name, stat] of Object.entries(summarizedIntervals)) {
-      console.log(formatStatLine(`  stage ${name}`, stat));
-    }
-    if (concurrentErrors > 0) {
-      console.log(`  concurrent chat errors: ${concurrentErrors}`);
-    }
-
-    // 2. Single Free account serial scenario (product rule: one task at a time per Free account).
-    // First measure sequential baseline (1 request at a time, N=5), then submit 2 overlapping
-    // requests from the same Free account so the second waits for the first's slot release,
-    // and report per-request time and queueing overhead.
-    const freeSub = `perf-${runId}-free`;
-    createdUserIds.add(freeSub);
-    const freeUser = new User(base, await mint(freeSub));
-
-    // Add freeSub as collaborator on the Space and grant person access on the Workspace.
-    const inv = await owner.api("POST", `/api/spaces/${spaceId}/invitations`, {
-      email: `${freeSub}@syntila.invalid`,
-      role: "collaborator",
-    });
-    if (inv.status === 201 && inv.body?.invitation?.id) {
-      await freeUser.api("POST", `/api/space-invitations/${inv.body.invitation.id}/accept`, {});
-    }
-
-    const freeThreads = await freeUser.api("POST", `/api/spaces/${spaceId}/threads`, {
-      name: `perf-${runId}-free-thread`,
-    });
-    const freeThreadId = freeThreads.body?.thread?.id ?? freeThreads.body?.id ?? threadId;
-
-    freeLive = freeUser.realtime([spaceId]);
-    await freeLive.waitFor("subscription", (f) => f.type === "subscription.confirmed", 30_000);
-
-    const serialCount = Math.min(5, Math.max(3, Math.floor(chatsCount / 2)));
-    const serialDurations: number[] = [];
-    const serialOverheads: number[] = [];
-    let serialErrors = 0;
-
-    for (let s = 0; s < serialCount; s++) {
+    if (pick.status !== 200) throw new Error(`select real workspace: HTTP ${pick.status} ${JSON.stringify(pick.body)}`);
+    for (let i = 0; i < chatsCount; i++) {
       const start = performance.now();
-      const submit = await freeUser.api("POST", `/api/threads/${freeThreadId}/work-requests`, {
-        workflowId: "chat",
-        objective: `perf-${runId}-serial-${s}`,
-        executionSelection: { workerId: workspace.workerId },
+      const submit = await user.api("POST", `/api/threads/${threadId}/work-requests`, {
+        workflowId: workflow === "work" ? "direct" : "chat", objective: "Reply with the single word: pong. Do not use tools or modify any files.",
+        executionSelection: { workerId: worker.worker_id, ...(model ? { model } : {}) },
       });
-      if (submit.status >= 300) {
-        serialErrors++;
+      if (submit.status >= 300 || !submit.body?.workRequest?.id) {
+        console.error(`  request ${i + 1} rejected: HTTP ${submit.status} ${JSON.stringify(submit.body)}`);
+        errors++;
         continue;
       }
-      const reqId = String(submit.body.workRequest.id);
-      const done = await waitFor(
-        "serial chat done",
-        async () => {
-          const r = await freeUser.api("GET", `/api/work-requests/${reqId}`);
-          return ["completed", "failed", "cancelled"].includes(r.body?.workRequest?.status)
-            ? r.body.workRequest
-            : undefined;
-        },
-        60_000,
-      ).catch(() => null);
+      const requestId = String(submit.body.workRequest.id);
+      const done = await waitFor("real workflow completion", async () => {
+        const response = await user.api("GET", `/api/work-requests/${requestId}`);
+        return ["completed", "failed", "cancelled"].includes(response.body?.workRequest?.status)
+          ? response.body.workRequest : undefined;
+      }, 180_000).catch(() => null);
       if (done?.status !== "completed") {
-        serialErrors++;
-        continue;
+        console.error(`  request ${i + 1} ${done?.status ?? "timed out"} (${requestId})`);
+        errors++;
+        // Do not delete a Space while its Worker may still be executing.
+        if (!done) throw new Error(`Request ${requestId} is still active; preserved Space ${spaceId}`);
+      } else {
+        totals.push(performance.now() - start);
+        const attempts = await sql<{ admission: number | null; service_wait: number | null; delivery: number | null; startup: number | null }[]>`
+          SELECT EXTRACT(EPOCH FROM (a.created_at - w.created_at)) * 1000 AS admission,
+                 EXTRACT(EPOCH FROM (a.dispatched_at - a.created_at)) * 1000 AS service_wait,
+                 EXTRACT(EPOCH FROM (a.acknowledged_at - a.dispatched_at)) * 1000 AS delivery,
+                 EXTRACT(EPOCH FROM (a.running_at - a.start_permit_issued_at)) * 1000 AS startup
+            FROM work_requests w JOIN worker_assignments a
+              ON a.work_request_id = w.id OR (a.work_request_id IS NULL AND a.id LIKE 'asg-task-' || w.id || '-%')
+           WHERE w.id = ${requestId}`;
+        for (const attempt of attempts) {
+          for (const [value, samples] of [[attempt.admission, admission], [attempt.service_wait, serviceWait], [attempt.delivery, delivery], [attempt.startup, startup]] as const) {
+            if (value !== null && Number.isFinite(Number(value)) && Number(value) >= 0) samples.push(Number(value));
+          }
+        }
       }
-      const totalMs = performance.now() - start;
-      serialDurations.push(totalMs);
-
-      // Estimate overhead by subtracting the fake Service receive-to-start interval.
-      const [asgRow] = await sql<{ id: string }[]>`
-        SELECT wa.id FROM worker_assignments wa
-        JOIN workflow_tasks wt ON wt.id = wa.task_id
-        WHERE wt.work_request_id = ${reqId} LIMIT 1
-      `;
-      const svc = asgRow ? serviceTraces.get(asgRow.id) : undefined;
-      const serviceExecMs = svc ? Math.max(0, svc.startedMs - svc.receivedMs) : 0;
-      serialOverheads.push(Math.max(0, totalMs - serviceExecMs));
     }
-
-    const serialTotalStat = roundStat(summarize(serialDurations));
-    const serialOverheadStat = roundStat(summarize(serialOverheads));
-    console.log(
-      formatStatLine("Free account serial chat (per request)", serialTotalStat),
-    );
-    console.log(
-      formatStatLine("Free account serial overhead (estimate)", serialOverheadStat),
-    );
-
-    return {
-      concurrent: {
-        requests: chatsCount,
-        errors: concurrentErrors,
-        totalMs: concurrentTotalStat,
-        intervals: summarizedIntervals,
-      },
-      serialFreeAccount: {
-        requests: serialCount,
-        errors: serialErrors,
-        requestTotalMs: serialTotalStat,
-        queuedOverheadMs: serialOverheadStat,
-      },
+    const totalMs = roundStat(summarize(totals));
+    console.log(formatStatLine("real request -> completed result (includes polling)", totalMs));
+    const intervals = {
+      requestToAssignmentMs: roundStat(summarize(admission)),
+      assignmentToDispatchMs: roundStat(summarize(serviceWait)),
+      dispatchToAcknowledgementMs: roundStat(summarize(delivery)),
+      startPermitToRunningMs: roundStat(summarize(startup)),
     };
+    for (const [name, stat] of Object.entries(intervals)) console.log(formatStatLine(name, stat));
+    return { requests: chatsCount, errors, totalMs, intervals, workflow, workspaceId: dev.workspace.id };
   } finally {
-    ownerLive?.close();
-    freeLive?.close();
-    await workspace.release(desktopToken).catch(() => undefined);
+    // Delete only after no request is active; retain timed-out runs for inspection.
+    const [active] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM work_requests WHERE thread_id = ${threadId} AND status NOT IN ('completed', 'failed', 'cancelled')`;
+    if (!active?.count) {
+      const deleted = await user.api("DELETE", `/api/spaces/${spaceId}`);
+      if (deleted.status >= 300) throw new Error(`Could not clean up benchmark Space ${spaceId}: HTTP ${deleted.status}`);
+      createdSpaceIds.delete(spaceId);
+    } else {
+      createdSpaceIds.delete(spaceId);
+      console.warn(`  Preserved benchmark Space ${spaceId}: ${active.count} request(s) still active`);
+    }
   }
 }
 
@@ -875,51 +556,66 @@ interface CleanupReport {
   remainingPerfRows: number;
 }
 
-/**
- * Scenario D: what real requests of the developer's Workspace experienced
- * recently. Read-only. Scenarios A-C use a fake or idle Service, so they
- * cannot show the waits users see: "Waiting for the Workspace Service to be
- * ready" (request accepted, no assignment yet, Service offline or not ready)
- * and "Starting your worker" (acknowledged, provider not yet running). Both
- * are measured here from the stored assignment timestamps. Informational:
- * the numbers include every restart of the local Service, so they are not
- * threshold-gated.
- */
+/** Historical timings are approximations from persisted timestamps, not UI
+ * observations. Include requests without an assignment so stalled work is not
+ * silently excluded. Multiple attempts are reported separately. */
 async function runScenarioD(sql: SQL, limit: number) {
   console.log(`\n== Scenario D: real requests of the developer Workspace (last ${limit}, read-only)`);
   const rows = (await sql`
-    SELECT EXTRACT(EPOCH FROM (a.created_at - w.created_at)) * 1000 AS wait_ms,
+    WITH recent AS (
+      SELECT w.id, w.created_at
+        FROM work_requests w JOIN users u ON u.id = w.requested_by_user_id
+       WHERE LOWER(u.email) = LOWER(${DEV_EMAIL})
+       ORDER BY w.created_at DESC LIMIT ${limit}
+    )
+    SELECT w.id AS request_id, a.id AS assignment_id, a.status,
+           EXTRACT(EPOCH FROM (a.created_at - w.created_at)) * 1000 AS admission_ms,
+           EXTRACT(EPOCH FROM (a.dispatched_at - a.created_at)) * 1000 AS service_wait_ms,
            EXTRACT(EPOCH FROM (a.acknowledged_at - a.dispatched_at)) * 1000 AS delivery_ms,
-           EXTRACT(EPOCH FROM (a.running_at - a.acknowledged_at)) * 1000 AS start_ms
-      FROM worker_assignments a
-      JOIN work_requests w ON a.id LIKE 'asg-task-' || w.id || '-%'
-      JOIN users u ON u.id = a.requested_by_user_id
-     WHERE LOWER(u.email) = LOWER(${DEV_EMAIL})
-     ORDER BY a.created_at DESC LIMIT ${limit}`) as Array<{
-    wait_ms: string | number | null;
+           EXTRACT(EPOCH FROM (a.running_at - a.start_permit_issued_at)) * 1000 AS start_ms,
+           EXTRACT(EPOCH FROM (a.running_at - a.acknowledged_at)) * 1000 AS ack_to_running_ms
+      FROM recent w LEFT JOIN worker_assignments a
+        ON a.work_request_id = w.id OR (a.work_request_id IS NULL AND a.id LIKE 'asg-task-' || w.id || '-%')
+     ORDER BY w.created_at DESC, a.created_at` ) as Array<{
+    request_id: string;
+    assignment_id: string | null;
+    status: string | null;
+    admission_ms: string | number | null;
+    service_wait_ms: string | number | null;
     delivery_ms: string | number | null;
     start_ms: string | number | null;
+    ack_to_running_ms: string | number | null;
   }>;
-  const col = (k: "wait_ms" | "delivery_ms" | "start_ms") =>
-    rows.map((r) => (r[k] === null ? NaN : Number(r[k]))).filter((v) => Number.isFinite(v));
-  const waiting = roundStat(summarize(col("wait_ms")));
+  const col = (k: "admission_ms" | "service_wait_ms" | "delivery_ms" | "start_ms" | "ack_to_running_ms") =>
+    rows.map((r) => (r[k] === null ? NaN : Number(r[k]))).filter((v) => Number.isFinite(v) && v >= 0);
+  const admission = roundStat(summarize(col("admission_ms")));
+  const serviceWait = roundStat(summarize(col("service_wait_ms")));
   const delivery = roundStat(summarize(col("delivery_ms")));
   const starting = roundStat(summarize(col("start_ms")));
-  console.log(formatStatLine("waiting for Service (request -> assignment)", waiting));
-  console.log(formatStatLine("delivery to Service (dispatch -> ack)", delivery));
-  console.log(formatStatLine("starting worker (ack -> running)", starting));
-  const slow = col("wait_ms").filter((v) => v > 5_000).length;
-  if (slow > 0) {
-    console.warn(
-      `  WARN: ${slow} of ${rows.length} recent requests waited more than 5 s for the Service to be ready`,
-    );
-  }
+  const ackToRunning = roundStat(summarize(col("ack_to_running_ms")));
+  const withoutAssignment = rows.filter((r) => r.assignment_id === null).length;
+  const awaitingDispatch = rows.filter((r) => r.status === "created").length;
+  const awaitingRunning = rows.filter((r) => r.status === "acknowledged").length;
+  console.log(formatStatLine("request -> assignment (admission)", admission));
+  console.log(formatStatLine("assignment -> dispatch (service wait, includes other queues)", serviceWait));
+  console.log(formatStatLine("dispatch -> acknowledgement", delivery));
+  console.log(formatStatLine("start permit -> running (worker startup)", starting));
+  console.log(formatStatLine("acknowledgement -> running (includes queueing)", ackToRunning));
+  console.log(`  Missing assignment: ${withoutAssignment}; awaiting dispatch: ${awaitingDispatch}; acknowledged but not running: ${awaitingRunning}`);
+  const slow = col("admission_ms").filter((v) => v > 5_000).length;
+  if (slow > 0) console.warn(`  WARN: ${slow} assignment attempts took over 5 s from request to assignment`);
   return {
-    requests: rows.length,
-    waitingForServiceMs: waiting,
+    requests: new Set(rows.map((r) => r.request_id)).size,
+    assignmentAttempts: rows.filter((r) => r.assignment_id !== null).length,
+    requestsWithoutAssignment: withoutAssignment,
+    awaitingDispatch,
+    acknowledgedNotRunning: awaitingRunning,
+    admissionMs: admission,
+    assignmentToDispatchMs: serviceWait,
     deliveryMs: delivery,
     startingWorkerMs: starting,
-    requestsWaitingOver5s: slow,
+    acknowledgementToRunningMs: ackToRunning,
+    attemptsWithAdmissionOver5s: slow,
   };
 }
 
@@ -1054,7 +750,7 @@ async function cleanupRun(
   const remainingPerfRows = Number(remRow?.remaining ?? 0);
 
   console.log(
-    `  cleaned: ${spacesDeletedViaApi} space(s) via API (+${spacesDeletedInDb} in DB), ${workspacesRemoved} fake workspace(s), ${usersRemoved} synthetic user(s); remaining rows for this run: ${remainingPerfRows}`,
+    `  cleaned: ${spacesDeletedViaApi} space(s) via API (+${spacesDeletedInDb} in DB), ${workspacesRemoved} synthetic workspace(s), ${usersRemoved} synthetic user(s); remaining rows for this run: ${remainingPerfRows}`,
   );
 
   return {
@@ -1068,37 +764,43 @@ async function cleanupRun(
 
 interface ThresholdViolation {
   metric: string;
-  measuredP95: number;
+  measuredP95: number | null;
   limitP95: number;
 }
 
 function checkThresholds(
   thresholdsPath: string,
   observedP95: Record<string, number | null>,
-): { violations: ThresholdViolation[]; checked: number } {
-  if (!existsSync(thresholdsPath)) {
-    throw new Error(`Thresholds file not found: ${thresholdsPath}`);
-  }
+  skippedPrefixes: string[],
+): { violations: ThresholdViolation[]; checked: number; skipped: number } {
+  if (!existsSync(thresholdsPath)) throw new Error(`Thresholds file not found: ${thresholdsPath}`);
   const parsed = JSON.parse(readFileSync(thresholdsPath, "utf8")) as {
     metrics?: Record<string, { p95Ms?: number }>;
   };
-  const metrics = parsed.metrics ?? {};
+  if (!parsed.metrics || Object.keys(parsed.metrics).length === 0) throw new Error("No performance limits configured");
   const violations: ThresholdViolation[] = [];
-  let checked = 0;
-
-  for (const [metric, rule] of Object.entries(metrics)) {
+  let checked = 0, skipped = 0;
+  for (const [metric, rule] of Object.entries(parsed.metrics)) {
     const limit = rule?.p95Ms;
-    if (typeof limit !== "number" || !Number.isFinite(limit)) continue;
+    if (typeof limit !== "number" || !Number.isFinite(limit) || limit < 0) throw new Error(`Invalid limit for ${metric}`);
+    if (!(metric in observedP95)) throw new Error(`Unknown performance metric: ${metric}`);
+    if (skippedPrefixes.some((prefix) => metric.startsWith(prefix))) {
+      console.log(`  SKIP ${metric}: scenario disabled`);
+      skipped++;
+      continue;
+    }
     const measured = observedP95[metric];
     if (measured === null || measured === undefined || !Number.isFinite(measured)) {
+      console.log(`  FAIL ${metric}: measurement unavailable (limit ${limit}ms)`);
+      violations.push({ metric, measuredP95: null, limitP95: limit });
       continue;
     }
     checked++;
-    if (measured > limit) {
-      violations.push({ metric, measuredP95: measured, limitP95: limit });
-    }
+    const passed = measured <= limit;
+    console.log(`  ${passed ? "PASS" : "FAIL"} ${metric}: ${measured.toFixed(1)}ms / ${limit.toFixed(1)}ms`);
+    if (!passed) violations.push({ metric, measuredP95: measured, limitP95: limit });
   }
-  return { violations, checked };
+  return { violations, checked, skipped };
 }
 
 async function main() {
@@ -1133,7 +835,6 @@ async function main() {
   console.log(`  backend: ${opts.baseUrl}  run: perf-${runId}`);
 
   let scenarioA: Awaited<ReturnType<typeof runScenarioA>> | null = null;
-  let scenarioB: Awaited<ReturnType<typeof runScenarioB>> | null = null;
   let scenarioC: Awaited<ReturnType<typeof runScenarioC>> | null = null;
   let scenarioD: Awaited<ReturnType<typeof runScenarioD>> | null = null;
   let cleanupReport: CleanupReport | null = null;
@@ -1141,24 +842,17 @@ async function main() {
 
   try {
     scenarioA = await runScenarioA(opts.baseUrl, sql, mint, opts.probes, runId, createdUserIds);
-    scenarioB = await runScenarioB(
-      opts.baseUrl,
-      mint,
-      runId,
-      opts.users,
-      opts.messages,
-      createdUserIds,
-      createdSpaceIds,
-    );
     scenarioC = await runScenarioC(
       opts.baseUrl,
       sql,
       mint,
       runId,
       opts.chats,
+      opts.workflow,
+      opts.allowOffline,
+      opts.model,
       createdUserIds,
       createdSpaceIds,
-      createdWorkspaceIds,
     );
     scenarioD = await runScenarioD(sql, 50).catch((err: Error) => {
       console.warn(`  WARN: real-request scenario skipped: ${err.message}`);
@@ -1191,32 +885,21 @@ async function main() {
     "transport.probe_0b": scenarioA?.variants.probe_0b?.roundTripMs.p95 ?? null,
     "transport.probe_1024b": scenarioA?.variants.probe_1024b?.roundTripMs.p95 ?? null,
     "transport.probe_32768b": scenarioA?.variants.probe_32768b?.roundTripMs.p95 ?? null,
-    "messages.rest_post": scenarioB?.restPostMs.p95 ?? null,
-    "messages.realtime_fanout": scenarioB?.realtimeFanoutMs.p95 ?? null,
-    "workflows.concurrent.total": scenarioC?.concurrent.totalMs.p95 ?? null,
-    ...Object.fromEntries(
-      Object.entries(scenarioC?.concurrent.intervals ?? {}).map(([k, v]) => [
-        `workflows.concurrent.${k}`,
-        v.p95,
-      ]),
-    ),
-    "workflows.serial.request_total": scenarioC?.serialFreeAccount.requestTotalMs.p95 ?? null,
-    "workflows.serial.queued_overhead": scenarioC?.serialFreeAccount.queuedOverheadMs.p95 ?? null,
+    "workflows.real.total": scenarioC?.totalMs.p95 ?? null,
+    "workflows.real.requestToAssignment": scenarioC && "intervals" in scenarioC ? scenarioC.intervals?.requestToAssignmentMs.p95 ?? null : null,
+    "workflows.real.assignmentToDispatch": scenarioC && "intervals" in scenarioC ? scenarioC.intervals?.assignmentToDispatchMs.p95 ?? null : null,
+    "workflows.real.dispatchToAcknowledgement": scenarioC && "intervals" in scenarioC ? scenarioC.intervals?.dispatchToAcknowledgementMs.p95 ?? null : null,
+    "workflows.real.startPermitToRunning": scenarioC && "intervals" in scenarioC ? scenarioC.intervals?.startPermitToRunningMs.p95 ?? null : null,
   };
 
-  let thresholdResult = { violations: [] as ThresholdViolation[], checked: 0 };
+  let thresholdResult = { violations: [] as ThresholdViolation[], checked: 0, skipped: 0 };
   if (opts.checkThresholds) {
-    thresholdResult = checkThresholds(opts.thresholdsPath, observedP95);
     console.log(`\n== Thresholds (${opts.thresholdsPath})`);
-    if (thresholdResult.violations.length === 0) {
-      console.log(`  PASS (${thresholdResult.checked} p95 metrics within limits)`);
-    } else {
-      for (const v of thresholdResult.violations) {
-        console.error(
-          `  FAIL ${v.metric}: p95 ${v.measuredP95.toFixed(1)}ms > limit ${v.limitP95.toFixed(1)}ms`,
-        );
-      }
-    }
+    thresholdResult = checkThresholds(opts.thresholdsPath, observedP95, [
+      ...(opts.probes === 0 ? ["transport."] : []),
+      ...(opts.chats === 0 ? ["workflows."] : []),
+    ]);
+    console.log(`  ${thresholdResult.violations.length ? "FAIL" : "PASS"}: ${thresholdResult.checked} checked, ${thresholdResult.skipped} deliberately skipped`);
   } else {
     console.log(`\n== Thresholds: skipped (--no-thresholds)`);
   }
@@ -1229,14 +912,14 @@ async function main() {
     machine,
     parameters: {
       probes: opts.probes,
-      users: opts.users,
-      messages: opts.messages,
       chats: opts.chats,
+      workflow: opts.workflow,
+      allowOffline: opts.allowOffline,
+      model: opts.model,
       thresholdsChecked: opts.checkThresholds,
     },
     scenarios: {
       transport: scenarioA,
-      messages: scenarioB,
       workflows: scenarioC,
       realRequests: scenarioD,
     },
@@ -1244,7 +927,8 @@ async function main() {
     thresholds: {
       checked: thresholdResult.checked,
       violations: thresholdResult.violations,
-      passed: thresholdResult.violations.length === 0,
+      skipped: thresholdResult.skipped,
+      passed: opts.checkThresholds ? thresholdResult.violations.length === 0 : null,
     },
   };
 
@@ -1254,9 +938,7 @@ async function main() {
   }
 
   const hasErrors =
-    (scenarioB?.errors ?? 0) > 0 ||
-    (scenarioC?.concurrent.errors ?? 0) > 0 ||
-    (scenarioC?.serialFreeAccount.errors ?? 0) > 0 ||
+    (scenarioC?.errors ?? 0) > 0 ||
     (cleanupReport?.remainingPerfRows ?? 0) > 0 ||
     (opts.checkThresholds && thresholdResult.violations.length > 0);
 
