@@ -103,6 +103,7 @@ export async function handleValidateWorkRequest(
     bindings: {},
   });
   const body = await readBody(request, WorkRequestBodySchema);
+  const workerRequest = { workerId: body.workerId, workerBindings: body.workerBindings, model: body.model, reasoningEffort: body.reasoningEffort };
   const executionSelection = parseWorkflowExecutionSelection(
     body.executionSelection,
   );
@@ -119,6 +120,24 @@ export async function handleValidateWorkRequest(
   const attachments = Array.isArray(body.attachments) ? body.attachments : [];
   if (attachments.length > MAX_WORK_REQUEST_FILES)
     throw new HttpError(400, "At most 10 attachments are allowed");
+  if (requestsWorkerTarget(workerRequest)) {
+    if (!isFeatureEnabled("worker_target_dispatch"))
+      throw new HttpError(400, "Worker-targeted requests are not available yet");
+    if (workflow.steps.some((step) => step.executionMode === "stateful_thread"))
+      throw new HttpError(422, "This Workflow needs a Workspace; Worker-targeted requests run stateless Workflows only");
+    if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
+      throw new HttpError(400, "Worker-targeted requests do not use a Workspace or an execution selection");
+    if (attachments.some((attachment) => attachment && typeof attachment === "object" && (attachment as { kind?: unknown }).kind === "file"))
+      throw new HttpError(400, "Files need a Workspace to deliver them to");
+    const result = await resolveWorkerTargetBindings(env, {
+      userId: context.userId, spaceId, threadId, definition: workflow, request: workerRequest,
+    });
+    if (result.ok === false) {
+      const refusal = await result.response.json() as { issues: unknown[] };
+      return json({ eligible: false, workflowId, workflowName: workflow.name, issues: refusal.issues });
+    }
+    return json({ eligible: true, workflowId, workflowName: workflow.name, issues: [] });
+  }
   const { issues } = await validateWorkflowWorkerEligibility(
     env,
     spaceId,

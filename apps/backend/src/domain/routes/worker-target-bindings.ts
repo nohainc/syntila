@@ -100,6 +100,12 @@ export async function resolveWorkerTargetBindings(
   ) {
     throw new HttpError(400, "workerBindings must be an object");
   }
+  const bindingIds = new Set(definition.steps.map((step) => stepBindingId(definition, step)));
+  for (const bindingId of Object.keys(overrides)) {
+    if (!bindingIds.has(bindingId)) {
+      throw new HttpError(400, `Unknown Worker binding: ${bindingId}`);
+    }
+  }
   // The same Space rules as the Workspace path: support Threads take messages
   // only, personal Spaces run Chat only, and a disabled Workflow stays disabled.
   const spacePolicy = await loadSpacePermissions(env, input.userId, input.spaceId);

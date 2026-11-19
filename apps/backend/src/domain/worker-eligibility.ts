@@ -1,4 +1,4 @@
-import { EXECUTION_PERMISSIONS } from "@syntila/core";
+import { EXECUTION_PERMISSIONS, WORKFLOW_CAPABILITIES } from "@syntila/core";
 import { spaceMemberPermissions } from "@syntila/security";
 import type { Query } from "../platform/data.js";
 
@@ -212,10 +212,6 @@ export async function acceptWorkerTarget(
   const rights = await requesterMayExecute(q, request);
   if (rights.allowed === false) return { ok: false, code: "execute_not_permitted" };
 
-  if (request.requireOnline && !(await workerIsOnline(q, worker.id))) {
-    return { ok: false, code: "worker_offline" };
-  }
-
   const model = (request.model ?? worker.defaultModel ?? "").trim();
   if (model.length > MAX_MODEL_LENGTH) return { ok: false, code: "worker_type_unavailable" };
   const readOnly = request.readOnly === true;
@@ -224,7 +220,22 @@ export async function acceptWorkerTarget(
   const permissions = readOnly
     ? base.filter((p) => p !== "repository:write" && (p !== "shell:execute" || canRunTests))
     : base;
-  if (permissions.length === 0) return { ok: false, code: "execute_not_permitted" };
+  // These capabilities are Workflow requirements, not provider claims. Cloud
+  // maps them to its execution permissions and fails closed for unknown ones.
+  // The current Worker catalog has no per-Type capability advertisement.
+  const required = new Set<string>(["repository:read"]);
+  for (const capability of request.capabilities ?? []) {
+    if (!(WORKFLOW_CAPABILITIES as readonly string[]).includes(capability))
+      return { ok: false, code: "worker_type_unavailable" };
+    if (capability === "thread_write") required.add("repository:write");
+    if (capability === "test_execution") required.add("shell:execute");
+  }
+  if (![...required].every((permission) => permissions.includes(permission)))
+    return { ok: false, code: "execute_not_permitted" };
+
+  if (request.requireOnline && !(await workerIsOnline(q, worker.id))) {
+    return { ok: false, code: "worker_offline" };
+  }
 
   return {
     ok: true,
