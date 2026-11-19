@@ -1,5 +1,7 @@
 # ADR-029: Direct Spaces and Personal Connections
 
+> **Partly superseded (proposed, 2026-11-19).** Section 8 (Execution and Workspace Boundaries) and the Workspace-grant statements in the Consequences keep their intent (no access to another person's local environment), but the Workspace vocabulary is replaced by Worker ownership and sharing grants in [ADR-035](ADR-035-worker-targeted-execution-and-workspace-removal.md) and [ADR-032](ADR-032-worker-instance-and-actor-identity.md). Direct Space semantics are unchanged.
+
 **Status:** Accepted; **Date:** 2026-11-06
 
 Extends ADR-008 and ADR-020. Complements People v1.

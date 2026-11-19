@@ -15,6 +15,9 @@ fi
 echo '== Scripts and units'
 install -d -m 0755 /usr/local/lib/syntila
 install -m 0755 "$here/syntila-monitor.py" "$here/syntila-dump.sh" "$here/restore-test.sh" "$here/run-resilience-test.sh" /usr/local/lib/syntila/
+for inv in "$here/check-invariants.sql" "$here/../../../apps/backend/scripts/check-invariants.sql"; do
+  [ -f "$inv" ] && install -m 0644 "$inv" /usr/local/lib/syntila/check-invariants.sql && break
+done
 for unit in syntila-monitor.service syntila-monitor.timer syntila-dump.service syntila-dump.timer; do
   install -m 0644 "$here/$unit" /etc/systemd/system/
 done

@@ -1,5 +1,7 @@
 # Syntila Workspaces UX and Data Contract
 
+> **Superseded in part (proposed, 2026-11-19).** The top-level **Workspaces** page, Space-to-Workspace selection and per-Workspace Worker grouping are replaced by the **Workers** experience in [ADR-035](../decisions/ADR-035-worker-targeted-execution-and-workspace-removal.md). Until the `workers_ux` flag ships, this contract describes current behavior.
+
 **Status:** Current AX read model. Workspace ownership and desktop lifecycle follow [ADR-013](../decisions/ADR-013-desktop-auth-and-dual-transport.md) and [ADR-014](../decisions/ADR-014-workspace-desktop-lifecycle.md).
 
 **Architecture:** v8, Workspace-owned logical Workers with the generic CLI Worker Engine and signed Tool Profiles.

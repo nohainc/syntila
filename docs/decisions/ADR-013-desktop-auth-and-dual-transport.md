@@ -2,6 +2,8 @@
 
 > **Superseded in part (2026-10).** This record describes the earlier Flutter `Workspace.app`/`SMAppService` design. The Flutter GUI was removed; Workspace is now a headless Dart service plus the `syntila` CLI, configured by `workspace.nano`. The current contract is [WORKSPACE_ARCHITECTURE.md](../architecture/WORKSPACE_ARCHITECTURE.md). Read this document as history.
 
+> **Also superseded in part (proposed, 2026-11-19).** The per-Workspace runtime connection and registration model is replaced by one connection per Worker: see [ADR-034](ADR-034-standalone-worker-agent-and-session-fencing.md) (session fencing, standalone Agent) and [ADR-038](ADR-038-unified-realtime-transport.md) (unified transport).
+
 **Status:** Accepted; desktop lifecycle refined by [ADR-014](ADR-014-workspace-desktop-lifecycle.md)  
 **Date:** 2026-09-27  
 **Builds on:** ADR-005, ADR-012  

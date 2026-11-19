@@ -19,17 +19,24 @@ fail=0
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1 (expected $3, got $2)"; fail=1; fi; }
 live_migrations=$(psql_pg -d syntila -c "select string_agg(version, ',' order by version) from schema_migrations")
 check "schema migrations match live" "$(psql_pg -d $scratch -c "select string_agg(version, ',' order by version) from schema_migrations")" "$live_migrations"
-for t in users spaces space_memberships threads messages ai_tasks thread_events; do
+# Tables of the current schema (apps/backend/migrations/schema.lock). A table
+# that does not exist makes psql fail and the test with it, which is the point:
+# this list must follow the schema.
+for t in users spaces space_memberships threads conversation_history_entries execution_workspaces worker_assignments; do
   live=$(psql_pg -d syntila -c "select count(*) from $t")
   restored=$(psql_pg -d $scratch -c "select count(*) from $t")
   echo "     $t: restored $restored, live now $live"
   [ "$restored" -le "$live" ] || { echo "FAIL $t has more rows than live"; fail=1; }
 done
-# Integrity: every thread's event log is gap-free and matches threads.last_seq.
-check "thread event logs gap-free" "$(psql_pg -d $scratch -c "
-  select count(*) from threads t left join lateral (
-    select count(*) n, coalesce(max(seq),0) mx from thread_events e where e.thread_id = t.id) e on true
-  where e.n <> t.last_seq or e.mx <> t.last_seq")" "0"
-check "messages reference existing threads" "$(psql_pg -d $scratch -c "select count(*) from messages m left join threads t on t.id = m.thread_id where t.id is null")" "0"
-check "AI answers linked to tasks" "$(psql_pg -d $scratch -c "select count(*) from messages where kind='ai_answer' and task_id not in (select id from ai_tasks)")" "0"
+check "conversation history numbered 1..n without gaps" "$(psql_pg -d $scratch -c "
+  select count(*) from (select conversation_id from conversation_history_entries
+    group by conversation_id having min(sequence) <> 1 or max(sequence) <> count(*)) t")" "0"
+# The full data invariants, when the file is installed next to this script or named.
+inv=${INVARIANTS_SQL:-$(dirname "$0")/check-invariants.sql}
+if [ -f "$inv" ]; then
+  violations=$(psql_pg -d $scratch -F ' ' -f "$inv" | awk -F ' ' '$NF != 0 {print}' )
+  check "data invariants (check-invariants.sql)" "${violations:-none}" "none"
+else
+  echo "     skipped check-invariants.sql (not installed; set INVARIANTS_SQL)"
+fi
 [ "$fail" = 0 ] && echo "RESTORE TEST PASSED" || { echo "RESTORE TEST FAILED"; exit 1; }

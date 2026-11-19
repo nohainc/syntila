@@ -1,5 +1,7 @@
 # ADR-012: Workspace-Owned Local Workers
 
+> **Superseded in part (proposed, 2026-11-19).** The Workspace-owns-Workers and Workspace-as-routing-identity parts ('Workspace owns local execution', 'Logical Worker identity', 'Authorization and usage') are replaced by [ADR-032](ADR-032-worker-instance-and-actor-identity.md) (Worker Instance identity), [ADR-034](ADR-034-standalone-worker-agent-and-session-fencing.md) (standalone Agent) and [ADR-035](ADR-035-worker-targeted-execution-and-workspace-removal.md) (Worker-targeted execution). The process boundary and security invariants remain current. Status becomes final when ADR-032 to ADR-039 are ratified; see [WORKER_FIRST_IMPLEMENTATION_PHASES.md](../roadmaps/WORKER_FIRST_IMPLEMENTATION_PHASES.md).
+
 **Status:** Accepted; current Workspace ownership boundary. Worker identity and catalog are refined by [ADR-015](ADR-015-first-party-worker-v1-contract.md); local execution is defined by [ADR-018](ADR-018-generic-cli-worker-engine-and-tool-profiles.md).
 
 ## Context

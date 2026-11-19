@@ -1,6 +1,7 @@
 # ADR-031: Worker-first Actors, Unified Messaging and Multi-node Realtime
 
-- **Status:** Proposed — awaiting architecture review and approval
+- **Status:** Split, superseded by ADR-032 to ADR-039 (kept for context)
+- **Split into (in order):** [ADR-032 Identity](./ADR-032-worker-instance-and-actor-identity.md), [ADR-033 Durable events/inbox](./ADR-033-durable-events-outbox-and-command-inbox.md), [ADR-034 Agent/fencing](./ADR-034-standalone-worker-agent-and-session-fencing.md), [ADR-035 Worker-targeted execution](./ADR-035-worker-targeted-execution-and-workspace-removal.md), [ADR-036 Timeline](./ADR-036-canonical-thread-timeline-and-attribution.md), [ADR-037 Files/artifacts](./ADR-037-local-files-and-cross-worker-artifacts.md), [ADR-038 Unified transport](./ADR-038-unified-realtime-transport.md), [ADR-039 Horizontal scaling](./ADR-039-horizontal-scaling.md). Phases: [`WORKER_FIRST_IMPLEMENTATION_PHASES.md`](../roadmaps/WORKER_FIRST_IMPLEMENTATION_PHASES.md)
 - **Date:** 2026-11-19
 - **Scope:** Syntila Flutter app; Bun backend; PostgreSQL; Worker Agent; generic CLI Worker Engine; realtime infrastructure; existing Spaces, Threads and Workflows
 - **Decision owners:** Syntila product/engineering

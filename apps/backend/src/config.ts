@@ -1,3 +1,5 @@
+import { parseFeatureFlags, FEATURE_FLAGS_ENV } from "./feature-flags";
+
 export interface Config {
   providerFailureKey?: string;
   providerFailurePreviousKeys?: string;
@@ -59,6 +61,9 @@ export async function readPublicKeys(): Promise<JsonWebKey[]> {
 }
 
 export async function loadConfig(): Promise<Config> {
+  // Worker-first rollout flags (docs/operations/FEATURE_FLAGS.md): a typo or a
+  // flag without its prerequisite stops the boot instead of staying silently off.
+  parseFeatureFlags(process.env[FEATURE_FLAGS_ENV]);
   const credentialDir = process.env.CREDENTIALS_DIRECTORY;
   const keyFile = credentialDir ? Bun.file(`${credentialDir}/provider-failure-key`) : null;
   const providerFailureKey = keyFile && await keyFile.exists()
