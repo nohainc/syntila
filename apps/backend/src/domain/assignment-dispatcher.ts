@@ -1,5 +1,6 @@
 import { atomically, dataOf, queryOf, type Query, type Db } from "../platform/data.js";
 import { inTransaction } from "../platform/tx-env.js";
+import { agentFenceSql, type AgentSessionFence } from "./agent-session-fence.js";
 import { assignmentProgress, assignmentStatus } from "./queries.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
 import { createHash } from "node:crypto";
@@ -1082,6 +1083,7 @@ export async function recordAssignmentResult(
   assignmentId: string,
   result: AssignmentResultPayload,
   expectedAttemptId?: string,
+  agent?: AgentSessionFence,
 ): Promise<boolean> {
   const now = new Date().toISOString();
 
@@ -1102,7 +1104,7 @@ export async function recordAssignmentResult(
 
   return runTerminalTransition(db, "assignment.complete", async (q) => {
     const first = await q.run`UPDATE worker_assignments SET status = 'completed', output_json = ${JSON.stringify(result)}, updated_at = ${now}
-         WHERE id = ${assignmentId} AND status IN (${q.raw(assignmentSourceStatusList("completed"))})
+         WHERE id = ${assignmentId} AND status IN (${q.raw(assignmentSourceStatusList("completed"))})${agentFenceSql(q, agent)}
          RETURNING id`;
     await q.run`UPDATE workflow_tasks SET status = 'completed', output_json = ${JSON.stringify(result)},
                 finished_at = ${now}, updated_at = ${now}
@@ -1121,7 +1123,7 @@ export async function recordAssignmentError(
   assignmentId: string,
   failure: AssignmentFailurePayload,
   expectedAttemptId?: string,
-  options?: { onlyFrom?: readonly AssignmentLifecycleStatus[]; providerFailureKey?: string },
+  options?: { onlyFrom?: readonly AssignmentLifecycleStatus[]; providerFailureKey?: string; agent?: AgentSessionFence },
 ): Promise<boolean> {
   const now = new Date().toISOString();
   const details = safeFailureDetails(failure.error?.details);
@@ -1161,7 +1163,7 @@ export async function recordAssignmentError(
 
   return runTerminalTransition(db, "assignment.fail", async (q) => {
     const first = await q.run`UPDATE worker_assignments SET status = ${terminalStatus}, error_json = ${JSON.stringify(normalizedFailure)}::text::jsonb, updated_at = ${now}
-         WHERE id = ${assignmentId} AND status IN (${q.raw(sourceList(terminalStatus, options?.onlyFrom))})
+         WHERE id = ${assignmentId} AND status IN (${q.raw(sourceList(terminalStatus, options?.onlyFrom))})${agentFenceSql(q, options?.agent)}
          RETURNING id`;
     await q.run`UPDATE workflow_tasks SET status = 'failed', error = ${normalizedFailure.error.message},
                 finished_at = ${now}, updated_at = ${now}
@@ -1177,7 +1179,7 @@ export async function recordAssignmentCancelled(
   assignmentId: string,
   cancellation: { status: "cancelled"; reason: string },
   expectedAttemptId?: string,
-  options?: { onlyFrom?: readonly AssignmentLifecycleStatus[] },
+  options?: { onlyFrom?: readonly AssignmentLifecycleStatus[]; agent?: AgentSessionFence },
 ): Promise<boolean> {
   const now = new Date().toISOString();
   const existing = await assignmentProgress(queryOf(db), assignmentId);
@@ -1197,7 +1199,7 @@ export async function recordAssignmentCancelled(
   return runTerminalTransition(db, "assignment.cancel", async (q) => {
     const first = await q.run`UPDATE worker_assignments SET status = 'cancelled', error_json = ${JSON.stringify(cancellation)}::text::jsonb, updated_at = ${now}
          WHERE id = ${assignmentId} AND status IN (${q.raw(sourceList("cancelled", options?.onlyFrom))})
-           AND (${expectedAttemptId ?? null}::text IS NULL OR attempt_id = ${expectedAttemptId ?? null})
+           AND (${expectedAttemptId ?? null}::text IS NULL OR attempt_id = ${expectedAttemptId ?? null})${agentFenceSql(q, options?.agent)}
          RETURNING id`;
     await q.run`UPDATE workflow_tasks SET status = 'cancelled', finished_at = ${now},
                 updated_at = ${now}

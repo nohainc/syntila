@@ -291,6 +291,16 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("GET", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("PATCH", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("DELETE", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
+    // Pairing, credentials and sessions (ADR-034). Owner routes need the signed-in
+    // owner; Agent routes carry a pairing secret or an Ed25519 signature instead of
+    // a browser session (flags: worker_identity, worker_agent_connect).
+    r("POST", "/api/workers/:workerId/pairing", call("handleWorkerPairing", p("workerId"), ctx)),
+    r("POST", "/api/workers/:workerId/transfer", call("handleWorkerTransfer", p("workerId"), ctx)),
+    r("DELETE", "/api/workers/:workerId/credential", call("handleWorkerCredential", p("workerId"), ctx)),
+    r("POST", "/api/worker-agent/claim", call("handleClaimWorkerPairing", ctx), machine),
+    r("POST", "/api/worker-agent/nonce", call("handleWorkerNonce"), machine),
+    r("POST", "/api/worker-agent/sessions", call("handleConnectWorkerSession"), machine),
+    r("POST", "/api/worker-agent/rotate", call("handleRotateWorkerCredential"), machine),
     r("GET", "/api/workers/:workerTypeId/profile", call("handleGetWorkspaceV9WorkerProfile", p("workerTypeId"))),
     r("GET", "/api/admin/workers", call("handleListV9WorkerProfiles", ctx)),
     r("GET", "/api/admin/workers/:workerTypeId/profile", call("handleGetV9WorkerProfile", p("workerTypeId"), ctx)),

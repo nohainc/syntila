@@ -52,4 +52,17 @@ UNION ALL SELECT 'no outbox row pending for over an hour', count(*)
 UNION ALL SELECT 'no open Worker command for an ended assignment', count(*)
   FROM agent_commands c JOIN worker_assignments a ON a.id = c.assignment_id
  WHERE c.status IN ('pending', 'sent')
-   AND a.status IN ('completed', 'failed', 'cancelled', 'timed_out', 'lost');
+   AND a.status IN ('completed', 'failed', 'cancelled', 'timed_out', 'lost')
+-- A session is not open on a credential that was revoked (ADR-034).
+UNION ALL SELECT 'no open Worker session on a revoked credential', count(*)
+  FROM worker_agent_sessions s JOIN worker_credentials c ON c.id = s.credential_id
+ WHERE s.disconnected_at IS NULL AND c.revoked_at IS NOT NULL
+-- A removed Worker keeps no live credential or session.
+UNION ALL SELECT 'no live credential or session on a removed Worker', count(*)
+  FROM worker_instances w
+ WHERE w.revoked_at IS NOT NULL
+   AND (EXISTS (SELECT 1 FROM worker_credentials c WHERE c.worker_instance_id = w.id AND c.revoked_at IS NULL)
+     OR EXISTS (SELECT 1 FROM worker_agent_sessions s WHERE s.worker_instance_id = w.id AND s.disconnected_at IS NULL))
+-- A session lease that lapsed is closed by the sweep within minutes.
+UNION ALL SELECT 'no Worker session past its lease for over an hour', count(*)
+  FROM worker_agent_sessions WHERE disconnected_at IS NULL AND lease_expires_at < now() - interval '1 hour';

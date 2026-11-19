@@ -6,6 +6,7 @@ import {
   type AssignmentLifecycleStatus,
 } from "@syntila/core";
 import type { Query } from "../platform/data.js";
+import { agentFenceIsCurrent, agentFenceSql, type AgentSessionFence } from "./agent-session-fence.js";
 
 /**
  * Cloud's only writer of `worker_assignments.status` for message-driven
@@ -42,6 +43,11 @@ export interface AssignmentFence {
   executionWorkspaceId?: string;
   /** Rejects messages from a previous or revoked runtime identity. */
   runtimeIdentityId?: string;
+  /**
+   * Set for traffic from a Worker Agent: the write is accepted only while this
+   * is the Worker's current session (ADR-034), checked in the same UPDATE.
+   */
+  agent?: AgentSessionFence;
 }
 
 export interface AssignmentTransitionInput {
@@ -132,6 +138,7 @@ export async function transitionAssignment(
     if (value === undefined) continue;
     fenceSql = q.frag`${fenceSql} AND ${q.raw(column)} = ${value}`;
   }
+  fenceSql = q.frag`${fenceSql}${agentFenceSql(q, fence.agent)}`;
   const sourceSql = q.raw(sources.map((status) => `'${status}'`).join(", "));
   // `meta.changes` also counts writes made by triggers, so the only
   // reliable signal that this statement changed the row is RETURNING.
@@ -177,6 +184,10 @@ async function classify(
       FROM worker_assignments WHERE id = ${fence.assignmentId}`;
   if (!row) return { outcome: "not_found", applied };
   const currentStatus = row.status;
+  // A session that is no longer current (or a Worker that does not own the
+  // assignment) is stale whatever the status is.
+  if (fence.agent && !(await agentFenceIsCurrent(q, fence.agent)))
+    return { outcome: "stale", applied, currentStatus };
   if (
     (fence.attemptId !== undefined && fence.attemptId !== row.attempt_id) ||
     (fence.executionWorkspaceId !== undefined &&

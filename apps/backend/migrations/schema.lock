@@ -529,6 +529,17 @@ column worker_activity_history.tool_name text
 column worker_activity_history.worker_id text not-null
 column worker_activity_history.worker_instance_id text
 column worker_activity_history.workspace_id text not-null
+column worker_agent_sessions.client_version text not-null default
+column worker_agent_sessions.connected_at timestamptz not-null default
+column worker_agent_sessions.credential_id text not-null
+column worker_agent_sessions.disconnect_reason text
+column worker_agent_sessions.disconnected_at timestamptz
+column worker_agent_sessions.last_seen_at timestamptz not-null default
+column worker_agent_sessions.lease_expires_at timestamptz not-null
+column worker_agent_sessions.session_epoch int8 not-null
+column worker_agent_sessions.session_id text not-null
+column worker_agent_sessions.token_digest text not-null
+column worker_agent_sessions.worker_instance_id text not-null
 column worker_assignments.acknowledged_at timestamptz
 column worker_assignments.attempt_id text
 column worker_assignments.cloud_queue_reason text
@@ -573,6 +584,20 @@ column worker_assignments.workflow_signal_attempts int8 not-null default
 column worker_assignments.workflow_signaled_at timestamptz
 column worker_assignments.workspace_space_grant_id text
 column worker_assignments.workspace_worker_id text
+column worker_audit_log.action text not-null
+column worker_audit_log.actor_id text not-null
+column worker_audit_log.actor_type text not-null
+column worker_audit_log.created_at timestamptz not-null default
+column worker_audit_log.details_json jsonb not-null default
+column worker_audit_log.id text not-null
+column worker_audit_log.owner_user_id text not-null
+column worker_audit_log.worker_instance_id text not-null
+column worker_auth_nonces.created_at timestamptz not-null default
+column worker_auth_nonces.expires_at timestamptz not-null
+column worker_auth_nonces.id text not-null
+column worker_auth_nonces.nonce text not-null
+column worker_auth_nonces.used_at timestamptz
+column worker_auth_nonces.worker_instance_id text not-null
 column worker_catalog.created_at timestamptz not-null default
 column worker_catalog.description text not-null default
 column worker_catalog.display_name text not-null
@@ -587,6 +612,13 @@ column worker_catalog.sort_order int8 not-null default
 column worker_catalog.updated_at timestamptz not-null default
 column worker_catalog.visibility_state text not-null default
 column worker_catalog.worker_type_id text not-null
+column worker_credentials.created_at timestamptz not-null default
+column worker_credentials.id text not-null
+column worker_credentials.key_fingerprint text not-null
+column worker_credentials.public_key text not-null
+column worker_credentials.revoked_at timestamptz
+column worker_credentials.revoked_reason text
+column worker_credentials.worker_instance_id text not-null
 column worker_instances.actor_id text not-null
 column worker_instances.actor_kind text not-null default
 column worker_instances.created_at timestamptz not-null default
@@ -599,6 +631,15 @@ column worker_instances.owner_user_id text not-null
 column worker_instances.revoked_at timestamptz
 column worker_instances.updated_at timestamptz not-null default
 column worker_instances.worker_type_id text not-null
+column worker_pairing_challenges.consumed_at timestamptz
+column worker_pairing_challenges.consumed_credential_id text
+column worker_pairing_challenges.created_at timestamptz not-null default
+column worker_pairing_challenges.expires_at timestamptz not-null
+column worker_pairing_challenges.id text not-null
+column worker_pairing_challenges.kind text not-null
+column worker_pairing_challenges.owner_user_id text not-null
+column worker_pairing_challenges.secret_digest text not-null
+column worker_pairing_challenges.worker_instance_id text not-null
 column worker_profile_history.actor_user_id text
 column worker_profile_history.digest text not-null
 column worker_profile_history.profile_json text not-null
@@ -1133,6 +1174,14 @@ constraint worker_activity_history.worker_activity_history_status_check check
 constraint worker_activity_history.worker_activity_history_title_check check
 constraint worker_activity_history.worker_activity_history_worker_instance_id_fkey foreign-key -> worker_instances on-delete-set-null
 constraint worker_activity_history.worker_activity_history_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
+constraint worker_agent_sessions.worker_agent_sessions_check check
+constraint worker_agent_sessions.worker_agent_sessions_client_version_check check
+constraint worker_agent_sessions.worker_agent_sessions_credential_id_fkey foreign-key -> worker_credentials on-delete-cascade
+constraint worker_agent_sessions.worker_agent_sessions_disconnect_reason_check check
+constraint worker_agent_sessions.worker_agent_sessions_pkey primary-key
+constraint worker_agent_sessions.worker_agent_sessions_session_epoch_check check
+constraint worker_agent_sessions.worker_agent_sessions_session_id_key unique
+constraint worker_agent_sessions.worker_agent_sessions_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
 constraint worker_assignments.worker_assignments_cloud_queue_reason_check check
 constraint worker_assignments.worker_assignments_command_payload_json_is_json check
 constraint worker_assignments.worker_assignments_config_json_is_json check
@@ -1153,6 +1202,14 @@ constraint worker_assignments.worker_assignments_work_request_id_fkey foreign-ke
 constraint worker_assignments.worker_assignments_worker_instance_id_fkey foreign-key -> worker_instances on-delete-set-null
 constraint worker_assignments.worker_assignments_worker_type_id_fkey foreign-key -> worker_catalog on-delete-restrict
 constraint worker_assignments.worker_assignments_workspace_space_grant_id_fkey foreign-key -> workspace_space_grants on-delete-set-null
+constraint worker_audit_log.worker_audit_log_action_check check
+constraint worker_audit_log.worker_audit_log_actor_type_check check
+constraint worker_audit_log.worker_audit_log_owner_user_id_fkey foreign-key -> users on-delete-cascade
+constraint worker_audit_log.worker_audit_log_pkey primary-key
+constraint worker_audit_log.worker_audit_log_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
+constraint worker_auth_nonces.worker_auth_nonces_nonce_check check
+constraint worker_auth_nonces.worker_auth_nonces_pkey primary-key
+constraint worker_auth_nonces.worker_auth_nonces_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
 constraint worker_catalog.worker_catalog_display_name_check check
 constraint worker_catalog.worker_catalog_engine_family_check check
 constraint worker_catalog.worker_catalog_lifecycle_state_check check
@@ -1162,6 +1219,12 @@ constraint worker_catalog.worker_catalog_pkey primary-key
 constraint worker_catalog.worker_catalog_release_stage_check check
 constraint worker_catalog.worker_catalog_sort_order_check check
 constraint worker_catalog.worker_catalog_visibility_state_check check
+constraint worker_credentials.worker_credentials_check check
+constraint worker_credentials.worker_credentials_key_fingerprint_check check
+constraint worker_credentials.worker_credentials_pkey primary-key
+constraint worker_credentials.worker_credentials_public_key_check check
+constraint worker_credentials.worker_credentials_revoked_reason_check check
+constraint worker_credentials.worker_credentials_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
 constraint worker_instances.worker_instances_actor_id_actor_kind_fkey foreign-key -> actors on-delete-restrict
 constraint worker_instances.worker_instances_actor_id_actor_kind_key unique
 constraint worker_instances.worker_instances_actor_id_key unique
@@ -1173,6 +1236,10 @@ constraint worker_instances.worker_instances_name_check check
 constraint worker_instances.worker_instances_owner_user_id_fkey foreign-key -> users on-delete-cascade
 constraint worker_instances.worker_instances_pkey primary-key
 constraint worker_instances.worker_instances_worker_type_id_fkey foreign-key -> worker_catalog on-delete-restrict
+constraint worker_pairing_challenges.worker_pairing_challenges_kind_check check
+constraint worker_pairing_challenges.worker_pairing_challenges_owner_user_id_fkey foreign-key -> users on-delete-cascade
+constraint worker_pairing_challenges.worker_pairing_challenges_pkey primary-key
+constraint worker_pairing_challenges.worker_pairing_challenges_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
 constraint worker_profile_history.worker_profile_history_actor_user_id_fkey foreign-key -> users on-delete-set-null
 constraint worker_profile_history.worker_profile_history_check check
 constraint worker_profile_history.worker_profile_history_digest_check check
@@ -1364,6 +1431,7 @@ function validate_direct_space_general_thread_update_fn/0
 function worker_activity_history_set_instance_fn/0
 function worker_assignments_set_instance_fn/0
 function worker_catalog_origin_invariants_insert_fn/0
+function worker_instances_close_agent_fn/0
 function worker_instances_create_actor_fn/0
 function worker_instances_guard_fn/0
 function worker_instances_tombstone_actor_fn/0
@@ -1580,6 +1648,10 @@ index worker_activity_history.worker_activity_history_assignment_id_attempt_id_p
 index worker_activity_history.worker_activity_history_assignment_id_attempt_id_source_eve_key (assignment_id,attempt_id,source_event_id) unique
 index worker_activity_history.worker_activity_history_pkey (history_id) unique
 index worker_activity_history.worker_activity_history_worker_instance_idx (worker_instance_id)
+index worker_agent_sessions.worker_agent_sessions_credential_idx (credential_id)
+index worker_agent_sessions.worker_agent_sessions_lease_idx (lease_expires_at) partial
+index worker_agent_sessions.worker_agent_sessions_pkey (worker_instance_id) unique
+index worker_agent_sessions.worker_agent_sessions_session_id_key (session_id) unique
 index worker_assignments.idx_assignments_work_request (work_request_id,created_at)
 index worker_assignments.idx_assignments_workspace_worker (workspace_worker_id,status)
 index worker_assignments.idx_worker_assignments_requester (requested_by_user_id,created_at)
@@ -1595,13 +1667,25 @@ index worker_assignments.worker_assignments_thread_id_fkidx (thread_id)
 index worker_assignments.worker_assignments_worker_instance_idx (worker_instance_id)
 index worker_assignments.worker_assignments_worker_type_id_fkidx (worker_type_id)
 index worker_assignments.worker_assignments_workspace_space_grant_id_fkidx (workspace_space_grant_id)
+index worker_audit_log.worker_audit_log_owner_idx (owner_user_id)
+index worker_audit_log.worker_audit_log_pkey (id) unique
+index worker_audit_log.worker_audit_log_worker_idx (worker_instance_id,created_at)
+index worker_auth_nonces.worker_auth_nonces_pkey (id) unique
+index worker_auth_nonces.worker_auth_nonces_worker_idx (worker_instance_id,expires_at)
 index worker_catalog.worker_catalog_owner_user_id_fkidx (owner_user_id)
 index worker_catalog.worker_catalog_pkey (worker_type_id) unique
+index worker_credentials.worker_credentials_active_key_uq (key_fingerprint) unique partial
+index worker_credentials.worker_credentials_active_uq (worker_instance_id) unique partial
+index worker_credentials.worker_credentials_pkey (id) unique
+index worker_credentials.worker_credentials_worker_idx (worker_instance_id,created_at)
 index worker_instances.worker_instances_actor_id_actor_kind_key (actor_id,actor_kind) unique
 index worker_instances.worker_instances_actor_id_key (actor_id) unique
 index worker_instances.worker_instances_owner_created_idx (owner_user_id,created_at)
 index worker_instances.worker_instances_pkey (id) unique
 index worker_instances.worker_instances_worker_type_idx (worker_type_id)
+index worker_pairing_challenges.worker_pairing_challenges_owner_idx (owner_user_id)
+index worker_pairing_challenges.worker_pairing_challenges_pkey (id) unique
+index worker_pairing_challenges.worker_pairing_challenges_worker_idx (worker_instance_id,created_at)
 index worker_profile_history.idx_worker_profile_history_worker_time (worker_type_id,published_at,revision)
 index worker_profile_history.worker_profile_history_actor_user_id_fkidx (actor_user_id)
 index worker_profile_history.worker_profile_history_pkey (worker_type_id,revision) unique
@@ -1715,6 +1799,7 @@ trigger worker_assignments.trg_conversation_turn_assignment_status -> trg_conver
 trigger worker_assignments.worker_assignments_command_follow -> agent_commands_follow_assignment_fn
 trigger worker_assignments.worker_assignments_set_instance -> worker_assignments_set_instance_fn
 trigger worker_catalog.worker_catalog_origin_invariants_insert -> worker_catalog_origin_invariants_insert_fn
+trigger worker_instances.worker_instances_close_agent -> worker_instances_close_agent_fn
 trigger worker_instances.worker_instances_create_actor -> worker_instances_create_actor_fn
 trigger worker_instances.worker_instances_guard -> worker_instances_guard_fn
 trigger worker_instances.worker_instances_tombstone_actor -> worker_instances_tombstone_actor_fn

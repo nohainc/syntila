@@ -29,3 +29,10 @@ Today one Workspace runtime holds one connection and multiplexes every local Wor
 - Workers can run with no Workspace installed.
 - Idle cost grows with the number of Workers: N sockets, N heartbeats and N session rows. This is budgeted and measured (idle memory per Agent, lease writes per second).
 - Release gate: Agents of the same Type and same name on two hosts stay independent. A cloned or stale session can never commit results.
+
+## Implementation notes (P3, server side)
+
+- Migration `0028_worker_pairing_sessions.sql`; trust model, signed messages, flow, fencing and adapter limits are specified in `docs/specifications/WORKER_PAIRING_AND_SESSIONS.md`.
+- Key pairs are Ed25519 (the private key stays on the host); the opaque-token fallback was not needed.
+- Fencing is inside the UPDATE of the assignment write, not a prior SELECT. Heartbeats renew the lease at most once per third of the lease.
+- The compatibility adapter allows one Agent per Workspace gateway until P5.

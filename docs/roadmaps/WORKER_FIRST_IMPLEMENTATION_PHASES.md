@@ -213,3 +213,12 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 - Assignment dispatch writes the `agent_commands` row with the command payload before delivery.
 - Tests: `durable-outbox.test.ts`, `realtime-backpressure.test.ts`, an assertion in `assignment-selection-snapshot.test.ts`, the rewritten hibernation test; `scripts/two-node.ts` check 5 kills a node mid-write.
 - Run: `bun scripts/write-paths.ts --write`, `bun run schema:lock` (see P1 notes), `scripts/test-backend.sh`, `scripts/test-two-node.sh`.
+
+## P3 status (implemented, awaiting test run)
+
+- Migration `0028`: `worker_pairing_challenges`, `worker_credentials`, `worker_auth_nonces`, `worker_agent_sessions` (one row per Worker, epoch), `worker_audit_log`; a trigger closes the credential and session of a removed Worker.
+- `worker-agents.ts`: pairing, transfer, rotate, revoke, signed-nonce login, atomic epoch bump, `AgentLeaseKeeper`; `agent-session-fence.ts`: the fence used inside `transitionAssignment`, `recordAssignmentResult`, `recordAssignmentError`, `recordAssignmentCancelled`.
+- Routes: `/api/workers/:id/pairing|transfer|credential` (owner), `/api/worker-agent/claim|nonce|sessions|rotate` (Agent). Request schemas in `@syntila/protocol`.
+- Gateway adapter behind `worker_agent_connect` (Worker principal and fence per Agent, the Workspace runtime id only as correlation id, message allowlist, lease renewal on heartbeat, stale sessions closed). Lapsed leases are closed by the outbox sweep.
+- Tests: `test/domain/worker-agents.test.ts`. Not yet tested end to end: a real Agent over the gateway WebSocket (P4).
+- Run: `bun run schema:lock` (scratch database, see P1/P2 notes), `bun scripts/write-paths.ts --write`, `bun run routes`, `scripts/test-backend.sh`, `scripts/test-two-node.sh`.

@@ -3,6 +3,7 @@ import {
   type EventPublisherEnv,
   type OutboxSweepResult,
 } from "./event-publisher.js";
+import { expireLapsedSessions } from "./worker-agents.js";
 
 /**
  * Delivers what the committing process did not (ADR-033 decision 8).
@@ -81,6 +82,13 @@ export class OutboxDispatcher {
 
   /** One sweep: repair, gap report, command expiry. Never throws. */
   async sweep(): Promise<OutboxSweepResult | null> {
+    try {
+      // Worker Agent sessions whose lease lapsed must connect again (new epoch).
+      const lapsed = await expireLapsedSessions(this.env as never);
+      if (lapsed > 0) log("warn", "worker.sessions_expired", { sessions: lapsed });
+    } catch (error) {
+      log("error", "worker.session_expiry_failed", { error: String((error as Error)?.stack ?? error) });
+    }
     try {
       const result = await new CloudEventPublisher(this.env).sweepOutbox();
       this.metrics.sweeps += 1;

@@ -107,6 +107,14 @@ import {
 import { recordWorkspaceWorkerInventory } from "./workspace-gateway/inventory.js";
 import { WorkspaceRuntimeAuthenticator } from "./workspace-gateway/runtime-authenticator.js";
 import { WorkspaceRuntimeSessionStore } from "./workspace-gateway/session-store.js";
+import { isFeatureEnabled } from "../feature-flags.js";
+import { agentFenceIsCurrent, type AgentSessionFence } from "./agent-session-fence.js";
+import {
+  AgentLeaseKeeper,
+  authenticateAgentSession,
+  closeSession as closeAgentSession,
+  type AgentPrincipal,
+} from "./worker-agents.js";
 
 import {
   isCurrentWorkspaceSocket,
@@ -201,6 +209,25 @@ interface StoredMcpInventory {
   workspaceRuntimeId: string | null;
 }
 
+/** Message types a Worker Agent may send through the adapter (its own Worker only). */
+const AGENT_MESSAGE_TYPES = new Set<string>([
+  "workspace.hello",
+  "workspace.heartbeat",
+  "workspace.sync.request",
+  "workspace.readiness",
+  "assignment.ack",
+  "assignment.start.ack",
+  "assignment.start.permit.request",
+  "assignment.startup",
+  "assignment.activity",
+  "assignment.result",
+  "assignment.error",
+  "assignment.cancelled",
+  "assignment.cancel.ack",
+  "thread.status",
+  "diagnostic.probe.ack",
+]);
+
 export class WorkspaceGateway implements DurableObject {
   private readonly runtimeAuthenticator: WorkspaceRuntimeAuthenticator;
   private readonly sessionStore: WorkspaceRuntimeSessionStore;
@@ -264,6 +291,13 @@ export class WorkspaceGateway implements DurableObject {
    */
   private readonly commandQueuedAt = new Map<string, number>();
   private static readonly MAX_TRACKED_COMMANDS = 256;
+  /**
+   * Set while the connected principal is a Worker Agent (ADR-034 adapter). Its
+   * acknowledgements and results are fenced against the Worker's current
+   * session epoch inside the database write.
+   */
+  private agentFence: AgentSessionFence | null = null;
+  private readonly leaseKeeper: AgentLeaseKeeper;
   private socket: WebSocket | null = null;
   private socketConnectedAt: string | null = null;
   /**
@@ -321,6 +355,7 @@ export class WorkspaceGateway implements DurableObject {
       env.SYNTILA_DB,
     );
     this.sessionStore = new WorkspaceRuntimeSessionStore(env.SYNTILA_DB);
+    this.leaseKeeper = new AgentLeaseKeeper(env as never);
     // The runtime answers idle pings itself, so they neither wake this object
     // nor count as activity that keeps it in memory.
     if (typeof WebSocketRequestResponsePair !== "undefined") {
@@ -480,6 +515,7 @@ export class WorkspaceGateway implements DurableObject {
       this.socketConnectedAt = null;
       this.executionWorkspaceId = identity.executionWorkspaceId;
       this.workspaceRuntimeId = runtimeId;
+      this.agentFence = null;
       this.sessionId = `session-${crypto.randomUUID()}`;
       this.httpEvents = [];
       this.httpProbes.clear();
@@ -795,6 +831,7 @@ export class WorkspaceGateway implements DurableObject {
         connectedAt?: string;
         lastHeartbeatAt?: string | null;
         heartbeatProjectedAt?: string | null;
+        agent?: AgentSessionFence;
       } | null;
       if (
         !attachment?.sessionId ||
@@ -808,6 +845,7 @@ export class WorkspaceGateway implements DurableObject {
       this.sessionId = attachment.sessionId;
       this.executionWorkspaceId = attachment.executionWorkspaceId;
       this.workspaceRuntimeId = attachment.workspaceRuntimeId;
+      this.agentFence = attachment.agent ?? null;
       this.correlationId = attachment.correlationId ?? null;
       this.socketConnectedAt = attachment.connectedAt ?? null;
       this.socketLastHeartbeatAt = attachment.lastHeartbeatAt ?? null;
@@ -853,13 +891,48 @@ export class WorkspaceGateway implements DurableObject {
 
   private async connectSocket(request: Request, url: URL): Promise<Response> {
     const correlationId = requestIdFor(request);
-    const workspaceRuntimeId = url.searchParams.get("workspaceRuntimeId");
     const token = extractBearerToken(request.headers);
+    // Compatibility adapter (ADR-034 decision 11): a Worker Agent connects with
+    // its own session instead of a Workspace runtime credential. Its identity is
+    // the Worker principal (session epoch and fence); the Workspace's active
+    // runtime id is only the correlation id assignments already carry. It may
+    // only use the gateway of the Workspace the Worker was adopted from, and
+    // one connection per Workspace gateway holds until P5.
+    const agentWorkerId = url.searchParams.get("workerId");
+    const agentSessionId = url.searchParams.get("workerSessionId");
+    let agentPrincipal: AgentPrincipal | null = null;
+    let agentRuntimeId: string | null = null;
+    if (agentWorkerId && agentSessionId && token && isFeatureEnabled("worker_agent_connect")) {
+      try {
+        agentPrincipal = await authenticateAgentSession(this.env as never, {
+          workerId: agentWorkerId,
+          sessionId: agentSessionId,
+          sessionToken: token,
+        });
+        if (agentPrincipal && agentPrincipal.executionWorkspaceId !== this.state.id.name) agentPrincipal = null;
+        if (agentPrincipal) {
+          agentRuntimeId = await this.activeRuntimeIdOf(agentPrincipal.executionWorkspaceId!);
+          if (!agentRuntimeId) agentPrincipal = null;
+        }
+      } catch {
+        agentPrincipal = null;
+      }
+    }
+    const workspaceRuntimeId = agentPrincipal
+      ? agentRuntimeId
+      : url.searchParams.get("workspaceRuntimeId");
     let runtimeLookupFailed = false;
     let runtimeIdentity: Awaited<
       ReturnType<WorkspaceRuntimeAuthenticator["authenticateRuntime"]>
     > = null;
-    if (workspaceRuntimeId) {
+    if (agentPrincipal) {
+      runtimeIdentity = {
+        runtimeId: workspaceRuntimeId!,
+        executionWorkspaceId: agentPrincipal.executionWorkspaceId!,
+        installationId: null,
+        credentialTokenHash: "",
+      };
+    } else if (workspaceRuntimeId) {
       try {
         runtimeIdentity = token
           ? await this.runtimeAuthenticator.authenticateRuntime(
@@ -943,6 +1016,15 @@ export class WorkspaceGateway implements DurableObject {
       workspaceRuntimeId,
       correlationId,
       connectedAt: now,
+      ...(agentPrincipal
+        ? {
+            agent: {
+              workerInstanceId: agentPrincipal.workerInstanceId,
+              sessionId: agentPrincipal.sessionId,
+              epoch: agentPrincipal.epoch,
+            },
+          }
+        : {}),
     });
     logStructured("info", "GW-07 websocket_accepting", {
       requestId: correlationId,
@@ -964,6 +1046,14 @@ export class WorkspaceGateway implements DurableObject {
     this.workspaceRuntimeId = workspaceRuntimeId;
     this.sessionId = sessionId;
     this.correlationId = correlationId;
+    this.agentFence = agentPrincipal
+      ? {
+          workerInstanceId: agentPrincipal.workerInstanceId,
+          sessionId: agentPrincipal.sessionId,
+          epoch: agentPrincipal.epoch,
+        }
+      : null;
+    if (this.agentFence) this.leaseKeeper.begin(this.agentFence);
     void this.startReadinessSession(sessionId, workspaceRuntimeId).catch(
       (error: unknown) =>
         logStructured(
@@ -1087,6 +1177,17 @@ export class WorkspaceGateway implements DurableObject {
     }
     this.socket = null;
     this.socketConnectedAt = null;
+    if (this.agentFence) {
+      // Ends only this session (matched by id and epoch): a newer one is untouched.
+      const fence = this.agentFence;
+      this.agentFence = null;
+      this.leaseKeeper.end(fence);
+      this.queueProjectionWrite(
+        () => closeAgentSession(this.env as never, fence),
+        "agent_session_close_failed",
+        { runtimeId: this.workspaceRuntimeId ?? undefined, workspaceId: this.executionWorkspaceId ?? undefined },
+      );
+    }
     const now = new Date().toISOString();
     await this.mutateReadiness((current) =>
       current && current.sessionId === sessionId
@@ -1179,6 +1280,12 @@ export class WorkspaceGateway implements DurableObject {
       this.socket?.close(1008, "Execution Workspace mismatch");
       return;
     }
+    // An Agent speaks only for its own Worker: messages that describe the whole
+    // Workspace (inventory, usage, MCP) are not part of its contract.
+    if (this.agentFence && !AGENT_MESSAGE_TYPES.has(message.type)) {
+      this.sendError("This message type is not available to a Worker Agent");
+      return;
+    }
     const now = new Date().toISOString();
     switch (message.type) {
       case "workspace.hello":
@@ -1258,6 +1365,7 @@ export class WorkspaceGateway implements DurableObject {
       case "workspace.heartbeat":
         if (message.payload && typeof message.payload === "object") {
           this.recordHeartbeat(sessionId, now);
+          await this.renewAgentLease();
           // The heartbeat repeats the Service's readiness so a lost or
           // reordered `workspace.readiness`, or a Durable Object that lost its
           // state, heals within one heartbeat interval.
@@ -1368,6 +1476,7 @@ export class WorkspaceGateway implements DurableObject {
               attemptId: message.attemptId,
               executionWorkspaceId: this.executionWorkspaceId ?? undefined,
               runtimeIdentityId: this.workspaceRuntimeId ?? undefined,
+              agent: this.agentFence ?? undefined,
             },
           });
           this.traceTransitionOutcome(message, "admission", transition);
@@ -1392,7 +1501,7 @@ export class WorkspaceGateway implements DurableObject {
             message.attemptId,
             // A rejection is only meaningful before admission. A stale or
             // replayed one must not fail an accepted or running assignment.
-            { onlyFrom: ["created", "dispatched"] },
+            { onlyFrom: ["created", "dispatched"], agent: this.agentFence ?? undefined },
           );
         }
         return;
@@ -1517,6 +1626,7 @@ export class WorkspaceGateway implements DurableObject {
             attemptId: message.attemptId,
             executionWorkspaceId: this.executionWorkspaceId ?? undefined,
             runtimeIdentityId: this.workspaceRuntimeId ?? undefined,
+            agent: this.agentFence ?? undefined,
           },
         });
         this.traceTransitionOutcome(message, "provider_start", transition);
@@ -1903,8 +2013,11 @@ export class WorkspaceGateway implements DurableObject {
           message.assignmentId!,
           message.payload as never,
           message.attemptId,
+          this.agentFence ?? undefined,
         );
         if (completed) this.traceTerminalPersisted(message, "completed");
+        // A result from a session that is no longer current is not acknowledged.
+        if (!completed && (await this.agentSessionIsStale())) return;
         await this.sendTerminalAcknowledgement(message, "completed");
         await this.slotFreed();
         return;
@@ -1940,12 +2053,13 @@ export class WorkspaceGateway implements DurableObject {
           message.assignmentId!,
           message.payload as never,
           message.attemptId,
-          { providerFailureKey: this.env.SYNTILA_PROVIDER_FAILURE_KEY },
+          { providerFailureKey: this.env.SYNTILA_PROVIDER_FAILURE_KEY, agent: this.agentFence ?? undefined },
         );
         if (failed) {
           this.traceTerminalPersisted(message, "failed");
           await publishAssignmentPhase(this.env, message.assignmentId!);
         }
+        if (!failed && (await this.agentSessionIsStale())) return;
         await this.sendTerminalAcknowledgement(message, "failed");
         await this.slotFreed();
         return;
@@ -2005,6 +2119,49 @@ export class WorkspaceGateway implements DurableObject {
   }
 
   /**
+   * The Workspace's active runtime id: the correlation id its assignments
+   * carry. An Agent borrows it (it never authenticates with it); null when the
+   * Workspace has none, which refuses the connection.
+   */
+  private async activeRuntimeIdOf(workspaceId: string): Promise<string | null> {
+    const row = await dataOf(this.env).read.row<{ id: string }>`
+      SELECT i.id FROM workspace_runtime_identities i
+        JOIN execution_workspaces w ON w.id = i.workspace_id
+       WHERE i.workspace_id = ${workspaceId} AND i.revoked_at IS NULL AND w.status <> 'revoked'`;
+    return row?.id ?? null;
+  }
+
+  /**
+   * Lease renewal for a connected Agent: a database write at most once per
+   * third of the lease, however often it pings. A session that was replaced
+   * by a newer one learns it here and is closed.
+   */
+  private async renewAgentLease(): Promise<void> {
+    const fence = this.agentFence;
+    if (!fence) return;
+    try {
+      if ((await this.leaseKeeper.touch(fence)) === "lost") {
+        this.socket?.close(1008, "Worker session superseded");
+      }
+    } catch {
+      // The next heartbeat retries; the lease is several heartbeats long.
+    }
+  }
+
+  /** True (and the socket is closed) when this connection's session is no longer the Worker's current one. */
+  private async agentSessionIsStale(): Promise<boolean> {
+    const fence = this.agentFence;
+    if (!fence) return false;
+    if (await agentFenceIsCurrent(dataOf(this.env).read, fence)) return false;
+    try {
+      this.socket?.close(1008, "Worker session superseded");
+    } catch {
+      // Already closed.
+    }
+    return true;
+  }
+
+  /**
    * Service evidence that an assignment will not run. If Cloud was revoking
    * the assignment, the outcome Cloud intended (timed_out, failed, cancelled)
    * is written; otherwise this is an ordinary cancellation.
@@ -2013,6 +2170,8 @@ export class WorkspaceGateway implements DurableObject {
     message: WorkspaceRuntimeMessage,
     cancellation: { status: "cancelled"; reason: string },
   ): Promise<boolean> {
+    // Cancellation evidence from a session that is no longer current is ignored.
+    if (this.agentFence && (await this.agentSessionIsStale())) return false;
     const finalized = await finalizeAssignmentRevocation(
       this.env.SYNTILA_DB,
       message.assignmentId!,
@@ -2025,6 +2184,7 @@ export class WorkspaceGateway implements DurableObject {
       message.assignmentId!,
       cancellation,
       message.attemptId,
+      { agent: this.agentFence ?? undefined },
     );
   }
 

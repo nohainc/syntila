@@ -69,6 +69,15 @@ export {
   handleWorker,
 } from "./workers.js";
 export {
+  handleClaimWorkerPairing,
+  handleConnectWorkerSession,
+  handleRotateWorkerCredential,
+  handleWorkerCredential,
+  handleWorkerNonce,
+  handleWorkerPairing,
+  handleWorkerTransfer,
+} from "./worker-agents.js";
+export {
   handleCreateNote,
   handleListNotes,
   handleNote,
