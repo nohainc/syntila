@@ -116,5 +116,16 @@ it.each([null, "low"])(
       )
       .get() as { snapshot: string };
     expect(JSON.parse(stored.snapshot).executionSelection).toEqual(selection);
+    // The command exists in the Worker's inbox, addressed to the Worker
+    // Instance adopted from the Workspace inventory, and follows the dispatch.
+    const command = await f.sqlite
+      .prepare(
+        `SELECT c.type, c.status, c.worker_instance_id AS instance, c.payload_ref AS ref, c.assignment_id AS assignment
+           FROM agent_commands c JOIN worker_assignments a ON a.id = c.assignment_id
+          WHERE a.task_id = 'T' AND a.run_id = 'RUN'`,
+      )
+      .get() as { type: string; status: string; instance: string; ref: string; assignment: string };
+    expect(command).toMatchObject({ type: "assignment.dispatch", status: "sent", instance: "worker-a" });
+    expect(command.ref).toBe(`worker_assignments:${command.assignment}`);
   },
 );

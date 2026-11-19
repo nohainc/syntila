@@ -25,7 +25,8 @@ async function harness() {
     },
     identity: { userId: "U" },
     subscriptions: new Map(),
-    lastDurableSequences: cursors,
+    lastEnqueuedSequences: cursors,
+    appliedSequences: new Map(),
     queue: new BoundedRealtimeQueue(),
     flushScheduled: false,
   };

@@ -39,4 +39,17 @@ UNION ALL SELECT 'no idempotency claim pending for over an hour', count(*)
 UNION ALL SELECT 'no pending invitation beside an active Workspace grant', count(*)
   FROM workspace_person_grants g JOIN users u ON u.id = g.user_id
   JOIN workspace_invitations i ON i.workspace_id = g.workspace_id AND lower(i.email) = lower(u.email)
- WHERE g.status = 'active' AND i.status = 'pending';
+ WHERE g.status = 'active' AND i.status = 'pending'
+-- Every durable event written since the outbox exists has its outbox row (ADR-033).
+UNION ALL SELECT 'every event has one outbox row', count(*)
+  FROM realtime_events e
+ WHERE e.occurred_at > COALESCE((SELECT min(o.created_at) FROM outbox o), 'infinity'::timestamptz)
+   AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.event_id = e.event_id)
+-- A pending outbox row is delivered or retried within minutes; none waits for an hour.
+UNION ALL SELECT 'no outbox row pending for over an hour', count(*)
+  FROM outbox WHERE status = 'pending' AND created_at < now() - interval '1 hour'
+-- A Worker command does not stay open after its assignment ended.
+UNION ALL SELECT 'no open Worker command for an ended assignment', count(*)
+  FROM agent_commands c JOIN worker_assignments a ON a.id = c.assignment_id
+ WHERE c.status IN ('pending', 'sent')
+   AND a.status IN ('completed', 'failed', 'cancelled', 'timed_out', 'lost');

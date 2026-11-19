@@ -114,3 +114,7 @@ before deploying the stream-aware publisher. It preserves event IDs, payloads,
 idempotency keys, runtime IDs, sequences and retained cursor counters. This is
 not a v8 migration chain. No production schema or deployment is changed by
 creating the alignment artifact.
+
+## Durable streams, outbox and cursors (ADR-033)
+
+Event durability, the outbox, stream kinds, cursor semantics (`lastEnqueuedSequence` versus the client's applied acknowledgement, `ack` message) and queue bounds are specified in `EVENT_STREAMS.md`.

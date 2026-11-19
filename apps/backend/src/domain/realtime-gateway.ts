@@ -37,6 +37,7 @@ export type RealtimeClientMessage =
       lastDurableSequences?: Record<string, number>;
       lastDurableStreamSequences?: Record<string, number>;
     }
+  | { type: "ack"; stream: RealtimeStream; sequence: number }
   | { type: "subscribe"; scope: RealtimeScope }
   | { type: "unsubscribe"; scope: RealtimeScope }
   | { type: "ping" };
@@ -49,11 +50,28 @@ interface ConnectedClient {
   readonly socket: WebSocket;
   readonly identity: AuthenticatedIdentity;
   readonly subscriptions: Map<string, RealtimeScope>;
-  /** Durable cursors are per stream; subscription scopes only control rendering/delivery. */
-  readonly lastDurableSequences: Map<string, number>;
+  /**
+   * Per stream: the newest durable event handed to this connection's queue or
+   * socket. Used only for duplicate suppression and gap detection on this
+   * connection. It is not an acknowledgement, is never stored, and is reset
+   * when the queue overflows. Subscription scopes only control delivery.
+   */
+  readonly lastEnqueuedSequences: Map<string, number>;
+  /**
+   * Per stream: the newest event the client reported as applied (its `hello`
+   * cursors and later `ack` messages), or covered by an authoritative rebase.
+   * Only a client acknowledgement moves it.
+   */
+  readonly appliedSequences: Map<string, number>;
   readonly queue: BoundedRealtimeQueue;
   flushScheduled: boolean;
-  /** Last subscriptions and cursors written to storage; skips equal writes. */
+  /**
+   * Set when the queue overflowed and the client was told to synchronize.
+   * Until its next hello the connection takes no more frames, so a client that
+   * stays slow costs a constant amount of memory and one control frame.
+   */
+  resyncPending?: boolean;
+  /** Last subscriptions written to storage; skips equal writes. Cursors are never stored. */
   persisted?: string;
 }
 
@@ -66,7 +84,6 @@ interface ConnectionAttachment {
 /** Per-connection state that changes, kept in storage across hibernation. */
 interface PersistedConnection {
   readonly subscriptions: RealtimeScope[];
-  readonly cursors: Array<[string, number]>;
 }
 
 export interface RealtimeGatewayMetrics {
@@ -77,11 +94,15 @@ export interface RealtimeGatewayMetrics {
   reconnects: number;
   durableResyncs: number;
   maxQueueDepth: number;
+  maxQueueBytes: number;
+  queueOverflows: number;
   eventToUiLatencyMs: number;
 }
 
 const MAX_SOCKET_BUFFERED_BYTES = 256 * 1024;
 const MAX_REPLAY_EVENTS = 256;
+/** Retry period for a blocked flush; the drain callback normally comes first. */
+const DRAIN_FALLBACK_MS = 250;
 const CONNECTION_STORAGE_PREFIX = "connection:";
 // Answered by the runtime without waking the Durable Object, so an idle
 // connection costs no duration. Must match the App's ping frame exactly.
@@ -171,6 +192,16 @@ export function parseRealtimeClientMessage(
         ? { lastDurableSequences: sequences }
         : {}),
     };
+  }
+  if (value.type === "ack") {
+    const stream = RealtimeStreamSchema.parse(value.stream);
+    if (
+      typeof value.sequence !== "number" ||
+      !Number.isSafeInteger(value.sequence) ||
+      value.sequence < 0
+    )
+      throw new Error("Invalid acknowledged sequence");
+    return { type: "ack", stream, sequence: value.sequence };
   }
   if (value.type !== "subscribe" && value.type !== "unsubscribe") {
     throw new Error(`Unsupported realtime client message: ${value.type}`);
@@ -357,7 +388,6 @@ export async function isRealtimeIdentityAuthorized(
 function serializeConnection(connected: ConnectedClient): string {
   return JSON.stringify({
     subscriptions: [...connected.subscriptions.values()],
-    cursors: [...connected.lastDurableSequences],
   } satisfies PersistedConnection);
 }
 
@@ -372,6 +402,8 @@ export class RealtimeGateway implements DurableObject {
     reconnects: 0,
     durableResyncs: 0,
     maxQueueDepth: 0,
+    maxQueueBytes: 0,
+    queueOverflows: 0,
     eventToUiLatencyMs: 0,
   };
 
@@ -398,6 +430,10 @@ export class RealtimeGateway implements DurableObject {
         activeAppSockets: this.clients.size,
         queueDepth: [...this.clients.values()].reduce(
           (total, client) => total + client.queue.depth,
+          0,
+        ),
+        queuedBytes: [...this.clients.values()].reduce(
+          (total, client) => total + client.queue.byteSize,
           0,
         ),
       });
@@ -430,10 +466,12 @@ export class RealtimeGateway implements DurableObject {
       socket: server,
       identity,
       subscriptions: new Map(),
-      lastDurableSequences: new Map(),
+      lastEnqueuedSequences: new Map(),
+      appliedSequences: new Map(),
       queue: new BoundedRealtimeQueue(),
       flushScheduled: false,
     };
+    this.bindDrain(connected);
     this.clients.set(connectionId, connected);
     this.metrics.activeAppSockets = this.clients.size;
     // Hibernatable: the Durable Object is evicted while the socket is idle and
@@ -526,10 +564,14 @@ export class RealtimeGateway implements DurableObject {
             scope,
           ]),
         ),
-        lastDurableSequences: new Map(persisted?.cursors ?? []),
+        // Cursors are not stored: after a restore the connection follows live
+        // events, and the client's next hello or ack sets its applied position.
+        lastEnqueuedSequences: new Map(),
+        appliedSequences: new Map(),
         queue: new BoundedRealtimeQueue(),
         flushScheduled: false,
       };
+      this.bindDrain(connected);
       connected.persisted = serializeConnection(connected);
       this.clients.set(attachment.connectionId, connected);
     }
@@ -569,6 +611,22 @@ export class RealtimeGateway implements DurableObject {
     const connected = this.clients.get(connectionId);
     if (!connected) return;
     try {
+      const input = JSON.parse(
+        typeof data === "string"
+          ? data
+          : new TextDecoder().decode(data as ArrayBuffer),
+      );
+      const message = parseRealtimeClientMessage(input);
+      if (message.type === "ack") {
+        // Acknowledgements are frequent and change no authorization state:
+        // they only move the applied position, without a database query.
+        const key = realtimeStreamKey(message.stream);
+        connected.appliedSequences.set(
+          key,
+          Math.max(connected.appliedSequences.get(key) ?? 0, message.sequence),
+        );
+        return;
+      }
       if (
         !(await isRealtimeIdentityAuthorized(
           this.env.SYNTILA_DB,
@@ -580,22 +638,24 @@ export class RealtimeGateway implements DurableObject {
         await this.removeClient(connectionId);
         return;
       }
-      const input = JSON.parse(
-        typeof data === "string"
-          ? data
-          : new TextDecoder().decode(data as ArrayBuffer),
-      );
-      const message = parseRealtimeClientMessage(input);
       if (message.type === "ping") {
         this.sendRaw(connected.socket, { type: "realtime.pong" });
         return;
       }
       if (message.type === "realtime.hello") {
-        connected.lastDurableSequences.clear();
+        // The client's own cursors are applied positions; the connection
+        // starts enqueueing right after them.
+        connected.lastEnqueuedSequences.clear();
+        connected.appliedSequences.clear();
+        connected.resyncPending = false;
+        const reported = (key: string, value: number) => {
+          connected.lastEnqueuedSequences.set(key, value);
+          connected.appliedSequences.set(key, value);
+        };
         for (const [key, value] of Object.entries(
           message.lastDurableSequences ?? {},
         )) {
-          connected.lastDurableSequences.set(
+          reported(
             realtimeStreamKey({ kind: "execution_workspace", id: key }),
             value,
           );
@@ -603,7 +663,7 @@ export class RealtimeGateway implements DurableObject {
         for (const [key, value] of Object.entries(
           message.lastDurableStreamSequences ?? {},
         )) {
-          connected.lastDurableSequences.set(key, value);
+          reported(key, value);
         }
         this.sendRaw(connected.socket, {
           type: "realtime.ready",
@@ -732,7 +792,7 @@ export class RealtimeGateway implements DurableObject {
     );
     if (matchingScopes.length === 0) return;
     const replayable = isReplayableRealtimeEvent(event);
-    const lastSequence = connected.lastDurableSequences.get(streamKey);
+    const lastSequence = connected.lastEnqueuedSequences.get(streamKey);
     if (
       replayable &&
       lastSequence !== undefined &&
@@ -755,24 +815,25 @@ export class RealtimeGateway implements DurableObject {
             : gapScope;
       await this.replayScope(connected, recoveryScope, event);
       if (
-        connected.lastDurableSequences.get(streamKey) ===
+        connected.lastEnqueuedSequences.get(streamKey) ===
         event.sequence - 1
       ) {
         const result = this.enqueueEvent(connected, event);
         this.recordQueueResult(result);
         if (result !== "resync-required") {
-          connected.lastDurableSequences.set(streamKey, event.sequence);
+          connected.lastEnqueuedSequences.set(streamKey, event.sequence);
         }
       }
       return;
     }
     const result = this.enqueueEvent(connected, event);
     this.recordQueueResult(result);
-    if (replayable) {
-      connected.lastDurableSequences.set(
+    // A refused durable frame was not enqueued: its position must not count.
+    if (replayable && result !== "resync-required") {
+      connected.lastEnqueuedSequences.set(
         streamKey,
         Math.max(
-          connected.lastDurableSequences.get(streamKey) ?? 0,
+          connected.lastEnqueuedSequences.get(streamKey) ?? 0,
           event.sequence,
         ),
       );
@@ -787,17 +848,19 @@ export class RealtimeGateway implements DurableObject {
     const coalesceKey = durable
       ? undefined
       : `${event.type}:${realtimeStreamKey(realtimeEventStream(event))}:${event.spaceId ?? ""}:${event.runId ?? ""}:${event.assignmentId ?? ""}`;
+    if (connected.resyncPending) return durable ? "resync-required" : "dropped";
     const frame = JSON.stringify({ type: "event", event });
+    const hosted = connected.socket as WebSocket & {
+      bufferedAmount?: number;
+      backpressured?: boolean;
+    };
     if (
       connected.queue.depth === 0 &&
-      (connected.socket as WebSocket & { bufferedAmount?: number })
-        .bufferedAmount !== undefined &&
-      Number(
-        (connected.socket as WebSocket & { bufferedAmount?: number })
-          .bufferedAmount,
-      ) < MAX_SOCKET_BUFFERED_BYTES
+      hosted.bufferedAmount !== undefined &&
+      !hosted.backpressured &&
+      Number(hosted.bufferedAmount) < MAX_SOCKET_BUFFERED_BYTES
     ) {
-      this.sendRaw(connected.socket, { type: "event", event });
+      this.sendSerialized(connected.socket, frame);
       this.recordLatency(event);
       return "queued";
     }
@@ -806,9 +869,19 @@ export class RealtimeGateway implements DurableObject {
       this.metrics.maxQueueDepth,
       connected.queue.depth,
     );
+    this.metrics.maxQueueBytes = Math.max(
+      this.metrics.maxQueueBytes,
+      connected.queue.byteSize,
+    );
     if (result === "resync-required") {
       this.metrics.durableResyncs += 1;
+      this.metrics.queueOverflows += 1;
       connected.queue.clear();
+      connected.resyncPending = true;
+      // The cleared frames were counted as enqueued but never sent. Forget the
+      // enqueue positions: the client is told to synchronize, and its next
+      // hello and acks set the real ones. Applied positions stay.
+      connected.lastEnqueuedSequences.clear();
       this.sendRaw(connected.socket, {
         type: "reconnect.required",
         reason: "connection_queue_limit",
@@ -822,6 +895,15 @@ export class RealtimeGateway implements DurableObject {
           : {}),
         ...(event.workspaceId ? { workspaceId: event.workspaceId } : {}),
         stream: realtimeEventStream(event),
+        ...(connected.appliedSequences.has(
+          realtimeStreamKey(realtimeEventStream(event)),
+        )
+          ? {
+              appliedSequence: connected.appliedSequences.get(
+                realtimeStreamKey(realtimeEventStream(event)),
+              ),
+            }
+          : {}),
         nextSequence: event.sequence,
       });
       return result;
@@ -830,30 +912,46 @@ export class RealtimeGateway implements DurableObject {
     return result;
   }
 
-  private scheduleFlush(connected: ConnectedClient): void {
+  /** Flushes soon; `delayMs` is long when the socket must drain first. */
+  private scheduleFlush(connected: ConnectedClient, delayMs = 25): void {
     if (connected.flushScheduled || connected.queue.depth === 0) return;
     connected.flushScheduled = true;
     setTimeout(() => {
       connected.flushScheduled = false;
       this.flush(connected);
-    }, 25);
+    }, delayMs);
+  }
+
+  /**
+   * The runtime tells us when Bun's send buffer has drained (the websocket
+   * `drain` handler): the queue is then flushed at once instead of by polling.
+   */
+  private bindDrain(connected: ConnectedClient): void {
+    (connected.socket as { onDrain?: () => void }).onDrain = () =>
+      this.flush(connected);
   }
 
   private flush(connected: ConnectedClient): void {
     if (connected.socket.readyState !== WebSocket.OPEN) return;
-    const socket = connected.socket as WebSocket & { bufferedAmount?: number };
-    if (Number(socket.bufferedAmount ?? 0) >= MAX_SOCKET_BUFFERED_BYTES) {
-      this.scheduleFlush(connected);
+    const socket = connected.socket as WebSocket & {
+      bufferedAmount?: number;
+      backpressured?: boolean;
+    };
+    const blocked = () =>
+      socket.backpressured === true ||
+      Number(socket.bufferedAmount ?? 0) >= MAX_SOCKET_BUFFERED_BYTES;
+    // Blocked: the drain callback resumes the flush; the slow timer only
+    // covers a runtime that does not report drains.
+    if (blocked()) {
+      this.scheduleFlush(connected, DRAIN_FALLBACK_MS);
       return;
     }
     let item: ReturnType<BoundedRealtimeQueue["take"]>;
     while ((item = connected.queue.take())) {
       this.sendSerialized(connected.socket, item.frame);
-      if (Number(socket.bufferedAmount ?? 0) >= MAX_SOCKET_BUFFERED_BYTES) {
-        break;
-      }
+      if (blocked()) break;
     }
-    if (connected.queue.depth > 0) this.scheduleFlush(connected);
+    if (connected.queue.depth > 0) this.scheduleFlush(connected, DRAIN_FALLBACK_MS);
   }
 
   private recordQueueResult(result: RealtimeQueueEnqueueResult): void {
@@ -874,7 +972,10 @@ export class RealtimeGateway implements DurableObject {
 
   private sendSerialized(socket: WebSocket, serialized: string): void {
     try {
-      socket.send(serialized);
+      // Bun's send() answers -1 when it queued the frame under backpressure
+      // (the drain handler resumes us) and 0 when it dropped the frame.
+      const status = socket.send(serialized) as unknown;
+      if (status === 0) socket.close(1011, "Realtime frame dropped");
     } catch {
       // Close handlers remove dead sockets; delivery is best effort.
     }
@@ -893,7 +994,7 @@ export class RealtimeGateway implements DurableObject {
     const rows = await this.loadReplayRows(
       connected.identity.userId,
       scope,
-      connected.lastDurableSequences,
+      connected.lastEnqueuedSequences,
     );
     const blockedStreams = new Set<string>();
     for (const row of rows) {
@@ -912,7 +1013,7 @@ export class RealtimeGateway implements DurableObject {
       const stream = realtimeEventStream(event);
       const streamKey = realtimeStreamKey(stream);
       if (blockedStreams.has(streamKey)) continue;
-      const lastSequence = connected.lastDurableSequences.get(streamKey);
+      const lastSequence = connected.lastEnqueuedSequences.get(streamKey);
       if (lastSequence !== undefined && event.sequence <= lastSequence) {
         continue;
       }
@@ -949,7 +1050,7 @@ export class RealtimeGateway implements DurableObject {
       const result = this.enqueueEvent(connected, event);
       this.recordQueueResult(result);
       if (result === "resync-required") continue;
-      connected.lastDurableSequences.set(streamKey, event.sequence);
+      connected.lastEnqueuedSequences.set(streamKey, event.sequence);
     }
     // A full page may omit other streams entirely. Recover the whole scope,
     // without inventing a stream cursor or advancing beyond delivered evidence.
@@ -964,7 +1065,7 @@ export class RealtimeGateway implements DurableObject {
     if (until) {
       const stream = realtimeEventStream(until);
       const streamKey = realtimeStreamKey(stream);
-      const lastSequence = connected.lastDurableSequences.get(streamKey);
+      const lastSequence = connected.lastEnqueuedSequences.get(streamKey);
       if (
         lastSequence !== undefined &&
         lastSequence < until.sequence - 1 &&
@@ -1044,8 +1145,8 @@ export class RealtimeGateway implements DurableObject {
         kind: row.streamKind as RealtimeStream["kind"],
         id: row.streamId,
       });
-      if (!connected.lastDurableSequences.has(key)) {
-        connected.lastDurableSequences.set(key, Number(row.head));
+      if (!connected.lastEnqueuedSequences.has(key)) {
+        connected.lastEnqueuedSequences.set(key, Number(row.head));
       }
     }
   }
@@ -1094,10 +1195,10 @@ export class RealtimeGateway implements DurableObject {
         }),
       );
     }
-    connected.lastDurableSequences.set(
+    connected.lastEnqueuedSequences.set(
       streamKey,
       Math.max(
-        connected.lastDurableSequences.get(streamKey) ?? 0,
+        connected.lastEnqueuedSequences.get(streamKey) ?? 0,
         event.sequence,
       ),
     );

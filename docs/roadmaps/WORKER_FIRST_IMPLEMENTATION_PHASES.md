@@ -204,3 +204,12 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 - Protocol: `packages/protocol/src/worker-instance.ts`, `packages/dart/protocol/lib/worker_instance.dart`; app: `AxSessionCatalogs.workerInstances`.
 - Tests: `apps/backend/test/domain/worker-instances.test.ts`, `packages/dart/protocol/test/worker_instance_test.dart`.
 - To do on a machine with bun/psql/flutter: `bun run schema:lock`, `bun run routes`, `scripts/test-all.sh --quick`.
+
+## P2 status (implemented, awaiting test run)
+
+- Migration `0027`: wider `stream_kind` CHECK, `outbox`, `agent_commands` (trigger-driven status), `realtime_events(occurred_at)` index.
+- One transaction for domain change, sequence, event and outbox row; inline delivery plus `OutboxDispatcher` (retries, dead rows, sweep with gap report and command expiry).
+- Gateway: `lastEnqueuedSequences` apart from `appliedSequences` (hello and the new `ack` message); no cursor writes to storage; byte and item bounds; Bun `drain`; one `reconnect.required` per overflow and no more frames until the client's hello. Fixed: the non-gap path advanced the cursor for refused frames.
+- Assignment dispatch writes the `agent_commands` row with the command payload before delivery.
+- Tests: `durable-outbox.test.ts`, `realtime-backpressure.test.ts`, an assertion in `assignment-selection-snapshot.test.ts`, the rewritten hibernation test; `scripts/two-node.ts` check 5 kills a node mid-write.
+- Run: `bun scripts/write-paths.ts --write`, `bun run schema:lock` (see P1 notes), `scripts/test-backend.sh`, `scripts/test-two-node.sh`.

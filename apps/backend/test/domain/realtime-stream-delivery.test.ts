@@ -31,7 +31,8 @@ async function harness(member = true) {
     socket,
     identity: { userId: "owner" },
     subscriptions: new Map([["user", { kind: "user" }]]),
-    lastDurableSequences: cursors,
+    lastEnqueuedSequences: cursors,
+    appliedSequences: new Map(),
     queue: new BoundedRealtimeQueue(),
     flushScheduled: false,
   });
@@ -142,9 +143,10 @@ describe("durable stream delivery", () => {
       socket,
       identity: { userId: "owner" },
       subscriptions: new Map(),
-      lastDurableSequences: new Map([
+      lastEnqueuedSequences: new Map([
         ['["execution_workspace","workspace-activity"]', 1],
       ]),
+      appliedSequences: new Map(),
       queue: new BoundedRealtimeQueue(),
       flushScheduled: false,
     });
@@ -170,7 +172,7 @@ describe("durable stream delivery", () => {
     await handle.call(gateway, "client", JSON.stringify(subscribe));
     expect(frames.filter((frame) => frame.type === "event")).toHaveLength(2);
   });
-  it("resumes a hibernated connection with its subscriptions and cursors", async () => {
+  it("resumes a hibernated connection with its subscriptions and never stores cursors", async () => {
     const frames: Record<string, unknown>[] = [];
     const socket = {
       readyState: 1,
@@ -183,20 +185,18 @@ describe("durable stream delivery", () => {
       }),
     };
     const stored = new Map<string, unknown>([
-      [
-        "connection:c1",
-        {
-          subscriptions: [{ kind: "user" }],
-          cursors: [['["execution_workspace","same"]', 4]],
-        },
-      ],
-      ["connection:gone", { subscriptions: [], cursors: [] }],
+      ["connection:c1", { subscriptions: [{ kind: "user" }] }],
+      ["connection:gone", { subscriptions: [] }],
     ]);
+    let writes = 0;
     const state = {
       getWebSockets: () => [socket],
       storage: {
         list: async () => new Map(stored),
-        put: async (key: string, value: unknown) => void stored.set(key, value),
+        put: async (key: string, value: unknown) => {
+          writes += 1;
+          stored.set(key, value);
+        },
         delete: async (keys: string | string[]) =>
           void [keys].flat().forEach((key) => stored.delete(key)),
       },
@@ -224,20 +224,21 @@ describe("durable stream delivery", () => {
         }),
       );
 
+    // No cursor survives hibernation: the connection follows live events and
+    // the client's next hello or ack sets its real position.
     await publish(4);
-    expect(frames).toHaveLength(0);
     await publish(5);
-    expect(frames).toHaveLength(1);
-    expect(frames[0]).toMatchObject({ type: "event", event: { sequence: 5 } });
-    expect(stored.get("connection:c1")).toMatchObject({
-      cursors: [['["execution_workspace","same"]', 5]],
-    });
+    expect(
+      frames.map((frame) => (frame.event as { sequence: number }).sequence),
+    ).toEqual([4, 5]);
+    // Delivering events does not write the connection to storage.
+    expect(writes).toBe(0);
     expect(stored.has("connection:gone")).toBe(false);
 
     await gateway.webSocketClose(socket as never);
     expect(stored.has("connection:c1")).toBe(false);
     await publish(6);
-    expect(frames).toHaveLength(1);
+    expect(frames).toHaveLength(2);
   });
   it("does not deliver a live Space signal to a removed member on user scope", async () => {
     const f = await harness(false);

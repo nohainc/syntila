@@ -163,7 +163,7 @@
       "tool.invocation.status",
       "heartbeat"
     ],
-    "streamKinds": ["execution_workspace", "space", "user"],
+    "streamKinds": ["execution_workspace", "space", "user", "thread", "worker_inbox", "assignment"],
     "collaborationTypes": [
       "space.created",
       "space.updated",

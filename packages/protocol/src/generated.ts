@@ -63,6 +63,9 @@ export const REALTIME_STREAM_KINDS = [
   "execution_workspace",
   "space",
   "user",
+  "thread",
+  "worker_inbox",
+  "assignment",
 ] as const;
 export const COLLABORATION_REALTIME_EVENT_TYPES = [
   "space.created",

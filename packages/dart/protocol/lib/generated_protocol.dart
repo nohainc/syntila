@@ -121,6 +121,9 @@ const realtimeStreamKinds = <String>{
   'execution_workspace',
   'space',
   'user',
+  'thread',
+  'worker_inbox',
+  'assignment',
 };
 const collaborationRealtimeEventTypes = <String>{
   'space.created',

@@ -16,6 +16,7 @@ import {
 } from "./platform/durable-objects";
 import { Data, type Db } from "./platform/data";
 import { WorkflowHost } from "./platform/workflows";
+import { OutboxDispatcher } from "./domain/outbox-dispatcher";
 import worker, { RealtimeGateway, SyntilaRunWorkflow, ThreadExecutionCoordinator, WorkspaceGateway } from "./domain/index";
 
 type Sql = ConstructorParameters<typeof WorkflowHost>[1] & { begin(fn: (tx: any) => Promise<unknown>): Promise<unknown> };
@@ -35,6 +36,9 @@ export function createRuntime(sql: Sql, db: Db, bindings: Record<string, unknown
     SYNTILA_THREAD_COORDINATOR: threadCoordinator,
     SYNTILA_RUN_WORKFLOW: runWorkflow.binding(),
   });
+
+  // Delivers durable events the committing process did not finish (ADR-033).
+  const outbox = new OutboxDispatcher(env as never);
 
   /** Runs the domain worker; a 101 from a Durable Object becomes a Bun upgrade. */
   async function fetch(request: Request, server: Server<UpgradeData>): Promise<Response | undefined> {
@@ -62,11 +66,14 @@ export function createRuntime(sql: Sql, db: Db, bindings: Record<string, unknown
       sendPings: true,
     },
     hosts: { workspaceGateway, realtimeGateway, threadCoordinator, runWorkflow },
+    outbox,
     async start() {
       await Promise.all([workspaceGateway.restoreAlarms(), realtimeGateway.restoreAlarms(), threadCoordinator.restoreAlarms()]);
       runWorkflow.start();
+      outbox.start();
     },
     async stop() {
+      await outbox.stop();
       await runWorkflow.stop(2_000);
       for (const h of [workspaceGateway, realtimeGateway, threadCoordinator]) { await h.flush(); h.stop(); }
     },

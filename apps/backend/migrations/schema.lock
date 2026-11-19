@@ -32,6 +32,18 @@ column actors.id text not-null
 column actors.kind text not-null
 column actors.tombstoned_at timestamptz
 column actors.user_id text
+column agent_commands.acked_at timestamptz
+column agent_commands.assignment_id text not-null
+column agent_commands.attempt_id text
+column agent_commands.command_id text not-null
+column agent_commands.created_at timestamptz not-null default
+column agent_commands.expires_at timestamptz not-null
+column agent_commands.payload_ref text not-null
+column agent_commands.sent_at timestamptz
+column agent_commands.status text not-null default
+column agent_commands.type text not-null
+column agent_commands.updated_at timestamptz not-null default
+column agent_commands.worker_instance_id text
 column auth_audit_events.action text not-null
 column auth_audit_events.created_at timestamptz not-null default
 column auth_audit_events.details_json jsonb not-null default
@@ -230,6 +242,15 @@ column mutation_receipts.response_json text not-null
 column mutation_receipts.response_status int8 not-null
 column mutation_receipts.scope text not-null
 column mutation_receipts.user_id text not-null
+column outbox.attempts int4 not-null default
+column outbox.audience_json jsonb
+column outbox.created_at timestamptz not-null default
+column outbox.delivered_at timestamptz
+column outbox.event_id text not-null
+column outbox.id int8 not-null identity
+column outbox.last_error text
+column outbox.next_attempt_at timestamptz not-null default
+column outbox.status text not-null default
 column paddle_sandbox_subscriptions.current_period_end timestamptz
 column paddle_sandbox_subscriptions.customer_id text not-null
 column paddle_sandbox_subscriptions.occurred_at timestamptz not-null
@@ -802,6 +823,12 @@ constraint actors.actors_kind_check check
 constraint actors.actors_pkey primary-key
 constraint actors.actors_user_id_fkey foreign-key -> users on-delete-restrict
 constraint actors.actors_user_id_key unique
+constraint agent_commands.agent_commands_assignment_id_fkey foreign-key -> worker_assignments on-delete-cascade
+constraint agent_commands.agent_commands_check check
+constraint agent_commands.agent_commands_pkey primary-key
+constraint agent_commands.agent_commands_status_check check
+constraint agent_commands.agent_commands_type_check check
+constraint agent_commands.agent_commands_worker_instance_id_fkey foreign-key -> worker_instances on-delete-restrict
 constraint auth_audit_events.auth_audit_events_outcome_check check
 constraint auth_audit_events.auth_audit_events_pkey primary-key
 constraint auth_audit_events.auth_audit_events_user_id_fkey foreign-key -> users on-delete-set-null
@@ -921,6 +948,10 @@ constraint mutation_receipts.mutation_receipts_pkey primary-key
 constraint mutation_receipts.mutation_receipts_response_json_is_json check
 constraint mutation_receipts.mutation_receipts_response_status_check check
 constraint mutation_receipts.mutation_receipts_user_id_fkey foreign-key -> users on-delete-cascade
+constraint outbox.outbox_check check
+constraint outbox.outbox_event_id_fkey foreign-key -> realtime_events on-delete-cascade
+constraint outbox.outbox_pkey primary-key
+constraint outbox.outbox_status_check check
 constraint paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_pkey primary-key
 constraint paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_status_check check
 constraint paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_user_id_fkey foreign-key -> users on-delete-cascade
@@ -1268,6 +1299,7 @@ constraint workspace_worker_preferences.workspace_worker_preferences_preferences
 constraint workspace_worker_preferences.workspace_worker_preferences_user_id_fkey foreign-key -> users on-delete-cascade
 constraint workspace_worker_preferences.workspace_worker_preferences_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 function adopt_inventory_worker/1
+function agent_commands_follow_assignment_fn/0
 function establish_people_on_membership_fn/0
 function inventory_adopt_worker_fn/0
 function inventory_revoke_worker_fn/0
@@ -1350,6 +1382,10 @@ index account_worker_plugins.idx_account_worker_plugins_owner (owner_user_id,cre
 index actors.actors_id_kind_key (id,kind) unique
 index actors.actors_pkey (id) unique
 index actors.actors_user_id_key (user_id) unique
+index agent_commands.agent_commands_assignment_type_uq (assignment_id,type) unique
+index agent_commands.agent_commands_open_idx (expires_at) partial
+index agent_commands.agent_commands_pkey (command_id) unique
+index agent_commands.agent_commands_worker_idx (worker_instance_id)
 index auth_audit_events.auth_audit_events_pkey (id) unique
 index auth_audit_events.auth_audit_events_user_id_fkidx (user_id)
 index conversation_history_entries.conversation_history_entries_conversation_id_deduplication__key (conversation_id,deduplication_key) unique
@@ -1423,6 +1459,9 @@ index mcp_tool_calls.mcp_tool_calls_dispatch_key_key (dispatch_key) unique
 index mcp_tool_calls.mcp_tool_calls_pkey (task_id) unique
 index mcp_tool_calls.mcp_tool_calls_workspace_id_fkidx (workspace_id)
 index mutation_receipts.mutation_receipts_pkey (user_id,scope,idempotency_key) unique
+index outbox.outbox_due_idx (next_attempt_at) partial
+index outbox.outbox_event_uq (event_id) unique
+index outbox.outbox_pkey (id) unique
 index paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_pkey (subscription_id) unique
 index paddle_sandbox_subscriptions.paddle_sandbox_subscriptions_user_id_idx (user_id)
 index people_relationships.idx_people_relationships_high (user_high_id,user_low_id)
@@ -1446,6 +1485,7 @@ index realtime_events.idx_realtime_events_stream_idempotency (stream_kind,(expr)
 index realtime_events.idx_realtime_events_stream_seq (stream_kind,(expr),sequence) unique
 index realtime_events.idx_realtime_events_stream_time (stream_kind,(expr),occurred_at)
 index realtime_events.idx_realtime_events_workspace_time (workspace_id,occurred_at)
+index realtime_events.realtime_events_occurred_idx (occurred_at)
 index realtime_events.realtime_events_pkey (event_id) unique
 index release_signing_key_revocations.release_signing_key_revocations_pkey (key_id) unique
 index release_signing_key_revocations.release_signing_key_revocations_revoked_by_user_id_fkidx (revoked_by_user_id)
@@ -1672,6 +1712,7 @@ trigger worker_assignments.trg_assignment_context_snapshot_immutable -> trg_assi
 trigger worker_assignments.trg_assignment_execution_selection_immutable -> trg_assignment_execution_selection_immutable_fn
 trigger worker_assignments.trg_conversation_turn_assignment_insert -> trg_conversation_turn_assignment_insert_fn
 trigger worker_assignments.trg_conversation_turn_assignment_status -> trg_conversation_turn_assignment_status_fn
+trigger worker_assignments.worker_assignments_command_follow -> agent_commands_follow_assignment_fn
 trigger worker_assignments.worker_assignments_set_instance -> worker_assignments_set_instance_fn
 trigger worker_catalog.worker_catalog_origin_invariants_insert -> worker_catalog_origin_invariants_insert_fn
 trigger worker_instances.worker_instances_create_actor -> worker_instances_create_actor_fn

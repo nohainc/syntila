@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 180 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 0 adapter-only, 145 in data-layer transactions.
+Totals: 185 write paths, 86 tables; 1 numbering, 40 unguarded read-write, 0 adapter-only, 150 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -162,10 +162,10 @@ Totals: 180 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 0 adap
 | --- | --- | --- | --- |
 | `domain/assignment-delivery.ts` | `recordCloudQueueNotReady` | UPDATE worker_assignments | guarded, data |
 | `domain/assignment-delivery.ts` | `recordCloudQueueReason` | UPDATE worker_assignments | guarded, data |
-| `domain/assignment-dispatcher.ts` | `dispatchWorkspaceWorkerAssignment` | INSERT worker_assignments, UPDATE worker_assignments | read-write, data |
 | `domain/assignment-dispatcher.ts` | `recordAssignmentCancelled` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, data |
 | `domain/assignment-dispatcher.ts` | `recordAssignmentError` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, data |
 | `domain/assignment-dispatcher.ts` | `recordAssignmentResult` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, data |
+| `domain/assignment-dispatcher.ts` | `timing` | INSERT agent_commands, INSERT worker_assignments, UPDATE worker_assignments | read-write, data |
 | `domain/assignment-liveness.ts` | `applyEngineLivenessReport` | UPDATE worker_assignments | read-write, guarded |
 | `domain/assignment-revocation.ts` | `escalateUnconfirmedRevocations` | UPDATE worker_assignments | guarded |
 | `domain/assignment-start-permit.ts` | `grantStartPermit` | UPDATE worker_assignments | guarded |
@@ -196,6 +196,8 @@ Totals: 180 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 0 adap
 | `domain/routes/worker-plugins.ts` | `handlePluginLibrary` | INSERT account_worker_plugin_versions, INSERT account_worker_plugins, INSERT worker_catalog, UPDATE account_worker_plugins, UPDATE worker_catalog | read-write, data |
 | `domain/routes/worker-plugins.ts` | `handleWorkspacePluginPin` | DELETE workspace_worker_plugin_enablements, INSERT workspace_worker_plugin_enablements | data |
 | `domain/routes/worker-plugins.ts` | `removeFromLibrary` | DELETE account_worker_plugins, DELETE workspace_worker_inventory, UPDATE worker_catalog | read-write, data |
+| `domain/routes/workers.ts` | `handleCreateWorker` | INSERT worker_instances | read-write, data |
+| `domain/routes/workers.ts` | `handleWorker` | UPDATE worker_instances | data |
 | `domain/routes/workflow-configurations.ts` | `reset` | DELETE space_workflow_configurations, DELETE user_workflow_configurations, INSERT space_workflow_configurations, INSERT space_workflow_defaults, INSERT user_workflow_configurations, INSERT user_workflow_defaults | read-write, data |
 | `domain/routes/workflow-default.ts` | `handleWorkflowDefault` | INSERT space_workflow_defaults, INSERT user_workflow_defaults | read-write, guarded, data |
 | `domain/routes/workflow-execution-configuration.ts` | `ensureOwnChatWorkspaceGrant` | INSERT space_audit_log, INSERT workspace_space_grants | read-write, data |
@@ -218,7 +220,10 @@ Totals: 180 write paths, 83 tables; 1 numbering, 38 unguarded read-write, 0 adap
 
 | File | Function | Writes | Flags |
 | --- | --- | --- | --- |
-| `domain/event-publisher.ts` | `persistDurableEvent` | INSERT realtime_event_cursors, INSERT realtime_events, UPDATE realtime_event_cursors | numbering, read-write, guarded, data |
+| `domain/event-publisher.ts` | `claimOutbox` | UPDATE outbox | guarded, data |
+| `domain/event-publisher.ts` | `deliverClaimed` | UPDATE outbox | read-write, data |
+| `domain/event-publisher.ts` | `persistDurableEvent` | INSERT outbox, INSERT realtime_event_cursors, INSERT realtime_events, UPDATE realtime_event_cursors | numbering, read-write, guarded, data |
+| `domain/event-publisher.ts` | `sweepOutbox` | INSERT outbox, UPDATE agent_commands | read-write, guarded, data |
 | `domain/realtime-retention.ts` | `pruneExpiredRealtimeEvents` | DELETE realtime_events | data |
 | `domain/routes/releases.ts` | `handlePublishWorkspaceRelease` | INSERT workspace_releases | read-write, data |
 | `domain/routes/releases.ts` | `handleRevokeReleaseSigningKey` | INSERT release_signing_key_revocations | guarded, data |

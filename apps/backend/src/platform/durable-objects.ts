@@ -31,6 +31,10 @@ export class HostedWebSocket {
   private attachment: unknown = null;
   autoResponseAt: Date | null = null;
   owner: HostedObject | null = null;
+  /** True after Bun queued a frame under backpressure, until its `drain` callback. */
+  backpressured = false;
+  /** Set by the owning object; called when Bun's send buffer has drained. */
+  onDrain: (() => void) | null = null;
   readonly isClientEnd: boolean;
   peer: HostedWebSocket | null = null;
   constructor(isClientEnd = false) { this.isClientEnd = isClientEnd; }
@@ -41,11 +45,18 @@ export class HostedWebSocket {
   accept() {}
   addEventListener() {}
 
-  send(data: string | ArrayBuffer | ArrayBufferView) {
+  /**
+   * Bun's status: bytes sent, -1 when the frame was queued under backpressure
+   * (the `drain` handler follows), 0 when it was dropped. 1 for a frame held
+   * until the socket opens.
+   */
+  send(data: string | ArrayBuffer | ArrayBufferView): number {
     if (this.readyState >= CLOSING) throw new Error("WebSocket is closed");
     const payload = typeof data === "string" || data instanceof ArrayBuffer ? data : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    if (this.bun) this.bun.send(payload as any);
-    else this.outbox.push(payload);
+    if (!this.bun) { this.outbox.push(payload); return 1; }
+    const status = this.bun.send(payload as any);
+    if (status === -1) this.backpressured = true;
+    return status;
   }
 
   close(code = 1000, reason = "") {
@@ -60,7 +71,12 @@ export class HostedWebSocket {
     this.readyState = OPEN;
     for (const m of this.outbox.splice(0)) ws.send(m as any);
   }
-  /** @internal */ markClosed() { this.readyState = CLOSED; this.bun = null; }
+  /** @internal */ markClosed() { this.readyState = CLOSED; this.bun = null; this.backpressured = false; }
+  /** @internal Bun's send buffer drained: let the owner resume its queue. */
+  handleDrain() {
+    this.backpressured = false;
+    try { this.onDrain?.(); } catch (e) { console.error(JSON.stringify({ level: "error", message: "websocket.drain_failed", error: String(e) })); }
+  }
 }
 
 class WebSocketPairShim {
@@ -91,6 +107,7 @@ export interface UpgradeData { hosted: HostedWebSocket }
 /** Bun `websocket` handlers that deliver frames to the owning Durable Object. */
 export const hostedWebSocketHandlers = {
   open(ws: ServerWebSocket<UpgradeData>) { ws.data.hosted.bind(ws); },
+  drain(ws: ServerWebSocket<UpgradeData>) { ws.data.hosted.handleDrain(); },
   async message(ws: ServerWebSocket<UpgradeData>, message: string | Buffer) {
     const hosted = ws.data.hosted, owner = hosted.owner;
     if (!owner) return;

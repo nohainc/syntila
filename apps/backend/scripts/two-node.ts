@@ -18,6 +18,9 @@
  *   3. an Idempotency-Key replayed on the other node returns the first response;
  *   4. concurrent posts alternating between the nodes number the history 1..n
  *      without gaps, and scripts/check-invariants.sql reports no violation.
+ *   5. (P2, ADR-033) a node killed with SIGKILL while writes are in flight
+ *      loses no notification: every committed event has its outbox row, and the
+ *      surviving node's dispatcher delivers what the dead node left pending.
  *
  * Known gaps (reported, not failed, until the phase that closes them; `--strict`
  * fails them): realtime fan-out across nodes. The realtime hub is in process
@@ -130,6 +133,26 @@ try {
   const crossed = await waitFor("event from node B", () => live.state.frames.find((f) => JSON.stringify(f).includes("across")), 4_000).then(() => true, () => false);
   live.close();
   gap(crossed, "a message posted on node B reaches a realtime socket on node A");
+
+  // 5. Kill node A while posts are in flight (always last: it needs node A alive before).
+  const db2 = new SQL({ ...pg, database: dbName, max: 2 });
+  const burst = Promise.allSettled(Array.from({ length: 30 }, (_, i) =>
+    a.api("POST", `/api/threads/${threadId}/discussion-messages`, { body: `kill${i}` })));
+  await Bun.sleep(150);
+  children[0]!.kill("SIGKILL");
+  await burst;
+  const orphans = await db2.unsafe(`SELECT count(*)::int AS n FROM realtime_events e
+                                     WHERE NOT EXISTS (SELECT 1 FROM outbox o WHERE o.event_id = e.event_id)`);
+  check(Number(orphans[0].n) === 0, "after killing node A mid-write, every committed event has its outbox row");
+  const drained = await waitFor("outbox drained by node B", async () =>
+    Number((await db2.unsafe(`SELECT count(*)::int AS n FROM outbox WHERE status = 'pending'`))[0].n) === 0, 45_000)
+    .then(() => true, () => false);
+  check(drained, "the surviving node's dispatcher delivers what the killed node left pending");
+  const rows2: { invariant: string; violations: number | bigint }[] =
+    await db2.unsafe(await Bun.file(join(import.meta.dir, "check-invariants.sql")).text());
+  const broken2 = rows2.filter((r) => Number(r.violations) !== 0);
+  check(broken2.length === 0, `data invariants hold after killing a node${broken2.length ? `: ${broken2.map((r) => r.invariant).join("; ")}` : ""}`);
+  await db2.close();
 } catch (error) {
   console.error(`FAIL ${(error as Error).message}`);
   failures++;

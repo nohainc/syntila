@@ -753,8 +753,24 @@ async function dispatchWorkspaceWorkerAssignment(
   // Persist the complete command before any delivery attempt. Work for a
   // Service that is not ready yet then waits in this durable queue and is
   // flushed, unchanged, when the Service reports ready.
-  await dataOf(env).read.run`UPDATE worker_assignments SET command_payload_json = ${JSON.stringify(payload)}
-      WHERE id = ${assignmentId} AND status = 'created' AND command_payload_json IS NULL`;
+  // The Worker's command row (ADR-033) is written in the same transaction, so
+  // a command exists before any wakeup and never without its payload. The row
+  // follows the assignment's status from there (trigger in migration 0027).
+  const commandTtlSeconds = Math.max(
+    60,
+    Math.ceil(((Number(queueWaitTimeoutMs) || 0) + (Number(timeoutMs) || 0)) / 1000) || 86_400,
+  );
+  await dataOf(env).tx("assignment.command", async (tx) => {
+    await tx.run`UPDATE worker_assignments SET command_payload_json = ${JSON.stringify(payload)}
+        WHERE id = ${assignmentId} AND status = 'created' AND command_payload_json IS NULL`;
+    await tx.run`INSERT INTO agent_commands
+          (command_id, worker_instance_id, assignment_id, attempt_id, type, payload_ref, expires_at)
+        SELECT ${`cmd-${crypto.randomUUID()}`}, a.worker_instance_id, a.id, ${attemptId},
+               'assignment.dispatch', ${`worker_assignments:${assignmentId}`},
+               now() + make_interval(secs => ${commandTtlSeconds}::int)
+          FROM worker_assignments a WHERE a.id = ${assignmentId}
+        ON CONFLICT (assignment_id, type) DO NOTHING`;
+  });
   if (!env.SYNTILA_WORKSPACE_GATEWAY) {
     const code = "provider_unavailable";
     const error = executionErrorMessage(code);
