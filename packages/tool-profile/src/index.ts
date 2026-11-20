@@ -920,6 +920,20 @@ const profileSchema = z
       })
       .strict(),
     context: contextManagement.optional(),
+    // What this Worker Type can do for a Workflow step (ADR-039). Optional:
+    // a Profile without it makes no claim, so Cloud applies no extra filter.
+    capabilities: z
+      .array(
+        z.enum([
+          "authorized_context_read",
+          "thread_write",
+          "test_execution",
+          "independent_verification",
+        ]),
+      )
+      .max(8)
+      .refine((items) => new Set(items).size === items.length, "capabilities must be unique")
+      .optional(),
     compatibilityOverrides: z
       .array(
         z

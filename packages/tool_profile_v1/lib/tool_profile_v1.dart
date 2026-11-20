@@ -33,7 +33,13 @@ const _topLevelKeys = {
   'errors',
   'compatibilityOverrides',
 };
-const _optionalTopLevelKeys = {'activity', 'usage', 'context'};
+const _optionalTopLevelKeys = {'activity', 'usage', 'context', 'capabilities'};
+const profileCapabilities = {
+  'authorized_context_read',
+  'thread_write',
+  'test_execution',
+  'independent_verification',
+};
 
 class EngineProfile {
   EngineProfile._({
@@ -146,6 +152,15 @@ class EngineProfile {
       throw FormatException('unsupported Tool Profile field: ${unknown.first}');
     if (!json.keys.toSet().containsAll(_topLevelKeys)) {
       throw const FormatException('Tool Profile v1 is missing required fields');
+    }
+    final declared = json['capabilities'];
+    if (declared != null) {
+      if (declared is! List ||
+          declared.length > 8 ||
+          declared.any((c) => c is! String || !profileCapabilities.contains(c)) ||
+          declared.toSet().length != declared.length) {
+        throw const FormatException('capabilities is invalid');
+      }
     }
     if (_integer(json, 'schemaVersion') != 1 || json['engineFamily'] != 'cli') {
       throw const FormatException(

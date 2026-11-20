@@ -1,7 +1,7 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
 import { basicThread, member, user } from "./helpers/seed";
-import { acceptWorkerTarget } from "../../src/domain/worker-eligibility.js";
+import { acceptWorkerTarget, declaredProfileCapabilities } from "../../src/domain/worker-eligibility.js";
 import { BUILTIN_WORKFLOWS } from "@syntila/core";
 import { resolveWorkerTargetBindings, recheckWorkerTarget } from "../../src/domain/routes/worker-target-bindings.js";
 import { handleListEligibleWorkers, handleValidateWorkRequest } from "../../src/domain/routes/work-creation.js";
@@ -109,5 +109,16 @@ describe("Worker-targeted eligibility", () => {
       if (prior === undefined) delete process.env.SYNTILA_FEATURE_FLAGS;
       else process.env.SYNTILA_FEATURE_FLAGS = prior;
     }
+  });
+});
+
+describe("Profile capability declarations", () => {
+  it("reads declared capabilities and treats a missing or malformed field as no claim", () => {
+    expect(declaredProfileCapabilities(JSON.stringify({ capabilities: ["thread_write"] }))).toEqual(["thread_write"]);
+    expect(declaredProfileCapabilities(JSON.stringify({ capabilities: [] }))).toEqual([]);
+    expect(declaredProfileCapabilities(JSON.stringify({}))).toBeNull();
+    expect(declaredProfileCapabilities(JSON.stringify({ capabilities: [1] }))).toBeNull();
+    expect(declaredProfileCapabilities("not json")).toBeNull();
+    expect(declaredProfileCapabilities(null)).toBeNull();
   });
 });

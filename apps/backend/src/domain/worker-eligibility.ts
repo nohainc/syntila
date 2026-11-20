@@ -249,6 +249,11 @@ export async function acceptWorkerTarget(
   }
   if (![...required].every((permission) => permissions.includes(permission)))
     return { ok: false, code: "execute_not_permitted" };
+  // A Profile that declares capabilities must cover every one the step needs;
+  // a Profile that declares none makes no claim and is not filtered.
+  const declared = declaredProfileCapabilities(worker.profileJson);
+  if (declared && (request.capabilities ?? []).some((capability) => !declared.includes(capability)))
+    return { ok: false, code: "worker_type_unavailable" };
 
   if (request.requireOnline && !(await workerIsOnline(q, worker.id))) {
     return { ok: false, code: "worker_offline" };
@@ -303,5 +308,16 @@ export function workerEligibilityResponse(code: WorkerEligibilityCode): { status
       return { status: 403, message: "You cannot run work in this Thread" };
     case "worker_offline":
       return { status: 409, message: "This Worker is offline" };
+  }
+}
+
+/** The capabilities a Profile declares, or null when it declares none. */
+export function declaredProfileCapabilities(profileJson: string | null): readonly string[] | null {
+  if (!profileJson) return null;
+  try {
+    const value = (JSON.parse(profileJson) as { capabilities?: unknown }).capabilities;
+    return Array.isArray(value) && value.every((item) => typeof item === "string") ? (value as string[]) : null;
+  } catch {
+    return null;
   }
 }
