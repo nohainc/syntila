@@ -249,9 +249,18 @@ column issue_reports.status text not-null
 column issue_reports.updated_at timestamptz not-null default
 column issue_reports.worker_type_id text
 column issue_reports.workspace_id text
+column legacy_cutover.id bool not-null default
+column legacy_cutover.updated_at timestamptz not-null default
+column legacy_cutover.worker_required_from timestamptz
+column legacy_cutover.workspace_gateway_closed_at timestamptz
+column legacy_cutover.workspace_registration_closed_at timestamptz
 column legacy_worker_mapping.created_at timestamptz not-null default
 column legacy_worker_mapping.legacy_worker_id text not-null
 column legacy_worker_mapping.worker_instance_id text not-null
+column legacy_worker_mapping_archive.archived_at timestamptz not-null default
+column legacy_worker_mapping_archive.legacy_worker_id text not-null
+column legacy_worker_mapping_archive.mapped_at timestamptz not-null
+column legacy_worker_mapping_archive.worker_instance_id text not-null
 column mcp_tool_calls.claimed_at timestamptz not-null
 column mcp_tool_calls.code text
 column mcp_tool_calls.completed_at timestamptz
@@ -1022,9 +1031,12 @@ constraint issue_reports.issue_reports_reporter_user_id_attempt_key_key unique
 constraint issue_reports.issue_reports_reporter_user_id_fkey foreign-key -> users on-delete-set-null
 constraint issue_reports.issue_reports_status_check check
 constraint issue_reports.issue_reports_workspace_id_fkey foreign-key -> execution_workspaces on-delete-set-null
+constraint legacy_cutover.legacy_cutover_id_check check
+constraint legacy_cutover.legacy_cutover_pkey primary-key
 constraint legacy_worker_mapping.legacy_worker_mapping_pkey primary-key
 constraint legacy_worker_mapping.legacy_worker_mapping_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
 constraint legacy_worker_mapping.legacy_worker_mapping_worker_instance_id_key unique
+constraint legacy_worker_mapping_archive.legacy_worker_mapping_archive_pkey primary-key
 constraint mcp_tool_calls.mcp_tool_calls_check check
 constraint mcp_tool_calls.mcp_tool_calls_check1 check
 constraint mcp_tool_calls.mcp_tool_calls_dispatch_key_key unique
@@ -1423,12 +1435,16 @@ constraint workspace_worker_preferences.workspace_worker_preferences_user_id_fke
 constraint workspace_worker_preferences.workspace_worker_preferences_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 function adopt_inventory_worker/1
 function agent_commands_follow_assignment_fn/0
+function archive_legacy_worker_mapping/0
 function backfill_ai_timeline/1
 function establish_people_on_membership_fn/0
 function inventory_adopt_worker_fn/0
 function inventory_revoke_worker_fn/0
 function record_ai_answer/1
+function record_ai_outcome/1
+function record_ai_outcome_clear/1
 function record_ai_request/1
+function require_worker_instance_fn/0
 function syntila_guard_failed/1
 function syntila_iso/1
 function syntila_json_patch/2
@@ -1598,8 +1614,10 @@ index issue_reports.issue_reports_pkey (id) unique
 index issue_reports.issue_reports_public_reference_key (public_reference) unique
 index issue_reports.issue_reports_reporter_user_id_attempt_key_key (reporter_user_id,attempt_key) unique
 index issue_reports.issue_reports_workspace_id_fkidx (workspace_id)
+index legacy_cutover.legacy_cutover_pkey (id) unique
 index legacy_worker_mapping.legacy_worker_mapping_pkey (legacy_worker_id) unique
 index legacy_worker_mapping.legacy_worker_mapping_worker_instance_id_key (worker_instance_id) unique
+index legacy_worker_mapping_archive.legacy_worker_mapping_archive_pkey (legacy_worker_id) unique
 index mcp_tool_calls.mcp_tool_calls_dispatch_key_key (dispatch_key) unique
 index mcp_tool_calls.mcp_tool_calls_pkey (task_id) unique
 index mcp_tool_calls.mcp_tool_calls_workspace_id_fkidx (workspace_id)
@@ -1829,6 +1847,7 @@ index workspace_worker_plugin_enablements.workspace_worker_plugin_enablements_pl
 index workspace_worker_plugin_enablements.workspace_worker_plugin_enablements_plugin_ref_version_fkidx (plugin_ref,version)
 index workspace_worker_preferences.workspace_worker_preferences_pkey (user_id,workspace_id) unique
 index workspace_worker_preferences.workspace_worker_preferences_workspace_id_fkidx (workspace_id)
+trigger agent_commands.agent_commands_require_worker -> require_worker_instance_fn
 trigger conversation_history_entries.trg_conversation_history_immutable -> trg_conversation_history_immutable_fn
 trigger conversation_history_entries.trg_conversation_history_no_delete -> trg_conversation_history_no_delete_fn
 trigger conversation_turns.trg_conversation_turn_context_boundary_insert -> trg_conversation_turn_context_boundary_insert_fn
@@ -1877,6 +1896,7 @@ trigger worker_assignments.trg_assignment_execution_selection_immutable -> trg_a
 trigger worker_assignments.trg_conversation_turn_assignment_insert -> trg_conversation_turn_assignment_insert_fn
 trigger worker_assignments.trg_conversation_turn_assignment_status -> trg_conversation_turn_assignment_status_fn
 trigger worker_assignments.worker_assignments_command_follow -> agent_commands_follow_assignment_fn
+trigger worker_assignments.worker_assignments_require_worker -> require_worker_instance_fn
 trigger worker_assignments.worker_assignments_set_instance -> worker_assignments_set_instance_fn
 trigger worker_catalog.worker_catalog_origin_invariants_insert -> worker_catalog_origin_invariants_insert_fn
 trigger worker_instances.worker_instances_close_agent -> worker_instances_close_agent_fn
