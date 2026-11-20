@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'artifacts.dart';
 import 'engine.dart';
 import 'folders.dart';
+import 'git_reference.dart';
 import 'journal.dart';
 import 'server_api.dart';
 import 'work_root.dart';
@@ -56,6 +57,9 @@ class ArtifactLauncher implements EngineLauncher {
     final refs = snapshot['contextRefs'];
     final spaceId = snapshot['spaceId'];
     if (spaceId is! String) return inner.launch(request);
+    if (!validGitReferences(snapshot['gitReferences'])) {
+      return _Failed('invalid_git_reference');
+    }
 
     final Directory base;
     try {

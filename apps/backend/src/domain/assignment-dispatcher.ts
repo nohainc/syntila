@@ -184,6 +184,8 @@ export interface TaskToDispatch {
   readonly contextArtifactIds?: readonly string[];
   /** Artifact output patterns the step declared (packages/core artifact-outputs.ts). */
   readonly artifactOutputs?: readonly string[];
+  /** Git references handed to this step (packages/core git-reference.ts); validated before dispatch. */
+  readonly gitReferences?: readonly unknown[];
   readonly timeoutMs?: number;
   /** Time admitted work may wait for a local Worker slot. */
   readonly queueWaitTimeoutMs?: number;

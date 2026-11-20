@@ -235,4 +235,45 @@ void launcherTests() {
       expect(matchesDeclaredOutput([], 'report.md'), isFalse);
     },
   );
+
+  test('an invalid Git reference fails before the Engine starts', () async {
+    await root.setRoot(work.path);
+    final inner = _RecordingLauncher();
+    final bad = EngineRequest(
+      assignmentId: 'a1',
+      attemptId: 't1',
+      payload: {
+        'snapshot': {
+          'spaceId': 'space-1',
+          'contextRefs': <Object?>[],
+          'gitReferences': [
+            {
+              'kind': 'git',
+              'remote': 'https://user:pw@github.com/a/b.git',
+              'commit': 'a' * 40,
+            },
+          ],
+        },
+      },
+    );
+    final run = await launcher(inner).launch(bad);
+    expect((await run.outcome).payload['errorCode'], 'invalid_git_reference');
+    expect(inner.last, isNull);
+  });
+
+  test('Git references are validated like the server does', () {
+    final ok = {
+      'kind': 'git',
+      'remote': 'https://github.com/nohainc/syntila.git',
+      'commit': 'a' * 40,
+      'ref': 'refs/heads/main',
+    };
+    expect(validGitReference(ok), isTrue);
+    expect(validGitReferences(null), isTrue);
+    expect(validGitReference({...ok, 'path': '/tmp'}), isFalse);
+    expect(validGitReference({...ok, 'commit': 'main'}), isFalse);
+    expect(validGitReference({...ok, 'remote': 'file:///Users/a/repo'}), isFalse);
+    expect(validGitReference({...ok, 'ref': 'refs/heads/a..b'}), isFalse);
+    expect(validGitReferences(List.filled(9, ok)), isFalse);
+  });
 }

@@ -1,5 +1,5 @@
 import { dataOf, type Db } from "../platform/data.js";
-import { normalizeArtifactOutputs } from "@syntila/core";
+import { normalizeArtifactOutputs, parseGitReferences } from "@syntila/core";
 import { executionErrorMessage } from "@syntila/protocol";
 import { ContextLimitError } from "@syntila/core";
 import { createHash } from "node:crypto";
@@ -141,6 +141,10 @@ export async function dispatchWorkerAssignment(
     }
   }
 
+  // Git references are validated here and travel without credentials or paths.
+  const gitHandoff = parseGitReferences(task.gitReferences ?? []);
+  if (gitHandoff.ok === false) return failed("invalid_git_reference", accepted.workerId);
+
   const conversation = task.workRequestId
     ? await read.row<{ conversationId: string | null; baseContextRevision: number | null }>`SELECT cwr.conversation_id AS "conversationId",
               (cwr.conversation_revision - 1)::int AS "baseContextRevision"
@@ -261,6 +265,7 @@ export async function dispatchWorkerAssignment(
       role: task.role,
       contextArtifactIds: handoffIds,
       artifactOutputs: normalizeArtifactOutputs(task.artifactOutputs),
+      gitReferences: gitHandoff.references,
       threadId: task.threadId ?? accepted.threadId,
       workRequestId: task.workRequestId,
       leaseId: task.leaseId,
