@@ -363,3 +363,14 @@ describe("step hard cap", () => {
     }
   });
 });
+
+describe("declared answer step", () => {
+  const step = (id: string, resultSemantics: string) => ({ id, resultSemantics }) as never;
+  it("picks the only step with the strongest answer semantics", async () => {
+    const { declaredAnswerStepId } = await import("../src/thread.js");
+    expect(declaredAnswerStepId({ steps: [step("a", "evidence_summary"), step("b", "research_synthesis")] })).toBe("b");
+    expect(declaredAnswerStepId({ steps: [step("a", "conversation_response")] })).toBe("a");
+    expect(declaredAnswerStepId({ steps: [step("a", "research_synthesis"), step("b", "research_synthesis")] })).toBeNull();
+    expect(declaredAnswerStepId({ steps: [step("a", "evidence_summary")] })).toBeNull();
+  });
+});

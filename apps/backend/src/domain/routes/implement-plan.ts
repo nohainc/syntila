@@ -657,11 +657,13 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
             ? null
             : inputData?.phaseIndex;
           if (verifiedPhase && inputData?.planWorkRequestId) {
-            await queryOf(db).run`UPDATE work_requests SET status = 'failed', updated_at = ${new Date().toISOString()}
+            const failedSiblings = await queryOf(db).rows<{ id: string }>`UPDATE work_requests SET status = 'failed', updated_at = ${new Date().toISOString()}
                   WHERE thread_id = ${threadId}
                     AND (input_json::jsonb #>> '{planWorkRequestId}') = ${String(inputData.planWorkRequestId)}
                     AND (input_json::jsonb #>> '{phaseIndex}')::bigint = ${Number(verifiedPhase)}
-                    AND COALESCE(input_json::jsonb #>> '{isVerification}', 'false') NOT IN ('true', '1')`;
+                    AND COALESCE(input_json::jsonb #>> '{isVerification}', 'false') NOT IN ('true', '1')
+                  RETURNING id`;
+            for (const sibling of failedSiblings) await recordAiOutcome(queryOf(db as never), sibling.id);
           }
 
           const pauseMsg = `${phaseTitle} failed: ${reason}. Review findings in the Thread and resume or adjust the queue.`;

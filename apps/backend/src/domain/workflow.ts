@@ -1,4 +1,4 @@
-import { recordAiAnswer, recordAiOutcome } from "./ai-timeline.js";
+import { markAnswerStep, recordAiAnswer, recordAiOutcome } from "./ai-timeline.js";
 import { activeThreadLease, startQueuedWorkRequest, threadSpace, workRequestCancelRequest } from "./queries.js";
 import { evaluatePhaseCompletionAndAdvanceQueue } from "./routes/implement-plan.js";
 import type { SecurityEnv } from "./routes/http-security.js";
@@ -534,6 +534,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           await q.run`INSERT INTO workflow_task_dependencies (task_id, depends_on_task_id)
            VALUES (${task.id}, ${dependencyId}) ON CONFLICT(task_id, depends_on_task_id) DO NOTHING`;
       }
+      await markAnswerStep(q, tasks);
     });
   }
 

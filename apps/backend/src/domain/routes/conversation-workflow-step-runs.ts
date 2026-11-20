@@ -1,4 +1,5 @@
 import { queryOf, type Tx, type Db } from "../../platform/data.js";
+import { markAnswerStep } from "../ai-timeline.js";
 import {
   planWorkflowTasks,
   type BuiltinWorkflowDefinition,
@@ -76,4 +77,5 @@ export async function insertInitialConversationTasks(
     for (const dependency of task.dependencyTaskIds)
       await tx.run`INSERT INTO workflow_task_dependencies(task_id,depends_on_task_id)
       VALUES (${task.id},${dependency}) ON CONFLICT(task_id,depends_on_task_id) DO NOTHING`;
+  await markAnswerStep(tx, tasks);
 }

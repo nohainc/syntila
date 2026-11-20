@@ -249,6 +249,31 @@ export interface BuiltinWorkflowStep {
   readonly artifactOutputs?: readonly string[];
 }
 
+/**
+ * Result semantics that make a step the Work Request's answer, strongest first.
+ * The answer step of a definition is the only step with the first of these that
+ * any step has; more than one such step means the definition declares none and
+ * the single terminal step (or the System Actor) decides.
+ */
+export const ANSWER_RESULT_SEMANTICS = [
+  "research_synthesis",
+  "conversation_response",
+  "verification_report",
+  "implementation_plan",
+] as const satisfies readonly WorkflowResultSemantics[];
+
+/** Instance ID of the step whose result is the timeline answer, or null when the definition declares none. */
+export function declaredAnswerStepId(
+  definition: Pick<BuiltinWorkflowDefinition, "steps">,
+): string | null {
+  for (const semantics of ANSWER_RESULT_SEMANTICS) {
+    const matches = definition.steps.filter((step) => step.resultSemantics === semantics);
+    if (matches.length === 1) return stepInstanceId(matches[0]!);
+    if (matches.length > 1) return null;
+  }
+  return null;
+}
+
 /** The step's identity in its definition: its `id`, or its kind. */
 export function stepInstanceId(
   step: Pick<BuiltinWorkflowStep, "id" | "kind">,

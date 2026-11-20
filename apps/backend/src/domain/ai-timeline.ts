@@ -1,3 +1,4 @@
+import { declaredAnswerStepId, stepInstanceId, type PlannedWorkflowTask } from "@syntila/core";
 import type { Query } from "../platform/data.js";
 import { isFeatureEnabled } from "../feature-flags.js";
 
@@ -28,4 +29,15 @@ export async function recordAiOutcome(tx: Pick<Query, "run">, workRequestId: str
 export async function clearAiOutcome(tx: Pick<Query, "run">, workRequestId: string): Promise<void> {
   if (!isFeatureEnabled("canonical_timeline")) return;
   await tx.run`SELECT record_ai_outcome_clear(${workRequestId})`;
+}
+
+/**
+ * Stores which planned task is the Work Request's answer step (a Workflow that
+ * declares none leaves every task unmarked). Runs with the task inserts.
+ */
+export async function markAnswerStep(tx: Pick<Query, "run">, tasks: readonly PlannedWorkflowTask[]): Promise<void> {
+  const answerId = declaredAnswerStepId({ steps: tasks.map((task) => task.step) });
+  if (!answerId) return;
+  const task = tasks.find((candidate) => stepInstanceId(candidate.step) === answerId);
+  if (task) await tx.run`UPDATE workflow_tasks SET answer_step = true WHERE id = ${task.id}`;
 }
