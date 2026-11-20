@@ -3,6 +3,7 @@
  * lives in one place instead of being repeated in every route file.
  */
 import type { Query } from "../platform/data.js";
+import { recordAiOutcome } from "./ai-timeline.js";
 
 /** True when either user has blocked the other. */
 export async function usersBlocked(q: Query, userA: string, userB: string): Promise<boolean> {
@@ -138,6 +139,7 @@ export async function cancelPendingTasks(q: Runner, workRequestId: string, now: 
 /** Cancels a queued Work Request with its Run and its tasks. */
 export async function cancelQueuedWorkRequest(q: Runner, workRequestId: string, now: string): Promise<void> {
   await q.run`UPDATE work_requests SET status = 'cancelled', updated_at = ${now} WHERE id = ${workRequestId} AND status = 'queued'`;
+  await recordAiOutcome(q, workRequestId);
   await q.run`UPDATE runs SET status = 'cancelled', finished_at = ${now}, updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status = 'created'`;
   await cancelPendingTasks(q, workRequestId, now);
 }

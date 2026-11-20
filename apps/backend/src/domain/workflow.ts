@@ -1,4 +1,4 @@
-import { recordAiAnswer } from "./ai-timeline.js";
+import { recordAiAnswer, recordAiOutcome } from "./ai-timeline.js";
 import { activeThreadLease, startQueuedWorkRequest, threadSpace, workRequestCancelRequest } from "./queries.js";
 import { evaluatePhaseCompletionAndAdvanceQueue } from "./routes/implement-plan.js";
 import type { SecurityEnv } from "./routes/http-security.js";
@@ -476,6 +476,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       await atomically(db, "workflow.finish-stateless", async (q) => {
         await q.run`UPDATE work_requests SET status = ${status}, updated_at = ${now} WHERE id = ${params.workRequestId} AND status IN ('queued', 'running')`;
         if (status === "completed") await recordAiAnswer(q, params.workRequestId!);
+        else await recordAiOutcome(q, params.workRequestId!);
       });
       return;
     }

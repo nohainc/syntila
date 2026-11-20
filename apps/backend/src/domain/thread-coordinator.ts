@@ -1,4 +1,4 @@
-import { recordAiAnswer } from "./ai-timeline.js";
+import { recordAiAnswer, recordAiOutcome } from "./ai-timeline.js";
 import { dataOf, queryOf, type Query, atomically, type Db } from "../platform/data.js";
 import { cancelQueuedWorkRequest, startQueuedWorkRequest } from "./queries.js";
 /**
@@ -471,6 +471,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
       await q.run`UPDATE work_requests SET status = ${status}, updated_at = ${now} WHERE id = ${lease.workRequestId} AND status = 'running'`;
       await q.run`UPDATE runs SET status = ${status}, updated_at = ${now} WHERE work_request_id = ${lease.workRequestId} AND status = 'running'`;
       if (status === "completed") await recordAiAnswer(q, lease.workRequestId);
+      else await recordAiOutcome(q, lease.workRequestId);
     });
   }
 
@@ -573,6 +574,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
       await atomically(this.env.SYNTILA_DB, "coordinator.expire", async (q) => {
         await q.run`UPDATE thread_runtime_leases SET status = 'expired', released_at = ${now} WHERE id = ${lease.id} AND status = 'active'`;
         await q.run`UPDATE work_requests SET status = 'failed', updated_at = ${now} WHERE id = ${lease.workRequestId} AND status = 'running'`;
+        await recordAiOutcome(q, lease.workRequestId);
         await q.run`UPDATE runs SET status = 'failed', finished_at = COALESCE(finished_at, ${now}), updated_at = ${now} WHERE work_request_id = ${lease.workRequestId} AND status = 'running'`;
         // The reason is kept with the steps, where the Work view shows
         // step errors, so it survives a reload.

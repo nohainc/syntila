@@ -5,6 +5,7 @@ import {
   type ProviderFailureDetails,
 } from "@syntila/protocol";
 import { readBody } from "./validation.js";
+import { clearAiOutcome, recordAiOutcome } from "../ai-timeline.js";
 import { afterCursor, cursorOrder, decodeCursor, encodeCursor } from "./pagination.js";
 import { activeThreadLease, activeWorkCount, cancelPendingTasks, cancelQueuedWorkRequest, spaceMembership, threadSpace, workRequestThread } from "../queries.js";
 import {
@@ -459,6 +460,7 @@ export async function handleRetryWorkRequest(
     // failed-row reservation.
     if (reservation?.id !== workRequestId)
       throw new HttpError(409, "This Work Request is already being retried");
+    await clearAiOutcome(q, workRequestId);
     const retryThreadId = String(row.threadId);
     // Over the context limit, AI History is cut off just before the latest
     // Worker answer that precedes this request, so the new session keeps
@@ -1490,6 +1492,7 @@ async function cancelWorkRequest(
     const now = new Date().toISOString();
     await atomically(env.SYNTILA_DB, "work.cancel.failed", async (q) => {
       await q.run`UPDATE work_requests SET status = 'cancelled', updated_at = ${now} WHERE id = ${workRequestId} AND status = 'failed'`;
+      await recordAiOutcome(q, workRequestId);
       await q.run`UPDATE runs SET status = 'cancelled', finished_at = ${now}, updated_at = ${now}
           WHERE id = (SELECT id FROM runs WHERE work_request_id = ${workRequestId} AND status = 'failed'
                      ORDER BY created_at DESC, id DESC LIMIT 1)`;
@@ -1551,6 +1554,7 @@ async function cancelWorkRequest(
   const now = new Date().toISOString();
   await atomically(env.SYNTILA_DB, "work.cancel.running", async (q) => {
     await q.run`UPDATE work_requests SET status = 'cancelled', updated_at = ${now} WHERE id = ${workRequestId} AND status = 'running'`;
+    await recordAiOutcome(q, workRequestId);
     await q.run`UPDATE runs SET status = 'cancelled', finished_at = ${now}, updated_at = ${now} WHERE work_request_id = ${workRequestId} AND status IN ('created', 'running')`;
     await cancelPendingTasks(q, workRequestId, now);
   });

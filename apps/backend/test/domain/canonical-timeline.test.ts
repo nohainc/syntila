@@ -31,3 +31,34 @@ it("keeps the author name written at the time after the Worker is renamed", asyn
   expect((await f.sqlite.prepare("SELECT author_display_snapshot AS s FROM discussion_messages WHERE id='ai-answer-R'").get())?.s).toBe(before);
   await f.sqlite.close();
 });
+
+it("shows a failed or cancelled request as a fixed System item, and a later answer replaces it", async () => {
+  const f = await conversationFixture();
+  await f.assign("A");
+  await f.sqlite.exec("UPDATE work_requests SET status='failed' WHERE id='R'");
+  await f.sqlite.exec("SELECT record_ai_outcome('R')");
+  await f.sqlite.exec("SELECT record_ai_outcome('R')");
+  const failed = (await f.sqlite.prepare("SELECT body, event_type, author_actor_id FROM discussion_messages WHERE id='ai-answer-R'").all()) as Array<Record<string, unknown>>;
+  expect(failed).toEqual([{ body: "This request did not finish.", event_type: "work_failed", author_actor_id: "actor-system-platform" }]);
+
+  await f.sqlite.exec("UPDATE work_requests SET status='cancelled' WHERE id='R'");
+  await f.sqlite.exec("SELECT record_ai_outcome('R')");
+  expect((await f.sqlite.prepare("SELECT body FROM discussion_messages WHERE id='ai-answer-R'").get())?.body).toBe("This request was cancelled.");
+
+  // A retry removes the item; the answer of the retried request is then a normal one.
+  await f.sqlite.exec("SELECT record_ai_outcome_clear('R')");
+  expect(((await f.sqlite.prepare("SELECT id FROM discussion_messages WHERE id='ai-answer-R'").all()) as unknown[]).length).toBe(0);
+  await f.sqlite.exec("UPDATE work_requests SET status='failed' WHERE id='R'");
+  await f.sqlite.exec("SELECT record_ai_outcome('R')");
+  await recordAssignmentResult(f.db as unknown as D1Database, "A", {
+    assignmentId: "A", status: "completed", output: { text: "**Answer**" }, artifactIds: [], completedAt: "x",
+  });
+  await f.sqlite.exec("UPDATE work_requests SET status='completed' WHERE id='R'");
+  await f.sqlite.exec("SELECT record_ai_answer('R')");
+  expect(await f.sqlite.prepare("SELECT body, event_type FROM discussion_messages WHERE id='ai-answer-R'").get()).toMatchObject({ body: "**Answer**", event_type: null });
+  // An outcome never overwrites a real answer.
+  await f.sqlite.exec("UPDATE work_requests SET status='failed' WHERE id='R'");
+  await f.sqlite.exec("SELECT record_ai_outcome('R')");
+  expect((await f.sqlite.prepare("SELECT body FROM discussion_messages WHERE id='ai-answer-R'").get())?.body).toBe("**Answer**");
+  await f.sqlite.close();
+});

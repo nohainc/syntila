@@ -1,4 +1,5 @@
 import { dataOf, queryOf } from "../../platform/data.js";
+import { recordAiOutcome } from "../ai-timeline.js";
 import { ApprovePlanSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { appendToQueue, lockQueue, prependToQueue } from "./queue-positions.js";
@@ -650,6 +651,7 @@ export async function evaluatePhaseCompletionAndAdvanceQueue(
               : "verifier did not report STATUS: PASSED";
 
           await queryOf(db).run`UPDATE work_requests SET status = 'failed', updated_at = ${new Date().toISOString()} WHERE id = ${workRequestId}`;
+          await recordAiOutcome(queryOf(db as never), workRequestId);
 
           const verifiedPhase = inputData?.isFinalVerification
             ? null

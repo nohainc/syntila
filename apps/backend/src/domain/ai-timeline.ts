@@ -17,3 +17,15 @@ export async function recordAiAnswer(tx: Query, workRequestId: string): Promise<
   if (!isFeatureEnabled("canonical_timeline")) return;
   await tx.row`SELECT record_ai_answer(${workRequestId})`;
 }
+
+/** The ended-without-answer item of a failed or cancelled Work Request (a no-op for any other status). */
+export async function recordAiOutcome(tx: Pick<Query, "run">, workRequestId: string): Promise<void> {
+  if (!isFeatureEnabled("canonical_timeline")) return;
+  await tx.run`SELECT record_ai_outcome(${workRequestId})`;
+}
+
+/** A retry re-queues the request, so its earlier outcome item no longer describes it. */
+export async function clearAiOutcome(tx: Pick<Query, "run">, workRequestId: string): Promise<void> {
+  if (!isFeatureEnabled("canonical_timeline")) return;
+  await tx.run`SELECT record_ai_outcome_clear(${workRequestId})`;
+}
