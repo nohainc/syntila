@@ -49,33 +49,49 @@ void main() {
     expect(await folders.isAllowed('${work.path}/escape'), isFalse);
   });
 
-  test('the Work Root maps Spaces and adopts existing folders explicitly', () async {
-    final root = WorkRoot(File('${sandbox.path}/data/work-root.json'), folders);
-    await expectLater(
-      root.spaceDirectory('space-1'),
-      throwsA(isA<FolderRejectedException>()),
-    );
-    await root.setRoot(work.path);
-    final dir = await root.spaceDirectory('space-1');
-    expect(dir.path, endsWith('/spaces/space-1'));
-    await expectLater(
-      root.spaceDirectory('../escape'),
-      throwsA(isA<FolderRejectedException>()),
-    );
-    final legacy = await Directory('${sandbox.path}/legacy').create();
-    await expectLater(
-      root.adopt({'space-2': legacy.path}),
-      throwsA(isA<FolderRejectedException>()),
-    );
-    await folders.add(legacy.path, write: true);
-    await root.adopt({'space-2': legacy.path});
-    expect((await root.spaceDirectory('space-2')).path, legacy.resolveSymbolicLinksSync());
-    expect(await legacy.exists(), isTrue);
-  });
+  test(
+    'the Work Root maps Spaces and adopts existing folders explicitly',
+    () async {
+      final root = WorkRoot(
+        File('${sandbox.path}/data/work-root.json'),
+        folders,
+      );
+      await expectLater(
+        root.spaceDirectory('space-1'),
+        throwsA(isA<FolderRejectedException>()),
+      );
+      await root.setRoot(work.path);
+      final dir = await root.spaceDirectory('space-1');
+      expect(dir.path, endsWith('/spaces/space-1'));
+      await expectLater(
+        root.spaceDirectory('../escape'),
+        throwsA(isA<FolderRejectedException>()),
+      );
+      final legacy = await Directory('${sandbox.path}/legacy').create();
+      await expectLater(
+        root.adopt({'space-2': legacy.path}),
+        throwsA(isA<FolderRejectedException>()),
+      );
+      await folders.add(legacy.path, write: true);
+      await root.adopt({'space-2': legacy.path});
+      expect(
+        (await root.spaceDirectory('space-2')).path,
+        legacy.resolveSymbolicLinksSync(),
+      );
+      expect(await legacy.exists(), isTrue);
+    },
+  );
 
   test('a handoff is an artifact ID with a grant, never a path', () {
-    for (final bad in <Object?>['/Users/a/report.txt', {'path': '/x'}, {'artifactId': '../x'}]) {
-      expect(() => ArtifactRef.parse(bad), throwsA(isA<MissingArtifactException>()));
+    for (final bad in <Object?>[
+      '/Users/a/report.txt',
+      {'path': '/x'},
+      {'artifactId': '../x'},
+    ]) {
+      expect(
+        () => ArtifactRef.parse(bad),
+        throwsA(isA<MissingArtifactException>()),
+      );
     }
     final ok = ArtifactRef.parse({
       'artifactId': 'art-11111111-1111-4111-8111-111111111111',
@@ -91,8 +107,9 @@ void main() {
 
 class _OkRun implements EngineRun {
   @override
-  Future<EngineOutcome> get outcome =>
-      Future.value(const EngineOutcome(TerminalKind.completed, {'summary': 'ok'}));
+  Future<EngineOutcome> get outcome => Future.value(
+    const EngineOutcome(TerminalKind.completed, {'summary': 'ok'}),
+  );
   @override
   Future<void> cancel() async {}
 }
@@ -147,37 +164,48 @@ void launcherTests() {
     },
   );
 
-  test('a step with an artifact input fails when its folder was not approved', () async {
-    final inner = _RecordingLauncher();
-    final run = await launcher(inner).launch(
-      request([
-        {'artifactId': 'art-11111111-1111-4111-8111-111111111111'},
-      ]),
-    );
-    final outcome = await run.outcome;
-    expect(outcome.kind, TerminalKind.failed);
-    expect(outcome.payload['errorCode'], 'folder_not_approved');
-    expect(inner.last, isNull, reason: 'the Engine must not start');
-  });
+  test(
+    'a step with an artifact input fails when its folder was not approved',
+    () async {
+      final inner = _RecordingLauncher();
+      final run = await launcher(inner).launch(
+        request([
+          {'artifactId': 'art-11111111-1111-4111-8111-111111111111'},
+        ]),
+      );
+      final outcome = await run.outcome;
+      expect(outcome.kind, TerminalKind.failed);
+      expect(outcome.payload['errorCode'], 'folder_not_approved');
+      expect(inner.last, isNull, reason: 'the Engine must not start');
+    },
+  );
 
-  test('a path handoff fails as a missing artifact before the Engine starts', () async {
-    await root.setRoot(work.path);
-    final inner = _RecordingLauncher();
-    final run = await launcher(inner).launch(request(['/Users/alice/report.txt']));
-    final outcome = await run.outcome;
-    expect(outcome.payload['errorCode'], 'missing_artifact');
-    expect(inner.last, isNull);
-  });
+  test(
+    'a path handoff fails as a missing artifact before the Engine starts',
+    () async {
+      await root.setRoot(work.path);
+      final inner = _RecordingLauncher();
+      final run = await launcher(
+        inner,
+      ).launch(request(['/Users/alice/report.txt']));
+      final outcome = await run.outcome;
+      expect(outcome.payload['errorCode'], 'missing_artifact');
+      expect(inner.last, isNull);
+    },
+  );
 
-  test('a step without inputs runs with an output folder inside the approved Space folder', () async {
-    await root.setRoot(work.path);
-    final inner = _RecordingLauncher();
-    final run = await launcher(inner).launch(request([]));
-    expect((await run.outcome).kind, TerminalKind.completed);
-    final output = inner.last!['outputDirectory'] as String;
-    expect(output, contains('spaces/space-1'));
-    expect(await folders.isAllowed(output, write: true), isTrue);
-  });
+  test(
+    'a step without inputs runs with an output folder inside the approved Space folder',
+    () async {
+      await root.setRoot(work.path);
+      final inner = _RecordingLauncher();
+      final run = await launcher(inner).launch(request([]));
+      expect((await run.outcome).kind, TerminalKind.completed);
+      final output = inner.last!['outputDirectory'] as String;
+      expect(output, contains('spaces/space-1'));
+      expect(await folders.isAllowed(output, write: true), isTrue);
+    },
+  );
 
   test('files are uploaded only when the step declared them', () async {
     await root.setRoot(work.path);
@@ -192,16 +220,19 @@ void launcherTests() {
     expect(outcome.payload.containsKey('artifactIds'), isFalse);
   });
 
-  test('output declarations are validated and matched like the server does', () {
-    expect(
-      declaredOutputs(['report.md', '../x', 'a/b', '*.png', 'report.md', 3]),
-      ['report.md', '*.png'],
-    );
-    expect(declaredOutputs('report.md'), isEmpty);
-    expect(declaredOutputs(List.generate(20, (i) => 'f$i')), hasLength(8));
-    expect(matchesDeclaredOutput(['*.png'], 'chart.png'), isTrue);
-    expect(matchesDeclaredOutput(['*.png'], 'chart.jpg'), isFalse);
-    expect(matchesDeclaredOutput(['report.md'], 'report.md'), isTrue);
-    expect(matchesDeclaredOutput([], 'report.md'), isFalse);
-  });
+  test(
+    'output declarations are validated and matched like the server does',
+    () {
+      expect(
+        declaredOutputs(['report.md', '../x', 'a/b', '*.png', 'report.md', 3]),
+        ['report.md', '*.png'],
+      );
+      expect(declaredOutputs('report.md'), isEmpty);
+      expect(declaredOutputs(List.generate(20, (i) => 'f$i')), hasLength(8));
+      expect(matchesDeclaredOutput(['*.png'], 'chart.png'), isTrue);
+      expect(matchesDeclaredOutput(['*.png'], 'chart.jpg'), isFalse);
+      expect(matchesDeclaredOutput(['report.md'], 'report.md'), isTrue);
+      expect(matchesDeclaredOutput([], 'report.md'), isFalse);
+    },
+  );
 }

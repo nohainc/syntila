@@ -282,7 +282,8 @@ class AgentConnection {
       try {
         report = await readiness?.call();
       } on Object {
-        report = null; // an unknown readiness is reported as nothing, not as ready
+        report =
+            null; // an unknown readiness is reported as nothing, not as ready
       }
       final hello = envelope(_ids, 'workspace.hello', {
         'name': 'syntila-worker',

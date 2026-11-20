@@ -66,7 +66,8 @@ class ArtifactRef {
 /// The server-chosen name reduced to one safe file name, so it can never point
 /// outside the folder the Agent picked.
 String safeArtifactName(String name) {
-  final cleaned = p.basename(name.replaceAll('\\', '/'))
+  final cleaned = p
+      .basename(name.replaceAll('\\', '/'))
       .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
   return cleaned.isEmpty || cleaned == '.' || cleaned == '..'
       ? 'artifact'

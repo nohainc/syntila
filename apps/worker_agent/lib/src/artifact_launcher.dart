@@ -142,7 +142,10 @@ class ArtifactLauncher implements EngineLauncher {
     if (declared.isEmpty || !await outputs.exists()) return results;
     final files = await outputs
         .list(followLinks: false)
-        .where((e) => e is File && matchesDeclaredOutput(declared, p.basename(e.path)))
+        .where(
+          (e) =>
+              e is File && matchesDeclaredOutput(declared, p.basename(e.path)),
+        )
         .cast<File>()
         .toList();
     files.sort((a, b) => a.path.compareTo(b.path));
@@ -216,7 +219,12 @@ class _Collecting implements EngineRun, EngineStartEvidence {
     final result = await run.outcome;
     if (result.kind != TerminalKind.completed) return result;
     try {
-      final artifacts = await owner.collect(assignmentId, base, outputs, declared);
+      final artifacts = await owner.collect(
+        assignmentId,
+        base,
+        outputs,
+        declared,
+      );
       if (artifacts.isEmpty) return result;
       final output = result.payload['output'];
       return EngineOutcome(TerminalKind.completed, {

@@ -28,9 +28,9 @@ void main() {
     required String root,
     required List<String> folderPaths,
   }) async {
-    await File('${legacy.path}/workspace-lifecycle.json').writeAsString(
-      jsonEncode({'workRootPath': root}),
-    );
+    await File(
+      '${legacy.path}/workspace-lifecycle.json',
+    ).writeAsString(jsonEncode({'workRootPath': root}));
     await File('${legacy.path}/allowed-folders.json').writeAsString(
       jsonEncode({
         'schemaVersion': 1,
@@ -41,35 +41,37 @@ void main() {
     );
   }
 
-  test('imports the Work Root and folders read-only, and leaves the old data',
-      () async {
-    final root = await Directory('${sandbox.path}/root').create();
-    final extra = await Directory('${sandbox.path}/extra').create();
-    await writeLegacy(
-      root: root.path,
-      folderPaths: [extra.path, '${sandbox.path}/gone'],
-    );
-    final before = await File(
-      '${legacy.path}/allowed-folders.json',
-    ).readAsString();
+  test(
+    'imports the Work Root and folders read-only, and leaves the old data',
+    () async {
+      final root = await Directory('${sandbox.path}/root').create();
+      final extra = await Directory('${sandbox.path}/extra').create();
+      await writeLegacy(
+        root: root.path,
+        folderPaths: [extra.path, '${sandbox.path}/gone'],
+      );
+      final before = await File(
+        '${legacy.path}/allowed-folders.json',
+      ).readAsString();
 
-    final report = await importLegacyWorkspace(
-      legacyData: legacy,
-      folders: folders,
-      workRoot: workRoot,
-    );
+      final report = await importLegacyWorkspace(
+        legacyData: legacy,
+        folders: folders,
+        workRoot: workRoot,
+      );
 
-    expect(await workRoot.root(), isNotNull);
-    expect(report.imported, [extra.path]);
-    expect(report.skipped.single, contains('gone'));
-    expect(await folders.isAllowed(extra.path), isTrue);
-    expect(await folders.isAllowed(extra.path, write: true), isFalse);
-    expect(report.notCopied.join(' '), contains('credentials'));
-    expect(
-      await File('${legacy.path}/allowed-folders.json').readAsString(),
-      before,
-    );
-  });
+      expect(await workRoot.root(), isNotNull);
+      expect(report.imported, [extra.path]);
+      expect(report.skipped.single, contains('gone'));
+      expect(await folders.isAllowed(extra.path), isTrue);
+      expect(await folders.isAllowed(extra.path, write: true), isFalse);
+      expect(report.notCopied.join(' '), contains('credentials'));
+      expect(
+        await File('${legacy.path}/allowed-folders.json').readAsString(),
+        before,
+      );
+    },
+  );
 
   test('--write keeps write access, and a dry run changes nothing', () async {
     final extra = await Directory('${sandbox.path}/extra').create();
