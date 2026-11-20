@@ -1,4 +1,4 @@
-import 'external_worker_executor.dart' show isExternalWorkerType;
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart' show isExternalWorkerType;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

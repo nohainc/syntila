@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:syntila_external_worker_protocol/syntila_external_worker_protocol.dart';
 
-import 'worker_trust_policy.dart' show canonicalJson;
+import 'package:syntila_tool_profile_v1/tool_profile_v1.dart' show canonicalJson;
 
 /// A failure with a stable management-IPC error code (see
 /// `WORKER_PLUGIN_MANAGEMENT_IPC_V1.md`). Messages are safe to show and never

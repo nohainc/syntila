@@ -11,6 +11,7 @@ dart_packages=(
   packages/syntila_external_worker_protocol
   packages/syntila_external_worker_conformance
   packages/syntila_external_worker_sdk
+  packages/syntila_mcp_worker_store
   packages/syntila_cli_worker_runtime
   packages/tool_profile_v1
   engines/cli_worker

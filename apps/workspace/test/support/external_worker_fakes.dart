@@ -1,8 +1,7 @@
 import 'dart:io';
 
-import 'package:syntila_workspace/external_worker_registry.dart';
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart';
 import 'package:syntila_workspace/external_worker_service.dart';
-import 'package:syntila_workspace/external_worker_store.dart';
 
 final testStart = DateTime.utc(2026, 11, 3, 11);
 

@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'external_worker_service.dart';
-import 'external_worker_store.dart';
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart';
 import 'workspace_manager_ipc.dart';
 
 /// Translates `externalWorkers.*` IPC commands into [ExternalWorkerService] calls and

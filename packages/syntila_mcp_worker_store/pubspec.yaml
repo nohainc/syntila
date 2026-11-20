@@ -1,0 +1,22 @@
+name: syntila_mcp_worker_store
+description: Digest-verified store, registry and executor description for MCP Worker packages (ADR-027, ADR-041). Shared by the Workspace and the Worker Agent.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  archive: ^4.3.0
+  crypto: ^3.0.0
+  cryptography: ^2.9.0
+  syntila_external_worker_protocol:
+    path: ../syntila_external_worker_protocol
+  syntila_tool_profile_v1:
+    path: ../tool_profile_v1
+  syntila_worker_protocol:
+    path: ../syntila_worker_protocol
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

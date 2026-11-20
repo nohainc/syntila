@@ -7,10 +7,8 @@ import 'package:syntila_external_worker_protocol/syntila_external_worker_protoco
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 import 'local_worker_registry.dart';
-import 'external_worker_executor.dart';
-import 'external_worker_registry.dart';
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart';
 import 'external_worker_service.dart';
-import 'external_worker_store.dart';
 import 'worker_readiness.dart';
 
 /// Runs one Engine probe for a plugin. Production wires the supervisor.

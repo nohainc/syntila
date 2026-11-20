@@ -9,7 +9,7 @@ import 'package:syntila_tool_profile_v1/tool_profile_v1.dart'
     show ToolProfileResolution;
 
 import 'local_worker_registry.dart';
-import 'external_worker_executor.dart' show isExternalWorkerType;
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart' show isExternalWorkerType;
 import 'cli_worker_engine_supervisor.dart';
 import 'worker_profile_store.dart';
 import 'tool_profile_release_verifier.dart';

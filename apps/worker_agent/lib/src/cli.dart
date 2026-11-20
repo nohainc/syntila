@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart';
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart';
 import 'package:syntila_tool_profile_v1/tool_profile_v1.dart';
 
 import 'cli_engine.dart';
@@ -144,7 +145,7 @@ syntila-worker <command> [options]
   permissions remove-folder ID
   import-workspace --from DIR [--write] [--dry-run]   take the folders and Work Root of an old Workspace
   rotate-credential        replace this Worker's key pair
-  mcp-worker list | approve ID VERSION MANIFEST_DIGEST | remove ID MANIFEST_DIGEST   MCP Workers this machine may run
+  mcp-worker import PATH | list | approve ID VERSION MANIFEST_DIGEST | remove ID MANIFEST_DIGEST   MCP Workers this machine may run
   update stage --manifest FILE --artifact FILE
   update prepare           prepare the verified release for later activation
   uninstall [--yes] [--keep-data]
@@ -565,6 +566,26 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           out.writeln('${p.id} ${p.version} ${p.digest}');
         }
         return 0;
+      case 'import':
+        if (args.positionals.length != 2) {
+          throw const FormatException('usage: mcp-worker import PATH');
+        }
+        final paths = _paths(args);
+        final store = ExternalWorkerStore(
+          root: Directory('${paths.root.path}/mcp-workers'),
+          forbiddenRoots: [paths.root.path],
+        );
+        final InstalledExternalWorker installed;
+        try {
+          installed = await store.import(args.positionals[1]);
+        } on ExternalWorkerException catch (error) {
+          err.writeln('${error.code}: ${error.message}');
+          return 1;
+        }
+        // The owner ran this command on this machine, so this exact package is approved.
+        await list.approve(installed.pluginId, installed.version, installed.manifestDigest);
+        out.writeln('Imported and approved ${installed.pluginId} ${installed.version} ${installed.manifestDigest}');
+        return 0;
       case 'approve':
         if (args.positionals.length != 4) {
           throw const FormatException('usage: mcp-worker approve ID VERSION MANIFEST_DIGEST');
@@ -580,7 +601,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         out.writeln(removed ? 'Removed.' : 'No such approval.');
         return removed ? 0 : 1;
       default:
-        throw const FormatException('usage: mcp-worker list | approve | remove');
+        throw const FormatException('usage: mcp-worker list | import | approve | remove');
     }
   }
 

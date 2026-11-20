@@ -23,9 +23,7 @@ import 'package:syntila_workspace/secure_credentials.dart';
 import 'package:syntila_workspace/workspace_registration.dart';
 import 'package:syntila_workspace/workspace_transport.dart';
 import 'package:syntila_workspace/worker_readiness.dart';
-import 'package:syntila_workspace/external_worker_executor.dart';
-import 'package:syntila_workspace/external_worker_store.dart'
-    show ExternalWorkerException;
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart';
 import 'package:syntila_workspace/mcp_action_handler.dart';
 import 'package:syntila_workspace/mcp_inventory_publisher.dart';
 import 'package:syntila_workspace/mcp_service.dart';

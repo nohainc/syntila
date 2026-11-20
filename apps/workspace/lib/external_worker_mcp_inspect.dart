@@ -7,7 +7,7 @@ import 'mcp_engine_probe.dart';
 import 'mcp_registry.dart';
 import 'mcp_service.dart';
 import 'external_worker_service.dart';
-import 'external_worker_store.dart';
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart';
 
 /// Lists an installed MCP Worker's tools through the Engine's one-shot
 /// `--mcp-probe` mode, requiring the Syntila Worker profile marker. The Service

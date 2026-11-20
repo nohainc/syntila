@@ -17,12 +17,13 @@ class McpWorkerAllowList {
   McpWorkerAllowList(this.file);
   final File file;
 
-  static final _id = RegExp(r'^plugin-[0-9a-f]{12}$');
+  /// The manifest's pluginId (lowercase kebab-case), not the Cloud's `plugin-<hex>` Type id.
+  static final _id = RegExp(r'^[a-z][a-z0-9]*(-[a-z0-9]+)*$');
   static final _version = RegExp(r'^\d+\.\d+\.\d+$');
   static final _digest = RegExp(r'^[0-9a-f]{64}$');
 
   static bool validPin(String id, String version, String digest) =>
-      _id.hasMatch(id) && _version.hasMatch(version) && _digest.hasMatch(digest);
+      id.length <= 48 && _id.hasMatch(id) && _version.hasMatch(version) && _digest.hasMatch(digest);
 
   Future<List<ApprovedMcpWorker>> list() async {
     if (!await file.exists()) return [];

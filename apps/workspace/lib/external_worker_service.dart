@@ -7,8 +7,7 @@ import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart'
 import 'package:syntila_external_worker_protocol/syntila_external_worker_protocol.dart';
 
 import 'worker_trust_policy.dart' show canonicalJson;
-import 'external_worker_registry.dart';
-import 'external_worker_store.dart';
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart';
 
 /// Cloud operations the plugin service needs. The HTTP implementation talks to
 /// the account library and enablement routes; tests substitute a fake.

@@ -7,7 +7,7 @@ import 'package:syntila_cli_worker_runtime/syntila_cli_worker_runtime.dart'
 
 import 'cli_worker_engine_supervisor.dart';
 import 'local_worker_registry.dart';
-import 'external_worker_executor.dart' show isExternalWorkerType;
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart' show isExternalWorkerType;
 import 'tool_profile_catalog.dart';
 import 'worker_profile_store.dart';
 import 'tool_profile_release_verifier.dart';
