@@ -8,7 +8,16 @@ export interface SessionDeps {
   readonly head: (stream: StreamRef) => Promise<number>;
   /** Streams this gateway can serve with a durable sequence. */
   readonly supports: (stream: StreamRef) => boolean;
+  /**
+   * The durable events of [stream] with a sequence above [afterSequence], up to
+   * and including [throughSequence], oldest first; null when they are no longer
+   * kept. Without it every subscription starts from a snapshot.
+   */
+  readonly replay?: (stream: StreamRef, afterSequence: number, throughSequence: number) => Promise<MessagingEnvelope[] | null>;
 }
+
+/** The longest gap a cursor may resume across; a larger one takes a snapshot. */
+export const MAX_REPLAY_EVENTS = 500;
 
 /**
  * One connection's side of the protocol (ADR-038 layer 1 to 2): rate limit,
@@ -52,7 +61,24 @@ export class MessagingSession {
           return [this.control("subscription.denied", { reason: "stream_not_supported", stream }, rid)];
         const result = await this.deps.registry.subscribe(this.connectionId, this.principal, stream, this.deps.authorize, () => this.deps.head(stream));
         if (result.ok === false) return [this.control("subscription.denied", { reason: result.reason, stream }, rid, stream)];
-        return [this.control("subscription.ready", { stream, headSequence: result.headSequence }, rid, stream)];
+        const cursor = frame.payload.cursor;
+        if (cursor === undefined || !this.deps.replay)
+          return [this.control("subscription.ready", { stream, headSequence: result.headSequence }, rid, stream)];
+        // A cursor says "I applied everything up to here": resume from it when
+        // the events in between are still kept and contiguous, else snapshot.
+        const head = result.headSequence;
+        const snapshot = (reason: string) => [
+          this.control("subscription.ready", { stream, headSequence: head, resumed: false }, rid, stream),
+          this.control("sync.required", { stream, reason }, rid, stream),
+        ];
+        if (typeof cursor !== "number" || !Number.isSafeInteger(cursor) || cursor < 0) return snapshot("cursor_invalid");
+        if (cursor > head) return snapshot("cursor_ahead");
+        const missed = cursor === head || head - cursor > MAX_REPLAY_EVENTS ? [] : await this.deps.replay(stream, cursor, head);
+        if (cursor < head && (missed === null || missed.length !== head - cursor || missed.some((e, i) => e.sequence !== cursor + 1 + i)))
+          return snapshot(head - cursor > MAX_REPLAY_EVENTS ? "cursor_too_old" : "replay_unavailable");
+        this.deps.registry.resumeAt(this.connectionId, stream, cursor);
+        const buffered = this.deps.registry.completeBootstrap(this.connectionId, stream, head);
+        return [this.control("subscription.ready", { stream, headSequence: head, resumed: true }, rid, stream), ...missed!, ...buffered];
       }
       case "subscription.snapshot_applied": {
         const seq = frame.payload.snapshotSequence;

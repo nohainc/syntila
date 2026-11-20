@@ -111,6 +111,12 @@ export class SubscriptionRegistry {
     return true;
   }
 
+  /** A resumed subscription starts acknowledged at the client's cursor. */
+  resumeAt(connectionId: string, stream: StreamRef, cursor: number): void {
+    const sub = this.byConnection.get(connectionId)?.get(streamKey(stream));
+    if (sub) sub.lastAcked = cursor;
+  }
+
   lastAcked(connectionId: string, stream: StreamRef): number | null {
     return this.byConnection.get(connectionId)?.get(streamKey(stream))?.lastAcked ?? null;
   }

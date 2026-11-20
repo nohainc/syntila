@@ -89,3 +89,26 @@ test("a session subscribes, bootstraps, acknowledges and is denied what it may n
   expect(await session.handle(cmd("event.ack", { stream: space, sequence: 6 }))).toEqual([]);
   expect((await session.handle(cmd("event.ack", { stream: space, sequence: 99 })))[0]).toMatchObject({ type: "sync.required" });
 });
+
+test("a cursor resumes from the events it missed, or falls back to a snapshot", async () => {
+  const mk = (replay: (s: unknown, a: number, t: number) => Promise<any>) => {
+    const registry = new SubscriptionRegistry();
+    return new MessagingSession("c2", human, {
+      registry, authorize: async () => true, head: async () => 10, supports: () => true, replay: replay as never,
+    });
+  };
+  const cmd = (payload: Record<string, unknown>) => JSON.stringify({ protocol: MESSAGING_PROTOCOL, requestId: "r", type: "command", command: "subscription.subscribe", payload });
+  const stream = { kind: "thread", id: "t1" } as const;
+  const log = async (_s: unknown, after: number, through: number) => Array.from({ length: through - after }, (_, i) => ({ ...ev(after + 1 + i), stream }));
+
+  const resumed = await mk(log).handle(cmd({ stream, cursor: 7 }));
+  expect(resumed[0]).toMatchObject({ payload: { resumed: true, headSequence: 10 } });
+  expect(resumed.slice(1).map((e) => e.sequence)).toEqual([8, 9, 10]);
+
+  expect((await mk(log).handle(cmd({ stream, cursor: 10 })))).toHaveLength(1);
+  const gap = await mk(async () => null).handle(cmd({ stream, cursor: 3 }));
+  expect(gap.map((e) => e.type)).toEqual(["subscription.ready", "sync.required"]);
+  expect(gap[1]).toMatchObject({ payload: { reason: "replay_unavailable" } });
+  expect((await mk(log).handle(cmd({ stream, cursor: 11 })))[1]).toMatchObject({ payload: { reason: "cursor_ahead" } });
+  expect((await mk(log).handle(cmd({ stream, cursor: -1 })))[1]).toMatchObject({ payload: { reason: "cursor_invalid" } });
+});
