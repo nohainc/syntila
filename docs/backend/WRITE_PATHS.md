@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 201 write paths, 91 tables; 1 numbering, 46 unguarded read-write, 0 adapter-only, 165 in data-layer transactions.
+Totals: 202 write paths, 92 tables; 1 numbering, 47 unguarded read-write, 0 adapter-only, 168 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -167,7 +167,7 @@ Totals: 201 write paths, 91 tables; 1 numbering, 46 unguarded read-write, 0 adap
 | `domain/assignment-dispatcher.ts` | `recordAssignmentResult` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, data |
 | `domain/assignment-dispatcher.ts` | `timing` | INSERT agent_commands, INSERT worker_assignments, UPDATE worker_assignments | read-write, data |
 | `domain/assignment-liveness.ts` | `applyEngineLivenessReport` | UPDATE worker_assignments | read-write, guarded |
-| `domain/assignment-revocation.ts` | `escalateUnconfirmedRevocations` | UPDATE worker_assignments | guarded |
+| `domain/assignment-revocation.ts` | `escalateUnconfirmedRevocations` | UPDATE worker_assignments | guarded, data |
 | `domain/assignment-start-permit.ts` | `grantStartPermit` | UPDATE worker_assignments | guarded |
 | `domain/assignment-startup.ts` | `recordAssignmentStartup` | UPDATE worker_assignments | read-write, guarded |
 | `domain/assignment-transitions.ts` | `transitionAssignment` | UPDATE worker_assignments, UPDATE workflow_tasks | guarded, data |
@@ -196,6 +196,7 @@ Totals: 201 write paths, 91 tables; 1 numbering, 46 unguarded read-write, 0 adap
 | `domain/routes/worker-plugins.ts` | `handlePluginLibrary` | INSERT account_worker_plugin_versions, INSERT account_worker_plugins, INSERT worker_catalog, UPDATE account_worker_plugins, UPDATE worker_catalog | read-write, data |
 | `domain/routes/worker-plugins.ts` | `handleWorkspacePluginPin` | DELETE workspace_worker_plugin_enablements, INSERT workspace_worker_plugin_enablements | data |
 | `domain/routes/worker-plugins.ts` | `removeFromLibrary` | DELETE account_worker_plugins, DELETE workspace_worker_inventory, UPDATE worker_catalog | read-write, data |
+| `domain/routes/worker-workflow-configurations.ts` | `handleWorkerWorkflowConfigurations` | DELETE space_workflow_configurations, DELETE user_worker_workflow_configurations, DELETE user_workflow_configurations, INSERT space_workflow_configurations, INSERT user_worker_workflow_configurations | read-write, data |
 | `domain/routes/workers.ts` | `handleCreateWorker` | INSERT worker_instances | read-write, data |
 | `domain/routes/workers.ts` | `handleWorker` | UPDATE worker_instances | data |
 | `domain/routes/workflow-configurations.ts` | `reset` | DELETE space_workflow_configurations, DELETE user_workflow_configurations, INSERT space_workflow_configurations, INSERT space_workflow_defaults, INSERT user_workflow_configurations, INSERT user_workflow_defaults | read-write, data |
@@ -225,7 +226,7 @@ Totals: 201 write paths, 91 tables; 1 numbering, 46 unguarded read-write, 0 adap
 | `domain/worker-agents.ts` | `revokeWorkerCredential` | UPDATE worker_credentials | read-write, data |
 | `domain/worker-agents.ts` | `rotateCredential` | UPDATE worker_credentials | data |
 | `domain/worker-dispatch.ts` | `dispatchWorkerAssignment` | INSERT agent_commands, INSERT worker_assignments, UPDATE worker_assignments | read-write, data |
-| `domain/worker-dispatch.ts` | `fail` | UPDATE worker_assignments | guarded |
+| `domain/worker-dispatch.ts` | `fail` | UPDATE worker_assignments | guarded, data |
 | `domain/worker-profile-registry.ts` | `persistWorkerProfileSnapshot` | INSERT worker_profile_history, INSERT worker_profiles, UPDATE worker_profiles | guarded, data |
 | `domain/workflow.ts` | `finishWorkRequestNow` | UPDATE work_requests | read-write, guarded, data |
 | `domain/workflow.ts` | `persistTerminalRun` | UPDATE runs |  |

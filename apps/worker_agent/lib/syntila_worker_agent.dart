@@ -1,5 +1,6 @@
 library;
 
+export 'src/artifacts.dart';
 export 'src/base64url.dart';
 export 'src/cli.dart';
 export 'src/cli_engine.dart';
@@ -20,4 +21,5 @@ export 'src/runtime.dart';
 export 'src/server_api.dart';
 export 'src/services.dart';
 export 'src/update.dart';
+export 'src/work_root.dart';
 export 'src/wire.dart';

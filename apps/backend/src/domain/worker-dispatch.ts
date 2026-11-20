@@ -9,6 +9,8 @@ import {
   type DispatchAssignmentParams,
   type DispatchAssignmentResult,
 } from "./assignment-dispatcher.js";
+import { assertHandoffAvailable, mintHandoffGrants, MissingArtifactError } from "./artifacts.js";
+import { isFeatureEnabled } from "../feature-flags.js";
 import { acceptWorkerTarget, type WorkerTargetSnapshot } from "./worker-eligibility.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
 import { tryLogDiagnosticEvent } from "./observability.js";
@@ -124,6 +126,16 @@ export async function dispatchWorkerAssignment(
   delete assignmentInput.sessionPolicy;
   delete assignmentInput.sessionKey;
   delete assignmentInput.additionalFolderIds;
+  // Handoff is by artifact ID only; a path or an unavailable artifact fails the step.
+  const handoffIds = task.contextArtifactIds ?? [];
+  if (handoffIds.length && isFeatureEnabled("artifact_handoff")) {
+    try {
+      await assertHandoffAvailable(env as never, { artifactIds: handoffIds, spaceId: accepted.spaceId });
+    } catch (error) {
+      if (error instanceof MissingArtifactError) return failed(error.message, accepted.workerId);
+      throw error;
+    }
+  }
 
   const conversation = task.workRequestId
     ? await read.row<{ conversationId: string | null; baseContextRevision: number | null }>`SELECT cwr.conversation_id AS "conversationId",
@@ -234,6 +246,10 @@ export async function dispatchWorkerAssignment(
     }
   }
 
+  const handoffGrants =
+    handoffIds.length && isFeatureEnabled("artifact_handoff")
+      ? await mintHandoffGrants(env as never, { artifactIds: handoffIds, workerInstanceId: accepted.workerId, assignmentId })
+      : undefined;
   const payload = {
     snapshot: {
       assignmentId,
@@ -263,7 +279,7 @@ export async function dispatchWorkerAssignment(
       config: assignmentInput,
       permissions: accepted.permissions,
       permissionSnapshot,
-      contextRefs: (task.contextArtifactIds ?? []).map((artifactId) => ({ artifactId })),
+      contextRefs: handoffGrants ?? (task.contextArtifactIds ?? []).map((artifactId) => ({ artifactId })),
       timeoutMs,
       queueWaitTimeoutMs,
       sessionPolicy,

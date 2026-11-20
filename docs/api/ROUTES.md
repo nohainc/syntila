@@ -8,7 +8,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 `Workspace/server`: called with Workspace or server credentials, no browser same-origin check.
 `Idempotency-Key`: a retry with the same key returns the first response (see CONTRACT.md).
 
-146 paths.
+148 paths.
 
 | Path | Methods | Notes |
 | --- | --- | --- |
@@ -79,6 +79,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/threads/:threadId/chat/clear` | POST |  |
 | `/api/threads/:threadId/conversations/:conversationId/history` | GET |  |
 | `/api/threads/:threadId/discussion-messages` | GET, POST | Idempotency-Key |
+| `/api/threads/:threadId/eligible-workers` | GET |  |
 | `/api/threads/:threadId/files/:fileId` | GET |  |
 | `/api/threads/:threadId/note` | GET, PUT |  |
 | `/api/threads/:threadId/queue` | ANY |  |
@@ -89,6 +90,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/threads/:threadId/queue/resume` | ANY |  |
 | `/api/threads/:threadId/read` | POST |  |
 | `/api/threads/:threadId/read-states` | GET |  |
+| `/api/threads/:threadId/timeline` | GET |  |
 | `/api/threads/:threadId/work-history/clear` | POST | Idempotency-Key |
 | `/api/threads/:threadId/work-request-files` | POST |  |
 | `/api/threads/:threadId/work-requests` | GET, POST | Idempotency-Key |

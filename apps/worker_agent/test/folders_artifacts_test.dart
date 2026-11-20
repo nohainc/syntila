@@ -1,0 +1,89 @@
+import 'dart:io';
+
+import 'package:syntila_worker_agent/syntila_worker_agent.dart';
+import 'package:test/test.dart';
+
+void main() {
+  late Directory sandbox;
+  late AllowedFolders folders;
+  late Directory work;
+
+  setUp(() async {
+    sandbox = await Directory.systemTemp.createTemp('syntila-folders-');
+    await Directory('${sandbox.path}/home').create();
+    await Directory('${sandbox.path}/data').create();
+    work = await Directory('${sandbox.path}/work').create();
+    folders = AllowedFolders(
+      File('${sandbox.path}/data/allowed.json'),
+      home: '${sandbox.path}/home',
+      dataRoot: '${sandbox.path}/data',
+    );
+  });
+  tearDown(() => sandbox.delete(recursive: true));
+
+  test('read and write are separate, and are re-checked before use', () async {
+    final id = await folders.add(work.path);
+    expect(id, startsWith('fld-'));
+    expect(await folders.isAllowed(work.path), isTrue);
+    expect(await folders.isAllowed(work.path, write: true), isFalse);
+    await expectLater(
+      folders.require(work.path, write: true),
+      throwsA(isA<FolderRejectedException>()),
+    );
+    await folders.add(work.path, write: true);
+    await folders.require(work.path, write: true);
+    await folders.remove(id);
+    await expectLater(
+      folders.require(work.path),
+      throwsA(isA<FolderRejectedException>()),
+    );
+  });
+
+  test('a folder that was not approved cannot be reached', () async {
+    final other = await Directory('${sandbox.path}/other').create();
+    await folders.add(work.path, write: true);
+    expect(await folders.isAllowed(other.path), isFalse);
+    final link = Link('${work.path}/escape');
+    await link.create(other.path);
+    expect(await folders.isAllowed('${work.path}/escape'), isFalse);
+  });
+
+  test('the Work Root maps Spaces and adopts existing folders explicitly', () async {
+    final root = WorkRoot(File('${sandbox.path}/data/work-root.json'), folders);
+    await expectLater(
+      root.spaceDirectory('space-1'),
+      throwsA(isA<FolderRejectedException>()),
+    );
+    await root.setRoot(work.path);
+    final dir = await root.spaceDirectory('space-1');
+    expect(dir.path, endsWith('/spaces/space-1'));
+    await expectLater(
+      root.spaceDirectory('../escape'),
+      throwsA(isA<FolderRejectedException>()),
+    );
+    final legacy = await Directory('${sandbox.path}/legacy').create();
+    await expectLater(
+      root.adopt({'space-2': legacy.path}),
+      throwsA(isA<FolderRejectedException>()),
+    );
+    await folders.add(legacy.path, write: true);
+    await root.adopt({'space-2': legacy.path});
+    expect((await root.spaceDirectory('space-2')).path, legacy.resolveSymbolicLinksSync());
+    expect(await legacy.exists(), isTrue);
+  });
+
+  test('a handoff is an artifact ID with a grant, never a path', () {
+    for (final bad in <Object?>['/Users/a/report.txt', {'path': '/x'}, {'artifactId': '../x'}]) {
+      expect(() => ArtifactRef.parse(bad), throwsA(isA<MissingArtifactException>()));
+    }
+    final ok = ArtifactRef.parse({
+      'artifactId': 'art-11111111-1111-4111-8111-111111111111',
+      'name': '../../etc/passwd',
+      'sizeBytes': 3,
+      'sha256': 'sha256:${'a' * 64}',
+      'grant': {'token': 't'},
+    });
+    expect(safeArtifactName(ok.name), 'passwd');
+    expect(safeArtifactName('..'), 'artifact');
+  });
+}

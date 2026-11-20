@@ -113,6 +113,8 @@ export const routeHandlers = {
   handleExportWorkspaceAudit: handlers.handleExportWorkspaceAudit,
   handleWorkspaceGatewayConnect: handlers.handleWorkspaceGatewayConnect,
   handleWorkerGatewayConnect: handlers.handleWorkerGatewayConnect,
+  handleUploadArtifact: handlers.handleUploadArtifact,
+  handleDownloadArtifact: handlers.handleDownloadArtifact,
   handleWorkspaceRuntimeTransport: handlers.handleWorkspaceRuntimeTransport,
   handleGetReleaseTrustState: handlers.handleGetReleaseTrustState,
   handleRevokeReleaseSigningKey: handlers.handleRevokeReleaseSigningKey,

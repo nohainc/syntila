@@ -10,6 +10,7 @@ import 'config.dart';
 import 'connection.dart';
 import 'engine.dart';
 import 'folders.dart';
+import 'work_root.dart';
 import 'identity.dart';
 import 'journal.dart';
 import 'lock.dart';
@@ -35,6 +36,7 @@ class _Args {
     'auto-start',
     'no-service',
     'keep-data',
+    'write',
   };
 
   factory _Args.parse(List<String> args) {
@@ -109,7 +111,9 @@ syntila-worker <command> [options]
   config show              show settings
   config set KEY VALUE     maxConcurrent, autoStart, separateOsUser, logLevel
   permissions list         folders this Worker may use
-  permissions add-folder PATH
+  permissions add-folder PATH [--write]   grant a folder (read only unless --write)
+  permissions work-root [PATH]            show or set the Work Root
+  permissions adopt-space SPACE_ID PATH   map an existing folder to a Space
   permissions remove-folder ID
   rotate-credential        replace this Worker's key pair
   update stage --manifest FILE --artifact FILE
@@ -494,14 +498,18 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         final list = await folders.list();
         if (list.isEmpty) out.writeln('No folders are granted.');
         for (final f in list) {
-          out.writeln('${f['id']}  ${f['path']}');
+          out.writeln('${f['id']}  ${f['mode']}  ${f['path']}');
         }
         return 0;
       case 'add-folder':
         if (args.positionals.length != 2) {
-          throw const FormatException('usage: permissions add-folder PATH');
+          throw const FormatException(
+            'usage: permissions add-folder PATH [--write]',
+          );
         }
-        out.writeln('Granted ${await folders.add(args.positionals[1])}');
+        final write = args.flags.contains('write');
+        final id = await folders.add(args.positionals[1], write: write);
+        out.writeln('Granted (${write ? 'read and write' : 'read only'}) $id');
         return 0;
       case 'remove-folder':
         if (args.positionals.length != 2) {
@@ -510,9 +518,30 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         final removed = await folders.remove(args.positionals[1]);
         out.writeln(removed ? 'Removed.' : 'No such folder id.');
         return removed ? 0 : 1;
+      case 'work-root':
+        final workRoot = WorkRoot(paths.workRootFile, folders);
+        if (args.positionals.length == 1) {
+          out.writeln(await workRoot.root() ?? 'No Work Root is set.');
+          return 0;
+        }
+        await workRoot.setRoot(args.positionals[1]);
+        out.writeln('Work Root set (read and write granted).');
+        return 0;
+      case 'adopt-space':
+        if (args.positionals.length != 3) {
+          throw const FormatException(
+            'usage: permissions adopt-space SPACE_ID PATH',
+          );
+        }
+        await WorkRoot(
+          paths.workRootFile,
+          folders,
+        ).adopt({args.positionals[1]: args.positionals[2]});
+        out.writeln('Space ${args.positionals[1]} now uses that folder.');
+        return 0;
       default:
         throw const FormatException(
-          'usage: permissions list | add-folder | remove-folder',
+          'usage: permissions list | add-folder | remove-folder | work-root | adopt-space',
         );
     }
   }

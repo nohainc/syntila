@@ -4,6 +4,7 @@ import {
   type OutboxSweepResult,
 } from "./event-publisher.js";
 import { expireLapsedSessions } from "./worker-agents.js";
+import { expireArtifacts } from "./artifacts.js";
 
 /**
  * Delivers what the committing process did not (ADR-033 decision 8).
@@ -88,6 +89,12 @@ export class OutboxDispatcher {
       if (lapsed > 0) log("warn", "worker.sessions_expired", { sessions: lapsed });
     } catch (error) {
       log("error", "worker.session_expiry_failed", { error: String((error as Error)?.stack ?? error) });
+    }
+    try {
+      const expired = await expireArtifacts(this.env as never);
+      if (expired > 0) log("warn", "artifacts.expired", { artifacts: expired });
+    } catch (error) {
+      log("error", "artifacts.expiry_failed", { error: String((error as Error)?.stack ?? error) });
     }
     try {
       const result = await new CloudEventPublisher(this.env).sweepOutbox();

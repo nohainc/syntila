@@ -137,6 +137,7 @@ export {
 } from "./releases.js";
 
 export { handleWorkerGatewayConnect } from "./worker-agent-gateway.js";
+export { handleUploadArtifact, handleDownloadArtifact } from "../artifacts.js";
 
 export {
   handleWorkspaceGatewayConnect,
