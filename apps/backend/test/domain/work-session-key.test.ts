@@ -161,3 +161,12 @@ it("isolates superseded active requests from both original and fresh sessions", 
     workStepSessionKey({ ...params, workSessionGeneration: 1 }),
   );
 });
+
+it("a recovered attempt gets its own fresh native session key", async () => {
+  const { workStepSessionKey } = await import("../../src/domain/work-session-key.js");
+  const base = { threadId: "th", workRequestId: "wr", stepKind: "research" };
+  const first = workStepSessionKey(base);
+  const recovered = workStepSessionKey({ ...base, retryStepKind: "research", retrySessionStrategy: "fresh", retryNumber: 2 });
+  expect(recovered).not.toBe(first);
+  expect(recovered).not.toBe(workStepSessionKey({ ...base, retryStepKind: "research", retrySessionStrategy: "fresh", retryNumber: 3 }));
+});

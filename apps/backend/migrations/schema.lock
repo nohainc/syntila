@@ -731,6 +731,7 @@ column workflow_steps.outcome text not-null
 column workflow_steps.result jsonb
 column workflow_task_dependencies.depends_on_task_id text not-null
 column workflow_task_dependencies.task_id text not-null
+column workflow_tasks.answer_step bool not-null default
 column workflow_tasks.attempt int8 not-null default
 column workflow_tasks.created_at timestamptz not-null default
 column workflow_tasks.error text

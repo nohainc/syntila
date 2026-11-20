@@ -1122,6 +1122,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       bindings[workBindingId] !== null
         ? (bindings[workBindingId] as Record<string, unknown>)
         : {};
+    // After a durable session could not be resumed, the next attempt of a
+    // step with its own session starts a fresh native session from the
+    // canonical history instead of failing the same way again.
+    let freshSession = false;
     while (attempt < 3) {
       attempt += 1;
       await this.persistWorkflowTaskState(
@@ -1281,9 +1285,9 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                   workSessionGeneration: context.workSessionGeneration,
                 },
                 retry: {
-                  stepKind: params.retryStepKind,
-                  sessionStrategy: params.retrySessionStrategy,
-                  number: params.retryNumber,
+                  stepKind: freshSession ? stepInstanceId(task.step) : params.retryStepKind,
+                  sessionStrategy: freshSession ? "fresh" : params.retrySessionStrategy,
+                  number: freshSession ? attempt : params.retryNumber,
                   adoptSpaceFolder: params.retryAdoptSpaceFolder === true,
                   compactContext: params.retryCompactContext === true,
                 },
@@ -1652,6 +1656,14 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
           };
         }
         if (outcome.kind === "failed") {
+          if (
+            errorValue.code === "session_resume_failed" &&
+            definition.id !== "direct" &&
+            definition.id !== "chat"
+          ) {
+            freshSession = true;
+            throw new Error(outcome.message);
+          }
           throw outcome.retryable
             ? new Error(outcome.message)
             : new AssignmentNotRetryableError(outcome.message);
