@@ -42,7 +42,8 @@ describe("artifact handoff", () => {
     await f.sqlite.exec(`INSERT INTO artifact_download_grants(id,artifact_id,worker_instance_id,token_digest,expires_at)
       VALUES ('g1','${A1}','worker-linux','${await hashToken(token)}',now()+interval '5 minutes')`);
     const agent = async (workerId: string, grant?: string) => {
-      await f.sqlite.exec(`INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES ('c-${workerId}','${workerId}','${"a".repeat(43)}','${"a".repeat(64)}') ON CONFLICT DO NOTHING;
+      const key = workerId === "worker-linux" ? "a" : "b";
+      await f.sqlite.exec(`INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES ('c-${workerId}','${workerId}','${key.repeat(43)}','${key.repeat(64)}') ON CONFLICT DO NOTHING;
         INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at)
         VALUES ('${workerId}','s-${workerId}',1,'c-${workerId}','${await hashToken("sess")}',now()+interval '5 minutes') ON CONFLICT DO NOTHING`);
       return new Request(`https://x/api/worker-agent/artifacts/${A1}/content`, {

@@ -186,6 +186,7 @@ export const routeHandlers = {
   handleCreateWorkRequest: handlers.handleCreateWorkRequest,
   handleRetryWorkRequest: handlers.handleRetryWorkRequest,
   handleValidateWorkRequest: handlers.handleValidateWorkRequest,
+  handleListEligibleWorkers: handlers.handleListEligibleWorkers,
   handleUploadWorkRequestInput: handlers.handleUploadWorkRequestInput,
   handleFailWorkRequestInputUpload: handlers.handleFailWorkRequestInputUpload,
   handleListRuntimeInputs: handlers.handleListRuntimeInputs,

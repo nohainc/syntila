@@ -54,6 +54,7 @@ test("readJson and readBodyText refuse an oversized body with 413, declared or s
 const FREE_FORM_READJSON = new Map([
   ["validation.ts", "defines readJson"],
   ["mcp-action.ts", "forwards an MCP action verbatim to the Workspace gateway, which owns the contract; capped at 2 MiB"],
+  ["worker-workflow-configurations.ts", "validates the parsed object against the authoritative workflow-specific core contract"],
 ]);
 
 test("routes call readJson only at documented free-form sites", () => {

@@ -31,8 +31,8 @@ describe("Workspace-free Workflow configuration", () => {
       const read = (await (await call(f.env, "GET")).json()) as { configurations: { defaults: { worker?: string } }[]; issues: unknown[] };
       expect(read.configurations[0]?.defaults.worker).toBe("worker-alice");
       expect(read.issues).toEqual([]);
-      expect((await call(f.env, "PUT", configuration("worker-bob"))).status).toBe(400);
-      await f.sqlite.exec("UPDATE worker_instances SET revoked_at = now() WHERE id = 'worker-alice'");
+      await expect(call(f.env, "PUT", configuration("worker-bob"))).rejects.toMatchObject({ status: 400 });
+      await f.sqlite.exec("UPDATE worker_instances SET revoked_at = now(), enabled = false WHERE id = 'worker-alice'");
       const revoked = (await (await call(f.env, "GET")).json()) as { configurations: { defaults: { worker?: string } }[]; issues: { code: string }[] };
       expect(revoked.configurations[0]?.defaults.worker).toBeUndefined();
       expect(revoked.issues).toMatchObject([{ code: "worker_unavailable" }]);

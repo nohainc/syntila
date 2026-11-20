@@ -141,6 +141,7 @@ function fixture(route: string, p: string, w: World): Fixture | undefined {
     case "conversationId": return row(w.conversationId, "conversations");
     case "itemId": return row(w.itemId, "thread_request_queue");
     case "inputId": return row(w.inputId, "work_request_inputs");
+    case "artifactId": return { value: `art-${crypto.randomUUID()}`, limitation: LIMITS.runtime };
     case "pluginRef": return row(w.pluginRef, "account_worker_plugins", "plugin_ref");
     case "workerId": return row(w.workerId, "workspace_worker_inventory", "worker_id");
     case "workerTypeId": return row("claude", "worker_catalog", "worker_type_id");
