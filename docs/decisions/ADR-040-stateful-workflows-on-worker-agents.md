@@ -29,3 +29,6 @@ Option A, in two stages: (1) lease table change plus admission and fencing, behi
 
 ## Decision
 Option A accepted (2026-11-20, owner). Implemented in two stages behind `worker_stateful_work`.
+
+## Implementation status (2026-11-20)
+Stage 1 is in code behind `worker_stateful_work` (requires `worker_target_dispatch`): migration 0037 (lease holder column, `work_requests.primary_worker_instance_id`), single-Worker rule for stateful requests (`stateful_single_worker`), lease start for a Worker holder, dispatch refusal `lease_not_active` / `thread_leased_elsewhere`, Agent refusal `stale_fence` (highest token per Thread persisted in `thread-fences.json`). Not yet verified: the full stateful Workflow run end to end on a real Agent, owner-initiated lease release from the Thread, and the two-Agent conflict test that gates enabling the flag.

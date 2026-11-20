@@ -8,6 +8,7 @@ import 'folders.dart';
 import 'git_reference.dart';
 import 'journal.dart';
 import 'server_api.dart';
+import 'thread_fence.dart';
 import 'work_root.dart';
 
 /// The live session of the Agent, kept current by the connection so the
@@ -57,6 +58,21 @@ class ArtifactLauncher implements EngineLauncher {
     final refs = snapshot['contextRefs'];
     final spaceId = snapshot['spaceId'];
     if (spaceId is! String) return inner.launch(request);
+    final token = snapshot['fencingToken'];
+    final threadId = snapshot['threadId'];
+    if (token != null) {
+      // A stateful step: the lease's fencing token must not be stale.
+      final fence = ThreadFence(
+        File('${workRoot.file.parent.path}/thread-fences.json'),
+      );
+      bool ok;
+      try {
+        ok = token is int && threadId is String && await fence.admit(threadId, token);
+      } on FormatException {
+        ok = false;
+      }
+      if (!ok) return _Failed('stale_fence');
+    }
     if (!validGitReferences(snapshot['gitReferences'])) {
       return _Failed('invalid_git_reference');
     }

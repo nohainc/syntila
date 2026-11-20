@@ -11,6 +11,7 @@ export 'src/engine.dart';
 export 'src/faults.dart';
 export 'src/folders.dart';
 export 'src/git_reference.dart';
+export 'src/thread_fence.dart';
 export 'src/identity.dart';
 export 'src/journal.dart';
 export 'src/legacy_import.dart';

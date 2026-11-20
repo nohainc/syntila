@@ -278,6 +278,31 @@ void launcherTests() {
     expect(await root.adoptMarkedSpaces(), isEmpty);
   });
 
+  test('a stale fencing token fails the step before the Engine starts', () async {
+    await root.setRoot(work.path);
+    final inner = _RecordingLauncher();
+    EngineRequest step(int token) => EngineRequest(
+      assignmentId: 'a$token',
+      attemptId: 't1',
+      payload: {
+        'snapshot': {
+          'spaceId': 'space-1',
+          'contextRefs': <Object?>[],
+          'threadId': 'thread-1',
+          'fencingToken': token,
+        },
+      },
+    );
+    await (await launcher(inner).launch(step(5))).outcome;
+    expect(inner.last, isNotNull);
+    inner.last = null;
+    final stale = await launcher(inner).launch(step(4));
+    expect((await stale.outcome).payload['errorCode'], 'stale_fence');
+    expect(inner.last, isNull);
+    await (await launcher(inner).launch(step(5))).outcome;
+    expect(inner.last, isNotNull, reason: 'the same token may continue its lease');
+  });
+
   test('Git references are validated like the server does', () {
     final ok = {
       'kind': 'git',
