@@ -29,3 +29,8 @@ Option A, after stateless Workflows on the Agent are proven on real machines, be
 
 ## Decision
 Option A accepted (2026-11-20, owner). Implemented behind `worker_plugins`.
+
+## Implementation status (2026-11-20)
+Stage 1 (Agent side, in code): the local allow list (`plugin list | approve | remove`, file `registry/approved-plugins.json`) and the admission rule: an assignment carrying a `plugin` pin runs only if its exact id, version and manifest digest are approved on this machine (`plugin_not_approved` otherwise); an approved pin currently ends with `plugin_runner_unavailable`.
+
+Stage 2 (not started, each needs running code on real machines): (1) extract the plugin store and runner from `apps/workspace` (`external_worker_store.dart`, `external_worker_executor.dart`, runtime) into a shared package used by both the Workspace and the Agent; (2) an Agent inventory report so the Cloud knows which `plugin-…` Types a Worker Instance can run, and a per-Instance pin (version, manifest digest); (3) Cloud eligibility: allow `origin = plugin` under flag `worker_plugins` when the owner is entitled (`paidOwner`) and the pin is set, and put the pin in the assignment payload; (4) the flag itself and conformance/escape tests on all three OSes.

@@ -11,6 +11,7 @@ import 'identity.dart';
 import 'journal.dart';
 import 'lock.dart';
 import 'paths.dart';
+import 'plugin_allow_list.dart';
 import 'profile_cache.dart';
 import 'readiness.dart';
 import 'server_api.dart';
@@ -31,6 +32,7 @@ class AgentRuntime {
     required EngineLauncher engine,
     required this.readiness,
     required this.profiles,
+    this.plugins,
     required this.permitTimeout,
     required this.permitResend,
     required this.onPoint,
@@ -72,6 +74,9 @@ class AgentRuntime {
   final EngineSupervisor supervisor;
   final ReadinessChecker readiness;
   final ProfileCache? profiles;
+
+  /// Plugins the owner approved locally (ADR-041). Null approves none.
+  final PluginAllowList? plugins;
   final Duration permitTimeout;
   final Duration permitResend;
   final FaultPoint? onPoint;
@@ -412,6 +417,23 @@ class AgentRuntime {
   Future<String?> _admissionBlock(Map<String, Object?> payload) async {
     final report = await readiness.evaluate();
     if (!report.ready) return 'worker_not_ready';
+    final plugin = payload['plugin'];
+    if (plugin != null) {
+      // Only a plugin the owner approved here, by exact digest, may run.
+      final approved = plugin is Map &&
+          plugin['id'] is String &&
+          plugin['version'] is String &&
+          plugin['manifestDigest'] is String &&
+          await (plugins?.isApproved(
+                plugin['id'] as String,
+                plugin['version'] as String,
+                plugin['manifestDigest'] as String,
+              ) ??
+              Future.value(false));
+      if (!approved) return 'plugin_not_approved';
+      // The shared plugin runner is not part of the Agent yet (ADR-041 stage 2).
+      return 'plugin_runner_unavailable';
+    }
     final digest = payload['profileDigest'];
     if (profiles != null) {
       if (digest is! String) return 'profile_unavailable';

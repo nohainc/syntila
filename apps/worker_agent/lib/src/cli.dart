@@ -18,6 +18,7 @@ import 'journal.dart';
 import 'legacy_import.dart';
 import 'lock.dart';
 import 'pairing.dart';
+import 'plugin_allow_list.dart';
 import 'paths.dart';
 import 'profile_cache.dart';
 import 'profile_signature.dart';
@@ -143,6 +144,7 @@ syntila-worker <command> [options]
   permissions remove-folder ID
   import-workspace --from DIR [--write] [--dry-run]   take the folders and Work Root of an old Workspace
   rotate-credential        replace this Worker's key pair
+  plugin list | approve ID VERSION MANIFEST_DIGEST | remove ID MANIFEST_DIGEST   plugins this machine may run
   update stage --manifest FILE --artifact FILE
   update prepare           prepare the verified release for later activation
   uninstall [--yes] [--keep-data]
@@ -173,6 +175,8 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           return await _config(args);
         case 'permissions':
           return await _permissions(args);
+        case 'plugin':
+          return await _plugin(args);
         case 'import-workspace':
           return await _importWorkspace(args);
         case 'rotate-credential':
@@ -343,6 +347,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           ),
       api: api,
       profiles: profiles,
+      plugins: PluginAllowList(paths.pluginsFile),
       clientVersion: agentVersion,
     );
     await recoverPendingRotation(
@@ -548,6 +553,36 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       operatingSystem: operatingSystem,
     ),
   );
+
+  Future<int> _plugin(_Args args) async {
+    final list = PluginAllowList(_paths(args).pluginsFile);
+    final action = args.positionals.isEmpty ? 'list' : args.positionals.first;
+    switch (action) {
+      case 'list':
+        final items = await list.list();
+        if (items.isEmpty) out.writeln('No plugins are approved on this machine.');
+        for (final p in items) {
+          out.writeln('${p.id} ${p.version} ${p.digest}');
+        }
+        return 0;
+      case 'approve':
+        if (args.positionals.length != 4) {
+          throw const FormatException('usage: plugin approve ID VERSION MANIFEST_DIGEST');
+        }
+        await list.approve(args.positionals[1], args.positionals[2], args.positionals[3]);
+        out.writeln('Approved ${args.positionals[1]} ${args.positionals[2]} for this machine.');
+        return 0;
+      case 'remove':
+        if (args.positionals.length != 3) {
+          throw const FormatException('usage: plugin remove ID MANIFEST_DIGEST');
+        }
+        final removed = await list.remove(args.positionals[1], args.positionals[2]);
+        out.writeln(removed ? 'Removed.' : 'No such approval.');
+        return removed ? 0 : 1;
+      default:
+        throw const FormatException('usage: plugin list | approve | remove');
+    }
+  }
 
   Future<int> _permissions(_Args args) async {
     final paths = _paths(args);
