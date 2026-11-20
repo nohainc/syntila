@@ -167,6 +167,38 @@ void main() {
     );
   });
 
+  test(
+    'prepares a verified versioned executable and rejects a damaged copy',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('syntila-update-');
+      addTearDown(() => dir.delete(recursive: true));
+      final verifier = UpdateVerifier([release.publicKeyText]);
+      await verifier.stage(
+        await signed(release, bytes),
+        bytes,
+        dir,
+        currentVersion: '0.1.0',
+      );
+      final prepared = await verifier.prepareExecutable(
+        dir,
+        currentVersion: '0.1.0',
+      );
+      expect(await prepared.readAsBytes(), bytes);
+      if (!Platform.isWindows) {
+        expect((await prepared.stat()).mode & 0x1ff, 448);
+      }
+      expect(
+        (await verifier.prepareExecutable(dir, currentVersion: '0.1.0')).path,
+        prepared.path,
+      );
+      await prepared.writeAsString('tampered');
+      await expectLater(
+        verifier.prepareExecutable(dir, currentVersion: '0.1.0'),
+        throwsA(isA<UpdateRejectedException>()),
+      );
+    },
+  );
+
   test('version ordering', () {
     expect(isNewerVersion('0.1.0', '0.1.1'), isTrue);
     expect(isNewerVersion('0.9.0', '0.10.0'), isTrue);

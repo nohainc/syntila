@@ -52,6 +52,8 @@ Every Agent gets its own service (name and data directory per Worker id). **Auto
 
 Staging limits artifacts to 256 MiB, restricts the update directory on POSIX, and refuses existing temporary files instead of following or overwriting them. An interrupted temporary file must be inspected and removed before retrying.
 
+`update prepare` revalidates the staged release and creates a private, version-and-digest-named executable under `engine/updates/releases/`. Repeated preparation verifies the existing file before reuse. Preparation does not change service registration or start the new executable; activation, restart and rollback remain open.
+
 ## Separate OS user (isolation limits)
 
 `install --separate-user NAME` installs a system-scope service that runs as that user and prints the commands an administrator runs to create it. The Agent never elevates itself. Windows needs an administrator-created task and is not automated.

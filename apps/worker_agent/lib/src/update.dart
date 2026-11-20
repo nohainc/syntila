@@ -156,6 +156,59 @@ class UpdateVerifier {
     return (manifest: manifest, bytes: bytes);
   }
 
+  /// Materialize a verified release at a versioned, Agent-owned path. This
+  /// does not change the service registration or start the executable.
+  Future<File> prepareExecutable(
+    Directory directory, {
+    required String currentVersion,
+  }) async {
+    final staged = await readVerifiedStaged(
+      directory,
+      currentVersion: currentVersion,
+    );
+    final releases = Directory('${directory.path}/releases');
+    final existingDirectory = await FileSystemEntity.type(
+      releases.path,
+      followLinks: false,
+    );
+    if (existingDirectory != FileSystemEntityType.notFound &&
+        existingDirectory != FileSystemEntityType.directory) {
+      throw UpdateRejectedException('the release directory is invalid');
+    }
+    await releases.create(recursive: true);
+    await AgentPaths.restrict(releases);
+    final target = File(
+      '${releases.path}/syntila-worker-${staged.manifest.version}-${staged.manifest.sha256}${Platform.isWindows ? '.exe' : ''}',
+    );
+    final kind = await FileSystemEntity.type(target.path, followLinks: false);
+    if (kind != FileSystemEntityType.notFound) {
+      if (kind != FileSystemEntityType.file ||
+          await target.length() > 256 * 1024 * 1024) {
+        throw UpdateRejectedException('the prepared executable is invalid');
+      }
+      verifyArtifact(staged.manifest, await target.readAsBytes());
+      return target;
+    }
+    final temporary = File('${target.path}.tmp');
+    await temporary.create(exclusive: true);
+    try {
+      await temporary.writeAsBytes(staged.bytes, flush: true);
+      if (!Platform.isWindows) {
+        final result = await Process.run('chmod', ['700', temporary.path]);
+        if (result.exitCode != 0) {
+          throw UpdateRejectedException(
+            'could not make the prepared executable private',
+          );
+        }
+      }
+      verifyArtifact(staged.manifest, await temporary.readAsBytes());
+      await temporary.rename(target.path);
+      return target;
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
+  }
+
   /// Verifies, then writes the artifact atomically into [directory]. The
   /// running executable is not replaced here; the service manager restarts the
   /// Agent from the staged file.

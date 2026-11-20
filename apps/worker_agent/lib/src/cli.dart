@@ -144,6 +144,7 @@ syntila-worker <command> [options]
   import-workspace --from DIR [--write] [--dry-run]   take the folders and Work Root of an old Workspace
   rotate-credential        replace this Worker's key pair
   update stage --manifest FILE --artifact FILE
+  update prepare           prepare the verified release for later activation
   uninstall [--yes] [--keep-data]
 
 Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
@@ -660,9 +661,21 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
   }
 
   Future<int> _update(_Args args) async {
+    if (args.positionals.length == 1 && args.positionals.first == 'prepare') {
+      final paths = _paths(args);
+      final prepared = await UpdateVerifier(compiledUpdateKeys())
+          .prepareExecutable(
+            Directory('${paths.engineDir.path}/updates'),
+            currentVersion: agentVersion,
+          );
+      out.writeln(
+        'Prepared ${prepared.uri.pathSegments.last}; service activation is not yet available.',
+      );
+      return 0;
+    }
     if (args.positionals.isEmpty || args.positionals.first != 'stage') {
       throw const FormatException(
-        'usage: update stage --manifest FILE --artifact FILE',
+        'usage: update stage --manifest FILE --artifact FILE | update prepare',
       );
     }
     final manifestFile = args.options['manifest'];
