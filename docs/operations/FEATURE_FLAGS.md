@@ -40,3 +40,16 @@ The prerequisite column is enforced in code and follows the dependency graph of 
 3. Schema changes are additive and not flag-dependent: migrations run regardless of flags, and the columns stay nullable until the cleanup phase.
 4. The app learns the flags through `GET /api/features` (added in P1); the Worker list loads only when `worker_identity` is listed.
 5. Remove a flag, its tests and its line here when its phase is final.
+
+## Milestone M1: Worker-first GA (one server)
+
+Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonical_timeline` and `artifact_handoff` by cohort. The flag value is process-wide (see above), so a cohort means a separate environment or an allow-listed deployment, not a per-user switch; no per-user flag exists yet.
+
+| Step | Cohort | Move on when |
+| --- | --- | --- |
+| 1 | Internal accounts only | Two Agents on two hosts complete a Thread round trip; no duplicate answers; the P7 timeline matches the old rendering on fixtures. |
+| 2 | Owners | No `worker_offline` surprises, no stuck assignments, artifact handoff verified between a macOS and a Linux Agent. |
+| 3 | Test cohort | A week without a rollback trigger (duplicate answers, lost Work cards, unauthorized folder reach). |
+| 4 | Default | Steps 1-3 clean. Legacy removal is P10. |
+
+Rollback is removing the flag and restarting; schema changes stay. `unified_gateway` (P9) is enabled separately, after M1, because Agents opt in by sending `syntila.messaging/1` frames.

@@ -21,6 +21,9 @@ import { agentFenceIsCurrent, type AgentSessionFence } from "./agent-session-fen
 import { AgentLeaseKeeper, authenticateAgentSession, closeSession as closeAgentSession } from "./worker-agents.js";
 import { isFeatureEnabled } from "../feature-flags.js";
 import { logStructured, requestIdFor, tryLogDiagnosticEvent } from "./observability.js";
+import { buildEnvelope, FrameError, isMessagingFrame, parseCommandFrame } from "./messaging/envelope.js";
+import { bucketFor, mayIssueCommand, type TokenBucket } from "./messaging/principal.js";
+import { commandToLegacy, isBridgedCommand, legacyToEnvelope } from "./messaging/bridge.js";
 import type { WorkspaceGatewayEnv } from "./workspace-gateway/contracts.js";
 
 /**
@@ -63,6 +66,8 @@ interface Attachment {
   workerId: string;
   sessionId: string;
   fence: AgentSessionFence;
+  /** The Agent speaks `syntila.messaging/1`; legacy frames pass through the bridge. */
+  unified?: boolean;
 }
 
 interface AssignmentRow {
@@ -91,6 +96,8 @@ export class WorkerGateway implements DurableObject {
     { resolve: (payload: Record<string, unknown>) => void; timer: ReturnType<typeof setTimeout> }
   >();
   private readonly delivering = new Set<string>();
+  private unified = false;
+  private bucket: TokenBucket | null = null;
 
   constructor(
     private readonly state: DurableObjectState,
@@ -187,6 +194,7 @@ export class WorkerGateway implements DurableObject {
     this.socket = socket;
     this.attachment = attached;
     this.knownWorkerId = attached.workerId;
+    this.unified = attached.unified === true;
     void this.handle(data).catch((error: unknown) =>
       logStructured("error", "WGW-02 agent_message_failed", {}, { error: error instanceof Error ? error.message : String(error) }),
     );
@@ -241,9 +249,33 @@ export class WorkerGateway implements DurableObject {
   private async handle(data: string | ArrayBuffer): Promise<void> {
     let message: WorkspaceRuntimeMessage;
     try {
-      message = parseWorkspaceRuntimeMessage(typeof data === "string" ? JSON.parse(data) : data);
+      let raw: unknown = typeof data === "string" ? JSON.parse(data) : data;
+      if (isMessagingFrame(raw)) {
+        if (!isFeatureEnabled("unified_gateway")) throw new FrameError("unsupported_protocol", "The unified gateway is not enabled");
+        const principal = { kind: "worker" as const, id: this.workerId };
+        const frame = parseCommandFrame(raw);
+        this.bucket ??= bucketFor(principal);
+        if (!this.bucket.take()) throw new FrameError("invalid_frame", "Rate limit exceeded");
+        if (!mayIssueCommand(principal, frame.command) || !isBridgedCommand(frame.command))
+          throw new FrameError("invalid_frame", "Command is not available to a Worker");
+        if (!this.unified && this.socket && this.attachment) {
+          this.unified = true;
+          this.attachment = { ...this.attachment, unified: true };
+          this.socket.serializeAttachment(this.attachment);
+        }
+        raw = commandToLegacy(frame, workerScope(this.workerId), {
+          protocolName: WORKSPACE_RUNTIME_PROTOCOL_NAME,
+          protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
+        });
+      }
+      message = parseWorkspaceRuntimeMessage(raw);
     } catch (error) {
-      this.socket?.send(JSON.stringify({ error: error instanceof Error ? error.message : "Invalid protocol message" }));
+      const text = error instanceof Error ? error.message : "Invalid protocol message";
+      this.socket?.send(
+        this.unified || error instanceof FrameError
+          ? JSON.stringify(buildEnvelope({ type: "error", stream: { kind: "worker_inbox", id: this.workerId }, payload: { code: error instanceof FrameError ? error.code : "invalid_frame", message: text } }))
+          : JSON.stringify({ error: text }),
+      );
       return;
     }
     if (!AGENT_TYPES.has(message.type)) return;
@@ -471,7 +503,11 @@ export class WorkerGateway implements DurableObject {
 
   private async send(message: Record<string, unknown>): Promise<void> {
     if (!this.socket) throw new Error("Worker is offline");
-    this.socket.send(serializeWorkspaceRuntimeMessage(message as never));
+    this.socket.send(
+      this.unified
+        ? JSON.stringify(legacyToEnvelope(parseWorkspaceRuntimeMessage(message) as unknown as Record<string, unknown>, this.workerId))
+        : serializeWorkspaceRuntimeMessage(message as never),
+    );
   }
 
   /**
