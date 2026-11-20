@@ -78,7 +78,7 @@ export async function handleListEligibleWorkers(
   const workflow = BUILTIN_WORKFLOWS[workflowId];
   if (!workflow) throw new HttpError(400, "Unsupported workflowId");
   await requireWorkflowPermission(env, context.userId, spaceId, workflowId);
-  if (workflow.steps.some((step) => step.executionMode === "stateful_thread")) {
+  if (workflow.steps.some((step) => step.executionMode === "stateful_thread") && !isFeatureEnabled("worker_stateful_work")) {
     throw new HttpError(422, "This Workflow needs a Workspace; Worker-targeted requests run stateless Workflows only");
   }
   const q = dataOf(env).read;
@@ -155,7 +155,7 @@ export async function handleValidateWorkRequest(
   if (requestsWorkerTarget(workerRequest)) {
     if (!isFeatureEnabled("worker_target_dispatch"))
       throw new HttpError(400, "Worker-targeted requests are not available yet");
-    if (workflow.steps.some((step) => step.executionMode === "stateful_thread"))
+    if (workflow.steps.some((step) => step.executionMode === "stateful_thread") && !isFeatureEnabled("worker_stateful_work"))
       throw new HttpError(422, "This Workflow needs a Workspace; Worker-targeted requests run stateless Workflows only");
     if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
       throw new HttpError(400, "Worker-targeted requests do not use a Workspace or an execution selection");
@@ -581,7 +581,7 @@ export async function createWorkRequestForUser(
   if (workerTargeted) {
     if (!isFeatureEnabled("worker_target_dispatch"))
       throw new HttpError(400, "Worker-targeted requests are not available yet");
-    if (mode !== "stateless")
+    if (mode !== "stateless" && !isFeatureEnabled("worker_stateful_work"))
       throw new HttpError(422, "This Workflow needs a Workspace; Worker-targeted requests run stateless Workflows only");
     if (toolCallRequested)
       throw new HttpError(400, "A tool call needs a Workspace");
@@ -600,6 +600,12 @@ export async function createWorkRequestForUser(
     : null;
   if (workerBound && workerBound.ok === false) return workerBound.response;
   const accepted = workerBound as Extract<NonNullable<typeof workerBound>, { ok: true }> | null;
+  // ADR-040: one Worker Instance holds a stateful request's Thread lease, so
+  // every Step must run on that one Worker (its Space folder is the checkout).
+  const statefulWorkerIds = accepted && mode === "stateful" ? [...new Set(Object.values(accepted.bindings).map((binding) => binding.workerId))] : [];
+  if (statefulWorkerIds.length > 1)
+    throw new HttpError(422, "stateful_single_worker: every Step of stateful Work must run on the same Worker");
+  const primaryWorkerInstanceId = statefulWorkerIds[0] ?? null;
   const resolvedBindings: Awaited<ReturnType<typeof resolveWorkflowExecutionBindings>> = accepted
     ? (accepted.bindings as never)
     : await resolveWorkflowExecutionBindings(
@@ -812,8 +818,8 @@ export async function createWorkRequestForUser(
   };
   const writeRequest = async (tx: Tx) => {
     await tx.run`INSERT INTO work_requests
-       (id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, primary_workspace_id, input_json, created_at, updated_at)
-       VALUES (${workRequest.id}, ${threadId}, ${context.userId}, ${mode}, ${workflowId}, ${workflowVersion}, ${JSON.stringify(workflowSnapshot)}, ${JSON.stringify(snapshot)}, 'queued', ${workRequest.primaryWorkspaceId}, ${JSON.stringify(workRequest.input)}, ${now}, ${now})`;
+       (id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, primary_workspace_id, primary_worker_instance_id, input_json, created_at, updated_at)
+       VALUES (${workRequest.id}, ${threadId}, ${context.userId}, ${mode}, ${workflowId}, ${workflowVersion}, ${JSON.stringify(workflowSnapshot)}, ${JSON.stringify(snapshot)}, 'queued', ${workRequest.primaryWorkspaceId}, ${primaryWorkerInstanceId}, ${JSON.stringify(workRequest.input)}, ${now}, ${now})`;
     if (fileInputs)
       await insertWorkRequestInputs(tx, {
         workRequestId: workRequest.id,

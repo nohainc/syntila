@@ -25,6 +25,7 @@ export const FEATURE_FLAG_REQUIRES = {
   canonical_timeline: ["worker_target_dispatch"], // P7, ADR-036
   artifact_handoff: ["worker_agent_connect"], // P8, ADR-037
   unified_gateway: ["worker_agent_connect"], // P9, ADR-038
+  worker_stateful_work: ["worker_target_dispatch"], // ADR-040: stateful Workflows on Worker Agents
   cluster_mode: ["unified_gateway"], // P12, ADR-039
 } as const satisfies Record<string, readonly string[]>;
 

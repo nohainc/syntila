@@ -1,6 +1,6 @@
 # ADR-040: Stateful Workflows on Worker Agents
 
-- **Status:** Proposed. Needs an owner decision between options A and B.
+- **Status:** Accepted (option A).
 - **Date:** 2026-11-20
 - **Depends on:** ADR-034 (Agent session fencing), ADR-035 (Worker-targeted execution), ADR-037 (local files)
 - **Closes:** the P5 gap "stateful Workflows" in `WORKER_FIRST_IMPLEMENTATION_PHASES.md`
@@ -28,4 +28,4 @@ Option A, in two stages: (1) lease table change plus admission and fencing, behi
 - The checkout lives only on the leased Worker's machine; moving Work to another Worker starts from the Git remote (ADR-037 Git references), not from the old folder.
 
 ## Decision
-_Pending._
+Option A accepted (2026-11-20, owner). Implemented in two stages behind `worker_stateful_work`.

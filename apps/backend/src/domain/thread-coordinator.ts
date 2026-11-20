@@ -27,7 +27,9 @@ export type CoordinatorRequestRow = {
   threadId: string;
   mode: "stateless" | "stateful";
   status: string;
-  primaryWorkspaceId: string;
+  primaryWorkspaceId: string | null;
+  /** Set instead of primaryWorkspaceId when the request runs on one Worker Agent (ADR-040). */
+  primaryWorkerInstanceId: string | null;
   createdAt: string;
 };
 
@@ -35,7 +37,8 @@ export type CoordinatorLeaseRow = {
   id: string;
   threadId: string;
   workRequestId: string;
-  workspaceId: string;
+  workspaceId: string | null;
+  workerInstanceId?: string | null;
   fencingToken: number;
   status: "active" | "released" | "expired";
   expiresAt: string;
@@ -204,7 +207,8 @@ export async function startStatefulLease(
   input: {
     readonly threadId: string;
     readonly workRequestId: string;
-    readonly workspaceId: string;
+    readonly workspaceId: string | null;
+    readonly workerInstanceId?: string | null;
     readonly leaseId: string;
     readonly now: string;
     readonly expiresAt: string;
@@ -219,8 +223,8 @@ export async function startStatefulLease(
             ) + 1
           WHERE id = ${input.threadId}`;
   await q.run`INSERT INTO thread_runtime_leases
-         (id, thread_id, work_request_id, workspace_id, fencing_token, status, acquired_at, expires_at)
-         VALUES (${input.leaseId}, ${input.threadId}, ${input.workRequestId}, ${input.workspaceId},
+         (id, thread_id, work_request_id, workspace_id, worker_instance_id, fencing_token, status, acquired_at, expires_at)
+         VALUES (${input.leaseId}, ${input.threadId}, ${input.workRequestId}, ${input.workspaceId}, ${input.workerInstanceId ?? null},
                  (SELECT lease_fence_counter FROM threads WHERE id = ${input.threadId}),
                  'active', ${input.now}::timestamptz, ${input.expiresAt}::timestamptz)`;
 }
@@ -651,6 +655,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
   private async startNext(threadId: string): Promise<void> {
     const rows = await dataOf(this.env).read.rows<CoordinatorRequestRow>`SELECT id, thread_id AS "threadId", mode, status,
               primary_workspace_id AS "primaryWorkspaceId",
+              primary_worker_instance_id AS "primaryWorkerInstanceId",
               created_at AS "createdAt"
        FROM work_requests WHERE thread_id = ${threadId} AND mode = 'stateful' AND status = 'queued'
        ORDER BY created_at, id LIMIT 1`;
@@ -664,6 +669,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
         threadId,
         workRequestId: next.id,
         workspaceId: next.primaryWorkspaceId,
+        workerInstanceId: next.primaryWorkerInstanceId,
         leaseId,
         now,
         expiresAt,
@@ -675,6 +681,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
   private async requestRow(id: string): Promise<CoordinatorRequestRow | null> {
     return dataOf(this.env).read.row<CoordinatorRequestRow>`SELECT id, thread_id AS "threadId", mode, status,
               primary_workspace_id AS "primaryWorkspaceId",
+              primary_worker_instance_id AS "primaryWorkerInstanceId",
               created_at AS "createdAt" FROM work_requests WHERE id = ${id}`;
   }
 

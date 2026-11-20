@@ -14,7 +14,7 @@ describe("worker-first feature flags", () => {
     for (const flag of FEATURE_FLAGS) expect(isFeatureEnabled(flag, {})).toBe(false);
   });
 
-  test("the eight flags named in P0 exist", () => {
+  test("the flags exist", () => {
     expect([...FEATURE_FLAGS].sort()).toEqual([
       "artifact_handoff",
       "canonical_timeline",
@@ -22,6 +22,7 @@ describe("worker-first feature flags", () => {
       "unified_gateway",
       "worker_agent_connect",
       "worker_identity",
+      "worker_stateful_work",
       "worker_target_dispatch",
       "workers_ux",
     ]);

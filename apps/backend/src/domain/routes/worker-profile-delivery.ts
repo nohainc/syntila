@@ -20,8 +20,8 @@ export async function handleAgentProfile(request: Request, env: SecurityEnv): Pr
     throw new HttpError(400, "Invalid Profile pin");
   const worker = await dataOf(env).read.row<{ type: string }>`SELECT worker_type_id AS type FROM worker_instances WHERE id = ${workerId}`;
   if (!worker) throw new HttpError(404, "Profile not found");
-  const current = await getCurrentWorkerProfile(env, worker.type);
-  const snapshot = current.revision === revision ? current : (await listWorkerProfileHistory(env, worker.type)).history.find((item) => item.revision === revision);
+  const current = await getCurrentWorkerProfile(env as never, worker.type);
+  const snapshot = current.revision === revision ? current : (await listWorkerProfileHistory(env as never, worker.type)).history.find((item) => item.revision === revision);
   if (!snapshot || snapshot.digest !== digest) throw new HttpError(404, "Profile not found");
   const keyId = process.env.SYNTILA_PROFILE_SIGNING_KEY_ID;
   const encoded = process.env.SYNTILA_PROFILE_SIGNING_JWK;

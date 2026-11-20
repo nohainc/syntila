@@ -1,6 +1,6 @@
 # ADR-041: Plugin Types on Worker Agents
 
-- **Status:** Proposed. Needs an owner decision between options A and B.
+- **Status:** Accepted (option A).
 - **Date:** 2026-11-20
 - **Depends on:** ADR-027 (custom plugins, MCP Worker packages), ADR-034 (Agent), ADR-035
 - **Closes:** the P5 gap "plugin Types" in `WORKER_FIRST_IMPLEMENTATION_PHASES.md`
@@ -28,4 +28,4 @@ Option A, after stateless Workflows on the Agent are proven on real machines, be
 - Plugin output is untrusted data, like any Engine output.
 
 ## Decision
-_Pending._
+Option A accepted (2026-11-20, owner). Implemented behind `worker_plugins`.

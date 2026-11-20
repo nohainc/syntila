@@ -141,6 +141,15 @@ export async function dispatchWorkerAssignment(
     }
   }
 
+  // ADR-040: a stateful step runs only on the Worker that holds the Thread
+  // lease, and only while that lease is the active one.
+  if (task.leaseId && isFeatureEnabled("worker_stateful_work")) {
+    const lease = await read.row<{ workerInstanceId: string | null; fencingToken: string }>`SELECT worker_instance_id AS "workerInstanceId", fencing_token::text AS "fencingToken"
+         FROM thread_runtime_leases WHERE id = ${task.leaseId} AND status = 'active' AND expires_at > now()`;
+    if (!lease || (task.fencingToken !== undefined && Number(lease.fencingToken) !== task.fencingToken)) return failed("lease_not_active", accepted.workerId);
+    if (lease.workerInstanceId !== accepted.workerId) return failed("thread_leased_elsewhere", accepted.workerId);
+  }
+
   // Git references are validated here and travel without credentials or paths.
   const gitHandoff = parseGitReferences(task.gitReferences ?? []);
   if (gitHandoff.ok === false) return failed("invalid_git_reference", accepted.workerId);
