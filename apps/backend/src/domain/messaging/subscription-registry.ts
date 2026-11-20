@@ -54,6 +54,24 @@ export class SubscriptionRegistry {
     return { ok: true, stream, headSequence: head };
   }
 
+  /** Re-creates a subscription after a hibernation; access was checked when it was first made. */
+  restore(connectionId: string, principal: Principal, stream: StreamRef): void {
+    const sub: Subscription = { principal, stream, buffering: false, buffer: [], lastEnqueued: 0, lastAcked: 0 };
+    const key = streamKey(stream);
+    if (!this.byStream.has(key)) this.byStream.set(key, new Map());
+    this.byStream.get(key)!.set(connectionId, sub);
+    if (!this.byConnection.has(connectionId)) this.byConnection.set(connectionId, new Map());
+    this.byConnection.get(connectionId)!.set(key, sub);
+  }
+
+  streamsOf(connectionId: string): StreamRef[] {
+    return [...(this.byConnection.get(connectionId)?.values() ?? [])].map((s) => s.stream);
+  }
+
+  subscribersOf(stream: StreamRef): Array<{ connectionId: string; principal: Principal }> {
+    return [...(this.byStream.get(streamKey(stream)) ?? [])].map(([connectionId, sub]) => ({ connectionId, principal: sub.principal }));
+  }
+
   /** Ends buffering. Returns the buffered events above the snapshot, in order, without gaps or repeats. */
   completeBootstrap(connectionId: string, stream: StreamRef, snapshotSequence: number): MessagingEnvelope[] {
     const sub = this.byConnection.get(connectionId)?.get(streamKey(stream));

@@ -22,6 +22,11 @@ import {
 const selectExecutionWorkspacesByIdOwnerUserId = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
   q.row<T>`SELECT 1 AS owner FROM execution_workspaces WHERE id = ${p1} AND owner_user_id = ${p2} AND status <> 'revoked'`;
 
+import { buildEnvelope, isMessagingFrame, type StreamRef } from "./messaging/envelope.js";
+import { MessagingSession } from "./messaging/session.js";
+import { SubscriptionRegistry } from "./messaging/subscription-registry.js";
+import { isFeatureEnabled } from "../feature-flags.js";
+
 export interface RealtimeScope {
   kind?: "user" | "space" | "thread" | "run" | "execution_workspace";
   executionWorkspaceId?: string;
@@ -65,6 +70,10 @@ interface ConnectedClient {
   readonly appliedSequences: Map<string, number>;
   readonly queue: BoundedRealtimeQueue;
   flushScheduled: boolean;
+  /** `syntila.messaging/1` session, created by the first unified frame. */
+  unified?: MessagingSession;
+  /** Mirror of the registry's streams for this connection, kept for storage. */
+  unifiedStreams?: StreamRef[];
   /**
    * Set when the queue overflowed and the client was told to synchronize.
    * Until its next hello the connection takes no more frames, so a client that
@@ -84,6 +93,7 @@ interface ConnectionAttachment {
 /** Per-connection state that changes, kept in storage across hibernation. */
 interface PersistedConnection {
   readonly subscriptions: RealtimeScope[];
+  readonly unifiedStreams?: StreamRef[];
 }
 
 export interface RealtimeGatewayMetrics {
@@ -388,11 +398,13 @@ export async function isRealtimeIdentityAuthorized(
 function serializeConnection(connected: ConnectedClient): string {
   return JSON.stringify({
     subscriptions: [...connected.subscriptions.values()],
+    unifiedStreams: connected.unified ? connected.unifiedStreams : [],
   } satisfies PersistedConnection);
 }
 
 export class RealtimeGateway implements DurableObject {
   private readonly clients = new Map<string, ConnectedClient>();
+  private readonly registry = new SubscriptionRegistry();
   private restored: Promise<void> | null = null;
   private readonly metrics: RealtimeGatewayMetrics = {
     activeAppSockets: 0,
@@ -571,6 +583,12 @@ export class RealtimeGateway implements DurableObject {
         queue: new BoundedRealtimeQueue(),
         flushScheduled: false,
       };
+      if (persisted?.unifiedStreams?.length) {
+        connected.unified = this.newSession(attachment.connectionId, attachment.identity.userId);
+        connected.unifiedStreams = [...persisted.unifiedStreams];
+        for (const stream of persisted.unifiedStreams)
+          this.registry.restore(attachment.connectionId, connected.unified.principal, stream);
+      }
       this.bindDrain(connected);
       connected.persisted = serializeConnection(connected);
       this.clients.set(attachment.connectionId, connected);
@@ -600,6 +618,7 @@ export class RealtimeGateway implements DurableObject {
 
   private async removeClient(connectionId: string): Promise<void> {
     this.clients.delete(connectionId);
+    this.registry.closeConnection(connectionId);
     this.metrics.activeAppSockets = this.clients.size;
     await this.storage?.delete(CONNECTION_STORAGE_PREFIX + connectionId);
   }
@@ -616,6 +635,10 @@ export class RealtimeGateway implements DurableObject {
           ? data
           : new TextDecoder().decode(data as ArrayBuffer),
       );
+      if (isMessagingFrame(input)) {
+        await this.handleUnified(connectionId, connected, input);
+        return;
+      }
       const message = parseRealtimeClientMessage(input);
       if (message.type === "ack") {
         // Acknowledgements are frequent and change no authorization state:
@@ -712,6 +735,68 @@ export class RealtimeGateway implements DurableObject {
     }
   }
 
+  private newSession(connectionId: string, userId: string): MessagingSession {
+    return new MessagingSession(connectionId, { kind: "human", id: userId }, {
+      registry: this.registry,
+      // The unified protocol serves the streams that own a durable sequence.
+      supports: (stream) => stream.kind === "user" || stream.kind === "space",
+      authorize: async (principal, stream) =>
+        (
+          await authorizeRealtimeScope(
+            this.env.SYNTILA_DB,
+            principal.id,
+            stream.kind === "space" ? { kind: "space", spaceId: stream.id } : { kind: "user" },
+          )
+        ).allowed,
+      head: async (stream) => {
+        const row = await dataOf(this.env).read.row<{ head: string | null }>`SELECT MAX(sequence)::text AS head FROM realtime_events
+           WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}`;
+        return Number(row?.head ?? 0);
+      },
+    });
+  }
+
+  private async handleUnified(connectionId: string, connected: ConnectedClient, input: unknown): Promise<void> {
+    if (!isFeatureEnabled("unified_gateway")) {
+      this.sendRaw(connected.socket, buildEnvelope({ type: "error", stream: { kind: "user", id: connected.identity.userId }, payload: { code: "unsupported_protocol", message: "The unified gateway is not enabled" } }));
+      return;
+    }
+    connected.unified ??= this.newSession(connectionId, connected.identity.userId);
+    for (const envelope of await connected.unified.handle(input)) this.sendRaw(connected.socket, envelope);
+    connected.unifiedStreams = this.registry.streamsOf(connectionId);
+  }
+
+  /** Delivers [event] to unified subscribers, then re-checks access when it can have changed. */
+  private async publishUnified(event: RealtimeEventEnvelope, stream: RealtimeStream): Promise<void> {
+    if (stream.kind !== "user" && stream.kind !== "space") return;
+    const ref: StreamRef = { kind: stream.kind, id: stream.id };
+    const envelope = buildEnvelope({
+      eventId: event.eventId, type: event.type, occurredAt: event.timestamp, stream: ref,
+      ...(isReplayableRealtimeEvent(event) ? { sequence: event.sequence } : {}),
+      ...(event.runId || event.assignmentId ? { correlationId: event.assignmentId ?? event.runId } : {}),
+      payload: event.payload as Record<string, unknown>,
+    });
+    for (const delivery of this.registry.publish(envelope)) {
+      const connected = this.clients.get(delivery.connectionId);
+      if (connected) this.sendRaw(connected.socket, delivery.envelope);
+    }
+    // Membership can change with these; ask only this stream's subscribers.
+    if (stream.kind === "space" && (event.type === "space.deleted" || event.type === "space.updated")) {
+      for (const sub of this.registry.subscribersOf(ref)) {
+        const ok = event.type === "space.deleted"
+          ? false
+          : (await authorizeRealtimeScope(this.env.SYNTILA_DB, sub.principal.id, { kind: "space", spaceId: ref.id })).allowed;
+        if (ok) continue;
+        this.registry.unsubscribe(sub.connectionId, ref);
+        const connected = this.clients.get(sub.connectionId);
+        if (!connected) continue;
+        connected.unifiedStreams = this.registry.streamsOf(sub.connectionId);
+        this.sendRaw(connected.socket, buildEnvelope({ type: "subscription.denied", stream: ref, payload: { reason: "access_revoked", stream: ref } }));
+        await this.persistClient(sub.connectionId, connected);
+      }
+    }
+  }
+
   private async publish(request: Request): Promise<Response> {
     try {
       const event = parseRealtimeEvent(await request.json());
@@ -722,6 +807,7 @@ export class RealtimeGateway implements DurableObject {
         await this.publishTo(connectionId, connected, event, stream, streamKey);
         await this.persistClient(connectionId, connected);
       }
+      await this.publishUnified(event, stream);
       return Response.json({ delivered: true });
     } catch (error) {
       return Response.json(

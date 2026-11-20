@@ -69,3 +69,23 @@ test("the bridge maps unified commands to legacy messages and back, without trus
   const out = legacyToEnvelope({ type: "assignment.cancel", assignmentId: "a1", messageId: "m1", payload: { reason: "x" } }, "w1");
   expect(out).toMatchObject({ protocol: MESSAGING_PROTOCOL, eventId: "m1", stream: { kind: "assignment", id: "a1" }, payload: { reason: "x", assignmentId: "a1" } });
 });
+
+import { MessagingSession } from "../src/domain/messaging/session";
+
+test("a session subscribes, bootstraps, acknowledges and is denied what it may not read", async () => {
+  const registry = new SubscriptionRegistry();
+  const space = { kind: "space", id: "s1" } as const;
+  const session = new MessagingSession("c1", human, {
+    registry, authorize: async (_p, s) => s.id === "s1", head: async () => 5, supports: (s) => s.kind === "space" || s.kind === "user",
+  });
+  const cmd = (command: string, payload: Record<string, unknown>, requestId = "r") => JSON.stringify({ protocol: MESSAGING_PROTOCOL, requestId, type: "command", command, payload });
+  expect((await session.handle(cmd("subscription.subscribe", { stream: space })))[0]).toMatchObject({ type: "subscription.ready", payload: { headSequence: 5 } });
+  expect((await session.handle(cmd("subscription.subscribe", { stream: { kind: "space", id: "other" } })))[0]).toMatchObject({ type: "subscription.denied", payload: { reason: "access_denied" } });
+  expect((await session.handle(cmd("subscription.subscribe", { stream: thread })))[0]).toMatchObject({ payload: { reason: "stream_not_supported" } });
+  expect((await session.handle(cmd("assignment.result", {})))[0]).toMatchObject({ payload: { code: "command_not_permitted" } });
+  expect((await session.handle(cmd("session.ping", { actorId: "x" })))[0]).toMatchObject({ payload: { code: "forged_identity" } });
+  registry.publish({ ...ev(6), stream: space });
+  expect(await session.handle(cmd("subscription.snapshot_applied", { stream: space, snapshotSequence: 5 }))).toHaveLength(1);
+  expect(await session.handle(cmd("event.ack", { stream: space, sequence: 6 }))).toEqual([]);
+  expect((await session.handle(cmd("event.ack", { stream: space, sequence: 99 })))[0]).toMatchObject({ type: "sync.required" });
+});
