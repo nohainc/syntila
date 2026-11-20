@@ -19,11 +19,11 @@ Implements the client side of ADR-034 (Worker-first P4). Package: `apps/worker_a
 | Pairing | `pairing.dart` | `install`, `rotateCredential` (+ recovery), `uninstall`. |
 | Services | `services.dart` | launchd, systemd, Windows Task Scheduler (ADR-021) adapters; separate OS user plan. |
 | Updates | `update.dart` | Signed manifest + hash check, no downgrade, no http, atomic staging. |
-| CLI | `cli.dart` | `install --pairing-code`, `run`, `status`, `logs`, `config`, `permissions`, `rotate-credential`, `update stage`, `uninstall`. |
+| CLI | `cli.dart` | `status`, `pair --pairing-code`, `unpair --yes`, `run`, `service`, `folders`, `mcp-worker`, `config`, `logs`, `rotate-credential`, `version`. |
 
 ## Pairing code
 
-`syntila-pair:v1:<base64url(json)>` with `{s: serverUrl, w: workerId, c: challengeId, k: secret}`. It is shown once by the owner's device (the P6 Workers page; until then it can be assembled from `POST /api/workers/:id/pairing`). The secret is never put in a URL or printed by the CLI. The code must name an `https` server (plain `http` only for loopback). `install` generates the key pair, signs `pairingMessage(challengeId, workerId, publicKey)`, and claims. If the claim fails nothing stays on disk; a crash leaves a `pairing.pending` marker that the next `install` cleans up.
+`syntila-pair:v1:<base64url(json)>` with `{s: serverUrl, w: workerId, c: challengeId, k: secret}`. It is shown once by the owner's device (the P6 Workers page; until then it can be assembled from `POST /api/workers/:id/pairing`). The secret is never put in a URL or printed by the CLI. The code must name an `https` server (plain `http` only for loopback). `pair` generates the key pair, signs `pairingMessage(challengeId, workerId, publicKey)`, and claims. If the claim fails nothing stays on disk; a crash leaves a `pairing.pending` marker that the next `pair` cleans up.
 
 ## Reconnect sequence
 
@@ -44,7 +44,7 @@ A late command for a known assignment is answered from the journal and never sta
 
 ## Service lifecycle
 
-Every Agent gets its own service (name and data directory per Worker id). **Auto-start is opt-in** (`install --auto-start` or `config set autoStart true`): launchd `RunAtLoad`, `systemctl enable`, a Task Scheduler logon trigger. Without it the unit is installed and does nothing at boot. Windows values travel only as environment variables, never spliced into script text. The provider CLI is started by the Engine on demand, never by the service.
+Every Agent gets its own service (name and data directory per Worker id). **Auto-start is opt-in** (`pair --auto-start` or `config set autoStart true`): launchd `RunAtLoad`, `systemctl enable`, a Task Scheduler logon trigger. Without it the unit is installed and does nothing at boot. Windows values travel only as environment variables, never spliced into script text. The provider CLI is started by the Engine on demand, never by the service.
 
 ## Signed updates
 
@@ -56,13 +56,13 @@ Staging limits artifacts to 256 MiB, restricts the update directory on POSIX, an
 
 ## Separate OS user (isolation limits)
 
-`install --separate-user NAME` installs a system-scope service that runs as that user and prints the commands an administrator runs to create it. The Agent never elevates itself. Windows needs an administrator-created task and is not automated.
+`pair --separate-user NAME` installs a system-scope service that runs as that user and prints the commands an administrator runs to create it. The Agent never elevates itself. Windows needs an administrator-created task and is not automated.
 
 Agents under the same OS user can read each other's data directories and share the provider CLIs' stored logins. A separate user closes that for files and credentials. It does not isolate CPU, memory, the network or folders the Agent is allowed to use. Use containers or VMs for stronger isolation.
 
 ## Current implementation and remaining work
 
-- `CliEngineLauncher` uses the pinned snapshot and verified cached Profile file, passes session context to the generic Engine, and sends provider-start evidence only when the Engine reports it. Its controlled-provider test executes the real Engine from source with a locally provisioned fixture Profile. This does not prove signed Profile delivery, real provider execution, or durable-session recovery. Set `config set engineExecutable PATH` (and optionally `workRoot`); without it the Agent refuses work. Additional folders, MCP servers, input staging, and progress streaming are not carried over. MCP Workers (ADR-041): `mcp-worker import PATH` installs and approves an exact package, `mcp-worker test ID` inspects it through the Engine and records tool pins, and an assignment carrying an approved `plugin` pin runs through the Engine; the Cloud side (inventory, pin, eligibility) is not implemented yet.
+- `CliEngineLauncher` uses the pinned snapshot and verified cached Profile file, passes session context to the generic Engine, and sends provider-start evidence only when the Engine reports it. Its controlled-provider test executes the real Engine from source with a locally provisioned fixture Profile. This does not prove signed Profile delivery, real provider execution, or durable-session recovery. Set `config set engineExecutable PATH` (and optionally `folders work-root PATH`); without it the Agent refuses work. Additional folders, MCP servers, input staging, and progress streaming are not carried over. MCP Workers (ADR-041): `mcp-worker import PATH` installs and approves an exact package, `mcp-worker test ID` inspects it through the Engine and records tool pins, and an assignment carrying an approved `plugin` pin runs through the Engine; the Cloud side (inventory, pin, eligibility) is not implemented yet.
 - **Profile delivery:** on a cache miss, the Agent downloads its pinned Profile using its current fenced session. Cloud serves published snapshots for that Worker's Type and signs the digest using `SYNTILA_PROFILE_SIGNING_JWK` (an Ed25519 private JWK, supplied as a server secret) and `SYNTILA_PROFILE_SIGNING_KEY_ID`. The CLI verifies proofs using public keys supplied at build time in `SYNTILA_PROFILE_TRUST_ROOTS` (JSON mapping key IDs to unpadded base64url Ed25519 keys). Missing or invalid signing configuration fails the download; absent or invalid Agent roots trust no keys. Each cache entry retains its proof and rechecks it against current trust on every read. Entries without a proof must be downloaded again. The cache uses the canonical hexadecimal digest and accepts `sha256:`-prefixed local pointers.
 - **Local development:** `start-local-backend.sh` and `run-worker-agent.sh` provision and reuse a local Ed25519 signing identity under `.development/local-profile-signing`. The private key is owner-only and stays on the local machine; the Agent launcher passes the public root as a Dart build declaration. A mismatched or incomplete identity stops setup without replacing keys. Restart the local backend after updating these scripts. This development identity is not a production key distribution mechanism.
 - **Signature verifier:** `SignedProfileVerifier` accepts a version 1 JSON proof with exactly `version`, `keyId`, and `signature` fields. The unpadded base64url Ed25519 signature covers UTF-8 `syntila-worker-profile-v1`, a newline, and the lowercase SHA-256 hex digest of the exact Profile bytes. The verifier receives trusted public keys from the installation, never from the download. Operators must provision the private signing key and distribute trusted public keys independently; key rotation and real deployment evidence remain open.

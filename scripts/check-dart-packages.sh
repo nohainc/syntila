@@ -15,7 +15,7 @@ dart_packages=(
   packages/syntila_cli_worker_runtime
   packages/tool_profile_v1
   engines/cli_worker
-  apps/worker_agent
+  apps/connect
 )
 
 flutter_packages=(

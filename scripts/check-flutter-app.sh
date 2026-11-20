@@ -3,8 +3,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="${1:-}"
 case "$APP" in
-  workspace|workspace_gui|profile_lab|app) ;;
-  *) echo "Usage: check-flutter-app.sh workspace|workspace_gui|profile_lab|app [--prepared]" >&2; exit 1 ;;
+  workspace|workspace_gui|connect_gui|profile_lab|app) ;;
+  *) echo "Usage: check-flutter-app.sh workspace|workspace_gui|connect_gui|profile_lab|app [--prepared]" >&2; exit 1 ;;
 esac
 shift
 PREPARED=0
@@ -15,12 +15,12 @@ cd "$ROOT/apps/$APP"
 if [[ "$APP" == workspace ]]; then PUB=(dart pub); else PUB=(flutter pub); fi
 if [[ "$PREPARED" == 0 ]]; then
   "${PUB[@]}" get
-  if [[ "$APP" != app && "$APP" != workspace_gui ]]; then
+  if [[ "$APP" != app && "$APP" != workspace_gui && "$APP" != connect_gui ]]; then
     bash "$ROOT/scripts/internal/build-cli-worker-engine.sh"
   fi
 else
   [[ -f .dart_tool/package_config.json ]] || { echo "Resolve dependencies first." >&2; exit 1; }
-  if [[ "$APP" != app && "$APP" != workspace_gui && ! -x assets/engines/syntila-agent ]]; then
+  if [[ "$APP" != app && "$APP" != workspace_gui && "$APP" != connect_gui && ! -x assets/engines/syntila-agent ]]; then
     echo "Build the Engine before prepared app checks." >&2; exit 1
   fi
 fi

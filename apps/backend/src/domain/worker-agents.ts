@@ -206,6 +206,8 @@ export async function revokeWorkerCredential(
 
 export interface ClaimResult {
   workerId: string;
+  workerName: string;
+  workerType: string;
   credentialId: string;
   fingerprint: string;
   kind: "pair" | "transfer";
@@ -259,6 +261,8 @@ export async function claimPairing(
   }
   const credentialId = `wcr-${crypto.randomUUID()}`;
   const keyFingerprint = await fingerprint(input.publicKey);
+  let workerName = "";
+  let workerType = "";
   try {
     await data.tx("worker.pairing.claim", async (tx) => {
       // The one conditional UPDATE decides which claim wins.
@@ -270,6 +274,13 @@ export async function claimPairing(
       // The Worker must still exist and still belong to the challenge's owner.
       const worker = await lockOwnedWorker(tx, challenge.worker_instance_id, challenge.owner_user_id);
       if (!worker) throw new HttpError(409, "The Worker no longer exists");
+      const meta = await tx.row<{ name: string; worker_type_name: string }>`
+        SELECT w.name, COALESCE(c.display_name, w.worker_type_id) AS worker_type_name
+          FROM worker_instances w
+          LEFT JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
+         WHERE w.id = ${challenge.worker_instance_id}`;
+      workerName = String(meta?.name ?? "");
+      workerType = String(meta?.worker_type_name ?? "");
       const current = await tx.row<{ id: string }>`
         SELECT id FROM worker_credentials WHERE worker_instance_id = ${challenge.worker_instance_id} AND revoked_at IS NULL`;
       if (challenge.kind === "pair" && current) throw new HttpError(409, "The Worker is already paired");
@@ -291,7 +302,14 @@ export async function claimPairing(
       throw new HttpError(409, "This key is already in use by another Worker");
     throw error;
   }
-  return { workerId: challenge.worker_instance_id, credentialId, fingerprint: keyFingerprint, kind: challenge.kind };
+  return {
+    workerId: challenge.worker_instance_id,
+    workerName,
+    workerType,
+    credentialId,
+    fingerprint: keyFingerprint,
+    kind: challenge.kind,
+  };
 }
 
 export interface NonceIssue {
@@ -374,6 +392,8 @@ async function authenticateAction(
 
 export interface AgentSession extends AgentSessionFence {
   actorId: string;
+  workerName: string;
+  workerType: string;
   /** Shown once; only its digest is stored. */
   sessionToken: string;
   leaseSeconds: number;
@@ -399,6 +419,11 @@ export async function connectSession(
     const previous = await tx.row<{ session_id: string; session_epoch: string; live: boolean }>`
       SELECT session_id, session_epoch::text AS session_epoch, (disconnected_at IS NULL) AS live
         FROM worker_agent_sessions WHERE worker_instance_id = ${agent.workerId} FOR UPDATE`;
+    const meta = await tx.row<{ name: string; worker_type_name: string }>`
+      SELECT w.name, COALESCE(c.display_name, w.worker_type_id) AS worker_type_name
+        FROM worker_instances w
+        LEFT JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
+       WHERE w.id = ${agent.workerId}`;
     const row = await tx.row<{ session_epoch: string; lease_expires_at: Date }>`
       INSERT INTO worker_agent_sessions
         (worker_instance_id, session_id, session_epoch, credential_id, token_digest, client_version, lease_expires_at)
@@ -431,7 +456,9 @@ export async function connectSession(
         action: "session.superseded", details: { epoch: Number(previous.session_epoch), sessionId: previous.session_id, by: epoch },
       });
     return {
-      workerInstanceId: agent.workerId, sessionId, epoch, actorId: agent.actorId, sessionToken,
+      workerInstanceId: agent.workerId, sessionId, epoch, actorId: agent.actorId,
+      workerName: String(meta?.name ?? ""), workerType: String(meta?.worker_type_name ?? ""),
+      sessionToken,
       leaseSeconds: SESSION_LEASE_SECONDS, leaseExpiresAt: iso(row.lease_expires_at),
     };
   });

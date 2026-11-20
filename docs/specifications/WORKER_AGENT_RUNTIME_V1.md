@@ -33,15 +33,15 @@ Recommended: a single signed cross-platform executable/package `syntila-worker`,
 Example commands (proposed, not existing):
 
 ```shell
-syntila-worker install --pairing-code CODE
+syntila-worker pair --pairing-code CODE
 syntila-worker run --data-dir ~/.syntila/workers/<id>
 syntila-worker status
 syntila-worker logs
 syntila-worker config show
-syntila-worker permissions list
-syntila-worker permissions add-folder /path/to/folder
+syntila-worker folders list
+syntila-worker folders add /path/to/folder
 syntila-worker rotate-credential
-syntila-worker uninstall
+syntila-worker unpair --yes
 ```
 
 Manager or OS service configuration should assign a **separate data directory and OS service identity** per registered Worker. A manager is optional; a single Worker can be installed directly using a native installer or CLI package. If two Agent processes start with the same local `workerId` and state directory, a local lock prevents concurrent ownership before server session fencing.

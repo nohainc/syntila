@@ -149,7 +149,7 @@ class WorkerInstancesList extends StatelessWidget {
                       if (state.available.isEmpty)
                         const Text(
                             'The connected Agent has not reported an MCP Worker it can run. '
-                            'On that machine, import and test it with `syntila-worker mcp-worker`, then reconnect.')
+                            'On that machine, import and test it with `syntila-connect mcp-worker`, then reconnect.')
                       else
                         for (final version in state.available)
                           ListTile(

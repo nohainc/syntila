@@ -1,0 +1,31 @@
+name: syntila_connect
+description: Syntila Connect. Pairs this computer and runs its Workers (binary syntila-connect). One Agent is one Worker Instance.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.11.0 <4.0.0"
+
+dependencies:
+  crypto: ^3.0.0
+  cryptography: ^2.9.0
+  gui_manifest:
+    git:
+      url: https://github.com/nohainc/gui-manifest.git
+      ref: 242b71c88cc11c90a0fad0886467ae2db4a366ef
+      path: sdk/dart
+  path: ^1.9.0
+  syntila_cli_worker_runtime:
+    path: ../../packages/syntila_cli_worker_runtime
+  syntila_external_worker_protocol:
+    path: ../../packages/syntila_external_worker_protocol
+  syntila_mcp_worker_store:
+    path: ../../packages/syntila_mcp_worker_store
+  syntila_tool_profile_v1:
+    path: ../../packages/tool_profile_v1
+  syntila_worker_protocol:
+    path: ../../packages/syntila_worker_protocol
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

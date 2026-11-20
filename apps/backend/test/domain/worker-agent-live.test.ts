@@ -43,7 +43,7 @@ describe.skipIf(!Bun.which("dart"))("Agent compatibility gateway", () => {
         await Bun.sleep(50);
       }
       const agent = Bun.spawn(["dart", "run", "test/support/real_server_probe.dart"], {
-        cwd: join(import.meta.dir, "../../../worker_agent"), stdin: "pipe", stdout: "pipe", stderr: "pipe",
+        cwd: join(import.meta.dir, "../../../connect"), stdin: "pipe", stdout: "pipe", stderr: "pipe",
       });
       agent.stdin.write(JSON.stringify({ serverUrl: origin, workerId: challenge.workerId, challengeId: challenge.challengeId, secret: challenge.secret, ...(standalone ? { profileDigest, profilePublicKey: signingPublic.x } : {}) }) + "\n");
       agent.stdin.end();

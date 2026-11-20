@@ -5,8 +5,8 @@
 #   scripts/test-all.sh --perf     add scripts/test-perf.sh as the last step (needs pnpm start:local; never default)
 #   scripts/test-all.sh --dart     also run every Dart/Flutter package check (scripts/check-dart-packages.sh)
 #   scripts/test-all.sh --two-node also run the two-backend multi-server check (scripts/test-two-node.sh)
-# The full run also checks: schema.lock, docs/api/ROUTES.md, protocol bindings, and the Worker Agent
-# (apps/worker_agent: format, analyze, tests) when `dart` is installed.
+# The full run also checks: schema.lock, docs/api/ROUTES.md, protocol bindings, and the Syntila Connect
+# (apps/connect: format, analyze, tests) when `dart` is installed.
 # Full output of each step: $TEST_LOG_DIR (default /tmp/syntila-tests). Exit code 1 if any step failed.
 set -uo pipefail
 export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -39,7 +39,7 @@ routes_doc() {
     || { echo "docs/api/ROUTES.md is stale: run 'cd apps/backend && bun run routes'"; return 1; }
 }
 protocol_bindings() { cd "$ROOT" && node scripts/verify-protocol-bindings.mjs; }
-worker_agent() { "$ROOT/scripts/test-worker-agent.sh"; }
+connect() { "$ROOT/scripts/test-connect.sh"; }
 packages_tsc() {
   cd "$ROOT" && for p in packages/email packages/core apps/cloud; do node node_modules/typescript/bin/tsc -p "$p/tsconfig.json" || return 1; done
 }
@@ -58,7 +58,7 @@ if [ "$quick" = 0 ]; then
   step routes-doc routes_doc
   step schema-lock "$ROOT/scripts/regenerate-schema-lock.sh" --check
   step protocol protocol_bindings
-  if command -v dart >/dev/null 2>&1; then step worker-agent worker_agent; else echo "skip  worker-agent    (dart not installed)"; fi
+  if command -v dart >/dev/null 2>&1; then step connect connect; else echo "skip  connect    (dart not installed)"; fi
   step concurrency "$ROOT/scripts/test-concurrency.sh" 3
   step packages-tsc packages_tsc
   step root-vitest root_vitest
