@@ -6,7 +6,7 @@ cursor resume for the `user` and `space` streams (`cursor` on
 `subscription.subscribe`, kept events replayed, otherwise `sync.required`), the
 bridge parity test, Profile `capabilities`, Git-reference handoff, Work Root import.
 
-## 1. Stateful Workflows on the Worker path
+## 1. Stateful Workflows on the Worker path (see ADR-040)
 Today `work-creation.ts` refuses Workflows with a `stateful_thread` step on a
 Worker target, because the Thread lease (`scheduler.ts` `statefulLease`) is bound
 to a Primary Workspace. Decide: (a) the lease binds to one Worker Instance plus
@@ -16,7 +16,7 @@ stateful Work stays Workspace-only. Option (a) needs a lease table keyed by
 when two Workers target one Space folder. This changes who may write to a
 repository, so it should be an ADR first.
 
-## 2. Plugin Types on the Agent
+## 2. Plugin Types on the Agent (see ADR-041)
 Plugin Types (ADR-027) carry an owner-defined `executor`, i.e. a local command.
 Running those on an Agent means the Agent executes a command the Cloud sent.
 Decide how it is signed and approved (owner approves each executor digest on the
