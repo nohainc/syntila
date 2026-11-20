@@ -59,7 +59,7 @@ class AgentPaths {
   Directory get registryDir => Directory(p.join(root.path, 'registry'));
   File get foldersFile =>
       File(p.join(registryDir.path, 'allowed-folders.json'));
-  File get pluginsFile => File(p.join(registryDir.path, 'approved-plugins.json'));
+  File get mcpWorkersFile => File(p.join(registryDir.path, 'approved-mcp-workers.json'));
   File get workRootFile => File(p.join(registryDir.path, 'work-root.json'));
   Directory get commandsDir => Directory(p.join(root.path, 'commands'));
   File get journalFile => File(p.join(commandsDir.path, 'journal.jsonl'));

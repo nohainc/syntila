@@ -1,20 +1,20 @@
 import 'dart:convert';
 import 'dart:io';
 
-/// The plugins the owner has approved on this machine (ADR-041). A plugin is
+/// The MCP Workers the owner has approved on this machine (ADR-041). A plugin is
 /// identified by its id, version and manifest digest. The list is filled only
 /// by a local command: the Cloud never ships plugin code or approves one, so a
 /// compromised Cloud cannot make this Agent run new code.
-class ApprovedPlugin {
-  const ApprovedPlugin(this.id, this.version, this.digest);
+class ApprovedMcpWorker {
+  const ApprovedMcpWorker(this.id, this.version, this.digest);
   final String id;
   final String version;
   final String digest;
   Map<String, String> toJson() => {'id': id, 'version': version, 'digest': digest};
 }
 
-class PluginAllowList {
-  PluginAllowList(this.file);
+class McpWorkerAllowList {
+  McpWorkerAllowList(this.file);
   final File file;
 
   static final _id = RegExp(r'^plugin-[0-9a-f]{12}$');
@@ -24,7 +24,7 @@ class PluginAllowList {
   static bool validPin(String id, String version, String digest) =>
       _id.hasMatch(id) && _version.hasMatch(version) && _digest.hasMatch(digest);
 
-  Future<List<ApprovedPlugin>> list() async {
+  Future<List<ApprovedMcpWorker>> list() async {
     if (!await file.exists()) return [];
     try {
       final decoded = jsonDecode(await file.readAsString());
@@ -36,7 +36,7 @@ class PluginAllowList {
               e['version'] is String &&
               e['digest'] is String &&
               validPin(e['id'] as String, e['version'] as String, e['digest'] as String))
-            ApprovedPlugin(e['id'] as String, e['version'] as String, e['digest'] as String),
+            ApprovedMcpWorker(e['id'] as String, e['version'] as String, e['digest'] as String),
       ];
     } on FormatException {
       return []; // An unreadable list approves nothing.
@@ -47,7 +47,7 @@ class PluginAllowList {
       validPin(id, version, digest) &&
       (await list()).any((p) => p.id == id && p.version == version && p.digest == digest);
 
-  Future<void> _write(List<ApprovedPlugin> items) async {
+  Future<void> _write(List<ApprovedMcpWorker> items) async {
     await file.parent.create(recursive: true);
     final temp = File('${file.path}.tmp');
     await temp.writeAsString(jsonEncode([for (final p in items) p.toJson()]), flush: true);
@@ -60,7 +60,7 @@ class PluginAllowList {
     }
     final items = await list();
     if (items.any((p) => p.id == id && p.version == version && p.digest == digest)) return;
-    await _write([...items, ApprovedPlugin(id, version, digest)]);
+    await _write([...items, ApprovedMcpWorker(id, version, digest)]);
   }
 
   /// Removes every approval of [id] with [digest]. Returns whether one existed.

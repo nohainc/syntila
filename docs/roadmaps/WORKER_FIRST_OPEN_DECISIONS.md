@@ -16,7 +16,7 @@ stateful Work stays Workspace-only. Option (a) needs a lease table keyed by
 when two Workers target one Space folder. This changes who may write to a
 repository, so it should be an ADR first.
 
-## 2. Plugin Types on the Agent (see ADR-041)
+## 2. MCP Worker (plugin) Types on the Agent (see ADR-041, MCP Workers)
 Plugin Types (ADR-027) carry an owner-defined `executor`, i.e. a local command.
 Running those on an Agent means the Agent executes a command the Cloud sent.
 Decide how it is signed and approved (owner approves each executor digest on the

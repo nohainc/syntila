@@ -5,13 +5,13 @@ import 'package:test/test.dart';
 
 void main() {
   late Directory dir;
-  late PluginAllowList list;
+  late McpWorkerAllowList list;
   final digest = 'a' * 64;
   const id = 'plugin-0123456789ab';
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('syntila-plugins-');
-    list = PluginAllowList(File('${dir.path}/approved-plugins.json'));
+    list = McpWorkerAllowList(File('${dir.path}/approved-mcp-workers.json'));
   });
   tearDown(() => dir.delete(recursive: true));
 
