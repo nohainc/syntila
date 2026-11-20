@@ -77,6 +77,42 @@ class WorkRoot {
     return Directory(p.normalize(Directory(path).resolveSymbolicLinksSync()));
   }
 
+  /// Finds Space folders a legacy Workspace left under the Work Root (up to two
+  /// levels deep, matching `<user>/<space>`) by their `.syntila-space.json`
+  /// marker and maps each Space ID to its folder. Symbolic links are never
+  /// followed, a marker naming an unsafe id is ignored, and a Space that is
+  /// already mapped keeps its mapping. Returns the Space IDs newly adopted.
+  Future<List<String>> adoptMarkedSpaces() async {
+    final base = await root();
+    if (base == null) return [];
+    final found = <String, String>{};
+    Future<void> visit(Directory dir, int depth) async {
+      final marker = File(p.join(dir.path, '.syntila-space.json'));
+      if (await marker.exists()) {
+        try {
+          final value = jsonDecode(await marker.readAsString());
+          final id = value is Map ? value['spaceId'] : null;
+          if (id is String && _safeId.hasMatch(id)) found.putIfAbsent(id, () => dir.path);
+        } on FormatException {
+          // An unreadable marker adopts nothing.
+        }
+        return;
+      }
+      if (depth >= 2) return;
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is Directory) await visit(entity, depth + 1);
+      }
+    }
+
+    await visit(Directory(base), 0);
+    final existing = await adopted();
+    found.removeWhere((id, _) => existing.containsKey(id));
+    found.removeWhere((id, path) => p.basename(path) == id && p.basename(p.dirname(path)) == 'spaces');
+    if (found.isEmpty) return [];
+    await adopt(found);
+    return found.keys.toList()..sort();
+  }
+
   /// Explicit migration of an existing Workspace layout: each Space ID is
   /// mapped to the folder it already uses. Nothing is moved or deleted; a
   /// folder that is not granted for writing is refused.

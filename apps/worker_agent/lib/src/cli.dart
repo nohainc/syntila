@@ -555,7 +555,11 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           return 0;
         }
         await workRoot.setRoot(args.positionals[1]);
+        final adoptedIds = await workRoot.adoptMarkedSpaces();
         out.writeln('Work Root set (read and write granted).');
+        if (adoptedIds.isNotEmpty) {
+          out.writeln('Existing Space folders adopted: ${adoptedIds.join(', ')}');
+        }
         return 0;
       case 'adopt-space':
         if (args.positionals.length != 3) {

@@ -47,6 +47,11 @@ Future<LegacyImportReport> importLegacyWorkspace({
     if (await workRoot.root() == null) {
       if (!dryRun) await workRoot.setRoot(legacyRoot);
       report.workRoot = legacyRoot;
+      if (!dryRun) {
+        for (final id in await workRoot.adoptMarkedSpaces()) {
+          report.imported.add('Space $id: existing folder under the Work Root');
+        }
+      }
     } else {
       report.skipped.add('Work Root: this Agent already has one');
     }

@@ -261,6 +261,23 @@ void launcherTests() {
     expect(inner.last, isNull);
   });
 
+  test('Work Root import adopts marked legacy Space folders only', () async {
+    await root.setRoot(work.path);
+    final marked = Directory('${work.path}/alice/Report')
+      ..createSync(recursive: true);
+    File('${marked.path}/.syntila-space.json').writeAsStringSync(
+      '{"schemaVersion":1,"spaceId":"space-9"}',
+    );
+    final bad = Directory('${work.path}/bob/Evil')..createSync(recursive: true);
+    File('${bad.path}/.syntila-space.json').writeAsStringSync(
+      '{"spaceId":"../x"}',
+    );
+    Directory('${work.path}/plain').createSync();
+    expect(await root.adoptMarkedSpaces(), ['space-9']);
+    expect((await root.adopted())['space-9'], endsWith('alice/Report'));
+    expect(await root.adoptMarkedSpaces(), isEmpty);
+  });
+
   test('Git references are validated like the server does', () {
     final ok = {
       'kind': 'git',
