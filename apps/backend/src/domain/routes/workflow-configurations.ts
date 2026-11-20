@@ -3,6 +3,8 @@ import {
   loadWorkflowWorkspace,
   resolveUserWorkflowWorkspace,
 } from "./workflow-workspace.js";
+import { isFeatureEnabled } from "../../feature-flags.js";
+import { handleWorkerWorkflowConfigurations } from "./worker-workflow-configurations.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
   BUILTIN_WORKFLOW_CATALOG,
@@ -59,6 +61,9 @@ export async function handleWorkflowConfigurations(
       throw new HttpError(403, "Only the Space owner can configure workflows");
     }
   }
+  // Workspace-free configuration once Worker-targeted dispatch is on (ADR-035).
+  if (isFeatureEnabled("worker_target_dispatch"))
+    return handleWorkerWorkflowConfigurations(request, env, context.userId, workflowId, spaceId);
   // User-level configuration is stored per Workspace.
   const userWorkspaceId = spaceId
     ? null

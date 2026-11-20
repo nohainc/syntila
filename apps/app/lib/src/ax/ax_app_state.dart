@@ -545,8 +545,15 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   Future<void> _createSpace() async {
     final source = widget.dataSource;
     AxSpace? created;
+    // With Workers UX on a Space does not choose a Workspace (ADR-035).
+    final workersUx = source is AxWorkersUxFeatureSource
+        ? await (source as AxWorkersUxFeatureSource)
+            .workersUxEnabled()
+            .then((value) => value, onError: (Object _) => false)
+        : false;
     final values = await showCreateSpaceDialog(
       navigatorKey.currentContext ?? context,
+      showWorkspace: !workersUx,
       loadWorkspaces: () async => source is AxWorkflowWorkspaceDataSource
           ? (await (source as AxWorkflowWorkspaceDataSource)
                   .loadWorkflowWorkspace())

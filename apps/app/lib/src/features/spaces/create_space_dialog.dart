@@ -24,15 +24,20 @@ Future<CreateSpaceRequest?> showCreateSpaceDialog(
   BuildContext context, {
   required Future<List<AxWorkflowWorkspace>> Function() loadWorkspaces,
   Future<void> Function(CreateSpaceRequest request)? create,
+  bool showWorkspace = true,
 }) =>
     showDialog<CreateSpaceRequest>(
       context: context,
-      builder: (_) =>
-          _CreateSpaceDialog(loadWorkspaces: loadWorkspaces, create: create),
+      builder: (_) => _CreateSpaceDialog(
+          loadWorkspaces: loadWorkspaces,
+          create: create,
+          showWorkspace: showWorkspace),
     );
 
 class _CreateSpaceDialog extends StatefulWidget {
-  const _CreateSpaceDialog({required this.loadWorkspaces, this.create});
+  const _CreateSpaceDialog(
+      {required this.loadWorkspaces, this.create, this.showWorkspace = true});
+  final bool showWorkspace;
   final Future<List<AxWorkflowWorkspace>> Function() loadWorkspaces;
   final Future<void> Function(CreateSpaceRequest request)? create;
 
@@ -132,7 +137,8 @@ class _CreateSpaceDialogState extends State<_CreateSpaceDialog> {
               ),
               maxLines: 2,
             ),
-            const SizedBox(height: 12),
+            if (widget.showWorkspace) const SizedBox(height: 12),
+            if (widget.showWorkspace)
             FutureBuilder<List<AxWorkflowWorkspace>>(
               future: _workspaces,
               builder: (context, snapshot) {

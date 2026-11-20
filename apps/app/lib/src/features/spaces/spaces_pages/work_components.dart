@@ -176,6 +176,7 @@ class _WorkComposer extends StatelessWidget {
     required this.onAddFiles,
     required this.executionSelection,
     required this.onExecutionSelectionChanged,
+    this.workerTargetPicker,
     required this.onRemoveAttachment,
     required this.hasOlder,
     required this.loadingOlder,
@@ -266,6 +267,11 @@ class _WorkComposer extends StatelessWidget {
   final Future<void> Function() onAddFiles;
   final Map<String, dynamic> executionSelection;
   final ValueChanged<Map<String, dynamic>> onExecutionSelectionChanged;
+
+  /// Workspace-free Worker control (ADR-035). When set it replaces the Worker,
+  /// model and effort selector, and the selection is a Worker ID.
+  final Widget Function(String workflowId, String? selectedId,
+      ValueChanged<String?> onChanged, bool enabled)? workerTargetPicker;
   final ValueChanged<int> onRemoveAttachment;
   final bool hasOlder;
   final bool loadingOlder;
@@ -546,6 +552,9 @@ class _WorkComposer extends StatelessWidget {
   /// then a model when the Worker offers models, then an effort when the
   /// chosen model offers efforts. Empty when the selection is complete.
   List<String> _missingSelection() {
+    if (workerTargetPicker != null) {
+      return (_selectedWorkerId() ?? '').isEmpty ? const ['Worker'] : const [];
+    }
     if (_selectedWorkflow()?.executionPolicy.multiStep == true) return const [];
     final workerId = _selectedWorkerId() ?? '';
     // With no Worker to choose from, sending reports the Space setup problem
@@ -865,13 +874,15 @@ class _WorkComposer extends StatelessWidget {
                 ]),
               ),
             ),
-          if (_selectedWorkflow()?.id == 'research' &&
+          if (workerTargetPicker == null &&
+              _selectedWorkflow()?.id == 'research' &&
               _selectedWorkflow()?.version == 2)
             ResearchExecutionSelection(
               configuration: researchConfiguration,
               workers: spaceWorkers,
             )
-          else if (_selectedWorkflow()?.id == 'plan_implement')
+          else if (workerTargetPicker == null &&
+              _selectedWorkflow()?.id == 'plan_implement')
             ResearchExecutionSelection.implement(
               configuration: implementConfiguration,
               workers: spaceWorkers,
@@ -886,7 +897,17 @@ class _WorkComposer extends StatelessWidget {
                         ? colors.error
                         : Colors.transparent),
               ),
-              child: ModelEffortSelector(
+              child: workerTargetPicker != null
+                  ? workerTargetPicker!(
+                      selectedWorkflow?.id ?? 'chat',
+                      selectedWorkerId,
+                      (id) => onExecutionSelectionChanged({
+                            'workerId': id,
+                            'model': null,
+                            'reasoningEffort': null,
+                          }),
+                      canSelect)
+                  : ModelEffortSelector(
                 scope: 'work-composer',
                 onManageVisibility: onManageVisibility == null
                     ? null

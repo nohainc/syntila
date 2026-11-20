@@ -48,6 +48,24 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
     }
   }
 
+  /// With Workers UX on a Space has no Workspace to choose (ADR-035).
+  late final Future<bool> _workersUx = () async {
+    final source = widget.configurations.source;
+    if (source is! AxWorkersUxFeatureSource) return false;
+    try {
+      return await (source as AxWorkersUxFeatureSource).workersUxEnabled();
+    } on Object {
+      return false;
+    }
+  }();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<bool>(
+        future: _workersUx,
+        builder: (context, snapshot) =>
+            snapshot.data == false ? _buildSelector(context) : const SizedBox.shrink(),
+      );
+
   @override
   void initState() {
     super.initState();
@@ -64,8 +82,7 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
       .ensureWorkspace()
       .then<void>((_) {}, onError: (Object _, StackTrace __) {}));
 
-  @override
-  Widget build(BuildContext context) => AxQueryBuilder(
+  Widget _buildSelector(BuildContext context) => AxQueryBuilder(
         engine: widget.configurations.engine,
         query: widget.configurations.workspaceQuery,
         ensure: false,

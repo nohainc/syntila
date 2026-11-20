@@ -267,3 +267,18 @@ Built (ADR-035):
 Known limits: stateless workflows only (stateful needs a Primary Workspace); files and tool calls are rejected on this path (P8); no plugin Types; models and efforts are not validated against a Profile catalog; Agent durable-session recovery has not been proven; `assignment-liveness` and Workspace delivery stay Workspace-scoped and never touch Worker rows.
 
 PostgreSQL-backed eligibility tests cover ownership, frozen identity and Profile, disabled/offline Workers, Thread policy, required permissions, unknown capabilities, retry rechecks, and invalid binding keys. These tests do not prove the end-to-end exit gate. Trusted Profile delivery and verification (P4), per-Type capability declarations, Worker execution phase events, and real Agent-to-Engine lifecycle, crash, retry, cancellation and authorization evidence remain necessary. Point the Agent `gatewayUrl` at `/api/worker-agent/gateway` with `workerId` and `workerSessionId` query parameters.
+
+## P6 status (partly implemented, not yet run)
+
+With `workers_ux` on:
+- The composer shows a Worker picker (`worker_target_picker.dart`) instead of the Worker/model/effort selector. It lists the owner's Workers from the Workers list, enables those in the server's eligible list (`GET /threads/:id/eligible-workers`), and shows the rest disabled with their state (Offline, Disabled, Revoked, Cannot run this request). Duplicate names are extended with Type, alias and a short ID suffix. The selection is a Worker ID kept in the existing saved Thread selection (`workerId`).
+- Requests send `workerId` (plus `model`/`reasoningEffort` when set) instead of `executionSelection`, including queued requests and validation (`thread_api.dart`, `_executionFields`).
+- The Space Workspace selector and the Workspace dropdown in Create Space are hidden.
+- `worker_not_ready` no longer mentions a Workspace.
+
+Still open (the exit gate is not demonstrated):
+- Workflow configuration is Workspace-free on the server (migration 0030, `worker-workflow-configurations.ts`): a person's own configuration is stored per user, selections name Worker IDs owned by the person (or the Space owner), and saved legacy Workspace Worker IDs are translated when read. A Worker that no longer exists is dropped from the selection and listed in the response `issues` (`worker_unavailable`); nothing is substituted. The Flutter Workflow editor (`workflows_page.dart`, `research_execution_selection.dart`) has not been changed: it still presents Workspace-scoped selections and does not show `issues`.
+- Model and effort are not selectable on the Worker path (the Worker's default model is used).
+- Workflows with a stateful step, and file attachments, are not offered on this path.
+- Diagnostics and retry/cancel-specific UX for offline, not ready and revoked-during-run beyond the existing run error messages.
+- Nothing here has been compiled or run (no Dart in the authoring VM); `dart format`, `dart analyze` and `dart test` are needed.

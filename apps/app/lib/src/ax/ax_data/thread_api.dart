@@ -409,19 +409,18 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
 
   // Shared Thread request queue.
 
-  Map<String, dynamic> _queuedRequestBody({
+  Future<Map<String, dynamic>> _queuedRequestBody({
     required String workflowId,
     required int workflowVersion,
     required String prompt,
     required List<Map<String, dynamic>> attachments,
     required Map<String, dynamic> executionSelection,
     required AxReplyReference? replyTo,
-  }) =>
+  }) async =>
       {
         'workflowId': workflowId,
         'workflowVersion': workflowVersion,
-        if (executionSelection.isNotEmpty)
-          'executionSelection': executionSelection,
+        ...await _executionFields(executionSelection),
         'input': {
           'originalRequest': prompt,
           'attachments': _workRequestManifest(attachments),
@@ -472,9 +471,9 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     List<Map<String, dynamic>> attachments = const [],
     Map<String, dynamic> executionSelection = const {},
     AxReplyReference? replyTo,
-  }) =>
+  }) async =>
       _queueCall('POST', threadId, body: {
-        'request': _queuedRequestBody(
+        'request': await _queuedRequestBody(
             workflowId: workflowId,
             workflowVersion: workflowVersion,
             prompt: prompt,
@@ -492,11 +491,11 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     List<Map<String, dynamic>> attachments = const [],
     Map<String, dynamic> executionSelection = const {},
     AxReplyReference? replyTo,
-  }) =>
+  }) async =>
       _queueCall('PUT', threadId,
           path: '/${Uri.encodeComponent(itemId)}',
           body: {
-            'request': _queuedRequestBody(
+            'request': await _queuedRequestBody(
                 workflowId: workflowId,
                 workflowVersion: workflowVersion,
                 prompt: prompt,
@@ -703,6 +702,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     final submissionId = idempotencyKey ?? newAxIdempotencyKey();
     AxWorkLatencyTrace.instance.submitted(submissionId);
     final picked = attachments;
+    final executionFields = await _executionFields(executionSelection);
     final response = await _retryOnceIfBusy(() => client.post(
           Uri.parse('$baseUrl/threads/$threadId/work-requests'),
           headers: {
@@ -711,8 +711,7 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
           },
           body: jsonEncode({
             'workflowId': workflowId,
-            if (executionSelection.isNotEmpty)
-              'executionSelection': executionSelection,
+            ...executionFields,
             'input': {
               'originalRequest': prompt,
               'attachments': _workRequestManifest(picked),
@@ -809,13 +808,13 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     List<Map<String, dynamic>> attachments = const [],
     Map<String, dynamic> executionSelection = const {},
   }) async {
+    final executionFields = await _executionFields(executionSelection);
     final response = await client.post(
       Uri.parse('$baseUrl/threads/$threadId/work-requests/validate'),
       headers: _headers(contentType: 'application/json'),
       body: jsonEncode({
         'workflowId': workflowId,
-        if (executionSelection.isNotEmpty)
-          'executionSelection': executionSelection,
+        ...executionFields,
         'attachments': attachments
             .map((attachment) => {
                   'kind': attachment['kind'],
@@ -1330,6 +1329,45 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   Future<bool> workersUxEnabled() async {
     final features = await _getJson(Uri.parse('$baseUrl/features'));
     return (features['flags'] as List? ?? const []).contains('workers_ux');
+  }
+
+  bool? _workersUxCache;
+  DateTime? _workersUxCachedAt;
+
+  Future<bool> _workersUxCached() async {
+    final at = _workersUxCachedAt;
+    if (_workersUxCache != null &&
+        at != null &&
+        DateTime.now().difference(at) < const Duration(minutes: 5)) {
+      return _workersUxCache!;
+    }
+    final enabled = await workersUxEnabled();
+    _workersUxCache = enabled;
+    _workersUxCachedAt = DateTime.now();
+    return enabled;
+  }
+
+  /// Execution fields of a Work Request body. With Workers UX on, the
+  /// composer's selection is a Worker ID and travels as `workerId`; no
+  /// Workspace selection is sent (ADR-035). Otherwise the legacy selection.
+  Future<Map<String, dynamic>> _executionFields(
+      Map<String, dynamic> selection) async {
+    if (selection.isEmpty) return const {};
+    final workerId = selection['workerId'];
+    if (workerId is String && workerId.isNotEmpty && await _workersUxCached()) {
+      String? text(String key) {
+        final value = selection[key];
+        return value is String && value.isNotEmpty ? value : null;
+      }
+
+      return {
+        'workerId': workerId,
+        if (text('model') != null) 'model': text('model'),
+        if (text('reasoningEffort') != null)
+          'reasoningEffort': text('reasoningEffort'),
+      };
+    }
+    return {'executionSelection': selection};
   }
 
   @override

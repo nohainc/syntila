@@ -839,6 +839,8 @@ class _ThreadPageState extends State<ThreadPage>
   final _visibilitySubscriptions = <String, void Function()>{};
   void Function()? _cancelWorkflows;
   void Function()? _cancelWorkers;
+  void Function()? _cancelWorkersUx;
+  bool? _workersUxEnabled;
   String? _selectedWorkflowWorkspaceId;
   int _choicesGeneration = 0;
   String _workflow = '';
@@ -1040,6 +1042,26 @@ class _ThreadPageState extends State<ThreadPage>
   String? _explicitSelectionValue(String key) {
     final value = _workExecutionSelection[key];
     return value is String && value.isNotEmpty ? value : null;
+  }
+
+  /// Workers UX (P6): the composer picks a Worker by ID from the server's
+  /// eligible list; no Workspace is shown. Null while the flag is off.
+  Widget Function(String, String?, ValueChanged<String?>, bool)?
+      _workerTargetPickerBuilder() {
+    final source = widget.dataSource;
+    if (_workersUxEnabled != true || source is! AxEligibleWorkersSource) {
+      return null;
+    }
+    final eligible = source as AxEligibleWorkersSource;
+    return (workflowId, selectedId, onChanged, enabled) => WorkerTargetPicker(
+          catalogs: _catalogs,
+          threadId: widget.thread.id,
+          workflowId: workflowId,
+          loadEligibleIds: eligible.loadEligibleWorkerIds,
+          selectedId: selectedId,
+          onChanged: onChanged,
+          enabled: enabled,
+        );
   }
 
   AxThreadViewState _currentThreadViewState() {
@@ -1599,6 +1621,7 @@ class _ThreadPageState extends State<ThreadPage>
   void _subscribeCatalogs() {
     _cancelWorkflows?.call();
     _cancelWorkers?.call();
+    _cancelWorkersUx?.call();
     _catalogs =
         widget.catalogs ?? AxSessionCatalogs.forSource(widget.dataSource);
     final workflows = _catalogs.engine.peek(_catalogs.workflows);
@@ -1641,6 +1664,16 @@ class _ThreadPageState extends State<ThreadPage>
         });
       }
     }, fireImmediately: false);
+    _cancelWorkersUx?.call();
+    _workersUxEnabled = _catalogs.engine.peek(_catalogs.workersUxEnabled).data;
+    _cancelWorkersUx =
+        _catalogs.engine.watch(_catalogs.workersUxEnabled, (state) {
+      if (!mounted || state.data == _workersUxEnabled) return;
+      _updateComposerState(() => _workersUxEnabled = state.data);
+    }, fireImmediately: false);
+    _catalogs.engine
+        .ensure(_catalogs.workersUxEnabled)
+        .then<void>((_) {}, onError: (Object _, StackTrace __) {});
   }
 
   Future<void> _loadWorkflowCatalog() async {
@@ -2039,6 +2072,7 @@ class _ThreadPageState extends State<ThreadPage>
     _cancelWorkflowDefault?.call();
     _cancelWorkflows?.call();
     _cancelWorkers?.call();
+    _cancelWorkersUx?.call();
     _cancelWorkflowWorkspace?.call();
     for (final cancel in _visibilitySubscriptions.values) {
       cancel();
@@ -3015,6 +3049,7 @@ class _ThreadPageState extends State<ThreadPage>
         onClearReply: _clearReply,
         onAddFiles: _addWorkFiles,
         executionSelection: _workExecutionSelection,
+        workerTargetPicker: _workerTargetPickerBuilder(),
         onExecutionSelectionChanged: (selection) {
           _updateState(() {
             _markSelectionChangedByUser();

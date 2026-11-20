@@ -18,7 +18,7 @@ export const EXECUTION_ERROR_CODES = [
   "worker_offline",
 ] as const;
 export const EXECUTION_ERROR_MESSAGES = {
-  worker_not_ready: "The selected Worker is not ready on its Workspace.",
+  worker_not_ready: "The selected Worker is not ready.",
   cli_not_found: "The required local CLI could not be found.",
   authentication_required:
     "Sign in to the configured provider on this computer.",
