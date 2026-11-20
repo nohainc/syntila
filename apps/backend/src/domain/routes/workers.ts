@@ -5,7 +5,7 @@ import {
 } from "@syntila/protocol";
 import { dataOf, type Row } from "../../platform/data.js";
 import { FEATURE_FLAGS, isFeatureEnabled } from "../../feature-flags.js";
-import { readBody } from "./validation.js";
+import { readBody, readJson } from "./validation.js";
 import { HttpError, json, securityContext } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 
@@ -170,4 +170,51 @@ export async function handleWorker(
     return json({ worker: await readWorker(env, context.userId, workerId) });
   }
   throw new HttpError(405, "Method not allowed");
+}
+
+const DIGEST = /^[0-9a-f]{64}$/;
+
+/**
+ * GET, PUT, DELETE /api/workers/:workerId/mcp-pin (ADR-041, flag `worker_plugins`).
+ * The owner pins the exact MCP Worker version and manifest digest a plugin-Type
+ * Worker runs. Only a version in the owner's own library can be pinned. The
+ * Agent still runs it only when its local allow list approves the same digest.
+ */
+export async function handleWorkerMcpPin(
+  request: Request,
+  env: SecurityEnv,
+  workerId: string,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  requireWorkerIdentity();
+  if (!isFeatureEnabled("worker_plugins")) throw new HttpError(404, "Not found");
+  const context = await securityContext(request, env, accessContext);
+  const q = dataOf(env).read;
+  const worker = await q.row<{ workerTypeId: string; origin: string }>`
+    SELECT w.worker_type_id AS "workerTypeId", c.origin
+      FROM worker_instances w JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
+     WHERE w.id = ${workerId} AND w.owner_user_id = ${context.userId} AND w.revoked_at IS NULL`;
+  if (!worker) throw new HttpError(404, "Worker not found");
+  if (worker.origin !== "plugin") throw new HttpError(422, "Only an MCP Worker can be pinned");
+  const read = () => q.row<{ version: string; manifestDigest: string }>`
+    SELECT version, manifest_digest AS "manifestDigest" FROM worker_instance_mcp_pins WHERE worker_instance_id = ${workerId}`;
+  if (request.method === "GET") return json({ pin: (await read()) ?? null });
+  if (request.method === "DELETE") {
+    await q.run`DELETE FROM worker_instance_mcp_pins WHERE worker_instance_id = ${workerId}`;
+    return json({ pin: null });
+  }
+  if (request.method !== "PUT") throw new HttpError(405, "Method not allowed");
+  const body = (await readJson(request)) as { version?: unknown; manifestDigest?: unknown };
+  if (typeof body.version !== "string" || typeof body.manifestDigest !== "string" || !DIGEST.test(body.manifestDigest))
+    throw new HttpError(400, "version and a 64-character manifestDigest are required");
+  const known = await q.row`SELECT 1 AS ok FROM account_worker_plugin_versions v
+     JOIN account_worker_plugins p ON p.plugin_ref = v.plugin_ref
+    WHERE v.plugin_ref = ${worker.workerTypeId} AND p.owner_user_id = ${context.userId}
+      AND v.version = ${body.version} AND v.manifest_digest = ${body.manifestDigest}`;
+  if (!known) throw new HttpError(422, "That version is not in your MCP Worker library");
+  await q.run`INSERT INTO worker_instance_mcp_pins (worker_instance_id, plugin_ref, version, manifest_digest)
+      VALUES (${workerId}, ${worker.workerTypeId}, ${body.version}, ${body.manifestDigest})
+    ON CONFLICT (worker_instance_id) DO UPDATE
+      SET version = EXCLUDED.version, manifest_digest = EXCLUDED.manifest_digest, updated_at = now()`;
+  return json({ pin: await read() });
 }

@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 208 write paths, 94 tables; 1 numbering, 49 unguarded read-write, 0 adapter-only, 174 in data-layer transactions.
+Totals: 209 write paths, 95 tables; 1 numbering, 50 unguarded read-write, 0 adapter-only, 175 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -199,6 +199,7 @@ Totals: 208 write paths, 94 tables; 1 numbering, 49 unguarded read-write, 0 adap
 | `domain/routes/worker-workflow-configurations.ts` | `handleWorkerWorkflowConfigurations` | DELETE space_workflow_configurations, DELETE user_worker_workflow_configurations, DELETE user_workflow_configurations, INSERT space_workflow_configurations, INSERT user_worker_workflow_configurations | read-write, data |
 | `domain/routes/workers.ts` | `handleCreateWorker` | INSERT worker_instances | read-write, data |
 | `domain/routes/workers.ts` | `handleWorker` | UPDATE worker_instances | data |
+| `domain/routes/workers.ts` | `read` | DELETE worker_instance_mcp_pins, INSERT worker_instance_mcp_pins | read-write, data |
 | `domain/routes/workflow-configurations.ts` | `reset` | DELETE space_workflow_configurations, DELETE user_workflow_configurations, INSERT space_workflow_configurations, INSERT space_workflow_defaults, INSERT user_workflow_configurations, INSERT user_workflow_defaults | read-write, data |
 | `domain/routes/workflow-default.ts` | `handleWorkflowDefault` | INSERT space_workflow_defaults, INSERT user_workflow_defaults | read-write, guarded, data |
 | `domain/routes/workflow-execution-configuration.ts` | `ensureOwnChatWorkspaceGrant` | INSERT space_audit_log, INSERT workspace_space_grants | read-write, data |

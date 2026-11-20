@@ -664,6 +664,12 @@ column worker_credentials.public_key text not-null
 column worker_credentials.revoked_at timestamptz
 column worker_credentials.revoked_reason text
 column worker_credentials.worker_instance_id text not-null
+column worker_instance_mcp_pins.created_at timestamptz not-null default
+column worker_instance_mcp_pins.manifest_digest text not-null
+column worker_instance_mcp_pins.plugin_ref text not-null
+column worker_instance_mcp_pins.updated_at timestamptz not-null default
+column worker_instance_mcp_pins.version text not-null
+column worker_instance_mcp_pins.worker_instance_id text not-null
 column worker_instances.actor_id text not-null
 column worker_instances.actor_kind text not-null default
 column worker_instances.created_at timestamptz not-null default
@@ -1300,6 +1306,10 @@ constraint worker_credentials.worker_credentials_pkey primary-key
 constraint worker_credentials.worker_credentials_public_key_check check
 constraint worker_credentials.worker_credentials_revoked_reason_check check
 constraint worker_credentials.worker_credentials_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
+constraint worker_instance_mcp_pins.worker_instance_mcp_pins_manifest_digest_check check
+constraint worker_instance_mcp_pins.worker_instance_mcp_pins_pkey primary-key
+constraint worker_instance_mcp_pins.worker_instance_mcp_pins_plugin_ref_version_fkey foreign-key -> account_worker_plugin_versions on-delete-cascade
+constraint worker_instance_mcp_pins.worker_instance_mcp_pins_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
 constraint worker_instances.worker_instances_actor_id_actor_kind_fkey foreign-key -> actors on-delete-restrict
 constraint worker_instances.worker_instances_actor_id_actor_kind_key unique
 constraint worker_instances.worker_instances_actor_id_key unique
@@ -1703,6 +1713,7 @@ index thread_runtime_leases.idx_thread_one_active_runtime_lease (thread_id) uniq
 index thread_runtime_leases.idx_thread_runtime_lease_request (work_request_id,status)
 index thread_runtime_leases.thread_runtime_leases_pkey (id) unique
 index thread_runtime_leases.thread_runtime_leases_thread_id_fencing_token_key (thread_id,fencing_token) unique
+index thread_runtime_leases.thread_runtime_leases_worker_instance_id_fkidx (worker_instance_id)
 index thread_runtime_leases.thread_runtime_leases_workspace_id_fkidx (workspace_id)
 index thread_work_configs.thread_work_configs_pkey (thread_id) unique
 index thread_work_configs.thread_work_configs_updated_by_user_id_fkidx (updated_by_user_id)
@@ -1743,6 +1754,7 @@ index work_request_inputs.work_request_inputs_work_request_id_position_key (work
 index work_request_inputs.work_request_inputs_workspace_id_fkidx (workspace_id)
 index work_requests.idx_work_requests_thread (thread_id,status,created_at)
 index work_requests.work_requests_pkey (id) unique
+index work_requests.work_requests_primary_worker_instance_id_fkidx (primary_worker_instance_id)
 index work_requests.work_requests_primary_workspace_id_fkidx (primary_workspace_id)
 index work_requests.work_requests_requested_by_user_id_fkidx (requested_by_user_id)
 index worker_activity_history.idx_worker_activity_history_assignment (assignment_id,occurred_at,provider_sequence)
@@ -1782,6 +1794,8 @@ index worker_credentials.worker_credentials_active_key_uq (key_fingerprint) uniq
 index worker_credentials.worker_credentials_active_uq (worker_instance_id) unique partial
 index worker_credentials.worker_credentials_pkey (id) unique
 index worker_credentials.worker_credentials_worker_idx (worker_instance_id,created_at)
+index worker_instance_mcp_pins.worker_instance_mcp_pins_pkey (worker_instance_id) unique
+index worker_instance_mcp_pins.worker_instance_mcp_pins_plugin_ref_version_fkidx (plugin_ref,version)
 index worker_instances.worker_instances_actor_id_actor_kind_key (actor_id,actor_kind) unique
 index worker_instances.worker_instances_actor_id_key (actor_id) unique
 index worker_instances.worker_instances_owner_created_idx (owner_user_id,created_at)

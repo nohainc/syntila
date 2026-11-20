@@ -67,6 +67,7 @@ export {
   handleListFeatures,
   handleListWorkers,
   handleWorker,
+  handleWorkerMcpPin,
 } from "./workers.js";
 export {
   handleClaimWorkerPairing,

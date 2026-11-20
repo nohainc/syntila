@@ -291,6 +291,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("GET", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("PATCH", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("DELETE", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
+    r("*", "/api/workers/:workerId/mcp-pin", call("handleWorkerMcpPin", p("workerId"), ctx)),
     // Pairing, credentials and sessions (ADR-034). Owner routes need the signed-in
     // owner; Agent routes carry a pairing secret or an Ed25519 signature instead of
     // a browser session (flags: worker_identity, worker_agent_connect).

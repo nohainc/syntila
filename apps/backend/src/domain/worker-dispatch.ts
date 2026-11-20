@@ -290,6 +290,9 @@ export async function dispatchWorkerAssignment(
       workerTypeId: accepted.workerTypeId,
       // The Profile the request was accepted with. The Agent runs exactly this
       // digest and revision, whatever has been published since.
+      // ADR-041: the exact MCP Worker the owner pinned for this Instance. The
+      // Agent runs it only if its own allow list approves this digest.
+      plugin: accepted.mcpWorker ?? undefined,
       profileDefinitionId: accepted.profile?.definitionId ?? undefined,
       profileRevision: accepted.profile?.revision,
       profileDigest: accepted.profile?.digest,

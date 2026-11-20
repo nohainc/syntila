@@ -22,6 +22,7 @@ describe("worker-first feature flags", () => {
       "unified_gateway",
       "worker_agent_connect",
       "worker_identity",
+      "worker_plugins",
       "worker_stateful_work",
       "worker_target_dispatch",
       "workers_ux",

@@ -2,6 +2,8 @@ import { EXECUTION_PERMISSIONS, WORKFLOW_CAPABILITIES } from "@syntila/core";
 import { spaceMemberPermissions } from "@syntila/security";
 import type { Query } from "../platform/data.js";
 import { spaceModelOptions } from "./worker-execution-options.js";
+import { isFeatureEnabled } from "../feature-flags.js";
+import { pluginOwnerEntitledSql } from "./account-plan.js";
 
 /**
  * Who may run what, on which Worker (ADR-035 decisions 2 and 3).
@@ -11,7 +13,8 @@ import { spaceModelOptions } from "./worker-execution-options.js";
  *   1. the Worker is the requester's own and has not been removed;
  *   2. the Worker is enabled;
  *   3. its Type is active, visible and runs on the Worker path (a plugin Type
- *      still needs a Workspace pin and is not supported yet), and the Thread's
+ *      runs only under flag `worker_plugins`, for an entitled owner, with an
+ *      owner-set MCP Worker pin; ADR-041), and the Thread's
  *      execution policy does not exclude it;
  *   4. the requester holds execute rights in the Thread.
  * A Worker that fails 1 is reported exactly like one that does not exist, so a
@@ -49,6 +52,8 @@ export interface WorkerTargetSnapshot {
   readonly model: string | null;
   readonly reasoningEffort: string | null;
   readonly permissions: readonly string[];
+  /** The MCP Worker (ADR-041) a plugin Type runs: manifest `pluginId`, version and manifest digest. Null for every other Type. */
+  readonly mcpWorker?: { readonly id: string; readonly version: string; readonly manifestDigest: string } | null;
   readonly readOnly: boolean;
   readonly requestedByUserId: string;
   readonly spaceId: string;
@@ -198,12 +203,28 @@ export async function acceptWorkerTarget(
   if (
     worker.lifecycle !== "active" ||
     worker.visibility !== "visible" ||
-    worker.origin === "plugin" ||
-    worker.profileRevision == null ||
-    worker.profileDigest == null ||
-    worker.profileDefinitionId == null
+    (worker.origin !== "plugin" &&
+      (worker.profileRevision == null || worker.profileDigest == null || worker.profileDefinitionId == null))
   ) {
     return { ok: false, code: "worker_type_unavailable" };
+  }
+  // An MCP Worker Type has no Profile. It needs the flag, a current Plus
+  // entitlement and the exact pin the owner chose, which must still be a
+  // version in the owner's own library.
+  let mcpWorker: { id: string; version: string; manifestDigest: string } | null = null;
+  if (worker.origin === "plugin") {
+    if (!isFeatureEnabled("worker_plugins")) return { ok: false, code: "worker_type_unavailable" };
+    const entitled = await q.row<{ ok: boolean }>`SELECT TRUE AS ok FROM worker_instances w
+       WHERE w.id = ${worker.id} AND ${q.raw(pluginOwnerEntitledSql("w.owner_user_id"))}`;
+    const pin = await q.row<{ id: string; version: string; manifestDigest: string }>`
+      SELECT ap.plugin_id AS id, apv.version, apv.manifest_digest AS "manifestDigest"
+        FROM worker_instance_mcp_pins pin
+        JOIN account_worker_plugin_versions apv
+          ON apv.plugin_ref = pin.plugin_ref AND apv.version = pin.version AND apv.manifest_digest = pin.manifest_digest
+        JOIN account_worker_plugins ap ON ap.plugin_ref = apv.plugin_ref AND ap.owner_user_id = ${worker.ownerUserId}
+       WHERE pin.worker_instance_id = ${worker.id} AND pin.plugin_ref = ${worker.workerTypeId}`;
+    if (!entitled || !pin) return { ok: false, code: "worker_type_unavailable" };
+    mcpWorker = { id: pin.id, version: pin.version, manifestDigest: pin.manifestDigest };
   }
 
   const policy = await q.row<{ allowedTypes: unknown }>`SELECT allowed_worker_type_ids_json AS "allowedTypes"
@@ -251,7 +272,7 @@ export async function acceptWorkerTarget(
     return { ok: false, code: "execute_not_permitted" };
   // A Profile that declares capabilities must cover every one the step needs;
   // a Profile that declares none makes no claim and is not filtered.
-  const declared = declaredProfileCapabilities(worker.profileJson);
+  const declared = worker.origin === "plugin" ? null : declaredProfileCapabilities(worker.profileJson);
   if (declared && (request.capabilities ?? []).some((capability) => !declared.includes(capability)))
     return { ok: false, code: "worker_type_unavailable" };
 
@@ -280,6 +301,7 @@ export async function acceptWorkerTarget(
       model: model || null,
       reasoningEffort: request.reasoningEffort?.trim() || null,
       permissions,
+      mcpWorker,
       readOnly,
       requestedByUserId: request.requesterUserId,
       spaceId: request.spaceId,
