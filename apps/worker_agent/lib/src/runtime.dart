@@ -64,7 +64,11 @@ class AgentRuntime {
         _profileSession = grant;
         if (engine is ArtifactLauncher) engine.holder.update(grant);
       },
-      readiness: () async => (await readiness.evaluate()).toJson(),
+      readiness: () async {
+        final report = (await readiness.evaluate()).toJson();
+        final items = await mcpWorkerRunner?.runnable() ?? const [];
+        return {if (items.isNotEmpty) 'mcpWorkers': items, ...report};
+      },
     );
   }
 

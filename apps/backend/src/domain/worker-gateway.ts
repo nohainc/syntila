@@ -433,9 +433,20 @@ export class WorkerGateway implements DurableObject {
       ? Object.entries(report.failures as Record<string, unknown>)
       : [];
     const code = /^[a-z0-9_.-]{1,64}$/;
+    // ADR-041: the MCP Workers this Agent can run (approved and tool-pinned there).
+    // Anything malformed is dropped; the Agent still refuses what its list does not approve.
+    const mcpWorkers = (Array.isArray((raw as { mcpWorkers?: unknown }).mcpWorkers) ? (raw as { mcpWorkers: unknown[] }).mcpWorkers : [])
+      .slice(0, 32)
+      .flatMap((item) => {
+        const { id, version, manifestDigest } = (item ?? {}) as Record<string, unknown>;
+        return typeof id === "string" && /^[a-z0-9][a-z0-9-]{0,47}$/.test(id) && typeof version === "string" && version.length <= 64 &&
+          typeof manifestDigest === "string" && /^[0-9a-f]{64}$/.test(manifestDigest)
+          ? [{ id, version, manifestDigest }]
+          : [];
+      });
     if (typeof report.ready !== "boolean" || failures.length > 16 || !failures.every(([k, v]) => code.test(k) && typeof v === "string" && code.test(v))) return;
     await dataOf(this.env).read.run`UPDATE worker_agent_sessions
-         SET readiness_json = ${JSON.stringify({ ready: report.ready, failures: Object.fromEntries(failures) })}, readiness_reported_at = now()
+         SET readiness_json = ${JSON.stringify({ ready: report.ready, failures: Object.fromEntries(failures), mcpWorkers })}, readiness_reported_at = now()
        WHERE worker_instance_id = ${fence.workerInstanceId} AND session_id = ${fence.sessionId} AND session_epoch = ${fence.epoch}`;
   }
 

@@ -69,6 +69,7 @@ void main() {
           ),
         ),
       );
+      expect(await runner.runnable(), isEmpty);
       final inspection = McpEngineInspection(
         locateEngine: () => (
           executable: Platform.resolvedExecutable,
@@ -77,6 +78,13 @@ void main() {
         workingDirectory: Directory('${root.path}/probe'),
       );
       await runner.record(installed, await inspection.inspectWorker(installed));
+      expect(await runner.runnable(), [
+        {
+          'id': installed.pluginId,
+          'version': installed.version,
+          'manifestDigest': installed.manifestDigest,
+        },
+      ]);
       expect(
         (await runner.prepare(pin)).toolPins.keys,
         containsAll(['syntila.execute', 'syntila.probe']),

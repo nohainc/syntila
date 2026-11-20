@@ -198,7 +198,21 @@ export async function handleWorkerMcpPin(
   if (worker.origin !== "plugin") throw new HttpError(422, "Only an MCP Worker can be pinned");
   const read = () => q.row<{ version: string; manifestDigest: string }>`
     SELECT version, manifest_digest AS "manifestDigest" FROM worker_instance_mcp_pins WHERE worker_instance_id = ${workerId}`;
-  if (request.method === "GET") return json({ pin: (await read()) ?? null });
+  if (request.method === "GET") {
+    // `available`: the MCP Workers a connected Agent of this Worker reports it can run.
+    const session = await q.row<{ report: string | null }>`SELECT readiness_json AS report FROM worker_agent_sessions
+       WHERE worker_instance_id = ${workerId} AND disconnected_at IS NULL AND lease_expires_at > now()
+       ORDER BY session_epoch DESC LIMIT 1`;
+    const available = (() => {
+      try {
+        const list = (JSON.parse(session?.report ?? "{}") as { mcpWorkers?: unknown }).mcpWorkers;
+        return Array.isArray(list) ? list : [];
+      } catch {
+        return [];
+      }
+    })();
+    return json({ pin: (await read()) ?? null, available });
+  }
   if (request.method === "DELETE") {
     await q.run`DELETE FROM worker_instance_mcp_pins WHERE worker_instance_id = ${workerId}`;
     return json({ pin: null });

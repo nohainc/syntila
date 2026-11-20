@@ -46,6 +46,24 @@ class McpWorkerRunner {
     await temp.rename(pinsFile.path);
   }
 
+  /// The MCP Workers this machine can run now: approved and tool-pinned. Reported
+  /// to Cloud so the owner can pin one. It lists, never runs; `prepare` still
+  /// verifies the install before every run.
+  Future<List<Map<String, String>>> runnable() async {
+    final pins = await _read();
+    final items = <Map<String, String>>[];
+    for (final p in await allowList.list()) {
+      if (pins[_key(p.id, p.version, p.digest)] is Map) {
+        items.add({
+          'id': p.id,
+          'version': p.version,
+          'manifestDigest': p.digest,
+        });
+      }
+    }
+    return items;
+  }
+
   Future<WorkerExecutor> prepare(Object? pin) async {
     if (pin is! Map ||
         pin['id'] is! String ||
