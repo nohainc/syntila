@@ -739,28 +739,42 @@ export class RealtimeGateway implements DurableObject {
     return new MessagingSession(connectionId, { kind: "human", id: userId }, {
       registry: this.registry,
       // The unified protocol serves the streams that own a durable sequence.
-      supports: (stream) => stream.kind === "user" || stream.kind === "space",
+      supports: (stream) => stream.kind === "user" || stream.kind === "space" || stream.kind === "thread",
+      // A Thread has no sequence of its own: it is the Thread's slice of its
+      // Space stream, numbered by the Space sequence.
+      gapless: (stream) => stream.kind !== "thread",
       authorize: async (principal, stream) =>
         (
           await authorizeRealtimeScope(
             this.env.SYNTILA_DB,
             principal.id,
-            stream.kind === "space" ? { kind: "space", spaceId: stream.id } : { kind: "user" },
+            stream.kind === "space"
+              ? { kind: "space", spaceId: stream.id }
+              : stream.kind === "thread"
+                ? { kind: "thread", threadId: stream.id }
+                : { kind: "user" },
           )
         ).allowed,
       head: async (stream) => {
+        const space = await this.backingStream(stream);
+        if (!space) return 0;
         const row = await dataOf(this.env).read.row<{ head: string | null }>`SELECT MAX(sequence)::text AS head FROM realtime_events
-           WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}`;
+           WHERE stream_kind = ${space.kind} AND COALESCE(stream_id, workspace_id) = ${space.id}`;
         return Number(row?.head ?? 0);
       },
       // Resume from a client's cursor: the kept durable events above it.
       replay: async (stream, afterSequence, throughSequence) => {
+        const backing = await this.backingStream(stream);
+        if (!backing) return null;
+        const threadId = stream.kind === "thread" ? stream.id : null;
         const rows = await dataOf(this.env).read.rows<{ eventId: string; eventType: string; sequence: string; payloadJson: string; occurredAt: string | Date; runId: string | null; assignmentId: string | null }>`SELECT event_id AS "eventId", event_type AS "eventType", sequence::text AS sequence,
                   payload_json AS "payloadJson", occurred_at AS "occurredAt", run_id AS "runId", assignment_id AS "assignmentId"
              FROM realtime_events
-            WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+            WHERE stream_kind = ${backing.kind} AND COALESCE(stream_id, workspace_id) = ${backing.id}
+              AND (${threadId}::text IS NULL OR thread_id = ${threadId}::text)
               AND sequence > ${afterSequence}::bigint AND sequence <= ${throughSequence}::bigint
-            ORDER BY sequence ASC LIMIT ${MAX_UNIFIED_REPLAY}`;
+            ORDER BY sequence ASC LIMIT ${MAX_UNIFIED_REPLAY + 1}`;
+        if (rows.length > MAX_UNIFIED_REPLAY) return null;
         return rows.map((row) => {
           const occurredAt = row.occurredAt instanceof Date ? row.occurredAt.toISOString() : new Date(row.occurredAt).toISOString();
           return buildEnvelope({
@@ -771,6 +785,13 @@ export class RealtimeGateway implements DurableObject {
         });
       },
     });
+  }
+
+  /** The durable stream that numbers [stream]'s events: a Thread's is its Space's. */
+  private async backingStream(stream: StreamRef): Promise<StreamRef | null> {
+    if (stream.kind !== "thread") return stream;
+    const row = await dataOf(this.env).read.row<{ spaceId: string }>`SELECT space_id AS "spaceId" FROM threads WHERE id = ${stream.id}`;
+    return row ? { kind: "space", id: row.spaceId } : null;
   }
 
   private async handleUnified(connectionId: string, connected: ConnectedClient, input: unknown): Promise<void> {
@@ -796,6 +817,26 @@ export class RealtimeGateway implements DurableObject {
     for (const delivery of this.registry.publish(envelope)) {
       const connected = this.clients.get(delivery.connectionId);
       if (connected) this.sendRaw(connected.socket, delivery.envelope);
+    }
+    // A Thread's subscribers receive the Space events that belong to the Thread.
+    if (stream.kind === "space" && event.threadId) {
+      const threadEnvelope = { ...envelope, stream: { kind: "thread", id: event.threadId } as StreamRef };
+      for (const delivery of this.registry.publish(threadEnvelope)) {
+        const connected = this.clients.get(delivery.connectionId);
+        if (connected) this.sendRaw(connected.socket, delivery.envelope);
+      }
+    }
+    // Losing the Space (or the Thread's Space membership) ends the Thread views too.
+    if (stream.kind === "space" && (event.type === "space.deleted" || event.type === "space.updated" || event.type === "people.updated")) {
+      for (const sub of this.registry.subscribersOfKind("thread")) {
+        if ((await authorizeRealtimeScope(this.env.SYNTILA_DB, sub.principal.id, { kind: "thread", threadId: sub.stream.id })).allowed) continue;
+        this.registry.unsubscribe(sub.connectionId, sub.stream);
+        const connected = this.clients.get(sub.connectionId);
+        if (!connected) continue;
+        connected.unifiedStreams = this.registry.streamsOf(sub.connectionId);
+        this.sendRaw(connected.socket, buildEnvelope({ type: "subscription.denied", stream: sub.stream, payload: { reason: "access_revoked", stream: sub.stream } }));
+        await this.persistClient(sub.connectionId, connected);
+      }
     }
     // Membership can change with these; ask only this stream's subscribers.
     if (stream.kind === "space" && (event.type === "space.deleted" || event.type === "space.updated")) {

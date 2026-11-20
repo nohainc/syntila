@@ -13,6 +13,8 @@ export interface SessionDeps {
    * and including [throughSequence], oldest first; null when they are no longer
    * kept. Without it every subscription starts from a snapshot.
    */
+  /** False for a stream whose sequences are shared with other streams (a Thread's view of its Space). Default true. */
+  readonly gapless?: (stream: StreamRef) => boolean;
   readonly replay?: (stream: StreamRef, afterSequence: number, throughSequence: number) => Promise<MessagingEnvelope[] | null>;
 }
 
@@ -74,8 +76,12 @@ export class MessagingSession {
         if (typeof cursor !== "number" || !Number.isSafeInteger(cursor) || cursor < 0) return snapshot("cursor_invalid");
         if (cursor > head) return snapshot("cursor_ahead");
         const missed = cursor === head || head - cursor > MAX_REPLAY_EVENTS ? [] : await this.deps.replay(stream, cursor, head);
-        if (cursor < head && (missed === null || missed.length !== head - cursor || missed.some((e, i) => e.sequence !== cursor + 1 + i)))
-          return snapshot(head - cursor > MAX_REPLAY_EVENTS ? "cursor_too_old" : "replay_unavailable");
+        const gapless = this.deps.gapless?.(stream) ?? true;
+        const ordered = (events: MessagingEnvelope[]) =>
+          events.every((e, i) => (e.sequence ?? 0) > cursor && (e.sequence ?? 0) <= head && (i === 0 || (e.sequence ?? 0) > (events[i - 1]!.sequence ?? 0)));
+        if (cursor < head && head - cursor > MAX_REPLAY_EVENTS) return snapshot("cursor_too_old");
+        if (cursor < head && (missed === null || !ordered(missed) || (gapless && (missed.length !== head - cursor || missed.some((e, i) => e.sequence !== cursor + 1 + i)))))
+          return snapshot("replay_unavailable");
         this.deps.registry.resumeAt(this.connectionId, stream, cursor);
         const buffered = this.deps.registry.completeBootstrap(this.connectionId, stream, head);
         return [this.control("subscription.ready", { stream, headSequence: head, resumed: true }, rid, stream), ...missed!, ...buffered];

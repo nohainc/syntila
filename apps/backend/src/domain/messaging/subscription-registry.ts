@@ -68,6 +68,14 @@ export class SubscriptionRegistry {
     return [...(this.byConnection.get(connectionId)?.values() ?? [])].map((s) => s.stream);
   }
 
+  /** Every subscription of one stream kind, for re-checking access when a parent changes. */
+  subscribersOfKind(kind: StreamRef["kind"]): Array<{ connectionId: string; principal: Principal; stream: StreamRef }> {
+    const out: Array<{ connectionId: string; principal: Principal; stream: StreamRef }> = [];
+    for (const [connectionId, subs] of this.byConnection)
+      for (const sub of subs.values()) if (sub.stream.kind === kind) out.push({ connectionId, principal: sub.principal, stream: sub.stream });
+    return out;
+  }
+
   subscribersOf(stream: StreamRef): Array<{ connectionId: string; principal: Principal }> {
     return [...(this.byStream.get(streamKey(stream)) ?? [])].map(([connectionId, sub]) => ({ connectionId, principal: sub.principal }));
   }

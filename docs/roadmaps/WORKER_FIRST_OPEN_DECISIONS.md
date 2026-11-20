@@ -23,11 +23,14 @@ Decide how it is signed and approved (owner approves each executor digest on the
 Agent, like Allowed Folders) before the Agent may run one. Until then
 `worker-eligibility.ts` keeps refusing plugin Types on the Worker path.
 
-## 3. Thread-level streams
-Thread events live in the `space` stream (`realtime_events.thread_id`), so a
-`thread` stream has no gapless sequence of its own. Either add a durable `thread`
-stream kind (migration + publisher change) or serve a Thread as a filtered view of
-the Space stream with the Space sequence as cursor (replay is then not gapless).
+## 3. Thread-level streams (decided and implemented)
+A Thread stream is the Thread's slice of its Space stream, numbered by the Space
+sequence (no migration, no publisher change). `subscription.subscribe` accepts
+`{kind:"thread"}` with an optional `cursor`; the head is the Space head; replay
+returns the Thread's kept events above the cursor (ordered, not gapless, null when
+more than 500 or unavailable, then `sync.required`). Live Space events carrying a
+`threadId` are also delivered to the Thread's subscribers, and losing Space access
+ends the Thread subscription. A durable per-Thread sequence stays an option later.
 
 ## 4. Removing the legacy human frames
 The Flutter app (`apps/app/lib/src/realtime/*`, `ax/sync/*`) still speaks the

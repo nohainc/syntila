@@ -133,3 +133,29 @@ test("parity: every bridged command round-trips between the legacy frame and the
     expect(back.payload).toMatchObject({ assignmentId: "a1", runId: "run1", detail: command });
   }
 });
+
+test("a Thread stream resumes across a non-gapless slice of its Space sequence", async () => {
+  const stream = { kind: "thread", id: "t1" } as const;
+  const make = (events: number[] | null) => new MessagingSession("c3", human, {
+    registry: new SubscriptionRegistry(), authorize: async () => true, head: async () => 40, supports: () => true,
+    gapless: (s) => s.kind !== "thread",
+    replay: async () => (events ? events.map((n) => ({ ...ev(n), stream })) : null) as never,
+  });
+  const cmd = (cursor: number) => JSON.stringify({ protocol: MESSAGING_PROTOCOL, requestId: "r", type: "command", command: "subscription.subscribe", payload: { stream, cursor } });
+  // Sequences 12 and 40 belong to the Thread; the ones between belong to other Threads of the Space.
+  const ok = await make([12, 40]).handle(cmd(10));
+  expect(ok[0]).toMatchObject({ payload: { resumed: true, headSequence: 40 } });
+  expect(ok.slice(1).map((e) => e.sequence)).toEqual([12, 40]);
+  expect((await make([]).handle(cmd(10)))[0]).toMatchObject({ payload: { resumed: true } });
+  expect((await make([40, 12]).handle(cmd(10)))[1]).toMatchObject({ payload: { reason: "replay_unavailable" } });
+  expect((await make([5]).handle(cmd(10)))[1]).toMatchObject({ payload: { reason: "replay_unavailable" } });
+  expect((await make(null).handle(cmd(10)))[1]).toMatchObject({ payload: { reason: "replay_unavailable" } });
+});
+
+test("subscribersOfKind lists only the subscriptions of that kind", async () => {
+  const registry = new SubscriptionRegistry();
+  const t = { kind: "thread", id: "t1" } as const;
+  await registry.subscribe("c1", human, t, async () => true, async () => 0);
+  await registry.subscribe("c1", human, { kind: "space", id: "s1" }, async () => true, async () => 0);
+  expect(registry.subscribersOfKind("thread").map((s) => s.stream)).toEqual([t]);
+});
