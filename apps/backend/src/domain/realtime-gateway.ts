@@ -23,7 +23,7 @@ const selectExecutionWorkspacesByIdOwnerUserId = <T = Record<string, unknown>>(q
   q.row<T>`SELECT 1 AS owner FROM execution_workspaces WHERE id = ${p1} AND owner_user_id = ${p2} AND status <> 'revoked'`;
 
 import { buildEnvelope, isMessagingFrame, type StreamRef } from "./messaging/envelope.js";
-import { MessagingSession } from "./messaging/session.js";
+import { MAX_REPLAY_EVENTS as MAX_UNIFIED_REPLAY, MessagingSession } from "./messaging/session.js";
 import { SubscriptionRegistry } from "./messaging/subscription-registry.js";
 import { isFeatureEnabled } from "../feature-flags.js";
 
@@ -752,6 +752,23 @@ export class RealtimeGateway implements DurableObject {
         const row = await dataOf(this.env).read.row<{ head: string | null }>`SELECT MAX(sequence)::text AS head FROM realtime_events
            WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}`;
         return Number(row?.head ?? 0);
+      },
+      // Resume from a client's cursor: the kept durable events above it.
+      replay: async (stream, afterSequence, throughSequence) => {
+        const rows = await dataOf(this.env).read.rows<{ eventId: string; eventType: string; sequence: string; payloadJson: string; occurredAt: string | Date; runId: string | null; assignmentId: string | null }>`SELECT event_id AS "eventId", event_type AS "eventType", sequence::text AS sequence,
+                  payload_json AS "payloadJson", occurred_at AS "occurredAt", run_id AS "runId", assignment_id AS "assignmentId"
+             FROM realtime_events
+            WHERE stream_kind = ${stream.kind} AND COALESCE(stream_id, workspace_id) = ${stream.id}
+              AND sequence > ${afterSequence}::bigint AND sequence <= ${throughSequence}::bigint
+            ORDER BY sequence ASC LIMIT ${MAX_UNIFIED_REPLAY}`;
+        return rows.map((row) => {
+          const occurredAt = row.occurredAt instanceof Date ? row.occurredAt.toISOString() : new Date(row.occurredAt).toISOString();
+          return buildEnvelope({
+            eventId: row.eventId, type: row.eventType, occurredAt, stream, sequence: Number(row.sequence),
+            ...(row.runId || row.assignmentId ? { correlationId: row.assignmentId ?? row.runId ?? undefined } : {}),
+            payload: JSON.parse(row.payloadJson) as Record<string, unknown>,
+          });
+        });
       },
     });
   }

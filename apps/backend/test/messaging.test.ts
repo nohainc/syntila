@@ -112,3 +112,24 @@ test("a cursor resumes from the events it missed, or falls back to a snapshot", 
   expect((await mk(log).handle(cmd({ stream, cursor: 11 })))[1]).toMatchObject({ payload: { reason: "cursor_ahead" } });
   expect((await mk(log).handle(cmd({ stream, cursor: -1 })))[1]).toMatchObject({ payload: { reason: "cursor_invalid" } });
 });
+
+test("parity: every bridged command round-trips between the legacy frame and the unified envelope", () => {
+  const legacy = { protocolName: "syntila.workspace-runtime", protocolVersion: "4.1" };
+  const commands = [
+    ["session.hello", "workspace.hello"], ["session.heartbeat", "workspace.heartbeat"], ["session.sync", "workspace.sync.request"],
+    ["assignment.ack", "assignment.ack"], ["assignment.start.ack", "assignment.start.ack"],
+    ["assignment.start.permit", "assignment.start.permit.request"], ["assignment.result", "assignment.result"],
+    ["assignment.error", "assignment.error"], ["assignment.cancelled", "assignment.cancelled"], ["assignment.cancel.ack", "assignment.cancel.ack"],
+  ] as const;
+  for (const [command, legacyType] of commands) {
+    const frame = { protocol: MESSAGING_PROTOCOL, requestId: `r-${command}`, type: "command" as const, command, payload: { assignmentId: "a1", runId: "run1", detail: command } };
+    const old = commandToLegacy(frame, "w1", legacy) as Record<string, any>;
+    expect(old.type).toBe(legacyType);
+    expect(old.assignmentId).toBe("a1");
+    expect(old.payload).toEqual({ detail: command });
+    const back = legacyToEnvelope(old, "w1");
+    expect(back.type).toBe(command);
+    expect(back.stream).toEqual({ kind: "assignment", id: "a1" });
+    expect(back.payload).toMatchObject({ assignmentId: "a1", runId: "run1", detail: command });
+  }
+});
