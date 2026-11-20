@@ -5,3 +5,4 @@ library;
 export 'src/external_worker_executor.dart';
 export 'src/external_worker_registry.dart';
 export 'src/external_worker_store.dart';
+export 'src/mcp_worker_inspection.dart';

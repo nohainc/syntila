@@ -17,6 +17,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "14.7.0"
+  archive:
+    dependency: transitive
+    description:
+      name: archive
+      sha256: "2fda90592c0afd219c5e285618a98da835cd10df38372666093d25dfe457a2d0"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.7.1"
   args:
     dependency: transitive
     description:
@@ -225,6 +233,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.3"
+  posix:
+    dependency: transitive
+    description:
+      name: posix
+      sha256: "613646d076944f3acc125830af935b48d4b8a57a388691547bbfd25b434f4d63"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.5.4"
   pub_semver:
     dependency: transitive
     description:
@@ -317,6 +333,27 @@ packages:
     dependency: "direct main"
     description:
       path: "../../packages/syntila_cli_worker_runtime"
+      relative: true
+    source: path
+    version: "0.1.0"
+  syntila_external_worker_protocol:
+    dependency: "direct main"
+    description:
+      path: "../../packages/syntila_external_worker_protocol"
+      relative: true
+    source: path
+    version: "0.1.0"
+  syntila_mcp_protocol:
+    dependency: transitive
+    description:
+      path: "../../packages/syntila_mcp_protocol"
+      relative: true
+    source: path
+    version: "0.1.0"
+  syntila_mcp_worker_store:
+    dependency: "direct main"
+    description:
+      path: "../../packages/syntila_mcp_worker_store"
       relative: true
     source: path
     version: "0.1.0"

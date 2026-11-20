@@ -1,9 +1,9 @@
-import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart'
     show McpServerLaunch;
+
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart';
 
 import 'mcp_registry.dart';
 import 'mcp_service.dart';
@@ -25,19 +25,6 @@ class EngineMcpProbe implements McpProbePort {
       locateEngine;
   final Directory workingDirectory;
   final Duration timeout;
-
-  static const _inherited = <String>{
-    'PATH',
-    'HOME',
-    'LANG',
-    'TMPDIR',
-    'TEMP',
-    'TMP',
-    'SYSTEMROOT',
-    'USERPROFILE',
-    'APPDATA',
-    'LOCALAPPDATA',
-  };
 
   @override
   Future<List<Map<String, Object?>>> listTools(
@@ -71,60 +58,14 @@ class EngineMcpProbe implements McpProbePort {
     String serverId,
     Map<String, Object?> request,
   ) async {
-    final engine = locateEngine();
-    if (engine == null) {
-      throw const McpPolicyException(
-        'mcp_probe_failed',
-        'The Worker Engine is not available.',
-      );
-    }
-    await workingDirectory.create(recursive: true);
-    final process = await Process.start(
-      engine.executable,
-      [...engine.argumentsPrefix, '--mcp-probe'],
-      workingDirectory: workingDirectory.path,
-      environment: {
-        for (final e in Platform.environment.entries)
-          if (_inherited.contains(e.key)) e.key: e.value,
-      },
-      includeParentEnvironment: false,
-    );
-    unawaited(process.stderr.drain<void>().catchError((_) {}));
-    process.stdin.writeln(jsonEncode(request));
-    await process.stdin.flush();
-    await process.stdin.close();
-    final String line;
     try {
-      line = await process.stdout
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .first
-          .timeout(timeout);
-    } on Object {
-      process.kill(ProcessSignal.sigkill);
-      throw McpPolicyException(
-        'mcp_probe_failed',
-        'The MCP server "$serverId" could not be inspected.',
-      );
+      return await McpEngineInspection(
+        locateEngine: locateEngine,
+        workingDirectory: workingDirectory,
+        timeout: timeout,
+      ).run(serverId, request);
+    } on ExternalWorkerException catch (error) {
+      throw McpPolicyException(error.code, error.message);
     }
-    final Object? decoded;
-    try {
-      decoded = jsonDecode(line);
-    } on FormatException {
-      throw const McpPolicyException(
-        'mcp_probe_failed',
-        'The Engine returned an unreadable probe result.',
-      );
-    }
-    if (decoded is! Map || decoded['ok'] != true) {
-      final code = decoded is Map ? '${decoded['code']}' : 'mcp_probe_failed';
-      final message =
-          decoded is Map ? '${decoded['message']}' : 'Probe failed.';
-      throw McpPolicyException(code, message);
-    }
-    return [
-      for (final tool in decoded['tools'] as List)
-        Map<String, Object?>.from(tool as Map),
-    ];
   }
 }

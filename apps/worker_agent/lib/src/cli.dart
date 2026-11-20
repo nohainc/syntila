@@ -20,6 +20,7 @@ import 'legacy_import.dart';
 import 'lock.dart';
 import 'pairing.dart';
 import 'mcp_worker_allow_list.dart';
+import 'mcp_worker_runner.dart';
 import 'paths.dart';
 import 'profile_cache.dart';
 import 'profile_signature.dart';
@@ -145,7 +146,7 @@ syntila-worker <command> [options]
   permissions remove-folder ID
   import-workspace --from DIR [--write] [--dry-run]   take the folders and Work Root of an old Workspace
   rotate-credential        replace this Worker's key pair
-  mcp-worker import PATH | list | approve ID VERSION MANIFEST_DIGEST | remove ID MANIFEST_DIGEST   MCP Workers this machine may run
+  mcp-worker import PATH | test ID | list | approve ID VERSION MANIFEST_DIGEST | remove ID MANIFEST_DIGEST   MCP Workers this machine may run
   update stage --manifest FILE --artifact FILE
   update prepare           prepare the verified release for later activation
   uninstall [--yes] [--keep-data]
@@ -190,6 +191,9 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           err.writeln('unknown command "$command"\n$usage');
           return 2;
       }
+    } on ExternalWorkerException catch (error) {
+      err.writeln('${error.code}: ${error.message}');
+      return 1;
     } on FormatException catch (error) {
       err.writeln(error.message);
       return 2;
@@ -349,6 +353,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       api: api,
       profiles: profiles,
       plugins: McpWorkerAllowList(paths.mcpWorkersFile),
+      mcpWorkerRunner: _mcpRunner(paths),
       clientVersion: agentVersion,
     );
     await recoverPendingRotation(
@@ -405,6 +410,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         ),
       ),
       engineExecutable: executable,
+      mcpWorkerRunner: _mcpRunner(paths),
       workerId: identity.workerId,
       stateDirectory: paths.sessionsDir,
       workRoot: Directory(
@@ -561,7 +567,8 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     switch (action) {
       case 'list':
         final items = await list.list();
-        if (items.isEmpty) out.writeln('No MCP Workers are approved on this machine.');
+        if (items.isEmpty)
+          out.writeln('No MCP Workers are approved on this machine.');
         for (final p in items) {
           out.writeln('${p.id} ${p.version} ${p.digest}');
         }
@@ -583,27 +590,102 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           return 1;
         }
         // The owner ran this command on this machine, so this exact package is approved.
-        await list.approve(installed.pluginId, installed.version, installed.manifestDigest);
-        out.writeln('Imported and approved ${installed.pluginId} ${installed.version} ${installed.manifestDigest}');
+        await list.approve(
+          installed.pluginId,
+          installed.version,
+          installed.manifestDigest,
+        );
+        out.writeln(
+          'Imported and approved ${installed.pluginId} ${installed.version} ${installed.manifestDigest}',
+        );
         return 0;
+      case 'test':
+        if (args.positionals.length != 2)
+          throw const FormatException('usage: mcp-worker test ID');
+        final paths = _paths(args);
+        final matches = (await list.list())
+            .where((p) => p.id == args.positionals[1])
+            .toList();
+        if (matches.length != 1)
+          throw StateError(
+            'Choose one approved version of this MCP Worker before testing.',
+          );
+        final settings = await AgentConfig.load(paths.configFile);
+        final executable = settings.engineExecutable;
+        if (executable == null)
+          throw StateError(
+            'Configure engineExecutable before testing an MCP Worker.',
+          );
+        final lock = await AgentLock.acquire(paths.lockFile);
+        try {
+          final pin = matches.single;
+          final runner = _mcpRunner(paths);
+          final installed = await runner.store.load(
+            pin.id,
+            pin.version,
+            pin.digest,
+          );
+          if (installed.pluginId != pin.id || installed.version != pin.version)
+            throw StateError(
+              'The MCP Worker does not match its approved identity.',
+            );
+          final inspection = McpEngineInspection(
+            locateEngine: () =>
+                (executable: executable, argumentsPrefix: <String>[]),
+            workingDirectory: paths.engineDir,
+          );
+          final tools = await inspection.inspectWorker(
+            installed,
+            environment: environment,
+          );
+          await runner.record(installed, tools);
+          out.writeln('Inspected and pinned ${pin.id} ${pin.version}.');
+          return 0;
+        } finally {
+          await lock.release();
+        }
       case 'approve':
         if (args.positionals.length != 4) {
-          throw const FormatException('usage: mcp-worker approve ID VERSION MANIFEST_DIGEST');
+          throw const FormatException(
+            'usage: mcp-worker approve ID VERSION MANIFEST_DIGEST',
+          );
         }
-        await list.approve(args.positionals[1], args.positionals[2], args.positionals[3]);
-        out.writeln('Approved ${args.positionals[1]} ${args.positionals[2]} for this machine.');
+        await list.approve(
+          args.positionals[1],
+          args.positionals[2],
+          args.positionals[3],
+        );
+        out.writeln(
+          'Approved ${args.positionals[1]} ${args.positionals[2]} for this machine.',
+        );
         return 0;
       case 'remove':
         if (args.positionals.length != 3) {
-          throw const FormatException('usage: mcp-worker remove ID MANIFEST_DIGEST');
+          throw const FormatException(
+            'usage: mcp-worker remove ID MANIFEST_DIGEST',
+          );
         }
-        final removed = await list.remove(args.positionals[1], args.positionals[2]);
+        final removed = await list.remove(
+          args.positionals[1],
+          args.positionals[2],
+        );
         out.writeln(removed ? 'Removed.' : 'No such approval.');
         return removed ? 0 : 1;
       default:
-        throw const FormatException('usage: mcp-worker list | import | approve | remove');
+        throw const FormatException(
+          'usage: mcp-worker list | import | test | approve | remove',
+        );
     }
   }
+
+  McpWorkerRunner _mcpRunner(AgentPaths paths) => McpWorkerRunner(
+    store: ExternalWorkerStore(
+      root: Directory('${paths.root.path}/mcp-workers'),
+      forbiddenRoots: [paths.root.path],
+    ),
+    allowList: McpWorkerAllowList(paths.mcpWorkersFile),
+    pinsFile: File('${paths.registryDir.path}/mcp-worker-tool-pins.json'),
+  );
 
   Future<int> _permissions(_Args args) async {
     final paths = _paths(args);

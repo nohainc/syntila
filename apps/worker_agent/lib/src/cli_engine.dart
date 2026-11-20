@@ -7,6 +7,7 @@ import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 import 'engine.dart';
 import 'journal.dart';
+import 'mcp_worker_runner.dart';
 
 /// Finds the pinned Profile for an assignment. Null means it is not available
 /// locally, and the assignment fails instead of running with another Profile.
@@ -32,6 +33,7 @@ class CliEngineLauncher implements EngineLauncher {
     required this.stateDirectory,
     required this.workRoot,
     this.maxConcurrent = 1,
+    this.mcpWorkerRunner,
   });
 
   final CliWorkerEngineSupervisor supervisor;
@@ -41,6 +43,7 @@ class CliEngineLauncher implements EngineLauncher {
   final Directory stateDirectory;
   final Directory workRoot;
   final int maxConcurrent;
+  final McpWorkerRunner? mcpWorkerRunner;
 
   @override
   Future<String?> probe() async =>
@@ -63,8 +66,32 @@ class CliEngineLauncher implements EngineLauncher {
       );
       return run;
     }
-    final resolved = await resolveProfile(snapshot);
-    if (resolved == null) {
+    final plugin = snapshot['plugin'];
+    ({ToolProfileCandidate candidate, File profileFile})? resolved;
+    WorkerExecutor? executor;
+    if (plugin != null) {
+      try {
+        final runner = mcpWorkerRunner;
+        final type = snapshot['workerTypeId'];
+        if (runner == null ||
+            type is! String ||
+            !RegExp(r'^plugin-[0-9a-f]{12}$').hasMatch(type))
+          throw StateError('invalid MCP Worker target');
+        executor = await runner.prepare(plugin);
+      } on Object {
+        run._finish(
+          const EngineOutcome(TerminalKind.failed, {
+            'errorCode': 'worker_not_ready',
+            'message': 'The MCP Worker is unavailable or needs inspection',
+            'retryable': false,
+          }),
+        );
+        return run;
+      }
+    } else {
+      resolved = await resolveProfile(snapshot);
+    }
+    if (plugin == null && resolved == null) {
       run._finish(
         const EngineOutcome(TerminalKind.failed, {
           'errorCode': 'worker_not_ready',
@@ -150,8 +177,12 @@ class CliEngineLauncher implements EngineLauncher {
     unawaited(
       supervisor
           .execute(
-            resolved.candidate,
-            profileFile: resolved.profileFile,
+            resolved?.candidate,
+            profileFile: resolved?.profileFile,
+            pluginExecutor: executor,
+            pluginWorkerTypeId: executor == null
+                ? null
+                : snapshot['workerTypeId'] as String,
             stateDirectory: stateDirectory,
             workingDirectory: Directory(
               '${workRoot.path}/${request.assignmentId}',

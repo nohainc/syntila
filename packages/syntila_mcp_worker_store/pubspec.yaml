@@ -12,6 +12,8 @@ dependencies:
   cryptography: ^2.9.0
   syntila_external_worker_protocol:
     path: ../syntila_external_worker_protocol
+  syntila_mcp_protocol:
+    path: ../syntila_mcp_protocol
   syntila_tool_profile_v1:
     path: ../tool_profile_v1
   syntila_worker_protocol:

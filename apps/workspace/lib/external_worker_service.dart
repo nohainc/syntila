@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:syntila_mcp_protocol/syntila_mcp_protocol.dart'
-    show ToolPins, toolDefinitionHash;
+    show toolDefinitionHash;
 import 'package:syntila_external_worker_protocol/syntila_external_worker_protocol.dart';
 
 import 'worker_trust_policy.dart' show canonicalJson;
@@ -286,7 +286,7 @@ class ExternalWorkerService {
       if (stored == null || stored.manifestDigest != selected.manifestDigest) {
         return;
       }
-      stored.toolPins = ToolPins.fromTools(tools).hashes;
+      stored.toolPins = inspectedToolPins(tools);
       stored.toolDefinitions = definitions;
       stored.conformance = ExternalWorkerConformanceRecord(
         suiteVersion: 'mcp-worker-profile-1',

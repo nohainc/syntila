@@ -391,6 +391,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  syntila_mcp_worker_store:
+    dependency: "direct main"
+    description:
+      path: "../../packages/syntila_mcp_worker_store"
+      relative: true
+    source: path
+    version: "0.1.0"
   syntila_protocol:
     dependency: "direct main"
     description:

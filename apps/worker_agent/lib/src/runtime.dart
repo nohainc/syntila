@@ -12,6 +12,9 @@ import 'journal.dart';
 import 'lock.dart';
 import 'paths.dart';
 import 'mcp_worker_allow_list.dart';
+import 'mcp_worker_runner.dart';
+import 'package:syntila_mcp_worker_store/syntila_mcp_worker_store.dart'
+    show ExternalWorkerException;
 import 'profile_cache.dart';
 import 'readiness.dart';
 import 'server_api.dart';
@@ -33,6 +36,7 @@ class AgentRuntime {
     required this.readiness,
     required this.profiles,
     this.plugins,
+    this.mcpWorkerRunner,
     required this.permitTimeout,
     required this.permitResend,
     required this.onPoint,
@@ -77,6 +81,7 @@ class AgentRuntime {
 
   /// MCP Workers the owner approved locally (ADR-041). Null approves none.
   final McpWorkerAllowList? plugins;
+  final McpWorkerRunner? mcpWorkerRunner;
   final Duration permitTimeout;
   final Duration permitResend;
   final FaultPoint? onPoint;
@@ -104,6 +109,8 @@ class AgentRuntime {
     ServerApi? api,
     SocketConnector? connector,
     ProfileCache? profiles,
+    McpWorkerAllowList? plugins,
+    McpWorkerRunner? mcpWorkerRunner,
     FaultPoint? onPoint,
     Duration baseDelay = const Duration(seconds: 1),
     Duration heartbeatInterval = const Duration(seconds: 30),
@@ -149,6 +156,8 @@ class AgentRuntime {
         ),
         readiness: checks,
         profiles: profiles,
+        plugins: plugins,
+        mcpWorkerRunner: mcpWorkerRunner,
         permitTimeout: permitTimeout,
         permitResend: permitResend,
         onPoint: onPoint,
@@ -420,7 +429,8 @@ class AgentRuntime {
     final plugin = payload['plugin'];
     if (plugin != null) {
       // Only an MCP Worker the owner approved here, by exact digest, may run.
-      final approved = plugin is Map &&
+      final approved =
+          plugin is Map &&
           plugin['id'] is String &&
           plugin['version'] is String &&
           plugin['manifestDigest'] is String &&
@@ -431,8 +441,16 @@ class AgentRuntime {
               ) ??
               Future.value(false));
       if (!approved) return 'mcp_worker_not_approved';
-      // The shared MCP Worker runner is not part of the Agent yet (ADR-041 stage 2).
-      return 'mcp_worker_runner_unavailable';
+      final runner = mcpWorkerRunner;
+      if (runner == null) return 'mcp_worker_runner_unavailable';
+      try {
+        await runner.prepare(plugin);
+        return null; // The launcher rechecks before starting the Engine.
+      } on ExternalWorkerException catch (error) {
+        return error.code;
+      } on Object {
+        return 'worker_not_ready';
+      }
     }
     final digest = payload['profileDigest'];
     if (profiles != null) {
