@@ -37,10 +37,12 @@ git_state() { # production deploys should come from a known commit
   [ "$dirty" = 0 ] || echo "warning: the working tree is not clean; the build includes uncommitted changes" >&2
 }
 
-run_tests() { # the quick gate: typecheck + backend suite
+run_tests() { # the quick gate: typecheck + backend suite + schema.lock
   [ "$SKIP_TESTS" = 1 ] && { echo "(tests skipped)"; return 0; }
   say "Tests (scripts/test-all.sh --quick)"
   "$ROOT/scripts/test-all.sh" --quick
+  say "schema.lock matches the migrations"
+  "$ROOT/scripts/regenerate-schema-lock.sh" --check
 }
 
 build_backend() { say "Build backend"; ( cd "$ROOT/apps/backend" && bash scripts/build.sh ); }

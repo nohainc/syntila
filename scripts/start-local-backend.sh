@@ -5,6 +5,9 @@
 # Environment (defaults suit a Homebrew PostgreSQL with the test role):
 #   PGHOST=127.0.0.1 PGPORT=5432 PGUSER=syntila_app PGPASSWORD=devpass
 #   PGDATABASE=syntila_local  BACKEND_PORT=8788  AUTH_PORT=8787  WEB_PORT=3000
+#   SYNTILA_FEATURE_FLAGS  Worker-first flags (default: every flag except cluster_mode,
+#                          so local runs exercise the Worker path; set it to an empty
+#                          string to run with all flags off, or to your own list)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PGHOST="${PGHOST:-127.0.0.1}" PGPORT="${PGPORT:-5432}" PGUSER="${PGUSER:-syntila_app}"
@@ -36,6 +39,7 @@ bun src/migrate.ts
 
 export PORT="$BACKEND_PORT" BIND_HOST=127.0.0.1
 export SYNTILA_ENVIRONMENT=development
+export SYNTILA_FEATURE_FLAGS="${SYNTILA_FEATURE_FLAGS-worker_identity,worker_agent_connect,worker_target_dispatch,workers_ux,canonical_timeline,artifact_handoff,unified_gateway}"
 export SYNTILA_APP_URL="http://localhost:${WEB_PORT}"
 export ALLOWED_ORIGINS="http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT},http://localhost:${AUTH_PORT}"
 # Tokens are issued by the local auth Worker (issuer = its BETTER_AUTH_URL origin).
@@ -46,5 +50,6 @@ export EMAIL_RELAY_URL="http://localhost:${AUTH_PORT}/api/internal/email"
 EMAIL_RELAY_SECRET="$(cat "$ROOT/.development/local-backend/relay-secret")"
 export EMAIL_RELAY_SECRET
 export SYNTILA_PROFILE_LAB_OWNER_EMAIL="${SYNTILA_PROFILE_LAB_OWNER_EMAIL:-vitalii@nohainc.com}"
+echo "Feature flags: ${SYNTILA_FEATURE_FLAGS:-<none>}"
 echo "Syntila backend (local): http://localhost:${BACKEND_PORT}  db=${PGDATABASE}  auth=http://localhost:${AUTH_PORT}"
 exec bun --watch src/server.ts

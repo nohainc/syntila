@@ -21,7 +21,7 @@ The Workspace environment is chosen at build time (`SYNTILA_WORKSPACE_ENVIRONMEN
    - `pnpm workspace:build:macos:local --install`, then `syntila-local service install|start`.
 4. Talk to the local service: `syntila-local status`, or from source `pnpm workspace:cli:local status`.
 
-`pnpm db:cleanup:local` clears stuck execution state from the local D1 (stop the API first).
+`pnpm db:cleanup:local` clears stuck execution state from the local PostgreSQL database (stop the backend first).
 
 ## Production
 

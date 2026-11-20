@@ -8,7 +8,12 @@ All scripts live in `scripts/` and run from any directory on the Mac (they find 
 | --- | --- |
 | `scripts/test-all.sh` | Everything that gates a commit: typecheck, backend suite, `WRITE_PATHS.md` unchanged, concurrency tests x3, package `tsc`, root vitest. About 4 minutes. Ends with `ALL GREEN` or `FAILED`; exit code 1 on failure. |
 | `scripts/test-all.sh --quick` | Typecheck and backend suite only (about 2 minutes). Used before deploys. |
+| `scripts/test-all.sh --dart` / `--two-node` | Add every Dart/Flutter package check (`check-dart-packages.sh`) / the two-backend multi-server check. Both are opt-in. |
+
+The full run also checks `schema.lock` (against a scratch database), `docs/api/ROUTES.md`, the generated protocol bindings, and the Worker Agent (`apps/worker_agent`) when `dart` is installed.
 | `scripts/test-backend.sh [filter...]` | Backend suite (one `bun test` process per file). With filters, only files whose path contains one, e.g. `scripts/test-backend.sh conversations api-structure`. |
+| `scripts/test-worker-agent.sh [dart test args...]` | Worker Agent: `dart pub get`, format check, `dart analyze`, `dart test`. |
+| `scripts/test-two-node.sh [--strict]` | Two backend processes on one database (ADR-033 rules); `--strict` also fails the gaps known until ADR-038/039. |
 | `scripts/test-concurrency.sh [rounds]` | Concurrency and transaction tests, repeated (default 3) to expose races. |
 
 Environment:
@@ -20,6 +25,17 @@ Environment:
 - `TEST_DATABASE_URL`: PostgreSQL role with CREATEDB (default `postgres://syntila_app:devpass@127.0.0.1:5432/postgres`). Every test file gets its own database cloned from a template built from `apps/backend/migrations`; leftovers are dropped at the end.
 
 A file that fails under parallel load is re-run once alone; if it then passes it is reported as `flaky` and counted as passing. A flaky name that keeps appearing is a real race: investigate it.
+
+## Local development (Worker-first)
+
+| Command | Purpose |
+| --- | --- |
+| `scripts/start-local-backend.sh` | Local backend on `:8788` with local PostgreSQL. `SYNTILA_FEATURE_FLAGS` defaults to every Worker-first flag except `cluster_mode`; set it to an empty string for all flags off, or to your own list. |
+| `scripts/regenerate-schema-lock.sh [--check]` | Rebuilds `apps/backend/migrations/schema.lock` from the migrations in a scratch database (`--check` only compares; exit 1 when out of date). Uses the local credentials (`syntila_app` / `devpass`). Never leaves an empty lock file. |
+| `scripts/run-worker-agent.sh <command>` | Runs the Worker Agent CLI from source with its data in `.development/worker-agent` (`install --pairing-code CODE --no-service`, `run`, `status`, `permissions add-folder PATH --write`, ...). |
+| `scripts/cleanup-local-stale-execution.sh` | Clears orphaned leases, never-sent assignments and Agent commands, and stuck queued Work Requests in the local PostgreSQL database. Refuses non-local hosts. |
+
+pnpm aliases: `db:schema-lock`, `db:schema-lock:check`, `worker-agent:run`, `worker-agent:test`, `test:all`, `test:two-node`.
 
 ## Local performance (`perf-*.sh`)
 

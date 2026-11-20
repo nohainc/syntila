@@ -6,6 +6,9 @@
 # and replaces schema.lock only if everything succeeded (a failed run never leaves
 # an empty lock file). Your local dev database (syntila_local) is not touched.
 #
+#   scripts/regenerate-schema-lock.sh           rewrite schema.lock
+#   scripts/regenerate-schema-lock.sh --check   change nothing; exit 1 if schema.lock is out of date
+#
 # Environment (defaults match start-local-backend.sh):
 #   PGHOST=127.0.0.1 PGPORT=5432 PGUSER=syntila_app PGPASSWORD=devpass
 #   LOCK_DATABASE=syntila_lock   (the scratch database; dropped before and after)
@@ -47,6 +50,12 @@ bun src/migrate.ts
 bun src/migrate.ts --print-lock > "$TMP"
 if [[ ! -s "$TMP" ]]; then
   echo "schema.lock was not written: the generated schema is empty." >&2
+  exit 1
+fi
+if [[ "${1:-}" == "--check" ]]; then
+  if diff -q "$TMP" migrations/schema.lock >/dev/null; then echo "schema.lock is up to date."; exit 0; fi
+  echo "schema.lock is out of date: run scripts/regenerate-schema-lock.sh" >&2
+  diff "$TMP" migrations/schema.lock | head -20 >&2 || true
   exit 1
 fi
 cp "$TMP" migrations/schema.lock
