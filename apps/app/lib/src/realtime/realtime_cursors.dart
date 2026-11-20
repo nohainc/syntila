@@ -1,41 +1,20 @@
-import 'dart:convert';
-import 'package:syntila_protocol/syntila_protocol.dart';
-
-/// Transport cursors are independent of navigation and execution ownership.
+/// The last durable sequence this client applied for each stream. A cursor says
+/// "everything up to here is applied", so the server can replay what was missed
+/// instead of making the client reload (syntila.messaging/1, ADR-038).
+///
+/// A Thread stream is a slice of its Space stream and is numbered by the Space
+/// sequence, so its cursor is not gapless; the server decides what can resume.
 class RealtimeCursors {
-  final _legacy = <String, int>{};
-  final _streams = <String, int>{};
+  final _applied = <String, int>{};
 
-  void record(Map<String, dynamic> frame) {
-    final sequence = frame['sequence'] ?? frame['nextSequence'];
-    if (sequence is! int || sequence < 0) return;
-    final stream = frame['stream'];
-    if (stream is Map &&
-        realtimeStreamKinds.contains(stream['kind']) &&
-        stream['id'] is String &&
-        (stream['id'] as String).isNotEmpty) {
-      final key = jsonEncode([stream['kind'], stream['id']]);
-      _streams[key] =
-          sequence > (_streams[key] ?? -1) ? sequence : _streams[key]!;
-      if (stream['kind'] == 'execution_workspace') {
-        _recordLegacy(stream['id'] as String, sequence);
-      }
-    } else if (frame['workspaceId'] is String) {
-      _recordLegacy(frame['workspaceId'] as String, sequence);
-    }
+  static String key(String kind, String id) => '$kind:$id';
+
+  /// Moves the cursor forward only; an older or repeated sequence changes nothing.
+  void record(String kind, String id, int sequence) {
+    if (sequence < 0) return;
+    final k = key(kind, id);
+    if (sequence > (_applied[k] ?? -1)) _applied[k] = sequence;
   }
 
-  void _recordLegacy(String id, int sequence) {
-    _legacy[id] = sequence > (_legacy[id] ?? -1) ? sequence : _legacy[id]!;
-    final key = jsonEncode(['execution_workspace', id]);
-    _streams[key] = _legacy[id]!;
-  }
-
-  Map<String, dynamic> hello() => {
-        'type': 'realtime.hello',
-        if (_legacy.isNotEmpty)
-          'lastDurableSequences': Map<String, int>.of(_legacy),
-        if (_streams.isNotEmpty)
-          'lastDurableStreamSequences': Map<String, int>.of(_streams),
-      };
+  int? of(String kind, String id) => _applied[key(kind, id)];
 }

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:syntila_app/src/features/workspace/worker_instances_section.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
+import 'package:syntila_app/src/ax/mcp_worker_pin.dart';
 import 'package:syntila_app/src/ax/sync/ax_session_catalogs.dart';
 import 'package:syntila_app/src/features/navigation/app_menu.dart';
 import 'package:syntila_app/src/features/navigation/breadcrumb.dart';
@@ -221,6 +222,13 @@ class _ManagementSource implements AxWorkerManagementSource {
       created.add((typeId, name));
   @override
   Future<String> pairWorkerInstance(String id) async => 'pairing-code';
+  @override
+  Future<McpWorkerPinState> loadMcpWorkerPin(String id) async =>
+      const McpWorkerPinState();
+  @override
+  Future<void> setMcpWorkerPin(String id, McpWorkerVersion version) async {}
+  @override
+  Future<void> clearMcpWorkerPin(String id) async {}
   @override
   Future<void> revokeWorkerCredential(String id) async {}
   @override

@@ -54,7 +54,12 @@ export class MessagingSession {
     if (!mayIssueCommand(this.principal, frame.command))
       return [this.control("error", { code: "command_not_permitted", message: "Command is not available" }, frame.requestId)];
     const rid = frame.requestId;
-    const stream = frame.payload.stream;
+    let stream = frame.payload.stream;
+    // `me` names the caller's own user stream. Any other user id must be the caller's.
+    if (isStreamRef(stream) && stream.kind === "user") {
+      if (stream.id === "me") stream = { kind: "user", id: this.principal.id };
+      else if (stream.id !== this.principal.id) return [this.control("subscription.denied", { reason: "stream_not_permitted", stream }, rid, stream)];
+    }
     switch (frame.command) {
       case "session.ping":
         return [this.control("session.pong", {}, rid)];

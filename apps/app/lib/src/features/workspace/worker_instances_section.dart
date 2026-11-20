@@ -4,6 +4,7 @@ import 'package:syntila_protocol/syntila_protocol.dart' show WorkerInstance;
 import '../../ax/sync/ax_query_builder.dart';
 import '../../ax/sync/ax_session_catalogs.dart';
 import '../../ax/ax_data.dart' show AxWorkerManagementSource;
+import '../../ax/mcp_worker_pin.dart';
 
 /// Read-only identity view during the Worker-first rollout. Management is P6.
 class WorkerInstancesSection extends StatelessWidget {
@@ -115,6 +116,79 @@ class WorkerInstancesList extends StatelessWidget {
     }
   }
 
+  /// Pins the MCP Worker version this Worker runs (ADR-041). Cloud sends only
+  /// this exact version; the Agent still runs it only if the machine's own list
+  /// approves the same digest, so approval stays on that machine.
+  Future<void> _chooseMcpWorker(BuildContext context,
+      AxWorkerManagementSource source, WorkerInstance worker) async {
+    McpWorkerPinState state;
+    try {
+      state = await source.loadMcpWorkerPin(worker.id);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('MCP Workers are not available right now.')));
+      }
+      return;
+    }
+    if (!context.mounted) return;
+    final picked = await showDialog<Object>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: const Text('MCP Worker version'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(state.pin == null
+                          ? 'No version is pinned, so this Worker cannot run work yet.'
+                          : 'Pinned: ${state.pin!.version}'),
+                      const SizedBox(height: 12),
+                      if (state.available.isEmpty)
+                        const Text(
+                            'The connected Agent has not reported an MCP Worker it can run. '
+                            'On that machine, import and test it with `syntila-worker mcp-worker`, then reconnect.')
+                      else
+                        for (final version in state.available)
+                          ListTile(
+                            key: ValueKey('mcp-version-${version.manifestDigest}'),
+                            dense: true,
+                            title: Text('${version.id} ${version.version}'),
+                            subtitle: Text(version.manifestDigest.substring(0, 12)),
+                            selected: version == state.pin,
+                            onTap: () => Navigator.pop(context, version),
+                          ),
+                    ]),
+              ),
+              actions: [
+                if (state.pin != null)
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, 'clear'),
+                      child: const Text('Clear pin')),
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close')),
+              ],
+            ));
+    if (picked == null) return;
+    try {
+      if (picked is McpWorkerVersion) {
+        await source.setMcpWorkerPin(worker.id, picked);
+      } else {
+        await source.clearMcpWorkerPin(worker.id);
+      }
+      await onRefresh();
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Could not pin that version. It must be in your MCP Worker library.')));
+      }
+    }
+  }
+
   Future<void> _act(
       BuildContext context, WorkerInstance worker, String action) async {
     final source = management;
@@ -148,6 +222,9 @@ class WorkerInstancesList extends StatelessWidget {
       } else if (action == 'toggle') {
         await source
             .updateWorkerInstance(worker.id, {'enabled': !worker.enabled});
+      } else if (action == 'mcp') {
+        await _chooseMcpWorker(context, source, worker);
+        return;
       } else if (action == 'pair') {
         final code = await source.pairWorkerInstance(worker.id);
         if (!context.mounted) return;
@@ -273,6 +350,10 @@ class WorkerInstancesList extends StatelessWidget {
                               value: 'rename', child: Text('Rename')),
                           const PopupMenuItem(
                               value: 'alias', child: Text('Edit alias')),
+                          if (worker.workerTypeId.startsWith('plugin-'))
+                            const PopupMenuItem(
+                                value: 'mcp',
+                                child: Text('MCP Worker version')),
                           const PopupMenuItem(
                               value: 'pair', child: Text('Pair')),
                           const PopupMenuItem(

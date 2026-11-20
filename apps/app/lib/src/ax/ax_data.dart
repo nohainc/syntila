@@ -1,3 +1,4 @@
+import 'mcp_worker_pin.dart';
 import 'ax_worker_visibility.dart';
 export 'ax_worker_visibility.dart';
 import 'ax_people.dart';
@@ -140,6 +141,9 @@ abstract interface class AxWorkerManagementSource {
   Future<void> removeWorkerInstance(String id);
   Future<String> pairWorkerInstance(String id);
   Future<void> revokeWorkerCredential(String id);
+  Future<McpWorkerPinState> loadMcpWorkerPin(String id);
+  Future<void> setMcpWorkerPin(String id, McpWorkerVersion version);
+  Future<void> clearMcpWorkerPin(String id);
 }
 
 abstract class _AxApiClientCore

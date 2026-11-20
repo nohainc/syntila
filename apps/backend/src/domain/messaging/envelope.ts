@@ -22,6 +22,12 @@ export interface MessagingEnvelope {
   readonly occurredAt: string;
   readonly actor?: { readonly kind: ActorKind; readonly id: string };
   readonly correlationId?: string;
+  /**
+   * The entities the event belongs to (`spaceId`, `threadId`, `runId`, `taskId`,
+   * `attemptId`, `assignmentId`, `workspaceRuntimeId`), as ids only. Routing
+   * information for clients; it grants nothing.
+   */
+  readonly context?: Record<string, string>;
   readonly payload: Record<string, unknown>;
 }
 
@@ -83,6 +89,11 @@ export function parseCommandFrame(raw: string | unknown): CommandFrame {
   };
 }
 
+/** The entity ids an event carries, without the empty ones. */
+export function eventContext(ids: Record<string, string | null | undefined>): Record<string, string> {
+  return Object.fromEntries(Object.entries(ids).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0));
+}
+
 export function buildEnvelope(input: Omit<MessagingEnvelope, "protocol" | "eventId" | "occurredAt"> & { eventId?: string; occurredAt?: string }): MessagingEnvelope {
   return {
     protocol: MESSAGING_PROTOCOL,
@@ -92,5 +103,6 @@ export function buildEnvelope(input: Omit<MessagingEnvelope, "protocol" | "event
     ...(input.sequence !== undefined ? { sequence: input.sequence } : {}),
     ...(input.actor ? { actor: input.actor } : {}),
     ...(input.correlationId ? { correlationId: input.correlationId } : {}),
+    ...(input.context && Object.keys(input.context).length ? { context: input.context } : {}),
   };
 }

@@ -5,24 +5,25 @@ import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:math' as math;
 
-import 'package:syntila_protocol/syntila_protocol.dart';
-
 import '../ax/ax_render_diagnostics.dart';
 import 'realtime_client_stub.dart';
 import 'realtime_health.dart';
-import 'realtime_cursors.dart';
+import 'realtime_messaging.dart';
 
+/// The browser socket for `syntila.messaging/1` (ADR-038). The protocol itself
+/// lives in [RealtimeMessaging]; this class owns the socket, the reconnects and
+/// the subscriptions. Runs and legacy execution-workspace scopes have no stream
+/// of their own: their events arrive on the Space and Thread streams.
 class _BrowserRealtimeClient implements RealtimeClient {
   final _events = StreamController<Map<String, dynamic>>.broadcast();
   html.WebSocket? _socket;
   Uri? _endpoint;
   String? _spaceId;
   String? _threadId;
-  String? _runId;
-  String? _executionWorkspaceId;
   Timer? _reconnectTimer;
+  Timer? _ackTimer;
   late final _health = RealtimeHealthMonitor(
-      ping: () => _send({'type': 'ping'}),
+      ping: () => _send(_messaging.ping()),
       onStale: () {
         if (_closed) return;
         _events.add({'type': 'realtime.connection', 'status': 'stale'});
@@ -30,7 +31,7 @@ class _BrowserRealtimeClient implements RealtimeClient {
         _scheduleReconnect();
       });
   int _attempt = 0;
-  final _cursors = RealtimeCursors();
+  final _messaging = RealtimeMessaging();
   bool _closed = false;
 
   @override
@@ -45,9 +46,7 @@ class _BrowserRealtimeClient implements RealtimeClient {
   }
 
   @override
-  Future<void> setWorkspace(String workspaceId) async {
-    await setScopes(executionWorkspaceId: workspaceId);
-  }
+  Future<void> setWorkspace(String workspaceId) async {}
 
   @override
   Future<void> setScopes({
@@ -56,27 +55,28 @@ class _BrowserRealtimeClient implements RealtimeClient {
     String? runId,
     String? executionWorkspaceId,
   }) async {
-    String key(Map<String, dynamic> scope) => jsonEncode(scope);
-    final previous = {for (final scope in _currentScopes()) key(scope): scope};
+    final previous = _streams();
     _spaceId = spaceId;
     _threadId = threadId;
-    _runId = runId;
-    _executionWorkspaceId = executionWorkspaceId;
-    final next = {for (final scope in _currentScopes()) key(scope): scope};
+    final next = _streams();
     if (_socket?.readyState != html.WebSocket.OPEN) return;
-    // Only changed scopes are touched: every subscribe makes Cloud send
-    // realtime.ready, which triggers a full recovery of that scope.
+    // Only changed streams are touched: a fresh subscription may reload its view.
     for (final entry in previous.entries) {
       if (!next.containsKey(entry.key)) {
-        _send({'type': 'unsubscribe', 'scope': entry.value});
+        _send(_messaging.unsubscribe(entry.value.$1, entry.value.$2));
       }
     }
     for (final entry in next.entries) {
       if (!previous.containsKey(entry.key)) {
-        _send({'type': 'subscribe', 'scope': entry.value});
+        _send(_messaging.subscribe(entry.value.$1, entry.value.$2));
       }
     }
   }
+
+  Map<String, (String, String)> _streams() => {
+        if (_spaceId != null) 'space:$_spaceId': ('space', _spaceId!),
+        if (_threadId != null) 'thread:$_threadId': ('thread', _threadId!),
+      };
 
   void _open() => unawaited(_openWithTicket());
 
@@ -99,46 +99,37 @@ class _BrowserRealtimeClient implements RealtimeClient {
     }
     final socket = html.WebSocket(endpoint.toString());
     _socket = socket;
-    // Cloud sends realtime.ready on accept and again after hello; both mean
-    // the same connection is live, and each one triggers a full recovery.
-    var readyForwarded = false;
     socket.onOpen.listen((_) {
       if (_closed || !identical(_socket, socket)) return;
       _attempt = 0;
       _events.add({'type': 'realtime.connection', 'status': 'connected'});
-      _send(_cursors.hello());
-      _send({
-        'type': 'subscribe',
-        'scope': {'kind': 'user'}
-      });
-      _subscribeCurrentScopes();
+      _send(_messaging.subscribe('user', _userStreamId));
+      for (final stream in _streams().values) {
+        _send(_messaging.subscribe(stream.$1, stream.$2));
+      }
       _health.start();
+      _ackTimer?.cancel();
+      _ackTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        for (final ack in _messaging.flushAcks()) {
+          _send(ack);
+        }
+      });
     });
     socket.onMessage.listen((event) {
       if (_closed || !identical(_socket, socket)) return;
       final data = event.data;
       if (data is! String) return;
       try {
-        final decoded = jsonDecode(data);
-        if (decoded is! Map) return;
-        final message = Map<String, dynamic>.from(decoded);
-        if (message['type'] == 'realtime.pong') {
-          _health.acknowledge();
-        } else if (message['type'] == 'realtime.ready') {
-          if (readyForwarded) return;
-          readyForwarded = true;
-          _events.add(message);
-        } else if (message['type'] == 'event' && message['event'] is Map) {
-          final eventValue = Map<String, dynamic>.from(message['event'] as Map);
-          final type = eventValue['type'];
-          if (type is String && isReplayableRealtimeEvent(eventValue)) {
-            _cursors.record(eventValue);
+        final result = _messaging.receive(jsonDecode(data));
+        for (final reply in result.replies) {
+          _send(reply);
+        }
+        for (final message in result.events) {
+          if (message['type'] == 'realtime.pong') {
+            _health.acknowledge();
+          } else {
+            _events.add(message);
           }
-          _events.add(eventValue);
-        } else if (message['type'] == 'sync.required') {
-          _cursors.record(message);
-          // Query routers reconcile the affected stream through authenticated HTTP.
-          _events.add(message);
         }
       } on FormatException {
         // Ignore malformed server frames; reconnect handling remains intact.
@@ -152,26 +143,14 @@ class _BrowserRealtimeClient implements RealtimeClient {
     });
   }
 
-  void _subscribeCurrentScopes() {
-    for (final scope in _currentScopes()) {
-      _send({'type': 'subscribe', 'scope': scope});
-    }
-  }
-
-  List<Map<String, dynamic>> _currentScopes() => [
-        if (_spaceId != null) {'kind': 'space', 'spaceId': _spaceId},
-        if (_threadId != null) {'kind': 'thread', 'threadId': _threadId},
-        if (_runId != null) {'kind': 'run', 'runId': _runId},
-        if (_executionWorkspaceId != null)
-          {
-            'kind': 'execution_workspace',
-            'executionWorkspaceId': _executionWorkspaceId
-          },
-      ];
+  /// The user stream is addressed by the server from the credential; the id the
+  /// client names is only a label and is checked against it.
+  static const _userStreamId = 'me';
 
   void _scheduleReconnect() {
     if (_closed || _reconnectTimer?.isActive == true) return;
     _health.stop();
+    _ackTimer?.cancel();
     _events.add({'type': 'realtime.connection', 'status': 'reconnecting'});
     final cappedAttempt = math.min(_attempt++, 8);
     final jitter = 0.75 + math.Random().nextDouble() * 0.5;
@@ -183,11 +162,12 @@ class _BrowserRealtimeClient implements RealtimeClient {
   void _send(Map<String, dynamic> message) {
     final socket = _socket;
     if (const bool.fromEnvironment('SYNTILA_REALTIME_DIAGNOSTICS') &&
-        (message['type'] == 'subscribe' || message['type'] == 'unsubscribe')) {
+        message['command'] is String &&
+        (message['command'] as String).startsWith('subscription.')) {
       AxRenderDiagnostics.instance.record('realtime.subscription',
-          operation: message['type'] as String,
+          operation: message['command'] as String,
           contextData: {
-            'scope': message['scope'],
+            'payload': message['payload'],
             'socketOpen': socket?.readyState == html.WebSocket.OPEN
           });
     }
@@ -200,6 +180,7 @@ class _BrowserRealtimeClient implements RealtimeClient {
   Future<void> close() async {
     _closed = true;
     _health.stop();
+    _ackTimer?.cancel();
     _reconnectTimer?.cancel();
     _socket?.close();
     await _events.close();

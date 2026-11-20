@@ -1442,6 +1442,37 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   }
 
   @override
+  Future<McpWorkerPinState> loadMcpWorkerPin(String id) async => McpWorkerPinState.fromJson(
+      await _getJson(Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/mcp-pin')));
+
+  @override
+  Future<void> setMcpWorkerPin(String id, McpWorkerVersion version) async {
+    final response = await client.put(
+      Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/mcp-pin'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode({
+        'version': version.version,
+        'manifestDigest': version.manifestDigest,
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException('Could not pin the MCP Worker (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
+  @override
+  Future<void> clearMcpWorkerPin(String id) async {
+    final response = await client.delete(
+        Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/mcp-pin'),
+        headers: _headers());
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException('Could not clear the MCP Worker (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
+  @override
   Future<String> pairWorkerInstance(String id) async {
     final response = await client.post(
         Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/pairing'),

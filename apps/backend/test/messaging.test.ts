@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildEnvelope, FrameError, parseCommandFrame, MESSAGING_PROTOCOL } from "../src/domain/messaging/envelope";
+import { buildEnvelope, eventContext, FrameError, parseCommandFrame, MESSAGING_PROTOCOL } from "../src/domain/messaging/envelope";
 import { bucketFor, mayIssueCommand, mayUseStream } from "../src/domain/messaging/principal";
 import { SubscriptionRegistry } from "../src/domain/messaging/subscription-registry";
 import { commandToLegacy, legacyToEnvelope } from "../src/domain/messaging/bridge";
@@ -158,4 +158,18 @@ test("subscribersOfKind lists only the subscriptions of that kind", async () => 
   await registry.subscribe("c1", human, t, async () => true, async () => 0);
   await registry.subscribe("c1", human, { kind: "space", id: "s1" }, async () => true, async () => 0);
   expect(registry.subscribersOfKind("thread").map((s) => s.stream)).toEqual([t]);
+});
+
+test("`me` names the caller's own user stream; another user's stream is refused", async () => {
+  const registry = new SubscriptionRegistry();
+  const session = new MessagingSession("c9", human, { registry, authorize: allow, head: async () => 3, supports: (s) => s.kind === "user" });
+  const cmd = (id: string) => JSON.stringify({ protocol: MESSAGING_PROTOCOL, requestId: "r", type: "command", command: "subscription.subscribe", payload: { stream: { kind: "user", id } } });
+  expect((await session.handle(cmd("me")))[0]).toMatchObject({ type: "subscription.ready", stream: { kind: "user", id: "alice" } });
+  expect((await session.handle(cmd("bob")))[0]).toMatchObject({ type: "subscription.denied", payload: { reason: "stream_not_permitted" } });
+});
+
+test("an envelope carries the entity ids of its event and drops the empty ones", () => {
+  const e = buildEnvelope({ type: "message.created", stream: thread, sequence: 1, payload: {}, context: eventContext({ spaceId: "s1", threadId: "t1", runId: null, taskId: undefined, assignmentId: "" }) });
+  expect(e.context).toEqual({ spaceId: "s1", threadId: "t1" });
+  expect(buildEnvelope({ type: "x", stream: thread, payload: {}, context: {} })).not.toHaveProperty("context");
 });

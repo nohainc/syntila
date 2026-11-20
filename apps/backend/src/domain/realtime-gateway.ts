@@ -22,7 +22,7 @@ import {
 const selectExecutionWorkspacesByIdOwnerUserId = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
   q.row<T>`SELECT 1 AS owner FROM execution_workspaces WHERE id = ${p1} AND owner_user_id = ${p2} AND status <> 'revoked'`;
 
-import { buildEnvelope, isMessagingFrame, type StreamRef } from "./messaging/envelope.js";
+import { buildEnvelope, eventContext, isMessagingFrame, type StreamRef } from "./messaging/envelope.js";
 import { MAX_REPLAY_EVENTS as MAX_UNIFIED_REPLAY, MessagingSession } from "./messaging/session.js";
 import { SubscriptionRegistry } from "./messaging/subscription-registry.js";
 import { isFeatureEnabled } from "../feature-flags.js";
@@ -767,8 +767,9 @@ export class RealtimeGateway implements DurableObject {
         const backing = await this.backingStream(stream);
         if (!backing) return null;
         const threadId = stream.kind === "thread" ? stream.id : null;
-        const rows = await dataOf(this.env).read.rows<{ eventId: string; eventType: string; sequence: string; payloadJson: string; occurredAt: string | Date; runId: string | null; assignmentId: string | null }>`SELECT event_id AS "eventId", event_type AS "eventType", sequence::text AS sequence,
-                  payload_json AS "payloadJson", occurred_at AS "occurredAt", run_id AS "runId", assignment_id AS "assignmentId"
+        const rows = await dataOf(this.env).read.rows<{ eventId: string; eventType: string; sequence: string; payloadJson: string; occurredAt: string | Date; runId: string | null; assignmentId: string | null; spaceId: string | null; threadId: string | null; taskId: string | null; attemptId: string | null; workspaceRuntimeId: string | null }>`SELECT event_id AS "eventId", event_type AS "eventType", sequence::text AS sequence,
+                  payload_json AS "payloadJson", occurred_at AS "occurredAt", run_id AS "runId", assignment_id AS "assignmentId",
+                  space_id AS "spaceId", thread_id AS "threadId", task_id AS "taskId", attempt_id AS "attemptId", workspace_runtime_id AS "workspaceRuntimeId"
              FROM realtime_events
             WHERE stream_kind = ${backing.kind} AND COALESCE(stream_id, workspace_id) = ${backing.id}
               AND (${threadId}::text IS NULL OR thread_id = ${threadId}::text)
@@ -780,6 +781,7 @@ export class RealtimeGateway implements DurableObject {
           return buildEnvelope({
             eventId: row.eventId, type: row.eventType, occurredAt, stream, sequence: Number(row.sequence),
             ...(row.runId || row.assignmentId ? { correlationId: row.assignmentId ?? row.runId ?? undefined } : {}),
+            context: eventContext({ spaceId: row.spaceId, threadId: row.threadId, runId: row.runId, taskId: row.taskId, attemptId: row.attemptId, assignmentId: row.assignmentId, workspaceRuntimeId: row.workspaceRuntimeId }),
             payload: JSON.parse(row.payloadJson) as Record<string, unknown>,
           });
         });
@@ -812,6 +814,10 @@ export class RealtimeGateway implements DurableObject {
       eventId: event.eventId, type: event.type, occurredAt: event.timestamp, stream: ref,
       ...(isReplayableRealtimeEvent(event) ? { sequence: event.sequence } : {}),
       ...(event.runId || event.assignmentId ? { correlationId: event.assignmentId ?? event.runId } : {}),
+      context: eventContext({
+        spaceId: event.spaceId, threadId: event.threadId, runId: event.runId, taskId: event.taskId,
+        attemptId: event.attemptId, assignmentId: event.assignmentId, workspaceRuntimeId: event.workspaceRuntimeId,
+      }),
       payload: event.payload as Record<string, unknown>,
     });
     for (const delivery of this.registry.publish(envelope)) {
