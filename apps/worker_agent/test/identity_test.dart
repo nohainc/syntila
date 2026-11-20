@@ -67,6 +67,9 @@ void main() {
         final mode =
             (await File('${dir.path}/identity/key.json').stat()).mode & 0x1ff;
         expect(mode, 384, reason: '0600');
+        final directoryMode =
+            (await Directory('${dir.path}/identity').stat()).mode & 0x1ff;
+        expect(directoryMode, 448, reason: '0700');
       }
       await store.delete();
       expect(await store.load(), isNull);

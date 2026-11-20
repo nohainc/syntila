@@ -265,13 +265,13 @@ void launcherTests() {
     await root.setRoot(work.path);
     final marked = Directory('${work.path}/alice/Report')
       ..createSync(recursive: true);
-    File('${marked.path}/.syntila-space.json').writeAsStringSync(
-      '{"schemaVersion":1,"spaceId":"space-9"}',
-    );
+    File(
+      '${marked.path}/.syntila-space.json',
+    ).writeAsStringSync('{"schemaVersion":1,"spaceId":"space-9"}');
     final bad = Directory('${work.path}/bob/Evil')..createSync(recursive: true);
-    File('${bad.path}/.syntila-space.json').writeAsStringSync(
-      '{"spaceId":"../x"}',
-    );
+    File(
+      '${bad.path}/.syntila-space.json',
+    ).writeAsStringSync('{"spaceId":"../x"}');
     Directory('${work.path}/plain').createSync();
     expect(await root.adoptMarkedSpaces(), ['space-9']);
     expect((await root.adopted())['space-9'], endsWith('alice/Report'));
@@ -289,7 +289,10 @@ void launcherTests() {
     expect(validGitReferences(null), isTrue);
     expect(validGitReference({...ok, 'path': '/tmp'}), isFalse);
     expect(validGitReference({...ok, 'commit': 'main'}), isFalse);
-    expect(validGitReference({...ok, 'remote': 'file:///Users/a/repo'}), isFalse);
+    expect(
+      validGitReference({...ok, 'remote': 'file:///Users/a/repo'}),
+      isFalse,
+    );
     expect(validGitReference({...ok, 'ref': 'refs/heads/a..b'}), isFalse);
     expect(validGitReferences(List.filled(9, ok)), isFalse);
   });

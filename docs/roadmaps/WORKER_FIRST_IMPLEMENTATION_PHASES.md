@@ -224,6 +224,7 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 - Tests: `apps/backend/test/domain/worker-instances.test.ts`, `packages/dart/protocol/test/worker_instance_test.dart`.
 - A read-only Worker Instance list appears in Workspaces when `worker_identity` is enabled. It distinguishes configured enablement, connectivity and observed readiness. On the standalone Agent path readiness is explicitly unknown until the Agent can report a complete readiness assessment; `ready: false` alone must not be interpreted as a failed check. The additive `readinessKnown` response field makes this distinction.
 - For deployment data, run `psql -X -v ON_ERROR_STOP=1 "$DATABASE_URL" -f apps/backend/scripts/check-worker-identity.sql` with a read-only database role. Investigate every nonzero violation and record the counts. The audit does not change data and recognizes intentionally retained tombstone mappings. Fixture evidence is not a substitute for this deployment-specific gate.
+- Local development database audit (2026-11-20): all five violation counts were zero; 1 user, 1 human Actor, 5 inventory rows, 5 mappings and 5 live Workers. This does not verify production data.
 - Remaining: implement complete standalone Agent readiness reporting after Profile verification is available, and run the audit on each deployment's data. The fixture tests do not close the deployment gate.
 
 ## P2 status (implementation in progress)
@@ -253,7 +254,8 @@ Turn on `worker_agent_connect`, `worker_target_dispatch`, `workers_ux`, `canonic
 - Tests: fake cloud (pairing, signed nonces, epoch fence, command inbox), fake Engine, crash matrix over every journal write point, two Agents on two hosts, two Agents on one host, no-Workspace check.
 - `CliEngineLauncher` has a controlled-provider test against the real generic Engine, consumes the server's nested snapshot, and reports provider start only on Engine evidence. The real Agent also pairs and reconciles over the Worker gateway without a Workspace row. Those are separate tests, not an end-to-end provider run.
 - The Agent downloads the pinned published Profile on a cache miss using its fenced session and verifies the signed canonical snapshot against build-time trust roots. Cloud signs delivery using a configured key. Missing trust, signing configuration, or a retained revision fails closed; real deployment and key-rotation evidence remains open.
-- **Not done:** platform secret store, binary swap for updates, Windows separate-user setup and real-platform service evidence. `run` without an Engine or a verified cached pinned Profile fails closed. Complete crash/reconnect and two-host evidence with real Agents and Engine processes is still needed before the exit gate closes.
+- A real local Dart Agent has paired with the backend and downloaded and verified a signed fixture Profile before gateway reconciliation. This is not a provider execution or deployment test.
+- **Not done:** binary swap for updates, Windows separate-user setup and real-platform service evidence. The macOS CLI uses Keychain, Windows x64 uses current-user DPAPI, and Linux has an opt-in Secret Service adapter; all include pending rotation and preserve file credentials until migration readback succeeds. Real device and service evidence is still needed. `run` without an Engine or a verified cached pinned Profile fails closed. Complete crash/reconnect and two-host evidence with real Agents and Engine processes is still needed before the exit gate closes.
 
 ## P5 status (in progress; exit gate open)
 

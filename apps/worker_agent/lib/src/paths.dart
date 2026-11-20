@@ -88,6 +88,12 @@ class AgentPaths {
   static Future<void> restrict(FileSystemEntity entity) async {
     if (Platform.isWindows) return;
     final mode = entity is Directory ? '700' : '600';
-    await Process.run('chmod', [mode, entity.path]);
+    final result = await Process.run('chmod', [mode, entity.path]);
+    if (result.exitCode != 0) {
+      throw FileSystemException(
+        'Could not restrict private Worker state',
+        entity.path,
+      );
+    }
   }
 }

@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:crypto/crypto.dart';
 
 import 'base64url.dart';
 import 'paths.dart';
+import 'windows_dpapi.dart';
 
 /// The Worker's Ed25519 key pair. The private key never leaves the host; only
 /// [publicKeyText] is sent to the server.
@@ -63,6 +65,9 @@ class FileKeyStore implements KeyStore {
   @override
   Future<void> save(AgentKey key) async {
     await file.parent.create(recursive: true);
+    // Protect the directory before creating the temporary file, so no other
+    // user can read the key during the interval before its mode is set.
+    await AgentPaths.restrict(file.parent);
     final temp = File('${file.path}.tmp');
     await temp.writeAsString(
       jsonEncode({
@@ -83,6 +88,329 @@ class FileKeyStore implements KeyStore {
       await file.writeAsBytes(List<int>.filled(128, 0), flush: true);
       await file.delete();
     }
+  }
+}
+
+/// A per-installation macOS Keychain entry. Existing private files are copied
+/// only after Keychain readback succeeds; conflicting identities fail closed.
+class MacKeychainKeyStore implements KeyStore {
+  MacKeychainKeyStore(this.legacyFile, {this.executable = 'security'})
+    : account = sha256
+          .convert(utf8.encode(legacyFile.absolute.path))
+          .toString();
+
+  final File legacyFile;
+  final String executable;
+  final String account;
+  static const service = 'com.syntila.worker.agent-key.v1';
+
+  Future<AgentKey?> _read() async {
+    final result = await Process.run(executable, [
+      'find-generic-password',
+      '-a',
+      account,
+      '-s',
+      service,
+      '-w',
+    ]);
+    if (result.exitCode == 44) return null;
+    if (result.exitCode != 0) {
+      throw StateError('macOS Keychain could not read the Worker credential');
+    }
+    final decoded = jsonDecode((result.stdout as String).trim());
+    if (decoded is! Map ||
+        decoded['privateKey'] is! String ||
+        decoded['publicKey'] is! String) {
+      throw const FormatException('the Keychain credential is damaged');
+    }
+    return AgentKey(
+      privateKey: fromBase64Url(decoded['privateKey'] as String),
+      publicKey: fromBase64Url(decoded['publicKey'] as String),
+    );
+  }
+
+  @override
+  Future<AgentKey?> load() async {
+    final stored = await _read();
+    final legacy = await FileKeyStore(legacyFile).load();
+    if (legacy == null) return stored;
+    if (stored != null &&
+        (stored.publicKeyText != legacy.publicKeyText ||
+            toBase64Url(stored.privateKey) != toBase64Url(legacy.privateKey))) {
+      throw StateError(
+        'Worker credentials disagree; preserve both and resolve the migration',
+      );
+    }
+    if (stored == null) await save(legacy);
+    final verified = await _read();
+    if (verified == null ||
+        verified.publicKeyText != legacy.publicKeyText ||
+        toBase64Url(verified.privateKey) != toBase64Url(legacy.privateKey)) {
+      throw StateError('macOS Keychain credential readback failed');
+    }
+    await FileKeyStore(legacyFile).delete();
+    return verified;
+  }
+
+  @override
+  Future<void> save(AgentKey key) async {
+    final value = jsonEncode({
+      'version': 1,
+      'privateKey': toBase64Url(key.privateKey),
+      'publicKey': key.publicKeyText,
+    });
+    final hex = utf8
+        .encode(value)
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
+    final process = await Process.start(executable, ['-i']);
+    process.stdin.writeln(
+      'add-generic-password -a "$account" -s "$service" -U -X $hex',
+    );
+    await process.stdin.close();
+    final stdoutDone = process.stdout.drain<void>();
+    final stderrDone = process.stderr.drain<void>();
+    final exitCode = await process.exitCode;
+    await Future.wait([stdoutDone, stderrDone]);
+    if (exitCode != 0) {
+      throw StateError('macOS Keychain rejected the Worker credential');
+    }
+  }
+
+  @override
+  Future<void> delete() async {
+    final result = await Process.run(executable, [
+      'delete-generic-password',
+      '-a',
+      account,
+      '-s',
+      service,
+    ]);
+    if (result.exitCode != 0 && result.exitCode != 44) {
+      throw StateError('macOS Keychain could not delete the Worker credential');
+    }
+    await FileKeyStore(legacyFile).delete();
+  }
+}
+
+/// Linux Secret Service adapter, enabled explicitly and recorded per Agent so
+/// a service started without the original environment never falls back to a file.
+class LinuxSecretKeyStore implements KeyStore {
+  LinuxSecretKeyStore(
+    this.legacyFile,
+    this.marker, {
+    this.executable = 'secret-tool',
+  }) : account = sha256
+           .convert(utf8.encode(legacyFile.absolute.path))
+           .toString();
+  final File legacyFile;
+  final File marker;
+  final String executable;
+  final String account;
+  static const service = 'com.syntila.worker.agent-key.v1';
+
+  Future<void> _recordSelection() async {
+    if (await marker.exists()) {
+      if ((await marker.readAsString()).trim() != 'secret-service') {
+        throw StateError(
+          'Unknown Worker credential store; state was preserved',
+        );
+      }
+      return;
+    }
+    await marker.parent.create(recursive: true);
+    await AgentPaths.restrict(marker.parent);
+    await marker.writeAsString('secret-service\n', flush: true);
+    await AgentPaths.restrict(marker);
+  }
+
+  Future<AgentKey?> _read() async {
+    final result = await Process.run(executable, [
+      'lookup',
+      'service',
+      service,
+      'account',
+      account,
+    ]);
+    if (result.exitCode == 1 && (result.stderr as String).trim().isEmpty) {
+      return null;
+    }
+    if (result.exitCode != 0) {
+      throw StateError(
+        'Linux Secret Service could not read the Worker credential',
+      );
+    }
+    final decoded = jsonDecode((result.stdout as String).trim());
+    if (decoded is! Map ||
+        decoded['privateKey'] is! String ||
+        decoded['publicKey'] is! String) {
+      throw const FormatException('the Secret Service credential is damaged');
+    }
+    return AgentKey(
+      privateKey: fromBase64Url(decoded['privateKey'] as String),
+      publicKey: fromBase64Url(decoded['publicKey'] as String),
+    );
+  }
+
+  @override
+  Future<AgentKey?> load() async {
+    await _recordSelection();
+    final stored = await _read();
+    final legacy = await FileKeyStore(legacyFile).load();
+    if (legacy == null) return stored;
+    if (stored != null &&
+        (stored.publicKeyText != legacy.publicKeyText ||
+            toBase64Url(stored.privateKey) != toBase64Url(legacy.privateKey))) {
+      throw StateError(
+        'Worker credentials disagree; preserve both and resolve the migration',
+      );
+    }
+    if (stored == null) await save(legacy);
+    final verified = await _read();
+    if (verified == null ||
+        verified.publicKeyText != legacy.publicKeyText ||
+        toBase64Url(verified.privateKey) != toBase64Url(legacy.privateKey)) {
+      throw StateError('Linux Secret Service credential readback failed');
+    }
+    await FileKeyStore(legacyFile).delete();
+    return verified;
+  }
+
+  @override
+  Future<void> save(AgentKey key) async {
+    await _recordSelection();
+    final process = await Process.start(executable, [
+      'store',
+      '--label',
+      'Syntila Worker credential',
+      'service',
+      service,
+      'account',
+      account,
+    ]);
+    process.stdin.write(
+      jsonEncode({
+        'version': 1,
+        'privateKey': toBase64Url(key.privateKey),
+        'publicKey': key.publicKeyText,
+      }),
+    );
+    await process.stdin.close();
+    final stdoutDone = process.stdout.drain<void>();
+    final stderrDone = process.stderr.drain<void>();
+    final code = await process.exitCode;
+    await Future.wait([stdoutDone, stderrDone]);
+    if (code != 0) {
+      throw StateError('Linux Secret Service rejected the Worker credential');
+    }
+  }
+
+  @override
+  Future<void> delete() async {
+    await _recordSelection();
+    final result = await Process.run(executable, [
+      'clear',
+      'service',
+      service,
+      'account',
+      account,
+    ]);
+    if (result.exitCode != 0 &&
+        !(result.exitCode == 1 && (result.stderr as String).trim().isEmpty)) {
+      throw StateError(
+        'Linux Secret Service could not delete the Worker credential',
+      );
+    }
+    await FileKeyStore(legacyFile).delete();
+  }
+}
+
+typedef DpapiTransform =
+    List<int> Function(
+      List<int> bytes,
+      String context, {
+      required bool decrypt,
+    });
+
+/// Current-user DPAPI protects both the active and pending credentials.
+class WindowsDpapiKeyStore implements KeyStore {
+  WindowsDpapiKeyStore(this.legacyFile, {DpapiTransform? transform})
+    : transform = transform ?? WindowsDpapi.transform,
+      context =
+          'syntila-worker-key-v1:${sha256.convert(utf8.encode(legacyFile.absolute.path))}';
+  final File legacyFile;
+  final DpapiTransform transform;
+  final String context;
+  File get encryptedFile => File('${legacyFile.path}.dpapi');
+
+  Future<AgentKey?> _read() async {
+    if (!await encryptedFile.exists()) return null;
+    if (await encryptedFile.length() > 1024 * 1024) {
+      throw StateError('Credential exceeds limit');
+    }
+    final decoded = jsonDecode(
+      utf8.decode(
+        transform(await encryptedFile.readAsBytes(), context, decrypt: true),
+      ),
+    );
+    if (decoded is! Map ||
+        decoded['privateKey'] is! String ||
+        decoded['publicKey'] is! String) {
+      throw const FormatException('the DPAPI credential is damaged');
+    }
+    return AgentKey(
+      privateKey: fromBase64Url(decoded['privateKey'] as String),
+      publicKey: fromBase64Url(decoded['publicKey'] as String),
+    );
+  }
+
+  @override
+  Future<AgentKey?> load() async {
+    final stored = await _read();
+    final legacy = await FileKeyStore(legacyFile).load();
+    if (legacy == null) return stored;
+    if (stored != null &&
+        (stored.publicKeyText != legacy.publicKeyText ||
+            toBase64Url(stored.privateKey) != toBase64Url(legacy.privateKey))) {
+      throw StateError(
+        'Worker credentials disagree; preserve both and resolve the migration',
+      );
+    }
+    if (stored == null) await save(legacy);
+    final verified = await _read();
+    if (verified == null ||
+        verified.publicKeyText != legacy.publicKeyText ||
+        toBase64Url(verified.privateKey) != toBase64Url(legacy.privateKey)) {
+      throw StateError('Windows DPAPI credential readback failed');
+    }
+    await FileKeyStore(legacyFile).delete();
+    return verified;
+  }
+
+  @override
+  Future<void> save(AgentKey key) async {
+    await encryptedFile.parent.create(recursive: true);
+    final payload = utf8.encode(
+      jsonEncode({
+        'version': 1,
+        'privateKey': toBase64Url(key.privateKey),
+        'publicKey': key.publicKeyText,
+      }),
+    );
+    final encrypted = transform(payload, context, decrypt: false);
+    final temporary = File('${encryptedFile.path}.$pid.tmp');
+    try {
+      await temporary.writeAsBytes(encrypted, flush: true);
+      await temporary.rename(encryptedFile.path);
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
+  }
+
+  @override
+  Future<void> delete() async {
+    if (await encryptedFile.exists()) await encryptedFile.delete();
+    await FileKeyStore(legacyFile).delete();
   }
 }
 

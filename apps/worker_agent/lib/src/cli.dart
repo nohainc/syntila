@@ -103,8 +103,29 @@ class WorkerCli {
   final KeyStore Function(AgentPaths paths)? keyStoreFor;
   final ServerApi Function(String serverUrl)? apiFor;
 
-  KeyStore _keys(AgentPaths paths) =>
-      keyStoreFor?.call(paths) ?? FileKeyStore(paths.keyFile);
+  KeyStore _keys(AgentPaths paths) {
+    final custom = keyStoreFor?.call(paths);
+    if (custom != null) return custom;
+    if (operatingSystem == 'macos') return MacKeychainKeyStore(paths.keyFile);
+    if (operatingSystem == 'windows') {
+      return WindowsDpapiKeyStore(paths.keyFile);
+    }
+    if (operatingSystem == 'linux') {
+      final marker = File('${paths.identityDir.path}/credential-store');
+      final configured = environment['SYNTILA_WORKER_SECRET_STORE'];
+      if (configured != null &&
+          configured != 'secret-service' &&
+          configured != 'file') {
+        throw const FormatException(
+          'SYNTILA_WORKER_SECRET_STORE must be secret-service or file',
+        );
+      }
+      if (marker.existsSync() || configured == 'secret-service') {
+        return LinuxSecretKeyStore(paths.keyFile, marker);
+      }
+    }
+    return FileKeyStore(paths.keyFile);
+  }
 
   static const usage = '''
 syntila-worker <command> [options]

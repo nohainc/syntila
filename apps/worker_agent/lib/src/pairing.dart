@@ -74,7 +74,7 @@ Future<void> rotateCredential({
 }) async {
   final lock = await AgentLock.acquire(paths.lockFile);
   final client = api ?? ServerApi(identity.serverUrl);
-  final next = FileKeyStore(paths.nextKeyFile);
+  final next = _pendingKeyStore(paths, keyStore);
   try {
     final current = await keyStore.load();
     if (current == null) throw StateError('this Worker has no credential');
@@ -128,8 +128,7 @@ Future<bool> recoverPendingRotation({
   required KeyStore keyStore,
   required ServerApi api,
 }) async {
-  if (!await paths.nextKeyFile.exists()) return false;
-  final next = FileKeyStore(paths.nextKeyFile);
+  final next = _pendingKeyStore(paths, keyStore);
   final fresh = await next.load();
   if (fresh == null) return false;
   try {
@@ -164,9 +163,33 @@ Future<void> uninstallAgent({
   final lock = await AgentLock.acquire(paths.lockFile);
   try {
     await keyStore.delete();
-    await FileKeyStore(paths.nextKeyFile).delete();
+    final next = _pendingKeyStore(paths, keyStore);
+    await next.delete();
   } finally {
     await lock.release();
   }
   if (await paths.root.exists()) await paths.root.delete(recursive: true);
+}
+
+KeyStore _pendingKeyStore(AgentPaths paths, KeyStore current) {
+  if (current is WindowsDpapiKeyStore) {
+    return WindowsDpapiKeyStore(
+      paths.nextKeyFile,
+      transform: current.transform,
+    );
+  }
+  if (current is MacKeychainKeyStore) {
+    return MacKeychainKeyStore(
+      paths.nextKeyFile,
+      executable: current.executable,
+    );
+  }
+  if (current is LinuxSecretKeyStore) {
+    return LinuxSecretKeyStore(
+      paths.nextKeyFile,
+      current.marker,
+      executable: current.executable,
+    );
+  }
+  return FileKeyStore(paths.nextKeyFile);
 }

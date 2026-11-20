@@ -17,6 +17,9 @@ AUTH_PORT="${AUTH_PORT:-8787}"
 WEB_PORT="${WEB_PORT:-3000}"
 
 node "$ROOT/scripts/setup-local-backend.mjs"
+node "$ROOT/scripts/setup-local-profile-signing.mjs"
+export SYNTILA_PROFILE_SIGNING_KEY_ID="${SYNTILA_PROFILE_SIGNING_KEY_ID:-local-profile-v1}"
+export SYNTILA_PROFILE_SIGNING_JWK="${SYNTILA_PROFILE_SIGNING_JWK:-$(cat "$ROOT/.development/local-profile-signing/private.jwk")}"
 
 if ! command -v psql >/dev/null 2>&1; then
   for candidate in /opt/homebrew/opt/postgresql@18/bin /opt/homebrew/opt/postgresql/bin /usr/local/opt/postgresql@18/bin; do

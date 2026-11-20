@@ -157,7 +157,8 @@ class EngineProfile {
     if (declared != null) {
       if (declared is! List ||
           declared.length > 8 ||
-          declared.any((c) => c is! String || !profileCapabilities.contains(c)) ||
+          declared
+              .any((c) => c is! String || !profileCapabilities.contains(c)) ||
           declared.toSet().length != declared.length) {
         throw const FormatException('capabilities is invalid');
       }

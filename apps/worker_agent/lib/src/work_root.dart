@@ -92,7 +92,8 @@ class WorkRoot {
         try {
           final value = jsonDecode(await marker.readAsString());
           final id = value is Map ? value['spaceId'] : null;
-          if (id is String && _safeId.hasMatch(id)) found.putIfAbsent(id, () => dir.path);
+          if (id is String && _safeId.hasMatch(id))
+            found.putIfAbsent(id, () => dir.path);
         } on FormatException {
           // An unreadable marker adopts nothing.
         }
@@ -107,7 +108,10 @@ class WorkRoot {
     await visit(Directory(base), 0);
     final existing = await adopted();
     found.removeWhere((id, _) => existing.containsKey(id));
-    found.removeWhere((id, path) => p.basename(path) == id && p.basename(p.dirname(path)) == 'spaces');
+    found.removeWhere(
+      (id, path) =>
+          p.basename(path) == id && p.basename(p.dirname(path)) == 'spaces',
+    );
     if (found.isEmpty) return [];
     await adopt(found);
     return found.keys.toList()..sort();

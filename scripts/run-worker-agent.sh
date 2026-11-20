@@ -13,6 +13,8 @@ export PATH="$HOME/development/flutter/bin:/opt/homebrew/bin:/usr/local/bin:$PAT
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export SYNTILA_WORKER_DATA_DIR="${SYNTILA_WORKER_DATA_DIR:-$ROOT/.development/worker-agent}"
 mkdir -p "$SYNTILA_WORKER_DATA_DIR"
+node "$ROOT/scripts/setup-local-profile-signing.mjs"
+PROFILE_TRUST_ROOTS="$(cat "$ROOT/.development/local-profile-signing/trust-roots.json")"
 cd "$ROOT/apps/worker_agent"
 dart pub get >/dev/null
-exec dart run bin/syntila_worker.dart "$@"
+exec dart --define="SYNTILA_PROFILE_TRUST_ROOTS=$PROFILE_TRUST_ROOTS" run bin/syntila_worker.dart "$@"

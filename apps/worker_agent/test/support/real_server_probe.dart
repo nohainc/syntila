@@ -21,6 +21,53 @@ Future<void> main() async {
       paths: paths,
       keyStore: keys,
     );
+    if (input['profileDigest'] is String) {
+      final api = ServerApi(identity.serverUrl);
+      try {
+        final key = (await keys.load())!;
+        final nonce = await api.nonce(identity.workerId);
+        final signature = await signMessage(
+          key,
+          actionMessage(
+            'session',
+            identity.workerId,
+            nonce.nonceId,
+            nonce.nonce,
+          ),
+        );
+        final session = await api.connectSession(
+          workerId: identity.workerId,
+          nonceId: nonce.nonceId,
+          signature: signature,
+        );
+        final digest = input['profileDigest'] as String;
+        final downloaded = await api.downloadProfile(
+          workerId: identity.workerId,
+          session: session,
+          revision: 1,
+          digest: digest,
+        );
+        final cache = ProfileCache(
+          paths.profilesDir,
+          SignedProfileVerifier({
+            'test-key': input['profilePublicKey'] as String,
+          }),
+        );
+        await cache.putSnapshot(
+          downloaded.snapshot,
+          workerTypeId: 'chatgpt',
+          revision: 1,
+          digest: digest,
+          signature: downloaded.proof,
+        );
+        if (!await cache.has(digest)) {
+          throw StateError('Profile was not cached');
+        }
+        stdout.writeln('PROFILE_VERIFIED');
+      } finally {
+        api.close();
+      }
+    }
     runtime = await AgentRuntime.open(
       paths: paths,
       identity: identity,
