@@ -6,6 +6,7 @@ import {
   type UserWorkflowConfiguration,
 } from "@syntila/core";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
+import { readJson } from "./validation.js";
 import { spaceWorkflowDefault } from "../queries.js";
 
 /**
@@ -152,7 +153,7 @@ export async function handleWorkerWorkflowConfigurations(
 
   let configuration: UserWorkflowConfiguration;
   try {
-    configuration = parseUserWorkflowConfiguration(definition, await request.json());
+    configuration = parseUserWorkflowConfiguration(definition, await readJson(request));
   } catch (error) {
     if (error instanceof DomainInvariantError || error instanceof SyntaxError) throw new HttpError(400, error.message);
     throw error;

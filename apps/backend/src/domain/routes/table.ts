@@ -344,6 +344,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("GET", "/api/threads/:threadId/note", call("handleThreadNote", p("threadId"), ctx)),
     r("PUT", "/api/threads/:threadId/note", call("handleThreadNote", p("threadId"), ctx)),
     r("GET", "/api/threads/:threadId/discussion-messages", call("handleListDiscussionMessages", p("threadId"), ctx)),
+    r("GET", "/api/threads/:threadId/timeline", call("handleListThreadTimeline", p("threadId"), ctx)),
     r("POST", "/api/threads/:threadId/discussion-messages", call("handleCreateDiscussionMessage", p("threadId"), ctx), ownReceipt),
     r("GET", "/api/discussion-messages/:messageId", call("handleGetDiscussionMessage", p("messageId"), ctx)),
     r("PATCH", "/api/discussion-messages/:messageId", call("handleEditDiscussionMessage", p("messageId"), ctx)),

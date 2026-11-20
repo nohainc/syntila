@@ -1,3 +1,4 @@
+import { recordAiRequest } from "../ai-timeline.js";
 import { queryOf, type Tx, type Db } from "../../platform/data.js";
 import { createHash } from "node:crypto";
 import type { Conversation, WorkflowDefinition } from "@syntila/core";
@@ -44,4 +45,6 @@ export async function insertConversationSubmission(
   await tx.run`INSERT INTO conversation_work_requests
       (conversation_id, work_request_id, conversation_revision)
       SELECT id, ${workRequestId}, conversation_revision FROM conversations WHERE id = ${id}`;
+  // The request's timeline item commits with the Work Request itself.
+  await recordAiRequest(tx, workRequestId);
 }

@@ -51,6 +51,7 @@ import {
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 import { dataOf, type Tx, type Query } from "../../platform/data.js";
+import { isFeatureEnabled } from "../../feature-flags.js";
 
 const selectSpaceMembershipsBySpaceIdUserId = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown) =>
   q.row<T>`SELECT id, space_id AS "spaceId", user_id AS "userId", role,
@@ -543,13 +544,30 @@ function discussionMessageView(row: Record<string, unknown>) {
   };
 }
 
-export async function handleListDiscussionMessages(
+/** One paginated timeline: people and AI items, attributed to their Actor. */
+export async function handleListThreadTimeline(
   request: Request,
   env: SecurityEnv,
   threadId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
+  return handleListDiscussionMessages(request, env, threadId, accessContext, true);
+}
+
+export async function handleListDiscussionMessages(
+  request: Request,
+  env: SecurityEnv,
+  threadId: string,
+  accessContext?: ExecutionContext,
+  timeline = false,
+): Promise<Response> {
   await authorizeThreadAccess(request, env, threadId, "view", accessContext);
+  if (timeline && isFeatureEnabled("canonical_timeline")) {
+    // Historical Work gets its items on first read; replay-safe.
+    await dataOf(env).tx("thread.timeline.backfill", async (tx) => {
+      await tx.row`SELECT backfill_ai_timeline(${threadId})`;
+    });
+  }
   const url = new URL(request.url);
   const rawLimit = url.searchParams.get("limit") ?? "50";
   if (
@@ -593,11 +611,15 @@ export async function handleListDiscussionMessages(
   const order = forward ? "ASC" : "DESC";
   const read = dataOf(env).read;
   const results = await read.rows<Record<string, unknown>>`SELECT dm.id, dm.thread_id AS "threadId", dm.author_user_id AS "authorUserId",
-            COALESCE(u.display_name, 'Member') AS "authorName",
+            CASE WHEN dm.worker_instance_id IS NOT NULL THEN COALESCE(wi.name, dm.author_display_snapshot)
+                 WHEN dm.kind = 'ai_answer' THEN COALESCE(dm.author_display_snapshot, dm.worker_display_name, 'AI')
+                 ELSE COALESCE(u.display_name, dm.author_display_snapshot, 'Member') END AS "authorName",
+            dm.author_actor_id AS "authorActorId", dm.worker_instance_id AS "workerInstanceId",
             dm.body, dm.attachments_json AS "attachmentsJson", dm.references_json AS "referencesJson", dm.reply_to_json AS "replyToJson", dm.edited_at AS "editedAt", dm.created_at AS "createdAt",
             dm.event_type AS "eventType", dm.kind, dm.work_request_id AS "workRequestId", dm.worker_display_name AS "workerDisplayName"
      FROM discussion_messages dm
      LEFT JOIN users u ON u.id = dm.author_user_id
+     LEFT JOIN worker_instances wi ON wi.id = dm.worker_instance_id
      WHERE dm.thread_id = ${threadId}
        AND (${cursor?.createdAt ?? null}::timestamptz IS NULL
             OR (${forward} AND (dm.created_at > ${cursor?.createdAt ?? null}::timestamptz OR (dm.created_at = ${cursor?.createdAt ?? null}::timestamptz AND dm.id > ${cursor?.id ?? null})))

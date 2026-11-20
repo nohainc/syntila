@@ -1,3 +1,4 @@
+import { recordAiAnswer } from "./ai-timeline.js";
 import { dataOf, queryOf, type Query, atomically, type Db } from "../platform/data.js";
 import { cancelQueuedWorkRequest, startQueuedWorkRequest } from "./queries.js";
 /**
@@ -469,6 +470,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
       await q.run`UPDATE thread_runtime_leases SET status = 'released', released_at = ${now} WHERE id = ${lease.id} AND status = 'active'`;
       await q.run`UPDATE work_requests SET status = ${status}, updated_at = ${now} WHERE id = ${lease.workRequestId} AND status = 'running'`;
       await q.run`UPDATE runs SET status = ${status}, updated_at = ${now} WHERE work_request_id = ${lease.workRequestId} AND status = 'running'`;
+      if (status === "completed") await recordAiAnswer(q, lease.workRequestId);
     });
   }
 

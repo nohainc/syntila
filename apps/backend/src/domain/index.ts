@@ -175,6 +175,7 @@ export const routeHandlers = {
   handleListNotifications: handlers.handleListNotifications,
   handleMarkNotificationsRead: handlers.handleMarkNotificationsRead,
   handleListDiscussionMessages: handlers.handleListDiscussionMessages,
+  handleListThreadTimeline: handlers.handleListThreadTimeline,
   handleCreateDiscussionMessage: handlers.handleCreateDiscussionMessage,
   handleEditDiscussionMessage: handlers.handleEditDiscussionMessage,
   handleDeleteDiscussionMessage: handlers.handleDeleteDiscussionMessage,

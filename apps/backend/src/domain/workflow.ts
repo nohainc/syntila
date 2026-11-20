@@ -1,3 +1,4 @@
+import { recordAiAnswer } from "./ai-timeline.js";
 import { activeThreadLease, startQueuedWorkRequest, threadSpace, workRequestCancelRequest } from "./queries.js";
 import { evaluatePhaseCompletionAndAdvanceQueue } from "./routes/implement-plan.js";
 import type { SecurityEnv } from "./routes/http-security.js";
@@ -472,7 +473,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     const request = await queryOf(db).row<{ mode: string }>`SELECT mode FROM work_requests WHERE id = ${params.workRequestId} AND thread_id = ${params.threadId}`;
     if (request?.mode === "stateless") {
       const now = new Date().toISOString();
-      await queryOf(db).run`UPDATE work_requests SET status = ${status}, updated_at = ${now} WHERE id = ${params.workRequestId} AND status IN ('queued', 'running')`;
+      await atomically(db, "workflow.finish-stateless", async (q) => {
+        await q.run`UPDATE work_requests SET status = ${status}, updated_at = ${now} WHERE id = ${params.workRequestId} AND status IN ('queued', 'running')`;
+        if (status === "completed") await recordAiAnswer(q, params.workRequestId!);
+      });
       return;
     }
     if (!namespace) return;
@@ -488,6 +492,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 WHERE id = ${params.workRequestId} AND status = 'failed'
                   AND NOT EXISTS (SELECT 1 FROM workflow_tasks
                                    WHERE work_request_id = ${params.workRequestId} AND status != 'completed')`;
+          await recordAiAnswer(q, params.workRequestId!);
         });
       }
       return;
