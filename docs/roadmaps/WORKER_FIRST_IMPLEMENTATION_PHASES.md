@@ -290,3 +290,9 @@ Still open (the exit gate is not demonstrated):
 - Agent: `syntila-worker import-workspace --from DIR [--write] [--dry-run]` (Work Root and folders, read-only by default; no keys, Profiles or sessions).
 - Docs: [LEGACY_CUTOVER.md](../operations/LEGACY_CUTOVER.md), [WORKER_AGENT_ONBOARDING.md](../operations/WORKER_AGENT_ONBOARDING.md), [RELEASE_NOTES_WORKER_FIRST.md](../operations/RELEASE_NOTES_WORKER_FIRST.md); the three Workspace specs carry a superseded note.
 - Not done: dropping the Workspace tables, routes, bridge and `apps/workspace` (by design, only after the rollback window); NOT NULL on the columns themselves; the rollback rehearsal has not been run; automatic Space-folder mapping and native-session conversion in `import-workspace`.
+
+## P11 status (tooling written, nothing measured; exit gate open)
+
+- `apps/backend/scripts/scale.ts` and `scripts/test-scale.sh`: idle sockets (connect time, memory per socket), active senders (REST and fan-out p50/p95/p99 against the ADR-039 targets), reconnect storms, soak (memory drift, outbox age, lock waits, connections). JSON output with `--json`.
+- [SCALING_DECISION.md](../operations/SCALING_DECISION.md): targets, the commands, an empty results table and the decision record. [WORKER_FIRST_SECURITY_REVIEW.md](../security/WORKER_FIRST_SECURITY_REVIEW.md): the review checklist, unreviewed.
+- Not covered: Agent sockets at 1 to 2 events per second (no unified-protocol Agent test client yet), slow readers, 50 streams, event-loop lag. The decision itself needs a run on the production VPS size.

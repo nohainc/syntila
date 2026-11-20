@@ -14,6 +14,7 @@ The full run also checks `schema.lock` (against a scratch database), `docs/api/R
 | `scripts/test-backend.sh [filter...]` | Backend suite (one `bun test` process per file). With filters, only files whose path contains one, e.g. `scripts/test-backend.sh conversations api-structure`. |
 | `scripts/test-worker-agent.sh [dart test args...]` | Worker Agent: `dart pub get`, format check, `dart analyze`, `dart test`. |
 | `scripts/test-two-node.sh [--strict]` | Two backend processes on one database (ADR-033 rules); `--strict` also fails the gaps known until ADR-038/039. |
+| `scripts/test-scale.sh [idle active storm soak] [--sockets N ...]` | P11 scale scenarios against a running backend; exit 1 when the ADR-039 targets are missed. See [SCALING_DECISION.md](SCALING_DECISION.md). |
 | `scripts/test-concurrency.sh [rounds]` | Concurrency and transaction tests, repeated (default 3) to expose races. |
 
 Environment:
