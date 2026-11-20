@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 
 import 'identity.dart';
+import 'paths.dart';
 
 class UpdateRejectedException implements Exception {
   UpdateRejectedException(this.reason);
@@ -59,6 +60,10 @@ int _part(String text) => int.tryParse(text) ?? -1;
 
 /// True when [candidate] is a higher dotted version than [current].
 bool isNewerVersion(String current, String candidate) {
+  if (!RegExp(r'^\d+\.\d+\.\d+$').hasMatch(current) ||
+      !RegExp(r'^\d+\.\d+\.\d+$').hasMatch(candidate)) {
+    return false;
+  }
   final a = current.split('.').map(_part).toList();
   final b = candidate.split('.').map(_part).toList();
   if (b.any((v) => v < 0)) return false;
@@ -96,8 +101,16 @@ class UpdateVerifier {
     if (!isNewerVersion(currentVersion, manifest.version)) {
       throw UpdateRejectedException('the version is not newer');
     }
-    if (!manifest.url.startsWith('https://')) {
+    final uri = Uri.tryParse(manifest.url);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.fragment.isNotEmpty) {
       throw UpdateRejectedException('the download must use https');
+    }
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(manifest.sha256)) {
+      throw UpdateRejectedException('the artifact digest is invalid');
     }
   }
 
@@ -105,6 +118,42 @@ class UpdateVerifier {
     if (sha256.convert(bytes).toString() != manifest.sha256.toLowerCase()) {
       throw UpdateRejectedException('the download does not match its hash');
     }
+  }
+
+  /// Revalidates both the release signature and staged bytes immediately
+  /// before a future activation; the stored path is never trusted as input.
+  Future<({UpdateManifest manifest, List<int> bytes})> readVerifiedStaged(
+    Directory directory, {
+    required String currentVersion,
+  }) async {
+    final pointer = File('${directory.path}/pending-update.json');
+    Object? metadata;
+    try {
+      metadata = jsonDecode(await pointer.readAsString());
+    } on Object {
+      throw UpdateRejectedException(
+        'the staged update metadata is unavailable',
+      );
+    }
+    if (metadata is! Map || metadata['manifest'] is! Map) {
+      throw UpdateRejectedException('the staged update has no signed manifest');
+    }
+    final manifest = UpdateManifest.fromJson(
+      Map<String, Object?>.from(metadata['manifest'] as Map),
+    );
+    await verifyManifest(manifest, currentVersion: currentVersion);
+    final path = '${directory.path}/syntila-worker-${manifest.version}';
+    if (await FileSystemEntity.type(path, followLinks: false) !=
+        FileSystemEntityType.file) {
+      throw UpdateRejectedException('the staged artifact is unavailable');
+    }
+    final file = File(path);
+    if (await file.length() > 256 * 1024 * 1024) {
+      throw UpdateRejectedException('the staged artifact is too large');
+    }
+    final bytes = await file.readAsBytes();
+    verifyArtifact(manifest, bytes);
+    return (manifest: manifest, bytes: bytes);
   }
 
   /// Verifies, then writes the artifact atomically into [directory]. The
@@ -117,16 +166,45 @@ class UpdateVerifier {
     required String currentVersion,
   }) async {
     await verifyManifest(manifest, currentVersion: currentVersion);
+    if (bytes.length > 256 * 1024 * 1024) {
+      throw UpdateRejectedException('the artifact is too large');
+    }
     verifyArtifact(manifest, bytes);
     await directory.create(recursive: true);
+    await AgentPaths.restrict(directory);
     final target = File('${directory.path}/syntila-worker-${manifest.version}');
     final temp = File('${target.path}.part');
-    await temp.writeAsBytes(bytes, flush: true);
-    await temp.rename(target.path);
-    await File('${directory.path}/pending-update.json').writeAsString(
-      jsonEncode({'version': manifest.version, 'file': target.path}),
-      flush: true,
-    );
+    // Never follow an existing temporary file or symlink. A leftover temp file
+    // is evidence of an interrupted/concurrent update and needs inspection.
+    await temp.create(exclusive: true);
+    try {
+      await temp.writeAsBytes(bytes, flush: true);
+      await temp.rename(target.path);
+    } finally {
+      if (await temp.exists()) await temp.delete();
+    }
+    final pointer = File('${directory.path}/pending-update.json');
+    final pending = File('${pointer.path}.tmp');
+    await pending.create(exclusive: true);
+    try {
+      await pending.writeAsString(
+        jsonEncode({
+          'version': manifest.version,
+          'file': target.path,
+          'manifest': {
+            'version': manifest.version,
+            'channel': manifest.channel,
+            'url': manifest.url,
+            'sha256': manifest.sha256,
+            'signature': manifest.signature,
+          },
+        }),
+        flush: true,
+      );
+      await pending.rename(pointer.path);
+    } finally {
+      if (await pending.exists()) await pending.delete();
+    }
     return target;
   }
 }

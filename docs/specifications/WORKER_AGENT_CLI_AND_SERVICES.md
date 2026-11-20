@@ -48,7 +48,9 @@ Every Agent gets its own service (name and data directory per Worker id). **Auto
 
 ## Signed updates
 
-`update stage --manifest M --artifact A`: the manifest signature (domain `syntila-worker-update/v1`) must verify against a compiled-in release key (`--define=SYNTILA_UPDATE_KEYS=k1,k2`; none configured means every update is refused), the artifact must match `sha256`, the version must be newer, the URL must be `https`. Verified bytes are staged atomically under `engine/updates/`. Swapping the running executable is the service manager's restart step and is not implemented here.
+`update stage --manifest M --artifact A`: the manifest signature (domain `syntila-worker-update/v1`) must verify against a compiled-in release key (`--define=SYNTILA_UPDATE_KEYS=k1,k2`; none configured means every update is refused), the artifact must match `sha256`, the version must be a newer three-part version, and the URL must use HTTPS without credentials or a fragment. Verified bytes and the signed manifest are staged under `engine/updates/`. `readVerifiedStaged` checks the signature and digest again before any future activation and rejects symlink artifacts. Older pending metadata without a signed manifest must be staged again. Swapping the running executable is not implemented here.
+
+Staging limits artifacts to 256 MiB, restricts the update directory on POSIX, and refuses existing temporary files instead of following or overwriting them. An interrupted temporary file must be inspected and removed before retrying.
 
 ## Separate OS user (isolation limits)
 

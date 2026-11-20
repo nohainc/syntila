@@ -42,6 +42,10 @@ void main() {
     expect(await file.readAsBytes(), bytes);
     expect(File('${file.path}.part').existsSync(), isFalse);
     expect(File('${dir.path}/pending-update.json').existsSync(), isTrue);
+    final pending =
+        jsonDecode(await File('${dir.path}/pending-update.json').readAsString())
+            as Map<String, dynamic>;
+    expect(pending['manifest'], containsPair('signature', manifest.signature));
   });
 
   test('nothing is written when any check fails', () async {
@@ -88,6 +92,16 @@ void main() {
       bytes,
       'plain http',
     );
+    await rejects(
+      await signed(release, bytes, url: 'https://user@updates.example/w'),
+      bytes,
+      'URL credentials are forbidden',
+    );
+    await rejects(
+      await signed(release, bytes, version: '2.0.0.1'),
+      bytes,
+      'noncanonical version',
+    );
     final altered = await signed(release, bytes);
     await rejects(
       UpdateManifest(
@@ -100,6 +114,48 @@ void main() {
       bytes,
       'the signature covers the version',
     );
+  });
+
+  test(
+    'rechecks a staged release before activation and detects tampering',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('syntila-update-');
+      addTearDown(() => dir.delete(recursive: true));
+      final verifier = UpdateVerifier([release.publicKeyText]);
+      final artifact = await verifier.stage(
+        await signed(release, bytes),
+        bytes,
+        dir,
+        currentVersion: '0.1.0',
+      );
+      expect(
+        (await verifier.readVerifiedStaged(dir, currentVersion: '0.1.0')).bytes,
+        bytes,
+      );
+      await artifact.writeAsString('tampered');
+      await expectLater(
+        verifier.readVerifiedStaged(dir, currentVersion: '0.1.0'),
+        throwsA(isA<UpdateRejectedException>()),
+      );
+    },
+  );
+
+  test('refuses an existing staging file without replacing it', () async {
+    final dir = await Directory.systemTemp.createTemp('syntila-update-');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = File('${dir.path}/syntila-worker-0.2.0.part');
+    await file.writeAsString('previous state');
+    await expectLater(
+      UpdateVerifier([release.publicKeyText]).stage(
+        await signed(release, bytes),
+        bytes,
+        dir,
+        currentVersion: '0.1.0',
+      ),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(await file.readAsString(), 'previous state');
+    expect(await File('${dir.path}/pending-update.json').exists(), isFalse);
   });
 
   test('with no release key configured every update is refused', () async {
