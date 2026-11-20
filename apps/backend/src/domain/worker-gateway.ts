@@ -285,6 +285,7 @@ export class WorkerGateway implements DurableObject {
     const payload = (message.payload ?? {}) as Record<string, unknown>;
     switch (message.type) {
       case "workspace.hello":
+        await this.recordReadiness(fence, payload.readiness);
         await this.reply(message, "workspace.hello.ack", {
           sessionId: fence.sessionId,
           heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
@@ -421,6 +422,23 @@ export class WorkerGateway implements DurableObject {
   }
 
   /** True (and the socket is closed) when this session is no longer the Worker's current one. */
+  /**
+   * The Agent's own readiness report, kept on its session row. Only a report in
+   * the expected shape is stored; failure reasons are short codes.
+   */
+  private async recordReadiness(fence: AgentSessionFence, raw: unknown): Promise<void> {
+    if (!raw || typeof raw !== "object") return;
+    const report = raw as { ready?: unknown; failures?: unknown };
+    const failures = report.failures && typeof report.failures === "object" && !Array.isArray(report.failures)
+      ? Object.entries(report.failures as Record<string, unknown>)
+      : [];
+    const code = /^[a-z0-9_.-]{1,64}$/;
+    if (typeof report.ready !== "boolean" || failures.length > 16 || !failures.every(([k, v]) => code.test(k) && typeof v === "string" && code.test(v))) return;
+    await dataOf(this.env).read.run`UPDATE worker_agent_sessions
+         SET readiness_json = ${JSON.stringify({ ready: report.ready, failures: Object.fromEntries(failures) })}, readiness_reported_at = now()
+       WHERE worker_instance_id = ${fence.workerInstanceId} AND session_id = ${fence.sessionId} AND session_epoch = ${fence.epoch}`;
+  }
+
   private async stale(): Promise<boolean> {
     const fence = this.fence;
     if (!fence || (await agentFenceIsCurrent(dataOf(this.env).read, fence))) return false;

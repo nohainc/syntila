@@ -9,7 +9,7 @@ import {
   type DispatchAssignmentParams,
   type DispatchAssignmentResult,
 } from "./assignment-dispatcher.js";
-import { assertHandoffAvailable, mintHandoffGrants, MissingArtifactError } from "./artifacts.js";
+import { assertHandoffAvailable, mintHandoffGrants, MissingArtifactError, upstreamArtifactIds } from "./artifacts.js";
 import { isFeatureEnabled } from "../feature-flags.js";
 import { acceptWorkerTarget, type WorkerTargetSnapshot } from "./worker-eligibility.js";
 import { loadConversationBootstrap } from "./routes/conversation-bootstrap.js";
@@ -127,7 +127,10 @@ export async function dispatchWorkerAssignment(
   delete assignmentInput.sessionKey;
   delete assignmentInput.additionalFolderIds;
   // Handoff is by artifact ID only; a path or an unavailable artifact fails the step.
-  const handoffIds = task.contextArtifactIds ?? [];
+  // A step receives what the steps it depends on uploaded, plus any it names itself.
+  const handoffIds = isFeatureEnabled("artifact_handoff")
+    ? [...new Set([...(task.contextArtifactIds ?? []), ...(await upstreamArtifactIds(env as never, taskId))])]
+    : [...(task.contextArtifactIds ?? [])];
   if (handoffIds.length && isFeatureEnabled("artifact_handoff")) {
     try {
       await assertHandoffAvailable(env as never, { artifactIds: handoffIds, spaceId: accepted.spaceId });
@@ -255,7 +258,7 @@ export async function dispatchWorkerAssignment(
       assignmentId,
       objective: task.objective,
       role: task.role,
-      contextArtifactIds: task.contextArtifactIds ?? [],
+      contextArtifactIds: handoffIds,
       threadId: task.threadId ?? accepted.threadId,
       workRequestId: task.workRequestId,
       leaseId: task.leaseId,

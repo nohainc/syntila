@@ -1,6 +1,7 @@
 import { EXECUTION_PERMISSIONS, WORKFLOW_CAPABILITIES } from "@syntila/core";
 import { spaceMemberPermissions } from "@syntila/security";
 import type { Query } from "../platform/data.js";
+import { spaceModelOptions } from "./worker-execution-options.js";
 
 /**
  * Who may run what, on which Worker (ADR-035 decisions 2 and 3).
@@ -26,6 +27,8 @@ export type WorkerEligibilityCode =
   | "worker_disabled"
   | "worker_type_unavailable"
   | "worker_type_not_allowed"
+  | "model_not_supported"
+  | "effort_not_supported"
   | "execute_not_permitted"
   | "worker_offline";
 
@@ -177,11 +180,12 @@ export async function acceptWorkerTarget(
     profileRevision: number | null;
     profileDigest: string | null;
     profileDefinitionId: string | null;
+    profileJson: string | null;
   }>`SELECT w.id, w.actor_id AS "actorId", w.name, w.owner_user_id AS "ownerUserId", w.enabled,
             w.default_model AS "defaultModel", w.worker_type_id AS "workerTypeId",
             c.display_name AS "typeName", c.lifecycle_state AS lifecycle,
             c.visibility_state AS visibility, c.origin,
-            p.revision::int AS "profileRevision", p.digest AS "profileDigest",
+            p.revision::int AS "profileRevision", p.digest AS "profileDigest", p.profile_json AS "profileJson",
             COALESCE(p.profile_json::jsonb ->> 'profileDefinitionId', c.profile_definition_id) AS "profileDefinitionId"
        FROM worker_instances w
        JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
@@ -214,6 +218,19 @@ export async function acceptWorkerTarget(
 
   const model = (request.model ?? worker.defaultModel ?? "").trim();
   if (model.length > MAX_MODEL_LENGTH) return { ok: false, code: "worker_type_unavailable" };
+  // A model or effort the person chose must be one the Type's Profile lists.
+  // A Profile that discovers its models on the Agent has no list here; the
+  // Agent is then the authority and refuses at run time.
+  const chosenEffort = request.reasoningEffort?.trim();
+  if ((request.model?.trim() || chosenEffort) && worker.profileJson) {
+    const options = spaceModelOptions(worker.profileJson, undefined, undefined, worker.profileDigest);
+    if (options && options.catalog.length > 0) {
+      const entry = request.model?.trim() ? options.catalog.find((c) => c.id === request.model!.trim()) : undefined;
+      if (request.model?.trim() && !entry) return { ok: false, code: "model_not_supported" };
+      const efforts = entry?.supportedReasoningEfforts ?? options.supportedReasoningEfforts;
+      if (chosenEffort && efforts.length > 0 && !efforts.includes(chosenEffort)) return { ok: false, code: "effort_not_supported" };
+    }
+  }
   const readOnly = request.readOnly === true;
   const base = rights.canWrite ? [...EXECUTION_PERMISSIONS] : ["repository:read"];
   const canRunTests = (request.capabilities ?? []).includes("test_execution");
@@ -278,6 +295,10 @@ export function workerEligibilityResponse(code: WorkerEligibilityCode): { status
       return { status: 422, message: "This Worker's type cannot run this request" };
     case "worker_type_not_allowed":
       return { status: 422, message: "This Thread does not allow this Worker type" };
+    case "model_not_supported":
+      return { status: 422, message: "This Worker's Profile does not offer that model" };
+    case "effort_not_supported":
+      return { status: 422, message: "This model does not offer that reasoning effort" };
     case "execute_not_permitted":
       return { status: 403, message: "You cannot run work in this Thread" };
     case "worker_offline":

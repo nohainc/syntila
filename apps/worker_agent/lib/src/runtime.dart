@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'artifact_launcher.dart';
 import 'config.dart';
 import 'connection.dart';
 import 'engine.dart';
@@ -27,6 +28,7 @@ class AgentRuntime {
     required this.lock,
     required this.journal,
     required this.supervisor,
+    required EngineLauncher engine,
     required this.readiness,
     required this.profiles,
     required this.permitTimeout,
@@ -52,6 +54,8 @@ class AgentRuntime {
           journal.unacknowledged.map((e) => e.assignmentId).toList()..sort(),
       onSync: _reconcile,
       onMessage: _onMessage,
+      onSession: engine is ArtifactLauncher ? engine.holder.update : null,
+      readiness: () async => (await this.readiness.evaluate()).toJson(),
     );
   }
 
@@ -129,6 +133,7 @@ class AgentRuntime {
         api: api ?? ServerApi(identity.serverUrl),
         lock: lock,
         journal: journal,
+        engine: engine,
         supervisor: EngineSupervisor(
           engine,
           maxConcurrent: config.maxConcurrent,

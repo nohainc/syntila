@@ -46,6 +46,19 @@ describe("Worker-targeted eligibility", () => {
     expect(await f.accept()).toEqual({ ok: false, code: "worker_type_not_allowed" });
   });
 
+  it("accepts only a model and effort the Profile lists", async () => {
+    const f = await fixture();
+    const profile = JSON.stringify({
+      schemaVersion: 1, profileDefinitionId: "chatgpt-codex",
+      model: { supported: true, supportedReasoningEfforts: ["low", "high"], catalog: [{ id: "m1", name: "M1", supportedReasoningEfforts: ["low"] }] },
+    });
+    await f.sqlite.exec(`UPDATE worker_profiles SET profile_json = '${profile}' WHERE worker_type_id = 'chatgpt'`);
+    expect((await f.accept({ model: "m1", reasoningEffort: "low" } as never)).ok).toBe(true);
+    expect(await f.accept({ model: "other" } as never)).toEqual({ ok: false, code: "model_not_supported" });
+    expect(await f.accept({ model: "m1", reasoningEffort: "high" } as never)).toEqual({ ok: false, code: "effort_not_supported" });
+    await f.sqlite.close();
+  });
+
   it("enforces required permissions and refuses unknown capabilities", async () => {
     const f = await fixture();
     expect(await f.accept({ capabilities: ["thread_write"], readOnly: true })).toEqual({ ok: false, code: "execute_not_permitted" });

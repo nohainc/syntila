@@ -30,8 +30,14 @@ const columns = (workerTargetDispatch: boolean) => `w.id, w.actor_id AS "actorId
   c.display_name AS "workerTypeName", w.name, w.description, w.enabled,
   w.default_model AS "defaultModel", w.created_at AS "createdAt",
   w.updated_at AS "updatedAt", w.revoked_at AS "revokedAt",
-  (${workerTargetDispatch ? "false" : "COALESCE(inv.readiness_state <> 'not_probed', false)"}) AS "readinessKnown",
-  (w.revoked_at IS NULL AND ${workerTargetDispatch ? "false" : "COALESCE(inv.readiness_state = 'ready', false)"}) AS ready,
+  (${workerTargetDispatch ? `EXISTS (
+     SELECT 1 FROM worker_agent_sessions s
+      WHERE s.worker_instance_id = w.id AND s.disconnected_at IS NULL
+        AND s.lease_expires_at > now() AND s.readiness_json IS NOT NULL)` : "COALESCE(inv.readiness_state <> 'not_probed', false)"}) AS "readinessKnown",
+  (w.revoked_at IS NULL AND ${workerTargetDispatch ? `EXISTS (
+     SELECT 1 FROM worker_agent_sessions s
+      WHERE s.worker_instance_id = w.id AND s.disconnected_at IS NULL
+        AND s.lease_expires_at > now() AND s.readiness_json::jsonb ->> 'ready' = 'true')` : "COALESCE(inv.readiness_state = 'ready', false)"}) AS ready,
   (w.revoked_at IS NULL AND ${workerTargetDispatch ? `EXISTS (
      SELECT 1 FROM worker_agent_sessions s
       WHERE s.worker_instance_id = w.id AND s.disconnected_at IS NULL

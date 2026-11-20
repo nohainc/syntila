@@ -1,5 +1,6 @@
 library;
 
+export 'src/artifact_launcher.dart';
 export 'src/artifacts.dart';
 export 'src/base64url.dart';
 export 'src/cli.dart';

@@ -116,6 +116,22 @@ export async function handleUploadArtifact(request: Request, env: SecurityEnv): 
   return json({ artifact: { artifactId, name, mediaType: upload.mediaType, sizeBytes: stored.sizeBytes, sha256: stored.digest, expiresAt } }, { status: 201 });
 }
 
+/**
+ * Artifacts the completed steps this step depends on produced. Provenance is
+ * checked in SQL: an ID an Agent merely names in its result counts only when
+ * that same assignment really uploaded it.
+ */
+export async function upstreamArtifactIds(env: SecurityEnv, taskId: string): Promise<string[]> {
+  const rows = await dataOf(env).read.rows<{ id: string }>`
+    SELECT DISTINCT a.id FROM workflow_task_dependencies d
+      JOIN worker_assignments wa ON wa.task_id = d.depends_on_task_id AND wa.status = 'completed'
+      CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(wa.output_json::jsonb -> 'artifactIds', '[]'::jsonb)) AS x(id)
+      JOIN artifacts a ON a.id = x.id AND a.assignment_id = wa.id AND a.state = 'available'
+     WHERE d.task_id = ${taskId}
+     ORDER BY a.id`;
+  return rows.map((r) => r.id);
+}
+
 /** A step input must be an artifact ID that is available in the same Space. */
 export async function assertHandoffAvailable(
   env: SecurityEnv,

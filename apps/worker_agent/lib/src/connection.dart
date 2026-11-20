@@ -93,6 +93,8 @@ class AgentConnection {
     this.stepTimeout = const Duration(seconds: 30),
     Random? random,
     this.onFault,
+    this.onSession,
+    this.readiness,
   }) : connector = connector ?? connectWebSocket,
        _random = random ?? Random();
 
@@ -112,6 +114,12 @@ class AgentConnection {
   final Future<void> Function(Map<String, Object?> syncPayload) onSync;
   final void Function(Map<String, Object?> message) onMessage;
   final void Function(String point)? onFault;
+
+  /// Called with every new session grant (the artifact client needs its token).
+  final void Function(SessionGrant grant)? onSession;
+
+  /// The Agent's own readiness report, sent in `hello` so the server can show it.
+  final Future<Map<String, Object?>> Function()? readiness;
 
   final _ids = MessageIds();
   final _phases = StreamController<ConnectionPhase>.broadcast();
@@ -216,6 +224,7 @@ class AgentConnection {
       clientVersion: clientVersion,
     );
     _session = SessionInfo(grant.sessionId, grant.epoch, grant.leaseSeconds);
+    onSession?.call(grant);
     onFault?.call('after-epoch-claim');
     if (_stopped) return;
 
@@ -269,10 +278,17 @@ class AgentConnection {
 
     try {
       _set(ConnectionPhase.authenticated);
+      Map<String, Object?>? report;
+      try {
+        report = await readiness?.call();
+      } on Object {
+        report = null; // an unknown readiness is reported as nothing, not as ready
+      }
       final hello = envelope(_ids, 'workspace.hello', {
         'name': 'syntila-worker',
         'workspaceVersion': clientVersion,
         'capabilities': const <String>[],
+        if (report != null) 'readiness': report,
       });
       helloId = hello['messageId'] as String;
       socket.send(encodeFrame(hello));

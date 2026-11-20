@@ -9,6 +9,8 @@ import 'cli_engine.dart';
 import 'config.dart';
 import 'connection.dart';
 import 'engine.dart';
+import 'artifact_launcher.dart';
+import 'artifacts.dart';
 import 'folders.dart';
 import 'work_root.dart';
 import 'identity.dart';
@@ -299,7 +301,11 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       keyStore: keyStore,
       engine:
           engineFactory?.call(paths) ??
-          _defaultEngine(paths, identity, settings, profiles),
+          _withArtifacts(
+            paths,
+            identity,
+            _defaultEngine(paths, identity, settings, profiles),
+          ),
       api: api,
       profiles: profiles,
       clientVersion: agentVersion,
@@ -389,6 +395,25 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           return null;
         }
       },
+    );
+  }
+
+  /// Adds the file side of a step: artifact inputs and outputs, with the
+  /// Allowed Folders re-checked. A launcher that refuses work stays as it is.
+  EngineLauncher _withArtifacts(
+    AgentPaths paths,
+    AgentIdentity identity,
+    EngineLauncher inner,
+  ) {
+    if (inner is UnconfiguredEngineLauncher) return inner;
+    final folders = _folders(paths);
+    return ArtifactLauncher(
+      inner: inner,
+      folders: folders,
+      workRoot: WorkRoot(paths.workRootFile, folders),
+      client: ArtifactClient(identity.serverUrl),
+      holder: AgentSessionHolder(),
+      workerId: identity.workerId,
     );
   }
 

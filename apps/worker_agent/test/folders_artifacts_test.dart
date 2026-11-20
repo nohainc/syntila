@@ -4,6 +4,7 @@ import 'package:syntila_worker_agent/syntila_worker_agent.dart';
 import 'package:test/test.dart';
 
 void main() {
+  group('ArtifactLauncher', launcherTests);
   late Directory sandbox;
   late AllowedFolders folders;
   late Directory work;
@@ -85,5 +86,96 @@ void main() {
     });
     expect(safeArtifactName(ok.name), 'passwd');
     expect(safeArtifactName('..'), 'artifact');
+  });
+}
+
+class _OkRun implements EngineRun {
+  @override
+  Future<EngineOutcome> get outcome =>
+      Future.value(const EngineOutcome(TerminalKind.completed, {'summary': 'ok'}));
+  @override
+  Future<void> cancel() async {}
+}
+
+class _RecordingLauncher implements EngineLauncher {
+  Map<String, Object?>? last;
+  @override
+  Future<EngineRun> launch(EngineRequest request) async {
+    last = request.payload;
+    return _OkRun();
+  }
+
+  @override
+  Future<int> recoverOrphans() async => 0;
+  @override
+  Future<String?> probe() async => null;
+}
+
+void launcherTests() {
+  late Directory sandbox;
+  late AllowedFolders folders;
+  late WorkRoot root;
+  late Directory work;
+  setUp(() async {
+    sandbox = await Directory.systemTemp.createTemp('syntila-launch-');
+    await Directory('${sandbox.path}/home').create();
+    await Directory('${sandbox.path}/data').create();
+    work = await Directory('${sandbox.path}/work').create();
+    folders = AllowedFolders(
+      File('${sandbox.path}/data/allowed.json'),
+      home: '${sandbox.path}/home',
+      dataRoot: '${sandbox.path}/data',
+    );
+    root = WorkRoot(File('${sandbox.path}/data/work-root.json'), folders);
+  });
+  tearDown(() => sandbox.delete(recursive: true));
+
+  ArtifactLauncher launcher(_RecordingLauncher inner) => ArtifactLauncher(
+    inner: inner,
+    folders: folders,
+    workRoot: root,
+    client: ArtifactClient('http://127.0.0.1:1'),
+    holder: AgentSessionHolder(),
+    workerId: 'w1',
+  );
+
+  EngineRequest request(List<Object?> refs) => EngineRequest(
+    assignmentId: 'a1',
+    attemptId: 't1',
+    payload: {
+      'snapshot': {'spaceId': 'space-1', 'contextRefs': refs},
+    },
+  );
+
+  test('a step with an artifact input fails when its folder was not approved', () async {
+    final inner = _RecordingLauncher();
+    final run = await launcher(inner).launch(
+      request([
+        {'artifactId': 'art-11111111-1111-4111-8111-111111111111'},
+      ]),
+    );
+    final outcome = await run.outcome;
+    expect(outcome.kind, TerminalKind.failed);
+    expect(outcome.payload['errorCode'], 'folder_not_approved');
+    expect(inner.last, isNull, reason: 'the Engine must not start');
+  });
+
+  test('a path handoff fails as a missing artifact before the Engine starts', () async {
+    await root.setRoot(work.path);
+    final inner = _RecordingLauncher();
+    final run = await launcher(inner).launch(request(['/Users/alice/report.txt']));
+    final outcome = await run.outcome;
+    expect(outcome.payload['errorCode'], 'missing_artifact');
+    expect(inner.last, isNull);
+  });
+
+  test('a step without inputs runs with an output folder inside the approved Space folder', () async {
+    await root.setRoot(work.path);
+    final inner = _RecordingLauncher();
+    final run = await launcher(inner).launch(request([]));
+    expect((await run.outcome).kind, TerminalKind.completed);
+    final output = inner.last!['outputDirectory'] as String;
+    expect(output, contains('spaces/space-1'));
+    expect(await folders.isAllowed(output, write: true), isTrue);
   });
 }
