@@ -433,7 +433,8 @@ column thread_runtime_leases.released_at timestamptz
 column thread_runtime_leases.status text not-null
 column thread_runtime_leases.thread_id text not-null
 column thread_runtime_leases.work_request_id text not-null
-column thread_runtime_leases.workspace_id text not-null
+column thread_runtime_leases.worker_instance_id text
+column thread_runtime_leases.workspace_id text
 column thread_work_configs.config_json text not-null default
 column thread_work_configs.thread_id text not-null
 column thread_work_configs.updated_at timestamptz not-null default
@@ -541,6 +542,7 @@ column work_requests.created_at timestamptz not-null default
 column work_requests.id text not-null
 column work_requests.input_json text not-null default
 column work_requests.mode text not-null
+column work_requests.primary_worker_instance_id text
 column work_requests.primary_workspace_id text
 column work_requests.requested_by_user_id text not-null
 column work_requests.snapshot_json text not-null default
@@ -1152,11 +1154,13 @@ constraint thread_request_queue_state.thread_request_queue_state_paused_reason_c
 constraint thread_request_queue_state.thread_request_queue_state_pkey primary-key
 constraint thread_request_queue_state.thread_request_queue_state_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint thread_runtime_leases.thread_runtime_leases_fencing_token_check check
+constraint thread_runtime_leases.thread_runtime_leases_one_holder check
 constraint thread_runtime_leases.thread_runtime_leases_pkey primary-key
 constraint thread_runtime_leases.thread_runtime_leases_status_check check
 constraint thread_runtime_leases.thread_runtime_leases_thread_id_fencing_token_key unique
 constraint thread_runtime_leases.thread_runtime_leases_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint thread_runtime_leases.thread_runtime_leases_work_request_id_fkey foreign-key -> work_requests on-delete-cascade
+constraint thread_runtime_leases.thread_runtime_leases_worker_instance_id_fkey foreign-key -> worker_instances on-delete-restrict
 constraint thread_runtime_leases.thread_runtime_leases_workspace_id_fkey foreign-key -> execution_workspaces on-delete-restrict
 constraint thread_work_configs.thread_work_configs_config_json_is_json check
 constraint thread_work_configs.thread_work_configs_pkey primary-key
@@ -1220,7 +1224,9 @@ constraint work_request_inputs.work_request_inputs_work_request_id_position_key 
 constraint work_request_inputs.work_request_inputs_workspace_id_fkey foreign-key -> execution_workspaces on-delete-no-action
 constraint work_requests.work_requests_input_json_is_json check
 constraint work_requests.work_requests_mode_check check
+constraint work_requests.work_requests_one_primary check
 constraint work_requests.work_requests_pkey primary-key
+constraint work_requests.work_requests_primary_worker_instance_id_fkey foreign-key -> worker_instances on-delete-restrict
 constraint work_requests.work_requests_primary_workspace_id_fkey foreign-key -> execution_workspaces on-delete-restrict
 constraint work_requests.work_requests_requested_by_user_id_fkey foreign-key -> users on-delete-restrict
 constraint work_requests.work_requests_snapshot_json_is_json check
