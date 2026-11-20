@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:syntila_tool_profile_v1/tool_profile_v1.dart';
 
 /// Checks a signed Tool Profile. The shipped verifier lives with the signed
 /// Tool Profile trust roots; the cache only stores what a verifier accepted.
@@ -36,6 +37,33 @@ class ProfileCache {
   File _signatureFile(String digest) =>
       File('${directory.path}/sha256-$digest.signature.json');
   File get _pointer => File('${directory.path}/last-known-good.json');
+
+  /// Admit a published snapshot only when it matches the assignment's pin.
+  /// The snapshot verifier checks the schema, canonical digest and Type;
+  /// [put] additionally requires a trusted signature over the canonical bytes.
+  Future<String> putSnapshot(
+    Object? snapshot, {
+    required String workerTypeId,
+    required int revision,
+    required String digest,
+    required String signature,
+  }) async {
+    final admitted = await WorkerProfileSnapshotVerifier.verify(
+      input: snapshot,
+      expectedWorkerTypeId: workerTypeId,
+    );
+    if (admitted.revision != revision ||
+        admitted.payloadDigest != _digestHex(digest)) {
+      throw ProfileRejectedException('snapshot does not match assignment');
+    }
+    final bytes = utf8.encode(canonicalJson(admitted.profile));
+    return put(
+      bytes,
+      signature: signature,
+      revision: revision,
+      expectedDigest: digest,
+    );
+  }
 
   /// Verifies and stores a Profile; promotes it to last-known-good only when
   /// [revision] is not older than the current one.

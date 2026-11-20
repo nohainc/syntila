@@ -168,6 +168,7 @@ export const routeHandlers = {
   handleWorkerCredential: handlers.handleWorkerCredential,
   handleClaimWorkerPairing: handlers.handleClaimWorkerPairing,
   handleWorkerNonce: handlers.handleWorkerNonce,
+  handleAgentProfile: handlers.handleAgentProfile,
   handleConnectWorkerSession: handlers.handleConnectWorkerSession,
   handleRotateWorkerCredential: handlers.handleRotateWorkerCredential,
   handleListNotes: handlers.handleListNotes,

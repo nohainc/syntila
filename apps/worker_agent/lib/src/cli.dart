@@ -20,6 +20,7 @@ import 'lock.dart';
 import 'pairing.dart';
 import 'paths.dart';
 import 'profile_cache.dart';
+import 'profile_signature.dart';
 import 'runtime.dart';
 import 'server_api.dart';
 import 'services.dart';
@@ -299,7 +300,14 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     final api =
         apiFor?.call(identity.serverUrl) ?? ServerApi(identity.serverUrl);
     final settings = await AgentConfig.load(paths.configFile);
-    final profiles = ProfileCache(paths.profilesDir, const _NoNewProfiles());
+    const roots = String.fromEnvironment(
+      'SYNTILA_PROFILE_TRUST_ROOTS',
+      defaultValue: '{}',
+    );
+    final profiles = ProfileCache(
+      paths.profilesDir,
+      SignedProfileVerifier(parseProfileTrustRoots(roots)),
+    );
     final runtime = await AgentRuntime.open(
       paths: paths,
       identity: identity,
@@ -558,7 +566,9 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         final adoptedIds = await workRoot.adoptMarkedSpaces();
         out.writeln('Work Root set (read and write granted).');
         if (adoptedIds.isNotEmpty) {
-          out.writeln('Existing Space folders adopted: ${adoptedIds.join(', ')}');
+          out.writeln(
+            'Existing Space folders adopted: ${adoptedIds.join(', ')}',
+          );
         }
         return 0;
       case 'adopt-space':
@@ -679,13 +689,4 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     }
     return 0;
   }
-}
-
-/// Until signed downloads and trust roots exist, fail closed for new and
-/// previously cached Profiles.
-class _NoNewProfiles implements ProfileVerifier {
-  const _NoNewProfiles();
-
-  @override
-  Future<bool> verify(List<int> profileBytes, String? signature) async => false;
 }

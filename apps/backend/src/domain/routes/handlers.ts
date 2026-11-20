@@ -77,6 +77,7 @@ export {
   handleWorkerPairing,
   handleWorkerTransfer,
 } from "./worker-agents.js";
+export { handleAgentProfile } from "./worker-profile-delivery.js";
 export {
   handleCreateNote,
   handleListNotes,

@@ -299,6 +299,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("DELETE", "/api/workers/:workerId/credential", call("handleWorkerCredential", p("workerId"), ctx)),
     r("POST", "/api/worker-agent/claim", call("handleClaimWorkerPairing", ctx), machine),
     r("POST", "/api/worker-agent/nonce", call("handleWorkerNonce"), machine),
+    r("GET", "/api/worker-agent/profile", call("handleAgentProfile"), machine),
     r("POST", "/api/worker-agent/sessions", call("handleConnectWorkerSession"), machine),
     r("GET", "/api/worker-agent/gateway", call("handleWorkerGatewayConnect"), machine),
     r("POST", "/api/worker-agent/rotate", call("handleRotateWorkerCredential"), machine),

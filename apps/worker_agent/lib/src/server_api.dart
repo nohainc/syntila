@@ -39,6 +39,45 @@ class ServerApi {
   final String baseUrl;
   final HttpClient _client;
 
+  Future<({Object? snapshot, String proof})> downloadProfile({
+    required String workerId,
+    required SessionGrant session,
+    required int revision,
+    required String digest,
+  }) async {
+    final base = Uri.parse(baseUrl);
+    final uri = base.replace(
+      path: '${base.path}/api/worker-agent/profile'.replaceAll('//', '/'),
+      queryParameters: {'revision': '$revision', 'digest': digest},
+    );
+    final request = await _client
+        .getUrl(uri)
+        .timeout(const Duration(seconds: 20));
+    request.headers.set(
+      HttpHeaders.authorizationHeader,
+      'Bearer ${session.sessionToken}',
+    );
+    request.headers.set('x-worker-id', workerId);
+    request.headers.set('x-worker-session-id', session.sessionId);
+    final response = await request.close().timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      await response.drain<void>();
+      throw ServerRefusal(response.statusCode, 'Profile download failed');
+    }
+    final bytes = <int>[];
+    await for (final chunk in response.timeout(const Duration(seconds: 20))) {
+      bytes.addAll(chunk);
+      if (bytes.length > 1024 * 1024) {
+        throw const FormatException('Profile response too large');
+      }
+    }
+    final result = jsonDecode(utf8.decode(bytes));
+    if (result is! Map || result['proof'] is! String) {
+      throw const FormatException('Invalid Profile response');
+    }
+    return (snapshot: result['snapshot'], proof: result['proof'] as String);
+  }
+
   Future<Map<String, Object?>> _post(
     String path,
     Map<String, Object?> body,

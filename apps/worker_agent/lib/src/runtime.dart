@@ -54,7 +54,10 @@ class AgentRuntime {
           journal.unacknowledged.map((e) => e.assignmentId).toList()..sort(),
       onSync: _reconcile,
       onMessage: _onMessage,
-      onSession: engine is ArtifactLauncher ? engine.holder.update : null,
+      onSession: (grant) {
+        _profileSession = grant;
+        if (engine is ArtifactLauncher) engine.holder.update(grant);
+      },
       readiness: () async => (await readiness.evaluate()).toJson(),
     );
   }
@@ -73,6 +76,7 @@ class AgentRuntime {
   final Duration permitResend;
   final FaultPoint? onPoint;
   late final AgentConnection connection;
+  SessionGrant? _profileSession;
 
   final Set<String> _admitting = {};
   final Set<String> _executing = {};
@@ -410,8 +414,31 @@ class AgentRuntime {
     if (!report.ready) return 'worker_not_ready';
     final digest = payload['profileDigest'];
     if (profiles != null) {
-      if (digest is! String || !await profiles!.has(digest)) {
-        return 'profile_unavailable';
+      if (digest is! String) return 'profile_unavailable';
+      if (!await profiles!.has(digest)) {
+        final session = _profileSession;
+        final type = payload['workerTypeId'];
+        final revision = payload['profileRevision'];
+        if (session == null || type is! String || revision is! int) {
+          return 'profile_unavailable';
+        }
+        try {
+          final fetched = await api.downloadProfile(
+            workerId: identity.workerId,
+            session: session,
+            revision: revision,
+            digest: digest,
+          );
+          await profiles!.putSnapshot(
+            fetched.snapshot,
+            workerTypeId: type,
+            revision: revision,
+            digest: digest,
+            signature: fetched.proof,
+          );
+        } on Object {
+          return 'profile_unavailable';
+        }
       }
     }
     return null;

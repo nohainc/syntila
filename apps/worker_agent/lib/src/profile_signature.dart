@@ -5,6 +5,30 @@ import 'package:cryptography/cryptography.dart';
 import 'base64url.dart';
 import 'profile_cache.dart';
 
+/// Parse build-time trust roots. An invalid configuration trusts no keys.
+Map<String, String> parseProfileTrustRoots(String value) {
+  try {
+    final decoded = jsonDecode(value);
+    if (decoded is! Map || decoded.isEmpty || decoded.length > 32) {
+      return const {};
+    }
+    final roots = <String, String>{};
+    for (final entry in decoded.entries) {
+      if (entry.key is! String ||
+          entry.value is! String ||
+          !RegExp(r'^[A-Za-z0-9._-]{1,128}$').hasMatch(entry.key as String)) {
+        return const {};
+      }
+      final key = entry.value as String;
+      if (fromBase64Url(key).length != 32) return const {};
+      roots[entry.key as String] = key;
+    }
+    return Map.unmodifiable(roots);
+  } on Object {
+    return const {};
+  }
+}
+
 /// Verification of the v1 signed Profile proof. Trust roots are supplied by
 /// the installation, never by the server response carrying the Profile.
 class SignedProfileVerifier implements ProfileVerifier {
