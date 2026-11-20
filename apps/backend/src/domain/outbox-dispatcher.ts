@@ -15,7 +15,7 @@ import { expireArtifacts } from "./artifacts.js";
  *    next dispatcher claims it (`FOR UPDATE SKIP LOCKED`, 30 s lease) and wakes
  *    the local gateway;
  *  - a failed delivery is retried with backoff, then marked dead (clients
- *    recover through replay or `reconnect.required`);
+ *    recover through replay or `sync.required`);
  *  - a periodic sweep repairs events without an outbox row, reports sequence
  *    gaps and expires old Worker commands.
  *

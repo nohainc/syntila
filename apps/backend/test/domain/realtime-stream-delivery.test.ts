@@ -73,14 +73,14 @@ describe("durable stream delivery", () => {
     ])
       expect((await f.publish(event)).ok).toBe(true);
     expect(f.frames.filter((frame) => frame.type === "event")).toHaveLength(3);
-    expect(f.frames.some((frame) => frame.type === "reconnect.required")).toBe(
+    expect(f.frames.some((frame) => frame.type === "sync.required")).toBe(
       false,
     );
     await f.publish(f.event("execution_workspace", 2));
     expect(f.frames.filter((frame) => frame.type === "event")).toHaveLength(3);
     await f.publish(f.event("space", 3));
     expect(f.frames.at(-1)).toMatchObject({
-      type: "reconnect.required",
+      type: "sync.required",
       scope: { kind: "space", spaceId: "same" },
       stream: { kind: "space", id: "same" },
       lastDurableSequence: 1,
@@ -92,7 +92,7 @@ describe("durable stream delivery", () => {
     expect(f.cursors.get('["execution_workspace","same"]')).toBe(2);
     await f.publish(f.event("execution_workspace", 4));
     expect(f.frames.at(-1)).toMatchObject({
-      type: "reconnect.required",
+      type: "sync.required",
       workspaceId: "same",
       stream: { kind: "execution_workspace", id: "same" },
     });

@@ -21,7 +21,7 @@ publish ─ tx(mutate, sequence, event, outbox) ─ commit ─ claim outbox row 
 ```
 
 - The committing process delivers inline. A fresh outbox row starts with `attempts = 0` and `next_attempt_at = now() + 10 s`, so the dispatcher leaves it to the inline path during that grace period. A claim sets a 30 s lease (`next_attempt_at`) and counts an attempt.
-- A failed delivery is retried with backoff (2 s doubling, capped at 5 min). After 12 attempts the row is `dead`; clients still recover through replay or `reconnect.required`.
+- A failed delivery is retried with backoff (2 s doubling, capped at 5 min). After 12 attempts the row is `dead`; clients still recover through replay or `sync.required`.
 - `OutboxDispatcher` (`apps/backend/src/domain/outbox-dispatcher.ts`) runs from `createRuntime().start()`. Every 5 minutes it also sweeps: repairs events without an outbox row (a writer that bypassed the publisher), reports sequence gaps in the last 15 minutes (`outbox.sequence_gap` in the log) and expires Worker commands past `expires_at`.
 - The audience trusted at commit time (`recipientUserIds`, `additionalRecipientUserIds`) is stored in `outbox.audience_json` and used at delivery, so a destructive change cannot widen or lose the audience.
 - **Delivery is at-least-once**, deduplicated by `event_id`, per-stream `sequence` and idempotent domain transitions. It is not exactly-once.
@@ -81,9 +81,9 @@ not yet emit these phase events; their stream contract remains open in P5/P7.
 
 Each socket queue is bounded by items (128) and bytes (1 MiB, UTF-8 of the frames). Bun's `send()` status is honored: `-1` marks the socket backpressured until Bun's `drain` handler runs (the queue then flushes at once, with a 250 ms timer only as a fallback), `0` (dropped) closes the socket.
 
-On overflow of a durable frame the gateway clears the queue, sends **one** `reconnect.required` (`reason: "connection_queue_limit"`) and takes no more frames for that connection until the client's next `realtime.hello`, so a client that stays slow costs a constant amount of memory. Ephemeral frames are coalesced by key, dropped when they do not fit, and displaced by durable ones.
+On overflow of a durable frame the gateway clears the queue, sends **one** `sync.required` (`reason: "connection_queue_limit"`) and takes no more frames for that connection until the client's next `realtime.hello`, so a client that stays slow costs a constant amount of memory. Ephemeral frames are coalesced by key, dropped when they do not fit, and displaced by durable ones.
 
-`reconnect.required` is the wire name of the `sync.required` signal in ADR-033. Renaming it is part of the envelope work in ADR-038, because the app and its tests depend on the current name.
+`sync.required` is the wire name of the signal in ADR-033 (renamed from `sync.required` as part of ADR-038; the app, backend and their tests use the new name).
 
 ## Worker command inbox
 

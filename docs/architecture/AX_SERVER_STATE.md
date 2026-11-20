@@ -1050,7 +1050,7 @@ so a direct-handler test cannot hide missing production registration.
 
 Cloud excludes acknowledged events using each stream's cursor before limiting
 replay to 256 rows. Unknown streams begin at their first retained event. A full
-page emits a scope-wide `reconnect.required` (`replay_limit`), without advancing
+page emits a scope-wide `sync.required` (`replay_limit`), without advancing
 an omitted stream's cursor, so consumers reconcile resources even when the
 page cannot include every stream. See the [realtime contract](../specifications/REALTIME_SYNCHRONIZATION.md).
 

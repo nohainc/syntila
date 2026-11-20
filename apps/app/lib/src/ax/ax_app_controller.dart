@@ -415,7 +415,7 @@ extension _AxAppController on _AxAppStateMixin {
     final type = event['type'];
     if (!mounted) return;
     final recoveryGeneration = const {
-      'reconnect.required',
+      'sync.required',
       'realtime.ready',
       'realtime.connection',
       'realtime.stale'
@@ -423,7 +423,7 @@ extension _AxAppController on _AxAppStateMixin {
         ? ++_realtimeRecoveryGeneration
         : _realtimeRecoveryGeneration;
     final routed = store.realtimeCacheRouter.handle(event);
-    if (type != 'reconnect.required') {
+    if (type != 'sync.required') {
       unawaited(routed.catchError((Object error) {
         _reportRefreshFailure(error);
       }));
@@ -457,7 +457,7 @@ extension _AxAppController on _AxAppStateMixin {
       _updateLiveState(() => realtimeStale = false);
       return;
     }
-    if (type == 'reconnect.required') {
+    if (type == 'sync.required') {
       final scope = AxSyncScope.fromEvent(event);
       _updateLiveState(() {
         realtimeStale = true;

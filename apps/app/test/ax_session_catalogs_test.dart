@@ -177,7 +177,7 @@ void main() {
     await catalogs.ensureWorkers();
     await catalogs.ensureWorkflows();
     await AxRealtimeCacheRouter(catalogs.engine).handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'execution_workspace', 'workspaceId': 'workspace'}
     });
     expect(source.workerReads, 2);

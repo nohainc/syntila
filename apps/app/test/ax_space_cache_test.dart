@@ -660,7 +660,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('A remote edit'), findsOneWidget);
     final recovery = router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'space', 'spaceId': a.id}
     });
     await tester.pump();

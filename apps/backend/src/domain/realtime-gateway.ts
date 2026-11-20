@@ -969,7 +969,7 @@ export class RealtimeGateway implements DurableObject {
       // hello and acks set the real ones. Applied positions stay.
       connected.lastEnqueuedSequences.clear();
       this.sendRaw(connected.socket, {
-        type: "reconnect.required",
+        type: "sync.required",
         reason: "connection_queue_limit",
         ...(realtimeEventStream(event).kind === "space"
           ? {
@@ -1143,7 +1143,7 @@ export class RealtimeGateway implements DurableObject {
     if (rows.length === MAX_REPLAY_EVENTS) {
       this.metrics.reconnects += 1;
       this.sendRaw(connected.socket, {
-        type: "reconnect.required",
+        type: "sync.required",
         reason: "replay_limit",
         scope,
       });
@@ -1289,7 +1289,7 @@ export class RealtimeGateway implements DurableObject {
       ),
     );
     this.sendRaw(connected.socket, {
-      type: "reconnect.required",
+      type: "sync.required",
       reason: "durable_event_gap",
       scope,
       ...(event.workspaceId ? { workspaceId: event.workspaceId } : {}),

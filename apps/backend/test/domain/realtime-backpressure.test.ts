@@ -132,7 +132,7 @@ describe("a slow client", () => {
     const f = await harness();
     f.socket.bufferedAmount = 10_000_000; // the socket never drains
     for (let sequence = 1; sequence <= 600; sequence++) await f.publish(f.event(sequence, 2_000));
-    const signals = f.frames.filter((frame) => frame.type === "reconnect.required");
+    const signals = f.frames.filter((frame) => frame.type === "sync.required");
     expect(signals).toHaveLength(1);
     expect(signals[0]).toMatchObject({ reason: "connection_queue_limit", stream: { kind: "execution_workspace", id: "same" } });
     expect(f.eventSequences()).toEqual([]); // nothing was pushed into a blocked socket

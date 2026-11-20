@@ -69,7 +69,7 @@ carry a Space scope; execution gaps retain the legacy Workspace metadata.
 Replay filters acknowledged events by the client's per-stream cursor before
 applying the 256-row limit, across user, Space, Thread, run and execution
 Workspace scopes. Streams without a cursor start at their first retained event.
-A full 256-row page conservatively sends `reconnect.required` with reason
+A full 256-row page conservatively sends `sync.required` with reason
 `replay_limit` and the requested scope, even if exactly 256 events remain.
 This scope-wide signal carries no invented stream cursor: streams omitted by
 the limit must also reconcile through HTTP. Sequence gaps continue to use

@@ -93,7 +93,7 @@ describe("cursor-aware SQL replay", () => {
         256,
       );
       expect(f.frames.at(-1)).toEqual({
-        type: "reconnect.required",
+        type: "sync.required",
         reason: "replay_limit",
         scope,
       });

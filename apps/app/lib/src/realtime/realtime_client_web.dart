@@ -135,7 +135,7 @@ class _BrowserRealtimeClient implements RealtimeClient {
             _cursors.record(eventValue);
           }
           _events.add(eventValue);
-        } else if (message['type'] == 'reconnect.required') {
+        } else if (message['type'] == 'sync.required') {
           _cursors.record(message);
           // Query routers reconcile the affected stream through authenticated HTTP.
           _events.add(message);

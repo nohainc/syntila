@@ -44,5 +44,5 @@ Cross-server notification (ADR-039) and the wire envelope shape (ADR-038).
 
 - Migration `0027_durable_events_outbox.sql`; stream and delivery rules in `docs/specifications/EVENT_STREAMS.md`.
 - The committing process delivers inline from its outbox row; `OutboxDispatcher` is the safety net (claim with `SKIP LOCKED`, backoff, sweep). Fresh rows carry a 10 s grace so the inline path wins.
-- The wire name of `sync.required` stays `reconnect.required` until ADR-038 (the app depends on it).
+- The wire name of `sync.required` was `reconnect.required` until ADR-038; it is now `sync.required` everywhere.
 - `agent_commands.worker_instance_id` is nullable until Agents address Workers by Instance (P3).

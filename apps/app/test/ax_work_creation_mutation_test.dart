@@ -222,7 +222,7 @@ void main() {
         contains('Submission status is unknown'));
     await cache.refresh('W', activeOnly: true);
     await AxRealtimeCacheRouter(cache.engine).handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'thread', 'threadId': 'W'}
     });
     await cache.refresh('W');

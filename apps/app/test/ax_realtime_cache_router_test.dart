@@ -161,7 +161,7 @@ void main() {
     expect(engine.peek(other).data, 1);
     expect(engine.peek(global).data, 1);
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'space', 'spaceId': 'A'}
     });
     expect(engine.peek(config).data, 3);
@@ -258,13 +258,13 @@ void main() {
     await engine.ensure(query(['thread', 'W', 'discussion']));
     await engine.ensure(query(['thread', 'other', 'discussion']));
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'space', 'spaceId': 'A'}
     });
     expect(collections, 2);
     expect(loads.values.toList(), [1, 1]);
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'thread', 'threadId': 'W'}
     });
     expect(collections, 2);
@@ -274,7 +274,7 @@ void main() {
     await engine.ensure(query(['space', 'A']));
     await engine.ensure(query(['space', 'B']));
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'user'},
       'stream': {'kind': 'space', 'id': 'A'},
     });
@@ -283,7 +283,7 @@ void main() {
   test('malformed narrow scope does not reload every cache', () async {
     await engine.ensure(query(['space', 'A']));
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'space'},
     });
     expect(loads.values.single, 1);
@@ -353,7 +353,7 @@ void main() {
     final other = query(['space', 'B']);
     await engine.ensure(other);
     final recovery = router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'space', 'spaceId': 'A'}
     });
     expect(engine.peek(q).data, 1);
@@ -372,7 +372,7 @@ void main() {
       ids.add(id);
     });
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'thread', 'threadId': 'W'}
     });
     expect(ids, ['W']);
@@ -410,7 +410,7 @@ void main() {
     });
 
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'user'}
     });
 
@@ -425,7 +425,7 @@ void main() {
         load: () => ++calls == 1 ? Future.value(1) : delayed.future);
     await engine.ensure(q);
     final event = {
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'space', 'spaceId': 'A'}
     };
     final first = router.handle(event);
@@ -449,7 +449,7 @@ void main() {
       await engine.refresh<int>(AxQuery<int>(key: q.key, load: () async => 2));
     });
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'thread', 'threadId': 'W'}
     });
     old.complete(1);
@@ -513,7 +513,7 @@ void main() {
       engine.watch(q, (_) {});
     }
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'user'}
     });
     expect(loads.values.toList(), [2, 2, 2, 1]);
@@ -522,7 +522,7 @@ void main() {
     await engine.ensure(query(['space', 'A']));
     await engine.ensure(query(['space', 'B']));
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'space', 'spaceId': 'A'}
     });
     expect(loads.values.toList(), [2, 1]);

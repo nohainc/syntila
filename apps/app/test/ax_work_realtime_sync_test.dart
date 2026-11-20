@@ -228,7 +228,7 @@ void main() {
     source.pageScopes.clear();
     source.records = [];
     await sync.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'thread', 'threadId': 'w'}
     });
     expect(source.pageScopes, ['w']);
@@ -245,11 +245,11 @@ void main() {
     final delayed = Completer<AxWorkRequestPage>();
     source.queuedPage = delayed;
     final visible = sync.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'user'}
     });
     final background = sync.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'thread', 'threadId': 'background'}
     });
     delayed.complete(AxWorkRequestPage(requests: source.records));
@@ -261,7 +261,7 @@ void main() {
   test('Space stream gaps do not fetch execution history', () async {
     await seed();
     await sync.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'user'},
       'stream': {'kind': 'space', 'id': 'P'}
     });

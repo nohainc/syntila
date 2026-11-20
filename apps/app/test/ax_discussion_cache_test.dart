@@ -631,7 +631,7 @@ void main() {
     final forward = Completer<AxDiscussionPage>();
     source.queuedPages.add(forward);
     events.add({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'thread', 'threadId': 'w'}
     });
     await tester.pump();

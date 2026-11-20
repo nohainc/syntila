@@ -44,6 +44,27 @@ column agent_commands.status text not-null default
 column agent_commands.type text not-null
 column agent_commands.updated_at timestamptz not-null default
 column agent_commands.worker_instance_id text
+column artifact_download_grants.artifact_id text not-null
+column artifact_download_grants.assignment_id text
+column artifact_download_grants.created_at timestamptz not-null default
+column artifact_download_grants.expires_at timestamptz not-null
+column artifact_download_grants.id text not-null
+column artifact_download_grants.token_digest text not-null
+column artifact_download_grants.worker_instance_id text not-null
+column artifacts.assignment_id text
+column artifacts.content_digest text not-null
+column artifacts.created_at timestamptz not-null default
+column artifacts.expires_at timestamptz
+column artifacts.id text not-null
+column artifacts.media_type text not-null
+column artifacts.name text not-null
+column artifacts.size_bytes int8 not-null
+column artifacts.space_id text not-null
+column artifacts.state text not-null default
+column artifacts.storage_key text not-null
+column artifacts.thread_id text
+column artifacts.work_request_id text
+column artifacts.worker_instance_id text
 column auth_audit_events.action text not-null
 column auth_audit_events.created_at timestamptz not-null default
 column auth_audit_events.details_json jsonb not-null default
@@ -141,8 +162,11 @@ column direct_spaces.space_id text not-null
 column direct_spaces.user_high_id text not-null
 column direct_spaces.user_low_id text not-null
 column discussion_messages.attachments_json text not-null default
+column discussion_messages.author_actor_id text
+column discussion_messages.author_display_snapshot text
 column discussion_messages.author_user_id text not-null
 column discussion_messages.body text not-null
+column discussion_messages.client_mutation_id text
 column discussion_messages.created_at timestamptz not-null default
 column discussion_messages.edited_at timestamptz
 column discussion_messages.event_type text
@@ -153,6 +177,7 @@ column discussion_messages.reply_to_json text
 column discussion_messages.thread_id text not-null
 column discussion_messages.work_request_id text
 column discussion_messages.worker_display_name text
+column discussion_messages.worker_instance_id text
 column durable_object_alarms.at timestamptz not-null
 column durable_object_alarms.namespace text not-null
 column durable_object_alarms.object_name text not-null
@@ -455,6 +480,11 @@ column user_pins.pinned_at timestamptz not-null
 column user_pins.position int8 not-null default
 column user_pins.target_id text not-null
 column user_pins.user_id text not-null
+column user_worker_workflow_configurations.configuration_json text not-null
+column user_worker_workflow_configurations.schema_version int8 not-null
+column user_worker_workflow_configurations.updated_at timestamptz not-null
+column user_worker_workflow_configurations.user_id text not-null
+column user_worker_workflow_configurations.workflow_id text not-null
 column user_workflow_configurations.configuration_json text not-null
 column user_workflow_configurations.schema_version int8 not-null
 column user_workflow_configurations.updated_at timestamptz not-null default
@@ -536,6 +566,8 @@ column worker_agent_sessions.disconnect_reason text
 column worker_agent_sessions.disconnected_at timestamptz
 column worker_agent_sessions.last_seen_at timestamptz not-null default
 column worker_agent_sessions.lease_expires_at timestamptz not-null
+column worker_agent_sessions.readiness_json text
+column worker_agent_sessions.readiness_reported_at timestamptz
 column worker_agent_sessions.session_epoch int8 not-null
 column worker_agent_sessions.session_id text not-null
 column worker_agent_sessions.token_digest text not-null
@@ -872,6 +904,18 @@ constraint agent_commands.agent_commands_pkey primary-key
 constraint agent_commands.agent_commands_status_check check
 constraint agent_commands.agent_commands_type_check check
 constraint agent_commands.agent_commands_worker_instance_id_fkey foreign-key -> worker_instances on-delete-restrict
+constraint artifact_download_grants.artifact_download_grants_artifact_id_fkey foreign-key -> artifacts on-delete-cascade
+constraint artifact_download_grants.artifact_download_grants_assignment_id_fkey foreign-key -> worker_assignments on-delete-cascade
+constraint artifact_download_grants.artifact_download_grants_pkey primary-key
+constraint artifact_download_grants.artifact_download_grants_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
+constraint artifacts.artifacts_assignment_id_fkey foreign-key -> worker_assignments on-delete-set-null
+constraint artifacts.artifacts_pkey primary-key
+constraint artifacts.artifacts_size_bytes_check check
+constraint artifacts.artifacts_space_id_fkey foreign-key -> spaces on-delete-cascade
+constraint artifacts.artifacts_state_check check
+constraint artifacts.artifacts_thread_id_fkey foreign-key -> threads on-delete-set-null
+constraint artifacts.artifacts_work_request_id_fkey foreign-key -> work_requests on-delete-set-null
+constraint artifacts.artifacts_worker_instance_id_fkey foreign-key -> worker_instances on-delete-set-null
 constraint auth_audit_events.auth_audit_events_outcome_check check
 constraint auth_audit_events.auth_audit_events_pkey primary-key
 constraint auth_audit_events.auth_audit_events_user_id_fkey foreign-key -> users on-delete-set-null
@@ -942,6 +986,7 @@ constraint direct_spaces.direct_spaces_user_high_id_fkey foreign-key -> users on
 constraint direct_spaces.direct_spaces_user_low_id_fkey foreign-key -> users on-delete-cascade
 constraint direct_spaces.direct_spaces_user_low_id_user_high_id_key unique
 constraint discussion_messages.discussion_messages_attachments_json_is_json check
+constraint discussion_messages.discussion_messages_author_actor_id_fkey foreign-key -> actors on-delete-restrict
 constraint discussion_messages.discussion_messages_author_user_id_fkey foreign-key -> users on-delete-restrict
 constraint discussion_messages.discussion_messages_kind_check check
 constraint discussion_messages.discussion_messages_pkey primary-key
@@ -949,6 +994,7 @@ constraint discussion_messages.discussion_messages_references_json_is_json check
 constraint discussion_messages.discussion_messages_reply_to_json_is_json check
 constraint discussion_messages.discussion_messages_thread_id_fkey foreign-key -> threads on-delete-cascade
 constraint discussion_messages.discussion_messages_work_request_id_fkey foreign-key -> work_requests on-delete-set-null
+constraint discussion_messages.discussion_messages_worker_instance_id_fkey foreign-key -> worker_instances on-delete-set-null
 constraint durable_object_alarms.durable_object_alarms_pkey primary-key
 constraint durable_object_storage.durable_object_storage_pkey primary-key
 constraint email_outbox.email_outbox_pkey primary-key
@@ -1130,6 +1176,10 @@ constraint user_notification_reads.user_notification_reads_work_request_id_fkey 
 constraint user_pins.user_pins_kind_check check
 constraint user_pins.user_pins_pkey primary-key
 constraint user_pins.user_pins_user_id_fkey foreign-key -> users on-delete-cascade
+constraint user_worker_workflow_configurations.user_worker_workflow_configurations_configuration_json_check check
+constraint user_worker_workflow_configurations.user_worker_workflow_configurations_pkey primary-key
+constraint user_worker_workflow_configurations.user_worker_workflow_configurations_schema_version_check check
+constraint user_worker_workflow_configurations.user_worker_workflow_configurations_user_id_fkey foreign-key -> users on-delete-cascade
 constraint user_workflow_configurations.user_workflow_configurations_configuration_json_check check
 constraint user_workflow_configurations.user_workflow_configurations_configuration_json_is_json check
 constraint user_workflow_configurations.user_workflow_configurations_pkey primary-key
@@ -1181,6 +1231,7 @@ constraint worker_agent_sessions.worker_agent_sessions_client_version_check chec
 constraint worker_agent_sessions.worker_agent_sessions_credential_id_fkey foreign-key -> worker_credentials on-delete-cascade
 constraint worker_agent_sessions.worker_agent_sessions_disconnect_reason_check check
 constraint worker_agent_sessions.worker_agent_sessions_pkey primary-key
+constraint worker_agent_sessions.worker_agent_sessions_readiness_json_check check
 constraint worker_agent_sessions.worker_agent_sessions_session_epoch_check check
 constraint worker_agent_sessions.worker_agent_sessions_session_id_key unique
 constraint worker_agent_sessions.worker_agent_sessions_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
@@ -1372,9 +1423,12 @@ constraint workspace_worker_preferences.workspace_worker_preferences_user_id_fke
 constraint workspace_worker_preferences.workspace_worker_preferences_workspace_id_fkey foreign-key -> execution_workspaces on-delete-cascade
 function adopt_inventory_worker/1
 function agent_commands_follow_assignment_fn/0
+function backfill_ai_timeline/1
 function establish_people_on_membership_fn/0
 function inventory_adopt_worker_fn/0
 function inventory_revoke_worker_fn/0
+function record_ai_answer/1
+function record_ai_request/1
 function syntila_guard_failed/1
 function syntila_iso/1
 function syntila_json_patch/2
@@ -1407,6 +1461,7 @@ function trg_conversation_user_message_insert_fn/0
 function trg_conversation_workflow_run_immutable_fn/0
 function trg_conversation_workflow_run_message_insert_fn/0
 function trg_conversation_workflow_run_scope_insert_fn/0
+function trg_discussion_message_author_fn/0
 function trg_history_context_revision_fn/0
 function trg_history_execution_created_fn/0
 function trg_history_execution_status_fn/0
@@ -1459,6 +1514,18 @@ index agent_commands.agent_commands_assignment_type_uq (assignment_id,type) uniq
 index agent_commands.agent_commands_open_idx (expires_at) partial
 index agent_commands.agent_commands_pkey (command_id) unique
 index agent_commands.agent_commands_worker_idx (worker_instance_id)
+index artifact_download_grants.artifact_download_grants_artifact_idx (artifact_id)
+index artifact_download_grants.artifact_download_grants_assignment_idx (assignment_id)
+index artifact_download_grants.artifact_download_grants_expiry_idx (expires_at)
+index artifact_download_grants.artifact_download_grants_pkey (id) unique
+index artifact_download_grants.artifact_download_grants_worker_idx (worker_instance_id)
+index artifacts.artifacts_assignment_idx (assignment_id)
+index artifacts.artifacts_pkey (id) unique
+index artifacts.artifacts_retention_idx (expires_at) partial
+index artifacts.artifacts_space_idx (space_id)
+index artifacts.artifacts_thread_idx (thread_id,created_at)
+index artifacts.artifacts_work_request_idx (work_request_id)
+index artifacts.artifacts_worker_instance_idx (worker_instance_id)
 index auth_audit_events.auth_audit_events_pkey (id) unique
 index auth_audit_events.auth_audit_events_user_id_fkidx (user_id)
 index conversation_history_entries.conversation_history_entries_conversation_id_deduplication__key (conversation_id,deduplication_key) unique
@@ -1498,9 +1565,14 @@ index direct_spaces.direct_spaces_general_thread_id_fkidx (general_thread_id)
 index direct_spaces.direct_spaces_pkey (space_id) unique
 index direct_spaces.direct_spaces_user_low_id_user_high_id_key (user_low_id,user_high_id) unique
 index direct_spaces.idx_direct_spaces_high (user_high_id,user_low_id)
+index discussion_messages.discussion_messages_author_actor_idx (author_actor_id)
 index discussion_messages.discussion_messages_author_user_id_fkidx (author_user_id)
+index discussion_messages.discussion_messages_client_mutation_idx (author_actor_id,client_mutation_id) unique partial
+index discussion_messages.discussion_messages_one_ai_answer_idx (work_request_id) unique partial
+index discussion_messages.discussion_messages_one_ai_request_idx (work_request_id) unique partial
 index discussion_messages.discussion_messages_pkey (id) unique
 index discussion_messages.discussion_messages_work_request_id_fkidx (work_request_id)
+index discussion_messages.discussion_messages_worker_instance_idx (worker_instance_id)
 index discussion_messages.idx_discussion_messages_thread (thread_id,created_at)
 index durable_object_alarms.durable_object_alarms_pkey (namespace,object_name) unique
 index durable_object_storage.durable_object_storage_pkey (namespace,object_name,key) unique
@@ -1628,6 +1700,7 @@ index user_notes.user_notes_pkey (id) unique
 index user_notification_reads.user_notification_reads_pkey (user_id,work_request_id) unique
 index user_notification_reads.user_notification_reads_work_request_id_fkidx (work_request_id)
 index user_pins.user_pins_pkey (user_id,kind,target_id) unique
+index user_worker_workflow_configurations.user_worker_workflow_configurations_pkey (user_id,workflow_id) unique
 index user_workflow_configurations.user_workflow_configurations_pkey (user_id,workspace_id,workflow_id) unique
 index user_workflow_configurations.user_workflow_configurations_worker_instance_idx (worker_instance_id)
 index user_workflow_configurations.user_workflow_configurations_workspace_id_fkidx (workspace_id)
@@ -1786,6 +1859,7 @@ trigger conversations.trg_conversation_revisions_monotonic -> trg_conversation_r
 trigger conversations.trg_history_context_revision -> trg_history_context_revision_fn
 trigger direct_spaces.validate_direct_space_general_thread -> validate_direct_space_general_thread_fn
 trigger direct_spaces.validate_direct_space_general_thread_update -> validate_direct_space_general_thread_update_fn
+trigger discussion_messages.trg_discussion_message_author -> trg_discussion_message_author_fn
 trigger discussion_messages.trg_thread_discussion_contributor -> trg_thread_discussion_contributor_fn
 trigger runs.trg_history_run_created -> trg_history_run_created_fn
 trigger runs.trg_history_run_status -> trg_history_run_status_fn

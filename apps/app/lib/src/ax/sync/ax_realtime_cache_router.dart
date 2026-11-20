@@ -115,7 +115,7 @@ class AxRealtimeCacheRouter {
         value is String && value.isNotEmpty ? value : null;
     final spaceId = id(event['spaceId']) ?? id(payload['spaceId']);
     final threadId = id(event['threadId']) ?? id(payload['threadId']);
-    if (type == 'reconnect.required' || type == 'realtime.ready') {
+    if (type == 'sync.required' || type == 'realtime.ready') {
       final scope = AxSyncScope.fromEvent(event);
       final key = (scope.kind, scope.id);
       final pending = _recoveries[key];

@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 202 write paths, 92 tables; 1 numbering, 47 unguarded read-write, 0 adapter-only, 168 in data-layer transactions.
+Totals: 207 write paths, 94 tables; 1 numbering, 49 unguarded read-write, 0 adapter-only, 173 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -227,6 +227,7 @@ Totals: 202 write paths, 92 tables; 1 numbering, 47 unguarded read-write, 0 adap
 | `domain/worker-agents.ts` | `rotateCredential` | UPDATE worker_credentials | data |
 | `domain/worker-dispatch.ts` | `dispatchWorkerAssignment` | INSERT agent_commands, INSERT worker_assignments, UPDATE worker_assignments | read-write, data |
 | `domain/worker-dispatch.ts` | `fail` | UPDATE worker_assignments | guarded, data |
+| `domain/worker-gateway.ts` | `recordReadiness` | UPDATE worker_agent_sessions | data |
 | `domain/worker-profile-registry.ts` | `persistWorkerProfileSnapshot` | INSERT worker_profile_history, INSERT worker_profiles, UPDATE worker_profiles | guarded, data |
 | `domain/workflow.ts` | `finishWorkRequestNow` | UPDATE work_requests | read-write, guarded, data |
 | `domain/workflow.ts` | `persistTerminalRun` | UPDATE runs |  |
@@ -250,5 +251,9 @@ Totals: 202 write paths, 92 tables; 1 numbering, 47 unguarded read-write, 0 adap
 
 | File | Function | Writes | Flags |
 | --- | --- | --- | --- |
+| `domain/artifacts.ts` | `expireArtifacts` | DELETE artifact_download_grants, UPDATE artifacts | data |
+| `domain/artifacts.ts` | `handleUploadArtifact` | INSERT artifacts | read-write, data |
+| `domain/artifacts.ts` | `mintHandoffGrants` | INSERT artifact_download_grants | read-write, data |
+| `domain/artifacts.ts` | `removeUserFile` | DELETE user_files | data |
 | `domain/routes/queue-positions.ts` | `insertAt` | INSERT thread_request_queue | data |
 | `domain/routes/queue-positions.ts` | `moveToFront` | UPDATE thread_request_queue | guarded, data |

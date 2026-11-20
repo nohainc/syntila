@@ -184,11 +184,11 @@ void main() {
       'payload': {'entityId': 'b'}
     });
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'user'}
     });
     await router.handle({
-      'type': 'reconnect.required',
+      'type': 'sync.required',
       'scope': {'kind': 'space', 'spaceId': 'A'}
     });
     expect(source.loads, 4);

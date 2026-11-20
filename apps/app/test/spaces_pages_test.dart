@@ -3837,7 +3837,7 @@ void main() {
       _workRequest('request-1', 'History restored after reconnect'),
       _workRequest('request-2', 'Run submitted while the browser was away'),
     ];
-    events.add({'type': 'reconnect.required'});
+    events.add({'type': 'sync.required'});
     await tester.pump();
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();

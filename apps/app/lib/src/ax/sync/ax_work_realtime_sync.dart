@@ -279,7 +279,7 @@ class AxWorkRealtimeSync extends ChangeNotifier {
       await _resync(discover: _needsRecovery, recent: _needsRecovery);
       return;
     }
-    if (type == 'reconnect.required') {
+    if (type == 'sync.required') {
       final scope = AxSyncScope.fromEvent(event);
       if (scope.kind == 'space' || scope.kind == 'unknown') {
         return;
@@ -290,7 +290,7 @@ class AxWorkRealtimeSync extends ChangeNotifier {
         if (!cache.threadIds.contains(scope.id)) return;
         _connectionInterrupted = true;
         _gapStale = true;
-        _notifyDiagnostics('reconnect.required');
+        _notifyDiagnostics('sync.required');
         await _resync(discover: true, targets: {scope.id!});
         return;
       }
