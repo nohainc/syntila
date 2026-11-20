@@ -1,4 +1,5 @@
 import { RuntimeTransportSchema } from "@syntila/protocol";
+import { legacyClosedResponse } from "../legacy-cutover.js";
 import { readBody, RequestValidationError } from "./validation.js";
 import { logStructured, requestIdFor } from "../observability.js";
 
@@ -15,6 +16,8 @@ export async function handleWorkspaceGatewayConnect(
   request: Request,
   env: SecurityEnv,
 ): Promise<Response> {
+  const closed = await legacyClosedResponse(env, "gateway");
+  if (closed) return closed;
   const requestId = requestIdFor(request);
   const url = new URL(request.url);
   const workspaceRuntimeId = url.searchParams.get("workspaceRuntimeId");
@@ -185,6 +188,8 @@ export async function handleWorkspaceRuntimeTransport(
   request: Request,
   env: SecurityEnv,
 ): Promise<Response> {
+  const closed = await legacyClosedResponse(env, "gateway");
+  if (closed) return closed;
   if (!env.SYNTILA_WORKSPACE_GATEWAY)
     return json(
       { error: "Workspace Gateway is not configured" },

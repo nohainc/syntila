@@ -12,6 +12,7 @@ export 'src/faults.dart';
 export 'src/folders.dart';
 export 'src/identity.dart';
 export 'src/journal.dart';
+export 'src/legacy_import.dart';
 export 'src/lock.dart';
 export 'src/pairing.dart';
 export 'src/paths.dart';

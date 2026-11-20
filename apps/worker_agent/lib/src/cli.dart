@@ -15,6 +15,7 @@ import 'folders.dart';
 import 'work_root.dart';
 import 'identity.dart';
 import 'journal.dart';
+import 'legacy_import.dart';
 import 'lock.dart';
 import 'pairing.dart';
 import 'paths.dart';
@@ -39,6 +40,7 @@ class _Args {
     'no-service',
     'keep-data',
     'write',
+    'dry-run',
   };
 
   factory _Args.parse(List<String> args) {
@@ -117,6 +119,7 @@ syntila-worker <command> [options]
   permissions work-root [PATH]            show or set the Work Root
   permissions adopt-space SPACE_ID PATH   map an existing folder to a Space
   permissions remove-folder ID
+  import-workspace --from DIR [--write] [--dry-run]   take the folders and Work Root of an old Workspace
   rotate-credential        replace this Worker's key pair
   update stage --manifest FILE --artifact FILE
   uninstall [--yes] [--keep-data]
@@ -147,6 +150,8 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           return await _config(args);
         case 'permissions':
           return await _permissions(args);
+        case 'import-workspace':
+          return await _importWorkspace(args);
         case 'rotate-credential':
           return await _rotate(args);
         case 'update':
@@ -569,6 +574,39 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           'usage: permissions list | add-folder | remove-folder | work-root | adopt-space',
         );
     }
+  }
+
+  Future<int> _importWorkspace(_Args args) async {
+    final from = args.options['from'];
+    if (from == null) {
+      throw const FormatException(
+        'usage: import-workspace --from DIR [--write] [--dry-run]',
+      );
+    }
+    final paths = _paths(args);
+    final folders = _folders(paths);
+    final report = await importLegacyWorkspace(
+      legacyData: Directory(from),
+      folders: folders,
+      workRoot: WorkRoot(paths.workRootFile, folders),
+      write: args.flags.contains('write'),
+      dryRun: args.flags.contains('dry-run'),
+    );
+    final verb = args.flags.contains('dry-run') ? 'Would import' : 'Imported';
+    if (report.workRoot != null) {
+      out.writeln('$verb Work Root ${report.workRoot}');
+    }
+    for (final path in report.imported) {
+      out.writeln('$verb folder $path');
+    }
+    for (final line in report.skipped) {
+      out.writeln('Skipped $line');
+    }
+    out.writeln('Not copied:');
+    for (final line in report.notCopied) {
+      out.writeln('  $line');
+    }
+    return 0;
   }
 
   Future<int> _rotate(_Args args) async {

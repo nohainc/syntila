@@ -1,5 +1,7 @@
 # Syntila Service supervision — V9 Phase 3
 
+> **Superseded in part (P10).** Workspaces are replaced by Worker Agents ([ADR-034](../decisions/ADR-034-standalone-worker-agent-and-session-fencing.md), [ADR-035](../decisions/ADR-035-worker-targeted-execution-and-workspace-removal.md)). This document describes the legacy Workspace path, which is closed in stages and then removed ([LEGACY_CUTOVER.md](../operations/LEGACY_CUTOVER.md)). Do not build new features on it.
+
 **Status:** Phase 3 implementation contract
 
 ## Local assignment lifecycle

@@ -1,4 +1,5 @@
 import type { z } from "@syntila/protocol";
+import { legacyClosedResponse } from "../legacy-cutover.js";
 import { RegisterWorkspaceSchema, RuntimeIdentitySchema } from "@syntila/protocol";
 import { readBody, RequestValidationError } from "./validation.js";
 import { inTransaction } from "../../platform/tx-env.js";
@@ -736,6 +737,8 @@ export async function handleRegisterWorkspaceFromDesktop(
   request: Request,
   env: SecurityEnv,
 ): Promise<Response> {
+  const closed = await legacyClosedResponse(env, "registration");
+  if (closed) return closed;
   const { session, now } = await findDesktopHumanSession(
     request,
     env,

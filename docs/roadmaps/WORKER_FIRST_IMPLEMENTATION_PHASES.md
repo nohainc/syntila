@@ -282,3 +282,11 @@ Still open (the exit gate is not demonstrated):
 - Workflows with a stateful step, and file attachments, are not offered on this path.
 - Diagnostics and retry/cancel-specific UX for offline, not ready and revoked-during-run beyond the existing run error messages.
 - Nothing here has been compiled or run (no Dart in the authoring VM); `dart format`, `dart analyze` and `dart test` are needed.
+
+## P10 status (implemented in code, cutover not run; exit gate open)
+
+- Migration `0035_legacy_cutover.sql`: `legacy_cutover` switches (registration, gateway, worker required), a trigger that refuses new `worker_assignments`/`agent_commands` without a Worker Instance once the switch is on, and `legacy_worker_mapping_archive` with `archive_legacy_worker_mapping()`.
+- Backend: `domain/legacy-cutover.ts`; registration, the gateway connect route and the runtime transport answer 410 when closed. `scripts/legacy-cutover.sh` (status, close-registration, require-worker, close-gateway with a drain check, archive-mapping, reopen) and `scripts/rehearse-legacy-cutover.sh`.
+- Agent: `syntila-worker import-workspace --from DIR [--write] [--dry-run]` (Work Root and folders, read-only by default; no keys, Profiles or sessions).
+- Docs: [LEGACY_CUTOVER.md](../operations/LEGACY_CUTOVER.md), [WORKER_AGENT_ONBOARDING.md](../operations/WORKER_AGENT_ONBOARDING.md), [RELEASE_NOTES_WORKER_FIRST.md](../operations/RELEASE_NOTES_WORKER_FIRST.md); the three Workspace specs carry a superseded note.
+- Not done: dropping the Workspace tables, routes, bridge and `apps/workspace` (by design, only after the rollback window); NOT NULL on the columns themselves; the rollback rehearsal has not been run; automatic Space-folder mapping and native-session conversion in `import-workspace`.
