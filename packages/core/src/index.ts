@@ -14,3 +14,4 @@ export * from "./context-engine.js";
 export * from "./workflow-configuration.js";
 export * from "./execution-lifecycle.js";
 export { DomainInvariantError } from "./domain-error.js";
+export * from "./artifact-outputs.js";

@@ -118,22 +118,31 @@ class ArtifactLauncher implements EngineLauncher {
         timeout: request.timeout,
       ),
     );
-    return _Collecting(this, run, request.assignmentId, base, outputs);
+    return _Collecting(
+      this,
+      run,
+      request.assignmentId,
+      base,
+      outputs,
+      declaredOutputs(snapshot['artifactOutputs']),
+    );
   }
 
-  /// Uploads every regular file under [outputs] (links are skipped) and
-  /// returns the descriptors for the result.
+  /// Uploads the regular files directly in [outputs] whose names match a
+  /// declared pattern (links and subfolders are skipped) and returns the
+  /// descriptors for the result. A step that declared nothing uploads nothing.
   Future<List<Map<String, Object?>>> collect(
     String assignmentId,
     Directory base,
     Directory outputs,
+    List<String> declared,
   ) async {
     final session = holder.grant;
     final results = <Map<String, Object?>>[];
-    if (!await outputs.exists()) return results;
+    if (declared.isEmpty || !await outputs.exists()) return results;
     final files = await outputs
-        .list(recursive: true, followLinks: false)
-        .where((e) => e is File)
+        .list(followLinks: false)
+        .where((e) => e is File && matchesDeclaredOutput(declared, p.basename(e.path)))
         .cast<File>()
         .toList();
     files.sort((a, b) => a.path.compareTo(b.path));
@@ -175,13 +184,21 @@ class _Failed implements EngineRun {
 }
 
 class _Collecting implements EngineRun, EngineStartEvidence {
-  _Collecting(this.owner, this.run, this.assignmentId, this.base, this.outputs);
+  _Collecting(
+    this.owner,
+    this.run,
+    this.assignmentId,
+    this.base,
+    this.outputs,
+    this.declared,
+  );
 
   final ArtifactLauncher owner;
   final EngineRun run;
   final String assignmentId;
   final Directory base;
   final Directory outputs;
+  final List<String> declared;
 
   @override
   Future<bool> get providerStarted {
@@ -199,7 +216,7 @@ class _Collecting implements EngineRun, EngineStartEvidence {
     final result = await run.outcome;
     if (result.kind != TerminalKind.completed) return result;
     try {
-      final artifacts = await owner.collect(assignmentId, base, outputs);
+      final artifacts = await owner.collect(assignmentId, base, outputs, declared);
       if (artifacts.isEmpty) return result;
       final output = result.payload['output'];
       return EngineOutcome(TerminalKind.completed, {
@@ -220,4 +237,44 @@ class _Collecting implements EngineRun, EngineStartEvidence {
 
   @override
   Future<void> cancel() => run.cancel();
+}
+
+final _declaredPattern = RegExp(r'^[A-Za-z0-9._*-]{1,100}$');
+
+bool _validPattern(String pattern) =>
+    _declaredPattern.hasMatch(pattern) &&
+    '*'.allMatches(pattern).length <= 1 &&
+    pattern != '.' &&
+    pattern != '..';
+
+/// The valid output patterns of a payload (at most 8). Mirrors
+/// packages/core/src/artifact-outputs.ts; the server checks them again.
+List<String> declaredOutputs(Object? raw) {
+  if (raw is! List) return const [];
+  final result = <String>[];
+  for (final item in raw) {
+    if (item is String && _validPattern(item) && !result.contains(item)) {
+      result.add(item);
+    }
+    if (result.length >= 8) break;
+  }
+  return result;
+}
+
+bool matchesDeclaredOutput(List<String> patterns, String name) {
+  for (final pattern in patterns) {
+    final star = pattern.indexOf('*');
+    if (star < 0) {
+      if (pattern == name) return true;
+      continue;
+    }
+    final head = pattern.substring(0, star);
+    final tail = pattern.substring(star + 1);
+    if (name.length >= head.length + tail.length &&
+        name.startsWith(head) &&
+        name.endsWith(tail)) {
+      return true;
+    }
+  }
+  return false;
 }

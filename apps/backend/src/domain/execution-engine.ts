@@ -56,6 +56,7 @@ export function prepareWorkerStepExecution(
       role: step.kind,
       objective: input.prompt,
       capabilities: [...step.requiredCapabilities],
+      ...(step.artifactOutputs?.length ? { artifactOutputs: [...step.artifactOutputs] } : {}),
       input: {
         ...input.workerInput,
         prompt: input.prompt,

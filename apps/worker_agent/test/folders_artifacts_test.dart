@@ -178,4 +178,30 @@ void launcherTests() {
     expect(output, contains('spaces/space-1'));
     expect(await folders.isAllowed(output, write: true), isTrue);
   });
+
+  test('files are uploaded only when the step declared them', () async {
+    await root.setRoot(work.path);
+    final inner = _RecordingLauncher();
+    final run = await launcher(inner).launch(request([]));
+    final output = inner.last!['outputDirectory'] as String;
+    await File('$output/secret.txt').writeAsString('not declared');
+    // Nothing is declared, so nothing is uploaded; an upload would fail here
+    // because this launcher has no session.
+    final outcome = await run.outcome;
+    expect(outcome.kind, TerminalKind.completed);
+    expect(outcome.payload.containsKey('artifactIds'), isFalse);
+  });
+
+  test('output declarations are validated and matched like the server does', () {
+    expect(
+      declaredOutputs(['report.md', '../x', 'a/b', '*.png', 'report.md', 3]),
+      ['report.md', '*.png'],
+    );
+    expect(declaredOutputs('report.md'), isEmpty);
+    expect(declaredOutputs(List.generate(20, (i) => 'f$i')), hasLength(8));
+    expect(matchesDeclaredOutput(['*.png'], 'chart.png'), isTrue);
+    expect(matchesDeclaredOutput(['*.png'], 'chart.jpg'), isFalse);
+    expect(matchesDeclaredOutput(['report.md'], 'report.md'), isTrue);
+    expect(matchesDeclaredOutput([], 'report.md'), isFalse);
+  });
 }

@@ -1,4 +1,5 @@
 import { dataOf, type Db } from "../platform/data.js";
+import { normalizeArtifactOutputs } from "@syntila/core";
 import { executionErrorMessage } from "@syntila/protocol";
 import { ContextLimitError } from "@syntila/core";
 import { createHash } from "node:crypto";
@@ -259,6 +260,7 @@ export async function dispatchWorkerAssignment(
       objective: task.objective,
       role: task.role,
       contextArtifactIds: handoffIds,
+      artifactOutputs: normalizeArtifactOutputs(task.artifactOutputs),
       threadId: task.threadId ?? accepted.threadId,
       workRequestId: task.workRequestId,
       leaseId: task.leaseId,

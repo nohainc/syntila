@@ -1,4 +1,5 @@
 import { dataOf } from "../platform/data.js";
+import { artifactOutputMatches, normalizeArtifactOutputs } from "@syntila/core";
 import { extractBearerToken, hashToken, timingSafeEqual } from "@syntila/security";
 import { isTerminalAssignmentStatus } from "@syntila/core";
 import type { AssignmentLifecycleStatus } from "@syntila/core";
@@ -69,8 +70,8 @@ export async function handleUploadArtifact(request: Request, env: SecurityEnv): 
   const name = workRequestFileName(url.searchParams.get("name"));
   const read = dataOf(env).read;
   const assignment = await read.row<{
-    status: string; threadId: string | null; workRequestId: string | null; spaceId: string; ownerUserId: string;
-  }>`SELECT wa.status, COALESCE(NULLIF(wa.thread_id, ''), wr.thread_id) AS "threadId",
+    status: string; threadId: string | null; workRequestId: string | null; spaceId: string; ownerUserId: string; declared: string | null;
+  }>`SELECT wa.status, (wa.command_payload_json::jsonb #>> '{snapshot,artifactOutputs}') AS declared, COALESCE(NULLIF(wa.thread_id, ''), wr.thread_id) AS "threadId",
             wr.id AS "workRequestId", t.space_id AS "spaceId", s.owner_user_id AS "ownerUserId"
        FROM worker_assignments wa
        LEFT JOIN conversation_turns ct ON ct.assignment_id = wa.id
@@ -82,6 +83,10 @@ export async function handleUploadArtifact(request: Request, env: SecurityEnv): 
   if (!assignment?.threadId) throw new HttpError(404, "Assignment not found");
   if (isTerminalAssignmentStatus(assignment.status as AssignmentLifecycleStatus))
     throw new HttpError(409, "Assignment has already finished");
+  // Only files the Workflow step declared may leave as artifacts.
+  let declared: string[] = [];
+  try { declared = normalizeArtifactOutputs(assignment.declared ? JSON.parse(assignment.declared) : []); } catch { declared = []; }
+  if (!artifactOutputMatches(declared, name)) throw new HttpError(403, "This step did not declare that file as an artifact output");
 
   const existing = await read.row<Record<string, unknown>>`SELECT id AS "artifactId", name, media_type AS "mediaType",
          size_bytes AS "sizeBytes", content_digest AS "sha256", expires_at AS "expiresAt"

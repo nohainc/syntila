@@ -182,6 +182,8 @@ export interface TaskToDispatch {
   readonly capabilities?: readonly string[];
   readonly input?: Record<string, unknown>;
   readonly contextArtifactIds?: readonly string[];
+  /** Artifact output patterns the step declared (packages/core artifact-outputs.ts). */
+  readonly artifactOutputs?: readonly string[];
   readonly timeoutMs?: number;
   /** Time admitted work may wait for a local Worker slot. */
   readonly queueWaitTimeoutMs?: number;

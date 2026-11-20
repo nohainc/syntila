@@ -241,6 +241,12 @@ export interface BuiltinWorkflowStep {
   /** Step-instance inputs; overrides [inputsFrom] when present. */
   readonly inputsFromSteps?: readonly string[];
   readonly resultSemantics: WorkflowResultSemantics;
+  /**
+   * Files this step may hand to later steps as artifacts: relative names, one
+   * `*` allowed (see artifact-outputs.ts). Absent or empty: the step produces
+   * no artifacts.
+   */
+  readonly artifactOutputs?: readonly string[];
 }
 
 /** The step's identity in its definition: its `id`, or its kind. */
