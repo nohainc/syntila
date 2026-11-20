@@ -64,6 +64,38 @@ import { dataOf, type Tx } from "../../platform/data.js";
 import { isFeatureEnabled } from "../../feature-flags.js";
 import { requestsWorkerTarget, resolveWorkerTargetBindings } from "./worker-target-bindings.js";
 
+/** Lists owned Workers that can currently run every step of a Workflow. */
+export async function handleListEligibleWorkers(
+  request: Request,
+  env: SecurityEnv,
+  threadId: string,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  if (!isFeatureEnabled("worker_target_dispatch")) throw new HttpError(404, "Not found");
+  const { context, spaceId } = await authorizeThreadAccess(request, env, threadId, "execute", accessContext);
+  const workflowId = (new URL(request.url).searchParams.get("workflowId") ?? "chat") as WorkflowId;
+  if (!Object.hasOwn(BUILTIN_WORKFLOWS, workflowId)) throw new HttpError(400, "Unsupported workflowId");
+  const workflow = BUILTIN_WORKFLOWS[workflowId];
+  if (!workflow) throw new HttpError(400, "Unsupported workflowId");
+  await requireWorkflowPermission(env, context.userId, spaceId, workflowId);
+  if (workflow.steps.some((step) => step.executionMode === "stateful_thread")) {
+    throw new HttpError(422, "This Workflow needs a Workspace; Worker-targeted requests run stateless Workflows only");
+  }
+  const q = dataOf(env).read;
+  const workers = await q.rows<{ id: string }>`SELECT id FROM worker_instances
+    WHERE owner_user_id = ${context.userId} AND revoked_at IS NULL
+    ORDER BY created_at, id`;
+  const eligible: string[] = [];
+  for (const worker of workers) {
+    const result = await resolveWorkerTargetBindings(env, {
+      userId: context.userId, spaceId, threadId, definition: workflow,
+      request: { workerId: worker.id },
+    });
+    if (result.ok) eligible.push(worker.id);
+  }
+  return json({ workflowId, workerIds: eligible });
+}
+
 export async function createOrGetRun(
   env: Env,
   params: SyntilaWorkflowParams,

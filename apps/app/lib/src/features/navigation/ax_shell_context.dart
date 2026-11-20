@@ -8,6 +8,7 @@ import '../../brand.dart';
 import '../../navigation/ax_navigation.dart';
 import '../../ax/ax_models.dart';
 import '../../ax/sync/ax_space_threads.dart';
+import '../../ax/sync/ax_session_catalogs.dart';
 
 enum ExecutionStatusTone {
   usable,
@@ -60,6 +61,7 @@ class AxShellContext {
     this.viewerAvatarUrl,
     this.viewerAvatarBytes,
     this.expandedSpaceIds = const {},
+    this.catalogs,
   })  : _spaces = spaces,
         _workspaces = workspaces,
         _unreadNotificationCount = unreadNotificationCount,
@@ -67,6 +69,7 @@ class AxShellContext {
         _realtimeNotice = realtimeNotice;
 
   final AxNavigation navigation;
+  final AxSessionCatalogs? catalogs;
   final List<AxSpace> _spaces;
   final ValueListenable<List<AxSpace>>? spaceListenable;
   List<AxSpace> get spaces => spaceListenable?.value ?? _spaces;

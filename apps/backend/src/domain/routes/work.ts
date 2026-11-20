@@ -1,6 +1,7 @@
 export {
   createOrGetRun,
   handleValidateWorkRequest,
+  handleListEligibleWorkers,
   handleCreateWorkRequest,
 } from "./work-creation.js";
 export {

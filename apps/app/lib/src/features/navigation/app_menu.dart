@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../brand.dart';
 import '../../navigation/ax_navigation.dart';
 import 'ax_shell_context.dart';
+import '../../ax/sync/ax_query_builder.dart';
 
 /// Global application menu anchor (⋯) providing destinations, preferences,
 /// product information, and session logout.
@@ -132,10 +133,21 @@ class GlobalAppMenu extends StatelessWidget {
             onNavigateTo(const AxNavigation.workspaces());
             if (compact) Scaffold.maybeOf(context)?.closeDrawer();
           },
-          child: const Text(
-            'Workspaces',
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
-          ),
+          child: shellContext.catalogs == null
+              ? const Text('Workspaces',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500))
+              : AxQueryBuilder<bool>(
+                  engine: shellContext.catalogs!.engine,
+                  query: shellContext.catalogs!.workersUxEnabled,
+                  builder: (context, state) => Text(
+                      state.data == null
+                          ? 'Loading…'
+                          : state.data == true
+                              ? 'Workers'
+                              : 'Workspaces',
+                      style: const TextStyle(
+                          fontSize: 12.5, fontWeight: FontWeight.w500)),
+                ),
         ),
         MenuItemButton(
           style: itemStyle(),

@@ -4,7 +4,7 @@ import { basicThread, member, user } from "./helpers/seed";
 import { acceptWorkerTarget } from "../../src/domain/worker-eligibility.js";
 import { BUILTIN_WORKFLOWS } from "@syntila/core";
 import { resolveWorkerTargetBindings, recheckWorkerTarget } from "../../src/domain/routes/worker-target-bindings.js";
-import { handleValidateWorkRequest } from "../../src/domain/routes/work-creation.js";
+import { handleListEligibleWorkers, handleValidateWorkRequest } from "../../src/domain/routes/work-creation.js";
 
 async function fixture() {
   const f = await pgD1();
@@ -86,8 +86,11 @@ describe("Worker-targeted eligibility", () => {
         spaceRoles: { sp: "owner" }, sessionId: "test", clientType: "web",
       }) } as never;
       const request = () => new Request("https://test/api", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workflowId: "chat", workerId: "worker-alice" }) });
+      const eligible = () => handleListEligibleWorkers(new Request("https://test/api?workflowId=chat"), env, "th");
+      expect(await (await eligible()).json()).toEqual({ workflowId: "chat", workerIds: ["worker-alice"] });
       expect(await (await handleValidateWorkRequest(request(), env, "th")).json()).toMatchObject({ eligible: true, issues: [] });
       await f.sqlite.exec("UPDATE worker_agent_sessions SET lease_expires_at=now()-interval '1 second'");
+      expect(await (await eligible()).json()).toEqual({ workflowId: "chat", workerIds: [] });
       expect(await (await handleValidateWorkRequest(request(), env, "th")).json()).toMatchObject({ eligible: false, issues: [{ code: "worker_offline" }] });
     } finally {
       if (prior === undefined) delete process.env.SYNTILA_FEATURE_FLAGS;

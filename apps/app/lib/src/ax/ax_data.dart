@@ -129,6 +129,10 @@ abstract interface class AxWorkersUxFeatureSource {
   Future<bool> workersUxEnabled();
 }
 
+abstract interface class AxEligibleWorkersSource {
+  Future<List<String>> loadEligibleWorkerIds(String threadId, String workflowId);
+}
+
 abstract interface class AxWorkerManagementSource {
   Future<List<({String id, String name})>> loadWorkerTypes();
   Future<void> createWorkerInstance(String typeId, String name);
@@ -144,6 +148,7 @@ abstract class _AxApiClientCore
         AxConditionalReadCache,
         AxWorkerIdentityFeatureSource,
         AxWorkersUxFeatureSource,
+        AxEligibleWorkersSource,
         AxWorkerManagementSource {
   _AxApiClientCore(
       {String? baseUrl, http.Client? client, String? backendBaseUrl})

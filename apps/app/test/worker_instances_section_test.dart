@@ -7,9 +7,53 @@ import 'package:http/testing.dart';
 import 'package:syntila_app/src/features/workspace/worker_instances_section.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
 import 'package:syntila_app/src/ax/sync/ax_session_catalogs.dart';
+import 'package:syntila_app/src/features/navigation/app_menu.dart';
+import 'package:syntila_app/src/features/navigation/breadcrumb.dart';
+import 'package:syntila_app/src/features/navigation/ax_shell_context.dart';
+import 'package:syntila_app/src/navigation/ax_navigation.dart';
 import 'package:syntila_protocol/syntila_protocol.dart';
 
 void main() {
+  testWidgets(
+      'navigation names the Workers destination when the rollout is enabled',
+      (tester) async {
+    final source = _UxSource();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: GlobalAppMenu(
+      shellContext: AxShellContext(
+          navigation: const AxNavigation.workspaces(),
+          spaces: const [],
+          catalogs: AxSessionCatalogs(source)),
+      onNavigateTo: (_) {},
+      onOpenAbout: () {},
+      onOpenExternal: (_) {},
+      onLogout: () {},
+    ))));
+    await tester.tap(find.byTooltip('Application menu'));
+    await tester.pumpAndSettle();
+    expect(find.text('Workers'), findsOneWidget);
+    expect(find.text('Workspaces'), findsNothing);
+  });
+
+  testWidgets('Workers breadcrumb also covers old Workspace detail links',
+      (tester) async {
+    final source = _UxSource();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: AppBreadcrumb(
+      shellContext: AxShellContext(
+          navigation: const AxNavigation.workspace('old-id'),
+          spaces: const [],
+          catalogs: AxSessionCatalogs(source)),
+      onNavigateTo: (_) {},
+      inkColor: Colors.black,
+      mutedInk: Colors.grey,
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text('Workers'), findsOneWidget);
+    expect(find.text('Workspaces'), findsNothing);
+  });
   test('pairing code addresses the configured backend and selected Worker',
       () async {
     final api = AxApiClient(
@@ -199,6 +243,13 @@ class _IdentitySource implements AxDataSource, AxWorkerIdentityFeatureSource {
     return [];
   }
 
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _UxSource implements AxDataSource, AxWorkersUxFeatureSource {
+  @override
+  Future<bool> workersUxEnabled() async => true;
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

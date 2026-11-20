@@ -392,7 +392,24 @@ extension _AxAppViews on _AxAppStateMixin {
         );
       }).toList(growable: false);
 
-  Widget _workspacesView() => ListenableBuilder(
+  Widget _workspacesView() => AxQueryBuilder<bool>(
+      engine: store.syncEngine,
+      query: store.catalogs.workersUxEnabled,
+      builder: (context, state) {
+        if (state.data == null) {
+          return state.error == null
+              ? const Center(child: CircularProgressIndicator())
+              : const Center(
+                  child: Text('Could not load Workers. Please try again.'));
+        }
+        return state.data == true
+            ? SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: WorkerInstancesSection(catalogs: store.catalogs))
+            : _legacyWorkspacesView();
+      });
+
+  Widget _legacyWorkspacesView() => ListenableBuilder(
       listenable: store.workspaces,
       builder: (context, _) => AxQueryBuilder<List<AxWorker>>(
           engine: store.syncEngine,

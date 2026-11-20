@@ -39,6 +39,7 @@ import '../features/spaces/create_space_dialog.dart';
 import '../features/spaces/archived_spaces_page.dart';
 import '../features/search/search_page.dart';
 import '../features/workspace/workspaces_page.dart';
+import '../features/workspace/worker_instances_section.dart';
 import 'ax_models.dart';
 import 'account_dialogs.dart';
 import 'account_session_label.dart';

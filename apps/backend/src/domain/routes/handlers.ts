@@ -103,6 +103,7 @@ export {
 } from "./threads.js";
 export {
   handleValidateWorkRequest,
+  handleListEligibleWorkers,
   handleCreateWorkRequest,
   handleRetryWorkRequest,
   handleGetWorkRequest,

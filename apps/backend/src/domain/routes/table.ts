@@ -362,6 +362,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
 
     // Work Requests.
     r("POST", "/api/threads/:threadId/work-requests/validate", call("handleValidateWorkRequest", p("threadId"), ctx)),
+    r("GET", "/api/threads/:threadId/eligible-workers", call("handleListEligibleWorkers", p("threadId"), ctx)),
     r("POST", "/api/threads/:threadId/work-requests", call("handleCreateWorkRequest", p("threadId"), ctx), ownReceipt),
     r("GET", "/api/threads/:threadId/work-requests", call("handleListWorkRequests", p("threadId"), ctx)),
     r("PUT", "/api/work-requests/:workRequestId/inputs/:inputId", call("handleUploadWorkRequestInput", p("workRequestId"), p("inputId"), ctx)),

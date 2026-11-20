@@ -1333,6 +1333,18 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   }
 
   @override
+  Future<List<String>> loadEligibleWorkerIds(String threadId, String workflowId) async {
+    final uri = Uri.parse('$baseUrl/threads/${Uri.encodeComponent(threadId)}/eligible-workers')
+        .replace(queryParameters: {'workflowId': workflowId});
+    final body = await _getJson(uri);
+    final ids = body['workerIds'];
+    if (ids is! List || ids.any((id) => id is! String)) {
+      throw const AxApiException('Eligible Worker response is malformed');
+    }
+    return ids.cast<String>();
+  }
+
+  @override
   Future<List<WorkerInstance>> loadWorkerInstances() async {
     if (!await workerIdentityEnabled()) return const [];
     return parseWorkerInstances(await _getJson(Uri.parse('$baseUrl/workers')));

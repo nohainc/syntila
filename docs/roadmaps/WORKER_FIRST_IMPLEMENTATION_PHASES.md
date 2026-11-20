@@ -139,9 +139,11 @@ full per-step Worker path described in P5.
 The existing Worker Instance section now offers creation from the active Type
 catalog, pairing, renaming, alias editing (stored as the existing description),
 enable/disable, credential revocation, and removal when `workers_ux` is enabled.
-It is still embedded in Workspaces; a standalone Workers page and the
-Workspace-free path are not yet implemented. Pairing alone does not overcome
-the P4 trusted Profile delivery gap.
+When `workers_ux` is enabled, the existing Workspaces navigation destination
+opens a standalone Workers view and the menu labels it Workers; old links keep
+working. Other product flows still expose Workspaces, so the Workspace-free
+path is not yet implemented. Pairing alone does not overcome the P4 trusted
+Profile delivery gap.
 
 ## P7: Canonical timeline and attribution (ADR-036) ∥ P6, P8
 

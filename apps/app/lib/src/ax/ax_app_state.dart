@@ -291,6 +291,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
       notifications.where((notification) => !notification.read).length;
   AxShellContext get _shellContext => AxShellContext(
         navigation: navigation,
+        catalogs: store.catalogs,
         spaces: store.spaces.items,
         spaceListenable: store.spaces,
         workspaceListenable: store.workspaces,

@@ -29,6 +29,8 @@ const REVIEWED_WRITERS = new Set([
   "assignment-revocation.ts",
   // Grant revocation cancels only assignments that were never accepted.
   "routes/workspaces-grants.ts",
+  // Worker-path dispatch claim: a conditional created -> dispatched write.
+  "worker-dispatch.ts",
 ]);
 
 describe("worker_assignments status writers", () => {
