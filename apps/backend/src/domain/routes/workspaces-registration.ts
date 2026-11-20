@@ -737,14 +737,14 @@ export async function handleRegisterWorkspaceFromDesktop(
   request: Request,
   env: SecurityEnv,
 ): Promise<Response> {
-  const closed = await legacyClosedResponse(env, "registration");
-  if (closed) return closed;
   const { session, now } = await findDesktopHumanSession(
     request,
     env,
     undefined,
     DESKTOP_WORKSPACE_AUDIENCE,
   );
+  const closed = await legacyClosedResponse(env, "registration");
+  if (closed) return closed;
   const read = await readOrInvalid(request, RegisterWorkspaceSchema, () =>
     json({ error: "Workspace registration details are invalid" }, { status: 400 }),
   );

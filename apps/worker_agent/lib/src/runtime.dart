@@ -55,7 +55,7 @@ class AgentRuntime {
       onSync: _reconcile,
       onMessage: _onMessage,
       onSession: engine is ArtifactLauncher ? engine.holder.update : null,
-      readiness: () async => (await this.readiness.evaluate()).toJson(),
+      readiness: () async => (await readiness.evaluate()).toJson(),
     );
   }
 

@@ -16,8 +16,6 @@ export async function handleWorkspaceGatewayConnect(
   request: Request,
   env: SecurityEnv,
 ): Promise<Response> {
-  const closed = await legacyClosedResponse(env, "gateway");
-  if (closed) return closed;
   const requestId = requestIdFor(request);
   const url = new URL(request.url);
   const workspaceRuntimeId = url.searchParams.get("workspaceRuntimeId");
@@ -87,6 +85,11 @@ export async function handleWorkspaceGatewayConnect(
       { status: 401 },
     );
   }
+
+  // Worker Agents connect through this same route and are never affected; only
+  // the legacy Workspace runtime path closes (P10).
+  const closed = await legacyClosedResponse(env, "gateway");
+  if (closed) return closed;
 
   logStructured("info", "GW-02 runtime_authentication_started", {
     requestId,
@@ -188,8 +191,6 @@ export async function handleWorkspaceRuntimeTransport(
   request: Request,
   env: SecurityEnv,
 ): Promise<Response> {
-  const closed = await legacyClosedResponse(env, "gateway");
-  if (closed) return closed;
   if (!env.SYNTILA_WORKSPACE_GATEWAY)
     return json(
       { error: "Workspace Gateway is not configured" },
@@ -210,6 +211,8 @@ export async function handleWorkspaceRuntimeTransport(
       { error: "Workspace runtime credential required" },
       { status: 401 },
     );
+  const closed = await legacyClosedResponse(env, "gateway");
+  if (closed) return closed;
   let workspaceId: string | null = null;
   const authenticator = new WorkspaceRuntimeAuthenticator(env.SYNTILA_DB);
   if (url.pathname === "/api/workspace-runtime/sessions") {
