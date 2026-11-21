@@ -18,6 +18,15 @@ const defaultModel = z
   .min(1, "defaultModel must not be empty")
   .max(200, "defaultModel must be at most 200 characters");
 
+const visibilityId = z.string().min(1).max(200);
+export const WorkerVisibilitySchema = z.object({
+  hiddenModels: z.array(visibilityId).max(200).optional(),
+  hiddenEfforts: z
+    .record(visibilityId, z.array(visibilityId).max(200))
+    .optional(),
+});
+export type WorkerVisibility = z.infer<typeof WorkerVisibilitySchema>;
+
 /** A Worker Instance as the API returns it. */
 export const WorkerInstanceSchema = z.object({
   id: z.string(),
@@ -30,11 +39,19 @@ export const WorkerInstanceSchema = z.object({
   enabled: z.boolean(),
   /** Observed: a connection is open. Never set by the owner. */
   online: z.boolean(),
+  /** Whether an active (non-revoked) device credential is paired. */
+  paired: z.boolean().optional(),
   /** Observed: the Worker passed its readiness checks. Never set by the owner. */
   ready: z.boolean(),
   /** False when no readiness observation is available for this execution path. */
   readinessKnown: z.boolean().optional(),
   defaultModel: z.string().nullable(),
+  visibility: WorkerVisibilitySchema.optional(),
+  /** Models and efforts the paired Worker offers (normalized, versioned); absent when none are known. */
+  executionOptions: z.unknown().optional(),
+  /** `ok`, or why the Agent could not capture models at its last start (absent: never reported). */
+  modelsStatus: z.string().optional(),
+  modelsReportedAt: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   /** Set when the Worker was removed (tombstone); such a Worker never changes again. */
@@ -67,6 +84,7 @@ export const UpdateWorkerRequestSchema = z
     description: workerDescription.optional(),
     enabled: z.boolean({ error: "enabled must be true or false" }).optional(),
     defaultModel: defaultModel.nullable().optional(),
+    visibility: WorkerVisibilitySchema.optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
     message: "Provide at least one field to change",

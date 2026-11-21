@@ -53,6 +53,9 @@ class _AxQueryBuilderState<T> extends State<AxQueryBuilder<T>> {
         _pendingState = null;
         if (mounted && next != null) setState(() => state = next);
       });
+      // A post-frame callback does not request a frame by itself; without
+      // this an idle window shows the new data only at its next repaint.
+      WidgetsBinding.instance.ensureVisualUpdate();
     }, fireImmediately: false);
     // Attach query state/error handling locally, never to the complete shell.
     if (widget.ensure) {

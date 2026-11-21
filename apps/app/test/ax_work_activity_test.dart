@@ -45,6 +45,56 @@ Map<String, dynamic> activityEvent({
     };
 
 void main() {
+  test('renders profile milestone keys as readable activity titles', () {
+    for (final (key, expected) in [
+      ('provider_working', 'Working'),
+      ('provider_tool_started', 'Using a tool'),
+      ('provider_response_received', 'Response received'),
+      ('provider_finalizing', 'Finishing up'),
+      ('provider_unknown_milestone', 'Working'),
+    ]) {
+      final event = activityEvent(
+          eventId: key,
+          streamSequence: 0,
+          activitySequence: 1,
+          type: 'message.updated',
+          status: 'updated',
+          title: key);
+      (event['payload'] as Map<String, dynamic>)['details'] = {
+        'source': 'profile.milestone'
+      };
+      expect(
+          AxWorkActivity.fromRealtimeEvent(event, threadId: 'thread-1').title,
+          expected);
+    }
+    final regular = activityEvent(
+        eventId: 'regular',
+        streamSequence: 0,
+        activitySequence: 1,
+        type: 'tool.started',
+        status: 'running',
+        title: 'Search the web');
+    expect(
+        AxWorkActivity.fromRealtimeEvent(regular, threadId: 'thread-1').title,
+        'Search the web');
+  });
+  test('accepts activity from a Worker-first Space stream', () {
+    final store = AxWorkActivityStore();
+    final event = activityEvent(
+        eventId: 'worker-event',
+        streamSequence: 0,
+        activitySequence: 1,
+        type: 'tool.started',
+        status: 'running')
+      ..remove('workspaceId')
+      ..remove('workspaceRuntimeId')
+      ..['version'] = '1.1'
+      ..['spaceId'] = 'space-1'
+      ..['stream'] = {'kind': 'space', 'id': 'space-1'};
+    expect(store.handle(event, threadId: 'thread-1'), isTrue);
+    expect(store.forAssignment('assignment-1').single.title,
+        'Running repository checks');
+  });
   test('deduplicates replay and updates the matching tool row', () {
     final store = AxWorkActivityStore();
     expect(

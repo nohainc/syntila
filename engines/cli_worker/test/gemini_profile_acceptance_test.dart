@@ -311,7 +311,7 @@ void main() {
         stateless.activities
             .where((item) => item.eventType == 'message.updated')
             .map((item) => item.title),
-        containsAll(['provider_response_received', 'provider_working']),
+        containsAll(['Response received', 'Working']),
       );
 
       final statelessWithContext = await exchange(

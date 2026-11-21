@@ -12,6 +12,7 @@ import 'artifacts.dart';
 import 'cli_engine.dart';
 import 'config.dart';
 import 'connection.dart';
+import 'device.dart';
 import 'engine.dart';
 import 'folders.dart';
 import 'gui_manifest.dart';
@@ -43,8 +44,9 @@ class _Args {
     'auto-start',
     'no-service',
     'keep-data',
-    'write',
+    'read-only',
     'pairing-code-stdin',
+    'check-server',
   };
 
   factory _Args.parse(List<String> args) {
@@ -139,19 +141,21 @@ class WorkerCli {
 syntila-connect <command> [options]
 
   status [--json]          registration, connection, journal and service state
-  pair --pairing-code CODE | --pairing-code-stdin [--name NAME] [--auto-start] [--no-service]
+  pair --pairing-code CODE | --pairing-code-stdin [--auto-start] [--no-service]
   unpair --yes [--keep-data]
   run                      run the Agent in the foreground (the service does this)
+  models refresh           ask the running service to re-read the models this machine's
+                           CLI offers and publish them (waits for the result)
   service status | start | stop | restart | install [--auto-start] | uninstall
-  folders list             folders this Worker may use
-  folders add PATH [--write]                grant a folder (read only unless --write)
-  folders remove ID                         stop this Worker from using a folder
+  folders list             folders Workers on this machine may use
+  folders add PATH [--read-only]            grant a folder (read and write unless --read-only)
+  folders remove ID                         stop Workers on this machine from using a folder
   folders work-root [PATH]                  show or set the Work Root
   mcp-worker list | import PATH | test ID | approve ID VERSION MANIFEST_DIGEST | remove ID MANIFEST_DIGEST
-  config show              show settings
-  config set KEY VALUE     maxConcurrent, autoStart, logLevel
-  logs [--lines N]         the Agent's own log (ids and codes only)
-  rotate-credential        replace this Worker's key pair
+  device [NAME] [--json]   show or rename this device
+  logs get [--lines N]     the Agent's own log (ids and codes only)
+  logs level [LEVEL]       show or set the log level (error, warn, info, debug)
+  update-credentials       replace this Worker's key pair
   version [--json]         show the Syntila Connect version
 
 Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
@@ -190,17 +194,19 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           return await _unpair(args);
         case 'run':
           return await _runAgent(args);
+        case 'models':
+          return await _models(args);
         case 'service':
           return await _service(args);
         case 'folders':
           return await _foldersCommand(args);
         case 'mcp-worker':
           return await _mcpWorker(args);
-        case 'config':
-          return await _config(args);
+        case 'device':
+          return await _deviceCommand(args);
         case 'logs':
           return await _logs(args);
-        case 'rotate-credential':
+        case 'update-credentials':
           return await _rotate(args);
         case 'version':
           return _version(args);
@@ -233,6 +239,11 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     environment: environment,
     operatingSystem: operatingSystem,
   );
+
+  String get _homeDir =>
+      environment['HOME'] ?? environment['USERPROFILE'] ?? '.';
+
+  String get _defaultWorkRoot => p.join(_homeDir, 'Documents', 'Syntila');
 
   /// All installed Worker directories under the application data root, sorted
   /// by directory name.
@@ -271,12 +282,21 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     );
   }
 
-  /// Root directory for machine-wide MCP Workers (`--data-dir` when explicitly
-  /// set for sandboxed tests, otherwise the host application data root).
-  Directory _mcpMachineRoot(_Args args) {
+  /// Root directory for machine-wide resources such as folders and MCP Workers
+  /// (the application data root; a `--data-dir` outside a `Workers` folder is
+  /// its own root, for sandboxed tests).
+  Directory _machineRoot(_Args args) {
     final dir =
         args.options['data-dir'] ?? environment['SYNTILA_WORKER_DATA_DIR'];
-    return Directory(dir ?? _appDataRoot);
+    if (dir == null) return Directory(_appDataRoot);
+    // A Worker's own directory (`<root>/Workers/<id>`, what the service passes)
+    // is not the machine root: folders and the device id are shared by every
+    // Worker on this computer and live in `<root>`.
+    final worker = Directory(dir);
+    if (p.basename(p.dirname(worker.path)) == 'Workers') {
+      return Directory(p.dirname(p.dirname(worker.path)));
+    }
+    return worker;
   }
 
   Future<AgentIdentity> _identity(AgentPaths paths) async {
@@ -287,13 +307,13 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
 
   ServiceSpec _spec(
     AgentIdentity identity,
-    AgentPaths paths,
-    AgentConfig config,
-  ) => ServiceSpec(
+    AgentPaths paths, {
+    bool autoStart = false,
+  }) => ServiceSpec(
     workerId: identity.workerId,
     executable: executable ?? Platform.resolvedExecutable,
     dataDir: paths.root.path,
-    autoStart: config.autoStart,
+    autoStart: autoStart,
   );
 
   ServiceManager get _services => serviceManagerFor(
@@ -356,23 +376,72 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       paths: paths,
       keyStore: _keys(paths),
       api: apiFor?.call(code.serverUrl),
-      workerName: args.options['name'],
     );
-    var config = await AgentConfig.load(paths.configFile);
-    if (args.flags.contains('auto-start')) {
-      config = config.set('autoStart', 'true');
-    }
-    await config.save(paths.configFile);
+    final machineRoot = _machineRoot(args);
+    await _deviceStore(machineRoot).ensure();
+    await WorkRoot(
+      _workRootFile(machineRoot),
+      _folders(machineRoot),
+    ).ensureDefault(_defaultWorkRoot);
+    final autoStart = args.flags.contains('auto-start');
     out.writeln('Paired Worker ${identity.workerId}.');
     if (!args.flags.contains('no-service')) {
-      await _services.install(_spec(identity, paths, config));
+      await _services.install(_spec(identity, paths, autoStart: autoStart));
       out.writeln(
-        config.autoStart
+        autoStart
             ? 'The service is installed and starts automatically.'
-            : 'The service is installed. It does not start by itself; run `syntila-connect config set autoStart true` to opt in.',
+            : 'The service is installed. It does not start by itself; run `syntila-connect service install --auto-start` to opt in.',
       );
     }
     return 0;
+  }
+
+  /// `models refresh`: leaves a request for the running service, then waits
+  /// for it to write the models it read (or the reason it could not).
+  Future<int> _models(_Args args) async {
+    if (args.positionals.isEmpty || args.positionals.first != 'refresh') {
+      throw const FormatException('usage: models refresh');
+    }
+    final paths = _paths(args);
+    await _identity(paths);
+    String? stamp() {
+      try {
+        final data = jsonDecode(paths.modelsFile.readAsStringSync());
+        return data is Map ? data['capturedAt']?.toString() : null;
+      } on Object {
+        return null;
+      }
+    }
+
+    final before = stamp();
+    await paths.modelsRequestFile.parent.create(recursive: true);
+    await paths.modelsRequestFile.writeAsString(
+      DateTime.now().toUtc().toIso8601String(),
+      flush: true,
+    );
+    final deadline = DateTime.now().add(const Duration(seconds: 75));
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (stamp() != before) {
+        final data = jsonDecode(await paths.modelsFile.readAsString());
+        final status = data is Map ? data['status']?.toString() : null;
+        if (status == 'ok') {
+          out.writeln('Models read and published.');
+          return 0;
+        }
+        err.writeln('Could not read models: $status');
+        return 1;
+      }
+    }
+    try {
+      await paths.modelsRequestFile.delete();
+    } on Object {
+      // Already picked up.
+    }
+    err.writeln(
+      'No answer. Is the service running? Start it, then try again.',
+    );
+    return 1;
   }
 
   Future<int> _runAgent(_Args args) async {
@@ -382,10 +451,13 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     final api =
         apiFor?.call(identity.serverUrl) ?? ServerApi(identity.serverUrl);
     final settings = await AgentConfig.load(paths.configFile);
+    final machineRoot = _machineRoot(args);
+    final device = await _deviceStore(machineRoot).ensure();
+    final machineFolders = _folders(machineRoot, deviceId: device.deviceId);
     final resolvedWorkRoot = await WorkRoot(
-      paths.workRootFile,
-      _folders(paths),
-    ).root();
+      _workRootFile(machineRoot),
+      machineFolders,
+    ).ensureDefault(_defaultWorkRoot);
     const roots = String.fromEnvironment(
       'SYNTILA_PROFILE_TRUST_ROOTS',
       defaultValue: '{}',
@@ -394,7 +466,6 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       paths.profilesDir,
       SignedProfileVerifier(parseProfileTrustRoots(roots)),
     );
-    final mcpRoot = _mcpMachineRoot(args);
     final runtime = await AgentRuntime.open(
       paths: paths,
       identity: identity,
@@ -402,21 +473,25 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       engine:
           engineFactory?.call(paths) ??
           _withArtifacts(
-            paths,
+            machineRoot,
             identity,
             _defaultEngine(
               paths,
               identity,
               settings,
               profiles,
-              mcpRoot: mcpRoot,
+              mcpRoot: machineRoot,
               workRootPath: resolvedWorkRoot,
+              folders: machineFolders,
             ),
+            deviceId: device.deviceId,
           ),
       api: api,
       profiles: profiles,
-      plugins: _mcpAllowList(mcpRoot),
-      mcpWorkerRunner: _mcpRunner(mcpRoot),
+      plugins: _mcpAllowList(machineRoot),
+      mcpWorkerRunner: _mcpRunner(machineRoot),
+      device: device,
+      folders: machineFolders,
       clientVersion: agentVersion,
     );
     await recoverPendingRotation(
@@ -450,7 +525,14 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     for (final subscription in subscriptions) {
       await subscription.cancel();
     }
+    final removedByServer = runtime.connection.serverRemoved;
     await runtime.stop();
+    if (removedByServer) {
+      // The Worker was removed or unpaired in the web app: delete it here too.
+      err.writeln('The Worker was removed in the app. Deleting it here.');
+      await uninstallAgent(paths: paths, keyStore: keyStore);
+      await _services.uninstall(_spec(identity, paths));
+    }
     return 0;
   }
 
@@ -463,10 +545,10 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     ProfileCache cache, {
     required Directory mcpRoot,
     String? workRootPath,
+    AllowedFolders? folders,
   }) {
     final engineExe = _resolveEngineExecutable();
     if (engineExe == null) return UnconfiguredEngineLauncher();
-    final home = environment['HOME'] ?? environment['USERPROFILE'] ?? '.';
     return CliEngineLauncher(
       supervisor: CliWorkerEngineSupervisor(
         engineExecutable: engineExe,
@@ -478,10 +560,8 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       mcpWorkerRunner: _mcpRunner(mcpRoot),
       workerId: identity.workerId,
       stateDirectory: paths.sessionsDir,
-      workRoot: Directory(
-        workRootPath ?? '$home/Syntila Work/${identity.workerId}',
-      ),
-      maxConcurrent: config.maxConcurrent,
+      workRoot: Directory(workRootPath ?? _defaultWorkRoot),
+      folders: folders,
       resolveProfile: (payload) async {
         final digest = payload['profileDigest'];
         final type = payload['workerTypeId'];
@@ -513,16 +593,17 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
   /// Adds the file side of a step: artifact inputs and outputs, with the
   /// Allowed Folders re-checked. A launcher that refuses work stays as it is.
   EngineLauncher _withArtifacts(
-    AgentPaths paths,
+    Directory machineRoot,
     AgentIdentity identity,
-    EngineLauncher inner,
-  ) {
+    EngineLauncher inner, {
+    String? deviceId,
+  }) {
     if (inner is UnconfiguredEngineLauncher) return inner;
-    final folders = _folders(paths);
+    final folders = _folders(machineRoot, deviceId: deviceId);
     return ArtifactLauncher(
       inner: inner,
       folders: folders,
-      workRoot: WorkRoot(paths.workRootFile, folders),
+      workRoot: WorkRoot(_workRootFile(machineRoot), folders),
       client: ArtifactClient(identity.serverUrl),
       holder: AgentSessionHolder(),
       workerId: identity.workerId,
@@ -535,8 +616,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       case 'status':
         final paths = _paths(args);
         final identity = await _identity(paths);
-        final config = await AgentConfig.load(paths.configFile);
-        final service = await _services.status(_spec(identity, paths, config));
+        final service = await _services.status(_spec(identity, paths));
         final report = {
           'workerId': identity.workerId,
           'service': service.state.name,
@@ -555,23 +635,24 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       case 'install':
         final paths = _paths(args);
         final identity = await _identity(paths);
-        var config = await AgentConfig.load(paths.configFile);
-        if (args.flags.contains('auto-start')) {
-          config = config.set('autoStart', 'true');
-        }
-        await config.save(paths.configFile);
-        await _services.install(_spec(identity, paths, config));
+        final machineRoot = _machineRoot(args);
+    await _deviceStore(machineRoot).ensure();
+    await WorkRoot(
+      _workRootFile(machineRoot),
+      _folders(machineRoot),
+    ).ensureDefault(_defaultWorkRoot);
+    final autoStart = args.flags.contains('auto-start');
+        await _services.install(_spec(identity, paths, autoStart: autoStart));
         out.writeln(
-          config.autoStart
+          autoStart
               ? 'The service is installed and starts automatically.'
-              : 'The service is installed. It does not start by itself; run `syntila-connect config set autoStart true` to opt in.',
+              : 'The service is installed. It does not start by itself; run `syntila-connect service install --auto-start` to opt in.',
         );
         return 0;
       case 'uninstall':
         final paths = _paths(args);
         final identity = await _identity(paths);
-        final config = await AgentConfig.load(paths.configFile);
-        await _services.uninstall(_spec(identity, paths, config));
+        await _services.uninstall(_spec(identity, paths));
         out.writeln('The background service was removed.');
         return 0;
       default:
@@ -587,8 +668,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
   Future<int> _control(String action, _Args args) async {
     final paths = _paths(args);
     final identity = await _identity(paths);
-    final config = await AgentConfig.load(paths.configFile);
-    final spec = _spec(identity, paths, config);
+    final spec = _spec(identity, paths);
     final services = _services;
     final current = await services.status(spec);
     if (current.state == ServiceState.notInstalled) {
@@ -596,8 +676,16 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         'no background service is installed for this Worker; run `syntila-connect service install` or use `run`',
       );
     }
-    if (action != 'start') await services.stop(spec);
-    if (action != 'stop') await services.start(spec);
+    switch (action) {
+      case 'start':
+        await services.start(spec);
+        break;
+      case 'stop':
+        await services.stop(spec);
+        break;
+      default:
+        await services.restart(spec);
+    }
     out.writeln(switch (action) {
       'start' => 'The service was started.',
       'stop' => 'The service was stopped.',
@@ -607,10 +695,25 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
   }
 
   Future<({Map<String, Object?> report, bool hasJournalProblem})?>
-  _workerStatusReport(AgentPaths paths) async {
+  _workerStatusReport(
+    AgentPaths paths, {
+    DeviceInfo? device,
+    bool checkServer = false,
+  }) async {
     final identity = await AgentIdentity.load(paths.identityFile);
     if (identity == null) return null;
     final running = await AgentLock.isHeld(paths.lockFile);
+    if (!running &&
+        await _removedOnServer(identity, paths, force: checkServer)) {
+      // Removed or unpaired in the app while this service was stopped.
+      await uninstallAgent(paths: paths, keyStore: _keys(paths));
+      try {
+        await _services.uninstall(_spec(identity, paths));
+      } on Object {
+        // Nothing installed.
+      }
+      return null;
+    }
     Map<String, Object?>? state;
     if (await paths.stateFile.exists()) {
       try {
@@ -634,11 +737,20 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         journalProblem = '$error';
       }
     }
-    final config = await AgentConfig.load(paths.configFile);
-    final service = await _services.status(_spec(identity, paths, config));
+    Object? models;
+    try {
+      if (await paths.modelsFile.exists()) {
+        models = jsonDecode(await paths.modelsFile.readAsString());
+      }
+    } on Object {
+      models = null;
+    }
+    final service = await _services.status(_spec(identity, paths));
     final report = <String, Object?>{
       'workerId': identity.workerId,
       'workerName': identity.displayName,
+      if (device != null) 'deviceId': device.deviceId,
+      if (device != null) 'deviceName': device.deviceName,
       if (identity.workerType != null) 'workerType': identity.workerType,
       'server': identity.serverUrl,
       'registration': 'paired',
@@ -649,11 +761,18 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       'autoStart': service.autoStart,
       if (counts.isNotEmpty) 'journal': counts,
       if (journalProblem != null) 'journalProblem': journalProblem,
+      if (models is Map) 'models': models,
     };
     return (report: report, hasJournalProblem: journalProblem != null);
   }
 
   Future<int> _status(_Args args) async {
+    final machineRoot = _machineRoot(args);
+    final device = await _deviceStore(machineRoot).ensure();
+    await WorkRoot(
+      _workRootFile(machineRoot),
+      _folders(machineRoot, deviceId: device.deviceId),
+    ).ensureDefault(_defaultWorkRoot);
     final explicitDir =
         args.options['data-dir'] ?? environment['SYNTILA_WORKER_DATA_DIR'];
     final explicitWorker = args.options['worker'];
@@ -661,13 +780,19 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
 
     if (explicitDir != null || explicitWorker != null) {
       final paths = _paths(args);
-      final status = await _workerStatusReport(paths);
+      final status = await _workerStatusReport(
+        paths,
+        device: device,
+        checkServer: args.flags.contains('check-server'),
+      );
       if (status == null) {
         if (asJson) {
           out.writeln(
-            const JsonEncoder.withIndent(
-              '  ',
-            ).convert({'workers': const <Object>[]}),
+            const JsonEncoder.withIndent('  ').convert({
+              'deviceId': device.deviceId,
+              'deviceName': device.deviceName,
+              'workers': const <Object>[],
+            }),
           );
         } else {
           out.writeln('Not paired.');
@@ -690,7 +815,11 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     final reports = <Map<String, Object?>>[];
     var anyProblem = false;
     for (final paths in installed) {
-      final status = await _workerStatusReport(paths);
+      final status = await _workerStatusReport(
+        paths,
+        device: device,
+        checkServer: args.flags.contains('check-server'),
+      );
       if (status != null) {
         reports.add(status.report);
         if (status.hasJournalProblem) anyProblem = true;
@@ -700,9 +829,11 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     if (reports.isEmpty) {
       if (asJson) {
         out.writeln(
-          const JsonEncoder.withIndent(
-            '  ',
-          ).convert({'workers': const <Object>[]}),
+          const JsonEncoder.withIndent('  ').convert({
+            'deviceId': device.deviceId,
+            'deviceName': device.deviceName,
+            'workers': const <Object>[],
+          }),
         );
         return 0;
       }
@@ -712,7 +843,11 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     if (asJson) {
       final payload = reports.length == 1
           ? {...reports.single, 'workers': reports}
-          : {'workers': reports};
+          : {
+              'deviceId': device.deviceId,
+              'deviceName': device.deviceName,
+              'workers': reports,
+            };
       out.writeln(const JsonEncoder.withIndent('  ').convert(payload));
       return anyProblem ? 1 : 0;
     }
@@ -726,46 +861,57 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
 
   Future<int> _logs(_Args args) async {
     final paths = _paths(args);
-    if (!await paths.logFile.exists()) {
-      out.writeln('No log yet.');
-      return 0;
+    final action = args.positionals.isEmpty ? 'get' : args.positionals.first;
+    switch (action) {
+      case 'get':
+        if (args.positionals.length > 1) {
+          throw const FormatException('usage: logs get [--lines N]');
+        }
+        if (!await paths.logFile.exists()) {
+          out.writeln('No log yet (${paths.logFile.path}).');
+          return 0;
+        }
+        final lines = int.tryParse(args.options['lines'] ?? '') ?? 50;
+        final all = await paths.logFile.readAsLines();
+        for (final line in all.skip(
+          all.length > lines ? all.length - lines : 0,
+        )) {
+          out.writeln(line);
+        }
+        return 0;
+      case 'level':
+        if (args.positionals.length > 2) {
+          throw const FormatException(
+            'usage: logs level [error|warn|info|debug]',
+          );
+        }
+        var config = await AgentConfig.load(paths.configFile);
+        if (args.positionals.length == 1) {
+          out.writeln(config.logLevel);
+          return 0;
+        }
+        config = config.set('logLevel', args.positionals[1]);
+        await config.save(paths.configFile);
+        out.writeln('Saved. Log level applies the next time the Agent starts.');
+        return 0;
+      default:
+        throw const FormatException('usage: logs get [--lines N] | level [LEVEL]');
     }
-    final lines = int.tryParse(args.options['lines'] ?? '') ?? 50;
-    final all = await paths.logFile.readAsLines();
-    for (final line in all.skip(all.length > lines ? all.length - lines : 0)) {
-      out.writeln(line);
-    }
-    return 0;
   }
 
-  Future<int> _config(_Args args) async {
-    final paths = _paths(args);
-    final action = args.positionals.isEmpty ? 'show' : args.positionals.first;
-    var config = await AgentConfig.load(paths.configFile);
-    if (action == 'show') {
-      out.writeln(const JsonEncoder.withIndent('  ').convert(config.toJson()));
-      return 0;
-    }
-    if (action == 'set' && args.positionals.length == 3) {
-      final key = args.positionals[1];
-      final value = args.positionals[2];
-      config = config.set(key, value);
-      await config.save(paths.configFile);
-      out.writeln('Saved. Settings apply the next time the Agent starts.');
-      if (key == 'autoStart') {
-        final identity = await _identity(paths);
-        await _services.install(_spec(identity, paths, config));
-      }
-      return 0;
-    }
-    throw const FormatException('usage: config show | config set KEY VALUE');
-  }
+  DeviceStore _deviceStore(Directory machineRoot) =>
+      DeviceStore(File(p.join(machineRoot.path, 'registry', 'device.json')));
 
-  AllowedFolders _folders(AgentPaths paths) => AllowedFolders(
-    paths.foldersFile,
-    home: environment['HOME'] ?? environment['USERPROFILE'] ?? '/',
-    dataRoot: _appDataRoot,
-  );
+  AllowedFolders _folders(Directory machineRoot, {String? deviceId}) =>
+      AllowedFolders(
+        File(p.join(machineRoot.path, 'registry', 'allowed-folders.json')),
+        home: environment['HOME'] ?? environment['USERPROFILE'] ?? '/',
+        dataRoot: _appDataRoot,
+        deviceId: deviceId,
+      );
+
+  File _workRootFile(Directory machineRoot) =>
+      File(p.join(machineRoot.path, 'registry', 'work-root.json'));
 
   McpWorkerAllowList _mcpAllowList(Directory mcpRoot) => McpWorkerAllowList(
     File('${mcpRoot.path}/registry/approved-mcp-workers.json'),
@@ -780,8 +926,25 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     pinsFile: File('${mcpRoot.path}/registry/mcp-worker-tool-pins.json'),
   );
 
+  Future<int> _deviceCommand(_Args args) async {
+    final store = _deviceStore(_machineRoot(args));
+    if (args.positionals.length > 1) {
+      throw const FormatException('usage: device [NAME] [--json]');
+    }
+    final info = args.positionals.isEmpty
+        ? await store.ensure()
+        : await store.setName(args.positionals.first);
+    if (args.flags.contains('json')) {
+      out.writeln(const JsonEncoder.withIndent('  ').convert(info.toJson()));
+    } else {
+      out.writeln('deviceId: ${info.deviceId}');
+      out.writeln('deviceName: ${info.deviceName}');
+    }
+    return 0;
+  }
+
   Future<int> _mcpWorker(_Args args) async {
-    final mcpRoot = _mcpMachineRoot(args);
+    final mcpRoot = _machineRoot(args);
     final list = _mcpAllowList(mcpRoot);
     final action = args.positionals.isEmpty ? 'list' : args.positionals.first;
     switch (action) {
@@ -791,7 +954,8 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           out.writeln('No MCP Workers are approved on this machine.');
         }
         for (final p in items) {
-          out.writeln('${p.id} ${p.version} ${p.digest}');
+          final suffix = p.deviceId != null ? ' ${p.deviceId}' : '';
+          out.writeln('${p.id} ${p.version} ${p.digest}$suffix');
         }
         return 0;
       case 'import':
@@ -810,10 +974,12 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           return 1;
         }
         // The owner ran this command on this machine, so this exact package is approved.
+        final importDevice = await _deviceStore(mcpRoot).ensure();
         await list.approve(
           installed.pluginId,
           installed.version,
           installed.manifestDigest,
+          deviceId: importDevice.deviceId,
         );
         out.writeln(
           'Imported and approved ${installed.pluginId} ${installed.version} ${installed.manifestDigest}',
@@ -869,10 +1035,12 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
             'usage: mcp-worker approve ID VERSION MANIFEST_DIGEST',
           );
         }
+        final approveDevice = await _deviceStore(mcpRoot).ensure();
         await list.approve(
           args.positionals[1],
           args.positionals[2],
           args.positionals[3],
+          deviceId: approveDevice.deviceId,
         );
         out.writeln(
           'Approved ${args.positionals[1]} ${args.positionals[2]} for this machine.',
@@ -898,22 +1066,34 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
   }
 
   Future<int> _foldersCommand(_Args args) async {
-    final paths = _paths(args);
-    final folders = _folders(paths);
+    final machineRoot = _machineRoot(args);
+    final device = await _deviceStore(machineRoot).ensure();
+    final folders = _folders(machineRoot, deviceId: device.deviceId);
     final action = args.positionals.isEmpty ? 'list' : args.positionals.first;
     switch (action) {
       case 'list':
-        final list = await folders.list();
+        final currentWorkRoot = await WorkRoot(
+          _workRootFile(machineRoot),
+          folders,
+        ).ensureDefault(_defaultWorkRoot);
+        final list = (await folders.list())
+            .where((f) => f['path'] != currentWorkRoot)
+            .toList();
         if (list.isEmpty) out.writeln('No folders are granted.');
         for (final f in list) {
-          out.writeln('${f['id']}  ${f['mode']}  ${f['path']}');
+          final dev = f['deviceId'];
+          out.writeln(
+            dev != null
+                ? '${f['id']}  ${f['mode']}  $dev  ${f['path']}'
+                : '${f['id']}  ${f['mode']}  ${f['path']}',
+          );
         }
         return 0;
       case 'add':
         if (args.positionals.length != 2) {
-          throw const FormatException('usage: folders add PATH [--write]');
+          throw const FormatException('usage: folders add PATH [--read-only]');
         }
-        final write = args.flags.contains('write');
+        final write = !args.flags.contains('read-only');
         final id = await folders.add(args.positionals[1], write: write);
         out.writeln('Granted (${write ? 'read and write' : 'read only'}) $id');
         return 0;
@@ -925,10 +1105,13 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         out.writeln(removed ? 'Removed.' : 'No such folder id.');
         return removed ? 0 : 1;
       case 'work-root':
-        final workRoot = WorkRoot(paths.workRootFile, folders);
+        final workRoot = WorkRoot(_workRootFile(machineRoot), folders);
         if (args.positionals.length == 1) {
-          out.writeln(await workRoot.root() ?? 'No Work Root is set.');
+          out.writeln(await workRoot.ensureDefault(_defaultWorkRoot));
           return 0;
+        }
+        if (args.positionals.length != 2) {
+          throw const FormatException('usage: folders work-root [PATH]');
         }
         await workRoot.setRoot(args.positionals[1]);
         out.writeln('Work Root set (read and write granted).');
@@ -964,9 +1147,25 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       );
     }
     final keepData = args.flags.contains('keep-data');
+    String? serverProblem;
     if (identity != null) {
-      final config = await AgentConfig.load(paths.configFile);
-      await _services.uninstall(_spec(identity, paths, config));
+      // Stop the service first: a running Worker holds the lock and its files.
+      try {
+        await _services.stop(_spec(identity, paths));
+      } on Object {
+        // Not installed or already stopped.
+      }
+      for (var i = 0; i < 20 && await AgentLock.isHeld(paths.lockFile); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      if (await AgentLock.isHeld(paths.lockFile)) {
+        throw const FormatException(
+          'The Worker is still running outside the service. Stop it and try again.',
+        );
+      }
+      // Tell the app before anything is deleted here.
+      serverProblem = await _unpairOnServer(identity, paths);
+      await _services.uninstall(_spec(identity, paths));
     }
     await uninstallAgent(
       paths: paths,
@@ -980,10 +1179,76 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     );
     if (identity != null) {
       out.writeln(
-        'Revoke or remove the Worker in the app to close it on the server.',
+        serverProblem == null
+            ? 'The Worker was unpaired in the app.'
+            : 'Could not unpair it in the app ($serverProblem). Unpair or remove the Worker there.',
       );
     }
     return 0;
+  }
+
+  /// Whether the server no longer has this Worker. A stopped service cannot be
+  /// told, so a status read asks (at most once a minute per Worker). Any
+  /// network trouble counts as "no".
+  Future<bool> _removedOnServer(
+    AgentIdentity identity,
+    AgentPaths paths, {
+    bool force = false,
+  }) async {
+    final marker = File('${paths.modelsFile.parent.path}/server-check');
+    try {
+      if (!force &&
+          await marker.exists() &&
+          DateTime.now().difference(await marker.lastModified()) <
+              const Duration(seconds: 60)) {
+        return false;
+      }
+      await marker.parent.create(recursive: true);
+      await marker.writeAsString(DateTime.now().toUtc().toIso8601String());
+    } on Object {
+      return false;
+    }
+    final api =
+        apiFor?.call(identity.serverUrl) ?? ServerApi(identity.serverUrl);
+    try {
+      await api.nonce(identity.workerId).timeout(const Duration(seconds: 5));
+      return false;
+    } on ServerRefusal catch (refusal) {
+      return refusal.status == 404;
+    } on Object {
+      return false;
+    } finally {
+      api.close();
+    }
+  }
+
+  /// Asks the server to end this Worker's pairing. Best effort: a Worker that
+  /// is already gone from the server counts as done. Returns null on success,
+  /// otherwise a short reason.
+  Future<String?> _unpairOnServer(AgentIdentity identity, AgentPaths paths) async {
+    final api =
+        apiFor?.call(identity.serverUrl) ?? ServerApi(identity.serverUrl);
+    try {
+      final key = await _keys(paths).load();
+      if (key == null) return 'no key';
+      final nonce = await api.nonce(identity.workerId);
+      final signature = await signMessage(
+        key,
+        actionMessage('unpair', identity.workerId, nonce.nonceId, nonce.nonce),
+      );
+      await api.unpair(
+        workerId: identity.workerId,
+        nonceId: nonce.nonceId,
+        signature: signature,
+      );
+      return null;
+    } on ServerRefusal catch (refusal) {
+      return refusal.status == 404 ? null : '${refusal.status} ${refusal.message}';
+    } on Object catch (error) {
+      return '${error.runtimeType}';
+    } finally {
+      api.close();
+    }
   }
 
   int _version(_Args args) {

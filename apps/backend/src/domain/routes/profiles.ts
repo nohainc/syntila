@@ -34,6 +34,7 @@ export async function handleListWorkspaceWorkerInventory(
             i.engine_version, i.profile_definition_id,
             i.profile_release_version, i.provider_tool_name,
             i.provider_tool_version, i.last_seen_at,
+            lwm.worker_instance_id,
             catalog.display_name AS catalog_display_name,
             catalog.description AS catalog_description,
             catalog.lifecycle_state AS catalog_lifecycle_state,
@@ -46,6 +47,7 @@ export async function handleListWorkspaceWorkerInventory(
             pe.shareable AS plugin_pin_shareable
        FROM workspace_worker_inventory i
        JOIN execution_workspaces ew ON ew.id = i.workspace_id
+       LEFT JOIN legacy_worker_mapping lwm ON lwm.legacy_worker_id = i.worker_id
        LEFT JOIN worker_catalog catalog ON catalog.worker_type_id = i.worker_type_id
        LEFT JOIN workspace_worker_plugin_enablements pe
          ON pe.workspace_id = i.workspace_id AND pe.plugin_ref = i.worker_type_id
@@ -146,6 +148,9 @@ function projectInventoryRow(
           row.model_profile_digest,
         ),
     id: String(row.worker_id),
+    /** The Worker Instance this inventory row was adopted into, if any. */
+    workerInstanceId:
+      row.worker_instance_id == null ? null : String(row.worker_instance_id),
     workspaceId: String(row.workspace_id),
     workspaceName: String(row.workspace_name),
     // Shared Workers belong to someone else; only owned ones may answer Chat

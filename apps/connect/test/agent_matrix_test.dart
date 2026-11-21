@@ -4,6 +4,7 @@
 import 'dart:io';
 
 import 'package:syntila_connect/syntila_connect.dart';
+import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:test/test.dart';
 
 import 'support/fake_cloud.dart';
@@ -66,6 +67,31 @@ void main() {
   );
 
   group('crash and reconnect matrix', () {
+    test('forwards Engine activity for the running assignment', () async {
+      engine.hold = true;
+      await host.startReady(engine);
+      final a = cloud.dispatch(worker.id);
+      await waitFor(() => engine.requests.containsKey(a.id));
+      engine.requests[a.id]!.onActivity!(
+        WorkerActivity(
+          requestId: 'request',
+          assignmentId: a.id,
+          executionId: 'execution',
+          workerId: 'chatgpt',
+          eventId: 'event',
+          sequence: 1,
+          timestamp: DateTime.now().toUtc().toIso8601String(),
+          eventType: 'tool.started',
+          status: 'running',
+          title: 'Reading files',
+        ),
+      );
+      await waitFor(() => a.activity.isNotEmpty);
+      expect(a.activity.single, containsPair('title', 'Reading files'));
+      expect(a.activity.single, containsPair('eventType', 'tool.started'));
+      engine.finish(a.id, const EngineOutcome(TerminalKind.completed, {}));
+      await settled(a);
+    });
     test(
       'does not report provider start when the Engine fails first',
       () async {

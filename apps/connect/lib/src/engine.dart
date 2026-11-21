@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 import 'journal.dart';
 
@@ -10,12 +11,14 @@ class EngineRequest {
     required this.assignmentId,
     required this.attemptId,
     required this.payload,
+    this.onActivity,
     this.timeout = const Duration(minutes: 30),
   });
 
   final String assignmentId;
   final String attemptId;
   final Map<String, Object?> payload;
+  final void Function(WorkerActivity activity)? onActivity;
   final Duration timeout;
 }
 
@@ -52,6 +55,22 @@ abstract class EngineLauncher {
 
   /// Whether this launcher can run work now (the Engine probe).
   Future<String?> probe();
+}
+
+/// An Engine launcher that can ask the provider CLI which models and efforts
+/// it offers (a passive probe against the Worker Type's published Profile).
+abstract interface class ModelCatalogSource {
+  /// What the provider CLI offers: `{status: 'ok', modelCatalog, ...}`, or
+  /// `{status: <short reason code>}` when it cannot be discovered. Never throws.
+  Future<Map<String, Object?>> discoverModels(Map<String, Object?> pin);
+}
+
+/// An Engine launcher that can run the Profile-owned usage command and return
+/// the provider's report verbatim (the owner's own account; never stored).
+abstract interface class UsageSource {
+  /// `{status: 'ok', output, errorOutput, exitCode, truncated}`, or
+  /// `{status: 'unavailable' | 'error', errorCode, errorMessage}`. Never throws.
+  Future<Map<String, Object?>> readUsage(Map<String, Object?> pin);
 }
 
 /// Used when no Engine adapter is installed. It fails closed: the Worker

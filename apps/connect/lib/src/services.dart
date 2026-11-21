@@ -84,6 +84,7 @@ abstract class ServiceManager {
   Future<void> install(ServiceSpec spec);
   Future<void> start(ServiceSpec spec);
   Future<void> stop(ServiceSpec spec);
+  Future<void> restart(ServiceSpec spec);
   Future<void> uninstall(ServiceSpec spec);
   Future<ServiceStatus> status(ServiceSpec spec);
 }
@@ -215,11 +216,38 @@ class LaunchdServiceManager implements ServiceManager {
     if (result.exitCode != 0 && result.exitCode != 5) {
       throw StateError('launchctl bootstrap failed (${result.exitCode})');
     }
+    final kick = await runner.run('launchctl', [
+      'kickstart',
+      '$_domain/${spec.launchdLabel}',
+    ]);
+    if (kick.exitCode != 0) {
+      throw StateError('launchctl kickstart failed (${kick.exitCode})');
+    }
   }
 
   @override
   Future<void> stop(ServiceSpec spec) async {
     await runner.run('launchctl', ['bootout', '$_domain/${spec.launchdLabel}']);
+  }
+
+  @override
+  Future<void> restart(ServiceSpec spec) async {
+    final loaded = await runner.run('launchctl', [
+      'print',
+      '$_domain/${spec.launchdLabel}',
+    ]);
+    if (loaded.exitCode == 0) {
+      final kick = await runner.run('launchctl', [
+        'kickstart',
+        '-k',
+        '$_domain/${spec.launchdLabel}',
+      ]);
+      if (kick.exitCode != 0) {
+        throw StateError('launchctl kickstart failed (${kick.exitCode})');
+      }
+      return;
+    }
+    await start(spec);
   }
 
   @override
@@ -290,6 +318,17 @@ class SystemdServiceManager implements ServiceManager {
   }
 
   @override
+  Future<void> restart(ServiceSpec spec) async {
+    final result = await runner.run(
+      'systemctl',
+      _args(['restart', spec.systemdName]),
+    );
+    if (result.exitCode != 0) {
+      throw StateError('systemctl restart failed (${result.exitCode})');
+    }
+  }
+
+  @override
   Future<void> uninstall(ServiceSpec spec) async {
     await stop(spec);
     await runner.run('systemctl', _args(['disable', spec.systemdName]));
@@ -350,6 +389,12 @@ class WindowsServiceManager implements ServiceManager {
   @override
   Future<void> stop(ServiceSpec spec) async {
     await _task(spec, 'stop');
+  }
+
+  @override
+  Future<void> restart(ServiceSpec spec) async {
+    await stop(spec);
+    await start(spec);
   }
 
   @override

@@ -15,7 +15,6 @@ Future<AgentIdentity> installAgent({
   required AgentPaths paths,
   required KeyStore keyStore,
   ServerApi? api,
-  String? workerName,
 }) async {
   await paths.ensure();
   final lock = await AgentLock.acquire(paths.lockFile);
@@ -37,7 +36,7 @@ Future<AgentIdentity> installAgent({
       workerId: code.workerId,
       serverUrl: code.serverUrl,
       pairedAt: pairedAt,
-      workerName: workerName ?? code.workerName ?? code.workerType,
+      workerName: code.workerName ?? code.workerType,
       workerType: code.workerType,
     );
     await paths.pairingMarker.writeAsString('pending', flush: true);
@@ -54,10 +53,8 @@ Future<AgentIdentity> installAgent({
         ),
       );
       final resolvedType = claimed.workerType ?? code.workerType;
-      final resolvedName = (workerName != null && workerName.trim().isNotEmpty)
-          ? workerName.trim()
-          : (claimed.workerName != null &&
-                claimed.workerName!.trim().isNotEmpty)
+      final resolvedName =
+          (claimed.workerName != null && claimed.workerName!.trim().isNotEmpty)
           ? claimed.workerName!.trim()
           : (code.workerName != null && code.workerName!.trim().isNotEmpty)
           ? code.workerName!.trim()

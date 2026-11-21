@@ -1,3 +1,4 @@
+import { notifyWorkerAgent, publishWorkerChanged } from "./worker-events.js";
 import { hashToken, timingSafeEqual } from "@syntila/security";
 import { dataOf, type Query, type Row } from "../platform/data.js";
 import { HttpError } from "./routes/http-security.js";
@@ -85,7 +86,7 @@ export async function verifySignature(publicKey: string, message: string, signat
 export function pairingMessage(challengeId: string, workerId: string, publicKey: string): string {
   return `syntila-worker/v1\npair\n${challengeId}\n${workerId}\n${publicKey}`;
 }
-export type AgentAction = "session" | "rotate" | "rotate-new";
+export type AgentAction = "session" | "rotate" | "rotate-new" | "unpair";
 export function actionMessage(action: AgentAction, workerId: string, nonceId: string, nonce: string, extra = ""): string {
   return `syntila-worker/v1\n${action}\n${workerId}\n${nonceId}\n${nonce}\n${extra}`;
 }
@@ -192,6 +193,10 @@ export async function revokeWorkerCredential(
     const revoked = await tx.run`UPDATE worker_credentials SET revoked_at = now(), revoked_reason = 'revoked'
        WHERE worker_instance_id = ${input.workerId} AND revoked_at IS NULL`;
     await endSession(tx, input.workerId);
+    // An unpaired Worker has no models: they belong to the pairing that reported them.
+    await tx.run`UPDATE worker_agent_sessions
+         SET models_json = NULL, models_status = NULL, models_reported_at = NULL, models_refresh_requested_at = NULL
+       WHERE worker_instance_id = ${input.workerId}`;
     await expireOpenChallenges(tx, input.workerId);
     if (revoked > 0)
       await recordWorkerAudit(tx, {
@@ -199,6 +204,10 @@ export async function revokeWorkerCredential(
         action: "credential.revoked",
       });
     return { revoked: revoked > 0 };
+  }).then(async (result) => {
+    await publishWorkerChanged(env, input.ownerUserId, input.workerId, "updated");
+    await notifyWorkerAgent(env, input.workerId, { removed: true });
+    return result;
   });
 }
 
@@ -302,6 +311,7 @@ export async function claimPairing(
       throw new HttpError(409, "This key is already in use by another Worker");
     throw error;
   }
+  await publishWorkerChanged(env, challenge.owner_user_id, challenge.worker_instance_id, "updated");
   return {
     workerId: challenge.worker_instance_id,
     workerName,
@@ -361,7 +371,7 @@ interface AuthenticatedAgent {
  */
 async function authenticateAction(
   env: Env,
-  input: { action: AgentAction; workerId: string; nonceId: string; signature: string; extra?: string },
+  input: { action: AgentAction; workerId: string; nonceId: string; signature: string; extra?: string; allowDisabled?: boolean },
 ): Promise<AuthenticatedAgent> {
   const deny = (): never => {
     throw new HttpError(401, "Invalid, expired or already used nonce or signature");
@@ -383,7 +393,7 @@ async function authenticateAction(
     input.signature,
   );
   if (!ok) return deny();
-  if (!credential.enabled) throw new HttpError(403, "The Worker is disabled");
+  if (!credential.enabled && !input.allowDisabled) throw new HttpError(403, "The Worker is disabled");
   return {
     workerId: input.workerId, ownerUserId: credential.owner_user_id, actorId: credential.actor_id,
     credentialId: credential.credential_id, publicKey: credential.public_key, nonce: spent.nonce,
@@ -394,6 +404,9 @@ export interface AgentSession extends AgentSessionFence {
   actorId: string;
   workerName: string;
   workerType: string;
+  /** The Type's current published Profile, so the Agent can report the models it offers before any work. */
+  workerTypeId: string;
+  profile: { revision: number; digest: string } | null;
   /** Shown once; only its digest is stored. */
   sessionToken: string;
   leaseSeconds: number;
@@ -415,15 +428,19 @@ export async function connectSession(
   const sessionToken = randomToken("wst");
   const tokenDigest = await hashToken(sessionToken);
   const clientVersion = (input.clientVersion ?? "unknown").slice(0, 64);
-  return dataOf(env).tx("worker.session.connect", async (tx) => {
+  const connected = await dataOf(env).tx("worker.session.connect", async (tx) => {
     const previous = await tx.row<{ session_id: string; session_epoch: string; live: boolean }>`
       SELECT session_id, session_epoch::text AS session_epoch, (disconnected_at IS NULL) AS live
         FROM worker_agent_sessions WHERE worker_instance_id = ${agent.workerId} FOR UPDATE`;
-    const meta = await tx.row<{ name: string; worker_type_name: string }>`
-      SELECT w.name, COALESCE(c.display_name, w.worker_type_id) AS worker_type_name
+    const meta = await tx.row<{ name: string; worker_type_name: string; worker_type_id: string }>`
+      SELECT w.name, w.worker_type_id, COALESCE(c.display_name, w.worker_type_id) AS worker_type_name
         FROM worker_instances w
         LEFT JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
        WHERE w.id = ${agent.workerId}`;
+    const currentProfile = meta
+      ? await tx.row<{ revision: number; digest: string }>`
+          SELECT revision, digest FROM worker_profiles WHERE worker_type_id = ${meta.worker_type_id}`
+      : null;
     const row = await tx.row<{ session_epoch: string; lease_expires_at: Date }>`
       INSERT INTO worker_agent_sessions
         (worker_instance_id, session_id, session_epoch, credential_id, token_digest, client_version, lease_expires_at)
@@ -458,10 +475,23 @@ export async function connectSession(
     return {
       workerInstanceId: agent.workerId, sessionId, epoch, actorId: agent.actorId,
       workerName: String(meta?.name ?? ""), workerType: String(meta?.worker_type_name ?? ""),
+      workerTypeId: String(meta?.worker_type_id ?? ""),
+      profile: currentProfile ? { revision: Number(currentProfile.revision), digest: String(currentProfile.digest) } : null,
       sessionToken,
       leaseSeconds: SESSION_LEASE_SECONDS, leaseExpiresAt: iso(row.lease_expires_at),
     };
   });
+  await publishWorkerChanged(env, agent.ownerUserId, agent.workerId, "connection");
+  return connected;
+}
+
+/** The Agent ends its own pairing (the user removed the Worker on the device). A disabled Worker may too. */
+export async function unpairByAgent(
+  env: Env,
+  input: { workerId: string; nonceId: string; signature: string },
+): Promise<{ revoked: boolean }> {
+  const agent = await authenticateAction(env, { action: "unpair", ...input, allowDisabled: true });
+  return revokeWorkerCredential(env, { ownerUserId: agent.ownerUserId, workerId: agent.workerId });
 }
 
 export interface RotateResult {
@@ -557,17 +587,24 @@ export async function renewLease(env: Env, fence: AgentSessionFence): Promise<bo
 }
 
 export async function closeSession(env: Env, fence: AgentSessionFence, reason: "closed" | "superseded" = "closed"): Promise<void> {
-  await dataOf(env).read.run`
+  const closed = await dataOf(env).read.row<{ owner: string }>`
     UPDATE worker_agent_sessions SET disconnected_at = now(), disconnect_reason = ${reason}
      WHERE worker_instance_id = ${fence.workerInstanceId} AND session_id = ${fence.sessionId}
-       AND session_epoch = ${fence.epoch}::bigint AND disconnected_at IS NULL`;
+       AND session_epoch = ${fence.epoch}::bigint AND disconnected_at IS NULL
+    RETURNING (SELECT owner_user_id FROM worker_instances WHERE id = worker_agent_sessions.worker_instance_id) AS owner`;
+  // A session replaced by a newer one is not an offline Worker.
+  if (closed && reason === "closed") await publishWorkerChanged(env, closed.owner, fence.workerInstanceId, "connection");
 }
 
 /** Closes sessions whose lease lapsed; they must connect again (new epoch). */
 export async function expireLapsedSessions(env: Env): Promise<number> {
-  return dataOf(env).read.run`
+  const lapsed = await dataOf(env).read.rows<{ id: string; owner: string }>`
     UPDATE worker_agent_sessions SET disconnected_at = now(), disconnect_reason = 'lease_expired'
-     WHERE disconnected_at IS NULL AND lease_expires_at <= now()`;
+     WHERE disconnected_at IS NULL AND lease_expires_at <= now()
+    RETURNING worker_instance_id AS id,
+      (SELECT owner_user_id FROM worker_instances WHERE id = worker_agent_sessions.worker_instance_id) AS owner`;
+  for (const row of lapsed) await publishWorkerChanged(env, row.owner, row.id, "connection");
+  return lapsed.length;
 }
 
 /**

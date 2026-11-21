@@ -212,3 +212,64 @@ abstract interface class AxSpaceAdditionalFolderDataSource {
   Future<AxSpaceAdditionalFolders> saveSpaceAdditionalFolders(
       String spaceId, List<String> folderIds);
 }
+
+/// A folder a Connect installation allows, with the computer it is on. Only the
+/// folder's own name travels, never its path.
+class AxDeviceFolder {
+  const AxDeviceFolder({
+    required this.deviceId,
+    required this.deviceName,
+    required this.folderId,
+    required this.displayName,
+    required this.writable,
+    required this.online,
+  });
+
+  final String deviceId;
+  final String deviceName;
+  final String folderId;
+  final String displayName;
+  final bool writable;
+
+  /// A Worker on this computer is connected now.
+  final bool online;
+
+  factory AxDeviceFolder.fromJson(Map<String, dynamic> json) => AxDeviceFolder(
+        deviceId: json['deviceId'] as String,
+        deviceName: json['deviceName'] as String,
+        folderId: json['folderId'] as String,
+        displayName: json['displayName'] as String,
+        writable: json['mode'] == 'write',
+        online: json['online'] == true,
+      );
+}
+
+/// The folder a Space works in. Only the Space owner can see or change it.
+class AxSpaceFolder {
+  const AxSpaceFolder({required this.eligible, this.folder});
+
+  final bool eligible;
+  final AxDeviceFolder? folder;
+
+  factory AxSpaceFolder.fromJson(Map<String, dynamic> json) => AxSpaceFolder(
+        eligible: json['eligible'] != false,
+        folder: json['folder'] is Map
+            ? AxDeviceFolder.fromJson(
+                Map<String, dynamic>.from(json['folder'] as Map))
+            : null,
+      );
+}
+
+abstract interface class AxSpaceFolderDataSource {
+  Future<List<AxDeviceFolder>> loadDeviceFolders();
+  Future<AxSpaceFolder> loadSpaceFolder(String spaceId);
+  Future<AxSpaceFolder> setSpaceFolder(String spaceId,
+      {required String deviceId, required String folderId});
+  Future<void> clearSpaceFolder(String spaceId);
+
+  /// Forgets a computer's folder (or all of the computer's folders when
+  /// [folderId] is null) in the owner's list. Returns how many Spaces use it.
+  /// With [dryRun] nothing is removed, so the person can be warned first.
+  Future<int> removeDeviceFolders(String deviceId,
+      {String? folderId, bool dryRun = false});
+}

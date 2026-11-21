@@ -840,6 +840,7 @@ class _ThreadPageState extends State<ThreadPage>
   void Function()? _cancelWorkflows;
   void Function()? _cancelWorkers;
   void Function()? _cancelWorkersUx;
+  void Function()? _cancelWorkerInstances;
   bool? _workersUxEnabled;
   String? _selectedWorkflowWorkspaceId;
   int _choicesGeneration = 0;
@@ -1044,10 +1045,16 @@ class _ThreadPageState extends State<ThreadPage>
     return value is String && value.isNotEmpty ? value : null;
   }
 
+  static const bool _useWorkerTargetPicker = false;
+
   /// Workers UX (P6): the composer picks a Worker by ID from the server's
   /// eligible list; no Workspace is shown. Null while the flag is off.
   Widget Function(String, String?, ValueChanged<String?>, bool)?
       _workerTargetPickerBuilder() {
+    // Reverted: the composer keeps the original Worker / model / effort
+    // selector (ModelEffortSelector). Flip [_useWorkerTargetPicker] to bring
+    // back the P6 Worker-ID picker.
+    if (!_useWorkerTargetPicker) return null;
     final source = widget.dataSource;
     if (_workersUxEnabled != true || source is! AxEligibleWorkersSource) {
       return null;
@@ -1561,8 +1568,10 @@ class _ThreadPageState extends State<ThreadPage>
   void _syncVisibility(List<AxWorker> workers) {
     final root = widget.workerVisibilityPreferences;
     if (root == null) return;
-    final ids =
-        workers.where((w) => !w.shared).map((w) => w.workspaceId).toSet();
+    final ids = workers
+        .where((w) => !w.shared && w.workspaceId.isNotEmpty)
+        .map((w) => w.workspaceId)
+        .toSet();
     for (final id in _visibilitySubscriptions.keys.toList()) {
       if (!ids.contains(id)) _visibilitySubscriptions.remove(id)?.call();
     }
@@ -1580,15 +1589,42 @@ class _ThreadPageState extends State<ThreadPage>
 
   Map<String, AxWorkerVisibility> get _visibilityByWorkspace {
     final root = widget.workerVisibilityPreferences;
-    if (root == null) return {};
-    return {
-      for (final id in _visibilitySubscriptions.keys)
-        if (root.engine.peek(root.forWorkspace(id).query).data != null)
-          id: root.engine.peek(root.forWorkspace(id).query).data!
+    final map = <String, AxWorkerVisibility>{
+      if (root != null)
+        for (final id in _visibilitySubscriptions.keys)
+          if (root.engine.peek(root.forWorkspace(id).query).data != null)
+            id: root.engine.peek(root.forWorkspace(id).query).data!,
     };
+    if (_workersUxEnabled == true) {
+      final instances = _catalogs.engine.peek(_catalogs.workerInstances).data;
+      if (instances != null) {
+        map[''] = AxWorkerVisibility(
+          hiddenModels: {
+            for (final w in instances)
+              if (w.hiddenModels.isNotEmpty) w.id: w.hiddenModels,
+          },
+          hiddenEfforts: {
+            for (final w in instances)
+              if (w.hiddenEfforts.isNotEmpty) w.id: w.hiddenEfforts,
+          },
+        );
+      }
+    }
+    return map;
   }
 
   void _applyWorkers(List<AxWorker> workers) {
+    // Worker-first: the selector lists the owner's Worker Instances, the same
+    // set as the Workers page, instead of the legacy Workspace inventory.
+    final instances = _catalogs.engine.peek(_catalogs.workerInstances).data;
+    if (_workersUxEnabled == true && instances != null) {
+      final own = workersFromInstances(workers, instances);
+      _syncVisibility(own);
+      _spaceWorkers = own;
+      _ownChatWorkers = const [];
+      _eligibleWorkers = own.where((worker) => worker.isReady).toList();
+      return;
+    }
     _syncVisibility(workers);
     _spaceWorkers = workers
         .where((worker) => worker.workspaceId == _selectedWorkflowWorkspaceId)
@@ -1622,6 +1658,7 @@ class _ThreadPageState extends State<ThreadPage>
     _cancelWorkflows?.call();
     _cancelWorkers?.call();
     _cancelWorkersUx?.call();
+    _cancelWorkerInstances?.call();
     _catalogs =
         widget.catalogs ?? AxSessionCatalogs.forSource(widget.dataSource);
     final workflows = _catalogs.engine.peek(_catalogs.workflows);
@@ -1669,10 +1706,27 @@ class _ThreadPageState extends State<ThreadPage>
     _cancelWorkersUx =
         _catalogs.engine.watch(_catalogs.workersUxEnabled, (state) {
       if (!mounted || state.data == _workersUxEnabled) return;
-      _updateComposerState(() => _workersUxEnabled = state.data);
+      _updateComposerState(() {
+        _workersUxEnabled = state.data;
+        _applyWorkers(
+            _catalogs.engine.peek(_catalogs.workers).data ?? const []);
+      });
+    }, fireImmediately: false);
+    _cancelWorkerInstances?.call();
+    _cancelWorkerInstances =
+        _catalogs.engine.watch(_catalogs.workerInstances, (state) {
+      if (!mounted || !state.hasData) return;
+      _updateComposerState(() {
+        _applyWorkers(
+            _catalogs.engine.peek(_catalogs.workers).data ?? const []);
+        _reconcilePendingThreadViewState();
+      });
     }, fireImmediately: false);
     _catalogs.engine
         .ensure(_catalogs.workersUxEnabled)
+        .then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    _catalogs.engine
+        .ensure(_catalogs.workerInstances)
         .then<void>((_) {}, onError: (Object _, StackTrace __) {});
   }
 
@@ -2073,6 +2127,7 @@ class _ThreadPageState extends State<ThreadPage>
     _cancelWorkflows?.call();
     _cancelWorkers?.call();
     _cancelWorkersUx?.call();
+    _cancelWorkerInstances?.call();
     _cancelWorkflowWorkspace?.call();
     for (final cancel in _visibilitySubscriptions.values) {
       cancel();
@@ -2150,8 +2205,30 @@ class _ThreadPageState extends State<ThreadPage>
         },
         download: (file, bytes) async => work_request_files.saveThreadFile(
             bytes, file['name']?.toString() ?? 'Attachment'),
-        child: _buildThread(context),
+        child: NotificationListener<_SelectSpaceFolderNotification>(
+          onNotification: _onSelectSpaceFolder,
+          child: _buildThread(context),
+        ),
       );
+
+  /// A failed request asked for a Space folder: open the dialog to choose one.
+  bool _onSelectSpaceFolder(_SelectSpaceFolderNotification _) {
+    final Object? source = widget.dataSource is AxSpaceFolderDataSource
+        ? widget.dataSource
+        : widget.workflowConfigurations?.source;
+    if (source is! AxSpaceFolderDataSource) return true;
+    unawaited(showSpaceFolderDialog(context,
+            source: source, spaceId: widget.space.id)
+        .then((changed) {
+      if (changed && mounted) {
+        ScaffoldMessenger.of(context).showNotice(
+          const SnackBar(
+              content: Text('Folder selected. Send your request again.')),
+        );
+      }
+    }));
+    return true;
+  }
 
   Widget _buildThread(BuildContext context) {
     AxRenderDiagnostics.instance.widgetRebuild(
@@ -2526,6 +2603,7 @@ class _ThreadPageState extends State<ThreadPage>
           editedDate: edited,
           isMe: isMe && !answer,
           replyTo: message.replyTo,
+          aiWorkRequestId: message.isAiEntry ? message.workRequestId : null,
           aiKind: message.isAiEntry ? message.kind : null);
     }).toList();
     if (!widget.isDraft) _mergeWorkIntoConversation(items);
@@ -2812,6 +2890,10 @@ class _ThreadPageState extends State<ThreadPage>
   void _mergeWorkIntoConversation(List<_DiscussionItem> messages) {
     final requests = _workTimeline;
     if (requests.isEmpty) return;
+    final liveRequestIds = requests.map((request) => request.id).toSet();
+    messages.removeWhere((message) =>
+        message.aiWorkRequestId != null &&
+        liveRequestIds.contains(message.aiWorkRequestId));
     final groups = <(DateTime?, List<_DiscussionItem>)>[
       for (final message in messages) (message.date, [message]),
       for (final request in requests)

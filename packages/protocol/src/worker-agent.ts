@@ -49,6 +49,10 @@ export const RotateWorkerCredentialRequestSchema = z.strictObject({
 });
 export type RotateWorkerCredentialRequest = z.infer<typeof RotateWorkerCredentialRequestSchema>;
 
+/** POST /api/worker-agent/unpair: the Agent asks the server to end its own pairing. */
+export const UnpairWorkerRequestSchema = z.strictObject({ workerId, nonceId, signature });
+export type UnpairWorkerRequest = z.infer<typeof UnpairWorkerRequestSchema>;
+
 /** What the owner receives when starting a pairing or transfer. The secret is shown once. */
 export const WorkerPairingChallengeSchema = z.object({
   challengeId: z.string(),

@@ -761,4 +761,68 @@ void main() {
     }, 'tool.completed')!;
     expect(edit.summary, 'a.dart +1 more');
   });
+
+  test(
+    'unrecognised provider events are shown as sent, with secrets redacted',
+    () {
+      final adapter = ProviderActivityAdapter.fromProfile({
+        'providerTool': {'name': 'codex'},
+        'activity': {'adapter': 'codex-jsonl', 'mappings': <Object?>[]},
+      })!;
+      const unknown =
+          '{"type":"brand.new.event","note":"hello","auth":"Bearer abcdefghijklmnop"}';
+      // Repeated events are each shown; nothing is deduplicated or hidden.
+      for (var i = 0; i < 2; i++) {
+        final events = adapter.normalizeLine(
+          unknown,
+          declarativeMatched: false,
+        );
+        expect(events, hasLength(1));
+        expect(events.single.title, 'Provider event');
+        final shown = events.single.details['summary'] as String;
+        expect(shown, startsWith('Brand new event · Note: hello'));
+        expect(shown, isNot(contains('{')));
+        // The technical name stays available in the expanded view.
+        expect(events.single.details['expanded'], contains('brand.new.event'));
+        expect(shown, isNot(contains('abcdefghijklmnop')));
+      }
+      final plain = adapter.normalizeLine(
+        'not json at all',
+        declarativeMatched: false,
+      );
+      expect(plain.single.details['summary'], 'not json at all');
+      final long = adapter.normalizeLine(
+        '{"type":"x","v":"${'a' * 5000}"}',
+        declarativeMatched: false,
+      );
+      expect((long.single.details['summary'] as String).length, lessThan(1100));
+    },
+  );
+
+  test(
+    'unrecognised events read as values: prose first, ids last, nested flat',
+    () {
+      final adapter = ProviderActivityAdapter.fromProfile({
+        'providerTool': {'name': 'codex'},
+        'activity': {'adapter': 'codex-jsonl', 'mappings': <Object?>[]},
+      })!;
+      final events = adapter.normalizeLine(
+        '{"type":"rate.limit","session_id":"s-1","info":{"remaining":4,'
+        '"files":["a.dart","b.dart"]},"message":"Slow down"}',
+        declarativeMatched: false,
+      );
+      final details = events.single.details;
+      expect(
+        details['summary'],
+        'Rate limit · Slow down · Remaining: 4 · Files: a.dart, b.dart',
+      );
+      expect((details['expanded'] as String).split('\u2028'), [
+        'rate.limit',
+        'message: Slow down',
+        'info.remaining: 4',
+        'info.files: a.dart, b.dart',
+        'session_id: s-1',
+      ]);
+    },
+  );
 }

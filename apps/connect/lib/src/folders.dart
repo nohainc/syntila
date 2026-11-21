@@ -15,13 +15,21 @@ class FolderRejectedException implements Exception {
 /// The folders the local owner has authorized for this Worker. Cloud only ever
 /// sees the opaque ids; a Worker chosen in the web app cannot grant a folder.
 class AllowedFolders {
-  AllowedFolders(this.file, {required this.home, required this.dataRoot});
+  AllowedFolders(
+    this.file, {
+    required this.home,
+    required this.dataRoot,
+    this.deviceId,
+  });
 
   final File file;
   final String home;
 
   /// Syntila's application-data root. A grant that overlaps it is refused.
   final String dataRoot;
+
+  /// Immutable device id stamped on newly granted folders.
+  final String? deviceId;
 
   static String _canonical(String path) {
     final directory = Directory(path);
@@ -49,6 +57,8 @@ class AllowedFolders {
             'path': item['path'] as String,
             // A grant is read-only unless the owner chose write.
             'mode': item['mode'] == 'write' ? 'write' : 'read',
+            if (item['deviceId'] is String)
+              'deviceId': item['deviceId'] as String,
           },
     ];
   }
@@ -88,7 +98,12 @@ class AllowedFolders {
     final folders = await list();
     final mode = write ? 'write' : 'read';
     folders.removeWhere((f) => f['id'] == id);
-    folders.add({'id': id, 'path': canonical, 'mode': mode});
+    folders.add({
+      'id': id,
+      'path': canonical,
+      'mode': mode,
+      if (deviceId != null) 'deviceId': deviceId!,
+    });
     await _save(folders);
     return id;
   }

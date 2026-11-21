@@ -10,7 +10,8 @@ void main() {
       '/spaces/space-id/threads/thread-id': '/thread',
       '/spaces/space-id/threads/thread-id/runs/run-id': '/run',
       '/spaces/space-id/runs/run-id': '/run',
-      '/workspaces/workspace-id': '/workspaces',
+      '/workers/workspace-id': '/workers',
+      '/workspaces/workspace-id': '/workers',
     }.entries) {
       final route = Uri.parse(entry.key);
       final address = AxBrowserRoute.visible(route);
@@ -24,6 +25,7 @@ void main() {
     expect(
         AxBrowserRoute.restore(Uri.parse('/run'), '/spaces/s/threads/t').path,
         '/spaces');
+    expect(AxBrowserRoute.restore(Uri.parse('/workers'), null).path, '/workers');
     expect(AxBrowserRoute.restore(Uri.parse('/workspaces'), null).path,
         '/workspaces');
     expect(AxBrowserRoute.restore(Uri.parse('/spaces/threads'), null).path,

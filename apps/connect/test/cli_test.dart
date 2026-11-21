@@ -176,6 +176,25 @@ void main() {
     },
   );
 
+  test('every Worker on this computer reports the same device id', () async {
+    final first = cloud.createWorker();
+    final second = cloud.createWorker();
+    final firstDir = await pairWorker(first, ['--no-service']);
+    final secondDir = await pairWorker(second, ['--no-service']);
+    Future<String> deviceOf(String dir) async {
+      out.clear();
+      expect(
+        await cli().run(['status', '--data-dir', dir, '--json']),
+        0,
+        reason: '$err',
+      );
+      return (jsonDecode(out.toString()) as Map<String, Object?>)['deviceId']
+          as String;
+    }
+
+    expect(await deviceOf(firstDir), await deviceOf(secondDir));
+  });
+
   test('a bad pairing code is refused before any network call', () async {
     expect(await cli().run(['pair', '--pairing-code', 'nonsense']), 2);
     expect(await cli().run(['pair']), 2);
@@ -193,21 +212,87 @@ void main() {
     expect(status['running'], isFalse);
     expect(status['connection'], 'stopped');
     expect(status['service'], 'stopped');
+    expect(status['deviceId'], startsWith('dev-'));
+    expect(status['deviceName'], isNotEmpty);
     expect(out.toString(), isNot(contains('privateKey')));
   });
 
-  test('config show and set; autoStart reinstalls the service unit', () async {
+  test(
+    'device: immutable id, renameable name, attached to folders and mcp-worker',
+    () async {
+      final noWorkerCli = WorkerCli(
+        out: out,
+        err: err,
+        environment: {
+          'HOME': '${sandbox.path}/home',
+          'XDG_DATA_HOME': '${sandbox.path}/data',
+        },
+        operatingSystem: 'linux',
+        runner: runner,
+      );
+
+      out.clear();
+      expect(await noWorkerCli.run(['device', '--json']), 0, reason: '$err');
+      final initial = jsonDecode(out.toString()) as Map<String, Object?>;
+      final deviceId = initial['deviceId'] as String;
+      expect(deviceId, startsWith('dev-'));
+      expect(initial['deviceName'], isNotEmpty);
+
+      // Renaming updates deviceName while keeping deviceId immutable.
+      out.clear();
+      expect(
+        await noWorkerCli.run(['device', 'Work MacBook', '--json']),
+        0,
+        reason: '$err',
+      );
+      final renamed = jsonDecode(out.toString()) as Map<String, Object?>;
+      expect(renamed['deviceId'], deviceId);
+      expect(renamed['deviceName'], 'Work MacBook');
+
+      // Empty name is refused.
+      expect(await noWorkerCli.run(['device', '   ']), 2);
+
+      // Folders carry deviceId.
+      final project = await Directory('${sandbox.path}/home/dev-proj').create();
+      expect(
+        await noWorkerCli.run(['folders', 'add', project.path]),
+        0,
+        reason: '$err',
+      );
+      out.clear();
+      expect(await noWorkerCli.run(['folders', 'list']), 0, reason: '$err');
+      expect(out.toString(), contains(deviceId));
+
+      // Approved MCP Workers carry deviceId.
+      final digest = 'a' * 64;
+      expect(
+        await noWorkerCli.run([
+          'mcp-worker',
+          'approve',
+          'my-plugin',
+          '1.0.0',
+          digest,
+        ]),
+        0,
+        reason: '$err',
+      );
+      out.clear();
+      expect(await noWorkerCli.run(['mcp-worker', 'list']), 0, reason: '$err');
+      expect(out.toString(), contains(deviceId));
+    },
+  );
+
+  test('config command is removed', () async {
+    expect(await cli().run(['config', 'show']), 2);
+  });
+
+  test('service install --auto-start opts in', () async {
     final worker = cloud.createWorker();
     await pairWorker(worker);
+    runner.calls.clear();
     out.clear();
     expect(
-      await cli().run(['config', 'set', 'maxConcurrent', '2']),
-      0,
-      reason: '$err',
-    );
-    expect(await cli().run(['config', 'set', 'maxConcurrent', '99']), 2);
-    expect(
-      await cli().run(['config', 'set', 'autoStart', 'true']),
+      await cli().run(['service', 'install', '--auto-start']),
       0,
       reason: '$err',
     );
@@ -215,50 +300,120 @@ void main() {
       runner.calls.map((c) => c.join(' ')),
       contains('systemctl --user enable syntila-worker-${worker.id}.service'),
     );
-    out.clear();
-    expect(await cli().run(['config', 'show']), 0);
-    expect(jsonDecode(out.toString()), containsPair('maxConcurrent', 2));
   });
 
   test(
-    'folders: add, list, remove, work-root; dangerous folders are refused',
+    'folders: independent of workers, write by default, --read-only opt-in, dangerous folders refused',
     () async {
-      final worker = cloud.createWorker();
-      await pairWorker(worker);
+      // No worker paired yet: folders still work without --worker.
+      final noWorkerCli = WorkerCli(
+        out: out,
+        err: err,
+        environment: {
+          'HOME': '${sandbox.path}/home',
+          'XDG_DATA_HOME': '${sandbox.path}/xdg-data',
+        },
+        operatingSystem: 'linux',
+        runner: runner,
+      );
       final project = await Directory('${sandbox.path}/home/project').create();
+      final roProject = await Directory(
+        '${sandbox.path}/home/ro-project',
+      ).create();
       out.clear();
       expect(
-        await cli().run(['folders', 'add', project.path]),
+        await noWorkerCli.run(['folders', 'add', project.path]),
         0,
         reason: '$err',
       );
+      expect(out.toString(), contains('read and write'));
       final id = out.toString().trim().split(' ').last;
-      out.clear();
-      expect(await cli().run(['folders', 'list']), 0);
-      expect(out.toString(), contains(id));
-      expect(await cli().run(['folders', 'add', '${sandbox.path}/home']), 1);
-      expect(await cli().run(['folders', 'remove', id]), 0);
-      expect(await cli().run(['folders', 'remove', id]), 1);
 
-      final workDir = await Directory('${sandbox.path}/home/work').create();
+      out.clear();
       expect(
-        await cli().run(['folders', 'work-root', workDir.path]),
+        await noWorkerCli.run([
+          'folders',
+          'add',
+          roProject.path,
+          '--read-only',
+        ]),
         0,
         reason: '$err',
       );
+      expect(out.toString(), contains('read only'));
+      final roId = out.toString().trim().split(' ').last;
+
       out.clear();
-      expect(await cli().run(['folders', 'work-root']), 0, reason: '$err');
-      expect(out.toString().trim(), workDir.resolveSymbolicLinksSync());
+      expect(await noWorkerCli.run(['folders', 'list']), 0);
+      expect(out.toString(), contains('$id  write  '));
+      expect(out.toString(), contains('$roId  read  '));
+      // Default Work Root is initialized by folders list, but excluded from the list output.
+      final defaultWorkDir = Directory(
+        '${sandbox.path}/home/Documents/Syntila',
+      );
+      expect(defaultWorkDir.existsSync(), isTrue);
+      expect(
+        out.toString(),
+        isNot(contains(defaultWorkDir.resolveSymbolicLinksSync())),
+      );
+      expect(
+        await noWorkerCli.run(['folders', 'add', '${sandbox.path}/home']),
+        1,
+      );
+      expect(await noWorkerCli.run(['folders', 'remove', id]), 0);
+      expect(await noWorkerCli.run(['folders', 'remove', id]), 1);
+      expect(await noWorkerCli.run(['folders', 'remove', roId]), 0);
+
+      // Default work root ~/Documents/Syntila is created and returned when unset.
+      out.clear();
+      expect(
+        await noWorkerCli.run(['folders', 'work-root']),
+        0,
+        reason: '$err',
+      );
+      expect(defaultWorkDir.existsSync(), isTrue);
+      expect(out.toString().trim(), defaultWorkDir.resolveSymbolicLinksSync());
+
+      // Setting a non-existent folder creates it and grants write access.
+      final customWorkDir = Directory('${sandbox.path}/home/custom/work');
+      expect(customWorkDir.existsSync(), isFalse);
+      expect(
+        await noWorkerCli.run(['folders', 'work-root', customWorkDir.path]),
+        0,
+        reason: '$err',
+      );
+      expect(customWorkDir.existsSync(), isTrue);
+      out.clear();
+      expect(
+        await noWorkerCli.run(['folders', 'work-root']),
+        0,
+        reason: '$err',
+      );
+      expect(out.toString().trim(), customWorkDir.resolveSymbolicLinksSync());
+
+      // A non-writable folder is refused as Work Root.
+      final readOnlyDir = await Directory(
+        '${sandbox.path}/home/ro-work',
+      ).create();
+      await Process.run('chmod', ['555', readOnlyDir.path]);
+      try {
+        expect(
+          await noWorkerCli.run(['folders', 'work-root', readOnlyDir.path]),
+          1,
+        );
+      } finally {
+        await Process.run('chmod', ['755', readOnlyDir.path]);
+      }
     },
   );
 
   test(
-    'rotate-credential replaces the key on the server and on disk',
+    'update-credentials replaces the key on the server and on disk',
     () async {
       final worker = cloud.createWorker();
       final dir = await pairWorker(worker);
       final before = worker.publicKey;
-      expect(await cli().run(['rotate-credential']), 0, reason: '$err');
+      expect(await cli().run(['update-credentials']), 0, reason: '$err');
       expect(worker.publicKey, isNot(before));
       expect(
         (await FileKeyStore(
@@ -269,13 +424,29 @@ void main() {
     },
   );
 
-  test('logs reads the Agent log', () async {
+  test('logs get and level read the Agent log and manage logLevel', () async {
     final worker = cloud.createWorker();
     final dir = await pairWorker(worker);
     await File('$dir/traces/agent.log').writeAsString('one\ntwo\nthree\n');
     out.clear();
+    expect(await cli().run(['logs', 'get', '--lines', '2']), 0);
+    expect(out.toString(), 'two\nthree\n');
+
+    out.clear();
     expect(await cli().run(['logs', '--lines', '2']), 0);
     expect(out.toString(), 'two\nthree\n');
+
+    out.clear();
+    expect(await cli().run(['logs', 'level']), 0, reason: '$err');
+    expect(out.toString().trim(), 'info');
+
+    out.clear();
+    expect(await cli().run(['logs', 'level', 'debug']), 0, reason: '$err');
+    out.clear();
+    expect(await cli().run(['logs', 'level']), 0, reason: '$err');
+    expect(out.toString().trim(), 'debug');
+
+    expect(await cli().run(['logs', 'level', 'loud']), 2);
   });
 
   test(
@@ -289,6 +460,10 @@ void main() {
       expect(await cli().run(['unpair']), 2);
       expect(Directory(dir).existsSync(), isTrue);
 
+      final foldersFile = File(
+        '${sandbox.path}/data/Syntila/registry/allowed-folders.json',
+      );
+
       // With --keep-data, identity is deleted while config and folder grants stay.
       expect(
         await cli().run(['unpair', '--yes', '--keep-data']),
@@ -296,11 +471,12 @@ void main() {
         reason: '$err',
       );
       expect(Directory('$dir/identity').existsSync(), isFalse);
-      expect(File('$dir/registry/allowed-folders.json').existsSync(), isTrue);
+      expect(foldersFile.existsSync(), isTrue);
 
-      // Full unpair deletes the data directory.
+      // Full unpair deletes the worker data directory while keeping machine-wide folders.
       expect(await cli().run(['unpair', '--yes']), 0, reason: '$err');
       expect(Directory(dir).existsSync(), isFalse);
+      expect(foldersFile.existsSync(), isTrue);
       expect(
         File(
           '${sandbox.path}/home/.config/systemd/user/syntila-worker-${worker.id}.service',
@@ -316,7 +492,7 @@ void main() {
     () async {
       final a = cloud.createWorker(workerType: 'gemini', name: 'Gemini Dev');
       final b = cloud.createWorker(workerType: 'claude', name: '');
-      await pairWorker(a, ['--name', 'My Gemini']);
+      await pairWorker(a);
       await pairWorker(b);
       out.clear();
       expect(await cli().run(['status', '--json']), 0, reason: '$err');
@@ -324,7 +500,7 @@ void main() {
       final workers = (all['workers'] as List).cast<Map<String, Object?>>();
       expect(workers, hasLength(2));
       final byId = {for (final w in workers) w['workerId']: w};
-      expect(byId[a.id]!['workerName'], 'My Gemini');
+      expect(byId[a.id]!['workerName'], 'Gemini Dev');
       expect(byId[a.id]!['workerType'], 'gemini');
       // When name is empty, falls back to workerType
       expect(byId[b.id]!['workerName'], 'claude');
@@ -367,7 +543,7 @@ void main() {
     expect(await cli().run(['status', '--json']), 0, reason: '$err');
     expect(jsonDecode(out.toString()), containsPair('running', true));
     expect(
-      await cli().run(['rotate-credential']),
+      await cli().run(['update-credentials']),
       3,
       reason: 'the data directory is owned by a running Agent',
     );

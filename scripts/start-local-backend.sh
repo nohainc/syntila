@@ -42,7 +42,7 @@ bun src/migrate.ts
 
 export PORT="$BACKEND_PORT" BIND_HOST=127.0.0.1
 export SYNTILA_ENVIRONMENT=development
-export SYNTILA_FEATURE_FLAGS="${SYNTILA_FEATURE_FLAGS-worker_identity,worker_agent_connect,worker_target_dispatch,workers_ux,canonical_timeline,artifact_handoff,unified_gateway}"
+export SYNTILA_FEATURE_FLAGS="${SYNTILA_FEATURE_FLAGS-worker_identity,worker_agent_connect,worker_target_dispatch,workers_ux,canonical_timeline,artifact_handoff,unified_gateway,worker_stateful_work}"
 export SYNTILA_APP_URL="http://localhost:${WEB_PORT}"
 export ALLOWED_ORIGINS="http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT},http://localhost:${AUTH_PORT}"
 # Tokens are issued by the local auth Worker (issuer = its BETTER_AUTH_URL origin).

@@ -114,7 +114,7 @@ void main() {
     expect(ephemeralRealtimeEventTypes, contains('stream.delta'));
   });
 
-  test('accepts replayable Worker Activity and classifies status as ephemeral',
+  test('accepts Worker Activity and classifies it as ephemeral',
       () {
     final event = {
       'eventId': 'activity-1',
@@ -138,8 +138,36 @@ void main() {
       },
     };
     final parsed = RealtimeEvent.parse(event);
-    expect(isReplayableRealtimeEvent(parsed.toJson()), isTrue);
+    expect(isReplayableRealtimeEvent(parsed.toJson()), isFalse);
     expect(ephemeralRealtimeEventTypes, contains('assignment.activity'));
+  });
+
+  test('accepts Worker activity on its Space stream', () {
+    final event = {
+      'eventId': 'event',
+      'type': 'assignment.activity',
+      'version': '1.1',
+      'timestamp': '2026-11-21T12:00:00.000Z',
+      'sequence': 1,
+      'spaceId': 'space',
+      'threadId': 'thread',
+      'stream': {'kind': 'space', 'id': 'space'},
+      'assignmentId': 'assignment',
+      'attemptId': 'attempt',
+      'payload': {
+        'entityId': 'assignment',
+        'workerId': 'chatgpt',
+        'sourceEventId': 'source',
+        'executionId': 'execution',
+        'activitySequence': 1,
+        'activityType': 'tool.started',
+        'activityStatus': 'running',
+        'title': 'Reading files',
+      },
+    };
+    expect(RealtimeEvent.parse(event).type, 'assignment.activity');
+    expect(() => RealtimeEvent.parse({...event, 'threadId': null}),
+        throwsA(isA<ProtocolException>()));
   });
 
   test('validates optional base64 echo on diagnostic.probe messages', () {

@@ -107,6 +107,12 @@ if [[ "$BUILD_GUI" == 1 ]]; then
   # and the CLI it runs are always the same build.
   cp "$OUT/syntila-connect" "$GUI_APP/Contents/Resources/syntila-connect"
   chmod 755 "$GUI_APP/Contents/Resources/syntila-connect"
+  # The Agent looks for the Worker Engine next to itself (engine/syntila-worker).
+  # Without it the Worker reports engine_unavailable and cannot read models or
+  # run work.
+  mkdir -p "$GUI_APP/Contents/Resources/engine"
+  cp "$OUT/engine/syntila-worker" "$GUI_APP/Contents/Resources/engine/syntila-worker"
+  chmod 755 "$GUI_APP/Contents/Resources/engine/syntila-worker"
   codesign --force --deep --sign "$SIGN_IDENTITY" "$GUI_APP"
 fi
 

@@ -487,6 +487,15 @@ class _SpaceWorkspaceState extends State<_SpaceWorkspace> {
                                   configurations: _workflows!,
                                   isOwner: isOwner),
                             ),
+                          if (_workflows != null &&
+                              !_editing &&
+                              !widget.space.isDirect)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: _SpaceFolderRow(
+                                  configurations: _workflows!,
+                                  isOwner: isOwner),
+                            ),
                         ],
                       ),
                     ),

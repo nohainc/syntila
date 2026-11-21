@@ -228,7 +228,20 @@ void main() {
     final denied = await read(
         http.Response(jsonEncode({'error': 'Workspace not found'}), 404));
     expect(denied.status, 'error');
-    expect(denied.errorMessage, contains('Workspace owner'));
+    expect(denied.errorMessage, contains('Worker owner'));
+    expect(denied.errorMessage, isNot(contains('Workspace')));
+
+    Uri? requested;
+    final connectWorker = await AxApiClient(
+      baseUrl: 'https://example.test/api',
+      client: MockClient((request) async {
+        requested = request.url;
+        return http.Response(
+            jsonEncode({'status': 'ok', 'output': 'Session: 6% used'}), 200);
+      }),
+    ).readWorkerUsage(workspaceId: '', workerId: 'worker-1');
+    expect(requested?.path, '/api/workers/worker-1/usage');
+    expect(connectWorker.isOk, isTrue);
   });
 
   testWidgets('typing / lists commands and /usage asks for a Worker',

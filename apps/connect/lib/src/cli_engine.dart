@@ -6,6 +6,7 @@ import 'package:syntila_tool_profile_v1/tool_profile_v1.dart';
 import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 
 import 'engine.dart';
+import 'folders.dart';
 import 'journal.dart';
 import 'mcp_worker_runner.dart';
 
@@ -24,7 +25,8 @@ typedef ProfileResolver =
 /// The Engine stays a separately supervised child process, and the provider
 /// CLI runs inside it on demand. Nothing here builds a command line from Cloud
 /// data: the signed Profile decides how the provider is invoked.
-class CliEngineLauncher implements EngineLauncher {
+class CliEngineLauncher
+    implements EngineLauncher, ModelCatalogSource, UsageSource {
   CliEngineLauncher({
     required this.supervisor,
     required this.engineExecutable,
@@ -34,7 +36,12 @@ class CliEngineLauncher implements EngineLauncher {
     required this.workRoot,
     this.maxConcurrent = 1,
     this.mcpWorkerRunner,
+    this.folders,
   });
+
+  /// The folders this computer allows. A stateful step that names a Space
+  /// folder runs there, and only if that folder is still allowed with write.
+  final AllowedFolders? folders;
 
   final CliWorkerEngineSupervisor supervisor;
   final String engineExecutable;
@@ -51,6 +58,81 @@ class CliEngineLauncher implements EngineLauncher {
 
   @override
   Future<int> recoverOrphans() => supervisor.recoverOrphanedProcesses();
+
+  @override
+  Future<Map<String, Object?>> discoverModels(Map<String, Object?> pin) async {
+    try {
+      final resolved = await resolveProfile(pin);
+      if (resolved == null) return {'status': 'profile_unavailable'};
+      final result = await supervisor.probe(
+        resolved.candidate,
+        profileFile: resolved.profileFile,
+        stateDirectory: stateDirectory,
+        mode: WorkerProbeMode.passive,
+        timeout: const Duration(seconds: 25),
+      );
+      final catalog = result.modelCatalog;
+      if (catalog == null) {
+        // The CLI answered but listed no models (or could not be started).
+        return {'status': result.issueCode ?? 'no_models'};
+      }
+      return {
+        'status': 'ok',
+        'modelCatalog': catalog.toJson(includeNativeIds: false),
+        if (result.providerToolName != null)
+          'providerToolName': result.providerToolName,
+        if (result.providerToolVersion != null)
+          'providerToolVersion': result.providerToolVersion,
+      };
+    } on Object {
+      return {'status': 'probe_failed'};
+    }
+  }
+
+  @override
+  Future<Map<String, Object?>> readUsage(Map<String, Object?> pin) async {
+    try {
+      final resolved = await resolveProfile(pin);
+      if (resolved == null) {
+        return {
+          'status': 'error',
+          'errorCode': 'worker_not_ready',
+          'errorMessage': 'The Worker Profile is not available on this computer.',
+        };
+      }
+      if (resolved.candidate.profile['usage'] == null) {
+        return {
+          'status': 'unavailable',
+          'errorCode': 'usage_not_configured',
+          'errorMessage': 'This Worker Profile has no usage command.',
+        };
+      }
+      final usage = await supervisor.usage(
+        resolved.candidate,
+        profileFile: resolved.profileFile,
+        stateDirectory: stateDirectory,
+      );
+      return {
+        'status': 'ok',
+        'output': usage.output,
+        'errorOutput': usage.errorOutput,
+        'exitCode': usage.exitCode,
+        'truncated': usage.truncated,
+      };
+    } on CliWorkerEngineProbeException catch (error) {
+      return {
+        'status': 'error',
+        'errorCode': error.issueCode,
+        'errorMessage': error.safeMessage,
+      };
+    } on Object {
+      return {
+        'status': 'error',
+        'errorCode': 'usage_failed',
+        'errorMessage': 'The usage report could not be read.',
+      };
+    }
+  }
 
   @override
   Future<EngineRun> launch(EngineRequest request) async {
@@ -174,6 +256,37 @@ class CliEngineLauncher implements EngineLauncher {
       );
       return run;
     }
+    var workingDirectory = Directory(
+      '${workRoot.path}/${request.assignmentId}',
+    );
+    final spaceFolderId = snapshot['spaceFolderId'];
+    if (spaceFolderId is String) {
+      String? path;
+      final granted = folders == null
+          ? const <Map<String, String>>[]
+          : await folders!.list();
+      for (final folder in granted) {
+        if (folder['id'] == spaceFolderId && folder['mode'] == 'write') {
+          path = folder['path'];
+        }
+      }
+      try {
+        if (path == null || !await Directory(path).exists()) {
+          throw FolderRejectedException('the Space folder is not allowed here');
+        }
+        await folders!.require(path, write: true);
+        workingDirectory = Directory(path);
+      } on FolderRejectedException {
+        run._finish(
+          const EngineOutcome(TerminalKind.failed, {
+            'errorCode': 'folder_not_approved',
+            'message': 'The Space folder is not allowed on this computer',
+            'retryable': false,
+          }),
+        );
+        return run;
+      }
+    }
     unawaited(
       supervisor
           .execute(
@@ -184,9 +297,7 @@ class CliEngineLauncher implements EngineLauncher {
                 ? null
                 : snapshot['workerTypeId'] as String,
             stateDirectory: stateDirectory,
-            workingDirectory: Directory(
-              '${workRoot.path}/${request.assignmentId}',
-            ),
+            workingDirectory: workingDirectory,
             workerId: workerId,
             maxConcurrentAssignments: maxConcurrent,
             assignmentId: request.assignmentId,
@@ -206,6 +317,7 @@ class CliEngineLauncher implements EngineLauncher {
             reasoningEffort: text('reasoningEffort'),
             executionPolicy: WorkerExecutionPolicy.restricted,
             onExecutionStarted: run._providerDidStart,
+            onActivity: request.onActivity,
           )
           .then<void>(
             (result) => run._finish(

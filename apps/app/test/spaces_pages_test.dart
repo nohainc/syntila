@@ -675,7 +675,7 @@ void main() {
         onArchive: _noop,
       ))));
       await tester.pumpAndSettle();
-      expect(_inConversation(find.text('model-x')), findsOneWidget);
+      expect(_inConversation(find.text('· model-x')), findsOneWidget);
       expect(_inConversation(find.text("· Alice's Worker")), findsOneWidget);
       expect(_inConversation(find.byTooltip('Worker owned by Alice')),
           findsOneWidget);
@@ -747,19 +747,19 @@ void main() {
         onArchive: _noop,
       ))));
       await tester.pumpAndSettle();
-      expect(_inConversation(find.text('model-x')), findsOneWidget);
-      expect(_inConversation(find.text('model-y')), findsOneWidget);
-      expect(_inConversation(find.text('ChatGPT')), findsOneWidget);
-      expect(_inConversation(find.text('· Medium')), findsOneWidget);
-      expect(_inConversation(find.text('· High')), findsOneWidget);
+      expect(_inConversation(find.text('· model-x')), findsOneWidget);
+      expect(_inConversation(find.text('· model-y')), findsOneWidget);
+      expect(_inConversation(find.text('ChatGPT')), findsNWidgets(3));
+      expect(_inConversation(find.text('Medium')), findsOneWidget);
+      expect(_inConversation(find.text('High')), findsOneWidget);
       expect(_inConversation(find.text('· Default effort')), findsOneWidget);
       expect(_inConversation(find.byIcon(Icons.info_outline_rounded)),
           findsNothing);
       for (final width in [390.0, 1200.0]) {
         await tester.binding.setSurfaceSize(Size(width, 1400));
         await tester.pumpAndSettle();
-        expect(_inConversation(find.text('· Medium')), findsOneWidget);
-        expect(_inConversation(find.text('· High')), findsOneWidget);
+        expect(_inConversation(find.text('Medium')), findsOneWidget);
+        expect(_inConversation(find.text('High')), findsOneWidget);
         final senderIcons = tester.widgetList<Image>(_inConversation(
             find.byWidgetPredicate((widget) =>
                 widget is Image &&
@@ -774,8 +774,9 @@ void main() {
       expect(find.textContaining('Effort changed'), findsNothing);
       expect(find.text('Wrong current worker'), findsNothing);
       expect(find.textContaining('wrong-current-model'), findsNothing);
-      expect(_inConversation(find.byTooltip('Select model-x')), findsOneWidget);
-      await tester.tap(_inConversation(find.byTooltip('Select model-x')));
+      expect(_inConversation(find.byTooltip('Select ChatGPT')), findsNWidgets(3));
+      await tester
+          .tap(_inConversation(find.byTooltip('Select ChatGPT')).first);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
@@ -2880,6 +2881,39 @@ void main() {
     await tester.tap(find.byTooltip('Select ChatGPT'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+  });
+  testWidgets('Chat displays a Work exchange once when canonical rows coexist',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1300, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                height: 600,
+                child: ThreadPage(
+                  space: const AxSpace(
+                      id: 'space-1',
+                      name: 'Space',
+                      branch: '',
+                      lastActivity: '',
+                      role: 'owner'),
+                  thread: const AxThread(
+                      id: 'stream-1',
+                      spaceId: 'space-1',
+                      name: 'Chat',
+                      lead: '',
+                      status: 'active',
+                      brief: '',
+                      primaryWorkspace: '',
+                      queueStatus: ''),
+                  dataSource: _OverlappingAiDiscussionDataSource(),
+                  currentUserId: 'user-owner',
+                  onBackToSpace: _noop,
+                  onArchive: _noop,
+                )))));
+    await tester.pumpAndSettle();
+    expect(find.text('Research auth'), findsOneWidget);
+    expect(find.text('Use passkeys'), findsOneWidget);
   });
   testWidgets('Chat create edit and copy preserve raw Markdown',
       (tester) async {
@@ -5369,6 +5403,15 @@ class _ArchivedAiDiscussionDataSource extends AxFixtureDataSource {
           'workerDisplayName': 'ChatGPT',
         }, currentUserId: 'user-owner'),
       ];
+}
+
+class _OverlappingAiDiscussionDataSource
+    extends _ArchivedAiDiscussionDataSource {
+  @override
+  Future<List<AxWorkRequest>> workRequestRows(
+          {required String threadId, bool activeOnly = false}) =>
+      _ConversationMixDataSource()
+          .workRequestRows(threadId: threadId, activeOnly: activeOnly);
 }
 
 class _WorkFormDataSource extends AxFixtureDataSource {

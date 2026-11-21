@@ -149,6 +149,13 @@ column conversations.thread_id text not-null
 column conversations.updated_at timestamptz not-null default
 column conversations.workflow_id text not-null
 column conversations.workflow_version int8 not-null
+column device_folders.device_id text not-null
+column device_folders.device_name text not-null
+column device_folders.display_name text not-null
+column device_folders.folder_id text not-null
+column device_folders.mode text not-null
+column device_folders.owner_user_id text not-null
+column device_folders.updated_at timestamptz not-null default
 column direct_space_user_state.created_at timestamptz not-null default
 column direct_space_user_state.hidden bool not-null default
 column direct_space_user_state.last_opened_at timestamptz
@@ -362,6 +369,11 @@ column space_audit_log.id text not-null
 column space_audit_log.space_id text
 column space_audit_log.target_id text not-null
 column space_audit_log.target_type text not-null
+column space_folders.device_id text not-null
+column space_folders.folder_id text not-null
+column space_folders.owner_user_id text not-null
+column space_folders.space_id text not-null
+column space_folders.updated_at timestamptz not-null default
 column space_invitations.accepted_at timestamptz
 column space_invitations.accepted_by_user_id text
 column space_invitations.created_at timestamptz not-null default
@@ -573,10 +585,15 @@ column worker_activity_history.workspace_id text not-null
 column worker_agent_sessions.client_version text not-null default
 column worker_agent_sessions.connected_at timestamptz not-null default
 column worker_agent_sessions.credential_id text not-null
+column worker_agent_sessions.device_id text
 column worker_agent_sessions.disconnect_reason text
 column worker_agent_sessions.disconnected_at timestamptz
 column worker_agent_sessions.last_seen_at timestamptz not-null default
 column worker_agent_sessions.lease_expires_at timestamptz not-null
+column worker_agent_sessions.models_json text
+column worker_agent_sessions.models_refresh_requested_at timestamptz
+column worker_agent_sessions.models_reported_at timestamptz
+column worker_agent_sessions.models_status text
 column worker_agent_sessions.readiness_json text
 column worker_agent_sessions.readiness_reported_at timestamptz
 column worker_agent_sessions.session_epoch int8 not-null
@@ -681,6 +698,7 @@ column worker_instances.name text not-null
 column worker_instances.owner_user_id text not-null
 column worker_instances.revoked_at timestamptz
 column worker_instances.updated_at timestamptz not-null default
+column worker_instances.visibility_json text not-null default
 column worker_instances.worker_type_id text not-null
 column worker_pairing_challenges.consumed_at timestamptz
 column worker_pairing_challenges.consumed_credential_id text
@@ -993,6 +1011,8 @@ constraint conversations.conversations_thread_id_fkey foreign-key -> threads on-
 constraint conversations.conversations_thread_id_workflow_id_key unique
 constraint conversations.conversations_workflow_id_check check
 constraint conversations.conversations_workflow_version_check check
+constraint device_folders.device_folders_mode_check check
+constraint device_folders.device_folders_pkey primary-key
 constraint direct_space_user_state.direct_space_user_state_pkey primary-key
 constraint direct_space_user_state.direct_space_user_state_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint direct_space_user_state.direct_space_user_state_user_id_fkey foreign-key -> users on-delete-cascade
@@ -1108,6 +1128,9 @@ constraint space_additional_folders.space_additional_folders_workspace_id_folder
 constraint space_audit_log.space_audit_log_actor_type_check check
 constraint space_audit_log.space_audit_log_pkey primary-key
 constraint space_audit_log.space_audit_log_space_id_fkey foreign-key -> spaces on-delete-cascade
+constraint space_folders.space_folders_owner_user_id_device_id_folder_id_fkey foreign-key -> device_folders on-delete-cascade
+constraint space_folders.space_folders_pkey primary-key
+constraint space_folders.space_folders_space_id_fkey foreign-key -> spaces on-delete-cascade
 constraint space_invitations.space_invitations_accepted_by_user_id_fkey foreign-key -> users on-delete-set-null
 constraint space_invitations.space_invitations_invited_by_user_id_fkey foreign-key -> users on-delete-restrict
 constraint space_invitations.space_invitations_invitee_user_id_fkey foreign-key -> users on-delete-cascade
@@ -1255,6 +1278,7 @@ constraint worker_agent_sessions.worker_agent_sessions_check check
 constraint worker_agent_sessions.worker_agent_sessions_client_version_check check
 constraint worker_agent_sessions.worker_agent_sessions_credential_id_fkey foreign-key -> worker_credentials on-delete-cascade
 constraint worker_agent_sessions.worker_agent_sessions_disconnect_reason_check check
+constraint worker_agent_sessions.worker_agent_sessions_models_json_check check
 constraint worker_agent_sessions.worker_agent_sessions_pkey primary-key
 constraint worker_agent_sessions.worker_agent_sessions_readiness_json_check check
 constraint worker_agent_sessions.worker_agent_sessions_session_epoch_check check
@@ -1320,6 +1344,7 @@ constraint worker_instances.worker_instances_description_check check
 constraint worker_instances.worker_instances_name_check check
 constraint worker_instances.worker_instances_owner_user_id_fkey foreign-key -> users on-delete-cascade
 constraint worker_instances.worker_instances_pkey primary-key
+constraint worker_instances.worker_instances_visibility_json_check check
 constraint worker_instances.worker_instances_worker_type_id_fkey foreign-key -> worker_catalog on-delete-restrict
 constraint worker_pairing_challenges.worker_pairing_challenges_kind_check check
 constraint worker_pairing_challenges.worker_pairing_challenges_owner_user_id_fkey foreign-key -> users on-delete-cascade
@@ -1592,6 +1617,7 @@ index conversation_workflow_step_runs.conversation_workflow_step_runs_workflow_r
 index conversation_workflow_step_runs.idx_workflow_step_runs_run (workflow_run_id,created_at,id)
 index conversations.conversations_pkey (id) unique
 index conversations.conversations_thread_id_workflow_id_key (thread_id,workflow_id) unique
+index device_folders.device_folders_pkey (owner_user_id,device_id,folder_id) unique
 index direct_space_user_state.direct_space_user_state_pkey (space_id,user_id) unique
 index direct_space_user_state.idx_direct_space_user_state_user (user_id)
 index direct_spaces.direct_spaces_general_thread_id_fkidx (general_thread_id)
@@ -1678,6 +1704,8 @@ index space_additional_folders.space_additional_folders_pkey (space_id,folder_id
 index space_additional_folders.space_additional_folders_workspace (workspace_id,folder_id)
 index space_audit_log.idx_space_audit_log_space (space_id,created_at)
 index space_audit_log.space_audit_log_pkey (id) unique
+index space_folders.space_folders_folder_idx (owner_user_id,device_id,folder_id)
+index space_folders.space_folders_pkey (space_id) unique
 index space_invitations.idx_space_invitations_invitee (invitee_user_id,status)
 index space_invitations.idx_space_invitations_pending_email (space_id,(expr)) unique partial
 index space_invitations.idx_space_invitations_pending_user (space_id,invitee_user_id) unique partial

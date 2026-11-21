@@ -15,7 +15,7 @@ class ConnectStatusPage extends StatefulWidget {
   const ConnectStatusPage({
     super.key,
     required this.runner,
-    this.interval = const Duration(seconds: 5),
+    this.interval = const Duration(seconds: 2),
   });
 
   final CliRunner runner;
@@ -62,8 +62,35 @@ class _ConnectStatusPageState extends State<ConnectStatusPage> {
     return null;
   }
 
-  Future<void> _refresh() async {
-    final result = await widget.runner.start(['status', '--json']).result;
+  bool _refreshing = false;
+  bool _forceNext = false;
+
+  /// [force] is the refresh button: it also asks the server whether a stopped
+  /// Worker was removed in the app, instead of waiting for the next minute.
+  Future<void> _refresh({bool force = false}) async {
+    // A slow status call must not pile up behind the timer.
+    if (_refreshing) {
+      if (force) _forceNext = true;
+      return;
+    }
+    _refreshing = true;
+    try {
+      await _refreshOnce(force: force);
+    } finally {
+      _refreshing = false;
+    }
+    if (_forceNext && mounted) {
+      _forceNext = false;
+      await _refresh(force: true);
+    }
+  }
+
+  Future<void> _refreshOnce({bool force = false}) async {
+    final result = await widget.runner.start([
+      'status',
+      '--json',
+      if (force) '--check-server',
+    ]).result;
     if (!mounted) return;
     List<Map<String, Object?>>? parsed;
     String? problem;
@@ -114,6 +141,85 @@ class _ConnectStatusPageState extends State<ConnectStatusPage> {
     await _refresh();
   }
 
+  Future<void> _refreshModels(String label, String workerId) async {
+    setState(() {
+      _busy = label;
+      _actionProblem = null;
+    });
+    final result = await widget.runner.start([
+      'models',
+      'refresh',
+      '--worker',
+      workerId,
+    ]).result;
+    if (!mounted) return;
+    String? problem;
+    if (!result.ok) {
+      final text = '${result.stderr}${result.stdout}'.trim();
+      problem = text.isEmpty
+          ? 'Could not read models (exit ${result.exitCode}).'
+          : text;
+    }
+    setState(() {
+      _busy = null;
+      _actionProblem = problem;
+    });
+    await _refresh();
+  }
+
+  Future<void> _removeWorker(String label, String workerId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Worker?'),
+        content: Text(
+          'This deletes $label from this computer and unpairs it in the web app. '
+          'Your working folders are not touched.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('worker-remove-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _busy = label;
+      _actionProblem = null;
+    });
+    final result = await widget.runner.start([
+      'unpair',
+      '--worker',
+      workerId,
+      '--yes',
+    ]).result;
+    if (!mounted) return;
+    String? problem;
+    if (!result.ok) {
+      final text = '${result.stderr}${result.stdout}'.trim();
+      problem = text.isEmpty
+          ? 'Could not remove the Worker (exit ${result.exitCode}).'
+          : text;
+    } else if (result.stdout.contains('Could not unpair')) {
+      // The Worker is gone here, but the app still lists it: say so.
+      problem = result.stdout
+          .split('\n')
+          .firstWhere((line) => line.contains('Could not unpair'));
+    }
+    setState(() {
+      _busy = null;
+      _actionProblem = problem;
+    });
+    await _refresh();
+  }
+
   void _copyWorkerId(String workerId) {
     Clipboard.setData(ClipboardData(text: workerId));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -142,7 +248,7 @@ class _ConnectStatusPageState extends State<ConnectStatusPage> {
                 ),
                 IconButton(
                   tooltip: 'Refresh',
-                  onPressed: _busy == null ? _refresh : null,
+                  onPressed: _busy == null ? () => _refresh(force: true) : null,
                   icon: const Icon(Icons.refresh, size: 20),
                 ),
               ],
@@ -214,6 +320,8 @@ class _ConnectStatusPageState extends State<ConnectStatusPage> {
                     busy: _busy != null,
                     onCopyId: _copyWorkerId,
                     onServiceAction: _runServiceAction,
+                    onRefreshModels: _refreshModels,
+                    onRemove: _removeWorker,
                   ),
                 ),
           ],
@@ -229,8 +337,12 @@ class _WorkerCard extends StatelessWidget {
     required this.busy,
     required this.onCopyId,
     required this.onServiceAction,
+    required this.onRefreshModels,
+    required this.onRemove,
   });
 
+  final void Function(String label, String workerId) onRemove;
+  final void Function(String label, String workerId) onRefreshModels;
   final Map<String, Object?> worker;
   final bool busy;
   final void Function(String workerId) onCopyId;
@@ -371,6 +483,25 @@ class _WorkerCard extends StatelessWidget {
                   label: const Text('Restart'),
                 ),
               ],
+              OutlinedButton.icon(
+                key: const Key('worker-models-refresh'),
+                onPressed: (busy || !running)
+                    ? null
+                    : () => onRefreshModels(
+                          'Reading models for $displayName',
+                          workerId,
+                        ),
+                icon: const Icon(Icons.sync, size: 18),
+                label: const Text('Refresh models'),
+              ),
+              OutlinedButton.icon(
+                key: ValueKey('status-remove-$workerId'),
+                onPressed: busy
+                    ? null
+                    : () => onRemove(displayName, workerId),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('Remove'),
+              ),
             ],
           ),
           const Divider(height: 24),
@@ -394,6 +525,8 @@ class _WorkerCard extends StatelessWidget {
             'Starts automatically',
             worker['autoStart'] == true ? 'Yes' : 'No',
           ),
+          const Divider(height: 24),
+          _ModelsSection(models: worker['models']),
           if (journal.isNotEmpty) ...[
             const SizedBox(height: 10),
             Wrap(
@@ -420,6 +553,76 @@ class _WorkerCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// The models this machine's provider CLI offered when the owner last asked to
+/// read them (on request from the Workers page).
+class _ModelsSection extends StatelessWidget {
+  const _ModelsSection({required this.models});
+  final Object? models;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final data = models is Map ? (models as Map).cast<String, Object?>() : null;
+    final list = data?['models'];
+    final entries = <Map<String, Object?>>[
+      if (list is List)
+        for (final item in list)
+          if (item is Map) item.cast<String, Object?>(),
+    ];
+    final status = data?['status']?.toString();
+    if (entries.isEmpty) {
+      final text = data == null
+          ? 'No models yet. Use Refresh models while the service is running.'
+          : status == 'ok'
+          ? 'The provider reported no models.'
+          : 'Could not read models ($status). Try Refresh models.';
+      return Text(
+        text,
+        key: const Key('worker-models-empty'),
+        style: theme.textTheme.bodySmall,
+      );
+    }
+    final tool = [
+      data?['providerToolName'],
+      data?['providerToolVersion'],
+    ].whereType<String>().join(' ');
+    return Column(
+      key: const Key('worker-models'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (tool.isNotEmpty) Text(tool, style: theme.textTheme.bodySmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final model in entries)
+              Tooltip(
+                message: (model['efforts'] is List &&
+                        (model['efforts'] as List).isNotEmpty)
+                    ? 'Efforts: ${(model['efforts'] as List).join(', ')}'
+                    : 'No effort levels',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Text('${model['name']}', style: theme.textTheme.labelMedium),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

@@ -57,9 +57,13 @@ mixin _WorkspaceApi on _AxApiClientCore {
     required String workspaceId,
     required String workerId,
   }) async {
+    // A Worker that belongs to no Workspace (a Syntila Connect Worker) is read
+    // through its own Agent; Workspace Workers through their Workspace.
     final response = await client.post(
-      Uri.parse('$baseUrl/workspaces/${Uri.encodeComponent(workspaceId)}'
-          '/workers/${Uri.encodeComponent(workerId)}/usage'),
+      Uri.parse(workspaceId.trim().isEmpty
+          ? '$baseUrl/workers/${Uri.encodeComponent(workerId)}/usage'
+          : '$baseUrl/workspaces/${Uri.encodeComponent(workspaceId)}'
+              '/workers/${Uri.encodeComponent(workerId)}/usage'),
       headers: _headers(contentType: 'application/json'),
       body: '{}',
     );
@@ -78,7 +82,7 @@ mixin _WorkspaceApi on _AxApiClientCore {
     return AxWorkerUsageReport(
         status: 'error',
         errorMessage: response.statusCode == 404
-            ? 'Only the Workspace owner can read this Worker\'s usage.'
+            ? 'Only the Worker owner can read this Worker\'s usage.'
             : message);
   }
 

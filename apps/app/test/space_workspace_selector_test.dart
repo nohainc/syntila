@@ -96,6 +96,7 @@ Future<void> pumpSpace(
 }
 
 void main() {
+  folderSelectionTests();
   testWidgets('support spaces do not show an empty Settings section',
       (tester) async {
     final source = SpaceSettingsSource();
@@ -308,5 +309,120 @@ void main() {
     await pumpSpace(tester, FolderSource(), memberSpace);
     expect(
         find.byKey(const ValueKey('space-additional-folders')), findsNothing);
+  });
+}
+
+class DeviceFolderSource extends WorkflowSource
+    implements AxWorkersUxFeatureSource, AxSpaceFolderDataSource {
+  AxDeviceFolder? chosen;
+  final removed = <String>[];
+  late List<AxDeviceFolder> listed = [...folders];
+  static const folders = [
+    AxDeviceFolder(
+        deviceId: 'dev-0000000000000001',
+        deviceName: 'Mac',
+        folderId: 'fld-0000000000000001',
+        displayName: 'Syntila (Documents)',
+        writable: true,
+        online: true),
+    AxDeviceFolder(
+        deviceId: 'dev-0000000000000001',
+        deviceName: 'Mac',
+        folderId: 'fld-0000000000000002',
+        displayName: 'Syntila (Projects)',
+        writable: true,
+        online: true),
+  ];
+
+  @override
+  Future<bool> workersUxEnabled() async => true;
+  @override
+  Future<List<AxDeviceFolder>> loadDeviceFolders() async => [...listed];
+  @override
+  Future<int> removeDeviceFolders(String deviceId,
+      {String? folderId, bool dryRun = false}) async {
+    final hit = listed.where((f) =>
+        f.deviceId == deviceId && (folderId == null || f.folderId == folderId));
+    final used = hit.where((f) => f.folderId == chosen?.folderId).length;
+    if (!dryRun) {
+      removed.add(folderId ?? deviceId);
+      listed = [
+        for (final f in listed)
+          if (!hit.contains(f)) f
+      ];
+      if (used > 0) chosen = null;
+    }
+    return used;
+  }
+
+  @override
+  Future<AxSpaceFolder> loadSpaceFolder(String spaceId) async =>
+      AxSpaceFolder(eligible: true, folder: chosen);
+  @override
+  Future<AxSpaceFolder> setSpaceFolder(String spaceId,
+      {required String deviceId, required String folderId}) async {
+    chosen = folders.firstWhere((f) => f.folderId == folderId);
+    return loadSpaceFolder(spaceId);
+  }
+
+  @override
+  Future<void> clearSpaceFolder(String spaceId) async => chosen = null;
+}
+
+void folderSelectionTests() {
+  testWidgets('the Space settings let the owner select a folder',
+      (tester) async {
+    final source = DeviceFolderSource();
+    await pumpSpace(tester, source, ownerSpace);
+    expect(find.text('Select folder'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('space-folder')));
+    await tester.pumpAndSettle();
+    expect(find.text('Syntila (Documents)'), findsOneWidget);
+    expect(find.text('Syntila (Projects)'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey(
+        'space-folder-choice-dev-0000000000000001-fld-0000000000000002')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('space-folder-save')));
+    await tester.pumpAndSettle();
+    expect(source.chosen?.folderId, 'fld-0000000000000002');
+    expect(find.textContaining('Syntila (Projects) · Mac'), findsOneWidget);
+  });
+
+  testWidgets('an offline computer can be removed after a warning',
+      (tester) async {
+    final source = DeviceFolderSource();
+    source.listed = [
+      const AxDeviceFolder(
+          deviceId: 'dev-0000000000000009',
+          deviceName: 'Old Mac',
+          folderId: 'fld-0000000000000009',
+          displayName: 'Old',
+          writable: true,
+          online: false),
+      ...DeviceFolderSource.folders,
+    ];
+    source.chosen = source.listed.first;
+    await pumpSpace(tester, source, ownerSpace);
+    await tester.tap(find.byKey(const ValueKey('space-folder')));
+    await tester.pumpAndSettle();
+    // Online folders cannot be removed here.
+    expect(
+        find.byKey(const ValueKey(
+            'space-folder-remove-dev-0000000000000001-fld-0000000000000001')),
+        findsNothing);
+    await tester.tap(find.byKey(
+        const ValueKey('space-folder-remove-device-dev-0000000000000009')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Used by 1 Space.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('space-folder-remove-confirm')));
+    await tester.pumpAndSettle();
+    expect(source.removed, ['dev-0000000000000009']);
+    expect(find.text('Old'), findsNothing);
+    expect(find.text('Syntila (Projects)'), findsOneWidget);
+  });
+
+  testWidgets('other members see no folder setting', (tester) async {
+    await pumpSpace(tester, DeviceFolderSource(), memberSpace);
+    expect(find.byKey(const ValueKey('space-folder')), findsNothing);
   });
 }

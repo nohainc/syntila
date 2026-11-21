@@ -2601,7 +2601,13 @@ class CliWorkerEngine {
             timestamp: DateTime.now().toUtc().toIso8601String(),
             eventType: 'message.updated',
             status: 'updated',
-            title: progress.$2,
+            title: switch (progress.$2) {
+              'provider_working' => 'Working',
+              'provider_tool_started' => 'Using a tool',
+              'provider_response_received' => 'Response received',
+              'provider_finalizing' => 'Finishing up',
+              _ => 'Working',
+            },
             percentage: progress.$1.toDouble(),
             details: const {'source': 'profile.milestone'},
           );

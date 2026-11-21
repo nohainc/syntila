@@ -789,6 +789,7 @@ export function canManageThread(
 export function validateWorkRequest(
   request: WorkRequest,
   policy: ThreadExecutionPolicy,
+  options: { readonly workerTargeted?: boolean } = {},
 ): void {
   required(request.id, "WorkRequest id");
   required(request.threadId, "WorkRequest threadId");
@@ -840,7 +841,9 @@ export function validateWorkRequest(
       }
     }
   }
-  if (request.mode === "stateful") {
+  // Worker-targeted stateful Work runs in a Space folder on a Worker's
+  // computer (ADR-040) and has no Workspace to be primary.
+  if (request.mode === "stateful" && !options.workerTargeted) {
     if (policy.mode !== "stateful" || !policy.primaryWorkspaceId) {
       throw new DomainInvariantError(
         "Stateful WorkRequest requires a Primary Workspace",

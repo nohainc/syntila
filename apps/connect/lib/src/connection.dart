@@ -95,6 +95,9 @@ class AgentConnection {
     this.onFault,
     this.onSession,
     this.readiness,
+    this.onRefreshModels,
+    this.onUsageRequest,
+    this.onWorkerName,
   }) : connector = connector ?? connectWebSocket,
        _random = random ?? Random();
 
@@ -120,6 +123,18 @@ class AgentConnection {
 
   /// The Agent's own readiness report, sent in `hello` so the server can show it.
   final Future<Map<String, Object?>> Function()? readiness;
+
+  /// The server asked this Agent to re-read the models its provider CLI offers.
+  final void Function()? onRefreshModels;
+
+  /// The owner asked for the provider's usage report; answer with this id.
+  final void Function(String requestId)? onUsageRequest;
+
+  /// The server's current name for this Worker, sent with every heartbeat answer.
+  final void Function(String name)? onWorkerName;
+
+  /// The server says this Worker was removed or unpaired in the app.
+  bool serverRemoved = false;
 
   final _ids = MessageIds();
   final _phases = StreamController<ConnectionPhase>.broadcast();
@@ -212,7 +227,14 @@ class AgentConnection {
     if (key == null) throw ServerRefusal(401, 'no key is stored');
 
     // 1. Claim the epoch: a newer login makes every older session stale.
-    final nonce = await api.nonce(workerId);
+    final ({String nonceId, String nonce}) nonce;
+    try {
+      nonce = await api.nonce(workerId);
+    } on ServerRefusal catch (refusal) {
+      // 404: the server no longer has this Worker (removed or unpaired).
+      if (refusal.status == 404) serverRemoved = true;
+      rethrow;
+    }
     final signature = await signMessage(
       key,
       actionMessage('session', workerId, nonce.nonceId, nonce.nonce),
@@ -261,7 +283,22 @@ class AgentConnection {
             payload is Map<String, Object?> ? payload : <String, Object?>{},
           );
         } else if (type == 'workspace.heartbeat.ack') {
-          // Liveness only.
+          final payload = message['payload'];
+          if (payload is Map && payload['removed'] == true) {
+            serverRemoved = true;
+            _set(ConnectionPhase.revoked);
+            unawaited(stop());
+          } else if (payload is Map) {
+            final name = payload['workerName'];
+            if (name is String && name.trim().isNotEmpty) {
+              onWorkerName?.call(name.trim());
+            }
+            if (payload['refreshModels'] == true) onRefreshModels?.call();
+            final usageId = payload['usageRequestId'];
+            if (usageId is String && usageId.isNotEmpty) {
+              onUsageRequest?.call(usageId);
+            }
+          }
         } else if (_phase == ConnectionPhase.ready) {
           onMessage(message);
         } else if (_held.length < 256) {

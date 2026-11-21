@@ -4,20 +4,7 @@ import 'syntila_protocol.dart';
 
 bool isReplayableRealtimeEvent(Map<String, Object?> event) {
   final type = event['type'];
-  if (type is String && durableRealtimeEventTypes.contains(type)) return true;
-  if (type != 'assignment.activity') return false;
-  final payload = event['payload'];
-  if (payload is! Map) return false;
-  return const {
-    'execution.started',
-    'model.started',
-    'tool.started',
-    'tool.completed',
-    'tool.failed',
-    'execution.completed',
-    'execution.failed',
-    'execution.cancelled',
-  }.contains(payload['activityType']);
+  return type is String && durableRealtimeEventTypes.contains(type);
 }
 
 class RealtimeEvent {
@@ -127,13 +114,22 @@ class RealtimeEvent {
       }
     } else if ((durableRealtimeEventTypes.contains(decoded['type']) ||
             ephemeralRealtimeEventTypes.contains(decoded['type'])) &&
-        decoded['workspaceId'] == null) {
+        decoded['workspaceId'] == null &&
+        !(rawStream is Map &&
+            rawStream['kind'] == 'space' &&
+            (decoded['type'] == 'assignment.activity' ||
+                (decoded['type'] as String).startsWith('work_request.') ||
+                (decoded['type'] as String).startsWith('step.')))) {
       throw const ProtocolException('Execution events require workspaceId');
     }
     if (decoded['type'] == 'assignment.activity') {
       _requiredString(decoded, 'assignmentId');
       _requiredString(decoded, 'attemptId');
-      _requiredString(decoded, 'workspaceRuntimeId');
+      if (decoded['workspaceId'] != null) {
+        _requiredString(decoded, 'workspaceRuntimeId');
+      } else {
+        _requiredString(decoded, 'threadId');
+      }
       final activity = Map<String, Object?>.from(payload);
       if (_requiredString(activity, 'entityId') != decoded['assignmentId']) {
         throw const ProtocolException(
@@ -150,6 +146,12 @@ class RealtimeEvent {
       _requiredString(activity, 'activityType');
       _requiredString(activity, 'activityStatus');
       _requiredString(activity, 'title');
+    } else if (decoded['workspaceId'] == null &&
+        ((decoded['type'] as String).startsWith('work_request.') ||
+            (decoded['type'] as String).startsWith('step.'))) {
+      final work = Map<String, Object?>.from(payload);
+      _requiredString(work, 'threadId');
+      _requiredString(work, 'workRequestId');
     }
     const allowedPayloadFields = {
       'entityId',

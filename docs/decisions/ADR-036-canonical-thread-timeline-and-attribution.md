@@ -25,4 +25,5 @@
 
 - One ordered timeline, read over cursor-paginated HTTP, with notification events that carry only IDs.
 - The client's Work-card merge logic is removed after old and new rendering match on seeded historical fixtures.
+- Until that cutover, a live Work card replaces canonical AI rows for the same request in the displayed timeline. Terminal Work events refresh the observed discussion, including retry outcomes. Worker-first requests without a Workspace publish Work and step events on their Space stream.
 - Migration is additive plus a backfill. Nothing is copied to a new table.

@@ -403,9 +403,14 @@ extension _AxAppViews on _AxAppStateMixin {
                   child: Text('Could not load Workers. Please try again.'));
         }
         return state.data == true
-            ? SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: WorkerInstancesSection(catalogs: store.catalogs))
+            ? WorkerInstancesSection(
+                catalogs: store.catalogs,
+                selectedWorkerId: navigation.workspaceId,
+                onSelectWorker: (id) =>
+                    _navigateTo(AxNavigation.workspaces(workspaceId: id)),
+                onBackToList: () =>
+                    _navigateTo(const AxNavigation.workspaces()),
+              )
             : _legacyWorkspacesView();
       });
 

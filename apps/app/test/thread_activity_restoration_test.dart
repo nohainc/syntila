@@ -74,6 +74,65 @@ class ActivitySource extends AxFixtureDataSource {
 }
 
 void main() {
+  testWidgets('shows a transient Space activity action in the conversation',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final events = StreamController<Map<String, dynamic>>.broadcast();
+    addTearDown(events.close);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      space: const AxSpace(
+          id: 'space',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      thread: const AxThread(
+          id: 'a',
+          spaceId: 'space',
+          name: 'a',
+          lead: '',
+          status: 'active',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: ''),
+      dataSource: ActivitySource(),
+      realtimeEvents: events.stream,
+      onBackToSpace: () {},
+      onArchive: () {},
+    ))));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    events.add({
+      'eventId': 'live-event',
+      'type': 'assignment.activity',
+      'version': '1.1',
+      'timestamp': '2026-10-17T10:00:01Z',
+      'sequence': 0,
+      'spaceId': 'space',
+      'threadId': 'a',
+      'stream': {'kind': 'space', 'id': 'space'},
+      'assignmentId': 'a-assignment',
+      'attemptId': 'a-attempt',
+      'payload': {
+        'entityId': 'a-assignment',
+        'workerId': 'chatgpt',
+        'sourceEventId': 'source',
+        'executionId': 'execution',
+        'activitySequence': 1,
+        'activityType': 'tool.started',
+        'activityStatus': 'running',
+        'title': 'Searching the web',
+        'toolName': 'web_search',
+      },
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Searching the web · Web search'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   testWidgets(
       'Conversation shows live Worker activity and keeps own requests right',
       (tester) async {

@@ -10,6 +10,7 @@ const COMMAND_OF_LEGACY: Record<string, string> = {
   "workspace.sync.request": "session.sync",
   "assignment.ack": "assignment.ack",
   "assignment.start.ack": "assignment.start.ack",
+  "assignment.activity": "assignment.activity",
   "assignment.start.permit.request": "assignment.start.permit",
   "assignment.result": "assignment.result",
   "assignment.error": "assignment.error",
@@ -33,6 +34,8 @@ export function commandToLegacy(frame: CommandFrame, workerScope: string, legacy
   const top: Record<string, unknown> = {};
   const rest: Record<string, unknown> = { ...payload };
   for (const key of ASSIGNMENT_FIELDS) if (key in payload) { top[key] = payload[key]; delete rest[key]; }
+  const body = type === "assignment.activity" && rest.activity && typeof rest.activity === "object" && !Array.isArray(rest.activity)
+    ? rest.activity : rest;
   return {
     protocol: legacy.protocolName,
     protocolVersion: legacy.protocolVersion,
@@ -42,7 +45,7 @@ export function commandToLegacy(frame: CommandFrame, workerScope: string, legacy
     executionWorkspaceId: workerScope,
     workspaceRuntimeId: workerScope,
     ...top,
-    payload: rest,
+    payload: body,
   };
 }
 

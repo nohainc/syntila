@@ -52,6 +52,22 @@ describe("realtime event contract", () => {
     expect(parseRealtimeEvent(accepted)).toEqual(accepted);
   });
 
+  it("accepts scoped Worker-first Work events and rejects missing or mismatched scope", () => {
+    const workerEvent = {
+      ...event,
+      workspaceId: undefined,
+      version: "1.1",
+      type: "work_request.completed",
+      spaceId: "space-1",
+      stream: { kind: "space", id: "space-1" },
+      payload: { workRequestId: "request", threadId: "thread", status: "completed" },
+    };
+    expect(parseRealtimeEvent(workerEvent)).toEqual(workerEvent);
+    expect(() => parseRealtimeEvent({ ...workerEvent, stream: { kind: "space", id: "other" } })).toThrow();
+    expect(() => parseRealtimeEvent({ ...workerEvent, payload: { status: "completed" } })).toThrow();
+    expect(() => parseRealtimeEvent({ ...workerEvent, type: "run.completed" })).toThrow();
+  });
+
   it("accepts current durable and ephemeral events", () => {
     expect(parseRealtimeEvent(JSON.stringify(event))).toEqual(event);
     expect(isDurableRealtimeEventType("run.completed")).toBe(true);
@@ -62,7 +78,7 @@ describe("realtime event contract", () => {
   it("accepts normalized activity payloads without raw provider content", () => {
     const parsed = parseRealtimeEvent(activity);
     expect(parsed).toEqual(activity);
-    expect(isReplayableRealtimeEvent(parsed)).toBe(true);
+    expect(isReplayableRealtimeEvent(parsed)).toBe(false);
     expect(
       isReplayableRealtimeEvent({
         ...parsed,

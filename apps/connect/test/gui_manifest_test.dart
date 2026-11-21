@@ -37,25 +37,32 @@ void main() {
       expect(document, contains('id mcpWorker.test'));
       expect(document, contains('id mcpWorker.approve'));
       expect(document, contains('id mcpWorker.remove'));
-      expect(document, contains('id config.show'));
-      expect(document, contains('id config.set'));
+      expect(document, isNot(contains('id config.show')));
+      expect(document, isNot(contains('id config.set')));
       expect(document, isNot(contains('id update.stage')));
       expect(document, isNot(contains('id update.prepare')));
-      expect(document, contains('id rotateCredential'));
+      expect(document, contains('id updateCredentials'));
+      expect(document, isNot(contains('id rotateCredential')));
       expect(document, contains('Update credentials'));
+      expect(document, contains('id logs.get'));
+      expect(document, contains('id logs.level'));
+      expect(document, contains('id device'));
       expect(document, contains('id version'));
 
       // Sidebar sections
-      expect(document, contains('RUNTIME & SERVICE'));
+      expect(document, isNot(contains('RUNTIME & SERVICE')));
       expect(document, isNot(contains('WORKSPACE & TOOLS')));
       expect(document, contains('DIAGNOSTICS & MAINTENANCE'));
 
-      // Config keys enum and stdin secret
-      expect(document, contains('maxConcurrent'));
+      // Log level enum and stdin secret
+      expect(document, isNot(contains('maxConcurrent')));
+      expect(document, isNot(contains('autoStart')));
       expect(document, isNot(contains('engineExecutable')));
       expect(document, isNot(contains('data-dir')));
       expect(document, contains('stdinFlag pairing-code-stdin'));
       expect(document, contains('longRunning true'));
+      expect(document, contains('read-only'));
+      expect(document, isNot(contains('--write')));
     });
 
     test('the pairing code is never offered as a plain argument', () {
@@ -81,6 +88,20 @@ void main() {
 
     test('ordinary command lines are not manifest requests', () {
       expect(answerGuiManifest(['status', '--json'], version: '0.1.0'), isNull);
+    });
+
+    test('folders commands do not require a worker selector', () {
+      final spec = workerGuiSpec(version: '0.1.0');
+      final foldersGroup = spec.nodes.whereType<CliGroup>().firstWhere(
+        (g) => g.name == 'folders',
+      );
+      for (final child in foldersGroup.children.whereType<CliCommand>()) {
+        expect(
+          child.parameters.map((p) => p.name),
+          isNot(contains('worker')),
+          reason: 'folders.${child.name} should not take --worker',
+        );
+      }
     });
   });
 }

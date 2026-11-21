@@ -772,6 +772,7 @@ export class RealtimeGateway implements DurableObject {
                   space_id AS "spaceId", thread_id AS "threadId", task_id AS "taskId", attempt_id AS "attemptId", workspace_runtime_id AS "workspaceRuntimeId"
              FROM realtime_events
             WHERE stream_kind = ${backing.kind} AND COALESCE(stream_id, workspace_id) = ${backing.id}
+              AND event_type <> 'assignment.activity'
               AND (${threadId}::text IS NULL OR thread_id = ${threadId}::text)
               AND sequence > ${afterSequence}::bigint AND sequence <= ${throughSequence}::bigint
             ORDER BY sequence ASC LIMIT ${MAX_UNIFIED_REPLAY + 1}`;

@@ -138,11 +138,11 @@ void main() {
       onRefresh: () async => null,
     ))));
     expect(find.text('Writer'), findsNWidgets(2));
-    expect(
-        find.textContaining(
-            'Laptop · Enabled · Online · Readiness unknown · abcdefgh'),
-        findsOneWidget);
-    expect(find.textContaining('Not ready · ijklmnop'), findsOneWidget);
+    expect(find.text('Type'), findsNWidgets(2));
+    expect(find.text('Online'), findsNWidgets(2));
+    expect(find.text('Readiness unknown'), findsNothing);
+    expect(find.textContaining('abcdefgh'), findsNothing);
+    expect(find.textContaining('ijklmnop'), findsNothing);
   });
 
   testWidgets('adds a Worker from the server Type list', (tester) async {
@@ -154,10 +154,10 @@ void main() {
                 error: null,
                 onRefresh: () async => null,
                 management: source))));
-    await tester.tap(find.text('Add Worker'));
+    await tester.tap(find.byKey(const ValueKey('add-worker-button')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'My Worker');
-    await tester.tap(find.text('Add'));
+    await tester.tap(find.text('Add Worker').last);
     await tester.pumpAndSettle();
     expect(source.created, [('type', 'My Worker')]);
   });
@@ -179,34 +179,217 @@ void main() {
         updatedAt: 'now');
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-            body: WorkerInstancesList(
-                workers: [worker],
-                error: null,
-                onRefresh: () async => null,
-                management: source))));
-    await tester.tap(find.byTooltip('Manage Writer'));
-    await tester.pumpAndSettle();
+            body: SingleChildScrollView(
+                child: WorkerInstancesList(
+                    workers: [worker],
+                    error: null,
+                    selectedWorkerId: 'worker-12345678',
+                    onRefresh: () async => null,
+                    management: source)))));
+    expect(find.text('worker-12345..'), findsOneWidget);
+    expect(find.byKey(const ValueKey('worker-detail-copy-id')), findsOneWidget);
     await tester.tap(find.text('Rename'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Renamed');
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Renamed',
+    );
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(source.updates.single.$1, 'worker-12345678');
     expect(source.updates.single.$2, {'name': 'Renamed'});
-    await tester.tap(find.byTooltip('Manage Writer'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Disable'));
     await tester.pumpAndSettle();
     expect(source.updates.last.$1, 'worker-12345678');
     expect(source.updates.last.$2, {'enabled': false});
-    await tester.tap(find.byTooltip('Manage Writer'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Remove'));
     await tester.pumpAndSettle();
     expect(source.removed, isEmpty);
     await tester.tap(find.text('Remove').last);
     await tester.pumpAndSettle();
     expect(source.removed, ['worker-12345678']);
+  });
+
+  testWidgets('shows Pair when unpaired and Unpair when paired',
+      (tester) async {
+    final source = _ManagementSource();
+    WorkerInstance makeWorker(String id, bool paired) => WorkerInstance(
+          id: id,
+          actorId: 'actor',
+          workerTypeId: 'type',
+          workerTypeName: 'Type',
+          name: paired ? 'Paired' : 'Unpaired',
+          description: '',
+          enabled: true,
+          online: false,
+          paired: paired,
+          ready: false,
+          createdAt: 'now',
+          updatedAt: 'now',
+        );
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: WorkerInstancesList(
+                    workers: [makeWorker('w1', false), makeWorker('w2', true)],
+                    error: null,
+                    selectedWorkerId: 'w1',
+                    onRefresh: () async => throw Exception('transient refresh'),
+                    management: source)))));
+
+    expect(find.text('Pair'), findsOneWidget);
+    expect(find.text('Unpair'), findsNothing);
+    await tester.tap(find.text('Pair'));
+    await tester.pumpAndSettle();
+    expect(find.text('pairing-code'), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('copy-pairing-code-button')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('copy-pairing-code-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Copied'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Disable'));
+    await tester.pumpAndSettle();
+    expect(source.updates.last.$1, 'w1');
+    expect(source.updates.last.$2, {'enabled': false});
+    expect(find.textContaining('Could not update Worker'), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: WorkerInstancesList(
+                    workers: [makeWorker('w1', false), makeWorker('w2', true)],
+                    error: null,
+                    selectedWorkerId: 'w2',
+                    onRefresh: () async => null,
+                    management: source)))));
+    expect(find.text('Unpair'), findsOneWidget);
+    expect(find.text('Pair'), findsNothing);
+  });
+
+  testWidgets('detail actions update the Worker immediately',
+      (tester) async {
+    final source = _LiveSectionSource();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: WorkerInstancesSection(
+                    selectedWorkerId: 'w-live',
+                    catalogs: AxSessionCatalogs(source))))));
+    await tester.pumpAndSettle();
+    expect(find.text('Writer'), findsOneWidget);
+    expect(find.text('Offline'), findsWidgets);
+
+    await tester.tap(find.text('Disable'));
+    await tester.pumpAndSettle();
+    expect(find.text('Disabled'), findsWidgets);
+
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Worker not found.'), findsOneWidget);
+  });
+
+  testWidgets('clicking a Worker opens detail view with attributes and visibility table',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final source = _ManagementSource();
+    const worker = WorkerInstance(
+      id: 'wrk-detail-1',
+      actorId: 'actor',
+      workerTypeId: 'claude',
+      workerTypeName: 'Claude Code',
+      name: 'My Claude',
+      description: '',
+      enabled: true,
+      online: true,
+      paired: true,
+      ready: true,
+      deviceName: 'MacBook Pro',
+      providerToolName: 'claude',
+      providerToolVersion: '1.2.3',
+      executionOptions: {
+        'schemaVersion': 1,
+        'models': {
+          'supported': true,
+          'discovery': 'static',
+          'options': [
+            {
+              'id': 'claude-sonnet',
+              'name': 'Claude Sonnet',
+              'effort': {
+                'supported': true,
+                'values': ['low', 'high'],
+              },
+            },
+          ],
+        },
+        'effort': {
+          'supported': true,
+          'values': ['low', 'high'],
+        },
+      },
+      createdAt: 'now',
+      updatedAt: 'now',
+    );
+    String? selectedId;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: WorkerInstancesList(
+      workers: const [worker],
+      error: null,
+      onRefresh: () async => null,
+      management: source,
+      onSelectWorker: (id) => selectedId = id,
+    )))));
+    await tester.tap(find.byKey(const ValueKey('worker-instance-wrk-detail-1')));
+    await tester.pumpAndSettle();
+    expect(selectedId, 'wrk-detail-1');
+
+    var backed = false;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: WorkerInstancesList(
+      workers: const [worker],
+      error: null,
+      selectedWorkerId: 'wrk-detail-1',
+      onBackToList: () => backed = true,
+      onRefresh: () async => null,
+      management: source,
+    )))));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('worker-detail-wrk-detail-1')),
+        findsOneWidget);
+    expect(find.text('MacBook Pro'), findsOneWidget);
+    expect(find.text('Claude Sonnet'), findsOneWidget);
+
+    await tester.tap(
+        find.byKey(const ValueKey('worker-visibility-effort-claude-sonnet-low')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('worker-visibility-save')));
+    await tester.pumpAndSettle();
+    expect(source.updates.last.$1, 'wrk-detail-1');
+    expect(source.updates.last.$2, {
+      'visibility': {
+        'hiddenModels': <String>[],
+        'hiddenEfforts': {
+          'claude-sonnet': ['low'],
+        },
+      },
+    });
+
+    await tester.tap(find.byKey(const ValueKey('worker-detail-back')));
+    await tester.pumpAndSettle();
+    expect(backed, isTrue);
   });
 }
 
@@ -258,6 +441,73 @@ class _IdentitySource implements AxDataSource, AxWorkerIdentityFeatureSource {
 class _UxSource implements AxDataSource, AxWorkersUxFeatureSource {
   @override
   Future<bool> workersUxEnabled() async => true;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _LiveSectionSource extends _ManagementSource
+    implements
+        AxDataSource,
+        AxWorkerIdentityFeatureSource,
+        AxWorkersUxFeatureSource {
+  var _workers = [
+    const WorkerInstance(
+      id: 'w-live',
+      actorId: 'actor',
+      workerTypeId: 'type',
+      workerTypeName: 'Type',
+      name: 'Writer',
+      description: '',
+      enabled: true,
+      online: false,
+      paired: true,
+      ready: false,
+      createdAt: 'now',
+      updatedAt: 'now',
+    ),
+  ];
+
+  @override
+  Future<bool> workerIdentityEnabled() async => true;
+
+  @override
+  Future<bool> workersUxEnabled() async => true;
+
+  @override
+  Future<List<WorkerInstance>> loadWorkerInstances() async => _workers;
+
+  @override
+  Future<void> updateWorkerInstance(
+      String id, Map<String, Object?> changes) async {
+    await super.updateWorkerInstance(id, changes);
+    _workers = [
+      for (final w in _workers)
+        if (w.id == id)
+          WorkerInstance(
+            id: w.id,
+            actorId: w.actorId,
+            workerTypeId: w.workerTypeId,
+            workerTypeName: w.workerTypeName,
+            name: (changes['name'] as String?) ?? w.name,
+            description: w.description,
+            enabled: (changes['enabled'] as bool?) ?? w.enabled,
+            online: w.online,
+            paired: w.paired,
+            ready: w.ready,
+            createdAt: w.createdAt,
+            updatedAt: w.updatedAt,
+          )
+        else
+          w,
+    ];
+  }
+
+  @override
+  Future<void> removeWorkerInstance(String id) async {
+    await super.removeWorkerInstance(id);
+    _workers = _workers.where((w) => w.id != id).toList();
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

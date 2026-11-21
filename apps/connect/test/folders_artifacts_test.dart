@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:syntila_connect/syntila_connect.dart';
+import 'package:syntila_worker_protocol/syntila_worker_protocol.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -98,9 +99,11 @@ class _OkRun implements EngineRun {
 
 class _RecordingLauncher implements EngineLauncher {
   Map<String, Object?>? last;
+  EngineRequest? lastRequest;
   @override
   Future<EngineRun> launch(EngineRequest request) async {
     last = request.payload;
+    lastRequest = request;
     return _OkRun();
   }
 
@@ -188,6 +191,36 @@ void launcherTests() {
       expect(await folders.isAllowed(output, write: true), isTrue);
     },
   );
+
+  test('forwards activity through the artifact staging wrapper', () async {
+    await root.setRoot(work.path);
+    final inner = _RecordingLauncher();
+    final received = <String>[];
+    final original = request([]);
+    await launcher(inner).launch(
+      EngineRequest(
+        assignmentId: original.assignmentId,
+        attemptId: original.attemptId,
+        payload: original.payload,
+        onActivity: (event) => received.add(event.title),
+      ),
+    );
+    inner.lastRequest!.onActivity!(
+      WorkerActivity(
+        requestId: 'request',
+        assignmentId: original.assignmentId,
+        executionId: 'execution',
+        workerId: 'chatgpt',
+        eventId: 'event',
+        sequence: 1,
+        timestamp: DateTime.now().toUtc().toIso8601String(),
+        eventType: 'tool.started',
+        status: 'running',
+        title: 'Searching the web',
+      ),
+    );
+    expect(received, ['Searching the web']);
+  });
 
   test('files are uploaded only when the step declared them', () async {
     await root.setRoot(work.path);

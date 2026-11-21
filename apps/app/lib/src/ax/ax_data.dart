@@ -52,6 +52,17 @@ part 'ax_data/files_api.dart';
 /// Cloud rejected the action because it needs the paid plan.
 const paidPlanRequiredCode = 'paid_plan_required';
 
+/// The server's message when Work needs a Space folder (shown in a failed
+/// request, next to a Select folder button).
+const spaceFolderRequiredMessage =
+    'Select a folder for this Space to use the selected Workflow.';
+
+/// Work needs a folder and the Space has none (the person can choose one).
+const spaceFolderRequiredCode = 'space_folder_required';
+
+/// The Space's folder is on another computer than the chosen Worker.
+const workerNotOnFolderDeviceCode = 'worker_not_on_folder_device';
+
 class AxApiException implements Exception {
   const AxApiException(this.message,
       {this.statusCode, this.code, this.details = const []});
@@ -131,7 +142,8 @@ abstract interface class AxWorkersUxFeatureSource {
 }
 
 abstract interface class AxEligibleWorkersSource {
-  Future<List<String>> loadEligibleWorkerIds(String threadId, String workflowId);
+  Future<List<String>> loadEligibleWorkerIds(
+      String threadId, String workflowId);
 }
 
 abstract interface class AxWorkerManagementSource {
@@ -146,6 +158,11 @@ abstract interface class AxWorkerManagementSource {
   Future<void> clearMcpWorkerPin(String id);
 }
 
+/// Asks a connected Worker to re-read the models its provider CLI offers.
+abstract interface class AxWorkerModelsSource {
+  Future<void> requestWorkerModelsRefresh(String id);
+}
+
 abstract class _AxApiClientCore
     implements
         AxDataSource,
@@ -153,7 +170,8 @@ abstract class _AxApiClientCore
         AxWorkerIdentityFeatureSource,
         AxWorkersUxFeatureSource,
         AxEligibleWorkersSource,
-        AxWorkerManagementSource {
+        AxWorkerManagementSource,
+        AxWorkerModelsSource {
   _AxApiClientCore(
       {String? baseUrl, http.Client? client, String? backendBaseUrl})
       : baseUrl = baseUrl ??
@@ -497,6 +515,7 @@ class AxApiClient extends _AxApiClientCore
         AxWorkflowDefaultDataSource,
         AxWorkflowWorkspaceDataSource,
         AxSpaceAdditionalFolderDataSource,
+        AxSpaceFolderDataSource,
         AxWorkspaceMemberAccessDataSource,
         AxWorkspacePersonAccessDataSource,
         AxWorkspaceSharingDataSource,

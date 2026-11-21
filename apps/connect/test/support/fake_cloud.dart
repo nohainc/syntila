@@ -27,6 +27,7 @@ class FakeAssignment {
   String? terminalType;
   int acks = 0;
   int startAcks = 0;
+  final List<Map<String, Object?>> activity = [];
 }
 
 class _Socket {
@@ -527,6 +528,8 @@ class FakeCloud {
       case 'assignment.start.ack':
         assignment.startAcks += 1;
         if (!_terminal(assignment.status)) assignment.status = 'started';
+      case 'assignment.activity':
+        assignment.activity.add(payload);
       case 'assignment.result':
       case 'assignment.error':
       case 'assignment.cancelled':

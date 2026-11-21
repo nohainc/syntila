@@ -6,6 +6,9 @@ import {
 import { dataOf, type Row } from "../../platform/data.js";
 import { FEATURE_FLAGS, isFeatureEnabled } from "../../feature-flags.js";
 import { readBody, readJson } from "./validation.js";
+import { spaceWorkerExecutionOptions } from "../worker-execution-options.js";
+import { notifyWorkerAgent, publishWorkerChanged } from "../worker-events.js";
+import { revokeWorkerCredential } from "../worker-agents.js";
 import { HttpError, json, securityContext } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 
@@ -28,7 +31,8 @@ const ONLINE_WINDOW = "10 minutes";
 
 const columns = (workerTargetDispatch: boolean) => `w.id, w.actor_id AS "actorId", w.worker_type_id AS "workerTypeId",
   c.display_name AS "workerTypeName", w.name, w.description, w.enabled,
-  w.default_model AS "defaultModel", w.created_at AS "createdAt",
+  w.default_model AS "defaultModel", w.visibility_json AS "visibilityJson",
+  w.created_at AS "createdAt",
   w.updated_at AS "updatedAt", w.revoked_at AS "revokedAt",
   (${workerTargetDispatch ? `EXISTS (
      SELECT 1 FROM worker_agent_sessions s
@@ -44,7 +48,10 @@ const columns = (workerTargetDispatch: boolean) => `w.id, w.actor_id AS "actorId
         AND s.lease_expires_at > now())` : `EXISTS (
      SELECT 1 FROM workspace_sessions s
       WHERE s.workspace_id = inv.workspace_id AND s.disconnected_at IS NULL
-        AND s.last_heartbeat_at > now() - interval '${ONLINE_WINDOW}')`}) AS online`;
+        AND s.last_heartbeat_at > now() - interval '${ONLINE_WINDOW}')`}) AS online,
+  (w.revoked_at IS NULL AND EXISTS (
+     SELECT 1 FROM worker_credentials cred
+      WHERE cred.worker_instance_id = w.id AND cred.revoked_at IS NULL)) AS paired`;
 const FROM = `worker_instances w
   JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
   LEFT JOIN legacy_worker_mapping m ON m.worker_instance_id = w.id
@@ -56,6 +63,23 @@ function requireWorkerIdentity(): void {
 
 function workerView(row: Row): WorkerInstance {
   const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : String(value));
+  const visibility = (() => {
+    try {
+      const parsed = row.visibilityJson ? JSON.parse(String(row.visibilityJson)) : null;
+      if (parsed && typeof parsed === "object") {
+        return {
+          hiddenModels: Array.isArray(parsed.hiddenModels) ? parsed.hiddenModels : [],
+          hiddenEfforts:
+            parsed.hiddenEfforts && typeof parsed.hiddenEfforts === "object"
+              ? parsed.hiddenEfforts
+              : {},
+        };
+      }
+    } catch {
+      // ignore malformed JSON
+    }
+    return { hiddenModels: [], hiddenEfforts: {} };
+  })();
   return {
     id: String(row.id),
     actorId: String(row.actorId),
@@ -65,9 +89,11 @@ function workerView(row: Row): WorkerInstance {
     description: String(row.description),
     enabled: row.enabled === true,
     online: row.online === true,
+    paired: row.paired === true,
     ready: row.ready === true,
     readinessKnown: row.readinessKnown === true,
     defaultModel: row.defaultModel == null ? null : String(row.defaultModel),
+    visibility,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
     revokedAt: row.revokedAt == null ? null : iso(row.revokedAt),
@@ -106,7 +132,86 @@ export async function handleListWorkers(
      WHERE w.owner_user_id = ${context.userId}
        AND (${includeRevoked}::boolean OR w.revoked_at IS NULL)
      ORDER BY w.created_at, w.id`;
-  return json({ workers: rows.map(workerView) });
+  const views = rows.map(workerView);
+  const reports = await agentExecutionOptions(env, views.filter((w) => !w.revokedAt));
+  return json({ workers: views.map((w) => (reports.has(w.id) ? { ...w, ...reports.get(w.id) } : w)) });
+}
+
+/**
+ * The models and efforts each paired Agent's provider CLI offers, as the same
+ * normalized options the composer already understands. The Agent reports its
+ * discovered catalog with its readiness; it is only used when it names the
+ * Type's published Profile (digest) and the CLI version it was discovered for.
+ * A Profile with a fixed model list needs no report. The last report stays
+ * available after the Agent disconnects.
+ */
+async function agentExecutionOptions(
+  env: SecurityEnv,
+  workers: WorkerInstance[],
+): Promise<Map<string, { executionOptions?: unknown; modelsStatus?: string; modelsReportedAt?: string; providerToolName?: string; providerToolVersion?: string }>> {
+  const result = new Map<string, { executionOptions?: unknown; modelsStatus?: string; modelsReportedAt?: string; providerToolName?: string; providerToolVersion?: string }>();
+  if (workers.length === 0) return result;
+  const q = dataOf(env).read;
+  const ids = workers.map((w) => w.id);
+  const sessions = await q.rows<{ worker_instance_id: string; readiness_json: string | null; models_status: string | null; models_reported_at: Date | string | null }>`
+    SELECT worker_instance_id, models_json AS readiness_json, models_status, models_reported_at FROM worker_agent_sessions
+     WHERE worker_instance_id = ANY(${ids}::text[]) AND models_status IS NOT NULL`;
+  for (const row of sessions) {
+    const at = row.models_reported_at;
+    result.set(row.worker_instance_id, {
+      modelsStatus: String(row.models_status),
+      ...(at ? { modelsReportedAt: at instanceof Date ? at.toISOString() : String(at) } : {}),
+    });
+  }
+  const reported = new Map<string, { providerToolName?: string; providerToolVersion?: string; modelCatalog?: { profileDigest?: string; providerToolVersion?: string } }>();
+  for (const row of sessions) {
+    try {
+      reported.set(row.worker_instance_id, JSON.parse(String(row.readiness_json)));
+    } catch {
+      /* A damaged report offers no models. */
+    }
+  }
+  const profileFor = async (typeId: string, digest: string | null) => {
+    const row = await q.row<{ profile_json: string; digest: string }>`
+      SELECT profile_json, digest FROM worker_profiles
+       WHERE worker_type_id = ${typeId} AND (${digest}::text IS NULL OR digest = ${digest})
+      UNION ALL
+      SELECT profile_json, digest FROM worker_profile_history
+       WHERE worker_type_id = ${typeId} AND ${digest}::text IS NOT NULL AND digest = ${digest}
+      LIMIT 1`;
+    return row ? { json: String(row.profile_json), digest: String(row.digest) } : null;
+  };
+  for (const worker of workers) {
+    const report = reported.get(worker.id);
+    // The CLI the Agent last read its models from (name and version).
+    const toolName = report?.providerToolName;
+    const toolVersion = report?.providerToolVersion ?? report?.modelCatalog?.providerToolVersion;
+    if (toolName || toolVersion)
+      result.set(worker.id, {
+        ...result.get(worker.id),
+        ...(toolName ? { providerToolName: toolName } : {}),
+        ...(toolVersion ? { providerToolVersion: toolVersion } : {}),
+      });
+    const catalog = report?.modelCatalog;
+    const profile = await profileFor(worker.workerTypeId, catalog?.profileDigest ?? null);
+    if (!profile) continue;
+    if (!catalog) {
+      // Without a report only a Profile with a fixed model list can be offered.
+      try {
+        if (JSON.parse(profile.json)?.model?.discovery) continue;
+      } catch {
+        continue;
+      }
+    }
+    const options = spaceWorkerExecutionOptions(
+      profile.json,
+      catalog?.providerToolVersion,
+      catalog,
+      profile.digest,
+    );
+    if (options) result.set(worker.id, { ...result.get(worker.id), executionOptions: options });
+  }
+  return result;
 }
 
 /** POST /api/workers — a new Worker of an existing Type. The name need not be unique. */
@@ -131,6 +236,7 @@ export async function handleCreateWorker(
       (id, owner_user_id, worker_type_id, name, description, default_model)
     VALUES (${id}, ${context.userId}, ${input.workerTypeId}, ${input.name},
             ${input.description ?? ""}, ${input.defaultModel ?? null})`;
+  await publishWorkerChanged(env, context.userId, id, "updated");
   return json({ worker: await readWorker(env, context.userId, id) }, { status: 201 });
 }
 
@@ -150,6 +256,13 @@ export async function handleWorker(
     const input = await readBody(request, UpdateWorkerRequestSchema);
     const current = await readWorker(env, context.userId, workerId);
     if (current.revokedAt) throw new HttpError(409, "A removed Worker cannot change");
+    const nextVisibilityJson =
+      input.visibility !== undefined
+        ? JSON.stringify({
+            hiddenModels: input.visibility.hiddenModels ?? [],
+            hiddenEfforts: input.visibility.hiddenEfforts ?? {},
+          })
+        : null;
     // defaultModel: undefined keeps it, null clears it.
     await q.run`UPDATE worker_instances
          SET name = COALESCE(${input.name ?? null}::text, name),
@@ -157,8 +270,11 @@ export async function handleWorker(
              enabled = COALESCE(${input.enabled ?? null}::boolean, enabled),
              default_model = CASE WHEN ${input.defaultModel !== undefined}::boolean
                                   THEN ${input.defaultModel ?? null}::text ELSE default_model END,
+             visibility_json = COALESCE(${nextVisibilityJson}::text, visibility_json),
              updated_at = now()
        WHERE id = ${workerId} AND owner_user_id = ${context.userId} AND revoked_at IS NULL`;
+    await publishWorkerChanged(env, context.userId, workerId, "updated");
+    if (input.name) await notifyWorkerAgent(env, workerId, { workerName: input.name });
     return json({ worker: await readWorker(env, context.userId, workerId) });
   }
   if (request.method === "DELETE") {
@@ -167,6 +283,10 @@ export async function handleWorker(
     await q.run`UPDATE worker_instances
          SET revoked_at = now(), enabled = false, updated_at = now()
        WHERE id = ${workerId} AND owner_user_id = ${context.userId} AND revoked_at IS NULL`;
+    // A removed Worker is also unpaired: its credential ends and its session closes,
+    // so the Agent on the device learns it is gone.
+    await revokeWorkerCredential(env, { ownerUserId: context.userId, workerId });
+    await publishWorkerChanged(env, context.userId, workerId, "updated");
     return json({ worker: await readWorker(env, context.userId, workerId) });
   }
   throw new HttpError(405, "Method not allowed");
@@ -231,4 +351,55 @@ export async function handleWorkerMcpPin(
     ON CONFLICT (worker_instance_id) DO UPDATE
       SET version = EXCLUDED.version, manifest_digest = EXCLUDED.manifest_digest, updated_at = now()`;
   return json({ pin: await read() });
+}
+
+/**
+ * POST /api/workers/:workerId/models/refresh — owner only. Asks the connected
+ * Agent to re-read the models its provider CLI offers; it answers on its next
+ * heartbeat by publishing them (`PUT /api/worker-agent/models`).
+ */
+export async function handleWorkerModelsRefresh(
+  request: Request,
+  env: SecurityEnv,
+  workerId: string,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  requireWorkerIdentity();
+  const context = await securityContext(request, env, accessContext);
+  const worker = await readWorker(env, context.userId, workerId); // 404 for a stranger's or unknown id
+  if (worker.revokedAt) throw new HttpError(409, "A removed Worker cannot refresh");
+  const q = dataOf(env).read;
+  const updated = await q.row<{ at: Date | string }>`UPDATE worker_agent_sessions
+       SET models_refresh_requested_at = now()
+     WHERE worker_instance_id = ${workerId} AND disconnected_at IS NULL AND lease_expires_at > now()
+     RETURNING models_refresh_requested_at AS at`;
+  if (!updated) throw new HttpError(409, "The Worker is offline; start its service and try again");
+  const at = updated.at;
+  await notifyWorkerAgent(env, workerId, { refreshModels: true });
+  return json({ requestedAt: at instanceof Date ? at.toISOString() : String(at) }, { status: 202 });
+}
+
+/**
+ * POST /api/workers/:workerId/usage — owner only. Asks the connected Agent to
+ * run its Profile's usage command and returns the provider's report verbatim.
+ * The report belongs to the owner's provider account; nothing is stored.
+ */
+export async function handleWorkerUsageRead(
+  request: Request,
+  env: SecurityEnv,
+  workerId: string,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  requireWorkerIdentity();
+  if (request.method !== "POST") throw new HttpError(405, "Method not allowed");
+  const context = await securityContext(request, env, accessContext);
+  const worker = await readWorker(env, context.userId, workerId); // 404 for a stranger's or unknown id
+  if (worker.revokedAt) throw new HttpError(409, "A removed Worker has no usage");
+  const gateways = (env as { SYNTILA_WORKER_GATEWAY?: DurableObjectNamespace }).SYNTILA_WORKER_GATEWAY;
+  if (!gateways) return json({ error: "Worker gateway is not configured" }, { status: 503 });
+  const response = await gateways
+    .get(gateways.idFromName(`worker:${workerId}`))
+    .fetch("http://gateway/usage-request", { method: "POST" });
+  const body = await response.json().catch(() => ({ error: "Usage request returned an unreadable response" }));
+  return json(body, { status: response.status, headers: { "Cache-Control": "no-store" } });
 }

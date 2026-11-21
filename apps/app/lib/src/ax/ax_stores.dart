@@ -540,7 +540,7 @@ class AxStore {
       discussionChanged: discussion.reconcileSignal,
       discussionObserved: discussion.isObserved,
       discussionResynchronize: (id) async {
-        await discussion.synchronize(id, reconcileNewest: false);
+        await discussion.synchronize(id, reconcileNewest: true);
       },
       discussionFullResynchronize: (id) async {
         await discussion.synchronize(id,

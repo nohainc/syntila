@@ -2,9 +2,14 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import 'external_worker_redactor.dart';
+
 /// A provider observation that has already been reduced to safe, bounded
-/// Worker Activity fields. Provider payloads and tool output never cross this
-/// boundary.
+/// Worker Activity fields. Tool output and prompts never cross this boundary.
+/// The one exception is an event the adapter does not recognise: it is shown
+/// as the provider sent it (secrets redacted, length capped) rather than
+/// hidden, because new provider versions and new providers add event types
+/// faster than adapters can learn them.
 class ProviderActivityObservation {
   const ProviderActivityObservation({
     required this.type,
@@ -28,7 +33,13 @@ class ProviderActivityAdapter {
   ProviderActivityAdapter._(this.kind);
 
   final String kind;
-  final Set<String> _reportedDiagnostics = <String>{};
+  static final _redactor = ExternalWorkerRedactor();
+
+  /// The longest original event shown for an unrecognised event.
+  static const _maxRawEventLength = 1000;
+
+  /// The line being normalized, kept so an unrecognised event can be shown.
+  String? _rawEvent;
   final Map<String, int> _fallbackCounts = <String, int>{};
   final Map<String, List<String>> _pendingFallbackIds =
       <String, List<String>>{};
@@ -77,9 +88,15 @@ class ProviderActivityAdapter {
     try {
       decoded = jsonDecode(line);
     } on Object {
+      _rawEvent = line;
+      _rawDecoded = null;
       return _diagnostic('malformed_json');
     }
-    if (decoded is! Map) return _diagnostic('unsupported_event_shape');
+    if (decoded is! Map) {
+      _rawEvent = line;
+      _rawDecoded = null;
+      return _diagnostic('unsupported_event_shape');
+    }
     return normalizeEvent(decoded, declarativeMatched: declarativeMatched);
   }
 
@@ -87,6 +104,8 @@ class ProviderActivityAdapter {
     Map event, {
     required bool declarativeMatched,
   }) {
+    _rawEvent = jsonEncode(event);
+    _rawDecoded = event;
     return switch (kind) {
       'codex-jsonl' => _normalizeCodex(
         event,
@@ -1419,16 +1438,172 @@ class ProviderActivityAdapter {
     return generated;
   }
 
+  /// An event the adapter does not recognise. Shown with the provider's own
+  /// values instead of JSON syntax: `summary` is one readable line and
+  /// `expanded` (when there is more) has one `name: value` per line, joined by
+  /// U+2028 because activity details cannot carry newlines. Credential-looking
+  /// values are redacted and every part is length-capped, so nothing the
+  /// provider reports is hidden. [reason] stays in the details for debugging.
   List<ProviderActivityObservation> _diagnostic(String reason) {
-    if (!_reportedDiagnostics.add(reason)) return const [];
+    final raw = _rawEvent;
+    final decoded = _rawDecoded;
+    _rawEvent = null;
+    _rawDecoded = null;
+    final details = <String, Object?>{'diagnostic': reason};
+    if (decoded is Map) {
+      final entries = <(String, String)>[];
+      _flatten(decoded, '', 0, entries);
+      final name = _eventName(decoded);
+      _prioritise(entries);
+      // The label is for people: the event's name in plain words, then the
+      // readable values. Field paths, ids and counters stay in `expanded`.
+      final parts = <String>[
+        if (name != null) _humanize(name),
+        for (final e in entries)
+          if (_rank(e) == 0)
+            e.$2
+          else if (_rank(e) == 1)
+            '${_humanize(e.$1.split('.').last)}: ${e.$2}',
+      ];
+      final oneLine = _cap(parts.join(' · '), _maxSummaryLength);
+      if (oneLine.isNotEmpty) details['summary'] = oneLine;
+      final lines = [for (final e in entries) '${e.$1}: ${e.$2}'];
+      final full = _cap(
+        [?name, ...lines].join('\u2028'),
+        _maxRawEventLength * 2,
+      );
+      if (full != oneLine && full.isNotEmpty && lines.isNotEmpty) {
+        details['expanded'] = full;
+      }
+    } else if (raw != null) {
+      final text = _clean(raw);
+      if (text.isNotEmpty) details['summary'] = _cap(text, _maxSummaryLength);
+      if (text.length > _maxSummaryLength) {
+        details['expanded'] = _cap(text, _maxRawEventLength * 2);
+      }
+    }
     return <ProviderActivityObservation>[
       ProviderActivityObservation(
         type: 'model.status',
-        status: 'updated',
-        title: 'Provider activity needs attention',
-        details: {'diagnostic': reason},
+        // A finished history row: it must not take the "active" slot from
+        // the step that is really running.
+        status: 'completed',
+        title: 'Provider event',
+        details: details,
       ),
     ];
+  }
+
+  static const _maxSummaryLength = 300;
+  Object? _rawDecoded;
+
+  String _clean(String value) => _redactor
+      .redactSecrets(value)
+      // Control characters would break a one-line timeline row.
+      .replaceAll(RegExp(r'[\u0000-\u001f\u007f]'), ' ')
+      .replaceAll(RegExp(r' {2,}'), ' ')
+      .trim();
+
+  String _cap(String value, int max) =>
+      value.length > max ? '${value.substring(0, max)}…' : value;
+
+  static String? _eventName(Map event) {
+    for (final key in const ['type', 'event', 'kind', 'subtype']) {
+      final value = event[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return _redactor.redactSecrets(value.trim());
+      }
+    }
+    return null;
+  }
+
+  static const _nameKeys = {'type', 'event', 'kind', 'subtype'};
+
+  /// Turns nested JSON into `path: value` pairs: values, not JSON syntax.
+  void _flatten(
+    Object? value,
+    String path,
+    int depth,
+    List<(String, String)> out,
+  ) {
+    if (out.length >= 40) return;
+    if (value is Map) {
+      for (final entry in value.entries) {
+        final key = '${entry.key}';
+        if (depth == 0 && _nameKeys.contains(key) && entry.value is String) {
+          continue; // Already shown as the event name.
+        }
+        _flatten(
+          entry.value,
+          path.isEmpty ? key : '$path.$key',
+          depth + 1,
+          out,
+        );
+      }
+    } else if (value is List) {
+      if (value.every((e) => e is! Map && e is! List)) {
+        final items = value.take(10).map((e) => _clean('$e')).join(', ');
+        if (items.isNotEmpty) out.add((path, items));
+      } else if (depth < 4) {
+        for (var i = 0; i < value.length && i < 10; i++) {
+          _flatten(value[i], '$path[$i]', depth + 1, out);
+        }
+      }
+    } else if (value != null) {
+      final text = _clean('$value');
+      if (text.isNotEmpty) out.add((path, text));
+    }
+  }
+
+  static const _proseKeys = {
+    'message',
+    'text',
+    'summary',
+    'description',
+    'status',
+    'title',
+    'name',
+    'error',
+    'reason',
+    'detail',
+    'result',
+  };
+  static final _noise = RegExp(
+    r'(^|[._])(id|uuid|session|timestamp|time|ts|created_at|updated_at|usage|tokens?|seq|sequence|index)(\[|[._]|$)|_id$',
+    caseSensitive: false,
+  );
+
+  /// 0 readable text, 1 other values, 2 bookkeeping (ids, times, counters).
+  static int _rank((String, String) e) {
+    final leaf = e.$1.split('.').last.toLowerCase();
+    if (_proseKeys.contains(leaf)) return 0;
+    if (_noise.hasMatch(e.$1)) return 2;
+    return 1;
+  }
+
+  /// `rate.limit_hit` -> `Rate limit hit`.
+  static String _humanize(String name) {
+    final words = name
+        .replaceAll(RegExp(r'\[\d+\]'), '')
+        .replaceAll(RegExp(r'[._\-]+'), ' ')
+        .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}')
+        .trim()
+        .toLowerCase();
+    return words.isEmpty ? name : words[0].toUpperCase() + words.substring(1);
+  }
+
+  /// Readable text first, bookkeeping (ids, times, counters) last.
+  static void _prioritise(List<(String, String)> entries) {
+    int rank((String, String) e) => _rank(e);
+
+    final indexed = [for (var i = 0; i < entries.length; i++) (i, entries[i])];
+    indexed.sort((a, b) {
+      final r = rank(a.$2).compareTo(rank(b.$2));
+      return r != 0 ? r : a.$1.compareTo(b.$1);
+    });
+    entries
+      ..clear()
+      ..addAll(indexed.map((e) => e.$2));
   }
 
   String? _safeText(Object? value) {

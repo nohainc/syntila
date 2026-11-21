@@ -4,8 +4,8 @@
 
 The Web App presents Work execution from one authoritative Work Request
 projection. Cloud status owns lifecycle state; realtime Worker Activity is an
-ordered observation stream used for current activity, elapsed-time hints and
-retained execution history.
+ordered, transient observation stream used for current activity and elapsed-time hints.
+Activity is sent only to connected viewers and is not persisted or replayed.
 
 ## Projection rules
 
@@ -20,15 +20,17 @@ retained execution history.
   Work history.
 - The card shows the current Worker identity when a Worker execution is
   selected or running. Waiting/system states remain attributed to Syntila.
-- Active activity and completed activity history are separate visual groups.
+- Profile milestone keys are presented as readable activity labels; unknown
+  milestone codes use a generic working label.
+- Known tool identifiers use readable names in the activity trail.
+- Active activity and actions observed during the current session are separate visual groups.
   Provider percentages are not synthesized from tool counts.
 
 ## Realtime recovery
 
 `AxWorkRealtimeSync` exposes `AxWorkRealtimeStatus` to the Work surface. During
 transport loss, a scoped gap or authoritative recovery read, unfinished cards
-pause live timers without adding any connection message to the response body. Recovery refreshes authoritative request detail and retained activity;
-it does not infer a terminal result from a missing event.
+pause live timers without adding any connection message to the response body. Recovery refreshes authoritative request detail; missed activity is not replayed and does not determine terminal results.
 
 ## Failure presentation
 

@@ -18,17 +18,6 @@ const timestamp = z.string().datetime();
 
 export const WORKER_ACTIVITY_EVENT_TYPES = NORMALIZED_ACTIVITY_EVENT_TYPES;
 
-export const REPLAYABLE_WORKER_ACTIVITY_EVENT_TYPES = [
-  "execution.started",
-  "model.started",
-  "tool.started",
-  "tool.completed",
-  "tool.failed",
-  "execution.completed",
-  "execution.failed",
-  "execution.cancelled",
-] as const satisfies readonly (typeof NORMALIZED_ACTIVITY_EVENT_TYPES)[number][];
-
 const workerActivityEventType = z.enum(WORKER_ACTIVITY_EVENT_TYPES);
 const workerActivityStatus = z.enum(NORMALIZED_ACTIVITY_STATUSES);
 const MAX_WORKER_ACTIVITY_PAYLOAD_BYTES = 16 * 1024;
@@ -164,14 +153,25 @@ export const RealtimeEventEnvelopeSchema = z
         message: "Collaboration payloads contain identifiers only",
       });
     }
+    const spaceWorkEvent =
+      (event.type.startsWith("work_request.") ||
+        event.type.startsWith("step.")) &&
+      stream?.kind === "space" &&
+      stream.id === event.spaceId &&
+      !!event.payload.threadId &&
+      !!event.payload.workRequestId;
+    const spaceActivity = event.type === "assignment.activity" &&
+      stream?.kind === "space" && stream.id === event.spaceId && !!event.threadId;
     if (
       !collaboration &&
       isKnownRealtimeEventType(event.type) &&
-      !event.workspaceId
+      !event.workspaceId &&
+      !spaceWorkEvent && !spaceActivity
     ) {
       context.addIssue({
         code: "custom",
-        message: "Existing execution events require workspaceId",
+        message:
+          "Execution events require a workspaceId or a scoped Space Work stream",
       });
     }
     if (event.type === "assignment.activity") {
@@ -198,7 +198,7 @@ export const RealtimeEventEnvelopeSchema = z
       if (
         !event.assignmentId ||
         !event.attemptId ||
-        !event.workspaceRuntimeId
+        (!event.workspaceRuntimeId && !spaceActivity)
       ) {
         context.addIssue({
           code: "custom",
@@ -304,21 +304,10 @@ export function isEphemeralRealtimeEventType(type: string): boolean {
   );
 }
 
-export function isReplayableWorkerActivityType(type: string): boolean {
-  return REPLAYABLE_WORKER_ACTIVITY_EVENT_TYPES.includes(
-    type as (typeof REPLAYABLE_WORKER_ACTIVITY_EVENT_TYPES)[number],
-  );
-}
-
 export function isReplayableRealtimeEvent(
   event: Pick<RealtimeEventEnvelope, "type" | "payload">,
 ): boolean {
-  return (
-    isDurableRealtimeEventType(event.type) ||
-    (event.type === "assignment.activity" &&
-      typeof event.payload.activityType === "string" &&
-      isReplayableWorkerActivityType(event.payload.activityType))
-  );
+  return isDurableRealtimeEventType(event.type);
 }
 
 /**

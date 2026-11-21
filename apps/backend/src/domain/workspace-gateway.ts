@@ -1,4 +1,4 @@
-import { dataOf, queryOf, type Tx } from "../platform/data.js";
+import { dataOf, queryOf } from "../platform/data.js";
 import { providerFailureKey } from "./provider-failure-encryption.js";
 import { assignmentStatus } from "./queries.js";
 import {
@@ -91,7 +91,6 @@ import {
   ASSIGNMENT_ACTIVE_STATUSES,
   assignmentStatusForEvidence,
 } from "@syntila/core";
-import { shouldPersistWorkerActivity } from "./worker-activity-history.js";
 import {
   recordAssignmentCancelled,
   recordAssignmentError,
@@ -1877,59 +1876,13 @@ export class WorkspaceGateway implements DurableObject {
           });
           return;
         }
-        const replayable = shouldPersistWorkerActivity(activityPayload.data);
-        if (replayable) {
-          const conflict = await dataOf(this.env).read.row<{ source_event_id: string; provider_sequence: number }>`SELECT source_event_id, provider_sequence
-             FROM worker_activity_history
-             WHERE assignment_id = ${message.assignmentId} AND attempt_id = ${message.attemptId}
-               AND (source_event_id = ${activityPayload.data.sourceEventId} OR provider_sequence = ${activityPayload.data.activitySequence})
-             LIMIT 1`;
-          if (
-            conflict &&
-            conflict.source_event_id !== activityPayload.data.sourceEventId
-          ) {
-            tryLogDiagnosticEvent({
-              assignmentId: message.assignmentId,
-              workspaceId,
-              workspaceRuntimeId:
-                this.workspaceRuntimeId ?? message.workspaceRuntimeId,
-              workerId: message.workerId,
-              runId: message.runId,
-              taskId: message.taskId,
-              attemptId: message.attemptId,
-              component: "cloud",
-              operation: "assignment.activity",
-              stage: "validation",
-              severity: "warning",
-              errorCode: "activity_sequence_conflict",
-              retryable: false,
-            });
-            return;
-          }
-        }
         const eventId = `assignment-activity:${message.assignmentId}:${message.attemptId}:${activityPayload.data.sourceEventId}`;
-        const activity = activityPayload.data;
-        const recordedAt = new Date().toISOString();
-        const historyMutation = replayable
-          ? (tx: Tx) => tx.run`INSERT INTO worker_activity_history
-               (history_id, assignment_id, workspace_id, attempt_id,
-                execution_id, worker_id, source_event_id, provider_sequence,
-               event_type, status, activity_id, title, details_json,
-                duration_ms, tool_id, tool_name, occurred_at)
-               VALUES (${eventId}, ${message.assignmentId}, ${workspaceId}, ${message.attemptId},
-                       ${activity.executionId}, ${activity.workerId}, ${activity.sourceEventId}, ${activity.activitySequence},
-                       ${activity.activityType}, ${activity.activityStatus}, ${activity.activityId ?? null}, ${activity.title},
-                       ${JSON.stringify(activity.details ?? {})}::text::jsonb, ${activity.durationMs ?? null}, ${activity.toolId ?? null},
-                       ${activity.toolName ?? null}, ${recordedAt}::timestamptz)
-               ON CONFLICT DO NOTHING`
-          : undefined;
         try {
           await createEventPublisher(this.env).publish({
             type: "assignment.activity",
             eventId,
             idempotencyKey: eventId,
-            durable: replayable,
-            ...(historyMutation ? { mutate: historyMutation } : {}),
+            durable: false,
             workspaceId,
             workspaceRuntimeId:
               this.workspaceRuntimeId ?? message.workspaceRuntimeId,
@@ -1943,24 +1896,6 @@ export class WorkspaceGateway implements DurableObject {
             assignmentId: message.assignmentId,
             payload: activityPayload.data,
           });
-          if (replayable) {
-            tryLogDiagnosticEvent({
-              assignmentId: message.assignmentId,
-              workspaceId,
-              workspaceRuntimeId:
-                this.workspaceRuntimeId ?? message.workspaceRuntimeId,
-              workerId: message.workerId,
-              runId: message.runId,
-              taskId: message.taskId,
-              attemptId: message.attemptId,
-              component: "cloud",
-              operation: "assignment.activity",
-              stage: "activity_forwarding",
-              severity: "info",
-              retryable: false,
-              context: { status: "accepted" },
-            });
-          }
         } catch {
           tryLogDiagnosticEvent({
             assignmentId: message.assignmentId,

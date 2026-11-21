@@ -138,6 +138,12 @@ class AxRealtimeCacheRouter {
           key == AxQueryKey(['people']) || key == AxQueryKey(['spaces']));
       return;
     }
+    if (type.startsWith('worker.instance.')) {
+      // A Worker connected, went offline, reported models or was changed.
+      await engine
+          .revalidateWhere((key) => key == AxQueryKey(['worker-instances']));
+      return;
+    }
     if (type.startsWith('worker.inventory.')) {
       await engine.revalidateWhere((key) => key == AxQueryKey(['workers']));
       return;
@@ -172,6 +178,19 @@ class AxRealtimeCacheRouter {
           'work_request.failed',
           'work_request.cancelled',
         }.contains(type)) {
+      if (const {
+        'work_request.completed',
+        'work_request.failed',
+        'work_request.cancelled',
+      }.contains(type)) {
+        if (discussionResynchronize != null &&
+            (discussionObserved?.call(threadId) ?? true)) {
+          await discussionResynchronize!(threadId);
+        } else if (discussionResynchronize == null) {
+          await engine.revalidateWhere(
+              (key) => key == AxQueryKey(['thread', threadId, 'discussion']));
+        }
+      }
       await _activityChanged(
         threadId,
         spaceId,
@@ -270,6 +289,7 @@ class AxRealtimeCacheRouter {
 
   bool _managed(AxQueryKey key) =>
       key == AxQueryKey(['workers']) ||
+      key == AxQueryKey(['worker-instances']) ||
       key == AxQueryKey(['people']) ||
       key == AxQueryKey(['spaces']) ||
       (key.parts[0] == 'space' && key.parts.length >= 2) ||

@@ -23,6 +23,9 @@ class SessionGrant {
     this.actorId,
     this.workerName,
     this.workerType,
+    this.workerTypeId,
+    this.profileRevision,
+    this.profileDigest,
   });
 
   final String sessionId;
@@ -32,6 +35,12 @@ class SessionGrant {
   final String? actorId;
   final String? workerName;
   final String? workerType;
+
+  /// The Type's current published Profile, so the Agent can discover and
+  /// report its models before it has any work.
+  final String? workerTypeId;
+  final int? profileRevision;
+  final String? profileDigest;
 }
 
 /// The Agent's HTTP calls. No secret is ever placed in a URL; the pairing
@@ -42,6 +51,61 @@ class ServerApi {
 
   final String baseUrl;
   final HttpClient _client;
+
+  /// Publishes what the provider CLI offers (or why it could not be captured)
+  /// to this Worker. The session token travels in a header only.
+  Future<void> publishModels({
+    required String workerId,
+    required SessionGrant session,
+    required Map<String, Object?> report,
+  }) async {
+    final base = Uri.parse(baseUrl);
+    final uri = base.replace(
+      path: '${base.path}/api/worker-agent/models'.replaceAll('//', '/'),
+    );
+    final request = await _client
+        .putUrl(uri)
+        .timeout(const Duration(seconds: 20));
+    request.headers
+      ..set(HttpHeaders.authorizationHeader, 'Bearer ${session.sessionToken}')
+      ..set(HttpHeaders.contentTypeHeader, 'application/json')
+      ..set('x-worker-id', workerId)
+      ..set('x-worker-session-id', session.sessionId);
+    request.add(utf8.encode(jsonEncode(report)));
+    final response = await request.close().timeout(const Duration(seconds: 20));
+    await response.drain<void>();
+    if (response.statusCode != 200) {
+      throw ServerRefusal(response.statusCode, 'Publishing models failed');
+    }
+  }
+
+  /// Answers the owner's usage request with the provider's report. The Cloud
+  /// relays it to the waiting owner and keeps nothing.
+  Future<void> publishUsage({
+    required String workerId,
+    required SessionGrant session,
+    required String requestId,
+    required Map<String, Object?> report,
+  }) async {
+    final base = Uri.parse(baseUrl);
+    final uri = base.replace(
+      path: '${base.path}/api/worker-agent/usage'.replaceAll('//', '/'),
+    );
+    final request = await _client
+        .putUrl(uri)
+        .timeout(const Duration(seconds: 20));
+    request.headers
+      ..set(HttpHeaders.authorizationHeader, 'Bearer ${session.sessionToken}')
+      ..set(HttpHeaders.contentTypeHeader, 'application/json')
+      ..set('x-worker-id', workerId)
+      ..set('x-worker-session-id', session.sessionId);
+    request.add(utf8.encode(jsonEncode({...report, 'requestId': requestId})));
+    final response = await request.close().timeout(const Duration(seconds: 20));
+    await response.drain<void>();
+    if (response.statusCode != 200) {
+      throw ServerRefusal(response.statusCode, 'Publishing usage failed');
+    }
+  }
 
   Future<({Object? snapshot, String proof})> downloadProfile({
     required String workerId,
@@ -189,6 +253,17 @@ class ServerApi {
       workerType: body['workerType'] is String
           ? body['workerType'] as String
           : null,
+      workerTypeId: body['workerTypeId'] is String
+          ? body['workerTypeId'] as String
+          : null,
+      profileRevision: body['profile'] is Map &&
+              (body['profile'] as Map)['revision'] is int
+          ? (body['profile'] as Map)['revision'] as int
+          : null,
+      profileDigest: body['profile'] is Map &&
+              (body['profile'] as Map)['digest'] is String
+          ? (body['profile'] as Map)['digest'] as String
+          : null,
     );
   }
 
@@ -205,6 +280,62 @@ class ServerApi {
       'signature': signature,
       'newPublicKey': newPublicKey,
       'newKeySignature': newKeySignature,
+    });
+  }
+
+  /// Publishes the folders this computer allows, with the device and its name,
+  /// so the owner can pick one for a Space. Only ids, folder names and the
+  /// access travel; never a path.
+  Future<void> publishFolders({
+    required String workerId,
+    required SessionGrant session,
+    required String deviceId,
+    required String deviceName,
+    required List<Map<String, String>> folders,
+  }) async {
+    final base = Uri.parse(baseUrl);
+    final uri = base.replace(
+      path: '${base.path}/api/worker-agent/folders'.replaceAll('//', '/'),
+    );
+    final request = await _client
+        .putUrl(uri)
+        .timeout(const Duration(seconds: 20));
+    request.headers
+      ..set(HttpHeaders.authorizationHeader, 'Bearer ${session.sessionToken}')
+      ..set(HttpHeaders.contentTypeHeader, 'application/json')
+      ..set('x-worker-id', workerId)
+      ..set('x-worker-session-id', session.sessionId);
+    request.add(
+      utf8.encode(
+        jsonEncode({
+          'deviceId': deviceId,
+          'deviceName': deviceName,
+          'folders': folders,
+        }),
+      ),
+    );
+    final response = await request.close().timeout(const Duration(seconds: 20));
+    final text = await utf8.decodeStream(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException(
+          'folders publish ${response.statusCode}: ${text.length > 200 ? text.substring(0, 200) : text}',
+          uri: uri);
+    }
+    if (response.statusCode != 200) {
+      throw ServerRefusal(response.statusCode, 'Publishing folders failed');
+    }
+  }
+
+  /// Ends this Worker's pairing on the server (signed with its key).
+  Future<void> unpair({
+    required String workerId,
+    required String nonceId,
+    required String signature,
+  }) async {
+    await _post('/api/worker-agent/unpair', {
+      'workerId': workerId,
+      'nonceId': nonceId,
+      'signature': signature,
     });
   }
 

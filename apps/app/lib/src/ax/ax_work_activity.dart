@@ -5,6 +5,18 @@ import 'ax_render_diagnostics.dart';
 
 import 'ax_work_models.dart';
 
+String _activityTitle(String title, Map<String, Object?> details) {
+  if (details['source'] != 'profile.milestone') return title;
+  return switch (title) {
+    'provider_working' => 'Working',
+    'provider_tool_started' => 'Using a tool',
+    'provider_response_received' => 'Response received',
+    'provider_finalizing' => 'Finishing up',
+    _ when RegExp(r'^[a-z0-9]+(?:_[a-z0-9]+)+$').hasMatch(title) => 'Working',
+    _ => title,
+  };
+}
+
 /// Safe, provider-neutral activity projected from a realtime Worker event.
 ///
 /// The Cloud contract already strips raw provider output. The AX model keeps
@@ -189,7 +201,7 @@ class AxWorkActivity {
       streamSequence: streamSequence,
       type: requiredString('activityType'),
       status: requiredString('activityStatus'),
-      title: requiredString('title'),
+      title: _activityTitle(requiredString('title'), details),
       timestamp: parsedTimestamp.toLocal(),
       activityId: values['activityId'] is String
           ? (values['activityId'] as String).trim()
@@ -250,7 +262,7 @@ class AxWorkActivity {
       streamSequence: 0,
       type: requiredString('activityType'),
       status: requiredString('activityStatus'),
-      title: requiredString('title'),
+      title: _activityTitle(requiredString('title'), details),
       timestamp: parsedTimestamp.toLocal(),
       activityId: values['activityId'] is String
           ? (values['activityId'] as String).trim()

@@ -49,6 +49,20 @@ const baseEvent = {
 };
 
 describe("Cloud event publisher", () => {
+  it("persists Worker-first completion on the Space stream without a Workspace", async () => {
+    const harness = await createHarness();
+    const result = await new CloudEventPublisher(harness.env).publish({
+      type: "work_request.completed",
+      stream: { kind: "space", id: "space-1" },
+      spaceId: "space-1",
+      recipientUserIds: ["user-1"],
+      payload: { entityId: "request-1", workRequestId: "request-1", threadId: "thread-1", status: "completed" },
+    });
+    expect(result.persisted).toBe(true);
+    expect(result.event.stream).toEqual({ kind: "space", id: "space-1" });
+    expect(result.event.workspaceId).toBeUndefined();
+    expect(harness.fanoutCount).toBe(1);
+  });
   it("persists failure events with requester attribution", async () => {
     const harness = await createHarness();
     const result = await new CloudEventPublisher(harness.env).publish({
@@ -110,7 +124,7 @@ describe("Cloud event publisher", () => {
     expect(harness.fanoutCount).toBe(2);
   });
 
-  it("persists replayable Worker Activity with assignment correlation", async () => {
+  it("never persists Worker Activity, even when durability is requested", async () => {
     const harness = await createHarness();
     const result = await new CloudEventPublisher(harness.env).publish({
       type: "assignment.activity",
@@ -133,10 +147,11 @@ describe("Cloud event publisher", () => {
       },
     });
 
-    expect(result.persisted).toBe(true);
+    expect(result.persisted).toBe(false);
     expect(result.event.type).toBe("assignment.activity");
-    expect(result.event.sequence).toBe(1);
+    expect(result.event.sequence).toBe(0);
     expect(result.event.attemptId).toBe("attempt-1");
+    expect(await harness.insertCount()).toBe(0);
   });
 
   it("returns safely when a subscriber is disconnected", async () => {

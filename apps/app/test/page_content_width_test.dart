@@ -39,7 +39,7 @@ void main() {
       home: SyntilaAppShell(
         services: const DefaultPlatformServices(),
         dataSource: const AxFixtureDataSource(),
-        initialUri: Uri.parse('/workspaces'),
+        initialUri: Uri.parse('/workers'),
       ),
     ));
     await tester.pumpAndSettle();

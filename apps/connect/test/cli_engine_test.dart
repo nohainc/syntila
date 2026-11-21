@@ -133,15 +133,17 @@ void main() {
         stateDirectory: Directory('${dir.path}/state'),
         workRoot: Directory('${dir.path}/work'),
       );
+      final activity = <String>[];
       final run = await launcher.launch(
-        const EngineRequest(
+        EngineRequest(
           assignmentId: 'assignment-test',
           attemptId: 'attempt-test',
           payload: {
             'snapshot': {'sessionPolicy': 'stateless', 'objective': 'hello'},
             'input': {'prompt': 'hello'},
           },
-          timeout: Duration(seconds: 30),
+          timeout: const Duration(seconds: 30),
+          onActivity: (event) => activity.add(event.eventType),
         ),
       );
       final outcome = await run.outcome.timeout(const Duration(seconds: 40));
@@ -152,6 +154,7 @@ void main() {
         reason: '${outcome.payload}',
       );
       expect(outcome.payload['output'], {'text': 'fixture echo: hello'});
+      expect(activity, contains('execution.started'));
 
       final invalid = await launcher.launch(
         const EngineRequest(

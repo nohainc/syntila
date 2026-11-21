@@ -148,11 +148,12 @@ class AxNavigation {
         return AxNavigation.spaceMembers(parts[1]);
       }
     }
-    if (parts.length == 1 && parts[0] == 'workspaces') {
+    if (parts.length == 1 &&
+        (parts[0] == 'workers' || parts[0] == 'workspaces')) {
       return const AxNavigation.workspaces();
     }
     if (parts.length == 2 &&
-        parts[0] == 'workspaces' &&
+        (parts[0] == 'workers' || parts[0] == 'workspaces') &&
         parts[1] != 'workers' &&
         parts[1] != 'accounts') {
       return AxNavigation.workspaces(workspaceId: parts[1]);
@@ -193,8 +194,8 @@ class AxNavigation {
       AxRouteKind.files => Uri(path: '/files'),
       AxRouteKind.archivedSpaces => Uri(path: '/archived-spaces'),
       AxRouteKind.workspaces => workspaceId != null
-          ? Uri(path: '/workspaces/$workspaceId')
-          : Uri(path: '/workspaces'),
+          ? Uri(path: '/workers/$workspaceId')
+          : Uri(path: '/workers'),
       AxRouteKind.login => Uri(
           path: '/login',
           queryParameters: {

@@ -63,7 +63,6 @@ const _folderPath = GuiParameter(
 
 const _text = GuiOutput(format: GuiFormat.text, view: GuiView.raw);
 
-const _runtimeSection = 'RUNTIME & SERVICE';
 const _maintenanceSection = 'DIAGNOSTICS & MAINTENANCE';
 
 /// Never called: the GUI runs `syntila-connect` with the command line, and
@@ -89,6 +88,24 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
       handler: _dispatchedByWorkerCli,
     ),
     CliCommand(
+      name: 'device',
+      title: 'Device',
+      description:
+          'Show this device ID and name, or rename this device. The device ID never changes.',
+      icon: GuiIcons.server,
+      navigation: true,
+      parameters: const [
+        GuiParameter(
+          name: 'name',
+          kind: GuiParamKind.positional,
+          type: GuiParamType.string,
+          label: 'Device name (optional)',
+        ),
+      ],
+      output: _text,
+      handler: _dispatchedByWorkerCli,
+    ),
+    CliCommand(
       name: 'pair',
       title: 'Add Worker',
       description:
@@ -111,12 +128,6 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
           hidden: true,
         ),
         GuiParameter(
-          name: 'name',
-          kind: GuiParamKind.option,
-          type: GuiParamType.string,
-          label: 'Worker name (optional)',
-        ),
-        GuiParameter(
           name: 'auto-start',
           kind: GuiParamKind.flag,
           type: GuiParamType.boolean,
@@ -130,8 +141,9 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
       name: 'unpair',
       title: 'Remove Worker',
       description:
-          'Remove the background service and this Worker private state. Your working folders are never touched.',
+          'Remove the background service and this Worker private state, and unpair it in the web app. Your working folders are never touched.',
       icon: GuiIcons.trash,
+      navigation: true,
       destructive: true,
       parameters: _withSelectors(const [
         GuiParameter(
@@ -268,17 +280,18 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
     CliGroup(
       name: 'folders',
       title: 'Folders',
-      description: 'Folders this Worker may use, and its Work Root.',
+      description:
+          'Folders Workers on this machine may use, and the Work Root.',
       icon: GuiIcons.folder,
       defaultCommand: 'list',
       children: [
         CliCommand(
           name: 'list',
           title: 'List folders',
-          description: 'Folders this Worker may use.',
+          description: 'Folders Workers on this machine may use.',
           icon: GuiIcons.list,
           kind: GuiCommandKind.info,
-          parameters: _withSelectors(const []),
+          parameters: const [],
           output: _text,
           handler: _dispatchedByWorkerCli,
         ),
@@ -286,27 +299,27 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
           name: 'add',
           title: 'Add folder',
           description:
-              'Grant this Worker a folder. Read only unless Write is set.',
+              'Grant a folder on this machine. Read and write unless Read only is set.',
           icon: GuiIcons.plus,
-          parameters: _withSelectors(const [
+          parameters: const [
             _folderPath,
             GuiParameter(
-              name: 'write',
+              name: 'read-only',
               kind: GuiParamKind.flag,
               type: GuiParamType.boolean,
-              label: 'Write access',
+              label: 'Read only',
             ),
-          ]),
+          ],
           output: _text,
           handler: _dispatchedByWorkerCli,
         ),
         CliCommand(
           name: 'remove',
           title: 'Remove folder',
-          description: 'Stop this Worker from using a folder.',
+          description: 'Stop Workers on this machine from using a folder.',
           icon: GuiIcons.trash,
           destructive: true,
-          parameters: _withSelectors(const [
+          parameters: const [
             GuiParameter(
               name: 'id',
               kind: GuiParamKind.positional,
@@ -314,7 +327,7 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
               required: true,
               label: 'Folder ID',
             ),
-          ]),
+          ],
           output: _text,
           handler: _dispatchedByWorkerCli,
         ),
@@ -323,14 +336,14 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
           title: 'Work Root',
           description: 'Show the Work Root, or set it when a path is given.',
           icon: GuiIcons.home,
-          parameters: _withSelectors(const [
+          parameters: const [
             GuiParameter(
               name: 'path',
               kind: GuiParamKind.positional,
               type: GuiParamType.path,
               label: 'Work Root (optional)',
             ),
-          ]),
+          ],
           output: _text,
           handler: _dispatchedByWorkerCli,
         ),
@@ -341,7 +354,6 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
       title: 'Service',
       description: 'Manage the Worker background service.',
       icon: GuiIcons.server,
-      section: _runtimeSection,
       defaultCommand: 'status',
       children: [
         CliCommand(
@@ -419,53 +431,8 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
         ),
       ],
     ),
-    CliGroup(
-      name: 'config',
-      title: 'Settings',
-      description: 'Worker settings.',
-      icon: GuiIcons.sliders,
-      section: _runtimeSection,
-      defaultCommand: 'show',
-      children: [
-        CliCommand(
-          name: 'show',
-          title: 'Show settings',
-          description: 'Show the Worker settings.',
-          icon: GuiIcons.eye,
-          kind: GuiCommandKind.info,
-          parameters: _withSelectors(const []),
-          output: _text,
-          handler: _dispatchedByWorkerCli,
-        ),
-        CliCommand(
-          name: 'set',
-          title: 'Change a setting',
-          description: 'Set maxConcurrent, autoStart or logLevel.',
-          icon: GuiIcons.edit,
-          parameters: _withSelectors(const [
-            GuiParameter(
-              name: 'key',
-              kind: GuiParamKind.positional,
-              type: GuiParamType.enumeration,
-              values: AgentConfig.keys,
-              required: true,
-              label: 'Setting',
-            ),
-            GuiParameter(
-              name: 'value',
-              kind: GuiParamKind.positional,
-              type: GuiParamType.string,
-              required: true,
-              label: 'Value',
-            ),
-          ]),
-          output: _text,
-          handler: _dispatchedByWorkerCli,
-        ),
-      ],
-    ),
     CliCommand(
-      name: 'rotate-credential',
+      name: 'update-credentials',
       title: 'Update credentials',
       description:
           'Generate a new security key for this Worker and update it on the server. Stop the Worker first.',
@@ -476,24 +443,51 @@ CliSpec workerGuiSpec({required String version}) => CliSpec(
       output: _text,
       handler: _dispatchedByWorkerCli,
     ),
-    CliCommand(
+    CliGroup(
       name: 'logs',
       title: 'Logs',
-      description: 'The Agent log. Ids and codes only, no secrets.',
+      description: 'The Agent log and log level.',
       icon: GuiIcons.log,
       section: _maintenanceSection,
-      kind: GuiCommandKind.info,
-      parameters: _withSelectors(const [
-        GuiParameter(
-          name: 'lines',
-          kind: GuiParamKind.option,
-          type: GuiParamType.integer,
-          defaultValue: '50',
-          label: 'Lines',
+      defaultCommand: 'get',
+      children: [
+        CliCommand(
+          name: 'get',
+          title: 'Get logs',
+          description: 'The Agent log. Ids and codes only, no secrets.',
+          icon: GuiIcons.log,
+          kind: GuiCommandKind.info,
+          parameters: _withSelectors(const [
+            GuiParameter(
+              name: 'lines',
+              kind: GuiParamKind.option,
+              type: GuiParamType.integer,
+              defaultValue: '50',
+              label: 'Lines',
+            ),
+          ]),
+          output: const GuiOutput(format: GuiFormat.text, view: GuiView.log),
+          handler: _dispatchedByWorkerCli,
         ),
-      ]),
-      output: const GuiOutput(format: GuiFormat.text, view: GuiView.log),
-      handler: _dispatchedByWorkerCli,
+        CliCommand(
+          name: 'level',
+          title: 'Log level',
+          description:
+              'Show the log level, or set it (error, warn, info, debug).',
+          icon: GuiIcons.sliders,
+          parameters: _withSelectors(const [
+            GuiParameter(
+              name: 'level',
+              kind: GuiParamKind.positional,
+              type: GuiParamType.enumeration,
+              values: AgentConfig.logLevels,
+              label: 'Log level (optional)',
+            ),
+          ]),
+          output: _text,
+          handler: _dispatchedByWorkerCli,
+        ),
+      ],
     ),
     CliCommand(
       name: 'version',

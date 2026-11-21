@@ -990,9 +990,13 @@ class AxWorker {
     this.modelOptions = const {},
     this.executionOptions,
     this.shared = false,
+    this.workerInstanceId,
   });
 
   final String id;
+
+  /// The Worker Instance this Worker was adopted into (legacy mapping).
+  final String? workerInstanceId;
   final String workspaceId;
   final String workspaceName;
 
@@ -1054,11 +1058,48 @@ class AxWorker {
         providerToolName: json['providerToolName']?.toString(),
         providerToolVersion: json['providerToolVersion']?.toString(),
         shared: json['shared'] == true,
+        workerInstanceId: json['workerInstanceId']?.toString(),
+      );
+
+  /// A copy with the Worker Instance's identity and observed state.
+  AxWorker copyWith({
+    String? id,
+    String? displayName,
+    String? status,
+    String? readinessState,
+    String? activationState,
+    String? workerInstanceId,
+    AxWorkerExecutionOptions? executionOptions,
+  }) =>
+      AxWorker(
+        id: id ?? this.id,
+        workerInstanceId: workerInstanceId ?? this.workerInstanceId,
+        workspaceId: workspaceId,
+        workspaceName: workspaceName,
+        workerTypeId: workerTypeId,
+        displayName: displayName ?? this.displayName,
+        description: description,
+        catalogLifecycleState: catalogLifecycleState,
+        catalogVisibilityState: catalogVisibilityState,
+        status: status ?? this.status,
+        readinessState: readinessState ?? this.readinessState,
+        activationState: activationState ?? this.activationState,
+        attentionReasonCode: attentionReasonCode,
+        localConcurrencyLimit: localConcurrencyLimit,
+        engineVersion: engineVersion,
+        profileDefinitionId: profileDefinitionId,
+        profileReleaseVersion: profileReleaseVersion,
+        providerToolName: providerToolName,
+        providerToolVersion: providerToolVersion,
+        modelOptions: modelOptions,
+        executionOptions: executionOptions ?? this.executionOptions,
+        shared: shared,
       );
 
   /// The same Worker shown under another name, for example with its Workspace.
   AxWorker withDisplayName(String value) => AxWorker(
         id: id,
+        workerInstanceId: workerInstanceId,
         workspaceId: workspaceId,
         workspaceName: workspaceName,
         workerTypeId: workerTypeId,

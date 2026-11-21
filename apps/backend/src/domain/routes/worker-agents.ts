@@ -2,6 +2,7 @@ import {
   ClaimWorkerPairingRequestSchema,
   ConnectWorkerSessionRequestSchema,
   RotateWorkerCredentialRequestSchema,
+  UnpairWorkerRequestSchema,
   WorkerNonceRequestSchema,
 } from "@syntila/protocol";
 import { isFeatureEnabled } from "../../feature-flags.js";
@@ -12,6 +13,7 @@ import {
   issueNonce,
   revokeWorkerCredential,
   rotateCredential,
+  unpairByAgent,
 } from "../worker-agents.js";
 import { readBody } from "./validation.js";
 import { HttpError, json, securityContext } from "./handlers.js";
@@ -109,6 +111,13 @@ export async function handleConnectWorkerSession(request: Request, env: Security
   requireAgentFlag();
   const input = await readBody(request, ConnectWorkerSessionRequestSchema);
   return json({ session: await connectSession(env, input) }, { status: 201, headers: NO_STORE });
+}
+
+/** POST /api/worker-agent/unpair: the Agent ends its own pairing. */
+export async function handleUnpairWorkerAgent(request: Request, env: SecurityEnv): Promise<Response> {
+  requireAgentFlag();
+  const input = await readBody(request, UnpairWorkerRequestSchema);
+  return json(await unpairByAgent(env, input), { headers: NO_STORE });
 }
 
 /** POST /api/worker-agent/rotate: the Agent replaces its key. */

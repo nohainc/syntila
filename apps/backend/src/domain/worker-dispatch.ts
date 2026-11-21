@@ -196,6 +196,12 @@ export async function dispatchWorkerAssignment(
       : {}),
     baseContextRevision: conversation?.baseContextRevision ?? 0,
     workerSessionId,
+    // The conversation turn written for this assignment (a database trigger) reads
+    // these keys; without the Profile id the turn cannot be created and the step fails.
+    workerDisplayName: accepted.workerName,
+    profileDefinitionId: accepted.profile?.definitionId ?? null,
+    profileReleaseVersion: accepted.profile?.revision ?? null,
+    reasoningEffort: accepted.reasoningEffort ?? null,
   };
 
   const insertion = await dataOf(env).tx("assignment.admit_worker", async (tx) => {
@@ -267,8 +273,15 @@ export async function dispatchWorkerAssignment(
     handoffIds.length && isFeatureEnabled("artifact_handoff")
       ? await mintHandoffGrants(env as never, { artifactIds: handoffIds, workerInstanceId: accepted.workerId, assignmentId })
       : undefined;
+  // A stateful step works in the folder the owner chose for the Space (checked
+  // when the request was accepted). Only its opaque id travels; the Agent finds
+  // the path among its own allowed folders and refuses one it no longer allows.
+  const spaceFolder = task.leaseId
+    ? await read.row<{ folderId: string }>`SELECT folder_id AS "folderId" FROM space_folders WHERE space_id = ${accepted.spaceId}`
+    : null;
   const payload = {
     snapshot: {
+      ...(spaceFolder ? { spaceFolderId: spaceFolder.folderId } : {}),
       assignmentId,
       objective: task.objective,
       role: task.role,

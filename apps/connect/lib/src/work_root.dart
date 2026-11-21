@@ -34,13 +34,54 @@ class WorkRoot {
 
   Future<String?> root() async => (await _read())['root'] as String?;
 
-  /// Chooses the Work Root. It is granted for read and write in the same step.
+  /// Returns the configured Work Root, or initializes [defaultPath] on first
+  /// run (creating the folder, verifying write access, and granting it).
+  Future<String> ensureDefault(String defaultPath) async {
+    final existing = await root();
+    if (existing != null) return existing;
+    await setRoot(defaultPath);
+    return (await root())!;
+  }
+
+  /// Chooses the Work Root. Creates it if missing, verifies write access, and
+  /// grants it for read and write in the same step.
   Future<void> setRoot(String path) async {
-    await Directory(path).create(recursive: true);
-    await folders.add(path, write: true);
+    final dir = Directory(path);
+    try {
+      await dir.create(recursive: true);
+    } on FileSystemException catch (error) {
+      throw FolderRejectedException(
+        'could not create Work Root folder ($path): ${error.message}',
+      );
+    }
+    final canonical = p.normalize(dir.resolveSymbolicLinksSync());
+    final id = await folders.add(canonical, write: true);
+    try {
+      await _verifyWritable(canonical);
+    } on FolderRejectedException {
+      await folders.remove(id);
+      rethrow;
+    }
     final value = await _read();
-    value['root'] = p.normalize(Directory(path).resolveSymbolicLinksSync());
+    value['root'] = canonical;
     await _write(value);
+  }
+
+  Future<void> _verifyWritable(String canonical) async {
+    final probe = File(
+      p.join(
+        canonical,
+        '.syntila-write-check-$pid-${DateTime.now().microsecondsSinceEpoch}',
+      ),
+    );
+    try {
+      await probe.writeAsString('', flush: true);
+      await probe.delete();
+    } on FileSystemException catch (error) {
+      throw FolderRejectedException(
+        'Work Root folder is not writable ($canonical): ${error.message}',
+      );
+    }
   }
 
   /// The local folder of a Space: `<root>/spaces/<space-id>`. Re-checked

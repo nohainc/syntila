@@ -7,6 +7,7 @@ export 'src/cli.dart';
 export 'src/cli_engine.dart';
 export 'src/config.dart';
 export 'src/connection.dart';
+export 'src/device.dart';
 export 'src/engine.dart';
 export 'src/faults.dart';
 export 'src/folders.dart';

@@ -240,11 +240,21 @@ export async function acceptWorkerTarget(
   const model = (request.model ?? worker.defaultModel ?? "").trim();
   if (model.length > MAX_MODEL_LENGTH) return { ok: false, code: "worker_type_unavailable" };
   // A model or effort the person chose must be one the Type's Profile lists.
-  // A Profile that discovers its models on the Agent has no list here; the
+  // A discovery-backed Profile with no matching report has no list here; the
   // Agent is then the authority and refuses at run time.
   const chosenEffort = request.reasoningEffort?.trim();
   if ((request.model?.trim() || chosenEffort) && worker.profileJson) {
-    const options = spaceModelOptions(worker.profileJson, undefined, undefined, worker.profileDigest);
+    // For a discovery-backed Profile the list is what the Agent last reported
+    // (it counts only while it names this Profile digest and the CLI version).
+    let reported: { providerToolVersion?: string } | undefined;
+    try {
+      const session = await q.row<{ readinessJson: string | null }>`SELECT models_json AS "readinessJson"
+         FROM worker_agent_sessions WHERE worker_instance_id = ${worker.id}`;
+      reported = session?.readinessJson ? JSON.parse(session.readinessJson).modelCatalog : undefined;
+    } catch {
+      reported = undefined;
+    }
+    const options = spaceModelOptions(worker.profileJson, reported?.providerToolVersion, reported, worker.profileDigest);
     if (options && options.catalog.length > 0) {
       const entry = request.model?.trim() ? options.catalog.find((c) => c.id === request.model!.trim()) : undefined;
       if (request.model?.trim() && !entry) return { ok: false, code: "model_not_supported" };

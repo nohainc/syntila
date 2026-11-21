@@ -39,6 +39,7 @@ import {
   handleUploadAvatar,
 } from "./profile.js";
 import { handleSpaceAdditionalFolders } from "./space-additional-folders.js";
+import { handleAgentFolders, handleDeleteDeviceFolders, handleListDeviceFolders, handleSpaceFolder } from "./device-folders.js";
 import { handleThreadRequestQueue } from "./thread-request-queue.js";
 import { handlePluginLibrary, handleWorkspacePluginPin } from "./worker-plugins.js";
 import { handleWorkflowConfigurations } from "./workflow-configurations.js";
@@ -260,6 +261,10 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     // Workflow settings.
     r("*", "/api/user/workflow-workspace", (c) => handleWorkflowWorkspace(c.request, c.env, undefined, c.ctx)),
     r("*", "/api/spaces/:spaceId/workflow-workspace", (c) => handleWorkflowWorkspace(c.request, c.env, c.params.spaceId, c.ctx)),
+    r("GET", "/api/device-folders", (c) => handleListDeviceFolders(c.request, c.env, c.ctx)),
+    r("DELETE", "/api/device-folders/:deviceId", (c) => handleDeleteDeviceFolders(c.request, c.env, c.params.deviceId!, undefined, c.ctx)),
+    r("DELETE", "/api/device-folders/:deviceId/:folderId", (c) => handleDeleteDeviceFolders(c.request, c.env, c.params.deviceId!, c.params.folderId!, c.ctx)),
+    r("*", "/api/spaces/:spaceId/folder", (c) => handleSpaceFolder(c.request, c.env, c.params.spaceId!, c.ctx)),
     r("*", "/api/spaces/:spaceId/additional-folders", (c) => handleSpaceAdditionalFolders(c.request, c.env, c.params.spaceId!, c.ctx)),
     r("*", "/api/spaces/:spaceId/workflow-default", (c) => handleWorkflowDefault(c.request, c.env, c.params.spaceId, c.ctx)),
     r("*", "/api/user/workflow-default", (c) => handleWorkflowDefault(c.request, c.env, undefined, c.ctx)),
@@ -292,6 +297,8 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("PATCH", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("DELETE", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("*", "/api/workers/:workerId/mcp-pin", call("handleWorkerMcpPin", p("workerId"), ctx)),
+    r("POST", "/api/workers/:workerId/models/refresh", call("handleWorkerModelsRefresh", p("workerId"), ctx)),
+    r("*", "/api/workers/:workerId/usage", call("handleWorkerUsageRead", p("workerId"), ctx)),
     // Pairing, credentials and sessions (ADR-034). Owner routes need the signed-in
     // owner; Agent routes carry a pairing secret or an Ed25519 signature instead of
     // a browser session (flags: worker_identity, worker_agent_connect).
@@ -301,8 +308,12 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("POST", "/api/worker-agent/claim", call("handleClaimWorkerPairing", ctx), machine),
     r("POST", "/api/worker-agent/nonce", call("handleWorkerNonce"), machine),
     r("GET", "/api/worker-agent/profile", call("handleAgentProfile"), machine),
+    r("PUT", "/api/worker-agent/models", call("handleAgentModels"), machine),
+    r("PUT", "/api/worker-agent/usage", call("handleAgentUsage"), machine),
+    r("PUT", "/api/worker-agent/folders", (c) => handleAgentFolders(c.request, c.env), machine),
     r("POST", "/api/worker-agent/sessions", call("handleConnectWorkerSession"), machine),
     r("GET", "/api/worker-agent/gateway", call("handleWorkerGatewayConnect"), machine),
+    r("POST", "/api/worker-agent/unpair", call("handleUnpairWorkerAgent"), machine),
     r("POST", "/api/worker-agent/rotate", call("handleRotateWorkerCredential"), machine),
     r("POST", "/api/worker-agent/artifacts", call("handleUploadArtifact"), machine),
     r("GET", "/api/worker-agent/artifacts/:artifactId/content", call("handleDownloadArtifact", p("artifactId")), machine),

@@ -1,19 +1,6 @@
-import {
-  isReplayableWorkerActivityType,
-  type RealtimeEventPayload,
-} from "@syntila/protocol";
 import { dataOf } from "../platform/data.js";
 
 export const MAX_WORKER_ACTIVITY_HISTORY_PER_ASSIGNMENT = 256;
-
-export function shouldPersistWorkerActivity(
-  payload: RealtimeEventPayload,
-): boolean {
-  return (
-    typeof payload.activityType === "string" &&
-    isReplayableWorkerActivityType(payload.activityType)
-  );
-}
 
 export async function pruneWorkerActivityHistory(
   env: { SYNTILA_DB: unknown; SYNTILA_DATA?: unknown },

@@ -564,7 +564,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     const workRequestId = params.workRequestId;
     const threadId = params.threadId;
     const workspaceId = params.organizationId;
-    if (!workRequestId || !threadId || !workspaceId) return;
+    if (!workRequestId || !threadId) return;
     try {
       const spaceId =
         params.spaceId ??
@@ -590,6 +590,9 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       await createEventPublisher(this.env).publish({
         type,
         workspaceId,
+        ...(!workspaceId
+          ? { stream: { kind: "space" as const, id: spaceId } }
+          : {}),
         spaceId,
         runId: params.runId,
         idempotencyKey: `work-request:${workRequestId}:${type}${stepSuffix}${attemptSuffix}${options.reason ? `:reason:${options.reason}` : ""}`,

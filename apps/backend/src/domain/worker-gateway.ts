@@ -1,4 +1,6 @@
-import { dataOf } from "../platform/data.js";
+import { dataOf, type Tx } from "../platform/data.js";
+import { inTransaction } from "../platform/tx-env.js";
+import { normalizeActivityPayload, RealtimeEventPayloadSchema } from "@syntila/protocol";
 import { assignmentStatus } from "./queries.js";
 import {
   parseWorkspaceRuntimeMessage,
@@ -20,6 +22,7 @@ import { recordAssignmentCancelled, recordAssignmentError, recordAssignmentResul
 import { agentFenceIsCurrent, type AgentSessionFence } from "./agent-session-fence.js";
 import { AgentLeaseKeeper, authenticateAgentSession, closeSession as closeAgentSession } from "./worker-agents.js";
 import { isFeatureEnabled } from "../feature-flags.js";
+import { createEventPublisher } from "./event-publisher.js";
 import { logStructured, requestIdFor, tryLogDiagnosticEvent } from "./observability.js";
 import { buildEnvelope, FrameError, isMessagingFrame, parseCommandFrame } from "./messaging/envelope.js";
 import { bucketFor, mayIssueCommand, type TokenBucket } from "./messaging/principal.js";
@@ -49,6 +52,7 @@ const AGENT_TYPES = new Set<string>([
   "workspace.sync.request",
   "assignment.ack",
   "assignment.start.ack",
+  "assignment.activity",
   "assignment.start.permit.request",
   "assignment.result",
   "assignment.error",
@@ -96,6 +100,11 @@ export class WorkerGateway implements DurableObject {
     { resolve: (payload: Record<string, unknown>) => void; timer: ReturnType<typeof setTimeout> }
   >();
   private readonly delivering = new Set<string>();
+  /** Owner usage reads waiting for the Agent's answer. Memory only: nothing is stored. */
+  private readonly pendingUsage = new Map<
+    string,
+    { resolve: (payload: Record<string, unknown>) => void; timer: ReturnType<typeof setTimeout> }
+  >();
   private unified = false;
   private bucket: TokenBucket | null = null;
 
@@ -122,6 +131,28 @@ export class WorkerGateway implements DurableObject {
     }
     if (request.method === "POST" && url.pathname === "/dispatch-assignment") return this.dispatch(request);
     if (request.method === "POST" && url.pathname === "/cancel-assignment") return this.cancel(request);
+    if (request.method === "POST" && url.pathname === "/notice") {
+      if (!this.socket) return Response.json({ delivered: false });
+      const body = (await request.json().catch(() => null)) as { workerName?: unknown; removed?: unknown; refreshModels?: unknown } | null;
+      const payload: Record<string, unknown> = { acknowledged: true, serverTime: new Date().toISOString() };
+      if (typeof body?.workerName === "string" && body.workerName.trim()) payload.workerName = body.workerName.trim();
+      if (body?.removed === true) payload.removed = true;
+      if (body?.refreshModels === true) payload.refreshModels = true;
+      try {
+        await this.send({
+          ...this.envelope("workspace.heartbeat.ack"),
+          executionWorkspaceId: workerScope(this.workerId),
+          workspaceRuntimeId: workerScope(this.workerId),
+          payload,
+        });
+      } catch {
+        return Response.json({ delivered: false });
+      }
+      if (payload.removed === true) this.socket?.close(1008, "Worker removed");
+      return Response.json({ delivered: true });
+    }
+    if (request.method === "POST" && url.pathname === "/usage-request") return this.requestUsage();
+    if (request.method === "POST" && url.pathname === "/usage-result") return this.usageResult(request);
     if (request.method === "POST" && url.pathname === "/disconnect") {
       try {
         this.socket?.close(1000, "Worker disconnected");
@@ -293,13 +324,28 @@ export class WorkerGateway implements DurableObject {
           cloudCapabilities: [],
         });
         return;
-      case "workspace.heartbeat":
+      case "workspace.heartbeat": {
+        // The Worker's current name, and whether it was removed or unpaired in the app.
+        const info = await dataOf(this.env).read.row<{ name: string; gone: boolean }>`SELECT w.name,
+               (w.revoked_at IS NOT NULL OR NOT EXISTS (
+                  SELECT 1 FROM worker_credentials c WHERE c.worker_instance_id = w.id AND c.revoked_at IS NULL)) AS gone
+             FROM worker_instances w WHERE w.id = ${fence.workerInstanceId}`;
+        if (info?.gone) {
+          await this.reply(message, "workspace.heartbeat.ack", { acknowledged: true, serverTime: now, removed: true });
+          this.socket?.close(1008, "Worker removed");
+          return;
+        }
         if ((await this.leaseKeeper.touch(fence)) === "lost") {
           this.socket?.close(1008, "Worker session superseded");
           return;
         }
-        await this.reply(message, "workspace.heartbeat.ack", { acknowledged: true, serverTime: now });
+        // The owner asked this Agent to re-read its models and it has not answered yet.
+        const refresh = await dataOf(this.env).read.row<{ pending: boolean }>`SELECT (models_refresh_requested_at IS NOT NULL
+               AND (models_reported_at IS NULL OR models_reported_at < models_refresh_requested_at)) AS pending
+             FROM worker_agent_sessions WHERE worker_instance_id = ${fence.workerInstanceId} AND session_id = ${fence.sessionId}`;
+        await this.reply(message, "workspace.heartbeat.ack", { acknowledged: true, serverTime: now, ...(info?.name ? { workerName: info.name } : {}), ...(refresh?.pending ? { refreshModels: true } : {}), ...this.usageNotice() });
         return;
+      }
       case "workspace.sync.request":
         await this.sync(message);
         return;
@@ -337,6 +383,55 @@ export class WorkerGateway implements DurableObject {
           startTaskId: row.task_id,
           fence: { assignmentId: row.id, attemptId: row.attempt_id, agent: fence },
         }), (result) => result.applied);
+        return;
+      }
+      case "assignment.activity": {
+        const row = await this.owned(message);
+        if (!row || !ASSIGNMENT_ACTIVE_STATUSES.includes(row.status as never) ||
+            payload.assignmentId !== row.id ||
+            !await agentFenceIsCurrent(dataOf(this.env).read, fence)) return;
+        const context = await dataOf(this.env).read.row<{ threadId: string; spaceId: string; workerTypeId: string }>`
+          SELECT wr.thread_id AS "threadId", t.space_id AS "spaceId", w.worker_type_id AS "workerTypeId"
+          FROM workflow_tasks wt JOIN work_requests wr ON wr.id = wt.work_request_id
+          JOIN threads t ON t.id = wr.thread_id JOIN worker_instances w ON w.id = ${this.workerId}
+          WHERE wt.id = ${row.task_id}`;
+        if (!context || payload.workerId !== context.workerTypeId) return;
+        const normalized = normalizeActivityPayload({
+          title: payload.title, status: payload.status, activityId: payload.activityId,
+          percentage: payload.percentage, durationMs: payload.durationMs,
+          toolId: payload.toolId, toolName: payload.toolName, details: payload.details,
+        });
+        if (!normalized) return;
+        const activity = RealtimeEventPayloadSchema.safeParse({
+          entityId: row.id, workerId: payload.workerId, sourceEventId: payload.eventId,
+          executionId: payload.executionId, activitySequence: payload.sequence,
+          activityType: payload.eventType, activityStatus: normalized.status,
+          title: normalized.title, activityId: normalized.activityId,
+          percentage: normalized.percentage, durationMs: normalized.durationMs,
+          toolId: normalized.toolId, toolName: normalized.toolName, details: normalized.details,
+        });
+        if (!activity.success) return;
+        const eventId = `assignment-activity:${row.id}:${row.attempt_id}:${activity.data.sourceEventId}`;
+        const requireCurrent = async (tx: Tx) => {
+          const current = await tx.row`SELECT 1 FROM worker_assignments a
+            JOIN worker_agent_sessions s ON s.worker_instance_id = a.worker_instance_id
+            WHERE a.id = ${row.id} AND a.attempt_id = ${row.attempt_id}
+              AND a.status IN ('created','dispatched','acknowledged','running','revocation_pending','reconciling')
+              AND s.worker_instance_id = ${fence.workerInstanceId}
+              AND s.session_id = ${fence.sessionId} AND s.session_epoch = ${fence.epoch}::bigint
+              AND s.disconnected_at IS NULL FOR SHARE OF a, s`;
+          if (!current) throw new Error("Worker activity session is no longer current");
+        };
+        const event = {
+          type: "assignment.activity", eventId, idempotencyKey: eventId,
+          durable: false, stream: { kind: "space" as const, id: context.spaceId }, spaceId: context.spaceId,
+          threadId: context.threadId, runId: row.run_id, taskId: row.task_id,
+          assignmentId: row.id, attemptId: row.attempt_id, payload: activity.data,
+        };
+        await inTransaction(this.env, "worker.activity", async (env, tx) => {
+          await requireCurrent(tx);
+          await createEventPublisher(env).publish(event);
+        });
         return;
       }
       case "assignment.start.permit.request": {
@@ -528,6 +623,73 @@ export class WorkerGateway implements DurableObject {
         }
       : { executionWorkspaceId: workerScope(this.workerId), workspaceRuntimeId: workerScope(this.workerId) };
     return this.send({ ...this.envelope(type, message.messageId), ...assignment, payload });
+  }
+
+  /** The oldest usage read still waiting, repeated on heartbeats until answered. */
+  private usageNotice(): Record<string, unknown> {
+    const id = this.pendingUsage.keys().next().value;
+    return typeof id === "string" ? { usageRequestId: id } : {};
+  }
+
+  /**
+   * Owner-only (the route checks): asks the connected Agent to run its Profile's
+   * usage command and waits for the report, which is relayed and never stored.
+   */
+  private async requestUsage(): Promise<Response> {
+    if (!this.socket) return Response.json({ error: "The Worker is offline; start its service and try again" }, { status: 409 });
+    if (this.pendingUsage.size >= 4) return Response.json({ error: "Too many usage requests are in progress" }, { status: 429 });
+    const requestId = `usage-${crypto.randomUUID()}`;
+    const result = new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingUsage.delete(requestId);
+        reject(new Error("usage timeout"));
+      }, 45_000);
+      this.pendingUsage.set(requestId, { resolve, timer });
+    });
+    result.catch(() => undefined);
+    try {
+      await this.send({
+        ...this.envelope("workspace.heartbeat.ack"),
+        executionWorkspaceId: workerScope(this.workerId),
+        workspaceRuntimeId: workerScope(this.workerId),
+        payload: { acknowledged: true, serverTime: new Date().toISOString(), usageRequestId: requestId },
+      });
+    } catch {
+      const pending = this.pendingUsage.get(requestId);
+      if (pending) clearTimeout(pending.timer);
+      this.pendingUsage.delete(requestId);
+      return Response.json({ error: "Usage request could not be queued" }, { status: 503 });
+    }
+    try {
+      const payload = await result;
+      return Response.json({
+        status: payload.status,
+        output: payload.output ?? "",
+        errorOutput: payload.errorOutput ?? "",
+        exitCode: payload.exitCode ?? null,
+        truncated: payload.truncated === true,
+        errorCode: payload.errorCode ?? null,
+        errorMessage: payload.errorMessage ?? null,
+        fetchedAt: new Date().toISOString(),
+      });
+    } catch {
+      return Response.json(
+        { status: "error", errorCode: "usage_timeout", errorMessage: "The Worker did not return a usage report. Syntila Connect may need to be updated and restarted." },
+        { status: 504 },
+      );
+    }
+  }
+
+  /** The Agent's answer (authenticated by the route). Unknown ids are ignored. */
+  private async usageResult(request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const id = typeof body?.requestId === "string" ? body.requestId : "";
+    const pending = this.pendingUsage.get(id);
+    if (!pending || !body) return Response.json({ ok: true });
+    clearTimeout(pending.timer);
+    this.pendingUsage.delete(id);
+    pending.resolve(body);
+    return Response.json({ ok: true });
   }
 
   private async send(message: Record<string, unknown>): Promise<void> {

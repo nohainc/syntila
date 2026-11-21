@@ -42,7 +42,7 @@ export async function publishAssignmentPhase(
          JOIN work_requests wr ON wr.id = wt.work_request_id
          JOIN threads th ON th.id = wr.thread_id
         WHERE wa.id = ${assignmentId}`;
-    if (!row?.workRequestId || !row.threadId || !row.workspaceId) return;
+    if (!row?.workRequestId || !row.threadId || !row.spaceId) return;
     let errorCode: string | null = null;
     if (typeof row.taskError === "string") {
       errorCode = canonicalExecutionErrorCode(row.taskError);
@@ -63,7 +63,9 @@ export async function publishAssignmentPhase(
     });
     await createEventPublisher(env as never).publish({
       type: "step.phase",
-      workspaceId: String(row.workspaceId),
+      ...(row.workspaceId
+        ? { workspaceId: String(row.workspaceId) }
+        : { stream: { kind: "space" as const, id: String(row.spaceId) } }),
       spaceId: String(row.spaceId),
       ...(row.runId ? { runId: String(row.runId) } : {}),
       idempotencyKey: `step-phase:${assignmentId}:${presentation.executionPhase}`,

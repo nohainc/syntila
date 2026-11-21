@@ -60,7 +60,7 @@ assignment row before publishing normalized activity/realtime evidence.
 | Message | Created by | Cloud handling | Current reliability |
 | --- | --- | --- | --- |
 | `assignment.ack` | Service admission or Cloud terminal acknowledgement | Moves an active assignment to `acknowledged`; terminal form tells Service the terminal row was accepted | Overloaded: admission and terminal acknowledgement |
-| `assignment.activity` | Service from Engine `activity` frame | Validates assignment/attempt/runtime/Worker, persists replayable activity subset and publishes realtime signal | Ephemeral for status/message; bounded durable history for lifecycle/tool events |
+| `assignment.activity` | Service from Engine `activity` frame | Validates assignment/attempt/runtime/Worker and publishes a realtime signal | Ephemeral; delivered only to connected subscribers and not stored or replayed |
 | `assignment.result` | Service after local journal commit, or journal replay | Validates exact assignment attempt and commits Cloud completed transition | Terminal, acknowledged, retained until Cloud acknowledgement |
 | `assignment.error` | Service after local journal commit, or journal replay | Validates exact assignment attempt and commits Cloud failed transition | Terminal, acknowledged, retained until Cloud acknowledgement |
 | `assignment.cancelled` | Service after local cancellation/journal commit | Validates exact assignment attempt and commits Cloud cancelled transition | Terminal, acknowledged, retained until Cloud acknowledgement |
@@ -162,10 +162,9 @@ Every normalized event requires:
 monotonic realtime cursor when it publishes a durable event; that cursor is
 not copied into or compared with the normalized source sequence.
 
-The contract classifies `model.status` and `message.updated` as ephemeral,
-tool/lifecycle-start events as replayable, and `execution.*` as terminal. A
-terminal event is evidence of an outcome; the terminal result/error delivery
-and Cloud assignment row remain authoritative for the actual persisted result.
+All `assignment.activity` observations, including tool and `execution.*`
+events, are ephemeral. Terminal activity is evidence of an outcome; the
+terminal result/error delivery and Cloud assignment row remain authoritative.
 
 ## Transport compatibility matrix
 
@@ -190,7 +189,7 @@ These are migration candidates, not removals in Phase 1:
 | Admission/terminal overload of `assignment.ack` | One message has two acknowledgement meanings | Split command admission acknowledgement from terminal delivery acknowledgement |
 | Independent AX logic that treats `assignment.activity` as terminal | Activity can be missing and never owns lifecycle | Use Cloud Work Request/assignment status for every terminal state |
 | Provider-specific event names crossing Service/Cloud | Couples generic boundaries to provider streams | Keep provider names inside Profile adapters and emit normalized events |
-| Realtime `assignment.activity` history as result authority | Activity is bounded observation, not output/result | Keep bounded history for timeline recovery; use terminal result/error and Cloud rows |
+| Realtime `assignment.activity` history as result authority | Activity is transient observation, not output/result | Deliver to active viewers only; use terminal result/error and Cloud rows |
 | Diagnostic `assignment.*` records as lifecycle events | Diagnostic evidence is not a state transition | Rename or namespace diagnostics if ambiguity remains after migration |
 
 ## Acceptance evidence

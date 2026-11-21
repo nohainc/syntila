@@ -6,14 +6,21 @@ import 'dart:io';
 /// by a local command: the Cloud never ships plugin code or approves one, so a
 /// compromised Cloud cannot make this Agent run new code.
 class ApprovedMcpWorker {
-  const ApprovedMcpWorker(this.id, this.version, this.digest);
+  const ApprovedMcpWorker(
+    this.id,
+    this.version,
+    this.digest, {
+    this.deviceId,
+  });
   final String id;
   final String version;
   final String digest;
+  final String? deviceId;
   Map<String, String> toJson() => {
     'id': id,
     'version': version,
     'digest': digest,
+    if (deviceId != null) 'deviceId': deviceId!,
   };
 }
 
@@ -52,6 +59,9 @@ class McpWorkerAllowList {
               e['id'] as String,
               e['version'] as String,
               e['digest'] as String,
+              deviceId: e['deviceId'] is String
+                  ? e['deviceId'] as String
+                  : null,
             ),
       ];
     } on FormatException {
@@ -75,7 +85,12 @@ class McpWorkerAllowList {
     await temp.rename(file.path);
   }
 
-  Future<void> approve(String id, String version, String digest) async {
+  Future<void> approve(
+    String id,
+    String version,
+    String digest, {
+    String? deviceId,
+  }) async {
     if (!validPin(id, version, digest)) {
       throw const FormatException(
         'the plugin id, version or digest is invalid',
@@ -86,7 +101,10 @@ class McpWorkerAllowList {
       (p) => p.id == id && p.version == version && p.digest == digest,
     ))
       return;
-    await _write([...items, ApprovedMcpWorker(id, version, digest)]);
+    await _write([
+      ...items,
+      ApprovedMcpWorker(id, version, digest, deviceId: deviceId),
+    ]);
   }
 
   /// Removes every approval of [id] with [digest]. Returns whether one existed.

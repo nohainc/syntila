@@ -2,9 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 import 'artifact_launcher.dart';
 import 'config.dart';
 import 'connection.dart';
+import 'device.dart';
+import 'folders.dart';
 import 'engine.dart';
 import 'faults.dart';
 import 'identity.dart';
@@ -19,6 +23,7 @@ import 'profile_cache.dart';
 import 'readiness.dart';
 import 'server_api.dart';
 import 'wire.dart';
+import 'work_root.dart';
 
 /// One running Syntila Connect: one Worker Instance, one credential, one journal,
 /// one connection. It owns the data directory through [AgentLock].
@@ -37,6 +42,7 @@ class AgentRuntime {
     required this.profiles,
     this.plugins,
     this.mcpWorkerRunner,
+    DeviceInfo? device,
     required this.permitTimeout,
     required this.permitResend,
     required this.onPoint,
@@ -45,7 +51,8 @@ class AgentRuntime {
     required Duration heartbeatInterval,
     required Duration stepTimeout,
     required String clientVersion,
-  }) {
+    this.folders,
+  }) : _device = device {
     connection = AgentConnection(
       workerId: identity.workerId,
       serverUrl: identity.serverUrl,
@@ -62,15 +69,323 @@ class AgentRuntime {
       onMessage: _onMessage,
       onSession: (grant) {
         _profileSession = grant;
+        _foldersDirty = true;
+        unawaited(_publishFolders());
         if (engine is ArtifactLauncher) engine.holder.update(grant);
         unawaited(_refreshIdentityMetadata(grant));
       },
+      onRefreshModels: () => _startModelsRefresh(engine),
+      onUsageRequest: (id) => _startUsageRead(engine, id),
+      onWorkerName: (name) => unawaited(_saveIdentityNames(name, null)),
       readiness: () async {
         final report = (await readiness.evaluate()).toJson();
+        unawaited(
+          _log(
+            'readiness ready=${report['ready']} failures=${report['failures']} engine=${engine.runtimeType}',
+          ),
+        );
         final items = await mcpWorkerRunner?.runnable() ?? const [];
-        return {if (items.isNotEmpty) 'mcpWorkers': items, ...report};
+        return {
+          if (device != null) 'deviceId': device.deviceId,
+          if (device != null) 'deviceName': device.deviceName,
+          if (items.isNotEmpty) 'mcpWorkers': items,
+          ...report,
+        };
       },
     );
+  }
+
+  /// Keeps what was captured on this machine so `status` and the Connect app
+  /// can show it, whether or not publishing to the cloud works.
+  Future<void> _writeLocalModels(Map<String, Object?> report) async {
+    try {
+      final catalog = report['modelCatalog'];
+      final entries = catalog is Map ? catalog['models'] : null;
+      final models = <Map<String, Object?>>[
+        if (entries is List)
+          for (final entry in entries)
+            if (entry is Map && entry['id'] is String)
+              {
+                'id': entry['id'],
+                'name': entry['name'] is String ? entry['name'] : entry['id'],
+                'efforts': entry['efforts'] is List
+                    ? entry['efforts']
+                    : const <Object?>[],
+              },
+      ];
+      final file = paths.modelsFile;
+      await file.parent.create(recursive: true);
+      await file.writeAsString(
+        jsonEncode({
+          'status': report['status'],
+          'capturedAt': DateTime.now().toUtc().toIso8601String(),
+          if (report['providerToolName'] != null)
+            'providerToolName': report['providerToolName'],
+          if (report['providerToolVersion'] != null)
+            'providerToolVersion': report['providerToolVersion'],
+          'models': models,
+        }),
+        flush: true,
+      );
+    } on Object {
+      // A local copy is a convenience; never fail the capture over it.
+    }
+  }
+
+  Timer? _modelsRequestTimer;
+
+  final DeviceInfo? _device;
+
+  /// This computer's allowed folders (machine-wide). Reported to the cloud so
+  /// the owner can choose one for a Space.
+  final AllowedFolders? folders;
+  bool _foldersDirty = false;
+  bool _publishingFolders = false;
+  DateTime? _foldersStamp;
+
+  /// Publishes the allowed folders and the device name. Quiet on failure: the
+  /// next tick tries again while [_foldersDirty] stays set.
+  Future<void> _publishFolders() async {
+    final session = _profileSession;
+    final device = _device;
+    final store = folders;
+    if (_dead ||
+        _publishingFolders ||
+        session == null ||
+        device == null ||
+        store == null) {
+      return;
+    }
+    _publishingFolders = true;
+    try {
+      // The Work Root is where Workers keep their own files, not a project
+      // folder to choose for a Space, so it is never published.
+      final workRoot = await WorkRoot(
+        File(p.join(store.file.parent.path, 'work-root.json')),
+        store,
+      ).root();
+      final listed = [
+        for (final folder in await store.list())
+          if (workRoot == null || folder['path'] != workRoot) folder,
+      ];
+      await api.publishFolders(
+        workerId: identity.workerId,
+        session: session,
+        deviceId: device.deviceId,
+        deviceName: device.deviceName,
+        folders: [
+          for (final folder in listed)
+            {
+              'id': folder['id']!,
+              'name': _folderName(folder, listed),
+              'mode': folder['mode'] ?? 'read',
+            },
+        ],
+      );
+      _foldersDirty = false;
+      unawaited(_log('folders published count=${listed.length}'));
+    } on Object catch (error) {
+      unawaited(_log('folders publish failed $error'));
+    } finally {
+      _publishingFolders = false;
+    }
+  }
+
+  /// The folder's name; when another allowed folder has the same name, the
+  /// parent folder's name is added so the two can be told apart. Never a path.
+  static String _folderName(
+    Map<String, String> folder,
+    List<Map<String, String>> all,
+  ) {
+    final label = _folderLabel(folder['path']!);
+    final clashes =
+        all.where((other) => _folderLabel(other['path']!) == label).length > 1;
+    if (!clashes) return label;
+    final parts = folder['path']!
+        .split(RegExp(r'[\\/]'))
+        .where((s) => s.isNotEmpty)
+        .toList();
+    return parts.length < 2 ? label : '$label (${parts[parts.length - 2]})';
+  }
+
+  /// The folder's own name, never its path.
+  static String _folderLabel(String path) {
+    final parts = path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty);
+    return parts.isEmpty ? 'Folder' : parts.last;
+  }
+
+  /// Sends the folders again when the grants changed on disk (`folders add` or
+  /// `remove` in another process) or the last send failed.
+  Future<void> _publishFoldersIfChanged() async {
+    final store = folders;
+    if (store == null) return;
+    try {
+      final stamp = await store.file.exists()
+          ? await store.file.lastModified()
+          : null;
+      if (stamp != _foldersStamp) {
+        _foldersStamp = stamp;
+        _foldersDirty = true;
+      }
+    } on Object {
+      return;
+    }
+    if (_foldersDirty) await _publishFolders();
+  }
+
+  /// Starts a read of the models unless one is already running. Asked for by
+  /// the owner (Workers page) or by the Connect app on this machine.
+  void _startModelsRefresh(EngineLauncher launcher) {
+    final session = _profileSession;
+    unawaited(
+      _log('models refresh requested busy=${_modelsPublished != null}'),
+    );
+    if (session == null || _modelsPublished != null) return;
+    final run = _captureAndPublishModels(launcher, session);
+    _modelsPublished = run;
+    unawaited(
+      run
+          .then<void>((_) {}, onError: (Object _) {})
+          .whenComplete(() => _modelsPublished = null),
+    );
+  }
+
+  /// Watches for the request file `syntila-connect models refresh` leaves.
+  void _watchModelsRequests(EngineLauncher launcher) {
+    _modelsRequestTimer?.cancel();
+    _modelsRequestTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (_dead) return;
+      unawaited(_publishFoldersIfChanged());
+      try {
+        final file = paths.modelsRequestFile;
+        if (!await file.exists()) return;
+        await file.delete();
+        _startModelsRefresh(launcher);
+      } on Object {
+        // Try again on the next tick.
+      }
+    });
+  }
+
+  final Set<String> _usageRequests = {};
+
+  /// Reads the provider's usage report for the owner and returns it to the
+  /// Cloud once. A request id is answered at most once (the Cloud repeats it
+  /// on heartbeats until it is answered).
+  void _startUsageRead(EngineLauncher launcher, String requestId) {
+    final session = _profileSession;
+    if (session == null || _dead || !_usageRequests.add(requestId)) return;
+    if (_usageRequests.length > 32) _usageRequests.remove(_usageRequests.first);
+    unawaited(() async {
+      Map<String, Object?> report;
+      try {
+        var source = launcher;
+        final type = session.workerTypeId;
+        final revision = session.profileRevision;
+        final digest = session.profileDigest;
+        if (type == null || revision == null || digest == null) {
+          report = {
+            'status': 'error',
+            'errorCode': 'worker_not_ready',
+            'errorMessage': 'The Worker Profile is not ready.',
+          };
+        } else if (source is! UsageSource) {
+          report = {
+            'status': 'error',
+            'errorCode': 'engine_unavailable',
+            'errorMessage': 'The Engine is not available on this computer.',
+          };
+        } else {
+          report = await (source as UsageSource).readUsage({
+            'profileDigest': digest,
+            'workerTypeId': type,
+            'profileRevision': revision,
+          });
+        }
+      } on Object {
+        report = {
+          'status': 'error',
+          'errorCode': 'usage_failed',
+          'errorMessage': 'The usage report could not be read.',
+        };
+      }
+      try {
+        await api.publishUsage(
+          workerId: identity.workerId,
+          session: session,
+          requestId: requestId,
+          report: report,
+        );
+      } on Object catch (error) {
+        await _log('usage publish failed ${error.runtimeType}');
+      }
+    }());
+  }
+
+  /// The capture-and-publish in progress, if any (null when idle).
+  Future<String>? _modelsPublished;
+
+  /// Captures the models and efforts the provider CLI offers (a passive probe of
+  /// the Type's published Profile) and publishes them to this Worker, or
+  /// publishes the reason it could not. Runs only when the owner asks for it
+  /// on the Workers page; pairing and starting the service do none of this.
+  Future<String> _captureAndPublishModels(
+    EngineLauncher launcher,
+    SessionGrant session,
+  ) async {
+    var status = 'probe_failed';
+    var report = <String, Object?>{'status': status};
+    try {
+      final cache = profiles;
+      final type = session.workerTypeId;
+      final revision = session.profileRevision;
+      final digest = session.profileDigest;
+      var source = launcher;
+      if (source is ArtifactLauncher) source = source.inner;
+      if (cache == null || type == null || revision == null || digest == null) {
+        report = {'status': 'profile_unavailable'};
+      } else if (source is! ModelCatalogSource) {
+        report = {'status': 'engine_unavailable'};
+      } else {
+        if (!await cache.has(digest)) {
+          final fetched = await api.downloadProfile(
+            workerId: identity.workerId,
+            session: session,
+            revision: revision,
+            digest: digest,
+          );
+          await cache.putSnapshot(
+            fetched.snapshot,
+            workerTypeId: type,
+            revision: revision,
+            digest: digest,
+            signature: fetched.proof,
+          );
+        }
+        report = await (source as ModelCatalogSource).discoverModels({
+          'profileDigest': digest,
+          'workerTypeId': type,
+          'profileRevision': revision,
+        });
+      }
+    } on Object catch (error) {
+      await _log('models capture failed ${error.runtimeType}');
+      report = {'status': 'profile_unavailable'};
+    }
+    status = report['status'] as String? ?? 'probe_failed';
+    await _writeLocalModels(report);
+    await _log('models captured status=$status');
+    try {
+      await api.publishModels(
+        workerId: identity.workerId,
+        session: session,
+        report: report,
+      );
+    } on Object catch (error) {
+      await _log('models publish failed ${error.runtimeType}');
+      return 'publish_failed';
+    }
+    return status;
   }
 
   final AgentPaths paths;
@@ -116,6 +431,8 @@ class AgentRuntime {
     ProfileCache? profiles,
     McpWorkerAllowList? plugins,
     McpWorkerRunner? mcpWorkerRunner,
+    DeviceInfo? device,
+    AllowedFolders? folders,
     FaultPoint? onPoint,
     Duration baseDelay = const Duration(seconds: 1),
     Duration heartbeatInterval = const Duration(seconds: 30),
@@ -155,14 +472,13 @@ class AgentRuntime {
         lock: lock,
         journal: journal,
         engine: engine,
-        supervisor: EngineSupervisor(
-          engine,
-          maxConcurrent: config.maxConcurrent,
-        ),
+        supervisor: EngineSupervisor(engine),
         readiness: checks,
         profiles: profiles,
         plugins: plugins,
         mcpWorkerRunner: mcpWorkerRunner,
+        device: device,
+        folders: folders,
         permitTimeout: permitTimeout,
         permitResend: permitResend,
         onPoint: onPoint,
@@ -190,6 +506,7 @@ class AgentRuntime {
       if (phase == ConnectionPhase.ready) unawaited(_resumeWork());
     });
     await _writeState();
+    _watchModelsRequests(supervisor.launcher);
     _connectionDone = connection.run();
   }
 
@@ -639,6 +956,33 @@ class AgentRuntime {
         assignmentId: id,
         attemptId: first.context.attemptId,
         payload: payload,
+        onActivity: (activity) {
+          if (_dead || activity.assignmentId != id) return;
+          try {
+            _send('assignment.activity', first.correlation, {
+              'assignmentId': activity.assignmentId,
+              'executionId': activity.executionId,
+              'workerId': activity.workerId,
+              'eventId': activity.eventId,
+              'sequence': activity.sequence,
+              'timestamp': activity.timestamp,
+              'eventType': activity.eventType,
+              'status': activity.status,
+              'title': activity.title,
+              if (activity.activityId != null)
+                'activityId': activity.activityId,
+              if (activity.percentage != null)
+                'percentage': activity.percentage,
+              if (activity.durationMs != null)
+                'durationMs': activity.durationMs,
+              if (activity.toolId != null) 'toolId': activity.toolId,
+              if (activity.toolName != null) 'toolName': activity.toolName,
+              if (activity.details != null) 'details': activity.details,
+            });
+          } on Object {
+            // Progress is best effort; a disconnected socket must not fail work.
+          }
+        },
         timeout: timeoutMs is int
             ? Duration(milliseconds: timeoutMs)
             : const Duration(minutes: 30),
@@ -808,6 +1152,7 @@ class AgentRuntime {
   Future<void> stop() async {
     if (_dead) return;
     _stopping = true;
+    _modelsRequestTimer?.cancel();
     await supervisor.cancelAll();
     await Future.wait(
       _inFlight.toList(),
@@ -826,6 +1171,7 @@ class AgentRuntime {
   Future<void> kill() async {
     if (_dead) return;
     _dead = true;
+    _modelsRequestTimer?.cancel();
     for (final waiting in _permits.values) {
       if (!waiting.isCompleted) waiting.complete(false);
     }
@@ -837,8 +1183,13 @@ class AgentRuntime {
 
   Future<void> _refreshIdentityMetadata(SessionGrant grant) async {
     if (_dead) return;
-    final serverName = grant.workerName?.trim();
-    final serverType = grant.workerType?.trim();
+    await _saveIdentityNames(grant.workerName, grant.workerType);
+  }
+
+  Future<void> _saveIdentityNames(String? name, String? type) async {
+    if (_dead) return;
+    final serverName = name?.trim();
+    final serverType = type?.trim();
     if ((serverName == null || serverName.isEmpty) &&
         (serverType == null || serverType.isEmpty)) {
       return;
@@ -846,11 +1197,11 @@ class AgentRuntime {
     try {
       final current = await AgentIdentity.load(paths.identityFile);
       if (current == null) return;
-      final nextName =
-          (current.workerName != null && current.workerName!.trim().isNotEmpty)
-          ? current.workerName
-          : (serverName != null && serverName.isNotEmpty)
+      final nextName = (serverName != null && serverName.isNotEmpty)
           ? serverName
+          : (current.workerName != null &&
+                current.workerName!.trim().isNotEmpty)
+          ? current.workerName
           : serverType;
       final nextType = (serverType != null && serverType.isNotEmpty)
           ? serverType

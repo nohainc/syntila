@@ -58,6 +58,7 @@ class McpWorkerRunner {
           'id': p.id,
           'version': p.version,
           'manifestDigest': p.digest,
+          if (p.deviceId != null) 'deviceId': p.deviceId!,
         });
       }
     }

@@ -71,12 +71,17 @@ void main() {
         runner.exitCode = 113; // `launchctl print` finds nothing loaded
         expect((await manager.status(s)).state, ServiceState.stopped);
         runner.exitCode = 0;
+        runner.calls.clear();
         await manager.start(s);
-        expect(runner.calls.last, [
-          'launchctl',
-          'bootstrap',
-          'gui/501',
-          plist.path,
+        expect(runner.calls, [
+          ['launchctl', 'bootstrap', 'gui/501', plist.path],
+          ['launchctl', 'kickstart', 'gui/501/${s.launchdLabel}'],
+        ]);
+        runner.calls.clear();
+        await manager.restart(s);
+        expect(runner.calls, [
+          ['launchctl', 'print', 'gui/501/${s.launchdLabel}'],
+          ['launchctl', 'kickstart', '-k', 'gui/501/${s.launchdLabel}'],
         ]);
         await manager.uninstall(s);
         expect(plist.existsSync(), isFalse);
@@ -93,7 +98,8 @@ void main() {
         home: home.path,
         uid: 501,
       ).install(spec(autoStart: true));
-      expect(runner.calls.single.sublist(0, 2), ['launchctl', 'bootstrap']);
+      expect(runner.calls.first.sublist(0, 2), ['launchctl', 'bootstrap']);
+      expect(runner.calls.last.sublist(0, 2), ['launchctl', 'kickstart']);
     });
   });
 

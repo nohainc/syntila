@@ -722,17 +722,31 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       AxWorkLatencyTrace.instance.failed(submissionId);
       var detail = '';
+      String? code;
       try {
         final body = jsonDecode(response.body);
         if (body is Map && body['error'] is String) {
           detail = ': ${body['error']}';
         }
+        if (body is Map && body['code'] is String) {
+          code = body['code'] as String;
+        }
       } on FormatException {
         /* Preserve status when the server returns no JSON. */
+      }
+      if (code == spaceFolderRequiredCode ||
+          code == workerNotOnFolderDeviceCode) {
+        // The reason is the message: it tells the person what to do next.
+        throw AxApiException(
+          (jsonDecode(response.body) as Map)['error'] as String,
+          statusCode: response.statusCode,
+          code: code,
+        );
       }
       throw AxApiException(
         'Work request failed (${response.statusCode})$detail',
         statusCode: response.statusCode,
+        code: code,
       );
     }
     final body = jsonDecode(response.body);
@@ -1371,8 +1385,10 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   }
 
   @override
-  Future<List<String>> loadEligibleWorkerIds(String threadId, String workflowId) async {
-    final uri = Uri.parse('$baseUrl/threads/${Uri.encodeComponent(threadId)}/eligible-workers')
+  Future<List<String>> loadEligibleWorkerIds(
+      String threadId, String workflowId) async {
+    final uri = Uri.parse(
+            '$baseUrl/threads/${Uri.encodeComponent(threadId)}/eligible-workers')
         .replace(queryParameters: {'workflowId': workflowId});
     final body = await _getJson(uri);
     final ids = body['workerIds'];
@@ -1442,8 +1458,9 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   }
 
   @override
-  Future<McpWorkerPinState> loadMcpWorkerPin(String id) async => McpWorkerPinState.fromJson(
-      await _getJson(Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/mcp-pin')));
+  Future<McpWorkerPinState> loadMcpWorkerPin(String id) async =>
+      McpWorkerPinState.fromJson(await _getJson(
+          Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/mcp-pin')));
 
   @override
   Future<void> setMcpWorkerPin(String id, McpWorkerVersion version) async {
@@ -1456,7 +1473,8 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
       }),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException('Could not pin the MCP Worker (${response.statusCode})',
+      throw AxApiException(
+          'Could not pin the MCP Worker (${response.statusCode})',
           statusCode: response.statusCode);
     }
   }
@@ -1467,7 +1485,29 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
         Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/mcp-pin'),
         headers: _headers());
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AxApiException('Could not clear the MCP Worker (${response.statusCode})',
+      throw AxApiException(
+          'Could not clear the MCP Worker (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
+  @override
+  Future<void> requestWorkerModelsRefresh(String id) async {
+    final response = await client.post(
+        Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/models/refresh'),
+        headers: _headers(contentType: 'application/json'),
+        body: '{}');
+    if (response.statusCode != 202) {
+      var detail = '';
+      try {
+        final error = jsonDecode(response.body);
+        if (error is Map && error['error'] is String)
+          detail = ': ${error['error']}';
+      } on FormatException {
+        // Not a JSON error body.
+      }
+      throw AxApiException(
+          'Could not refresh models (${response.statusCode})$detail',
           statusCode: response.statusCode);
     }
   }

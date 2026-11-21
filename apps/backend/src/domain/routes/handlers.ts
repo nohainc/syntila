@@ -68,17 +68,20 @@ export {
   handleListWorkers,
   handleWorker,
   handleWorkerMcpPin,
+  handleWorkerModelsRefresh,
+  handleWorkerUsageRead,
 } from "./workers.js";
 export {
   handleClaimWorkerPairing,
   handleConnectWorkerSession,
   handleRotateWorkerCredential,
   handleWorkerCredential,
+  handleUnpairWorkerAgent,
   handleWorkerNonce,
   handleWorkerPairing,
   handleWorkerTransfer,
 } from "./worker-agents.js";
-export { handleAgentProfile } from "./worker-profile-delivery.js";
+export { handleAgentProfile, handleAgentModels, handleAgentUsage } from "./worker-profile-delivery.js";
 export {
   handleCreateNote,
   handleListNotes,

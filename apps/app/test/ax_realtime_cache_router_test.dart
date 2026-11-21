@@ -54,6 +54,23 @@ void main() {
     });
     expect(loads['thread:W:discussion'], 2);
   });
+  test('terminal Work events synchronize the observed discussion', () async {
+    final synchronized = <String>[];
+    router = AxRealtimeCacheRouter(engine,
+        discussionObserved: (id) => id == 'W',
+        discussionResynchronize: (id) async => synchronized.add(id));
+    for (final type in [
+      'work_request.completed',
+      'work_request.failed',
+      'work_request.cancelled'
+    ]) {
+      await router.handle({'type': type, 'threadId': 'W'});
+    }
+    await router
+        .handle({'type': 'work_request.completed', 'threadId': 'other'});
+    expect(synchronized, ['W', 'W', 'W']);
+    router.reset();
+  });
   test('Work and Discussion bursts share one debounced indicator refresh',
       () async {
     final spaces = query(['spaces']);

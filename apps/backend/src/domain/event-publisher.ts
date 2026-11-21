@@ -88,7 +88,9 @@ export class CloudEventPublisher implements EventPublisher {
   constructor(private readonly env: EventPublisherEnv) {}
 
   async publish(input: DomainEventInput): Promise<PublishedEventResult> {
-    const durable = input.durable ?? isDurableRealtimeEventType(input.type);
+    const durable = input.type === "assignment.activity"
+      ? false
+      : input.durable ?? isDurableRealtimeEventType(input.type);
     const eventId = input.eventId ?? `event-${crypto.randomUUID()}`;
     const idempotencyKey = input.idempotencyKey ?? eventId;
     const occurredAt = input.occurredAt ?? new Date().toISOString();

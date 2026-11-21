@@ -66,9 +66,12 @@ void main() {
     }
     expect(AxNavigation.fromUri(Uri.parse('/archived-spaces')).kind,
         AxRouteKind.archivedSpaces);
-    // Workflows live inside Workspace tabs; the old route opens Workspaces.
+    // Workflows live inside Workspace tabs; the old route opens Workers.
     expect(AxNavigation.fromUri(Uri.parse('/workflows')),
         const AxNavigation.workspaces());
+    expect(AxNavigation.fromUri(Uri.parse('/workers')),
+        const AxNavigation.workspaces());
+    expect(const AxNavigation.workspaces().toUri().path, '/workers');
   });
 
   test('preserves desktop auth approval through the browser sign-in route', () {

@@ -98,7 +98,7 @@ describe("durable stream delivery", () => {
     });
   });
 
-  it("replays important Worker Activity after the acknowledged cursor", async () => {
+  it("does not replay previously stored Worker Activity", async () => {
     const frames: Record<string, unknown>[] = [];
     const socket = {
       readyState: 1,
@@ -162,15 +162,10 @@ describe("durable stream delivery", () => {
       },
     };
     await handle.call(gateway, "client", JSON.stringify(subscribe));
-    expect(frames.filter((frame) => frame.type === "event")).toHaveLength(2);
-    expect(
-      frames
-        .filter((frame) => frame.type === "event")
-        .map((frame) => (frame.event as { sequence: number }).sequence),
-    ).toEqual([2, 3]);
+    expect(frames.filter((frame) => frame.type === "event")).toHaveLength(0);
 
     await handle.call(gateway, "client", JSON.stringify(subscribe));
-    expect(frames.filter((frame) => frame.type === "event")).toHaveLength(2);
+    expect(frames.filter((frame) => frame.type === "event")).toHaveLength(0);
   });
   it("resumes a hibernated connection with its subscriptions and never stores cursors", async () => {
     const frames: Record<string, unknown>[] = [];

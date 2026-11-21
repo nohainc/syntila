@@ -63,6 +63,15 @@ import { parseMcpToolStepInput } from "../mcp-tool-step.js";
 import { dataOf, type Tx } from "../../platform/data.js";
 import { isFeatureEnabled } from "../../feature-flags.js";
 import { requestsWorkerTarget, resolveWorkerTargetBindings } from "./worker-target-bindings.js";
+import { requireSpaceFolder } from "./device-folders.js";
+
+/**
+ * Shown when a Workflow that changes files or researches in a working folder is
+ * sent to a Worker while running such Work on Workers is switched off
+ * (`worker_stateful_work`). It says what works today and what to do.
+ */
+const STATEFUL_ON_WORKER_REFUSAL =
+  "This Workflow works in a folder on a computer, and Workers can only run Chat for now. Choose the Chat Workflow to continue.";
 
 /** Lists owned Workers that can currently run every step of a Workflow. */
 export async function handleListEligibleWorkers(
@@ -79,7 +88,7 @@ export async function handleListEligibleWorkers(
   if (!workflow) throw new HttpError(400, "Unsupported workflowId");
   await requireWorkflowPermission(env, context.userId, spaceId, workflowId);
   if (workflow.steps.some((step) => step.executionMode === "stateful_thread") && !isFeatureEnabled("worker_stateful_work")) {
-    throw new HttpError(422, "This Workflow needs a Workspace; Worker-targeted requests run stateless Workflows only");
+    throw new HttpError(422, STATEFUL_ON_WORKER_REFUSAL);
   }
   const q = dataOf(env).read;
   const workers = await q.rows<{ id: string }>`SELECT id FROM worker_instances
@@ -156,7 +165,7 @@ export async function handleValidateWorkRequest(
     if (!isFeatureEnabled("worker_target_dispatch"))
       throw new HttpError(400, "Worker-targeted requests are not available yet");
     if (workflow.steps.some((step) => step.executionMode === "stateful_thread") && !isFeatureEnabled("worker_stateful_work"))
-      throw new HttpError(422, "This Workflow needs a Workspace; Worker-targeted requests run stateless Workflows only");
+      throw new HttpError(422, STATEFUL_ON_WORKER_REFUSAL);
     if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
       throw new HttpError(400, "Worker-targeted requests do not use a Workspace or an execution selection");
     if (attachments.some((attachment) => attachment && typeof attachment === "object" && (attachment as { kind?: unknown }).kind === "file"))
@@ -582,7 +591,9 @@ export async function createWorkRequestForUser(
     if (!isFeatureEnabled("worker_target_dispatch"))
       throw new HttpError(400, "Worker-targeted requests are not available yet");
     if (mode !== "stateless" && !isFeatureEnabled("worker_stateful_work"))
-      throw new HttpError(422, "This Workflow needs a Workspace; Worker-targeted requests run stateless Workflows only");
+      throw new HttpError(422, STATEFUL_ON_WORKER_REFUSAL);
+    if (mode !== "stateless")
+      await requireSpaceFolder(env, spaceId, typeof body.workerId === "string" ? body.workerId : undefined);
     if (toolCallRequested)
       throw new HttpError(400, "A tool call needs a Workspace");
     if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
@@ -799,7 +810,7 @@ export async function createWorkRequestForUser(
     updatedAt: now,
   };
   try {
-    validateWorkRequest(workRequest, policy);
+    validateWorkRequest(workRequest, policy, { workerTargeted });
   } catch (error) {
     throw new HttpError(
       400,
@@ -856,6 +867,9 @@ export async function createWorkRequestForUser(
   const created = {
     type: "work_request.created",
     workspaceId: workRequest.primaryWorkspaceId ?? undefined,
+    ...(!workRequest.primaryWorkspaceId
+      ? { stream: { kind: "space" as const, id: spaceId } }
+      : {}),
     spaceId,
     runId,
     idempotencyKey: `work-request:${workRequest.id}:created`,
@@ -868,18 +882,13 @@ export async function createWorkRequestForUser(
     },
   };
   const write = (receiptWrite: ReceiptWrite) =>
-    workRequest.primaryWorkspaceId
-      ? createEventPublisher(env).publish({
-          ...created,
-          mutate: async (tx) => {
-            await receiptWrite(tx);
-            await writeRequest(tx);
-          },
-        })
-      : dataOf(env).tx("work.create", async (tx) => {
-          await receiptWrite(tx);
-          await writeRequest(tx);
-        });
+    createEventPublisher(env).publish({
+      ...created,
+      mutate: async (tx) => {
+        await receiptWrite(tx);
+        await writeRequest(tx);
+      },
+    });
   const concurrentReplay = receipt
     ? await receipt.commit(responseBody, 202, write)
     : (await write(NO_RECEIPT), null);

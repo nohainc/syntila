@@ -21,6 +21,12 @@ enum TextSizeOption {
         extraLarge => 700,
       };
 
+  double get detailPageWidth => switch (this) {
+        standard => 700,
+        large => 800,
+        extraLarge => 900,
+      };
+
   double get widePageWidth => this == extraLarge ? 1000 : 900;
 
   static TextSizeOption fromName(Object? name) => values

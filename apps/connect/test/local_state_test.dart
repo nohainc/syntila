@@ -208,28 +208,18 @@ void main() {
   group('config', () {
     test('validates values and round-trips', () async {
       final file = File('${dir.path}/config/config.json');
-      var config = const AgentConfig()
-          .set('maxConcurrent', '3')
-          .set('autoStart', 'true')
-          .set('logLevel', 'debug');
+      var config = const AgentConfig().set('logLevel', 'debug');
       await config.save(file);
       config = await AgentConfig.load(file);
-      expect(config.maxConcurrent, 3);
-      expect(config.autoStart, isTrue);
       expect(config.logLevel, 'debug');
       for (final bad in [
-        () => config.set('maxConcurrent', '0'),
-        () => config.set('maxConcurrent', 'many'),
-        () => config.set('autoStart', 'yes'),
+        () => config.set('maxConcurrent', '2'),
+        () => config.set('autoStart', 'true'),
         () => config.set('logLevel', 'loud'),
         () => config.set('nope', '1'),
       ]) {
         expect(bad, throwsFormatException);
       }
-    });
-
-    test('auto-start is off by default', () {
-      expect(const AgentConfig().autoStart, isFalse);
     });
   });
 }

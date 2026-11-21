@@ -265,6 +265,14 @@ class _NewThreadPageState extends State<NewThreadPage> {
                                               widget.space.role == 'owner'),
                                     ),
                                   ),
+                                if (_workflows != null &&
+                                    !widget.space.isDirect)
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: _SpaceFolderRow(
+                                        configurations: _workflows!,
+                                        isOwner: widget.space.role == 'owner'),
+                                  ),
                                 // Same label column and type scale as the
                                 // Workspace and Additional folders rows.
                                 Row(

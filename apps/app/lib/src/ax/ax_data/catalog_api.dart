@@ -279,6 +279,88 @@ mixin _CatalogApi on _AxApiClientCore {
         Map<String, dynamic>.from(jsonDecode(response.body) as Map));
   }
 
+  @override
+  Future<List<AxDeviceFolder>> loadDeviceFolders() async {
+    final body = await _getJson(Uri.parse('$baseUrl/device-folders'));
+    final list = body['folders'];
+    if (list is! List) {
+      throw const AxApiException('Folder list response is malformed');
+    }
+    return [
+      for (final item in list)
+        if (item is Map)
+          AxDeviceFolder.fromJson(Map<String, dynamic>.from(item)),
+    ];
+  }
+
+  String _spaceFolderUrl(String spaceId) =>
+      '$baseUrl/spaces/${Uri.encodeComponent(spaceId)}/folder';
+
+  @override
+  Future<AxSpaceFolder> loadSpaceFolder(String spaceId) async =>
+      AxSpaceFolder.fromJson(
+          await _getJson(Uri.parse(_spaceFolderUrl(spaceId))));
+
+  @override
+  Future<AxSpaceFolder> setSpaceFolder(String spaceId,
+      {required String deviceId, required String folderId}) async {
+    final response = await client.put(Uri.parse(_spaceFolderUrl(spaceId)),
+        headers: _headers(contentType: 'application/json'),
+        body: jsonEncode({'deviceId': deviceId, 'folderId': folderId}));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      var detail = '';
+      try {
+        final body = jsonDecode(response.body);
+        if (body is Map && body['error'] is String)
+          detail = body['error'] as String;
+      } on FormatException {
+        /* Use the status alone. */
+      }
+      throw AxApiException(
+          detail.isNotEmpty
+              ? detail
+              : 'Could not set the folder (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+    return AxSpaceFolder.fromJson(
+        Map<String, dynamic>.from(jsonDecode(response.body) as Map));
+  }
+
+  @override
+  Future<void> clearSpaceFolder(String spaceId) async {
+    final response = await client.delete(Uri.parse(_spaceFolderUrl(spaceId)),
+        headers: _headers());
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+          'Could not clear the folder (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
+  @override
+  Future<int> removeDeviceFolders(String deviceId,
+      {String? folderId, bool dryRun = false}) async {
+    final path = '$baseUrl/device-folders/${Uri.encodeComponent(deviceId)}'
+        '${folderId == null ? '' : '/${Uri.encodeComponent(folderId)}'}'
+        '${dryRun ? '?dryRun=1' : ''}';
+    final response = await client.delete(Uri.parse(path), headers: _headers());
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      var detail = '';
+      try {
+        detail = (jsonDecode(response.body) as Map)['error']?.toString() ?? '';
+      } on Object {
+        // Keep the generic message.
+      }
+      throw AxApiException(
+          detail.isEmpty
+              ? 'Could not remove the folder (${response.statusCode})'
+              : detail,
+          statusCode: response.statusCode);
+    }
+    final body = jsonDecode(response.body);
+    return body is Map ? (body['spaces'] as num?)?.toInt() ?? 0 : 0;
+  }
+
   String _memberAccessUrl(String workspaceId) =>
       '$baseUrl/workspaces/${Uri.encodeComponent(workspaceId)}/member-access';
 

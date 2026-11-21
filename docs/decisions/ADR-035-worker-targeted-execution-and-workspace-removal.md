@@ -27,3 +27,7 @@ Today Work Requests resolve a Workspace through Space-to-Workspace grants, and a
 - New users go from adding a Worker to asking from a Thread without ever seeing a Workspace.
 - `assignment-dispatcher.ts`, `workspace-gateway.ts` and `routes/work-creation.ts` are refactored. The old Workspace path stays behind a flag until parity is shown. **A given assignment runs on only one path at a time.**
 - ADR-012, ADR-029 and the Workspaces UX contract are partly superseded. Those docs are marked with links; their historical text is not rewritten.
+
+## Addendum: provider usage for a Worker Agent
+
+A Worker with no Workspace (a Syntila Connect Worker) reads the provider's usage report through its own Agent, not through a Workspace. The Agent protocol is unchanged: the owner calls `POST /api/workers/:workerId/usage`; the Worker's gateway object pushes a `usageRequestId` in a `workspace.heartbeat.ack` payload (repeated on heartbeats until answered, like `refreshModels`); the Agent runs the Profile's usage command through the Engine and answers with `PUT /api/worker-agent/usage` (session-authenticated). The gateway relays the report to the waiting owner from memory. It is owner-only, shown live and never stored. Agents older than this change never answer, and the owner sees a timeout message asking to update and restart Connect.

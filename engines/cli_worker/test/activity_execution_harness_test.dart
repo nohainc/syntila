@@ -175,6 +175,14 @@ void main() {
         reason: '${frequent.terminal.toJson()}',
       );
       expect(frequent.activities.length, greaterThan(1000));
+      final milestones = frequent.activities.where(
+        (item) => item.details?['source'] == 'profile.milestone',
+      );
+      expect(milestones, isNotEmpty);
+      expect(
+        milestones.map((item) => item.title),
+        everyElement(isNot(startsWith('provider_'))),
+      );
       final sequences = frequent.activities
           .map((item) => item.sequence)
           .toList();

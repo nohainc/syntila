@@ -28,7 +28,8 @@ class AgentSessionHolder {
 ///
 /// Every folder is re-checked against the Allowed Folders right before it is
 /// used. Local paths exist only in the Engine request; none is sent to Cloud.
-class ArtifactLauncher implements EngineLauncher {
+class ArtifactLauncher
+    implements EngineLauncher, ModelCatalogSource, UsageSource {
   ArtifactLauncher({
     required this.inner,
     required this.folders,
@@ -50,6 +51,26 @@ class ArtifactLauncher implements EngineLauncher {
 
   @override
   Future<String?> probe() => inner.probe();
+
+  @override
+  Future<Map<String, Object?>> discoverModels(Map<String, Object?> pin) async {
+    final source = inner;
+    return source is ModelCatalogSource
+        ? (source as ModelCatalogSource).discoverModels(pin)
+        : {'status': 'engine_unavailable'};
+  }
+
+  @override
+  Future<Map<String, Object?>> readUsage(Map<String, Object?> pin) async {
+    final source = inner;
+    return source is UsageSource
+        ? (source as UsageSource).readUsage(pin)
+        : {
+            'status': 'error',
+            'errorCode': 'engine_unavailable',
+            'errorMessage': 'The Engine is not available on this computer.',
+          };
+  }
 
   @override
   Future<EngineRun> launch(EngineRequest request) async {
@@ -139,6 +160,7 @@ class ArtifactLauncher implements EngineLauncher {
         attemptId: request.attemptId,
         payload: payload,
         timeout: request.timeout,
+        onActivity: request.onActivity,
       ),
     );
     return _Collecting(

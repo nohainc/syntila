@@ -916,13 +916,15 @@ extension _AxAppShellViews on _AxAppStateMixin {
         ),
       );
 
-  Widget _contentWidth(Widget child, {bool wide = false}) => Align(
+  Widget _contentWidth(Widget child, {bool wide = false, double? maxWidth}) =>
+      Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-              maxWidth: wide
-                  ? _viewPreferences.textSize.widePageWidth
-                  : _viewPreferences.textSize.pageWidth),
+              maxWidth: maxWidth ??
+                  (wide
+                      ? _viewPreferences.textSize.widePageWidth
+                      : _viewPreferences.textSize.pageWidth)),
           child: SizedBox(width: double.infinity, child: child),
         ),
       );
@@ -1026,23 +1028,43 @@ extension _AxAppShellViews on _AxAppStateMixin {
                                                 _spaceResourceView(
                                                     SpacePageSection.members)),
                                           )
-                                        : SingleChildScrollView(
-                                            padding: EdgeInsets.fromLTRB(
-                                              compact ? 18 : 34,
-                                              navigation.kind ==
-                                                      AxRouteKind.workspaces
-                                                  ? 0
-                                                  : 26,
-                                              compact ? 18 : 34,
-                                              40,
-                                            ),
-                                            child: _contentWidth(
-                                              showRunDetails
-                                                  ? _runDetailsView(compact)
-                                                  : _homeView(),
-                                              wide: navigation.kind ==
-                                                  AxRouteKind.workspaces,
-                                            ),
+                                        : AxQueryBuilder<bool>(
+                                            engine: store.syncEngine,
+                                            query:
+                                                store.catalogs.workersUxEnabled,
+                                            builder: (context, uxState) {
+                                              final legacyWorkspaces =
+                                                  navigation.kind ==
+                                                          AxRouteKind
+                                                              .workspaces &&
+                                                      uxState.data != true;
+                                              final workerDetail =
+                                                  navigation.kind ==
+                                                          AxRouteKind
+                                                              .workspaces &&
+                                                      uxState.data == true &&
+                                                      navigation.workspaceId !=
+                                                          null;
+                                              return SingleChildScrollView(
+                                                padding: EdgeInsets.fromLTRB(
+                                                  compact ? 18 : 34,
+                                                  legacyWorkspaces ? 0 : 26,
+                                                  compact ? 18 : 34,
+                                                  40,
+                                                ),
+                                                child: _contentWidth(
+                                                  showRunDetails
+                                                      ? _runDetailsView(compact)
+                                                      : _homeView(),
+                                                  wide: legacyWorkspaces,
+                                                  maxWidth: workerDetail
+                                                      ? _viewPreferences
+                                                          .textSize
+                                                          .detailPageWidth
+                                                      : null,
+                                                ),
+                                              );
+                                            },
                                           ),
                   ],
                 ),

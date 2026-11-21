@@ -488,6 +488,7 @@ class _WorkComposer extends StatelessWidget {
           currentUserId: currentUserId,
           currentUserName: currentUserName,
           workflowCatalog: workflowCatalog,
+          workers: spaceWorkers,
           onReportIssue:
               localWorkProgress.containsKey(request.id) ? null : onReportIssue,
           reportedIssue: reportedIssues[request.id],
@@ -908,143 +909,152 @@ class _WorkComposer extends StatelessWidget {
                           }),
                       canSelect)
                   : ModelEffortSelector(
-                scope: 'work-composer',
-                onManageVisibility: onManageVisibility == null
-                    ? null
-                    : () {
+                      scope: 'work-composer',
+                      onManageVisibility: onManageVisibility == null
+                          ? null
+                          : () {
+                              final worker = eligibleWorkers
+                                      .where((w) =>
+                                          w.id == selectedWorkerId && !w.shared)
+                                      .firstOrNull ??
+                                  eligibleWorkers
+                                      .where((w) => !w.shared)
+                                      .firstOrNull;
+                              onManageVisibility!(worker?.workspaceId);
+                            },
+                      immediatePopup: true,
+                      workerIconBuilder: (capability) {
                         final worker = eligibleWorkers
-                                .where((w) =>
-                                    w.id == selectedWorkerId && !w.shared)
-                                .firstOrNull ??
-                            eligibleWorkers.where((w) => !w.shared).firstOrNull;
-                        onManageVisibility!(worker?.workspaceId);
+                            .where((w) => w.id == capability.id)
+                            .firstOrNull;
+                        final asset = WorkerPresentation.resolve(
+                                worker?.workerTypeId, capability.name)
+                            .iconAssetForBrightness(
+                                Theme.of(context).brightness);
+                        return asset == null
+                            ? const Icon(Icons.smart_toy_outlined, size: 22)
+                            : Image.asset(asset, width: 22, height: 22);
                       },
-                immediatePopup: true,
-                workerIconBuilder: (capability) {
-                  final worker = eligibleWorkers
-                      .where((w) => w.id == capability.id)
-                      .firstOrNull;
-                  final asset = WorkerPresentation.resolve(
-                          worker?.workerTypeId, capability.name)
-                      .iconAssetForBrightness(Theme.of(context).brightness);
-                  return asset == null
-                      ? const Icon(Icons.smart_toy_outlined, size: 22)
-                      : Image.asset(asset, width: 22, height: 22);
-                },
-                modelIconBuilder: (capability, modelId, modelName) {
-                  final worker = eligibleWorkers
-                      .where((w) => w.id == capability?.id)
-                      .firstOrNull;
-                  final presentation = ModelPresentation.resolve(
-                    modelId: modelId,
-                    modelDisplayName: modelName,
-                    fallbackWorkerTypeId: worker?.workerTypeId,
-                    fallbackWorkerDisplayName: capability?.name,
-                  );
-                  final asset = presentation
-                      .iconAssetForBrightness(Theme.of(context).brightness);
-                  return asset == null
-                      ? const Icon(Icons.smart_toy_outlined, size: 22)
-                      : Image.asset(asset, width: 22, height: 22);
-                },
-                compactModelLabelBuilder: (modelId, modelName) {
-                  return ModelPresentation.stripIdentity(modelName ?? modelId);
-                },
-                helperMessage: eligibleWorkers
-                            .where((worker) => worker.id == selectedWorkerId)
-                            .firstOrNull
-                            ?.executionOptions
-                            ?.modelSwitchSupported ==
-                        false
-                    ? 'Changing the model starts a new session with the conversation context. Effort changes that select another model follow the same rule.'
-                    : null,
-                onShowUsage: usageController?.supported ?? false
-                    ? () => _runComposerCommand(_usageCommand)
-                    : null,
-                compact: true,
-                compactHeight: composerButtonSize,
-                compactIconSize: composerIconSize,
-                showWorkerInCompactSummary: false,
-                showWorker: true,
-                showModel: true,
-                showEffort: true,
-                showCatalog: false,
-                allowWorkerChange: policy.userSelectsWorker,
-                allowModelChange: policy.userSelectsModel,
-                allowEffortChange: policy.userSelectsEffort,
-                catalog:
-                    AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog,
-                displayWorkers: (selection) => {
-                  for (final worker in eligibleWorkers)
-                    if (worker.shared ||
-                        !(visibilityByWorkspace[worker.workspaceId]
-                                ?.workerHidden(worker.id) ??
-                            false) ||
-                        selection.worker == worker.id)
-                      worker.id:
-                          '${worker.displayName}${!worker.shared && (visibilityByWorkspace[worker.workspaceId]?.workerHidden(worker.id) ?? false) ? ' · Hidden in My Workers' : ''}'
-                },
-                displayModels: (selection) {
-                  final catalog =
-                      AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog;
-                  final worker = eligibleWorkers
-                      .where((w) => w.id == selection.worker)
-                      .firstOrNull;
-                  if (worker == null) return {};
-                  final preferences = worker.shared
-                      ? AxWorkerVisibility()
-                      : visibilityByWorkspace[worker.workspaceId] ??
-                          AxWorkerVisibility();
-                  return AxWorkerVisibilityProjection(catalog, preferences,
-                          selected: selection)
-                      .models(worker.id);
-                },
-                displayEfforts: (selection) {
-                  final catalog =
-                      AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog;
-                  final worker = eligibleWorkers
-                      .where((w) => w.id == selection.worker)
-                      .firstOrNull;
-                  if (worker == null) return {};
-                  final preferences = worker.shared
-                      ? AxWorkerVisibility()
-                      : visibilityByWorkspace[worker.workspaceId] ??
-                          AxWorkerVisibility();
-                  final projection = AxWorkerVisibilityProjection(
-                      catalog, preferences,
-                      selected: selection);
-                  return {
-                    for (final e
-                        in projection.efforts(worker.id, selection.model))
-                      e: projection.effortLabel(
-                          worker.id,
-                          selection.model ??
-                              catalog.worker(worker.id)?.defaultModelId ??
-                              '',
-                          e)
-                  };
-                },
-                value: ExecutionSelection(
-                    worker: selectedWorkerId,
-                    catalogRevision: (executionSelection['catalogRevision'] ??
-                        binding['catalogRevision']) as String?,
-                    model: selectedModel.isEmpty ? null : selectedModel,
-                    effort: selectedReasoningEffort.isEmpty
-                        ? null
-                        : selectedReasoningEffort),
-                readOnly: !canExecute ||
-                    submitting ||
-                    !(policy.userSelectsWorker ||
-                        policy.userSelectsModel ||
-                        policy.userSelectsEffort),
-                onChanged: (value) => onExecutionSelectionChanged({
-                  'workerId': value.worker,
-                  'model': value.model,
-                  'reasoningEffort': value.effort,
-                  if (value.catalogRevision != null)
-                    'catalogRevision': value.catalogRevision,
-                }),
-              ),
+                      modelIconBuilder: (capability, modelId, modelName) {
+                        final worker = eligibleWorkers
+                            .where((w) => w.id == capability?.id)
+                            .firstOrNull;
+                        final presentation = ModelPresentation.resolve(
+                          modelId: modelId,
+                          modelDisplayName: modelName,
+                          fallbackWorkerTypeId: worker?.workerTypeId,
+                          fallbackWorkerDisplayName: capability?.name,
+                        );
+                        final asset = presentation.iconAssetForBrightness(
+                            Theme.of(context).brightness);
+                        return asset == null
+                            ? const Icon(Icons.smart_toy_outlined, size: 22)
+                            : Image.asset(asset, width: 22, height: 22);
+                      },
+                      compactModelLabelBuilder: (modelId, modelName) {
+                        return ModelPresentation.stripIdentity(
+                            modelName ?? modelId);
+                      },
+                      helperMessage: eligibleWorkers
+                                  .where(
+                                      (worker) => worker.id == selectedWorkerId)
+                                  .firstOrNull
+                                  ?.executionOptions
+                                  ?.modelSwitchSupported ==
+                              false
+                          ? 'Changing the model starts a new session with the conversation context. Effort changes that select another model follow the same rule.'
+                          : null,
+                      onShowUsage: usageController?.supported ?? false
+                          ? () => _runComposerCommand(_usageCommand)
+                          : null,
+                      compact: true,
+                      compactHeight: composerButtonSize,
+                      compactIconSize: composerIconSize,
+                      showWorkerInCompactSummary: false,
+                      showWorker: true,
+                      showModel: true,
+                      showEffort: true,
+                      showCatalog: false,
+                      allowWorkerChange: policy.userSelectsWorker,
+                      allowModelChange: policy.userSelectsModel,
+                      allowEffortChange: policy.userSelectsEffort,
+                      catalog: AxWorkflowSelectionOptions(eligibleWorkers)
+                          .sharedCatalog,
+                      displayWorkers: (selection) => {
+                        for (final worker in eligibleWorkers)
+                          if (worker.shared ||
+                              !(visibilityByWorkspace[worker.workspaceId]
+                                      ?.workerHidden(worker.id) ??
+                                  false) ||
+                              selection.worker == worker.id)
+                            worker.id:
+                                '${worker.displayName}${!worker.shared && (visibilityByWorkspace[worker.workspaceId]?.workerHidden(worker.id) ?? false) ? ' · Hidden in My Workers' : ''}'
+                      },
+                      displayModels: (selection) {
+                        final catalog =
+                            AxWorkflowSelectionOptions(eligibleWorkers)
+                                .sharedCatalog;
+                        final worker = eligibleWorkers
+                            .where((w) => w.id == selection.worker)
+                            .firstOrNull;
+                        if (worker == null) return {};
+                        final preferences = worker.shared
+                            ? AxWorkerVisibility()
+                            : visibilityByWorkspace[worker.workspaceId] ??
+                                AxWorkerVisibility();
+                        return AxWorkerVisibilityProjection(
+                                catalog, preferences,
+                                selected: selection)
+                            .models(worker.id);
+                      },
+                      displayEfforts: (selection) {
+                        final catalog =
+                            AxWorkflowSelectionOptions(eligibleWorkers)
+                                .sharedCatalog;
+                        final worker = eligibleWorkers
+                            .where((w) => w.id == selection.worker)
+                            .firstOrNull;
+                        if (worker == null) return {};
+                        final preferences = worker.shared
+                            ? AxWorkerVisibility()
+                            : visibilityByWorkspace[worker.workspaceId] ??
+                                AxWorkerVisibility();
+                        final projection = AxWorkerVisibilityProjection(
+                            catalog, preferences,
+                            selected: selection);
+                        return {
+                          for (final e
+                              in projection.efforts(worker.id, selection.model))
+                            e: projection.effortLabel(
+                                worker.id,
+                                selection.model ??
+                                    catalog.worker(worker.id)?.defaultModelId ??
+                                    '',
+                                e)
+                        };
+                      },
+                      value: ExecutionSelection(
+                          worker: selectedWorkerId,
+                          catalogRevision:
+                              (executionSelection['catalogRevision'] ??
+                                  binding['catalogRevision']) as String?,
+                          model: selectedModel.isEmpty ? null : selectedModel,
+                          effort: selectedReasoningEffort.isEmpty
+                              ? null
+                              : selectedReasoningEffort),
+                      readOnly: !canExecute ||
+                          submitting ||
+                          !(policy.userSelectsWorker ||
+                              policy.userSelectsModel ||
+                              policy.userSelectsEffort),
+                      onChanged: (value) => onExecutionSelectionChanged({
+                        'workerId': value.worker,
+                        'model': value.model,
+                        'reasoningEffort': value.effort,
+                        if (value.catalogRevision != null)
+                          'catalogRevision': value.catalogRevision,
+                      }),
+                    ),
             ),
         ],
       ),
@@ -1783,6 +1793,7 @@ class _WorkTimelineCard extends StatelessWidget {
     required this.currentUserId,
     required this.currentUserName,
     required this.workflowCatalog,
+    this.workers = const [],
     required this.onReportIssue,
     required this.reportedIssue,
     required this.reportingIssue,
@@ -1822,6 +1833,7 @@ class _WorkTimelineCard extends StatelessWidget {
   final String? currentUserId;
   final String? currentUserName;
   final List<AxBuiltinWorkflow> workflowCatalog;
+  final List<AxWorker> workers;
   final Future<void> Function(String)? onReportIssue;
   final AxIssueReport? reportedIssue;
   final bool reportingIssue;
@@ -2040,9 +2052,35 @@ class _WorkTimelineCard extends StatelessWidget {
             senderStep?.status == 'running' ||
             response?.isNotEmpty == true);
 
-    final frozenModelName = senderTurn?.modelName ?? senderStep?.modelName;
-    final modelDisplayName =
-        frozenModelName ?? _modelDisplayName(selectedModel);
+    final frozenModelName =
+        (senderTurn?.modelName ?? senderStep?.modelName)?.trim();
+    final matchedWorker = workers
+        .where((w) =>
+            (senderStep?.workerId != null && w.id == senderStep!.workerId) ||
+            (workerType != null &&
+                w.workerTypeId.toLowerCase() == workerType))
+        .firstOrNull;
+    final catalogModelName = selectedModel == null || selectedModel.isEmpty
+        ? ''
+        : (matchedWorker?.executionOptions?.models
+                .where((m) => m.id == selectedModel)
+                .firstOrNull
+                ?.name ??
+            workers
+                .expand((w) =>
+                    w.executionOptions?.models ?? const <AxWorkerModelOption>[])
+                .where((m) => m.id == selectedModel)
+                .firstOrNull
+                ?.name ??
+            '');
+    final modelDisplayName = catalogModelName.isNotEmpty &&
+            (frozenModelName == null ||
+                frozenModelName.isEmpty ||
+                frozenModelName == selectedModel)
+        ? catalogModelName
+        : (frozenModelName?.isNotEmpty == true
+            ? frozenModelName!
+            : _modelDisplayName(selectedModel, worker: matchedWorker));
     final hasModel = (selectedModel != null && selectedModel.isNotEmpty) ||
         (frozenModelName != null && frozenModelName.isNotEmpty);
     final modelPresentation = ModelPresentation.resolve(
@@ -2055,8 +2093,7 @@ class _WorkTimelineCard extends StatelessWidget {
     final modelIcon =
         modelPresentation.iconAssetForBrightness(Theme.of(context).brightness);
 
-    final senderName =
-        isWorkerResponse ? (hasModel ? modelName : workerName) : 'Syntila';
+    final senderName = isWorkerResponse ? workerName : 'Syntila';
     final workerOwnerName = senderTurn?.workerOwnerName?.trim();
     final workerIcon =
         presentation.iconAssetForBrightness(Theme.of(context).brightness);
@@ -2345,9 +2382,21 @@ class _WorkTimelineCard extends StatelessWidget {
                                   ),
                                 ),
                               ],
+                              if (isWorkerResponse &&
+                                  hasModel &&
+                                  modelName.isNotEmpty) ...[
+                                Text(
+                                  '· $modelName',
+                                  key: const ValueKey('response-model-label'),
+                                  style:
+                                      TextStyle(fontSize: 12, color: metaColor),
+                                ),
+                              ],
                               if (isWorkerResponse) ...[
                                 Text(
-                                  '· $effortLabel',
+                                  hasModel && modelName.isNotEmpty
+                                      ? effortLabel
+                                      : '· $effortLabel',
                                   key: const ValueKey('response-effort-label'),
                                   style:
                                       TextStyle(fontSize: 12, color: metaColor),
@@ -2599,6 +2648,26 @@ class _WorkTimelineCard extends StatelessWidget {
                                           data: message,
                                         ),
                                 ],
+                                if (isError &&
+                                    message != null &&
+                                    _needsSpaceFolder(message))
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: FilledButton.icon(
+                                        key: const ValueKey(
+                                            'select-space-folder'),
+                                        onPressed: () =>
+                                            const _SelectSpaceFolderNotification()
+                                                .dispatch(context),
+                                        icon: const Icon(
+                                            Icons.folder_open_rounded,
+                                            size: 18),
+                                        label: const Text('Select folder'),
+                                      ),
+                                    ),
+                                  ),
                                 if (request.responseImages.isNotEmpty)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 8),
@@ -3382,11 +3451,83 @@ class _AxPlanApprovalCardState extends State<AxPlanApprovalCard> {
 /// provider only supplies a tool name, keep that context visible as a fallback.
 String _activityLabel(AxWorkActivity activity) {
   final summary = activity.details['summary'];
+  final toolName = activity.toolName?.trim();
+  final readableTool = switch (toolName) {
+    'command_execution' => 'Command',
+    'web_search' || 'web_search_call' => 'Web search',
+    'file_change' => 'Files',
+    'mcp_tool_call' => 'Connected tool',
+    'collab_tool_call' => 'Sub-agent',
+    _
+        when toolName != null &&
+            RegExp(r'^[a-z0-9]+(?:_[a-z0-9]+)+$').hasMatch(toolName) =>
+      toolName.replaceAll('_', ' '),
+    _ => toolName,
+  };
   final description = summary is String && summary.trim().isNotEmpty
       ? summary.trim()
-      : activity.toolName?.trim();
+      : readableTool;
   if (description == null || description.isEmpty) return activity.title;
   return '${activity.title} · $description';
+}
+
+/// The lines of an unrecognised provider event, one `name: value` per line
+/// (the Worker joins them with U+2028), or null when the row has no more.
+List<String>? _expandedActivity(AxWorkActivity activity) {
+  final value = activity.details['expanded'];
+  if (value is! String || value.trim().isEmpty) return null;
+  return value.split('\u2028');
+}
+
+/// One timeline line that opens into its full lines when tapped, if it has any.
+class _ExpandableActivityText extends StatefulWidget {
+  const _ExpandableActivityText({
+    required this.label,
+    required this.expanded,
+    required this.textKey,
+    required this.style,
+  });
+
+  final String label;
+  final List<String>? expanded;
+  final Key textKey;
+  final TextStyle style;
+
+  @override
+  State<_ExpandableActivityText> createState() =>
+      _ExpandableActivityTextState();
+}
+
+class _ExpandableActivityTextState extends State<_ExpandableActivityText> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = widget.expanded;
+    if (lines == null) {
+      return Text(widget.label,
+          key: widget.textKey,
+          overflow: TextOverflow.ellipsis,
+          style: widget.style);
+    }
+    return InkWell(
+      key: ValueKey('${widget.textKey}-toggle'),
+      onTap: () => setState(() => _open = !_open),
+      child: _open
+          ? Column(
+              key: ValueKey('${widget.textKey}-lines'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final line in lines)
+                  Text(line, style: widget.style.copyWith(height: 1.4)),
+              ],
+            )
+          : Text(widget.label,
+              key: widget.textKey,
+              overflow: TextOverflow.ellipsis,
+              style: widget.style),
+    );
+  }
 }
 
 class _WorkActivityTrail extends StatelessWidget {
@@ -3463,10 +3604,10 @@ class _WorkActivityTrail extends StatelessWidget {
                   ),
                   const SizedBox(width: 7),
                   Expanded(
-                    child: Text(
-                      _activityLabel(item),
-                      key: ValueKey('work-completed-${item.eventId}'),
-                      overflow: TextOverflow.ellipsis,
+                    child: _ExpandableActivityText(
+                      label: _activityLabel(item),
+                      expanded: _expandedActivity(item),
+                      textKey: ValueKey('work-completed-${item.eventId}'),
                       style: TextStyle(fontSize: 11, color: color),
                     ),
                   ),
@@ -3491,10 +3632,10 @@ class _WorkActivityTrail extends StatelessWidget {
                   ),
                 const SizedBox(width: 7),
                 Expanded(
-                  child: Text(
-                    activeLabel,
-                    key: const ValueKey('work-active-activity'),
-                    overflow: TextOverflow.ellipsis,
+                  child: _ExpandableActivityText(
+                    label: activeLabel,
+                    expanded: active == null ? null : _expandedActivity(active),
+                    textKey: const ValueKey('work-active-activity'),
                     style: TextStyle(
                       fontSize: 12,
                       color: color,
@@ -3654,6 +3795,7 @@ class _DiscussionItem {
     this.editedDate,
     this.isMe = true,
     this.aiKind,
+    this.aiWorkRequestId,
     this.eventType,
     this.workRequest,
     this.attachments = const [],
@@ -3679,6 +3821,7 @@ class _DiscussionItem {
 
   /// `ai_request` or `ai_answer` for an AI exchange archived from Work history.
   final String? aiKind;
+  final String? aiWorkRequestId;
   final String? eventType;
   bool get isAiAnswer => aiKind == 'ai_answer';
 
