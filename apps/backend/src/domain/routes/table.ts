@@ -377,6 +377,9 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("POST", "/api/threads/:threadId/work-history/clear", call("handleClearWorkHistory", p("threadId"), ctx), ownReceipt),
     r("POST", "/api/threads/:threadId/chat/clear", call("handleClearChatHistory", p("threadId"), ctx)),
     r("GET", "/api/threads/:threadId/files/:fileId", call("handleDownloadThreadFile", p("threadId"), p("fileId"), ctx)),
+    r("POST", "/api/threads/:threadId/files/:fileId/media-link", call("handleCreateThreadMediaLink", p("threadId"), p("fileId"), ctx)),
+    // Signed, short-lived playback for <audio>/<video>; the link is the permission.
+    r("GET", "/api/media/:fileId", call("handleGetMediaFile", p("fileId"))),
     r("POST", "/api/threads/:threadId/work-request-files", call("handleUploadWorkRequestFile", p("threadId"), ctx)),
 
     // Work Requests.

@@ -256,12 +256,12 @@ class ServerApi {
       workerTypeId: body['workerTypeId'] is String
           ? body['workerTypeId'] as String
           : null,
-      profileRevision: body['profile'] is Map &&
-              (body['profile'] as Map)['revision'] is int
+      profileRevision:
+          body['profile'] is Map && (body['profile'] as Map)['revision'] is int
           ? (body['profile'] as Map)['revision'] as int
           : null,
-      profileDigest: body['profile'] is Map &&
-              (body['profile'] as Map)['digest'] is String
+      profileDigest:
+          body['profile'] is Map && (body['profile'] as Map)['digest'] is String
           ? (body['profile'] as Map)['digest'] as String
           : null,
     );
@@ -318,8 +318,9 @@ class ServerApi {
     final text = await utf8.decodeStream(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException(
-          'folders publish ${response.statusCode}: ${text.length > 200 ? text.substring(0, 200) : text}',
-          uri: uri);
+        'folders publish ${response.statusCode}: ${text.length > 200 ? text.substring(0, 200) : text}',
+        uri: uri,
+      );
     }
     if (response.statusCode != 200) {
       throw ServerRefusal(response.statusCode, 'Publishing folders failed');

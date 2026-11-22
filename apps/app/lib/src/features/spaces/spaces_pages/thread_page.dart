@@ -2324,6 +2324,11 @@ class _ThreadPageState extends State<ThreadPage>
         },
         download: (file, bytes) async => work_request_files.saveThreadFile(
             bytes, file['name']?.toString() ?? 'Attachment'),
+        mediaLink: switch (widget.dataSource) {
+          final AxMediaLinkSource source => (file) => source.threadMediaLink(
+              widget.thread.id, file['fileId'] as String),
+          _ => null,
+        },
         child: NotificationListener<_SelectSpaceFolderNotification>(
           onNotification: _onSelectSpaceFolder,
           child: _buildThread(context),

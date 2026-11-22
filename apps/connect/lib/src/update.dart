@@ -225,7 +225,9 @@ class UpdateVerifier {
     verifyArtifact(manifest, bytes);
     await directory.create(recursive: true);
     await AgentPaths.restrict(directory);
-    final target = File('${directory.path}/syntila-connect-${manifest.version}');
+    final target = File(
+      '${directory.path}/syntila-connect-${manifest.version}',
+    );
     final temp = File('${target.path}.part');
     // Never follow an existing temporary file or symlink. A leftover temp file
     // is evidence of an interrupted/concurrent update and needs inspection.

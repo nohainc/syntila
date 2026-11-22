@@ -91,8 +91,12 @@ export class S3R2Bucket {
     return this.meta(key, res.headers);
   }
 
-  async get(key: string): Promise<R2ObjectBodyLike | null> {
-    const res = await this.request("GET", key);
+  /** `range` reads bytes [offset, offset + length) only (media playback). */
+  async get(key: string, options: { range?: { offset: number; length: number } } = {}): Promise<R2ObjectBodyLike | null> {
+    const range = options.range;
+    const res = await this.request("GET", key, range
+      ? { headers: { range: `bytes=${range.offset}-${range.offset + range.length - 1}` } }
+      : {});
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`R2 get ${key} failed: ${res.status}`);
     const meta = this.meta(key, res.headers);

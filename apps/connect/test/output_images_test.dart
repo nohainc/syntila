@@ -30,14 +30,17 @@ void main() {
     expect(text, contains(secret.path));
   });
 
-  test('collects saved images, skipping empty and other files', () async {
+  test('collects every saved file, skipping empty ones', () async {
     final outputs = Directory(p.join(root.path, 'outputs'))..createSync();
     File(p.join(outputs.path, 'b.png')).writeAsBytesSync([1]);
     File(p.join(outputs.path, 'a.webp')).writeAsBytesSync([1]);
     File(p.join(outputs.path, 'empty.png')).createSync();
     File(p.join(outputs.path, 'notes.txt')).writeAsBytesSync([1]);
     final found = await collectOutputImages([outputs.path], const []);
-    expect(found.map(p.basename), ['a.webp', 'b.png']);
+    expect(found.map(p.basename), ['a.webp', 'b.png', 'notes.txt']);
+    expect(outputFileMediaType('sound.WAV'), 'audio/wav');
+    expect(outputFileMediaType('notes.txt'), 'text/plain');
+    expect(outputFileMediaType('blob'), 'application/octet-stream');
   });
 
   test('makes a small JPEG preview within the budget', () {
@@ -51,5 +54,22 @@ void main() {
     expect(decoded.width, outputImagePreviewMaxSide);
     expect(decoded.height, outputImagePreviewMaxSide ~/ 2);
     expect(encodeOutputImagePreview(utf8.encode('not an image')), isNull);
+  });
+
+  test('a video poster needs ffmpeg and is skipped without it', () async {
+    final bin = Directory(p.join(root.path, 'bin'))..createSync();
+    expect(
+      findFfmpeg({'PATH': bin.path}),
+      anyOf(isNull, isNot(startsWith(bin.path))),
+    );
+    File(p.join(bin.path, 'ffmpeg')).writeAsStringSync('');
+    expect(findFfmpeg({'PATH': bin.path}), p.join(bin.path, 'ffmpeg'));
+    final video = File(p.join(root.path, 'clip.mp4'))..writeAsBytesSync([1]);
+    expect(isOutputVideo(video.path), isTrue);
+    // A tool that cannot run gives no poster, never an error.
+    expect(
+      await outputVideoPreview(video, ffmpeg: p.join(bin.path, 'missing')),
+      isNull,
+    );
   });
 }

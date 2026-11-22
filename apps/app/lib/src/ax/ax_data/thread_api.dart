@@ -1,6 +1,7 @@
 part of '../ax_data.dart';
 
-mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
+mixin _ThreadApi on _AxApiClientCore
+    implements AxThreadReadDataSource, AxMediaLinkSource {
   final _workRequestReads = <(String, int), Future<Map<String, dynamic>>>{};
 
   Future<Map<String, dynamic>> _readWorkRequest(String id) async {
@@ -1193,6 +1194,24 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
       throw AxApiException('File download failed (${response.statusCode})');
     }
     return response.bodyBytes;
+  }
+
+  @override
+  Future<Uri> threadMediaLink(String threadId, String fileId) async {
+    final response = await client.post(
+        Uri.parse('$baseUrl/threads/$threadId/files/$fileId/media-link'),
+        headers: _headers());
+    if (response.statusCode != 200) {
+      throw AxApiException('Media link failed (${response.statusCode})');
+    }
+    final body = jsonDecode(response.body);
+    final path = body is Map ? body['path'] : null;
+    if (path is! String || !path.startsWith('/api/media/')) {
+      throw const AxApiException('Media link answer was bad');
+    }
+    // The player fetches the link itself, so it must name the backend (the
+    // API client reroutes its own calls there; a media element does not).
+    return Uri.parse(backendBaseUrl).resolve(path);
   }
 
   @override

@@ -111,7 +111,11 @@ class ArtifactLauncher
           // A preview for the Thread; the original is opened or downloaded.
           String? preview;
           try {
-            preview = await outputImagePreview(File(path));
+            if (isOutputImage(path)) {
+              preview = await outputImagePreview(File(path));
+            } else if (isOutputVideo(path)) {
+              preview = await outputVideoPreview(File(path));
+            }
           } on Object catch (error) {
             log?.call('output image preview failed: $error');
           }

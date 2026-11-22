@@ -86,10 +86,7 @@ class DeviceStore {
       throw const FormatException('device name must be 1 to 128 characters');
     }
     final current = await ensure();
-    final updated = DeviceInfo(
-      deviceId: current.deviceId,
-      deviceName: trimmed,
-    );
+    final updated = DeviceInfo(deviceId: current.deviceId, deviceName: trimmed);
     await _write(updated);
     return updated;
   }

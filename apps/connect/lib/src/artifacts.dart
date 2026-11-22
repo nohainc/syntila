@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
+import 'output_images.dart';
 import 'server_api.dart';
 
 /// A step's input names an artifact ID (or a Git reference). A local path from
@@ -145,7 +146,7 @@ class ArtifactClient {
       }),
     );
     _auth(request, session, workerId);
-    request.headers.contentType = ContentType.parse(_imageMediaType(name));
+    request.headers.contentType = ContentType.parse(outputFileMediaType(name));
     request.contentLength = await file.length();
     await request.addStream(file.openRead());
     final response = await request.close();
@@ -205,12 +206,4 @@ class ArtifactClient {
   }
 
   void close() => _client.close(force: true);
-}
-
-String _imageMediaType(String name) {
-  final lower = name.toLowerCase();
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.gif')) return 'image/gif';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  return 'image/jpeg';
 }

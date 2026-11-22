@@ -128,6 +128,7 @@ export {
   handleUploadWorkerOutputImage,
   handleAgentUploadWorkerOutputImage,
 } from "./work.js";
+export { handleCreateThreadMediaLink, handleGetMediaFile } from "./media-links.js";
 export {
   handleListWorkerCatalog,
   handleListWorkspaceWorkerCatalog,

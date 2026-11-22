@@ -5,6 +5,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:syntila_design/syntila_design.dart';
 
+import 'media_player.dart';
+
 import '../../ax/work_request_file_picker_stub.dart'
     if (dart.library.html) '../../ax/work_request_file_picker_web.dart'
     as work_request_files;
@@ -122,6 +124,31 @@ class _AttachmentCardState extends State<AttachmentCard> {
   }
 
   Future<void> _open() => _run((scope) async {
+        final mediaLink = scope?.mediaLink;
+        if (mediaLink != null &&
+            widget.file['fileId'] is String &&
+            attachmentIsVideo(widget.file)) {
+          // Streams by byte range; the whole file is fetched only on Download.
+          if (!mounted) return;
+          await showDialog<void>(
+            context: context,
+            builder: (context) => VideoPlayerDialog(
+              file: widget.file,
+              loadLink: mediaLink,
+              onDownload: () async {
+                try {
+                  await scope!.download(widget.file, await _bytes(scope));
+                } catch (error) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('Could not download file: $error')));
+                  }
+                }
+              },
+            ),
+          );
+          return;
+        }
         final bytes = await _bytes(scope);
         final name = widget.file['name']?.toString() ?? 'Attachment';
         if (!attachmentIsImage(widget.file)) {
@@ -187,9 +214,11 @@ class _AttachmentCardState extends State<AttachmentCard> {
                 overflow: TextOverflow.ellipsis,
                 style: SyntilaTypography.monoSmall))
         : const Center(child: Icon(Icons.insert_drive_file_outlined, size: 32));
-    final canDownload = widget.file['fileId'] is String &&
-        context.getInheritedWidgetOfExactType<AttachmentDownloadScope>() !=
-            null;
+    final scope =
+        context.getInheritedWidgetOfExactType<AttachmentDownloadScope>();
+    final canDownload = widget.file['fileId'] is String && scope != null;
+    final mediaLink = widget.file['fileId'] is String ? scope?.mediaLink : null;
+    final isVideo = attachmentIsVideo(widget.file);
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -213,23 +242,39 @@ class _AttachmentCardState extends State<AttachmentCard> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Material(
-                  type: MaterialType.transparency,
-                  child: InkWell(
-                    key: const ValueKey('attachment-open'),
-                    onTap: _busy ? null : _open,
-                    child: imageBytes != null
-                        // Cover keeps the thumbnail's aspect and crops it
-                        // around its center to fill the square.
-                        ? Image.memory(imageBytes,
-                            gaplessPlayback: true,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.center,
-                            cacheWidth: 320,
-                            errorBuilder: (_, error, stack) => fallback)
-                        : fallback,
+                if (mediaLink != null && attachmentIsAudio(widget.file))
+                  AudioAttachmentPlayer(file: widget.file, loadLink: mediaLink)
+                else
+                  Material(
+                    type: MaterialType.transparency,
+                    child: InkWell(
+                      key: const ValueKey('attachment-open'),
+                      onTap: _busy ? null : _open,
+                      child: imageBytes != null
+                          // Cover keeps the thumbnail's aspect and crops it
+                          // around its center to fill the square.
+                          ? Image.memory(imageBytes,
+                              gaplessPlayback: true,
+                              fit: BoxFit.cover,
+                              alignment: Alignment.center,
+                              cacheWidth: 320,
+                              errorBuilder: (_, error, stack) => fallback)
+                          : isVideo
+                              ? const Center(
+                                  child: Icon(Icons.movie_outlined, size: 32))
+                              : fallback,
+                    ),
                   ),
-                ),
+                if (isVideo && mediaLink != null)
+                  const IgnorePointer(
+                    child: Center(
+                      child: Icon(Icons.play_circle_fill,
+                          key: ValueKey('video-play-badge'),
+                          size: 36,
+                          color: Colors.white,
+                          shadows: [Shadow(blurRadius: 6)]),
+                    ),
+                  ),
                 if (_hovered && widget.onRemove != null)
                   Positioned(
                     top: 4,
@@ -355,17 +400,23 @@ class AttachmentDownloadScope extends InheritedWidget {
       required this.load,
       required this.download,
       this.open,
+      this.mediaLink,
       required super.child});
 
   /// Fetches the original file bytes.
   final Future<List<int>> Function(Map<String, dynamic>) load;
   final Future<void> Function(Map<String, dynamic>, List<int>) download;
   final AttachmentOpener? open;
+
+  /// A short-lived playback link for audio and video; null plays nothing
+  /// inline and those files open or download as before.
+  final MediaLinkLoader? mediaLink;
   @override
   bool updateShouldNotify(AttachmentDownloadScope oldWidget) =>
       load != oldWidget.load ||
       download != oldWidget.download ||
-      open != oldWidget.open;
+      open != oldWidget.open ||
+      mediaLink != oldWidget.mediaLink;
 }
 
 /// Base64 JPEG preview budget for Worker output images; Cloud and the

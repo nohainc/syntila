@@ -104,6 +104,32 @@ void main() {
         throwsA(isA<AxApiException>().having(
             (e) => e.message, 'reason', contains('Worker catalog changed'))));
   });
+  test('a media link names the backend, which the player fetches directly',
+      () async {
+    final api = AxApiClient(
+        baseUrl: 'https://auth.test/api',
+        backendBaseUrl: 'https://backend.test/api',
+        client: MockClient((request) async {
+          if (request.url.path == '/api/backend-token') {
+            return http.Response(
+                jsonEncode({
+                  'token': 'tok',
+                  'expiresAt': DateTime.now()
+                      .add(const Duration(hours: 1))
+                      .toIso8601String()
+                }),
+                200);
+          }
+          expect(request.method, 'POST');
+          expect(request.url.host, 'backend.test');
+          expect(request.url.path, endsWith('/threads/t/files/f/media-link'));
+          return http.Response(
+              jsonEncode({'path': '/api/media/f?thread=t&expires=9&sig=s'}),
+              200);
+        }));
+    expect((await api.threadMediaLink('t', 'f')).toString(),
+        'https://backend.test/api/media/f?thread=t&expires=9&sig=s');
+  });
   test('retry sends side-effect confirmation only after explicit approval',
       () async {
     final client = _JsonClient({});

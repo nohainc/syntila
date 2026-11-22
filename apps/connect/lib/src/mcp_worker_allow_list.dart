@@ -6,12 +6,7 @@ import 'dart:io';
 /// by a local command: the Cloud never ships plugin code or approves one, so a
 /// compromised Cloud cannot make this Agent run new code.
 class ApprovedMcpWorker {
-  const ApprovedMcpWorker(
-    this.id,
-    this.version,
-    this.digest, {
-    this.deviceId,
-  });
+  const ApprovedMcpWorker(this.id, this.version, this.digest, {this.deviceId});
   final String id;
   final String version;
   final String digest;

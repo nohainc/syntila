@@ -7,13 +7,16 @@ import 'package:image/image.dart' as img;
 
 import 'package:path/path.dart' as p;
 
-/// Images a Worker made for the user (ADR-035 path). The Worker is told to
-/// save them in the assignment's own `outputs` folder; providers that keep
+/// Files a Worker made for the user (ADR-035 path): images, audio, documents.
+/// The Worker is told to save them in the assignment's own `outputs` folder,
+/// and every regular file there is sent. Providers that keep
 /// generated images elsewhere and only link them in the reply (Antigravity's
 /// `brain` folder, Codex's `generated_images`) are picked up from the links.
 /// Connect uploads them and the result lists them in `output.images`.
 const maxOutputImages = 10;
-const maxOutputImageBytes = 20 * 1024 * 1024;
+
+/// A local cap only; Cloud enforces the owner's plan limit.
+const maxOutputImageBytes = 100 * 1024 * 1024;
 
 /// Local paths the Engine adapter hands to [ArtifactLauncher]; replaced by
 /// uploaded descriptors and never sent to Cloud.
@@ -23,9 +26,11 @@ final _imageName = RegExp(r'\.(png|jpe?g|gif|webp)$', caseSensitive: false);
 
 /// The prompt with the place to save images for the user.
 String promptWithOutputImages(String prompt, String directory) =>
-    '$prompt\n\nTo show the user an image (generated, rendered, or a '
-    'screenshot), save it in `$directory`. Do not embed it in Markdown or '
-    'mention the file path in your reply.';
+    '$prompt\n\nTo give the user a file (an image, screenshot, audio, '
+    'document or any other generated file), save it in `$directory`. Do not '
+    'embed it in Markdown or mention the file path in your reply. Save video '
+    'as H.264 MP4 or WebM and audio as MP3, M4A or WAV so it plays in a '
+    'browser.';
 
 /// Markdown links (`![x](path)` or `[x](path)`) and bare `file://` URLs.
 final _link = RegExp(
@@ -71,7 +76,7 @@ String withoutImageLinks(String text, Iterable<String> paths) {
   return stripped.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 }
 
-/// Regular image files directly in [directories], then [linked] files, at most
+/// Regular files directly in [directories], then [linked] images, at most
 /// [maxOutputImages], each non-empty and within the size limit.
 Future<List<String>> collectOutputImages(
   List<String> directories,
@@ -86,7 +91,7 @@ Future<List<String>> collectOutputImages(
     }
     final names = <String>[];
     await for (final e in directory.list(followLinks: false)) {
-      if (e is File && _imageName.hasMatch(e.path)) names.add(e.path);
+      if (e is File) names.add(e.path);
     }
     names.sort();
     candidates.addAll(names);
@@ -167,4 +172,109 @@ String? encodeOutputImagePreview(Uint8List bytes) {
     side = side * 3 ~/ 4;
   }
   return null;
+}
+
+const _mediaTypes = {
+  'png': 'image/png',
+  'jpg': 'image/jpeg',
+  'jpeg': 'image/jpeg',
+  'gif': 'image/gif',
+  'webp': 'image/webp',
+  'svg': 'image/svg+xml',
+  'txt': 'text/plain',
+  'md': 'text/markdown',
+  'csv': 'text/csv',
+  'json': 'application/json',
+  'html': 'text/html',
+  'xml': 'application/xml',
+  'yaml': 'application/yaml',
+  'yml': 'application/yaml',
+  'pdf': 'application/pdf',
+  'zip': 'application/zip',
+  'wav': 'audio/wav',
+  'mp3': 'audio/mpeg',
+  'm4a': 'audio/mp4',
+  'ogg': 'audio/ogg',
+  'flac': 'audio/flac',
+  'mp4': 'video/mp4',
+  'mov': 'video/quicktime',
+  'webm': 'video/webm',
+};
+
+/// The media type the upload is sent with, from the file name.
+String outputFileMediaType(String name) {
+  final dot = name.lastIndexOf('.');
+  final ext = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
+  return _mediaTypes[ext] ?? 'application/octet-stream';
+}
+
+/// Whether a preview image can be made for [name].
+bool isOutputImage(String name) => _imageName.hasMatch(name);
+
+final _videoName = RegExp(
+  r'\.(mp4|m4v|mov|webm|mkv|avi)$',
+  caseSensitive: false,
+);
+
+/// Whether a poster frame can be tried for [name].
+bool isOutputVideo(String name) => _videoName.hasMatch(name);
+
+/// Finds `ffmpeg`: on PATH, then the usual Homebrew and system places (a GUI
+/// app starts with a short PATH). Null when it is not installed.
+String? findFfmpeg([Map<String, String>? environment]) {
+  final env = environment ?? Platform.environment;
+  final windows = Platform.isWindows;
+  final name = windows ? 'ffmpeg.exe' : 'ffmpeg';
+  final dirs = [
+    ...?env['PATH']?.split(windows ? ';' : ':'),
+    if (!windows) ...['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin'],
+  ];
+  for (final dir in dirs) {
+    if (dir.isEmpty) continue;
+    final candidate = p.join(dir, name);
+    if (File(candidate).existsSync()) return candidate;
+  }
+  return null;
+}
+
+/// A poster preview for a video: one frame taken by `ffmpeg` about a second
+/// in (or the first frame for a short clip), made into the same small JPEG
+/// as image previews. Null without `ffmpeg` or when no frame can be read.
+Future<String?> outputVideoPreview(
+  File video, {
+  String? ffmpeg,
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final tool = ffmpeg ?? findFfmpeg();
+  if (tool == null) return null;
+  final dir = await Directory.systemTemp.createTemp('syntila-poster-');
+  try {
+    final frame = p.join(dir.path, 'frame.png');
+    for (final at in const ['1', '0']) {
+      final result = await Process.run(tool, [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-ss',
+        at,
+        '-i',
+        video.path,
+        '-frames:v',
+        '1',
+        '-y',
+        frame,
+      ]).timeout(timeout);
+      final file = File(frame);
+      if (result.exitCode == 0 &&
+          await file.exists() &&
+          await file.length() > 0) {
+        return await outputImagePreview(file);
+      }
+    }
+    return null;
+  } on Object {
+    return null;
+  } finally {
+    await dir.delete(recursive: true).catchError((_) => dir);
+  }
 }

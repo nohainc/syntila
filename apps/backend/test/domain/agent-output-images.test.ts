@@ -45,6 +45,16 @@ describe("Connect output images", () => {
       const { image } = await ok.json() as { image: Record<string, unknown> };
       expect(image).toMatchObject({ kind: "file", name: "lake.png", mediaType: "image/png", sizeBytes: png.length });
       expect((await bucket.head(`work-request-inputs/${image.fileId}`))?.size).toBe(png.length);
+      // Any file type: a text file comes back with its preview text.
+      const text = new TextEncoder().encode("hello from the Worker");
+      const note = await handleAgentUploadWorkerOutputImage(new Request(
+        "https://x/api/worker-agent/outputs?assignmentId=asg-1&name=hello.txt",
+        { method: "POST", body: text, headers: {
+          authorization: "Bearer sess", "x-worker-id": "worker-mac", "x-worker-session-id": "s-worker-mac",
+          "content-type": "text/plain", "content-length": String(text.length) } },
+      ), env);
+      expect(((await note.json()) as { image: unknown }).image).toMatchObject({
+        name: "hello.txt", mediaType: "text/plain", previewText: "hello from the Worker" });
       await expect(handleAgentUploadWorkerOutputImage(upload("worker-linux"), env)).rejects.toMatchObject({ status: 404 });
       await f.sqlite.exec("UPDATE worker_assignments SET status = 'completed'");
       await expect(handleAgentUploadWorkerOutputImage(upload("worker-mac"), env)).rejects.toMatchObject({ status: 409 });

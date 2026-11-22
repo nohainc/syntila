@@ -1363,3 +1363,9 @@ abstract interface class AxDataSource {
   Future<void> respondToRunPrompt(String runId, String response);
   Future<void> revokeWorkspace({required String workspaceId});
 }
+
+/// A source that can hand out short-lived links to play Thread audio and
+/// video. Optional: without it those files open or download as before.
+abstract interface class AxMediaLinkSource {
+  Future<Uri> threadMediaLink(String threadId, String fileId);
+}

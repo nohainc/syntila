@@ -61,10 +61,12 @@ export class LocalFolderBucket {
     }
   }
 
-  async get(key: string): Promise<R2ObjectBodyLike | null> {
+  async get(key: string, options: { range?: { offset: number; length: number } } = {}): Promise<R2ObjectBodyLike | null> {
     const head = await this.head(key);
     if (!head) return null;
-    const bytes = await readFile(this.path(key));
+    const all = await readFile(this.path(key));
+    const range = options.range;
+    const bytes = range ? all.subarray(range.offset, range.offset + range.length) : all;
     const response = new Response(bytes);
     return Object.assign(head, {
       body: response.body!, get bodyUsed() { return response.bodyUsed; },

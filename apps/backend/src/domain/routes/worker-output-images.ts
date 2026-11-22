@@ -31,6 +31,8 @@ export interface WorkerOutputImage {
   readonly sizeBytes: number;
   /** Small base64 JPEG for inline display; the file is the original. */
   readonly previewImage?: string;
+  /** First characters of a text file, computed by Cloud at upload. */
+  readonly previewText?: string;
 }
 
 /** Base64 JPEG preview budget; the Workspace and app enforce the same value. */
@@ -141,6 +143,7 @@ async function storeOutputImage(
     name,
     mediaType: upload.mediaType,
     sizeBytes: stored.sizeBytes,
+    ...(stored.previewText ? { previewText: stored.previewText } : {}),
   };
   return json({ image }, { status: 201 });
 }
@@ -178,6 +181,9 @@ export function workerOutputImages(raw: unknown): WorkerOutputImage[] {
         mediaType: image.mediaType,
         sizeBytes: image.sizeBytes,
         ...(preview ? { previewImage: preview } : {}),
+        ...(typeof image.previewText === "string" && image.previewText
+          ? { previewText: image.previewText.slice(0, 1200) }
+          : {}),
       },
     ];
   });

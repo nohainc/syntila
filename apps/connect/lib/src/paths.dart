@@ -52,11 +52,14 @@ class AgentPaths {
   File get nextKeyFile => File(p.join(identityDir.path, 'key.next.json'));
   File get pairingMarker => File(p.join(identityDir.path, 'pairing.pending'));
   File get stateFile => File(p.join(tracesDir.path, 'state.json'));
+
   /// The models this machine's provider CLI offered at the last service start.
   File get modelsFile => File(p.join(registryDir.path, 'models.json'));
+
   /// A request to re-read models, left by `syntila-connect models refresh`
   /// (the Connect app's button) and picked up by the running service.
-  File get modelsRequestFile => File(p.join(registryDir.path, 'models.refresh'));
+  File get modelsRequestFile =>
+      File(p.join(registryDir.path, 'models.refresh'));
   File get lockFile => File(p.join(root.path, 'agent.lock'));
   Directory get configDir => Directory(p.join(root.path, 'config'));
   File get configFile => File(p.join(configDir.path, 'config.json'));
