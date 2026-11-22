@@ -518,6 +518,20 @@ class AxWorkActivityStore extends ChangeNotifier {
     return true;
   }
 
+  /// Drops the live activity of a request that has ended and whose activity
+  /// the server now returns as history, so it is not kept twice.
+  void releaseFinished(AxWorkRequest request) {
+    if (_disposed ||
+        request.activityHistory.isEmpty ||
+        !const {'completed', 'failed', 'cancelled', 'timed_out', 'lost'}
+            .contains(request.status)) {
+      return;
+    }
+    for (final id in assignmentIdsFor(request)) {
+      if (_activities.remove(id) != null) _signals[id]?.fire();
+    }
+  }
+
   void clear() {
     if (_disposed) return;
     if (_activities.isEmpty && _eventIds.isEmpty) return;
@@ -585,5 +599,51 @@ class AxWorkActivityStore extends ChangeNotifier {
     final activity = left.activitySequence.compareTo(right.activitySequence);
     if (activity != 0) return activity;
     return left.eventId.compareTo(right.eventId);
+  }
+}
+
+/// Keeps each Thread's live Worker activity for the life of the app, so it is
+/// still there after leaving a Thread and coming back. Events are collected
+/// while no Thread page is open. Nothing is persisted: a restart starts empty.
+class AxWorkActivityRegistry {
+  static const maxThreads = 50;
+  final _stores = <String, AxWorkActivityStore>{};
+  final _subscriptions = <StreamSubscription<Map<String, dynamic>>>[];
+
+  AxWorkActivityStore storeFor(String threadId) {
+    final existing = _stores.remove(threadId);
+    final store = existing ?? AxWorkActivityStore();
+    _stores[threadId] = store; // most recently used last
+    if (_stores.length > maxThreads) {
+      _stores.remove(_stores.keys.first)?.dispose();
+    }
+    return store;
+  }
+
+  /// Routes Worker activity events to their Thread's store.
+  void listen(Stream<Map<String, dynamic>> events) {
+    _subscriptions.add(events.listen((event) {
+      final threadId = event['threadId'];
+      if (event['type'] == 'assignment.activity' && threadId is String) {
+        storeFor(threadId).handle(event, threadId: threadId);
+      }
+    }));
+  }
+
+  void clear() {
+    for (final store in _stores.values) {
+      store.clear();
+    }
+  }
+
+  void dispose() {
+    for (final subscription in _subscriptions) {
+      unawaited(subscription.cancel());
+    }
+    _subscriptions.clear();
+    for (final store in _stores.values) {
+      store.dispose();
+    }
+    _stores.clear();
   }
 }

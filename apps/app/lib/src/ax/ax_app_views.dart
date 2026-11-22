@@ -263,6 +263,7 @@ extension _AxAppViews on _AxAppStateMixin {
           showAiHistory: space.showAiHistory && !space.isSupport,
           dataSource: widget.dataSource,
           realtimeEvents: realtimeClient.events,
+          activityRegistry: store.workActivity,
           currentUserId: store.auth.viewer?.id,
           currentUserName: store.auth.viewer?.displayName,
           viewerEmail: store.auth.viewer?.email,

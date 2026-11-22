@@ -51,6 +51,34 @@ describe("durable workflow runner", () => {
     }
   });
 
+  test("a parallel branch that waits does not lose a sibling's running step", async () => {
+    const { sql } = await pgD1();
+    const dispatched: string[] = [];
+    const host = new WorkflowHost("demo-parallel", sql as any, () => ({
+      async run(_event: any, step: any) {
+        const branch = async (name: string, ms: number) => {
+          await step.do(`dispatch:${name}`, async () => { dispatched.push(name); await Bun.sleep(ms); return name; });
+          await step.waitForEvent(`done:${name}`, { type: `done-${name}`, timeout: "1 minute" });
+        };
+        // "a" parks at once while "b"'s dispatch is still running.
+        await Promise.all([branch("a", 0), branch("b", 300)]);
+        return { ok: true };
+      },
+    }), () => ({}));
+    host.start();
+    try {
+      const inst = await host.binding().create({ id: "wf-par", params: {} });
+      await until(async () => (await inst.status()).status === "waiting");
+      await inst.sendEvent({ type: "done-a", payload: {} });
+      await inst.sendEvent({ type: "done-b", payload: {} });
+      await until(async () => (await inst.status()).status === "complete");
+      // Each dispatch ran once: "b" was recorded before the instance parked.
+      expect(dispatched.sort()).toEqual(["a", "b"]);
+    } finally {
+      await host.stop();
+    }
+  });
+
   test("a wait inside try/catch still parks the instance (the catch sees only a real timeout)", async () => {
     const { sql } = await pgD1();
     const seen: string[] = [];

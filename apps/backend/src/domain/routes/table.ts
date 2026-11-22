@@ -297,6 +297,8 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("PATCH", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("DELETE", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("*", "/api/workers/:workerId/mcp-pin", call("handleWorkerMcpPin", p("workerId"), ctx)),
+    r("*", "/api/workers/:workerId/space-access", call("handleWorkerSpaceAccess", p("workerId"), ctx)),
+    r("*", "/api/workers/:workerId/member-model-access", call("handleWorkerMemberModelAccess", p("workerId"), ctx)),
     r("POST", "/api/workers/:workerId/models/refresh", call("handleWorkerModelsRefresh", p("workerId"), ctx)),
     r("*", "/api/workers/:workerId/usage", call("handleWorkerUsageRead", p("workerId"), ctx)),
     // Pairing, credentials and sessions (ADR-034). Owner routes need the signed-in

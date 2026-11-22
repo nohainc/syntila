@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:syntila_app/src/features/workspace/worker_instances_section.dart';
 import 'package:syntila_app/src/ax/ax_data.dart';
+import 'package:syntila_app/src/ax/ax_models.dart';
 import 'package:syntila_app/src/ax/mcp_worker_pin.dart';
 import 'package:syntila_app/src/ax/sync/ax_session_catalogs.dart';
 import 'package:syntila_app/src/features/navigation/app_menu.dart';
@@ -162,6 +163,49 @@ void main() {
     expect(source.created, [('type', 'My Worker')]);
   });
 
+  testWidgets(
+      'Add Worker initializes name to selected type and updates it until edited',
+      (tester) async {
+    final source = _ManagementSource(types: const [
+      (id: 'claude', name: 'Claude'),
+      (id: 'codex', name: 'Codex'),
+    ]);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: WorkerInstancesList(
+                workers: const [],
+                error: null,
+                onRefresh: () async => null,
+                management: source))));
+
+    await tester.tap(find.byKey(const ValueKey('add-worker-button')));
+    await tester.pumpAndSettle();
+
+    final nameField = tester.widget<TextField>(find.byType(TextField));
+    expect(nameField.controller?.text, 'Claude');
+    expect(
+        find.byKey(const ValueKey('add-worker-type-selector')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('add-worker-type-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Codex').last);
+    await tester.pumpAndSettle();
+    expect(nameField.controller?.text, 'Codex');
+
+    await tester.enterText(find.byType(TextField), 'Custom Worker');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('add-worker-type-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Claude').last);
+    await tester.pumpAndSettle();
+    expect(nameField.controller?.text, 'Custom Worker');
+
+    await tester.tap(find.text('Add Worker').last);
+    await tester.pumpAndSettle();
+    expect(source.created, [('claude', 'Custom Worker')]);
+  });
+
   testWidgets('renames, disables and confirms removal by Worker ID',
       (tester) async {
     final source = _ManagementSource();
@@ -272,8 +316,7 @@ void main() {
     expect(find.text('Pair'), findsNothing);
   });
 
-  testWidgets('detail actions update the Worker immediately',
-      (tester) async {
+  testWidgets('detail actions update the Worker immediately', (tester) async {
     final source = _LiveSectionSource();
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -296,7 +339,8 @@ void main() {
     expect(find.text('Worker not found.'), findsOneWidget);
   });
 
-  testWidgets('clicking a Worker opens detail view with attributes and visibility table',
+  testWidgets(
+      'clicking a Worker opens detail view with attributes and visibility table',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -350,7 +394,8 @@ void main() {
       management: source,
       onSelectWorker: (id) => selectedId = id,
     )))));
-    await tester.tap(find.byKey(const ValueKey('worker-instance-wrk-detail-1')));
+    await tester
+        .tap(find.byKey(const ValueKey('worker-instance-wrk-detail-1')));
     await tester.pumpAndSettle();
     expect(selectedId, 'wrk-detail-1');
 
@@ -370,10 +415,11 @@ void main() {
     expect(find.byKey(const ValueKey('worker-detail-wrk-detail-1')),
         findsOneWidget);
     expect(find.text('MacBook Pro'), findsOneWidget);
-    expect(find.text('Claude Sonnet'), findsOneWidget);
+    // Once in the Worker's own table, once in the members' table.
+    expect(find.text('Claude Sonnet'), findsNWidgets(2));
 
-    await tester.tap(
-        find.byKey(const ValueKey('worker-visibility-effort-claude-sonnet-low')));
+    await tester.tap(find
+        .byKey(const ValueKey('worker-visibility-effort-claude-sonnet-low')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('worker-visibility-save')));
     await tester.pumpAndSettle();
@@ -394,12 +440,13 @@ void main() {
 }
 
 class _ManagementSource implements AxWorkerManagementSource {
+  _ManagementSource({this.types = const [(id: 'type', name: 'Type')]});
+  final List<({String id, String name})> types;
   final updates = <(String, Map<String, Object?>)>[];
   final removed = <String>[];
   final created = <(String, String)>[];
   @override
-  Future<List<({String id, String name})>> loadWorkerTypes() async =>
-      [(id: 'type', name: 'Type')];
+  Future<List<({String id, String name})>> loadWorkerTypes() async => types;
   @override
   Future<void> createWorkerInstance(String typeId, String name) async =>
       created.add((typeId, name));
@@ -412,6 +459,26 @@ class _ManagementSource implements AxWorkerManagementSource {
   Future<void> setMcpWorkerPin(String id, McpWorkerVersion version) async {}
   @override
   Future<void> clearMcpWorkerPin(String id) async {}
+  @override
+  Future<AxWorkerSpaceAccess> loadWorkerSpaceAccess(
+          String workerId, String spaceId) async =>
+      AxWorkerSpaceAccess(workerId: workerId, spaceId: spaceId);
+  @override
+  Future<AxWorkerSpaceAccess> saveWorkerSpaceAccess(
+    String workerId,
+    String spaceId,
+    List<AxWorkerSpaceMemberAccess> members,
+  ) async =>
+      AxWorkerSpaceAccess(
+          workerId: workerId, spaceId: spaceId, members: members);
+  @override
+  Future<AxWorkerMemberModelAccess> loadWorkerMemberModelAccess(
+          String workerId) async =>
+      const AxWorkerMemberModelAccess();
+  @override
+  Future<AxWorkerMemberModelAccess> saveWorkerMemberModelAccess(
+          String workerId, AxWorkerMemberModelAccess access) async =>
+      access;
   @override
   Future<void> revokeWorkerCredential(String id) async {}
   @override

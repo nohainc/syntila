@@ -27,7 +27,7 @@ it("classifies redispatch without reopening terminal state", () => {
   });
 });
 
-it("keeps Research capacity waiting separate from readiness and execution deadlines", () => {
+it("keeps Workspace capacity waiting (all workflows) separate from readiness and execution deadlines", () => {
   const start = Date.parse("2026-11-01T00:00:00Z");
   const now = start + 24 * 60 * 60_000;
   const waiting = {
@@ -42,10 +42,10 @@ it("keeps Research capacity waiting separate from readiness and execution deadli
   expect(assignmentDeadlineViolation(waiting, now)).toBeNull();
   expect(
     assignmentDeadlineViolation({ ...waiting, workflowId: "direct" }, now),
-  ).toMatchObject({ phase: "readiness_wait" });
+  ).toBeNull();
   expect(
     assignmentDeadlineViolation({ ...waiting, workflowVersion: 1 }, now),
-  ).toMatchObject({ phase: "readiness_wait" });
+  ).toBeNull();
   // Switching to readiness starts that budget once, after the capacity wait.
   const offline = {
     ...waiting,

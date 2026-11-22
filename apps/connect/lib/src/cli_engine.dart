@@ -37,7 +37,12 @@ class CliEngineLauncher
     this.maxConcurrent = 1,
     this.mcpWorkerRunner,
     this.folders,
+    this.fullAccess,
   });
+
+  /// The owner's local choice (read per assignment): the provider CLI may run
+  /// any command without asking. Null or false keeps the restricted policy.
+  final Future<bool> Function()? fullAccess;
 
   /// The folders this computer allows. A stateful step that names a Space
   /// folder runs there, and only if that folder is still allowed with write.
@@ -73,8 +78,16 @@ class CliEngineLauncher
       );
       final catalog = result.modelCatalog;
       if (catalog == null) {
-        // The CLI answered but listed no models (or could not be started).
-        return {'status': result.issueCode ?? 'no_models'};
+        // The CLI answered but listed no models (or could not be started):
+        // keep what it said, not only a code.
+        final said = [
+          for (final check in result.checks)
+            if (check.status == ProbeCheckStatus.failed) check.message,
+        ].join('\n');
+        return {
+          'status': result.issueCode ?? 'no_models',
+          if (said.isNotEmpty) 'message': said,
+        };
       }
       return {
         'status': 'ok',
@@ -84,8 +97,15 @@ class CliEngineLauncher
         if (result.providerToolVersion != null)
           'providerToolVersion': result.providerToolVersion,
       };
-    } on Object {
-      return {'status': 'probe_failed'};
+    } on Object catch (error) {
+      final said = (error is FormatException ? error.message : '$error')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      return {
+        'status': 'probe_failed',
+        if (said.isNotEmpty)
+          'message': said.length > 600 ? '${said.substring(0, 600)}…' : said,
+      };
     }
   }
 
@@ -97,7 +117,8 @@ class CliEngineLauncher
         return {
           'status': 'error',
           'errorCode': 'worker_not_ready',
-          'errorMessage': 'The Worker Profile is not available on this computer.',
+          'errorMessage':
+              'The Worker Profile is not available on this computer.',
         };
       }
       if (resolved.candidate.profile['usage'] == null) {
@@ -132,6 +153,32 @@ class CliEngineLauncher
         'errorMessage': 'The usage report could not be read.',
       };
     }
+  }
+
+  Future<WorkerExecutionPolicy> _policyFor(
+    EngineRequest request,
+    Map<String, Object?> snapshot,
+  ) async {
+    bool allowed;
+    try {
+      allowed = await (fullAccess?.call() ?? Future.value(false));
+    } on Object {
+      allowed = false;
+    }
+    final readOnly =
+        request.payload['readOnly'] == true || snapshot['readOnly'] == true;
+    // Read-only steps (Chat, Research, ...) see the Space folder but stay in
+    // the provider's read-only mode, with or without full access. Plan is the
+    // exception with full access: it explores the project with shell commands,
+    // which a headless provider mode cannot approve.
+    if (readOnly) {
+      return allowed && snapshot['role'] == 'plan'
+          ? WorkerExecutionPolicy.fullAccess
+          : WorkerExecutionPolicy.providerDefault;
+    }
+    return allowed
+        ? WorkerExecutionPolicy.fullAccess
+        : WorkerExecutionPolicy.restricted;
   }
 
   @override
@@ -260,13 +307,17 @@ class CliEngineLauncher
       '${workRoot.path}/${request.assignmentId}',
     );
     final spaceFolderId = snapshot['spaceFolderId'];
+    // Steps without a Thread lease (Chat, Plan, Research) read the folder and
+    // work without it; stateful steps need write access to it.
+    final readsFolder = snapshot['leaseId'] == null;
     if (spaceFolderId is String) {
       String? path;
       final granted = folders == null
           ? const <Map<String, String>>[]
           : await folders!.list();
       for (final folder in granted) {
-        if (folder['id'] == spaceFolderId && folder['mode'] == 'write') {
+        if (folder['id'] == spaceFolderId &&
+            (folder['mode'] == 'write' || readsFolder)) {
           path = folder['path'];
         }
       }
@@ -274,17 +325,22 @@ class CliEngineLauncher
         if (path == null || !await Directory(path).exists()) {
           throw FolderRejectedException('the Space folder is not allowed here');
         }
-        await folders!.require(path, write: true);
+        await folders!.require(path, write: !readsFolder);
         workingDirectory = Directory(path);
       } on FolderRejectedException {
-        run._finish(
-          const EngineOutcome(TerminalKind.failed, {
-            'errorCode': 'folder_not_approved',
-            'message': 'The Space folder is not allowed on this computer',
-            'retryable': false,
-          }),
-        );
-        return run;
+        // Not required without a lease: keep the scratch directory.
+        if (readsFolder) {
+          path = null;
+        } else {
+          run._finish(
+            const EngineOutcome(TerminalKind.failed, {
+              'errorCode': 'folder_not_approved',
+              'message': 'The Space folder is not allowed on this computer',
+              'retryable': false,
+            }),
+          );
+          return run;
+        }
       }
     }
     unawaited(
@@ -315,7 +371,7 @@ class CliEngineLauncher
             statelessContext: statelessContext,
             model: text('model'),
             reasoningEffort: text('reasoningEffort'),
-            executionPolicy: WorkerExecutionPolicy.restricted,
+            executionPolicy: await _policyFor(request, snapshot),
             onExecutionStarted: run._providerDidStart,
             onActivity: request.onActivity,
           )
@@ -336,6 +392,22 @@ class CliEngineLauncher
   }
 }
 
+/// Engine issue codes as the Cloud's execution error codes. A code the Cloud
+/// does not list ends as `execution_failed`; the original text still travels.
+String _cloudCodeForIssue(String issue) => switch (issue) {
+  'provider_tool_unavailable' => 'cli_not_found',
+  'provider_authentication_required' => 'authentication_required',
+  'unsupported_provider_tool_version' => 'unsupported_cli_version',
+  'deadline_exceeded' => 'timeout',
+  'cancelled' => 'cancelled',
+  'model_not_supported' => 'model_not_supported',
+  'quota_exhausted' => 'quota_exhausted',
+  'provider_unavailable' => 'provider_unavailable',
+  'permission_denied' => 'permission_denied',
+  'context_limit_exceeded' => 'context_limit_exceeded',
+  _ => 'execution_failed',
+};
+
 /// A failed or cancelled outcome that carries only a stable code: never the
 /// provider's output, paths or credentials.
 EngineOutcome outcomeForError(Object error, {required bool cancelled}) {
@@ -347,6 +419,35 @@ EngineOutcome outcomeForError(Object error, {required bool cancelled}) {
       'errorCode': error.code,
       'message': error.message,
       'retryable': error.retryable,
+      // What the Engine reported, not only its code.
+      if (error.diagnostics != null && error.diagnostics!.isNotEmpty)
+        'detail': error.diagnostics,
+    });
+  }
+  if (error is CliWorkerEngineProbeException) {
+    // The provider CLI's own failure text travels with the failure so the owner
+    // sees what the CLI said (the Cloud stores it encrypted).
+    final code = _cloudCodeForIssue(error.issueCode);
+    final detail = SafeProviderDiagnostics.safeFailureDetail(
+      error.localDiagnostics ?? error.safeMessage,
+    );
+    return EngineOutcome(TerminalKind.failed, {
+      'errorCode': code,
+      'message': error.safeMessage,
+      'retryable': !const {
+        'cancelled',
+        'permission_denied',
+        'authentication_required',
+        'cli_not_found',
+        'unsupported_cli_version',
+        'model_not_supported',
+        'quota_exhausted',
+        'context_limit_exceeded',
+      }.contains(code),
+      if (error.providerFailure != null)
+        'providerFailure': error.providerFailure,
+      if (detail != null) 'detail': detail,
+      'diagnostic': error.runtimeType.toString(),
     });
   }
   if (error is TimeoutException) {
@@ -356,10 +457,14 @@ EngineOutcome outcomeForError(Object error, {required bool cancelled}) {
       'retryable': true,
     });
   }
-  return const EngineOutcome(TerminalKind.failed, {
+  final detail = SafeProviderDiagnostics.safeFailureDetail(error);
+  return EngineOutcome(TerminalKind.failed, {
     'errorCode': 'execution_failed',
     'message': 'The Engine could not run this assignment',
     'retryable': false,
+    if (detail != null) 'detail': detail,
+    // Local only (never sent to the Cloud): the agent log names the exception.
+    'diagnostic': error.runtimeType.toString(),
   });
 }
 

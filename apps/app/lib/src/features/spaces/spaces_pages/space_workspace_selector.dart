@@ -62,8 +62,9 @@ class _SpaceWorkspaceSelectorState extends State<_SpaceWorkspaceSelector> {
   @override
   Widget build(BuildContext context) => FutureBuilder<bool>(
         future: _workersUx,
-        builder: (context, snapshot) =>
-            snapshot.data == false ? _buildSelector(context) : const SizedBox.shrink(),
+        builder: (context, snapshot) => snapshot.data == false
+            ? _buildSelector(context)
+            : const SizedBox.shrink(),
       );
 
   @override

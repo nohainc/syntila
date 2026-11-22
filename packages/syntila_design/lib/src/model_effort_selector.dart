@@ -579,58 +579,27 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                 children: [
                   if (widget.showEffort) ...[
                     Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
                         child: Text(
-                            'Effort · ${index < 0 ? 'Select effort' : levels[index] == null ? 'Auto' : effortChoices?[levels[index]] ?? executionEffortDisplayName(levels[index])}',
+                            'Effort · ${index < 0 ? 'Select effort' : _popupEffortLabel(levels[index], effortChoices)}',
                             style: SyntilaMenuStyle.textStyle)),
-                    Slider(
-                      key: ValueKey(
-                          '${widget.scope}-effort-${effective.worker}-${effective.model}'),
-                      value: math.max(0, index).toDouble(),
-                      min: 0,
-                      max: math.max(1, levels.length - 1).toDouble(),
-                      divisions: math.max(1, levels.length - 1),
-                      semanticFormatterCallback: (position) => levels.isEmpty
-                          ? 'Unavailable'
-                          : levels[position
-                                      .round()
-                                      .clamp(0, levels.length - 1)] ==
-                                  null
-                              ? 'Auto'
-                              : executionEffortDisplayName(levels[position
-                                  .round()
-                                  .clamp(0, levels.length - 1)]),
-                      onChanged: enabled &&
-                              ready &&
-                              widget.allowEffortChange &&
-                              levels.isNotEmpty
-                          ? (position) => change(ExecutionSelection(
-                              worker: effective.worker,
-                              model: effective.model,
-                              effort: levels[
-                                  position.round().clamp(0, levels.length - 1)],
-                              catalogRevision: worker.catalogRevision))
-                          : null,
-                      onChangeEnd: enabled &&
-                              ready &&
-                              widget.allowEffortChange &&
-                              levels.isNotEmpty
-                          ? (position) {
-                              // A tap on the displayed minimum may not emit
-                              // onChanged when no effort has been selected yet.
-                              final effort = levels[
-                                  position.round().clamp(0, levels.length - 1)];
-                              if (value.effort != effort || index < 0) {
-                                change(ExecutionSelection(
-                                    worker: effective.worker,
-                                    model: effective.model,
-                                    effort: effort,
-                                    catalogRevision: worker.catalogRevision));
-                              }
-                              Navigator.of(context).pop();
-                            }
-                          : null,
-                    ),
+                    if (levels.isNotEmpty)
+                      _buildEffortButtons(
+                        context: context,
+                        isDark: isDark,
+                        levels: levels,
+                        selectedIndex: index,
+                        effortChoices: effortChoices,
+                        controlKey: ValueKey(
+                            '${widget.scope}-effort-${effective.worker}-${effective.model}'),
+                        onSelect: enabled && ready && widget.allowEffortChange
+                            ? (effortIndex) => change(ExecutionSelection(
+                                worker: effective.worker,
+                                model: effective.model,
+                                effort: levels[effortIndex],
+                                catalogRevision: worker!.catalogRevision))
+                            : null,
+                      ),
                   ],
                   if (widget.showModel) ...[
                     if (worker?.allowsAutoModel == true)
@@ -989,6 +958,82 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
     );
     if (result != null) widget.onChanged?.call(result);
   }
+
+  Widget _buildEffortButtons({
+    required BuildContext context,
+    required bool isDark,
+    required List<String?> levels,
+    required int selectedIndex,
+    required Map<String, String>? effortChoices,
+    required Key controlKey,
+    required ValueChanged<int>? onSelect,
+  }) {
+    final labels = [
+      for (final level in levels) _popupEffortLabel(level, effortChoices),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final rows = <List<int>>[[]];
+        final maxPerRow = (labels.length / (labels.length / 4).ceil()).ceil();
+        for (var i = 0; i < labels.length; i++) {
+          if (rows.last.length >= maxPerRow) rows.add([]);
+          rows.last.add(i);
+        }
+        return Column(
+          key: controlKey,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var row = 0; row < rows.length; row++) ...[
+              if (row > 0) const SizedBox(height: 6),
+              SegmentedButton<int>(
+                expandedInsets: EdgeInsets.zero,
+                showSelectedIcon: false,
+                emptySelectionAllowed: true,
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  ),
+                  textStyle: const WidgetStatePropertyAll(
+                    TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                  side: WidgetStatePropertyAll(
+                    BorderSide(color: SyntilaColors.border(isDark)),
+                  ),
+                ),
+                segments: [
+                  for (final i in rows[row])
+                    ButtonSegment<int>(
+                      value: i,
+                      label: Text(labels[i],
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                selected: rows[row].contains(selectedIndex)
+                    ? {selectedIndex}
+                    : const <int>{},
+                onSelectionChanged: onSelect == null
+                    ? null
+                    : (selected) {
+                        if (selected.isNotEmpty) onSelect(selected.first);
+                      },
+              ),
+            ],
+          ],
+        );
+      }),
+    );
+  }
+}
+
+String _popupEffortLabel(String? level, Map<String, String>? choices) {
+  if (level == null) return 'Auto';
+  final label = choices?[level];
+  if (label == null) return executionEffortDisplayName(level);
+  if (label.isEmpty) return label;
+  return '${label[0].toUpperCase()}${label.substring(1)}';
 }
 
 /// Shared labels for current selections and immutable execution history.

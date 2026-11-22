@@ -25,7 +25,8 @@ void main() {
     expect(
         AxBrowserRoute.restore(Uri.parse('/run'), '/spaces/s/threads/t').path,
         '/spaces');
-    expect(AxBrowserRoute.restore(Uri.parse('/workers'), null).path, '/workers');
+    expect(
+        AxBrowserRoute.restore(Uri.parse('/workers'), null).path, '/workers');
     expect(AxBrowserRoute.restore(Uri.parse('/workspaces'), null).path,
         '/workspaces');
     expect(AxBrowserRoute.restore(Uri.parse('/spaces/threads'), null).path,

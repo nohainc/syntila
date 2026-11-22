@@ -2,14 +2,21 @@ import 'dart:convert';
 import 'dart:io';
 
 class AgentConfig {
-  const AgentConfig({this.logLevel = 'info'});
+  const AgentConfig({this.logLevel = 'info', this.fullAccess = false});
 
   final String logLevel;
 
-  static const keys = ['logLevel'];
+  /// Whether the provider CLI may run any command on this computer without
+  /// asking (the owner's choice, kept on this computer; never set by the Cloud).
+  final bool fullAccess;
+
+  static const keys = ['logLevel', 'fullAccess'];
   static const logLevels = ['error', 'warn', 'info', 'debug'];
 
-  Map<String, Object?> toJson() => {'logLevel': logLevel};
+  Map<String, Object?> toJson() => {
+    'logLevel': logLevel,
+    'fullAccess': fullAccess,
+  };
 
   /// Returns a copy with [key] set from [value] text, or throws a
   /// [FormatException] that names what is wrong.
@@ -21,7 +28,12 @@ class AgentConfig {
             'logLevel must be error, warn, info or debug',
           );
         }
-        return AgentConfig(logLevel: value);
+        return AgentConfig(logLevel: value, fullAccess: fullAccess);
+      case 'fullAccess':
+        if (value != 'true' && value != 'false') {
+          throw const FormatException('fullAccess must be true or false');
+        }
+        return AgentConfig(logLevel: logLevel, fullAccess: value == 'true');
       default:
         throw FormatException('unknown setting $key');
     }

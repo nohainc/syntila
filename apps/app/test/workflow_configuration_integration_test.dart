@@ -341,6 +341,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('work-workflow-track')), findsOneWidget);
     expect(find.byKey(const ValueKey('work-toggle-chat')), findsOneWidget);
+    // The closed button shows each role's model.
+    for (final model in ['model-a', 'model-b', 'model-c', 'synthesis-model']) {
+      expect(find.textContaining(model), findsOneWidget);
+    }
     await tester
         .tap(find.byKey(const ValueKey('research-execution-selection')));
     await tester.pumpAndSettle();
@@ -356,8 +360,9 @@ void main() {
     ]) {
       expect(find.text(title), findsOneWidget);
     }
+    // Once in the button and once in the open dialog.
     for (final model in ['model-a', 'model-b', 'model-c', 'synthesis-model']) {
-      expect(find.textContaining(model), findsOneWidget);
+      expect(find.textContaining(model), findsNWidgets(2));
     }
     expect(find.textContaining('saved-one-step-model'), findsNothing);
     await tester.tap(find.text('Close'));
@@ -888,6 +893,193 @@ void main() {
             workerTypeId: 'custom'));
     expect(saved?.workerId, 'b');
   });
+
+  testWidgets(
+      'Implement execution button renders step worker icons and omits hint copy in dialog',
+      (tester) async {
+    final oldPlan = AxAccountPlanCache.instance.plan;
+    AxAccountPlanCache.instance.plan = const AxAccountPlan(isPaid: true);
+    addTearDown(() => AxAccountPlanCache.instance.plan = oldPlan);
+    tester.view.physicalSize = const Size(1200, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final source = IntegrationSource()
+      ..defaultWorkflow = 'plan_implement'
+      ..workers = [worker('a'), worker('b')]
+      ..values = [
+        AxUserWorkflowConfiguration(
+          workflowId: 'plan_implement',
+          defaults: const AxWorkflowSelection(worker: 'a'),
+        ),
+      ];
+    final engine = AxSyncEngine();
+    final store = MemoryAxThreadViewStateStore();
+    await store.save(
+      userId: 'user',
+      threadId: 'implement-thread',
+      state: const AxThreadViewState(
+        tabIndex: 1,
+        workflowReference: 'plan_implement:v2',
+      ),
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ThreadPage(
+          initialTab: 1,
+          space: const AxSpace(
+              id: 's',
+              name: 'Space',
+              branch: '',
+              lastActivity: '',
+              role: 'owner'),
+          thread: const AxThread(
+              id: 'implement-thread',
+              spaceId: 's',
+              name: 'Thread',
+              lead: '',
+              status: 'active',
+              brief: '',
+              primaryWorkspace: '',
+              queueStatus: '',
+              canExecuteWork: true),
+          currentUserId: 'user',
+          viewerEmail: 'pro@nohainc.com',
+          dataSource: source,
+          catalogs: AxSessionCatalogs(source, engine: engine),
+          workflowConfigurations:
+              AxWorkflowConfigurations(source, engine: engine),
+          workHistoryCache: AxWorkHistoryCache(source, engine: engine),
+          threadViewStateStore: store,
+          onBackToSpace: () {},
+          onArchive: () {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final buttonFinder =
+        find.byKey(const ValueKey('implement-execution-selection'));
+    expect(buttonFinder, findsOneWidget);
+    expect(find.text('Implement executions'), findsNothing);
+    expect(find.text('Select Workers'), findsNothing);
+
+    expect(find.descendant(of: buttonFinder, matching: find.byType(Tooltip)),
+        findsNWidgets(3));
+    final tooltips = tester
+        .widgetList<Tooltip>(
+            find.descendant(of: buttonFinder, matching: find.byType(Tooltip)))
+        .map((t) => t.message)
+        .toList();
+    expect(tooltips, ['Plan: First', 'Implement: First', 'Verify: First']);
+    expect(
+        find.descendant(
+            of: buttonFinder, matching: find.text('Analysis model')),
+        findsNWidgets(3));
+    expect(find.descendant(of: buttonFinder, matching: find.text('·')),
+        findsNWidgets(2));
+
+    await tester.tap(buttonFinder);
+    await tester.pumpAndSettle();
+    expect(find.text('Implement execution selections'), findsOneWidget);
+    expect(find.textContaining('Implement plans in phases'), findsOneWidget);
+    expect(
+        find.textContaining(
+            'Selections follow this Space’s Workspace workflows.'),
+        findsNothing);
+    expect(
+        find.textContaining(
+            "Selections follow this Space's Workspace workflows"),
+        findsNothing);
+    expect(
+        find.textContaining(
+            'Unchanged steps use the Workspace’s Workflows tab.'),
+        findsNothing);
+    expect(
+        find.textContaining(
+            "Unchanged steps use the Workspace's Workflows tab."),
+        findsNothing);
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+      'Implement execution button renders Select Workers when worker is unselected',
+      (tester) async {
+    final oldPlan = AxAccountPlanCache.instance.plan;
+    AxAccountPlanCache.instance.plan = const AxAccountPlan(isPaid: true);
+    addTearDown(() => AxAccountPlanCache.instance.plan = oldPlan);
+    tester.view.physicalSize = const Size(1200, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final source = IntegrationSource()
+      ..defaultWorkflow = 'plan_implement'
+      ..workers = [worker('a'), worker('b')]
+      ..values = [
+        AxUserWorkflowConfiguration(
+          workflowId: 'plan_implement',
+          defaults: const AxWorkflowSelection(worker: null),
+        ),
+      ];
+    final engine = AxSyncEngine();
+    final store = MemoryAxThreadViewStateStore();
+    await store.save(
+      userId: 'user',
+      threadId: 'implement-thread-unselected',
+      state: const AxThreadViewState(
+        tabIndex: 1,
+        workflowReference: 'plan_implement:v2',
+      ),
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ThreadPage(
+          initialTab: 1,
+          space: const AxSpace(
+              id: 's',
+              name: 'Space',
+              branch: '',
+              lastActivity: '',
+              role: 'owner'),
+          thread: const AxThread(
+              id: 'implement-thread-unselected',
+              spaceId: 's',
+              name: 'Thread',
+              lead: '',
+              status: 'active',
+              brief: '',
+              primaryWorkspace: '',
+              queueStatus: '',
+              canExecuteWork: true),
+          currentUserId: 'user',
+          viewerEmail: 'pro@nohainc.com',
+          dataSource: source,
+          catalogs: AxSessionCatalogs(source, engine: engine),
+          workflowConfigurations:
+              AxWorkflowConfigurations(source, engine: engine),
+          workHistoryCache: AxWorkHistoryCache(source, engine: engine),
+          threadViewStateStore: store,
+          onBackToSpace: () {},
+          onArchive: () {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final buttonFinder =
+        find.byKey(const ValueKey('implement-execution-selection'));
+    expect(buttonFinder, findsOneWidget);
+    expect(find.text('Implement executions'), findsNothing);
+    expect(
+        find.descendant(
+            of: buttonFinder, matching: find.text('Select Workers')),
+        findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }
 
 Future<void> requestChoice(
@@ -900,8 +1092,10 @@ Future<void> requestChoice(
     final id = text == 'Second' ? 'b' : 'a';
     await tester.tap(find.byKey(ValueKey('work-composer-worker-$id')));
   } else if (label == 'Effort') {
-    final slider = tester.widget<Slider>(find.byType(Slider));
-    slider.onChanged!(slider.max);
+    await tester.tap(find
+        .byWidgetPredicate(
+            (w) => w is Text && w.data?.toLowerCase() == text.toLowerCase())
+        .last);
   } else {
     await tester.tap(find.text(text).last);
   }

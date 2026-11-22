@@ -51,10 +51,18 @@ class _ConnectStatusPageState extends State<ConnectStatusPage> {
     final map = decoded.cast<String, Object?>();
     final list = map['workers'];
     if (list is List) {
+      // By name, so the order does not change as Workers start and stop.
       return [
         for (final item in list)
           if (item is Map) item.cast<String, Object?>(),
-      ];
+      ]..sort((a, b) {
+        final byName = _workerDisplayName(
+          a,
+        ).toLowerCase().compareTo(_workerDisplayName(b).toLowerCase());
+        return byName != 0
+            ? byName
+            : '${a['workerId']}'.compareTo('${b['workerId']}');
+      });
     }
     if (map['workerId'] is String) {
       return [map];
@@ -167,6 +175,60 @@ class _ConnectStatusPageState extends State<ConnectStatusPage> {
     await _refresh();
   }
 
+  /// Full access is the owner's decision on this computer: turning it on asks
+  /// first, and it applies to the next request without restarting the service.
+  Future<void> _setFullAccess(String label, String workerId, bool on) async {
+    if (on) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Allow full access?'),
+          content: Text(
+            '$label will be allowed to run any command on this computer, with your '
+            'account, without asking. That includes requests from anyone who can '
+            'send Work to this Worker. Turn it on only for Workers and folders you '
+            'trust.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('worker-full-access-confirm'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Allow full access'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    setState(() {
+      _busy = label;
+      _actionProblem = null;
+    });
+    final result = await widget.runner.start([
+      'full-access',
+      on ? 'on' : 'off',
+      '--worker',
+      workerId,
+    ]).result;
+    if (!mounted) return;
+    String? problem;
+    if (!result.ok) {
+      final text = '${result.stderr}${result.stdout}'.trim();
+      problem = text.isEmpty
+          ? 'Could not change full access (exit ${result.exitCode}).'
+          : text;
+    }
+    setState(() {
+      _busy = null;
+      _actionProblem = problem;
+    });
+    await _refresh();
+  }
+
   Future<void> _removeWorker(String label, String workerId) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -234,101 +296,146 @@ class _ConnectStatusPageState extends State<ConnectStatusPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final workers = _workers;
+    // Progress and errors sit over the bottom of the page, not in the list, so
+    // clicking a button never moves the content or its scroll position.
+    final notice = _busy != null || _actionProblem != null;
     return Align(
       alignment: Alignment.topLeft,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 820),
-        child: ListView(
-          padding: const EdgeInsets.all(28),
+        child: Stack(
           children: [
-            Row(
+            ListView(
+              padding: EdgeInsets.fromLTRB(28, 28, 28, notice ? 140 : 28),
               children: [
-                Expanded(
-                  child: Text('Workers', style: theme.textTheme.headlineSmall),
-                ),
-                IconButton(
-                  tooltip: 'Refresh',
-                  onPressed: _busy == null ? () => _refresh(force: true) : null,
-                  icon: const Icon(Icons.refresh, size: 20),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_busy != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
+                Row(
                   children: [
-                    const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                    Expanded(
+                      child: Text(
+                        'Workers',
+                        style: theme.textTheme.headlineSmall,
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    Text('$_busy…', style: theme.textTheme.bodySmall),
+                    IconButton(
+                      tooltip: 'Refresh',
+                      onPressed: _busy == null
+                          ? () => _refresh(force: true)
+                          : null,
+                      icon: const Icon(Icons.refresh, size: 20),
+                    ),
                   ],
                 ),
-              ),
-            if (_actionProblem != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _Panel(
-                  child: SelectableText(
-                    _actionProblem!,
-                    key: const Key('status-action-error'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontFamily: 'JetBrains Mono',
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
-              ),
-            if (!_loaded)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (workers == null)
-              _Panel(
-                child: Text(
-                  _problem ?? 'No status.',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              )
-            else if (workers.isEmpty)
-              _Panel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'No Workers on this computer yet',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Open "Add Worker" in the sidebar and enter a pairing code from the web app to add your first Worker.',
+                const SizedBox(height: 16),
+                if (!_loaded)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (workers == null)
+                  _Panel(
+                    child: Text(
+                      _problem ?? 'No status.',
                       style: theme.textTheme.bodyMedium,
                     ),
-                  ],
-                ),
-              )
-            else
-              for (final worker in workers)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: _WorkerCard(
-                    worker: worker,
-                    busy: _busy != null,
-                    onCopyId: _copyWorkerId,
-                    onServiceAction: _runServiceAction,
-                    onRefreshModels: _refreshModels,
-                    onRemove: _removeWorker,
+                  )
+                else if (workers.isEmpty)
+                  _Panel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'No Workers on this computer yet',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Open "Add Worker" in the sidebar and enter a pairing code from the web app to add your first Worker.',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  for (final worker in workers)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: _WorkerCard(
+                        worker: worker,
+                        busy: _busy != null,
+                        onCopyId: _copyWorkerId,
+                        onServiceAction: _runServiceAction,
+                        onRefreshModels: _refreshModels,
+                        onFullAccess: _setFullAccess,
+                        onRemove: _removeWorker,
+                      ),
+                    ),
+              ],
+            ),
+            if (notice)
+              Positioned(
+                left: 28,
+                right: 28,
+                bottom: 16,
+                child: _Panel(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 96),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_busy != null)
+                            Row(
+                              children: [
+                                const SizedBox.square(
+                                  dimension: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '$_busy…',
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          if (_busy != null && _actionProblem != null)
+                            const SizedBox(height: 8),
+                          if (_actionProblem != null)
+                            SelectableText(
+                              _actionProblem!,
+                              key: const Key('status-action-error'),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontFamily: 'JetBrains Mono',
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
+              ),
           ],
         ),
       ),
     );
   }
+}
+
+/// The name a Worker is listed under: its own name, else its type.
+String _workerDisplayName(Map<String, Object?> worker) {
+  final workerId = '${worker['workerId'] ?? '-'}';
+  final rawName = worker['workerName']?.toString().trim();
+  final rawType = worker['workerType']?.toString().trim();
+  return (rawName != null && rawName.isNotEmpty && rawName != workerId)
+      ? rawName
+      : (rawType != null && rawType.isNotEmpty && rawType != workerId)
+      ? rawType
+      : 'Worker';
 }
 
 class _WorkerCard extends StatelessWidget {
@@ -338,9 +445,11 @@ class _WorkerCard extends StatelessWidget {
     required this.onCopyId,
     required this.onServiceAction,
     required this.onRefreshModels,
+    required this.onFullAccess,
     required this.onRemove,
   });
 
+  final void Function(String label, String workerId, bool on) onFullAccess;
   final void Function(String label, String workerId) onRemove;
   final void Function(String label, String workerId) onRefreshModels;
   final Map<String, Object?> worker;
@@ -354,14 +463,8 @@ class _WorkerCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final workerId = '${worker['workerId'] ?? '-'}';
-    final rawName = worker['workerName']?.toString().trim();
     final rawType = worker['workerType']?.toString().trim();
-    final displayName =
-        (rawName != null && rawName.isNotEmpty && rawName != workerId)
-        ? rawName
-        : (rawType != null && rawType.isNotEmpty && rawType != workerId)
-        ? rawType
-        : 'Worker';
+    final displayName = _workerDisplayName(worker);
     final running = worker['running'] == true;
     final connection = '${worker['connection'] ?? 'unknown'}';
     final service = '${worker['service'] ?? 'unknown'}';
@@ -488,17 +591,15 @@ class _WorkerCard extends StatelessWidget {
                 onPressed: (busy || !running)
                     ? null
                     : () => onRefreshModels(
-                          'Reading models for $displayName',
-                          workerId,
-                        ),
+                        'Reading models for $displayName',
+                        workerId,
+                      ),
                 icon: const Icon(Icons.sync, size: 18),
                 label: const Text('Refresh models'),
               ),
               OutlinedButton.icon(
                 key: ValueKey('status-remove-$workerId'),
-                onPressed: busy
-                    ? null
-                    : () => onRemove(displayName, workerId),
+                onPressed: busy ? null : () => onRemove(displayName, workerId),
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Remove'),
               ),
@@ -524,6 +625,17 @@ class _WorkerCard extends StatelessWidget {
           _Row(
             'Starts automatically',
             worker['autoStart'] == true ? 'Yes' : 'No',
+          ),
+          const Divider(height: 24),
+          SwitchListTile(
+            key: ValueKey('status-full-access-$workerId'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('Full access to this computer'),
+            value: worker['fullAccess'] == true,
+            onChanged: busy
+                ? null
+                : (value) => onFullAccess(displayName, workerId, value),
           ),
           const Divider(height: 24),
           _ModelsSection(models: worker['models']),
@@ -579,11 +691,38 @@ class _ModelsSection extends StatelessWidget {
           ? 'No models yet. Use Refresh models while the service is running.'
           : status == 'ok'
           ? 'The provider reported no models.'
+          : data['message'] is String && (data['message'] as String).isNotEmpty
+          ? 'Could not read models: ${data['message']}'
           : 'Could not read models ($status). Try Refresh models.';
-      return Text(
+      final isError = data != null && status != 'ok';
+      final label = Text(
         text,
         key: const Key('worker-models-empty'),
         style: theme.textTheme.bodySmall,
+      );
+      if (!isError) return label;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(child: label),
+          IconButton(
+            key: const Key('worker-models-error-copy'),
+            tooltip: 'Copy message',
+            icon: const Icon(Icons.copy, size: 16),
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: text));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Copied'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
+        ],
       );
     }
     final tool = [
@@ -602,7 +741,8 @@ class _ModelsSection extends StatelessWidget {
           children: [
             for (final model in entries)
               Tooltip(
-                message: (model['efforts'] is List &&
+                message:
+                    (model['efforts'] is List &&
                         (model['efforts'] as List).isNotEmpty)
                     ? 'Efforts: ${(model['efforts'] as List).join(', ')}'
                     : 'No effort levels',
@@ -613,11 +753,12 @@ class _ModelsSection extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: theme.colorScheme.outlineVariant,
-                    ),
+                    border: Border.all(color: theme.colorScheme.outlineVariant),
                   ),
-                  child: Text('${model['name']}', style: theme.textTheme.labelMedium),
+                  child: Text(
+                    '${model['name']}',
+                    style: theme.textTheme.labelMedium,
+                  ),
                 ),
               ),
           ],

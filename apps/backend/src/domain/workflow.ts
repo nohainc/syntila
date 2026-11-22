@@ -67,7 +67,7 @@ import {
   assignmentDeadlineViolation,
   classifyStepAssignmentOutcome,
   currentAssignmentDeadline,
-  isResearchCapacityQueue,
+  isWorkspaceCapacityQueue,
   DEFAULT_QUEUE_WAIT_TIMEOUT_MS,
   type AssignmentDeadlinePhase,
 } from "./assignment-delivery.js";
@@ -141,7 +141,7 @@ export function nextWakeupMs(
   now = Date.now(),
 ): number {
   let wait = ASSIGNMENT_RECONCILIATION_INTERVAL_MS;
-  if (row && isResearchCapacityQueue(row)) {
+  if (row && isWorkspaceCapacityQueue(row)) {
     wait = LONG_RUN_RECONCILIATION_INTERVAL_MS;
   }
   const runningSince = row?.runningAt ? Date.parse(row.runningAt) : NaN;
@@ -1131,12 +1131,19 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
     let freshSession = false;
     while (attempt < 3) {
       attempt += 1;
-      await this.persistWorkflowTaskState(
-        task,
-        undefined,
-        undefined,
-        "queued",
-        attempt,
+      // Memoised: the body replays on every wake-up, and re-writing `queued`
+      // then would show a running step as queued again.
+      await workflowStep.do(
+        `workflow:${stepInstanceId(task.step)}:queued:${attempt}`,
+        { ...stepConfig, timeout: "30 seconds" },
+        () =>
+          this.persistWorkflowTaskState(
+            task,
+            undefined,
+            undefined,
+            "queued",
+            attempt,
+          ),
       );
       try {
         const dispatchOnce = (slotRound: number) =>
@@ -1356,11 +1363,11 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
                 : undefined,
             });
           }
-          const researchCapacityWait =
-            definition.id === "research" &&
-            definition.version === 2 &&
+          // Waiting behind the requester's own running work is not a failure
+          // in any workflow; only a Service that never becomes ready is bounded.
+          const accountCapacityWait =
             assignment.waitReason === "account_concurrency_limit";
-          if (slotRound >= MAX_EXECUTION_WAIT_ROUNDS && !researchCapacityWait) {
+          if (slotRound >= MAX_EXECUTION_WAIT_ROUNDS && !accountCapacityWait) {
             await workflowStep.do(
               `workflow:${stepInstanceId(task.step)}:slot-wait-expired:${attempt}`,
               stepConfig,
@@ -1463,7 +1470,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             : null;
           // Capacity waiting is durable and holds no Workspace execution slot.
           // It must not spend the provider's timeout or the recovery wake budget.
-          if (!deadlineInput || !isResearchCapacityQueue(deadlineInput))
+          if (!deadlineInput || !isWorkspaceCapacityQueue(deadlineInput))
             boundedWakeups += 1;
           if (
             terminal &&

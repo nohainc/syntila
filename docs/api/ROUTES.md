@@ -8,7 +8,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 `Workspace/server`: called with Workspace or server credentials, no browser same-origin check.
 `Idempotency-Key`: a retry with the same key returns the first response (see CONTRACT.md).
 
-152 paths.
+164 paths.
 
 | Path | Methods | Notes |
 | --- | --- | --- |
@@ -26,6 +26,9 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/billing/sandbox/checkout-config` | ANY |  |
 | `/api/billing/sandbox/portal` | ANY |  |
 | `/api/billing/sandbox/webhook` | ANY | Workspace/server |
+| `/api/device-folders` | GET |  |
+| `/api/device-folders/:deviceId` | DELETE |  |
+| `/api/device-folders/:deviceId/:folderId` | DELETE |  |
 | `/api/discussion-messages/:messageId` | GET, PATCH, DELETE |  |
 | `/api/features` | GET |  |
 | `/api/files` | GET |  |
@@ -64,6 +67,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/spaces/:spaceId` | GET, PATCH, DELETE |  |
 | `/api/spaces/:spaceId/additional-folders` | ANY |  |
 | `/api/spaces/:spaceId/audit` | GET |  |
+| `/api/spaces/:spaceId/folder` | ANY |  |
 | `/api/spaces/:spaceId/invitations` | GET, POST | Idempotency-Key |
 | `/api/spaces/:spaceId/invitations/:invitationId/expire` | POST |  |
 | `/api/spaces/:spaceId/members` | GET |  |
@@ -109,17 +113,25 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/worker-agent/artifacts` | POST | Workspace/server |
 | `/api/worker-agent/artifacts/:artifactId/content` | GET | Workspace/server |
 | `/api/worker-agent/claim` | POST | Workspace/server |
+| `/api/worker-agent/folders` | PUT | Workspace/server |
 | `/api/worker-agent/gateway` | GET | Workspace/server |
+| `/api/worker-agent/models` | PUT | Workspace/server |
 | `/api/worker-agent/nonce` | POST | Workspace/server |
 | `/api/worker-agent/profile` | GET | Workspace/server |
 | `/api/worker-agent/rotate` | POST | Workspace/server |
 | `/api/worker-agent/sessions` | POST | Workspace/server |
+| `/api/worker-agent/unpair` | POST | Workspace/server |
+| `/api/worker-agent/usage` | PUT | Workspace/server |
 | `/api/workers` | GET, POST | Idempotency-Key |
 | `/api/workers/:workerId` | GET, PATCH, DELETE |  |
 | `/api/workers/:workerId/credential` | DELETE |  |
 | `/api/workers/:workerId/mcp-pin` | ANY |  |
+| `/api/workers/:workerId/member-model-access` | ANY |  |
+| `/api/workers/:workerId/models/refresh` | POST |  |
 | `/api/workers/:workerId/pairing` | POST |  |
+| `/api/workers/:workerId/space-access` | ANY |  |
 | `/api/workers/:workerId/transfer` | POST |  |
+| `/api/workers/:workerId/usage` | ANY |  |
 | `/api/workers/:workerTypeId/profile` | GET |  |
 | `/api/workers/catalog` | GET |  |
 | `/api/workflows/catalog` | GET |  |

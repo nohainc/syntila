@@ -99,18 +99,17 @@ export interface AssignmentDeadlineInput {
   readonly workflowVersion?: number;
 }
 
-/** Capacity is a wait, not an execution/readiness failure, for Research v2. */
-export function isResearchCapacityQueue(
-  input: Pick<
-    AssignmentDeadlineInput,
-    "status" | "cloudQueueReason" | "workflowId" | "workflowVersion"
-  >,
+/**
+ * Workspace capacity is a wait, not an execution/readiness failure, for every
+ * workflow: parallel work (Plus) legitimately queues behind the Workspace's
+ * parallel slots without holding one.
+ */
+export function isWorkspaceCapacityQueue(
+  input: Pick<AssignmentDeadlineInput, "status" | "cloudQueueReason">,
 ): boolean {
   return (
     input.status === "created" &&
-    input.cloudQueueReason === "workspace_capacity" &&
-    input.workflowId === "research" &&
-    input.workflowVersion === 2
+    input.cloudQueueReason === "workspace_capacity"
   );
 }
 
@@ -182,7 +181,7 @@ export function currentAssignmentDeadline(input: AssignmentDeadlineInput): {
   const queueWait = input.queueWaitTimeoutMs ?? DEFAULT_QUEUE_WAIT_TIMEOUT_MS;
   switch (input.status) {
     case "created":
-      if (isResearchCapacityQueue(input)) return null;
+      if (isWorkspaceCapacityQueue(input)) return null;
       // Persisted but not handed to the transport: either the Service is not
       // ready yet (the durable queue) or dispatch never completed. Bounded by
       // the queue wait limit; nothing was ever sent, so expiry is a direct,

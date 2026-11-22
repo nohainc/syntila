@@ -71,6 +71,7 @@ export {
   handleWorkerModelsRefresh,
   handleWorkerUsageRead,
 } from "./workers.js";
+export { handleWorkerSpaceAccess, handleWorkerMemberModelAccess } from "./worker-space-access.js";
 export {
   handleClaimWorkerPairing,
   handleConnectWorkerSession,

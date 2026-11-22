@@ -154,6 +154,10 @@ class _WorkComposer extends StatelessWidget {
     this.workConfig = const <String, dynamic>{},
     this.researchConfiguration,
     this.implementConfiguration,
+    this.stepExecutionSelections = const {},
+    this.onStepExecutionSelectionChanged,
+    this.researcherCount,
+    this.onResearcherCountChanged,
     this.spaceWorkers = const <AxWorker>[],
     this.eligibleWorkers = const <AxWorker>[],
     this.visibilityByWorkspace = const {},
@@ -242,6 +246,14 @@ class _WorkComposer extends StatelessWidget {
   final Map<String, dynamic> workConfig;
   final AxUserWorkflowConfiguration? researchConfiguration;
   final AxUserWorkflowConfiguration? implementConfiguration;
+
+  /// The user's per-step choices for Implement (plan, implement, verify),
+  /// keyed by step; a step without an entry uses the Workspace workflow.
+  final Map<String, Map<String, dynamic>> stepExecutionSelections;
+  final int? researcherCount;
+  final ValueChanged<int>? onResearcherCountChanged;
+  final void Function(String step, Map<String, dynamic> selection)?
+      onStepExecutionSelectionChanged;
   final List<AxWorker> spaceWorkers;
   final List<AxWorker> eligibleWorkers;
   final Map<String, AxWorkerVisibility> visibilityByWorkspace;
@@ -880,13 +892,23 @@ class _WorkComposer extends StatelessWidget {
               _selectedWorkflow()?.version == 2)
             ResearchExecutionSelection(
               configuration: researchConfiguration,
-              workers: spaceWorkers,
+              workers: [...spaceWorkers, ...eligibleWorkers],
+              selections: stepExecutionSelections,
+              selectorBuilder: (step, current, onChanged) => _stepSelector(
+                  context, researchConfiguration, step, current, onChanged),
+              onChanged: onStepExecutionSelectionChanged,
+              researcherCount: researcherCount,
+              onResearcherCountChanged: onResearcherCountChanged,
             )
           else if (workerTargetPicker == null &&
               _selectedWorkflow()?.id == 'plan_implement')
             ResearchExecutionSelection.implement(
               configuration: implementConfiguration,
-              workers: spaceWorkers,
+              workers: [...spaceWorkers, ...eligibleWorkers],
+              selections: stepExecutionSelections,
+              selectorBuilder: (step, current, onChanged) => _stepSelector(
+                  context, implementConfiguration, step, current, onChanged),
+              onChanged: onStepExecutionSelectionChanged,
             )
           else
             DecoratedBox(
@@ -908,158 +930,196 @@ class _WorkComposer extends StatelessWidget {
                             'reasoningEffort': null,
                           }),
                       canSelect)
-                  : ModelEffortSelector(
+                  : _modelEffortSelector(
+                      context,
                       scope: 'work-composer',
-                      onManageVisibility: onManageVisibility == null
-                          ? null
-                          : () {
-                              final worker = eligibleWorkers
-                                      .where((w) =>
-                                          w.id == selectedWorkerId && !w.shared)
-                                      .firstOrNull ??
-                                  eligibleWorkers
-                                      .where((w) => !w.shared)
-                                      .firstOrNull;
-                              onManageVisibility!(worker?.workspaceId);
-                            },
-                      immediatePopup: true,
-                      workerIconBuilder: (capability) {
-                        final worker = eligibleWorkers
-                            .where((w) => w.id == capability.id)
-                            .firstOrNull;
-                        final asset = WorkerPresentation.resolve(
-                                worker?.workerTypeId, capability.name)
-                            .iconAssetForBrightness(
-                                Theme.of(context).brightness);
-                        return asset == null
-                            ? const Icon(Icons.smart_toy_outlined, size: 22)
-                            : Image.asset(asset, width: 22, height: 22);
-                      },
-                      modelIconBuilder: (capability, modelId, modelName) {
-                        final worker = eligibleWorkers
-                            .where((w) => w.id == capability?.id)
-                            .firstOrNull;
-                        final presentation = ModelPresentation.resolve(
-                          modelId: modelId,
-                          modelDisplayName: modelName,
-                          fallbackWorkerTypeId: worker?.workerTypeId,
-                          fallbackWorkerDisplayName: capability?.name,
-                        );
-                        final asset = presentation.iconAssetForBrightness(
-                            Theme.of(context).brightness);
-                        return asset == null
-                            ? const Icon(Icons.smart_toy_outlined, size: 22)
-                            : Image.asset(asset, width: 22, height: 22);
-                      },
-                      compactModelLabelBuilder: (modelId, modelName) {
-                        return ModelPresentation.stripIdentity(
-                            modelName ?? modelId);
-                      },
-                      helperMessage: eligibleWorkers
-                                  .where(
-                                      (worker) => worker.id == selectedWorkerId)
-                                  .firstOrNull
-                                  ?.executionOptions
-                                  ?.modelSwitchSupported ==
-                              false
-                          ? 'Changing the model starts a new session with the conversation context. Effort changes that select another model follow the same rule.'
-                          : null,
-                      onShowUsage: usageController?.supported ?? false
-                          ? () => _runComposerCommand(_usageCommand)
-                          : null,
-                      compact: true,
-                      compactHeight: composerButtonSize,
-                      compactIconSize: composerIconSize,
-                      showWorkerInCompactSummary: false,
-                      showWorker: true,
-                      showModel: true,
-                      showEffort: true,
-                      showCatalog: false,
-                      allowWorkerChange: policy.userSelectsWorker,
-                      allowModelChange: policy.userSelectsModel,
-                      allowEffortChange: policy.userSelectsEffort,
-                      catalog: AxWorkflowSelectionOptions(eligibleWorkers)
-                          .sharedCatalog,
-                      displayWorkers: (selection) => {
-                        for (final worker in eligibleWorkers)
-                          if (worker.shared ||
-                              !(visibilityByWorkspace[worker.workspaceId]
-                                      ?.workerHidden(worker.id) ??
-                                  false) ||
-                              selection.worker == worker.id)
-                            worker.id:
-                                '${worker.displayName}${!worker.shared && (visibilityByWorkspace[worker.workspaceId]?.workerHidden(worker.id) ?? false) ? ' · Hidden in My Workers' : ''}'
-                      },
-                      displayModels: (selection) {
-                        final catalog =
-                            AxWorkflowSelectionOptions(eligibleWorkers)
-                                .sharedCatalog;
-                        final worker = eligibleWorkers
-                            .where((w) => w.id == selection.worker)
-                            .firstOrNull;
-                        if (worker == null) return {};
-                        final preferences = worker.shared
-                            ? AxWorkerVisibility()
-                            : visibilityByWorkspace[worker.workspaceId] ??
-                                AxWorkerVisibility();
-                        return AxWorkerVisibilityProjection(
-                                catalog, preferences,
-                                selected: selection)
-                            .models(worker.id);
-                      },
-                      displayEfforts: (selection) {
-                        final catalog =
-                            AxWorkflowSelectionOptions(eligibleWorkers)
-                                .sharedCatalog;
-                        final worker = eligibleWorkers
-                            .where((w) => w.id == selection.worker)
-                            .firstOrNull;
-                        if (worker == null) return {};
-                        final preferences = worker.shared
-                            ? AxWorkerVisibility()
-                            : visibilityByWorkspace[worker.workspaceId] ??
-                                AxWorkerVisibility();
-                        final projection = AxWorkerVisibilityProjection(
-                            catalog, preferences,
-                            selected: selection);
-                        return {
-                          for (final e
-                              in projection.efforts(worker.id, selection.model))
-                            e: projection.effortLabel(
-                                worker.id,
-                                selection.model ??
-                                    catalog.worker(worker.id)?.defaultModelId ??
-                                    '',
-                                e)
-                        };
-                      },
-                      value: ExecutionSelection(
-                          worker: selectedWorkerId,
-                          catalogRevision:
-                              (executionSelection['catalogRevision'] ??
-                                  binding['catalogRevision']) as String?,
-                          model: selectedModel.isEmpty ? null : selectedModel,
-                          effort: selectedReasoningEffort.isEmpty
-                              ? null
-                              : selectedReasoningEffort),
-                      readOnly: !canExecute ||
-                          submitting ||
-                          !(policy.userSelectsWorker ||
-                              policy.userSelectsModel ||
-                              policy.userSelectsEffort),
-                      onChanged: (value) => onExecutionSelectionChanged({
-                        'workerId': value.worker,
-                        'model': value.model,
-                        'reasoningEffort': value.effort,
-                        if (value.catalogRevision != null)
-                          'catalogRevision': value.catalogRevision,
-                      }),
+                      workerId: selectedWorkerId,
+                      model: selectedModel,
+                      effort: selectedReasoningEffort,
+                      catalogRevision: (executionSelection['catalogRevision'] ??
+                          binding['catalogRevision']) as String?,
+                      policy: policy,
+                      onChanged: onExecutionSelectionChanged,
                     ),
             ),
         ],
       ),
     );
   }
+
+  /// The Worker / model / effort selector, shared by the composer and by each
+  /// step of a multi-step workflow's execution selections window.
+  /// One step's Worker / model / effort choice, defaulting to [configuration].
+  Widget _stepSelector(
+    BuildContext context,
+    AxUserWorkflowConfiguration? configuration,
+    String step,
+    Map<String, dynamic> current,
+    ValueChanged<Map<String, dynamic>> onChanged,
+  ) {
+    final configured = configuration?.selectionFor(step);
+    String chosen(String key, String? fallback) =>
+        (current.containsKey(key) ? current[key] : fallback)
+            ?.toString()
+            .trim() ??
+        '';
+    return _modelEffortSelector(
+      context,
+      scope: 'work-step-$step',
+      workerId: chosen('workerId', configured?.worker).isEmpty
+          ? null
+          : chosen('workerId', configured?.worker),
+      model: chosen('model', configured?.model),
+      effort: chosen('reasoningEffort', configured?.effort),
+      catalogRevision: (current['catalogRevision'] ??
+          configured?.catalogRevision) as String?,
+      policy: const AxWorkflowCapabilities(
+          userSelectsWorker: true,
+          userSelectsModel: true,
+          userSelectsEffort: true),
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _modelEffortSelector(
+    BuildContext context, {
+    required String scope,
+    required String? workerId,
+    required String model,
+    required String effort,
+    required String? catalogRevision,
+    required AxWorkflowCapabilities policy,
+    required ValueChanged<Map<String, dynamic>> onChanged,
+  }) =>
+      ModelEffortSelector(
+        scope: scope,
+        onManageVisibility: onManageVisibility == null
+            ? null
+            : () {
+                final worker = eligibleWorkers
+                        .where((w) => w.id == workerId && !w.shared)
+                        .firstOrNull ??
+                    eligibleWorkers.where((w) => !w.shared).firstOrNull;
+                onManageVisibility!(worker?.workspaceId);
+              },
+        immediatePopup: true,
+        workerIconBuilder: (capability) {
+          final worker =
+              eligibleWorkers.where((w) => w.id == capability.id).firstOrNull;
+          final asset =
+              WorkerPresentation.resolve(worker?.workerTypeId, capability.name)
+                  .iconAssetForBrightness(Theme.of(context).brightness);
+          return asset == null
+              ? const Icon(Icons.smart_toy_outlined, size: 22)
+              : Image.asset(asset, width: 22, height: 22);
+        },
+        modelIconBuilder: (capability, modelId, modelName) {
+          final worker =
+              eligibleWorkers.where((w) => w.id == capability?.id).firstOrNull;
+          final presentation = ModelPresentation.resolve(
+            modelId: modelId,
+            modelDisplayName: modelName,
+            fallbackWorkerTypeId: worker?.workerTypeId,
+            fallbackWorkerDisplayName: capability?.name,
+          );
+          final asset =
+              presentation.iconAssetForBrightness(Theme.of(context).brightness);
+          return asset == null
+              ? const Icon(Icons.smart_toy_outlined, size: 22)
+              : Image.asset(asset, width: 22, height: 22);
+        },
+        compactModelLabelBuilder: (modelId, modelName) {
+          return ModelPresentation.stripIdentity(modelName ?? modelId);
+        },
+        helperMessage: eligibleWorkers
+                    .where((worker) => worker.id == workerId)
+                    .firstOrNull
+                    ?.executionOptions
+                    ?.modelSwitchSupported ==
+                false
+            ? 'Changing the model starts a new session with the conversation context. Effort changes that select another model follow the same rule.'
+            : null,
+        onShowUsage: usageController?.supported ?? false
+            ? () => _runComposerCommand(_usageCommand)
+            : null,
+        compact: true,
+        compactHeight: composerButtonSize,
+        compactIconSize: composerIconSize,
+        showWorkerInCompactSummary: false,
+        showWorker: true,
+        showModel: true,
+        showEffort: true,
+        showCatalog: false,
+        allowWorkerChange: policy.userSelectsWorker,
+        allowModelChange: policy.userSelectsModel,
+        allowEffortChange: policy.userSelectsEffort,
+        catalog: AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog,
+        displayWorkers: (selection) => {
+          for (final worker in eligibleWorkers)
+            if (worker.shared ||
+                !(visibilityByWorkspace[worker.workspaceId]
+                        ?.workerHidden(worker.id) ??
+                    false) ||
+                selection.worker == worker.id)
+              worker.id:
+                  '${worker.displayName}${!worker.shared && (visibilityByWorkspace[worker.workspaceId]?.workerHidden(worker.id) ?? false) ? ' · Hidden in My Workers' : ''}'
+        },
+        displayModels: (selection) {
+          final catalog =
+              AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog;
+          final worker = eligibleWorkers
+              .where((w) => w.id == selection.worker)
+              .firstOrNull;
+          if (worker == null) return {};
+          final preferences = worker.shared
+              ? AxWorkerVisibility()
+              : visibilityByWorkspace[worker.workspaceId] ??
+                  AxWorkerVisibility();
+          return AxWorkerVisibilityProjection(catalog, preferences,
+                  selected: selection)
+              .models(worker.id);
+        },
+        displayEfforts: (selection) {
+          final catalog =
+              AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog;
+          final worker = eligibleWorkers
+              .where((w) => w.id == selection.worker)
+              .firstOrNull;
+          if (worker == null) return {};
+          final preferences = worker.shared
+              ? AxWorkerVisibility()
+              : visibilityByWorkspace[worker.workspaceId] ??
+                  AxWorkerVisibility();
+          final projection = AxWorkerVisibilityProjection(catalog, preferences,
+              selected: selection);
+          return {
+            for (final e in projection.efforts(worker.id, selection.model))
+              e: projection.effortLabel(
+                  worker.id,
+                  selection.model ??
+                      catalog.worker(worker.id)?.defaultModelId ??
+                      '',
+                  e)
+          };
+        },
+        value: ExecutionSelection(
+            worker: workerId,
+            catalogRevision: catalogRevision,
+            model: model.isEmpty ? null : model,
+            effort: effort.isEmpty ? null : effort),
+        readOnly: !canExecute ||
+            submitting ||
+            !(policy.userSelectsWorker ||
+                policy.userSelectsModel ||
+                policy.userSelectsEffort),
+        onChanged: (value) => onChanged({
+          'workerId': value.worker,
+          'model': value.model,
+          'reasoningEffort': value.effort,
+          if (value.catalogRevision != null)
+            'catalogRevision': value.catalogRevision,
+        }),
+      );
 
   /// Runs a composer command against the Worker selected for the current Step.
   void _runComposerCommand(_ComposerCommand command) {
@@ -1724,6 +1784,14 @@ String? _workFailureText(AxWorkRequest request, {required bool canRetry}) {
       ? request.error!
       : failedStep?.errorMessage;
   if (request.status != 'failed' && rawError?.isNotEmpty != true) return null;
+  // A request marked failed because the Worker's own report says so (for
+  // example a verification verdict) has no failed Step or error: its report is
+  // the message.
+  if (failedStep == null &&
+      rawError?.isNotEmpty != true &&
+      _workResponseText(request)?.trim().isNotEmpty == true) {
+    return null;
+  }
   final message = _publicFailureMessage(
     failedStep,
     _executionFailureMessage(
@@ -2057,8 +2125,7 @@ class _WorkTimelineCard extends StatelessWidget {
     final matchedWorker = workers
         .where((w) =>
             (senderStep?.workerId != null && w.id == senderStep!.workerId) ||
-            (workerType != null &&
-                w.workerTypeId.toLowerCase() == workerType))
+            (workerType != null && w.workerTypeId.toLowerCase() == workerType))
         .firstOrNull;
     final catalogModelName = selectedModel == null || selectedModel.isEmpty
         ? ''
@@ -2490,6 +2557,14 @@ class _WorkTimelineCard extends StatelessWidget {
                                     onPressed: onPressed,
                                   ),
                                 );
+                            // The provider details the panel shows; none for
+                            // tool calls and Research researchers.
+                            final shownProviderFailure =
+                                failedStep?.kind == 'tool_call' ||
+                                        (isResearchV2 &&
+                                            failedStep?.id != 'synthesis')
+                                    ? null
+                                    : failedStep?.providerFailure;
                             final responseActions = <_TimelineAction>[
                               if (onReply != null &&
                                   request.status == 'completed' &&
@@ -2510,8 +2585,11 @@ class _WorkTimelineCard extends StatelessWidget {
                                     icon: Icons.copy_outlined,
                                     onTap: () => Clipboard.setData(
                                         ClipboardData(
-                                            text:
-                                                isError ? error! : response!))),
+                                            text: isError
+                                                ? ProviderFailurePanel
+                                                    .visibleText(error!,
+                                                        shownProviderFailure)
+                                                : response!))),
                               if (request.status == 'failed' &&
                                   failedStep != null &&
                                   failedStep.retryAllowed &&
@@ -4530,6 +4608,23 @@ class _QueuedWorkMessage {
   final List<Map<String, dynamic>> attachments;
   final Map<String, dynamic> executionSelection;
   final String workflow;
+}
+
+/// Surrounding items recorded when a queued message is moved to the composer
+/// for editing, so submitting it restores its position (or places it first if
+/// earlier items were already sent).
+class _QueuedEditAnchor {
+  const _QueuedEditAnchor({
+    this.preceding = const [],
+    this.following = const [],
+    this.precedingIds = const [],
+    this.followingIds = const [],
+  });
+
+  final List<_QueuedWorkMessage> preceding;
+  final List<_QueuedWorkMessage> following;
+  final List<String> precedingIds;
+  final List<String> followingIds;
 }
 
 /// Why queued messages are not being sent.

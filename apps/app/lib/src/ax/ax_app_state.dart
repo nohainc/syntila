@@ -22,6 +22,11 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
   final authConfirmPasswordController = TextEditingController();
   final authVerificationCodeController = TextEditingController();
   final AxBrowserAlerts browserAlerts = createAxBrowserAlerts();
+
+  /// Sound keys already played, so the several events one Work Request emits
+  /// (for example `work_request.failed` then `thread.failed`) chime once.
+  final _soundedKeys = <String>{};
+
   late final AxSoundNotifications soundNotifications =
       widget.soundNotifications ?? createAxSoundNotifications();
   List<AxNotification> get notifications => store.notifications;
@@ -483,6 +488,7 @@ mixin _AxAppStateMixin on State<SyntilaAppShell> {
             revalidate: store.auth.session?.authenticated == true));
       });
     }
+    store.workActivity.listen(realtimeClient.events);
     _cancelWorkRealtime = store.workRealtime.listen(realtimeClient.events);
     if (_desktopAuthIntentId != null) {
       unawaited(_pollDesktopAuthStatus());

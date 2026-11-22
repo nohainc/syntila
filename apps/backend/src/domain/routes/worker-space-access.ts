@@ -1,0 +1,273 @@
+import { dataOf } from "../../platform/data.js";
+import { isFeatureEnabled } from "../../feature-flags.js";
+import { HttpError, json, securityContext } from "./handlers.js";
+import type { SecurityEnv } from "./handlers.js";
+import { readJson } from "./validation.js";
+import { parseModelAccess, type WorkerSpaceModelAccess } from "../worker-eligibility.js";
+import { WORKSPACE_ACCESS_MODES, type WorkspaceAccessMode } from "./workspace-member-access.js";
+
+const MAX_MEMBERS = 200;
+const MAX_MODEL_ENTRIES = 500;
+
+export interface WorkerSpaceMemberPermissions {
+  readonly mode: WorkspaceAccessMode;
+}
+
+export interface WorkerSpaceMemberAccessEntry {
+  readonly userId: string;
+  readonly displayName: string;
+  readonly email: string;
+  readonly role: string;
+  readonly enabled: boolean;
+  readonly permissions: WorkerSpaceMemberPermissions;
+}
+
+function parsePermissions(raw: unknown): WorkerSpaceMemberPermissions {
+  if (typeof raw === "string") {
+    try {
+      return parsePermissions(JSON.parse(raw));
+    } catch {
+      return { mode: "chat" };
+    }
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const mode = (raw as { mode?: unknown }).mode;
+    if (typeof mode === "string" && WORKSPACE_ACCESS_MODES.includes(mode as WorkspaceAccessMode)) {
+      return { mode: mode as WorkspaceAccessMode };
+    }
+  }
+  return { mode: "chat" };
+}
+
+function validatePutPermissions(raw: unknown): WorkerSpaceMemberPermissions {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new HttpError(400, "permissions must be an object");
+  }
+  const obj = raw as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  if (keys.some((k) => k !== "mode")) {
+    throw new HttpError(400, "Unknown permissions field");
+  }
+  if (typeof obj.mode !== "string" || !WORKSPACE_ACCESS_MODES.includes(obj.mode as WorkspaceAccessMode)) {
+    throw new HttpError(400, "permissions.mode must be chat, work or work+shell");
+  }
+  return { mode: obj.mode as WorkspaceAccessMode };
+}
+
+function validateModelAccess(raw: unknown): WorkerSpaceModelAccess {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new HttpError(400, "modelAccess must be an object");
+  const obj = raw as Record<string, unknown>;
+  if (Object.keys(obj).some((k) => k !== "allowedModels" && k !== "allowedEfforts")) {
+    throw new HttpError(400, "Unknown modelAccess field");
+  }
+  if (obj.allowedModels !== undefined && !Array.isArray(obj.allowedModels)) {
+    throw new HttpError(400, "modelAccess.allowedModels must be an array");
+  }
+  const efforts = obj.allowedEfforts ?? {};
+  if (!efforts || typeof efforts !== "object" || Array.isArray(efforts)) {
+    throw new HttpError(400, "modelAccess.allowedEfforts must be an object");
+  }
+  const parsed = parseModelAccess(obj.allowedModels ?? [], efforts);
+  if (parsed.allowedModels.length + Object.keys(parsed.allowedEfforts).length > MAX_MODEL_ENTRIES) {
+    throw new HttpError(400, "Too many model entries");
+  }
+  return parsed;
+}
+
+async function readModelAccess(env: SecurityEnv, workerId: string): Promise<WorkerSpaceModelAccess> {
+  const row = await dataOf(env).read.row<{ models: string; efforts: string }>`
+    SELECT allowed_models_json AS models, allowed_efforts_json AS efforts
+      FROM worker_member_model_access WHERE worker_id = ${workerId}`;
+  return parseModelAccess(row?.models, row?.efforts);
+}
+
+async function requireOwnedActiveWorker(env: SecurityEnv, userId: string, workerId: string): Promise<void> {
+  const q = dataOf(env).read;
+  const worker = await q.row<{ ownerUserId: string; revokedAt: string | null }>`
+    SELECT owner_user_id AS "ownerUserId", revoked_at AS "revokedAt"
+      FROM worker_instances
+     WHERE id = ${workerId}`;
+  if (!worker) throw new HttpError(404, "Worker not found");
+  if (worker.ownerUserId !== userId) {
+    throw new HttpError(403, "Only the Worker owner can manage Space member access");
+  }
+  if (worker.revokedAt !== null) {
+    throw new HttpError(409, "A removed Worker cannot change");
+  }
+}
+
+async function requireSpaceManageAccess(env: SecurityEnv, userId: string, spaceId: string): Promise<void> {
+  const q = dataOf(env).read;
+  const space = await q.row<{ id: string }>`SELECT id FROM spaces WHERE id = ${spaceId}`;
+  if (!space) throw new HttpError(404, "Space not found");
+  const membership = await q.row<{ role: string }>`
+    SELECT role FROM space_memberships WHERE space_id = ${spaceId} AND user_id = ${userId}`;
+  if (!membership || (membership.role !== "owner" && membership.role !== "collaborator")) {
+    throw new HttpError(403, "You do not have permission to manage Worker access in this Space");
+  }
+}
+
+async function readSpaceAccess(
+  env: SecurityEnv,
+  workerId: string,
+  spaceId: string,
+): Promise<WorkerSpaceMemberAccessEntry[]> {
+  const q = dataOf(env).read;
+  const rows = await q.rows<{
+    userId: string;
+    displayName: string;
+    email: string;
+    role: string;
+    enabled: boolean | null;
+    permissionsJson: string | null;
+  }>`
+    SELECT sm.user_id AS "userId",
+           u.display_name AS "displayName",
+           u.email,
+           sm.role,
+           wsm.enabled,
+           wsm.permissions_json AS "permissionsJson"
+      FROM space_memberships sm
+      JOIN users u ON u.id = sm.user_id
+      LEFT JOIN worker_space_members wsm
+        ON wsm.worker_id = ${workerId}
+       AND wsm.space_id = sm.space_id
+       AND wsm.user_id = sm.user_id
+     WHERE sm.space_id = ${spaceId}
+       AND u.status = 'active'
+     ORDER BY CASE sm.role WHEN 'owner' THEN 0 WHEN 'collaborator' THEN 1 ELSE 2 END, u.display_name, sm.user_id`;
+
+  return rows.map((row) => ({
+    userId: String(row.userId),
+    displayName: String(row.displayName),
+    email: String(row.email),
+    role: String(row.role),
+    enabled: row.enabled === true,
+    permissions: parsePermissions(row.permissionsJson),
+  }));
+}
+
+/**
+ * GET, PUT /api/workers/:workerId/space-access?spaceId=...
+ * Owner-only read and replace of per-Space member access for a Worker Instance (ADR-042).
+ */
+export async function handleWorkerSpaceAccess(
+  request: Request,
+  env: SecurityEnv,
+  workerId: string,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  if (!isFeatureEnabled("worker_identity")) throw new HttpError(404, "Not found");
+  const context = await securityContext(request, env, accessContext);
+  await requireOwnedActiveWorker(env, context.userId, workerId);
+
+  if (request.method === "GET") {
+    const spaceId = new URL(request.url).searchParams.get("spaceId")?.trim() ?? "";
+    if (!spaceId) throw new HttpError(400, "spaceId query parameter is required");
+    await requireSpaceManageAccess(env, context.userId, spaceId);
+    const members = await readSpaceAccess(env, workerId, spaceId);
+    return json({ workerId, spaceId, members });
+  }
+
+  if (request.method !== "PUT") throw new HttpError(405, "Method not allowed");
+
+  const body = (await readJson(request)) as {
+    spaceId?: unknown;
+    members?: unknown;
+  };
+  const spaceId = typeof body?.spaceId === "string" ? body.spaceId.trim() : "";
+  if (!spaceId) throw new HttpError(400, "spaceId is required");
+  await requireSpaceManageAccess(env, context.userId, spaceId);
+
+  if (!Array.isArray(body.members)) {
+    throw new HttpError(400, "members must be an array");
+  }
+  if (body.members.length > MAX_MEMBERS) {
+    throw new HttpError(400, `At most ${MAX_MEMBERS} members may be configured at once`);
+  }
+
+  const normalized: Array<{
+    userId: string;
+    enabled: boolean;
+    permissions: WorkerSpaceMemberPermissions;
+  }> = [];
+  const seenUserIds = new Set<string>();
+
+  for (const item of body.members) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new HttpError(400, "Invalid member entry");
+    }
+    const entry = item as Record<string, unknown>;
+    const userId = typeof entry.userId === "string" ? entry.userId.trim() : "";
+    if (!userId) throw new HttpError(400, "Each member entry requires userId");
+    if (seenUserIds.has(userId)) {
+      throw new HttpError(400, `Duplicate userId: ${userId}`);
+    }
+    seenUserIds.add(userId);
+    if (typeof entry.enabled !== "boolean") {
+      throw new HttpError(400, `enabled must be a boolean for user ${userId}`);
+    }
+    const permissions = validatePutPermissions(entry.permissions);
+    normalized.push({ userId, enabled: entry.enabled, permissions });
+  }
+
+  const q = dataOf(env).read;
+  if (normalized.length > 0) {
+    const memberRows = await q.rows<{ userId: string }>`
+      SELECT sm.user_id AS "userId"
+        FROM space_memberships sm
+        JOIN users u ON u.id = sm.user_id
+       WHERE sm.space_id = ${spaceId}
+         AND u.status = 'active'`;
+    const validMembers = new Set(memberRows.map((r) => String(r.userId)));
+    const invalid = normalized.filter((m) => !validMembers.has(m.userId)).map((m) => m.userId);
+    if (invalid.length > 0) {
+      throw new HttpError(422, `Users are not active members of this Space: ${invalid.join(", ")}`);
+    }
+  }
+
+  await dataOf(env).tx("worker.space_access.put", async (tx) => {
+    await tx.run`DELETE FROM worker_space_members
+      WHERE worker_id = ${workerId} AND space_id = ${spaceId}`;
+    for (const entry of normalized) {
+      await tx.run`INSERT INTO worker_space_members
+          (worker_id, space_id, user_id, enabled, permissions_json)
+        VALUES (${workerId}, ${spaceId}, ${entry.userId}, ${entry.enabled}, ${JSON.stringify(entry.permissions)})`;
+    }
+  });
+
+  const members = await readSpaceAccess(env, workerId, spaceId);
+  return json({ workerId, spaceId, members });
+}
+
+/**
+ * GET, PUT /api/workers/:workerId/member-model-access
+ * Owner-only. One allow-list of models and efforts that applies to every
+ * non-owner member of every Space the Worker is shared with (ADR-042).
+ */
+export async function handleWorkerMemberModelAccess(
+  request: Request,
+  env: SecurityEnv,
+  workerId: string,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  if (!isFeatureEnabled("worker_identity")) throw new HttpError(404, "Not found");
+  const context = await securityContext(request, env, accessContext);
+  await requireOwnedActiveWorker(env, context.userId, workerId);
+  if (request.method === "GET") return json({ workerId, modelAccess: await readModelAccess(env, workerId) });
+  if (request.method !== "PUT") throw new HttpError(405, "Method not allowed");
+  const body = (await readJson(request)) as { modelAccess?: unknown };
+  const modelAccess = validateModelAccess(body?.modelAccess);
+  const q = dataOf(env).read;
+  if (modelAccess.allowedModels.length === 0 && Object.keys(modelAccess.allowedEfforts).length === 0) {
+    await q.run`DELETE FROM worker_member_model_access WHERE worker_id = ${workerId}`;
+  } else {
+    await q.run`INSERT INTO worker_member_model_access (worker_id, allowed_models_json, allowed_efforts_json)
+      VALUES (${workerId}, ${JSON.stringify(modelAccess.allowedModels)}, ${JSON.stringify(modelAccess.allowedEfforts)})
+      ON CONFLICT (worker_id) DO UPDATE
+        SET allowed_models_json = EXCLUDED.allowed_models_json,
+            allowed_efforts_json = EXCLUDED.allowed_efforts_json,
+            updated_at = now()`;
+  }
+  return json({ workerId, modelAccess: await readModelAccess(env, workerId) });
+}

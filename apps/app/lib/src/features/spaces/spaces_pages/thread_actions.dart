@@ -65,18 +65,23 @@ extension _ThreadActions on _ThreadPageState {
     });
     _composerInputHeight.resetManual();
     _requestController.clear();
+    final editAnchor = _queuedEditAnchor;
+    _queuedEditAnchor = null;
     // While a request is processing, or earlier messages are still waiting,
     // the message waits its turn; [_dispatchQueuedWork] sends it later.
     if (_activeWorkRequests.isNotEmpty || _workQueue.isNotEmpty) {
       if (_sharedQueueSource != null) {
-        await _enqueueSharedWork(message);
+        await _enqueueSharedWork(message, editAnchor: editAnchor);
         return;
       }
       _updateState(() {
         // A pause belongs to the messages it held; the first message of a
         // new queue always starts unpaused.
         if (_workQueue.isEmpty) _workQueuePause = null;
-        _workQueue.add(message);
+        final insertIndex = editAnchor == null
+            ? _workQueue.length
+            : _resolveLocalQueueInsertIndex(_workQueue, editAnchor);
+        _workQueue.insert(insertIndex, message);
       });
       _dispatchQueuedWork();
       return;
@@ -130,7 +135,7 @@ extension _ThreadActions on _ThreadPageState {
         _queueFileErrorTimer?.cancel();
         _updateState(() => _workSubmitError = message);
         if (message ==
-            'Files from this device cannot wait in the queue. Send the request when nothing is processing, or attach the file from My Files.') {
+            'Files from this device cannot wait in the queue. Send the request when nothing is processing, or attach the file from Files.') {
           _queueFileErrorTimer = Timer(const Duration(seconds: 3), () {
             if (mounted && _workSubmitError == message) {
               _updateState(() => _workSubmitError = null);
@@ -145,7 +150,8 @@ extension _ThreadActions on _ThreadPageState {
 
   /// Adds a message to the shared queue; on failure it returns to the
   /// composer so nothing is lost.
-  Future<void> _enqueueSharedWork(_QueuedWorkMessage message) async {
+  Future<void> _enqueueSharedWork(_QueuedWorkMessage message,
+      {_QueuedEditAnchor? editAnchor}) async {
     final source = _sharedQueueSource!;
     final added = await _applySharedQueue(() => source.enqueueThreadRequest(
           threadId: widget.thread.id,
@@ -155,6 +161,8 @@ extension _ThreadActions on _ThreadPageState {
           attachments: message.attachments,
           executionSelection: message.executionSelection,
           replyTo: message.replyTo,
+          beforeItemIds: editAnchor?.followingIds,
+          afterItemIds: editAnchor?.precedingIds,
         ));
     if (added || !mounted) return;
     _updateState(() {
@@ -163,6 +171,7 @@ extension _ThreadActions on _ThreadPageState {
       }
       if (_workAttachments.isEmpty) _workAttachments = message.attachments;
       _replyTarget ??= message.replyTo;
+      _queuedEditAnchor ??= editAnchor;
     });
   }
 
@@ -369,8 +378,10 @@ extension _ThreadActions on _ThreadPageState {
     if (index < 0) return;
     final draft = _requestController.text;
     final draftAttachments = _workAttachments;
+    final hasDraft = draft.trim().isNotEmpty || draftAttachments.isNotEmpty;
+    final following = _workQueue.sublist(index + 1);
     _updateState(() {
-      if (draft.trim().isNotEmpty || draftAttachments.isNotEmpty) {
+      if (hasDraft) {
         _workQueue[index] = _QueuedWorkMessage(
           text: draft,
           attachments: draftAttachments,
@@ -381,6 +392,11 @@ extension _ThreadActions on _ThreadPageState {
       } else {
         _workQueue.removeAt(index);
       }
+      final preceding = _workQueue.sublist(0, hasDraft ? index + 1 : index);
+      _queuedEditAnchor = _QueuedEditAnchor(
+        preceding: preceding,
+        following: following,
+      );
       _workAttachments = List.of(message.attachments);
       _replyTarget = message.replyTo;
     });
@@ -390,30 +406,61 @@ extension _ThreadActions on _ThreadPageState {
     );
   }
 
+  static int _resolveLocalQueueInsertIndex(
+      List<_QueuedWorkMessage> queue, _QueuedEditAnchor anchor) {
+    for (var i = 0; i < queue.length; i++) {
+      if (anchor.following.any((item) => identical(item, queue[i]))) {
+        return i;
+      }
+    }
+    for (var i = queue.length - 1; i >= 0; i--) {
+      if (anchor.preceding.any((item) => identical(item, queue[i]))) {
+        return i + 1;
+      }
+    }
+    // Earlier items were sent or removed while editing, so this message
+    // became the first to send.
+    return 0;
+  }
+
   /// Your own shared request moves into the composer. A draft already there
   /// takes its place in the queue, so nothing is lost.
   void _editSharedWork(_QueuedWorkMessage message) {
     final source = _sharedQueueSource!;
     final id = message.id;
     if (id == null || !message.own) return;
+    final index = _sharedQueue.items.indexWhere((item) => item.id == id);
+    final precedingIds = index < 0
+        ? const <String>[]
+        : [for (var i = 0; i < index; i++) _sharedQueue.items[i].id];
+    final followingIds = index < 0
+        ? const <String>[]
+        : [
+            for (var i = index + 1; i < _sharedQueue.items.length; i++)
+              _sharedQueue.items[i].id
+          ];
     final threadId = widget.thread.id;
     final draft = _requestController.text;
     final draftAttachments = _workAttachments;
-    unawaited(_applySharedQueue(
-        () => draft.trim().isNotEmpty || draftAttachments.isNotEmpty
-            ? source.updateThreadQueueItem(
-                threadId: threadId,
-                itemId: id,
-                workflowId: _effectiveWorkflow.split(':').first,
-                workflowVersion:
-                    int.tryParse(_effectiveWorkflow.split(':v').last) ?? 1,
-                prompt: draft,
-                attachments: draftAttachments,
-                executionSelection: _submissionExecutionSelection,
-                replyTo: _replyTarget,
-              )
-            : source.removeThreadQueueItem(threadId, id)));
+    final hasDraft = draft.trim().isNotEmpty || draftAttachments.isNotEmpty;
+    unawaited(_applySharedQueue(() => hasDraft
+        ? source.updateThreadQueueItem(
+            threadId: threadId,
+            itemId: id,
+            workflowId: _effectiveWorkflow.split(':').first,
+            workflowVersion:
+                int.tryParse(_effectiveWorkflow.split(':v').last) ?? 1,
+            prompt: draft,
+            attachments: draftAttachments,
+            executionSelection: _submissionExecutionSelection,
+            replyTo: _replyTarget,
+          )
+        : source.removeThreadQueueItem(threadId, id)));
     _updateState(() {
+      _queuedEditAnchor = _QueuedEditAnchor(
+        precedingIds: hasDraft ? [...precedingIds, id] : precedingIds,
+        followingIds: followingIds,
+      );
       _workAttachments = List.of(message.attachments);
       _replyTarget = message.replyTo;
     });
@@ -1165,12 +1212,25 @@ extension _ThreadActions on _ThreadPageState {
   }) async {
     final dataSource = widget.dataSource;
     if (dataSource == null) return false;
+    // Steps the user chose in the execution selections window apply here.
+    Map<String, dynamic>? chosen(String step) {
+      final value = _stepExecutionSelections[step];
+      final workerId = value?['workerId'];
+      if (value == null || workerId is! String || workerId.isEmpty) return null;
+      return {
+        'workerId': workerId,
+        for (final key in const ['model', 'reasoningEffort'])
+          if (value[key] is String && (value[key] as String).isNotEmpty)
+            key: value[key],
+      };
+    }
+
     try {
       await dataSource.approvePlan(
         workRequestId: workRequestId,
         verificationMode: verificationMode,
-        implementer: implementer,
-        verifier: verifier,
+        implementer: implementer ?? chosen('implement'),
+        verifier: verifier ?? chosen('verify'),
       );
       _loadSharedQueue();
       if (!mounted) return true;

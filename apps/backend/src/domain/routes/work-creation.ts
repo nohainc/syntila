@@ -27,6 +27,8 @@ import {
   CONVERSATION_WORKFLOWS,
   configuredWorkflowDefinition,
   stepInstanceId,
+  researchWorkflowV2,
+  RESEARCH_RESEARCHER_LIMITS,
   conversationWorkflowForExecution,
   type WorkRequest,
   type WorkRequestSnapshot,
@@ -91,9 +93,19 @@ export async function handleListEligibleWorkers(
     throw new HttpError(422, STATEFUL_ON_WORKER_REFUSAL);
   }
   const q = dataOf(env).read;
-  const workers = await q.rows<{ id: string }>`SELECT id FROM worker_instances
-    WHERE owner_user_id = ${context.userId} AND revoked_at IS NULL
-    ORDER BY created_at, id`;
+  const workers = await q.rows<{ id: string }>`SELECT w.id FROM worker_instances w
+    WHERE w.revoked_at IS NULL
+      AND (
+        w.owner_user_id = ${context.userId}
+        OR EXISTS (
+          SELECT 1 FROM worker_space_members wsm
+           WHERE wsm.worker_id = w.id
+             AND wsm.space_id = ${spaceId}
+             AND wsm.user_id = ${context.userId}
+             AND wsm.enabled = true
+        )
+      )
+    ORDER BY w.created_at, w.id`;
   const eligible: string[] = [];
   for (const worker of workers) {
     const result = await resolveWorkerTargetBindings(env, {
@@ -152,8 +164,21 @@ export async function handleValidateWorkRequest(
     body.workflowId ?? config.defaultWorkflowId,
     "workflowId",
   ) as WorkflowId;
-  const workflow = BUILTIN_WORKFLOWS[workflowId];
-  if (!workflow) throw new HttpError(400, "Unsupported workflowId");
+  const builtin = BUILTIN_WORKFLOWS[workflowId];
+  if (!builtin) throw new HttpError(400, "Unsupported workflowId");
+  // The same definition the request will run, so a Research request with its
+  // own researcher count is checked against every researcher it will start.
+  const researcherCount = requestedResearcherCount(body.researcherCount);
+  const workflow =
+    workflowId !== "research"
+      ? builtin
+      : researcherCount !== undefined
+        ? researchWorkflowV2(researcherCount)
+        : configuredWorkflowDefinition(
+            builtin,
+            (await loadSpaceWorkflowConfigurations(env, spaceId, "research"))
+              .configurations[0],
+          );
   await requireWorkflowPermission(env, context.userId, spaceId, workflowId);
   if (body.attachments !== undefined && !Array.isArray(body.attachments)) {
     throw new HttpError(400, "attachments must be an array");
@@ -216,6 +241,25 @@ export async function handleValidateWorkRequest(
     workflowName: workflow.name,
     issues,
   });
+}
+
+/**
+ * Research only: the researcher count the user chose for this request instead
+ * of the Space's configured one. Undefined when none was sent.
+ */
+function requestedResearcherCount(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < RESEARCH_RESEARCHER_LIMITS.min ||
+    value > RESEARCH_RESEARCHER_LIMITS.max
+  )
+    throw new HttpError(
+      400,
+      `researcherCount must be ${RESEARCH_RESEARCHER_LIMITS.min} to ${RESEARCH_RESEARCHER_LIMITS.max}`,
+    );
+  return value;
 }
 
 export async function handleCreateWorkRequest(
@@ -339,14 +383,17 @@ export async function createWorkRequestForUser(
     throw new HttpError(400, "A tool call is available only in Chat");
   if (!toolCallRequested && body.workflowVersion === 2 && workflowId === "chat")
     throw new HttpError(400, "Chat version 2 requires input.toolCall");
+  const researcherCount = requestedResearcherCount(body.researcherCount);
   const canonicalWorkflow = toolCallRequested
     ? BUILTIN_WORKFLOW_CATALOG["chat:v2"]!
     : workflowId === "research"
-      ? configuredWorkflowDefinition(
-          BUILTIN_WORKFLOWS.research,
-          (await loadSpaceWorkflowConfigurations(env, spaceId, "research"))
-            .configurations[0],
-        )
+      ? researcherCount !== undefined
+        ? researchWorkflowV2(researcherCount)
+        : configuredWorkflowDefinition(
+            BUILTIN_WORKFLOWS.research,
+            (await loadSpaceWorkflowConfigurations(env, spaceId, "research"))
+              .configurations[0],
+          )
       : BUILTIN_WORKFLOWS[workflowId];
   if (toolCallRequested) {
     await requireToolCallAuthority(

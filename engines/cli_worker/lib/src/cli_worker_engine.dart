@@ -373,13 +373,20 @@ class CliWorkerEngine {
           message: 'Provider usage command exceeded its deadline.',
         ),
       );
-    } on Object {
+    } on Object catch (error) {
+      // Say what went wrong (for example the provider's own JSON-RPC error),
+      // not only that the command failed.
+      final original = (error is FormatException ? error.message : '$error')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
       await _write(
         sink,
         WorkerErrorFrame(
           requestId: request.requestId,
           code: WorkerIssueCode.providerFailure,
-          message: 'Provider usage command failed.',
+          message: original.isEmpty
+              ? 'Provider usage command failed.'
+              : 'Provider usage command failed: ${original.length > 400 ? '${original.substring(0, 400)}…' : original}',
         ),
       );
     }
@@ -633,13 +640,22 @@ class CliWorkerEngine {
           message: 'Provider CLI probe exceeded its deadline.',
         ),
       );
-    } on Object {
+    } on Object catch (error) {
       issue = WorkerIssueCode.providerFailure;
+      // Keep the original reason (it is bounded and credential-checked when
+      // the check is built) instead of a generic line.
+      final original = (error is FormatException ? error.message : '$error')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
       checks.add(
         ProbeCheck(
           code: 'provider_tool',
           status: ProbeCheckStatus.failed,
-          message: 'Provider CLI probe failed.',
+          message: original.isEmpty
+              ? 'Provider CLI probe failed.'
+              : original.length > 900
+              ? '${original.substring(0, 900)}…'
+              : original,
         ),
       );
     }
@@ -756,7 +772,13 @@ class CliWorkerEngine {
       timeout: timeout,
     );
     if (result.exitCode != 0) {
-      throw const FormatException('Model discovery failed');
+      final said = '${result.stderr}'.trim().isEmpty
+          ? '${result.stdout}'.trim()
+          : '${result.stderr}'.trim();
+      throw FormatException(
+        'Model discovery failed (exit ${result.exitCode})'
+        '${said.isEmpty ? '' : ': ${said.length > 600 ? '${said.substring(0, 600)}…' : said}'}',
+      );
     }
     return parseDiscoveredModels(result.stdout, _string(spec['idPrefix']));
   }
@@ -3177,14 +3199,42 @@ class CliWorkerEngine {
             ? 'stdout'
             : 'result_message');
 
+    // The provider's whole message, not one part of it: stderr first (it is
+    // usually the CLI's own explanation), then the structured error, shown as
+    // plain lines instead of a JSON string. Nothing is reinterpreted.
+    final shownError = hasError ? _readableProviderText(providerErrorText) : '';
+    final fullText = [
+      if (hasStderr && shownError != stderr.trim()) stderr.trim(),
+      if (shownError.isNotEmpty) shownError,
+    ].join('\n\n');
     return sanitizeProviderFailureDetails(
       nativeErrorCode: nativeErrorCode,
-      providerErrorText: hasError
-          ? providerErrorText
-          : (hasStderr ? stderr : null),
+      providerErrorText: fullText.isEmpty ? null : fullText,
       failedRunResponse: hasResponse ? failedRunResponse : null,
       source: source,
     ).toJson();
+  }
+
+  /// A provider's structured error as lines (`key: value`) when it arrived as
+  /// a JSON string; any other text is returned unchanged.
+  String _readableProviderText(String text) {
+    final trimmed = text.trim();
+    if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) return text;
+    Object? decoded;
+    try {
+      decoded = jsonDecode(trimmed);
+    } on Object {
+      return text;
+    }
+    String scalar(Object? value) =>
+        value is String ? value : jsonEncode(value);
+    String line(Object? item) => item is Map
+        ? item.entries.map((e) => '${e.key}: ${scalar(e.value)}').join(', ')
+        : scalar(item);
+    final lines = decoded is List
+        ? decoded.map(line).toList()
+        : [line(decoded)];
+    return lines.join('\n');
   }
 
   String _eventShape(List<Object?> events) {

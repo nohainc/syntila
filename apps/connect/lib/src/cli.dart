@@ -155,6 +155,8 @@ syntila-connect <command> [options]
   device [NAME] [--json]   show or rename this device
   logs get [--lines N]     the Agent's own log (ids and codes only)
   logs level [LEVEL]       show or set the log level (error, warn, info, debug)
+  full-access [on|off]     show or set whether this Worker's provider CLI may run any
+                           command on this computer without asking (default off)
   update-credentials       replace this Worker's key pair
   version [--json]         show the Syntila Connect version
 
@@ -206,6 +208,8 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
           return await _deviceCommand(args);
         case 'logs':
           return await _logs(args);
+        case 'full-access':
+          return await _fullAccess(args);
         case 'update-credentials':
           return await _rotate(args);
         case 'version':
@@ -562,6 +566,8 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       stateDirectory: paths.sessionsDir,
       workRoot: Directory(workRootPath ?? _defaultWorkRoot),
       folders: folders,
+      fullAccess: () async =>
+          (await AgentConfig.load(paths.configFile)).fullAccess,
       resolveProfile: (payload) async {
         final digest = payload['profileDigest'];
         final type = payload['workerTypeId'];
@@ -759,6 +765,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       if (running && state?['epoch'] != null) 'epoch': state!['epoch'],
       'service': service.state.name,
       'autoStart': service.autoStart,
+      'fullAccess': (await AgentConfig.load(paths.configFile)).fullAccess,
       if (counts.isNotEmpty) 'journal': counts,
       if (journalProblem != null) 'journalProblem': journalProblem,
       if (models is Map) 'models': models,
@@ -897,6 +904,32 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       default:
         throw const FormatException('usage: logs get [--lines N] | level [LEVEL]');
     }
+  }
+
+  /// `full-access [on|off]`: the owner's local authorization. It is read at the
+  /// start of every assignment, so it applies without restarting the service.
+  Future<int> _fullAccess(_Args args) async {
+    if (args.positionals.length > 1) {
+      throw const FormatException('usage: full-access [on|off]');
+    }
+    final paths = _paths(args);
+    var config = await AgentConfig.load(paths.configFile);
+    if (args.positionals.isEmpty) {
+      out.writeln(config.fullAccess ? 'on' : 'off');
+      return 0;
+    }
+    final value = args.positionals.first;
+    if (value != 'on' && value != 'off') {
+      throw const FormatException('usage: full-access [on|off]');
+    }
+    config = config.set('fullAccess', value == 'on' ? 'true' : 'false');
+    await config.save(paths.configFile);
+    out.writeln(
+      value == 'on'
+          ? 'Full access is on: this Worker\'s provider CLI may run any command on this computer without asking.'
+          : 'Full access is off.',
+    );
+    return 0;
   }
 
   DeviceStore _deviceStore(Directory machineRoot) =>

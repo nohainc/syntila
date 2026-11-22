@@ -282,8 +282,8 @@ void main() {
 
       final labels = [
         'People',
-        'My Files',
-        'My Notes',
+        'Files',
+        'Notes',
         'Workspaces',
         'Archived Spaces',
         'Settings',

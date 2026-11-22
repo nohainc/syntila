@@ -144,11 +144,16 @@ class AxWorkflowCapabilities {
       );
 }
 
-/// A multi-step workflow resolves its Worker and model separately per role.
+/// A multi-step workflow resolves its Worker and model separately per role:
+/// Workflow settings, unless the user chose per step (`steps`).
 Map<String, dynamic> submissionExecutionSelection(
         AxBuiltinWorkflow? workflow, Map<String, dynamic> selection) =>
     workflow?.executionPolicy.multiStep == true
-        ? <String, dynamic>{}
+        ? {
+            if (selection['steps'] is Map) 'steps': selection['steps'],
+            if (selection['researcherCount'] is int)
+              'researcherCount': selection['researcherCount'],
+          }
         : _withoutOrphanedModelChoice(selection);
 
 /// A model, effort or catalog revision belongs to the Worker it was chosen
@@ -3108,5 +3113,128 @@ class AxAiCapabilityUpdateService {
 
     merged.sort((a, b) => b.publishedDateTime.compareTo(a.publishedDateTime));
     return merged;
+  }
+}
+
+/// Allowed execution modes for a Space member granted access to a Worker.
+const axWorkerSpaceAccessModes = ['chat', 'work', 'work+shell'];
+
+/// One Space member's access configuration for a Worker Instance.
+class AxWorkerSpaceMemberAccess {
+  const AxWorkerSpaceMemberAccess({
+    required this.userId,
+    required this.displayName,
+    required this.email,
+    required this.role,
+    this.enabled = false,
+    this.mode = 'chat',
+  });
+
+  final String userId;
+  final String displayName;
+  final String email;
+  final String role;
+  final bool enabled;
+  final String mode;
+
+  AxWorkerSpaceMemberAccess copyWith({
+    bool? enabled,
+    String? mode,
+  }) =>
+      AxWorkerSpaceMemberAccess(
+        userId: userId,
+        displayName: displayName,
+        email: email,
+        role: role,
+        enabled: enabled ?? this.enabled,
+        mode: mode ?? this.mode,
+      );
+
+  factory AxWorkerSpaceMemberAccess.fromJson(Map<String, dynamic> json) {
+    final permissions = json['permissions'];
+    final rawMode = permissions is Map ? permissions['mode'] : null;
+    final mode = rawMode is String && axWorkerSpaceAccessModes.contains(rawMode)
+        ? rawMode
+        : 'chat';
+    return AxWorkerSpaceMemberAccess(
+      userId: _string(json, 'userId', ''),
+      displayName: _string(json, 'displayName', ''),
+      email: _string(json, 'email', ''),
+      role: _string(json, 'role', 'collaborator'),
+      enabled: json['enabled'] == true,
+      mode: mode,
+    );
+  }
+
+  Map<String, dynamic> toUpdateJson() => {
+        'userId': userId,
+        'enabled': enabled,
+        'permissions': {'mode': mode},
+      };
+}
+
+/// Models and efforts the owner allows every member to use on a Worker.
+/// Nothing is allowed until the owner ticks it.
+class AxWorkerMemberModelAccess {
+  const AxWorkerMemberModelAccess({
+    this.allowedModels = const [],
+    this.allowedEfforts = const {},
+  });
+
+  final List<String> allowedModels;
+  final Map<String, List<String>> allowedEfforts;
+
+  factory AxWorkerMemberModelAccess.fromJson(Object? json) {
+    if (json is! Map) return const AxWorkerMemberModelAccess();
+    final rawEfforts = json['allowedEfforts'];
+    return AxWorkerMemberModelAccess(
+      allowedModels: [
+        for (final m in json['allowedModels'] as List? ?? const [])
+          if (m is String) m,
+      ],
+      allowedEfforts: {
+        if (rawEfforts is Map)
+          for (final e in rawEfforts.entries)
+            if (e.value is List)
+              e.key.toString(): [
+                for (final v in e.value as List)
+                  if (v is String) v,
+              ],
+      },
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'allowedModels': allowedModels,
+        'allowedEfforts': {
+          for (final e in allowedEfforts.entries)
+            if (e.value.isNotEmpty) e.key: e.value,
+        },
+      };
+}
+
+/// Space-scoped member access state for a Worker Instance.
+class AxWorkerSpaceAccess {
+  const AxWorkerSpaceAccess({
+    required this.workerId,
+    required this.spaceId,
+    this.members = const [],
+  });
+
+  final String workerId;
+  final String spaceId;
+  final List<AxWorkerSpaceMemberAccess> members;
+
+  factory AxWorkerSpaceAccess.fromJson(Map<String, dynamic> json) {
+    final rawMembers = json['members'] as List? ?? const [];
+    return AxWorkerSpaceAccess(
+      workerId: _string(json, 'workerId', ''),
+      spaceId: _string(json, 'spaceId', ''),
+      members: [
+        for (final item in rawMembers)
+          if (item is Map)
+            AxWorkerSpaceMemberAccess.fromJson(Map<String, dynamic>.from(item)),
+      ],
+    );
   }
 }

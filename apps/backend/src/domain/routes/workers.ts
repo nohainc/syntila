@@ -126,10 +126,20 @@ export async function handleListWorkers(
 ): Promise<Response> {
   requireWorkerIdentity();
   const context = await securityContext(request, env, accessContext);
-  const includeRevoked = new URL(request.url).searchParams.get("includeRevoked") === "true";
+  const params = new URL(request.url).searchParams;
+  const includeRevoked = params.get("includeRevoked") === "true";
+  const includeShared = params.get("includeShared") === "true";
   const q = dataOf(env).read;
   const rows = await q.rows`SELECT ${q.raw(columns(isFeatureEnabled("worker_target_dispatch")))} FROM ${q.raw(FROM)}
-     WHERE w.owner_user_id = ${context.userId}
+     WHERE (
+       w.owner_user_id = ${context.userId}
+       OR (${includeShared}::boolean AND EXISTS (
+         SELECT 1 FROM worker_space_members wsm
+          WHERE wsm.worker_id = w.id
+            AND wsm.user_id = ${context.userId}
+            AND wsm.enabled = true
+       ))
+     )
        AND (${includeRevoked}::boolean OR w.revoked_at IS NULL)
      ORDER BY w.created_at, w.id`;
   const views = rows.map(workerView);
@@ -284,7 +294,8 @@ export async function handleWorker(
          SET revoked_at = now(), enabled = false, updated_at = now()
        WHERE id = ${workerId} AND owner_user_id = ${context.userId} AND revoked_at IS NULL`;
     // A removed Worker is also unpaired: its credential ends and its session closes,
-    // so the Agent on the device learns it is gone.
+    // so the Agent on the device learns it is gone, and any Space member access grants end.
+    await q.run`DELETE FROM worker_space_members WHERE worker_id = ${workerId}`;
     await revokeWorkerCredential(env, { ownerUserId: context.userId, workerId });
     await publishWorkerChanged(env, context.userId, workerId, "updated");
     return json({ worker: await readWorker(env, context.userId, workerId) });

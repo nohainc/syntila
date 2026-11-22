@@ -71,6 +71,23 @@ void main() {
         1);
   });
 
+  test('per-workflow selections round-trip and stay local', () {
+    const state = AxThreadViewState(workflowSelections: {
+      'chat': {'workerId': 'w1', 'model': 'm1'},
+      'work': {'workerId': 'w2', 'reasoningEffort': 'high'},
+    });
+    final decoded = AxThreadViewState.decode(state.encode())!;
+    expect(decoded.workflowSelections, state.workflowSelections);
+    expect(
+      AxThreadViewState.withRemote(decoded, {
+        'workflowReference': 'chat:1',
+        'selectionUpdatedAt': '2999-01-01T00:00:00Z',
+      })!
+          .workflowSelections,
+      state.workflowSelections,
+    );
+  });
+
   group('withRemote', () {
     const local = AxThreadViewState(
       workflowReference: 'direct:2',

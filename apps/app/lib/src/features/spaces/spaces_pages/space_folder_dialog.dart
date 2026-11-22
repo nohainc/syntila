@@ -343,7 +343,7 @@ class _SpaceFolderRowState extends State<_SpaceFolderRow> {
     if (!widget.isOwner || source == null || spaceId == null) return;
     try {
       if (configured is! AxWorkersUxFeatureSource ||
-          !await (configured as AxWorkersUxFeatureSource).workersUxEnabled()) {
+          !await configured.workersUxEnabled()) {
         return;
       }
       final state = await source.loadSpaceFolder(spaceId);

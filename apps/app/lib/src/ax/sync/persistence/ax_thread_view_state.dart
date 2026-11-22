@@ -19,6 +19,7 @@ class AxThreadViewState {
     this.chatSeenId,
     this.workSeenId,
     this.pane,
+    this.workflowSelections = const {},
   });
 
   final int tabIndex;
@@ -46,6 +47,11 @@ class AxThreadViewState {
   /// [notesPane]. Local only, like the drafts.
   final String? pane;
 
+  /// Last Worker/model/effort per Workflow code (chat, work, ...). Local
+  /// only: it is a per-browser convenience, not Thread data, so the Cloud
+  /// copy keeps just the active selection.
+  final Map<String, Map<String, String>> workflowSelections;
+
   static const conversationPane = 'conversation';
   static const aiHistoryPane = 'aiHistory';
   static const notesPane = 'notes';
@@ -67,6 +73,8 @@ class AxThreadViewState {
         if (chatSeenId != null) 'chatSeenId': chatSeenId,
         if (workSeenId != null) 'workSeenId': workSeenId,
         if (pane != null) 'pane': pane,
+        if (workflowSelections.isNotEmpty)
+          'workflowSelections': workflowSelections,
       };
 
   /// Thread metadata wins over the browser-local copy for the selection
@@ -109,6 +117,7 @@ class AxThreadViewState {
       chatSeenId: local?.chatSeenId,
       workSeenId: local?.workSeenId,
       pane: local?.pane,
+      workflowSelections: local?.workflowSelections ?? const {},
     );
   }
 
@@ -139,7 +148,23 @@ class AxThreadViewState {
       chatSeenId: string('chatSeenId'),
       workSeenId: string('workSeenId'),
       pane: _panes.contains(json['pane']) ? json['pane'] as String : null,
+      workflowSelections: _selections(json['workflowSelections']),
     );
+  }
+
+  static Map<String, Map<String, String>> _selections(Object? raw) {
+    if (raw is! Map) return const {};
+    final result = <String, Map<String, String>>{};
+    raw.forEach((key, value) {
+      if (key is! String || value is! Map) return;
+      final entry = <String, String>{
+        for (final e in value.entries)
+          if (e.key is String && e.value is String && e.value != '')
+            e.key as String: e.value as String,
+      };
+      if (entry.isNotEmpty) result[key] = entry;
+    });
+    return result;
   }
 
   static String _bounded(String value) =>

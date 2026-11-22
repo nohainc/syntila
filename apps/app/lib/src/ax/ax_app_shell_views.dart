@@ -1038,13 +1038,12 @@ extension _AxAppShellViews on _AxAppStateMixin {
                                                           AxRouteKind
                                                               .workspaces &&
                                                       uxState.data != true;
-                                              final workerDetail =
-                                                  navigation.kind ==
-                                                          AxRouteKind
-                                                              .workspaces &&
-                                                      uxState.data == true &&
-                                                      navigation.workspaceId !=
-                                                          null;
+                                              final workerDetail = navigation
+                                                          .kind ==
+                                                      AxRouteKind.workspaces &&
+                                                  uxState.data == true &&
+                                                  navigation.workspaceId !=
+                                                      null;
                                               return SingleChildScrollView(
                                                 padding: EdgeInsets.fromLTRB(
                                                   compact ? 18 : 34,

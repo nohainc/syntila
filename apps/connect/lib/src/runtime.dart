@@ -118,6 +118,7 @@ class AgentRuntime {
       await file.writeAsString(
         jsonEncode({
           'status': report['status'],
+          if (report['message'] is String) 'message': report['message'],
           'capturedAt': DateTime.now().toUtc().toIso8601String(),
           if (report['providerToolName'] != null)
             'providerToolName': report['providerToolName'],
@@ -1044,6 +1045,14 @@ class AgentRuntime {
         });
       }
       final outcome = await run.outcome;
+      if (outcome.kind == TerminalKind.failed) {
+        unawaited(
+          _log(
+            'assignment failed code=${outcome.payload['errorCode']} '
+            'type=${outcome.payload['diagnostic'] ?? '-'}',
+          ),
+        );
+      }
       if (_dead) return;
       final running = journal.find(id)!;
       if (outcome.kind == TerminalKind.cancelled &&
@@ -1112,15 +1121,27 @@ class AgentRuntime {
           'artifactIds': terminal['artifactIds'] ?? const <String>[],
         });
       case TerminalKind.failed:
+        // The Cloud accepts only its own codes, each with its canonical safe
+        // message; anything else is rejected and the assignment would stay
+        // "running". Agent-local reasons therefore end as `execution_failed`.
+        final raw = terminal['errorCode'];
+        final code = raw is String && _cloudErrorMessages.containsKey(raw)
+            ? raw
+            : 'execution_failed';
         return _send('assignment.error', entry.correlation, {
           'status': 'failed',
           'error': {
-            'code': terminal['errorCode'] ?? 'execution_failed',
-            'message':
-                terminal['message'] ??
-                'The Worker could not finish the assignment',
+            'code': code,
+            'message': _cloudErrorMessages[code],
             'retryable': terminal['retryable'] == true,
+            // What the provider CLI said, short and readable (the Cloud allows
+            // a bounded string value).
+            if (terminal['detail'] is String)
+              'details': {'diagnostic': terminal['detail']},
           },
+          // The provider's own failure details; the Cloud stores them encrypted.
+          if (terminal['providerFailure'] is Map)
+            'providerFailure': terminal['providerFailure'],
         });
       case TerminalKind.cancelled:
         return _send('assignment.cancelled', entry.correlation, {
@@ -1129,6 +1150,34 @@ class AgentRuntime {
         });
     }
   }
+
+  /// The Cloud's execution error codes and their canonical messages
+  /// (`packages/protocol` EXECUTION_ERROR_MESSAGES).
+  static const _cloudErrorMessages = {
+    'worker_not_ready': 'The selected Worker is not ready.',
+    'cli_not_found': 'The required local CLI could not be found.',
+    'authentication_required':
+        'Sign in to the configured provider on this computer.',
+    'unsupported_cli_version':
+        'The installed local CLI version is not supported.',
+    'model_not_supported':
+        'The selected model is not supported by this Worker.',
+    'permission_denied':
+        'A local permission required for this assignment was denied.',
+    'space_folder_exists':
+        "A folder with this Space's name already exists on the Workspace and is not empty. Confirm to use it.",
+    'quota_exhausted': "The provider's usage limit has been reached.",
+    'provider_unavailable': 'The provider is temporarily unavailable.',
+    'timeout': 'The assignment exceeded its time limit.',
+    'cancelled': 'The assignment was cancelled.',
+    'execution_failed': 'The assignment could not be completed.',
+    'context_limit_exceeded':
+        'This conversation exceeds the supported context limit. Clear AI History and retry; the latest answer is kept as context.',
+    'additional_folders_unsupported':
+        "This Worker cannot use the Space's additional folders yet. Detach the additional folders or choose another Worker.",
+    'worker_offline':
+        'The selected Worker is offline. Start its Agent and try again.',
+  };
 
   Future<void> _handleTerminalAck(Map<String, Object?> message) async {
     final payload = message['payload'];

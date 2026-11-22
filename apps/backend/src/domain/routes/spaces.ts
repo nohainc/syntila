@@ -1205,6 +1205,7 @@ export async function handleRemoveSpaceMember(
   }
   const removed = await dataOf(env).read.run`DELETE FROM space_memberships WHERE space_id = ${spaceId} AND user_id = ${userId} AND role <> 'owner'`;
   if (removed === 0) throw new HttpError(404, "Space member not found");
+  await dataOf(env).read.run`DELETE FROM worker_space_members WHERE space_id = ${spaceId} AND user_id = ${userId}`;
   await dropSpaceSetting(dataOf(env).read, spaceId, permissionJsonPath("memberPermissions", userId));
   // A contributed execution Workspace is owned by the departing user. Revoke
   // that user's Space Grants with the membership removal so the scheduler

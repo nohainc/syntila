@@ -107,6 +107,8 @@ abstract interface class AxThreadQueueDataSource {
     List<Map<String, dynamic>> attachments = const [],
     Map<String, dynamic> executionSelection = const {},
     AxReplyReference? replyTo,
+    List<String>? beforeItemIds,
+    List<String>? afterItemIds,
   });
 
   /// Replaces the author's own queued request.

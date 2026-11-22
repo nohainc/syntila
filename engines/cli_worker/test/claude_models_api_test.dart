@@ -77,4 +77,30 @@ void main() {
       );
     });
   });
+
+  test('a failed model list says what the API answered', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) {
+      request.response
+        ..statusCode = 429
+        ..write('{"error":{"message":"Rate limit reached"}}')
+        ..close();
+    });
+    expect(
+      discoverClaudeApiModels(
+        idPrefix: 'claude-',
+        environment: const {},
+        credentialReader: (_) async => {'x-api-key': 'key'},
+        endpoint: Uri.http('127.0.0.1:${server.port}', '/v1/models'),
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('HTTP 429'), contains('Rate limit reached')),
+        ),
+      ),
+    );
+  });
 }

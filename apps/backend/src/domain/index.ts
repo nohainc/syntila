@@ -166,6 +166,8 @@ export const routeHandlers = {
   handleWorkerMcpPin: handlers.handleWorkerMcpPin,
   handleWorkerModelsRefresh: handlers.handleWorkerModelsRefresh,
   handleWorkerUsageRead: handlers.handleWorkerUsageRead,
+  handleWorkerSpaceAccess: handlers.handleWorkerSpaceAccess,
+  handleWorkerMemberModelAccess: handlers.handleWorkerMemberModelAccess,
   handleWorkerPairing: handlers.handleWorkerPairing,
   handleWorkerTransfer: handlers.handleWorkerTransfer,
   handleWorkerCredential: handlers.handleWorkerCredential,

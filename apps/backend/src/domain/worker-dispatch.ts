@@ -276,9 +276,9 @@ export async function dispatchWorkerAssignment(
   // A stateful step works in the folder the owner chose for the Space (checked
   // when the request was accepted). Only its opaque id travels; the Agent finds
   // the path among its own allowed folders and refuses one it no longer allows.
-  const spaceFolder = task.leaseId
-    ? await read.row<{ folderId: string }>`SELECT folder_id AS "folderId" FROM space_folders WHERE space_id = ${accepted.spaceId}`
-    : null;
+  // Every step sees the Space's folder when it has one; only stateful steps
+  // (those holding a lease) require it.
+  const spaceFolder = await read.row<{ folderId: string }>`SELECT folder_id AS "folderId" FROM space_folders WHERE space_id = ${accepted.spaceId}`;
   const payload = {
     snapshot: {
       ...(spaceFolder ? { spaceFolderId: spaceFolder.folderId } : {}),

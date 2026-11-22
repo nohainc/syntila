@@ -1,6 +1,6 @@
 import { QueueRequestSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
-import { appendToQueue, enqueueBeforePhases, lockQueue, moveToFront } from "./queue-positions.js";
+import { appendToQueue, enqueueAtPosition, enqueueBeforePhases, lockQueue, moveToFront } from "./queue-positions.js";
 import { threadSpace } from "../queries.js";
 import { publishCollaborationEvent } from "../collaboration-events.js";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
@@ -9,6 +9,7 @@ import {
   authorizeThreadAccess,
   authorizeThreadAccessAsUser,
 } from "./thread-policy.js";
+import { isFeatureEnabled } from "../../feature-flags.js";
 import { createWorkRequestForUser } from "./work-creation.js";
 import { dataOf, queryOf, type Query, atomically, type Db } from "../../platform/data.js";
 
@@ -156,6 +157,35 @@ async function publishQueueUpdated(
   } catch (error) {
     console.error("Failed to publish thread.queue_updated", error);
   }
+}
+
+/**
+ * Phases queued with a Worker ID in `executionSelection` (older plan approvals)
+ * run on the Worker path, which takes it as `workerId`.
+ */
+function withWorkerTarget(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const selection = body.executionSelection;
+  if (
+    !isFeatureEnabled("worker_target_dispatch") ||
+    body.workerId !== undefined ||
+    !selection ||
+    typeof selection !== "object" ||
+    typeof (selection as { workerId?: unknown }).workerId !== "string"
+  )
+    return body;
+  const { executionSelection: _legacy, ...rest } = body;
+  const { workerId, model, reasoningEffort } = selection as Record<
+    string,
+    unknown
+  >;
+  return {
+    ...rest,
+    workerId,
+    ...(typeof model === "string" ? { model } : {}),
+    ...(typeof reasoningEffort === "string" ? { reasoningEffort } : {}),
+  };
 }
 
 async function pause(
@@ -311,7 +341,7 @@ export async function advanceThreadQueue(
       threadId,
       body: await withApprovedPlan(
         db,
-        JSON.parse(head.requestJson) as Record<string, unknown>,
+        withWorkerTarget(JSON.parse(head.requestJson) as Record<string, unknown>),
       ),
       submissionId: head.id,
     });
@@ -447,9 +477,23 @@ export async function handleThreadRequestQueue(
       requestJson: JSON.stringify(body),
       now,
     };
+    const hasAnchor =
+      !body.isPhased &&
+      (payload.beforeItemIds !== undefined || payload.afterItemIds !== undefined);
     await dataOf(env).tx("queue.enqueue", async (tx) => {
       await lockQueue(tx, threadId);
-      await (body.isPhased ? appendToQueue(tx, item) : enqueueBeforePhases(tx, item));
+      if (body.isPhased) {
+        await appendToQueue(tx, item);
+      } else if (hasAnchor) {
+        await enqueueAtPosition(
+          tx,
+          item,
+          payload.beforeItemIds ?? [],
+          payload.afterItemIds ?? [],
+        );
+      } else {
+        await enqueueBeforePhases(tx, item);
+      }
     });
     await advanceThreadQueueSafely(env, threadId, { forceHead: planPaused });
     await publishQueueUpdated(env, threadId, spaceId);

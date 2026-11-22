@@ -214,13 +214,59 @@ export class WorkflowHost {
   }
 
   private stepApi(id: string, park: (s: Suspend) => void) {
-    const suspend = (s: Suspend): Promise<never> => { park(s); return new Promise<never>(() => {}); };
+    // Parallel branches (Promise.all in `run`) share one instance. When one
+    // branch waits, the instance must not park while a sibling's step is still
+    // running: its result could no longer be saved (the lease is released), so
+    // the next replay would run it again, e.g. dispatching a second
+    // assignment. Parking therefore waits for in-flight steps to be recorded,
+    // starts no new `do` step, and wakes for the earliest wait of any branch.
+    const inflight = new Set<Promise<unknown>>();
+    const waits: Suspend[] = [];
+    let suspending = false;
+    const never = () => new Promise<never>(() => {});
+    const suspend = (s: Suspend): Promise<never> => {
+      waits.push(s);
+      if (!suspending) {
+        suspending = true;
+        void (async () => {
+          while (inflight.size) await Promise.allSettled([...inflight]);
+          const times = waits.map((w) => w.wakeAt?.getTime()).filter((t): t is number => t !== undefined);
+          const wakeAt = times.length ? new Date(Math.min(...times)) : null;
+          park(new Suspend(wakeAt, waits.find((w) => w.eventType)?.eventType ?? null));
+        })();
+      }
+      return never();
+    };
     const unwrap = (r: unknown) => (r && typeof r === "object" && "v" in (r as object) ? (r as { v: unknown }).v : undefined);
     const host = this;
     return {
       async do<T>(name: string, configOrFn: StepConfig | (() => Promise<T>), maybeFn?: () => Promise<T>): Promise<T> {
+        if (suspending) return never();
         const fn = (typeof configOrFn === "function" ? configOrFn : maybeFn)!;
         const config = typeof configOrFn === "function" ? {} : configOrFn;
+        const running = runStep<T>(name, fn, config);
+        inflight.add(running);
+        try { return await running; } finally { inflight.delete(running); }
+      },
+      async sleep(name: string, duration: string | number) {
+        return this.sleepUntil(name, Date.now() + durationMs(duration));
+      },
+      async sleepUntil(name: string, when: Date | number) {
+        const prior = await host.stepRecord(id, name);
+        if (prior) return;
+        const at = typeof when === "number" ? when : when.getTime();
+        // The deadline is stored as the step's pending marker so replays agree on it.
+        const marker = await host.pending(id, name, at);
+        if (Date.now() >= marker) { await host.saveStep(id, name, "done", null); return; }
+        return suspend(new Suspend(new Date(marker), null));
+      },
+      async waitForEvent<T>(name: string, options: { type: string; timeout?: string | number }) {
+        // Still registered while parking, so this branch's wake is kept.
+        return waitStep<T>(name, options);
+      },
+    };
+
+    async function runStep<T>(name: string, fn: () => Promise<T>, config: StepConfig): Promise<T> {
         const prior = await host.stepRecord(id, name);
         if (prior?.outcome === "done") return unwrap(prior.result) as T;
         if (prior?.outcome === "failed") throw new Error((unwrap(prior.result) as string) ?? `Step "${name}" failed`);
@@ -243,20 +289,9 @@ export class WorkflowHost {
             await Bun.sleep(Math.min(wait, 10 * 60_000));
           }
         }
-      },
-      async sleep(name: string, duration: string | number) {
-        return this.sleepUntil(name, Date.now() + durationMs(duration));
-      },
-      async sleepUntil(name: string, when: Date | number) {
-        const prior = await host.stepRecord(id, name);
-        if (prior) return;
-        const at = typeof when === "number" ? when : when.getTime();
-        // The deadline is stored as the step's pending marker so replays agree on it.
-        const marker = await host.pending(id, name, at);
-        if (Date.now() >= marker) { await host.saveStep(id, name, "done", null); return; }
-        return suspend(new Suspend(new Date(marker), null));
-      },
-      async waitForEvent<T>(name: string, options: { type: string; timeout?: string | number }) {
+    }
+
+    async function waitStep<T>(name: string, options: { type: string; timeout?: string | number }) {
         const prior = await host.stepRecord(id, name);
         if (prior?.outcome === "done") return unwrap(prior.result) as { payload: T; timestamp: Date; type: string };
         if (prior?.outcome === "timeout") throw new WaitTimeout(name);
@@ -274,8 +309,7 @@ export class WorkflowHost {
           throw new WaitTimeout(name);
         }
         return suspend(new Suspend(new Date(deadline), options.type));
-      },
-    };
+    }
   }
 
   /** First-seen deadline for a waiting step, kept stable across replays. */

@@ -2118,7 +2118,7 @@ const historicalProductUpdates = <AxProductUpdate>[
     slug: 'files-and-attachments',
     title: 'Files for AI work',
     summary:
-        'Upload files for conversations and AI requests, and manage uploads in My Files.',
+        'Upload files for conversations and AI requests, and manage uploads in Files.',
     category: AxProductUpdateCategory.feature,
     publishedAt: '2026-10-25T00:00:00Z',
   ),

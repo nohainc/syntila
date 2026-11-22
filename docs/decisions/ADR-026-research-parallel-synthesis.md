@@ -207,10 +207,9 @@ a researcher's model, never its session. All executions are read-only.
   before it can begin. With no initial slot it remains queued and cancellable.
 - Migration `0100_assignment_cloud_queue.sql` records the Gateway-owned
   `cloud_queue_reason` and `cloud_queue_since`, separately from Service startup
-  reports. Research v2 waiting for `workspace_capacity` has no application-level
+  reports. Any workflow waiting for `workspace_capacity` has no application-level
   capacity deadline and does not consume its provider execution timeout or the
-  Workflow's bounded execution-reconciliation wake budget. Ordinary workflows
-  retain their existing queue deadline. An accepted Research run waiting for
+  Workflow's bounded execution-reconciliation wake budget. An accepted run (any workflow) waiting for
   the requester's account slot after expiration likewise waits rather than
   losing successful branch results to a capacity deadline.
 - Readiness loss changes the reason to `service_not_ready` and begins a fresh,

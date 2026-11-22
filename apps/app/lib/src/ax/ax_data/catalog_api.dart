@@ -311,8 +311,9 @@ mixin _CatalogApi on _AxApiClientCore {
       var detail = '';
       try {
         final body = jsonDecode(response.body);
-        if (body is Map && body['error'] is String)
+        if (body is Map && body['error'] is String) {
           detail = body['error'] as String;
+        }
       } on FormatException {
         /* Use the status alone. */
       }

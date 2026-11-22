@@ -186,18 +186,38 @@ export async function acceptWorkerTarget(
     profileDigest: string | null;
     profileDefinitionId: string | null;
     profileJson: string | null;
+    memberEnabled: boolean | null;
+    memberPermissionsJson: string | null;
+    memberAllowedModelsJson: string | null;
+    memberAllowedEffortsJson: string | null;
   }>`SELECT w.id, w.actor_id AS "actorId", w.name, w.owner_user_id AS "ownerUserId", w.enabled,
             w.default_model AS "defaultModel", w.worker_type_id AS "workerTypeId",
             c.display_name AS "typeName", c.lifecycle_state AS lifecycle,
             c.visibility_state AS visibility, c.origin,
             p.revision::int AS "profileRevision", p.digest AS "profileDigest", p.profile_json AS "profileJson",
-            COALESCE(p.profile_json::jsonb ->> 'profileDefinitionId', c.profile_definition_id) AS "profileDefinitionId"
+            COALESCE(p.profile_json::jsonb ->> 'profileDefinitionId', c.profile_definition_id) AS "profileDefinitionId",
+            wsm.enabled AS "memberEnabled",
+            wsm.permissions_json AS "memberPermissionsJson",
+            wmma.allowed_models_json AS "memberAllowedModelsJson",
+            wmma.allowed_efforts_json AS "memberAllowedEffortsJson"
        FROM worker_instances w
        JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
        LEFT JOIN worker_profiles p ON p.worker_type_id = w.worker_type_id
-      WHERE w.id = ${request.workerId} AND w.owner_user_id = ${request.requesterUserId}
+       LEFT JOIN worker_space_members wsm
+         ON wsm.worker_id = w.id
+        AND wsm.space_id = ${request.spaceId}
+        AND wsm.user_id = ${request.requesterUserId}
+       LEFT JOIN worker_member_model_access wmma ON wmma.worker_id = w.id
+      WHERE w.id = ${request.workerId}
         AND w.revoked_at IS NULL`;
   if (!worker) return { ok: false, code: "worker_not_found" };
+  const isOwner = worker.ownerUserId === request.requesterUserId;
+  if (!isOwner) {
+    // Unlisted non-owners get 404 so Worker IDs are never revealed; explicitly
+    // disabled Space members get 403 execute_not_permitted.
+    if (worker.memberEnabled === null) return { ok: false, code: "worker_not_found" };
+    if (worker.memberEnabled !== true) return { ok: false, code: "execute_not_permitted" };
+  }
   if (!worker.enabled) return { ok: false, code: "worker_disabled" };
   // The Agent runs a published Profile; a Type without one cannot be accepted.
   if (
@@ -239,6 +259,16 @@ export async function acceptWorkerTarget(
 
   const model = (request.model ?? worker.defaultModel ?? "").trim();
   if (model.length > MAX_MODEL_LENGTH) return { ok: false, code: "worker_type_unavailable" };
+  if (!isOwner) {
+    // Members get only the models and efforts the owner ticked. With nothing
+    // ticked they get none, so the default is closed.
+    const allowed = parseModelAccess(worker.memberAllowedModelsJson, worker.memberAllowedEffortsJson);
+    if (model && !allowed.allowedModels.includes(model)) return { ok: false, code: "model_not_supported" };
+    const effort = request.reasoningEffort?.trim();
+    if (effort && model && !allowed.allowedEfforts[model]?.includes(effort)) {
+      return { ok: false, code: "effort_not_supported" };
+    }
+  }
   // A model or effort the person chose must be one the Type's Profile lists.
   // A discovery-backed Profile with no matching report has no list here; the
   // Agent is then the authority and refuses at run time.
@@ -280,6 +310,22 @@ export async function acceptWorkerTarget(
   }
   if (![...required].every((permission) => permissions.includes(permission)))
     return { ok: false, code: "execute_not_permitted" };
+  if (!isOwner) {
+    const memberMode = record(worker.memberPermissionsJson).mode;
+    const mode =
+      memberMode === "work" || memberMode === "work+shell" ? memberMode : "chat";
+    if (
+      mode === "chat" &&
+      (request.workflowId !== "chat" ||
+        required.has("repository:write") ||
+        required.has("shell:execute"))
+    ) {
+      return { ok: false, code: "execute_not_permitted" };
+    }
+    if (mode === "work" && required.has("shell:execute")) {
+      return { ok: false, code: "execute_not_permitted" };
+    }
+  }
   // A Profile that declares capabilities must cover every one the step needs;
   // a Profile that declares none makes no claim and is not filtered.
   const declared = worker.origin === "plugin" ? null : declaredProfileCapabilities(worker.profileJson);
@@ -352,4 +398,35 @@ export function declaredProfileCapabilities(profileJson: string | null): readonl
   } catch {
     return null;
   }
+}
+
+export interface WorkerSpaceModelAccess {
+  readonly allowedModels: string[];
+  readonly allowedEfforts: Record<string, string[]>;
+}
+
+function strList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 200))]
+    : [];
+}
+
+export function parseModelAccess(allowedModelsJson: unknown, allowedEffortsJson: unknown): WorkerSpaceModelAccess {
+  const load = (raw: unknown): unknown => {
+    if (typeof raw !== "string") return raw;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+  const efforts = load(allowedEffortsJson);
+  const allowedEfforts: Record<string, string[]> = {};
+  if (efforts && typeof efforts === "object" && !Array.isArray(efforts)) {
+    for (const [model, list] of Object.entries(efforts as Record<string, unknown>)) {
+      const values = strList(list);
+      if (values.length > 0) allowedEfforts[model] = values;
+    }
+  }
+  return { allowedModels: strList(load(allowedModelsJson)), allowedEfforts };
 }

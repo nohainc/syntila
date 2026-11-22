@@ -2,6 +2,7 @@ import { dataOf, queryOf } from "../../platform/data.js";
 import { recordAiOutcome } from "../ai-timeline.js";
 import { ApprovePlanSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
+import { isFeatureEnabled } from "../../feature-flags.js";
 import { appendToQueue, lockQueue, prependToQueue } from "./queue-positions.js";
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
 import { authorizeThreadAccess } from "./thread-policy.js";
@@ -190,6 +191,20 @@ interface ApprovePlanBody {
  * implementation phases (and optional verification steps) into the
  * Thread Request Queue as special locked items.
  */
+/**
+ * Execution fields of a queued phase request. With Worker-targeted dispatch the
+ * choice is a Worker ID and travels as `workerId`; a Workspace
+ * `executionSelection` would be checked against Workspaces and refuse it.
+ */
+function executionFields(
+  selection: { workerId?: string; model?: string; reasoningEffort?: string } | undefined,
+): Record<string, unknown> {
+  if (!selection) return {};
+  return isFeatureEnabled("worker_target_dispatch")
+    ? { ...selection }
+    : { executionSelection: selection };
+}
+
 export async function handleApprovePlan(
   request: Request,
   env: SecurityEnv,
@@ -368,7 +383,7 @@ export async function handleApprovePlan(
 
     const implementRequest = {
       workflowId: "direct",
-      ...(implementSelection ? { executionSelection: implementSelection } : {}),
+      ...executionFields(implementSelection),
       input: {
         originalRequest: implementPrompt,
         isPhased: true,
@@ -408,7 +423,7 @@ export async function handleApprovePlan(
 
       const verifyRequest = {
         workflowId: "direct",
-        ...(verifySelection ? { executionSelection: verifySelection } : {}),
+        ...executionFields(verifySelection),
         input: {
           originalRequest: verifyPrompt,
           isPhased: true,
@@ -446,7 +461,7 @@ export async function handleApprovePlan(
 
     const finalVerifyRequest = {
       workflowId: "direct",
-      ...(verifySelection ? { executionSelection: verifySelection } : {}),
+      ...executionFields(verifySelection),
       input: {
         originalRequest: finalVerifyPrompt,
         isPhased: true,
@@ -752,7 +767,7 @@ async function enqueueVerificationStatusFollowUp(
   };
   const request = {
     workflowId: "direct",
-    ...(selection ? { executionSelection: selection } : {}),
+    ...executionFields(selection),
     input,
     isPhased: true,
     planWorkRequestId: inputData.planWorkRequestId,

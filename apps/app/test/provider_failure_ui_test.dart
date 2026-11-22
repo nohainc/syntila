@@ -100,9 +100,12 @@ void main() {
         providerFailure: details,
       )));
 
+      // The provider's own text replaces the generic line, with no heading.
       expect(find.byKey(const ValueKey('canonical-failure-message')),
-          findsOneWidget);
-      expect(find.text('Provider execution failed.'), findsOneWidget);
+          findsNothing);
+      expect(find.text('Provider execution failed.'), findsNothing);
+      expect(find.text('Provider details'), findsNothing);
+      expect(find.text('Provider error'), findsNothing);
       expect(find.text('Native code: MODEL_CAPACITY'), findsOneWidget);
       expect(find.text('Line 1\nLine 2 **not markdown**'), findsOneWidget);
       expect(find.text('Response from failed run'), findsOneWidget);
@@ -122,6 +125,8 @@ void main() {
       )));
 
       expect(find.text('The tool call failed.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('canonical-failure-message')),
+          findsOneWidget);
       expect(find.byKey(const ValueKey('provider-native-error-code')),
           findsNothing);
       expect(find.byKey(const ValueKey('provider-error-text')), findsNothing);
@@ -184,5 +189,17 @@ void main() {
           unavailable.withExecutionPhase('failed').providerFailureUnavailable,
           isTrue);
     });
+  });
+
+  test('copy text is what the failure panel shows', () {
+    const details = AxProviderFailureDetails(
+        schemaVersion: 1,
+        source: 'stderr',
+        providerErrorText: 'provider says no',
+        nativeErrorCode: 'E1',
+        failedRunResponse: 'partial');
+    expect(ProviderFailurePanel.visibleText('generic', details),
+        'provider says no\n\nNative code: E1\n\npartial');
+    expect(ProviderFailurePanel.visibleText('generic', null), 'generic');
   });
 }

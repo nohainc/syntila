@@ -1176,4 +1176,113 @@ void main() {
     expect(body['password'], 'strong-password-123');
     expect(body['otp'], '482910');
   });
+
+  test('loads and saves Worker Space member access with expected request shape',
+      () async {
+    final client = _JsonClient({
+      'workerId': 'wrk-1',
+      'spaceId': 'spc-1',
+      'members': [
+        {
+          'userId': 'usr-bob',
+          'displayName': 'Bob',
+          'email': 'bob@test',
+          'role': 'collaborator',
+          'enabled': true,
+          'permissions': {'mode': 'work'},
+        },
+        {
+          'userId': 'usr-carol',
+          'displayName': 'Carol',
+          'email': 'carol@test',
+          'role': 'viewer',
+          'enabled': false,
+          'permissions': {'mode': 'unknown-falls-back'},
+        },
+      ],
+    }, statusCode: 200);
+    final api = AxApiClient(
+      baseUrl: 'https://syntila.test/api',
+      client: client,
+    );
+
+    final loaded = await api.loadWorkerSpaceAccess('wrk-1', 'spc-1');
+    expect(client.lastRequest?.method, 'GET');
+    expect(client.lastRequest?.url.path, '/api/workers/wrk-1/space-access');
+    expect(client.lastRequest?.url.queryParameters, {'spaceId': 'spc-1'});
+    expect(loaded.workerId, 'wrk-1');
+    expect(loaded.spaceId, 'spc-1');
+    expect(loaded.members.length, 2);
+    expect(loaded.members[0].userId, 'usr-bob');
+    expect(loaded.members[0].enabled, isTrue);
+    expect(loaded.members[0].mode, 'work');
+    expect(loaded.members[1].enabled, isFalse);
+    expect(loaded.members[1].mode, 'chat');
+
+    final saved = await api.saveWorkerSpaceAccess('wrk-1', 'spc-1', [
+      loaded.members[0].copyWith(mode: 'work+shell'),
+      loaded.members[1].copyWith(enabled: true),
+    ]);
+    expect(client.lastRequest?.method, 'PUT');
+    expect(client.lastRequest?.url.path, '/api/workers/wrk-1/space-access');
+    expect(jsonDecode(client.lastBody!), {
+      'spaceId': 'spc-1',
+      'members': [
+        {
+          'userId': 'usr-bob',
+          'enabled': true,
+          'permissions': {'mode': 'work+shell'},
+        },
+        {
+          'userId': 'usr-carol',
+          'enabled': true,
+          'permissions': {'mode': 'chat'},
+        },
+      ],
+    });
+    expect(saved.workerId, 'wrk-1');
+  });
+
+  test('loads and saves the Worker-wide member model access', () async {
+    final client = _JsonClient({
+      'workerId': 'wrk-1',
+      'modelAccess': {
+        'allowedModels': ['m2'],
+        'allowedEfforts': {
+          'm1': ['high']
+        },
+      },
+    }, statusCode: 200);
+    final api = AxApiClient(
+      baseUrl: 'https://syntila.test/api',
+      client: client,
+    );
+
+    final loaded = await api.loadWorkerMemberModelAccess('wrk-1');
+    expect(client.lastRequest?.method, 'GET');
+    expect(
+        client.lastRequest?.url.path, '/api/workers/wrk-1/member-model-access');
+    expect(loaded.allowedModels, ['m2']);
+    expect(loaded.allowedEfforts, {
+      'm1': ['high']
+    });
+
+    await api.saveWorkerMemberModelAccess(
+        'wrk-1',
+        const AxWorkerMemberModelAccess(allowedModels: [
+          'm3'
+        ], allowedEfforts: {
+          'm1': [],
+          'm2': ['low']
+        }));
+    expect(client.lastRequest?.method, 'PUT');
+    expect(jsonDecode(client.lastBody!), {
+      'modelAccess': {
+        'allowedModels': ['m3'],
+        'allowedEfforts': {
+          'm2': ['low']
+        },
+      },
+    });
+  });
 }

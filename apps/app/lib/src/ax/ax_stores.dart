@@ -1,3 +1,4 @@
+import 'ax_work_activity.dart';
 import 'sync/ax_worker_visibility_preferences.dart';
 import 'sync/ax_people.dart';
 import 'sync/ax_archived_spaces.dart';
@@ -261,6 +262,9 @@ class AxStore {
   late final persistence = AxPersistentReadCache(syncEngine, dataSource,
       backend: _readCacheBackend, enabled: _persistReadCache);
   late final threadViewState = createAxThreadViewStateStore();
+
+  /// Live Worker activity per Thread; outlives Thread pages.
+  final workActivity = AxWorkActivityRegistry();
   Future<bool> hydrateReadCache() async {
     final session = auth.session;
     final id = session?.viewer?.id;
@@ -271,6 +275,7 @@ class AxStore {
       return false;
     }
     if (persistence.userId != null && persistence.userId != id) {
+      workActivity.clear();
       clearServerState();
     }
     return persistence.hydrate(id);
@@ -282,6 +287,7 @@ class AxStore {
     final clearingThreadView = userId == null
         ? Future<void>.value()
         : threadViewState.clearUser(userId);
+    workActivity.clear();
     clearServerState();
     try {
       await auth.logout();
@@ -297,6 +303,7 @@ class AxStore {
     final clearingThreadView = userId == null
         ? Future<void>.value()
         : threadViewState.clearUser(userId);
+    workActivity.clear();
     clearServerState();
     auth.markUnauthenticated();
     await clearing;
@@ -482,6 +489,7 @@ class AxStore {
     lifecycleNotice.dispose();
     persistence.dispose();
     threadViewState.dispose();
+    workActivity.dispose();
     workflowConfigurations.clear();
     workerVisibilityPreferences.clear();
     people.clear();

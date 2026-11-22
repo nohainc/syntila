@@ -42,6 +42,9 @@ bun src/migrate.ts
 
 export PORT="$BACKEND_PORT" BIND_HOST=127.0.0.1
 export SYNTILA_ENVIRONMENT=development
+# Local-only key so a provider CLI's own failure text is stored (encrypted) and shown in the
+# app. Production keys come from the credential store, never from this file.
+export SYNTILA_PROVIDER_FAILURE_KEY="${SYNTILA_PROVIDER_FAILURE_KEY:-9c5453e88179c39a5d8da129c6979c7a7a7d3006b435b05a440833818d78fc68}"
 export SYNTILA_FEATURE_FLAGS="${SYNTILA_FEATURE_FLAGS-worker_identity,worker_agent_connect,worker_target_dispatch,workers_ux,canonical_timeline,artifact_handoff,unified_gateway,worker_stateful_work}"
 export SYNTILA_APP_URL="http://localhost:${WEB_PORT}"
 export ALLOWED_ORIGINS="http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT},http://localhost:${AUTH_PORT}"

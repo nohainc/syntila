@@ -58,3 +58,61 @@ export const moveToFront = (q: Runner, threadId: string, itemId: string, now: st
       SET position = (SELECT MIN(position) FROM thread_request_queue WHERE thread_id = ${threadId}) - 1,
           updated_at = ${now}
     WHERE id = ${itemId} AND thread_id = ${threadId} AND status = 'queued'`;
+
+/**
+ * Restores an edited request to its previous position in the queue using the
+ * IDs that preceded and followed it when editing started. If earlier items
+ * have since been sent or removed, it moves to the front as the first to send.
+ */
+export async function enqueueAtPosition(
+  q: Tx,
+  item: QueueItem,
+  beforeItemIds: readonly string[],
+  afterItemIds: readonly string[],
+) {
+  const rows = await q.rows<{ id: string; position: number; isPhased: string | null }>`
+    SELECT id, position, (request_json::jsonb #>> '{isPhased}') AS "isPhased"
+      FROM thread_request_queue
+     WHERE thread_id = ${item.threadId}
+     ORDER BY position, created_at, id`;
+  if (rows.length === 0) {
+    return insertAt(q, item, 1);
+  }
+  const beforeSet = new Set(beforeItemIds);
+  const afterSet = new Set(afterItemIds);
+  const firstPhaseIdx = rows.findIndex(
+    (row) => row.isPhased === "true" || row.isPhased === "1",
+  );
+  const nonPhasedLimit = firstPhaseIdx === -1 ? rows.length : firstPhaseIdx;
+
+  let insertIndex = -1;
+  for (let i = 0; i < nonPhasedLimit; i++) {
+    if (beforeSet.has(rows[i]!.id)) {
+      insertIndex = i;
+      break;
+    }
+  }
+  if (insertIndex === -1) {
+    for (let i = nonPhasedLimit - 1; i >= 0; i--) {
+      if (afterSet.has(rows[i]!.id)) {
+        insertIndex = i + 1;
+        break;
+      }
+    }
+  }
+  if (insertIndex === -1) {
+    // None of the surrounding items remain (e.g. earlier ones were sent while
+    // editing): this message became the first to send.
+    insertIndex = 0;
+  }
+
+  let position: number;
+  if (insertIndex === 0) {
+    position = rows[0]!.position - 1;
+  } else if (insertIndex >= rows.length) {
+    position = rows[rows.length - 1]!.position + 1;
+  } else {
+    position = (rows[insertIndex - 1]!.position + rows[insertIndex]!.position) / 2;
+  }
+  return insertAt(q, item, position);
+}

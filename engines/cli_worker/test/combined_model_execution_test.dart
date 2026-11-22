@@ -310,7 +310,8 @@ Future<void> main(List<String> args) async {
       expect(deniedAfterRetry.code, WorkerIssueCode.permissionDenied);
       expect(
         deniedAfterRetry.providerFailure?['providerErrorText'],
-        '[{"action":"run_command","display_name":"RunCommand"}]',
+        // A structured error is shown as plain lines, not as a JSON string.
+        'action: run_command, display_name: RunCommand',
       );
       // Write steps are not forgiven: the denied command may hide unfinished work.
       final writeStepDenied = await exchange(

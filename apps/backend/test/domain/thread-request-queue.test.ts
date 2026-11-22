@@ -259,3 +259,43 @@ it("sends a reply to a plan paused for input before its remaining phases", async
   await advanceThreadQueue(env, "T");
   expect(created.calls).toHaveLength(1);
 });
+
+it("restores an edited item to its previous position or front when earlier items were sent", async () => {
+  const { call, enqueue, busy } = await fixture();
+  await busy();
+  await enqueue("owner", "first");
+  await enqueue("member", "second");
+  const initial = await enqueue("owner", "third");
+  const [first, second, third] = initial.items;
+
+  // Simulate editing 'second' by removing it and re-enqueuing with its anchor.
+  await call("member", "DELETE", { item: second!.id });
+  const restored = await call("member", "POST", {
+    body: {
+      request: { workflowId: "chat", input: { originalRequest: "second edited" } },
+      beforeItemIds: [third!.id],
+      afterItemIds: [first!.id],
+    },
+  });
+  expect(
+    restored.items.map((i) => (i.request.input as { originalRequest: string }).originalRequest),
+  ).toEqual(["first", "second edited", "third"]);
+
+  // If 'first' and 'third' were both removed/sent while editing, a newly
+  // queued 'fourth' stays behind the edited item (which became first to send).
+  const editedSecond = restored.items[1]!;
+  await call("member", "DELETE", { item: editedSecond.id });
+  await call("owner", "DELETE", { item: first!.id });
+  await call("owner", "DELETE", { item: third!.id });
+  await enqueue("owner", "fourth");
+  const becameFirst = await call("member", "POST", {
+    body: {
+      request: { workflowId: "chat", input: { originalRequest: "second became first" } },
+      beforeItemIds: [third!.id],
+      afterItemIds: [first!.id],
+    },
+  });
+  expect(
+    becameFirst.items.map((i) => (i.request.input as { originalRequest: string }).originalRequest),
+  ).toEqual(["second became first", "fourth"]);
+});

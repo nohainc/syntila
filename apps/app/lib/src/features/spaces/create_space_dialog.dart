@@ -139,59 +139,60 @@ class _CreateSpaceDialogState extends State<_CreateSpaceDialog> {
             ),
             if (widget.showWorkspace) const SizedBox(height: 12),
             if (widget.showWorkspace)
-            FutureBuilder<List<AxWorkflowWorkspace>>(
-              future: _workspaces,
-              builder: (context, snapshot) {
-                final workspaces = snapshot.data ?? const [];
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    DropdownButtonFormField<String?>(
-                      key: const ValueKey('create-space-workspace'),
-                      initialValue: _workspaceId,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: 'Workspace',
-                        errorText: _fieldErrors['workspaceId'],
-                      ),
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('No Workspace'),
+              FutureBuilder<List<AxWorkflowWorkspace>>(
+                future: _workspaces,
+                builder: (context, snapshot) {
+                  final workspaces = snapshot.data ?? const [];
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<String?>(
+                        key: const ValueKey('create-space-workspace'),
+                        initialValue: _workspaceId,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'Workspace',
+                          errorText: _fieldErrors['workspaceId'],
                         ),
-                        for (final workspace in workspaces)
-                          DropdownMenuItem<String?>(
-                            value: workspace.id,
-                            child: Text(workspace.name,
-                                overflow: TextOverflow.ellipsis),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('No Workspace'),
                           ),
-                      ],
-                      onChanged: snapshot.hasData
-                          ? (value) => setState(() => _workspaceId = value)
-                          : null,
-                    ),
-                    if (workspaces.length == 1 && _workspaceId == null)
-                      TextButton(
-                        key: const ValueKey('create-space-use-only-workspace'),
-                        onPressed: () =>
-                            setState(() => _workspaceId = workspaces.single.id),
-                        child: Text('Use ${workspaces.single.name}'),
+                          for (final workspace in workspaces)
+                            DropdownMenuItem<String?>(
+                              value: workspace.id,
+                              child: Text(workspace.name,
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                        ],
+                        onChanged: snapshot.hasData
+                            ? (value) => setState(() => _workspaceId = value)
+                            : null,
                       ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        snapshot.hasError
-                            ? 'Workspaces could not be loaded. You can choose one later in Space settings.'
-                            : _workspaceId == null
-                                ? 'Work cannot run in this Space until you choose a Workspace.'
-                                : 'Work in this Space will run on this Workspace.',
-                        style: theme.textTheme.bodySmall,
+                      if (workspaces.length == 1 && _workspaceId == null)
+                        TextButton(
+                          key:
+                              const ValueKey('create-space-use-only-workspace'),
+                          onPressed: () => setState(
+                              () => _workspaceId = workspaces.single.id),
+                          child: Text('Use ${workspaces.single.name}'),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          snapshot.hasError
+                              ? 'Workspaces could not be loaded. You can choose one later in Space settings.'
+                              : _workspaceId == null
+                                  ? 'Work cannot run in this Space until you choose a Workspace.'
+                                  : 'Work in this Space will run on this Workspace.',
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
-            ),
+                    ],
+                  );
+                },
+              ),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 12),

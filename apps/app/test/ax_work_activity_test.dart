@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -45,6 +46,26 @@ Map<String, dynamic> activityEvent({
     };
 
 void main() {
+  test('registry keeps a Thread\'s activity while no page is open', () async {
+    final registry = AxWorkActivityRegistry();
+    final events = StreamController<Map<String, dynamic>>.broadcast();
+    registry.listen(events.stream);
+    events.add(activityEvent(
+        eventId: 'e1',
+        streamSequence: 1,
+        activitySequence: 1,
+        type: 'tool.started',
+        status: 'running'));
+    await Future<void>.delayed(Duration.zero);
+    // A page opened later gets the same store, with the earlier activity.
+    expect(registry.storeFor('thread-1').forAssignment('assignment-1'),
+        hasLength(1));
+    expect(
+        registry.storeFor('thread-2').forAssignment('assignment-1'), isEmpty);
+    registry.dispose();
+    await events.close();
+  });
+
   test('renders profile milestone keys as readable activity titles', () {
     for (final (key, expected) in [
       ('provider_working', 'Working'),

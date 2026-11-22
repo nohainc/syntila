@@ -156,6 +156,14 @@ abstract interface class AxWorkerManagementSource {
   Future<McpWorkerPinState> loadMcpWorkerPin(String id);
   Future<void> setMcpWorkerPin(String id, McpWorkerVersion version);
   Future<void> clearMcpWorkerPin(String id);
+  Future<AxWorkerSpaceAccess> loadWorkerSpaceAccess(
+      String workerId, String spaceId);
+  Future<AxWorkerSpaceAccess> saveWorkerSpaceAccess(
+      String workerId, String spaceId, List<AxWorkerSpaceMemberAccess> members);
+  Future<AxWorkerMemberModelAccess> loadWorkerMemberModelAccess(
+      String workerId);
+  Future<AxWorkerMemberModelAccess> saveWorkerMemberModelAccess(
+      String workerId, AxWorkerMemberModelAccess access);
 }
 
 /// Asks a connected Worker to re-read the models its provider CLI offers.
@@ -171,7 +179,8 @@ abstract class _AxApiClientCore
         AxWorkersUxFeatureSource,
         AxEligibleWorkersSource,
         AxWorkerManagementSource,
-        AxWorkerModelsSource {
+        AxWorkerModelsSource,
+        AxSpaceFolderDataSource {
   _AxApiClientCore(
       {String? baseUrl, http.Client? client, String? backendBaseUrl})
       : baseUrl = baseUrl ??

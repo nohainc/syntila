@@ -1,7 +1,6 @@
 import 'package:syntila_protocol/syntila_protocol.dart' show WorkerInstance;
 
 import 'ax_models.dart';
-import 'worker_execution_options.dart';
 
 /// The composer's Workers under the Worker-first architecture: exactly the
 /// owner's Worker Instances (what the Workers page lists), not the legacy
@@ -10,17 +9,27 @@ import 'worker_execution_options.dart';
 /// Worker Instance was adopted from. The selection id is the Worker Instance id.
 List<AxWorker> workersFromInstances(
   List<AxWorker> inventory,
-  List<WorkerInstance> instances,
-) {
+  List<WorkerInstance> instances, {
+  List<WorkerInstance> sharedInstances = const [],
+}) {
   final byInstance = <String, AxWorker>{
     for (final worker in inventory)
       if (!worker.shared && worker.workerInstanceId != null)
         worker.workerInstanceId!: worker,
   };
-  return [
-    for (final instance in instances)
-      if (!instance.isRevoked) _fromInstance(instance, byInstance[instance.id]),
-  ];
+  final seen = <String>{};
+  final result = <AxWorker>[];
+  for (final instance in instances) {
+    if (!instance.isRevoked && seen.add(instance.id)) {
+      result.add(_fromInstance(instance, byInstance[instance.id]));
+    }
+  }
+  for (final instance in sharedInstances) {
+    if (!instance.isRevoked && seen.add(instance.id)) {
+      result.add(_fromInstance(instance, null, shared: true));
+    }
+  }
+  return result;
 }
 
 AxWorkerExecutionOptions? _optionsOf(WorkerInstance instance) {
@@ -33,7 +42,8 @@ AxWorkerExecutionOptions? _optionsOf(WorkerInstance instance) {
   }
 }
 
-AxWorker _fromInstance(WorkerInstance instance, AxWorker? base) {
+AxWorker _fromInstance(WorkerInstance instance, AxWorker? base,
+    {bool shared = false}) {
   final options = _optionsOf(instance);
   final ready = instance.enabled && instance.online && instance.ready;
   final activation = instance.enabled ? 'enabled' : 'disabled';
@@ -66,6 +76,7 @@ AxWorker _fromInstance(WorkerInstance instance, AxWorker? base) {
     readinessState: readiness,
     activationState: activation,
     localConcurrencyLimit: 1,
+    shared: shared,
     providerToolName: instance.providerToolName,
     providerToolVersion: instance.providerToolVersion,
     executionOptions: options,

@@ -471,6 +471,8 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
     List<Map<String, dynamic>> attachments = const [],
     Map<String, dynamic> executionSelection = const {},
     AxReplyReference? replyTo,
+    List<String>? beforeItemIds,
+    List<String>? afterItemIds,
   }) async =>
       _queueCall('POST', threadId, body: {
         'request': await _queuedRequestBody(
@@ -480,6 +482,8 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
             attachments: attachments,
             executionSelection: executionSelection,
             replyTo: replyTo),
+        if (beforeItemIds != null) 'beforeItemIds': beforeItemIds,
+        if (afterItemIds != null) 'afterItemIds': afterItemIds,
       });
 
   Future<AxThreadQueue> updateThreadQueueItem({
@@ -1367,6 +1371,42 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   Future<Map<String, dynamic>> _executionFields(
       Map<String, dynamic> selection) async {
     if (selection.isEmpty) return const {};
+    final steps = selection['steps'];
+    final researcherCount = selection['researcherCount'];
+    if ((steps is Map && steps.isNotEmpty) || researcherCount is int) {
+      // Per-step choices travel as Worker bindings keyed by step. Implement's
+      // request only runs the plan step; implement and verify are chosen when
+      // the plan is approved (see approvePlan). Research binds every step.
+      if (!await _workersUxCached()) return const {};
+      final implement = steps is Map && steps.containsKey('plan');
+      final entries = steps is Map ? steps.entries : const <MapEntry>[];
+      // Research binds each researcher by number, so the count must match.
+      final bound = entries
+          .map((entry) =>
+              RegExp(r'^research-(\d+)$').firstMatch(entry.key.toString()))
+          .whereType<RegExpMatch>()
+          .map((match) => int.parse(match.group(1)!))
+          .fold<int>(0, (a, b) => a > b ? a : b);
+      final count =
+          researcherCount is int ? researcherCount : (bound > 0 ? bound : null);
+      return {
+        if (count != null) 'researcherCount': count,
+        'workerBindings': {
+          for (final entry in entries)
+            if ((!implement || entry.key == 'plan') &&
+                entry.value is Map &&
+                (entry.value as Map)['workerId'] is String &&
+                ((entry.value as Map)['workerId'] as String).isNotEmpty)
+              entry.key.toString(): {
+                'workerId': (entry.value as Map)['workerId'],
+                for (final key in const ['model', 'reasoningEffort'])
+                  if ((entry.value as Map)[key] is String &&
+                      ((entry.value as Map)[key] as String).isNotEmpty)
+                    key: (entry.value as Map)[key],
+              },
+        },
+      };
+    }
     final workerId = selection['workerId'];
     if (workerId is String && workerId.isNotEmpty && await _workersUxCached()) {
       String? text(String key) {
@@ -1492,6 +1532,65 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
   }
 
   @override
+  Future<AxWorkerSpaceAccess> loadWorkerSpaceAccess(
+      String workerId, String spaceId) async {
+    final uri = Uri.parse(
+            '$baseUrl/workers/${Uri.encodeComponent(workerId)}/space-access')
+        .replace(queryParameters: {'spaceId': spaceId});
+    return AxWorkerSpaceAccess.fromJson(await _getJson(uri));
+  }
+
+  @override
+  Future<AxWorkerSpaceAccess> saveWorkerSpaceAccess(
+    String workerId,
+    String spaceId,
+    List<AxWorkerSpaceMemberAccess> members,
+  ) async {
+    final response = await client.put(
+      Uri.parse(
+          '$baseUrl/workers/${Uri.encodeComponent(workerId)}/space-access'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode({
+        'spaceId': spaceId,
+        'members': [for (final m in members) m.toUpdateJson()],
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+          'Could not save Space member access (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+    return AxWorkerSpaceAccess.fromJson(
+        Map<String, dynamic>.from(jsonDecode(response.body) as Map));
+  }
+
+  @override
+  Future<AxWorkerMemberModelAccess> loadWorkerMemberModelAccess(
+      String workerId) async {
+    final json = await _getJson(Uri.parse(
+        '$baseUrl/workers/${Uri.encodeComponent(workerId)}/member-model-access'));
+    return AxWorkerMemberModelAccess.fromJson(json['modelAccess']);
+  }
+
+  @override
+  Future<AxWorkerMemberModelAccess> saveWorkerMemberModelAccess(
+      String workerId, AxWorkerMemberModelAccess access) async {
+    final response = await client.put(
+      Uri.parse(
+          '$baseUrl/workers/${Uri.encodeComponent(workerId)}/member-model-access'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode({'modelAccess': access.toJson()}),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AxApiException(
+          'Could not save member model access (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+    final body = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    return AxWorkerMemberModelAccess.fromJson(body['modelAccess']);
+  }
+
+  @override
   Future<void> requestWorkerModelsRefresh(String id) async {
     final response = await client.post(
         Uri.parse('$baseUrl/workers/${Uri.encodeComponent(id)}/models/refresh'),
@@ -1501,8 +1600,9 @@ mixin _ThreadApi on _AxApiClientCore implements AxThreadReadDataSource {
       var detail = '';
       try {
         final error = jsonDecode(response.body);
-        if (error is Map && error['error'] is String)
+        if (error is Map && error['error'] is String) {
           detail = ': ${error['error']}';
+        }
       } on FormatException {
         // Not a JSON error body.
       }

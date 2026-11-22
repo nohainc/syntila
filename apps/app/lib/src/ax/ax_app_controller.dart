@@ -700,14 +700,17 @@ extension _AxAppController on _AxAppStateMixin {
     final known = _knownInvitationIds;
     if (known == null || !mounted) return;
     _knownInvitationIds = _currentInvitationIds();
-    void announce(String id, String type, String summary) =>
-        _recordNotification({
-          'eventId': 'invitation:$id',
-          'type': type,
-          'timestamp': DateTime.now().toUtc().toIso8601String(),
-          // No spaceId: the invitee cannot open the Space before accepting.
-          'payload': {'summary': summary},
-        });
+    void announce(String id, String type, String summary) {
+      if (!_viewPreferences.muteSound) soundNotifications.playMessageReceived();
+      _recordNotification({
+        'eventId': 'invitation:$id',
+        'type': type,
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        // No spaceId: the invitee cannot open the Space before accepting.
+        'payload': {'summary': summary},
+      });
+    }
+
     for (final invite in store.invitations.value) {
       if (known.contains('space:${invite.id}')) continue;
       announce(
@@ -770,6 +773,27 @@ extension _AxAppController on _AxAppStateMixin {
     });
   }
 
+  /// Request-finish events: the sound plays for success and failure alike.
+  static const _requestFinishedTypes = {
+    'work_request.completed',
+    'work_request.failed',
+    'thread.completed',
+    'thread.failed',
+    'workflow_run.completed',
+    'workflow_run.failed',
+  };
+
+  bool _isViewingThread(Object? threadId) =>
+      navigation.kind == AxRouteKind.thread &&
+      threadId is String &&
+      threadId == navigation.threadId &&
+      _tabVisible;
+
+  bool _firstSound(String key) {
+    if (_soundedKeys.length > 200) _soundedKeys.clear();
+    return _soundedKeys.add(key);
+  }
+
   void _handleSoundNotification(Map<String, dynamic> event) {
     if (_viewPreferences.muteSound) return;
     final type = event['type'];
@@ -782,42 +806,41 @@ extension _AxAppController on _AxAppStateMixin {
         payload?['thread_id'] ??
         event['threadId'] ??
         event['thread_id'];
-    final authorUserId = payload?['authorUserId'] ??
-        payload?['author_user_id'] ??
-        payload?['createdByUserId'] ??
-        payload?['created_by_user_id'] ??
-        payload?['requestedByUserId'] ??
-        payload?['requested_by_user_id'] ??
-        payload?['userId'] ??
-        payload?['user_id'] ??
-        event['authorUserId'] ??
-        event['author_user_id'] ??
-        event['createdByUserId'] ??
-        event['created_by_user_id'] ??
-        event['requestedByUserId'] ??
-        event['requested_by_user_id'] ??
-        event['userId'] ??
-        event['user_id'];
-    if (authorUserId != null && authorUserId == viewerId) {
-      return;
-    }
-    if (navigation.kind == AxRouteKind.thread &&
-        eventThreadId is String &&
-        eventThreadId == navigation.threadId) {
-      return;
-    }
-
-    if (type == 'work_request.completed' || type == 'thread.completed') {
-      final status = payload?['status'] as String? ?? 'completed';
-      if (status == 'completed') {
-        soundNotifications.playRequestCompleted();
-      }
-      return;
-    }
+    // What is already on screen needs no chime. A hidden tab still gets one.
+    if (_isViewingThread(eventThreadId)) return;
 
     if (type == 'discussion.created' || type == 'thread.discussion.created') {
+      final author = payload?['authorUserId'] ??
+          payload?['author_user_id'] ??
+          event['authorUserId'] ??
+          event['author_user_id'];
+      if (author != null && author == viewerId) return;
       soundNotifications.playMessageReceived();
+      return;
     }
+
+    // Finished requests chime for the requester too, whatever the outcome.
+    if (_requestFinishedTypes.contains(type)) {
+      final id = payload?['workRequestId'] ?? payload?['workflowRunId'];
+      if (id is String && !_firstSound('finished:$id')) return;
+      soundNotifications.playRequestCompleted();
+      return;
+    }
+
+    // Anything else that reaches the Notification Center (input needed,
+    // problems, invitations) chimes unless its run is open.
+    final notification =
+        notificationFromRealtimeEvent(event, viewerId: viewerId);
+    if (notification == null || !_firstSound('notice:${notification.id}')) {
+      return;
+    }
+    final runId = executionSnapshot.run?.id ?? executionSnapshot.activeRunId;
+    if (showRunDetails &&
+        notification.runId != null &&
+        notification.runId == runId) {
+      return;
+    }
+    soundNotifications.playMessageReceived();
   }
 
   Future<void> _acceptInvitation(AxSpaceInvitation invite) async {

@@ -51,13 +51,10 @@ void main() {
     final open = find.byKey(const ValueKey('execution-open'));
     await tester.tap(open);
     await tester.pumpAndSettle();
-    await tester
-        .tapAt(tester.getTopLeft(find.byType(Slider)) + const Offset(24, 24));
+    await tester.tap(find.text('Low'));
     await tester.pumpAndSettle();
     expect(selection.effort, 'low');
-    expect(find.byKey(const ValueKey('execution-popup')), findsNothing);
-    await tester.tap(open);
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('execution-popup')), findsOneWidget);
     await tester.tap(find.text('Plain'));
     await tester.pumpAndSettle();
     expect(selection.effort, isNull);
@@ -68,7 +65,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('effort gesture applies selection and closes Work popup',
+  testWidgets('effort selection applies immediately and keeps Work popup open',
       (tester) async {
     var selection = const ExecutionSelection(
         worker: 'worker', model: 'one', effort: 'deep');
@@ -81,6 +78,8 @@ void main() {
               compact: true,
               immediatePopup: true,
               catalog: const ExecutionSelectionCatalog([worker]),
+              displayEfforts: (_) =>
+                  {'deep': 'deep custom', 'brief': 'brief custom'},
               value: selection,
               onChanged: (next) => update(() => selection = next),
             );
@@ -92,23 +91,21 @@ void main() {
     final popup = find.byKey(const ValueKey('execution-popup'));
     await tester.tap(trigger);
     await tester.pumpAndSettle();
-    final slider = find.byType(Slider);
-    final gesture = await tester.startGesture(tester.getCenter(slider));
-    await gesture.moveTo(tester.getTopRight(slider) + const Offset(-24, 24));
-    await tester.pump();
-    expect(popup, findsOneWidget);
-    await gesture.up();
+    final effortGroup =
+        find.byKey(const ValueKey('execution-effort-worker-one'));
+    expect(tester.getSize(find.byType(SegmentedButton<int>)).width,
+        tester.getSize(effortGroup).width);
+    expect(find.text('Deep custom'), findsOneWidget);
+    await tester.tap(find.text('Brief custom'));
     await tester.pumpAndSettle();
     expect(selection.effort, 'brief');
-    expect(popup, findsNothing);
-    await tester.tap(trigger);
-    await tester.pumpAndSettle();
-    expect(find.text('Effort · Brief'), findsOneWidget);
-    await tester
-        .tapAt(tester.getTopLeft(find.byType(Slider)) + const Offset(24, 24));
+    expect(popup, findsOneWidget);
+    expect(find.text('Effort · Brief custom'), findsOneWidget);
+    await tester.tap(find.text('Auto').first);
     await tester.pumpAndSettle();
     expect(selection.effort, isNull);
-    expect(popup, findsNothing);
+    expect(popup, findsOneWidget);
+    expect(find.text('Effort · Auto'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -213,7 +210,7 @@ void main() {
         SyntilaColors.composerBackground(false));
     expect(tester.getBottomLeft(surface).dy,
         closeTo(tester.getTopLeft(trigger).dy - 8, 1));
-    expect(tester.getTopLeft(find.byType(Slider)).dy,
+    expect(tester.getTopLeft(find.byType(SegmentedButton<int>)).dy,
         lessThan(tester.getTopLeft(find.text('One')).dy));
     expect(
         tester.getTopLeft(find.text('One')).dy,
@@ -222,7 +219,7 @@ void main() {
             .dy));
     expect(
         find.byKey(const ValueKey('execution-worker-offline')), findsNothing);
-    tester.widget<Slider>(find.byType(Slider)).onChanged!(2);
+    await tester.tap(find.text('Brief'));
     await tester.pumpAndSettle();
     expect(changes.last.effort, 'brief');
     await tester.tap(find.text('Two'));
@@ -311,7 +308,7 @@ void main() {
     final restore = find.byKey(const ValueKey('execution-restore'));
     await tester.tap(open);
     await tester.pumpAndSettle();
-    tester.widget<Slider>(find.byType(Slider)).onChanged!(2);
+    await tester.tap(find.text('Brief'));
     await tester.pumpAndSettle();
     await tester.tap(restore);
     await tester.pumpAndSettle();
@@ -320,14 +317,14 @@ void main() {
     expect(find.byKey(const ValueKey('execution-popup')), findsNothing);
     await tester.tap(open);
     await tester.pumpAndSettle();
-    tester.widget<Slider>(find.byType(Slider)).onChanged!(2);
+    await tester.tap(find.text('Brief'));
     await tester.pumpAndSettle();
     await tester.tapAt(const Offset(790, 5));
     await tester.pumpAndSettle();
     expect(selection.effort, 'brief');
     await tester.tap(open);
     await tester.pumpAndSettle();
-    tester.widget<Slider>(find.byType(Slider)).onChanged!(1);
+    await tester.tap(find.text('Deep'));
     await tester.pumpAndSettle();
     await tester.tap(restore);
     await tester.pumpAndSettle();
@@ -355,7 +352,11 @@ void main() {
     ))));
     await tester.tap(find.byKey(const ValueKey('execution-open')));
     await tester.pumpAndSettle();
-    expect(tester.widget<Slider>(find.byType(Slider)).onChanged, isNull);
+    expect(
+        tester
+            .widget<SegmentedButton<int>>(find.byType(SegmentedButton<int>))
+            .onSelectionChanged,
+        isNull);
     expect(
         tester
             .widget<IconButton>(
@@ -853,5 +854,49 @@ void main() {
     final bottom = tester.getBottomLeft(surface).dy;
     // Done button + 16 padding + 6 menu padding, with small slack.
     expect(bottom - done, lessThan(40));
+  });
+
+  testWidgets(
+      'effort selector groups options across rows when they exceed row budget',
+      (tester) async {
+    const rich = WorkerSelectionCapability(id: 'rich', name: 'Rich', models: [
+      ExecutionModelCapability(
+        id: 'm1',
+        name: 'Model 1',
+        efforts: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+      ),
+    ]);
+    var selection =
+        const ExecutionSelection(worker: 'rich', model: 'm1', effort: 'low');
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.bottomLeft,
+          child: StatefulBuilder(
+            builder: (context, update) => ModelEffortSelector(
+              compact: true,
+              immediatePopup: true,
+              catalog: const ExecutionSelectionCatalog([rich]),
+              value: selection,
+              onChanged: (next) => update(() => selection = next),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.byKey(const ValueKey('execution-open')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.byType(SegmentedButton<int>), findsNWidgets(2));
+    final effortGroup = find.byKey(const ValueKey('execution-effort-rich-m1'));
+    final groupWidth = tester.getSize(effortGroup).width;
+    for (final row in find.byType(SegmentedButton<int>).evaluate()) {
+      expect(tester.getSize(find.byWidget(row.widget)).width, groupWidth);
+    }
+    await tester.tap(find.text('Extra High'));
+    await tester.pumpAndSettle();
+    expect(selection.effort, 'xhigh');
+    expect(find.byKey(const ValueKey('execution-popup')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

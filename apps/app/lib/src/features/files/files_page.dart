@@ -226,7 +226,7 @@ class _FilesPageState extends State<FilesPage> {
         child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('My Files', style: theme.textTheme.headlineMedium),
+        Text('Files', style: theme.textTheme.headlineMedium),
         if (usage == null) ...[
           syncButton,
           const SizedBox(height: 16),

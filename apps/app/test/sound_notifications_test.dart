@@ -191,6 +191,66 @@ void main() {
   });
 
   testWidgets(
+      'chimes once for failed requests and notifications, not in the open thread',
+      (tester) async {
+    final sounds = TestSoundNotifications();
+    final realtime = TestRealtime();
+    final source = _SoundNotificationSource();
+    String? rawPrefs;
+    final store = ViewPreferencesStore(
+      read: () => rawPrefs,
+      write: (v) => rawPrefs = v,
+    );
+    store.save(const ViewPreferences(muteSound: false));
+
+    await tester.pumpWidget(MaterialApp(
+      home: SyntilaAppShell(
+        services: const DefaultPlatformServices(),
+        dataSource: source,
+        realtimeClient: realtime,
+        soundNotifications: sounds,
+        viewPreferencesStore: store,
+        initialUri: Uri.parse('/spaces/space-auth/threads/thread-auth'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    Future<void> emit(Map<String, dynamic> event) async {
+      realtime.emit(event);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+    }
+
+    // Open thread: failure is already on screen.
+    await emit({
+      'type': 'work_request.failed',
+      'payload': {'workRequestId': 'r0', 'threadId': 'thread-auth'},
+    });
+    expect(sounds.played, isEmpty);
+
+    // Another thread, own request, failed: chimes once despite two events.
+    final payload = {
+      'workRequestId': 'r1',
+      'threadId': 'other',
+      'requestedByUserId': 'user-me',
+      'status': 'failed',
+    };
+    await emit({'type': 'work_request.failed', 'payload': payload});
+    await emit({'type': 'thread.failed', 'payload': payload});
+    expect(sounds.played, [AxSoundKind.requestCompleted]);
+
+    // A notification-only event chimes.
+    await emit({
+      'type': 'thread.needs_input',
+      'payload': {'threadId': 'other', 'prompt': 'Need input'},
+    });
+    expect(sounds.played.length, 2);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets(
       'mute option in settings silences both messages and completed requests',
       (tester) async {
     final sounds = TestSoundNotifications();

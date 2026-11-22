@@ -323,8 +323,8 @@ void main() {
       expect(_inAiHistory(find.byIcon(Icons.info_outline)), findsNothing);
       expect(_inAiHistory(find.text('2.0 KB')), findsNothing);
       expect(_inAiHistory(find.text('12 B')), findsNothing);
-      expect(find.text('Original Model Name'), findsWidgets);
-      expect(find.text('· Medium'), findsWidgets);
+      expect(find.textContaining('Original Model Name'), findsWidgets);
+      expect(find.textContaining('Medium'), findsWidgets);
       expect(find.byIcon(Icons.info_outline_rounded), findsNothing);
       expect(
           find.byWidgetPredicate((widget) =>
@@ -774,9 +774,9 @@ void main() {
       expect(find.textContaining('Effort changed'), findsNothing);
       expect(find.text('Wrong current worker'), findsNothing);
       expect(find.textContaining('wrong-current-model'), findsNothing);
-      expect(_inConversation(find.byTooltip('Select ChatGPT')), findsNWidgets(3));
-      await tester
-          .tap(_inConversation(find.byTooltip('Select ChatGPT')).first);
+      expect(
+          _inConversation(find.byTooltip('Select ChatGPT')), findsNWidgets(3));
+      await tester.tap(_inConversation(find.byTooltip('Select ChatGPT')).first);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
@@ -1840,6 +1840,112 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+  testWidgets(
+      'editing a queued message returns it to its previous position or first when earlier items sent',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final data = _SlowSubmissionDataSource()..ready.complete([]);
+    AxWorkRequest running(String id, String status) => AxWorkRequest(
+          id: id,
+          requestedByName: 'You',
+          requestedByUserId: 'user-owner',
+          prompt: 'Active $id',
+          workflowId: 'direct',
+          workflowVersion: 1,
+          status: status,
+          createdAt: '2026-10-06T10:00:00Z',
+          steps: const [],
+          finalText: status == 'completed' ? 'Done' : null,
+        );
+    data.requests = [running('r1', 'running')];
+    final prompts = <String>[];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: ThreadPage(
+      initialTab: 1,
+      space: const AxSpace(
+          id: 'space-1',
+          name: 'Space',
+          branch: '',
+          lastActivity: '',
+          role: 'owner'),
+      thread: const AxThread(
+          id: 'thread-1',
+          spaceId: 'space-1',
+          name: 'Stream',
+          lead: '',
+          status: 'active',
+          brief: '',
+          primaryWorkspace: '',
+          queueStatus: ''),
+      dataSource: data,
+      currentUserId: 'user-owner',
+      onBackToSpace: _noop,
+      onArchive: _noop,
+      onRunWork: (prompt, __, ___, key) async {
+        prompts.add(prompt);
+        return 'saved-${prompts.length}';
+      },
+    ))));
+    await tester.pumpAndSettle();
+    await _askAi(tester);
+    final send = find.byKey(const ValueKey('composer-send-Send request'));
+    for (final text in ['First', 'Second', 'Third']) {
+      await tester.enterText(find.byType(TextField).first, text);
+      await tester.tap(send);
+      await tester.pumpAndSettle();
+    }
+
+    // Edit the middle message ('Second') and resubmit: it returns to index 1.
+    await tester.tap(find.byTooltip('Edit').at(1));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Second edited');
+    await tester.tap(send);
+    await tester.pumpAndSettle();
+    expect(
+        tester.widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey('work-queue-item-0')),
+            matching: find.text('First'))),
+        isNotNull);
+    expect(
+        tester.widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey('work-queue-item-1')),
+            matching: find.text('Second edited'))),
+        isNotNull);
+    expect(
+        tester.widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey('work-queue-item-2')),
+            matching: find.text('Third'))),
+        isNotNull);
+
+    // Edit 'Second edited' again; while editing, 'First' is dispatched.
+    await tester.tap(find.byTooltip('Edit').at(1));
+    await tester.pumpAndSettle();
+    data.requests = [running('r1', 'completed')];
+    await AxWorkHistoryCache.forSource(data).refresh('thread-1');
+    await tester.pumpAndSettle();
+    expect(prompts, ['First']);
+
+    // Resubmitting 'Second edited 2' places it at index 0 (first to send),
+    // ahead of 'Third'.
+    await tester.enterText(find.byType(TextField).first, 'Second edited 2');
+    await tester.tap(send);
+    await tester.pumpAndSettle();
+    expect(
+        tester.widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey('work-queue-item-0')),
+            matching: find.text('Second edited 2'))),
+        isNotNull);
+    expect(
+        tester.widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey('work-queue-item-1')),
+            matching: find.text('Third'))),
+        isNotNull);
+
+    ThreadPage.resetWorkQueues();
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('queued messages are still sent after leaving the Thread',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 1400));
@@ -4795,14 +4901,15 @@ void main() {
     await tester.pumpAndSettle();
 
     // Delivered work shows the selected model in the message header.
-    expect(_inConversation(find.text('gpt-4o')), findsOneWidget);
-    expect(_inConversation(find.text('ChatGPT')), findsOneWidget);
+    expect(_inConversation(find.textContaining('gpt-4o')), findsOneWidget);
+    expect(_inConversation(find.text('ChatGPT')), findsNWidgets(2));
     expect(find.textContaining('Direct Execution · 5s'), findsOneWidget);
     expect(find.byIcon(Icons.info_outline_rounded), findsNothing);
     expect(find.text('· Default effort'), findsWidgets);
 
     // Model identity stays visible in the message header.
-    expect(_inConversation(find.text('claude-3-7-sonnet')), findsOneWidget);
+    expect(_inConversation(find.textContaining('claude-3-7-sonnet')),
+        findsOneWidget);
     expect(find.textContaining('Direct Execution · 12s'), findsOneWidget);
     expect(find.byTooltip('claude-3-7-sonnet'), findsNothing);
     // A running response has worker attribution before any result text exists.
@@ -5562,15 +5669,36 @@ class _SharedQueueDataSource extends _SlowSubmissionDataSource
     List<Map<String, dynamic>> attachments = const [],
     Map<String, dynamic> executionSelection = const {},
     AxReplyReference? replyTo,
+    List<String>? beforeItemIds,
+    List<String>? afterItemIds,
   }) async {
     calls.add('enqueue:$prompt');
+    final next = List.of(queue.items);
+    final newItem = item('q${queue.items.length + 1}', 'user-owner', prompt);
+    if (beforeItemIds != null || afterItemIds != null) {
+      final beforeSet = (beforeItemIds ?? const []).toSet();
+      final afterSet = (afterItemIds ?? const []).toSet();
+      var insertAt = -1;
+      for (var i = 0; i < next.length; i++) {
+        if (beforeSet.contains(next[i].id)) {
+          insertAt = i;
+          break;
+        }
+      }
+      if (insertAt == -1) {
+        for (var i = next.length - 1; i >= 0; i--) {
+          if (afterSet.contains(next[i].id)) {
+            insertAt = i + 1;
+            break;
+          }
+        }
+      }
+      next.insert(insertAt == -1 ? 0 : insertAt, newItem);
+    } else {
+      next.add(newItem);
+    }
     return _set(AxThreadQueue(
-        paused: queue.paused,
-        pauseReason: queue.pauseReason,
-        items: [
-          ...queue.items,
-          item('q${queue.items.length + 1}', 'user-owner', prompt)
-        ]));
+        paused: queue.paused, pauseReason: queue.pauseReason, items: next));
   }
 
   @override

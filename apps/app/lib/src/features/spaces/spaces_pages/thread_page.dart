@@ -32,6 +32,7 @@ class ThreadPage extends StatefulWidget {
     this.onRunWork,
     this.onRunWorkWithSelection,
     this.realtimeEvents,
+    this.activityRegistry,
     this.initialTab = 0,
     this.initialAiHistoryOpen = false,
     this.showAiHistory = true,
@@ -74,6 +75,9 @@ class ThreadPage extends StatefulWidget {
       String idempotencyKey,
       Map<String, dynamic> executionSelection)? onRunWorkWithSelection;
   final Stream<Map<String, dynamic>>? realtimeEvents;
+
+  /// Keeps this Thread's live Worker activity across leaving and returning.
+  final AxWorkActivityRegistry? activityRegistry;
   final int initialTab;
 
   /// Opens the read-only AI History panel when the page is created.
@@ -126,6 +130,7 @@ class _ThreadPageState extends State<ThreadPage>
   /// Paused queues keep their messages until the user resumes them.
   static final _workQueuePauses = <String, _WorkQueuePause>{};
   bool _dispatchingQueuedWork = false;
+  _QueuedEditAnchor? _queuedEditAnchor;
   String get _workQueueKey =>
       '${widget.currentUserId ?? ''}|${widget.thread.id}';
   _WorkQueuePause? get _workQueuePause {
@@ -673,6 +678,9 @@ class _ThreadPageState extends State<ThreadPage>
         (request.id, 'response'),
       ],
     ]);
+    for (final request in state.requests) {
+      _workActivityStore.releaseFinished(request);
+    }
     final frontier =
         state.requests.indexWhere((r) => previous?.containsKey(r.id) == true);
     for (final (index, request) in state.requests.indexed) {
@@ -890,7 +898,10 @@ class _ThreadPageState extends State<ThreadPage>
       widget.workHistoryCache ?? _fallbackWorkHistoryCache;
   AxWorkRealtimeSync get _workRealtime =>
       AxWorkRealtimeSync.forCache(_workHistoryCache);
-  final _workActivityStore = AxWorkActivityStore();
+  late final AxWorkActivityStore _workActivityStore =
+      widget.activityRegistry?.storeFor(widget.thread.id) ??
+          AxWorkActivityStore();
+  bool get _sharedActivityStore => widget.activityRegistry != null;
   late final ThreadPresentationController _presentation;
   // A terminal Worker activity precedes the result frame, so the request detail
   // is re-read shortly after only if Work status events have not caught up.
@@ -992,6 +1003,28 @@ class _ThreadPageState extends State<ThreadPage>
   /// The last Worker selection, kept while a Workflow that fixes its own
   /// Worker is selected so switching back restores the Thread's choice.
   Map<String, dynamic> _lastWorkerSelection = {};
+
+  /// Last Worker/model/effort per Workflow code; restored when the user
+  /// switches back to that Workflow and persisted in the local view state.
+  Map<String, Map<String, String>> _workflowSelections = {};
+
+  Map<String, String> _selectionSnapshot() => {
+        for (final key in const [
+          'workerId',
+          'catalogRevision',
+          'model',
+          'reasoningEffort',
+        ])
+          if (_explicitSelectionValue(key) case final value?) key: value,
+      };
+
+  Map<String, Map<String, String>> _workflowSelectionsWithCurrent() {
+    final code = _effectiveWorkflow.split(':').first;
+    final current = _selectionSnapshot();
+    if (code.isEmpty || current.isEmpty) return _workflowSelections;
+    return {..._workflowSelections, code: current};
+  }
+
   List<AxWorker> _spaceWorkers = const [];
   List<AxWorker> _eligibleWorkers = const [];
 
@@ -1043,6 +1076,84 @@ class _ThreadPageState extends State<ThreadPage>
   String? _explicitSelectionValue(String key) {
     final value = _workExecutionSelection[key];
     return value is String && value.isNotEmpty ? value : null;
+  }
+
+  /// Per-step choices for Implement, kept under `steps` of the selection.
+  Map<String, Map<String, dynamic>> get _stepExecutionSelections {
+    final steps = _workExecutionSelection['steps'];
+    return steps is Map
+        ? {
+            for (final entry in steps.entries)
+              if (entry.value is Map)
+                entry.key.toString():
+                    Map<String, dynamic>.from(entry.value as Map)
+          }
+        : const {};
+  }
+
+  /// Researchers to run when the user chose a count for this request.
+  int? get _researcherCount {
+    final count = _workExecutionSelection['researcherCount'];
+    return count is int ? count : null;
+  }
+
+  void _selectResearcherCount(int count) {
+    _updateState(() {
+      _markSelectionChangedByUser();
+      _workExecutionSelection = {
+        ..._workExecutionSelection,
+        'researcherCount': count,
+        // Bindings for researchers beyond the count would be refused.
+        if (_stepExecutionSelections.isNotEmpty)
+          'steps': {
+            for (final entry in _stepExecutionSelections.entries)
+              if (!RegExp(r'^research-(\d+)$').hasMatch(entry.key) ||
+                  int.parse(entry.key.substring(9)) <= count)
+                entry.key: entry.value,
+          },
+      };
+    });
+  }
+
+  /// Records one step's choice. The other steps are frozen at their current
+  /// (configured) selection so Cloud receives a complete set of bindings.
+  void _selectStepExecution(String step, Map<String, dynamic> selection) {
+    final research = _effectiveWorkflow.split(':').first == 'research';
+    final configuration = _userWorkflowConfigurations
+        .where((value) =>
+            value.workflowId == (research ? 'research' : 'plan_implement'))
+        .firstOrNull;
+    Map<String, dynamic> configured(String id) {
+      final value = configuration?.selectionFor(id);
+      return {
+        if (value?.worker != null) 'workerId': value!.worker,
+        if (value?.model != null) 'model': value!.model,
+        if (value?.effort != null) 'reasoningEffort': value!.effort,
+        if (value?.catalogRevision != null)
+          'catalogRevision': value!.catalogRevision,
+      };
+    }
+
+    final ids = research
+        ? [
+            for (var i = 1;
+                i <= (_researcherCount ?? configuration?.researcherCount ?? 2);
+                i++)
+              'research-$i',
+            'synthesis',
+          ]
+        : const ['plan', 'implement', 'verify'];
+    _updateState(() {
+      _markSelectionChangedByUser();
+      final steps = _stepExecutionSelections;
+      _workExecutionSelection = {
+        ..._workExecutionSelection,
+        'steps': {
+          for (final id in ids)
+            id: id == step ? selection : steps[id] ?? configured(id),
+        },
+      };
+    });
   }
 
   static const bool _useWorkerTargetPicker = false;
@@ -1103,6 +1214,7 @@ class _ThreadPageState extends State<ThreadPage>
       workDraft: _requestController.text,
       chatSeenId: _chatSeenId,
       workSeenId: _workSeenId,
+      workflowSelections: _workflowSelectionsWithCurrent(),
       pane: _notesOpen
           ? AxThreadViewState.notesPane
           : _aiHistoryOpen
@@ -1422,6 +1534,7 @@ class _ThreadPageState extends State<ThreadPage>
           selection: TextSelection.collapsed(offset: saved.workDraft.length),
         );
       }
+      _workflowSelections = {...saved.workflowSelections};
       _chatSeenId = saved.chatSeenId;
       _workSeenId = saved.workSeenId;
       _restorePane(saved.pane);
@@ -1882,6 +1995,7 @@ class _ThreadPageState extends State<ThreadPage>
       _navigatingToReply = false;
       _replyHighlightTimer?.cancel();
       _replyHighlightId = null;
+      _queuedEditAnchor = null;
     }
     if (oldWidget.thread.id != widget.thread.id &&
         _threadViewStateRestored &&
@@ -1906,6 +2020,7 @@ class _ThreadPageState extends State<ThreadPage>
       // stays; clearing it here would be saved back over the stored choice.
       _workExecutionSelection = {};
       _lastWorkerSelection = {};
+      _workflowSelections = {};
       _reportedIssues.clear();
       _reportedIssueKeys.clear();
       _issueReportErrors.clear();
@@ -2051,7 +2166,11 @@ class _ThreadPageState extends State<ThreadPage>
     _cancelWorkRealtime = AxWorkRealtimeSync.forCache(_workHistoryCache)
         .listen(widget.realtimeEvents, threadId: widget.thread.id);
     _workEventSubscription = widget.realtimeEvents?.listen((event) {
-      if (_workActivityStore.handle(event, threadId: widget.thread.id)) {
+      // With a shared store the registry has already recorded the event.
+      if (_workActivityStore.handle(event, threadId: widget.thread.id) ||
+          (_sharedActivityStore &&
+              event['type'] == 'assignment.activity' &&
+              event['threadId'] == widget.thread.id)) {
         _checkRequestAfterTerminalActivity(event);
       }
       final type = event['type'];
@@ -2142,7 +2261,7 @@ class _ThreadPageState extends State<ThreadPage>
     _presentation.chat.removeListener(_onChatPresentationChanged);
     _presentation.work.removeListener(_onWorkPresentationChanged);
     _workActivityStore.removeListener(_onWorkActivityChanged);
-    _workActivityStore.dispose();
+    if (!_sharedActivityStore) _workActivityStore.dispose();
     _requestController.removeListener(_scheduleThreadViewStateSave);
     _discussionController.removeListener(_scheduleThreadViewStateSave);
     _workHistoryController.removeListener(_onWorkHistoryScroll);
@@ -2217,9 +2336,9 @@ class _ThreadPageState extends State<ThreadPage>
         ? widget.dataSource
         : widget.workflowConfigurations?.source;
     if (source is! AxSpaceFolderDataSource) return true;
-    unawaited(showSpaceFolderDialog(context,
-            source: source, spaceId: widget.space.id)
-        .then((changed) {
+    unawaited(
+        showSpaceFolderDialog(context, source: source, spaceId: widget.space.id)
+            .then((changed) {
       if (changed && mounted) {
         ScaffoldMessenger.of(context).showNotice(
           const SnackBar(
@@ -3106,6 +3225,10 @@ class _ThreadPageState extends State<ThreadPage>
             .where(
                 (configuration) => configuration.workflowId == 'plan_implement')
             .firstOrNull,
+        stepExecutionSelections: _stepExecutionSelections,
+        onStepExecutionSelectionChanged: _selectStepExecution,
+        researcherCount: _researcherCount,
+        onResearcherCountChanged: _selectResearcherCount,
         spaceWorkers: _composerWorkers,
         eligibleWorkers: _composerEligibleWorkers,
         visibilityByWorkspace: _visibilityByWorkspace,
@@ -3185,6 +3308,7 @@ class _ThreadPageState extends State<ThreadPage>
           }
           _updateState(() {
             _markSelectionChangedByUser();
+            _workflowSelections = _workflowSelectionsWithCurrent();
             _workflow = value;
             // Keep the last Worker, model and effort across Chat/Work so the
             // shared Thread conversation can reuse its Worker Session. Fall
@@ -3213,7 +3337,28 @@ class _ThreadPageState extends State<ThreadPage>
                   'reasoningEffort': source['reasoningEffort'],
               },
             };
-            _workExecutionSelection = kept;
+            // A selection remembered for this Workflow wins while its Worker
+            // still exists; otherwise the carried-over choice above stands.
+            final remembered = _workflowSelections[value.split(':').first];
+            final rememberedWorker = remembered?['workerId'];
+            final usable = remembered != null &&
+                policy?.userSelectsWorker == true &&
+                rememberedWorker != null &&
+                [..._spaceWorkers, ..._ownChatWorkers]
+                    .any((w) => w.id == rememberedWorker);
+            if (usable) {
+              _workExecutionSelection = {
+                ...remembered,
+              };
+              if (!policy!.userSelectsModel) {
+                _workExecutionSelection.remove('model');
+              }
+              if (!policy.userSelectsEffort) {
+                _workExecutionSelection.remove('reasoningEffort');
+              }
+            } else {
+              _workExecutionSelection = kept;
+            }
           });
           _scheduleThreadViewStateSave();
         },

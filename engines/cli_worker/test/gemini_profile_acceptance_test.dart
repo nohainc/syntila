@@ -191,7 +191,11 @@ void main() {
       );
       expect(
         failure.providerFailure,
-        containsPair('providerErrorText', 'Output limit reached'),
+        // The provider's whole message: its stderr, then the structured error.
+        containsPair(
+          'providerErrorText',
+          allOf(contains('fixture_stderr_private_marker'), endsWith('Output limit reached')),
+        ),
       );
       expect(
         failure.providerFailure,

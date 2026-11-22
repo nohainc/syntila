@@ -110,6 +110,8 @@ export const WorkRequestBodySchema = z.looseObject(workRequestShape);
 /** POST|PUT /api/threads/:id/queue[/:item]: `{request}` holds the work request body. */
 export const QueueRequestSchema = z.looseObject({
   request: z.looseObject(workRequestShape, { error: "request must be an object" }).optional(),
+  beforeItemIds: z.array(z.string().max(128)).max(200).optional(),
+  afterItemIds: z.array(z.string().max(128)).max(200).optional(),
 });
 
 // ---- Plugins, releases and grants ---------------------------------------------

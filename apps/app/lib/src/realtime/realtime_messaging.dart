@@ -1,5 +1,3 @@
-import 'dart:collection';
-
 import 'realtime_cursors.dart';
 
 /// The wire name of the one protocol humans and Worker Agents share.
@@ -24,10 +22,11 @@ class RealtimeMessaging {
   final cursors = RealtimeCursors();
   int _request = 0;
   String? _userId;
-  final _seen = LinkedHashSet<String>();
+  final _seen = <String>{};
   final _unacked = <String, ({String kind, String id, int sequence})>{};
 
-  Map<String, dynamic> _command(String command, Map<String, Object?> payload) => {
+  Map<String, dynamic> _command(String command, Map<String, Object?> payload) =>
+      {
         'protocol': messagingProtocol,
         'requestId': 'req-${++_request}',
         'type': 'command',
@@ -41,7 +40,8 @@ class RealtimeMessaging {
   /// The stream id `me` names the caller's own user stream; the server resolves
   /// it from the credential and answers with the real id.
   Map<String, dynamic> subscribe(String kind, String id) {
-    final cursor = cursors.of(kind, kind == 'user' && id == 'me' ? (_userId ?? id) : id);
+    final cursor =
+        cursors.of(kind, kind == 'user' && id == 'me' ? (_userId ?? id) : id);
     return _command('subscription.subscribe', {
       'stream': {'kind': kind, 'id': id},
       if (cursor != null) 'cursor': cursor,
@@ -162,7 +162,8 @@ class RealtimeMessaging {
     ], const []);
   }
 
-  static Map<String, dynamic> _scopeOf(String kind, String id) => switch (kind) {
+  static Map<String, dynamic> _scopeOf(String kind, String id) =>
+      switch (kind) {
         'space' => {'kind': 'space', 'spaceId': id},
         'thread' => {'kind': 'thread', 'threadId': id},
         _ => {'kind': 'user'},

@@ -118,7 +118,7 @@ class _NotesPageState extends State<NotesPage> {
       children: [
         Row(children: [
           Expanded(
-            child: Text('My Notes',
+            child: Text('Notes',
                 style: Theme.of(context).textTheme.headlineMedium),
           ),
           FilledButton.icon(

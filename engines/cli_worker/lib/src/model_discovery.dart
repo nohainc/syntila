@@ -616,7 +616,12 @@ Future<List<DiscoveredModel>> discoverClaudeApiModels({
     }
     final body = await response.transform(utf8.decoder).join().timeout(timeout);
     if (response.statusCode != 200 || body.length > 1024 * 1024) {
-      throw const FormatException('Claude model list failed');
+      // Say what the API said, not just that it failed.
+      final said = body.length > 1000 ? '${body.substring(0, 1000)}…' : body;
+      throw FormatException(
+        'Claude model list failed: HTTP ${response.statusCode}'
+        '${said.trim().isEmpty ? '' : ' $said'}',
+      );
     }
     return parseClaudeApiModels(
       jsonDecode(body),

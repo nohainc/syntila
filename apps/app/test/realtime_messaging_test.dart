@@ -60,7 +60,8 @@ void main() {
     expect(m.cursors.of('space', 's1'), 7);
   });
 
-  test('the Thread copy of a Space event is delivered once but still acknowledged',
+  test(
+      'the Thread copy of a Space event is delivered once but still acknowledged',
       () {
     final m = RealtimeMessaging();
     expect(
@@ -100,7 +101,8 @@ void main() {
     expect(m.cursors.of('space', 's1'), 9);
   });
 
-  test('a resumed subscription reloads nothing, and the next one sends the cursor',
+  test(
+      'a resumed subscription reloads nothing, and the next one sends the cursor',
       () {
     final m = RealtimeMessaging();
     m.receive(envelope('message.created', 'space', 's1', sequence: 12));

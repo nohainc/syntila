@@ -12,6 +12,8 @@ import '../../ax/mcp_worker_pin.dart';
 import '../../ax/worker_presentation.dart';
 import '../../ax/worker_execution_options.dart';
 import '../../ax/worker_usage.dart' show AxWorkerUsageDataSource;
+import 'worker_member_models_section.dart';
+import 'worker_model_visibility_table.dart';
 import 'worker_usage_dialog.dart';
 
 /// Read-only identity view during the Worker-first rollout. Management is P6.
@@ -213,10 +215,12 @@ class WorkerInstancesList extends StatelessWidget {
                       else
                         for (final version in state.available)
                           ListTile(
-                            key: ValueKey('mcp-version-${version.manifestDigest}'),
+                            key: ValueKey(
+                                'mcp-version-${version.manifestDigest}'),
                             dense: true,
                             title: Text('${version.id} ${version.version}'),
-                            subtitle: Text(version.manifestDigest.substring(0, 12)),
+                            subtitle:
+                                Text(version.manifestDigest.substring(0, 12)),
                             selected: version == state.pin,
                             onTap: () => Navigator.pop(context, version),
                           ),
@@ -251,18 +255,21 @@ class WorkerInstancesList extends StatelessWidget {
 
   /// Asks the connected Worker to re-read its models, then watches the list
   /// until it reports (the Agent answers on its next heartbeat).
-  Future<void> _refreshModels(BuildContext context, WorkerInstance worker) async {
+  Future<void> _refreshModels(
+      BuildContext context, WorkerInstance worker) async {
     final source = management;
     final messenger = ScaffoldMessenger.of(context);
     if (source is! AxWorkerModelsSource) return;
     try {
-      await (source as AxWorkerModelsSource).requestWorkerModelsRefresh(worker.id);
+      await (source as AxWorkerModelsSource)
+          .requestWorkerModelsRefresh(worker.id);
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text('$error')));
       return;
     }
     messenger.showSnackBar(const SnackBar(
-        content: Text('Asked the Worker to read its models. This can take up to a minute.')));
+        content: Text(
+            'Asked the Worker to read its models. This can take up to a minute.')));
     final before = worker.modelsReportedAt;
     for (var i = 0; i < 24; i++) {
       await Future<void>.delayed(const Duration(seconds: 3));
@@ -404,8 +411,10 @@ class WorkerInstancesList extends StatelessWidget {
                 ));
         if (confirmed != true) return;
         await source.removeWorkerInstance(worker.id);
-        onLocalUpdate?.call(
-            (list) => [for (final w in list) if (w.id != worker.id) w]);
+        onLocalUpdate?.call((list) => [
+              for (final w in list)
+                if (w.id != worker.id) w
+            ]);
       }
     } catch (error) {
       if (context.mounted) {
@@ -468,8 +477,7 @@ class WorkerInstancesList extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
-            'Workers run AI tasks and tools on your connected devices.'),
+        const Text('Workers run AI tasks and tools on your connected devices.'),
         const SizedBox(height: 16),
         if (error != null)
           const Padding(
@@ -733,9 +741,8 @@ class WorkerInstancesList extends StatelessWidget {
       if (cliVersion != null && cliVersion.isNotEmpty) cliVersion,
     ].join(' ');
 
-    final shortId = worker.id.length > 12
-        ? '${worker.id.substring(0, 12)}..'
-        : worker.id;
+    final shortId =
+        worker.id.length > 12 ? '${worker.id.substring(0, 12)}..' : worker.id;
 
     return Column(
       key: ValueKey('worker-detail-${worker.id}'),
@@ -916,6 +923,10 @@ class WorkerInstancesList extends StatelessWidget {
             } catch (_) {}
           },
         ),
+        if (management != null) ...[
+          const SizedBox(height: 16),
+          WorkerMemberModelsSection(worker: worker, management: management),
+        ],
       ],
     );
   }
@@ -958,8 +969,8 @@ class WorkerInstancesList extends StatelessWidget {
     final json = worker.executionOptions;
     if (json != null) {
       try {
-        options = AxWorkerExecutionOptions.fromJson(
-            Map<String, dynamic>.from(json));
+        options =
+            AxWorkerExecutionOptions.fromJson(Map<String, dynamic>.from(json));
       } on Object {
         options = null;
       }
@@ -1048,7 +1059,8 @@ class _WorkerVisibilityCard extends StatefulWidget {
   final WorkerInstance worker;
   final AxWorkerManagementSource? management;
   final Future<void> Function(
-      List<String> hiddenModels, Map<String, List<String>> hiddenEfforts) onSaved;
+          List<String> hiddenModels, Map<String, List<String>> hiddenEfforts)
+      onSaved;
 
   @override
   State<_WorkerVisibilityCard> createState() => _WorkerVisibilityCardState();
@@ -1081,19 +1093,6 @@ class _WorkerVisibilityCardState extends State<_WorkerVisibilityCard> {
     _hiddenEfforts = {
       for (final e in worker.hiddenEfforts.entries) e.key: e.value.toSet(),
     };
-  }
-
-  List<AxWorkerModelOption> _models(WorkerInstance worker) {
-    final json = worker.executionOptions;
-    if (json == null) return const [];
-    try {
-      return AxWorkerExecutionOptions.fromJson(Map<String, dynamic>.from(json))
-          .models
-          .where((m) => m.status != 'unavailable')
-          .toList(growable: false);
-    } on Object {
-      return const [];
-    }
   }
 
   void _toggleModel(String modelId, bool visible) {
@@ -1157,19 +1156,7 @@ class _WorkerVisibilityCardState extends State<_WorkerVisibilityCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final models = _models(widget.worker);
-    final allEfforts = <String>[];
-    for (final model in models) {
-      for (final eff in model.effort.values) {
-        if (!allEfforts.contains(eff)) allEfforts.add(eff);
-      }
-    }
-
-    String effortTitle(String eff) {
-      if (eff.isEmpty) return eff;
-      return eff[0].toUpperCase() + eff.substring(1);
-    }
-
+    final models = workerModelOptions(widget.worker);
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -1197,31 +1184,14 @@ class _WorkerVisibilityCardState extends State<_WorkerVisibilityCard> {
                 ),
               )
             else ...[
-              LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                    child: DataTable(
-                      headingRowHeight: 36,
-                      dataRowMinHeight: 40,
-                      dataRowMaxHeight: 44,
-                      columnSpacing: 20,
-                      columns: [
-                        const DataColumn(label: Text('Model')),
-                        const DataColumn(
-                            label: Center(child: Text('Visible'))),
-                        for (final eff in allEfforts)
-                          DataColumn(
-                              label: Center(child: Text(effortTitle(eff)))),
-                      ],
-                      rows: [
-                        for (final model in models)
-                          _buildModelRow(theme, model, allEfforts),
-                      ],
-                    ),
-                  ),
-                ),
+              WorkerModelVisibilityTable(
+                models: models,
+                hiddenModels: _hiddenModels,
+                hiddenEfforts: _hiddenEfforts,
+                keyPrefix: 'worker-visibility',
+                editable: widget.management != null && !_saving,
+                onModelChanged: _toggleModel,
+                onEffortChanged: _toggleEffort,
               ),
               if (widget.management != null) ...[
                 const SizedBox(height: 12),
@@ -1260,44 +1230,6 @@ class _WorkerVisibilityCardState extends State<_WorkerVisibilityCard> {
       ),
     );
   }
-
-  DataRow _buildModelRow(
-    ThemeData theme,
-    AxWorkerModelOption model,
-    List<String> allEfforts,
-  ) {
-    final isModelVisible = !_hiddenModels.contains(model.id);
-    final supportsEffort =
-        model.effort.supported && model.effort.values.isNotEmpty;
-    return DataRow(
-      cells: [
-        DataCell(Text(model.name)),
-        DataCell(Center(
-          child: Checkbox(
-            key: ValueKey('worker-visibility-model-${model.id}'),
-            value: isModelVisible,
-            onChanged: widget.management == null || _saving
-                ? null
-                : (v) => _toggleModel(model.id, v ?? false),
-          ),
-        )),
-        for (final eff in allEfforts)
-          DataCell(Center(
-            child: isModelVisible &&
-                    supportsEffort &&
-                    model.effort.values.contains(eff)
-                ? Checkbox(
-                    key: ValueKey('worker-visibility-effort-${model.id}-$eff'),
-                    value: !(_hiddenEfforts[model.id]?.contains(eff) ?? false),
-                    onChanged: widget.management == null || _saving
-                        ? null
-                        : (v) => _toggleEffort(model.id, eff, v ?? false),
-                  )
-                : Text('—', style: TextStyle(color: theme.disabledColor)),
-          )),
-      ],
-    );
-  }
 }
 
 class _AddWorkerDialog extends StatefulWidget {
@@ -1311,15 +1243,38 @@ class _AddWorkerDialog extends StatefulWidget {
 }
 
 class _AddWorkerDialogState extends State<_AddWorkerDialog> {
-  late String _selected = widget.types.first.id;
-  final _nameController = TextEditingController();
+  late String _selected;
+  late final TextEditingController _nameController;
+  bool _nameEdited = false;
   bool _submitting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final initialType = widget.types.first;
+    _selected = initialType.id;
+    _nameController = TextEditingController(text: initialType.name);
+  }
 
   @override
   void dispose() {
     _nameController.dispose();
     super.dispose();
+  }
+
+  void _selectType(String typeId) {
+    if (typeId == _selected) return;
+    final nextType = widget.types.firstWhere((type) => type.id == typeId);
+    setState(() {
+      _selected = typeId;
+      if (!_nameEdited) {
+        _nameController.value = TextEditingValue(
+          text: nextType.name,
+          selection: TextSelection.collapsed(offset: nextType.name.length),
+        );
+      }
+    });
   }
 
   Future<void> _submit() async {
@@ -1356,7 +1311,9 @@ class _AddWorkerDialogState extends State<_AddWorkerDialog> {
             const Text('Choose a Worker type and name to create a new Worker.'),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
+              key: const ValueKey('add-worker-type-selector'),
               initialValue: _selected,
+              borderRadius: SyntilaRadius.radiusMd,
               decoration: const InputDecoration(labelText: 'Type'),
               items: [
                 for (final type in widget.types)
@@ -1365,7 +1322,7 @@ class _AddWorkerDialogState extends State<_AddWorkerDialog> {
               onChanged: _submitting
                   ? null
                   : (value) {
-                      if (value != null) setState(() => _selected = value);
+                      if (value != null) _selectType(value);
                     },
             ),
             const SizedBox(height: 12),
@@ -1380,6 +1337,9 @@ class _AddWorkerDialogState extends State<_AddWorkerDialog> {
                 hintText: 'e.g. Work Laptop',
                 errorText: _error,
               ),
+              onChanged: (_) {
+                if (!_nameEdited) _nameEdited = true;
+              },
               onSubmitted: (_) => _submit(),
             ),
           ],

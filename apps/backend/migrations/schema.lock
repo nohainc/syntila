@@ -700,6 +700,10 @@ column worker_instances.revoked_at timestamptz
 column worker_instances.updated_at timestamptz not-null default
 column worker_instances.visibility_json text not-null default
 column worker_instances.worker_type_id text not-null
+column worker_member_model_access.allowed_efforts_json text not-null default
+column worker_member_model_access.allowed_models_json text not-null default
+column worker_member_model_access.updated_at timestamptz not-null default
+column worker_member_model_access.worker_id text not-null
 column worker_pairing_challenges.consumed_at timestamptz
 column worker_pairing_challenges.consumed_credential_id text
 column worker_pairing_challenges.created_at timestamptz not-null default
@@ -729,6 +733,13 @@ column worker_scheduling.state text not-null default
 column worker_scheduling.updated_at timestamptz not-null default
 column worker_scheduling.updated_by_user_id text
 column worker_scheduling.worker_id text not-null
+column worker_space_members.created_at timestamptz not-null default
+column worker_space_members.enabled bool not-null default
+column worker_space_members.permissions_json text not-null default
+column worker_space_members.space_id text not-null
+column worker_space_members.updated_at timestamptz not-null default
+column worker_space_members.user_id text not-null
+column worker_space_members.worker_id text not-null
 column workflow_events.consumed_by text
 column workflow_events.created_at timestamptz not-null default
 column workflow_events.id int8 not-null identity
@@ -1346,6 +1357,10 @@ constraint worker_instances.worker_instances_owner_user_id_fkey foreign-key -> u
 constraint worker_instances.worker_instances_pkey primary-key
 constraint worker_instances.worker_instances_visibility_json_check check
 constraint worker_instances.worker_instances_worker_type_id_fkey foreign-key -> worker_catalog on-delete-restrict
+constraint worker_member_model_access.worker_member_model_access_allowed_efforts_json_check check
+constraint worker_member_model_access.worker_member_model_access_allowed_models_json_check check
+constraint worker_member_model_access.worker_member_model_access_pkey primary-key
+constraint worker_member_model_access.worker_member_model_access_worker_id_fkey foreign-key -> worker_instances on-delete-cascade
 constraint worker_pairing_challenges.worker_pairing_challenges_kind_check check
 constraint worker_pairing_challenges.worker_pairing_challenges_owner_user_id_fkey foreign-key -> users on-delete-cascade
 constraint worker_pairing_challenges.worker_pairing_challenges_pkey primary-key
@@ -1372,6 +1387,11 @@ constraint worker_scheduling.worker_scheduling_pkey primary-key
 constraint worker_scheduling.worker_scheduling_state_check check
 constraint worker_scheduling.worker_scheduling_updated_by_user_id_fkey foreign-key -> users on-delete-set-null
 constraint worker_scheduling.worker_scheduling_worker_id_fkey foreign-key -> workspace_worker_inventory on-delete-cascade
+constraint worker_space_members.worker_space_members_permissions_json_check check
+constraint worker_space_members.worker_space_members_pkey primary-key
+constraint worker_space_members.worker_space_members_space_id_fkey foreign-key -> spaces on-delete-cascade
+constraint worker_space_members.worker_space_members_user_id_fkey foreign-key -> users on-delete-cascade
+constraint worker_space_members.worker_space_members_worker_id_fkey foreign-key -> worker_instances on-delete-cascade
 constraint workflow_events.workflow_events_instance_id_fkey foreign-key -> workflow_instances on-delete-cascade
 constraint workflow_events.workflow_events_pkey primary-key
 constraint workflow_instances.workflow_instances_pkey primary-key
@@ -1829,6 +1849,7 @@ index worker_instances.worker_instances_actor_id_key (actor_id) unique
 index worker_instances.worker_instances_owner_created_idx (owner_user_id,created_at)
 index worker_instances.worker_instances_pkey (id) unique
 index worker_instances.worker_instances_worker_type_idx (worker_type_id)
+index worker_member_model_access.worker_member_model_access_pkey (worker_id) unique
 index worker_pairing_challenges.worker_pairing_challenges_owner_idx (owner_user_id)
 index worker_pairing_challenges.worker_pairing_challenges_pkey (id) unique
 index worker_pairing_challenges.worker_pairing_challenges_worker_idx (worker_instance_id,created_at)
@@ -1840,6 +1861,9 @@ index worker_profiles.worker_profiles_updated_by_user_id_fkidx (updated_by_user_
 index worker_profiles.worker_profiles_worker_type_id_revision_key (worker_type_id,revision) unique
 index worker_scheduling.worker_scheduling_pkey (worker_id) unique
 index worker_scheduling.worker_scheduling_updated_by_user_id_fkidx (updated_by_user_id)
+index worker_space_members.worker_space_members_pkey (worker_id,space_id,user_id) unique
+index worker_space_members.worker_space_members_space_user_idx (space_id,user_id)
+index worker_space_members.worker_space_members_user_idx (user_id)
 index workflow_events.workflow_events_instance_id_fkidx (instance_id)
 index workflow_events.workflow_events_pending_idx (instance_id,type,id) partial
 index workflow_events.workflow_events_pkey (id) unique

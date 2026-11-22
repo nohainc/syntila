@@ -1450,7 +1450,7 @@ void main() {
           lessThan(tester.getCenter(find.byTooltip('Notifications')).dx));
       await tester.tap(menu);
       await tester.pumpAndSettle();
-      expect(find.text('My Notes'), findsOneWidget);
+      expect(find.text('Notes'), findsOneWidget);
       await tester.tapAt(const Offset(390, 600));
       await tester.pumpAndSettle();
       // Search and Notifications should be present

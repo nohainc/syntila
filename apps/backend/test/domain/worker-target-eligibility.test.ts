@@ -122,3 +122,112 @@ describe("Profile capability declarations", () => {
     expect(declaredProfileCapabilities(null)).toBeNull();
   });
 });
+
+describe("Per-Space member Worker access enforcement (ADR-042)", () => {
+  it("allows enabled Space members within their granted mode, and rejects disabled or unlisted members", async () => {
+    const f = await fixture();
+    await f.sqlite.exec(`
+      ${user("carol")}
+      ${member("sp", "carol", "collaborator")}
+      UPDATE space_memberships SET role = 'collaborator' WHERE space_id = 'sp' AND user_id = 'bob';
+      UPDATE threads SET access_policy_json = '{"allowedPermissions":["execute"]}' WHERE id = 'th';
+      INSERT INTO worker_space_members (worker_id, space_id, user_id, enabled, permissions_json)
+        VALUES ('worker-alice', 'sp', 'bob', true, '{"mode":"chat"}');
+    `);
+
+    // Owner still works unchanged.
+    expect((await f.accept({ requesterUserId: "alice" })).ok).toBe(true);
+
+    // Unlisted member (carol) is rejected.
+    expect(await f.accept({ requesterUserId: "carol" })).toEqual({ ok: false, code: "worker_not_found" });
+
+    // Enabled member (bob) succeeds on chat, but is rejected for write/work.
+    expect((await f.accept({ requesterUserId: "bob", workflowId: "chat" })).ok).toBe(true);
+    expect(await f.accept({
+      requesterUserId: "bob",
+      workflowId: "direct",
+      readOnly: false,
+      capabilities: ["authorized_context_read", "thread_write"],
+    })).toEqual({ ok: false, code: "execute_not_permitted" });
+
+    // Upgrading bob to work allows thread_write, still blocks test_execution.
+    await f.sqlite.exec(`
+      UPDATE worker_space_members SET permissions_json = '{"mode":"work"}'
+       WHERE worker_id = 'worker-alice' AND space_id = 'sp' AND user_id = 'bob';
+    `);
+    expect((await f.accept({
+      requesterUserId: "bob",
+      workflowId: "direct",
+      readOnly: false,
+      capabilities: ["authorized_context_read", "thread_write"],
+    })).ok).toBe(true);
+    expect(await f.accept({
+      requesterUserId: "bob",
+      workflowId: "direct",
+      readOnly: false,
+      capabilities: ["authorized_context_read", "test_execution"],
+    })).toEqual({ ok: false, code: "execute_not_permitted" });
+
+    // Eligible workers endpoint surfaces shared Worker for enabled bob, not for unlisted carol.
+    const prior = process.env.SYNTILA_FEATURE_FLAGS;
+    process.env.SYNTILA_FEATURE_FLAGS = "worker_identity,worker_agent_connect,worker_target_dispatch";
+    try {
+      const envFor = (who: string) => ({
+        SYNTILA_DB: f.db,
+        SYNTILA_ENVIRONMENT: "development",
+        TEST_AUTHENTICATION: async () => ({
+          userId: who,
+          user: { id: who, email: `${who}@test`, displayName: who, status: "active" },
+          spaceRoles: { sp: "collaborator" },
+          sessionId: "test",
+          clientType: "web",
+        }),
+      }) as never;
+
+      const bobEligible = await handleListEligibleWorkers(new Request("https://test/api?workflowId=chat"), envFor("bob"), "th");
+      expect(await bobEligible.json()).toEqual({ workflowId: "chat", workerIds: ["worker-alice"] });
+
+      const carolEligible = await handleListEligibleWorkers(new Request("https://test/api?workflowId=chat"), envFor("carol"), "th");
+      expect(await carolEligible.json()).toEqual({ workflowId: "chat", workerIds: [] });
+
+      // Disabling bob rejects execution and removes from eligible list.
+      await f.sqlite.exec(`
+        UPDATE worker_space_members SET enabled = false
+         WHERE worker_id = 'worker-alice' AND space_id = 'sp' AND user_id = 'bob';
+      `);
+      expect(await f.accept({ requesterUserId: "bob", workflowId: "chat" })).toEqual({ ok: false, code: "execute_not_permitted" });
+      const bobDisabled = await handleListEligibleWorkers(new Request("https://test/api?workflowId=chat"), envFor("bob"), "th");
+      expect(await bobDisabled.json()).toEqual({ workflowId: "chat", workerIds: [] });
+    } finally {
+      if (prior === undefined) delete process.env.SYNTILA_FEATURE_FLAGS;
+      else process.env.SYNTILA_FEATURE_FLAGS = prior;
+    }
+  });
+});
+
+describe("Worker-wide member model and effort allow-list (ADR-042)", () => {
+  it("allows members only the models and efforts the owner ticked", async () => {
+    const f = await fixture();
+    await f.sqlite.exec(`
+      UPDATE space_memberships SET role = 'collaborator' WHERE space_id = 'sp' AND user_id = 'bob';
+      UPDATE threads SET access_policy_json = '{"allowedPermissions":["execute"]}' WHERE id = 'th';
+      INSERT INTO worker_space_members (worker_id, space_id, user_id, enabled, permissions_json)
+        VALUES ('worker-alice', 'sp', 'bob', true, '{"mode":"chat"}');
+    `);
+    const bob = { requesterUserId: "bob", workflowId: "chat" };
+    // Closed by default: no row, no model.
+    expect(await f.accept({ ...bob, model: "m1" } as never)).toEqual({ ok: false, code: "model_not_supported" });
+    await f.sqlite.exec(`
+      INSERT INTO worker_member_model_access (worker_id, allowed_models_json, allowed_efforts_json)
+        VALUES ('worker-alice', '["m1"]', '{"m1":["low"]}');
+    `);
+    expect((await f.accept({ ...bob, model: "m1", reasoningEffort: "low" } as never)).ok).toBe(true);
+    expect(await f.accept({ ...bob, model: "m2" } as never)).toEqual({ ok: false, code: "model_not_supported" });
+    expect(await f.accept({ ...bob, model: "m1", reasoningEffort: "high" } as never)).toEqual({
+      ok: false,
+      code: "effort_not_supported",
+    });
+    // The owner is never limited by the member table.
+    expect((await f.accept({ model: "m2" } as never)).ok).toBe(true);
+  });
+});

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../../ax/ax_work_models.dart';
+import '../../common/syntila_markdown_body.dart';
 
-/// Displays canonical failure text alongside separately labelled provider
-/// failure details and any response returned with a failed run.
+/// Shows why a Work step failed: the provider's own error text exactly as it
+/// came (in the error color), or the generic message when there is none, plus
+/// any native code and response returned with the failed run.
 class ProviderFailurePanel extends StatefulWidget {
   const ProviderFailurePanel({
     super.key,
@@ -20,6 +22,19 @@ class ProviderFailurePanel extends StatefulWidget {
   final bool providerFailureUnavailable;
   final TextStyle? canonicalStyle;
 
+  /// The text the panel shows, for the Copy action: the provider's error (or
+  /// the generic message without one), then the native code and failed-run
+  /// response when present.
+  static String visibleText(
+      String canonicalMessage, AxProviderFailureDetails? details) {
+    return [
+      details?.providerErrorText ?? canonicalMessage,
+      if (details?.nativeErrorCode != null)
+        'Native code: ${details!.nativeErrorCode}',
+      if (details?.failedRunResponse != null) details!.failedRunResponse!,
+    ].join('\n\n');
+  }
+
   @override
   State<ProviderFailurePanel> createState() => _ProviderFailurePanelState();
 }
@@ -27,6 +42,7 @@ class ProviderFailurePanel extends StatefulWidget {
 class _ProviderFailurePanelState extends State<ProviderFailurePanel> {
   static const int _collapsedMaxChars = 600;
   bool _expanded = false;
+  bool _errorExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -35,11 +51,10 @@ class _ProviderFailurePanelState extends State<ProviderFailurePanel> {
     final hasNativeCode = details?.nativeErrorCode != null;
     final hasProviderError = details?.providerErrorText != null;
     final hasFailedResponse = details?.failedRunResponse != null;
-    final errorLabel = details?.source == 'stderr'
-        ? 'Provider stderr'
-        : details?.source == 'stdout'
-            ? 'Provider stdout'
-            : 'Provider error';
+    final muted = TextStyle(fontSize: 11, color: scheme.onSurfaceVariant);
+    // The provider's text is the message itself, so it uses the normal message
+    // style; only the notes around it are small.
+    final message = SyntilaMessageTypography.fromTheme(Theme.of(context));
 
     return Semantics(
       container: true,
@@ -47,144 +62,83 @@ class _ProviderFailurePanelState extends State<ProviderFailurePanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SelectableText(
-            widget.canonicalMessage,
-            key: const ValueKey('canonical-failure-message'),
-            style: widget.canonicalStyle ??
-                TextStyle(fontSize: 12, color: scheme.error),
-          ),
+          // The provider's own message says more than our generic line, so it
+          // replaces it. The generic message is shown only without one.
+          if (hasProviderError)
+            _collapsible(
+              details!.providerErrorText!,
+              textKey: const ValueKey('provider-error-text'),
+              toggleKey: const ValueKey('toggle-provider-error'),
+              expanded: _errorExpanded,
+              onToggle: () => setState(() => _errorExpanded = !_errorExpanded),
+              style: widget.canonicalStyle ??
+                  message.copyWith(color: scheme.error),
+              semanticsLabel: 'Provider error text',
+              showMore: 'Show more',
+              showLess: 'Show less',
+            )
+          else
+            SelectableText(
+              widget.canonicalMessage,
+              key: const ValueKey('canonical-failure-message'),
+              style: widget.canonicalStyle ??
+                  TextStyle(fontSize: 12, color: scheme.error),
+            ),
           if (widget.providerFailureUnavailable) ...[
             const SizedBox(height: 6),
             Text('Provider details are unavailable.',
                 key: const ValueKey('provider-failure-unavailable'),
-                style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+                style: muted),
           ],
-          if (details != null &&
-              (hasNativeCode ||
-                  hasProviderError ||
-                  hasFailedResponse ||
-                  details.truncated ||
-                  details.omitted)) ...[
+          if (hasNativeCode) ...[
+            const SizedBox(height: 6),
+            Semantics(
+              label: 'Native error code ${details!.nativeErrorCode}',
+              child: Text(
+                'Native code: ${details.nativeErrorCode}',
+                key: const ValueKey('provider-native-error-code'),
+                style: muted.copyWith(fontFamily: 'monospace'),
+              ),
+            ),
+          ],
+          if (hasFailedResponse) ...[
             const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: scheme.errorContainer.withValues(alpha: 0.28),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: scheme.error.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        'Provider details',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (hasNativeCode)
-                        Semantics(
-                          label: 'Native error code ${details.nativeErrorCode}',
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'Native code: ${details.nativeErrorCode}',
-                              key: const ValueKey('provider-native-error-code'),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontFamily: 'monospace',
-                                color: scheme.onSurface,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+            Text(
+              'Response from failed run',
+              style: muted.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            _collapsible(
+              details!.failedRunResponse!,
+              textKey: const ValueKey('failed-run-response-text'),
+              toggleKey: const ValueKey('toggle-failed-run-response'),
+              expanded: _expanded,
+              onToggle: () => setState(() => _expanded = !_expanded),
+              style: message,
+              semanticsLabel: 'Response from failed run',
+              showMore: 'Show full response',
+              showLess: 'Show less',
+            ),
+          ],
+          if (details != null && (details.truncated || details.omitted)) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                if (details.truncated)
+                  Text('Truncated to size limit.',
+                      key: const ValueKey('provider-failure-truncated'),
+                      style: muted),
+                if (details.omitted)
+                  Text(
+                    details.omittedFields.isEmpty
+                        ? 'Sensitive content omitted.'
+                        : 'Omitted sensitive field(s): ${details.omittedFields.join(', ')}.',
+                    key: const ValueKey('provider-failure-omitted'),
+                    style: muted,
                   ),
-                  if (hasProviderError) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      errorLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.error,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Semantics(
-                      label: '$errorLabel text',
-                      child: SelectableText(
-                        details.providerErrorText!,
-                        key: const ValueKey('provider-error-text'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurface,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
-                  if (hasFailedResponse) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Response from failed run',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    _buildResponseBox(context, details.failedRunResponse!),
-                  ],
-                  if (details.truncated || details.omitted) ...[
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        if (details.truncated)
-                          Text(
-                            'Truncated to size limit.',
-                            key: const ValueKey('provider-failure-truncated'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        if (details.omitted)
-                          Text(
-                            details.omittedFields.isEmpty
-                                ? 'Sensitive content omitted.'
-                                : 'Omitted sensitive field(s): ${details.omittedFields.join(', ')}.',
-                            key: const ValueKey('provider-failure-omitted'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
+              ],
             ),
           ],
         ],
@@ -192,14 +146,24 @@ class _ProviderFailurePanelState extends State<ProviderFailurePanel> {
     );
   }
 
-  Widget _buildResponseBox(BuildContext context, String responseText) {
-    final scheme = Theme.of(context).colorScheme;
-    final runes = responseText.runes;
+  /// Selectable text that collapses after [_collapsedMaxChars] characters
+  /// (never splitting a character) with a toggle to show all of it.
+  Widget _collapsible(
+    String text, {
+    required Key textKey,
+    required Key toggleKey,
+    required bool expanded,
+    required VoidCallback onToggle,
+    required TextStyle style,
+    required String semanticsLabel,
+    required String showMore,
+    required String showLess,
+  }) {
+    final runes = text.runes;
     final isLong = runes.length > _collapsedMaxChars;
-    final displayed = !isLong || _expanded
-        ? responseText
+    final displayed = !isLong || expanded
+        ? text
         : '${String.fromCharCodes(runes.take(_collapsedMaxChars))}…';
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -207,29 +171,21 @@ class _ProviderFailurePanelState extends State<ProviderFailurePanel> {
           constraints: const BoxConstraints(maxHeight: 240),
           child: SingleChildScrollView(
             child: Semantics(
-              label: 'Response from failed run',
-              child: SelectableText(
-                displayed,
-                key: const ValueKey('failed-run-response-text'),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: scheme.onSurface,
-                  height: 1.4,
-                ),
-              ),
+              label: semanticsLabel,
+              child: SelectableText(displayed, key: textKey, style: style),
             ),
           ),
         ),
         if (isLong)
           TextButton(
-            key: const ValueKey('toggle-failed-run-response'),
-            onPressed: () => setState(() => _expanded = !_expanded),
+            key: toggleKey,
+            onPressed: onToggle,
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            child: Text(_expanded ? 'Show less' : 'Show full response'),
+            child: Text(expanded ? showLess : showMore),
           ),
       ],
     );

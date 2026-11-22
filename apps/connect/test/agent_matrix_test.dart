@@ -103,6 +103,47 @@ void main() {
         expect(a.startAcks, 0);
       },
     );
+    test(
+      'reports a failure with the Cloud\'s own code and canonical message',
+      () async {
+        engine.hold = true;
+        await host.startReady(engine);
+        final a = cloud.dispatch(worker.id);
+        await waitFor(() => engine.launchCount(a.id) == 1);
+        engine.finish(
+          a.id,
+          const EngineOutcome(TerminalKind.failed, {
+            'errorCode': 'engine_failed',
+            'message': 'The Engine could not run this assignment',
+            'retryable': false,
+            'detail': 'claude: rate limit reached, resets 5pm',
+            'providerFailure': {
+              'schemaVersion': 1,
+              'source': 'stderr',
+              'providerErrorText': 'Claude AI usage limit reached',
+            },
+          }),
+        );
+        await settled(a);
+        expect(a.status, 'failed');
+        expect(
+          a.terminal!['providerFailure'],
+          containsPair('providerErrorText', 'Claude AI usage limit reached'),
+        );
+        expect(
+          (a.terminal!['error'] as Map)['details'],
+          containsPair('diagnostic', 'claude: rate limit reached, resets 5pm'),
+        );
+        expect(
+          a.terminal!['error'],
+          containsPair('code', 'execution_failed'),
+        );
+        expect(
+          a.terminal!['error'],
+          containsPair('message', 'The assignment could not be completed.'),
+        );
+      },
+    );
     test('uses the server snapshot and its timeout for the Engine', () async {
       await host.startReady(engine);
       final a = cloud.dispatch(

@@ -78,6 +78,7 @@ class WorkerTargetPicker extends StatefulWidget {
     required this.loadEligibleIds,
     required this.selectedId,
     required this.onChanged,
+    this.sharedWorkers = const [],
     this.enabled = true,
   });
 
@@ -88,6 +89,7 @@ class WorkerTargetPicker extends StatefulWidget {
       loadEligibleIds;
   final String? selectedId;
   final ValueChanged<String?> onChanged;
+  final List<WorkerInstance> sharedWorkers;
   final bool enabled;
 
   @override
@@ -145,14 +147,19 @@ class _WorkerTargetPickerState extends State<WorkerTargetPicker> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      AxQueryBuilder<List<WorkerInstance>>(
+  Widget build(BuildContext context) => AxQueryBuilder<List<WorkerInstance>>(
         engine: widget.catalogs.engine,
         query: widget.catalogs.workerInstances,
         builder: (context, state) {
-          final workers = [
-            for (final worker in state.data ?? const <WorkerInstance>[])
-              if (!worker.isRevoked || worker.id == widget.selectedId) worker,
+          final seenIds = <String>{};
+          final workers = <WorkerInstance>[
+            for (final worker in [
+              ...(state.data ?? const <WorkerInstance>[]),
+              ...widget.sharedWorkers,
+            ])
+              if ((!worker.isRevoked || worker.id == widget.selectedId) &&
+                  seenIds.add(worker.id))
+                worker,
           ];
           if (state.data == null) {
             return const Text('Loading Workers…',
@@ -166,12 +173,10 @@ class _WorkerTargetPickerState extends State<WorkerTargetPicker> {
           final labels = workerPickerLabels(workers);
           final selected =
               workers.where((w) => w.id == widget.selectedId).firstOrNull;
-          final selectedState = selected == null
-              ? null
-              : workerPickerState(selected, _eligible);
-          final title = selected == null
-              ? 'Choose a Worker'
-              : labels[selected.id]!;
+          final selectedState =
+              selected == null ? null : workerPickerState(selected, _eligible);
+          final title =
+              selected == null ? 'Choose a Worker' : labels[selected.id]!;
           return PopupMenuButton<String>(
             key: const ValueKey('worker-picker'),
             enabled: widget.enabled,
@@ -186,8 +191,7 @@ class _WorkerTargetPickerState extends State<WorkerTargetPicker> {
                 const PopupMenuItem<String>(
                     enabled: false,
                     child: Text('Could not check which Workers can run this')),
-              for (final worker in workers)
-                _item(worker, labels[worker.id]!),
+              for (final worker in workers) _item(worker, labels[worker.id]!),
             ],
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -224,8 +228,7 @@ class _WorkerTargetPickerState extends State<WorkerTargetPicker> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(label, style: const TextStyle(fontSize: 12.5)),
-          Text(
-              '${worker.workerTypeName} · ${workerPickerStateLabel(state)}',
+          Text('${worker.workerTypeName} · ${workerPickerStateLabel(state)}',
               style: const TextStyle(fontSize: 11)),
         ],
       ),

@@ -91,38 +91,6 @@ class GlobalAppMenu extends StatelessWidget {
       menuChildren: [
         // 1. Application destinations
         MenuItemButton(
-            style: itemStyle(),
-            leadingIcon:
-                Icon(Icons.people_outline, size: 16, color: menuIconColor),
-            onPressed: () {
-              onNavigateTo(const AxNavigation.people());
-              if (compact) Scaffold.maybeOf(context)?.closeDrawer();
-            },
-            child: const Text('People',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500))),
-        MenuItemButton(
-            key: const ValueKey('menu-my-files'),
-            style: itemStyle(),
-            leadingIcon:
-                Icon(Icons.folder_outlined, size: 16, color: menuIconColor),
-            onPressed: () {
-              onNavigateTo(const AxNavigation.files());
-              if (compact) Scaffold.maybeOf(context)?.closeDrawer();
-            },
-            child: const Text('My Files',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500))),
-        MenuItemButton(
-            key: const ValueKey('menu-my-notes'),
-            style: itemStyle(),
-            leadingIcon: Icon(Icons.sticky_note_2_outlined,
-                size: 16, color: menuIconColor),
-            onPressed: () {
-              onNavigateTo(const AxNavigation.notes());
-              if (compact) Scaffold.maybeOf(context)?.closeDrawer();
-            },
-            child: const Text('My Notes',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500))),
-        MenuItemButton(
           style: itemStyle(),
           leadingIcon: Icon(
             Icons.grid_view_rounded,
@@ -149,6 +117,38 @@ class GlobalAppMenu extends StatelessWidget {
                           fontSize: 12.5, fontWeight: FontWeight.w500)),
                 ),
         ),
+        MenuItemButton(
+            style: itemStyle(),
+            leadingIcon:
+                Icon(Icons.people_outline, size: 16, color: menuIconColor),
+            onPressed: () {
+              onNavigateTo(const AxNavigation.people());
+              if (compact) Scaffold.maybeOf(context)?.closeDrawer();
+            },
+            child: const Text('People',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500))),
+        MenuItemButton(
+            key: const ValueKey('menu-my-files'),
+            style: itemStyle(),
+            leadingIcon:
+                Icon(Icons.folder_outlined, size: 16, color: menuIconColor),
+            onPressed: () {
+              onNavigateTo(const AxNavigation.files());
+              if (compact) Scaffold.maybeOf(context)?.closeDrawer();
+            },
+            child: const Text('Files',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500))),
+        MenuItemButton(
+            key: const ValueKey('menu-my-notes'),
+            style: itemStyle(),
+            leadingIcon: Icon(Icons.sticky_note_2_outlined,
+                size: 16, color: menuIconColor),
+            onPressed: () {
+              onNavigateTo(const AxNavigation.notes());
+              if (compact) Scaffold.maybeOf(context)?.closeDrawer();
+            },
+            child: const Text('Notes',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500))),
         MenuItemButton(
           style: itemStyle(),
           leadingIcon: Icon(
