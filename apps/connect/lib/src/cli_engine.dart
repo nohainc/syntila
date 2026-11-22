@@ -9,6 +9,7 @@ import 'engine.dart';
 import 'folders.dart';
 import 'journal.dart';
 import 'mcp_worker_runner.dart';
+import 'output_images.dart';
 
 /// Finds the pinned Profile for an assignment. Null means it is not available
 /// locally, and the assignment fails instead of running with another Profile.
@@ -343,6 +344,25 @@ class CliEngineLauncher
         }
       }
     }
+    // Images for the user go to the assignment's own folder, outside the
+    // Space folder, so the project is never touched.
+    final imagesDirectory = Directory(
+      '${workRoot.path}/${request.assignmentId}/outputs',
+    );
+    try {
+      await imagesDirectory.create(recursive: true);
+    } on Object {
+      // Linked provider images are still picked up.
+    }
+    // Read-only steps (Chat, Plan, Research) cannot save files; their
+    // linked provider images are still picked up.
+    final readOnlyStep =
+        request.payload['readOnly'] == true || snapshot['readOnly'] == true;
+    final imageDirectories = [
+      imagesDirectory.path,
+      // The Engine copies Codex's images here.
+      '${workingDirectory.path}/.syntila/outputs/${request.assignmentId}',
+    ];
     unawaited(
       supervisor
           .execute(
@@ -358,7 +378,9 @@ class CliEngineLauncher
             maxConcurrentAssignments: maxConcurrent,
             assignmentId: request.assignmentId,
             attemptId: request.attemptId,
-            prompt: prompt,
+            prompt: readOnlyStep
+                ? prompt
+                : promptWithOutputImages(prompt, imagesDirectory.path),
             timeout: request.timeout,
             queueWaitTimeout: queueWait is int
                 ? Duration(milliseconds: queueWait)
@@ -376,13 +398,30 @@ class CliEngineLauncher
             onActivity: request.onActivity,
           )
           .then<void>(
-            (result) => run._finish(
-              EngineOutcome(TerminalKind.completed, {
-                'summary': 'Completed',
-                'output': {'text': result.output},
-                'artifactIds': result.artifacts,
-              }),
-            ),
+            (result) async {
+              var text = result.output;
+              var images = const <String>[];
+              try {
+                images = await collectOutputImages(
+                  imageDirectories,
+                  linkedImages(text, [
+                    ...imageDirectories,
+                    ...providerImageRoots(Platform.environment),
+                  ]),
+                );
+                text = withoutImageLinks(text, images);
+              } on Object {
+                images = const [];
+              }
+              run._finish(
+                EngineOutcome(TerminalKind.completed, {
+                  'summary': 'Completed',
+                  'output': {'text': text},
+                  'artifactIds': result.artifacts,
+                  if (images.isNotEmpty) localOutputImagesKey: images,
+                }),
+              );
+            },
             onError: (Object error) => run._finish(
               outcomeForError(error, cancelled: run.cancelRequested),
             ),

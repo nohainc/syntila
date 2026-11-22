@@ -225,7 +225,9 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       err.writeln(error.message);
       return 2;
     } on AgentLockedException {
-      err.writeln('another Syntila Connect is already using this data directory');
+      err.writeln(
+        'another Syntila Connect is already using this data directory',
+      );
       return 3;
     } on ServerRefusal catch (error) {
       err.writeln('the server refused the request: ${error.message}');
@@ -442,9 +444,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     } on Object {
       // Already picked up.
     }
-    err.writeln(
-      'No answer. Is the service running? Start it, then try again.',
-    );
+    err.writeln('No answer. Is the service running? Start it, then try again.');
     return 1;
   }
 
@@ -489,6 +489,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
               folders: machineFolders,
             ),
             deviceId: device.deviceId,
+            logFile: paths.logFile,
           ),
       api: api,
       profiles: profiles,
@@ -603,6 +604,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     AgentIdentity identity,
     EngineLauncher inner, {
     String? deviceId,
+    File? logFile,
   }) {
     if (inner is UnconfiguredEngineLauncher) return inner;
     final folders = _folders(machineRoot, deviceId: deviceId);
@@ -613,6 +615,18 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       client: ArtifactClient(identity.serverUrl),
       holder: AgentSessionHolder(),
       workerId: identity.workerId,
+      log: logFile == null
+          ? null
+          : (line) {
+              try {
+                logFile.writeAsStringSync(
+                  '${DateTime.now().toUtc().toIso8601String()} $line\n',
+                  mode: FileMode.append,
+                );
+              } on Object {
+                // Logging never fails a step.
+              }
+            },
     );
   }
 
@@ -642,12 +656,12 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         final paths = _paths(args);
         final identity = await _identity(paths);
         final machineRoot = _machineRoot(args);
-    await _deviceStore(machineRoot).ensure();
-    await WorkRoot(
-      _workRootFile(machineRoot),
-      _folders(machineRoot),
-    ).ensureDefault(_defaultWorkRoot);
-    final autoStart = args.flags.contains('auto-start');
+        await _deviceStore(machineRoot).ensure();
+        await WorkRoot(
+          _workRootFile(machineRoot),
+          _folders(machineRoot),
+        ).ensureDefault(_defaultWorkRoot);
+        final autoStart = args.flags.contains('auto-start');
         await _services.install(_spec(identity, paths, autoStart: autoStart));
         out.writeln(
           autoStart
@@ -902,7 +916,9 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         out.writeln('Saved. Log level applies the next time the Agent starts.');
         return 0;
       default:
-        throw const FormatException('usage: logs get [--lines N] | level [LEVEL]');
+        throw const FormatException(
+          'usage: logs get [--lines N] | level [LEVEL]',
+        );
     }
   }
 
@@ -1258,7 +1274,10 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
   /// Asks the server to end this Worker's pairing. Best effort: a Worker that
   /// is already gone from the server counts as done. Returns null on success,
   /// otherwise a short reason.
-  Future<String?> _unpairOnServer(AgentIdentity identity, AgentPaths paths) async {
+  Future<String?> _unpairOnServer(
+    AgentIdentity identity,
+    AgentPaths paths,
+  ) async {
     final api =
         apiFor?.call(identity.serverUrl) ?? ServerApi(identity.serverUrl);
     try {
@@ -1276,7 +1295,9 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       );
       return null;
     } on ServerRefusal catch (refusal) {
-      return refusal.status == 404 ? null : '${refusal.status} ${refusal.message}';
+      return refusal.status == 404
+          ? null
+          : '${refusal.status} ${refusal.message}';
     } on Object catch (error) {
       return '${error.runtimeType}';
     } finally {

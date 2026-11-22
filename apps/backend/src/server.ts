@@ -13,6 +13,7 @@ import { AuthWorkerSync, EmailOutbox, EmailRelay } from "./platform/email";
 import { drainTxStats, PgDb } from "./platform/data";
 import { sampleDbHealth } from "./platform/db-health";
 import { S3R2Bucket, unconfiguredBucket } from "./platform/r2";
+import { LocalFolderBucket } from "./platform/local-bucket";
 import { configureIdentityVerifier } from "./domain/auth/identity-service";
 import worker from "./domain/index";
 import { createRuntime } from "./runtime";
@@ -90,7 +91,11 @@ const runtime = createRuntime(sql, db, {
   SYNTILA_ARTIFACTS: process.env.R2_ACCOUNT_ID?.trim()
     ? new S3R2Bucket({ accountId: process.env.R2_ACCOUNT_ID.trim(), bucket: (process.env.R2_BUCKET ?? "syntila-artifacts").trim(),
         accessKeyId: (process.env.R2_ACCESS_KEY_ID ?? "").trim(), secretAccessKey: (process.env.R2_SECRET_ACCESS_KEY ?? "").trim() })
-    : unconfiguredBucket,
+    // Development without R2: objects live in a local folder.
+    : process.env.SYNTILA_ENVIRONMENT === "development"
+      ? new LocalFolderBucket(process.env.SYNTILA_LOCAL_BUCKET_DIR?.trim()
+          || new URL("../../../.development/local-backend/objects", import.meta.url).pathname)
+      : unconfiguredBucket,
 });
 
 let readyCache = { at: 0, ok: false };

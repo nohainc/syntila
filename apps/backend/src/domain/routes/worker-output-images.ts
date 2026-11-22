@@ -11,6 +11,8 @@ import {
   storeWorkRequestFile,
 } from "./work-request-files.js";
 import { getAttachmentLimits } from "../account-plan.js";
+import { extractBearerToken } from "@syntila/security";
+import { authenticateAgentSession } from "../worker-agents.js";
 
 /**
  * Worker output files: files a Worker produced for the user. The
@@ -57,6 +59,43 @@ export async function handleUploadWorkerOutputImage(
   if (!assignmentId) throw new HttpError(400, "assignmentId is required");
   // Workflow-dispatched assignments leave `thread_id` empty; their Thread
   // comes from the Work Request of the assignment's conversation turn.
+  return storeOutputImage(request, env, url, assignmentId, "workspace", workspaceId);
+}
+
+/**
+ * `POST /api/worker-agent/outputs?assignmentId=…&name=…` — the same, for an
+ * assignment Syntila Connect runs (ADR-035), authenticated by the Agent's
+ * session.
+ */
+export async function handleAgentUploadWorkerOutputImage(
+  request: Request,
+  env: SecurityEnv,
+): Promise<Response> {
+  const token = extractBearerToken(request.headers);
+  const workerId = request.headers.get("x-worker-id");
+  const sessionId = request.headers.get("x-worker-session-id");
+  if (!token || !workerId || !sessionId)
+    throw new HttpError(401, "Agent credentials are required");
+  const agent = await authenticateAgentSession(env as never, {
+    workerId,
+    sessionId,
+    sessionToken: token,
+  });
+  if (!agent) throw new HttpError(401, "Agent session is not valid");
+  const url = new URL(request.url);
+  const assignmentId = url.searchParams.get("assignmentId");
+  if (!assignmentId) throw new HttpError(400, "assignmentId is required");
+  return storeOutputImage(request, env, url, assignmentId, "worker", agent.workerInstanceId);
+}
+
+async function storeOutputImage(
+  request: Request,
+  env: SecurityEnv,
+  url: URL,
+  assignmentId: string,
+  ownerKind: "workspace" | "worker",
+  ownerId: string,
+): Promise<Response> {
   const assignment = await dataOf(env).read.row<{
     threadId: string | null;
     status: string;
@@ -71,7 +110,9 @@ export async function handleUploadWorkerOutputImage(
         ON wr.id = COALESCE(NULLIF(wa.work_request_id, ''), ct.work_request_id)
       JOIN threads t ON t.id = COALESCE(NULLIF(wa.thread_id, ''), wr.thread_id)
       JOIN spaces s ON s.id = t.space_id
-     WHERE wa.id = ${assignmentId} AND wa.execution_workspace_id = ${workspaceId}
+     WHERE wa.id = ${assignmentId}
+       AND (${ownerKind} = 'workspace' AND wa.execution_workspace_id = ${ownerId}
+         OR ${ownerKind} = 'worker' AND wa.worker_instance_id = ${ownerId})
      LIMIT 1`;
   if (!assignment?.threadId) throw new HttpError(404, "Assignment not found");
   if (

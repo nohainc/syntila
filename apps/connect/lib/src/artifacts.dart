@@ -129,6 +129,38 @@ class ArtifactClient {
     return id;
   }
 
+  /// Uploads one image the Worker made for the user; returns its descriptor
+  /// for the result's `output.images`.
+  Future<Map<String, Object?>> uploadOutputImage({
+    required SessionGrant session,
+    required String workerId,
+    required String assignmentId,
+    required File file,
+  }) async {
+    final name = p.basename(file.path);
+    final request = await _client.postUrl(
+      _uri('/api/worker-agent/outputs', {
+        'assignmentId': assignmentId,
+        'name': name,
+      }),
+    );
+    _auth(request, session, workerId);
+    request.headers.contentType = ContentType.parse(_imageMediaType(name));
+    request.contentLength = await file.length();
+    await request.addStream(file.openRead());
+    final response = await request.close();
+    final text = await utf8.decodeStream(response);
+    if (response.statusCode >= 400) {
+      throw ServerRefusal(response.statusCode, text);
+    }
+    final decoded = jsonDecode(text);
+    final image = decoded is Map ? decoded['image'] : null;
+    if (image is! Map || image['fileId'] is! String) {
+      throw ServerRefusal(502, 'the upload answer was bad');
+    }
+    return Map<String, Object?>.from(image);
+  }
+
   /// Downloads [ref] into [directory] (chosen by the caller, already checked
   /// against the Allowed Folders). The file is kept only if its checksum matches.
   Future<File> download({
@@ -173,4 +205,12 @@ class ArtifactClient {
   }
 
   void close() => _client.close(force: true);
+}
+
+String _imageMediaType(String name) {
+  final lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
 }

@@ -82,7 +82,10 @@ export async function putStream(
       digest: `sha256:${hex(await crypto.subtle.digest("SHA-256", body))}`,
       head: Uint8Array.from(head),
     };
-  } catch {
-    throw new UploadStreamError();
+  } catch (error) {
+    // A short or long body is a size mismatch; a storage failure is not.
+    if (error instanceof UploadStreamError || error instanceof TypeError)
+      throw new UploadStreamError();
+    throw error;
   }
 }

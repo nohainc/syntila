@@ -153,7 +153,10 @@ void main() {
         TerminalKind.completed,
         reason: '${outcome.payload}',
       );
-      expect(outcome.payload['output'], {'text': 'fixture echo: hello'});
+      // A writable step is told where to save images for the user.
+      final text = (outcome.payload['output'] as Map)['text'] as String;
+      expect(text, startsWith('fixture echo: hello'));
+      expect(text, contains('/assignment-test/outputs'));
       expect(activity, contains('execution.started'));
 
       final invalid = await launcher.launch(

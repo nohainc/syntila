@@ -61,7 +61,11 @@ void main() {
     await tester.tap(find.text('Model'));
     await tester.pumpAndSettle();
     expect(selection.effort, 'low');
-    expect(find.text('Effort · Low'), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('execution-effort-combined-model')),
+            matching: find.byIcon(Icons.check_circle_rounded)),
+        findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -93,19 +97,22 @@ void main() {
     await tester.pumpAndSettle();
     final effortGroup =
         find.byKey(const ValueKey('execution-effort-worker-one'));
-    expect(tester.getSize(find.byType(SegmentedButton<int>)).width,
-        tester.getSize(effortGroup).width);
+    expect(tester.getTopLeft(effortGroup).dx,
+        greaterThan(tester.getTopRight(find.text('One')).dx));
+    expect(
+        find.descendant(
+            of: effortGroup, matching: find.byType(MenuItemButton)),
+        findsNWidgets(3));
     expect(find.text('Deep custom'), findsOneWidget);
     await tester.tap(find.text('Brief custom'));
     await tester.pumpAndSettle();
     expect(selection.effort, 'brief');
     expect(popup, findsOneWidget);
-    expect(find.text('Effort · Brief custom'), findsOneWidget);
-    await tester.tap(find.text('Auto').first);
+    await tester.tap(
+        find.descendant(of: effortGroup, matching: find.text('Auto')));
     await tester.pumpAndSettle();
     expect(selection.effort, isNull);
     expect(popup, findsOneWidget);
-    expect(find.text('Effort · Auto'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -210,8 +217,11 @@ void main() {
         SyntilaColors.composerBackground(false));
     expect(tester.getBottomLeft(surface).dy,
         closeTo(tester.getTopLeft(trigger).dy - 8, 1));
-    expect(tester.getTopLeft(find.byType(SegmentedButton<int>)).dy,
-        lessThan(tester.getTopLeft(find.text('One')).dy));
+    expect(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('execution-effort-worker-one')))
+            .dx,
+        greaterThan(tester.getTopRight(find.text('One')).dx));
     expect(
         tester.getTopLeft(find.text('One')).dy,
         lessThan(tester
@@ -352,11 +362,6 @@ void main() {
     ))));
     await tester.tap(find.byKey(const ValueKey('execution-open')));
     await tester.pumpAndSettle();
-    expect(
-        tester
-            .widget<SegmentedButton<int>>(find.byType(SegmentedButton<int>))
-            .onSelectionChanged,
-        isNull);
     expect(
         tester
             .widget<IconButton>(
@@ -857,7 +862,7 @@ void main() {
   });
 
   testWidgets(
-      'effort selector groups options across rows when they exceed row budget',
+      'effort selector renders radio rows on the right for many effort levels',
       (tester) async {
     const rich = WorkerSelectionCapability(id: 'rich', name: 'Rich', models: [
       ExecutionModelCapability(
@@ -886,16 +891,27 @@ void main() {
     ));
     await tester.tap(find.byKey(const ValueKey('execution-open')));
     await tester.pumpAndSettle();
-    expect(find.byType(ChoiceChip), findsNothing);
-    expect(find.byType(SegmentedButton<int>), findsNWidgets(2));
     final effortGroup = find.byKey(const ValueKey('execution-effort-rich-m1'));
-    final groupWidth = tester.getSize(effortGroup).width;
-    for (final row in find.byType(SegmentedButton<int>).evaluate()) {
-      expect(tester.getSize(find.byWidget(row.widget)).width, groupWidth);
-    }
+    expect(
+        find.descendant(
+            of: effortGroup, matching: find.byType(MenuItemButton)),
+        findsNWidgets(6));
+    expect(tester.getTopLeft(effortGroup).dx,
+        greaterThan(tester.getTopRight(find.text('Model 1')).dx));
     await tester.tap(find.text('Extra High'));
     await tester.pumpAndSettle();
     expect(selection.effort, 'xhigh');
+    expect(find.byType(VerticalDivider), findsNothing);
+    final selectedEffortRow = find.ancestor(
+        of: find.text('Extra High'), matching: find.byType(MenuItemButton));
+    final selectedEffortIcon = find.descendant(
+        of: selectedEffortRow, matching: find.byIcon(Icons.check_circle_rounded));
+    expect(tester.getTopLeft(selectedEffortIcon).dx,
+        greaterThan(tester.getTopRight(find.text('Extra High')).dx));
+    final modelRow = find.ancestor(
+        of: find.text('Model 1'), matching: find.byType(MenuItemButton));
+    expect(tester.getBottomLeft(effortGroup).dy,
+        closeTo(tester.getBottomLeft(modelRow).dy, 0.5));
     expect(find.byKey(const ValueKey('execution-popup')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

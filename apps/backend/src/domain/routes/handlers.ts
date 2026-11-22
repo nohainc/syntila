@@ -126,6 +126,7 @@ export {
   handleConfirmRuntimeInput,
   handleReportRuntimeInputAttempt,
   handleUploadWorkerOutputImage,
+  handleAgentUploadWorkerOutputImage,
 } from "./work.js";
 export {
   handleListWorkerCatalog,

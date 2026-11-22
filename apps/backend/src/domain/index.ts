@@ -203,6 +203,7 @@ export const routeHandlers = {
   handleConfirmRuntimeInput: handlers.handleConfirmRuntimeInput,
   handleReportRuntimeInputAttempt: handlers.handleReportRuntimeInputAttempt,
   handleUploadWorkerOutputImage: handlers.handleUploadWorkerOutputImage,
+  handleAgentUploadWorkerOutputImage: handlers.handleAgentUploadWorkerOutputImage,
   handleUploadWorkRequestFile: handlers.handleUploadWorkRequestFile,
   handleDownloadThreadFile: handlers.handleDownloadThreadFile,
   handleCancelWorkRequest: handlers.handleCancelWorkRequest,

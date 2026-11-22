@@ -7,6 +7,7 @@ import 'engine.dart';
 import 'folders.dart';
 import 'git_reference.dart';
 import 'journal.dart';
+import 'output_images.dart';
 import 'server_api.dart';
 import 'thread_fence.dart';
 import 'work_root.dart';
@@ -37,7 +38,11 @@ class ArtifactLauncher
     required this.client,
     required this.holder,
     required this.workerId,
+    this.log,
   });
+
+  /// Writes one line to the Agent's log (image upload outcomes).
+  final void Function(String line)? log;
 
   final EngineLauncher inner;
   final AllowedFolders folders;
@@ -73,7 +78,64 @@ class ArtifactLauncher
   }
 
   @override
-  Future<EngineRun> launch(EngineRequest request) async {
+  Future<EngineRun> launch(EngineRequest request) async =>
+      _WithImages(this, await _launch(request), request.assignmentId);
+
+  /// Uploads the images the Engine adapter found and lists them in
+  /// `output.images`. An image that fails to upload is skipped so the
+  /// answer is never lost; local paths never reach Cloud.
+  Future<EngineOutcome> publishImages(
+    String assignmentId,
+    EngineOutcome result,
+  ) async {
+    final local = result.payload[localOutputImagesKey];
+    if (local == null) return result;
+    final payload = {...result.payload}..remove(localOutputImagesKey);
+    final session = holder.grant;
+    final images = <Map<String, Object?>>[];
+    log?.call(
+      'output images assignment=$assignmentId found=${local is List ? local.length : 0} '
+      'session=${session != null}',
+    );
+    if (result.kind == TerminalKind.completed &&
+        session != null &&
+        local is List) {
+      for (final path in local.whereType<String>()) {
+        try {
+          final descriptor = await client.uploadOutputImage(
+            session: session,
+            workerId: workerId,
+            assignmentId: assignmentId,
+            file: File(path),
+          );
+          // A preview for the Thread; the original is opened or downloaded.
+          String? preview;
+          try {
+            preview = await outputImagePreview(File(path));
+          } on Object catch (error) {
+            log?.call('output image preview failed: $error');
+          }
+          images.add({
+            ...descriptor,
+            if (preview != null) 'previewImage': preview,
+          });
+        } on Object catch (error) {
+          log?.call('output image upload failed: $error');
+          continue;
+        }
+      }
+    }
+    final output = payload['output'];
+    if (images.isNotEmpty) {
+      payload['output'] = {
+        if (output is Map<String, Object?>) ...output,
+        'images': images,
+      };
+    }
+    return EngineOutcome(result.kind, payload);
+  }
+
+  Future<EngineRun> _launch(EngineRequest request) async {
     final snapshot = request.payload['snapshot'];
     if (snapshot is! Map<String, Object?>) return inner.launch(request);
     final refs = snapshot['contextRefs'];
@@ -229,6 +291,31 @@ class _Failed implements EngineRun {
 
   @override
   Future<void> cancel() async {}
+}
+
+class _WithImages implements EngineRun, EngineStartEvidence {
+  _WithImages(this.owner, this.run, this.assignmentId);
+
+  final ArtifactLauncher owner;
+  final EngineRun run;
+  final String assignmentId;
+
+  @override
+  Future<bool> get providerStarted {
+    final inner = run;
+    return inner is EngineStartEvidence
+        ? (inner as EngineStartEvidence).providerStarted
+        : Future.value(false);
+  }
+
+  /// Cached: the outcome is read more than once and uploads must run once.
+  @override
+  late final Future<EngineOutcome> outcome = run.outcome.then(
+    (result) => owner.publishImages(assignmentId, result),
+  );
+
+  @override
+  Future<void> cancel() => run.cancel();
 }
 
 class _Collecting implements EngineRun, EngineStartEvidence {

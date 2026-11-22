@@ -23,4 +23,4 @@ export {
   handleConfirmRuntimeInput,
   handleReportRuntimeInputAttempt,
 } from "./work-request-inputs.js";
-export { handleUploadWorkerOutputImage } from "./worker-output-images.js";
+export { handleUploadWorkerOutputImage, handleAgentUploadWorkerOutputImage } from "./worker-output-images.js";

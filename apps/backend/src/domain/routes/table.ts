@@ -318,6 +318,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("POST", "/api/worker-agent/unpair", call("handleUnpairWorkerAgent"), machine),
     r("POST", "/api/worker-agent/rotate", call("handleRotateWorkerCredential"), machine),
     r("POST", "/api/worker-agent/artifacts", call("handleUploadArtifact"), machine),
+    r("POST", "/api/worker-agent/outputs", call("handleAgentUploadWorkerOutputImage"), machine),
     r("GET", "/api/worker-agent/artifacts/:artifactId/content", call("handleDownloadArtifact", p("artifactId")), machine),
     r("GET", "/api/workers/:workerTypeId/profile", call("handleGetWorkspaceV9WorkerProfile", p("workerTypeId"))),
     r("GET", "/api/admin/workers", call("handleListV9WorkerProfiles", ctx)),

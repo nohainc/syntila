@@ -14,6 +14,7 @@ dependencies:
       url: https://github.com/nohainc/gui-manifest.git
       ref: 242b71c88cc11c90a0fad0886467ae2db4a366ef
       path: sdk/dart
+  image: ^4.8.0
   path: ^1.9.0
   syntila_cli_worker_runtime:
     path: ../../packages/syntila_cli_worker_runtime

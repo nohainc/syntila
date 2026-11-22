@@ -561,6 +561,58 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
               for (final id in worker?.allowedModelIds ?? const <String>[])
                 id: worker?.model(id)?.name ?? id,
             };
+        Widget buildModelColumn(double? maxTextWidth) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (worker?.allowsAutoModel == true)
+                  _modelRow(
+                      'Auto',
+                      effective.model == null,
+                      enabled && ready && widget.allowModelChange
+                          ? () => changeModel(null)
+                          : null,
+                      maxTextWidth: maxTextWidth),
+                for (final model in models.entries)
+                  _modelRow(
+                      model.value,
+                      model.key == effective.model,
+                      enabled &&
+                              ready &&
+                              widget.allowModelChange &&
+                              worker.modelSupported &&
+                              worker.supportsModel(model.key)
+                          ? () => changeModel(model.key)
+                          : null,
+                      maxTextWidth: maxTextWidth),
+                if (models.isEmpty)
+                  const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: Text('No models available')),
+              ],
+            );
+        Widget buildEffortColumn(double? maxTextWidth) => Column(
+              key: ValueKey(
+                  '${widget.scope}-effort-${effective.worker}-${effective.model}'),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < levels.length; i++)
+                  _modelRow(
+                      _popupEffortLabel(levels[i], effortChoices),
+                      i == index,
+                      enabled && ready && widget.allowEffortChange
+                          ? () => change(ExecutionSelection(
+                              worker: effective.worker,
+                              model: effective.model,
+                              effort: levels[i],
+                              catalogRevision: worker!.catalogRevision))
+                          : null,
+                      maxTextWidth: maxTextWidth,
+                      alignRight: true),
+              ],
+            );
+        final hasEffortColumn = widget.showEffort && levels.isNotEmpty;
         return CustomSingleChildLayout(
           delegate: _ExecutionPopupLayout(anchor),
           child: Material(
@@ -577,54 +629,33 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (widget.showEffort) ...[
-                    Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-                        child: Text(
-                            'Effort · ${index < 0 ? 'Select effort' : _popupEffortLabel(levels[index], effortChoices)}',
-                            style: SyntilaMenuStyle.textStyle)),
-                    if (levels.isNotEmpty)
-                      _buildEffortButtons(
-                        context: context,
-                        isDark: isDark,
-                        levels: levels,
-                        selectedIndex: index,
-                        effortChoices: effortChoices,
-                        controlKey: ValueKey(
-                            '${widget.scope}-effort-${effective.worker}-${effective.model}'),
-                        onSelect: enabled && ready && widget.allowEffortChange
-                            ? (effortIndex) => change(ExecutionSelection(
-                                worker: effective.worker,
-                                model: effective.model,
-                                effort: levels[effortIndex],
-                                catalogRevision: worker!.catalogRevision))
-                            : null,
-                      ),
-                  ],
-                  if (widget.showModel) ...[
-                    if (worker?.allowsAutoModel == true)
-                      _modelRow(
-                          'Auto',
-                          effective.model == null,
-                          enabled && ready && widget.allowModelChange
-                              ? () => changeModel(null)
-                              : null),
-                    for (final model in models.entries)
-                      _modelRow(
-                          model.value,
-                          model.key == effective.model,
-                          enabled &&
-                                  ready &&
-                                  widget.allowModelChange &&
-                                  worker.modelSupported &&
-                                  worker.supportsModel(model.key)
-                              ? () => changeModel(model.key)
-                              : null),
-                    if (models.isEmpty)
-                      const Padding(
-                          padding: EdgeInsets.all(10),
-                          child: Text('No models available')),
-                  ],
+                  if (widget.showModel && hasEffortColumn)
+                    LayoutBuilder(builder: (context, constraints) {
+                      const columnGap = 8.0;
+                      const rowChrome = 48.0;
+                      final available =
+                          math.max(0.0, constraints.maxWidth - columnGap);
+                      final leftTextWidth =
+                          math.max(0.0, available * 3 / 5 - rowChrome);
+                      final rightTextWidth =
+                          math.max(0.0, available * 2 / 5 - rowChrome);
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                              flex: 3,
+                              child: buildModelColumn(leftTextWidth)),
+                          const SizedBox(width: columnGap),
+                          Expanded(
+                              flex: 2,
+                              child: buildEffortColumn(rightTextWidth)),
+                        ],
+                      );
+                    })
+                  else if (widget.showModel)
+                    buildModelColumn(null)
+                  else if (hasEffortColumn)
+                    buildEffortColumn(null),
                   if ((widget.displayWorkers != null &&
                           widget.catalog.workers.isNotEmpty &&
                           widget.displayWorkers!(effective).values.every(
@@ -792,16 +823,39 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
     );
   }
 
-  Widget _modelRow(String name, bool selected, VoidCallback? onPressed) =>
-      MenuItemButton(
-        style: SyntilaMenuStyle.item(
-            Theme.of(context).brightness == Brightness.dark),
-        leadingIcon: Icon(
-            selected ? Icons.check_circle_rounded : Icons.circle_outlined,
-            size: 15),
-        onPressed: onPressed,
-        child: Text(name, style: SyntilaMenuStyle.textStyle),
-      );
+  Widget _modelRow(String name, bool selected, VoidCallback? onPressed,
+      {double? maxTextWidth, bool alignRight = false}) {
+    final icon = Icon(
+        selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+        size: 15);
+    final label = Text(
+      name,
+      style: SyntilaMenuStyle.textStyle,
+      textAlign: alignRight ? TextAlign.right : TextAlign.left,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+    return MenuItemButton(
+      style: SyntilaMenuStyle.item(
+              Theme.of(context).brightness == Brightness.dark)
+          .copyWith(
+        minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+      ),
+      leadingIcon: alignRight ? null : icon,
+      trailingIcon: alignRight ? icon : null,
+      onPressed: onPressed,
+      child: maxTextWidth == null
+          ? label
+          : SizedBox(
+              width: maxTextWidth,
+              child: Align(
+                alignment:
+                    alignRight ? Alignment.centerRight : Alignment.centerLeft,
+                child: label,
+              ),
+            ),
+    );
+  }
 
   Future<void> _open(BuildContext context) async {
     if (widget.immediatePopup) {
@@ -957,74 +1011,6 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
       ],
     );
     if (result != null) widget.onChanged?.call(result);
-  }
-
-  Widget _buildEffortButtons({
-    required BuildContext context,
-    required bool isDark,
-    required List<String?> levels,
-    required int selectedIndex,
-    required Map<String, String>? effortChoices,
-    required Key controlKey,
-    required ValueChanged<int>? onSelect,
-  }) {
-    final labels = [
-      for (final level in levels) _popupEffortLabel(level, effortChoices),
-    ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-      child: LayoutBuilder(builder: (context, constraints) {
-        final rows = <List<int>>[[]];
-        final maxPerRow = (labels.length / (labels.length / 4).ceil()).ceil();
-        for (var i = 0; i < labels.length; i++) {
-          if (rows.last.length >= maxPerRow) rows.add([]);
-          rows.last.add(i);
-        }
-        return Column(
-          key: controlKey,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var row = 0; row < rows.length; row++) ...[
-              if (row > 0) const SizedBox(height: 6),
-              SegmentedButton<int>(
-                expandedInsets: EdgeInsets.zero,
-                showSelectedIcon: false,
-                emptySelectionAllowed: true,
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  ),
-                  textStyle: const WidgetStatePropertyAll(
-                    TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                  side: WidgetStatePropertyAll(
-                    BorderSide(color: SyntilaColors.border(isDark)),
-                  ),
-                ),
-                segments: [
-                  for (final i in rows[row])
-                    ButtonSegment<int>(
-                      value: i,
-                      label: Text(labels[i],
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
-                ],
-                selected: rows[row].contains(selectedIndex)
-                    ? {selectedIndex}
-                    : const <int>{},
-                onSelectionChanged: onSelect == null
-                    ? null
-                    : (selected) {
-                        if (selected.isNotEmpty) onSelect(selected.first);
-                      },
-              ),
-            ],
-          ],
-        );
-      }),
-    );
   }
 }
 
