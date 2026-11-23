@@ -308,7 +308,8 @@ class _SpaceInvitationDialogState extends State<SpaceInvitationDialog> {
                             allowed[entry.key] == true,
                         onChanged: !_sending && allowed[entry.key] == true
                             ? (value) => setState(() {
-                                  _permissions[entry.key] = value == true;
+                                  linkSpaceAiRights(
+                                      _permissions, entry.key, value == true);
                                 })
                             : null),
                 ],

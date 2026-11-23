@@ -6,13 +6,18 @@ import 'package:syntila_protocol/syntila_protocol.dart' show WorkerInstance;
 import '../../ax/sync/ax_query_builder.dart';
 import '../../ax/sync/ax_session_catalogs.dart';
 import '../../ax/ax_data.dart'
-    show AxWorkerManagementSource, AxWorkerModelsSource;
-import '../../ax/ax_models.dart' show AxWorker;
+    show
+        AxWorkerManagementSource,
+        AxWorkerModelsSource,
+        AxWorkerPersonShareSource;
+import '../../ax/ax_people.dart' show AxPeopleDataSource;
+import '../../ax/ax_models.dart' show AxSpace, AxWorker;
 import '../../ax/mcp_worker_pin.dart';
 import '../../ax/worker_presentation.dart';
 import '../../ax/worker_execution_options.dart';
 import '../../ax/worker_usage.dart' show AxWorkerUsageDataSource;
 import 'worker_member_models_section.dart';
+import 'worker_person_shares_section.dart';
 import 'worker_model_visibility_table.dart';
 import 'worker_usage_dialog.dart';
 
@@ -24,9 +29,15 @@ class WorkerInstancesSection extends StatelessWidget {
     this.selectedWorkerId,
     this.onSelectWorker,
     this.onBackToList,
+    this.spaces = const [],
+    this.currentUserId,
   });
 
   final AxSessionCatalogs catalogs;
+
+  /// The user's Spaces; shared ones they manage can get Worker access.
+  final List<AxSpace> spaces;
+  final String? currentUserId;
   final String? selectedWorkerId;
   final ValueChanged<String>? onSelectWorker;
   final VoidCallback? onBackToList;
@@ -49,6 +60,14 @@ class WorkerInstancesSection extends StatelessWidget {
                 selectedWorkerId: selectedWorkerId,
                 onSelectWorker: onSelectWorker,
                 onBackToList: onBackToList,
+                shareSpaces: [
+                  for (final space in spaces)
+                    if (!space.archived &&
+                        space.kind != 'direct' &&
+                        (space.role == 'owner' || space.role == 'collaborator'))
+                      space
+                ],
+                currentUserId: currentUserId,
                 // A change was just made: supersede any load already in
                 // flight, which started before it and would show stale data.
                 onRefresh: () async {
@@ -100,9 +119,15 @@ class WorkerInstancesList extends StatelessWidget {
     this.selectedWorkerId,
     this.onSelectWorker,
     this.onBackToList,
+    this.shareSpaces = const [],
+    this.currentUserId,
   });
 
   final List<WorkerInstance>? workers;
+
+  /// Spaces whose members this Worker can be shared with.
+  final List<AxSpace> shareSpaces;
+  final String? currentUserId;
   final Object? error;
   final Future<Object?> Function() onRefresh;
   final void Function(
@@ -433,7 +458,13 @@ class WorkerInstancesList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final allWorkers = workers;
+    // By name, case-insensitive; the id keeps equal names in a stable order.
+    final allWorkers = workers == null
+        ? null
+        : ([...workers!]..sort((a, b) {
+            final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+            return byName != 0 ? byName : a.id.compareTo(b.id);
+          }));
     if (selectedWorkerId != null) {
       if (error != null) {
         return _missingWorkerView(context, 'Could not load Worker.');
@@ -924,6 +955,16 @@ class WorkerInstancesList extends StatelessWidget {
           },
         ),
         if (management != null) ...[
+          if (management is AxWorkerPersonShareSource) ...[
+            const SizedBox(height: 16),
+            WorkerPersonSharesSection(
+              worker: worker,
+              shares: management as AxWorkerPersonShareSource,
+              people: management is AxPeopleDataSource
+                  ? management as AxPeopleDataSource
+                  : null,
+            ),
+          ],
           const SizedBox(height: 16),
           WorkerMemberModelsSection(worker: worker, management: management),
         ],

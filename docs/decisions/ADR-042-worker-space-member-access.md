@@ -99,3 +99,11 @@ The owner ticks which models and efforts members may use on a Worker once; it ap
 - **Enforcement:** `acceptWorkerTarget` rejects a non-owner request whose model (chosen or default) is not allowed with `model_not_supported`, or whose effort is not allowed for that model with `effort_not_supported`. A request that names no model is not checked. The owner is never limited.
 - **UI:** the "Models for members" card on the Worker detail view reuses the Worker's own model/effort table (`WorkerModelVisibilityTable`), all unticked by default.
 - **Known gap:** the member-side picker does not yet hide models that are not allowed. The server refuses them.
+
+## Amendment: Space owner's Workers follow Space rights
+
+The Space owner's Workers are the Space's AI. A member no longer needs a `worker_space_members` row to use them: the Space rights "Use Space AI for Chat" / "Use Space AI for Work" (`spaceMemberPermissions`, checked by `requesterMayExecute`) decide the workflow, and the Worker-wide model/effort allow-list above still limits models and efforts (closed by default).
+
+- **Enforcement:** `acceptWorkerTarget` admits a non-owner without a row when the Worker's owner owns the Space. Without a row the mode ceiling is `work+shell`, so the Space Work right governs Work. An explicit row still applies: `enabled = false` refuses (`execute_not_permitted`) and its `mode` caps the member. Workers of other members still need a row. Personal (direct) Spaces accept only the requester's own Workers.
+- **Discovery:** `handleListEligibleWorkers` includes the Space owner's Workers. `GET /api/spaces/:spaceId/workers` lists them to a member with a Chat or Work right (empty for the owner, personal and support Spaces), leaving out ones the member is explicitly disabled for, with `executionOptions` narrowed to the allowed models and efforts. This closes the picker gap noted above.
+- **App:** the Thread page passes these as shared Workers to `workersFromInstances` in shared Spaces.

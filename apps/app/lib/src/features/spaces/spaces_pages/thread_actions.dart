@@ -30,6 +30,14 @@ extension _ThreadActions on _ThreadPageState {
         _submittingWork) {
       return;
     }
+    // A restored selection may name a shared Worker whose notice was not
+    // accepted yet in this session.
+    final selectedWorker = _workExecutionSelection['workerId'];
+    if (!await _confirmPersonShare(
+            selectedWorker is String ? selectedWorker : null) ||
+        !mounted) {
+      return;
+    }
     if (widget.isDraft) {
       final requestText = text.trim().isEmpty
           ? 'Please use the attached inputs to complete the request.'
@@ -1276,9 +1284,7 @@ extension _ThreadActions on _ThreadPageState {
       _saveEditMessage();
       return;
     }
-    if (!widget.space.effectivePermissions.chat ||
-        (widget.isDraft &&
-            !widget.space.effectivePermissions.manageOwnThreads)) {
+    if (widget.isDraft && !widget.space.effectivePermissions.manageOwnThreads) {
       return;
     }
     if (_discussionAttachments.length > 10) {

@@ -179,12 +179,14 @@ class ServerApi {
     required String secret,
     required String publicKey,
     required String signature,
+    List<String> pairedWorkerIds = const [],
   }) async {
     final response = await _post('/api/worker-agent/claim', {
       'challengeId': challengeId,
       'secret': secret,
       'publicKey': publicKey,
       'signature': signature,
+      if (pairedWorkerIds.isNotEmpty) 'pairedWorkerIds': pairedWorkerIds,
     });
     final pairing = response['pairing'];
     if (pairing is Map) {

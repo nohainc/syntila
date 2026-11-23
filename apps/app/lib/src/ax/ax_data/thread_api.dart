@@ -1458,6 +1458,13 @@ mixin _ThreadApi on _AxApiClientCore
   }
 
   @override
+  Future<List<WorkerInstance>> loadSpaceWorkers(String spaceId) async {
+    if (!await workerIdentityEnabled()) return const [];
+    return parseWorkerInstances(await _getJson(
+        Uri.parse('$baseUrl/spaces/${Uri.encodeComponent(spaceId)}/workers')));
+  }
+
+  @override
   Future<List<WorkerInstance>> loadWorkerInstances() async {
     if (!await workerIdentityEnabled()) return const [];
     return parseWorkerInstances(await _getJson(Uri.parse('$baseUrl/workers')));
@@ -1607,6 +1614,75 @@ mixin _ThreadApi on _AxApiClientCore
     }
     final body = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
     return AxWorkerMemberModelAccess.fromJson(body['modelAccess']);
+  }
+
+  @override
+  Future<List<AxWorkerPersonShare>> loadWorkerPersonShares(
+      String workerId) async {
+    final json = await _getJson(Uri.parse(
+        '$baseUrl/workers/${Uri.encodeComponent(workerId)}/person-shares'));
+    return AxWorkerPersonShare.listFromJson(json['shares']);
+  }
+
+  @override
+  Future<List<AxWorkerPersonShare>> saveWorkerPersonShare(
+      String workerId, AxWorkerPersonShare share) async {
+    final response = await client.put(
+      Uri.parse(
+          '$baseUrl/workers/${Uri.encodeComponent(workerId)}/person-shares'),
+      headers: _headers(contentType: 'application/json'),
+      body: jsonEncode(share.toJson()),
+    );
+    return _personShares(response, 'Could not share the Worker');
+  }
+
+  @override
+  Future<List<AxWorkerPersonShare>> removeWorkerPersonShare(
+      String workerId, String userId) async {
+    final response = await client.delete(
+      Uri.parse(
+              '$baseUrl/workers/${Uri.encodeComponent(workerId)}/person-shares')
+          .replace(queryParameters: {'userId': userId}),
+      headers: _headers(),
+    );
+    return _personShares(response, 'Could not stop sharing');
+  }
+
+  List<AxWorkerPersonShare> _personShares(
+      http.Response response, String failure) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String? reason;
+      try {
+        final error = (jsonDecode(response.body) as Map)['error'];
+        if (error is String) reason = error;
+      } on Object {
+        reason = null;
+      }
+      throw AxApiException(reason ?? '$failure (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+    final body = Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    return AxWorkerPersonShare.listFromJson(body['shares']);
+  }
+
+  @override
+  Future<List<WorkerInstance>> loadWorkersSharedWithMe() async {
+    if (!await workerIdentityEnabled()) return const [];
+    final body = await _getJson(Uri.parse('$baseUrl/workers/shared-with-me'));
+    // The owner's name travels in the display name, so every picker shows
+    // whose computer answers.
+    return parseWorkerInstances({
+      'workers': [
+        for (final item in (body['workers'] as List? ?? const []))
+          if (item is Map)
+            {
+              ...Map<String, dynamic>.from(item),
+              if (item['sharedByName'] is String &&
+                  (item['sharedByName'] as String).isNotEmpty)
+                'name': '${item['name']} · shared by ${item['sharedByName']}',
+            },
+      ],
+    });
   }
 
   @override

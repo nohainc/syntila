@@ -23,6 +23,12 @@ export const ClaimWorkerPairingRequestSchema = z.strictObject({
   publicKey,
   /** Signature by the new key over `pairingMessage(challengeId, workerId, publicKey)`. */
   signature,
+  /**
+   * Workers already paired on this computer. One computer belongs to one
+   * Syntila account: a code from another account is refused while any of
+   * them is still paired.
+   */
+  pairedWorkerIds: z.array(workerId).max(200).optional(),
 });
 export type ClaimWorkerPairingRequest = z.infer<typeof ClaimWorkerPairingRequestSchema>;
 

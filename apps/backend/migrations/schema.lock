@@ -713,6 +713,12 @@ column worker_pairing_challenges.kind text not-null
 column worker_pairing_challenges.owner_user_id text not-null
 column worker_pairing_challenges.secret_digest text not-null
 column worker_pairing_challenges.worker_instance_id text not-null
+column worker_person_shares.created_at timestamptz not-null default
+column worker_person_shares.max_concurrent_requests int4 not-null default
+column worker_person_shares.max_run_seconds_per_month int4
+column worker_person_shares.updated_at timestamptz not-null default
+column worker_person_shares.user_id text not-null
+column worker_person_shares.worker_id text not-null
 column worker_profile_history.actor_user_id text
 column worker_profile_history.digest text not-null
 column worker_profile_history.profile_json text not-null
@@ -1365,6 +1371,11 @@ constraint worker_pairing_challenges.worker_pairing_challenges_kind_check check
 constraint worker_pairing_challenges.worker_pairing_challenges_owner_user_id_fkey foreign-key -> users on-delete-cascade
 constraint worker_pairing_challenges.worker_pairing_challenges_pkey primary-key
 constraint worker_pairing_challenges.worker_pairing_challenges_worker_instance_id_fkey foreign-key -> worker_instances on-delete-cascade
+constraint worker_person_shares.worker_person_shares_max_concurrent_requests_check check
+constraint worker_person_shares.worker_person_shares_max_run_seconds_per_month_check check
+constraint worker_person_shares.worker_person_shares_pkey primary-key
+constraint worker_person_shares.worker_person_shares_user_id_fkey foreign-key -> users on-delete-cascade
+constraint worker_person_shares.worker_person_shares_worker_id_fkey foreign-key -> worker_instances on-delete-cascade
 constraint worker_profile_history.worker_profile_history_actor_user_id_fkey foreign-key -> users on-delete-set-null
 constraint worker_profile_history.worker_profile_history_check check
 constraint worker_profile_history.worker_profile_history_digest_check check
@@ -1853,6 +1864,8 @@ index worker_member_model_access.worker_member_model_access_pkey (worker_id) uni
 index worker_pairing_challenges.worker_pairing_challenges_owner_idx (owner_user_id)
 index worker_pairing_challenges.worker_pairing_challenges_pkey (id) unique
 index worker_pairing_challenges.worker_pairing_challenges_worker_idx (worker_instance_id,created_at)
+index worker_person_shares.worker_person_shares_pkey (worker_id,user_id) unique
+index worker_person_shares.worker_person_shares_user_idx (user_id)
 index worker_profile_history.idx_worker_profile_history_worker_time (worker_type_id,published_at,revision)
 index worker_profile_history.worker_profile_history_actor_user_id_fkidx (actor_user_id)
 index worker_profile_history.worker_profile_history_pkey (worker_type_id,revision) unique

@@ -97,6 +97,9 @@ export async function handleListEligibleWorkers(
     WHERE w.revoked_at IS NULL
       AND (
         w.owner_user_id = ${context.userId}
+        OR w.owner_user_id = (SELECT s.owner_user_id FROM spaces s WHERE s.id = ${spaceId})
+        OR EXISTS (SELECT 1 FROM worker_person_shares wps
+                    WHERE wps.worker_id = w.id AND wps.user_id = ${context.userId})
         OR EXISTS (
           SELECT 1 FROM worker_space_members wsm
            WHERE wsm.worker_id = w.id

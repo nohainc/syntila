@@ -5,7 +5,7 @@
  * | key                | scope                          | default (owner/collab/viewer) | enforcement |
  * | ------------------ | ------------------------------ | ----------------------------- | ----------- |
  * | `chat`             | one Space, one member          | true / true / false           | May start Chat runs (`run.start`) and, through them, answer on their own Workers (see `useOwnWorkers`). |
- * | `work`             | one Space, one member          | true / true / false           | May start Workflow runs (`run.start`) on the Space's Workflow Workspace. |
+ * | `work`             | one Space, one member          | true / true / false           | May start Workflow runs (`run.start`) on the Space's Workflow Workspace. Includes `chat`. |
  * | `manageOwnThreads` | one Space, member's own Threads| true / true / false           | May create/rename/archive Threads they own (`spaces:write`). Never grants control of others' Threads. |
  *
  * `spaces:write` needs any of the three; `run.start` needs `chat` or `work`;
@@ -47,13 +47,17 @@ export type SpaceMemberPermissions = Readonly<
   Record<SpaceMemberPermission, boolean>
 >;
 
-/** Builds the full compatibility shape from the three granted rights. */
+/**
+ * Builds the full shape from the three granted rights. Work includes Chat:
+ * anyone trusted to run Work may also ask the AI in Chat.
+ */
 export function composeSpaceMemberPermissions(
   rights: Pick<SpaceMemberPermissions, "chat" | "work" | "manageOwnThreads">,
 ): SpaceMemberPermissions {
+  const chat = rights.chat || rights.work;
   return {
-    chat: rights.chat,
-    useOwnWorkers: rights.chat,
+    chat,
+    useOwnWorkers: chat,
     work: rights.work,
     manageOwnThreads: rights.manageOwnThreads,
   };
@@ -64,7 +68,7 @@ export function storedSpaceMemberRights(
   rights: Pick<SpaceMemberPermissions, "chat" | "work" | "manageOwnThreads">,
 ): Record<(typeof GRANTED_SPACE_RIGHT_KEYS)[number], boolean> {
   return {
-    chat: rights.chat,
+    chat: rights.chat || rights.work,
     work: rights.work,
     manageOwnThreads: rights.manageOwnThreads,
   };
@@ -128,12 +132,9 @@ export function spaceMemberPermissions(
   if (!Object.hasOwn(map, userId)) return defaults;
   // Stored overrides fail closed: missing or malformed values grant no rights.
   const value = parseSpaceSettings(override);
-  return {
+  return composeSpaceMemberPermissions({
     chat: value.chat === true,
-    // Derived: any member who may Chat may answer with their own Workers.
-    // A legacy stored `useOwnWorkers` value is ignored.
-    useOwnWorkers: value.chat === true,
     work: value.work === true,
     manageOwnThreads: value.manageOwnThreads === true,
-  };
+  });
 }

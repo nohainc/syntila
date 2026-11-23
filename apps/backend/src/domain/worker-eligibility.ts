@@ -55,6 +55,11 @@ export interface WorkerTargetSnapshot {
   /** The MCP Worker (ADR-041) a plugin Type runs: manifest `pluginId`, version and manifest digest. Null for every other Type. */
   readonly mcpWorker?: { readonly id: string; readonly version: string; readonly manifestDigest: string } | null;
   readonly readOnly: boolean;
+  /**
+   * Accepted through a Person Share (ADR-043): Chat only, on the owner's
+   * computer, without the Space folder or full access.
+   */
+  readonly personShare?: boolean;
   readonly requestedByUserId: string;
   readonly spaceId: string;
   readonly threadId: string;
@@ -190,6 +195,9 @@ export async function acceptWorkerTarget(
     memberPermissionsJson: string | null;
     memberAllowedModelsJson: string | null;
     memberAllowedEffortsJson: string | null;
+    spaceOwnerUserId: string | null;
+    spaceKind: string | null;
+    personShared: boolean;
   }>`SELECT w.id, w.actor_id AS "actorId", w.name, w.owner_user_id AS "ownerUserId", w.enabled,
             w.default_model AS "defaultModel", w.worker_type_id AS "workerTypeId",
             c.display_name AS "typeName", c.lifecycle_state AS lifecycle,
@@ -199,7 +207,11 @@ export async function acceptWorkerTarget(
             wsm.enabled AS "memberEnabled",
             wsm.permissions_json AS "memberPermissionsJson",
             wmma.allowed_models_json AS "memberAllowedModelsJson",
-            wmma.allowed_efforts_json AS "memberAllowedEffortsJson"
+            wmma.allowed_efforts_json AS "memberAllowedEffortsJson",
+            (SELECT s.owner_user_id FROM spaces s WHERE s.id = ${request.spaceId}) AS "spaceOwnerUserId",
+            (SELECT COALESCE(s.kind, 'group') FROM spaces s WHERE s.id = ${request.spaceId}) AS "spaceKind",
+            EXISTS (SELECT 1 FROM worker_person_shares wps
+                     WHERE wps.worker_id = w.id AND wps.user_id = ${request.requesterUserId}) AS "personShared"
        FROM worker_instances w
        JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
        LEFT JOIN worker_profiles p ON p.worker_type_id = w.worker_type_id
@@ -212,11 +224,31 @@ export async function acceptWorkerTarget(
         AND w.revoked_at IS NULL`;
   if (!worker) return { ok: false, code: "worker_not_found" };
   const isOwner = worker.ownerUserId === request.requesterUserId;
+  // The Space owner's Workers are the Space's AI: members reach them through
+  // their Space rights (Chat / Work), checked by requesterMayExecute below.
+  const spaceWorker = !isOwner && worker.ownerUserId === worker.spaceOwnerUserId;
+  // A Person Share (ADR-043) reaches the person's own Spaces and personal
+  // Threads only, never a Space someone else owns.
+  const personShare =
+    !isOwner &&
+    !spaceWorker &&
+    worker.memberEnabled === null &&
+    worker.personShared === true &&
+    (worker.spaceOwnerUserId === request.requesterUserId || worker.spaceKind === "direct");
   if (!isOwner) {
-    // Unlisted non-owners get 404 so Worker IDs are never revealed; explicitly
-    // disabled Space members get 403 execute_not_permitted.
-    if (worker.memberEnabled === null) return { ok: false, code: "worker_not_found" };
-    if (worker.memberEnabled !== true) return { ok: false, code: "execute_not_permitted" };
+    // An explicitly disabled Space member gets 403 execute_not_permitted.
+    // Anyone else without a grant gets 404 so Worker IDs are never revealed.
+    if (worker.memberEnabled === false) return { ok: false, code: "execute_not_permitted" };
+    if (worker.memberEnabled === null && !spaceWorker && !personShare) return { ok: false, code: "worker_not_found" };
+  }
+  // Chat only: no Work, no writes, no shell, on someone else's computer.
+  if (
+    personShare &&
+    (request.workflowId !== "chat" ||
+      request.readOnly !== true ||
+      (request.capabilities ?? []).some((c) => c === "thread_write" || c === "test_execution"))
+  ) {
+    return { ok: false, code: "execute_not_permitted" };
   }
   if (!worker.enabled) return { ok: false, code: "worker_disabled" };
   // The Agent runs a published Profile; a Type without one cannot be accepted.
@@ -311,7 +343,13 @@ export async function acceptWorkerTarget(
   if (![...required].every((permission) => permissions.includes(permission)))
     return { ok: false, code: "execute_not_permitted" };
   if (!isOwner) {
-    const memberMode = record(worker.memberPermissionsJson).mode;
+    // An explicit grant sets the ceiling; without one, the Space Work right
+    // (already required for any non-Chat workflow) allows Work with tests.
+    const memberMode = personShare
+      ? "chat"
+      : worker.memberEnabled === null
+        ? "work+shell"
+        : record(worker.memberPermissionsJson).mode;
     const mode =
       memberMode === "work" || memberMode === "work+shell" ? memberMode : "chat";
     if (
@@ -359,6 +397,7 @@ export async function acceptWorkerTarget(
       permissions,
       mcpWorker,
       readOnly,
+      ...(personShare ? { personShare: true } : {}),
       requestedByUserId: request.requesterUserId,
       spaceId: request.spaceId,
       threadId: request.threadId,

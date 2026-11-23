@@ -159,6 +159,34 @@ void main() {
       expect(text, contains('/assignment-test/outputs'));
       expect(activity, contains('execution.started'));
 
+      // A Person Share (another person's Chat) is always read-only: it is
+      // not offered a place to save files, whatever the snapshot says.
+      final shared = await launcher.launch(
+        EngineRequest(
+          assignmentId: 'assignment-shared',
+          attemptId: 'attempt-shared',
+          payload: {
+            'snapshot': {
+              'sessionPolicy': 'stateless',
+              'objective': 'hello',
+              'personShare': true,
+              'readOnly': false,
+              'spaceFolderId': 'folder-of-the-owner',
+            },
+            'input': {'prompt': 'hello'},
+          },
+          timeout: const Duration(seconds: 30),
+        ),
+      );
+      final sharedOutcome = await shared.outcome.timeout(
+        const Duration(seconds: 40),
+      );
+      expect(sharedOutcome.kind, TerminalKind.completed);
+      final sharedText =
+          (sharedOutcome.payload['output'] as Map)['text'] as String;
+      expect(sharedText, startsWith('fixture echo: hello'));
+      expect(sharedText, isNot(contains('/outputs')));
+
       final invalid = await launcher.launch(
         const EngineRequest(
           assignmentId: 'assignment-other',

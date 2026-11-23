@@ -182,6 +182,34 @@ describe("pairing", () => {
     expect(await status(createPairingChallenge(f.env, { ownerUserId: "alice", workerId: W1, kind: "pair" }))).toBe(409); // already paired
   });
 
+  it("refuses a code from another account while this computer has that account's paired Workers", async () => {
+    const f = await fixture();
+    await f.sqlite.exec(`INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name)
+      VALUES ('worker-bob','','bob','chatgpt','Bob')`);
+    await f.pair(W1);
+    const k = await keys();
+    const claimAsBob = async () => {
+      const c = await createPairingChallenge(f.env, { ownerUserId: "bob", workerId: "worker-bob", kind: "pair" });
+      return claimPairing(f.env, {
+        challengeId: c.challengeId, secret: c.secret, publicKey: k.publicKey,
+        signature: await k.sign(pairingMessage(c.challengeId, "worker-bob", k.publicKey)),
+        pairedWorkerIds: [W1],
+      });
+    };
+    await expect(claimAsBob()).rejects.toMatchObject({ status: 409, message: expect.stringContaining("another Syntila account") });
+    expect(await f.one("SELECT 1 FROM worker_credentials WHERE worker_instance_id = 'worker-bob'")).toHaveLength(0);
+    // The same account is never blocked by its own Workers.
+    const own = await createPairingChallenge(f.env, { ownerUserId: "alice", workerId: W2, kind: "pair" });
+    const k2 = await keys();
+    await claimPairing(f.env, {
+      challengeId: own.challengeId, secret: own.secret, publicKey: k2.publicKey,
+      signature: await k2.sign(pairingMessage(own.challengeId, W2, k2.publicKey)), pairedWorkerIds: [W1],
+    });
+    // Once Alice's Workers are unpaired here, Bob may pair.
+    await f.sqlite.exec(`UPDATE worker_credentials SET revoked_at = now(), revoked_reason = 'revoked' WHERE worker_instance_id IN ('${W1}', '${W2}')`);
+    expect((await claimAsBob()).workerId).toBe("worker-bob");
+  });
+
   it("does not let one key serve two Workers", async () => {
     const f = await fixture();
     const shared = await keys();

@@ -1009,9 +1009,12 @@ class _WorkComposer extends StatelessWidget {
           final asset =
               WorkerPresentation.resolve(worker?.workerTypeId, capability.name)
                   .iconAssetForBrightness(Theme.of(context).brightness);
-          return asset == null
-              ? const Icon(Icons.smart_toy_outlined, size: 22)
-              : Image.asset(asset, width: 22, height: 22);
+          return _sharedWorkerBadge(
+              context,
+              worker,
+              asset == null
+                  ? const Icon(Icons.smart_toy_outlined, size: 22)
+                  : Image.asset(asset, width: 22, height: 22));
         },
         modelIconBuilder: (capability, modelId, modelName) {
           final worker =
@@ -1024,9 +1027,14 @@ class _WorkComposer extends StatelessWidget {
           );
           final asset =
               presentation.iconAssetForBrightness(Theme.of(context).brightness);
-          return asset == null
-              ? const Icon(Icons.smart_toy_outlined, size: 22)
-              : Image.asset(asset, width: 22, height: 22);
+          // The selected model's icon is what the compact button shows, so
+          // it carries the shared mark too.
+          return _sharedWorkerBadge(
+              context,
+              worker,
+              asset == null
+                  ? const Icon(Icons.smart_toy_outlined, size: 22)
+                  : Image.asset(asset, width: 22, height: 22));
         },
         compactModelLabelBuilder: (modelId, modelName) {
           return ModelPresentation.stripIdentity(modelName ?? modelId);
@@ -1046,6 +1054,11 @@ class _WorkComposer extends StatelessWidget {
         compactHeight: composerButtonSize,
         compactIconSize: composerIconSize,
         showWorkerInCompactSummary: false,
+        // The icon names the Worker unless two offered Workers (own or
+        // shared) are of the same type and so look alike.
+        showWorkerName:
+            eligibleWorkers.map((w) => w.workerTypeId).toSet().length <
+                eligibleWorkers.length,
         showWorker: true,
         showModel: true,
         showEffort: true,
@@ -1055,7 +1068,12 @@ class _WorkComposer extends StatelessWidget {
         allowEffortChange: policy.userSelectsEffort,
         catalog: AxWorkflowSelectionOptions(eligibleWorkers).sharedCatalog,
         displayWorkers: (selection) => {
-          for (final worker in eligibleWorkers)
+          for (final worker in [...eligibleWorkers]..sort((a, b) {
+              final byName = a.displayName
+                  .toLowerCase()
+                  .compareTo(b.displayName.toLowerCase());
+              return byName != 0 ? byName : a.id.compareTo(b.id);
+            }))
             if (worker.shared ||
                 !(visibilityByWorkspace[worker.workspaceId]
                         ?.workerHidden(worker.id) ??
@@ -5103,4 +5121,33 @@ String _formatStepElapsed(int ms) {
   if (hours > 0) return '${hours}h ${minutes}m';
   if (minutes > 0) return '${minutes}m ${seconds}s';
   return '${seconds}s';
+}
+
+/// Marks the icon of a Worker another person owns (a Space owner's or a
+/// Person Share) with a small people badge, so the user always sees that the
+/// request runs on someone else's computer.
+Widget _sharedWorkerBadge(BuildContext context, AxWorker? worker, Widget icon) {
+  if (worker == null || !worker.shared) return icon;
+  final scheme = Theme.of(context).colorScheme;
+  return SizedBox(
+    key: ValueKey('shared-worker-badge-${worker.id}'),
+    width: 26,
+    height: 26,
+    child: Stack(clipBehavior: Clip.none, children: [
+      Positioned(left: 0, top: 0, child: icon),
+      Positioned(
+        right: -2,
+        bottom: -2,
+        child: Container(
+          padding: const EdgeInsets.all(1.5),
+          decoration: BoxDecoration(
+            color: scheme.primary,
+            shape: BoxShape.circle,
+            border: Border.all(color: scheme.surface, width: 1.5),
+          ),
+          child: Icon(Icons.group, size: 9, color: scheme.onPrimary),
+        ),
+      ),
+    ]),
+  );
 }

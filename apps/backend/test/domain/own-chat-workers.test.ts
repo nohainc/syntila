@@ -90,7 +90,7 @@ it("admits the member's own Worker for Chat through a read-only grant", async ()
 });
 
 it("rejects own Workers when the member lacks Chat", async () => {
-  const f = await fixture({ chat: false, work: true });
+  const f = await fixture({ chat: false, work: false });
   await expect(f.resolve("mine")).rejects.toMatchObject({ status: 403 });
   expect(await f.grants()).toEqual([]);
 });

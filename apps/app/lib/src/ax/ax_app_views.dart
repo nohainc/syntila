@@ -411,6 +411,8 @@ extension _AxAppViews on _AxAppStateMixin {
                     _navigateTo(AxNavigation.workspaces(workspaceId: id)),
                 onBackToList: () =>
                     _navigateTo(const AxNavigation.workspaces()),
+                spaces: store.spaces.items,
+                currentUserId: store.auth.viewer?.id,
               )
             : _legacyWorkspacesView();
       });

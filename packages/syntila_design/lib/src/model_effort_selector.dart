@@ -45,8 +45,13 @@ class ModelEffortSelector extends StatefulWidget {
       this.displayWorkers,
       this.displayModels,
       this.displayEfforts,
+      this.showWorkerName = true,
       this.onManageVisibility});
   final ExecutionSelectionCatalog catalog;
+
+  /// Names the selected Worker above the icon row in the popup. Callers turn
+  /// it off when every Worker has its own icon (one Worker per type).
+  final bool showWorkerName;
   final VoidCallback? onManageVisibility;
   final Map<String, String> Function(ExecutionSelection)? displayWorkers;
   final Map<String, String> Function(ExecutionSelection)? displayModels;
@@ -506,6 +511,9 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
     final anchor = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
     final openingSelection = widget.value;
     var value = openingSelection;
+    // The Worker icon under the pointer; the name line shows it until the
+    // pointer leaves, then the selected Worker again.
+    String? hoveredWorker;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     await showDialog<void>(
       context: context,
@@ -597,7 +605,13 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (var i = 0; i < levels.length; i++)
+                // Auto first, then the strongest effort at the top.
+                for (final i in [
+                  for (var j = 0; j < levels.length; j++)
+                    if (levels[j] == null) j,
+                  for (var j = levels.length - 1; j >= 0; j--)
+                    if (levels[j] != null) j,
+                ])
                   _modelRow(
                       _popupEffortLabel(levels[i], effortChoices),
                       i == index,
@@ -692,6 +706,14 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                                 w.state == CapabilityState.stale)
                             .toList()
                         : <WorkerSelectionCapability>[];
+                    // By the name the user sees, case-insensitive.
+                    final names = widget.displayWorkers?.call(effective);
+                    String nameOf(WorkerSelectionCapability w) =>
+                        (names?[w.id] ?? w.name).toLowerCase();
+                    candidates.sort((a, b) {
+                      final byName = nameOf(a).compareTo(nameOf(b));
+                      return byName != 0 ? byName : a.id.compareTo(b.id);
+                    });
                     final showUsage = widget.onShowUsage != null;
                     final workersWidth = candidates.isEmpty
                         ? 0.0
@@ -738,7 +760,29 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                     );
                     Widget slot(Widget child) => SizedBox(
                         width: buttonSize, height: buttonSize, child: child);
-                    return IconButtonTheme(
+                    final shownWorker = hoveredWorker ?? effective.worker;
+                    final shownName = shownWorker == null
+                        ? null
+                        : names?[shownWorker] ??
+                            widget.catalog.worker(shownWorker)?.name;
+                    final nameLine = Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text(
+                        shownName ?? 'Choose a Worker',
+                        key: ValueKey('${widget.scope}-worker-name'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: shownName == null
+                            ? TextStyle(
+                                fontSize: 13,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant)
+                            : const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    );
+                    final iconRow = IconButtonTheme(
                       data: IconButtonThemeData(
                         style: IconButton.styleFrom(
                           iconSize: 22.0,
@@ -762,7 +806,15 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                                           ?.call(candidate) ??
                                       const Icon(Icons.smart_toy_outlined,
                                           size: 22);
-                                  return slot(Semantics(
+                                  return slot(MouseRegion(
+                                      onEnter: (_) => update(
+                                          () => hoveredWorker = candidate.id),
+                                      onExit: (_) => update(() {
+                                            if (hoveredWorker == candidate.id) {
+                                              hoveredWorker = null;
+                                            }
+                                          }),
+                                      child: Semantics(
                                     label: candidate.name,
                                     selected: isSelected,
                                     child: IconButton(
@@ -780,7 +832,7 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                                           opacity: isSelected ? 1.0 : 0.45,
                                           child: rawIcon),
                                     ),
-                                  ));
+                                  )));
                                 }),
                             ])),
                             if (showUsage)
@@ -812,6 +864,15 @@ class _ModelEffortSelectorState extends State<ModelEffortSelector> {
                               slot(restore),
                             ],
                           ]),
+                    );
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (widget.showWorkerName && candidates.isNotEmpty)
+                          nameLine,
+                        iconRow,
+                      ],
                     );
                   }),
                 ],

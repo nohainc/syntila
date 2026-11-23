@@ -45,6 +45,58 @@ void main() {
   );
 
   test(
+    'a code from another account is refused while this computer has its Workers',
+    () async {
+      final mine = cloud.createWorker(owner: 'alice');
+      final first = pathsFor('alice');
+      final alice = await installAgent(
+        code: cloud.createPairing(mine.id),
+        paths: first,
+        keyStore: FileKeyStore(first.keyFile),
+      );
+      // Same account: allowed.
+      final second = cloud.createWorker(owner: 'alice');
+      final again = pathsFor('alice-2');
+      await installAgent(
+        code: cloud.createPairing(second.id),
+        paths: again,
+        keyStore: FileKeyStore(again.keyFile),
+        pairedWorkers: [alice],
+      );
+      // Another account: refused, naming the Worker to unpair; nothing kept.
+      final theirs = cloud.createWorker(owner: 'bob');
+      final bob = pathsFor('bob');
+      await expectLater(
+        installAgent(
+          code: cloud.createPairing(theirs.id),
+          paths: bob,
+          keyStore: FileKeyStore(bob.keyFile),
+          pairedWorkers: [alice],
+        ),
+        throwsA(
+          isA<OtherAccountPairingRefusal>().having(
+            (e) => e.toString(),
+            'message',
+            contains(mine.id),
+          ),
+        ),
+      );
+      expect(bob.identityFile.existsSync(), isFalse);
+      expect(theirs.publicKey, isNull);
+      // Once Alice's Workers are unpaired, Bob can pair.
+      mine.publicKey = null;
+      second.publicKey = null;
+      await installAgent(
+        code: cloud.createPairing(theirs.id),
+        paths: bob,
+        keyStore: FileKeyStore(bob.keyFile),
+        pairedWorkers: [alice],
+      );
+      expect(theirs.publicKey, isNotNull);
+    },
+  );
+
+  test(
     'a pairing code works once; replay, expiry and a wrong secret leave nothing behind',
     () async {
       final worker = cloud.createWorker();

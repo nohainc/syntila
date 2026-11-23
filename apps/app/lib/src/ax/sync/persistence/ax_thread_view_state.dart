@@ -20,6 +20,8 @@ class AxThreadViewState {
     this.workSeenId,
     this.pane,
     this.workflowSelections = const {},
+    this.stepSelections = const {},
+    this.researcherCount,
   });
 
   final int tabIndex;
@@ -52,6 +54,12 @@ class AxThreadViewState {
   /// copy keeps just the active selection.
   final Map<String, Map<String, String>> workflowSelections;
 
+  /// Per-step Worker/model/effort of the active multi-step Workflow (Research,
+  /// Plan & Implement), keyed by step id, and the chosen researcher count.
+  /// Local only, like [workflowSelections].
+  final Map<String, Map<String, String>> stepSelections;
+  final int? researcherCount;
+
   static const conversationPane = 'conversation';
   static const aiHistoryPane = 'aiHistory';
   static const notesPane = 'notes';
@@ -75,6 +83,8 @@ class AxThreadViewState {
         if (pane != null) 'pane': pane,
         if (workflowSelections.isNotEmpty)
           'workflowSelections': workflowSelections,
+        if (stepSelections.isNotEmpty) 'stepSelections': stepSelections,
+        if (researcherCount != null) 'researcherCount': researcherCount,
       };
 
   /// Thread metadata wins over the browser-local copy for the selection
@@ -118,6 +128,14 @@ class AxThreadViewState {
       workSeenId: local?.workSeenId,
       pane: local?.pane,
       workflowSelections: local?.workflowSelections ?? const {},
+      // Step choices belong to one Workflow; they survive only while the
+      // Cloud copy names the same one.
+      stepSelections: local?.workflowReference == string('workflowReference')
+          ? local?.stepSelections ?? const {}
+          : const {},
+      researcherCount: local?.workflowReference == string('workflowReference')
+          ? local?.researcherCount
+          : null,
     );
   }
 
@@ -149,6 +167,11 @@ class AxThreadViewState {
       workSeenId: string('workSeenId'),
       pane: _panes.contains(json['pane']) ? json['pane'] as String : null,
       workflowSelections: _selections(json['workflowSelections']),
+      stepSelections: _selections(json['stepSelections']),
+      researcherCount:
+          json['researcherCount'] is int && (json['researcherCount'] as int) > 0
+              ? json['researcherCount'] as int
+              : null,
     );
   }
 

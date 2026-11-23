@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:syntila_design/syntila_design.dart';
 import 'package:syntila_protocol/syntila_protocol.dart';
 import 'package:flutter/material.dart';
@@ -177,6 +178,66 @@ void main() {
         tester.getCenter(separator).dx, lessThan(tester.getCenter(usage).dx));
     expect(tester.getSize(separator).height, 48);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Work popup names the selected Worker above its icons',
+      (tester) async {
+    const other = WorkerSelectionCapability(id: 'other', name: 'Other');
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: Align(
+      alignment: Alignment.bottomLeft,
+      child: ModelEffortSelector(
+        compact: true,
+        immediatePopup: true,
+        catalog: const ExecutionSelectionCatalog([worker, other]),
+        displayWorkers: (_) =>
+            {'worker': 'Writer', 'other': 'Other · shared by Alice'},
+        value: const ExecutionSelection(worker: 'worker'),
+        onChanged: (_) {},
+      ),
+    ))));
+    await tester.tap(find.byKey(const ValueKey('execution-open')));
+    await tester.pumpAndSettle();
+    final name = find.byKey(const ValueKey('execution-worker-name'));
+    expect(tester.widget<Text>(name).data, 'Writer');
+    expect(
+        tester.getBottomLeft(name).dy,
+        lessThanOrEqualTo(tester
+            .getTopLeft(find.byKey(const ValueKey('execution-worker-worker')))
+            .dy));
+    // Hovering another icon names it; leaving shows the selection again.
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester
+        .getCenter(find.byKey(const ValueKey('execution-worker-other'))));
+    await tester.pump();
+    expect(tester.widget<Text>(name).data, 'Other · shared by Alice');
+    await mouse.moveTo(Offset.zero);
+    await tester.pump();
+    expect(tester.widget<Text>(name).data, 'Writer');
+    await mouse.removePointer();
+  });
+
+  testWidgets('Work popup leaves the name out when the caller says icons suffice',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: Align(
+      alignment: Alignment.bottomLeft,
+      child: ModelEffortSelector(
+        compact: true,
+        immediatePopup: true,
+        showWorkerName: false,
+        catalog: const ExecutionSelectionCatalog([worker]),
+        value: const ExecutionSelection(worker: 'worker'),
+        onChanged: (_) {},
+      ),
+    ))));
+    await tester.tap(find.byKey(const ValueKey('execution-open')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('execution-worker-name')), findsNothing);
+    expect(find.byKey(const ValueKey('execution-worker-worker')), findsOneWidget);
   });
 
   testWidgets('Work popup applies effort model and worker choices immediately',

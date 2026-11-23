@@ -375,7 +375,11 @@ class AgentRuntime {
     }
     status = report['status'] as String? ?? 'probe_failed';
     await _writeLocalModels(report);
-    await _log('models captured status=$status');
+    final said = report['message'];
+    await _log(
+      'models captured status=$status'
+      '${status != 'ok' && said is String && said.isNotEmpty ? ' message=${said.replaceAll(RegExp(r'\s+'), ' ')}' : ''}',
+    );
     try {
       await api.publishModels(
         workerId: identity.workerId,

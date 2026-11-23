@@ -167,6 +167,25 @@ abstract interface class AxWorkerManagementSource {
 }
 
 /// Asks a connected Worker to re-read the models its provider CLI offers.
+/// Person Shares (ADR-043): the owner lets one person from their People use
+/// a Worker for Chat in that person's own Spaces and personal Threads.
+abstract interface class AxWorkerPersonShareSource {
+  Future<List<AxWorkerPersonShare>> loadWorkerPersonShares(String workerId);
+  Future<List<AxWorkerPersonShare>> saveWorkerPersonShare(
+      String workerId, AxWorkerPersonShare share);
+  Future<List<AxWorkerPersonShare>> removeWorkerPersonShare(
+      String workerId, String userId);
+
+  /// Workers other people shared with the viewer.
+  Future<List<WorkerInstance>> loadWorkersSharedWithMe();
+}
+
+/// The Space owner's Workers offered to a member through their Space rights,
+/// narrowed to the models and efforts the owner allows members.
+abstract interface class AxSpaceWorkersSource {
+  Future<List<WorkerInstance>> loadSpaceWorkers(String spaceId);
+}
+
 abstract interface class AxWorkerModelsSource {
   Future<void> requestWorkerModelsRefresh(String id);
 }
@@ -178,6 +197,8 @@ abstract class _AxApiClientCore
         AxWorkerIdentityFeatureSource,
         AxWorkersUxFeatureSource,
         AxEligibleWorkersSource,
+        AxSpaceWorkersSource,
+        AxWorkerPersonShareSource,
         AxWorkerManagementSource,
         AxWorkerModelsSource,
         AxSpaceFolderDataSource {

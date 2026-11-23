@@ -1022,17 +1022,32 @@ List<DiscoveredModel> deriveEffortVariantModels(
         supportedReasoningEfforts: [...efforts[family]!]
           ..sort((a, b) => rank(a).compareTo(rank(b))),
       ),
-    for (final model in plain)
+  ];
+  final taken = result.map((m) => m.id).toSet();
+  for (final model in plain) {
+    var id = model.id;
+    if (taken.contains(id)) {
+      // A variant whose ID lacks its effort suffix, e.g. `orchestrator`
+      // labelled `Orchestrator (Carbon)` beside `orchestrator-neon`: it
+      // stays its own model under `<id><separator><effort>`, and still runs
+      // with its own native ID.
+      final label = _labelEffort.firstMatch(model.name);
+      final effort = label?.group(2)?.trim().toLowerCase();
+      if (effort != null && _effortValue.hasMatch(effort)) {
+        id = '$id$separator$effort';
+      }
+    }
+    // Still taken: skip this one line instead of failing the whole list.
+    if (!taken.add(id)) continue;
+    result.add(
       DiscoveredModel(
-        id: model.id,
+        id: id,
         name: model.name,
         nativeId: model.nativeId,
         status: model.status,
         selectionMode: 'combined',
       ),
-  ];
-  if (result.map((m) => m.id).toSet().length != result.length) {
-    throw const FormatException('Logical model ID collision');
+    );
   }
   return result;
 }

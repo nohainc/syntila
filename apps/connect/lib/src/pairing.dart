@@ -7,6 +7,10 @@ import 'server_api.dart';
 /// identity. The Agent generates the key pair here; only the public key is
 /// sent, with a signature that proves it holds the private key.
 ///
+/// [pairedWorkers] are the other Workers already paired on this computer.
+/// Cloud refuses a code from another account while any of them is paired;
+/// the refusal names them so the user knows what to unpair.
+///
 /// If the claim fails nothing is left behind. A crash in the middle leaves a
 /// `pairing.pending` marker, and the next `install` cleans the partial state
 /// before trying again.
@@ -15,6 +19,7 @@ Future<AgentIdentity> installAgent({
   required AgentPaths paths,
   required KeyStore keyStore,
   ServerApi? api,
+  List<AgentIdentity> pairedWorkers = const [],
 }) async {
   await paths.ensure();
   final lock = await AgentLock.acquire(paths.lockFile);
@@ -51,6 +56,10 @@ Future<AgentIdentity> installAgent({
           key,
           pairingMessage(code.challengeId, code.workerId, key.publicKeyText),
         ),
+        pairedWorkerIds: [
+          for (final worker in pairedWorkers)
+            if (worker.workerId != code.workerId) worker.workerId,
+        ],
       );
       final resolvedType = claimed.workerType ?? code.workerType;
       final resolvedName =
@@ -70,10 +79,18 @@ Future<AgentIdentity> installAgent({
         );
         await identity.save(paths.identityFile);
       }
-    } on Object {
+    } on Object catch (error) {
       await keyStore.delete();
       if (await paths.identityFile.exists()) await paths.identityFile.delete();
       await paths.pairingMarker.delete();
+      if (error is ServerRefusal &&
+          error.status == 409 &&
+          error.message.contains('another Syntila account')) {
+        throw OtherAccountPairingRefusal([
+          for (final worker in pairedWorkers)
+            if (worker.workerId != code.workerId) worker,
+        ]);
+      }
       rethrow;
     }
     await paths.pairingMarker.delete();
@@ -222,4 +239,21 @@ KeyStore _pendingKeyStore(AgentPaths paths, KeyStore current) {
     );
   }
   return FileKeyStore(paths.nextKeyFile);
+}
+
+/// This computer already runs Workers of another Syntila account. One
+/// computer belongs to one account, so those Workers must be unpaired first.
+class OtherAccountPairingRefusal implements Exception {
+  OtherAccountPairingRefusal(this.workers);
+
+  /// The Workers of the other account still paired on this computer.
+  final List<AgentIdentity> workers;
+
+  @override
+  String toString() {
+    final names = workers.map((w) => '${w.displayName} (${w.workerId})');
+    return 'This computer is connected to another Syntila account. Unpair all '
+        "of that account's Workers on this computer, then pair again: "
+        '${names.join(', ')}. Use `syntila-connect unpair --yes --worker ID` for each.';
+  }
 }

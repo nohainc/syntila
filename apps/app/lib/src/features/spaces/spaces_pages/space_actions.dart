@@ -5,7 +5,8 @@ extension _SpaceWorkspaceActions on _SpaceWorkspaceState {
       AxSpaceMember member, String key, bool value) async {
     _updateState(() => _savingMembers.add(member.userId));
     try {
-      final permissions = member.effectivePermissions.toJson()..[key] = value;
+      final permissions =
+          linkSpaceAiRights(member.effectivePermissions.toJson(), key, value);
       await widget.dataSource.updateSpaceMemberPermissions(
           spaceId: widget.space.id,
           userId: member.userId,

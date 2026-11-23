@@ -1062,7 +1062,7 @@ it("runs Chat outside the Space Workspace only on the requester's own Workspace 
     memberPermissions: {
       "user-a": {
         chat: false,
-        work: true,
+        work: false,
         manageOwnThreads: true,
       },
     },

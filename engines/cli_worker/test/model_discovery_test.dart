@@ -64,6 +64,46 @@ void main() {
       );
     }
   });
+  test('a variant without its effort suffix stays its own model', () {
+    // agy lists `gemini-pro-orchestrator` as "Orchestrator (Carbon)" next to
+    // `gemini-pro-orchestrator-neon`/`-argon`; it must not fail the list.
+    final rule = {'source': 'label_parenthesized_suffix', 'separator': '-'};
+    final models = parseDiscoveredModels(
+      File('test/fixtures/agy-models-orchestrator.tsv').readAsStringSync(),
+      '',
+    );
+    final grouped = normalizeCombinedModels(
+      models,
+      null,
+      '1.4.0',
+      effortVariants: rule,
+    );
+    final ids = grouped.map((m) => m.id).toList();
+    expect(ids.toSet().length, ids.length);
+    final family = grouped.singleWhere(
+      (m) => m.id == 'gemini-pro-orchestrator',
+    );
+    expect(family.supportedReasoningEfforts.toSet(), {'neon', 'argon'});
+    final carbon = grouped.singleWhere(
+      (m) => m.id == 'gemini-pro-orchestrator-carbon',
+    );
+    expect(carbon.name, 'Orchestrator (Carbon)');
+    expect(
+      resolveNativeSelection(carbon, null, null, '1.4.0', effortVariants: rule),
+      'gemini-pro-orchestrator',
+    );
+    expect(
+      resolveNativeSelection(
+        family,
+        'neon',
+        null,
+        '1.4.0',
+        effortVariants: rule,
+      ),
+      'gemini-pro-orchestrator-neon',
+    );
+    expect(ids, containsAll(['gemini-4-neon', 'gemini-3.8-flash']));
+  });
   test('derived efforts leave unlabeled lines as plain models', () {
     final rule = {'source': 'label_parenthesized_suffix', 'separator': '-'};
     final grouped = normalizeCombinedModels(

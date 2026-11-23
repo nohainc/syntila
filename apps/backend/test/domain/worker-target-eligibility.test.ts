@@ -1,10 +1,12 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
-import { basicThread, member, user } from "./helpers/seed";
+import { basicThread, member, space, thread, user } from "./helpers/seed";
 import { acceptWorkerTarget, declaredProfileCapabilities } from "../../src/domain/worker-eligibility.js";
 import { BUILTIN_WORKFLOWS } from "@syntila/core";
 import { resolveWorkerTargetBindings, recheckWorkerTarget } from "../../src/domain/routes/worker-target-bindings.js";
 import { handleListEligibleWorkers, handleValidateWorkRequest } from "../../src/domain/routes/work-creation.js";
+import { handleListSpaceWorkers, handleListWorkersSharedWithMe, memberExecutionOptions } from "../../src/domain/routes/workers.js";
+import { handleWorkerPersonShares } from "../../src/domain/routes/worker-space-access.js";
 
 async function fixture() {
   const f = await pgD1();
@@ -138,8 +140,20 @@ describe("Per-Space member Worker access enforcement (ADR-042)", () => {
     // Owner still works unchanged.
     expect((await f.accept({ requesterUserId: "alice" })).ok).toBe(true);
 
-    // Unlisted member (carol) is rejected.
-    expect(await f.accept({ requesterUserId: "carol" })).toEqual({ ok: false, code: "worker_not_found" });
+    // An unlisted member (carol) reaches the Space owner's Worker through her
+    // Space rights, but never another member's Worker.
+    expect((await f.accept({ requesterUserId: "carol" })).ok).toBe(true);
+    expect(await f.accept({ requesterUserId: "carol", workerId: "worker-bob" })).toEqual({ ok: false, code: "worker_not_found" });
+    const work = { workflowId: "direct", readOnly: false, capabilities: ["authorized_context_read", "thread_write"] };
+    expect((await f.accept({ requesterUserId: "carol", ...work })).ok).toBe(true);
+    // Chat-only Space rights: Chat still answers, Work is refused.
+    await f.sqlite.exec(`UPDATE spaces SET settings_json = '{"memberPermissions":{"carol":{"chat":true,"work":false}}}' WHERE id = 'sp'`);
+    expect((await f.accept({ requesterUserId: "carol" })).ok).toBe(true);
+    expect(await f.accept({ requesterUserId: "carol", ...work })).toEqual({ ok: false, code: "execute_not_permitted" });
+    // No Space rights at all: nothing.
+    await f.sqlite.exec(`UPDATE spaces SET settings_json = '{"memberPermissions":{"carol":{"chat":false,"work":false}}}' WHERE id = 'sp'`);
+    expect(await f.accept({ requesterUserId: "carol" })).toEqual({ ok: false, code: "execute_not_permitted" });
+    await f.sqlite.exec(`UPDATE spaces SET settings_json = '{}' WHERE id = 'sp'`);
 
     // Enabled member (bob) succeeds on chat, but is rejected for write/work.
     expect((await f.accept({ requesterUserId: "bob", workflowId: "chat" })).ok).toBe(true);
@@ -188,7 +202,7 @@ describe("Per-Space member Worker access enforcement (ADR-042)", () => {
       expect(await bobEligible.json()).toEqual({ workflowId: "chat", workerIds: ["worker-alice"] });
 
       const carolEligible = await handleListEligibleWorkers(new Request("https://test/api?workflowId=chat"), envFor("carol"), "th");
-      expect(await carolEligible.json()).toEqual({ workflowId: "chat", workerIds: [] });
+      expect(await carolEligible.json()).toEqual({ workflowId: "chat", workerIds: ["worker-alice"] });
 
       // Disabling bob rejects execution and removes from eligible list.
       await f.sqlite.exec(`
@@ -229,5 +243,120 @@ describe("Worker-wide member model and effort allow-list (ADR-042)", () => {
     });
     // The owner is never limited by the member table.
     expect((await f.accept({ model: "m2" } as never)).ok).toBe(true);
+  });
+});
+
+describe("Space owner's Workers for members", () => {
+  it("lists them to a member with Space rights and offers only allowed models", async () => {
+    const f = await fixture();
+    const prior = process.env.SYNTILA_FEATURE_FLAGS;
+    process.env.SYNTILA_FEATURE_FLAGS = "worker_identity,worker_agent_connect,worker_target_dispatch";
+    try {
+      const envFor = (who: string) => ({
+        SYNTILA_DB: f.db, SYNTILA_ENVIRONMENT: "development",
+        TEST_AUTHENTICATION: async () => ({
+          userId: who, user: { id: who, email: `${who}@test`, displayName: who, status: "active" },
+          spaceRoles: { sp: "viewer" }, sessionId: "test", clientType: "web",
+        }),
+      }) as never;
+      const list = async (who: string) =>
+        ((await (await handleListSpaceWorkers(new Request("https://test/api"), envFor(who), "sp")).json()) as { workers: { id: string }[] }).workers.map((w) => w.id);
+      // A viewer has no Chat or Work right by default; bob owns no Space Workers.
+      expect(await list("bob")).toEqual([]);
+      await f.sqlite.exec(`UPDATE spaces SET settings_json = '{"memberPermissions":{"bob":{"chat":true}}}' WHERE id = 'sp'`);
+      expect(await list("bob")).toEqual(["worker-alice"]);
+      expect(await list("alice")).toEqual([]);
+    } finally {
+      if (prior === undefined) delete process.env.SYNTILA_FEATURE_FLAGS;
+      else process.env.SYNTILA_FEATURE_FLAGS = prior;
+    }
+    const options = {
+      schemaVersion: 2,
+      models: {
+        allowsCustomModel: true, allowedModelIds: ["m1", "m2"], defaultModelId: "m2",
+        options: [{ id: "m1", efforts: ["low", "high"], defaultEffort: "high" }, { id: "m2", efforts: [], defaultEffort: null }],
+      },
+    };
+    expect(memberExecutionOptions(options, { allowedModels: ["m1"], allowedEfforts: { m1: ["low"] } })).toEqual({
+      schemaVersion: 2,
+      models: {
+        allowsCustomModel: false, allowedModelIds: ["m1"], defaultModelId: null,
+        options: [{ id: "m1", efforts: ["low"], defaultEffort: null }],
+      },
+    });
+  });
+});
+
+describe("Person Shares (ADR-043)", () => {
+  it("lets the person Chat on a shared Worker in their own Space only, within the owner's limits", async () => {
+    const f = await fixture();
+    await f.sqlite.exec(`
+      ${basicThread({ user: "bob", space: "bob-sp", thread: "bob-th" })}
+      ${user("carol")} ${space("carol-sp", "carol")} ${member("carol-sp", "carol")} ${member("carol-sp", "bob", "collaborator")}
+      ${thread("carol-th", "carol-sp", "carol")}
+    `);
+    const bobChat = { requesterUserId: "bob", spaceId: "bob-sp", threadId: "bob-th" };
+    // Not shared: invisible.
+    expect(await f.accept(bobChat)).toEqual({ ok: false, code: "worker_not_found" });
+    await f.sqlite.exec(`INSERT INTO worker_person_shares (worker_id, user_id) VALUES ('worker-alice', 'bob')`);
+    const chat = await f.accept(bobChat);
+    expect(chat.ok && chat.snapshot.personShare).toBe(true);
+    if (chat.ok) expect(chat.snapshot.permissions).not.toContain("shell:execute");
+    // Never Work, and never in a Space someone else owns.
+    expect(await f.accept({
+      ...bobChat, workflowId: "direct", readOnly: false, capabilities: ["authorized_context_read", "thread_write"],
+    })).toEqual({ ok: false, code: "execute_not_permitted" });
+    expect(await f.accept({ requesterUserId: "bob", spaceId: "carol-sp", threadId: "carol-th" })).toEqual({
+      ok: false, code: "worker_not_found",
+    });
+    // Models stay closed until the owner allows them for members.
+    expect(await f.accept({ ...bobChat, model: "m1" } as never)).toEqual({ ok: false, code: "model_not_supported" });
+
+    // One request at a time by default.
+    const env = { SYNTILA_DB: f.db } as never;
+    const bind = () => resolveWorkerTargetBindings(env, {
+      userId: "bob", spaceId: "bob-sp", threadId: "bob-th", definition: BUILTIN_WORKFLOWS.chat,
+      request: { workerId: "worker-alice" },
+    });
+    expect((await bind()).ok).toBe(true);
+    await f.sqlite.exec(`INSERT INTO worker_assignments
+      (id,space_id,worker_type_id,status,permission_snapshot_json,session_policy,attempt_id,worker_instance_id,requested_by_user_id,execution_path,worker_snapshot_json,created_at,updated_at)
+      VALUES ('asg-bob','bob-sp','chatgpt','running','{}','stateless','att-bob','worker-alice','bob','worker','{}',now(),now())`);
+    await expect(bind()).rejects.toMatchObject({ status: 429 });
+    // Revoking ends it at once.
+    await f.sqlite.exec(`DELETE FROM worker_person_shares WHERE worker_id = 'worker-alice' AND user_id = 'bob'`);
+    expect(await f.accept(bobChat)).toEqual({ ok: false, code: "worker_not_found" });
+  });
+
+  it("lets the owner share only with their People and lists the share to the person", async () => {
+    const f = await fixture();
+    const prior = process.env.SYNTILA_FEATURE_FLAGS;
+    process.env.SYNTILA_FEATURE_FLAGS = "worker_identity,worker_agent_connect,worker_target_dispatch";
+    try {
+      const envFor = (who: string) => ({
+        SYNTILA_DB: f.db, SYNTILA_ENVIRONMENT: "development",
+        TEST_AUTHENTICATION: async () => ({
+          userId: who, user: { id: who, email: `${who}@test`, displayName: who, status: "active" },
+          spaceRoles: {}, sessionId: "test", clientType: "web",
+        }),
+      }) as never;
+      const put = (body: unknown) => handleWorkerPersonShares(
+        new Request("https://test/api", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+        envFor("alice"), "worker-alice");
+      await f.sqlite.exec(`${user("carol")}`);
+      await expect(put({ userId: "carol" })).rejects.toMatchObject({ status: 422 });
+      await f.sqlite.exec(`INSERT INTO people_relationships (user_low_id, user_high_id, established_at) VALUES ('alice', 'bob', now()) ON CONFLICT DO NOTHING`);
+      const shared = (await (await put({ userId: "bob", maxRunSecondsPerMonth: 3600 })).json()) as { shares: unknown[] };
+      expect(shared.shares).toEqual([expect.objectContaining({ userId: "bob", maxConcurrentRequests: 1, maxRunSecondsPerMonth: 3600 })]);
+      // Another person cannot manage the owner's shares.
+      await expect(handleWorkerPersonShares(new Request("https://test/api"), envFor("bob"), "worker-alice")).rejects.toMatchObject({ status: 403 });
+      const mine = (await (await handleListWorkersSharedWithMe(new Request("https://test/api"), envFor("bob"))).json()) as {
+        workers: { id: string; sharedByName: string }[];
+      };
+      expect(mine.workers.map((w) => [w.id, w.sharedByName])).toEqual([["worker-alice", "alice"]]);
+    } finally {
+      if (prior === undefined) delete process.env.SYNTILA_FEATURE_FLAGS;
+      else process.env.SYNTILA_FEATURE_FLAGS = prior;
+    }
   });
 });

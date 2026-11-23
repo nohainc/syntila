@@ -196,7 +196,9 @@ Provider credentials stay in the local provider CLI configuration. Runtime crede
 Space membership remains the boundary for reading. Owners retain all member
 rights and control Space settings and every Thread. For other members, the
 owner can set explicit permissions: Use Space AI for chat (`chat`), Use Space AI for work (`work`), and
-Create threads (`manageOwnThreads`). The Members tab shows these in a checkbox grid;
+Create threads (`manageOwnThreads`). `chat` and `work` govern asking the AI
+only; writing plain messages to other people in a Thread never needs them
+(Thread `discuss` access checks membership and the Thread access policy). The Members tab shows these in a checkbox grid;
 only the owner can edit permissions, and the Owner badge appears beside the owner's name. Thread
 lists show the creator's email below the title when that person is not the
 Space owner. The current Thread creation identity is its immutable
@@ -287,8 +289,8 @@ direct-Space participants = collaborator defaults.
 
 | Right | Semantics | Enforcement points |
 |---|---|---|
-| `chat` | Discuss and run the Chat workflow. Includes answering with a Worker from a Workspace the member owns (the "personal Worker"). | `requireWorkflowPermission`, scheduler `rights.chat`, thread `discuss`/`execute` |
-| `work` | Run non-Chat workflows; sets the execution ceiling, intersected with Workspace grant and Step policy. | `requireWorkflowPermission`, scheduler `rights.work` |
+| `chat` | Run the Chat workflow. Includes answering with a Worker from a Workspace the member owns (the "personal Worker"). Plain messages never need it. | `requireWorkflowPermission`, scheduler `rights.chat`, thread `execute` |
+| `work` | Run non-Chat workflows; sets the execution ceiling, intersected with Workspace grant and Step policy. **Includes `chat`**: the effective and stored `chat` is `chat \|\| work`, and the Members grid and invitation dialog grant Chat with Work and remove Work with Chat. There is no Work-only member. | `requireWorkflowPermission`, scheduler `rights.work` |
 | `manageOwnThreads` | Create Threads and manage Threads the member leads. Never grants Chat or Work. | `requireSpaceRight`, `canManageThread` |
 
 **Personal Worker behavior.** `useOwnWorkers` is no longer an independent right. The

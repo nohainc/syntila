@@ -71,6 +71,35 @@ void main() {
         1);
   });
 
+  test('step choices and researcher count round-trip and follow the Workflow',
+      () {
+    const local = AxThreadViewState(
+      workflowReference: 'research:v2',
+      stepSelections: {
+        'research-1': {'workerId': 'worker-a', 'model': 'm1'},
+        'synthesis': {'workerId': 'worker-b'},
+      },
+      researcherCount: 3,
+    );
+    final restored = AxThreadViewState.decode(local.encode())!;
+    expect(restored.stepSelections, local.stepSelections);
+    expect(restored.researcherCount, 3);
+    // A newer Cloud copy of the same Workflow keeps the local step choices;
+    // one naming another Workflow drops them.
+    final same = AxThreadViewState.withRemote(local, {
+      'workflowReference': 'research:v2',
+      'selectionUpdatedAt': '2026-01-01T00:00:00Z',
+    })!;
+    expect(same.stepSelections, local.stepSelections);
+    expect(same.researcherCount, 3);
+    final other = AxThreadViewState.withRemote(local, {
+      'workflowReference': 'chat:v1',
+      'selectionUpdatedAt': '2026-01-01T00:00:00Z',
+    })!;
+    expect(other.stepSelections, isEmpty);
+    expect(other.researcherCount, isNull);
+  });
+
   test('per-workflow selections round-trip and stay local', () {
     const state = AxThreadViewState(workflowSelections: {
       'chat': {'workerId': 'w1', 'model': 'm1'},

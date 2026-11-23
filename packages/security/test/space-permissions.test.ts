@@ -62,7 +62,7 @@ it("normalizes invitation snapshots fail-closed and stores only three rights", (
   );
   expect(
     normalizeSpaceMemberSnapshot("collaborator", { chat: "yes", work: true }),
-  ).toEqual({ ...none, work: true });
+  ).toEqual({ ...none, chat: true, useOwnWorkers: true, work: true });
   expect(
     storedSpaceMemberRights(defaultSpaceMemberPermissions("owner")),
   ).toEqual({ chat: true, work: true, manageOwnThreads: true });
@@ -83,4 +83,16 @@ it("derives own Workers from Chat", () => {
   expect(stored({ chat: false, useOwnWorkers: true })).toBe(false);
   expect(stored({ chat: true })).toBe(true);
   expect(stored({ chat: true, useOwnWorkers: false })).toBe(true);
+});
+
+it("treats Work as including Chat when reading and storing rights", () => {
+  const rights = spaceMemberPermissions(
+    "collaborator",
+    { memberPermissions: { member: { chat: false, work: true } } },
+    "member",
+  );
+  expect(rights).toMatchObject({ chat: true, useOwnWorkers: true, work: true });
+  expect(
+    storedSpaceMemberRights({ chat: false, work: true, manageOwnThreads: false }),
+  ).toEqual({ chat: true, work: true, manageOwnThreads: false });
 });

@@ -716,8 +716,8 @@ function canAccessThreadPermission(
   if (membership.role === "owner") return true;
   if (permission !== "view") {
     if (membership.permissions) {
-      if (permission === "discuss" && !membership.permissions.chat)
-        return false;
+      // Messages between people never need a Space AI right; Chat and Work
+      // only govern asking the AI (execute).
       if (
         permission === "execute" &&
         !membership.permissions.chat &&

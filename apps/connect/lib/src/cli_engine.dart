@@ -166,6 +166,11 @@ class CliEngineLauncher
     } on Object {
       allowed = false;
     }
+    // A Person Share is another person's Chat on this computer: always the
+    // provider's read-only mode, never full access (ADR-043).
+    if (snapshot['personShare'] == true) {
+      return WorkerExecutionPolicy.providerDefault;
+    }
     final readOnly =
         request.payload['readOnly'] == true || snapshot['readOnly'] == true;
     // Read-only steps (Chat, Research, ...) see the Space folder but stay in
@@ -307,7 +312,10 @@ class CliEngineLauncher
     var workingDirectory = Directory(
       '${workRoot.path}/${request.assignmentId}',
     );
-    final spaceFolderId = snapshot['spaceFolderId'];
+    final personShare = snapshot['personShare'] == true;
+    // A Person Share never sees a folder of this computer; it answers in the
+    // empty scratch directory of its assignment.
+    final spaceFolderId = personShare ? null : snapshot['spaceFolderId'];
     // Steps without a Thread lease (Chat, Plan, Research) read the folder and
     // work without it; stateful steps need write access to it.
     final readsFolder = snapshot['leaseId'] == null;
@@ -357,7 +365,9 @@ class CliEngineLauncher
     // Read-only steps (Chat, Plan, Research) cannot save files; their
     // linked provider images are still picked up.
     final readOnlyStep =
-        request.payload['readOnly'] == true || snapshot['readOnly'] == true;
+        personShare ||
+        request.payload['readOnly'] == true ||
+        snapshot['readOnly'] == true;
     final imageDirectories = [
       imagesDirectory.path,
       // The Engine copies Codex's images here.

@@ -11,6 +11,8 @@ import { notifyWorkerAgent, publishWorkerChanged } from "../worker-events.js";
 import { revokeWorkerCredential } from "../worker-agents.js";
 import { HttpError, json, securityContext } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
+import { loadSpacePermissions } from "./space-permissions.js";
+import { parseModelAccess, type WorkerSpaceModelAccess } from "../worker-eligibility.js";
 
 /**
  * Worker Instances (ADR-032, phase P1): a durable, user-owned Worker with its
@@ -413,4 +415,130 @@ export async function handleWorkerUsageRead(
     .fetch("http://gateway/usage-request", { method: "POST" });
   const body = await response.json().catch(() => ({ error: "Usage request returned an unreadable response" }));
   return json(body, { status: response.status, headers: { "Cache-Control": "no-store" } });
+}
+
+/**
+ * Narrows a Worker's options to the models and efforts its owner allows
+ * members (the Worker-wide allow-list, ADR-042). Nothing ticked offers nothing.
+ */
+export function memberExecutionOptions(options: unknown, access: WorkerSpaceModelAccess): unknown {
+  if (!options || typeof options !== "object") return options;
+  const value = options as { models?: Record<string, unknown> };
+  const models = value.models;
+  if (!models || typeof models !== "object") return options;
+  const allowed = new Set(access.allowedModels);
+  const list = (raw: unknown) => (Array.isArray(raw) ? raw : []);
+  const entries = list(models.options)
+    .filter((entry: { id?: unknown }) => typeof entry?.id === "string" && allowed.has(entry.id))
+    .map((entry: { id: string; efforts?: unknown; defaultEffort?: unknown }) => {
+      const efforts = list(entry.efforts).filter((e) => access.allowedEfforts[entry.id]?.includes(e as string));
+      return { ...entry, efforts, defaultEffort: efforts.includes(entry.defaultEffort) ? entry.defaultEffort : null };
+    });
+  return {
+    ...value,
+    models: {
+      ...models,
+      allowsCustomModel: false,
+      allowedModelIds: list(models.allowedModelIds).filter((id) => allowed.has(id as string)),
+      defaultModelId: allowed.has(models.defaultModelId as string) ? models.defaultModelId : null,
+      options: entries,
+    },
+  };
+}
+
+/**
+ * GET /api/spaces/:spaceId/workers — the Space owner's Workers, for a member
+ * whose Space rights allow Chat or Work. They are the Space's AI: the member's
+ * Space rights decide the workflow at admission, and only the models and
+ * efforts the owner allows members are offered. The owner gets an empty list
+ * (their Workers are already their own).
+ */
+export async function handleListSpaceWorkers(
+  request: Request,
+  env: SecurityEnv,
+  spaceId: string,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  requireWorkerIdentity();
+  const context = await securityContext(request, env, accessContext);
+  const policy = await loadSpacePermissions(env, context.userId, spaceId);
+  const q = dataOf(env).read;
+  const owner = await q.row<{ ownerUserId: string }>`SELECT owner_user_id AS "ownerUserId" FROM spaces WHERE id = ${spaceId}`;
+  if (
+    !owner ||
+    owner.ownerUserId === context.userId ||
+    policy.kind === "direct" ||
+    policy.isSupport ||
+    !(policy.rights.chat || policy.rights.work)
+  ) {
+    return json({ workers: [] });
+  }
+  // A member the owner explicitly turned off for a Worker does not see it.
+  const rows = await q.rows`SELECT ${q.raw(columns(isFeatureEnabled("worker_target_dispatch")))},
+       wmma.allowed_models_json AS "allowedModelsJson", wmma.allowed_efforts_json AS "allowedEffortsJson"
+     FROM ${q.raw(FROM)}
+     LEFT JOIN worker_member_model_access wmma ON wmma.worker_id = w.id
+     WHERE w.owner_user_id = ${owner.ownerUserId} AND w.revoked_at IS NULL AND w.enabled
+       AND NOT EXISTS (
+         SELECT 1 FROM worker_space_members wsm
+          WHERE wsm.worker_id = w.id AND wsm.space_id = ${spaceId}
+            AND wsm.user_id = ${context.userId} AND wsm.enabled = false)
+     ORDER BY w.created_at, w.id`;
+  const views = rows.map(workerView);
+  const reports = await agentExecutionOptions(env, views);
+  return json({
+    workers: views.map((w, i) => {
+      const report = reports.get(w.id);
+      const access = parseModelAccess(rows[i]!.allowedModelsJson, rows[i]!.allowedEffortsJson);
+      return {
+        ...w,
+        // The owner's own picker visibility is not the member's concern.
+        visibility: { hiddenModels: [], hiddenEfforts: {} },
+        defaultModel: w.defaultModel && access.allowedModels.includes(w.defaultModel) ? w.defaultModel : null,
+        ...(report ?? {}),
+        ...(report?.executionOptions ? { executionOptions: memberExecutionOptions(report.executionOptions, access) } : {}),
+      };
+    }),
+  });
+}
+
+/**
+ * GET /api/workers/shared-with-me — Workers other people shared with the
+ * caller through a Person Share (ADR-043). Chat only, in the caller's own
+ * Spaces and personal Threads; only the models and efforts the owner allows
+ * members are offered. `sharedByName` names the owner.
+ */
+export async function handleListWorkersSharedWithMe(
+  request: Request,
+  env: SecurityEnv,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  requireWorkerIdentity();
+  const context = await securityContext(request, env, accessContext);
+  const q = dataOf(env).read;
+  const rows = await q.rows`SELECT ${q.raw(columns(isFeatureEnabled("worker_target_dispatch")))},
+       owner.display_name AS "sharedByName",
+       wmma.allowed_models_json AS "allowedModelsJson", wmma.allowed_efforts_json AS "allowedEffortsJson"
+     FROM ${q.raw(FROM)}
+     JOIN worker_person_shares wps ON wps.worker_id = w.id AND wps.user_id = ${context.userId}
+     JOIN users owner ON owner.id = w.owner_user_id
+     LEFT JOIN worker_member_model_access wmma ON wmma.worker_id = w.id
+     WHERE w.revoked_at IS NULL AND w.enabled
+     ORDER BY w.created_at, w.id`;
+  const views = rows.map(workerView);
+  const reports = await agentExecutionOptions(env, views);
+  return json({
+    workers: views.map((w, i) => {
+      const report = reports.get(w.id);
+      const access = parseModelAccess(rows[i]!.allowedModelsJson, rows[i]!.allowedEffortsJson);
+      return {
+        ...w,
+        sharedByName: String(rows[i]!.sharedByName ?? ""),
+        visibility: { hiddenModels: [], hiddenEfforts: {} },
+        defaultModel: w.defaultModel && access.allowedModels.includes(w.defaultModel) ? w.defaultModel : null,
+        ...(report ?? {}),
+        ...(report?.executionOptions ? { executionOptions: memberExecutionOptions(report.executionOptions, access) } : {}),
+      };
+    }),
+  });
 }

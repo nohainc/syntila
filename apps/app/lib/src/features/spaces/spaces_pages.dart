@@ -10,7 +10,7 @@ import '../common/quiet_notices.dart';
 import '../common/page_width.dart';
 import '../common/space_color.dart';
 import '../common/thread_dialogs.dart';
-import 'package:syntila_protocol/syntila_protocol.dart' show ExecutionSelection;
+import 'package:syntila_protocol/syntila_protocol.dart' show ExecutionSelection, WorkerInstance;
 import '../../ax/workflow_configuration_options.dart';
 import '../../ax/sync/ax_space_invitations.dart';
 import '../invitations/space_invitation_dialog.dart';

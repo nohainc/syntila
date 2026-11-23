@@ -271,3 +271,89 @@ export async function handleWorkerMemberModelAccess(
   }
   return json({ workerId, modelAccess: await readModelAccess(env, workerId) });
 }
+
+export interface WorkerPersonShareEntry {
+  readonly userId: string;
+  readonly displayName: string;
+  readonly email: string;
+  readonly maxConcurrentRequests: number;
+  readonly maxRunSecondsPerMonth: number | null;
+}
+
+async function readPersonShares(env: SecurityEnv, workerId: string): Promise<WorkerPersonShareEntry[]> {
+  const rows = await dataOf(env).read.rows<{
+    userId: string; displayName: string; email: string; maxConcurrent: number; maxRunSeconds: number | null;
+  }>`SELECT s.user_id AS "userId", u.display_name AS "displayName", u.email,
+            s.max_concurrent_requests AS "maxConcurrent", s.max_run_seconds_per_month AS "maxRunSeconds"
+       FROM worker_person_shares s JOIN users u ON u.id = s.user_id
+      WHERE s.worker_id = ${workerId}
+      ORDER BY u.display_name, s.user_id`;
+  return rows.map((row) => ({
+    userId: String(row.userId),
+    displayName: String(row.displayName),
+    email: String(row.email),
+    maxConcurrentRequests: Number(row.maxConcurrent),
+    maxRunSecondsPerMonth: row.maxRunSeconds == null ? null : Number(row.maxRunSeconds),
+  }));
+}
+
+/**
+ * GET, PUT, DELETE /api/workers/:workerId/person-shares (ADR-043).
+ * Owner only. A Person Share lets one person from the owner's People use the
+ * Worker for Chat in their own Spaces and personal Threads. PUT adds or
+ * updates one share: `{ userId, maxConcurrentRequests?, maxRunSecondsPerMonth? }`;
+ * DELETE `?userId=` revokes it. Models and efforts follow the Worker's
+ * member allow-list.
+ */
+export async function handleWorkerPersonShares(
+  request: Request,
+  env: SecurityEnv,
+  workerId: string,
+  accessContext?: ExecutionContext,
+): Promise<Response> {
+  if (!isFeatureEnabled("worker_identity")) throw new HttpError(404, "Not found");
+  const context = await securityContext(request, env, accessContext);
+  await requireOwnedActiveWorker(env, context.userId, workerId);
+  const q = dataOf(env).read;
+  if (request.method === "GET") return json({ workerId, shares: await readPersonShares(env, workerId) });
+  if (request.method === "DELETE") {
+    const userId = new URL(request.url).searchParams.get("userId")?.trim() ?? "";
+    if (!userId) throw new HttpError(400, "userId query parameter is required");
+    await q.run`DELETE FROM worker_person_shares WHERE worker_id = ${workerId} AND user_id = ${userId}`;
+    return json({ workerId, shares: await readPersonShares(env, workerId) });
+  }
+  if (request.method !== "PUT") throw new HttpError(405, "Method not allowed");
+  const body = (await readJson(request)) as Record<string, unknown> | null;
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "Body must be an object");
+  if (Object.keys(body).some((k) => !["userId", "maxConcurrentRequests", "maxRunSecondsPerMonth"].includes(k))) {
+    throw new HttpError(400, "Unknown share field");
+  }
+  const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+  if (!userId) throw new HttpError(400, "userId is required");
+  if (userId === context.userId) throw new HttpError(400, "You already own this Worker");
+  const maxConcurrent = body.maxConcurrentRequests ?? 1;
+  if (!Number.isInteger(maxConcurrent) || (maxConcurrent as number) < 1 || (maxConcurrent as number) > 10) {
+    throw new HttpError(400, "maxConcurrentRequests must be a whole number from 1 to 10");
+  }
+  const maxRunSeconds = body.maxRunSecondsPerMonth ?? null;
+  if (maxRunSeconds !== null && (!Number.isInteger(maxRunSeconds) || (maxRunSeconds as number) < 1)) {
+    throw new HttpError(400, "maxRunSecondsPerMonth must be a positive whole number or null");
+  }
+  // Only someone already in the owner's People can be chosen.
+  const [low, high] = context.userId < userId ? [context.userId, userId] : [userId, context.userId];
+  const peer = await q.row<{ ok: number }>`SELECT 1 AS ok FROM people_relationships
+      WHERE user_low_id = ${low} AND user_high_id = ${high}
+     UNION ALL SELECT 1 AS ok FROM person_connections
+      WHERE user_low_id = ${low} AND user_high_id = ${high} AND status = 'connected'
+     LIMIT 1`;
+  if (!peer) {
+    throw new HttpError(422, "Choose a person from your People");
+  }
+  await q.run`INSERT INTO worker_person_shares (worker_id, user_id, max_concurrent_requests, max_run_seconds_per_month)
+    VALUES (${workerId}, ${userId}, ${maxConcurrent as number}, ${maxRunSeconds as number | null})
+    ON CONFLICT (worker_id, user_id) DO UPDATE
+      SET max_concurrent_requests = EXCLUDED.max_concurrent_requests,
+          max_run_seconds_per_month = EXCLUDED.max_run_seconds_per_month,
+          updated_at = now()`;
+  return json({ workerId, shares: await readPersonShares(env, workerId) });
+}

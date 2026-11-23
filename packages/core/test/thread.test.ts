@@ -160,6 +160,19 @@ describe("Thread domain", () => {
     expect(canExecuteThread(viewer.userId, viewer, restricted)).toBe(false);
   });
 
+  it("lets a member without Space AI rights message but not ask the AI", () => {
+    const member = {
+      ...memberships[1]!,
+      permissions: { chat: false, useOwnWorkers: false, work: false, manageOwnThreads: false },
+    };
+    const open = {
+      ...thread,
+      accessPolicy: { ...thread.accessPolicy, allowedPermissions: ["view", "discuss", "execute"] as const },
+    };
+    expect(canDiscussThread(member.userId, member, open)).toBe(true);
+    expect(canExecuteThread(member.userId, member, open)).toBe(false);
+  });
+
   it("removes access with Space membership and gives the lead management authority", () => {
     const collaborator = memberships[1]!;
     expect(canManageThread(collaborator.userId, collaborator, thread)).toBe(

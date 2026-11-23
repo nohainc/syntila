@@ -127,6 +127,9 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/workers/:workerId/credential` | DELETE |  |
 | `/api/workers/:workerId/mcp-pin` | ANY |  |
 | `/api/workers/:workerId/member-model-access` | ANY |  |
+| `/api/workers/:workerId/person-shares` | GET, PUT, DELETE |  |
+| `/api/workers/shared-with-me` | GET |  |
+| `/api/spaces/:spaceId/workers` | GET |  |
 | `/api/workers/:workerId/models/refresh` | POST |  |
 | `/api/workers/:workerId/pairing` | POST |  |
 | `/api/workers/:workerId/space-access` | ANY |  |

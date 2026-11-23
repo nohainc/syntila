@@ -278,10 +278,14 @@ export async function dispatchWorkerAssignment(
   // the path among its own allowed folders and refuses one it no longer allows.
   // Every step sees the Space's folder when it has one; only stateful steps
   // (those holding a lease) require it.
-  const spaceFolder = await read.row<{ folderId: string }>`SELECT folder_id AS "folderId" FROM space_folders WHERE space_id = ${accepted.spaceId}`;
+  // A Person Share runs on someone else's computer: it never gets a folder.
+  const spaceFolder = accepted.personShare
+    ? null
+    : await read.row<{ folderId: string }>`SELECT folder_id AS "folderId" FROM space_folders WHERE space_id = ${accepted.spaceId}`;
   const payload = {
     snapshot: {
       ...(spaceFolder ? { spaceFolderId: spaceFolder.folderId } : {}),
+      ...(accepted.personShare ? { personShare: true } : {}),
       assignmentId,
       objective: task.objective,
       role: task.role,

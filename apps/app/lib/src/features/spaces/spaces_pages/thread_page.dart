@@ -1032,6 +1032,43 @@ class _ThreadPageState extends State<ThreadPage>
   /// They answer only the Chat workflow, when the Space allows own Workers.
   List<AxWorker> _ownChatWorkers = const [];
 
+  /// The Space owner's Workers, which a member uses through their Space
+  /// rights (Chat / Work). Empty for the owner and in personal Spaces.
+  List<WorkerInstance> _spaceOwnerWorkers = const [];
+
+  /// The Space [_spaceOwnerWorkers] was loaded for; null until it answers.
+  String? _spaceOwnerWorkersSpaceId;
+
+  /// Workers other people shared with the viewer (ADR-043). Chat only, in
+  /// the viewer's personal Threads and the Spaces they own.
+  List<WorkerInstance> _personSharedWorkers = const [];
+  bool _personSharedWorkersLoaded = false;
+
+  /// Person-shared Workers whose privacy notice the viewer accepted in this
+  /// session: the conversation is processed on the owner's computer.
+  static final Set<String> _acknowledgedPersonShares = {};
+
+  bool get _personSharesApply =>
+      widget.space.isDirect || widget.space.role == 'owner';
+
+  /// Whether the composer's Worker list is final enough to resolve a saved
+  /// Worker. Restoring against an intermediate list (the legacy inventory
+  /// before the Worker Instances arrive, or before the Space owner's Workers
+  /// load) re-binds the saved Worker to another one of the same type.
+  bool get _workerListSettled {
+    if (!_catalogs.engine.peek(_catalogs.workers).hasData) return false;
+    final ux = _catalogs.engine.peek(_catalogs.workersUxEnabled);
+    if (!ux.hasData && ux.error == null) return false;
+    if (_workersUxEnabled != true) return true;
+    final instances = _catalogs.engine.peek(_catalogs.workerInstances);
+    if (!instances.hasData && instances.error == null) return false;
+    return widget.space.isDirect ||
+        widget.dataSource is! AxSpaceWorkersSource ||
+        _spaceOwnerWorkersSpaceId == widget.space.id &&
+            (widget.dataSource is! AxWorkerPersonShareSource ||
+                _personSharedWorkersLoaded);
+  }
+
   /// The Space Workspace query answered, even if the Space has none yet.
   bool _workflowWorkspaceLoaded = false;
   bool get _chatWorkflowSelected =>
@@ -1113,6 +1150,7 @@ class _ThreadPageState extends State<ThreadPage>
           },
       };
     });
+    _scheduleThreadViewStateSave();
   }
 
   /// Records one step's choice. The other steps are frozen at their current
@@ -1154,6 +1192,7 @@ class _ThreadPageState extends State<ThreadPage>
         },
       };
     });
+    _scheduleThreadViewStateSave();
   }
 
   static const bool _useWorkerTargetPicker = false;
@@ -1215,6 +1254,18 @@ class _ThreadPageState extends State<ThreadPage>
       chatSeenId: _chatSeenId,
       workSeenId: _workSeenId,
       workflowSelections: _workflowSelectionsWithCurrent(),
+      stepSelections: pending != null
+          ? pending.stepSelections
+          : {
+              for (final entry in _stepExecutionSelections.entries)
+                entry.key: {
+                  for (final value in entry.value.entries)
+                    if (value.value is String && value.value != '')
+                      value.key: value.value as String,
+                },
+            },
+      researcherCount:
+          pending != null ? pending.researcherCount : _researcherCount,
       pane: _notesOpen
           ? AxThreadViewState.notesPane
           : _aiHistoryOpen
@@ -1291,8 +1342,8 @@ class _ThreadPageState extends State<ThreadPage>
   void _reconcilePendingThreadViewState() {
     final saved = _pendingThreadViewState;
     if (saved == null || _availableWorkflows.isEmpty) return;
-    if (saved.workerId != null &&
-        !_catalogs.engine.peek(_catalogs.workers).hasData) {
+    if ((saved.workerId != null || saved.stepSelections.isNotEmpty) &&
+        !_workerListSettled) {
       return;
     }
     // Wait until Workspace membership is known before resolving a saved
@@ -1351,6 +1402,13 @@ class _ThreadPageState extends State<ThreadPage>
       if (saved.reasoningEffort != null)
         'reasoningEffort': saved.reasoningEffort,
       if (catalogRevision != null) 'catalogRevision': catalogRevision,
+      if (saved.researcherCount != null)
+        'researcherCount': saved.researcherCount,
+      if (saved.stepSelections.isNotEmpty)
+        'steps': {
+          for (final entry in saved.stepSelections.entries)
+            entry.key: Map<String, dynamic>.of(entry.value),
+        },
     };
     _workExecutionSelection = selection;
     _pendingThreadViewState = null;
@@ -1731,10 +1789,24 @@ class _ThreadPageState extends State<ThreadPage>
     // set as the Workers page, instead of the legacy Workspace inventory.
     final instances = _catalogs.engine.peek(_catalogs.workerInstances).data;
     if (_workersUxEnabled == true && instances != null) {
-      final own = workersFromInstances(workers, instances);
+      final own = workersFromInstances(workers, instances,
+          sharedInstances:
+              widget.space.isDirect ? const [] : _spaceOwnerWorkers);
       _syncVisibility(own);
       _spaceWorkers = own;
-      _ownChatWorkers = const [];
+      // Person Shares answer Chat only, in personal Threads and the viewer's
+      // own Spaces.
+      final personShared = _personSharesApply
+          ? workersFromInstances(const [], const [],
+                  sharedInstances: _personSharedWorkers)
+              .where((worker) => !own.any((o) => o.id == worker.id))
+              .toList()
+          : const <AxWorker>[];
+      // A personal Space has no Space Workspace; its Chat runs on the
+      // viewer's own Workers and on Workers shared with them in person.
+      _ownChatWorkers = widget.space.isDirect
+          ? [...own.where((worker) => !worker.shared), ...personShared]
+          : personShared;
       _eligibleWorkers = own.where((worker) => worker.isReady).toList();
       return;
     }
@@ -1823,6 +1895,7 @@ class _ThreadPageState extends State<ThreadPage>
         _workersUxEnabled = state.data;
         _applyWorkers(
             _catalogs.engine.peek(_catalogs.workers).data ?? const []);
+        _reconcilePendingThreadViewState();
       });
     }, fireImmediately: false);
     _cancelWorkerInstances?.call();
@@ -1841,6 +1914,79 @@ class _ThreadPageState extends State<ThreadPage>
     _catalogs.engine
         .ensure(_catalogs.workerInstances)
         .then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    unawaited(_loadSpaceOwnerWorkers());
+    unawaited(_loadPersonSharedWorkers());
+  }
+
+  Future<void> _loadPersonSharedWorkers() async {
+    final source = widget.dataSource;
+    if (source is! AxWorkerPersonShareSource) return;
+    var workers = const <WorkerInstance>[];
+    try {
+      workers =
+          await (source as AxWorkerPersonShareSource).loadWorkersSharedWithMe();
+    } on Object {
+      // Without the list only the viewer's own Workers are offered.
+    }
+    if (!mounted || widget.dataSource != source) return;
+    _updateComposerState(() {
+      _personSharedWorkers = workers;
+      _personSharedWorkersLoaded = true;
+      _applyWorkers(_catalogs.engine.peek(_catalogs.workers).data ?? const []);
+      _reconcilePendingThreadViewState();
+    });
+  }
+
+  /// Before the first request on a Worker another person shared, says where
+  /// the conversation goes. Returns whether the viewer accepted.
+  Future<bool> _confirmPersonShare(String? workerId) async {
+    if (workerId == null ||
+        _acknowledgedPersonShares.contains(workerId) ||
+        !_personSharedWorkers.any((w) => w.id == workerId)) {
+      return true;
+    }
+    final name = _personSharedWorkers.firstWhere((w) => w.id == workerId).name;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Shared Worker'),
+        content: Text('$name runs on its owner\'s computer with their provider '
+            'account. Your messages in this Thread are sent there for Chat.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              key: const ValueKey('person-share-accept'),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Use it')),
+        ],
+      ),
+    );
+    if (accepted == true) _acknowledgedPersonShares.add(workerId);
+    return accepted == true;
+  }
+
+  Future<void> _loadSpaceOwnerWorkers() async {
+    final source = widget.dataSource;
+    final spaceId = widget.space.id;
+    if (_spaceOwnerWorkersSpaceId != spaceId) _spaceOwnerWorkers = const [];
+    if (widget.space.isDirect || source is! AxSpaceWorkersSource) return;
+    var workers = const <WorkerInstance>[];
+    try {
+      workers =
+          await (source as AxSpaceWorkersSource).loadSpaceWorkers(spaceId);
+    } on Object {
+      // Without the list the member sees only their own Workers.
+    }
+    // A Space switched while loading must not receive the old Space's list.
+    if (!mounted || widget.space.id != spaceId) return;
+    _updateComposerState(() {
+      _spaceOwnerWorkers = workers;
+      _spaceOwnerWorkersSpaceId = spaceId;
+      _applyWorkers(_catalogs.engine.peek(_catalogs.workers).data ?? const []);
+      _reconcilePendingThreadViewState();
+    });
   }
 
   Future<void> _loadWorkflowCatalog() async {
@@ -2039,6 +2185,13 @@ class _ThreadPageState extends State<ThreadPage>
         oldWidget.viewerEmail != widget.viewerEmail) {
       _subscribeCatalogs();
       unawaited(_loadWorkflowCatalog());
+    }
+    if (oldWidget.space.id != widget.space.id &&
+        oldWidget.catalogs == widget.catalogs &&
+        oldWidget.dataSource == widget.dataSource &&
+        oldWidget.viewerEmail == widget.viewerEmail) {
+      // A catalog swap reloads them through _subscribeCatalogs above.
+      unawaited(_loadSpaceOwnerWorkers());
     }
     if (oldWidget.catalogs != widget.catalogs ||
         oldWidget.dataSource != widget.dataSource ||
@@ -2929,8 +3082,7 @@ class _ThreadPageState extends State<ThreadPage>
                                         ClipboardData(text: message.text));
                                   },
                                   onReply: message.eventType == null &&
-                                          !widget.isDraft &&
-                                          widget.space.effectivePermissions.chat
+                                          !widget.isDraft
                                       ? () => _startReply(AxReplyReference(
                                             kind: 'message',
                                             id: message.id,
@@ -3137,10 +3289,7 @@ class _ThreadPageState extends State<ThreadPage>
                                       Brightness.dark),
                               leadingIcon:
                                   const Icon(Icons.attach_file, size: 16),
-                              onPressed: widget
-                                          .space.effectivePermissions.chat &&
-                                      !widget.draftBusy &&
-                                      !_draftSubmitting
+                              onPressed: !widget.draftBusy && !_draftSubmitting
                                   ? () => Navigator.pop(buttonContext, 'files')
                                   : null,
                               child: Tooltip(
@@ -3165,8 +3314,9 @@ class _ThreadPageState extends State<ThreadPage>
             ? 'Edit message...'
             : 'Write a message...',
         chatStyle: true,
+        // Messages between people never need the Chat right; it only
+        // governs asking the AI (the Chat workflow in Ask AI mode).
         enabled: !widget.draftBusy &&
-            widget.space.effectivePermissions.chat &&
             (!widget.isDraft ||
                 widget.space.effectivePermissions.manageOwnThreads),
         onSend: _sendDiscussion,
@@ -3260,7 +3410,12 @@ class _ThreadPageState extends State<ThreadPage>
         onAddFiles: _addWorkFiles,
         executionSelection: _workExecutionSelection,
         workerTargetPicker: _workerTargetPickerBuilder(),
-        onExecutionSelectionChanged: (selection) {
+        onExecutionSelectionChanged: (selection) async {
+          final workerId = selection['workerId'];
+          if (workerId is String && !await _confirmPersonShare(workerId)) {
+            return;
+          }
+          if (!mounted) return;
           _updateState(() {
             _markSelectionChangedByUser();
             if (_workSelectionMissing) {

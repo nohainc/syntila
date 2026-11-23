@@ -229,6 +229,9 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
         'another Syntila Connect is already using this data directory',
       );
       return 3;
+    } on OtherAccountPairingRefusal catch (error) {
+      err.writeln(error.toString());
+      return 4;
     } on ServerRefusal catch (error) {
       err.writeln('the server refused the request: ${error.message}');
       return 4;
@@ -303,6 +306,20 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       return Directory(p.dirname(p.dirname(worker.path)));
     }
     return worker;
+  }
+
+  /// The Workers paired on this computer; damaged identities are skipped.
+  Future<List<AgentIdentity>> _pairedIdentities() async => [
+    for (final paths in _installedWorkerPaths())
+      if (await _loadIdentityOrNull(paths) case final identity?) identity,
+  ];
+
+  Future<AgentIdentity?> _loadIdentityOrNull(AgentPaths paths) async {
+    try {
+      return await AgentIdentity.load(paths.identityFile);
+    } on Object {
+      return null;
+    }
   }
 
   Future<AgentIdentity> _identity(AgentPaths paths) async {
@@ -382,6 +399,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       paths: paths,
       keyStore: _keys(paths),
       api: apiFor?.call(code.serverUrl),
+      pairedWorkers: await _pairedIdentities(),
     );
     final machineRoot = _machineRoot(args);
     await _deviceStore(machineRoot).ensure();

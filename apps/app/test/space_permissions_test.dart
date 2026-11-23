@@ -164,6 +164,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('permission-member-work')));
     await tester.pumpAndSettle();
     expect(source.memberRights.work, isFalse);
+    // Work includes Chat: removing Chat removes Work, granting Work grants Chat.
+    await tester.tap(find.byKey(const ValueKey('permission-member-work')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('permission-member-chat')));
+    await tester.pumpAndSettle();
+    expect(source.memberRights.chat, isFalse);
+    expect(source.memberRights.work, isFalse);
+    await tester.tap(find.byKey(const ValueKey('permission-member-work')));
+    await tester.pumpAndSettle();
+    expect(source.memberRights.chat, isTrue);
+    expect(source.memberRights.work, isTrue);
     source.failSave = true;
     await tester.tap(find.byKey(const ValueKey('permission-member-chat')));
     await tester.pumpAndSettle();

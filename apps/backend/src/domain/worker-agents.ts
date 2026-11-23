@@ -230,7 +230,14 @@ export interface ClaimResult {
  */
 export async function claimPairing(
   env: Env,
-  input: { challengeId: string; secret: string; publicKey: string; signature: string; claimingUserId?: string },
+  input: {
+    challengeId: string;
+    secret: string;
+    publicKey: string;
+    signature: string;
+    claimingUserId?: string;
+    pairedWorkerIds?: readonly string[];
+  },
 ): Promise<ClaimResult> {
   const refuse = (status: number, message: string): never => {
     throw new HttpError(status, message);
@@ -258,6 +265,25 @@ export async function claimPairing(
   if (challenge.consumed || challenge.expired) {
     await audit("pairing.refused", { reason: challenge.consumed ? "already_used" : "expired" });
     return refuse(410, "The pairing challenge has expired or was already used");
+  }
+  // One computer, one account: while another account still has a paired
+  // Worker on this computer, a code from this account is refused. Removed or
+  // unpaired Workers no longer count. The answer never names the account.
+  const others = (input.pairedWorkerIds ?? []).filter((id) => id !== challenge.worker_instance_id);
+  if (others.length > 0) {
+    const foreign = await data.read.row<{ ok: number }>`
+      SELECT 1 AS ok FROM worker_instances w
+        JOIN worker_credentials cred ON cred.worker_instance_id = w.id AND cred.revoked_at IS NULL
+       WHERE w.id = ANY(${others}::text[]) AND w.revoked_at IS NULL
+         AND w.owner_user_id <> ${challenge.owner_user_id}
+       LIMIT 1`;
+    if (foreign) {
+      await audit("pairing.refused", { reason: "computer_paired_to_other_account" });
+      return refuse(
+        409,
+        "This computer is connected to another Syntila account. Unpair all of that account's Workers on this computer, then pair again.",
+      );
+    }
   }
   const valid = await verifySignature(
     input.publicKey,

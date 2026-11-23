@@ -5,8 +5,9 @@ import 'dart:io';
 import 'package:syntila_connect/syntila_connect.dart';
 
 class FakeWorker {
-  FakeWorker(this.id, this.workerType, this.name);
+  FakeWorker(this.id, this.workerType, this.name, {this.owner = 'owner'});
   final String id;
+  final String owner;
   final String workerType;
   final String name;
   String? publicKey;
@@ -85,8 +86,9 @@ class FakeCloud {
   FakeWorker createWorker({
     String workerType = 'chatgpt',
     String name = 'Writer',
+    String owner = 'owner',
   }) {
-    final worker = FakeWorker(_id('wrk'), workerType, name);
+    final worker = FakeWorker(_id('wrk'), workerType, name, owner: owner);
     workers[worker.id] = worker;
     return worker;
   }
@@ -287,6 +289,19 @@ class FakeCloud {
     );
     if (!ok) throw _Refusal(401, 'bad signature');
     final worker = workers[workerId]!;
+    // One computer, one account, as Cloud decides it.
+    final paired = body['pairedWorkerIds'];
+    if (paired is List &&
+        paired.any(
+          (id) =>
+              workers[id]?.publicKey != null &&
+              workers[id]!.owner != worker.owner,
+        )) {
+      throw _Refusal(
+        409,
+        'This computer is connected to another Syntila account. Unpair all of that account\'s Workers on this computer, then pair again.',
+      );
+    }
     if (workers.values.any((w) => w.publicKey == publicKey)) {
       throw _Refusal(409, 'key already in use');
     }

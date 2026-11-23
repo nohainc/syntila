@@ -301,6 +301,16 @@ class AxPhaseItem {
       };
 }
 
+/// Sets one Space member right in [rights] and keeps Work within Chat:
+/// granting Work grants Chat, and removing Chat removes Work.
+Map<String, bool> linkSpaceAiRights(
+    Map<String, bool> rights, String key, bool value) {
+  rights[key] = value;
+  if (key == 'work' && value) rights['chat'] = true;
+  if (key == 'chat' && !value) rights['work'] = false;
+  return rights;
+}
+
 /// The three Space member rights shared with Cloud. Using one's own Workers in
 /// Chat is not a right of its own: it follows [chat]. A legacy
 /// `useOwnWorkers` field from older Cloud responses is ignored.
@@ -314,7 +324,8 @@ class AxSpacePermissions {
       work: role == 'owner' || role == 'collaborator',
       manageOwnThreads: role == 'owner' || role == 'collaborator');
   factory AxSpacePermissions.fromJson(Map json) => AxSpacePermissions(
-      chat: json['chat'] == true,
+      // Work includes Chat, as Cloud computes it.
+      chat: json['chat'] == true || json['work'] == true,
       work: json['work'] == true,
       manageOwnThreads: json['manageOwnThreads'] == true);
 
@@ -3237,4 +3248,49 @@ class AxWorkerSpaceAccess {
       ],
     );
   }
+}
+
+/// One Person Share of a Worker (ADR-043): Chat only, in the person's own
+/// Spaces and personal Threads, within the owner's limits.
+class AxWorkerPersonShare {
+  const AxWorkerPersonShare({
+    required this.userId,
+    this.displayName = '',
+    this.email = '',
+    this.maxConcurrentRequests = 1,
+    this.maxRunSecondsPerMonth,
+  });
+
+  final String userId;
+  final String displayName;
+  final String email;
+  final int maxConcurrentRequests;
+
+  /// Null means no monthly limit.
+  final int? maxRunSecondsPerMonth;
+
+  factory AxWorkerPersonShare.fromJson(Map<String, dynamic> json) =>
+      AxWorkerPersonShare(
+        userId: json['userId'] as String? ?? '',
+        displayName: json['displayName'] as String? ?? '',
+        email: json['email'] as String? ?? '',
+        maxConcurrentRequests: json['maxConcurrentRequests'] is int
+            ? json['maxConcurrentRequests'] as int
+            : 1,
+        maxRunSecondsPerMonth: json['maxRunSecondsPerMonth'] is int
+            ? json['maxRunSecondsPerMonth'] as int
+            : null,
+      );
+
+  static List<AxWorkerPersonShare> listFromJson(Object? raw) => [
+        for (final item in (raw as List? ?? const []))
+          if (item is Map)
+            AxWorkerPersonShare.fromJson(Map<String, dynamic>.from(item)),
+      ];
+
+  Map<String, dynamic> toJson() => {
+        'userId': userId,
+        'maxConcurrentRequests': maxConcurrentRequests,
+        'maxRunSecondsPerMonth': maxRunSecondsPerMonth,
+      };
 }

@@ -41,6 +41,8 @@ import {
 import { handleSpaceAdditionalFolders } from "./space-additional-folders.js";
 import { handleAgentFolders, handleDeleteDeviceFolders, handleListDeviceFolders, handleSpaceFolder } from "./device-folders.js";
 import { handleThreadRequestQueue } from "./thread-request-queue.js";
+import { handleListSpaceWorkers, handleListWorkersSharedWithMe } from "./workers.js";
+import { handleWorkerPersonShares } from "./worker-space-access.js";
 import { handlePluginLibrary, handleWorkspacePluginPin } from "./worker-plugins.js";
 import { handleWorkflowConfigurations } from "./workflow-configurations.js";
 import { handleWorkflowDefault } from "./workflow-default.js";
@@ -291,14 +293,17 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     // inventory moved to /api/workspace-workers; P5/P6 retire it.
     r("GET", "/api/features", call("handleListFeatures", ctx)),
     r("GET", "/api/workers", call("handleListWorkers", ctx)),
+    r("GET", "/api/spaces/:spaceId/workers", (c) => handleListSpaceWorkers(c.request, c.env, c.params.spaceId!, c.ctx)),
     r("POST", "/api/workers", call("handleCreateWorker", ctx), idempotent),
     r("GET", "/api/workspace-workers", call("handleListWorkspaceWorkerInventory", ctx)),
+    r("GET", "/api/workers/shared-with-me", (c) => handleListWorkersSharedWithMe(c.request, c.env, c.ctx)),
     r("GET", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("PATCH", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("DELETE", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("*", "/api/workers/:workerId/mcp-pin", call("handleWorkerMcpPin", p("workerId"), ctx)),
     r("*", "/api/workers/:workerId/space-access", call("handleWorkerSpaceAccess", p("workerId"), ctx)),
     r("*", "/api/workers/:workerId/member-model-access", call("handleWorkerMemberModelAccess", p("workerId"), ctx)),
+    r("*", "/api/workers/:workerId/person-shares", (c) => handleWorkerPersonShares(c.request, c.env, c.params.workerId!, c.ctx)),
     r("POST", "/api/workers/:workerId/models/refresh", call("handleWorkerModelsRefresh", p("workerId"), ctx)),
     r("*", "/api/workers/:workerId/usage", call("handleWorkerUsageRead", p("workerId"), ctx)),
     // Pairing, credentials and sessions (ADR-034). Owner routes need the signed-in

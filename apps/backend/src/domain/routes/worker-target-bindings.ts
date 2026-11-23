@@ -1,5 +1,5 @@
 import { stepInstanceId, type BuiltinWorkflowDefinition, type WorkflowExecutionBinding } from "@syntila/core";
-import { dataOf } from "../../platform/data.js";
+import { dataOf, type Query } from "../../platform/data.js";
 import {
   acceptWorkerTarget,
   workerEligibilityResponse,
@@ -155,6 +155,16 @@ export async function resolveWorkerTargetBindings(
       issues.push({ stepKind: step.kind, workerTypeId: null, code: "binding_missing", message: `${step.kind}: choose a Worker` });
       continue;
     }
+    // A personal Space runs on the requester's own Workers, or on one
+    // shared with them through a Person Share (Chat only, ADR-043).
+    if (spacePolicy.kind === "direct") {
+      const allowed = await read.row<{ ok: number }>`SELECT 1 AS ok FROM worker_instances w
+         WHERE w.id = ${choice.workerId} AND w.revoked_at IS NULL
+           AND (w.owner_user_id = ${input.userId}
+                OR EXISTS (SELECT 1 FROM worker_person_shares wps
+                            WHERE wps.worker_id = w.id AND wps.user_id = ${input.userId}))`;
+      if (!allowed) throw new HttpError(403, "Choose one of your own Workers in a personal Space");
+    }
     const decision = await acceptWorkerTarget(read, {
       workerId: choice.workerId,
       requesterUserId: input.userId,
@@ -177,6 +187,7 @@ export async function resolveWorkerTargetBindings(
       continue;
     }
     const snapshot = decision.snapshot;
+    if (snapshot.personShare) await requirePersonShareCapacity(read, snapshot.workerId, input.userId);
     const additional = (input.additionalInstructions?.[bindingId] ?? input.additionalInstructions?.[step.kind])?.additionalInstructions;
     bindings[bindingId] = {
       workerId: snapshot.workerId,
@@ -265,4 +276,28 @@ export async function recheckWorkerTarget(
       message: `${input.step.kind}: ${workerEligibilityResponse(decision.code).message}`,
     },
   ]);
+}
+
+/**
+ * The limits the owner set on a Person Share (ADR-043): requests running at
+ * once and run time this month, counted from the person's assignments on the
+ * Worker. Checked when a request is accepted.
+ */
+async function requirePersonShareCapacity(read: Query, workerId: string, userId: string): Promise<void> {
+  const share = await read.row<{ maxConcurrent: number; maxRunSeconds: number | null }>`
+    SELECT max_concurrent_requests AS "maxConcurrent", max_run_seconds_per_month AS "maxRunSeconds"
+      FROM worker_person_shares WHERE worker_id = ${workerId} AND user_id = ${userId}`;
+  if (!share) throw new HttpError(403, "This Worker is no longer shared with you");
+  const usage = await read.row<{ running: number; seconds: number }>`
+    SELECT COUNT(*) FILTER (WHERE status IN ('created','dispatched','acknowledged','running','revocation_pending','reconciling'))::int AS running,
+           COALESCE(SUM(EXTRACT(EPOCH FROM (
+             CASE WHEN status IN ('created','dispatched','acknowledged','running','revocation_pending','reconciling')
+                  THEN now() ELSE updated_at END) - running_at)) FILTER (WHERE running_at IS NOT NULL), 0)::int AS seconds
+      FROM worker_assignments
+     WHERE worker_instance_id = ${workerId} AND requested_by_user_id = ${userId}
+       AND created_at >= date_trunc('month', now())`;
+  if ((usage?.running ?? 0) >= share.maxConcurrent)
+    throw new HttpError(429, `You already have ${share.maxConcurrent} request(s) running on this shared Worker; wait for one to finish`);
+  if (share.maxRunSeconds !== null && (usage?.seconds ?? 0) >= share.maxRunSeconds)
+    throw new HttpError(429, "You have used this month's run time on this shared Worker; ask its owner for more");
 }
