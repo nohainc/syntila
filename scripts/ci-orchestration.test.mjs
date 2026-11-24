@@ -351,12 +351,12 @@ describe("CI acceptance orchestration", () => {
     }
   });
 
-  it("public site production deployment is decoupled with path filtering and self-contained validation", () => {
+  it("public site production deployment is manual-only with self-contained validation", () => {
     const workflow = source(".github/workflows/deploy-site.yml");
     const checkAction = source(".github/actions/check-site/action.yml");
-    expect(workflow).toContain("branches: [main]");
-    expect(workflow).toContain('paths:\n      - "apps/site/**"');
     expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).not.toMatch(/^\s*pull_request:/m);
+    expect(workflow).not.toMatch(/^\s*push:/m);
     expect(workflow).not.toContain('workflows: ["CI"]');
     expect(workflow).not.toContain("workflow_run:");
 

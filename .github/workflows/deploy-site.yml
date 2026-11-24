@@ -1,22 +1,6 @@
 name: Public site
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
-    paths:
-      - "apps/site/**"
-      - "pnpm-lock.yaml"
-      - "package.json"
-      - ".github/workflows/deploy-site.yml"
-      - ".github/actions/**"
-  push:
-    branches: [main]
-    paths:
-      - "apps/site/**"
-      - "pnpm-lock.yaml"
-      - "package.json"
-      - ".github/workflows/deploy-site.yml"
-      - ".github/actions/**"
   workflow_dispatch:
 
 permissions:

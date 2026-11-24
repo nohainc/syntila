@@ -1,8 +1,6 @@
 name: Workspace / Linux / Release
 
 on:
-  push:
-    branches: [codex/linux-apt-release]
   workflow_dispatch:
     inputs:
       publish:

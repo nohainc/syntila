@@ -376,12 +376,11 @@ if (
   );
 }
 if (
-  !deploySite.includes("branches: [main]") ||
-  !deploySite.includes('"apps/site/**"') ||
+  !deploySite.includes("workflow_dispatch:") ||
   !deploySite.includes("wrangler deploy --config wrangler.production.jsonc")
 ) {
   failures.push(
-    "Public-site production deployment must trigger on main site changes and deploy wrangler.production.jsonc.",
+    "Public-site production deployment must support manual dispatch and deploy wrangler.production.jsonc.",
   );
 }
 
