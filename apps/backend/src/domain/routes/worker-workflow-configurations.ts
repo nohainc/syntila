@@ -8,6 +8,7 @@ import {
 import { HttpError, json, type SecurityEnv } from "./http-security.js";
 import { readJson } from "./validation.js";
 import { spaceWorkflowDefault } from "../queries.js";
+import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 
 /**
  * Workflow configuration without a Workspace (ADR-035). Selections name Worker
@@ -31,12 +32,11 @@ function definitionFor(id: string) {
   return definition;
 }
 
-/** The owner's live Worker for an ID that is either a Worker ID or a legacy one. */
+/** The owner's live Worker with this ID. */
 async function resolveWorker(env: SecurityEnv, ownerUserId: string, id: string): Promise<string | null> {
   const row = await dataOf(env).read.row<{ id: string }>`SELECT w.id FROM worker_instances w
      WHERE w.owner_user_id = ${ownerUserId} AND w.revoked_at IS NULL
-       AND (w.id = ${id} OR w.id = (SELECT m.worker_instance_id FROM legacy_worker_mapping m WHERE m.legacy_worker_id = ${id}))
-     ORDER BY (w.id = ${id}) DESC LIMIT 1`;
+       AND w.id = ${id}`;
   return row?.id ?? null;
 }
 
@@ -86,13 +86,7 @@ async function loadOwn(env: SecurityEnv, userId: string, workflowId: string | un
   const own = await dataOf(env).read.rows<{ workflow_id: string; configuration_json: string }>`SELECT workflow_id, configuration_json
      FROM user_worker_workflow_configurations
     WHERE user_id = ${userId} AND (${filter}::text IS NULL OR workflow_id = ${filter})`;
-  // Older rows, saved against a Workspace, until the person saves again.
-  const legacy = await dataOf(env).read.rows<{ workflow_id: string; configuration_json: string }>`SELECT DISTINCT ON (workflow_id) workflow_id, configuration_json
-     FROM user_workflow_configurations
-    WHERE user_id = ${userId} AND (${filter}::text IS NULL OR workflow_id = ${filter})
-    ORDER BY workflow_id, updated_at DESC`;
-  const byWorkflow = new Map(legacy.map((row) => [row.workflow_id, row.configuration_json]));
-  for (const row of own) byWorkflow.set(row.workflow_id, row.configuration_json);
+  const byWorkflow = new Map(own.map((row) => [row.workflow_id, row.configuration_json]));
   return [...byWorkflow.values()].map((text) => JSON.parse(text) as UserWorkflowConfiguration);
 }
 
@@ -118,7 +112,8 @@ export async function handleWorkerWorkflowConfigurations(
 
   if (request.method === "GET") {
     if (workflowId) definitionFor(workflowId);
-    const stored = spaceId ? await loadSpace(env, spaceId, workflowId) : await loadOwn(env, userId, workflowId);
+    const spaceConfig = spaceId ? await loadSpaceWorkflowConfigurations(env, spaceId, workflowId) : null;
+    const stored = spaceConfig ? (spaceConfig.configurations as UserWorkflowConfiguration[]) : await loadOwn(env, userId, workflowId);
     const configurations: UserWorkflowConfiguration[] = [];
     const issues: ConfigurationIssue[] = [];
     for (const configuration of stored) {
@@ -126,7 +121,7 @@ export async function handleWorkerWorkflowConfigurations(
       configurations.push(translated.configuration);
       issues.push(...translated.issues);
     }
-    const defaultWorkflowId = spaceId ? ((await spaceWorkflowDefault(dataOf(env).read, spaceId))?.workflowId ?? "chat") : "chat";
+    const defaultWorkflowId = spaceConfig?.defaultWorkflowId ?? "chat";
     return json({ schemaVersion: 1, defaultWorkflowId, configurations, issues });
   }
 
@@ -145,7 +140,6 @@ export async function handleWorkerWorkflowConfigurations(
     if (spaceId) await q.run`DELETE FROM space_workflow_configurations WHERE space_id = ${spaceId} AND workflow_id = ${workflowId}`;
     else {
       await q.run`DELETE FROM user_worker_workflow_configurations WHERE user_id = ${userId} AND workflow_id = ${workflowId}`;
-      await q.run`DELETE FROM user_workflow_configurations WHERE user_id = ${userId} AND workflow_id = ${workflowId}`;
     }
     return json({ configuration: empty });
   }

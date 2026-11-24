@@ -25,8 +25,9 @@ it("one user message owns a WorkflowRun with multiple Worker turns and runtime a
     await f.sqlite
       .exec(`INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at)
       VALUES('VERIFY','R','verify','stateless_read',1000,'verify:v1','queued','now','now');
-      INSERT INTO worker_assignments(id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,run_id,status,permission_snapshot_json,created_at,updated_at)
-      VALUES('V','P','WS','RT','gemini','worker-gemini','VERIFY','RUN2','created','{"profileDefinitionId":"gemini-antigravity","profileReleaseVersion":1,"workerDisplayName":"Gemini"}','now','now');`);
+      INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES('worker-gemini','','U','gemini','Gemini') ON CONFLICT DO NOTHING;
+      INSERT INTO worker_assignments(id,space_id,worker_instance_id,worker_snapshot_json,worker_type_id,task_id,run_id,status,permission_snapshot_json,created_at,updated_at)
+      VALUES('V','P','worker-gemini','{}','gemini','VERIFY','RUN2','created','{"profileDefinitionId":"gemini-antigravity","profileReleaseVersion":1,"workerDisplayName":"Gemini"}','now','now');`);
     const run = (
       await loadConversationWorkflowRuns(f.db as unknown as D1Database, ["R"])
     ).get("R")!;

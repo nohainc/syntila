@@ -37,7 +37,6 @@ export class MissingArtifactError extends Error {
 
 /** Authenticates the calling Agent by its session (Bearer token, worker and session ids). */
 async function agentOf(request: Request, env: SecurityEnv): Promise<AgentPrincipal> {
-  if (!isFeatureEnabled("artifact_handoff")) throw new HttpError(404, "Not found");
   const token = extractBearerToken(request.headers);
   const workerId = request.headers.get("x-worker-id");
   const sessionId = request.headers.get("x-worker-session-id");

@@ -1,8 +1,0 @@
-export 'package:syntila_tool_profile_v1/tool_profile_v1.dart'
-    show
-        ToolProfileReleaseAdmission,
-        ToolProfileCandidate,
-        ToolProfileReleaseIdentity,
-        ToolProfileReleaseVerifier,
-        WorkerProfileSnapshotAdmission,
-        WorkerProfileSnapshotVerifier;

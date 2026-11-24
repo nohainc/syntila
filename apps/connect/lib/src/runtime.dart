@@ -12,6 +12,7 @@ import 'folders.dart';
 import 'engine.dart';
 import 'faults.dart';
 import 'identity.dart';
+import 'inputs.dart';
 import 'journal.dart';
 import 'lock.dart';
 import 'paths.dart';
@@ -52,6 +53,7 @@ class AgentRuntime {
     required Duration stepTimeout,
     required String clientVersion,
     this.folders,
+    this.inputs,
   }) : _device = device {
     connection = AgentConnection(
       workerId: identity.workerId,
@@ -69,6 +71,7 @@ class AgentRuntime {
       onMessage: _onMessage,
       onSession: (grant) {
         _profileSession = grant;
+        inputs?.session = grant;
         _foldersDirty = true;
         unawaited(_publishFolders());
         if (engine is ArtifactLauncher) engine.holder.update(grant);
@@ -140,6 +143,10 @@ class AgentRuntime {
   /// This computer's allowed folders (machine-wide). Reported to the cloud so
   /// the owner can choose one for a Space.
   final AllowedFolders? folders;
+
+  /// Downloads the person's files when a Step that needs them starts.
+  final InputDelivery? inputs;
+
   bool _foldersDirty = false;
   bool _publishingFolders = false;
   DateTime? _foldersStamp;
@@ -438,6 +445,7 @@ class AgentRuntime {
     McpWorkerRunner? mcpWorkerRunner,
     DeviceInfo? device,
     AllowedFolders? folders,
+    InputDelivery? inputs,
     FaultPoint? onPoint,
     Duration baseDelay = const Duration(seconds: 1),
     Duration heartbeatInterval = const Duration(seconds: 30),
@@ -484,6 +492,7 @@ class AgentRuntime {
         mcpWorkerRunner: mcpWorkerRunner,
         device: device,
         folders: folders,
+        inputs: inputs,
         permitTimeout: permitTimeout,
         permitResend: permitResend,
         onPoint: onPoint,

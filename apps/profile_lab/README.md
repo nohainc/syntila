@@ -2,7 +2,7 @@
 
 Syntila Profile Lab is an internal macOS desktop application for creating and maintaining Logical Workers and their Tool Profiles. Operators open a Worker, edit one local JSON candidate, run the generic CLI Worker Engine against locally installed provider CLIs, validate the exact candidate with Cloud, and publish it as the Worker’s next current Profile revision.
 
-This README is for developers and authorized operators. The normative product and API contracts are in the [Worker Profile V9 specification](../../docs/specifications/WORKER_PROFILE_V9.md), [Profile Lab specification](../../docs/specifications/PROFILE_LAB.md), [Tool Profile v1 contract](../../docs/specifications/TOOL_PROFILE_V1.md), and [ADR-019](../../docs/decisions/ADR-019-syntila-profile-lab.md). The V8 lifecycle documents remain historical and are superseded by V9.
+This README is for developers and authorized operators. The normative product and API contracts are in the [Worker Profile V9 specification](../../docs/specifications/WORKER_PROFILE_V9.md), [Profile Lab specification](../../docs/specifications/PROFILE_LAB.md), [Tool Profile v1 contract](../../docs/specifications/TOOL_PROFILE_V1.md), and ADR-019. The V8 lifecycle documents remain historical and are superseded by V9.
 
 ## Product boundaries
 
@@ -109,7 +109,7 @@ Workspace application-release signing remain separate security mechanisms.
 - [Tool Profile evidence contract](../../docs/specifications/TOOL_PROFILE_EVIDENCE_CONTRACT.md)
 - [Tool Profile v1](../../docs/specifications/TOOL_PROFILE_V1.md)
 - [Worker Profile V9](../../docs/specifications/WORKER_PROFILE_V9.md)
-- [ADR-019: Syntila Profile Lab](../../docs/decisions/ADR-019-syntila-profile-lab.md)
+- ADR-019: Syntila Profile Lab
 
 ## Unsigned development
 

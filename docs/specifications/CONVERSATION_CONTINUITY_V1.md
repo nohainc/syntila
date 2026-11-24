@@ -111,7 +111,7 @@ identity does not yet drive session-key derivation, replay history, transfer con
 summarize messages, or prove which revision a Worker consumed. Model/effort defaults
 remain shared Thread binding settings; submitted selections remain immutable.
 Switching Workers can resume an older local thread missing intervening turns,
-as recorded in the [Phase 0 audit](../architecture/CONVERSATION_CONTINUITY_PHASE_0_AUDIT.md).
+as recorded in the Phase 0 audit.
 
 Later phases must define canonical turns/context ownership, applied revisions,
 provider catch-up, multiple Conversations, switching/reset semantics and concurrent

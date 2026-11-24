@@ -15,6 +15,7 @@ export 'src/git_reference.dart';
 export 'src/thread_fence.dart';
 export 'src/mcp_worker_allow_list.dart';
 export 'src/identity.dart';
+export 'src/inputs.dart';
 export 'src/journal.dart';
 export 'src/lock.dart';
 export 'src/pairing.dart';

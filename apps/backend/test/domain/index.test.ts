@@ -28,14 +28,6 @@ describe("Worker smoke tests", () => {
     expect(typeof routeHandlers.handleClearWorkHistory).toBe("function");
   });
 
-  it("registers authenticated Workspace ownership lifecycle handlers", () => {
-    expect(typeof routeHandlers.handleCheckWorkspaceOwnership).toBe("function");
-    expect(typeof routeHandlers.handleDisconnectDesktopWorkspace).toBe(
-      "function",
-    );
-    expect(typeof routeHandlers.handleReleaseDesktopWorkspace).toBe("function");
-  });
-
   it("returns a health response", async () => {
     const response = await worker.fetch(
       new Request("https://syntila.test/health"),

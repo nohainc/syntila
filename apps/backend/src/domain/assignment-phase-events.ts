@@ -35,7 +35,7 @@ export async function publishAssignmentPhase(
               wa.error_json::text AS "errorJson", wa.run_id AS "runId",
               wt.status AS "taskStatus", wt.step_kind AS "stepKind", wt.step_id AS "stepId",
               wt.work_request_id AS "workRequestId", wt.error AS "taskError",
-              wr.thread_id AS "threadId", wr.primary_workspace_id AS "workspaceId",
+              wr.thread_id AS "threadId", NULL::text AS "workspaceId",
               th.space_id AS "spaceId"
          FROM worker_assignments wa
          JOIN workflow_tasks wt ON wt.id = wa.task_id

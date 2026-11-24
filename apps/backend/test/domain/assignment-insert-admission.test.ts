@@ -7,57 +7,50 @@ vi.mock("../../src/domain/scheduler.js", () => scheduler);
 
 async function fixture() {
   const f = await conversationFixture();
-  await f.sqlite.exec(
-    "INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now')",
-  );
-  scheduler.selectSpaceExecutionTarget.mockResolvedValue({
-    spaceId: "P",
-    workspaceId: "WS",
-    workspaceRuntimeIdentityId: "RT",
-    workspaceSpaceGrantId: null,
-    workerId: "worker-a",
-    workerTypeId: "chatgpt",
-    engineVersion: "1.3.0",
-    model: null,
-    maxConcurrentAssignments: 1,
-    effectivePermissions: ["repository:read"],
-    permissionSnapshot: {
-      profileDefinitionId: "chatgpt-codex",
-      profileReleaseVersion: 3,
-    },
-    selectionExplanation: {},
-    executionClass: "stateless_read",
-    readOnly: true,
-  });
+  await f.sqlite.exec(`
+    INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
+    INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES('cred-a','worker-a','${"a".repeat(43)}','${"a".repeat(64)}');
+    INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at) VALUES('worker-a','sess-a',1,'cred-a','digest',now() + interval '5 minutes');
+    INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at) VALUES('chatgpt',1,'{"schemaVersion":1,"profileDefinitionId":"chatgpt-codex"}',3,'${"a".repeat(64)}',now()) ON CONFLICT (worker_type_id) DO NOTHING;`);
   const fetch = vi.fn(async (_url: string, _init?: RequestInit) =>
     Response.json({}),
   );
+  const workerTarget = {
+    workerId: "worker-a", workerTypeId: "chatgpt", workerName: "ChatGPT", spaceId: "P", threadId: "W",
+    model: null, reasoningEffort: null, readOnly: true, permissions: ["repository:read"],
+    profile: { definitionId: "chatgpt-codex", revision: 3, digest: "a".repeat(64) }, mcpWorker: null,
+  };
   return {
     ...f,
     fetch,
-    dispatch: () =>
+    dispatch: (extra: Record<string, unknown> = {}) =>
       dispatchTaskAssignment(
         {
           SYNTILA_DB: f.db,
-          SYNTILA_WORKSPACE_GATEWAY: {
-            idFromName: () => "WS",
+          SYNTILA_WORKER_GATEWAY: {
+            idFromName: () => "worker-a",
             get: () => ({ fetch }),
+            getByName: () => ({ fetch }),
           } as unknown as DurableObjectNamespace,
         },
         {
-          workspaceId: "WS",
+          workspaceId: null,
           runId: "RUN",
           taskId: "T",
           task: {
             id: "T",
             spaceId: "P",
+            threadId: "W",
             requestedByUserId: "U",
             role: "collaborator",
             objective: "test",
             workRequestId: "R",
+            workBindingId: "chat",
             sessionPolicy: "stateless",
+            workerTarget,
+            ...extra,
           },
-        },
+        } as any,
       ),
   };
 }
@@ -81,15 +74,12 @@ it.each([
         FROM conversation_history_entries WHERE conversation_id=?1`,
         )
         .run(String(conversation.id), "x".repeat(bytes));
-      scheduler.selectSpaceExecutionTarget.mockResolvedValue({
-        ...(await scheduler.selectSpaceExecutionTarget()),
-        conversationId: conversation.id,
-        workRequestId: "R",
-        baseContextRevision: 0,
-      });
       // History over the transport budget is left out, never a failure: the
       // Worker's CLI reports a real context overflow itself.
-      const result = await f.dispatch();
+      const result = await f.dispatch({
+        conversationId: String(conversation.id),
+        baseContextRevision: 0,
+      });
       expect(result.accepted).toBe(true);
       const payload = JSON.parse(String(f.fetch.mock.calls[0]?.[1]?.body));
       const context = JSON.stringify(payload.payload);
@@ -128,8 +118,6 @@ it("dispatches an inserted assignment despite conversation and history trigger w
         )
         .get(`turn-${result.assignmentId}`),
     ).toEqual({ n: 1 });
-    const payload = JSON.parse(String(f.fetch.mock.calls[0]?.[1]?.body));
-    expect(payload.payload.snapshot.maxConcurrentAssignments).toBe(1);
   } finally {
     await f.sqlite.close();
   }

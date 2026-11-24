@@ -1,46 +1,47 @@
 # Syntila Roadmap
 
-Architecture V9 is the current design target. The V8 implementation plan remains the historical implementation baseline and records evidence for the existing generic Engine path while V9 is implemented phase by phase. The canonical V9 Profile contract is [WORKER_PROFILE_V9.md](docs/specifications/WORKER_PROFILE_V9.md).
+What is still open. The system as built is described in
+[ARCHITECTURE.md](ARCHITECTURE.md); decisions are in
+[docs/decisions](docs/decisions/README.md). Finished work is removed from this
+file, not archived.
 
-~~~text
-Syntila
--> Syntila Cloud
--> Syntila Workspace
--> CLI Worker Engine
--> centrally published Worker Profile
--> provider CLI
-~~~
+## Now
 
-## Product contract
+1. **Remove the legacy Workspace path.** Delete `apps/workspace`,
+   `apps/workspace_gui`, the Workspace gateway, runtime routes and protocol
+   bridge, Space-to-Workspace grants, the legacy human realtime frames, and the
+   Worker-first feature flags; make `worker_instance_id` required. The Worker
+   path becomes the only execution path, and the web app renders the canonical
+   timeline only.
+2. **Product wording.** No user-facing text says "Workspace"; it is Connect and
+   Workers.
 
-Work v1 remains the constrained, product-owned collaboration and execution model. Its Steps, built-in Workflows, bindings, snapshots, and user-visible behavior are defined by the [Work v1 Contract](docs/specifications/WORK_V1_CONTRACT.md).
+## Before the first test release
 
-Spaces and Threads define collaboration. Workspaces provide machine execution. Logical Workers remain stable user-facing identities; one centrally published Profile per Worker defines its behavior for the generic Engine.
+- Device evidence for Connect on macOS, Linux and Windows: login services
+  (launchd, systemd user unit, Windows logon task) and credential stores.
+- Real provider runs end to end: Chat, Work with a Space folder, files,
+  artifact handoff between two computers, crash and reconnect.
+- Security review checklist ([Worker-first security review](docs/security/WORKER_FIRST_SECURITY_REVIEW.md)).
+- Backup and restore exercise, and a baseline of idle and active load, before
+  production.
 
-## Release declaration
+## Later
 
-The V8 release declaration remains a historical implementation gate until its plan records evidence for real ChatGPT and Gemini execution, Work v1 full-path execution, failure and security acceptance, and production operations. V9 removes Profile testing/beta/stable promotion and channel rollback from the target architecture; future release evidence must follow the singular publication and activation contract.
+- **Connect updates.** Manual install and update today; a signed update
+  channel is a later decision (ADR-034).
+- **Horizontal scaling.** Gated on measured load
+  ([ADR-039](docs/decisions/ADR-039-horizontal-scaling.md),
+  [Scaling decision](docs/operations/SCALING_DECISION.md)).
+- **Offline queueing** of requests for a Worker that is offline (rejected
+  today, ADR-035).
+- **MCP tool calls on Connect.** Direct `tool_call` steps and attaching MCP tool
+  servers to official Workers on Syntila Connect (deferred after legacy path
+  removal; ADR-028 covers MCP Workers only).
 
-Consult the [Workspace release runbook](docs/deployment/WORKSPACE_RELEASES.md), [release trust guidance](docs/security/RELEASE_TRUST_AND_ROTATION.md), and [desktop lifecycle validation](docs/operations/WORKSPACE_DESKTOP_LIFECYCLE_RELEASE_VALIDATION.md) for operational evidence.
+## Planning rules
 
-## How to plan new work
-
-Communication and execution reliability Phases 1–7 have source implementations.
-The [Phase 8 acceptance record](docs/acceptance/EXECUTION_RELIABILITY_V9.md) and
-[Phase 9 rollout runbook](docs/rollouts/EXECUTION_RELIABILITY_V9.md) distinguish
-automated evidence from the still-open live provider, deployed fault-recovery,
-and complete latency gates. Implementation alone does not close release acceptance.
-
-Use the V9 Profile contract for new Profile architecture work. Keep the V8 implementation plan as historical evidence and update the owning current contract when behavior changes. Do not create a parallel Profile lifecycle specification.
-
-### Gemini AGY discovery candidate
-
-Engine 1.2.0 supports generic CLI model discovery, reviewed model/effort
-normalization, Service background refresh, and version/Profile-bound
-caching, Service inventory projection and explicit live-readiness gating. Gemini
-release 2 is an authoring candidate, not a promoted stable release. Real AGY
-1.3.3 discovery, selected-model execution and durable resume evidence are in
-`docs/acceptance/real-provider/2026-10-11/gemini-discovery.json`.
-Protected release qualification, signed LaunchAgent execution and
-verified read-only isolation remain gates; Gemini Chat eligibility is withheld.
-See `docs/architecture/GEMINI_AGY_PROFILE.md`.
+- Read `ARCHITECTURE.md` and the relevant ADRs before changing a contract.
+- A change that alters a decision updates its ADR in the same change; a
+  replaced decision is deleted.
+- Implementation alone does not close acceptance: record executable evidence.

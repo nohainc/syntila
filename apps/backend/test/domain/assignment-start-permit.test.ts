@@ -90,9 +90,9 @@ describe("start permit", () => {
     }
   });
 
-  it.each(["revoke", "replace-runtime"])(
+  it.each(["revoke"])(
     "denies a grant when %s wins between admission and the permit write",
-    async (interruption) => {
+    async (_interruption) => {
       for (let iteration = 0; iteration < 3; iteration += 1) {
         const f = await seed("acknowledged");
         const original = f.read;
@@ -103,18 +103,9 @@ describe("start permit", () => {
           async row(strings: TemplateStringsArray, ...values: unknown[]) {
             if (strings.join("?").includes("SET start_permit_issued_at") && !interrupted) {
               interrupted = true;
-              if (interruption === "replace-runtime") {
-                await f.sqlite.exec(
-                  "UPDATE workspace_runtime_identities SET revoked_at='now' WHERE workspace_id='WS' AND revoked_at IS NULL; INSERT INTO workspace_runtime_identities(id,workspace_id,credential_token_hash,installation_id,created_at) VALUES('replacement','WS','replacement-hash','replacement-installation','now')",
-                );
-                await f.sqlite.exec(
-                  "UPDATE worker_assignments SET runtime_identity_id = 'replacement' WHERE id='A1'",
-                );
-              } else {
-                await f.sqlite.exec(
-                  "UPDATE worker_assignments SET status = 'revocation_pending' WHERE id='A1'",
-                );
-              }
+              await f.sqlite.exec(
+                "UPDATE worker_assignments SET status = 'revocation_pending' WHERE id='A1'",
+              );
             }
             return original.row(strings, ...values);
           },

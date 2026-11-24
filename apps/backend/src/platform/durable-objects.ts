@@ -1,5 +1,5 @@
 /**
- * In-process host for the domain's Durable Object classes (WorkspaceGateway,
+ * In-process host for the domain's Durable Object classes (WorkerGateway,
  * RealtimeGateway, ThreadExecutionCoordinator).
  *
  * It implements the subset of the Workers runtime they use:

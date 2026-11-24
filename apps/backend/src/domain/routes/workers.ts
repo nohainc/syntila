@@ -4,7 +4,7 @@ import {
   type WorkerInstance,
 } from "@syntila/protocol";
 import { dataOf, type Row } from "../../platform/data.js";
-import { FEATURE_FLAGS, isFeatureEnabled } from "../../feature-flags.js";
+import { ALWAYS_ON_FEATURES } from "../../feature-flags.js";
 import { readBody, readJson } from "./validation.js";
 import { spaceWorkerExecutionOptions } from "../worker-execution-options.js";
 import { notifyWorkerAgent, publishWorkerChanged } from "../worker-events.js";
@@ -29,38 +29,30 @@ import { parseModelAccess, type WorkerSpaceModelAccess } from "../worker-eligibi
  *    approximation. On the Worker path online comes from the Agent lease,
  *    matching admission. Agent readiness is not yet reported to the server.
  */
-const ONLINE_WINDOW = "10 minutes";
-
-const columns = (workerTargetDispatch: boolean) => `w.id, w.actor_id AS "actorId", w.worker_type_id AS "workerTypeId",
+const columns = () => `w.id, w.actor_id AS "actorId", w.worker_type_id AS "workerTypeId",
   c.display_name AS "workerTypeName", w.name, w.description, w.enabled,
   w.default_model AS "defaultModel", w.visibility_json AS "visibilityJson",
   w.created_at AS "createdAt",
   w.updated_at AS "updatedAt", w.revoked_at AS "revokedAt",
-  (${workerTargetDispatch ? `EXISTS (
+  EXISTS (
      SELECT 1 FROM worker_agent_sessions s
       WHERE s.worker_instance_id = w.id AND s.disconnected_at IS NULL
-        AND s.lease_expires_at > now() AND s.readiness_json IS NOT NULL)` : "COALESCE(inv.readiness_state <> 'not_probed', false)"}) AS "readinessKnown",
-  (w.revoked_at IS NULL AND ${workerTargetDispatch ? `EXISTS (
+        AND s.lease_expires_at > now() AND s.readiness_json IS NOT NULL) AS "readinessKnown",
+  (w.revoked_at IS NULL AND EXISTS (
      SELECT 1 FROM worker_agent_sessions s
       WHERE s.worker_instance_id = w.id AND s.disconnected_at IS NULL
-        AND s.lease_expires_at > now() AND s.readiness_json::jsonb ->> 'ready' = 'true')` : "COALESCE(inv.readiness_state = 'ready', false)"}) AS ready,
-  (w.revoked_at IS NULL AND ${workerTargetDispatch ? `EXISTS (
+        AND s.lease_expires_at > now() AND s.readiness_json::jsonb ->> 'ready' = 'true')) AS ready,
+  (w.revoked_at IS NULL AND EXISTS (
      SELECT 1 FROM worker_agent_sessions s
       WHERE s.worker_instance_id = w.id AND s.disconnected_at IS NULL
-        AND s.lease_expires_at > now())` : `EXISTS (
-     SELECT 1 FROM workspace_sessions s
-      WHERE s.workspace_id = inv.workspace_id AND s.disconnected_at IS NULL
-        AND s.last_heartbeat_at > now() - interval '${ONLINE_WINDOW}')`}) AS online,
+        AND s.lease_expires_at > now())) AS online,
   (w.revoked_at IS NULL AND EXISTS (
      SELECT 1 FROM worker_credentials cred
       WHERE cred.worker_instance_id = w.id AND cred.revoked_at IS NULL)) AS paired`;
 const FROM = `worker_instances w
-  JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id
-  LEFT JOIN legacy_worker_mapping m ON m.worker_instance_id = w.id
-  LEFT JOIN workspace_worker_inventory inv ON inv.worker_id = m.legacy_worker_id`;
+  JOIN worker_catalog c ON c.worker_type_id = w.worker_type_id`;
 
 function requireWorkerIdentity(): void {
-  if (!isFeatureEnabled("worker_identity")) throw new HttpError(404, "Not found");
 }
 
 function workerView(row: Row): WorkerInstance {
@@ -104,20 +96,23 @@ function workerView(row: Row): WorkerInstance {
 
 async function readWorker(env: SecurityEnv, userId: string, workerId: string): Promise<WorkerInstance> {
   const q = dataOf(env).read;
-  const row = await q.row`SELECT ${q.raw(columns(isFeatureEnabled("worker_target_dispatch")))} FROM ${q.raw(FROM)}
+  const row = await q.row`SELECT ${q.raw(columns())} FROM ${q.raw(FROM)}
      WHERE w.id = ${workerId} AND w.owner_user_id = ${userId}`;
   if (!row) throw new HttpError(404, "Worker not found");
   return workerView(row);
 }
 
-/** GET /api/features: the rollout flags that are on. */
+/**
+ * GET /api/features: the former rollout flags, now always on. The web app still
+ * reads them; remove this route once it no longer does.
+ */
 export async function handleListFeatures(
   request: Request,
   env: SecurityEnv,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   await securityContext(request, env, accessContext);
-  return json({ flags: FEATURE_FLAGS.filter((flag) => isFeatureEnabled(flag)) });
+  return json({ flags: ALWAYS_ON_FEATURES });
 }
 
 /** GET /api/workers — the caller's Workers; `?includeRevoked=true` adds removed ones. */
@@ -132,7 +127,7 @@ export async function handleListWorkers(
   const includeRevoked = params.get("includeRevoked") === "true";
   const includeShared = params.get("includeShared") === "true";
   const q = dataOf(env).read;
-  const rows = await q.rows`SELECT ${q.raw(columns(isFeatureEnabled("worker_target_dispatch")))} FROM ${q.raw(FROM)}
+  const rows = await q.rows`SELECT ${q.raw(columns())} FROM ${q.raw(FROM)}
      WHERE (
        w.owner_user_id = ${context.userId}
        OR (${includeShared}::boolean AND EXISTS (
@@ -320,7 +315,6 @@ export async function handleWorkerMcpPin(
   accessContext?: ExecutionContext,
 ): Promise<Response> {
   requireWorkerIdentity();
-  if (!isFeatureEnabled("worker_plugins")) throw new HttpError(404, "Not found");
   const context = await securityContext(request, env, accessContext);
   const q = dataOf(env).read;
   const worker = await q.row<{ workerTypeId: string; origin: string }>`
@@ -474,7 +468,7 @@ export async function handleListSpaceWorkers(
     return json({ workers: [] });
   }
   // A member the owner explicitly turned off for a Worker does not see it.
-  const rows = await q.rows`SELECT ${q.raw(columns(isFeatureEnabled("worker_target_dispatch")))},
+  const rows = await q.rows`SELECT ${q.raw(columns())},
        wmma.allowed_models_json AS "allowedModelsJson", wmma.allowed_efforts_json AS "allowedEffortsJson"
      FROM ${q.raw(FROM)}
      LEFT JOIN worker_member_model_access wmma ON wmma.worker_id = w.id
@@ -516,7 +510,7 @@ export async function handleListWorkersSharedWithMe(
   requireWorkerIdentity();
   const context = await securityContext(request, env, accessContext);
   const q = dataOf(env).read;
-  const rows = await q.rows`SELECT ${q.raw(columns(isFeatureEnabled("worker_target_dispatch")))},
+  const rows = await q.rows`SELECT ${q.raw(columns())},
        owner.display_name AS "sharedByName",
        wmma.allowed_models_json AS "allowedModelsJson", wmma.allowed_efforts_json AS "allowedEffortsJson"
      FROM ${q.raw(FROM)}

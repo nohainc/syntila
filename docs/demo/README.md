@@ -193,7 +193,7 @@ Root; a local backend also cannot serve a production demo Workspace.
    selection creates or repairs the internal execution grant; this is not a
    separate member permission or personal Workspace sharing grant. Confirm the
    actual controls and effective authorization during approved setup; this flow
-   has not been rehearsed here. See [Workspace Space Grants](../specifications/WORKSPACE_SPACE_GRANTS.md).
+   has not been rehearsed here. See Workspace Space Grants.
 4. Install each provider CLI separately on the demo machine under the isolated
    OS user, following the provider's current instructions. The user signs in
    separately to Codex CLI for ChatGPT and Antigravity CLI for Gemini, if used,

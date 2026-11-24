@@ -66,8 +66,9 @@ it("one Work StepRun snapshots pending choices and spaces actual provider defaul
       result: null,
     });
     await f.sqlite
-      .exec(`INSERT INTO worker_assignments(id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,status,session_policy,permission_snapshot_json,created_at,updated_at)
-    VALUES('WORKER','P','WS','RT','chatgpt','actual-worker','IMPLEMENT','created','durable_session','{"profileDefinitionId":"chatgpt-codex","profileReleaseVersion":1,"workerSessionId":"logical-session"}','now','now')`);
+      .exec(`INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES('actual-worker','','U','chatgpt','Actual') ON CONFLICT DO NOTHING;
+    INSERT INTO worker_assignments(id,space_id,worker_instance_id,worker_snapshot_json,worker_type_id,task_id,status,session_policy,permission_snapshot_json,created_at,updated_at)
+    VALUES('WORKER','P','actual-worker','{}','chatgpt','IMPLEMENT','created','durable_session','{"profileDefinitionId":"chatgpt-codex","profileReleaseVersion":1,"workerSessionId":"logical-session"}','now','now')`);
     const actual = (
       await loadConversationWorkflowRuns(f.db as unknown as D1Database, [
         "WORK",

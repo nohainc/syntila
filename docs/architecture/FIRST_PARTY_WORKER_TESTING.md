@@ -18,7 +18,7 @@ These tests do not require provider accounts or use provider allowance.
 
 ## Real provider acceptance
 
-The opt-in [Profile acceptance suite](../roadmaps/ARCHITECTURE_V8_IMPLEMENTATION.md#release-gates)
+The opt-in Profile acceptance suite
 uses the installed Codex and Antigravity CLIs. It writes digest-bound evidence
 for passive/live probes, a Thread write, durable session start/resume,
 timeout, and process-tree cancellation. Set only the corresponding opt-in

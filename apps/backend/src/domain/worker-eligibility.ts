@@ -265,7 +265,6 @@ export async function acceptWorkerTarget(
   // version in the owner's own library.
   let mcpWorker: { id: string; version: string; manifestDigest: string } | null = null;
   if (worker.origin === "plugin") {
-    if (!isFeatureEnabled("worker_plugins")) return { ok: false, code: "worker_type_unavailable" };
     const entitled = await q.row<{ ok: boolean }>`SELECT TRUE AS ok FROM worker_instances w
        WHERE w.id = ${worker.id} AND ${q.raw(pluginOwnerEntitledSql("w.owner_user_id"))}`;
     const pin = await q.row<{ id: string; version: string; manifestDigest: string }>`
@@ -332,7 +331,7 @@ export async function acceptWorkerTarget(
     : base;
   // These capabilities are Workflow requirements, not provider claims. Cloud
   // maps them to its execution permissions and fails closed for unknown ones.
-  // The current Worker catalog has no per-Type capability advertisement.
+  // What the Worker Type itself supports is checked below, from its Profile.
   const required = new Set<string>(["repository:read"]);
   for (const capability of request.capabilities ?? []) {
     if (!(WORKFLOW_CAPABILITIES as readonly string[]).includes(capability))

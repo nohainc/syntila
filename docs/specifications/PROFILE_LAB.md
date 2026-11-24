@@ -2,7 +2,7 @@
 
 **Status:** Current V9 operational specification; the V8 material below is retained as a historical migration reference.
 **Architecture:** [Worker Profile V9](WORKER_PROFILE_V9.md)
-**Decision:** [ADR-019](../decisions/ADR-019-syntila-profile-lab.md)  
+**Decision:** ADR-019  
 **Implementation:** `apps/profile_lab`
 
 ## V9 operating contract

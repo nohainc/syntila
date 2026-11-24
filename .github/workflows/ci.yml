@@ -19,8 +19,8 @@ jobs:
       cloud: ${{ steps.detect.outputs.cloud }}
       dart: ${{ steps.detect.outputs.dart }}
       app: ${{ steps.detect.outputs.app }}
-      workspace: ${{ steps.detect.outputs.workspace }}
-      workspace_gui: ${{ steps.detect.outputs.workspace_gui }}
+      connect: ${{ steps.detect.outputs.connect }}
+      connect_gui: ${{ steps.detect.outputs.connect_gui }}
       profile_lab: ${{ steps.detect.outputs.profile_lab }}
       engine: ${{ steps.detect.outputs.engine }}
       site: ${{ steps.detect.outputs.site }}
@@ -85,32 +85,29 @@ jobs:
         working-directory: apps/app
         run: flutter build web --release --dart-define=SYNTILA_API_URL=/api
 
-  workspace:
-    name: Workspace
+  connect:
+    name: Connect
     needs: changes
-    if: needs.changes.outputs.workspace == 'true'
+    if: needs.changes.outputs.connect == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-workspace
-        with:
-          install: "false"
       - uses: ./.github/actions/setup-flutter
-      - name: Validate Workspace
-        run: bash scripts/check-flutter-app.sh workspace
+      - name: Validate Connect
+        run: bash scripts/test-connect.sh
 
-  workspace-gui:
-    name: Workspace GUI
+  connect-gui:
+    name: Connect app
     needs: changes
-    if: needs.changes.outputs.workspace_gui == 'true'
+    if: needs.changes.outputs.connect_gui == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-flutter
-      - name: Validate Workspace GUI
-        run: bash scripts/check-flutter-app.sh workspace_gui
+      - name: Validate Connect app
+        run: bash scripts/check-flutter-app.sh connect_gui
 
   profile-lab:
     name: Profile Lab
@@ -170,8 +167,8 @@ jobs:
         cloud,
         dart-packages,
         app,
-        workspace,
-        workspace-gui,
+        connect,
+        connect-gui,
         profile-lab,
         engine,
         site,

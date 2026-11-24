@@ -33,9 +33,6 @@ it("persists scoped defaults, rejects disabled workflows, and falls back to Chat
     await sqlite.exec(`
       INSERT INTO users(id,email,display_name,created_at,updated_at)
       VALUES ('owner','owner@test','Owner','now','now'),('other','other@test','Other','now','now');
-      INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at)
-      VALUES ('ws','owner','Workspace','now','now');
-      INSERT INTO user_workflow_settings VALUES ('owner','ws','now');
     `);
     const env = { SYNTILA_DB: db } as SecurityEnv;
     const request = (method: string, user = "owner", body?: unknown) =>

@@ -244,7 +244,7 @@ Workspace Runtime or Local Worker Protocol transport.
 
 Workspace Space grant collections and the additive aggregate count in
 `GET /api/workspaces` are Human Product HTTP read models. Their versioned
-[read model contract 1.1](../specifications/WORKSPACE_SPACE_GRANTS.md) preserves
+read model contract 1.1 preserves
 existing mutation endpoints and authorization. Runtime inventory and grant
 admission still belong to their existing Cloud/Workspace boundaries.
 

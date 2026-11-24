@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { BUILTIN_WORKFLOWS, workflowCatalogEntry } from "@syntila/core";
-import { Data } from "../../src/platform/data.js";
-import { handleGetReleaseTrustState } from "../../src/domain/routes/releases.js";
 import {
   routeWorkerRequest,
   type WorkerRouteDependencies,
@@ -30,48 +28,6 @@ function request(path: string, method = "GET"): Request {
 }
 
 describe("Worker API routes", () => {
-  it("routes Input Delivery reports to their handlers, never the runtime transport", async () => {
-    const file = "wrf-11111111-2222-3333-4444-555555555555";
-    const sameOrigin = vi.fn();
-    const handlers = {
-      handleWorkspaceRuntimeTransport: vi.fn(async () => new Response("{}")),
-      handleListRuntimeInputs: vi.fn(async () => new Response("{}")),
-      handleDownloadRuntimeInput: vi.fn(async () => new Response("{}")),
-      handleConfirmRuntimeInput: vi.fn(async () => new Response("{}")),
-      handleReportRuntimeInputAttempt: vi.fn(async () => new Response("{}")),
-    };
-    const env = {} as Env;
-    for (const [path, method, handler] of [
-      ["/api/workspace-runtime/inputs", "GET", "handleListRuntimeInputs"],
-      [
-        `/api/workspace-runtime/inputs/${file}/content`,
-        "GET",
-        "handleDownloadRuntimeInput",
-      ],
-      [
-        `/api/workspace-runtime/inputs/${file}/delivered`,
-        "POST",
-        "handleConfirmRuntimeInput",
-      ],
-      [
-        `/api/workspace-runtime/inputs/${file}/attempt`,
-        "POST",
-        "handleReportRuntimeInputAttempt",
-      ],
-    ] as const) {
-      await routeWorkerRequest(
-        request(`${path}?workspaceRuntimeId=r`, method),
-        env,
-        undefined,
-        handlers,
-        { ...dependencies, requireSameOriginForCookieMutation: sameOrigin },
-      );
-      expect(handlers[handler]).toHaveBeenCalledTimes(1);
-    }
-    expect(handlers.handleWorkspaceRuntimeTransport).not.toHaveBeenCalled();
-    // Bearer-authenticated runtime reports skip the cookie same-origin check.
-    expect(sameOrigin).not.toHaveBeenCalled();
-  });
   it("routes canonical history reads to the Conversation-scoped handler", async () => {
     const handler = vi.fn(async () => new Response("{}"));
     const req = request("/api/threads/W/conversations/C/history");
@@ -127,23 +83,6 @@ describe("Worker API routes", () => {
     expect((await next.arrayBuffer()).byteLength).toBe(0);
   });
 
-  it("serves the logical Worker inventory at its current product route", async () => {
-    const handler = vi.fn(
-      async () => new Response("inventory", { status: 200 }),
-    );
-    const response = await routeWorkerRequest(
-      request("/api/workspace-workers?workspaceId=workspace-1"),
-      {} as Parameters<typeof routeWorkerRequest>[1],
-      undefined,
-      {
-        handleListWorkspaceWorkerInventory: handler,
-      } as unknown as WorkerRouteHandlers,
-      dependencies,
-    );
-    expect(response.status).toBe(200);
-    expect(handler).toHaveBeenCalledOnce();
-  });
-
   it("serves the Cloud Worker catalog through the human product API", async () => {
     const handler = vi.fn(async () => new Response("catalog", { status: 200 }));
     const response = await routeWorkerRequest(
@@ -157,99 +96,6 @@ describe("Worker API routes", () => {
     );
     expect(response.status).toBe(200);
     expect(handler).toHaveBeenCalledOnce();
-  });
-
-  it("keeps the channel-scoped catalog behind the Workspace runtime API", async () => {
-    const handler = vi.fn(
-      async () => new Response("runtime catalog", { status: 200 }),
-    );
-    const response = await routeWorkerRequest(
-      request("/api/workspace-runtime/workers/catalog"),
-      {} as Parameters<typeof routeWorkerRequest>[1],
-      undefined,
-      {
-        handleListWorkspaceWorkerCatalog: handler,
-      } as unknown as WorkerRouteHandlers,
-      dependencies,
-    );
-    expect(response.status).toBe(200);
-    expect(handler).toHaveBeenCalledOnce();
-  });
-
-  it("serves Workspace releases only at the versionless release routes", async () => {
-    const routes = [
-      [
-        "GET",
-        "/api/workspace-releases/latest",
-        "handleGetLatestWorkspaceRelease",
-      ],
-      [
-        "POST",
-        "/api/workspace-releases/publish",
-        "handlePublishWorkspaceRelease",
-      ],
-      ["GET", "/api/workspace-releases/1.2.3", "handleGetWorkspaceRelease"],
-      [
-        "GET",
-        "/api/workspace-releases/1.2.3/download",
-        "handleDownloadWorkspaceRelease",
-      ],
-      [
-        "POST",
-        "/api/workspace-releases/1.2.3/revoke",
-        "handleRevokeWorkspaceRelease",
-      ],
-    ] as const;
-
-    for (const [method, path, handlerName] of routes) {
-      const handler = vi.fn(
-        async () => new Response("release", { status: 200 }),
-      );
-      const response = await routeWorkerRequest(
-        request(path, method),
-        {} as Parameters<typeof routeWorkerRequest>[1],
-        undefined,
-        { [handlerName]: handler } as unknown as WorkerRouteHandlers,
-        dependencies,
-      );
-      expect(response.status, `${method} ${path}`).toBe(200);
-      expect(handler).toHaveBeenCalledOnce();
-    }
-  });
-
-  it("serves shared release trust", async () => {
-    const handlers = {
-      handleGetReleaseTrustState: vi.fn(async () => new Response("trust")),
-    } as unknown as WorkerRouteHandlers;
-
-    const trust = await routeWorkerRequest(
-      request("/api/release-trust"),
-      {} as Parameters<typeof routeWorkerRequest>[1],
-      undefined,
-      handlers,
-      dependencies,
-    );
-    expect(trust.status).toBe(200);
-    expect(handlers.handleGetReleaseTrustState).toHaveBeenCalledOnce();
-  });
-
-  it("passes database environment to the actual release trust handler", async () => {
-    const sql = vi.fn(async () => []);
-    const response = await routeWorkerRequest(
-      request("/api/release-trust"),
-      { SYNTILA_DATA: new Data(sql as never) } as unknown as Parameters<
-        typeof routeWorkerRequest
-      >[1],
-      undefined,
-      { handleGetReleaseTrustState } as unknown as WorkerRouteHandlers,
-      dependencies,
-    );
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      revokedKeyIds: [],
-      revokedWorkspaceReleases: [],
-    });
-    expect(sql).toHaveBeenCalledTimes(2);
   });
 
   it("routes the V9 admin Worker Profile catalog", async () => {

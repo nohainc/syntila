@@ -29,10 +29,15 @@ async function fixture() {
   open.push(f.sqlite);
   await f.sqlite.exec(`
     INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('OWNER','o@test','Owner','now','now'),('V','v@test','Visitor','now','now');
+    INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('m-P-OWNER','P','OWNER','collaborator','now','now'),('m-P-V','P','V','collaborator','now','now');
+    UPDATE threads SET access_policy_json = '{"allowedPermissions":["execute"]}' WHERE id = 'W';
     INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W2','P','Other','active','U','now','now');
-    INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('WS2','OWNER','Shared','now','now');
-    INSERT INTO workspace_runtime_identities(id,workspace_id,credential_token_hash,installation_id,created_at) VALUES('RT2','WS2','hash2','installation2','now');
+    INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES('worker-owner','','OWNER','chatgpt','Shared');
+    INSERT INTO worker_space_members(worker_id,space_id,user_id,permissions_json) VALUES('worker-owner','P','U','{"mode":"work"}'),('worker-owner','P','V','{"mode":"work"}'),('worker-a','P','OWNER','{"mode":"work"}'),('worker-a','P','V','{"mode":"work"}');
+    INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES('cred-a','worker-a','${"a".repeat(43)}','${"a".repeat(64)}'),('cred-o','worker-owner','${"b".repeat(43)}','${"b".repeat(64)}');
+    INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at) VALUES('worker-a','sess-a',1,'cred-a','digest',now() + interval '5 minutes'),('worker-owner','sess-o',1,'cred-o','digest',now() + interval '5 minutes');
+    INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at) VALUES('chatgpt',1,'{"schemaVersion":1,"profileDefinitionId":"chatgpt-codex"}',3,'${"a".repeat(64)}',now()) ON CONFLICT (worker_type_id) DO NOTHING;
     INSERT INTO account_plans(user_id,tier,status,source,current_period_end,created_at,updated_at) VALUES('OWNER','paid','active','manual',NULL,'now','now');`);
   for (const id of ["T2", "T3", "T4", "T5"])
     (await f.sqlite
@@ -72,27 +77,43 @@ async function fixture() {
   const fetch = vi.fn(async () => Response.json({}));
   const env = {
     SYNTILA_DB: f.db,
-    SYNTILA_WORKSPACE_GATEWAY: {
+    SYNTILA_WORKER_GATEWAY: {
       idFromName: () => "x",
       get: () => ({ fetch }),
+      getByName: () => ({ fetch }),
     } as unknown as DurableObjectNamespace,
   };
   const dispatch = (taskId: string, user = "U", workspace = "WS") => {
-    currentWorkspace = workspace;
+    const workerId = workspace === "WS" ? "worker-a" : "worker-owner";
     return dispatchTaskAssignment(env, {
-      workspaceId: workspace,
+      workspaceId: null,
       runId: "RUN",
       taskId,
       task: {
         id: taskId,
         spaceId: "P",
+        threadId: "W",
         requestedByUserId: user,
         role: "collaborator",
         objective: "test",
         workRequestId: "R",
+        workBindingId: "chat",
         sessionPolicy: "stateless",
+        workerTarget: {
+          workerId,
+          workerTypeId: "chatgpt",
+          workerName: "ChatGPT",
+          spaceId: "P",
+          threadId: "W",
+          model: null,
+          reasoningEffort: null,
+          readOnly: true,
+          permissions: ["repository:read"],
+          profile: { definitionId: "chatgpt-codex", revision: 3, digest: "a".repeat(64) },
+          mcpWorker: null,
+        },
       },
-    });
+    } as any);
   };
   const setStatus = (taskId: string, status: string) =>
     f.sqlite
@@ -286,27 +307,6 @@ it("re-evaluates the plan on every dispatch: upgrade, downgrade and expiry", asy
   expect(await f.dispatch("T2")).toMatchObject({ accepted: true });
 });
 
-it("never holds a Free slot while the Service is only connected", async () => {
-  const f = await fixture();
-  readiness = "connected";
-  expect(await f.dispatch("T")).toMatchObject({
-    status: "deferred",
-    waitReason: "workspace_not_ready",
-  });
-  expect(await f.held()).toBe(0);
-  // It is waiting for the Service, not for the slot, so it blocks nobody.
-  readiness = "ready";
-  expect(await f.dispatch("T2")).toMatchObject({ accepted: true });
-  expect(await f.dispatch("T")).toMatchObject({
-    status: "deferred",
-    waitReason: "account_concurrency_limit",
-  });
-  // Plus keeps the existing behaviour: the work queues behind the Service.
-  await f.plan("U");
-  readiness = "connected";
-  expect(await f.dispatch("T3")).toMatchObject({ accepted: true });
-});
-
 it("wakes the oldest eligible waiter after a slot is released", async () => {
   const f = await fixture();
   await f.sqlite.exec(
@@ -377,49 +377,6 @@ it("wakes requests parked on Service readiness, not slot waiters", async () => {
   expect(
     await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db }, "WS", "x"),
   ).toBe(0);
-});
-
-it("wakes every matching readiness waiter across pages and leaves other Workspaces parked", async () => {
-  const f = await fixture();
-  await f.sqlite.exec(`
-    UPDATE runs SET workflow_instance_id = 'instance-1' WHERE id = 'RUN';
-    INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at,primary_workspace_id)
-      SELECT 'R-MATCH',thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at,'WS' FROM work_requests WHERE id = 'R';
-    INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at,primary_workspace_id)
-      SELECT 'R-OTHER',thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at,'WS2'
-      FROM work_requests WHERE id = 'R';
-  `);
-  for (let i = 0; i < 25; i++) await recordExecutionWaiter(f.read, {
-    taskId: `batch-${String(i).padStart(2, '0')}`, requesterUserId: 'U', runId: 'RUN', workRequestId: 'R-MATCH', reason: 'workspace_not_ready',
-  });
-  await recordExecutionWaiter(f.read, {
-    taskId: 'other', requesterUserId: 'U', runId: 'RUN', workRequestId: 'R-OTHER', reason: 'workspace_not_ready',
-  });
-  const sendEvent = vi.fn(async () => undefined);
-  const get = vi.fn(async () => ({ sendEvent }));
-  expect(await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db, SYNTILA_RUN_WORKFLOW: { get } }, 'WS', 'assignment-terminal')).toBe(25);
-  expect(sendEvent).toHaveBeenCalledTimes(25);
-  expect(sendEvent.mock.calls.map((call) => (call[0] as { payload: { taskId: string } }).payload.taskId)).not.toContain('other');
-  expect((await f.waiters()).length).toBe(26);
-  const flakySend = vi.fn(async (event: { payload: { taskId: string } }) => {
-    if (event.payload.taskId === 'batch-00') throw new Error('unavailable');
-  });
-  const flakyGet = vi.fn(async () => ({ sendEvent: flakySend }));
-  expect(await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db, SYNTILA_RUN_WORKFLOW: { get: flakyGet } }, 'WS', 'assignment-terminal')).toBe(24);
-  expect(flakySend).toHaveBeenCalledTimes(25);
-});
-
-it("wakes and readmits a request after its Workspace becomes ready", async () => {
-  const f = await fixture();
-  await f.sqlite.exec("UPDATE runs SET workflow_instance_id = 'instance-ready' WHERE id = 'RUN'");
-  readiness = 'connected';
-  expect(await f.dispatch('T')).toMatchObject({ status: 'deferred', waitReason: 'workspace_not_ready' });
-  expect(await f.held()).toBe(0);
-  readiness = 'ready';
-  const sendEvent = vi.fn(async () => undefined);
-  expect(await wakeWorkspaceReadyWaiters({ SYNTILA_DB: f.db, SYNTILA_RUN_WORKFLOW: { get: async () => ({ sendEvent }) } }, 'WS', 'assignment-terminal')).toBe(1);
-  expect(sendEvent).toHaveBeenCalledTimes(1);
-  expect(await f.dispatch('T')).toMatchObject({ accepted: true });
 });
 
 it("rechecks readiness after registration when the ready signal raced the waiter", async () => {

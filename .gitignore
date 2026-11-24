@@ -16,7 +16,6 @@ coverage/
 **/build/
 apps/site/.astro/
 apps/site/dist/
-apps/workspace/assets/engines/syntila-agent*
 apps/profile_lab/assets/engines/syntila-agent*
 
 # AI session outputs
@@ -32,7 +31,6 @@ apps/account_manager/.build/
 _to_delete/
 
 # Flutter-generated macOS files, recreated on every pub get / build.
-apps/workspace/macos/Flutter/ephemeral/
 **/Flutter/GeneratedPluginRegistrant.swift
 
 # Local gui-manifest checkout (see apps/workspace_gui/README.md).

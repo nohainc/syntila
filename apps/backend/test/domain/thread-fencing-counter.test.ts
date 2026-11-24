@@ -27,12 +27,12 @@ async function fixture() {
     INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('U','u@test','User','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','U','Space','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','Thread','active','U','now','now');
-    INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('WS','U','Workspace','now','now');`);
+    INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES('worker-a','','U','chatgpt','Worker');`);
   const queue = (id: string) =>
     sqlite
       .prepare(
-        `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,primary_workspace_id,created_at,updated_at)
-         VALUES(?,'W','U','stateful','direct',1,'{}','queued','{}','WS','now','now')`,
+        `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,primary_worker_instance_id,created_at,updated_at)
+         VALUES(?,'W','U','stateful','direct',1,'{}','queued','{}','worker-a','now','now')`,
       )
       .run(id);
   const acquire = async (workRequestId: string, leaseId: string) => {
@@ -40,7 +40,8 @@ async function fixture() {
       startStatefulLease(q, {
         threadId: "W",
         workRequestId,
-        workspaceId: "WS",
+        workspaceId: null,
+        workerInstanceId: "worker-a",
         leaseId,
         now: "2030-01-01T00:00:00.000Z",
         expiresAt: "2030-01-02T00:00:00.000Z",

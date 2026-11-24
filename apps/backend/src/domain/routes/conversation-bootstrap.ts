@@ -95,7 +95,7 @@ export async function loadConversationBootstrap(
       threadId: string;
       workspaceId: string | null;
     }>`SELECT wr.workflow_id AS "workflowId", wr.workflow_version AS "workflowVersion",
-    wfr.id AS "workflowRunId", wr.status, wr.snapshot_json AS "snapshotJson", ws.space_id AS "spaceId", wr.thread_id AS "threadId", wr.primary_workspace_id AS "workspaceId" FROM work_requests wr
+    wfr.id AS "workflowRunId", wr.status, wr.snapshot_json AS "snapshotJson", ws.space_id AS "spaceId", wr.thread_id AS "threadId", NULL::text AS "workspaceId" FROM work_requests wr
     JOIN conversation_workflow_runs wfr ON wfr.work_request_id = wr.id
     JOIN threads ws ON ws.id = wr.thread_id
     JOIN conversation_work_requests cr ON cr.work_request_id = wr.id WHERE cr.conversation_id = ${conversationId} AND wr.id = ${workRequestId}`;

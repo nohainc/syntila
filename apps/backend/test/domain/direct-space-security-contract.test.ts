@@ -16,11 +16,6 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
       -- Known collaborator relationship between Alice and Bob
       INSERT INTO people_relationships (user_low_id, user_high_id, established_at) VALUES
         ('user-alice', 'user-bob', '${now}');
-
-      -- Workspaces owned by Alice and Bob
-      INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at) VALUES
-        ('ws-alice', 'user-alice', 'Alice WS', 'online', '${now}', '${now}'),
-        ('ws-bob', 'user-bob', 'Bob WS', 'online', '${now}', '${now}');
     `);
 
     const users: Record<
@@ -451,29 +446,30 @@ describe("Direct Space Security Contract & Authorization Matrix (Phase 4)", () =
     expect(bobDeleteOwnMsg.status).toBe(200);
   });
 
-  it("4.3 & 4.5 Workspace & tool call authorization boundaries", async () => {
+  it("4.3 Direct Space rejects Space-level workflow configuration overrides", async () => {
     const { env } = await createTestEnv();
     const { directSpaceId } = await establishDirectSpace(env);
 
-    // Attempting to attach a Space-wide execution Workspace to a Direct Space -> 403
-    const attachWsRes = await worker.fetch(
+    // Attempting to set a Space-level workflow configuration on a Direct Space -> 403
+    const putCfgRes = await worker.fetch(
       new Request(
-        `https://syntila.test/api/spaces/${directSpaceId}/workflow-workspace`,
+        `https://syntila.test/api/spaces/${directSpaceId}/workflow-configurations/chat`,
         {
           method: "PUT",
           headers: {
             authorization: "Bearer alice",
             "content-type": "application/json",
           },
-          body: JSON.stringify({ workspaceId: "ws-alice" }),
+          body: JSON.stringify({
+            schemaVersion: 1,
+            workflowId: "chat",
+            enabled: true,
+          }),
         },
       ),
       env as never,
     );
-    expect(attachWsRes.status).toBe(403);
-    expect(((await attachWsRes.json()) as { error: string }).error).toContain(
-      "Direct Spaces do not support Space-level Workspace attachments",
-    );
+    expect(putCfgRes.status).toBe(403);
   });
 
   it("disconnected personal connection becomes read-only and rejects new mutations", async () => {

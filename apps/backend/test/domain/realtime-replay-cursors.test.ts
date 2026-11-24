@@ -13,7 +13,6 @@ async function harness() {
     INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES ('U','u@test','U','now','now');
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES ('S','U','S','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES ('M','S','U','owner','now','now');
-    INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES ('W','U','W','now','now');
   `);
   const frames: Array<Record<string, any>> = [];
   const cursors = new Map<string, number>();
@@ -123,7 +122,7 @@ describe("cursor-aware SQL replay", () => {
       f.cursors.set(JSON.stringify([kind, id]), 300);
     }
     await f.replay({ kind: "user" });
-    expect(f.frames).toHaveLength(3);
+    expect(f.frames).toHaveLength(2);
     expect(f.frames.every((frame) => frame.event.sequence === 301)).toBe(true);
   });
   it("exactly 256 rows conservatively signals a gap", async () => {

@@ -47,24 +47,6 @@ describe("Space creation", () => {
       TEST_AUTHENTICATION: authenticate(spaceRoles),
     }) as never;
 
-  it("refuses a Workspace the creator does not own and creates nothing", async () => {
-    await handle.sqlite.exec(
-      `INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at)
-       VALUES ('ws-revoked','other','Theirs','online','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');`,
-    );
-    await expect(
-      handleCreateSpace(
-        json("https://syntila.test/api/spaces", "POST", {
-          name: "Not mine",
-          workspaceId: "ws-revoked",
-        }),
-        envWith(),
-      ),
-    ).rejects.toMatchObject({ status: 403 });
-    expect(await count("spaces")).toBe(0);
-    expect(await count("space_memberships")).toBe(0);
-  });
-
   it("creates a Space without requiring an execution Workspace", async () => {
     const response = await handleCreateSpace(
       json("https://syntila.test/api/spaces", "POST", { name: "Unattached Space" }),
@@ -76,8 +58,6 @@ describe("Space creation", () => {
     expect(created.name).toBe("Unattached Space");
     expect(await count("spaces", `id = '${created.id}' AND owner_user_id = 'user-1'`)).toBe(1);
     expect(await count("space_memberships", `space_id = '${created.id}' AND user_id = 'user-1' AND role = 'owner'`)).toBe(1);
-    // The Space records "no Workspace" explicitly; nothing is inherited.
-    expect(await count("space_workflow_settings", `space_id = '${created.id}' AND workspace_id IS NULL`)).toBe(1);
   });
 
   it("creates a persisted Thread with its Space lead", async () => {

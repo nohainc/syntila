@@ -21,13 +21,13 @@ import { ACTIVE_ASSIGNMENT_STATUS_SQL, transitionAssignment } from "./assignment
 import { recordAssignmentCancelled, recordAssignmentError, recordAssignmentResult } from "./assignment-dispatcher.js";
 import { agentFenceIsCurrent, type AgentSessionFence } from "./agent-session-fence.js";
 import { AgentLeaseKeeper, authenticateAgentSession, closeSession as closeAgentSession } from "./worker-agents.js";
-import { isFeatureEnabled } from "../feature-flags.js";
+import type { Db } from "../platform/data.js";
+import type { WorkflowSignalEnv } from "./assignment-workflow-signal.js";
 import { createEventPublisher } from "./event-publisher.js";
 import { logStructured, requestIdFor, tryLogDiagnosticEvent } from "./observability.js";
 import { buildEnvelope, FrameError, isMessagingFrame, parseCommandFrame } from "./messaging/envelope.js";
 import { bucketFor, mayIssueCommand, type TokenBucket } from "./messaging/principal.js";
 import { commandToLegacy, isBridgedCommand, legacyToEnvelope } from "./messaging/bridge.js";
-import type { WorkspaceGatewayEnv } from "./workspace-gateway/contracts.js";
 
 /**
  * The gateway of one Worker's Agent (ADR-035, ADR-034). One object per Worker,
@@ -91,6 +91,17 @@ function withStartPermit(payload: unknown): unknown {
   return { ...value, snapshot: { ...value.snapshot, startPermit: { required: true } } };
 }
 
+export interface WorkerGatewayEnv {
+  readonly SYNTILA_PROVIDER_FAILURE_KEY?: string;
+  SYNTILA_DB: Db;
+  SYNTILA_REALTIME_GATEWAY?: DurableObjectNamespace;
+  SYNTILA_ARTIFACTS?: R2Bucket;
+  /** Wakes the Workflow that waits for a terminal assignment. */
+  SYNTILA_RUN_WORKFLOW?: WorkflowSignalEnv["SYNTILA_RUN_WORKFLOW"];
+  /** Lets a terminal assignment schedule the lost-Workflow check. */
+  SYNTILA_THREAD_COORDINATOR?: DurableObjectNamespace;
+}
+
 export class WorkerGateway implements DurableObject {
   private socket: WebSocket | null = null;
   private attachment: Attachment | null = null;
@@ -110,7 +121,7 @@ export class WorkerGateway implements DurableObject {
 
   constructor(
     private readonly state: DurableObjectState,
-    private readonly env: WorkspaceGatewayEnv,
+    private readonly env: WorkerGatewayEnv,
   ) {
     this.leaseKeeper = new AgentLeaseKeeper(env as never);
   }
@@ -183,9 +194,6 @@ export class WorkerGateway implements DurableObject {
     const token = extractBearerToken(request.headers);
     const sessionId = url.searchParams.get("workerSessionId");
     const claimedWorker = url.searchParams.get("workerId");
-    if (!isFeatureEnabled("worker_agent_connect") || !isFeatureEnabled("worker_target_dispatch")) {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
     if (!token || !sessionId || !claimedWorker) {
       return Response.json({ error: "workerId, workerSessionId and a session token are required" }, { status: 401 });
     }
@@ -258,7 +266,7 @@ export class WorkerGateway implements DurableObject {
   private row(assignmentId: string): Promise<AssignmentRow | null> {
     return dataOf(this.env).read.row<AssignmentRow>`SELECT id, run_id, task_id, attempt_id, idempotency_key, status, command_payload_json
        FROM worker_assignments
-      WHERE id = ${assignmentId} AND worker_instance_id = ${this.workerId} AND execution_path = 'worker'`;
+      WHERE id = ${assignmentId} AND worker_instance_id = ${this.workerId}`;
   }
 
   /** The Worker-path assignment this message names, or null when it is not ours. */
@@ -282,7 +290,6 @@ export class WorkerGateway implements DurableObject {
     try {
       let raw: unknown = typeof data === "string" ? JSON.parse(data) : data;
       if (isMessagingFrame(raw)) {
-        if (!isFeatureEnabled("unified_gateway")) throw new FrameError("unsupported_protocol", "The unified gateway is not enabled");
         const principal = { kind: "worker" as const, id: this.workerId };
         const frame = parseCommandFrame(raw);
         this.bucket ??= bucketFor(principal);
@@ -709,7 +716,7 @@ export class WorkerGateway implements DurableObject {
     const read = dataOf(this.env).read;
     const since = new Date(Date.now() - TERMINAL_RECENT_MS).toISOString();
     const rows = await read.rows<{ id: string; status: string }>`SELECT id, status FROM worker_assignments
-       WHERE worker_instance_id = ${this.workerId} AND execution_path = 'worker'
+       WHERE worker_instance_id = ${this.workerId}
          AND (status IN (${read.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})
               OR (status IN ('completed', 'failed', 'cancelled', 'timed_out') AND updated_at >= ${since}::timestamptz))
        ORDER BY updated_at DESC LIMIT 500`;
@@ -727,7 +734,7 @@ export class WorkerGateway implements DurableObject {
     const rows = await dataOf(this.env).read.rows<AssignmentRow & { error_json: string | null }>`SELECT id, run_id, task_id, attempt_id, idempotency_key, status,
               command_payload_json, error_json::text AS error_json
          FROM worker_assignments
-        WHERE worker_instance_id = ${this.workerId} AND execution_path = 'worker'
+        WHERE worker_instance_id = ${this.workerId}
           AND status IN ('revocation_pending', 'reconciling') LIMIT 100`;
     for (const row of rows) {
       let reason = "Cloud revoked the assignment";

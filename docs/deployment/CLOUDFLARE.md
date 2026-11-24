@@ -1,8 +1,8 @@
 # Syntila Cloudflare Deployment
 
-Current product and runtime boundaries are documented in [Architecture v8](../architecture/ARCHITECTURE_V8.md).
-Operational guidance for signed Workspace and Tool Profile releases is in [Workspace release operations](WORKSPACE_RELEASES.md) and
-[Release Trust and Rotation](../security/RELEASE_TRUST_AND_ROTATION.md).
+Current product and runtime boundaries are documented in Architecture v8.
+Operational guidance for signed Workspace and Tool Profile releases is in Workspace release operations and
+Release Trust and Rotation.
 
 ## Domain plan
 
@@ -295,7 +295,7 @@ only for disposable rows and does not change production table definitions.
 That automated deployment acceptance does not replace the packaged desktop
 lifecycle release run. Before publishing a Workspace release, execute
 the production scenarios in the
-[Workspace lifecycle release validation runbook](../operations/WORKSPACE_DESKTOP_LIFECYCLE_RELEASE_VALIDATION.md)
+Workspace lifecycle release validation runbook
 (written for the earlier desktop app; apply the scenarios that still map to the
 CLI and service, such as restart persistence and reauthentication). The runbook distinguishes automated CI evidence from
 required production-device evidence.
@@ -397,7 +397,7 @@ for the retention policy.
 ## Backend deployment gate
 
 Public production deployment remains gated by the
-[current v8 implementation plan](../roadmaps/ARCHITECTURE_V8_IMPLEMENTATION.md).
+current v8 implementation plan.
 
 Before production backend deployment:
 

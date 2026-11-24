@@ -3,34 +3,34 @@
 These rules are canonical for AI-assisted development in this repository.
 
 ## Working method
-1. Read `ARCHITECTURE.md`, `ROADMAP.md`, and relevant ADRs/specifications before changing architecture or public contracts.
+1. Read `ARCHITECTURE.md`, `ROADMAP.md`, and the relevant ADRs in `docs/decisions` before changing architecture or public contracts.
 2. Work in small, independently reviewable phases. Do not combine unrelated refactors with feature work.
 3. Prefer explicit domain types and interfaces over provider-specific logic.
-4. Treat Syntila Core as provider-independent. Provider, local-model, coding-agent, and CI integrations execute through the CLI Worker Engine and signed Tool Profiles; humans contribute through product workflows.
-5. Follow the v8 contract in `docs/architecture/ARCHITECTURE_V8.md`: logical Workers resolve through signed Tool Profiles to provider CLIs under the generic CLI Worker Engine. Do not introduce provider-specific Worker executables (user-imported Syntila Plus plugins run only through the Engine's plugin host per ADR-027), browser-based provider access, managed provider credentials, legacy runtime entities, or compatibility APIs for unreleased architectures.
+4. Syntila Cloud is provider-independent. Providers, local models, coding agents and CI integrations run through the generic CLI Worker Engine and signed Worker Profiles on a person's computer, started by Syntila Connect; humans contribute through product workflows.
+5. Workers resolve through their Type's signed Profile to a provider CLI under the generic CLI Worker Engine. Do not add provider-specific Worker executables (MCP Workers run only through the Engine's plugin host, ADR-027 and ADR-041), browser-based provider access, managed provider credentials, or compatibility APIs for unreleased designs.
 6. AI models may propose state changes; Syntila owns persistent state and validates transitions.
 7. Do not trust natural-language claims such as "tests pass". Where possible, collect executable evidence.
 8. Never store API keys or credentials in plaintext application tables.
+9. Product vocabulary is **Connect** and **Worker**. Do not introduce "Workspace" in code, UI text or docs.
 
 ## Development validation policy
 
 Use the smallest validation scope that provides meaningful executable evidence for the change.
 
 1. **Do not run `pnpm check` or `pnpm validate:full` as routine completion validation.**
-2. **Do not build unrelated applications.** For example:
-   - Do not compile Flutter apps when editing Cloud or Public Site.
-   - Do not run macOS Workspace or Profile Lab `.app` builds (`pnpm workspace:build:macos`, `pnpm profile-lab:build:macos`) unless the change directly affects native embedding, packaging, codesigning, entitlements, or build scripts.
-3. **Use 3-Level Testing Hierarchy:**
-   - **Level 1 (Focused)**: Run targeted unit/widget test files while implementing (e.g., `flutter test test/spaces_pages_test.dart` or `vitest run apps/cloud/test/auth.test.ts`).
-   - **Level 2 (Component)**: Run the dedicated component validation command upon completing a task phase:
-     - Syntila Web App: `pnpm validate:app`
-     - Workspace: `pnpm validate:workspace`
+2. **Do not build unrelated applications.** For example, do not compile Flutter apps when editing the backend or the public site, and do not build macOS app bundles unless the change affects native embedding, packaging, codesigning, entitlements or build scripts.
+3. **Use the 3-level testing hierarchy:**
+   - **Level 1 (focused)**: targeted test files while implementing (for example `scripts/test-backend.sh worker-eligibility`, `dart test test/inputs_test.dart` in `apps/connect`).
+   - **Level 2 (component)** when a task phase is complete:
+     - Web app: `pnpm validate:app`
+     - Backend: `pnpm validate:backend` (real PostgreSQL), plus `scripts/test-two-node.sh` when changing durability, outbox, sessions or realtime
+     - Connect: `pnpm validate:connect`
      - Profile Lab: `pnpm validate:profile-lab`
-     - Cloud / API: `pnpm validate:cloud`
-     - Public Site: `pnpm validate:site`
+     - Auth edge (`apps/cloud`): `pnpm validate:cloud`
+     - Public site: `pnpm validate:site`
      - Worker Engine: `pnpm validate:engine`
-   - **Level 3 (Full Regression)**: `pnpm validate:full` is reserved for release preparation, shared protocol/schema cutovers affecting all applications, or explicit user requests.
-4. **Dependency-Aware Escalation**: If modifying a shared package (`packages/*` or `engines/*`), escalate validation only to that package and its direct downstream consumers according to the architecture dependency map.
+   - **Level 3 (full regression)**: `pnpm validate:full` only for release preparation, shared protocol or schema changes affecting all applications, or an explicit request.
+4. **Dependency-aware escalation**: when changing a shared package (`packages/*` or `engines/*`), validate that package and its direct consumers only.
 
 ## Required completion report
 Every implementation task must report:
@@ -42,55 +42,20 @@ Every implementation task must report:
 
 ## Quality
 - Prefer functional tests that exercise meaningful user-visible behavior and important failure paths. Add focused unit or contract tests when they protect consequential rules or boundaries that functional tests cannot cover efficiently. Avoid tests that merely repeat implementation details or assert incidental names and constants; update existing coverage when appropriate instead of adding redundant tests.
-- Keep schemas/contracts versioned. The v8 D1 schema is a fresh-start baseline,
-  not a compatibility migration chain.
-- Cloud route/service modules own D1 access. Keep Syntila Core independent of
-  D1 bindings and raw SQL; add persistence interfaces only for a concrete
-  boundary or testing need, not for a hypothetical database replacement.
-- Workspace owns local registry, Profile/Engine state, sessions, logs, and Work
-  Root data. Do not treat Cloud persistence as the source of local runtime
-  state.
-- Avoid premature infrastructure: add Durable Objects, Queues, vector databases, or extra providers only when a concrete requirement exists.
-- Update documentation whenever architecture, data model, protocol, workflow behavior, security, or public API changes.
+- Keep schemas and contracts versioned. Backend migrations are forward-only; `migrations/schema.lock` must match them.
+- Backend route and domain modules own PostgreSQL access. Keep `packages/core` independent of the database; add persistence interfaces only for a concrete boundary or testing need.
+- Avoid premature infrastructure: add queues, caches, extra regions or providers only when a concrete requirement exists (ADR-039 gates multi-node).
+- Update documentation in the same change whenever architecture, data model, protocol, workflow behavior, security or public API changes. A replaced decision is deleted, not kept for history.
 
-## Workspace Service architecture
+## Syntila Connect
 
-- The authoritative architecture is
-  [docs/architecture/WORKSPACE_ARCHITECTURE.md](docs/architecture/WORKSPACE_ARCHITECTURE.md).
-  Use it for current Workspace ownership and runtime decisions.
-- One headless Dart Workspace Service owns Cloud connectivity, assignment
-  scheduling, Worker Engine processes, sessions, and runtime state. The
-  `syntila` CLI is a management client over authenticated versioned
-  local IPC; there is no Workspace GUI. Do not reintroduce a second client-owned
-  runtime or a direct client Cloud connection.
-- The CLI and any management client must not spawn a Worker Engine or provider CLI. The generic
-  Worker Engine must not import Cloud, Space, Thread, Workflow, D1, or UI code.
-  Keep process supervision inside the service/Engine boundary.
-- Migrations must preserve the existing installation ID, Cloud Workspace and
-  runtime IDs, secure runtime credential, Work Root, Worker registry, Profiles,
-  Engine files, and sessions. Do not create a replacement Cloud Workspace as a
-  migration shortcut. On uncertain migration state, preserve files and stop
-  activation with a recoverable error.
-- Keep the CLI Worker Engine as a separately supervised child. Runtime-owned
-  state belongs under Application Support; user work remains under Work Root.
-- Keep service registration behind `WorkspaceServiceManager`. Put launchd,
-  Service Control Manager/systemd, native IPC, and platform secret-store details
-  in platform adapters; the shared Dart runtime must not import Apple
-  frameworks. Linux/Windows adapters follow
-  `docs/decisions/ADR-021-workspace-service-linux-windows.md` (systemd user
-  unit/foreground mode; Windows per-user logon task, not SCM; CLIs run as the
-  user who owns their logins).
-- For Workspace Service changes, run focused service/runtime tests and
-  `scripts/internal/check-workspace-service.sh`; run the Workspace and direct Worker
-  Engine component validations when the environment permits. macOS launchd,
-  signing, Keychain, and TCC claims require device or release-build evidence.
-- Keep the canonical build pipeline explicit: `build-cli-worker-engine.sh`
-  produces the Engine artifact, `build-workspace-service.sh` builds the
-  unified `syntila` binary, and `build-workspace-macos.sh`
-  assembles/signs the macOS bundle.
-- `service stop` must leave registration intact; Disconnect Cloud must leave the
-  service process running. Preserve the per-installation lock as the duplicate
-  owner guard.
+- Connect (`apps/connect`, CLI `syntila-connect`; desktop app `apps/connect_gui`) runs a computer's Workers. Each Worker has its own credential, session, journal and lock under `<application data>/Syntila/Workers/<worker-id>/`; folders and the device ID are shared by the computer.
+- Connect is installed for the current OS user only and never needs administrator rights. Login services are a launchd agent (macOS), a systemd user unit (Linux) and a per-user logon task (Windows).
+- The desktop app contains no command logic; it renders what `syntila-connect --gui-manifest=1` describes.
+- The generic Worker Engine must not import Cloud, Space, Thread, Workflow, database or UI code. Connect supervises it as a separate child process and never starts an Engine twice for one attempt.
+- Never send a local path to Cloud; folders travel as opaque IDs (ADR-044). Request files and handoffs go through R2 (ADR-037).
+- Credentials use the platform store (Keychain, DPAPI, Secret Service or an owner-only file). Migrations of local state must preserve the Worker's identity, credential, journal and sessions; on uncertain state, keep files and stop with a recoverable error.
+- Claims about launchd, systemd, Windows services, signing or credential stores need device evidence, not only tests.
 
 ## Review principle
 Implementation and verification should be independent when practical. A worker must not be considered verified solely because it reviewed its own output.

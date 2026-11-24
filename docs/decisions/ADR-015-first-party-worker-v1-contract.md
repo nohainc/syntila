@@ -1,7 +1,7 @@
 # ADR-015: First-Party Worker v1 Contract
 
 **Status:** Accepted; current first-party logical Worker identity and catalog contract.
-**Runtime implementation:** [ADR-018](ADR-018-generic-cli-worker-engine-and-tool-profiles.md).
+**Runtime implementation:** ADR-018.
 
 ## Context
 
@@ -48,4 +48,4 @@ A Profile or provider CLI update does not change Thread Worker IDs. Normal users
 - [First-Party Worker Catalog v1](../specifications/FIRST_PARTY_WORKER_CATALOG_V1.md)
 - [Tool Profile v1](../specifications/TOOL_PROFILE_V1.md)
 - [Work v1 Contract](../specifications/WORK_V1_CONTRACT.md)
-- [Workspace UX and data contract](../architecture/WORKSPACES_UX_CONTRACT.md)
+- Workspace UX and data contract

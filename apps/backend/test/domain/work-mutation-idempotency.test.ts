@@ -1,4 +1,3 @@
-import { fixtureStatement, fixtureBatch } from "./helpers/fixture-sql";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
@@ -7,33 +6,6 @@ vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
   authorizeThreadAccess: async () => ({
     context: { userId: "owner" },
     spaceId: "P",
-  }),
-  validateWorkflowWorkerEligibility: async (
-    env: SecurityEnv,
-    _space: string,
-    _thread: string,
-    _definition: unknown,
-    bindings: Record<string, { workerId: string }>,
-  ) => ({
-    issues: [],
-    primaryWorkspaceId: (await fixtureStatement(env.SYNTILA_DB, "SELECT workspace_id AS workspaceId FROM workspace_worker_inventory WHERE worker_id=?1", [Object.values(bindings)[0]!.workerId])
-      .first<{ workspaceId: string }>())!.workspaceId,
-    workerProfiles: {
-      direct: { profileId: "chatgpt-codex", profileReleaseVersion: 1 },
-      chat: { profileId: "chatgpt-codex", profileReleaseVersion: 1 },
-      ...Object.fromEntries(
-        Object.keys(bindings).map((id) => [
-          id,
-          { profileId: "chatgpt-codex", profileReleaseVersion: 1 },
-        ]),
-      ),
-    },
-    workerModelCatalogs: Object.fromEntries(
-      Object.keys(bindings).map((id) => [
-        id,
-        { models: ["model-a", "model-b"] },
-      ]),
-    ),
   }),
 }));
 vi.mock("../../src/domain/routes/thread-policy.js", async (original) => ({
@@ -63,17 +35,17 @@ async function fixture() {
     INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('P','owner','Space','now','now');
     INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('member','P','owner','owner','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at) VALUES('W','P','Stream','active','owner','now','now');
-    INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('workspace','owner','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('owner','workspace','now'); INSERT INTO space_workflow_settings VALUES('P','workspace','now');`);
-  await sqlite.exec(`INSERT INTO user_workflow_configurations(user_id,workspace_id,workflow_id,schema_version,configuration_json,updated_at)
-    VALUES('owner','workspace','chat',1,'{"schemaVersion":1,"workflowId":"chat","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now'),
-    ('owner','workspace','direct',1,'{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now');`);
+    INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES('worker-a','','owner','chatgpt','Worker A');
+    INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES('cred-a','worker-a','${"a".repeat(43)}','${"a".repeat(64)}');
+    INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at,device_id) VALUES('worker-a','sess-a',1,'cred-a','digest-a',now() + interval '5 minutes','dev-1');
+    INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at) VALUES('chatgpt',1,'{"schemaVersion":1,"profileDefinitionId":"chatgpt-codex"}',1,'${"a".repeat(64)}',now()) ON CONFLICT (worker_type_id) DO NOTHING;
+    INSERT INTO device_folders(owner_user_id,device_id,folder_id,device_name,display_name,mode) VALUES('owner','dev-1','fld-1','Mac','Repo','write');
+    INSERT INTO space_folders(space_id,owner_user_id,device_id,folder_id) VALUES('P','owner','dev-1','fld-1');`);
+  await sqlite.exec(`INSERT INTO user_worker_workflow_configurations(user_id,workflow_id,schema_version,configuration_json,updated_at)
+    VALUES('owner','chat',1,'{"schemaVersion":1,"workflowId":"chat","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now'),
+    ('owner','direct',1,'{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}','now');`);
   await sqlite.exec(
     `INSERT INTO thread_work_configs(thread_id,config_json,updated_at) VALUES('W','{"bindings":{"direct":{"workerId":"worker-a"},"chat":{"workerId":"worker-a"}}}','now')`,
-  );
-  await sqlite.exec(`INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at)
-    VALUES('worker-a','workspace','owner','chatgpt','enabled','ready',1,1,'now','now','now');`);
-  await sqlite.exec(
-    "INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,created_at,updated_at) VALUES('grant','P','workspace','owner','active','now','now')",
   );
   const instances = new Set<string>();
   let failDispatch = false;
@@ -97,25 +69,26 @@ async function fixture() {
     prompt = "Implement this",
     key = "work-operation-000000001",
     workflowId = "direct",
-    executionSelection?: Record<string, unknown>,
+    extra?: Record<string, unknown>,
   ) =>
     new Request("https://cloud.test/threads/W/work-requests", {
       method: "POST",
       headers: { "Idempotency-Key": key },
       body: JSON.stringify({
         workflowId,
+        workerId: "worker-a",
         input: { originalRequest: prompt },
-        ...(executionSelection ? { executionSelection } : {}),
+        ...(extra ?? {}),
       }),
     });
   const submit = (
     prompt?: string,
     key?: string,
     workflowId?: string,
-    executionSelection?: Record<string, unknown>,
+    extra?: Record<string, unknown>,
   ) =>
     handleCreateWorkRequest(
-      request(prompt, key, workflowId, executionSelection),
+      request(prompt, key, workflowId, extra),
       env,
       "W",
     );
@@ -325,7 +298,7 @@ describe("Work mutation identity through response loss", () => {
       .get(first.workRequest.id))!;
     expect(
       JSON.parse(String(snapshot.snapshot_json)).resolvedBindings.direct,
-    ).toEqual({ workerId: "worker-a" });
+    ).toMatchObject({ workerId: "worker-a" });
     await f.sqlite.close();
   });
   it("a retry resumes interrupted dispatch with the same committed identities", async () => {
@@ -362,7 +335,9 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
   const f = await fixture();
   try {
     await f.sqlite.exec(
-      `INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at) VALUES('global-worker','workspace','owner','chatgpt','enabled','ready',1,1,'now','now','now')`,
+      `INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES('global-worker','','owner','chatgpt','Global Worker');
+       INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES('cred-g','global-worker','${"b".repeat(43)}','${"b".repeat(64)}');
+       INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at,device_id) VALUES('global-worker','sess-g',1,'cred-g','digest-g',now() + interval '5 minutes','dev-1');`,
     );
     const preference = {
       schemaVersion: 1,
@@ -377,7 +352,7 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
     };
     await f.sqlite
       .prepare(
-        "UPDATE user_workflow_configurations SET configuration_json=? WHERE user_id='owner' AND workflow_id='direct'",
+        "UPDATE user_worker_workflow_configurations SET configuration_json=? WHERE user_id='owner' AND workflow_id='direct'",
       )
       .run(JSON.stringify(preference));
     await handleCreateWorkRequest(
@@ -386,6 +361,9 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
         headers: { "Idempotency-Key": "global-preferences-00001" },
         body: JSON.stringify({
           workflowId: "direct",
+          workerId: "global-worker",
+          model: "global-model",
+          reasoningEffort: "low",
           input: { originalRequest: "Global" },
         }),
       }),
@@ -400,7 +378,7 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
         ),
       );
     const before = await read();
-    expect(before.resolvedBindings.direct).toEqual({
+    expect(before.resolvedBindings.direct).toMatchObject({
       workerId: "global-worker",
       model: "global-model",
       reasoningEffort: "low",
@@ -426,7 +404,7 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
     );
     expect(history.stepRuns[0]!.profileReleaseVersion).toBe(1);
     await f.sqlite.exec(
-      "UPDATE workspace_worker_inventory SET profile_definition_id='future-profile',profile_release_version=99 WHERE worker_id='global-worker'",
+      `UPDATE worker_profiles SET profile_json='{"schemaVersion":1,"profileDefinitionId":"future-profile"}',revision=99 WHERE worker_type_id='chatgpt'`,
     );
     const { identityService } = await import("../../src/domain/auth/identity-service.js");
     const identity = vi.spyOn(identityService, "resolve").mockResolvedValue({
@@ -463,7 +441,7 @@ it("global workflow choices beat stale Thread values and freeze Profile and step
       expect(step.profileReleaseVersion).toBe(1);
     }
     identity.mockRestore();
-    await f.sqlite.exec("DELETE FROM user_workflow_configurations");
+    await f.sqlite.exec("DELETE FROM user_worker_workflow_configurations");
     expect(await read()).toEqual(before);
     expect((await loadConversationWorkflowRuns(f.db, [id])).get(id)).toEqual(
       history,
@@ -477,7 +455,7 @@ it("disabled user workflow cannot create execution even with a composer selectio
   try {
     await f.sqlite
       .prepare(
-        "UPDATE user_workflow_configurations SET configuration_json=? WHERE user_id='owner' AND workflow_id='direct'",
+        "UPDATE user_worker_workflow_configurations SET configuration_json=? WHERE user_id='owner' AND workflow_id='direct'",
       )
       .run(
         JSON.stringify({
@@ -488,7 +466,7 @@ it("disabled user workflow cannot create execution even with a composer selectio
           stepOverrides: {},
         }),
       );
-    await expect(f.submit()).rejects.toMatchObject({ status: 403 });
+    await expect(f.submit()).rejects.toThrow("Workflow is disabled in this Space");
     expect(
       (await f.sqlite.prepare("SELECT count(*) n FROM work_requests").get())!.n,
     ).toBe(0);
@@ -505,7 +483,7 @@ it("accepts Research v2 through request creation with every role frozen in the s
     );
     await f.sqlite
       .prepare(
-        "INSERT INTO user_workflow_configurations(user_id,workspace_id,workflow_id,schema_version,configuration_json,updated_at) VALUES('owner','workspace','research',1,?,'now')",
+        "INSERT INTO user_worker_workflow_configurations(user_id,workflow_id,schema_version,configuration_json,updated_at) VALUES('owner','research',1,?,'now')",
       )
       .run(
         JSON.stringify({
@@ -521,6 +499,14 @@ it("accepts Research v2 through request creation with every role frozen in the s
       "Investigate",
       "research-request-create-0001",
       "research",
+      {
+        researcherCount: 2,
+        workerId: "worker-a",
+        model: "model-a",
+        workerBindings: {
+          "research-2": { workerId: "worker-a", model: "model-b" },
+        },
+      },
     );
     expect(response.status).toBe(202);
     const row = (await f.sqlite
@@ -567,8 +553,8 @@ it("accepts one-step composer overrides without changing saved preferences", asy
         headers: { "Idempotency-Key": "composer-selection-000001" },
         body: JSON.stringify({
           workflowId: "direct",
+          workerId: "worker-a",
           input: { originalRequest: "Request" },
-          executionSelection: { workerId: "worker-a" },
         }),
       }),
       f.env,
@@ -582,7 +568,7 @@ it("accepts one-step composer overrides without changing saved preferences", asy
     expect(
       await f.sqlite
         .prepare(
-          "SELECT configuration_json FROM user_workflow_configurations WHERE user_id='owner' AND workflow_id='direct'",
+          "SELECT configuration_json FROM user_worker_workflow_configurations WHERE user_id='owner' AND workflow_id='direct'",
         )
         .get(),
     ).toEqual(
@@ -595,7 +581,7 @@ it("accepts one-step composer overrides without changing saved preferences", asy
   }
 });
 
-it("Workspace changes use the new Workspace for every Thread request while preserving earlier Run and Step snapshots", async () => {
+it("Worker selection changes apply to new Thread requests while preserving earlier Run and Step snapshots", async () => {
   const f = await fixture();
   try {
     const first = await f.submit("Before switch", "workspace-before-00001");
@@ -604,11 +590,11 @@ it("Workspace changes use the new Workspace for every Thread request while prese
     const { loadConversationWorkflowRuns } =
       await import("../../src/domain/routes/conversation-workflow-runs.js");
     const before = (await loadConversationWorkflowRuns(f.db, [id])).get(id);
-    await f.sqlite
-      .exec(`INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('new-workspace','owner','New Workspace','now','now');
-      INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at) VALUES('new-worker','new-workspace','owner','chatgpt','enabled','ready',1,1,'now','now','now');
-      INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,status,created_at,updated_at) VALUES('new-grant','P','new-workspace','owner','active','now','now');
-      INSERT OR REPLACE INTO space_workflow_settings VALUES('P','new-workspace','now');`);
+    await f.sqlite.exec(`
+      INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES('new-worker','','owner','chatgpt','New Worker');
+      INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES('cred-n','new-worker','${"c".repeat(43)}','${"c".repeat(64)}');
+      INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at,device_id) VALUES('new-worker','sess-n',1,'cred-n','digest-n',now() + interval '5 minutes','dev-1');
+    `);
     const second = await f.submit(
       "After switch",
       "workspace-after-000001",
@@ -854,9 +840,8 @@ describe("Research gap read model", () => {
   });
 });
 
-describe("tool call admission (chat:v2)", () => {
-  const toolCall = (executionWorkspaceId = "workspace") => ({
-    executionWorkspaceId,
+describe("tool call admission", () => {
+  const toolCall = () => ({
     serverId: "files",
     tool: "read",
     toolDefinitionHash: "a".repeat(64),
@@ -877,39 +862,15 @@ describe("tool call admission (chat:v2)", () => {
       "W",
     );
 
-  it("accepts input.toolCall from the Space owner as chat version 2", async () => {
+  it("refuses input.toolCall cleanly as not yet available", async () => {
     const f = await fixture();
-    const response = await post(f, "toolcall-operation-00001", {
+    await expect(post(f, "toolcall-operation-00001", {
       workflowId: "chat",
       input: { originalRequest: "Read it", toolCall: toolCall() },
-    });
-    expect(response.status).toBe(202);
-    const body = (await response.json()) as { workRequest: { id: string } };
-    const row = await f.sqlite
-      .prepare(
-        "SELECT workflow_id AS id, workflow_version AS version FROM work_requests WHERE id=?",
-      )
-      .get(body.workRequest.id) as { id: string; version: number };
-    expect(row).toEqual({ id: "chat", version: 2 });
-  });
-
-  it("refuses a tool on a Workspace the user does not own", async () => {
-    const f = await fixture();
-    await f.sqlite.exec(
-      `INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('other','o@test','O','now','now');
-       INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('theirs','other','T','now','now');`,
-    );
-    await expect(post(f, "toolcall-operation-00002", {
-        workflowId: "chat",
-        input: { originalRequest: "x", toolCall: toolCall("theirs") },
-      }),).rejects.toMatchObject({ status: 403 });
-  });
-
-  it("refuses a tool call outside Chat", async () => {
-    const f = await fixture();
+    })).rejects.toMatchObject({ status: 400, message: "Tool calls are not available yet" });
     await expect(post(f, "toolcall-operation-00003", {
-        workflowId: "direct",
-        input: { originalRequest: "x", toolCall: toolCall() },
-      }),).rejects.toMatchObject({ status: 400 });
+      workflowId: "direct",
+      input: { originalRequest: "x", toolCall: toolCall() },
+    })).rejects.toMatchObject({ status: 400, message: "Tool calls are not available yet" });
   });
 });

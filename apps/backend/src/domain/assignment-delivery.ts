@@ -141,7 +141,7 @@ export async function recordCloudQueueNotReady(
        SET cloud_queue_since = CASE WHEN cloud_queue_reason = 'service_not_ready'
              THEN COALESCE(cloud_queue_since, ${now}::timestamptz) ELSE ${now}::timestamptz END,
            cloud_queue_reason = 'service_not_ready'
-     WHERE execution_workspace_id = ${workspaceId} AND runtime_identity_id = ${runtimeId}
+     WHERE worker_instance_id = ${workspaceId}
        AND status = 'created'`;
 }
 

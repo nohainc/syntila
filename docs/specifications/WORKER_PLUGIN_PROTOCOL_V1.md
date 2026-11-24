@@ -341,11 +341,11 @@ Constraints (checked by `validate`):
   MINOR; a result records both. New MINOR cases never apply to a plugin whose
   `protocol.max` is lower.
 - The management IPC and Local Worker Protocol have their own version numbers
-  ([IPC spec](WORKER_PLUGIN_MANAGEMENT_IPC_V1.md)); a plugin never sees them.
+  (IPC spec); a plugin never sees them.
 
 ## 12. Conformance (protocol behaviour only)
 
-The conformance suite ([plan §2-3](../roadmaps/CUSTOM_WORKER_PLUGINS_PLAN.md)) checks, per case, the observable behaviour in
+The conformance suite (plan §2-3) checks, per case, the observable behaviour in
 this document: handshake and identity, version negotiation, probe states, one
 terminal frame per execute, frame size and rate limits, progress ordering,
 cancel within grace, shutdown, ping/pong, malformed-input handling, artifact

@@ -69,40 +69,6 @@ describe("runtime", () => {
     expect(runtime.hosts.realtimeGateway.size).toBeGreaterThan(0);
   });
 
-  test("a Workspace Service registers with a desktop token and connects through the gateway WebSocket", async () => {
-    const desktop = await mint("bob", { client: "desktop", client_aud: "syntila.desktop.management" });
-    const web = await mint("bob");
-    const body = {
-      contractVersion: "1.0", installationId: `install_${crypto.randomUUID()}`, proposedWorkspaceName: "Bob's Mac",
-      hostname: "bobs-mac", platform: "macos", architecture: "arm64", appVersion: "1.0.0", runtimeCapabilities: { os: "macos", arch: "arm64", appVersion: "1.0.0", supportedRuntimes: ["cli"], maxConcurrentWorkers: 2 },
-    };
-    expect((await api(web, "POST", "/api/workspace-runtime/register", body)).status).toBe(401); // web token is not a desktop session
-    const reg = await api(desktop, "POST", "/api/workspace-runtime/register", body);
-    if (reg.status >= 300) console.log("REG", JSON.stringify(reg.body));
-    expect(reg.status).toBeLessThan(300);
-    // The Workspace app checks ownership before (re)registering.
-    const unbound = await api(desktop, "POST", "/api/workspace-runtime/ownership", { contractVersion: "1.0", installationId: `install_${crypto.randomUUID()}` });
-    expect(unbound.status).toBe(200);
-    expect(unbound.body.state).toBe("unbound");
-    const owned = await api(desktop, "POST", "/api/workspace-runtime/ownership", { contractVersion: "1.0", installationId: body.installationId, workspaceId: reg.body.workspaceId, runtimeId: reg.body.workspaceRuntimeId });
-    expect(owned.status).toBe(200);
-    const runtimeId = reg.body.workspaceRuntimeId ?? reg.body.runtime?.id ?? reg.body.workspaceRuntime?.id;
-    const credential = reg.body.runtimeCredential;
-    expect(typeof runtimeId).toBe("string");
-    expect(typeof credential).toBe("string");
-
-    const ws = new WebSocket(`${base.replace("http", "ws")}/api/workspace-gateway/connect?workspaceRuntimeId=${encodeURIComponent(runtimeId)}`, { headers: { authorization: `Bearer ${credential}` } } as any);
-    await new Promise<void>((resolve, reject) => { ws.onopen = () => resolve(); ws.onerror = () => reject(new Error("gateway socket failed")); });
-    for (let i = 0; i < 80; i++) {
-      const [row] = (await fixtureStatement(runtime.env.SYNTILA_DB, "SELECT status FROM execution_workspaces WHERE id = ?1", [reg.body.workspaceId ?? reg.body.workspace?.id]).all()).results;
-      if (row?.status === "online") break;
-      await Bun.sleep(25);
-    }
-    const list = await api(web, "GET", "/api/workspaces");
-    expect(JSON.stringify(list.body)).toContain("online");
-    ws.close();
-  });
-
   test("browsers connect to realtime with a single-use ticket", async () => {
     const carol = await mint("carol");
     const { body } = await api(carol, "POST", "/api/realtime/tickets");

@@ -3,7 +3,6 @@ import { isTerminalAssignmentStatus } from "@syntila/core";
 import type { AssignmentLifecycleStatus } from "@syntila/core";
 import { HttpError, json } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
-import { requireRuntime } from "./work-request-inputs.js";
 import {
   isWorkRequestFileId,
   workRequestFileName,
@@ -16,7 +15,7 @@ import { authenticateAgentSession } from "../worker-agents.js";
 
 /**
  * Worker output files: files a Worker produced for the user. The
- * Workspace uploads each one while its assignment is still open and lists
+ * Worker's Agent uploads each one while its assignment is still open and lists
  * the returned descriptors in the result's `output.images`; the AI message
  * shows them and the Thread file download serves them.
  */
@@ -35,7 +34,7 @@ export interface WorkerOutputImage {
   readonly previewText?: string;
 }
 
-/** Base64 JPEG preview budget; the Workspace and app enforce the same value. */
+/** Base64 JPEG preview budget; Connect and the app enforce the same value. */
 export const MAX_WORKER_OUTPUT_PREVIEW_CHARS = 48000;
 
 function previewImage(value: unknown): string | undefined {
@@ -45,23 +44,6 @@ function previewImage(value: unknown): string | undefined {
     /^[A-Za-z0-9+/]*={0,2}$/.test(value)
     ? value
     : undefined;
-}
-
-/**
- * `POST /api/workspace-runtime/outputs?assignmentId=…&name=…` — stores one
- * file for an assignment that runs on the calling Workspace.
- */
-export async function handleUploadWorkerOutputImage(
-  request: Request,
-  env: SecurityEnv,
-): Promise<Response> {
-  const workspaceId = await requireRuntime(request, env);
-  const url = new URL(request.url);
-  const assignmentId = url.searchParams.get("assignmentId");
-  if (!assignmentId) throw new HttpError(400, "assignmentId is required");
-  // Workflow-dispatched assignments leave `thread_id` empty; their Thread
-  // comes from the Work Request of the assignment's conversation turn.
-  return storeOutputImage(request, env, url, assignmentId, "workspace", workspaceId);
 }
 
 /**
@@ -87,7 +69,7 @@ export async function handleAgentUploadWorkerOutputImage(
   const url = new URL(request.url);
   const assignmentId = url.searchParams.get("assignmentId");
   if (!assignmentId) throw new HttpError(400, "assignmentId is required");
-  return storeOutputImage(request, env, url, assignmentId, "worker", agent.workerInstanceId);
+  return storeOutputImage(request, env, url, assignmentId, agent.workerInstanceId);
 }
 
 async function storeOutputImage(
@@ -95,8 +77,7 @@ async function storeOutputImage(
   env: SecurityEnv,
   url: URL,
   assignmentId: string,
-  ownerKind: "workspace" | "worker",
-  ownerId: string,
+  workerId: string,
 ): Promise<Response> {
   const assignment = await dataOf(env).read.row<{
     threadId: string | null;
@@ -113,8 +94,7 @@ async function storeOutputImage(
       JOIN threads t ON t.id = COALESCE(NULLIF(wa.thread_id, ''), wr.thread_id)
       JOIN spaces s ON s.id = t.space_id
      WHERE wa.id = ${assignmentId}
-       AND (${ownerKind} = 'workspace' AND wa.execution_workspace_id = ${ownerId}
-         OR ${ownerKind} = 'worker' AND wa.worker_instance_id = ${ownerId})
+       AND wa.worker_instance_id = ${workerId}
      LIMIT 1`;
   if (!assignment?.threadId) throw new HttpError(404, "Assignment not found");
   if (

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
-import { member, space, user, workspace } from "./helpers/seed";
+import { member, space, user } from "./helpers/seed";
 import {
   handleCreateWorker,
   handleRemoveSpaceMember,
@@ -35,7 +35,6 @@ async function fixture() {
       user("bob"),
       user("carol"),
       user("stranger"),
-      workspace("WS", "alice"),
       space("spc-1", "alice", "Team Space"),
       member("spc-1", "alice", "owner"),
       member("spc-1", "bob", "collaborator"),

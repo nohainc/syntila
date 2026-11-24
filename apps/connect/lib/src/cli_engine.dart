@@ -39,6 +39,7 @@ class CliEngineLauncher
     this.mcpWorkerRunner,
     this.folders,
     this.fullAccess,
+    this.placeInputs,
   });
 
   /// The owner's local choice (read per assignment): the provider CLI may run
@@ -48,6 +49,14 @@ class CliEngineLauncher
   /// The folders this computer allows. A stateful step that names a Space
   /// folder runs there, and only if that folder is still allowed with write.
   final AllowedFolders? folders;
+
+  /// Puts the request's delivered files under `.syntila/inputs/` in the
+  /// working directory right before launch (Input Delivery v1).
+  final Future<void> Function(
+    Directory workingDirectory,
+    Map<String, Object?> payload,
+  )?
+  placeInputs;
 
   final CliWorkerEngineSupervisor supervisor;
   final String engineExecutable;
@@ -350,6 +359,22 @@ class CliEngineLauncher
           );
           return run;
         }
+      }
+    }
+    if (placeInputs != null) {
+      try {
+        await workingDirectory.create(recursive: true);
+        await placeInputs!(workingDirectory, request.payload);
+      } on Object catch (error) {
+        run._finish(
+          EngineOutcome(TerminalKind.failed, {
+            'errorCode': 'execution_failed',
+            'message':
+                'The files for this request could not be prepared: $error',
+            'retryable': true,
+          }),
+        );
+        return run;
       }
     }
     // Images for the user go to the assignment's own folder, outside the

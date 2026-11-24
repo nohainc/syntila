@@ -2,10 +2,6 @@ import { WorkflowDefaultSchema } from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { spaceWorkflowDefault, userWorkflowDefault } from "../queries.js";
 import { BUILTIN_WORKFLOW_CATALOG } from "@syntila/core";
-import {
-  loadWorkflowWorkspace,
-  resolveUserWorkflowWorkspace,
-} from "./workflow-workspace.js";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
 import {
   HttpError,
@@ -13,10 +9,7 @@ import {
   securityContext,
   type SecurityEnv,
 } from "./http-security.js";
-import { dataOf, type Query } from "../../platform/data.js";
-
-const selectUserWorkflowConfigurationsByUserId = <T = Record<string, unknown>>(q: Query, p1: unknown, p2: unknown, p3: unknown) =>
-  q.row<T>`SELECT configuration_json AS "configurationJson" FROM user_workflow_configurations WHERE user_id = ${p1} AND workflow_id = ${p2} AND workspace_id = ${p3}`;
+import { dataOf } from "../../platform/data.js";
 
 const CHAT_WORKFLOW_ID = "chat";
 
@@ -28,29 +21,15 @@ function definitionFor(id: string) {
   return definition;
 }
 
-export async function loadUserWorkflowDefault(
+/** The person's own configuration of one Workflow, if saved. */
+async function ownConfiguration(
   env: Pick<SecurityEnv, "SYNTILA_DB">,
   userId: string,
-  workspaceId: string | null,
-) {
-  if (!workspaceId) return CHAT_WORKFLOW_ID;
-  const row = await userWorkflowDefault(dataOf(env).read, userId, workspaceId);
-  return row?.workflowId ?? CHAT_WORKFLOW_ID;
-}
-
-export async function loadSpaceWorkflowDefault(
-  env: Pick<SecurityEnv, "SYNTILA_DB">,
-  spaceId: string,
-  ownerUserId: string,
-) {
-  const row = await spaceWorkflowDefault(dataOf(env).read, spaceId);
-  if (row) return row.workflowId;
-  const { workspaceId } = await loadWorkflowWorkspace(
-    env,
-    ownerUserId,
-    spaceId,
-  );
-  return loadUserWorkflowDefault(env, ownerUserId, workspaceId);
+  workflowId: string,
+): Promise<{ enabled?: boolean } | null> {
+  const row = await dataOf(env).read.row<{ configurationJson: string }>`SELECT configuration_json AS "configurationJson"
+       FROM user_worker_workflow_configurations WHERE user_id = ${userId} AND workflow_id = ${workflowId}`;
+  return row ? JSON.parse(row.configurationJson) : null;
 }
 
 export async function handleWorkflowDefault(
@@ -83,28 +62,18 @@ export async function handleWorkflowDefault(
     }
     ownerUserId = membership.ownerUserId;
   }
-
-  const userWorkspaceId = spaceId
-    ? null
-    : await resolveUserWorkflowWorkspace(
-        env,
-        ownerUserId,
-        new URL(request.url).searchParams.get("workspaceId"),
-      );
+  const configurationOf = async (workflowId: string) =>
+    spaceId
+      ? (await loadSpaceWorkflowConfigurations(env, spaceId)).configurations.find(
+          (value: { workflowId?: string }) => value.workflowId === workflowId,
+        )
+      : await ownConfiguration(env, ownerUserId, workflowId);
 
   if (request.method === "GET") {
     const selected = spaceId
-      ? await loadSpaceWorkflowDefault(env, spaceId, ownerUserId)
-      : await loadUserWorkflowDefault(env, ownerUserId, userWorkspaceId);
-    const configuration = spaceId
-      ? (
-          await loadSpaceWorkflowConfigurations(env, spaceId)
-        ).configurations.find((value) => value.workflowId === selected)
-      : JSON.parse(
-          (
-            await selectUserWorkflowConfigurationsByUserId<{ configurationJson: string }>(dataOf(env).read, ownerUserId, selected, userWorkspaceId)
-          )?.configurationJson ?? "null",
-        );
+      ? (await loadSpaceWorkflowConfigurations(env, spaceId)).defaultWorkflowId
+      : ((await userWorkflowDefault(dataOf(env).read, ownerUserId))?.workflowId ?? CHAT_WORKFLOW_ID);
+    const configuration = await configurationOf(selected);
     return json({
       schemaVersion: 1,
       defaultWorkflowId:
@@ -117,26 +86,7 @@ export async function handleWorkflowDefault(
   });
   const workflowId = body.defaultWorkflowId;
   definitionFor(workflowId);
-  if (workflowId !== CHAT_WORKFLOW_ID) {
-    const workspaceId = spaceId
-      ? (await loadWorkflowWorkspace(env, ownerUserId, spaceId)).workspaceId
-      : userWorkspaceId;
-    if (!workspaceId)
-      throw new HttpError(
-        400,
-        "Choose a Workspace before selecting a workflow",
-      );
-  }
-  const configuration = spaceId
-    ? (await loadSpaceWorkflowConfigurations(env, spaceId)).configurations.find(
-        (value) => value.workflowId === workflowId,
-      )
-    : JSON.parse(
-        (
-          await selectUserWorkflowConfigurationsByUserId<{ configurationJson: string }>(dataOf(env).read, ownerUserId, workflowId, userWorkspaceId)
-        )?.configurationJson ?? "null",
-      );
-  if (configuration?.enabled === false)
+  if ((await configurationOf(workflowId))?.enabled === false)
     throw new HttpError(
       400,
       "Disabled workflows cannot be selected as default",
@@ -147,9 +97,9 @@ export async function handleWorkflowDefault(
        VALUES(${spaceId},${workflowId},${now})
        ON CONFLICT(space_id) DO UPDATE SET workflow_id=excluded.workflow_id,updated_at=excluded.updated_at`;
   } else {
-    await dataOf(env).read.run`INSERT INTO user_workflow_defaults(user_id,workspace_id,workflow_id,updated_at)
-       VALUES(${ownerUserId},${userWorkspaceId},${workflowId},${now})
-       ON CONFLICT(user_id,workspace_id) DO UPDATE SET workflow_id=excluded.workflow_id,updated_at=excluded.updated_at`;
+    await dataOf(env).read.run`INSERT INTO user_workflow_defaults(user_id,workflow_id,updated_at)
+       VALUES(${ownerUserId},${workflowId},${now})
+       ON CONFLICT(user_id) DO UPDATE SET workflow_id=excluded.workflow_id,updated_at=excluded.updated_at`;
   }
   return json({ schemaVersion: 1, defaultWorkflowId: workflowId });
 }

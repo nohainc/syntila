@@ -1,6 +1,6 @@
 # Feature flags
 
-Flags gate the Worker-first migration (ADR-032 to ADR-039). They exist so each phase of [`WORKER_FIRST_IMPLEMENTATION_PHASES.md`](../roadmaps/WORKER_FIRST_IMPLEMENTATION_PHASES.md) can be deployed dark, enabled for the owner first, and switched off again during the rollback window.
+Flags gate the Worker-first migration (ADR-032 to ADR-039). They exist so each phase of `WORKER_FIRST_IMPLEMENTATION_PHASES.md` can be deployed dark, enabled for the owner first, and switched off again during the rollback window.
 
 ## How they are set
 

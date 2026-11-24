@@ -17,11 +17,6 @@ describe("Direct Space Lifecycle, Privacy, and Account Deletion (Phase 9)", () =
       -- Known collaborator relationship between Alice and Bob
       INSERT INTO people_relationships (user_low_id, user_high_id, established_at) VALUES
         ('user-alice', 'user-bob', '${now}');
-
-      -- Workspaces owned by Alice and Bob
-      INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at) VALUES
-        ('ws-alice', 'user-alice', 'Alice WS', 'online', '${now}', '${now}'),
-        ('ws-bob', 'user-bob', 'Bob WS', 'online', '${now}', '${now}');
     `);
 
     const users: Record<

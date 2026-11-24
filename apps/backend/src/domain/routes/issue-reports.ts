@@ -332,14 +332,14 @@ async function loadExecutionEvidence(
             wr.updated_at AS "requestUpdatedAt",
             r.id AS "runId",
             wa.id AS "assignmentId", wa.task_id AS "taskId", wa.attempt_id AS "attemptId",
-            wa.execution_workspace_id AS "workspaceId", wa.workspace_worker_id AS "workerId",
+            NULL::text AS "workspaceId", wa.worker_instance_id AS "workerId",
             wa.worker_type_id AS "workerTypeId", wa.status AS "assignmentStatus",
             wa.engine_version AS "engineVersion", wa.model AS "modelId",
             wa.error_json::text AS "assignmentErrorJson",
             wa.permission_snapshot_json AS "permissionSnapshotJson",
             wa.updated_at AS "assignmentUpdatedAt",
             wt.error AS "taskError",
-            wrf.app_version AS "applicationVersion"
+            NULL::text AS "applicationVersion"
        FROM work_requests wr
        LEFT JOIN runs r ON r.work_request_id = wr.id
        LEFT JOIN worker_assignments wa ON wa.id = (
@@ -349,7 +349,6 @@ async function loadExecutionEvidence(
           ORDER BY candidate.created_at DESC, candidate.id DESC LIMIT 1
        )
        LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
-       LEFT JOIN workspace_runtime_facts wrf ON wrf.workspace_id = wa.execution_workspace_id
       WHERE wr.id = ${requestId}
       ORDER BY r.updated_at DESC NULLS LAST
       LIMIT 1`;
@@ -410,18 +409,10 @@ async function loadExecutionEvidence(
 }
 
 async function enrichProviderVersion(
-  env: SecurityEnv,
+  _env: SecurityEnv,
   evidence: ExecutionEvidence,
 ): Promise<ExecutionEvidence> {
-  if (!evidence.workspaceId || !evidence.workerId) return evidence;
-  const row = await dataOf(env).read.row<{ providerToolVersion?: string | null }>`SELECT provider_tool_version AS "providerToolVersion"
-       FROM workspace_worker_inventory
-      WHERE workspace_id = ${evidence.workspaceId} AND worker_id = ${evidence.workerId}
-      ORDER BY last_seen_at DESC LIMIT 1`;
-  return {
-    ...evidence,
-    providerToolVersion: boundedToken(row?.providerToolVersion),
-  };
+  return evidence;
 }
 
 function fingerprintFor(evidence: ExecutionEvidence): string {

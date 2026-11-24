@@ -1,9 +1,7 @@
 # ADR-036: Canonical Thread Timeline and Actor Attribution
 
-- **Status:** Proposed
+- **Status:** Accepted and implemented
 - **Date:** 2026-11-19
-- **Split from:** ADR-031 (D5, invariant 6)
-- **Order:** 5 of 8. Depends on ADR-032 and ADR-035.
 - **Related:** `CONVERSATION_CONTINUITY_V1.md`, `WORK_V1_CONTRACT.md`
 
 ## Context

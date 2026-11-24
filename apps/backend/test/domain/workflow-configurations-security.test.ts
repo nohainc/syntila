@@ -26,9 +26,6 @@ it("authenticates actual human sessions and isolates GET/PUT/DELETE ownership", 
     await sqlite.exec(
       "INSERT INTO users(id,email,display_name,created_at,updated_at) VALUES('one','one@test','One','now','now'),('two','two@test','Two','now','now')",
     );
-    await sqlite.exec(
-      "INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws','one','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('one','ws','now'); INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws-two','two','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('two','ws-two','now');",
-    );
     const configuration = (enabled: boolean) => ({
       schemaVersion: 1,
       workflowId: "direct",
@@ -38,7 +35,7 @@ it("authenticates actual human sessions and isolates GET/PUT/DELETE ownership", 
     });
     await sqlite
       .prepare(
-        "INSERT INTO user_workflow_configurations VALUES('two','ws-two','direct',1,?,'now')",
+        "INSERT INTO user_worker_workflow_configurations(user_id, workflow_id, schema_version, configuration_json, updated_at) VALUES('two','direct',1,?,'now')",
       )
       .run(JSON.stringify(configuration(false)));
     const env = {
@@ -81,7 +78,7 @@ it("authenticates actual human sessions and isolates GET/PUT/DELETE ownership", 
       ).json(),
     ).toMatchObject({ configurations: [configuration(false)] });
     expect(
-      await sqlite.prepare("SELECT user_id FROM user_workflow_configurations").all(),
+      await sqlite.prepare("SELECT user_id FROM user_worker_workflow_configurations").all(),
     ).toEqual([{ user_id: "two" }]);
     await expect(
       handleWorkflowConfigurations(

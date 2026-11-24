@@ -24,7 +24,7 @@ SERVER_PID=<pid> scripts/test-scale.sh idle storm --sockets 5000 --json _perf/sc
 SERVER_PID=<pid> scripts/test-scale.sh soak --sockets 1000 --soak-minutes 1440 --json _perf/scale-soak.json
 ```
 
-`scripts/test-scale.sh` fails (exit 1) when REST p99 or fan-out p99 miss the targets or the soak drifts. Compare with the P0 baseline ([WORKER_FIRST_BASELINE.md](WORKER_FIRST_BASELINE.md)).
+`scripts/test-scale.sh` fails (exit 1) when REST p99 or fan-out p99 miss the targets or the soak drifts. Compare with the P0 baseline (WORKER_FIRST_BASELINE.md).
 
 Not covered by the script, so measure them another way and add them below: Agent sockets at 1 to 2 events per second (needs a unified-protocol Agent client; none exists yet), 50 concurrent streams, slow readers, lease writes per second, event-loop lag (from the server's own metrics), top queries (`apps/backend/scripts/db-report.sql`).
 

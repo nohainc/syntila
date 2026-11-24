@@ -14,7 +14,6 @@ import {
   spaceMemberAdmission,
   spaceMemberCapacityRefused,
 } from "../account-plan.js";
-import { prepareWorkflowWorkspaceGrant } from "./workflow-workspace.js";
 import {
   defaultSpaceMemberPermissions,
   spaceMemberPermissions,
@@ -285,7 +284,6 @@ export async function handleCreateSpace(
     throw new HttpError(400, "showAiHistory must be a boolean");
   // The Workspace is an explicit choice per Space (or none); Spaces never
   // receive a Workspace implicitly.
-  const workspaceId = body.workspaceId || null;
   const now = new Date().toISOString();
   const id = `space-${crypto.randomUUID()}`;
 
@@ -299,17 +297,6 @@ export async function handleCreateSpace(
     if (duplicate) {
       throw new HttpError(409, "You already have a Space with this name");
     }
-    // Refused (403) when the chosen Workspace is not owned or lent to the
-    // creator; nothing is created then.
-    const workspaceGrant = workspaceId
-      ? await prepareWorkflowWorkspaceGrant(
-          env,
-          context.userId,
-          id,
-          workspaceId,
-          now,
-        )
-      : null;
     await publishCollaborationEvent(env, "space.created", id, id, {
       mutate: async (writer) => {
         await writer.run`INSERT INTO spaces (id, owner_user_id, name, description, settings_json, created_at, updated_at, kind)
@@ -317,8 +304,6 @@ export async function handleCreateSpace(
         await writer.run`INSERT INTO space_memberships (id, space_id, user_id, role, created_at, updated_at)
          VALUES (${`pm-${crypto.randomUUID()}`}, ${id}, ${context.userId}, 'owner', ${now}, ${now})
          ON CONFLICT(space_id, user_id) DO NOTHING`;
-        await writer.run`INSERT INTO space_workflow_settings(space_id, workspace_id, updated_at) VALUES (${id}, ${workspaceId}, ${now})`;
-        if (workspaceGrant) await workspaceGrant(writer);
       },
     });
     return json(
@@ -1207,13 +1192,6 @@ export async function handleRemoveSpaceMember(
   if (removed === 0) throw new HttpError(404, "Space member not found");
   await dataOf(env).read.run`DELETE FROM worker_space_members WHERE space_id = ${spaceId} AND user_id = ${userId}`;
   await dropSpaceSetting(dataOf(env).read, spaceId, permissionJsonPath("memberPermissions", userId));
-  // A contributed execution Workspace is owned by the departing user. Revoke
-  // that user's Space Grants with the membership removal so the scheduler
-  // cannot continue using infrastructure after collaboration ends.
-  await dataOf(env).read.run`UPDATE workspace_space_grants
-        SET status = 'revoked', updated_at = ${new Date().toISOString()}
-      WHERE space_id = ${spaceId} AND granted_by_user_id = ${userId}
-        AND status IN ('active', 'suspended')`;
   await dataOf(env).read.run`INSERT INTO space_audit_log (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at) VALUES (${`pa-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, 'space.member.removed', 'user', ${userId}, '{}', ${new Date().toISOString()})`;
   await publishCollaborationEvent(env, "space.updated", spaceId, userId, {
     additionalRecipientUserIds: [userId],

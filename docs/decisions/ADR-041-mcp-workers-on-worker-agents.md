@@ -2,7 +2,7 @@
 
 > Terminology: ADR-027 calls these "plugins". They are MCP Worker packages (`kind: "mcp"`), not MCP servers (ADR-028). Stored identifiers keep the old name (`plugin-<12 hex>` Type ids, `origin = 'plugin'`, `plugin_entitlement_required`); new surfaces say "MCP Worker".
 
-- **Status:** Accepted (option A).
+- **Status:** Accepted (option A) and implemented.
 - **Date:** 2026-11-20
 - **Depends on:** ADR-027 (custom plugins, MCP Worker packages), ADR-034 (Agent), ADR-035
 - **Closes:** the P5 gap "MCP Worker Types" in `WORKER_FIRST_IMPLEMENTATION_PHASES.md`

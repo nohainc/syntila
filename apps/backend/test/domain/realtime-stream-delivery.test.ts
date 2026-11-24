@@ -1,5 +1,5 @@
 import { pgD1 } from "./helpers/pg-d1";
-import { member as membership, space, user, workspace } from "./helpers/seed";
+import { member as membership, space, user } from "./helpers/seed";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { RealtimeGateway } from "../../src/domain/realtime-gateway.js";
 import { BoundedRealtimeQueue } from "../../src/domain/realtime-queue.js";
@@ -109,7 +109,7 @@ describe("durable stream delivery", () => {
       close() {},
     };
     const { db, sqlite } = await pgD1();
-    await sqlite.exec(user("owner") + workspace("workspace-activity", "owner"));
+    await sqlite.exec(user("owner"));
     for (const sequence of [1, 2, 3])
       (await sqlite
         .prepare(

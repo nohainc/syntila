@@ -9,9 +9,6 @@ import type { SecurityEnv } from "./http-security.js";
  * token; no Workspace is involved (ADR-034, ADR-035).
  */
 export async function handleWorkerGatewayConnect(request: Request, env: SecurityEnv): Promise<Response> {
-  if (!isFeatureEnabled("worker_agent_connect") || !isFeatureEnabled("worker_target_dispatch")) {
-    return json({ error: "Not found" }, { status: 404 });
-  }
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
     return json({ error: "Expected WebSocket upgrade" }, { status: 426 });
   }

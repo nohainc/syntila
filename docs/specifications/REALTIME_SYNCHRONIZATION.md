@@ -95,7 +95,7 @@ pending reads. Collaboration stream gaps do not enable execution Work polling.
 
 Workspace Grant signals revalidate `space:<id>:workspace-grants` and the
 Workspace aggregate list, without reloading the Space catalog. See the
-[grant read model 1.1](WORKSPACE_SPACE_GRANTS.md) for cache and count semantics.
+grant read model 1.1 for cache and count semantics.
 
 Custom AX data sources must implement `loadDiscussionMessage(messageId:)` for
 single-message reconciliation. The browser `connect` Workspace argument is now

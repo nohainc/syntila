@@ -134,10 +134,7 @@ void main() {
           (a.terminal!['error'] as Map)['details'],
           containsPair('diagnostic', 'claude: rate limit reached, resets 5pm'),
         );
-        expect(
-          a.terminal!['error'],
-          containsPair('code', 'execution_failed'),
-        );
+        expect(a.terminal!['error'], containsPair('code', 'execution_failed'));
         expect(
           a.terminal!['error'],
           containsPair('message', 'The assignment could not be completed.'),

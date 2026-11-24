@@ -320,8 +320,8 @@ describe("Person Shares (ADR-043)", () => {
     });
     expect((await bind()).ok).toBe(true);
     await f.sqlite.exec(`INSERT INTO worker_assignments
-      (id,space_id,worker_type_id,status,permission_snapshot_json,session_policy,attempt_id,worker_instance_id,requested_by_user_id,execution_path,worker_snapshot_json,created_at,updated_at)
-      VALUES ('asg-bob','bob-sp','chatgpt','running','{}','stateless','att-bob','worker-alice','bob','worker','{}',now(),now())`);
+      (id,space_id,worker_type_id,status,permission_snapshot_json,session_policy,attempt_id,worker_instance_id,requested_by_user_id,worker_snapshot_json,created_at,updated_at)
+      VALUES ('asg-bob','bob-sp','chatgpt','running','{}','stateless','att-bob','worker-alice','bob','{}',now(),now())`);
     await expect(bind()).rejects.toMatchObject({ status: 429 });
     // Revoking ends it at once.
     await f.sqlite.exec(`DELETE FROM worker_person_shares WHERE worker_id = 'worker-alice' AND user_id = 'bob'`);

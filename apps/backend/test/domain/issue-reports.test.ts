@@ -24,18 +24,15 @@ async function seedExecution(sqlite: Awaited<ReturnType<typeof pgD1>>["sqlite"])
       VALUES ('membership-owner','space-1','owner','owner','now','now');
     INSERT INTO threads(id,space_id,name,status,lead_user_id,created_at,updated_at)
       VALUES ('thread-1','space-1','Thread','active','owner','now','now');
-    INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at)
-      VALUES ('workspace-1','owner','Workspace','online','now','now');
-    INSERT INTO workspace_runtime_identities(
-      id,workspace_id,credential_token_hash,installation_id,created_at
-    ) VALUES ('runtime-1','workspace-1','hash','install-1','now');
+    INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name)
+      VALUES ('worker-1','','owner','gemini','Gemini');
     INSERT INTO work_requests(
       id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,
-      workflow_snapshot_json,status,primary_workspace_id,input_json,created_at,
+      workflow_snapshot_json,status,input_json,created_at,
       updated_at,snapshot_json
     ) VALUES (
       'request-1','thread-1','owner','stateless','direct',2,'{}','failed',
-      'workspace-1','{}','now','now','{}'
+      '{}','now','now','{}'
     );
     INSERT INTO runs(id,space_id,thread_id,work_request_id,status,created_at,updated_at)
       VALUES ('run-1','space-1','thread-1','request-1','failed','now','now');
@@ -44,24 +41,16 @@ async function seedExecution(sqlite: Awaited<ReturnType<typeof pgD1>>["sqlite"])
              ('task-2','request-1','step-2','plan','stateless_read',1000,'plan:v1','failed','now','now'),
              ('task-rate','request-1','step-rate','plan','stateless_read',1000,'plan:v1','failed','now','now');
     INSERT INTO worker_assignments(
-      id,space_id,run_id,thread_id,work_request_id,execution_workspace_id,
-      runtime_identity_id,worker_type_id,status,created_at,updated_at,
-      workspace_worker_id,task_id,attempt_id,engine_version,model,error_json,
+      id,space_id,run_id,thread_id,work_request_id,worker_instance_id,
+      worker_snapshot_json,worker_type_id,status,created_at,updated_at,
+      task_id,attempt_id,engine_version,model,error_json,
       permission_snapshot_json,session_policy
     ) VALUES (
-      'assignment-1','space-1','run-1','thread-1','request-1','workspace-1',
-      'runtime-1','gemini','failed','now','now','worker-1','task-1','attempt-1',
+      'assignment-1','space-1','run-1','thread-1','request-1','worker-1',
+      '{}','gemini','failed','now','now','task-1','attempt-1',
       '1.3.0','gemini-pro','{"error":{"code":"provider_authentication_required","retryable":true,"details":{"diagnostic":"provider exited with token=secret at /Users/tester/provider.log"}}}',
       '{"profileDefinitionId":"gemini-antigravity","profileReleaseVersion":2,"reasoningEffort":"high"}',
       'stateless'
-    );
-    INSERT INTO workspace_worker_inventory(
-      worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,
-      readiness_state,local_concurrency_limit,revision,
-      created_at,updated_at,last_seen_at,provider_tool_version
-    ) VALUES (
-      'worker-1','workspace-1','owner','gemini','enabled','ready',1,1,
-      'now','now','now','1.3.3'
     );
   `);
 }
@@ -167,7 +156,6 @@ describe("issue reports", () => {
     };
     const diagnosticText = JSON.stringify(adminBody.diagnostics.data);
     expect(diagnosticText).toContain("provider_authentication_required");
-    expect(diagnosticText).toContain("1.3.3");
     expect(diagnosticText).toContain(
       "provider exited with token=[REDACTED] at [PATH]",
     );
@@ -176,13 +164,13 @@ describe("issue reports", () => {
 
     await fixture.sqlite.exec(`
       INSERT INTO worker_assignments(
-        id,space_id,run_id,thread_id,work_request_id,execution_workspace_id,
-        runtime_identity_id,worker_type_id,status,created_at,updated_at,
-        workspace_worker_id,task_id,attempt_id,engine_version,model,error_json,
+        id,space_id,run_id,thread_id,work_request_id,worker_instance_id,
+        worker_snapshot_json,worker_type_id,status,created_at,updated_at,
+        task_id,attempt_id,engine_version,model,error_json,
         permission_snapshot_json,session_policy
       ) SELECT 'assignment-2',space_id,run_id,thread_id,work_request_id,
-        execution_workspace_id,runtime_identity_id,worker_type_id,status,
-        '2099-01-01T00:00:00Z','2099-01-01T00:00:00Z',workspace_worker_id,'task-2','attempt-2',engine_version,
+        worker_instance_id,worker_snapshot_json,worker_type_id,status,
+        '2099-01-01T00:00:00Z','2099-01-01T00:00:00Z','task-2','attempt-2',engine_version,
         model,error_json,permission_snapshot_json,session_policy
       FROM worker_assignments WHERE id = 'assignment-1';
     `);
@@ -421,7 +409,7 @@ describe("issue reports", () => {
       workerTypeId: "gemini",
       status: "investigating",
       incidentGroup: { id: groupId, count: 1 },
-      versions: { engine: "1.3.0", providerTool: "1.3.3" },
+      versions: { engine: "1.3.0", providerTool: null },
     });
     const detail = await handleGetAdminIssueReport(
       new Request("https://syntila.test/api/admin/issue-reports/x"),
@@ -516,13 +504,13 @@ describe("issue reports", () => {
     }
     await fixture.sqlite.exec(`
       INSERT INTO worker_assignments(
-        id,space_id,run_id,thread_id,work_request_id,execution_workspace_id,
-        runtime_identity_id,worker_type_id,status,created_at,updated_at,
-        workspace_worker_id,task_id,attempt_id,engine_version,model,error_json,
+        id,space_id,run_id,thread_id,work_request_id,worker_instance_id,
+        worker_snapshot_json,worker_type_id,status,created_at,updated_at,
+        task_id,attempt_id,engine_version,model,error_json,
         permission_snapshot_json,session_policy
       ) SELECT 'assignment-rate-limit',space_id,run_id,thread_id,work_request_id,
-        execution_workspace_id,runtime_identity_id,worker_type_id,status,
-        '2099-01-02T00:00:00Z','2099-01-02T00:00:00Z',workspace_worker_id,'task-rate','attempt-rate',engine_version,
+        worker_instance_id,worker_snapshot_json,worker_type_id,status,
+        '2099-01-02T00:00:00Z','2099-01-02T00:00:00Z','task-rate','attempt-rate',engine_version,
         model,error_json,permission_snapshot_json,session_policy
       FROM worker_assignments WHERE id = 'assignment-1';
     `);

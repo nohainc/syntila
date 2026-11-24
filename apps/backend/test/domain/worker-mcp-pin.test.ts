@@ -49,12 +49,7 @@ describe("MCP Worker eligibility", () => {
     await f.sqlite.close();
   });
 
-  it("refuses when the flag is off, the owner is not entitled, or the pin left the library", async () => {
-    const off = await fixture("worker_identity,worker_agent_connect,worker_target_dispatch");
-    await off.pin("1.4.2", DIGEST);
-    expect(await off.accept()).toEqual({ ok: false, code: "worker_type_unavailable" });
-    await off.sqlite.close();
-
+  it("refuses when the owner is not entitled or the pin left the library", async () => {
     const f = await fixture();
     await f.pin("1.4.2", DIGEST);
     await f.sqlite.exec("UPDATE account_plans SET tier='free' WHERE user_id='alice'");
@@ -69,7 +64,9 @@ describe("MCP Worker eligibility", () => {
 
   it("refuses a pin whose digest is not the library version's digest", async () => {
     const f = await fixture();
-    await expect(f.pin("1.4.2", "e".repeat(64))).rejects.toThrow();
+    // The schema keys the pin by (plugin_ref, version); admission matches the digest too.
+    await f.pin("1.4.2", "e".repeat(64));
+    expect(await f.accept()).toEqual({ ok: false, code: "worker_type_unavailable" });
     await f.sqlite.close();
   });
 });

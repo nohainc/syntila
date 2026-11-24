@@ -165,7 +165,6 @@ export async function wakeWorkspaceReadyWaiters(
           LEFT JOIN work_requests wr ON wr.id = w.work_request_id
          WHERE w.reason = 'workspace_not_ready'
            AND w.heartbeat_at >= ${waiterCutoff(now)}::timestamptz
-           AND (wr.primary_workspace_id = ${workspaceId} OR wr.primary_workspace_id IS NULL)
            AND w.task_id > ${cursor}
          ORDER BY w.task_id LIMIT 20`;
       if (!waiters.length) break;

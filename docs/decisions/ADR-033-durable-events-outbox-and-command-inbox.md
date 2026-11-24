@@ -1,9 +1,7 @@
 # ADR-033: Durable Events, Transactional Outbox and Worker Command Inbox
 
-- **Status:** Proposed
+- **Status:** Accepted and implemented
 - **Date:** 2026-11-19
-- **Split from:** ADR-031 (D7 durability rules, D8, invariants 6–8)
-- **Order:** 2 of 8. Depends on ADR-032.
 - **Related:** `REALTIME_SYNCHRONIZATION.md`, `COMMAND_DELIVERY_AND_REVOCATION_V9.md`, `EXECUTION_LIFECYCLE_V9.md`
 
 ## Context

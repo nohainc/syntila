@@ -120,10 +120,10 @@ the current Antigravity starter is not eligible. Preserve signed releases and
 qualify a successor when their policy needs correction.
 
 After deployment, run the
-[Workspace desktop lifecycle release validation](WORKSPACE_DESKTOP_LIFECYCLE_RELEASE_VALIDATION.md),
+Workspace desktop lifecycle release validation,
 the current Cloud security and Workspace runtime CI acceptance, and the live
 provider scenarios recorded in the
-[v8 implementation roadmap](../roadmaps/ARCHITECTURE_V8_IMPLEMENTATION.md).
+v8 implementation roadmap.
 Production evidence must identify the candidate build and deployment and must
 not include credentials or provider secrets. Access protection may be enabled
 separately for staging, admin, debug, or other internal environments.

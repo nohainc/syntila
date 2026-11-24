@@ -131,9 +131,9 @@ export async function resolveWorkerTargetBindings(
   const read = dataOf(env).read;
 
   for (const step of definition.steps) {
-    // A tool call needs a Workspace and is not available on the Worker path.
+    // Tool calls are not available yet on Connect.
     if (step.kind === "tool_call") {
-      throw new HttpError(400, "A tool call needs a Workspace; it is not available for Worker-targeted requests");
+      throw new HttpError(400, "Tool calls are not available yet");
     }
     const bindingId = stepBindingId(definition, step);
     const override = overrides[bindingId];

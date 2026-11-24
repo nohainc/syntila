@@ -1,9 +1,7 @@
 # ADR-038: Unified Realtime Transport for Human and Worker Actors
 
-- **Status:** Proposed
+- **Status:** Accepted and implemented
 - **Date:** 2026-11-19
-- **Split from:** ADR-031 (D4 transport parts)
-- **Order:** 7 of 8. Depends on ADR-033 and ADR-034. Can run in parallel with ADR-035–037.
 - **Related:** `UNIFIED_MESSAGING_PROTOCOL_V1.md`
 
 ## Context

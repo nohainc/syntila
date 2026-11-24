@@ -57,7 +57,7 @@ Uri gatewayUrl(String serverUrl, String workerId, String sessionId) {
   final base = Uri.parse(serverUrl);
   return base.replace(
     scheme: base.scheme == 'https' ? 'wss' : 'ws',
-    path: '${base.path}/api/workspace-gateway/connect'.replaceAll('//', '/'),
+    path: '${base.path}/api/worker-agent/gateway'.replaceAll('//', '/'),
     queryParameters: {'workerId': workerId, 'workerSessionId': sessionId},
   );
 }

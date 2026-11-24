@@ -32,10 +32,8 @@ import type { SecurityEnv } from "./handlers.js";
 const NO_STORE = { "Cache-Control": "no-store" };
 
 function requireOwnerFlag(): void {
-  if (!isFeatureEnabled("worker_identity")) throw new HttpError(404, "Not found");
 }
 function requireAgentFlag(): void {
-  if (!isFeatureEnabled("worker_agent_connect")) throw new HttpError(404, "Not found");
 }
 
 /** POST /api/workers/:workerId/pairing: start pairing the Worker's first credential. */

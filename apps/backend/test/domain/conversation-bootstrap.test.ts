@@ -168,8 +168,8 @@ it("assembles Work environment and scoped prerequisite results for the receiving
     });
     await f.sqlite
       .prepare(
-        `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,primary_workspace_id,status,input_json,created_at,updated_at)
-      VALUES('RW','W','U','stateful','direct',2,'{}',?,'WS','running','{}','now','now')`,
+        `INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,snapshot_json,status,input_json,created_at,updated_at)
+      VALUES('RW','W','U','stateful','direct',2,'{}',?,'running','{}','now','now')`,
       )
       .run(snapshot);
     await submitConversation(
@@ -202,7 +202,7 @@ it("assembles Work environment and scoped prerequisite results for the receiving
       environment: {
         spaceId: "P",
         threadId: "W",
-        workspaceId: "WS",
+        workspaceId: null,
         spaceInstructions: "Space rules",
       },
       artifacts: [],
@@ -287,11 +287,12 @@ it("parallel worker steps preserve one base and never acquire a sibling's respon
       evidence(first),
     );
     await f.start("PARALLEL-A");
+    await f.sqlite.exec(`INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES('worker-b','','U','gemini','Gemini') ON CONFLICT DO NOTHING`);
     await f.sqlite
       .prepare(
         `INSERT INTO worker_assignments
-      (id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,status,model,permission_snapshot_json,session_policy,created_at,updated_at)
-      VALUES('PARALLEL-B','P','WS','RT','gemini','worker-b','VERIFY','created','model-y',?,'durable_session','now','now')`,
+      (id,space_id,worker_instance_id,worker_snapshot_json,worker_type_id,task_id,status,model,permission_snapshot_json,session_policy,created_at,updated_at)
+      VALUES('PARALLEL-B','P','worker-b','{}','gemini','VERIFY','created','model-y',?,'durable_session','now','now')`,
       )
       .run(
         JSON.stringify({
@@ -480,8 +481,8 @@ it.each(["chat", "direct", "research"])(
       await f.sqlite
         .exec(`INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at,step_instance_id)
       VALUES('S','R','synthesis','stateless_read',1000,'synthesis:v1','running','now','now','synthesis');
-      INSERT INTO worker_assignments(id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,task_id,status,model,permission_snapshot_json,session_policy,created_at,updated_at)
-      VALUES('synth','P','WS','RT','chatgpt','worker-a','S','created','model-x','{"profileDefinitionId":"chatgpt-codex","profileReleaseVersion":3,"workerSessionId":"research-synthesis-session"}','durable_session','now','now');
+      INSERT INTO worker_assignments(id,space_id,worker_instance_id,worker_snapshot_json,worker_type_id,task_id,status,model,permission_snapshot_json,session_policy,created_at,updated_at)
+      VALUES('synth','P','worker-a','{}','chatgpt','S','created','model-x','{"profileDefinitionId":"chatgpt-codex","profileReleaseVersion":3,"workerSessionId":"research-synthesis-session"}','durable_session','now','now');
       UPDATE worker_assignments SET status='running',updated_at='now' WHERE id='synth';`);
       await recordAssignmentResult(f.db as unknown as D1Database, "synth", {
         assignmentId: "synth",

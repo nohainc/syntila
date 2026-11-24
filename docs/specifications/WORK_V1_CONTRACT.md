@@ -156,8 +156,8 @@ Cloud/Workspace transport, AX-owned Worker usage policy, and the Workspace
 desktop lifecycle. Work v1 binds logical Workers and is intentionally
 independent from the underlying Engine/Profile implementation. See
 [Persistence Contracts](PERSISTENCE.md),
-[Architecture v8](../architecture/ARCHITECTURE_V8.md), and
-[ADR-011](../decisions/ADR-011-thread-working-directories.md) for the
+Architecture v8, and
+ADR-011 for the
 matching runtime lease and local directory rules. A Work v1 Workflow describes
 the user-visible shape of a Work Request; it does not select a Worker, provider,
 model, Workspace, or execution permission.

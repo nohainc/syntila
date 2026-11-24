@@ -1,14 +1,15 @@
-import { fixtureStatement, fixtureBatch } from "./domain/helpers/fixture-sql";
-// Full product journey on the Bun runtime: a Workspace Service registers and
-// connects, a user sends a Chat request, the Workflow dispatches the
-// assignment over the gateway WebSocket, the fake Service answers, and the
-// answer reaches the Thread over realtime.
+// Full product journey on the Bun runtime: a Worker is created, paired with
+// Ed25519 and connects to the Worker Gateway, a user sends a Chat request, the
+// Workflow dispatches the assignment over the gateway WebSocket, the fake
+// Connect answers, and the answer reaches the Thread over realtime.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PgDb } from "../src/platform/data";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
 import { testTokens } from "./domain/helpers/tokens";
 import { validateWorkerProfileCandidate } from "../src/domain/worker-profile-registry";
+import { actionMessage, pairingMessage, toBase64Url } from "../src/domain/worker-agents";
+import { fixtureStatement } from "./domain/helpers/fixture-sql";
 
 let sql: any, base = "", stop = async () => {}, mint: Awaited<ReturnType<typeof testTokens>>, runtime: Awaited<ReturnType<typeof createRuntime>>;
 beforeAll(async () => {
@@ -22,8 +23,10 @@ beforeAll(async () => {
 });
 afterAll(() => stop());
 
-const api = async (token: string, method: string, path: string, body?: unknown) => {
-  const r = await fetch(base + path, { method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", origin: "https://syntila.app", "idempotency-key": crypto.randomUUID() }, body: body === undefined ? undefined : JSON.stringify(body) });
+const api = async (token: string | null, method: string, path: string, body?: unknown) => {
+  const headers: Record<string, string> = { "content-type": "application/json", origin: "https://syntila.app", "idempotency-key": crypto.randomUUID() };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const r = await fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await r.text();
   let parsed: any = text;
   try { parsed = text ? JSON.parse(text) : null; } catch {}
@@ -36,54 +39,60 @@ const waitFor = async <T>(what: string, probe: () => T | undefined | Promise<T |
 };
 
 describe("journey", () => {
-  test("Chat request → Workflow → Workspace → answer in the Thread", async () => {
-    const desktop = await mint("dana", { client: "desktop", client_aud: "syntila.desktop.management" });
+  test("Chat request → Workflow → Worker → answer in the Thread", async () => {
     const web = await mint("dana");
-    const reg = await api(desktop, "POST", "/api/workspace-runtime/register", {
-      contractVersion: "1.0", installationId: `install_${crypto.randomUUID()}`, proposedWorkspaceName: "Dana's Mac",
-      hostname: "danas-mac", platform: "macos", architecture: "arm64", appVersion: "1.0.0",
-      runtimeCapabilities: { os: "macos", arch: "arm64", appVersion: "1.0.0", supportedRuntimes: ["cli"], maxConcurrentWorkers: 2 },
-    });
-    expect(reg.status).toBeLessThan(300);
-    const runtimeId: string = reg.body.workspaceRuntimeId;
-    const workspaceId: string = reg.body.workspaceId ?? reg.body.executionWorkspaceId;
-
-    const frames: any[] = [];
-    const ws = new WebSocket(`${base.replace("http", "ws")}/api/workspace-gateway/connect?workspaceRuntimeId=${encodeURIComponent(runtimeId)}`, { headers: { authorization: `Bearer ${reg.body.runtimeCredential}` } } as any);
-    ws.onmessage = (e) => { try { frames.push(JSON.parse(String(e.data))); } catch {} };
-    await new Promise<void>((resolve, reject) => { ws.onopen = () => resolve(); ws.onerror = () => reject(new Error("gateway socket failed")); });
-    let n = 0;
-    const send = (type: string, payload: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
-      const at = new Date().toISOString();
-      ws.send(JSON.stringify({ protocol: "syntila.workspace-runtime-protocol", protocolVersion: "5.1", messageId: `m-${++n}`, timestamp: at,
-        type, executionWorkspaceId: workspaceId, workspaceRuntimeId: runtimeId, payload, ...extra }));
-    };
     // Operator step (Profile Lab publication): the released ChatGPT Tool Profile.
     const candidate = JSON.parse(await Bun.file(new URL("../../profile_lab/assets/profiles/chatgpt.json", import.meta.url)).text());
     const profile = await validateWorkerProfileCandidate("chatgpt", candidate);
     await fixtureStatement(runtime.env.SYNTILA_DB, `INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at)
        VALUES ('chatgpt',?1,?2,?3,?4,now()) ON CONFLICT (worker_type_id) DO NOTHING`, [profile.profile.schemaVersion, profile.canonicalJson, candidate.releaseVersion, profile.digest]).run();
-    const worker = {
-      workerId: "worker-codex", workerTypeId: "chatgpt", activationState: "enabled", readinessState: "ready", revision: 1,
-      localConcurrencyLimit: 1, engineVersion: "1.4.0", profileDefinitionId: "chatgpt-codex", profileReleaseVersion: candidate.releaseVersion,
-      providerToolName: "Codex CLI", providerToolVersion: "1.0.0",
-      modelCatalog: {
-        schemaVersion: 2, profileDigest: profile.digest, providerToolVersion: "1.0.0", catalogRevision: "b".repeat(64),
-        discoveredAt: new Date().toISOString(),
-        models: [{ id: "gpt-5", name: "GPT-5", status: "verified", selectionMode: "separate", efforts: ["medium"], defaultEffort: "medium" }],
-      },
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(),
+
+    // Create a Worker, pair it with Ed25519, open an Agent session, and connect.
+    const created = await api(web, "POST", "/api/workers", { workerTypeId: "chatgpt", name: "Dana's Codex" });
+    expect(created.status).toBe(201);
+    const workerId: string = created.body.worker.id;
+    const pairing = await api(web, "POST", `/api/workers/${workerId}/pairing`, {});
+    expect(pairing.status).toBe(201);
+    const challenge = pairing.body.challenge;
+    const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
+    const publicKey = toBase64Url(new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey)));
+    const sign = async (message: string) =>
+      toBase64Url(new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, pair.privateKey, new TextEncoder().encode(message))));
+    const claimed = await api(null, "POST", "/api/worker-agent/claim", {
+      challengeId: challenge.challengeId,
+      secret: challenge.secret,
+      publicKey,
+      signature: await sign(pairingMessage(challenge.challengeId, workerId, publicKey)),
+    });
+    expect(claimed.status).toBe(201);
+    const nonceRes = await api(null, "POST", "/api/worker-agent/nonce", { workerId });
+    expect(nonceRes.status).toBe(200);
+    const nonce = nonceRes.body.nonce ?? nonceRes.body;
+    const sessionRes = await api(null, "POST", "/api/worker-agent/sessions", {
+      workerId,
+      nonceId: nonce.nonceId,
+      signature: await sign(actionMessage("session", workerId, nonce.nonceId, nonce.nonce)),
+      clientVersion: "1.0.0",
+    });
+    expect(sessionRes.status).toBe(201);
+    const session = sessionRes.body.session ?? sessionRes.body;
+
+    const frames: any[] = [];
+    const ws = new WebSocket(
+      `${base.replace("http", "ws")}/api/worker-agent/gateway?workerId=${encodeURIComponent(workerId)}&workerSessionId=${encodeURIComponent(session.sessionId)}`,
+      { headers: { authorization: `Bearer ${session.sessionToken}` } } as any,
+    );
+    ws.onmessage = (e) => { try { frames.push(JSON.parse(String(e.data))); } catch {} };
+    await new Promise<void>((resolve, reject) => { ws.onopen = () => resolve(); ws.onerror = () => reject(new Error("worker gateway socket failed")); });
+    let n = 0;
+    const send = (type: string, payload: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
+      const at = new Date().toISOString();
+      ws.send(JSON.stringify({ protocol: "syntila.workspace-runtime-protocol", protocolVersion: "5.1", messageId: `m-${++n}`, timestamp: at,
+        type, executionWorkspaceId: workerId, workspaceRuntimeId: session.sessionId, workerId, payload, ...extra }));
     };
     send("workspace.hello", { capabilities: { customCapabilities: ["assignment.start_permit.v1"] } });
     await waitFor("hello ack", () => frames.find((f) => f.type === "workspace.hello.ack"));
-    send("worker.inventory", { fullSnapshot: true, workers: [worker] });
-    send("workspace.sync.request", {});
-    const sync = await waitFor("sync result", () => frames.find((f) => f.type === "workspace.sync.result"));
-    send("workspace.readiness", { state: "ready", readyForAssignments: true, syncGeneration: sync.payload.syncGeneration ?? 1 });
-    await waitFor("inventory", async () => (await fixtureStatement(runtime.env.SYNTILA_DB, "SELECT 1 AS ok FROM workspace_worker_inventory WHERE worker_id=?1", ["worker-codex"]).first()) ?? undefined);
 
-    // The user picks this Workspace for Workflows: grants it and enables its Workers.
-    const pick = await api(web, "PUT", "/api/user/workflow-workspace", { workspaceId });
     const space = await api(web, "POST", "/api/spaces", { name: "Journey" });
     expect(space.status).toBe(201);
     const spaceId = space.body.space.id;
@@ -101,21 +110,20 @@ describe("journey", () => {
     await waitFor("realtime ready", () => live.find((f) => f.type === "realtime.ready"));
     browser.send(JSON.stringify({ type: "subscribe", scope: { kind: "space", spaceId } }));
     await waitFor("subscribed", () => live.find((f) => f.type === "subscription.confirmed"));
-    const pickSpace = await api(web, "PUT", `/api/spaces/${spaceId}/workflow-workspace`, { workspaceId, confirmReset: true });
-    expect(pickSpace.status).toBe(200);
+
     const submit = await api(web, "POST", `/api/threads/${threadId}/work-requests`, {
-      workflowId: "chat", objective: "Say hello", executionSelection: { workerId: "worker-codex" },
+      workflowId: "chat", objective: "Say hello", workerId,
     });
     expect(submit.status).toBeLessThan(300);
-    // The Service runs the assignment the way the desktop Workspace does.
+    // Connect runs the assignment and sends the result back.
     const start = await waitFor("assignment.start", () => frames.find((f) => f.type === "assignment.start"));
     const ids = Object.fromEntries(["workerId", "runId", "taskId", "attemptId", "assignmentId", "idempotencyKey"].map((k) => [k, start[k]]));
     send("assignment.ack", { accepted: true }, ids);
     send("assignment.start.permit.request", {}, ids);
     const permit = await waitFor("permit", () => frames.find((f) => f.type === "assignment.start.permit.grant"));
     expect(permit.payload.granted).toBe(true);
-    send("assignment.start.ack", {}, ids);
-    send("assignment.result", { status: "completed", summary: "Hello from the Workspace", output: { text: "Hello from the Workspace" }, artifactIds: [] }, ids);
+    send("assignment.start.ack", { started: true, engineStarted: true, providerStarted: true }, ids);
+    send("assignment.result", { status: "completed", summary: "Hello from Connect", output: { text: "Hello from Connect" }, artifactIds: [] }, ids);
     const terminal = await waitFor("terminal ack", () => frames.find((f) => f.type === "assignment.ack" && f.payload?.terminal === true));
     expect(terminal.assignmentId).toBe(start.assignmentId);
 
@@ -127,9 +135,8 @@ describe("journey", () => {
     }, 30_000);
     expect(done.status).toBe("completed");
     const history = await api(web, "GET", `/api/work-requests/${workRequestId}`);
-    expect(history.body.workRequest.workflowRun.stepRuns[0].result).toBe("Hello from the Workspace");
-    // Golden Conversation history of one Chat round trip. Written by the
-    // history triggers today; moving them into code must keep it identical.
+    expect(history.body.workRequest.workflowRun.stepRuns[0].result).toBe("Hello from Connect");
+    // Golden Conversation history of one Chat round trip.
     const entries = await sql`
       SELECT h.sequence::int AS sequence, h.kind, h.event_type AS "eventType", h.actor_type AS "actorType"
         FROM conversation_history_entries h JOIN conversations c ON c.id = h.conversation_id
@@ -144,11 +151,11 @@ describe("journey", () => {
       e("workflow_event", "workflow.request_status_changed"),
       e("workflow_event", "workflow.run_status_changed"),
       e("execution_event", "execution.created"),
+      e("execution_event", "execution.started"),
+      e("workflow_event", "workflow.step_status_changed"), // queued → running on provider start
       e("execution_event", "execution.completed"),
       e("worker_response", "message.worker_created", "worker"),
-      e("workflow_event", "workflow.step_status_changed"),
-      e("workflow_event", "workflow.step_status_changed"),
-      e("workflow_event", "workflow.step_status_changed"),
+      e("workflow_event", "workflow.step_status_changed"), // running → completed
       e("workflow_event", "workflow.run_status_changed"),
       e("workflow_event", "workflow.request_status_changed"),
     ]);

@@ -53,8 +53,10 @@ test("readJson and readBodyText refuse an oversized body with 413, declared or s
 // and each site says why. Adding a structured body without a schema fails here.
 const FREE_FORM_READJSON = new Map([
   ["validation.ts", "defines readJson"],
-  ["mcp-action.ts", "forwards an MCP action verbatim to the Workspace gateway, which owns the contract; capped at 2 MiB"],
   ["workers.ts", "the MCP Worker pin route checks its two fields itself (version, 64-hex digest) against the owner's library"],
+  ["worker-space-access.ts", "Space member, model access and person-share bodies are checked field by field (allowlisted keys, bounded counts)"],
+  ["device-folders.ts", "Agent folder reports and Space folder choices check every id against the dev-/fld- shape and cap the list at 200"],
+  ["worker-profile-delivery.ts", "Agent models and usage reports: status codes are pattern-checked, the catalog is parsed by DiscoveredModelCatalogSchema, text is truncated"],
   ["worker-workflow-configurations.ts", "validates the parsed object against the authoritative workflow-specific core contract"],
 ]);
 

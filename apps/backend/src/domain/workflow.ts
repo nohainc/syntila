@@ -27,13 +27,6 @@ import {
   ResearchContextOverflowError,
   workStepPromptInputs,
 } from "./workflow-prompts.js";
-import {
-  parseMcpToolStepInput,
-  normalizeMcpToolStepOutcome,
-  runMcpToolStep,
-  toolStepFailure,
-  toolStepResult,
-} from "./mcp-tool-step.js";
 import { ASSIGNMENT_TERMINAL_EVENT_TYPE } from "./assignment-workflow-signal.js";
 import {
   INPUT_DELIVERY_IDLE_TIMEOUT_MS,
@@ -50,7 +43,6 @@ import {
 } from "./account-execution-slots.js";
 import {
   dispatchTaskAssignment,
-  nudgeQueuedAssignments,
   type AssignmentDispatcherEnv,
 } from "./assignment-dispatcher.js";
 import {
@@ -243,10 +235,10 @@ class AssignmentNotRetryableError extends Error {
  * fail, stop for cancellation, or keep waiting. Pure, for testing.
  */
 export function inputGateDecision(
-  rows: readonly Pick<
+  rows: readonly (Pick<
     WorkRequestInputRow,
     "name" | "state" | "errorMessage" | "updatedAt"
-  >[],
+  >)[],
   cancelRequested: boolean,
   now: number,
 ):
@@ -259,9 +251,10 @@ export function inputGateDecision(
       outcome: "failed",
       message:
         failed.errorMessage ??
-        `${failed.name} was not delivered to the Workspace`,
+        `${failed.name} could not be uploaded`,
     };
-  if (rows.every((row) => row.state === "delivered"))
+  // An uploaded file is ready: each Worker downloads it from R2 when its Step starts.
+  if (rows.every((row) => row.state === "delivered" || row.state === "uploaded"))
     return { outcome: "delivered" };
   if (cancelRequested) return { outcome: "cancelled", message: "Cancelled" };
   const lastProgress = Math.max(
@@ -270,8 +263,8 @@ export function inputGateDecision(
   if (now - lastProgress >= INPUT_DELIVERY_IDLE_TIMEOUT_MS)
     return {
       outcome: "failed",
-      message: `Files were not delivered to the Workspace in time: ${rows
-        .filter((row) => row.state !== "delivered")
+      message: `Files were not uploaded in time: ${rows
+        .filter((row) => row.state === "awaiting_upload")
         .map((row) => row.name)
         .join(", ")}`,
     };
@@ -282,7 +275,6 @@ export interface SyntilaWorkflowParams {
   readonly runId: string;
   readonly goalId: string;
   readonly idempotencyKey: string;
-  readonly organizationId?: string;
   /** Immutable definition for the Work v1 Cloud Workflow. */
   readonly builtinWorkflow?: BuiltinWorkflowDefinition;
   readonly workRequestId?: string;
@@ -330,7 +322,6 @@ interface AssignmentRow {
   permissionSnapshotJson: string | null;
   assignmentId: string;
   attemptId: string;
-  workspaceId: string | null;
   createdAt: string;
   updatedAt: string;
   queueWaitTimeoutMs: number | null;
@@ -563,7 +554,6 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
   ): Promise<void> {
     const workRequestId = params.workRequestId;
     const threadId = params.threadId;
-    const workspaceId = params.organizationId;
     if (!workRequestId || !threadId) return;
     try {
       const spaceId =
@@ -589,10 +579,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         : "";
       await createEventPublisher(this.env).publish({
         type,
-        workspaceId,
-        ...(!workspaceId
-          ? { stream: { kind: "space" as const, id: spaceId } }
-          : {}),
+        stream: { kind: "space" as const, id: spaceId },
         spaceId,
         runId: params.runId,
         idempotencyKey: `work-request:${workRequestId}:${type}${stepSuffix}${attemptSuffix}${options.reason ? `:reason:${options.reason}` : ""}`,
@@ -969,99 +956,9 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       status: "completed",
     });
     tryLogTraceEvent({ traceStage: "workflow_completed", requestId: params.workRequestId,
-      workspaceId: params.organizationId, runId: params.runId, context: { status: "completed" } });
+      runId: params.runId, context: { status: "completed" } });
     workflowDiagnostic(this.env, "run_returning", { runId: params.runId });
     return { ...started, stage: "completed", status: "completed" };
-  }
-
-  /**
-   * A Syntila-executed MCP tool step: no Worker, prompt or Engine session.
-   * The Workflow step never retries (`limit: 0`); the Gateway's durable claim
-   * makes a replay return the recorded outcome instead of calling again.
-   */
-  private async runToolCallTask(
-    params: SyntilaWorkflowParams,
-    task: PlannedWorkflowTask,
-    promptInput: Record<string, unknown>,
-    workflowStep: WorkflowStep,
-    startedAt: string,
-  ): Promise<{
-    task: PlannedWorkflowTask;
-    status: "completed" | "failed" | "cancelled";
-    output?: unknown;
-    stepResult?: StepResult;
-    toolOutput?: { serverId: string; tool: string; value: unknown };
-    error?: string;
-  }> {
-    const input = parseMcpToolStepInput(promptInput.toolCall);
-    if (!input) {
-      return {
-        task,
-        status: "failed",
-        error: "The request has no valid tool call (invalid_tool_call).",
-      };
-    }
-    await this.persistWorkflowTaskState(
-      task,
-      undefined,
-      undefined,
-      "running",
-      1,
-    );
-    const encoded = await workflowStep.do(
-      `workflow:${stepInstanceId(task.step)}:tool:1`,
-      {
-        retries: { limit: 0, delay: "1 second" as const },
-        timeout:
-          `${Math.ceil(input.timeoutMs / 60_000) + 2} minutes` as `${number} minutes`,
-      },
-      async () =>
-        JSON.stringify(
-          await runMcpToolStep(
-            this.env as unknown as Parameters<typeof runMcpToolStep>[0],
-            { workRequestId: params.workRequestId!, taskId: task.id },
-            input,
-          ),
-        ),
-    );
-    let decoded: unknown;
-    try {
-      decoded = JSON.parse(encoded);
-    } catch {
-      decoded = null;
-    }
-    const outcome = normalizeMcpToolStepOutcome(decoded);
-    const stepResult = toolStepResult(input, outcome, startedAt);
-    if (outcome.state !== "completed") {
-      return {
-        task,
-        status: "failed",
-        stepResult,
-        output: {
-          serverId: input.serverId,
-          tool: input.tool,
-          code: outcome.code,
-          text: stepResult.text,
-        },
-        error: toolStepFailure(outcome),
-      };
-    }
-    return {
-      task,
-      status: "completed",
-      stepResult,
-      output: {
-        serverId: input.serverId,
-        tool: input.tool,
-        code: outcome.code,
-        text: stepResult.text,
-      },
-      toolOutput: {
-        serverId: input.serverId,
-        tool: input.tool,
-        value: outcome.result ?? {},
-      },
-    };
   }
 
   private async runWorkflowTask(
@@ -1092,13 +989,7 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
       };
     }
     if (task.step.kind === "tool_call") {
-      return this.runToolCallTask(
-        params,
-        task,
-        promptInput,
-        workflowStep,
-        new Date().toISOString(),
-      );
+      return { task, status: "failed", error: "Tool calls are not available yet" };
     }
     let attempt = 0;
     const startedAt = new Date().toISOString();
@@ -1161,7 +1052,6 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
               tryLogTraceEvent({
                 traceStage: "workflow_dispatch_started",
                 requestId: params.workRequestId,
-                workspaceId: params.organizationId,
                 runId: params.runId,
                 taskId: task.id,
                 context: { status: `attempt_${attempt}` },
@@ -1305,7 +1195,6 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
               const dispatched = await dispatchTaskAssignment(
                 this.env as unknown as AssignmentDispatcherEnv,
                 {
-                  workspaceId: params.organizationId ?? "",
                   runId: params.runId,
                   taskId: task.id,
                   explicitWorkerId: execution.workerId,
@@ -1402,11 +1291,10 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
         }
         const readAssignment = () =>
           queryOf(db).row<AssignmentRow>`SELECT wa.id AS "assignmentId", wa.status, wa.output_json AS "outputJson",
-                      wa.error_json::text AS "errorJson", COALESCE(wa.workspace_worker_id, wa.worker_instance_id) AS "workerId",
+                      wa.error_json::text AS "errorJson", wa.worker_instance_id AS "workerId",
                       wa.worker_type_id AS "workerTypeId", wa.engine_version AS "engineVersion",
                       wa.model, wa.permission_snapshot_json AS "permissionSnapshotJson",
                       wa.attempt_id AS "attemptId",
-                      wa.execution_workspace_id AS "workspaceId",
                       wa.created_at AS "createdAt", wa.updated_at AS "updatedAt",
                       wa.queue_wait_timeout_ms AS "queueWaitTimeoutMs",
                       wa.cloud_queue_reason AS "cloudQueueReason",
@@ -1449,15 +1337,6 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
               // assignment, so a long run is not failed after 20 minutes.
               if (row && !isTerminalRow(row))
                 await this.renewThreadLease(params);
-              // Work waiting for a Service that was not ready is flushed by
-              // the Gateway when it becomes ready. Nudging here makes a lost
-              // or hibernation-missed readiness event harmless.
-              if (row?.status === "created" && row.workspaceId) {
-                await nudgeQueuedAssignments(
-                  this.env as unknown as AssignmentDispatcherEnv,
-                  row.workspaceId,
-                );
-              }
               return row;
             },
           );
@@ -1485,7 +1364,6 @@ export class SyntilaRunWorkflow extends WorkflowEntrypoint<
             tryLogTraceEvent({
               traceStage: "workflow_observed_terminal",
               requestId: params.workRequestId,
-              workspaceId: params.organizationId,
               runId: params.runId,
               taskId: task.id,
               assignmentId: terminal.assignmentId,

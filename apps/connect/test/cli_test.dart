@@ -449,32 +449,35 @@ void main() {
     expect(await cli().run(['logs', 'level', 'loud']), 2);
   });
 
-  test('full-access is off by default, is set per Worker and keeps the log level', () async {
-    final worker = cloud.createWorker();
-    await pairWorker(worker);
-    out.clear();
-    expect(await cli().run(['full-access']), 0, reason: '$err');
-    expect(out.toString().trim(), 'off');
+  test(
+    'full-access is off by default, is set per Worker and keeps the log level',
+    () async {
+      final worker = cloud.createWorker();
+      await pairWorker(worker);
+      out.clear();
+      expect(await cli().run(['full-access']), 0, reason: '$err');
+      expect(out.toString().trim(), 'off');
 
-    expect(await cli().run(['logs', 'level', 'debug']), 0);
-    expect(await cli().run(['full-access', 'on']), 0, reason: '$err');
-    out.clear();
-    expect(await cli().run(['full-access']), 0);
-    expect(out.toString().trim(), 'on');
-    out.clear();
-    expect(await cli().run(['logs', 'level']), 0);
-    expect(out.toString().trim(), 'debug');
+      expect(await cli().run(['logs', 'level', 'debug']), 0);
+      expect(await cli().run(['full-access', 'on']), 0, reason: '$err');
+      out.clear();
+      expect(await cli().run(['full-access']), 0);
+      expect(out.toString().trim(), 'on');
+      out.clear();
+      expect(await cli().run(['logs', 'level']), 0);
+      expect(out.toString().trim(), 'debug');
 
-    out.clear();
-    expect(await cli().run(['status', '--json']), 0, reason: '$err');
-    expect(out.toString(), contains('"fullAccess": true'));
+      out.clear();
+      expect(await cli().run(['status', '--json']), 0, reason: '$err');
+      expect(out.toString(), contains('"fullAccess": true'));
 
-    expect(await cli().run(['full-access', 'maybe']), 2);
-    expect(await cli().run(['full-access', 'off']), 0);
-    out.clear();
-    expect(await cli().run(['full-access']), 0);
-    expect(out.toString().trim(), 'off');
-  });
+      expect(await cli().run(['full-access', 'maybe']), 2);
+      expect(await cli().run(['full-access', 'off']), 0);
+      out.clear();
+      expect(await cli().run(['full-access']), 0);
+      expect(out.toString().trim(), 'off');
+    },
+  );
 
   test(
     'unpair needs --yes, supports --keep-data, removes private state and the service, keeps work folders',

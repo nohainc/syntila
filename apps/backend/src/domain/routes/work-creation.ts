@@ -7,10 +7,6 @@ import {
   StorageQuotaExceededError,
   getAttachmentLimits,
 } from "../account-plan.js";
-import {
-  parseWorkflowExecutionSelection,
-  resolveWorkflowExecutionBindings,
-} from "./workflow-execution-configuration.js";
 import { requireWorkflowPermission } from "./space-permissions.js";
 import { insertInitialConversationTasks } from "./conversation-workflow-step-runs.js";
 import { MutationIdempotency, NO_RECEIPT, type ReceiptWrite } from "./mutation-idempotency.js";
@@ -57,23 +53,12 @@ import {
   parseJson,
   requiredString,
   resolveWorkflowInstanceId,
-  validateWorkflowWorkerEligibility,
 } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 import type { SyntilaWorkflowParams } from "../workflow.js";
-import { parseMcpToolStepInput } from "../mcp-tool-step.js";
 import { dataOf, type Tx } from "../../platform/data.js";
-import { isFeatureEnabled } from "../../feature-flags.js";
 import { requestsWorkerTarget, resolveWorkerTargetBindings } from "./worker-target-bindings.js";
 import { requireSpaceFolder } from "./device-folders.js";
-
-/**
- * Shown when a Workflow that changes files or researches in a working folder is
- * sent to a Worker while running such Work on Workers is switched off
- * (`worker_stateful_work`). It says what works today and what to do.
- */
-const STATEFUL_ON_WORKER_REFUSAL =
-  "This Workflow works in a folder on a computer, and Workers can only run Chat for now. Choose the Chat Workflow to continue.";
 
 /** Lists owned Workers that can currently run every step of a Workflow. */
 export async function handleListEligibleWorkers(
@@ -82,16 +67,12 @@ export async function handleListEligibleWorkers(
   threadId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  if (!isFeatureEnabled("worker_target_dispatch")) throw new HttpError(404, "Not found");
   const { context, spaceId } = await authorizeThreadAccess(request, env, threadId, "execute", accessContext);
   const workflowId = (new URL(request.url).searchParams.get("workflowId") ?? "chat") as WorkflowId;
   if (!Object.hasOwn(BUILTIN_WORKFLOWS, workflowId)) throw new HttpError(400, "Unsupported workflowId");
   const workflow = BUILTIN_WORKFLOWS[workflowId];
   if (!workflow) throw new HttpError(400, "Unsupported workflowId");
   await requireWorkflowPermission(env, context.userId, spaceId, workflowId);
-  if (workflow.steps.some((step) => step.executionMode === "stateful_thread") && !isFeatureEnabled("worker_stateful_work")) {
-    throw new HttpError(422, STATEFUL_ON_WORKER_REFUSAL);
-  }
   const q = dataOf(env).read;
   const workers = await q.rows<{ id: string }>`SELECT w.id FROM worker_instances w
     WHERE w.revoked_at IS NULL
@@ -160,9 +141,6 @@ export async function handleValidateWorkRequest(
   });
   const body = await readBody(request, WorkRequestBodySchema);
   const workerRequest = { workerId: body.workerId, workerBindings: body.workerBindings, model: body.model, reasoningEffort: body.reasoningEffort };
-  const executionSelection = parseWorkflowExecutionSelection(
-    body.executionSelection,
-  );
   const workflowId = requiredString(
     body.workflowId ?? config.defaultWorkflowId,
     "workflowId",
@@ -189,61 +167,18 @@ export async function handleValidateWorkRequest(
   const attachments = Array.isArray(body.attachments) ? body.attachments : [];
   if (attachments.length > MAX_WORK_REQUEST_FILES)
     throw new HttpError(400, "At most 10 attachments are allowed");
-  if (requestsWorkerTarget(workerRequest)) {
-    if (!isFeatureEnabled("worker_target_dispatch"))
-      throw new HttpError(400, "Worker-targeted requests are not available yet");
-    if (workflow.steps.some((step) => step.executionMode === "stateful_thread") && !isFeatureEnabled("worker_stateful_work"))
-      throw new HttpError(422, STATEFUL_ON_WORKER_REFUSAL);
-    if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
-      throw new HttpError(400, "Worker-targeted requests do not use a Workspace or an execution selection");
-    if (attachments.some((attachment) => attachment && typeof attachment === "object" && (attachment as { kind?: unknown }).kind === "file"))
-      throw new HttpError(400, "Files need a Workspace to deliver them to");
-    const result = await resolveWorkerTargetBindings(env, {
-      userId: context.userId, spaceId, threadId, definition: workflow, request: workerRequest,
-    });
-    if (result.ok === false) {
-      const refusal = await result.response.json() as { issues: unknown[] };
-      return json({ eligible: false, workflowId, workflowName: workflow.name, issues: refusal.issues });
-    }
-    return json({ eligible: true, workflowId, workflowName: workflow.name, issues: [] });
-  }
-  const { issues } = await validateWorkflowWorkerEligibility(
-    env,
-    spaceId,
-    threadId,
-    workflow,
-    await resolveWorkflowExecutionBindings(
-      env,
-      context.userId,
-      spaceId,
-      threadId,
-      workflow,
-      {},
-      attachments,
-      executionSelection,
-    ),
-  );
-  if (
-    !env.SYNTILA_THREAD_COORDINATOR &&
-    workflow.steps.some((step) => step.executionMode === "stateful_thread")
-  ) {
-    issues.push({
-      stepKind: workflow.steps[0]?.kind ?? "implement",
-      workerTypeId: null,
-      code: "runtime_coordinator_unavailable",
-      message: eligibilityMessage(
-        "Work",
-        null,
-        "runtime_coordinator_unavailable",
-      ),
-    });
-  }
-  return json({
-    eligible: issues.length === 0,
-    workflowId,
-    workflowName: workflow.name,
-    issues,
+  if (!requestsWorkerTarget(workerRequest))
+    throw new HttpError(400, "workerId is required");
+  if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
+    throw new HttpError(400, "primaryWorkspaceId and executionSelection are not supported; name a workerId");
+  const result = await resolveWorkerTargetBindings(env, {
+    userId: context.userId, spaceId, threadId, definition: workflow, request: workerRequest,
   });
+  if (result.ok === false) {
+    const refusal = await result.response.json() as { issues: unknown[] };
+    return json({ eligible: false, workflowId, workflowName: workflow.name, issues: refusal.issues });
+  }
+  return json({ eligible: true, workflowId, workflowName: workflow.name, issues: [] });
 }
 
 /**
@@ -349,9 +284,6 @@ export async function createWorkRequestForUser(
       );
     }
   }
-  const executionSelection = parseWorkflowExecutionSelection(
-    body.executionSelection,
-  );
   const requestedMode =
     body.mode === "stateful"
       ? "stateful"
@@ -375,21 +307,18 @@ export async function createWorkRequestForUser(
     throw new HttpError(400, "Unsupported workflowId");
   // Research takes its researcher count from the Space configuration; the
   // accepted snapshot freezes it.
-  // A request that carries `input.toolCall` is Chat with a tool (`chat:v2`).
-  // It is never picked by version: the tool target is part of the request.
-  const toolCallRequested =
+  // MCP tool calls (`input.toolCall`) are not available yet: they will run on
+  // Connect under their own decision.
+  if (
     body.input !== null &&
     typeof body.input === "object" &&
     !Array.isArray(body.input) &&
-    (body.input as Record<string, unknown>).toolCall !== undefined;
-  if (toolCallRequested && workflowId !== "chat")
-    throw new HttpError(400, "A tool call is available only in Chat");
-  if (!toolCallRequested && body.workflowVersion === 2 && workflowId === "chat")
-    throw new HttpError(400, "Chat version 2 requires input.toolCall");
+    (body.input as Record<string, unknown>).toolCall !== undefined
+  )
+    throw new HttpError(400, "Tool calls are not available yet");
   const researcherCount = requestedResearcherCount(body.researcherCount);
-  const canonicalWorkflow = toolCallRequested
-    ? BUILTIN_WORKFLOW_CATALOG["chat:v2"]!
-    : workflowId === "research"
+  const canonicalWorkflow =
+    workflowId === "research"
       ? researcherCount !== undefined
         ? researchWorkflowV2(researcherCount)
         : configuredWorkflowDefinition(
@@ -398,14 +327,6 @@ export async function createWorkRequestForUser(
               .configurations[0],
           )
       : BUILTIN_WORKFLOWS[workflowId];
-  if (toolCallRequested) {
-    await requireToolCallAuthority(
-      env,
-      context.userId,
-      spaceId,
-      (body.input as Record<string, unknown>).toolCall,
-    );
-  }
   // A replay returns the request already accepted under the plan at that
   // time; it creates no execution, so it is not re-gated on the plan.
   await requireWorkflowPermission(env, context.userId, spaceId, workflowId, {
@@ -582,10 +503,6 @@ export async function createWorkRequestForUser(
     }),
   );
   requestInput.attachments = normalizedAttachments;
-  if (toolCallRequested) {
-    // Frozen in strict form; the Workspace checks it again when it runs.
-    requestInput.toolCall = parseMcpToolStepInput(submittedInput.toolCall);
-  }
   // Reply v1: only a server-built snapshot of a target in this Thread.
   const replyTo = await resolveReplyReference(
     env.SYNTILA_DB,
@@ -632,102 +549,33 @@ export async function createWorkRequestForUser(
     }
     promptProfileVersions[step.kind] = step.promptProfileVersion;
   }
-  // ADR-035: a request that names a Worker runs on the Worker path, which
-  // never touches a Workspace. It is decided here, once; the accepted snapshot
-  // carries the choice and dispatch follows it. A request that names a Worker
-  // is never run on a Workspace instead.
-  const workerTargeted = requestsWorkerTarget(body);
-  if (workerTargeted) {
-    if (!isFeatureEnabled("worker_target_dispatch"))
-      throw new HttpError(400, "Worker-targeted requests are not available yet");
-    if (mode !== "stateless" && !isFeatureEnabled("worker_stateful_work"))
-      throw new HttpError(422, STATEFUL_ON_WORKER_REFUSAL);
-    if (mode !== "stateless")
-      await requireSpaceFolder(env, spaceId, typeof body.workerId === "string" ? body.workerId : undefined);
-    if (toolCallRequested)
-      throw new HttpError(400, "A tool call needs a Workspace");
-    if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
-      throw new HttpError(400, "Worker-targeted requests do not use a Workspace or an execution selection");
-  }
-  const workerBound = workerTargeted
-    ? await resolveWorkerTargetBindings(env, {
-        userId: context.userId,
-        spaceId,
-        threadId,
-        definition: workflowSnapshot,
-        request: body,
-        additionalInstructions: instructions,
-      })
-    : null;
-  if (workerBound && workerBound.ok === false) return workerBound.response;
-  const accepted = workerBound as Extract<NonNullable<typeof workerBound>, { ok: true }> | null;
+  // ADR-035: every request names the Worker that runs it.
+  if (!requestsWorkerTarget(body))
+    throw new HttpError(400, "workerId is required");
+  if (body.primaryWorkspaceId !== undefined || body.executionSelection !== undefined)
+    throw new HttpError(400, "primaryWorkspaceId and executionSelection are not supported; name a workerId");
+  if (mode !== "stateless")
+    await requireSpaceFolder(env, spaceId, typeof body.workerId === "string" ? body.workerId : undefined);
+  const workerBound = await resolveWorkerTargetBindings(env, {
+    userId: context.userId,
+    spaceId,
+    threadId,
+    definition: workflowSnapshot,
+    request: body,
+    additionalInstructions: instructions,
+  });
+  if (workerBound.ok === false) return workerBound.response;
+  const accepted = workerBound;
   // ADR-040: one Worker Instance holds a stateful request's Thread lease, so
   // every Step must run on that one Worker (its Space folder is the checkout).
-  const statefulWorkerIds = accepted && mode === "stateful" ? [...new Set(Object.values(accepted.bindings).map((binding) => binding.workerId))] : [];
+  const statefulWorkerIds = mode === "stateful" ? [...new Set(Object.values(accepted.bindings).map((binding) => binding.workerId))] : [];
   if (statefulWorkerIds.length > 1)
     throw new HttpError(422, "stateful_single_worker: every Step of stateful Work must run on the same Worker");
   const primaryWorkerInstanceId = statefulWorkerIds[0] ?? null;
-  const resolvedBindings: Awaited<ReturnType<typeof resolveWorkflowExecutionBindings>> = accepted
-    ? (accepted.bindings as never)
-    : await resolveWorkflowExecutionBindings(
-        env,
-        context.userId,
-        spaceId,
-        threadId,
-        workflowSnapshot,
-        instructions,
-        normalizedAttachments,
-        executionSelection,
-      );
-  const eligibility: Awaited<ReturnType<typeof validateWorkflowWorkerEligibility>> = accepted
-    ? {
-        issues: [],
-        primaryWorkspaceId: null,
-        workerCatalogRevisions: {},
-        workerModelCatalogs: {},
-        workerProfiles: accepted.workerProfiles,
-      }
-    : await validateWorkflowWorkerEligibility(
-        env,
-        spaceId,
-        threadId,
-        workflowSnapshot,
-        resolvedBindings,
-      );
-  if (eligibility.issues.length > 0) {
-    return json(
-      {
-        error: "work_request_ineligible",
-        workflowId,
-        workflowName: workflowSnapshot.name,
-        issues: eligibility.issues,
-      },
-      { status: 422 },
-    );
-  }
+  const resolvedBindings = accepted.bindings;
+  const eligibility = { workerProfiles: accepted.workerProfiles };
   if (!env.SYNTILA_THREAD_COORDINATOR && mode === "stateful") {
     throw new HttpError(503, "Thread runtime coordination is unavailable");
-  }
-  if (
-    toolCallRequested &&
-    parseMcpToolStepInput(submittedInput.toolCall)?.executionWorkspaceId !==
-      eligibility.primaryWorkspaceId
-  )
-    throw new HttpError(
-      400,
-      "The tool must run on the Workspace that runs the chat answer",
-    );
-  if (eligibility.primaryWorkspaceId) {
-    if (
-      body.primaryWorkspaceId !== undefined &&
-      body.primaryWorkspaceId !== eligibility.primaryWorkspaceId
-    ) {
-      throw new HttpError(
-        400,
-        "Work execution must use the selected Worker's Workspace",
-      );
-    }
-    body.primaryWorkspaceId = eligibility.primaryWorkspaceId;
   }
   const spaceSettings = parseJson<Record<string, unknown>>(
     workConfigRow?.settingsJson,
@@ -797,7 +645,7 @@ export async function createWorkRequestForUser(
     stepAdditionalInstructions,
     promptProfileVersions,
   };
-  const policyRow = await dataOf(env).read.row<ThreadExecutionPolicy>`SELECT mode, primary_workspace_id AS "primaryWorkspaceId" FROM thread_execution_policies WHERE thread_id = ${threadId}`;
+  const policyRow = await dataOf(env).read.row<ThreadExecutionPolicy>`SELECT mode, NULL::text AS "primaryWorkspaceId" FROM thread_execution_policies WHERE thread_id = ${threadId}`;
   const policy: ThreadExecutionPolicy =
     canonicalWorkflow.steps.length === 1
       ? {
@@ -860,7 +708,7 @@ export async function createWorkRequestForUser(
     updatedAt: now,
   };
   try {
-    validateWorkRequest(workRequest, policy, { workerTargeted });
+    validateWorkRequest(workRequest, policy, { workerTargeted: true });
   } catch (error) {
     throw new HttpError(
       400,
@@ -870,8 +718,6 @@ export async function createWorkRequestForUser(
   const fileInputs = normalizedAttachments.some(
     (attachment) => attachment.kind === "file",
   );
-  if (fileInputs && !workRequest.primaryWorkspaceId)
-    throw new HttpError(400, "Files need a Workspace to deliver them to");
   const runId = `run-${crypto.randomUUID()}`;
   const responseBody = {
     workRequest,
@@ -879,13 +725,12 @@ export async function createWorkRequestForUser(
   };
   const writeRequest = async (tx: Tx) => {
     await tx.run`INSERT INTO work_requests
-       (id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, primary_workspace_id, primary_worker_instance_id, input_json, created_at, updated_at)
-       VALUES (${workRequest.id}, ${threadId}, ${context.userId}, ${mode}, ${workflowId}, ${workflowVersion}, ${JSON.stringify(workflowSnapshot)}, ${JSON.stringify(snapshot)}, 'queued', ${workRequest.primaryWorkspaceId}, ${primaryWorkerInstanceId}, ${JSON.stringify(workRequest.input)}, ${now}, ${now})`;
+       (id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, primary_worker_instance_id, input_json, created_at, updated_at)
+       VALUES (${workRequest.id}, ${threadId}, ${context.userId}, ${mode}, ${workflowId}, ${workflowVersion}, ${JSON.stringify(workflowSnapshot)}, ${JSON.stringify(snapshot)}, 'queued', ${primaryWorkerInstanceId}, ${JSON.stringify(workRequest.input)}, ${now}, ${now})`;
     if (fileInputs)
       await insertWorkRequestInputs(tx, {
         workRequestId: workRequest.id,
         threadId,
-        workspaceId: workRequest.primaryWorkspaceId!,
         userId: context.userId,
         attachments: normalizedAttachments,
         now,
@@ -992,7 +837,6 @@ async function resumeSubmission(
     runId: run.id,
     goalId: workRequest.id,
     idempotencyKey: workRequest.id,
-    organizationId: workRequest.primaryWorkspaceId!,
     workRequestId: workRequest.id,
     threadId: workRequest.threadId,
     spaceId: run.spaceId,
@@ -1002,36 +846,3 @@ async function resumeSubmission(
   return response;
 }
 
-/**
- * Tool calls run only for the Space owner, on a Workspace they own. Space
- * membership, a lent Workspace or a Person Grant never extend to them: the
- * tool is run with the Workspace owner's local consent.
- */
-async function requireToolCallAuthority(
-  env: SecurityEnv,
-  userId: string,
-  spaceId: string,
-  toolCall: unknown,
-): Promise<void> {
-  const target = parseMcpToolStepInput(toolCall);
-  if (!target) throw new HttpError(400, "input.toolCall is invalid");
-  const row = await dataOf(env).read.row<{
-      spaceOwner: string;
-      spaceKind: string;
-      workspaceOwner: string | null;
-    }>`SELECT p.owner_user_id AS "spaceOwner", COALESCE(p.kind, 'group') AS "spaceKind",
-            ew.owner_user_id AS "workspaceOwner"
-     FROM spaces p
-     LEFT JOIN execution_workspaces ew ON ew.id = ${target.executionWorkspaceId}
-     WHERE p.id = ${spaceId}`;
-  if (!row || row.workspaceOwner !== userId)
-    throw new HttpError(
-      403,
-      "A tool call can only be run on a Workspace you own",
-    );
-  if (row.spaceKind !== "direct" && row.spaceOwner !== userId)
-    throw new HttpError(
-      403,
-      "Only the Space owner can run a tool, on a Workspace they own",
-    );
-}

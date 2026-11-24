@@ -131,8 +131,6 @@ export async function transitionAssignment(
   let fenceSql: unknown = q.raw("");
   const fenced: Array<[string, string | undefined]> = [
     ["attempt_id", fence.attemptId],
-    ["execution_workspace_id", fence.executionWorkspaceId],
-    ["runtime_identity_id", fence.runtimeIdentityId],
   ];
   for (const [column, value] of fenced) {
     if (value === undefined) continue;
@@ -177,10 +175,8 @@ async function classify(
   const row = await q.row<{
     status: string;
     attempt_id: string | null;
-    execution_workspace_id: string;
-    runtime_identity_id: string;
   }>`
-    SELECT status, attempt_id, execution_workspace_id, runtime_identity_id
+    SELECT status, attempt_id
       FROM worker_assignments WHERE id = ${fence.assignmentId}`;
   if (!row) return { outcome: "not_found", applied };
   const currentStatus = row.status;
@@ -188,13 +184,7 @@ async function classify(
   // assignment) is stale whatever the status is.
   if (fence.agent && !(await agentFenceIsCurrent(q, fence.agent)))
     return { outcome: "stale", applied, currentStatus };
-  if (
-    (fence.attemptId !== undefined && fence.attemptId !== row.attempt_id) ||
-    (fence.executionWorkspaceId !== undefined &&
-      fence.executionWorkspaceId !== row.execution_workspace_id) ||
-    (fence.runtimeIdentityId !== undefined &&
-      fence.runtimeIdentityId !== row.runtime_identity_id)
-  ) {
+  if (fence.attemptId !== undefined && fence.attemptId !== row.attempt_id) {
     return { outcome: "stale", applied, currentStatus };
   }
   if (currentStatus === to) {

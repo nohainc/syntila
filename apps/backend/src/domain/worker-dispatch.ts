@@ -129,10 +129,8 @@ export async function dispatchWorkerAssignment(
   delete assignmentInput.additionalFolderIds;
   // Handoff is by artifact ID only; a path or an unavailable artifact fails the step.
   // A step receives what the steps it depends on uploaded, plus any it names itself.
-  const handoffIds = isFeatureEnabled("artifact_handoff")
-    ? [...new Set([...(task.contextArtifactIds ?? []), ...(await upstreamArtifactIds(env as never, taskId))])]
-    : [...(task.contextArtifactIds ?? [])];
-  if (handoffIds.length && isFeatureEnabled("artifact_handoff")) {
+  const handoffIds = [...new Set([...(task.contextArtifactIds ?? []), ...(await upstreamArtifactIds(env as never, taskId))])];
+  if (handoffIds.length) {
     try {
       await assertHandoffAvailable(env as never, { artifactIds: handoffIds, spaceId: accepted.spaceId });
     } catch (error) {
@@ -143,7 +141,7 @@ export async function dispatchWorkerAssignment(
 
   // ADR-040: a stateful step runs only on the Worker that holds the Thread
   // lease, and only while that lease is the active one.
-  if (task.leaseId && isFeatureEnabled("worker_stateful_work")) {
+  if (task.leaseId) {
     const lease = await read.row<{ workerInstanceId: string | null; fencingToken: string }>`SELECT worker_instance_id AS "workerInstanceId", fencing_token::text AS "fencingToken"
          FROM thread_runtime_leases WHERE id = ${task.leaseId} AND status = 'active' AND expires_at > now()`;
     if (!lease || (task.fencingToken !== undefined && Number(lease.fencingToken) !== task.fencingToken)) return failed("lease_not_active", accepted.workerId);
@@ -208,19 +206,17 @@ export async function dispatchWorkerAssignment(
     await tx.lock("syntila.execution_slots", requesterUserId);
     const created = new Date().toISOString();
     const inputJson = JSON.stringify(assignmentInput);
-    // `workspace_worker_id` mirrors the Worker ID so readers that still key on
-    // it keep working; the Workspace columns stay NULL on this path.
     return tx.row<{ id: string }>`INSERT INTO worker_assignments
        (id, space_id, run_id, task_id, attempt_id, requested_by_user_id,
-        worker_type_id, workspace_worker_id, worker_instance_id,
+        worker_type_id, worker_instance_id,
         model, config_json, effective_permissions_json, permission_snapshot_json,
         timeout_ms, queue_wait_timeout_ms, session_policy, idempotency_key, status,
-        input_json, created_at, updated_at, execution_path, worker_snapshot_json)
+        input_json, created_at, updated_at, worker_snapshot_json)
      SELECT ${assignmentId}::text, ${accepted.spaceId}::text, ${runId}::text, ${taskId}::text, ${attemptId}::text, ${requesterUserId}::text,
-            ${accepted.workerTypeId}::text, ${accepted.workerId}::text, ${accepted.workerId}::text,
+            ${accepted.workerTypeId}::text, ${accepted.workerId}::text,
             ${accepted.model}::text, ${inputJson}::text, ${JSON.stringify(accepted.permissions)}::text, ${JSON.stringify(permissionSnapshot)}::text,
             ${timeoutMs}::bigint, ${queueWaitTimeoutMs}::bigint, ${sessionPolicy}::text, ${idempotencyKey}::text, 'created',
-            ${inputJson}::text, ${created}::timestamptz, ${created}::timestamptz, 'worker', ${JSON.stringify(accepted)}::text
+            ${inputJson}::text, ${created}::timestamptz, ${created}::timestamptz, ${JSON.stringify(accepted)}::text
       WHERE ${executionSlotAdmission(tx, requesterUserId, taskId, waiterCutoff())}
      RETURNING id`;
   });
@@ -270,7 +266,7 @@ export async function dispatchWorkerAssignment(
   }
 
   const handoffGrants =
-    handoffIds.length && isFeatureEnabled("artifact_handoff")
+    handoffIds.length
       ? await mintHandoffGrants(env as never, { artifactIds: handoffIds, workerInstanceId: accepted.workerId, assignmentId })
       : undefined;
   // A stateful step works in the folder the owner chose for the Space (checked

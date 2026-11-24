@@ -64,6 +64,9 @@ class AgentPaths {
   Directory get configDir => Directory(p.join(root.path, 'config'));
   File get configFile => File(p.join(configDir.path, 'config.json'));
   Directory get profilesDir => Directory(p.join(root.path, 'profiles'));
+
+  /// Delivered Work Request files, verified, one per input ID.
+  Directory get inputsDir => Directory(p.join(root.path, 'inputs'));
   Directory get registryDir => Directory(p.join(root.path, 'registry'));
   File get foldersFile =>
       File(p.join(registryDir.path, 'allowed-folders.json'));

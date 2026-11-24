@@ -13,7 +13,6 @@ import {
   deliverRevocation,
   escalateUnconfirmedRevocations,
   finalizeAssignmentRevocation,
-  finalizeRevocationsOfRevokedRuntimes,
   revokeAssignment,
   type RevocationIntent,
 } from "../../src/domain/assignment-revocation.js";
@@ -43,7 +42,9 @@ const cancelIntent: RevocationIntent = {
 async function seed(status: string) {
   const f = await conversationFixture();
   await f.sqlite.exec(
-    "INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now')",
+    `INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
+     INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES('cred-a','worker-a','${"a".repeat(43)}','${"a".repeat(64)}');
+     INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at) VALUES('worker-a','sess-a',1,'cred-a','digest','2030-01-01T00:00:00Z');`,
   );
   await f.assign("A1");
   await f.sqlite
@@ -73,7 +74,7 @@ async function seed(status: string) {
   const gateway = (online: boolean) =>
     ({
       SYNTILA_DB: f.db as never,
-      SYNTILA_WORKSPACE_GATEWAY: {
+      SYNTILA_WORKER_GATEWAY: {
         idFromName: (name: string) => name,
         get: () => ({
           fetch: async (_url: string, init: { body: string }) => {
@@ -81,7 +82,7 @@ async function seed(status: string) {
             return online
               ? Response.json({ cancelled: true })
               : Response.json(
-                  { error: "Workspace is offline" },
+                  { error: "Worker is offline" },
                   { status: 503 },
                 );
           },
@@ -406,10 +407,10 @@ describe("stale-assignment recovery revokes before it concludes", () => {
     expect((await f.row()).status).toBe("cancelled");
   });
 
-  it("revokes a disconnected Workspace's assignment and an expired lease instead of concluding they failed", async () => {
+  it("revokes a disconnected Worker's assignment instead of concluding it failed", async () => {
     const disconnected = await seed("running");
     await disconnected.sqlite.exec(
-      `UPDATE execution_workspaces SET status='offline', updated_at='2026-10-14T11:00:00.000Z' WHERE id='WS'`,
+      `DELETE FROM worker_agent_sessions WHERE worker_instance_id='worker-a'`,
     );
     await disconnected.sqlite
       .prepare(
@@ -419,23 +420,7 @@ describe("stale-assignment recovery revokes before it concludes", () => {
     await recoverStaleAssignments(disconnected.db as never, NOW);
     expect((await disconnected.row()).status).toBe("revocation_pending");
     expect(JSON.parse((await disconnected.row()).error_json).revocation.source).toBe(
-      "workspace_disconnected",
-    );
-
-    const leased = await seed("running");
-    await leased.sqlite.exec(
-      `INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,created_at,updated_at,expires_at)
-       VALUES('G','P','WS','U','now','now','2026-10-14T11:59:59.000Z')`,
-    );
-    await leased.sqlite
-      .prepare(
-        "UPDATE worker_assignments SET workspace_space_grant_id='G', timeout_ms=900000, updated_at=? WHERE id='A1'",
-      )
-      .run(NOW.toISOString());
-    await recoverStaleAssignments(leased.db as never, NOW);
-    expect((await leased.row()).status).toBe("revocation_pending");
-    expect(JSON.parse((await leased.row()).error_json).revocation.source).toBe(
-      "grant_expired",
+      "worker_disconnected",
     );
   });
 
@@ -452,12 +437,11 @@ describe("stale-assignment recovery revokes before it concludes", () => {
 });
 
 describe("user cancellation", () => {
-  it("reports cancelled only when the Workspace confirms the process stopped", async () => {
+  it("reports cancelled only when the Worker confirms the process stopped", async () => {
     const f = await seed("running");
     expect(
       await cancelTaskAssignment(
         f.gateway(false),
-        "WS",
         "A1",
         "User cancelled",
       ),
@@ -466,50 +450,11 @@ describe("user cancellation", () => {
     expect((await f.row()).status).toBe("revocation_pending");
     expect(await f.task()).toBe("queued");
     expect(await f.activeCount()).toBe(1);
-    // A retry resends the cancel and succeeds once the Workspace answers.
+    // A retry resends the cancel and succeeds once the Worker answers.
     expect(
-      await cancelTaskAssignment(f.gateway(true), "WS", "A1", "User cancelled"),
+      await cancelTaskAssignment(f.gateway(true), "A1", "User cancelled"),
     ).toEqual({ cancelled: true });
     expect((await f.row()).status).toBe("cancelled");
     expect(await f.task()).toBe("cancelled");
-  });
-  it("finalizes a pending revocation whose runtime identity was revoked", async () => {
-    const f = await seed("running");
-    await beginAssignmentRevocation(f.db as never, {
-      assignmentId: "A1",
-      attemptId: "ATT1",
-      intent: cancelIntent,
-    });
-    expect((await f.row()).status).toBe("revocation_pending");
-    // The owning runtime is still current: nothing to finalize.
-    expect(
-      await finalizeRevocationsOfRevokedRuntimes(f.db as never, "WS"),
-    ).toEqual([]);
-    expect((await f.row()).status).toBe("revocation_pending");
-    // The Workspace re-registers; the old identity is revoked and can never
-    // acknowledge a cancel again.
-    (await f.sqlite.exec(
-      "UPDATE workspace_runtime_identities SET revoked_at='now' WHERE id='RT'",
-    ));
-    expect(
-      await finalizeRevocationsOfRevokedRuntimes(f.db as never, "WS"),
-    ).toEqual(["A1"]);
-    expect((await f.row()).status).toBe("cancelled");
-    expect(await f.activeCount()).toBe(0);
-  });
-
-  it("finalizes through deliverRevocation without messaging the Gateway", async () => {
-    const f = await seed("running");
-    await beginAssignmentRevocation(f.db as never, {
-      assignmentId: "A1",
-      attemptId: "ATT1",
-      intent: cancelIntent,
-    });
-    await f.sqlite.exec(
-      "UPDATE workspace_runtime_identities SET revoked_at='now' WHERE id='RT'",
-    );
-    expect(await deliverRevocation(f.gateway(false), "A1")).toBe(true);
-    expect((await f.row()).status).toBe("cancelled");
-    expect(f.calls).toHaveLength(0);
   });
 });

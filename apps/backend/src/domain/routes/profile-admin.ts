@@ -1,5 +1,4 @@
 import type { SecurityContext } from "@syntila/security";
-import { extractBearerToken } from "@syntila/security";
 import { hasProfileLabPermission } from "./profile-lab-policy.js";
 import {
   getCurrentWorkerProfile,
@@ -11,7 +10,6 @@ import {
 } from "../worker-profile-registry.js";
 import type { SecurityEnv } from "./http-security.js";
 import { HttpError, json, securityContext } from "./http-security.js";
-import { WorkspaceRuntimeAuthenticator } from "../workspace-gateway/runtime-authenticator.js";
 
 export async function authorizeToolProfileAdmin(
   request: Request,
@@ -216,37 +214,7 @@ export async function handleRestoreV9WorkerProfile(
   return json(snapshotResponse(snapshot), { status: 200 });
 }
 
-async function requireAuthorizedWorkspaceRuntime(
-  request: Request,
-  env: SecurityEnv,
-): Promise<void> {
-  const url = new URL(request.url);
-  const runtimeId = url.searchParams.get("workspaceRuntimeId");
-  const credential = extractBearerToken(request.headers);
-  if (!runtimeId || !credential) {
-    throw new HttpError(401, "Workspace runtime credentials are required");
-  }
-  const runtime = await new WorkspaceRuntimeAuthenticator(
-    env.SYNTILA_DB,
-  ).authenticateRuntime(runtimeId, credential);
-  if (!runtime) {
-    throw new HttpError(401, "Workspace runtime credential is invalid");
-  }
-}
 
-export async function handleGetWorkspaceV9WorkerProfile(
-  request: Request,
-  env: SecurityEnv,
-  workerTypeId: string,
-): Promise<Response> {
-  // Profile synchronization precedes local configuration and inventory
-  // publication. Any authenticated runtime can read the current catalog
-  // Profile; local installation is not an authorization prerequisite.
-  await requireAuthorizedWorkspaceRuntime(request, env);
-  return json(
-    snapshotResponse(await getCurrentWorkerProfile(env, workerTypeId)),
-  );
-}
 
 export async function handleProfileLabAccess(
   request: Request,

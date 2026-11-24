@@ -1,6 +1,6 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
-import { member, space, user, workspace } from "./helpers/seed";
+import { member, space, user } from "./helpers/seed";
 import { dataOf } from "../../src/platform/data.js";
 import { createEventPublisher, type DomainEventInput } from "../../src/domain/event-publisher.js";
 import { OutboxDispatcher } from "../../src/domain/outbox-dispatcher.js";
@@ -57,10 +57,7 @@ describe("one transaction: domain change, sequence, event and outbox", () => {
   it("rolls back revocation escalation when its phase event cannot be stored", async () => {
     const f = await conversationFixture();
     await f.assign("A1");
-    await f.sqlite.exec(`ALTER TABLE work_requests DISABLE TRIGGER trg_work_requests_snapshot_immutable;
-      UPDATE work_requests SET primary_workspace_id='WS' WHERE id='R';
-      ALTER TABLE work_requests ENABLE TRIGGER trg_work_requests_snapshot_immutable;
-      UPDATE worker_assignments SET status='revocation_pending', updated_at='2026-01-01' WHERE id='A1';
+    await f.sqlite.exec(`UPDATE worker_assignments SET status='revocation_pending', updated_at='2026-01-01' WHERE id='A1';
       CREATE FUNCTION reject_escalation_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type = 'step.phase' THEN RAISE EXCEPTION 'event unavailable'; END IF; RETURN NEW; END $$;
       CREATE TRIGGER reject_escalation_event BEFORE INSERT ON realtime_events FOR EACH ROW EXECUTE FUNCTION reject_escalation_event()`);
     const { escalateUnconfirmedRevocations } = await import("../../src/domain/assignment-revocation.js");
@@ -73,7 +70,7 @@ describe("one transaction: domain change, sequence, event and outbox", () => {
   it("commits assignment admission with its phase event, and rolls both back when the event fails", async () => {
     const f = await conversationFixture();
     await f.assign("A1");
-    await f.sqlite.exec("ALTER TABLE work_requests DISABLE TRIGGER trg_work_requests_snapshot_immutable; UPDATE work_requests SET primary_workspace_id='WS' WHERE id='R'; ALTER TABLE work_requests ENABLE TRIGGER trg_work_requests_snapshot_immutable; UPDATE worker_assignments SET status='dispatched', attempt_id='ATT1' WHERE id='A1'");
+    await f.sqlite.exec("UPDATE worker_assignments SET status='dispatched', attempt_id='ATT1' WHERE id='A1'");
     const env = { SYNTILA_DB: f.db };
     const move = (to: "acknowledged" | "running") => withAssignmentPhase(env, "A1",
       (txEnv) => transitionAssignment(dataOf(txEnv).read, { to, fence: { assignmentId: "A1", attemptId: "ATT1" } }),
@@ -256,15 +253,12 @@ describe("Worker command inbox", () => {
   async function commandFixture() {
     const f = await fixture({ withGateway: false });
     await f.sqlite.exec(`
-      ${workspace("WS", "alice")}
-      INSERT INTO workspace_runtime_identities(id,workspace_id,credential_token_hash,installation_id,created_at) VALUES('RT','WS','h','inst',now());
-      INSERT INTO workspace_worker_inventory (worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
-        local_concurrency_limit, revision, created_at, updated_at, last_seen_at)
-      VALUES ('worker-cmd-01', 'WS', 'alice', 'chatgpt', 'enabled', 'ready', 1, 1, now(), now(), now());`);
+      INSERT INTO worker_instances (id, actor_id, owner_user_id, worker_type_id, name)
+      VALUES ('worker-cmd-01', '', 'alice', 'chatgpt', 'Cmd');`);
     const assignment = (id: string) =>
       f.sqlite.exec(`INSERT INTO worker_assignments
-        (id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,status,permission_snapshot_json,session_policy,created_at,updated_at)
-        VALUES ('${id}','sp','WS','RT','chatgpt','worker-cmd-01','created','{}','stateless',now(),now())`);
+        (id,space_id,worker_instance_id,worker_snapshot_json,worker_type_id,status,permission_snapshot_json,session_policy,created_at,updated_at)
+        VALUES ('${id}','sp','worker-cmd-01','{}','chatgpt','created','{}','stateless',now(),now())`);
     const command = (id: string) =>
       f.sqlite
         .prepare(`INSERT INTO agent_commands (command_id, worker_instance_id, assignment_id, attempt_id, type, payload_ref, expires_at)
@@ -314,8 +308,8 @@ describe("Worker command inbox", () => {
   it("expires commands past their deadline in the sweep", async () => {
     const f = await commandFixture();
     await f.assignment("a1");
-    await f.sqlite.exec(`INSERT INTO agent_commands (command_id, assignment_id, type, payload_ref, created_at, expires_at)
-      VALUES ('cmd-old', 'a1', 'assignment.dispatch', 'worker_assignments:a1', now() - interval '2 minutes', now() - interval '1 minute')`);
+    await f.sqlite.exec(`INSERT INTO agent_commands (command_id, worker_instance_id, assignment_id, type, payload_ref, created_at, expires_at)
+      VALUES ('cmd-old', 'worker-cmd-01', 'a1', 'assignment.dispatch', 'worker_assignments:a1', now() - interval '2 minutes', now() - interval '1 minute')`);
     const swept = await new OutboxDispatcher(f.env).sweep();
     expect(swept!.expiredCommands).toBe(1);
     expect(await f.status("a1")).toMatchObject({ status: "expired" });

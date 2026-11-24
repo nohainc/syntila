@@ -9,7 +9,7 @@ Plan: `claude/concurrency-plan.md` (project). Flags:
 - **lock**: writes through the adapter outside a data-layer transaction (one transaction per statement or batch; there is no global writer lock).
 - **data**: writes in a data-layer transaction (`src/platform/data.ts`, `tx-env.ts`): no global lock. Adapter statements inside one (`txEnv.SYNTILA_DB`) count as data.
 
-Totals: 209 write paths, 95 tables; 1 numbering, 50 unguarded read-write, 0 adapter-only, 175 in data-layer transactions.
+Totals: 218 write paths, 100 tables; 1 numbering, 54 unguarded read-write, 0 adapter-only, 184 in data-layer transactions.
 
 ## 0 platform (native SQL, outside the adapter)
 
@@ -29,8 +29,8 @@ Totals: 209 write paths, 95 tables; 1 numbering, 50 unguarded read-write, 0 adap
 | `platform/workflows.ts` | `handle` | INSERT workflow_events, UPDATE workflow_instances | read-write |
 | `platform/workflows.ts` | `pending` | INSERT workflow_pending | guarded |
 | `platform/workflows.ts` | `saveStep` | INSERT workflow_steps | read-write, guarded |
-| `platform/workflows.ts` | `sleepUntil` | UPDATE workflow_events |  |
 | `platform/workflows.ts` | `stop` | UPDATE workflow_instances | guarded |
+| `platform/workflows.ts` | `waitStep` | UPDATE workflow_events |  |
 | `retention.ts` | `cutoff` | DELETE email_outbox, DELETE mutation_receipts, DELETE workflow_instances |  |
 
 ## 0 shared helpers (converted with their callers)
@@ -106,10 +106,13 @@ Totals: 209 write paths, 95 tables; 1 numbering, 50 unguarded read-write, 0 adap
 | `domain/routes/spaces.ts` | `handleDeleteSpace` | DELETE spaces | read-write, data |
 | `domain/routes/spaces.ts` | `handleExpireSpaceInvitation` | INSERT space_audit_log, UPDATE space_invitations | read-write, data |
 | `domain/routes/spaces.ts` | `handleGetSpace` | INSERT direct_space_user_state | read-write, guarded, data |
-| `domain/routes/spaces.ts` | `handleRemoveSpaceMember` | DELETE space_memberships, INSERT space_audit_log, UPDATE workspace_space_grants | data |
+| `domain/routes/spaces.ts` | `handleRemoveSpaceMember` | DELETE space_memberships, DELETE worker_space_members, INSERT space_audit_log, UPDATE workspace_space_grants | data |
 | `domain/routes/spaces.ts` | `handleUpdateSpace` | INSERT direct_space_user_state, UPDATE spaces | read-write, data |
 | `domain/routes/spaces.ts` | `putSpaceSetting` | UPDATE spaces | data |
 | `domain/routes/spaces.ts` | `write` | INSERT space_audit_log, INSERT space_invitations | data |
+| `domain/routes/worker-space-access.ts` | `handleWorkerMemberModelAccess` | DELETE worker_member_model_access, INSERT worker_member_model_access | data |
+| `domain/routes/worker-space-access.ts` | `handleWorkerPersonShares` | DELETE worker_person_shares, INSERT worker_person_shares | read-write, data |
+| `domain/routes/worker-space-access.ts` | `handleWorkerSpaceAccess` | DELETE worker_space_members, INSERT worker_space_members | read-write, data |
 | `domain/routes/workspace-access.ts` | `createWorkspaceSpaceGrant` | INSERT workspace_space_grants | read-write, guarded, data |
 | `domain/routes/workspace-invitations.ts` | `handleAcceptWorkspaceInvitation` | INSERT workspace_audit_log, INSERT workspace_person_grants, UPDATE workspace_invitations | read-write, data |
 | `domain/routes/workspace-invitations.ts` | `handleDeclineWorkspaceInvitation` | UPDATE workspace_invitations | read-write, guarded, data |
@@ -130,7 +133,7 @@ Totals: 209 write paths, 95 tables; 1 numbering, 50 unguarded read-write, 0 adap
 | `domain/routes/workspaces-registration.ts` | `handleReleaseDesktopWorkspace` | INSERT workspace_audit_log, UPDATE execution_workspaces, UPDATE workspace_installations, UPDATE workspace_runtime_identities, UPDATE workspace_space_grants | read-write, data |
 | `domain/workspace-audit.ts` | `recordExecutionWorkspaceAudit` | INSERT workspace_audit_log | data |
 | `domain/workspace-gateway.ts` | `deliverAssignmentOnce` | UPDATE worker_assignments | read-write, guarded, data |
-| `domain/workspace-gateway.ts` | `handleMessage` | INSERT worker_activity_history, INSERT workspace_runtime_facts | read-write, guarded, data |
+| `domain/workspace-gateway.ts` | `handleMessage` | INSERT workspace_runtime_facts | read-write, guarded, data |
 | `domain/workspace-gateway.ts` | `setWorkspaceStatus` | UPDATE execution_workspaces | data |
 | `domain/workspace-gateway/inventory.ts` | `nullableSafeToken` | DELETE workspace_worker_inventory, INSERT worker_scheduling, INSERT workspace_worker_inventory, UPDATE worker_scheduling | read-write, data |
 | `domain/workspace-gateway/inventory.ts` | `recordWorkspaceAllowedFolders` | DELETE space_additional_folders, DELETE workspace_allowed_folders, INSERT workspace_allowed_folders | read-write |
@@ -179,7 +182,7 @@ Totals: 209 write paths, 95 tables; 1 numbering, 50 unguarded read-write, 0 adap
 | `domain/routes/implement-plan.ts` | `cleanSelection` | INSERT plan_approvals | data |
 | `domain/routes/implement-plan.ts` | `evaluatePhaseCompletionAndAdvanceQueue` | UPDATE work_requests | read-write |
 | `domain/routes/thread-request-queue.ts` | `advanceThreadQueue` | DELETE thread_request_queue, UPDATE thread_request_queue | read-write, data |
-| `domain/routes/thread-request-queue.ts` | `await` | DELETE thread_request_queue, UPDATE thread_request_queue | read-write, guarded, data |
+| `domain/routes/thread-request-queue.ts` | `handleThreadRequestQueue` | DELETE thread_request_queue, UPDATE thread_request_queue | read-write, guarded, data |
 | `domain/routes/thread-request-queue.ts` | `pause` | INSERT thread_request_queue_state | guarded, data |
 | `domain/routes/thread-request-queue.ts` | `resume` | DELETE thread_request_queue_state | data |
 | `domain/routes/thread-request-queue.ts` | `sweepThreadRequestQueues` | UPDATE thread_request_queue | read-write, guarded, data |
@@ -196,10 +199,12 @@ Totals: 209 write paths, 95 tables; 1 numbering, 50 unguarded read-write, 0 adap
 | `domain/routes/worker-plugins.ts` | `handlePluginLibrary` | INSERT account_worker_plugin_versions, INSERT account_worker_plugins, INSERT worker_catalog, UPDATE account_worker_plugins, UPDATE worker_catalog | read-write, data |
 | `domain/routes/worker-plugins.ts` | `handleWorkspacePluginPin` | DELETE workspace_worker_plugin_enablements, INSERT workspace_worker_plugin_enablements | data |
 | `domain/routes/worker-plugins.ts` | `removeFromLibrary` | DELETE account_worker_plugins, DELETE workspace_worker_inventory, UPDATE worker_catalog | read-write, data |
+| `domain/routes/worker-profile-delivery.ts` | `handleAgentModels` | UPDATE worker_agent_sessions | data |
 | `domain/routes/worker-workflow-configurations.ts` | `handleWorkerWorkflowConfigurations` | DELETE space_workflow_configurations, DELETE user_worker_workflow_configurations, DELETE user_workflow_configurations, INSERT space_workflow_configurations, INSERT user_worker_workflow_configurations | read-write, data |
+| `domain/routes/workers.ts` | `available` | DELETE worker_instance_mcp_pins, INSERT worker_instance_mcp_pins | read-write, data |
 | `domain/routes/workers.ts` | `handleCreateWorker` | INSERT worker_instances | read-write, data |
-| `domain/routes/workers.ts` | `handleWorker` | UPDATE worker_instances | data |
-| `domain/routes/workers.ts` | `read` | DELETE worker_instance_mcp_pins, INSERT worker_instance_mcp_pins | read-write, data |
+| `domain/routes/workers.ts` | `handleWorker` | DELETE worker_space_members, UPDATE worker_instances | data |
+| `domain/routes/workers.ts` | `handleWorkerModelsRefresh` | UPDATE worker_agent_sessions | data |
 | `domain/routes/workflow-configurations.ts` | `reset` | DELETE space_workflow_configurations, DELETE user_workflow_configurations, INSERT space_workflow_configurations, INSERT space_workflow_defaults, INSERT user_workflow_configurations, INSERT user_workflow_defaults | read-write, data |
 | `domain/routes/workflow-default.ts` | `handleWorkflowDefault` | INSERT space_workflow_defaults, INSERT user_workflow_defaults | read-write, guarded, data |
 | `domain/routes/workflow-execution-configuration.ts` | `ensureOwnChatWorkspaceGrant` | INSERT space_audit_log, INSERT workspace_space_grants | read-write, data |
@@ -224,7 +229,7 @@ Totals: 209 write paths, 95 tables; 1 numbering, 50 unguarded read-write, 0 adap
 | `domain/worker-agents.ts` | `issueNonce` | DELETE worker_auth_nonces, INSERT worker_auth_nonces | read-write, data |
 | `domain/worker-agents.ts` | `recordWorkerAudit` | INSERT worker_audit_log | data |
 | `domain/worker-agents.ts` | `renewLease` | UPDATE worker_agent_sessions | data |
-| `domain/worker-agents.ts` | `revokeWorkerCredential` | UPDATE worker_credentials | read-write, data |
+| `domain/worker-agents.ts` | `revokeWorkerCredential` | UPDATE worker_agent_sessions, UPDATE worker_credentials | read-write, data |
 | `domain/worker-agents.ts` | `rotateCredential` | UPDATE worker_credentials | data |
 | `domain/worker-dispatch.ts` | `dispatchWorkerAssignment` | INSERT agent_commands, INSERT worker_assignments, UPDATE worker_assignments | read-write, data |
 | `domain/worker-dispatch.ts` | `fail` | UPDATE worker_assignments | guarded, data |
@@ -257,5 +262,9 @@ Totals: 209 write paths, 95 tables; 1 numbering, 50 unguarded read-write, 0 adap
 | `domain/artifacts.ts` | `handleUploadArtifact` | INSERT artifacts | read-write, data |
 | `domain/artifacts.ts` | `mintHandoffGrants` | INSERT artifact_download_grants | read-write, data |
 | `domain/artifacts.ts` | `removeUserFile` | DELETE user_files | data |
+| `domain/routes/device-folders.ts` | `deleteDeviceFolders` | DELETE device_folders | data |
+| `domain/routes/device-folders.ts` | `handleAgentFolders` | DELETE device_folders, INSERT device_folders, UPDATE device_folders, UPDATE worker_agent_sessions | data |
+| `domain/routes/device-folders.ts` | `handleDeleteDeviceFolders` | DELETE device_folders, DELETE space_folders | read-write, data |
+| `domain/routes/device-folders.ts` | `handleSpaceFolder` | DELETE space_folders, INSERT space_folders | read-write, data |
 | `domain/routes/queue-positions.ts` | `insertAt` | INSERT thread_request_queue | data |
 | `domain/routes/queue-positions.ts` | `moveToFront` | UPDATE thread_request_queue | guarded, data |

@@ -1,5 +1,5 @@
 import { pgD1 } from "./helpers/pg-d1";
-import { member, space, thread, user, workspace } from "./helpers/seed";
+import { member, space, thread, user } from "./helpers/seed";
 import { describe, expect, it, vi } from "./helpers/vitest-compat";
 
 vi.mock("../../src/domain/routes/handlers.js", async (original) => ({
@@ -46,13 +46,13 @@ async function fixture(coordinatorAvailable = true) {
     user("owner") +
       space("space", "owner") +
       member("space", "owner") +
-      workspace("workspace", "owner") +
       thread("stream", "space", "owner") +
-      `INSERT INTO workspace_worker_inventory (
-         worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
-         local_concurrency_limit, revision, created_at, updated_at, last_seen_at
-       ) VALUES ('worker-a', 'workspace', 'owner', 'chatgpt-codex', 'enabled', 'ready', 1, 1, '${NOW}', '${NOW}', '${NOW}');
-       INSERT INTO space_workflow_settings(space_id, workspace_id, updated_at) VALUES ('space', 'workspace', '${NOW}');
+      `INSERT INTO worker_instances(id, actor_id, owner_user_id, worker_type_id, name) VALUES ('worker-a', '', 'owner', 'chatgpt', 'Worker A');
+       INSERT INTO worker_credentials(id, worker_instance_id, public_key, key_fingerprint) VALUES ('cred-a', 'worker-a', '${"a".repeat(43)}', '${"a".repeat(64)}');
+       INSERT INTO worker_agent_sessions(worker_instance_id, session_id, session_epoch, credential_id, token_digest, lease_expires_at) VALUES ('worker-a', 'sess-a', 1, 'cred-a', 'digest', now() + interval '5 minutes');
+       INSERT INTO worker_profiles(worker_type_id, schema_version, profile_json, revision, digest, updated_at) VALUES ('chatgpt', 1, '{"schemaVersion":1,"profileDefinitionId":"chatgpt-codex"}', 1, '${"a".repeat(64)}', '${NOW}') ON CONFLICT (worker_type_id) DO NOTHING;
+       INSERT INTO device_folders(owner_user_id, device_id, folder_id, device_name, display_name, mode) VALUES ('owner', 'dev-0000000000000001', 'fld-0000000000000001', 'Mac', 'Repo', 'write');
+       INSERT INTO space_folders(space_id, owner_user_id, device_id, folder_id) VALUES ('space', 'owner', 'dev-0000000000000001', 'fld-0000000000000001');
        INSERT INTO space_workflow_configurations(space_id, workflow_id, schema_version, configuration_json, updated_at) VALUES
          ('space', 'chat', 1, '${configuration("chat")}', '${NOW}'),
          ('space', 'direct', 1, '${configuration("direct")}', '${NOW}');`,
@@ -83,6 +83,7 @@ describe("Work Request mutation coordination", () => {
           method: "POST",
           body: JSON.stringify({
             workflowId: "chat",
+            workerId: "worker-a",
             input: { originalRequest: "Explain this code" },
           }),
         }),
@@ -111,6 +112,7 @@ describe("Work Request mutation coordination", () => {
         method: "POST",
         body: JSON.stringify({
           workflowId: "direct",
+          workerId: "worker-a",
           input: { originalRequest: "Implement this" },
         }),
       }),
@@ -132,7 +134,7 @@ describe("Work Request mutation coordination", () => {
       handleCreateWorkRequest(
         new Request("https://syntila.test/work", {
           method: "POST",
-          body: JSON.stringify({ workflowId: "chat", mode: "stateful" }),
+          body: JSON.stringify({ workflowId: "chat", workerId: "worker-a", mode: "stateful" }),
         }),
         env as never,
         "stream",

@@ -36,8 +36,8 @@ structured arguments. Workspace owns the process tree and applies deadlines,
 output limits, cancellation, and cleanup. Provider authentication remains with
 the provider CLI; Syntila Cloud never receives provider credentials.
 
-The Engine plus Profile boundary is defined by [Architecture v8](ARCHITECTURE_V8.md),
-[ADR-018](../decisions/ADR-018-generic-cli-worker-engine-and-tool-profiles.md),
+The Engine plus Profile boundary is defined by Architecture v8,
+ADR-018,
 and the [Tool Profile v1 specification](../specifications/TOOL_PROFILE_V1.md).
 
 ## Contract boundaries

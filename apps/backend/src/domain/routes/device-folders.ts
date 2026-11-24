@@ -1,5 +1,5 @@
 import { extractBearerToken } from "@syntila/security";
-import { dataOf } from "../../platform/data.js";
+import { dataOf, type Tx } from "../../platform/data.js";
 import { isFeatureEnabled } from "../../feature-flags.js";
 import { authenticateAgentSession } from "../worker-agents.js";
 import { readJson } from "./validation.js";
@@ -37,7 +37,6 @@ const VIEW = `f.device_id AS "deviceId", f.device_name AS "deviceName", f.folder
 
 /** PUT /api/worker-agent/folders: the Agent publishes the folders its computer allows. */
 export async function handleAgentFolders(request: Request, env: SecurityEnv): Promise<Response> {
-  if (!isFeatureEnabled("worker_agent_connect")) throw new HttpError(404, "Not found");
   const workerId = request.headers.get("x-worker-id");
   const sessionId = request.headers.get("x-worker-session-id");
   const token = extractBearerToken(request.headers);
@@ -66,7 +65,7 @@ export async function handleAgentFolders(request: Request, env: SecurityEnv): Pr
     }
     // A folder the owner removed in Connect goes away, and with it any Space choice.
     if (folders.length === 0) {
-      await tx.run`DELETE FROM device_folders WHERE owner_user_id = ${owner} AND device_id = ${deviceId}`;
+      await deleteDeviceFolders(tx, owner, deviceId);
     } else {
       await tx.run`DELETE FROM device_folders WHERE owner_user_id = ${owner} AND device_id = ${deviceId}
            AND folder_id NOT IN ${tx.list(folders.map((f) => f.id))}`;
@@ -137,7 +136,7 @@ export async function handleDeleteDeviceFolders(request: Request, env: SecurityE
       await tx.run`DELETE FROM device_folders WHERE owner_user_id = ${owner} AND device_id = ${deviceId} AND folder_id = ${folderId}`;
     } else {
       await tx.run`DELETE FROM space_folders WHERE owner_user_id = ${owner} AND device_id = ${deviceId}`;
-      await tx.run`DELETE FROM device_folders WHERE owner_user_id = ${owner} AND device_id = ${deviceId}`;
+      await deleteDeviceFolders(tx, owner, deviceId);
     }
   });
   return json({ ok: true, spaces }, { headers: { "Cache-Control": "no-store" } });
@@ -184,6 +183,11 @@ export async function handleSpaceFolder(request: Request, env: SecurityEnv, spac
     return json({ eligible: true, folder: await readSpaceFolder(env, spaceId) }, { headers });
   }
   throw new HttpError(405, "Method not allowed");
+}
+
+/** Every folder the owner has on one device. */
+async function deleteDeviceFolders(tx: Tx, owner: string, deviceId: string): Promise<void> {
+  await tx.run`DELETE FROM device_folders WHERE owner_user_id = ${owner} AND device_id = ${deviceId}`;
 }
 
 function coded(status: number, message: string, code: string): HttpError {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { gatewayFixture } from "./helpers/assignment-gateway.js";
+import { conversationFixture } from "./helpers/conversation.js";
+import { WorkerGateway } from "../../src/domain/worker-gateway.js";
 import { handleGetWorkRequest } from "../../src/domain/routes/work-lifecycle.js";
 import { executionErrorMessage } from "@syntila/protocol";
 
@@ -7,8 +8,63 @@ const input = process.env.SYNTILA_TEST_FAILURE_PAYLOAD;
 const output = process.env.SYNTILA_TEST_FAILURE_WORK;
 const key = "12".repeat(32);
 
+async function workerGatewayFixture(
+  initialStatus: string,
+  options: { failureDetailsSnapshot?: boolean; env?: Record<string, unknown> } = {},
+) {
+  const f = await conversationFixture({ failureDetailsSnapshot: options.failureDetailsSnapshot });
+  await f.sqlite.exec(
+    `INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
+     INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES('cred-a','worker-a','${"a".repeat(43)}','${"a".repeat(64)}');
+     INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at) VALUES('worker-a','sess-a',1,'cred-a','digest',now() + interval '5 minutes');`,
+  );
+  await f.assign("A1");
+  await f.sqlite
+    .prepare(
+      `UPDATE worker_assignments SET run_id='RUN', attempt_id='ATT1', idempotency_key='IDEM1', status=? WHERE id='A1'`,
+    )
+    .run(initialStatus);
+  const gateway = new WorkerGateway(
+    {} as never,
+    { SYNTILA_DB: f.db as never, ...options.env } as never,
+  ) as any;
+  gateway.socket = { send() {} };
+  gateway.knownWorkerId = "worker-a";
+  gateway.attachment = {
+    workerId: "worker-a",
+    fence: { workerInstanceId: "worker-a", sessionId: "sess-a", epoch: 1 },
+  };
+  let counter = 0;
+  const send = async (type: string, payload: Record<string, unknown>) => {
+    counter += 1;
+    await gateway.handle(
+      JSON.stringify({
+        protocol: "syntila.workspace-runtime-protocol",
+        protocolVersion: "5.1",
+        messageId: `message-${counter}`,
+        timestamp: new Date().toISOString(),
+        type,
+        executionWorkspaceId: "worker-a",
+        workspaceRuntimeId: "sess-a",
+        workerId: "worker-a",
+        runId: "RUN",
+        taskId: "T",
+        attemptId: "ATT1",
+        assignmentId: "A1",
+        idempotencyKey: "IDEM1",
+        payload,
+      }),
+    );
+  };
+  const status = async () =>
+    (await f.sqlite
+      .prepare("SELECT status, updated_at FROM worker_assignments WHERE id='A1'")
+      .get()) as { status: string; updated_at: string };
+  return { ...f, send, status };
+}
+
 it("persists an unavailable-details marker received through the Gateway", async () => {
-  const f = await gatewayFixture("running", {
+  const f = await workerGatewayFixture("running", {
     failureDetailsSnapshot: true,
     env: { SYNTILA_PROVIDER_FAILURE_KEY: key },
   });
@@ -39,7 +95,7 @@ describe.skipIf(!input || !output)(
         payload: Record<string, unknown>;
       };
       expect(message.type).toBe("assignment.error");
-      const f = await gatewayFixture("running", {
+      const f = await workerGatewayFixture("running", {
         failureDetailsSnapshot: true,
         env: { SYNTILA_PROVIDER_FAILURE_KEY: key },
       });

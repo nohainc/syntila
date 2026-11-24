@@ -2,12 +2,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "./helpers/vitest-compat";
 
-const workspaces = readFileSync(
-  fileURLToPath(
-    new URL("../../src/domain/routes/workspaces-management.ts", import.meta.url),
-  ),
-  "utf8",
-);
 const httpSecurity = readFileSync(
   fileURLToPath(new URL("../../src/domain/routes/http-security.ts", import.meta.url)),
   "utf8",
@@ -24,10 +18,6 @@ const entrypoint = readFileSync(
   fileURLToPath(new URL("../../src/domain/index.ts", import.meta.url)),
   "utf8",
 );
-const router = readFileSync(
-  fileURLToPath(new URL("../../src/domain/routes/table.ts", import.meta.url)),
-  "utf8",
-);
 
 describe("Space lifecycle integrity", () => {
   it("registers space deletion in the production route handler table", () => {
@@ -36,41 +26,15 @@ describe("Space lifecycle integrity", () => {
     );
   });
 
-  it("routes Workspace revoke to the execution Workspace lifecycle", () => {
-    expect(router).toContain('r("DELETE", "/api/workspaces/:workspaceId", call("handleRevokeWorkspace"');
-    expect(entrypoint).toContain(
-      "handleRevokeWorkspace: handlers.handleRevokeWorkspace",
-    );
-    expect(workspaces).toContain(
-      "UPDATE execution_workspaces SET status = 'revoked'",
-    );
-    expect(workspaces).toContain(
-      "UPDATE workspace_space_grants SET status = 'revoked'",
-    );
-    expect(workspaces).toContain(
-      "UPDATE workspace_runtime_identities SET revoked_at = ${now}",
-    );
-    expect(workspaces).not.toContain("catch(() => undefined)");
-    expect(workspaces).not.toContain(
-      "partially migrated development/preview database",
-    );
-    expect(workspaces).toContain(
-      'const alreadyRevoked = workspace.status === "revoked"',
-    );
-    expect(workspaces).toContain("status <> 'revoked'");
-  });
-
   it("records Space-scoped audits without requiring a Workspace", () => {
     expect(httpSecurity).toContain("space_audit_log");
-    expect(httpSecurity).toContain("if (!auditWorkspaceId)");
     expect(httpSecurity).not.toContain(".catch(() => undefined)");
   });
 
-  it("guards duplicate names, grants, and invitations across lifecycle changes", () => {
-    const all = `${spaces}\n${threads}\n${workspaces}`;
+  it("guards duplicate names and invitations across lifecycle changes", () => {
+    const all = `${spaces}\n${threads}`;
     expect(all).toContain("LOWER(TRIM(name)) = LOWER(TRIM(${name}))");
     expect(all).toContain("id <> ${spaceId}");
-    expect(all).toContain("status IN ('active', 'suspended')");
     expect(all).toContain(
       "status = 'pending' AND (LOWER(email) = LOWER(${email}) OR invitee_user_id = ${inviteeUserId})",
     );

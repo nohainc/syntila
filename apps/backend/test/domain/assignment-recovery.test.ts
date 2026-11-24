@@ -12,7 +12,6 @@ async function fixture(
   columns: Record<string, string | number | null> = {},
 ) {
   const f = await conversationFixture();
-  await f.sqlite.exec("UPDATE execution_workspaces SET status = 'online', updated_at = now() WHERE id = 'WS'");
   await f.assign("A1");
   await f.start("A1");
   const set = Object.entries({ attempt_id: "attempt-1", ...columns })

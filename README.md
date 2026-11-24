@@ -66,7 +66,7 @@ sudo loginctl enable-linger "$USER"
 ```
 
 The package includes the service, management CLI and Worker Engine. See the
-[Linux operator guide](docs/operations/WORKSPACE_LINUX.md) for user-service setup,
+Linux operator guide for user-service setup,
 browser login and upgrades. Provider CLIs and their logins are separate.
 
 ## Repository checks
@@ -182,17 +182,17 @@ Provider secrets never enter Syntila Cloud.
 ## Read first
 
 - [Architecture](ARCHITECTURE.md)
-- [Architecture v8](docs/architecture/ARCHITECTURE_V8.md)
-- [ADR-018: Generic CLI Worker Engine and Tool Profiles](docs/decisions/ADR-018-generic-cli-worker-engine-and-tool-profiles.md)
-- [ADR-019: Syntila Profile Lab Architecture Contract](docs/decisions/ADR-019-syntila-profile-lab.md)
+- Architecture v8
+- ADR-018: Generic CLI Worker Engine and Tool Profiles
+- ADR-019: Syntila Profile Lab Architecture Contract
 - [Tool Profile v1](docs/specifications/TOOL_PROFILE_V1.md)
 - [Worker Profile v9](docs/specifications/WORKER_PROFILE_V9.md)
 - [Work v1 contract](docs/specifications/WORK_V1_CONTRACT.md)
 - [First-party Worker catalog v1](docs/specifications/FIRST_PARTY_WORKER_CATALOG_V1.md)
 - [Protocol Boundaries](docs/architecture/PROTOCOL_BOUNDARIES.md)
 - [Technology Stack](docs/architecture/TECH_STACK.md)
-- [Workspace release operations](docs/deployment/WORKSPACE_RELEASES.md)
-- [Release trust and rotation](docs/security/RELEASE_TRUST_AND_ROTATION.md)
+- Workspace release operations
+- Release trust and rotation
 - [AI Development Rules](AGENTS.md)
 
 New CLI integrations use the generic Engine and official signed Tool Profiles.

@@ -32,7 +32,7 @@ it("shares owner defaults across members, isolates Spaces, restricts writes, and
       INSERT INTO spaces(id,owner_user_id,name,created_at,updated_at) VALUES('s','owner','Space','now','now'),('other','outsider','Other','now','now');
       INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('o','s','owner','owner','now','now'),('m','s','member','collaborator','now','now');`);
     await sqlite.exec(
-      "INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws','owner','Workspace','now','now'); INSERT INTO user_workflow_settings VALUES('owner','ws','now'); INSERT INTO space_workflow_settings VALUES('s','ws','now'); INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES('ws-member','member','Member Workspace','now','now');",
+      "INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES('worker','','owner','chatgpt','Worker');",
     );
     const config = (enabled: boolean) => ({
       schemaVersion: 1,
@@ -43,12 +43,12 @@ it("shares owner defaults across members, isolates Spaces, restricts writes, and
     });
     await sqlite
       .prepare(
-        "INSERT INTO user_workflow_configurations VALUES('owner','ws','chat',1,?,'now')",
+        "INSERT INTO user_worker_workflow_configurations(user_id, workflow_id, schema_version, configuration_json, updated_at) VALUES('owner','chat',1,?,'now')",
       )
       .run(JSON.stringify(config(false)));
     await sqlite
       .prepare(
-        "INSERT INTO user_workflow_configurations VALUES('member','ws-member','chat',1,?,'now')",
+        "INSERT INTO user_worker_workflow_configurations(user_id, workflow_id, schema_version, configuration_json, updated_at) VALUES('member','chat',1,?,'now')",
       )
       .run(JSON.stringify(config(true)));
     const env = {

@@ -1,12 +1,9 @@
 import { dataOf, queryOf, type Tx, type Db } from "../../platform/data.js";
 import {
-  InputAttemptSchema,
-  InputDeliveredSchema,
   InputUploadFailedSchema,
 } from "@syntila/protocol";
 import { readBody } from "./validation.js";
 import { extractBearerToken } from "@syntila/security";
-import { WorkspaceRuntimeAuthenticator } from "../workspace-gateway/runtime-authenticator.js";
 import { createEventPublisher } from "../event-publisher.js";
 import { HttpError, authorizeThreadAccess, json } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
@@ -18,17 +15,17 @@ import {
   workRequestFileKey,
 } from "./work-request-files.js";
 import { getAttachmentLimits } from "../account-plan.js";
+import { authenticateAgentSession } from "../worker-agents.js";
 
 /**
  * Input Delivery v1 (see docs/specifications/INPUT_DELIVERY_V1.md).
  *
  * A Work Request is accepted with a manifest of its file inputs before their
- * bytes exist. AX uploads each file; the target Workspace Service polls for
- * uploaded inputs, downloads each over authenticated HTTPS and confirms it.
- * The Workflow dispatches the first step only when every input is
- * `delivered`. A file that cannot be uploaded or delivered after its retries
- * is `failed`, which fails the request before any Worker starts. Every retry
- * restarts the whole file.
+ * bytes exist. The web app uploads each file to R2. The Workflow starts the
+ * first Step only when every input is `uploaded`; any Worker that runs a Step
+ * downloads the files with its own session. A file that cannot be uploaded
+ * after its retries is `failed`, which fails the request before any Worker
+ * starts.
  */
 
 export type WorkRequestInputState =
@@ -38,7 +35,6 @@ export interface WorkRequestInputRow {
   readonly fileId: string;
   readonly workRequestId: string;
   readonly threadId: string;
-  readonly workspaceId: string;
   readonly userId: string;
   readonly position: number;
   readonly name: string;
@@ -61,7 +57,7 @@ export const WORK_INPUTS_EVENT_TYPE = "work-inputs";
 export const INPUT_DELIVERY_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
 const COLUMNS = `id AS "fileId", work_request_id AS "workRequestId",
-  thread_id AS "threadId", workspace_id AS "workspaceId", user_id AS "userId",
+  thread_id AS "threadId", user_id AS "userId",
   position, name, media_type AS "mediaType", size_bytes AS "sizeBytes",
   content_digest AS "contentDigest", preview_text AS "previewText",
   preview_image AS "previewImage", state, upload_attempts AS "uploadAttempts",
@@ -99,7 +95,6 @@ export async function insertWorkRequestInputs(
   input: {
     workRequestId: string;
     threadId: string;
-    workspaceId: string;
     userId: string;
     attachments: readonly Record<string, unknown>[];
     now: string;
@@ -110,10 +105,10 @@ export async function insertWorkRequestInputs(
     const digest =
       typeof attachment.contentDigest === "string" ? attachment.contentDigest : null;
     await tx.run`INSERT INTO work_request_inputs
-               (id, work_request_id, thread_id, workspace_id, user_id, position,
+               (id, work_request_id, thread_id, user_id, position,
                 name, media_type, size_bytes, content_digest, state,
                 created_at, updated_at)
-               VALUES (${attachment.fileId}, ${input.workRequestId}, ${input.threadId}, ${input.workspaceId}, ${input.userId}, ${position},
+               VALUES (${attachment.fileId}, ${input.workRequestId}, ${input.threadId}, ${input.userId}, ${position},
                 ${String(attachment.name ?? "Attachment")}, ${String(attachment.mediaType ?? "application/octet-stream")}, ${Number(attachment.sizeBytes ?? 0)}, ${digest}, ${digest ? "uploaded" : "awaiting_upload"},
                 ${input.now}, ${input.now})`;
   }
@@ -167,13 +162,13 @@ async function announceInputProgress(
     // The Workflow's bounded wait re-reads D1.
   }
   try {
-    const thread = await dataOf(env).read.row<{ spaceId: string; workspaceId: string | null }>`SELECT t.space_id AS "spaceId", wr.primary_workspace_id AS "workspaceId"
+    const thread = await dataOf(env).read.row<{ spaceId: string }>`SELECT t.space_id AS "spaceId"
          FROM threads t JOIN work_requests wr ON wr.thread_id = t.id
         WHERE wr.id = ${row.workRequestId}`;
-    if (!thread?.workspaceId) return;
+    if (!thread) return;
     await createEventPublisher(env).publish({
       type: "work_request.input_updated",
-      workspaceId: thread.workspaceId,
+      stream: { kind: "space" as const, id: thread.spaceId },
       spaceId: thread.spaceId,
       idempotencyKey: `work-request-input:${row.fileId}:${crypto.randomUUID()}`,
       payload: {
@@ -185,18 +180,6 @@ async function announceInputProgress(
     });
   } catch {
     // Clients also refresh on their own schedule.
-  }
-}
-
-/** Sends the tiny `input.available` wake-up to the target Service. */
-async function wakeWorkspace(env: SecurityEnv, workspaceId: string) {
-  try {
-    await env.SYNTILA_WORKSPACE_GATEWAY?.getByName(workspaceId).fetch(
-      "https://workspace-gateway/inputs-available",
-      { method: "POST" },
-    );
-  } catch {
-    // The Service also polls.
   }
 }
 
@@ -265,7 +248,6 @@ export async function handleUploadWorkRequestInput(
             upload_attempts = upload_attempts + 1, updated_at = ${new Date().toISOString()}
       WHERE id = ${fileId} AND state IN ('awaiting_upload', 'failed')`;
   await announceInputProgress(env, row, "uploaded");
-  await wakeWorkspace(env, row.workspaceId);
   return json({ fileId, state: "uploaded" });
 }
 
@@ -312,64 +294,26 @@ export async function handleFailWorkRequestInputUpload(
   return json({ fileId, state: "failed" });
 }
 
-export async function requireRuntime(request: Request, env: SecurityEnv) {
-  const runtimeId = new URL(request.url).searchParams.get("workspaceRuntimeId");
-  const credential = extractBearerToken(request.headers);
-  if (!runtimeId || !credential)
-    throw new HttpError(401, "Workspace runtime credentials are required");
-  const runtime = await new WorkspaceRuntimeAuthenticator(
-    env.SYNTILA_DB,
-  ).authenticateRuntime(runtimeId, credential);
-  if (!runtime)
-    throw new HttpError(401, "Workspace runtime credential is invalid");
-  return runtime.executionWorkspaceId;
-}
-
-async function runtimeRow(
+/**
+ * `GET /api/worker-agent/inputs/:fileId/content` — streams the bytes straight
+ * from R2 to the Agent of a Worker that runs a Step of the request.
+ */
+export async function handleDownloadAgentInput(
   request: Request,
   env: SecurityEnv,
   fileId: string,
-): Promise<WorkRequestInputRow> {
-  const workspaceId = await requireRuntime(request, env);
+): Promise<Response> {
+  const workerId = request.headers.get("x-worker-id");
+  const sessionId = request.headers.get("x-worker-session-id");
+  const token = extractBearerToken(request.headers);
+  const principal = workerId && sessionId && token
+    ? await authenticateAgentSession(env, { workerId, sessionId, sessionToken: token })
+    : null;
+  if (!workerId || !principal) throw new HttpError(401, "Invalid Worker session");
   const row = await inputRow(env.SYNTILA_DB, fileId);
-  if (!row || row.workspaceId !== workspaceId)
-    throw new HttpError(404, "Input not found");
-  return row;
-}
-
-/**
- * `GET /api/workspace-runtime/inputs` — uploaded inputs this Workspace still
- * has to download, oldest first. Requests that ended are excluded.
- */
-export async function handleListRuntimeInputs(
-  request: Request,
-  env: SecurityEnv,
-): Promise<Response> {
-  const workspaceId = await requireRuntime(request, env);
-  const rows = await dataOf(env).read.rows`SELECT i.id AS "fileId", i.work_request_id AS "workRequestId", i.name,
-            i.size_bytes AS "sizeBytes", i.content_digest AS "contentDigest",
-            i.delivery_attempts AS "deliveryAttempts"
-       FROM work_request_inputs i
-       JOIN work_requests wr ON wr.id = i.work_request_id
-      WHERE i.workspace_id = ${workspaceId} AND i.state = 'uploaded'
-        AND wr.status IN ('queued', 'running', 'waiting')
-        AND wr.cancel_requested_at IS NULL
-      ORDER BY i.created_at, i.position
-      LIMIT 50`;
-  return json({ inputs: rows });
-}
-
-/**
- * `GET /api/workspace-runtime/inputs/:fileId/content` — streams the bytes
- * straight from R2. Also serves delivered files so a Service can re-download
- * one its local store no longer has (retry, later Workflow step).
- */
-export async function handleDownloadRuntimeInput(
-  request: Request,
-  env: SecurityEnv,
-  fileId: string,
-): Promise<Response> {
-  const row = await runtimeRow(request, env, fileId);
+  const runsAStep = !!row && !!(await dataOf(env).read.row`SELECT 1 AS ok FROM worker_assignments
+       WHERE work_request_id = ${row.workRequestId} AND worker_instance_id = ${workerId} LIMIT 1`);
+  if (!row || !runsAStep) throw new HttpError(404, "Input not found");
   if (row.state !== "uploaded" && row.state !== "delivered")
     throw new HttpError(409, "Input is not available");
   const object = await env.SYNTILA_ARTIFACTS?.get(workRequestFileKey(fileId));
@@ -388,57 +332,6 @@ export async function handleDownloadRuntimeInput(
       "Cache-Control": "private, no-store",
     },
   });
-}
-
-/**
- * `POST /api/workspace-runtime/inputs/:fileId/delivered` — the Service
- * stored the file and verified [contentDigest].
- */
-export async function handleConfirmRuntimeInput(
-  request: Request,
-  env: SecurityEnv,
-  fileId: string,
-): Promise<Response> {
-  const row = await runtimeRow(request, env, fileId);
-  const body = await readBody(request, InputDeliveredSchema);
-  if (row.state === "delivered") return json({ fileId, state: "delivered" });
-  if (row.state !== "uploaded" || body?.contentDigest !== row.contentDigest)
-    throw new HttpError(409, "Input does not match the uploaded file");
-  await dataOf(env).read.run`UPDATE work_request_inputs
-        SET state = 'delivered', delivery_attempts = delivery_attempts + 1,
-            error_message = NULL, updated_at = ${new Date().toISOString()}
-      WHERE id = ${fileId} AND state = 'uploaded'`;
-  await announceInputProgress(env, row, "delivered");
-  return json({ fileId, state: "delivered" });
-}
-
-/**
- * `POST /api/workspace-runtime/inputs/:fileId/attempt` — records a failed
- * download attempt; with `final: true` the input fails the request.
- */
-export async function handleReportRuntimeInputAttempt(
-  request: Request,
-  env: SecurityEnv,
-  fileId: string,
-): Promise<Response> {
-  const row = await runtimeRow(request, env, fileId);
-  const body = await readBody(request, InputAttemptSchema);
-  if (row.state !== "uploaded") return json({ fileId, state: row.state });
-  const message = failureMessage(body?.message, "download failed");
-  if (body?.final === true) {
-    await failInput(
-      env,
-      row,
-      `${row.name} could not be delivered to the Workspace: ${message}`,
-    );
-    return json({ fileId, state: "failed" });
-  }
-  await dataOf(env).read.run`UPDATE work_request_inputs
-        SET delivery_attempts = delivery_attempts + 1, error_message = ${message},
-            updated_at = ${new Date().toISOString()}
-      WHERE id = ${fileId} AND state = 'uploaded'`;
-  await announceInputProgress(env, row, "uploaded");
-  return json({ fileId, state: "uploaded" });
 }
 
 /** Rows for several requests, keyed by request id. */

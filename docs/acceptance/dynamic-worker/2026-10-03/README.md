@@ -59,6 +59,6 @@ persistence, production signing, or a real Testing Workspace rollout. The
 provider is a fixture CLI, not a real external provider. The acceptance proves
 the dynamic Worker contract and Work execution path, while production Cloud
 and real-provider release gates remain tracked separately in the
-[Architecture v8 roadmap](../../../roadmaps/ARCHITECTURE_V8_IMPLEMENTATION.md).
+Architecture v8 roadmap.
 
 No database migrations or compatibility changes were made.

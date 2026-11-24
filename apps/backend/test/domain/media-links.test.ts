@@ -39,8 +39,8 @@ async function fixture() {
   ] } });
   await f.sqlite.exec(`${basicThread({ user: "alice", space: "sp", thread: "th" })}
     INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES ('w','','alice','gemini','Mac');
-    INSERT INTO worker_assignments(id,space_id,thread_id,worker_type_id,worker_instance_id,execution_path,worker_snapshot_json,status,output_json)
-      VALUES ('asg','sp','th','gemini','w','worker','{}','completed','${output}')`);
+    INSERT INTO worker_assignments(id,space_id,thread_id,worker_type_id,worker_instance_id,worker_snapshot_json,status,output_json)
+      VALUES ('asg','sp','th','gemini','w','{}','completed','${output}')`);
   const env = { SYNTILA_DB: f.db, SYNTILA_ARTIFACTS: bucket } as never;
   return { f, env, bytes, close: async () => { await f.sqlite.close(); await rm(root, { recursive: true, force: true }); } };
 }

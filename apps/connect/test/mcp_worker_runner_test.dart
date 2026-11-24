@@ -12,7 +12,7 @@ import 'package:syntila_connect/src/mcp_worker_allow_list.dart';
 import 'package:syntila_connect/src/mcp_worker_runner.dart';
 import 'package:test/test.dart';
 
-import '../../workspace/test/support/external_worker_package.dart';
+import 'support/external_worker_package.dart';
 
 void main() {
   pinTests();

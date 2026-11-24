@@ -429,13 +429,13 @@ phases:
     const verifyItem = JSON.parse(queuedRows[1]!.request_json);
 
     // Implementer gets worker-impl from space config and model-override from request body
-    expect(implItem.executionSelection).toEqual({
+    expect(implItem).toMatchObject({
       workerId: "worker-impl",
       model: "model-override",
     });
 
     // Verifier gets full config from space
-    expect(verifyItem.executionSelection).toEqual({
+    expect(verifyItem).toMatchObject({
       workerId: "worker-ver",
       model: "model-ver",
       reasoningEffort: "high",
@@ -785,7 +785,7 @@ describe("Implement workflow: hardening", () => {
     const followUp = rows.find((r) => r.id.startsWith("trq-verify-status-"));
     expect(followUp).toBeDefined();
     const request = JSON.parse(followUp!.requestJson);
-    expect(request.executionSelection).toEqual({
+    expect(request).toMatchObject({
       workerId: "w-gemini",
       model: "gemini-3.8-flash",
       reasoningEffort: "low",

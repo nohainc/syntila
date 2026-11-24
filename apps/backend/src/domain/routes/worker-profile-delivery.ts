@@ -10,7 +10,6 @@ import { HttpError, json, type SecurityEnv } from "./handlers.js";
 
 /** Serve only published snapshots for the authenticated Agent's own Type. */
 export async function handleAgentProfile(request: Request, env: SecurityEnv): Promise<Response> {
-  if (!isFeatureEnabled("worker_agent_connect")) throw new HttpError(404, "Not found");
   const workerId = request.headers.get("x-worker-id");
   const sessionId = request.headers.get("x-worker-session-id");
   const token = extractBearerToken(request.headers);
@@ -47,7 +46,6 @@ export async function handleAgentProfile(request: Request, env: SecurityEnv): Pr
  * Workers page can say why no models are listed.
  */
 export async function handleAgentModels(request: Request, env: SecurityEnv): Promise<Response> {
-  if (!isFeatureEnabled("worker_agent_connect")) throw new HttpError(404, "Not found");
   const workerId = request.headers.get("x-worker-id");
   const sessionId = request.headers.get("x-worker-session-id");
   const token = extractBearerToken(request.headers);
@@ -80,7 +78,6 @@ export async function handleAgentModels(request: Request, env: SecurityEnv): Pro
  * It is relayed to the waiting owner and never stored.
  */
 export async function handleAgentUsage(request: Request, env: SecurityEnv): Promise<Response> {
-  if (!isFeatureEnabled("worker_agent_connect")) throw new HttpError(404, "Not found");
   const workerId = request.headers.get("x-worker-id");
   const sessionId = request.headers.get("x-worker-session-id");
   const token = extractBearerToken(request.headers);

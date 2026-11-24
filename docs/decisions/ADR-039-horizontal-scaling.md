@@ -1,9 +1,7 @@
 # ADR-039: Horizontal Scaling Across Multiple Bun Nodes
 
-- **Status:** Proposed. The decision is accepted, but **activation is gated on measured load**.
+- **Status:** Accepted; **activation is gated on measured load** (not active).
 - **Date:** 2026-11-19
-- **Split from:** ADR-031 (D7 cluster parts)
-- **Order:** 8 of 8. Depends on ADR-033, ADR-034 and ADR-038.
 - **Related:** `VPS_BACKEND_MIGRATION_PLAN.md`
 
 ## Context

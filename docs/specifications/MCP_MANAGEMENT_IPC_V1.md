@@ -2,7 +2,7 @@
 
 **Status:** Implemented for MCP Tools (ADR-028, plan phase M2). Same transport,
 authentication and error envelope as the
-[plugin management IPC](WORKER_PLUGIN_MANAGEMENT_IPC_V1.md). The CLI never
+plugin management IPC. The CLI never
 starts an MCP server; every server is started by the Engine.
 
 ## Commands

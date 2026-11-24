@@ -322,12 +322,6 @@ describe("membership and invitation uniqueness already in the baseline", () => {
     await expect(sql.unsafe(invite("i3", "A@test", "NULL"))).rejects.toMatchObject({ constraint: "idx_space_invitations_pending_email" });
     // Only pending rows count: an ended invitation does not block a new one.
     await sql.unsafe(invite("i4", "a@test", "NULL", "expired"));
-    await sql.unsafe(`INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES ('w1','o1','Mac','online',now(),now());`);
-    const winv = (id: string, email: string) =>
-      `INSERT INTO workspace_invitations(id,workspace_id,email,token_hash,invited_by_user_id,status,expires_at,created_at,updated_at)
-       VALUES ('${id}','w1','${email}','h-${id}','o1','pending',now() + interval '1 day',now(),now());`;
-    await sql.unsafe(winv("wi1", "c@test"));
-    await expect(sql.unsafe(winv("wi2", "C@test"))).rejects.toMatchObject({ constraint: "idx_workspace_invitations_pending_email" });
   });
 });
 

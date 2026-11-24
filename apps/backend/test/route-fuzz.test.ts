@@ -13,7 +13,7 @@ import { routeTable, type WorkerRouteHandlers } from "../src/domain/routes/table
 import { PgDb } from "../src/platform/data";
 import { createRuntime } from "../src/runtime";
 import { pgD1 } from "./domain/helpers/pg-d1";
-import { member, message, space, thread, user, workRequest, workspace } from "./domain/helpers/seed";
+import { member, message, space, thread, user, workRequest } from "./domain/helpers/seed";
 import { threadConversationId } from "../src/domain/routes/conversations";
 
 let base = "", stop = async () => {}, mint: (sub: string) => Promise<string>, db: Awaited<ReturnType<typeof pgD1>>["sql"];
@@ -72,6 +72,8 @@ async function seedWorld(token: string): Promise<World> {
     personIn: `fz-pin-${n}`, personOut: `fz-pout-${n}`, spaceInvOut: `fz-sinv-out-${n}`, spaceInvIn: `fz-sinv-in-${n}`,
     wsInvOut: `fz-winv-out-${n}`, wsInvIn: `fz-winv-in-${n}`, otherSpace: `fz-osp-${n}`, otherWorkspace: `fz-ows-${n}`,
     release: `9.${n}.0`, pluginRef: `fz-plugin-${n}`, workerId: `fz-worker-${n}`,
+    // Device and folder ids have the Agent's shape: dev-/fld- and 16 hex digits.
+    deviceId: `dev-${n.toString(16).padStart(16, "0")}`, folderId: `fld-${n.toString(16).padStart(16, "0")}`,
   };
   w.conversationId = threadConversationId(w.threadId!);
   const note = await call(token, "POST", "/api/notes", JSON.stringify({ title: "n", body: "b" }));
@@ -80,9 +82,6 @@ async function seedWorld(token: string): Promise<World> {
   const inv = (id: string, spaceId: string, email: string, by: string) =>
     `INSERT INTO space_invitations(id,space_id,email,role,token_hash,invited_by_user_id,status,expires_at,created_at,updated_at)
        VALUES ('${id}','${spaceId}','${email}','viewer','h-${id}','${by}','pending','${FUTURE}','${T0}','${T0}')`;
-  const winv = (id: string, ws: string, email: string, by: string) =>
-    `INSERT INTO workspace_invitations(id,workspace_id,email,token_hash,invited_by_user_id,status,expires_at,created_at,updated_at)
-       VALUES ('${id}','${ws}','${email}','h-${id}','${by}','pending','${FUTURE}','${T0}','${T0}')`;
   await db.unsafe([
     space(w.spaceId!, "fuzz-owner"), member(w.spaceId!, "fuzz-owner"), member(w.spaceId!, "fuzz-member", "collaborator"),
     thread(w.threadId!, w.spaceId!, "fuzz-owner"),
@@ -92,10 +91,8 @@ async function seedWorld(token: string): Promise<World> {
     // A request still waiting for its files: the only state in which an input can be uploaded.
     workRequest(w.threadId!, "fuzz-owner", "{}", w.openWorkRequest!),
     `UPDATE work_requests SET status='waiting' WHERE id='${w.openWorkRequest}'`,
-    workspace(w.workspaceId!, "fuzz-owner"),
-    `INSERT INTO workspace_person_grants(workspace_id,user_id,granted_by_user_id,status,created_at,updated_at) VALUES ('${w.workspaceId}','fuzz-member','fuzz-owner','active','${T0}','${T0}')`,
-    `INSERT INTO work_request_inputs(id,work_request_id,thread_id,workspace_id,user_id,position,name,media_type,size_bytes,state,created_at,updated_at)
-       VALUES ('${w.inputId}','${w.openWorkRequest}','${w.threadId}','${w.workspaceId}','fuzz-owner',0,'a.txt','text/plain',3,'awaiting_upload','${T0}','${T0}')`,
+    `INSERT INTO work_request_inputs(id,work_request_id,thread_id,user_id,position,name,media_type,size_bytes,state,created_at,updated_at)
+       VALUES ('${w.inputId}','${w.openWorkRequest}','${w.threadId}','fuzz-owner',0,'a.txt','text/plain',3,'awaiting_upload','${T0}','${T0}')`,
     `INSERT INTO user_files(id,user_id,thread_id,space_id,name,media_type,size_bytes,created_at) VALUES ('${w.fileId}','fuzz-owner','${w.threadId}','${w.spaceId}','a.txt','text/plain',3,now())`,
     `INSERT INTO thread_request_queue(id,thread_id,author_user_id,request_json,position,status,created_at,updated_at) VALUES ('${w.itemId}','${w.threadId}','fuzz-owner','{"message":"hi"}',1,'queued','${T0}','${T0}')`,
     // The People relationship with fuzz-other, and one pending invitation each way.
@@ -104,19 +101,14 @@ async function seedWorld(token: string): Promise<World> {
     user(`fz-from-${n}`), user(`fz-to-${n}`),
     `INSERT INTO person_invitations(id,inviter_user_id,invitee_user_id,status,created_at,expires_at,updated_at) VALUES ('${w.personIn}','fz-from-${n}','fuzz-owner','pending','${T0}','${FUTURE}','${T0}')`,
     `INSERT INTO person_invitations(id,inviter_user_id,invitee_user_id,status,created_at,expires_at,updated_at) VALUES ('${w.personOut}','fuzz-owner','fz-to-${n}','pending','${T0}','${FUTURE}','${T0}')`,
-    // A second owner's Space and Workspace, which invite the owner.
+    // A second owner's Space, which invites the owner.
     space(w.otherSpace!, "fuzz-other-owner"), member(w.otherSpace!, "fuzz-other-owner"),
-    workspace(w.otherWorkspace!, "fuzz-other-owner"),
     inv(w.spaceInvOut!, w.spaceId!, "fuzz-stranger@test", "fuzz-owner"),
     inv(w.spaceInvIn!, w.otherSpace!, "fuzz-owner@test", "fuzz-other-owner"),
-    winv(w.wsInvOut!, w.workspaceId!, "fuzz-stranger@test", "fuzz-owner"),
-    winv(w.wsInvIn!, w.otherWorkspace!, "fuzz-owner@test", "fuzz-other-owner"),
-    `INSERT INTO workspace_releases(version,package_digest,package_r2_key,signature,created_at) VALUES ('${w.release}','${HEX}','k-${n}','sig','${T0}')`,
+    `INSERT INTO device_folders(owner_user_id,device_id,folder_id,device_name,display_name,mode) VALUES ('fuzz-owner','${w.deviceId}','${w.folderId}','Mac','Folder','write')`,
     `INSERT INTO account_worker_plugins(plugin_ref,owner_user_id,plugin_id,display_name,created_at,updated_at) VALUES ('${w.pluginRef}','fuzz-owner','p${n}','Plugin','${T0}','${T0}')`,
     `INSERT INTO account_worker_plugin_versions(plugin_ref,version,manifest_digest,manifest_json,origin_json,created_at) VALUES ('${w.pluginRef}','1.0.0','${HEX}','{}','{}','${T0}')`,
-    `INSERT INTO workspace_worker_plugin_enablements(workspace_id,plugin_ref,version,manifest_digest,consent_hash,intent,updated_at) VALUES ('${w.workspaceId}','${w.pluginRef}','1.0.0','${HEX}','${HEX}','enabled','${T0}')`,
-    `INSERT INTO workspace_worker_inventory(worker_id,workspace_id,owner_user_id,worker_type_id,activation_state,readiness_state,local_concurrency_limit,revision,created_at,updated_at,last_seen_at)
-       VALUES ('${w.workerId}','${w.workspaceId}','fuzz-owner','claude','enabled','ready',1,1,'${T0}','${T0}','${T0}')`,
+    `INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES ('${w.workerId}','','fuzz-owner','claude','Claude')`,
   ].join(";\n"));
   return w;
 }
@@ -143,28 +135,26 @@ function fixture(route: string, p: string, w: World): Fixture | undefined {
     case "inputId": return row(w.inputId, "work_request_inputs");
     case "artifactId": return { value: `art-${crypto.randomUUID()}`, limitation: LIMITS.runtime };
     case "pluginRef": return row(w.pluginRef, "account_worker_plugins", "plugin_ref");
-    case "workerId": return row(w.workerId, "workspace_worker_inventory", "worker_id");
+    case "workerId": return row(w.workerId, "worker_instances", "id");
+    case "deviceId": return row(w.deviceId, "device_folders", "device_id");
+    case "folderId": return row(w.folderId, "device_folders", "folder_id");
     case "workerTypeId": return row("claude", "worker_catalog", "worker_type_id");
-    case "version": return route.includes("releases") ? row(w.release, "workspace_releases", "version") : undefined;
     case "workflowId": return { value: "chat", limitation: LIMITS.nonRow + " (built-in workflow id)" };
     case "kind": return { value: "thread", limitation: LIMITS.nonRow + " (pin kind)" };
     case "targetId": return row(w.threadId, "threads");
     case "fileId":
-      if (route.includes("workspace-runtime")) return { value: w.fileId!, limitation: LIMITS.runtime };
+      if (route.includes("worker-agent")) return { value: w.fileId!, limitation: LIMITS.runtime };
       return row(w.fileId, "user_files");
     case "sessionId": return { value: `fz-session-${w.spaceId}`, limitation: LIMITS.runtime };
     case "keyId": return { value: `fz-key-${w.spaceId}`, limitation: LIMITS.admin };
     case "userId":
       if (route.includes("/members/")) return row("fuzz-member", "space_memberships", "user_id");
-      if (route.includes("person-grants") || route.includes("member-access")) return row("fuzz-member", "workspace_person_grants", "user_id");
       return row("fuzz-other", "users");
     case "invitationId":
-      if (route.startsWith("/api/workspaces/")) return row(w.wsInvOut, "workspace_invitations");
       if (route.startsWith("/api/spaces/")) return row(w.spaceInvOut, "space_invitations");
       return row(w.spaceInvIn, "space_invitations");
     case "id":
       if (route.includes("/people/invitations/")) return row(route.endsWith("/cancel") ? w.personOut : w.personIn, "person_invitations");
-      if (route.includes("workspace-invitations")) return row(w.wsInvIn, "workspace_invitations");
       if (route.includes("issue-reports")) return { value: `fz-report-${w.spaceId}`, limitation: LIMITS.admin };
       return undefined;
   }
@@ -265,8 +255,6 @@ test("every path parameter of every route has a real fixture", async () => {
 test("an oversized body is refused with 413 promptly, not left hanging", async () => {
   const token = await mint("fuzz-big");
   await call(token, "GET", "/api/session");
-  const ws = "fuzz-big-ws";
-  await db.unsafe(workspace(ws, "fuzz-big"));
   const big = new Uint8Array(6 * 1024 * 1024);
   const form = new FormData();
   form.set("original", new File([big], "a.png", { type: "image/png" }));
@@ -277,8 +265,6 @@ test("an oversized body is refused with 413 promptly, not left hanging", async (
     headers: { authorization: `Bearer ${token}`, origin: "https://syntila.app" },
   });
   expect(avatar.status).toBe(413);
-  const prefs = await call(token, "PUT", `/api/workspaces/${ws}/worker-preferences`, JSON.stringify({ pad: "x".repeat(2 * 1024 * 1024) }));
-  expect(prefs.status).toBe(413);
   // JSON bodies are capped at 2 MiB for every route, with or without an Idempotency-Key.
   const huge = JSON.stringify({ title: "t", body: "x".repeat(3 * 1024 * 1024) });
   const note = await call(token, "POST", "/api/notes", huge);

@@ -309,8 +309,7 @@ export class CloudEventPublisher implements EventPublisher {
         : event.spaceId
           ? await dataOf(this.env).read.rows<{ user_id: string }>`SELECT user_id FROM space_memberships
            WHERE space_id = ${event.spaceId}`
-          : await dataOf(this.env).read.rows<{ user_id: string }>`SELECT owner_user_id AS user_id FROM execution_workspaces
-           WHERE id = ${event.workspaceId} AND status <> 'revoked'`;
+          : [];
     const results = await Promise.all(
       [
         ...new Set([

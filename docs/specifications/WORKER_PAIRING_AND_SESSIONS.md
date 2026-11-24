@@ -50,6 +50,16 @@ Every Agent acknowledgement, start permit and terminal result carries `{workerIn
 
 A result that arrives late from an older session is therefore rejected, and the older session cannot tell that it was recorded. After a lapse the Agent connects again (new epoch) and replays from its journal.
 
+### Copied installations
+
+A copy of an Agent's data directory (with its private key, or a file credential on Linux) is not detected. What fencing guarantees and what it does not:
+
+- Only one copy is current at a time. Each login bumps the epoch, so the original and the copy keep pushing each other out; the one that is not current cannot acknowledge, start or finish work, and its late results are rejected.
+- Either copy can log in, receive the next assignments and read their context, so a copied key can act as the Worker until the owner revokes or rotates the credential. Repeated alternating logins appear in `worker_audit_log` as superseded sessions.
+- macOS Keychain and Windows DPAPI keys do not travel with a copied directory to another account or machine; the Linux file credential does unless Secret Service is used.
+
+Moving a Worker to another computer is an explicit transfer (ADR-034 decision 6): rotate the credential, which fences out every other copy.
+
 ## Lease and heartbeat
 
 - Lease: 300 seconds, renewed by `AgentLeaseKeeper`. A heartbeat writes to the database **at most once per 100 seconds per session**, however often the Agent pings (the keeper holds the last write time in memory). A renewal that matches no row means a newer session replaced this one, and the gateway closes the socket.

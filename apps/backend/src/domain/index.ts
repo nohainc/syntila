@@ -2,7 +2,6 @@ import { dataOf } from "../platform/data.js";
 import { sweepThreadRequestQueues } from "./routes/thread-request-queue.js";
 import type { SecurityEnv } from "./routes/http-security.js";
 export { SyntilaRunWorkflow } from "./workflow.js";
-export { WorkspaceGateway } from "./workspace-gateway.js";
 export { WorkerGateway } from "./worker-gateway.js";
 export { ThreadExecutionCoordinator } from "./thread-coordinator.js";
 export { RealtimeGateway } from "./realtime-gateway.js";
@@ -103,35 +102,10 @@ export const routeHandlers = {
   handleCreateAdminIssueReportGroup,
   handleProfileLabAccess: handlers.handleProfileLabAccess,
   handleSession: handlers.handleSession,
-  handleCheckWorkspaceOwnership: handlers.handleCheckWorkspaceOwnership,
-  handleReconcileWorkspaceOwnership: handlers.handleReconcileWorkspaceOwnership,
-  handleDisconnectDesktopWorkspace: handlers.handleDisconnectDesktopWorkspace,
-  handleReleaseDesktopWorkspace: handlers.handleReleaseDesktopWorkspace,
-  handleRegisterWorkspaceFromDesktop:
-    handlers.handleRegisterWorkspaceFromDesktop,
-  handleListWorkspaces: handlers.handleListWorkspaces,
-  handleExportWorkspaceAudit: handlers.handleExportWorkspaceAudit,
-  handleWorkspaceGatewayConnect: handlers.handleWorkspaceGatewayConnect,
   handleWorkerGatewayConnect: handlers.handleWorkerGatewayConnect,
   handleUploadArtifact: handlers.handleUploadArtifact,
   handleDownloadArtifact: handlers.handleDownloadArtifact,
-  handleWorkspaceRuntimeTransport: handlers.handleWorkspaceRuntimeTransport,
-  handleGetReleaseTrustState: handlers.handleGetReleaseTrustState,
-  handleRevokeReleaseSigningKey: handlers.handleRevokeReleaseSigningKey,
   handleListWorkerCatalog: handlers.handleListWorkerCatalog,
-  handleListWorkspaceWorkerCatalog: handlers.handleListWorkspaceWorkerCatalog,
-  handleListWorkspaceWorkerInventory:
-    handlers.handleListWorkspaceWorkerInventory,
-  handleGetLatestWorkspaceRelease: handlers.handleGetLatestWorkspaceRelease,
-  handlePublishWorkspaceRelease: handlers.handlePublishWorkspaceRelease,
-  handleDownloadWorkspaceRelease: handlers.handleDownloadWorkspaceRelease,
-  handleRevokeWorkspaceRelease: handlers.handleRevokeWorkspaceRelease,
-  handleGetWorkspaceRelease: handlers.handleGetWorkspaceRelease,
-  handleGetWorkspace: handlers.handleGetWorkspace,
-  handleUpdateWorkspace: handlers.handleUpdateWorkspace,
-  handleWorkspaceDeliveryProbe: handlers.handleWorkspaceDeliveryProbe,
-  handleWorkerUsage: handlers.handleWorkerUsage,
-  handleRevokeWorkspace: handlers.handleRevokeWorkspace,
   handleListSpaces: handlers.handleListSpaces,
   handleCreateSpace: handlers.handleCreateSpace,
   handleUpdateSpace: handlers.handleUpdateSpace,
@@ -198,11 +172,7 @@ export const routeHandlers = {
   handleListEligibleWorkers: handlers.handleListEligibleWorkers,
   handleUploadWorkRequestInput: handlers.handleUploadWorkRequestInput,
   handleFailWorkRequestInputUpload: handlers.handleFailWorkRequestInputUpload,
-  handleListRuntimeInputs: handlers.handleListRuntimeInputs,
-  handleDownloadRuntimeInput: handlers.handleDownloadRuntimeInput,
-  handleConfirmRuntimeInput: handlers.handleConfirmRuntimeInput,
-  handleReportRuntimeInputAttempt: handlers.handleReportRuntimeInputAttempt,
-  handleUploadWorkerOutputImage: handlers.handleUploadWorkerOutputImage,
+  handleDownloadAgentInput: handlers.handleDownloadAgentInput,
   handleAgentUploadWorkerOutputImage: handlers.handleAgentUploadWorkerOutputImage,
   handleCreateThreadMediaLink: handlers.handleCreateThreadMediaLink,
   handleGetMediaFile: handlers.handleGetMediaFile,
@@ -219,7 +189,6 @@ export const routeHandlers = {
   handlePublishV9WorkerProfile: handlers.handlePublishV9WorkerProfile,
   handleListV9WorkerProfileHistory: handlers.handleListV9WorkerProfileHistory,
   handleRestoreV9WorkerProfile: handlers.handleRestoreV9WorkerProfile,
-  handleGetWorkspaceV9WorkerProfile: handlers.handleGetWorkspaceV9WorkerProfile,
   handleGetAvatar: handlers.handleGetAvatar,
   handleUploadAvatar: handlers.handleUploadAvatar,
 } as unknown as WorkerRouteHandlers;

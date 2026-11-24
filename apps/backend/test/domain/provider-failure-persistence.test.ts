@@ -21,7 +21,7 @@ describe("ProviderFailure persistence, credential boundary, and isolation", () =
   it("retains a capability-gated unavailable marker on the matching failed attempt", async () => {
     const f = await conversationFixture({ failureDetailsSnapshot: true });
     await f.sqlite.exec(
-      "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('M','P','U','owner','now','now')",
+      "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('M','P','U','owner','now','now') ON CONFLICT DO NOTHING",
     );
     await f.assign("A1");
     const recorded = await recordAssignmentError(f.db as never, "A1", {
@@ -255,7 +255,7 @@ describe("ProviderFailure persistence, credential boundary, and isolation", () =
   it("returns decrypted details only through authorized Work reads", async () => {
     const f = await conversationFixture({ failureDetailsSnapshot: true });
     await f.sqlite.exec(
-      "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('M','P','U','owner','now','now')",
+      "INSERT INTO space_memberships(id,space_id,user_id,role,created_at,updated_at) VALUES('M','P','U','owner','now','now') ON CONFLICT DO NOTHING",
     );
     await f.assign("A1");
     await recordAssignmentError(

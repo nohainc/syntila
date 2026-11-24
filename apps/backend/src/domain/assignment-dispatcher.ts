@@ -28,8 +28,6 @@ import {
   selectSpaceExecutionTarget,
   type ExecutionTarget,
 } from "./scheduler.js";
-import { recordExecutionWorkspaceAudit } from "./workspace-audit.js";
-import { isFeatureEnabled } from "../feature-flags.js";
 import { dispatchWorkerAssignment } from "./worker-dispatch.js";
 import type { WorkerTargetSnapshot } from "./worker-eligibility.js";
 import { tryLogDiagnosticEvent } from "./observability.js";
@@ -43,7 +41,6 @@ import {
   beginAssignmentRevocation,
   deliverRevocation,
   escalateUnconfirmedRevocations,
-  finalizeRevocationsOfRevokedRuntimes,
   revokeAssignment,
   type RevocationEnv,
   type RevocationIntent,
@@ -224,7 +221,6 @@ export interface TaskToDispatch {
 }
 
 export interface DispatchAssignmentParams {
-  readonly workspaceId: string;
   readonly runId: string;
   readonly taskId: string;
   readonly task: TaskToDispatch;
@@ -277,729 +273,7 @@ export interface AssignmentDispatcherEnv {
   readonly SYNTILA_WORKER_GATEWAY?: DurableObjectNamespace;
 }
 
-/**
- * Selects an eligible, online Worker matching task requirements and policy.
- * Queue admission is durable; the Workspace Service enforces the returned
- * effective capacity before it starts a process.
- */
-async function dispatchWorkspaceWorkerAssignment(
-  env: AssignmentDispatcherEnv,
-  params: DispatchAssignmentParams,
-  readinessRechecked = false,
-): Promise<DispatchAssignmentResult> {
-  const { runId, taskId, task } = params;
-  // Readiness can change after selection but before the waiter is registered.
-  // Recheck once after registration; a later change will wake the waiter.
-  const becameReady = async (workspaceId: string): Promise<boolean> => {
-    if (readinessRechecked || !workspaceId || !env.SYNTILA_WORKSPACE_GATEWAY) return false;
-    try {
-      const ns = env.SYNTILA_WORKSPACE_GATEWAY;
-      const response = await ns.get(ns.idFromName(workspaceId)).fetch("http://gateway/status");
-      if (!response.ok) return false;
-      const state = await response.json() as { online?: boolean; readyForAssignments?: boolean; executionWorkspaceId?: string };
-      return state.online === true && state.readyForAssignments === true && state.executionWorkspaceId === workspaceId;
-    } catch { return false; }
-  };
-  const admissionStarted = Date.now();
-  let mark = admissionStarted;
-  const timing = (status: string, workspaceId?: string) => {
-    const now = Date.now();
-    tryLogDiagnosticEvent({ component: "cloud", operation: "assignment", stage: "admission", severity: "info", retryable: false,
-      requestId: task.workRequestId, workspaceId, runId, taskId,
-      context: { status, durationMs: Math.max(0, now - mark) } });
-    mark = now;
-  };
-  let rejectionReasons: readonly string[] = [];
-  const target = await selectSpaceExecutionTarget(
-    dataOf(env).read,
-    {
-      spaceId: task.spaceId!,
-      requesterUserId: task.requestedByUserId!,
-      role: task.role,
-      capabilities: task.capabilities ?? [],
-      workspaceId: params.workspaceId || undefined,
-      workerId: params.explicitWorkerId,
-      excludeIndependenceKeys: params.excludeIndependenceKeys,
-      model: task.model,
-      reasoningEffort: task.reasoningEffort,
-      executionClass: task.executionClass,
-      readOnly: task.readOnly,
-      threadId: task.threadId,
-      workRequestId: task.workRequestId,
-      workBindingId: task.workBindingId,
-      allowQueue: true,
-    },
-    new Date(),
-    async (workspaceId, runtimeIdentityId) => {
-      const gatewayNamespace = env.SYNTILA_WORKSPACE_GATEWAY;
-      if (!gatewayNamespace) return false;
-      const gateway = gatewayNamespace.get(
-        gatewayNamespace.idFromName(workspaceId),
-      );
-      const response = await gateway.fetch("http://gateway/status");
-      if (!response.ok) return false;
-      const status = (await response.json()) as {
-        online?: boolean;
-        readyForAssignments?: boolean;
-        // `online` describes the logical runtime session. Transport is
-        // diagnostic only; both WebSocket and long-poll are dispatchable.
-        activeTransport?: "websocket" | "http_long_poll" | null;
-        workspaceRuntimeId?: string | null;
-        executionWorkspaceId?: string | null;
-      };
-      if (
-        status.online !== true ||
-        status.workspaceRuntimeId !== runtimeIdentityId ||
-        status.executionWorkspaceId !== workspaceId
-      ) {
-        return false;
-      }
-      // Liveness is not readiness: a Service that is still synchronizing, or
-      // paused/draining, is connected but must not be handed a command.
-      return status.readyForAssignments === true ? "ready" : "connected";
-    },
-    (reasons) => {
-      rejectionReasons = reasons;
-    },
-  );
-  timing("target_selection_complete", target?.workspaceId ?? params.workspaceId);
-  // A Workspace that is briefly offline (restart, update, reconnect) is a
-  // transient condition: wait durably for it, as for a Service that is not
-  // ready yet, instead of failing the step on the first dispatch.
-  if (!target && rejectionReasons.includes("workspace_offline")) {
-    await recordExecutionWaiter(dataOf(env).read, {
-      taskId,
-      requesterUserId: task.requestedByUserId!,
-      runId,
-      workRequestId: task.workRequestId,
-      reason: "workspace_not_ready",
-    });
-    timing("readiness_waiter_recorded", params.workspaceId);
-    if (await becameReady(params.workspaceId)) return dispatchWorkspaceWorkerAssignment(env, params, true);
-    return deferredDispatch("workspace_not_ready");
-  }
-  if (!target) {
-    tryLogDiagnosticEvent({
-      requestId: task.workRequestId,
-      workspaceId: params.workspaceId,
-      runId,
-      taskId,
-      component: "cloud",
-      operation: "assignment",
-      stage: "admission",
-      severity: "warning",
-      errorCode: "worker_not_ready",
-      retryable: true,
-      context: { status: "no_eligible_worker" },
-    });
-    return {
-      assignmentId: "",
-      attemptId: "",
-      workerId: "",
-      workspaceRuntimeId: "",
-      workerCatalogId: "",
-      status: "failed",
-      accepted: false,
-      error:
-        "No Workspace-owned Worker satisfied the active Workspace Grant, execution policy, readiness, capacity, and permission filters" +
-        (rejectionReasons.length ? `: ${rejectionReasons.join("; ")}` : ""),
-    };
-  }
-  // A Free requester's slot is not held while the Service is only connected
-  // (synchronizing, paused or draining): wait for readiness without a slot.
-  // Plus has no slot to protect, so its work still queues behind the Service.
-  const workspaceState = target.selectionExplanation.workspace as
-    { readiness?: unknown } | undefined;
-  if (
-    workspaceState?.readiness === "connected" &&
-    !(await isPaidRequester(dataOf(env).read, task.requestedByUserId!))
-  ) {
-    await recordExecutionWaiter(dataOf(env).read, {
-      taskId,
-      requesterUserId: task.requestedByUserId!,
-      runId,
-      workRequestId: task.workRequestId,
-      reason: "workspace_not_ready",
-    });
-    timing("readiness_waiter_recorded", target.workspaceId);
-    if (await becameReady(target.workspaceId)) return dispatchWorkspaceWorkerAssignment(env, params, true);
-    return deferredDispatch("workspace_not_ready");
-  }
-  const now = new Date().toISOString();
-  const attemptNumber = params.explicitAttemptNumber ?? 1;
-  const randomPart = crypto.randomUUID().slice(0, 8);
-  const attemptId = `att-${taskId}-${attemptNumber}-${Date.now()}-${randomPart}`;
-  const assignmentId = `asg-${taskId}-${attemptNumber}-${Date.now()}-${randomPart}`;
-  const idempotencyKey = `idem-${assignmentId}`;
-  tryLogDiagnosticEvent({
-    requestId: task.workRequestId,
-    assignmentId,
-    workspaceId: target.workspaceId,
-    workerId: target.workerId,
-    workerTypeId: target.workerTypeId,
-    runId,
-    taskId,
-    attemptId,
-    workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-    component: "cloud",
-    operation: "assignment",
-    stage: "admission",
-    severity: "info",
-    retryable: false,
-    context: {
-      engineVersion: target.engineVersion,
-      ...(target.model ? { modelId: target.model } : {}),
-      ...(target.reasoningEffort ? { effort: target.reasoningEffort } : {}),
-      ...(typeof target.selectionExplanation.source === "string"
-        ? { selectionSource: target.selectionExplanation.source }
-        : {}),
-    },
-  });
-  const timeoutMs = task.timeoutMs || 15 * 60_000;
-  const queueWaitTimeoutMs =
-    task.queueWaitTimeoutMs ?? DEFAULT_QUEUE_WAIT_TIMEOUT_MS;
-  if (
-    !Number.isSafeInteger(queueWaitTimeoutMs) ||
-    queueWaitTimeoutMs < 1_000 ||
-    queueWaitTimeoutMs > 2_147_483_647
-  ) {
-    throw new Error(
-      "Assignment queueWaitTimeoutMs is outside the allowed range",
-    );
-  }
-  const sessionPolicy = task.sessionPolicy as string;
-  const sessionKey = task.sessionKey;
-  const assignmentInput = { ...(task.input ?? {}) };
-  // This optional representation is only consumed by MCP External Workers.
-  if (!target.workerTypeId.startsWith("plugin-"))
-    delete assignmentInput.externalWorkerConversation;
-  delete assignmentInput.sessionPolicy;
-  delete assignmentInput.sessionKey;
-  delete assignmentInput.additionalFolderIds;
-  const additionalFolderIds = await loadAssignmentAdditionalFolderIds(
-    env.SYNTILA_DB,
-    target.spaceId,
-    target.workspaceId,
-  );
-  if (additionalFolderIds.length > 0)
-    assignmentInput.additionalFolderIds = additionalFolderIds;
-  let bootstrap;
-  if (target.conversationId) {
-    const requestId = target.workRequestId ?? task.workRequestId;
-    if (!requestId)
-      throw new Error("Conversation bootstrap requires a Work request");
-    try {
-      bootstrap = await loadConversationBootstrap(
-        env.SYNTILA_DB,
-        target.conversationId,
-        requestId,
-        target.baseContextRevision ?? 0,
-        sessionPolicy === "stateless" ? "stateless" : "bootstrap",
-        taskId,
-      );
-    } catch (error) {
-      if (!(error instanceof ContextLimitError)) throw error;
-      return {
-        assignmentId: "",
-        attemptId: "",
-        workerId: target.workerId,
-        workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-        workerCatalogId: "",
-        status: "failed",
-        accepted: false,
-        error: "context_limit_exceeded",
-      };
-    }
-  }
-  const snapshot = {
-    ...target.permissionSnapshot,
-    ...(bootstrap
-      ? {
-          contextSnapshot: {
-            schemaVersion: 1,
-            baseContextRevision: bootstrap.contextRevision,
-            turnRevision: bootstrap.turnRevision,
-            throughSequence: bootstrap.throughSequence,
-            digest: createHash("sha256").update(bootstrap.text).digest("hex"),
-          },
-        }
-      : {}),
-    selectionExplanation: target.selectionExplanation,
-    baseContextRevision: target.baseContextRevision ?? 0,
-    workerSessionId: conversationWorkerSessionReference(
-      target,
-      sessionPolicy,
-      sessionKey,
-    ),
-  };
-  timing("assignment_preparation_complete", target.workspaceId);
-  // The Free concurrency limit counts the requester's live assignments:
-  // admissions of one requester run one at a time (lock first, same
-  // transaction), or two parallel dispatches could both take the last slot.
-  const insertion = await dataOf(env).tx("assignment.admit", async (tx) => {
-    await tx.lock("syntila.execution_slots", task.requestedByUserId ?? "");
-    const created = new Date().toISOString();
-    const assignmentJson = JSON.stringify(assignmentInput);
-    return tx.row<{ id: string }>`INSERT INTO worker_assignments
-       (id, space_id, execution_workspace_id, workspace_space_grant_id,
-        run_id, task_id, attempt_id, requested_by_user_id, runtime_identity_id,
-        worker_type_id, workspace_worker_id, engine_version,
-        model, config_json, effective_permissions_json,
-        permission_snapshot_json, timeout_ms, queue_wait_timeout_ms,
-        session_policy, idempotency_key, status,
-        input_json, created_at, updated_at)
-     SELECT ${assignmentId}::text, ${target.spaceId}::text, ${target.workspaceId}::text, ${target.workspaceSpaceGrantId ?? null}::text, ${runId}::text, ${taskId}::text, ${attemptId}::text, ${task.requestedByUserId ?? null}::text, ${target.workspaceRuntimeIdentityId ?? null}::text, ${target.workerTypeId}::text, ${target.workerId ?? null}::text, ${target.engineVersion ?? null}::text,
-            ${target.model ?? null}::text, ${assignmentJson}::text, ${JSON.stringify(target.effectivePermissions)}::text, ${JSON.stringify(snapshot)}::text, ${timeoutMs ?? null}::bigint, ${queueWaitTimeoutMs ?? null}::bigint, ${sessionPolicy ?? null}::text, ${idempotencyKey}::text, 'created', ${assignmentJson}::text, ${created}::timestamptz, ${created}::timestamptz
-      WHERE ${executionSlotAdmission(tx, task.requestedByUserId ?? "", taskId, waiterCutoff())}
-        AND ${pluginAssignmentAdmission(tx, target.workerTypeId, target.workspaceId)}
-     RETURNING id`;
-  });
-  timing("assignment_admission_transaction_complete", target.workspaceId);
-  // D1 meta.changes includes writes made by triggers. Only the row returned
-  // by this INSERT proves admission; an ignored/rejected insert returns none.
-  if (
-    insertion?.id !== assignmentId &&
-    (await executionSlotRefused(
-      dataOf(env).read,
-      task.requestedByUserId!,
-      taskId,
-    ))
-  ) {
-    // The requester's Free allowance (or an earlier waiting request) refused
-    // the reservation. Nothing was written; the task waits durably in order.
-    await recordExecutionWaiter(dataOf(env).read, {
-      taskId,
-      requesterUserId: task.requestedByUserId!,
-      runId,
-      workRequestId: task.workRequestId,
-      reason: "account_concurrency_limit",
-    });
-    tryLogDiagnosticEvent({
-      requestId: task.workRequestId,
-      workspaceId: target.workspaceId,
-      runId,
-      taskId,
-      component: "cloud",
-      operation: "assignment",
-      stage: "admission",
-      severity: "info",
-      errorCode: "account_concurrency_limit",
-      retryable: true,
-      context: { status: "waiting_for_account_slot" },
-    });
-    return deferredDispatch("account_concurrency_limit");
-  }
-  if (
-    insertion?.id !== assignmentId &&
-    (await pluginEntitlementRefused(
-      env.SYNTILA_DB,
-      target.workspaceId,
-      target.workerTypeId,
-    ))
-  ) {
-    // The plan lapsed between scheduling and admission. Nothing was written.
-    tryLogDiagnosticEvent({
-      requestId: task.workRequestId,
-      assignmentId,
-      workspaceId: target.workspaceId,
-      workerId: target.workerId,
-      workerTypeId: target.workerTypeId,
-      runId,
-      taskId,
-      attemptId,
-      component: "cloud",
-      operation: "assignment",
-      stage: "admission",
-      severity: "info",
-      errorCode: "plugin_entitlement_required",
-      retryable: false,
-    });
-    return {
-      assignmentId: "",
-      attemptId: "",
-      workerId: "",
-      workspaceRuntimeId: "",
-      workerCatalogId: "",
-      status: "failed",
-      accepted: false,
-      error: "Custom Worker plugins require an active Syntila Plus plan",
-    };
-  }
-  if (insertion?.id !== assignmentId) {
-    tryLogDiagnosticEvent({
-      requestId: task.workRequestId,
-      assignmentId,
-      workspaceId: target.workspaceId,
-      workerId: target.workerId,
-      workerTypeId: target.workerTypeId,
-      runId,
-      taskId,
-      attemptId,
-      workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-      component: "cloud",
-      operation: "assignment",
-      stage: "admission",
-      severity: "warning",
-      errorCode: "worker_concurrency_limit",
-      retryable: true,
-      context: { status: "capacity_claim_lost_race" },
-    });
-    return {
-      assignmentId: "",
-      attemptId: "",
-      workerId: "",
-      workspaceRuntimeId: "",
-      workerCatalogId: "",
-      status: "failed",
-      accepted: false,
-      error: "Worker capacity was claimed by another assignment",
-    };
-  }
-  await clearExecutionWaiter(dataOf(env).read, taskId);
-  const workRequestId = target.workRequestId ?? task.workRequestId;
-  if (workRequestId) {
-    const cancellation = await dataOf(env).read.row<{ cancel_requested_at: string | null }>`SELECT cancel_requested_at FROM work_requests WHERE id = ${workRequestId} AND status IN ('running', 'cancelled')`;
-    if (cancellation?.cancel_requested_at) {
-      await recordAssignmentCancelled(env.SYNTILA_DB, assignmentId, {
-        status: "cancelled",
-        reason: "Work Request cancellation was requested before dispatch",
-      });
-      return {
-        assignmentId,
-        attemptId,
-        workerId: target.workerId,
-        workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-        workerCatalogId: target.workerTypeId,
-        status: "cancelled",
-        accepted: false,
-        error: "Work assignment cancelled before dispatch",
-      };
-    }
-  }
-  const workspaceOwner = await dataOf(env).read.row<{ owner_user_id: string }>`SELECT owner_user_id FROM execution_workspaces WHERE id = ${target.workspaceId}`;
-  if (workspaceOwner) {
-    await recordExecutionWorkspaceAudit(dataOf(env).read, {
-      workspaceId: target.workspaceId,
-      ownerUserId: workspaceOwner.owner_user_id,
-      actorType: "user",
-      actorId: task.requestedByUserId!,
-      action: "execution.assignment.dispatched",
-      targetType: "worker_assignment",
-      targetId: assignmentId,
-      details: {
-        spaceId: target.spaceId,
-        workerId: target.workerId,
-        grantId: target.workspaceSpaceGrantId,
-      },
-    });
-  }
-  const payload = {
-    snapshot: {
-      assignmentId,
-      objective: task.objective,
-      role: task.role,
-      contextArtifactIds: task.contextArtifactIds ?? [],
-      threadId: target.threadId ?? task.threadId,
-      workRequestId: target.workRequestId ?? task.workRequestId,
-      leaseId: target.leaseId ?? task.leaseId,
-      fencingToken: target.fencingToken ?? task.fencingToken,
-      executionClass: target.executionClass,
-      readOnly: target.readOnly,
-      executionWorkspaceId: target.workspaceId,
-      workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-      spaceId: target.spaceId,
-      ...(task.spaceName ? { spaceName: task.spaceName } : {}),
-      ...(task.spaceOwnerUserId
-        ? { spaceOwnerUserId: task.spaceOwnerUserId }
-        : {}),
-      ...(task.spaceFolderAdoptionConfirmed === true
-        ? { spaceFolderAdoptionConfirmed: true }
-        : {}),
-      ...(task.contextCompaction === true && sessionPolicy === "durable_session"
-        ? { contextCompaction: true }
-        : {}),
-      runId,
-      taskId,
-      attemptId,
-      requestedByUserId: task.requestedByUserId,
-      workerId: target.workerId,
-      workerTypeId: target.workerTypeId,
-      engineVersion: target.engineVersion,
-      profileDefinitionId: target.profileDefinitionId,
-      profileReleaseVersion: target.profileReleaseVersion,
-      providerToolName: target.providerToolName,
-      providerToolVersion: target.providerToolVersion,
-      executionSelection: target.permissionSnapshot.executionSelection,
-      model: target.model,
-      // Null is the resolved provider default, never permission to reuse a task override.
-      reasoningEffort: target.reasoningEffort ?? null,
-      config: assignmentInput,
-      permissions: target.effectivePermissions,
-      permissionSnapshot: snapshot,
-      contextRefs: (task.contextArtifactIds ?? []).map((artifactId) => ({
-        artifactId,
-      })),
-      timeoutMs,
-      queueWaitTimeoutMs,
-      // Replaced at delivery by the Workspace's current slot total: Cloud
-      // admits each assignment against that total before sending it.
-      maxConcurrentAssignments: target.maxConcurrentAssignments,
-      sessionPolicy,
-      ...(sessionKey !== undefined ? { sessionKey } : {}),
-      ...(target.conversationId && sessionPolicy === "durable_session"
-        ? {
-            workerSession: {
-              schemaVersion: 1,
-              id: snapshot.workerSessionId,
-              conversationId: target.conversationId,
-              workerId: target.workerId,
-              baseContextRevision: target.baseContextRevision ?? 0,
-              ...(bootstrap ? { bootstrap } : {}),
-            },
-          }
-        : {}),
-      ...(bootstrap && sessionPolicy === "stateless"
-        ? { statelessContext: bootstrap }
-        : {}),
-      idempotencyKey,
-    },
-    input: assignmentInput,
-  };
-  // Persist the complete command before any delivery attempt. Work for a
-  // Service that is not ready yet then waits in this durable queue and is
-  // flushed, unchanged, when the Service reports ready.
-  // The Worker's command row (ADR-033) is written in the same transaction, so
-  // a command exists before any wakeup and never without its payload. The row
-  // follows the assignment's status from there (trigger in migration 0027).
-  const commandTtlSeconds = Math.max(
-    60,
-    Math.ceil(((Number(queueWaitTimeoutMs) || 0) + (Number(timeoutMs) || 0)) / 1000) || 86_400,
-  );
-  await dataOf(env).tx("assignment.command", async (tx) => {
-    await tx.run`UPDATE worker_assignments SET command_payload_json = ${JSON.stringify(payload)}
-        WHERE id = ${assignmentId} AND status = 'created' AND command_payload_json IS NULL`;
-    await tx.run`INSERT INTO agent_commands
-          (command_id, worker_instance_id, assignment_id, attempt_id, type, payload_ref, expires_at)
-        SELECT ${`cmd-${crypto.randomUUID()}`}, a.worker_instance_id, a.id, ${attemptId},
-               'assignment.dispatch', ${`worker_assignments:${assignmentId}`},
-               now() + make_interval(secs => ${commandTtlSeconds}::int)
-          FROM worker_assignments a WHERE a.id = ${assignmentId}
-        ON CONFLICT (assignment_id, type) DO NOTHING`;
-  });
-  if (!env.SYNTILA_WORKSPACE_GATEWAY) {
-    const code = "provider_unavailable";
-    const error = executionErrorMessage(code);
-    await recordAssignmentError(env.SYNTILA_DB, assignmentId, {
-      error: {
-        code,
-        message: error,
-        retryable: true,
-        details: cloudFailureDiagnostic(
-          "gateway_dispatch",
-          code,
-          "Workspace Gateway is not configured for this assignment",
-        ),
-      },
-      failedAt: now,
-    });
-    tryLogDiagnosticEvent({
-      requestId: task.workRequestId,
-      assignmentId,
-      workspaceId: target.workspaceId,
-      workerId: target.workerId,
-      workerTypeId: target.workerTypeId,
-      runId,
-      taskId,
-      attemptId,
-      workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-      component: "cloud",
-      operation: "assignment",
-      stage: "transport",
-      severity: "error",
-      errorCode: code,
-      retryable: true,
-      context: { status: "gateway_unavailable" },
-    });
-    return {
-      assignmentId,
-      attemptId,
-      workerId: target.workerId,
-      workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-      workerCatalogId: target.workerTypeId,
-      status: "failed",
-      accepted: false,
-      error,
-    };
-  }
-  try {
-    const stub = env.SYNTILA_WORKSPACE_GATEWAY.get(
-      env.SYNTILA_WORKSPACE_GATEWAY.idFromName(target.workspaceId),
-    );
-    // Dispatch through the Workspace Gateway's logical outbound path. The
-    // Gateway writes to its active WebSocket or long-poll event queue.
-    const response = await stub.fetch("http://gateway/dispatch-assignment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        executionWorkspaceId: target.workspaceId,
-        workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-        workerId: target.workerId,
-        runId,
-        taskId,
-        attemptId,
-        assignmentId,
-        idempotencyKey,
-        payload,
-      }),
-    });
-    if (!response.ok)
-      throw new Error(
-        (await response.text()) || `Gateway returned HTTP ${response.status}`,
-      );
-    const delivery = (await response
-      .clone()
-      .json()
-      .catch(() => ({}))) as {
-      delivered?: boolean;
-      queued?: boolean;
-      deliveryState?: string;
-    };
-    if (delivery.queued === true && delivery.delivered !== true) {
-      // The Service is not ready or every slot is taken. Nothing was sent and
-      // nothing was accepted: the assignment stays `created` in the durable
-      // queue until the Service is ready or an assignment finishes.
-      tryLogDiagnosticEvent({
-        requestId: task.workRequestId,
-        assignmentId,
-        workspaceId: target.workspaceId,
-        workerId: target.workerId,
-        workerTypeId: target.workerTypeId,
-        runId,
-        taskId,
-        attemptId,
-        workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-        component: "cloud",
-        operation: "assignment",
-        stage: "dispatch",
-        severity: "info",
-        retryable: true,
-        context: {
-          status: `queued_${delivery.deliveryState ?? "waiting_for_service_ready"}`,
-        },
-      });
-      return {
-        assignmentId,
-        attemptId,
-        workerId: target.workerId,
-        workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-        workerCatalogId: target.workerTypeId,
-        status: "queued",
-        accepted: true,
-      };
-    }
-    const dispatchedAt = new Date().toISOString();
-    await withAssignmentPhase(env, assignmentId, async (txEnv) => {
-      const q = dataOf(txEnv).read;
-      return q.run`UPDATE worker_assignments SET status = 'dispatched', updated_at = ${dispatchedAt}::timestamptz,
-              dispatched_at = COALESCE(dispatched_at, ${dispatchedAt}::timestamptz)
-        WHERE id = ${assignmentId} AND status IN (${q.raw(assignmentSourceStatusList("dispatched"))})`;
-    }, (changed) => changed > 0);
-    tryLogDiagnosticEvent({
-      requestId: task.workRequestId,
-      assignmentId,
-      workspaceId: target.workspaceId,
-      workerId: target.workerId,
-      workerTypeId: target.workerTypeId,
-      runId,
-      taskId,
-      attemptId,
-      workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-      component: "cloud",
-      operation: "assignment",
-      stage: "dispatch",
-      severity: "info",
-      retryable: true,
-      context: { status: "dispatched" },
-    });
-  } catch {
-    const code = "provider_unavailable";
-    const message = executionErrorMessage(code);
-    // The Gateway may have written the command before the response was lost,
-    // so a bare failure could leave a live command behind. Revoke instead
-    // unless the assignment provably never left Cloud.
-    await failOrRevokeDispatch(env, assignmentId, attemptId, {
-      error: {
-        code,
-        message,
-        retryable: true,
-        details: cloudFailureDiagnostic(
-          "gateway_dispatch",
-          code,
-          "Workspace Gateway dispatch did not accept the assignment",
-        ),
-      },
-      failedAt: new Date().toISOString(),
-    });
-    tryLogDiagnosticEvent({
-      requestId: task.workRequestId,
-      assignmentId,
-      workspaceId: target.workspaceId,
-      workerId: target.workerId,
-      workerTypeId: target.workerTypeId,
-      runId,
-      taskId,
-      attemptId,
-      workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-      component: "cloud",
-      operation: "assignment",
-      stage: "transport",
-      severity: "error",
-      errorCode: code,
-      retryable: true,
-      context: { status: "gateway_dispatch_failed" },
-    });
-    return {
-      assignmentId,
-      attemptId,
-      workerId: target.workerId,
-      workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-      workerCatalogId: target.workerTypeId,
-      status: "failed",
-      accepted: false,
-      error: message,
-    };
-  }
-  return {
-    assignmentId,
-    attemptId,
-    workerId: target.workerId,
-    workspaceRuntimeId: target.workspaceRuntimeIdentityId,
-    workerCatalogId: target.workerTypeId,
-    status: "dispatched",
-    accepted: true,
-  };
-}
 
-/**
- * Asks the Workspace Gateway to hand any durably queued `created` assignments
- * to a Service that is now ready. Best effort and idempotent: the Gateway
- * claims each assignment with a conditional write, so it never double-sends.
- */
-export async function nudgeQueuedAssignments(
-  env: AssignmentDispatcherEnv,
-  workspaceId: string,
-): Promise<void> {
-  const namespace = env.SYNTILA_WORKSPACE_GATEWAY;
-  if (!namespace) return;
-  try {
-    await namespace
-      .get(namespace.idFromName(workspaceId))
-      .fetch("http://gateway/flush-queued", { method: "POST" });
-  } catch {
-    // The next poll nudges again; the assignment's queue deadline still bounds
-    // the wait.
-  }
-}
 
 /**
  * Fails an assignment whose dispatch call did not return success. `created`
@@ -1037,7 +311,7 @@ export async function failOrRevokeDispatch(
 }
 
 /**
- * Creates a Worker Assignment in D1 and dispatches the workflow step over the Workspace Gateway.
+ * Creates a Worker Assignment and dispatches the workflow step to its Worker.
  */
 export async function dispatchTaskAssignment(
   env: AssignmentDispatcherEnv,
@@ -1085,30 +359,23 @@ export async function dispatchTaskAssignment(
       error: "Space execution context is required for assignment dispatch",
     };
   }
-  // One path per assignment, fixed by what was accepted. A request accepted for
-  // a Worker never falls back to a Workspace, and the reverse.
-  if (normalizedTask.workerTarget) {
-    if (!isFeatureEnabled("worker_target_dispatch")) {
-      return {
-        assignmentId: "",
-        attemptId: "",
-        workerId: "",
-        workspaceRuntimeId: "",
-        workerCatalogId: "",
-        status: "failed",
-        accepted: false,
-        error: "Worker-targeted dispatch is turned off",
-      };
-    }
-    return dispatchWorkerAssignment(env, {
-      ...params,
-      task: normalizedTask,
-      workerTarget: normalizedTask.workerTarget,
-    });
+  // Every Step names the Worker it was accepted for; there is no other target.
+  if (!normalizedTask.workerTarget) {
+    return {
+      assignmentId: "",
+      attemptId: "",
+      workerId: "",
+      workspaceRuntimeId: "",
+      workerCatalogId: "",
+      status: "failed",
+      accepted: false,
+      error: "The Step has no Worker",
+    };
   }
-  return dispatchWorkspaceWorkerAssignment(env, {
+  return dispatchWorkerAssignment(env, {
     ...params,
     task: normalizedTask,
+    workerTarget: normalizedTask.workerTarget,
   });
 }
 
@@ -1299,7 +566,6 @@ export async function recoverStaleAssignments(
   env?: RevocationEnv,
 ): Promise<number> {
   const nowMs = now.getTime();
-  await finalizeRevocationsOfRevokedRuntimes(db);
   await escalateUnconfirmedRevocations(
     db,
     ASSIGNMENT_REVOCATION_CONFIRMATION_MS,
@@ -1323,10 +589,7 @@ export async function recoverStaleAssignments(
       runningAt: string | null;
       permitIssuedAt: string | null;
       permitRequired: number | null;
-      workspaceStatus: string;
-      workspaceUpdatedAt: string;
-      grantExpiresAt: string | null;
-      grantStatus: string | null;
+      workerOnline: boolean;
       workRequestStatus: string | null;
     }>`SELECT wa.id, wa.status, wa.attempt_id AS "attemptId",
               wa.created_at AS "createdAt",
@@ -1339,18 +602,12 @@ export async function recoverStaleAssignments(
               wa.running_at AS "runningAt",
               wa.start_permit_issued_at AS "permitIssuedAt",
               wa.start_permit_required AS "permitRequired",
-              wa.execution_path AS "executionPath",
-              COALESCE(ew.status, CASE WHEN EXISTS (SELECT 1 FROM worker_agent_sessions s
-                         WHERE s.worker_instance_id = wa.worker_instance_id
-                           AND s.disconnected_at IS NULL AND s.lease_expires_at > now())
-                       THEN 'online' ELSE 'offline' END) AS "workspaceStatus",
-              COALESCE(ew.updated_at, wa.updated_at) AS "workspaceUpdatedAt",
-              g.expires_at AS "grantExpiresAt", g.status AS "grantStatus",
+              EXISTS (SELECT 1 FROM worker_agent_sessions s
+                       WHERE s.worker_instance_id = wa.worker_instance_id
+                         AND s.disconnected_at IS NULL AND s.lease_expires_at > now()) AS "workerOnline",
               wr.status AS "workRequestStatus", wr.workflow_id AS "workflowId",
               wr.workflow_version AS "workflowVersion"
          FROM worker_assignments wa
-         LEFT JOIN execution_workspaces ew ON ew.id = wa.execution_workspace_id
-         LEFT JOIN workspace_space_grants g ON g.id = wa.workspace_space_grant_id
          LEFT JOIN workflow_tasks wt ON wt.id = wa.task_id
          LEFT JOIN work_requests wr ON wr.id = wt.work_request_id
         WHERE wa.status IN (${q.raw(ACTIVE_ASSIGNMENT_STATUS_SQL)})`;
@@ -1394,32 +651,12 @@ export async function recoverStaleAssignments(
         recovered += 1;
       continue;
     }
-    // Recovers a crash after the grant commit but before its assignments
-    // received durable revocation intents. Grant removal never proves a stop.
-    if (row.grantStatus === "revoked") {
-      if (
-        await revoke(row, {
-          status: "cancelled",
-          source: "grant_revoked",
-          reason: "Workspace Space Grant revoked",
-        })
-      )
-        recovered += 1;
-      continue;
-    }
-    const grantExpired =
-      row.grantExpiresAt != null && Date.parse(row.grantExpiresAt) <= nowMs;
     // A `created` assignment was never sent, so it waits in the durable queue
-    // for the Service to return; its queue deadline bounds the wait.
-    const workspaceDisconnected =
+    // for the Agent to return; its queue deadline bounds the wait.
+    const workerDisconnected =
       row.status !== "created" &&
-      row.workspaceStatus !== "online" &&
-      nowMs -
-        Math.max(
-          Date.parse(row.updatedAt),
-          Date.parse(row.workspaceUpdatedAt),
-        ) >=
-        30_000;
+      !row.workerOnline &&
+      nowMs - Date.parse(row.updatedAt) >= 30_000;
     // Each phase measures from its own event (see currentAssignmentDeadline),
     // so queue wait and startup no longer inherit time already spent in
     // delivery, and provider execution counts from provider start rather than
@@ -1444,47 +681,33 @@ export async function recoverStaleAssignments(
       nowMs,
     );
     const executionExpired = violation != null;
-    if (!grantExpired && !workspaceDisconnected && !executionExpired) {
+    if (!workerDisconnected && !executionExpired) {
       continue;
     }
-    const code = grantExpired
-      ? "provider_unavailable"
-      : workspaceDisconnected
-        ? "provider_unavailable"
-        : "timeout";
-    const message = grantExpired
-      ? "The Workspace execution lease expired before the assignment completed."
-      : workspaceDisconnected
-        ? "The Workspace disconnected before the assignment completed."
-        : violation?.phase === "readiness_wait"
-          ? "The Workspace Service was not ready to accept the assignment in time."
-          : violation?.phase === "queue_wait"
-            ? "The assignment waited in the Workspace queue longer than its queue wait limit."
-            : violation?.phase === "startup"
-              ? "The Workspace was cleared to start the assignment but did not report the provider as started."
-              : violation?.phase === "command_delivery"
-                ? "The Workspace did not acknowledge the assignment in time."
-                : "The assignment exceeded its execution deadline.";
+    const code = workerDisconnected ? "provider_unavailable" : "timeout";
+    const message = workerDisconnected
+      ? "The Worker disconnected before the assignment completed."
+      : violation?.phase === "readiness_wait"
+        ? "The Worker was not ready to accept the assignment in time."
+        : violation?.phase === "queue_wait"
+          ? "The assignment waited in the Worker's queue longer than its queue wait limit."
+          : violation?.phase === "startup"
+            ? "The Worker was cleared to start the assignment but did not report the provider as started."
+            : violation?.phase === "command_delivery"
+              ? "The Worker did not acknowledge the assignment in time."
+              : "The assignment exceeded its execution deadline.";
     if (
       await revoke(row, {
         status: code === "timeout" ? "timed_out" : "failed",
         reason: message,
-        source: grantExpired
-          ? "grant_expired"
-          : workspaceDisconnected
-            ? "workspace_disconnected"
-            : "execution_deadline",
+        source: workerDisconnected ? "worker_disconnected" : "execution_deadline",
         failure: {
           error: {
             code,
             message,
             retryable: true,
             details: cloudFailureDiagnostic(
-              grantExpired
-                ? "workspace_lease"
-                : workspaceDisconnected
-                  ? "workspace_disconnect"
-                  : "execution_timeout",
+              workerDisconnected ? "worker_disconnect" : "execution_timeout",
               code,
               message,
             ),
@@ -1500,20 +723,18 @@ export async function recoverStaleAssignments(
 }
 
 /**
- * Cancels a task assignment across Cloud and Workspace. The assignment becomes
- * `cancelled` only when the Workspace confirms the process stopped (or never
+ * Cancels a task assignment across Cloud and its Worker. The assignment becomes
+ * `cancelled` only when the Agent confirms the process stopped (or never
  * started); otherwise it stays `revocation_pending`/`reconciling` and the
  * caller must treat the cancellation as unconfirmed and retry it.
  */
 export async function cancelTaskAssignment(
   env: AssignmentDispatcherEnv,
-  workspaceId: string | null,
   assignmentId: string,
   reason: string,
 ): Promise<{ cancelled: boolean }> {
   const row = await dataOf(env).read.row<{ status: string; attempt_id: string }>`SELECT status, attempt_id
-       FROM worker_assignments
-      WHERE id = ${assignmentId} AND execution_workspace_id IS NOT DISTINCT FROM ${workspaceId}::text`;
+       FROM worker_assignments WHERE id = ${assignmentId}`;
   if (!row) return { cancelled: false };
   if (row.status === "cancelled") return { cancelled: true };
   if (["completed", "failed", "timed_out", "lost"].includes(row.status))
@@ -1526,37 +747,4 @@ export async function cancelTaskAssignment(
   return { cancelled: result.confirmed };
 }
 
-/**
- * Folder IDs the Space owner attached on this Workspace. Only IDs travel; the
- * Workspace maps them to local paths and re-checks access before launch. The
- * owner check is repeated here so a Space that changed hands never sends the
- * previous owner's folders.
- */
-export async function loadAssignmentAdditionalFolderIds(
-  db: Db,
-  spaceId: string | null | undefined,
-  workspaceId: string,
-): Promise<string[]> {
-  if (!spaceId) return [];
-  const rows = await queryOf(db).rows<{ folderId: string }>`SELECT a.folder_id AS "folderId"
-         FROM space_additional_folders a
-         JOIN workspace_allowed_folders f
-           ON f.workspace_id = a.workspace_id AND f.folder_id = a.folder_id
-         JOIN spaces s ON s.id = a.space_id
-         JOIN execution_workspaces w
-           ON w.id = a.workspace_id AND w.owner_user_id = s.owner_user_id
-        WHERE a.space_id = ${spaceId} AND a.workspace_id = ${workspaceId}
-        ORDER BY a.folder_id`;
-  return rows.map((row) => row.folderId);
-}
 
-/** True when the Worker is a plugin whose Workspace owner is not entitled. */
-async function pluginEntitlementRefused(
-  db: Db,
-  workspaceId: string,
-  workerTypeId: string,
-): Promise<boolean> {
-  const q = queryOf(db);
-  const row = await q.row<{ refused: number }>`SELECT CASE WHEN ${pluginAssignmentAdmission(q, workerTypeId, workspaceId)} THEN 0 ELSE 1 END AS refused`;
-  return row?.refused === 1;
-}

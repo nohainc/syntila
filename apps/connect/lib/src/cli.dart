@@ -17,6 +17,7 @@ import 'engine.dart';
 import 'folders.dart';
 import 'gui_manifest.dart';
 import 'identity.dart';
+import 'inputs.dart';
 import 'journal.dart';
 import 'lock.dart';
 import 'mcp_worker_allow_list.dart';
@@ -488,6 +489,10 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       paths.profilesDir,
       SignedProfileVerifier(parseProfileTrustRoots(roots)),
     );
+    final inputs = InputDelivery(
+      cloud: HttpInputCloud(identity.serverUrl, workerId: identity.workerId),
+      store: InputStore(paths.inputsDir),
+    );
     final runtime = await AgentRuntime.open(
       paths: paths,
       identity: identity,
@@ -505,6 +510,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
               mcpRoot: machineRoot,
               workRootPath: resolvedWorkRoot,
               folders: machineFolders,
+              inputs: inputs,
             ),
             deviceId: device.deviceId,
             logFile: paths.logFile,
@@ -515,6 +521,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       mcpWorkerRunner: _mcpRunner(machineRoot),
       device: device,
       folders: machineFolders,
+      inputs: inputs,
       clientVersion: agentVersion,
     );
     await recoverPendingRotation(
@@ -569,6 +576,7 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
     required Directory mcpRoot,
     String? workRootPath,
     AllowedFolders? folders,
+    InputDelivery? inputs,
   }) {
     final engineExe = _resolveEngineExecutable();
     if (engineExe == null) return UnconfiguredEngineLauncher();
@@ -587,6 +595,10 @@ Select a Worker with --worker ID or --data-dir DIR (or SYNTILA_WORKER_DATA_DIR).
       folders: folders,
       fullAccess: () async =>
           (await AgentConfig.load(paths.configFile)).fullAccess,
+      placeInputs: inputs == null
+          ? null
+          : (directory, payload) =>
+                inputs.materialize(directory, payload, inputs.session),
       resolveProfile: (payload) async {
         final digest = payload['profileDigest'];
         final type = payload['workerTypeId'];

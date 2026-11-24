@@ -1,9 +1,7 @@
 # ADR-032: Worker Instance and Actor Identity
 
-- **Status:** Proposed
+- **Status:** Accepted and implemented
 - **Date:** 2026-11-19
-- **Split from:** ADR-031 (D1, D3 identity parts, invariants 1 and 9)
-- **Order:** 1 of 8. It has no dependencies, and every later ADR depends on it.
 - **Related:** ADR-012, ADR-027, ADR-029, `WORKER_PROFILE_V9.md`
 
 ## Context

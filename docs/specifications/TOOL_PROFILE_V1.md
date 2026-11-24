@@ -1,8 +1,8 @@
 # Tool Profile v1 Specification
 
 **Status:** Architecture v8 normative profile contract  
-**Architecture:** [Architecture v8](../architecture/ARCHITECTURE_V8.md)  
-**Decision:** [ADR-018](../decisions/ADR-018-generic-cli-worker-engine-and-tool-profiles.md)
+**Architecture:** Architecture v8  
+**Decision:** ADR-018
 
 ## 1. Purpose
 
@@ -885,7 +885,7 @@ trust roots before signing with it; key IDs cannot be relabeled after signing.
 ## 26. Immutability and Lifecycle
 
 The complete lifecycle state machine and promotion rules are defined by the
-[Tool Profile Lifecycle Specification](TOOL_PROFILE_LIFECYCLE.md).
+Tool Profile Lifecycle Specification.
 
 Once a Profile release is published beyond draft:
 - payload bytes, version, and digest do not change;

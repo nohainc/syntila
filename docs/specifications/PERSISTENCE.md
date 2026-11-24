@@ -179,9 +179,9 @@ Human Product, Workspace Runtime, and Local Worker Protocol contracts have separ
 
 The Work Request, Step, and lease behavior here must match the
 [Work v1 Contract](WORK_V1_CONTRACT.md) and
-[Architecture v8](../architecture/ARCHITECTURE_V8.md). Local directory identity
+Architecture v8. Local directory identity
 and mutation fencing are specified in
-[ADR-011](../decisions/ADR-011-thread-working-directories.md).
+ADR-011.
 
 See [Protocol Boundaries](../architecture/PROTOCOL_BOUNDARIES.md).
 

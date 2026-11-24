@@ -22,8 +22,8 @@ describe("Connect output images", () => {
     await f.sqlite.exec(`${basicThread({ user: "alice", space: "sp", thread: "th" })}
       INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES
         ('worker-mac','','alice','gemini','Mac'), ('worker-linux','','alice','gemini','Linux');
-      INSERT INTO worker_assignments(id,space_id,thread_id,worker_type_id,worker_instance_id,execution_path,worker_snapshot_json,status)
-        VALUES ('asg-1','sp','th','gemini','worker-mac','worker','{}','running');`);
+      INSERT INTO worker_assignments(id,space_id,thread_id,worker_type_id,worker_instance_id,worker_snapshot_json,status)
+        VALUES ('asg-1','sp','th','gemini','worker-mac','{}','running');`);
     for (const [id, key] of [["worker-mac", "a"], ["worker-linux", "b"]] as const)
       await f.sqlite.exec(`INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES ('c-${id}','${id}','${key.repeat(43)}','${key.repeat(64)}');
         INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at)

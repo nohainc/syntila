@@ -20,9 +20,6 @@ import {
   handleCreateDiscussionMessage,
   handleEditDiscussionMessage,
   handleGetDiscussionMessage,
-  handleCreateWorkspaceSpaceGrant,
-  handleUpdateWorkspaceSpaceGrant,
-  handleRevokeWorkspaceSpaceGrant,
 } from "../../src/domain/routes/handlers.js";
 import type { SecurityEnv } from "../../src/domain/routes/handlers.js";
 
@@ -261,11 +258,6 @@ describe("collaboration durable signals", () => {
         expect(row.payload_json).not.toContain("text");
       }
       expect(
-        (await f.sqlite
-          .prepare("SELECT COUNT(*) AS n FROM execution_workspaces")
-          .get())!.n,
-      ).toBe(0);
-      expect(
         f.deliveries
           .filter((item) => item.event.type === "space.deleted")
           .map((item) => item.user)
@@ -278,53 +270,6 @@ describe("collaboration durable signals", () => {
         (await f.sqlite.prepare("SELECT COUNT(*) AS n FROM space_memberships").get())!
           .n,
       ).toBe(0);
-    } finally {
-      await f.sqlite.close();
-    }
-  });
-  it("signals grant creation, editing and revocation on the Space stream", async () => {
-    const f = await fixture();
-    try {
-      const response = await handleCreateSpace(f.request({ name: "P" }), f.env);
-      const { space } = (await response.json()) as {
-        space: { id: string };
-      };
-      await f.sqlite.exec(
-        "INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES('ws','owner','Workspace','online','now','now')",
-      );
-      const granted = await handleCreateWorkspaceSpaceGrant(
-        f.request({ allowedPermissions: ["repository:read"] }),
-        f.env,
-        "ws",
-        space.id,
-      );
-      const { grant } = (await granted.json()) as { grant: { id: string } };
-      await handleUpdateWorkspaceSpaceGrant(
-        f.request({ status: "suspended" }, "PATCH"),
-        f.env,
-        grant.id,
-      );
-      await handleRevokeWorkspaceSpaceGrant(
-        f.request({}, "DELETE"),
-        f.env,
-        grant.id,
-      );
-      const grants = (await f
-        .events())
-        .filter(
-          (row) =>
-            row.event_type === "workspace_space_grant.updated" &&
-            row.stream_kind === "space",
-        );
-      expect(grants).toHaveLength(3);
-      expect(
-        grants.every(
-          (row) =>
-            row.stream_kind === "space" &&
-            row.workspace_id === null &&
-            row.stream_id === space.id,
-        ),
-      ).toBe(true);
     } finally {
       await f.sqlite.close();
     }

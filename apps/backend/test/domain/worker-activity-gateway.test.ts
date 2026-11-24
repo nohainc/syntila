@@ -12,7 +12,7 @@ it("forwards current Worker activity on the Space stream and fences old sessions
     INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at) VALUES ('w','s',1,'c','digest',now()+interval '5 minutes');
     INSERT INTO work_requests(id,thread_id,requested_by_user_id,mode,workflow_id,workflow_version,workflow_snapshot_json,status,input_json,created_at,updated_at) VALUES ('r','th','alice','stateless','chat',1,'{}','running','{}',now(),now());
     INSERT INTO workflow_tasks(id,work_request_id,step_kind,execution_mode,timeout_ms,prompt_profile_version,status,created_at,updated_at) VALUES ('task','r','chat','stateless_read',1000,'v1','running',now(),now());
-    INSERT INTO worker_assignments(id,space_id,worker_instance_id,execution_path,worker_snapshot_json,worker_type_id,status,run_id,task_id,attempt_id,idempotency_key,created_at,updated_at) VALUES ('a','sp','w','worker','{}','chatgpt','running',NULL,'task','att','key',now(),now());`);
+    INSERT INTO worker_assignments(id,space_id,worker_instance_id,worker_snapshot_json,worker_type_id,status,run_id,task_id,attempt_id,idempotency_key,created_at,updated_at) VALUES ('a','sp','w','{}','chatgpt','running',NULL,'task','att','key',now(),now());`);
   // run_id must match the wire and references an existing Run.
   await f.sqlite.exec(`INSERT INTO runs(id,space_id,thread_id,work_request_id,status,created_at,updated_at) VALUES ('run','sp','th','r','running',now(),now()); UPDATE worker_assignments SET run_id='run' WHERE id='a';`);
   const delivered: unknown[] = [];

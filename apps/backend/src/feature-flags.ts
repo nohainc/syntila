@@ -1,34 +1,26 @@
 /**
- * Feature flags for the Worker-first migration (ADR-032 to ADR-039,
- * docs/roadmaps/WORKER_FIRST_IMPLEMENTATION_PHASES.md).
- *
- * Flags are read from one environment variable, `SYNTILA_FEATURE_FLAGS`, a
- * comma-separated list of flag names. Every flag is off unless listed.
- * Rules:
- *  - An unknown name is an error, so a typo cannot silently leave a flag off.
- *  - A flag may only be on when the flags it depends on are on (the phase
- *    graph: a later phase cannot run without the earlier one).
- *  - The value is process-wide and read at boot. Every node of a cluster must
- *    receive the same value: a flag is configuration, never per-node state
- *    (ADR-033 multi-server rules, ADR-039 `cluster_mode` gate).
+ * Feature flags, read from `SYNTILA_FEATURE_FLAGS` (a comma-separated list).
+ * Every flag is off unless listed; an unknown name is an error, so a typo
+ * cannot silently leave a flag off. The value is process-wide and read at
+ * boot; every node of a cluster must receive the same value.
  *
  * This module imports nothing from Bun or the database so it can be used by
  * scripts and tests directly.
  */
 
-/** Flag -> flags that must also be on. Order follows the phase order. */
+/** Flag -> flags that must also be on. */
 export const FEATURE_FLAG_REQUIRES = {
-  worker_identity: [], // P1, ADR-032
-  worker_agent_connect: ["worker_identity"], // P3-P4, ADR-034
-  worker_target_dispatch: ["worker_agent_connect"], // P5, ADR-035
-  workers_ux: ["worker_target_dispatch"], // P6, ADR-035
-  canonical_timeline: ["worker_target_dispatch"], // P7, ADR-036
-  artifact_handoff: ["worker_agent_connect"], // P8, ADR-037
-  unified_gateway: ["worker_agent_connect"], // P9, ADR-038
-  worker_stateful_work: ["worker_target_dispatch"], // ADR-040: stateful Workflows on Worker Agents
-  worker_plugins: ["worker_target_dispatch"], // ADR-041: MCP Workers on Worker Agents
-  cluster_mode: ["unified_gateway"], // P12, ADR-039
+  cluster_mode: [], // ADR-039: more than one backend node
 } as const satisfies Record<string, readonly string[]>;
+
+/**
+ * The Worker-first rollout flags, now always on. `GET /api/features` still
+ * reports them for the web app; delete with that route.
+ */
+export const ALWAYS_ON_FEATURES = [
+  "worker_identity", "worker_agent_connect", "worker_target_dispatch", "workers_ux",
+  "canonical_timeline", "artifact_handoff", "unified_gateway", "worker_stateful_work", "worker_plugins",
+] as const;
 
 export type FeatureFlag = keyof typeof FEATURE_FLAG_REQUIRES;
 
@@ -44,6 +36,8 @@ function isFlag(name: string): name is FeatureFlag {
 export function parseFeatureFlags(raw: string | undefined): ReadonlySet<FeatureFlag> {
   const enabled = new Set<FeatureFlag>();
   for (const name of (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+    // A retired rollout flag in an old environment file is harmless.
+    if ((ALWAYS_ON_FEATURES as readonly string[]).includes(name)) continue;
     if (!isFlag(name)) {
       throw new Error(`Unknown feature flag "${name}" in ${FEATURE_FLAGS_ENV}. Known: ${FEATURE_FLAGS.join(", ")}`);
     }

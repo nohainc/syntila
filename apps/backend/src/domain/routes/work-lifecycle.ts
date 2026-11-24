@@ -185,7 +185,6 @@ export async function handleRetryWorkRequest(
             wr.workflow_id AS "workflowId", wr.workflow_version AS "workflowVersion",
             wr.workflow_snapshot_json AS "workflowSnapshotJson",
             wr.snapshot_json AS "snapshotJson", (SELECT text FROM conversation_history_entries h WHERE h.work_request_id = wr.id AND h.kind = 'user_message' LIMIT 1) AS "canonicalUserText", wr.input_json AS "inputJson",
-            wr.primary_workspace_id AS "primaryWorkspaceId",
             ws.space_id AS "spaceId"
        FROM work_requests wr JOIN threads ws ON ws.id = wr.thread_id
       WHERE wr.id = ${workRequestId}`;
@@ -394,34 +393,21 @@ export async function handleRetryWorkRequest(
   );
   // A Step frozen on a Worker is checked against that Worker, not a Workspace.
   const frozenTarget = frozenWorkerTarget(bindings, workflow, step);
-  if (frozenTarget) {
-    const refused = await recheckWorkerTarget(env, {
-      userId: context.userId,
-      spaceId: String(row.spaceId),
-      threadId: String(row.threadId),
-      definition: workflow,
-      step,
-      target: frozenTarget,
-    });
-    if (refused) return refused;
-  }
-  const eligibility = frozenTarget
-    ? { issues: [] as { message: string }[] }
-    : await validateWorkflowWorkerEligibility(
-        env,
-        String(row.spaceId),
-        String(row.threadId),
-        { ...workflow, steps: [step] },
-        bindings,
-        snapshot.stepExecutionConfigs as
-          Record<string, import("@syntila/core").TurnExecutionConfig> | undefined,
-      );
-  if (eligibility.issues.length > 0) {
+  if (!frozenTarget) {
     return json(
-      { error: "work_request_ineligible", issues: eligibility.issues },
+      { error: "work_request_ineligible", issues: [{ stepKind: step.kind, workerTypeId: null, code: "worker_missing", message: "No Worker is bound to this step." }] },
       { status: 422 },
     );
   }
+  const refused = await recheckWorkerTarget(env, {
+    userId: context.userId,
+    spaceId: String(row.spaceId),
+    threadId: String(row.threadId),
+    definition: workflow,
+    step,
+    target: frozenTarget,
+  });
+  if (refused) return refused;
 
   const latestRuns = await dataOf(env).read.row<{ count: number }>`SELECT COUNT(*) AS count FROM runs WHERE work_request_id = ${workRequestId}`;
   const retryNumber = Math.max(1, Number(latestRuns?.count ?? 1));
@@ -537,7 +523,6 @@ export async function handleRetryWorkRequest(
     runId,
     goalId: workRequestId,
     idempotencyKey: `${workRequestId}-retry-${retryNumber}`,
-    organizationId: String(row.primaryWorkspaceId),
     workRequestId,
     threadId: String(row.threadId),
     spaceId,
@@ -664,7 +649,7 @@ export async function handleGetWorkRequest(
   const taskRows = await dataOf(env).read.rows<Record<string, unknown>>`SELECT wt.id AS "taskId", wt.step_kind AS kind, wt.step_id AS "stepId", wt.status,
             wt.output_json AS "outputJson", wt.error, wt.attempt,
             wt.started_at AS "startedAt", wt.finished_at AS "finishedAt",
-            wa.id AS "assignmentId", wa.workspace_worker_id AS "workerId",
+            wa.id AS "assignmentId", wa.worker_instance_id AS "workerId",
             wa.worker_type_id AS "logicalWorkerTypeId", wa.model AS "assignedModel",
             wa.engine_version AS "engineVersion",
             wa.session_policy AS "sessionPolicy",
@@ -693,12 +678,18 @@ export async function handleGetWorkRequest(
           WHERE wa2.task_id = wt.id
           ORDER BY wa2.created_at DESC, wa2.id DESC LIMIT 1
        )
-       LEFT JOIN workspace_worker_inventory wi ON wi.worker_id = COALESCE(
-         wa.workspace_worker_id,
-         COALESCE((wr.snapshot_json::jsonb #>> syntila_json_path('$.resolvedBindings.' || wt.step_id || '.workerId')),
-           (wr.snapshot_json::jsonb #>> syntila_json_path('$.resolvedBindings.' ||
-           CASE WHEN wr.workflow_id = 'direct' THEN 'direct' ELSE wt.step_kind END || '.workerId')))
-       )
+       LEFT JOIN LATERAL (
+         SELECT w.worker_type_id,
+                (s.models_json::jsonb ->> 'providerToolName') AS provider_tool_name,
+                (s.models_json::jsonb ->> 'providerToolVersion') AS provider_tool_version
+           FROM worker_instances w
+           LEFT JOIN worker_agent_sessions s ON s.worker_instance_id = w.id
+          WHERE w.id = COALESCE(
+            wa.worker_instance_id,
+            (wr.snapshot_json::jsonb #>> syntila_json_path('$.resolvedBindings.' || wt.step_id || '.workerId')),
+            (wr.snapshot_json::jsonb #>> syntila_json_path('$.resolvedBindings.' ||
+              CASE WHEN wr.workflow_id = 'direct' THEN 'direct' ELSE wt.step_kind END || '.workerId')))
+       ) wi ON true
        LEFT JOIN worker_catalog
          ON worker_catalog.worker_type_id = COALESCE(
            wa.worker_type_id, wi.worker_type_id
@@ -1132,13 +1123,8 @@ export async function handleListWorkRequests(
   }
   const desiredWorkers = new Map<string, Record<string, unknown>>();
   if (desiredWorkerIds.size > 0) {
-    const workerRows = await read.rows<Record<string, unknown>>`SELECT worker_id AS "workerId", worker_type_id AS "workerTypeId",
-              engine_version AS "engineVersion",
-              profile_definition_id AS "profileDefinitionId",
-              profile_release_version AS "profileReleaseVersion",
-              provider_tool_name AS "providerToolName",
-              provider_tool_version AS "providerToolVersion"
-         FROM workspace_worker_inventory WHERE worker_id IN ${read.list([...desiredWorkerIds])}`;
+    const workerRows = await read.rows<Record<string, unknown>>`SELECT id AS "workerId", worker_type_id AS "workerTypeId"
+         FROM worker_instances WHERE id IN ${read.list([...desiredWorkerIds])}`;
     for (const worker of workerRows) {
       desiredWorkers.set(String(worker.workerId), worker);
     }
@@ -1155,7 +1141,7 @@ export async function handleListWorkRequests(
             (SELECT aw.reason FROM account_execution_waiters aw
               WHERE aw.task_id = wt.id) AS "waitReason",
             wa.running_at AS "runningAt", wa.startup_stage AS "startupStage",
-            wa.id AS "assignmentId", wa.workspace_worker_id AS "workerId",
+            wa.id AS "assignmentId", wa.worker_instance_id AS "workerId",
             wa.cloud_queue_reason AS "cloudQueueReason",
             wa.worker_type_id AS "logicalWorkerTypeId",
             wa.model AS "assignedModel",
@@ -1173,12 +1159,18 @@ export async function handleListWorkRequests(
           WHERE wa2.task_id = wt.id
           ORDER BY wa2.created_at DESC, wa2.id DESC LIMIT 1
        )
-       LEFT JOIN workspace_worker_inventory wi ON wi.worker_id = COALESCE(
-         wa.workspace_worker_id,
-         COALESCE((wr.snapshot_json::jsonb #>> syntila_json_path('$.resolvedBindings.' || wt.step_id || '.workerId')),
-           (wr.snapshot_json::jsonb #>> syntila_json_path('$.resolvedBindings.' ||
-           CASE WHEN wr.workflow_id = 'direct' THEN 'direct' ELSE wt.step_kind END || '.workerId')))
-       )
+       LEFT JOIN LATERAL (
+         SELECT w.worker_type_id,
+                (s.models_json::jsonb ->> 'providerToolName') AS provider_tool_name,
+                (s.models_json::jsonb ->> 'providerToolVersion') AS provider_tool_version
+           FROM worker_instances w
+           LEFT JOIN worker_agent_sessions s ON s.worker_instance_id = w.id
+          WHERE w.id = COALESCE(
+            wa.worker_instance_id,
+            (wr.snapshot_json::jsonb #>> syntila_json_path('$.resolvedBindings.' || wt.step_id || '.workerId')),
+            (wr.snapshot_json::jsonb #>> syntila_json_path('$.resolvedBindings.' ||
+              CASE WHEN wr.workflow_id = 'direct' THEN 'direct' ELSE wt.step_kind END || '.workerId')))
+       ) wi ON true
       WHERE wt.work_request_id IN ${read.list(ids)}
       ORDER BY wt.created_at, wt.id`;
   const tasksByRequest = new Map<string, Record<string, unknown>[]>();
@@ -1528,9 +1520,8 @@ async function cancelWorkRequest(
 
   const active = await dataOf(env).read.row<{
     assignmentId: string;
-    workspaceId: string | null;
     assignmentStatus: string;
-  }>`SELECT wa.id AS "assignmentId", wa.execution_workspace_id AS "workspaceId",
+  }>`SELECT wa.id AS "assignmentId",
             wa.status AS "assignmentStatus"
        FROM workflow_tasks wt
        JOIN worker_assignments wa ON wa.task_id = wt.id
@@ -1540,14 +1531,13 @@ async function cancelWorkRequest(
   if (active) {
     const cancellation = await cancelTaskAssignment(
       env as unknown as AssignmentDispatcherEnv,
-      active.workspaceId,
       active.assignmentId,
       "Work Request cancelled from Work chat",
     );
     if (!cancellation.cancelled)
       throw new HttpError(
         503,
-        "Workspace did not confirm that the Worker process tree stopped. The Run remains active; retry cancellation.",
+        "The Worker did not confirm that its process tree stopped. The Run remains active; retry cancellation.",
       );
   }
 

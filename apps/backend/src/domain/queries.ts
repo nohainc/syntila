@@ -118,9 +118,9 @@ export function spaceWorkflowDefault(q: Query, spaceId: string) {
   return q.row<{ workflowId: string }>`SELECT workflow_id AS "workflowId" FROM space_workflow_defaults WHERE space_id = ${spaceId}`;
 }
 
-/** The default Workflow a user chose for a Workspace. */
-export function userWorkflowDefault(q: Query, userId: string, workspaceId: string) {
-  return q.row<{ workflowId: string }>`SELECT workflow_id AS "workflowId" FROM user_workflow_defaults WHERE user_id = ${userId} AND workspace_id = ${workspaceId}`;
+/** The default Workflow a user chose. */
+export function userWorkflowDefault(q: Query, userId: string) {
+  return q.row<{ workflowId: string }>`SELECT workflow_id AS "workflowId" FROM user_workflow_defaults WHERE user_id = ${userId}`;
 }
 
 /* ------------------------------------------------------------------------

@@ -39,4 +39,4 @@ For publication, Beta/Stable promotion, Workspace assignment, rollback, and revo
 
 ## Activity and verification
 
-Use **Activity** for all events, or filter to the current Worker. Expand an event for raw IDs, reasons, provenance, and details. Use `⌘R` to refresh the active resource. Before live rollout, retain real-provider and Workspace acceptance evidence as required by the [Profile lifecycle contract](../specifications/TOOL_PROFILE_LIFECYCLE.md); deterministic test fixtures do not replace it.
+Use **Activity** for all events, or filter to the current Worker. Expand an event for raw IDs, reasons, provenance, and details. Use `⌘R` to refresh the active resource. Before live rollout, retain real-provider and Workspace acceptance evidence as required by the Profile lifecycle contract; deterministic test fixtures do not replace it.

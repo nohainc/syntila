@@ -223,8 +223,8 @@ export async function startStatefulLease(
             ) + 1
           WHERE id = ${input.threadId}`;
   await q.run`INSERT INTO thread_runtime_leases
-         (id, thread_id, work_request_id, workspace_id, worker_instance_id, fencing_token, status, acquired_at, expires_at)
-         VALUES (${input.leaseId}, ${input.threadId}, ${input.workRequestId}, ${input.workspaceId}, ${input.workerInstanceId ?? null},
+         (id, thread_id, work_request_id, worker_instance_id, fencing_token, status, acquired_at, expires_at)
+         VALUES (${input.leaseId}, ${input.threadId}, ${input.workRequestId}, ${input.workerInstanceId ?? input.workspaceId},
                  (SELECT lease_fence_counter FROM threads WHERE id = ${input.threadId}),
                  'active', ${input.now}::timestamptz, ${input.expiresAt}::timestamptz)`;
 }
@@ -317,7 +317,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
   private async status(): Promise<Response> {
     const threadId = await this.threadId();
     const active = await dataOf(this.env).read.row<CoordinatorLeaseRow>`SELECT id, work_request_id AS "workRequestId",
-              workspace_id AS "workspaceId", fencing_token AS "fencingToken",
+              worker_instance_id AS "workspaceId", fencing_token AS "fencingToken",
               status, expires_at AS "expiresAt"
        FROM thread_runtime_leases
        WHERE thread_id = ${threadId} AND status = 'active'
@@ -510,10 +510,14 @@ export class ThreadExecutionCoordinator implements DurableObject {
         expiresAt: string;
         workspaceStatus: string | null;
       }>`SELECT l.id, l.work_request_id AS "workRequestId",
-              l.acquired_at AS "acquiredAt", l.workspace_id AS "workspaceId",
-              l.expires_at AS "expiresAt", w.status AS "workspaceStatus"
+              l.acquired_at AS "acquiredAt", l.worker_instance_id AS "workspaceId",
+              l.expires_at AS "expiresAt",
+              CASE WHEN EXISTS (
+                SELECT 1 FROM worker_agent_sessions s
+                 WHERE s.worker_instance_id = l.worker_instance_id
+                   AND s.disconnected_at IS NULL AND s.lease_expires_at > now()
+              ) THEN 'online' ELSE 'offline' END AS "workspaceStatus"
          FROM thread_runtime_leases l
-         LEFT JOIN execution_workspaces w ON w.id = l.workspace_id
         WHERE l.thread_id = ${threadId} AND l.status = 'active'`;
     for (const lease of leases) {
       const expired = Date.parse(lease.expiresAt) <= nowMs;
@@ -654,7 +658,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
 
   private async startNext(threadId: string): Promise<void> {
     const rows = await dataOf(this.env).read.rows<CoordinatorRequestRow>`SELECT id, thread_id AS "threadId", mode, status,
-              primary_workspace_id AS "primaryWorkspaceId",
+              NULL::text AS "primaryWorkspaceId",
               primary_worker_instance_id AS "primaryWorkerInstanceId",
               created_at AS "createdAt"
        FROM work_requests WHERE thread_id = ${threadId} AND mode = 'stateful' AND status = 'queued'
@@ -680,7 +684,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
 
   private async requestRow(id: string): Promise<CoordinatorRequestRow | null> {
     return dataOf(this.env).read.row<CoordinatorRequestRow>`SELECT id, thread_id AS "threadId", mode, status,
-              primary_workspace_id AS "primaryWorkspaceId",
+              NULL::text AS "primaryWorkspaceId",
               primary_worker_instance_id AS "primaryWorkerInstanceId",
               created_at AS "createdAt" FROM work_requests WHERE id = ${id}`;
   }
@@ -691,7 +695,7 @@ export class ThreadExecutionCoordinator implements DurableObject {
     token: number,
   ) {
     return dataOf(this.env).read.row<CoordinatorLeaseRow>`SELECT l.id, l.thread_id AS "threadId", l.work_request_id AS "workRequestId",
-              workspace_id AS "workspaceId",
+              l.worker_instance_id AS "workspaceId",
               fencing_token AS "fencingToken", l.status, l.expires_at AS "expiresAt"
        FROM thread_runtime_leases l
        WHERE l.id = ${leaseId} AND l.work_request_id = ${workRequestId} AND l.fencing_token = ${token}`;

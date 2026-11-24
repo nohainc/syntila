@@ -11,8 +11,6 @@ import {
   handleCreateThread,
   handleUpdateThread,
   handleValidateWorkRequest,
-  handleCreateWorkspaceSpaceGrant,
-  handleRevokeWorkspaceSpaceGrant,
   type SecurityEnv,
 } from "../../src/domain/routes/handlers.js";
 import {
@@ -287,68 +285,6 @@ describe("Space member permissions contract v1", () => {
     await expect(
       requireWorkflowPermission(env, "member", "S", "direct"),
     ).resolves.toBeDefined();
-  });
-  it("keeps Workspace grants independent from member permission snapshots", async () => {
-    await store.sqlite.exec(
-      "INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES('W','other','Other workspace','online','now','now')",
-    );
-    await expect(
-      handleCreateWorkspaceSpaceGrant(
-        req("member", { workspaceId: "W", confirmContribution: true }),
-        env,
-        "W",
-        "S",
-      ),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-  it("allows an authorized member to contribute their own Workspace and lets the Space owner revoke it", async () => {
-    await store.sqlite.exec(
-      "INSERT INTO execution_workspaces(id,owner_user_id,name,status,created_at,updated_at) VALUES('W','member','Member workspace','online','now','now')",
-    );
-    await expect(
-      handleCreateWorkspaceSpaceGrant(
-        req("member", { workspaceId: "W" }),
-        env,
-        "W",
-        "S",
-      ),
-    ).rejects.toMatchObject({ status: 400 });
-    const response = await handleCreateWorkspaceSpaceGrant(
-      req("member", {
-        workspaceId: "W",
-        confirmContribution: true,
-        allowedPermissions: [
-          "repository:read",
-          "repository:write",
-          "shell:execute",
-        ],
-      }),
-      env,
-      "W",
-      "S",
-    );
-    expect(response.status).toBe(201);
-    const grant = await store.sqlite
-      .prepare(
-        "SELECT id, status FROM workspace_space_grants WHERE space_id='S' AND workspace_id='W'",
-      )
-      .get() as { id: string; status: string };
-    expect(grant.status).toBe("active");
-    await handleRevokeWorkspaceSpaceGrant(
-      req("owner", {}, "DELETE"),
-      env,
-      grant.id,
-    );
-    expect(
-      await store.sqlite
-        .prepare("SELECT status FROM workspace_space_grants WHERE id=?")
-        .get(grant.id),
-    ).toEqual({ status: "revoked" });
-    expect(
-      await store.sqlite
-        .prepare("SELECT owner_user_id FROM execution_workspaces WHERE id='W'")
-        .get(),
-    ).toEqual({ owner_user_id: "member" });
   });
   it("allows invitations only for the Space owner", async () => {
     await rights("member", { ...none, chat: true, work: true });

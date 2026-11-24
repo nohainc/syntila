@@ -87,21 +87,14 @@ export async function recordAudit(
   targetType: string,
   targetId: string,
   details: Record<string, unknown> = {},
-  resourceWorkspaceId?: string,
+  _resourceWorkspaceId?: string,
 ): Promise<void> {
-  const auditWorkspaceId = resourceWorkspaceId;
-  if (!auditWorkspaceId) {
-    const spaceId =
-      typeof details.spaceId === "string" ? details.spaceId : null;
-    if (!spaceId) return;
-    await dataOf(env).read.run`INSERT INTO space_audit_log
-         (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-       VALUES (${`audit-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(details)}::text::jsonb, ${new Date().toISOString()})`;
-    return;
-  }
-  await dataOf(env).read.run`INSERT INTO workspace_audit_log
-       (id, workspace_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
-     VALUES (${`audit-${crypto.randomUUID()}`}, ${auditWorkspaceId}, 'user', ${context.userId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(details)}::text::jsonb, ${new Date().toISOString()}::timestamptz)`;
+  const spaceId =
+    typeof details.spaceId === "string" ? details.spaceId : null;
+  if (!spaceId) return;
+  await dataOf(env).read.run`INSERT INTO space_audit_log
+       (id, space_id, actor_type, actor_id, action, target_type, target_id, details_json, created_at)
+     VALUES (${`audit-${crypto.randomUUID()}`}, ${spaceId}, 'user', ${context.userId}, ${action}, ${targetType}, ${targetId}, ${JSON.stringify(details)}::text::jsonb, ${new Date().toISOString()})`;
 }
 
 export function errorMessage(error: unknown): string {

@@ -18,9 +18,6 @@ export {
 export {
   handleUploadWorkRequestInput,
   handleFailWorkRequestInputUpload,
-  handleListRuntimeInputs,
-  handleDownloadRuntimeInput,
-  handleConfirmRuntimeInput,
-  handleReportRuntimeInputAttempt,
+  handleDownloadAgentInput,
 } from "./work-request-inputs.js";
-export { handleUploadWorkerOutputImage, handleAgentUploadWorkerOutputImage } from "./worker-output-images.js";
+export { handleAgentUploadWorkerOutputImage } from "./worker-output-images.js";

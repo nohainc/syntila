@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ALWAYS_ON_FEATURES,
   FEATURE_FLAGS,
   FEATURE_FLAGS_ENV,
   FEATURE_FLAG_REQUIRES,
@@ -15,34 +16,17 @@ describe("worker-first feature flags", () => {
   });
 
   test("the flags exist", () => {
-    expect([...FEATURE_FLAGS].sort()).toEqual([
-      "artifact_handoff",
-      "canonical_timeline",
-      "cluster_mode",
-      "unified_gateway",
-      "worker_agent_connect",
-      "worker_identity",
-      "worker_plugins",
-      "worker_stateful_work",
-      "worker_target_dispatch",
-      "workers_ux",
-    ]);
+    expect([...FEATURE_FLAGS].sort()).toEqual(["cluster_mode"]);
   });
 
-  test("a listed flag is on, with whitespace and empty entries ignored", () => {
-    const env = { [FEATURE_FLAGS_ENV]: " worker_identity , ,worker_agent_connect " };
-    expect(isFeatureEnabled("worker_identity", env)).toBe(true);
-    expect(isFeatureEnabled("worker_agent_connect", env)).toBe(true);
-    expect(isFeatureEnabled("workers_ux", env)).toBe(false);
+  test("a listed flag is on, with whitespace, empty entries and retired rollout flags ignored", () => {
+    const env = { [FEATURE_FLAGS_ENV]: ` , ${ALWAYS_ON_FEATURES[0]} , cluster_mode ` };
+    expect(isFeatureEnabled("cluster_mode", env)).toBe(true);
+    expect(parseFeatureFlags(ALWAYS_ON_FEATURES.join(",")).size).toBe(0);
   });
 
   test("an unknown flag name fails instead of being ignored", () => {
-    expect(() => parseFeatureFlags("worker_identity,worker_idenity")).toThrow(/Unknown feature flag "worker_idenity"/);
-  });
-
-  test("a flag cannot be on without the flags it depends on", () => {
-    expect(() => parseFeatureFlags("workers_ux")).toThrow(/requires "worker_target_dispatch"/);
-    expect(() => parseFeatureFlags("cluster_mode,worker_identity,worker_agent_connect")).toThrow(/requires "unified_gateway"/);
+    expect(() => parseFeatureFlags("cluster_mode,worker_idenity")).toThrow(/Unknown feature flag "worker_idenity"/);
   });
 
   test("the full chain is accepted in any order", () => {

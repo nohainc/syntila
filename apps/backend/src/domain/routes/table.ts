@@ -11,8 +11,6 @@
 import { BUILTIN_WORKFLOWS, workflowCatalogEntry } from "@syntila/core";
 import { conditionalJson } from "./conditional-read.js";
 import { handleApprovePlan } from "./implement-plan.js";
-import { handleWorkspaceMcpAction } from "./mcp-action.js";
-import { handleWorkspaceMcpInventory } from "./mcp-inventory.js";
 import { handleLiveCheckoutConfig } from "./paddle-live.js";
 import {
   handleSandboxCheckoutConfig,
@@ -38,26 +36,13 @@ import {
   handleReadReceiptPrivacy,
   handleUploadAvatar,
 } from "./profile.js";
-import { handleSpaceAdditionalFolders } from "./space-additional-folders.js";
 import { handleAgentFolders, handleDeleteDeviceFolders, handleListDeviceFolders, handleSpaceFolder } from "./device-folders.js";
 import { handleThreadRequestQueue } from "./thread-request-queue.js";
 import { handleListSpaceWorkers, handleListWorkersSharedWithMe } from "./workers.js";
 import { handleWorkerPersonShares } from "./worker-space-access.js";
-import { handlePluginLibrary, handleWorkspacePluginPin } from "./worker-plugins.js";
+import { handlePluginLibrary } from "./worker-plugins.js";
 import { handleWorkflowConfigurations } from "./workflow-configurations.js";
 import { handleWorkflowDefault } from "./workflow-default.js";
-import { handleWorkflowWorkspace } from "./workflow-workspace.js";
-import {
-  handleAcceptWorkspaceInvitation,
-  handleDeclineWorkspaceInvitation,
-  handleMyWorkspaceInvitations,
-  handlePersonGrantQuota,
-  handleRevokePersonGrant,
-  handleWorkspaceInvitations,
-} from "./workspace-invitations.js";
-import { handleWorkspaceMemberAccess } from "./workspace-member-access.js";
-import { handlePeopleWithAccess } from "./workspace-people-with-access.js";
-import { handleWorkspaceWorkerPreferences } from "./workspace-worker-preferences.js";
 
 export type RouteMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "*";
 export type RouteHandler = (...args: unknown[]) => Promise<Response>;
@@ -72,7 +57,7 @@ export interface RouteContext {
 
 export interface RouteOptions {
   /**
-   * Called by connected Workspaces or servers with their own credentials,
+   * Called by Connect or servers with their own credentials,
    * not by a browser session: no same-origin check for mutations.
    */
   readonly machine?: boolean;
@@ -179,24 +164,6 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
   const ownReceipt = { idempotent: "handler" } as const;
 
   return [
-    // Connected Workspace: registration and runtime transport.
-    r("POST", "/api/workspace-runtime/register", call("handleRegisterWorkspaceFromDesktop", ctx), machine),
-    r("POST", "/api/workspace-runtime/ownership", call("handleCheckWorkspaceOwnership"), machine),
-    r("POST", "/api/workspace-runtime/ownership/reconcile", call("handleReconcileWorkspaceOwnership"), machine),
-    r("POST", "/api/workspace-runtime/release", call("handleReleaseDesktopWorkspace"), machine),
-    r("POST", "/api/workspace-runtime/disconnect", call("handleDisconnectDesktopWorkspace"), machine),
-    r("POST", "/api/workspace-runtime/sessions", call("handleWorkspaceRuntimeTransport"), machine),
-    r("POST", "/api/workspace-runtime/events", call("handleWorkspaceRuntimeTransport"), machine),
-    r("POST", "/api/workspace-runtime/poll", call("handleWorkspaceRuntimeTransport"), machine),
-    r("POST", "/api/workspace-runtime/sessions/:sessionId/close", call("handleWorkspaceRuntimeTransport"), machine),
-    r("GET", "/api/workspace-runtime/inputs", call("handleListRuntimeInputs")),
-    r("POST", "/api/workspace-runtime/outputs", call("handleUploadWorkerOutputImage"), machine),
-    r("GET", "/api/workspace-runtime/inputs/:fileId/content", call("handleDownloadRuntimeInput", p("fileId"))),
-    r("POST", "/api/workspace-runtime/inputs/:fileId/delivered", call("handleConfirmRuntimeInput", p("fileId")), machine),
-    r("POST", "/api/workspace-runtime/inputs/:fileId/attempt", call("handleReportRuntimeInputAttempt", p("fileId")), machine),
-    r("GET", "/api/workspace-runtime/workers/catalog", call("handleListWorkspaceWorkerCatalog", ctx)),
-    r("GET", "/api/workspace-gateway/connect", call("handleWorkspaceGatewayConnect")),
-
     // Account and people.
     r("GET", "/api/session", call("handleSession", ctx)),
     r("GET", "/api/admin/profile-lab/access", call("handleProfileLabAccess", ctx)),
@@ -237,37 +204,11 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("GET", "/api/admin/issue-reports/:id", call("handleGetAdminIssueReport", p("id"), ctx)),
     r("PATCH", "/api/admin/issue-reports/:id", call("handlePatchAdminIssueReport", p("id"), ctx)),
 
-    // Workspaces.
-    r("GET", "/api/workspaces", call("handleListWorkspaces", ctx)),
-    r("*", "/api/workspaces/:workspaceId/worker-preferences", (c) => handleWorkspaceWorkerPreferences(c.request, c.env, c.params.workspaceId!, c.ctx)),
-    r("*", "/api/workspaces/:workspaceId/member-access", (c) => handleWorkspaceMemberAccess(c.request, c.env, c.params.workspaceId!, c.ctx, undefined)),
-    r("*", "/api/workspaces/:workspaceId/member-access/people/:userId", (c) => handleWorkspaceMemberAccess(c.request, c.env, c.params.workspaceId!, c.ctx, c.params.userId)),
-    r("*", "/api/workspaces/:workspaceId/invitations", (c) => handleWorkspaceInvitations(c.request, c.env, c.params.workspaceId!, undefined, c.ctx)),
-    r("*", "/api/workspaces/:workspaceId/invitations/:invitationId/revoke", (c) => handleWorkspaceInvitations(c.request, c.env, c.params.workspaceId!, c.params.invitationId, c.ctx)),
-    r("*", "/api/workspaces/:workspaceId/people-with-access", (c) => handlePeopleWithAccess(c.request, c.env, c.params.workspaceId!, c.ctx)),
-    r("*", "/api/workspaces/:workspaceId/person-grants/:userId/quota", (c) => handlePersonGrantQuota(c.request, c.env, c.params.workspaceId!, c.params.userId!, c.ctx)),
-    r("*", "/api/workspaces/:workspaceId/person-grants/:userId/revoke", (c) => handleRevokePersonGrant(c.request, c.env, c.params.workspaceId!, c.params.userId!, c.ctx)),
-    r("*", "/api/workspace-invitations", (c) => handleMyWorkspaceInvitations(c.request, c.env, c.ctx)),
-    r("*", "/api/workspace-invitations/:id/accept", (c) => handleAcceptWorkspaceInvitation(c.request, c.env, c.params.id!, c.ctx)),
-    r("*", "/api/workspace-invitations/:id/decline", (c) => handleDeclineWorkspaceInvitation(c.request, c.env, c.params.id!, c.ctx)),
-    r("*", "/api/workspaces/:workspaceId/mcp-inventory", (c) => handleWorkspaceMcpInventory(c.request, c.env, c.params.workspaceId!, c.ctx)),
-    r("*", "/api/workspaces/:workspaceId/mcp-action", (c) => handleWorkspaceMcpAction(c.request, c.env, c.params.workspaceId!, c.ctx)),
-    r("*", "/api/workspaces/:workspaceId/worker-plugins/:pluginRef", (c) => handleWorkspacePluginPin(c.request, c.env, c.params.workspaceId!, c.params.pluginRef!, c.ctx)),
-    r("POST", "/api/workspaces/:workspaceId/delivery-probe", call("handleWorkspaceDeliveryProbe", p("workspaceId"), ctx)),
-    r("GET", "/api/workspaces/:workspaceId/audit-export", call("handleExportWorkspaceAudit", p("workspaceId"), ctx)),
-    r("POST", "/api/workspaces/:workspaceId/workers/:workerId/usage", call("handleWorkerUsage", p("workspaceId"), p("workerId"), ctx)),
-    r("GET", "/api/workspaces/:workspaceId", call("handleGetWorkspace", p("workspaceId"), ctx)),
-    r("PATCH", "/api/workspaces/:workspaceId", call("handleUpdateWorkspace", p("workspaceId"), ctx)),
-    r("DELETE", "/api/workspaces/:workspaceId", call("handleRevokeWorkspace", p("workspaceId"), ctx)),
-
     // Workflow settings.
-    r("*", "/api/user/workflow-workspace", (c) => handleWorkflowWorkspace(c.request, c.env, undefined, c.ctx)),
-    r("*", "/api/spaces/:spaceId/workflow-workspace", (c) => handleWorkflowWorkspace(c.request, c.env, c.params.spaceId, c.ctx)),
     r("GET", "/api/device-folders", (c) => handleListDeviceFolders(c.request, c.env, c.ctx)),
     r("DELETE", "/api/device-folders/:deviceId", (c) => handleDeleteDeviceFolders(c.request, c.env, c.params.deviceId!, undefined, c.ctx)),
     r("DELETE", "/api/device-folders/:deviceId/:folderId", (c) => handleDeleteDeviceFolders(c.request, c.env, c.params.deviceId!, c.params.folderId!, c.ctx)),
     r("*", "/api/spaces/:spaceId/folder", (c) => handleSpaceFolder(c.request, c.env, c.params.spaceId!, c.ctx)),
-    r("*", "/api/spaces/:spaceId/additional-folders", (c) => handleSpaceAdditionalFolders(c.request, c.env, c.params.spaceId!, c.ctx)),
     r("*", "/api/spaces/:spaceId/workflow-default", (c) => handleWorkflowDefault(c.request, c.env, c.params.spaceId, c.ctx)),
     r("*", "/api/user/workflow-default", (c) => handleWorkflowDefault(c.request, c.env, undefined, c.ctx)),
     r("*", "/api/spaces/:spaceId/workflow-configurations", (c) => handleWorkflowConfigurations(c.request, c.env, undefined, c.ctx, c.params.spaceId)),
@@ -284,18 +225,14 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     ),
 
     // Workers, Worker Profiles and releases.
-    r("GET", "/api/release-trust", (c) => h.handleGetReleaseTrustState!(c.env)),
-    r("POST", "/api/admin/release-trust/keys/:keyId/revoke", call("handleRevokeReleaseSigningKey", p("keyId"), ctx)),
     r("GET", "/api/workers/catalog", call("handleListWorkerCatalog", ctx)),
     r("*", "/api/me/worker-plugins", (c) => handlePluginLibrary(c.request, c.env, undefined, c.ctx)),
     r("*", "/api/me/worker-plugins/:pluginRef", (c) => handlePluginLibrary(c.request, c.env, c.params.pluginRef, c.ctx)),
-    // Worker Instances (ADR-032), behind the worker_identity flag. The Workspace
-    // inventory moved to /api/workspace-workers; P5/P6 retire it.
+    // Workers (ADR-032).
     r("GET", "/api/features", call("handleListFeatures", ctx)),
     r("GET", "/api/workers", call("handleListWorkers", ctx)),
     r("GET", "/api/spaces/:spaceId/workers", (c) => handleListSpaceWorkers(c.request, c.env, c.params.spaceId!, c.ctx)),
     r("POST", "/api/workers", call("handleCreateWorker", ctx), idempotent),
-    r("GET", "/api/workspace-workers", call("handleListWorkspaceWorkerInventory", ctx)),
     r("GET", "/api/workers/shared-with-me", (c) => handleListWorkersSharedWithMe(c.request, c.env, c.ctx)),
     r("GET", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
     r("PATCH", "/api/workers/:workerId", call("handleWorker", p("workerId"), ctx)),
@@ -317,6 +254,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("GET", "/api/worker-agent/profile", call("handleAgentProfile"), machine),
     r("PUT", "/api/worker-agent/models", call("handleAgentModels"), machine),
     r("PUT", "/api/worker-agent/usage", call("handleAgentUsage"), machine),
+    r("GET", "/api/worker-agent/inputs/:fileId/content", call("handleDownloadAgentInput", p("fileId"))),
     r("PUT", "/api/worker-agent/folders", (c) => handleAgentFolders(c.request, c.env), machine),
     r("POST", "/api/worker-agent/sessions", call("handleConnectWorkerSession"), machine),
     r("GET", "/api/worker-agent/gateway", call("handleWorkerGatewayConnect"), machine),
@@ -325,18 +263,12 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
     r("POST", "/api/worker-agent/artifacts", call("handleUploadArtifact"), machine),
     r("POST", "/api/worker-agent/outputs", call("handleAgentUploadWorkerOutputImage"), machine),
     r("GET", "/api/worker-agent/artifacts/:artifactId/content", call("handleDownloadArtifact", p("artifactId")), machine),
-    r("GET", "/api/workers/:workerTypeId/profile", call("handleGetWorkspaceV9WorkerProfile", p("workerTypeId"))),
     r("GET", "/api/admin/workers", call("handleListV9WorkerProfiles", ctx)),
     r("GET", "/api/admin/workers/:workerTypeId/profile", call("handleGetV9WorkerProfile", p("workerTypeId"), ctx)),
     r("PUT", "/api/admin/workers/:workerTypeId/profile", call("handlePublishV9WorkerProfile", p("workerTypeId"), ctx)),
     r("POST", "/api/admin/workers/:workerTypeId/profile/validate", call("handleValidateV9WorkerProfile", p("workerTypeId"), ctx)),
     r("GET", "/api/admin/workers/:workerTypeId/profile/history", call("handleListV9WorkerProfileHistory", p("workerTypeId"), ctx)),
     r("POST", "/api/admin/workers/:workerTypeId/profile/restore", call("handleRestoreV9WorkerProfile", p("workerTypeId"), ctx)),
-    r("GET", "/api/workspace-releases/latest", call("handleGetLatestWorkspaceRelease")),
-    r("POST", "/api/workspace-releases/publish", call("handlePublishWorkspaceRelease", ctx)),
-    r("GET", "/api/workspace-releases/:version/download", call("handleDownloadWorkspaceRelease", p("version"), ctx)),
-    r("POST", "/api/workspace-releases/:version/revoke", call("handleRevokeWorkspaceRelease", p("version"), ctx)),
-    r("GET", "/api/workspace-releases/:version", (c) => h.handleGetWorkspaceRelease!(c.env, c.params.version)),
 
     // Spaces.
     r("GET", "/api/spaces", call("handleListSpaces", ctx)),
@@ -421,7 +353,7 @@ function buildRoutes(h: WorkerRouteHandlers): Route[] {
 
 /**
  * Browser mutations must come from a trusted origin. Exempt: routes marked
- * `machine` (Workspaces, webhooks) and desktop sign-in except its
+ * `machine` (Connect, webhooks) and desktop sign-in except its
  * approve/deny steps, which a person performs in the browser.
  */
 export function requiresSameOrigin(route: Route | null, method: string, pathname: string): boolean {

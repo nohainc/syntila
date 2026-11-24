@@ -284,12 +284,12 @@ it("keeps cleared AI exchanges readable but out of later Worker context", async 
       "W",
     );
 
-    // Nothing is copied into Chat and the original exchange is untouched.
+    // Nothing new is copied into Chat and the original exchange is untouched.
     expect(
       (await f.sqlite
         .prepare("SELECT COUNT(*) AS count FROM discussion_messages")
         .get())!.count,
-    ).toBe(1);
+    ).toBe(2);
     expect(await f.turns()).toEqual(before);
   } finally {
     await f.sqlite.close();

@@ -1,11 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
-import { space, user, workspace } from "./helpers/seed";
+import { space, user } from "./helpers/seed";
 import { queryOf } from "../../src/platform/data.js";
 import { transitionAssignment } from "../../src/domain/assignment-transitions.js";
 import { grantStartPermit } from "../../src/domain/assignment-start-permit.js";
 import { finalizeAssignmentRevocation } from "../../src/domain/assignment-revocation.js";
-import { handleWorkspaceGatewayConnect } from "../../src/domain/routes/workspaces-runtime.js";
 import { recordAssignmentError, recordAssignmentResult } from "../../src/domain/assignment-dispatcher.js";
 import { agentFenceIsCurrent } from "../../src/domain/agent-session-fence.js";
 import {
@@ -63,12 +62,10 @@ type Keys = Awaited<ReturnType<typeof keys>>;
 async function fixture() {
   const { sqlite, db } = await pgD1();
   await sqlite.exec(`
-    ${user("alice")} ${user("bob")} ${space("sp", "alice")} ${workspace("WS", "alice")}
-    INSERT INTO workspace_runtime_identities(id,workspace_id,credential_token_hash,installation_id,created_at) VALUES('RT','WS','h','inst',now());
-    INSERT INTO workspace_worker_inventory (worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
-      local_concurrency_limit, revision, created_at, updated_at, last_seen_at)
-    VALUES ('${W1}', 'WS', 'alice', 'chatgpt', 'enabled', 'ready', 1, 1, now(), now(), now()),
-           ('${W2}', 'WS', 'alice', 'chatgpt', 'enabled', 'ready', 1, 1, now(), now(), now());`);
+    ${user("alice")} ${user("bob")} ${space("sp", "alice")}
+    INSERT INTO worker_instances (id, actor_id, owner_user_id, worker_type_id, name)
+    VALUES ('${W1}', '', 'alice', 'chatgpt', 'One'),
+           ('${W2}', '', 'alice', 'chatgpt', 'Two');`);
   const env = { SYNTILA_DB: db };
   const one = async (text: string) => (await sqlite.prepare(text).all()) as Record<string, any>[];
 
@@ -91,8 +88,8 @@ async function fixture() {
   };
   const seedAssignment = async (id: string, workerId = W1, status = "dispatched") => {
     await sqlite.exec(`INSERT INTO worker_assignments
-      (id,space_id,execution_workspace_id,runtime_identity_id,worker_type_id,workspace_worker_id,status,permission_snapshot_json,session_policy,attempt_id,created_at,updated_at)
-      VALUES ('${id}','sp','WS','RT','chatgpt','${workerId}','${status}','{}','stateless','att-${id}',now(),now())`);
+      (id,space_id,worker_instance_id,worker_snapshot_json,worker_type_id,status,permission_snapshot_json,session_policy,attempt_id,created_at,updated_at)
+      VALUES ('${id}','sp','${workerId}','{}','chatgpt','${status}','{}','stateless','att-${id}',now(),now())`);
   };
   return { sqlite, db, env, one, pair, login, seedAssignment };
 }
@@ -279,20 +276,6 @@ describe("session fencing", () => {
     expect((await grantStartPermit(queryOf(f.db), { assignmentId: "permit", attemptId: "att-permit", agent: current })).granted).toBe(true);
   });
 
-  it("routes an authenticated Agent session to its mapped Workspace gateway", async () => {
-    const f = await fixture();
-    const { key } = await f.pair();
-    const old = await f.login(key);
-    const current = await f.login(key);
-    const forwarded: string[] = [];
-    const env = { ...f.env, SYNTILA_WORKSPACE_GATEWAY: { getByName(name: string) { forwarded.push(name); return { fetch: async () => new Response("forwarded") }; } } } as never;
-    const connect = (session: typeof old, token = session.sessionToken) => handleWorkspaceGatewayConnect(new Request(`https://test/api/workspace-gateway/connect?workerId=${W1}&workerSessionId=${session.sessionId}`, { headers: { upgrade: "websocket", authorization: `Bearer ${token}` } }), env);
-    expect((await connect(old)).status).toBe(401);
-    expect((await connect(current, "wrong")).status).toBe(401);
-    expect((await connect(current)).status).toBe(200);
-    expect(forwarded).toEqual(["WS"]);
-  });
-
   it("does not grant a permit if the session changes after admission", async () => {
     const f = await fixture();
     const { key } = await f.pair();
@@ -358,7 +341,7 @@ describe("session fencing", () => {
     // Only the newer session authenticates and is current.
     expect(await authenticateAgentSession(f.env, { workerId: W1, sessionId: older.sessionId, sessionToken: older.sessionToken })).toBeNull();
     const principal = await authenticateAgentSession(f.env, { workerId: W1, sessionId: newer.sessionId, sessionToken: newer.sessionToken });
-    expect(principal).toMatchObject({ workerInstanceId: W1, epoch: 2, executionWorkspaceId: "WS" });
+    expect(principal).toMatchObject({ workerInstanceId: W1, epoch: 2, executionWorkspaceId: null });
     const q = queryOf(f.db);
     expect(await agentFenceIsCurrent(q, older)).toBe(false);
     expect(await agentFenceIsCurrent(q, newer)).toBe(true);
@@ -643,22 +626,10 @@ describe("HTTP routes", () => {
     expect((await handleClaimWorkerPairing(req("/api/worker-agent/claim", "POST", body), env)).status).toBe(201);
   });
 
-  it("does not exist without its flags, and rejects malformed bodies", async () => {
+  it("rejects malformed bodies", async () => {
     const f = await fixture();
     const { env, req } = routes(f.db);
     expect(await status(handleWorkerNonce(req("/api/worker-agent/nonce", "POST", { workerId: "" }), env))).toBe(400);
-    process.env.SYNTILA_FEATURE_FLAGS = "worker_identity";
-    try {
-      expect(await status(handleWorkerNonce(req("/api/worker-agent/nonce", "POST", { workerId: W1 }), env))).toBe(404);
-      expect((await handleWorkerPairing(req(`/api/workers/${W1}/pairing`, "POST", undefined, "alice"), env, W1)).status).toBe(201);
-    } finally {
-      process.env.SYNTILA_FEATURE_FLAGS = "worker_identity,worker_agent_connect";
-    }
-    process.env.SYNTILA_FEATURE_FLAGS = "";
-    try {
-      expect(await status(handleWorkerPairing(req(`/api/workers/${W1}/pairing`, "POST", undefined, "alice"), env, W1))).toBe(404);
-    } finally {
-      process.env.SYNTILA_FEATURE_FLAGS = "worker_identity,worker_agent_connect";
-    }
+    expect((await handleWorkerPairing(req(`/api/workers/${W1}/pairing`, "POST", undefined, "alice"), env, W1)).status).toBe(201);
   });
 });

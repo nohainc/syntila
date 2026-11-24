@@ -1,5 +1,5 @@
 import { pgD1, recordStatements } from "./helpers/pg-d1";
-import { space, user, workspace } from "./helpers/seed";
+import { space, user } from "./helpers/seed";
 import { describe, expect, it } from "./helpers/vitest-compat";
 import {
   authorizeRealtimeScope,
@@ -232,49 +232,12 @@ describe("realtime gateway contract", () => {
     expect(queue.depth).toBe(1);
   });
 
-  it("requires Workspace ownership and validates active Space grants", async () => {
-    const { db: real, sqlite } = await pgD1();
-    await sqlite.exec(
-      user("user-1") +
-        user("other") +
-        workspace("workspace-1", "user-1") +
-        workspace("workspace-other", "other") +
-        space("space-1", "user-1") +
-        space("space-2", "user-1") +
-        `INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,created_at,updated_at)
-           VALUES ('grant-1','space-1','workspace-1','user-1','now','now');`,
-    );
-    const { db, statements } = recordStatements(real);
-    await expect(
-      authorizeRealtimeScope(db, "user-1", {
-        workspaceId: "workspace-1",
-        spaceId: "space-1",
-      }),
-    ).resolves.toEqual({ allowed: true });
-    await expect(
-      authorizeRealtimeScope(db, "user-1", {
-        workspaceId: "workspace-1",
-        spaceId: "space-2",
-      }),
-    ).resolves.toEqual({ allowed: false, reason: "space_access_denied" });
-    // A Workspace owned by someone else is refused outright.
-    await expect(
-      authorizeRealtimeScope(db, "user-1", { workspaceId: "workspace-other" }),
-    ).resolves.toMatchObject({ allowed: false });
-    expect(
-      statements.some((query) => query.includes("workspace_space_grants")),
-    ).toBe(true);
-    expect(
-      statements.some((query) => query.includes("workspace_memberships")),
-    ).toBe(false);
-  });
-
   it("revalidates suspended users and removed subscriptions", async () => {
     const { db, sqlite } = await pgD1();
     await sqlite.exec(user("user-1"));
     await expect(
       isRealtimeIdentityAuthorized(db, "user-1", [
-        { workspaceId: "workspace-removed" },
+        { kind: "space", spaceId: "space-removed" },
       ]),
     ).resolves.toBe(false);
     // Control: the same user with no subscriptions to revalidate stays authorized.

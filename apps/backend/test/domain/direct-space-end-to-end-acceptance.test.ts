@@ -1,47 +1,5 @@
-import { describe, expect, it, vi } from "./helpers/vitest-compat";
+import { describe, expect, it } from "./helpers/vitest-compat";
 import { pgD1 } from "./helpers/pg-d1";
-
-const admission = vi.hoisted(() =>
-  vi
-    .fn()
-    .mockImplementation(
-      async (_env, _spaceId, _threadId, _workflow, bindings) => {
-        const workerId = bindings.chat?.workerId ?? bindings.direct?.workerId;
-        return {
-          issues: [],
-          primaryWorkspaceId:
-            workerId === "worker-a"
-              ? "ws-alice"
-              : workerId === "worker-b"
-                ? "ws-bob"
-                : "ws-charlie",
-          workerCatalogRevisions: {},
-          workerModelCatalogs: {},
-          workerProfiles: {
-            chat: { profileId: "profile-chat", profileReleaseVersion: 1 },
-            direct: { profileId: "profile-direct", profileReleaseVersion: 1 },
-          },
-        };
-      },
-    ),
-);
-vi.mock("../../src/domain/routes/thread-policy.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../src/domain/routes/thread-policy.js")>();
-  return {
-    ...actual,
-    validateWorkflowWorkerEligibility: admission,
-  };
-});
-vi.mock("../../src/domain/routes/handlers.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../src/domain/routes/handlers.js")>();
-  return {
-    ...actual,
-    validateWorkflowWorkerEligibility: admission,
-  };
-});
-
 import worker from "../../src/domain/index.js";
 
 describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
@@ -55,44 +13,35 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
         ('user-bob', 'bob@test.com', 'Bob User', 'active', '${now}', '${now}'),
         ('user-charlie', 'charlie@test.com', 'Charlie User', 'active', '${now}', '${now}');
 
-      -- Workspaces owned by Alice and Bob
-      INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at) VALUES
-        ('ws-alice', 'user-alice', 'Alice WS', 'online', '${now}', '${now}'),
-        ('ws-bob', 'user-bob', 'Bob WS', 'online', '${now}', '${now}'),
-        ('ws-charlie', 'user-charlie', 'Charlie WS', 'online', '${now}', '${now}');
-
       -- Account plans (paid for sharing if needed)
       INSERT INTO account_plans (user_id, tier, status, source, created_at, updated_at) VALUES
         ('user-alice', 'paid', 'active', 'manual', '${now}', '${now}'),
         ('user-bob', 'paid', 'active', 'manual', '${now}', '${now}'),
         ('user-charlie', 'free', 'active', 'manual', '${now}', '${now}');
 
-      -- User workflow settings
-      INSERT INTO user_workflow_settings (user_id, workspace_id, updated_at) VALUES
-        ('user-alice', 'ws-alice', '${now}'),
-        ('user-bob', 'ws-bob', '${now}');
-
-      -- Inventory: Alice has worker-a on ws-alice, Bob has worker-b on ws-bob, Charlie has worker-c on ws-charlie
-      INSERT INTO workspace_worker_inventory (
-        worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
-        local_concurrency_limit, revision, created_at, updated_at, last_seen_at
-      ) VALUES
-        ('worker-a', 'ws-alice', 'user-alice', 'worker-alice-type', 'enabled', 'ready', 1, 1, '${now}', '${now}', '${now}'),
-        ('worker-b', 'ws-bob', 'user-bob', 'worker-bob-type', 'enabled', 'ready', 1, 1, '${now}', '${now}', '${now}'),
-        ('worker-c', 'ws-charlie', 'user-charlie', 'worker-charlie-type', 'enabled', 'ready', 1, 1, '${now}', '${now}', '${now}');
-
-      -- Worker scheduling
-      INSERT INTO worker_scheduling (worker_id, state, updated_by_user_id, updated_at) VALUES
-        ('worker-a', 'enabled', 'user-alice', '${now}'),
-        ('worker-b', 'enabled', 'user-bob', '${now}'),
-        ('worker-c', 'enabled', 'user-charlie', '${now}');
+      -- Workers: Alice has worker-a, Bob has worker-b, Charlie has worker-c
+      INSERT INTO worker_instances (id, actor_id, owner_user_id, worker_type_id, name) VALUES
+        ('worker-a', '', 'user-alice', 'chatgpt', 'Alice Worker'),
+        ('worker-b', '', 'user-bob', 'chatgpt', 'Bob Worker'),
+        ('worker-c', '', 'user-charlie', 'chatgpt', 'Charlie Worker');
+      INSERT INTO worker_credentials (id, worker_instance_id, public_key, key_fingerprint) VALUES
+        ('cred-a', 'worker-a', '${"a".repeat(43)}', '${"a".repeat(64)}'),
+        ('cred-b', 'worker-b', '${"b".repeat(43)}', '${"b".repeat(64)}'),
+        ('cred-c', 'worker-c', '${"c".repeat(43)}', '${"c".repeat(64)}');
+      INSERT INTO worker_agent_sessions (worker_instance_id, session_id, session_epoch, credential_id, token_digest, lease_expires_at) VALUES
+        ('worker-a', 'sess-a', 1, 'cred-a', 'digest-a', now() + interval '5 minutes'),
+        ('worker-b', 'sess-b', 1, 'cred-b', 'digest-b', now() + interval '5 minutes'),
+        ('worker-c', 'sess-c', 1, 'cred-c', 'digest-c', now() + interval '5 minutes');
+      INSERT INTO worker_profiles (worker_type_id, schema_version, profile_json, revision, digest, updated_at) VALUES
+        ('chatgpt', 1, '{"schemaVersion":1,"profileDefinitionId":"chatgpt-codex"}', 1, '${"a".repeat(64)}', now())
+        ON CONFLICT (worker_type_id) DO NOTHING;
 
       -- User workflow configurations
-      INSERT INTO user_workflow_configurations (user_id, workspace_id, workflow_id, schema_version, configuration_json, updated_at) VALUES
-        ('user-alice', 'ws-alice', 'chat', 1, '{"schemaVersion":1,"workflowId":"chat","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}', '${now}'),
-        ('user-alice', 'ws-alice', 'direct', 1, '{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}', '${now}'),
-        ('user-bob', 'ws-bob', 'chat', 1, '{"schemaVersion":1,"workflowId":"chat","enabled":true,"defaults":{"worker":"worker-b"},"stepOverrides":{}}', '${now}'),
-        ('user-bob', 'ws-bob', 'direct', 1, '{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-b"},"stepOverrides":{}}', '${now}');
+      INSERT INTO user_worker_workflow_configurations (user_id, workflow_id, schema_version, configuration_json, updated_at) VALUES
+        ('user-alice', 'chat', 1, '{"schemaVersion":1,"workflowId":"chat","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}', '${now}'),
+        ('user-alice', 'direct', 1, '{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-a"},"stepOverrides":{}}', '${now}'),
+        ('user-bob', 'chat', 1, '{"schemaVersion":1,"workflowId":"chat","enabled":true,"defaults":{"worker":"worker-b"},"stepOverrides":{}}', '${now}'),
+        ('user-bob', 'direct', 1, '{"schemaVersion":1,"workflowId":"direct","enabled":true,"defaults":{"worker":"worker-b"},"stepOverrides":{}}', '${now}');
     `);
 
     const users: Record<
@@ -436,7 +385,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
           },
           body: JSON.stringify({
             workflowId: "chat",
-            executionSelection: { workerId: "worker-a" },
+            workerId: "worker-a",
             input: { originalRequest: "Can you analyze this system design?" },
           }),
         },
@@ -500,7 +449,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
           },
           body: JSON.stringify({
             workflowId: "chat",
-            executionSelection: { workerId: "worker-b" },
+            workerId: "worker-b",
             input: { originalRequest: "Follow up: what about failure modes?" },
           }),
         },
@@ -537,7 +486,7 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
           },
           body: JSON.stringify({
             workflowId: "chat",
-            executionSelection: { workerId: "worker-a" },
+            workerId: "worker-a",
             input: { originalRequest: "Start deep research" },
           }),
         },
@@ -558,14 +507,14 @@ describe("Direct Spaces End-to-End Acceptance (Phase 10)", () => {
           },
           body: JSON.stringify({
             workflowId: "chat",
-            executionSelection: { workerId: "worker-c" },
+            workerId: "worker-c",
             input: { originalRequest: "Attempt unauthorized execution" },
           }),
         },
       ),
       env as never,
     );
-    expect([400, 403, 422]).toContain(unauthorizedRes.status);
+    expect([400, 403, 404, 422]).toContain(unauthorizedRes.status);
   });
 
   it("Scenario C — Security: third-party invitation rejected, direct read rejected, destructive deletion blocked, hiding isolated", async () => {

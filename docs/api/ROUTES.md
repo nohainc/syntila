@@ -8,7 +8,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 `Workspace/server`: called with Workspace or server credentials, no browser same-origin check.
 `Idempotency-Key`: a retry with the same key returns the first response (see CONTRACT.md).
 
-164 paths.
+124 paths.
 
 | Path | Methods | Notes |
 | --- | --- | --- |
@@ -16,7 +16,6 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/admin/issue-reports/:id` | GET, PATCH |  |
 | `/api/admin/issue-reports/groups` | GET, POST | Idempotency-Key |
 | `/api/admin/profile-lab/access` | GET |  |
-| `/api/admin/release-trust/keys/:keyId/revoke` | POST |  |
 | `/api/admin/workers` | GET |  |
 | `/api/admin/workers/:workerTypeId/profile` | GET, PUT |  |
 | `/api/admin/workers/:workerTypeId/profile/history` | GET |  |
@@ -42,6 +41,7 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/me/privacy` | ANY |  |
 | `/api/me/worker-plugins` | ANY |  |
 | `/api/me/worker-plugins/:pluginRef` | ANY |  |
+| `/api/media/:fileId` | GET |  |
 | `/api/notes` | GET, POST | Idempotency-Key |
 | `/api/notes/:noteId` | GET, PUT, DELETE |  |
 | `/api/notifications` | GET |  |
@@ -59,13 +59,11 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/pins/:kind/:targetId` | PUT, DELETE |  |
 | `/api/pins/order` | PUT |  |
 | `/api/profile/avatar` | PUT |  |
-| `/api/release-trust` | GET |  |
 | `/api/session` | GET |  |
 | `/api/space-invitations/:invitationId/accept` | POST |  |
 | `/api/space-invitations/:invitationId/decline` | POST |  |
 | `/api/spaces` | GET, POST | Idempotency-Key |
 | `/api/spaces/:spaceId` | GET, PATCH, DELETE |  |
-| `/api/spaces/:spaceId/additional-folders` | ANY |  |
 | `/api/spaces/:spaceId/audit` | GET |  |
 | `/api/spaces/:spaceId/folder` | ANY |  |
 | `/api/spaces/:spaceId/invitations` | GET, POST | Idempotency-Key |
@@ -75,16 +73,17 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/spaces/:spaceId/members/:userId/remove` | POST |  |
 | `/api/spaces/:spaceId/members/:userId/role` | PATCH |  |
 | `/api/spaces/:spaceId/threads` | GET, POST | Idempotency-Key |
+| `/api/spaces/:spaceId/workers` | GET |  |
 | `/api/spaces/:spaceId/workflow-configurations` | ANY |  |
 | `/api/spaces/:spaceId/workflow-configurations/:workflowId` | ANY |  |
 | `/api/spaces/:spaceId/workflow-default` | ANY |  |
-| `/api/spaces/:spaceId/workflow-workspace` | ANY |  |
 | `/api/threads/:threadId` | PATCH, DELETE |  |
 | `/api/threads/:threadId/chat/clear` | POST |  |
 | `/api/threads/:threadId/conversations/:conversationId/history` | GET |  |
 | `/api/threads/:threadId/discussion-messages` | GET, POST | Idempotency-Key |
 | `/api/threads/:threadId/eligible-workers` | GET |  |
 | `/api/threads/:threadId/files/:fileId` | GET |  |
+| `/api/threads/:threadId/files/:fileId/media-link` | POST |  |
 | `/api/threads/:threadId/note` | GET, PUT |  |
 | `/api/threads/:threadId/queue` | ANY |  |
 | `/api/threads/:threadId/queue/:itemId` | ANY |  |
@@ -102,7 +101,6 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/user/workflow-configurations` | ANY |  |
 | `/api/user/workflow-configurations/:workflowId` | ANY |  |
 | `/api/user/workflow-default` | ANY |  |
-| `/api/user/workflow-workspace` | ANY |  |
 | `/api/users/:userId/avatar` | GET |  |
 | `/api/work-requests/:workRequestId` | GET |  |
 | `/api/work-requests/:workRequestId/approve-plan` | POST |  |
@@ -115,8 +113,10 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/worker-agent/claim` | POST | Workspace/server |
 | `/api/worker-agent/folders` | PUT | Workspace/server |
 | `/api/worker-agent/gateway` | GET | Workspace/server |
+| `/api/worker-agent/inputs/:fileId/content` | GET |  |
 | `/api/worker-agent/models` | PUT | Workspace/server |
 | `/api/worker-agent/nonce` | POST | Workspace/server |
+| `/api/worker-agent/outputs` | POST | Workspace/server |
 | `/api/worker-agent/profile` | GET | Workspace/server |
 | `/api/worker-agent/rotate` | POST | Workspace/server |
 | `/api/worker-agent/sessions` | POST | Workspace/server |
@@ -127,55 +127,12 @@ A path that exists but not for the request's method answers `405` with an `Allow
 | `/api/workers/:workerId/credential` | DELETE |  |
 | `/api/workers/:workerId/mcp-pin` | ANY |  |
 | `/api/workers/:workerId/member-model-access` | ANY |  |
-| `/api/workers/:workerId/person-shares` | GET, PUT, DELETE |  |
-| `/api/workers/shared-with-me` | GET |  |
-| `/api/spaces/:spaceId/workers` | GET |  |
 | `/api/workers/:workerId/models/refresh` | POST |  |
 | `/api/workers/:workerId/pairing` | POST |  |
+| `/api/workers/:workerId/person-shares` | ANY |  |
 | `/api/workers/:workerId/space-access` | ANY |  |
 | `/api/workers/:workerId/transfer` | POST |  |
 | `/api/workers/:workerId/usage` | ANY |  |
-| `/api/workers/:workerTypeId/profile` | GET |  |
 | `/api/workers/catalog` | GET |  |
+| `/api/workers/shared-with-me` | GET |  |
 | `/api/workflows/catalog` | GET |  |
-| `/api/workspace-gateway/connect` | GET |  |
-| `/api/workspace-invitations` | ANY |  |
-| `/api/workspace-invitations/:id/accept` | ANY |  |
-| `/api/workspace-invitations/:id/decline` | ANY |  |
-| `/api/workspace-releases/:version` | GET |  |
-| `/api/workspace-releases/:version/download` | GET |  |
-| `/api/workspace-releases/:version/revoke` | POST |  |
-| `/api/workspace-releases/latest` | GET |  |
-| `/api/workspace-releases/publish` | POST |  |
-| `/api/workspace-runtime/disconnect` | POST | Workspace/server |
-| `/api/workspace-runtime/events` | POST | Workspace/server |
-| `/api/workspace-runtime/inputs` | GET |  |
-| `/api/workspace-runtime/inputs/:fileId/attempt` | POST | Workspace/server |
-| `/api/workspace-runtime/inputs/:fileId/content` | GET |  |
-| `/api/workspace-runtime/inputs/:fileId/delivered` | POST | Workspace/server |
-| `/api/workspace-runtime/outputs` | POST | Workspace/server |
-| `/api/workspace-runtime/ownership` | POST | Workspace/server |
-| `/api/workspace-runtime/ownership/reconcile` | POST | Workspace/server |
-| `/api/workspace-runtime/poll` | POST | Workspace/server |
-| `/api/workspace-runtime/register` | POST | Workspace/server |
-| `/api/workspace-runtime/release` | POST | Workspace/server |
-| `/api/workspace-runtime/sessions` | POST | Workspace/server |
-| `/api/workspace-runtime/sessions/:sessionId/close` | POST | Workspace/server |
-| `/api/workspace-runtime/workers/catalog` | GET |  |
-| `/api/workspace-workers` | GET |  |
-| `/api/workspaces` | GET |  |
-| `/api/workspaces/:workspaceId` | GET, PATCH, DELETE |  |
-| `/api/workspaces/:workspaceId/audit-export` | GET |  |
-| `/api/workspaces/:workspaceId/delivery-probe` | POST |  |
-| `/api/workspaces/:workspaceId/invitations` | ANY |  |
-| `/api/workspaces/:workspaceId/invitations/:invitationId/revoke` | ANY |  |
-| `/api/workspaces/:workspaceId/mcp-action` | ANY |  |
-| `/api/workspaces/:workspaceId/mcp-inventory` | ANY |  |
-| `/api/workspaces/:workspaceId/member-access` | ANY |  |
-| `/api/workspaces/:workspaceId/member-access/people/:userId` | ANY |  |
-| `/api/workspaces/:workspaceId/people-with-access` | ANY |  |
-| `/api/workspaces/:workspaceId/person-grants/:userId/quota` | ANY |  |
-| `/api/workspaces/:workspaceId/person-grants/:userId/revoke` | ANY |  |
-| `/api/workspaces/:workspaceId/worker-plugins/:pluginRef` | ANY |  |
-| `/api/workspaces/:workspaceId/worker-preferences` | ANY |  |
-| `/api/workspaces/:workspaceId/workers/:workerId/usage` | POST |  |

@@ -32,7 +32,7 @@ integration, do not define Syntila resource access.
 
 Syntila Workspace uses a human management session separately from its scoped
 runtime credential, as detailed in
-[ADR-013](ADR-013-desktop-auth-and-dual-transport.md). Provider authentication
+ADR-013. Provider authentication
 is performed by locally installed provider CLI software. Provider credentials
 remain local and are not stored as Cloud product records.
 

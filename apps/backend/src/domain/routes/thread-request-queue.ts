@@ -168,7 +168,6 @@ function withWorkerTarget(
 ): Record<string, unknown> {
   const selection = body.executionSelection;
   if (
-    !isFeatureEnabled("worker_target_dispatch") ||
     body.workerId !== undefined ||
     !selection ||
     typeof selection !== "object" ||

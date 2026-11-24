@@ -201,23 +201,6 @@ describe("plan limits", () => {
     const [row] = await sql`SELECT count(*)::int AS n FROM space_invitations WHERE space_id = ${spaceId} AND status = 'pending'`;
     expect(row.n).toBe(3);
   });
-
-  test("parallel Workspace registrations never exceed the free Workspace allowance", async () => {
-    const desktop = await mint("conc-ws", { client: "desktop", client_aud: "syntila.desktop.management" });
-    const register = (i: number) => fetch(`${base}/api/workspace-runtime/register`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${desktop}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        contractVersion: "1.0", installationId: `install_${crypto.randomUUID()}`, proposedWorkspaceName: `Mac ${i}`,
-        hostname: `mac-${i}`, platform: "macos", architecture: "arm64", appVersion: "1.0.0",
-        runtimeCapabilities: { os: "macos", arch: "arm64", appVersion: "1.0.0", supportedRuntimes: ["cli"], maxConcurrentWorkers: 2 },
-      }),
-    }).then((r) => r.status);
-    const statuses = await Promise.all(Array.from({ length: 6 }, (_, i) => register(i)));
-    expect(statuses.filter((s) => s < 300)).toHaveLength(1);
-    const [row] = await sql`SELECT count(*)::int AS n FROM execution_workspaces WHERE owner_user_id = 'conc-ws' AND status <> 'revoked'`;
-    expect(row.n).toBe(1);
-  });
 });
 
 /** Statuses other than the expected ones; a 5xx in a race is always a bug. */
@@ -356,52 +339,6 @@ describe("races on Workspaces, grants and the request queue", () => {
     return { status: r.status, body: text ? JSON.parse(text) : null };
   };
 
-  test("one installation registering from several app starts at once", async () => {
-    const desktop = await mint("race-ws-1", { client: "desktop", client_aud: "syntila.desktop.management" });
-    const installationId = `install_${crypto.randomUUID()}`;
-    const results = await Promise.all(Array.from({ length: 5 }, () =>
-      machine(desktop, "/api/workspace-runtime/register", registration(installationId, "Mac"))));
-    expect(unexpected(results, [200, 201, 409])).toEqual([]);
-    const [row] = await sql`SELECT count(*)::int AS n FROM execution_workspaces WHERE owner_user_id = 'race-ws-1' AND status <> 'revoked'`;
-    expect(row.n).toBe(1);
-    const [inst] = await sql`SELECT count(*)::int AS n FROM workspace_installations WHERE installation_id = ${installationId}`;
-    expect(inst.n).toBe(1);
-  });
-
-  test("releasing and registering one installation at the same moment", async () => {
-    const desktop = await mint("race-ws-2", { client: "desktop", client_aud: "syntila.desktop.management" });
-    const installationId = `install_${crypto.randomUUID()}`;
-    const first = await machine(desktop, "/api/workspace-runtime/register", registration(installationId, "Mac"));
-    expect(first.status).toBeLessThan(300);
-    const release = { installationId, workspaceId: first.body.workspaceId ?? first.body.executionWorkspaceId, runtimeId: first.body.workspaceRuntimeId };
-    const results = await Promise.all([
-      machine(desktop, "/api/workspace-runtime/release", release),
-      machine(desktop, "/api/workspace-runtime/register", registration(installationId, "Mac")),
-      machine(desktop, "/api/workspace-runtime/release", release),
-    ]);
-    expect(unexpected(results, [200, 201, 402, 404, 409])).toEqual([]);
-    // At most one live registration of the installation, whatever the order.
-    const [inst] = await sql`SELECT count(*)::int AS n FROM workspace_installations WHERE installation_id = ${installationId} AND status = 'active'`;
-    expect(inst.n).toBeLessThanOrEqual(1);
-    expect(await brokenInvariants(sql)).toEqual([]);
-  });
-
-  test("selecting the same Workspace for one Space from several tabs", async () => {
-    const owner = await mint("race-grant");
-    const desktop = await mint("race-grant", { client: "desktop", client_aud: "syntila.desktop.management" });
-    const ws = await machine(desktop, "/api/workspace-runtime/register", registration(`install_${crypto.randomUUID()}`, "Mac"));
-    expect(ws.status).toBeLessThan(300);
-    const workspaceId = ws.body.workspaceId ?? ws.body.executionWorkspaceId;
-    const space = await call(owner, "POST", "/api/spaces", { name: "Grant race" });
-    const spaceId = space.body.space.id;
-    const results = await Promise.all(Array.from({ length: 6 }, () =>
-      call(owner, "PUT", `/api/spaces/${spaceId}/workflow-workspace`, { workspaceId, confirmReset: true })));
-    expect(unexpected(results, [200, 409])).toEqual([]);
-    const [row] = await sql`SELECT count(*)::int AS n FROM workspace_space_grants WHERE space_id = ${spaceId} AND status IN ('active', 'suspended')`;
-    expect(row.n).toBe(1);
-    expect(await brokenInvariants(sql)).toEqual([]);
-  });
-
   test("queueing, sending now, pausing and resuming one Thread queue at once", async () => {
     const token = await mint("race-queue");
     const { threadId } = await spaceWithThread(token, "Queue race");
@@ -523,21 +460,6 @@ describe("membership and invitation conflicts", () => {
     expect(row.n).toBe(1);
   });
 
-  test("parallel Workspace invitations to one email: one wins, the rest are told one is pending", async () => {
-    const owner = await mint("winv-owner");
-    const ownerId = await userId(owner);
-    await sql`INSERT INTO account_plans (user_id, tier, status, source, created_at, updated_at) VALUES (${ownerId}, 'paid', 'active', 'manual', now(), now())`;
-    await sql`INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at)
-              VALUES ('ws-winv', ${ownerId}, 'Mac', 'online', now(), now())`;
-    const results = await Promise.all(Array.from({ length: 8 }, (_, i) =>
-      call(owner, "POST", "/api/workspaces/ws-winv/invitations", { email: i % 2 ? "WDup@test" : "wdup@test" })));
-    expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
-    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
-    expect(messages(results)).toEqual(Array(7).fill("An invitation is already pending"));
-    const [row] = await sql`SELECT count(*)::int AS n FROM workspace_invitations WHERE workspace_id = 'ws-winv' AND status = 'pending'`;
-    expect(row.n).toBe(1);
-  });
-
   test("two pending invitations to one person accepted together: one membership, the loser is 409 and leaves nothing", async () => {
     const owner = await mint("dual-owner");
     const guest = await mint("dual-guest");
@@ -561,35 +483,6 @@ describe("membership and invitation conflicts", () => {
     const [audit] = await sql`SELECT count(*)::int AS n FROM space_audit_log WHERE space_id = ${spaceId} AND action = 'space.invitation.accepted'`;
     expect(audit.n).toBe(1);
     expect(await brokenInvariants(sql)).toEqual([]);
-  });
-
-  test("inviting a person while they accept access: never a pending invitation beside an active grant", async () => {
-    const owner = await mint("access-owner");
-    const ownerId = await userId(owner);
-    await sql`INSERT INTO account_plans (user_id, tier, status, source, created_at, updated_at) VALUES (${ownerId}, 'paid', 'active', 'manual', now(), now())`;
-    const overlaps = async () => sql`
-      SELECT g.workspace_id FROM workspace_person_grants g JOIN users u ON u.id = g.user_id
-        JOIN workspace_invitations i ON i.workspace_id = g.workspace_id AND lower(i.email) = lower(u.email)
-       WHERE g.status = 'active' AND i.status = 'pending'`;
-    const statuses: number[] = [];
-    const rejected = new Set<string>();
-    for (let round = 0; round < 12; round++) {
-      const guest = await mint(`access-guest-${round}`);
-      await userId(guest);
-      const wsId = `ws-access-${round}`;
-      await sql`INSERT INTO execution_workspaces (id, owner_user_id, name, status, created_at, updated_at) VALUES (${wsId}, ${ownerId}, 'Mac', 'online', now(), now())`;
-      const first = await call(owner, "POST", `/api/workspaces/${wsId}/invitations`, { email: `access-guest-${round}@test` });
-      expect(first.status).toBe(201);
-      const results = await Promise.all([
-        call(guest, "POST", `/api/workspace-invitations/${first.body.id}/accept`, {}),
-        ...Array.from({ length: 8 }, () => call(owner, "POST", `/api/workspaces/${wsId}/invitations`, { email: `access-guest-${round}@test` })),
-      ]);
-      statuses.push(...results.map((r) => r.status));
-      for (const r of results) if (r.status === 409) rejected.add(r.body.error);
-      expect(await overlaps()).toEqual([]);
-    }
-    expect(statuses.filter((s) => s >= 500)).toEqual([]);
-    for (const m of rejected) expect(["An invitation is already pending", "This person already has access"]).toContain(m);
   });
 });
 
@@ -739,21 +632,41 @@ describe("Queue changes racing dispatch", () => {
 describe("Work Request retry", () => {
   async function failedRequest(name: string) {
     const token = await mint(name);
-    const { threadId } = await spaceWithThread(token, `Retry ${name}`);
+    const { spaceId, threadId } = await spaceWithThread(token, `Retry ${name}`);
     const userId = (await call(token, "GET", "/api/session")).body.user.id as string;
-    const snapshot = JSON.stringify({ id: "tool", steps: [{ kind: "tool_call" }] });
+    const workerId = `wrk-retry-${name}`;
+    const fp = (name === "race" ? "a" : "b").repeat(64);
+    const pk = (name === "race" ? "a" : "b").repeat(43);
+    await sql`INSERT INTO worker_instances (id, actor_id, owner_user_id, worker_type_id, name) VALUES (${workerId}, '', ${userId}, 'chatgpt', 'Retry Worker')`;
+    await sql`INSERT INTO worker_credentials (id, worker_instance_id, public_key, key_fingerprint) VALUES (${"cred-" + workerId}, ${workerId}, ${pk}, ${fp})`;
+    await sql`INSERT INTO worker_agent_sessions (worker_instance_id, session_id, session_epoch, credential_id, token_digest, lease_expires_at) VALUES (${workerId}, ${"sess-" + workerId}, 1, ${"cred-" + workerId}, 'digest', now() + interval '5 minutes')`;
+    await sql`INSERT INTO worker_profiles (worker_type_id, schema_version, profile_json, revision, digest, updated_at) VALUES ('chatgpt', 1, '{"schemaVersion":1,"profileDefinitionId":"chatgpt-codex"}', 1, ${"a".repeat(64)}, now()) ON CONFLICT (worker_type_id) DO NOTHING`;
+    const snapshot = JSON.stringify({ id: "chat", steps: [{ kind: "chat" }] });
+    const resolved = JSON.stringify({
+      resolvedBindings: {
+        chat: {
+          workerId,
+          workerTypeId: "chatgpt",
+          workerTarget: {
+            workerId, workerTypeId: "chatgpt", workerName: "Retry Worker", spaceId, threadId,
+            model: null, reasoningEffort: null, readOnly: true, permissions: ["authorized_context_read"],
+            profile: { definitionId: "chatgpt-codex", revision: 1, digest: "a".repeat(64) }, mcpWorker: null,
+          },
+        },
+      },
+    });
     const id = `wr-retry-${name}`;
     await sql`INSERT INTO work_requests (id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, input_json, created_at, updated_at)
-              VALUES (${id}, ${threadId}, ${userId}, 'stateless', 'chat', 1, ${snapshot}, '{}', 'failed', '{}', now(), now())`;
+              VALUES (${id}, ${threadId}, ${userId}, 'stateless', 'chat', 1, ${snapshot}, ${resolved}, 'failed', '{}', now(), now())`;
     await sql`INSERT INTO workflow_tasks (id, work_request_id, step_kind, execution_mode, timeout_ms, prompt_profile_version, status, error, created_at, updated_at)
-              VALUES (${"task-" + id}, ${id}, 'tool_call', 'stateless_read', 60000, 'chat:v1', 'failed', 'boom', now(), now())`;
+              VALUES (${"task-" + id}, ${id}, 'chat', 'stateless_read', 60000, 'chat:v1', 'failed', 'boom', now(), now())`;
     return { token, threadId, id };
   }
 
   test("parallel retries: one reservation, one run, the rest are 409", async () => {
     const { token, id } = await failedRequest("race");
     const results = await Promise.all(Array.from({ length: 8 }, () =>
-      call(token, "POST", `/api/work-requests/${id}/retry`, { stepKind: "tool_call" })));
+      call(token, "POST", `/api/work-requests/${id}/retry`, { stepKind: "chat" })));
     expect(results.filter((r) => r.status >= 500).map((r) => r.status)).toEqual([]);
     expect(results.filter((r) => r.status === 202)).toHaveLength(1);
     expect(new Set(results.filter((r) => r.status === 409).map((r) => r.body.error))).toEqual(new Set(["This Work Request is already being retried"]));
@@ -768,7 +681,7 @@ describe("Work Request retry", () => {
     // The run id of the first retry is taken, so the last write of the retry fails.
     await sql`INSERT INTO runs (id, space_id, thread_id, work_request_id, policy_snapshot_json, status, created_at, updated_at)
               VALUES (${`run-${id}-retry-1`}, (SELECT space_id FROM threads WHERE id = ${threadId}), ${threadId}, ${id}, '{}', 'failed', now(), now())`;
-    const result = await call(token, "POST", `/api/work-requests/${id}/retry`, { stepKind: "tool_call" });
+    const result = await call(token, "POST", `/api/work-requests/${id}/retry`, { stepKind: "chat" });
     expect(result.status).toBeLessThan(500);
     expect(result.status).not.toBe(202);
     const [wr] = await sql`SELECT status FROM work_requests WHERE id = ${id}`;

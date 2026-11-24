@@ -20,5 +20,3 @@ export const workRequest = (threadId: string, userId: string, inputJson = "?", i
 export const message = (threadId: string, authorId: string, attachmentsJson = "?", id = `dm-seed-${++seq}`) =>
   `INSERT INTO discussion_messages(id,thread_id,author_user_id,body,attachments_json,created_at)
    VALUES(${q(id)},${q(threadId)},${q(authorId)},'seed',${attachmentsJson === "?" ? "?" : q(attachmentsJson)},'${T0}')`;
-export const workspace = (id: string, owner: string, name = id) =>
-  `INSERT INTO execution_workspaces(id,owner_user_id,name,created_at,updated_at) VALUES(${q(id)},${q(owner)},${q(name)},'${T0}','${T0}') ON CONFLICT DO NOTHING;`;

@@ -4,13 +4,15 @@ import { HttpError, json, securityContext } from "./handlers.js";
 import type { SecurityEnv } from "./handlers.js";
 import { readJson } from "./validation.js";
 import { parseModelAccess, type WorkerSpaceModelAccess } from "../worker-eligibility.js";
-import { WORKSPACE_ACCESS_MODES, type WorkspaceAccessMode } from "./workspace-member-access.js";
+/** What a Space member may do with a shared Worker (ADR-042). */
+export const WORKER_ACCESS_MODES = ["chat", "work", "work+shell"] as const;
+export type WorkerAccessMode = (typeof WORKER_ACCESS_MODES)[number];
 
 const MAX_MEMBERS = 200;
 const MAX_MODEL_ENTRIES = 500;
 
 export interface WorkerSpaceMemberPermissions {
-  readonly mode: WorkspaceAccessMode;
+  readonly mode: WorkerAccessMode;
 }
 
 export interface WorkerSpaceMemberAccessEntry {
@@ -32,8 +34,8 @@ function parsePermissions(raw: unknown): WorkerSpaceMemberPermissions {
   }
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const mode = (raw as { mode?: unknown }).mode;
-    if (typeof mode === "string" && WORKSPACE_ACCESS_MODES.includes(mode as WorkspaceAccessMode)) {
-      return { mode: mode as WorkspaceAccessMode };
+    if (typeof mode === "string" && WORKER_ACCESS_MODES.includes(mode as WorkerAccessMode)) {
+      return { mode: mode as WorkerAccessMode };
     }
   }
   return { mode: "chat" };
@@ -48,10 +50,10 @@ function validatePutPermissions(raw: unknown): WorkerSpaceMemberPermissions {
   if (keys.some((k) => k !== "mode")) {
     throw new HttpError(400, "Unknown permissions field");
   }
-  if (typeof obj.mode !== "string" || !WORKSPACE_ACCESS_MODES.includes(obj.mode as WorkspaceAccessMode)) {
+  if (typeof obj.mode !== "string" || !WORKER_ACCESS_MODES.includes(obj.mode as WorkerAccessMode)) {
     throw new HttpError(400, "permissions.mode must be chat, work or work+shell");
   }
-  return { mode: obj.mode as WorkspaceAccessMode };
+  return { mode: obj.mode as WorkerAccessMode };
 }
 
 function validateModelAccess(raw: unknown): WorkerSpaceModelAccess {
@@ -157,7 +159,6 @@ export async function handleWorkerSpaceAccess(
   workerId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  if (!isFeatureEnabled("worker_identity")) throw new HttpError(404, "Not found");
   const context = await securityContext(request, env, accessContext);
   await requireOwnedActiveWorker(env, context.userId, workerId);
 
@@ -251,7 +252,6 @@ export async function handleWorkerMemberModelAccess(
   workerId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  if (!isFeatureEnabled("worker_identity")) throw new HttpError(404, "Not found");
   const context = await securityContext(request, env, accessContext);
   await requireOwnedActiveWorker(env, context.userId, workerId);
   if (request.method === "GET") return json({ workerId, modelAccess: await readModelAccess(env, workerId) });
@@ -311,7 +311,6 @@ export async function handleWorkerPersonShares(
   workerId: string,
   accessContext?: ExecutionContext,
 ): Promise<Response> {
-  if (!isFeatureEnabled("worker_identity")) throw new HttpError(404, "Not found");
   const context = await securityContext(request, env, accessContext);
   await requireOwnedActiveWorker(env, context.userId, workerId);
   const q = dataOf(env).read;

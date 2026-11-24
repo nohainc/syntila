@@ -1,6 +1,6 @@
 # ADR-040: Stateful Workflows on Worker Agents
 
-- **Status:** Accepted (option A).
+- **Status:** Accepted (option A) and implemented.
 - **Date:** 2026-11-20
 - **Depends on:** ADR-034 (Agent session fencing), ADR-035 (Worker-targeted execution), ADR-037 (local files)
 - **Closes:** the P5 gap "stateful Workflows" in `WORKER_FIRST_IMPLEMENTATION_PHASES.md`

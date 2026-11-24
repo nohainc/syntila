@@ -16,63 +16,8 @@ const source = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 describe("CI acceptance orchestration", () => {
-  it("routes Workspace builds to the supported host builder", () => {
-    const root = mkdtempSync(join(tmpdir(), "syntila-build-dispatch-"));
-    const bin = join(root, "bin");
-    mkdirSync(bin);
-    try {
-      writeFileSync(
-        join(bin, "uname"),
-        '#!/bin/sh\nif [ "$1" = "-m" ]; then echo "$FAKE_ARCH"; else echo "$FAKE_OS"; fi\n',
-      );
-      const runner =
-        '#!/bin/sh\nprintf "args=%s\\nenv=%s\\nversion=%s\\n" "$*" "$SYNTILA_WORKSPACE_ENVIRONMENT" "${SYNTILA_WORKSPACE_VERSION-}"\n';
-      for (const name of ["uname", "bash", "powershell.exe"]) {
-        const path = join(bin, name);
-        if (name !== "uname") writeFileSync(path, runner);
-        chmodSync(path, 0o755);
-      }
-      const run = (os, arch, args = []) =>
-        spawnSync("/bin/bash", ["scripts/build-workspace.sh", ...args], {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            PATH: `${bin}:${process.env.PATH}`,
-            FAKE_OS: os,
-            FAKE_ARCH: arch,
-            SYNTILA_WORKSPACE_VERSION: "",
-          },
-        });
-      const mac = run("Darwin", "arm64", ["--local", "--version", "1.2.3"]);
-      expect(mac.status, mac.stderr).toBe(0);
-      expect(mac.stdout).toContain(
-        "scripts/build-workspace-macos.sh --release --local --version 1.2.3",
-      );
-      expect(mac.stdout).toContain("env=local\nversion=1.2.3");
-      for (const arch of ["x86_64", "aarch64"]) {
-        const linux = run("Linux", arch, ["--release"]);
-        expect(linux.status, linux.stderr).toBe(0);
-        expect(linux.stdout).toContain(
-          `scripts/build-workspace-linux.sh --production`,
-        );
-      }
-      const debug = run("Linux", "x86_64", ["--debug"]);
-      expect(debug.status).toBe(2);
-      expect(debug.stderr).toContain("do not support --debug");
-      const windows = run("MINGW64_NT", "x86_64", ["--release"]);
-      expect(windows.status, windows.stderr).toBe(0);
-      expect(windows.stdout).toContain(
-        "scripts/build-workspace-windows.sh --production --release",
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("uses the public Connect and Workspace platform builders in build and release workflows", () => {
+  it("uses the public Connect platform builder in the release workflow", () => {
     for (const [workflow, command] of [
-      ["release-linux.yml", "bash scripts/build-workspace-linux.sh --prod"],
-      ["release-macos.yml", "bash scripts/build-workspace-macos.sh --prod"],
       ["release-windows.yml", "./scripts/build-connect-windows.ps1 -Production"],
     ]) {
       expect(source(`.github/workflows/${workflow}`)).toContain(command);
@@ -81,10 +26,7 @@ describe("CI acceptance orchestration", () => {
 
   it("derives every release version from the checked-out pubspec", () => {
     for (const [workflow, pubspec] of [
-      ["release-linux.yml", "apps/workspace/pubspec.yaml"],
-      ["release-macos.yml", "apps/workspace/pubspec.yaml"],
       ["release-windows.yml", "apps/connect/pubspec.yaml"],
-      ["promote-workspace-release.yml", "apps/workspace/pubspec.yaml"],
     ]) {
       const content = source(`.github/workflows/${workflow}`);
       expect(content).toContain(
@@ -108,7 +50,7 @@ describe("CI acceptance orchestration", () => {
     ).toHaveLength(1);
     expect(scripts.check).toContain("check:apps");
     expect(source("scripts/check-dart-packages.sh")).not.toMatch(
-      /apps\/(app|workspace|profile_lab)/,
+      /apps\/(app|profile_lab)/,
     );
   });
 
@@ -127,8 +69,8 @@ describe("CI acceptance orchestration", () => {
         "cloud",
         "dart-packages",
         "app",
-        "workspace",
-        "workspace-gui",
+        "connect",
+        "connect-gui",
         "profile-lab",
         "engine",
         "site",
@@ -169,29 +111,6 @@ describe("CI acceptance orchestration", () => {
       mkdirSync(join(root, "scripts", "internal"), { recursive: true });
       mkdirSync(join(app, ".dart_tool"), { recursive: true });
       mkdirSync(join(app, "assets", "engines"), { recursive: true });
-      if (name === "workspace") {
-        mkdirSync(join(app, "macos", "Runner", "LaunchAgents"), {
-          recursive: true,
-        });
-        writeFileSync(
-          join(
-            app,
-            "macos",
-            "Runner",
-            "LaunchAgents",
-            "com.syntila.workspace.service.plist",
-          ),
-          `<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0"><dict>
-<key>Label</key><string>com.syntila.workspace.service</string>
-<key>AssociatedBundleIdentifiers</key><array><string>com.syntila.workspace</string></array>
-<key>BundleProgram</key><string>Contents/Helpers/workspace</string>
-<key>ProgramArguments</key><array><string>Contents/Helpers/workspace</string></array>
-<key>RunAtLoad</key><false/>
-</dict></plist>
-`,
-        );
-      }
       mkdirSync(bin);
       writeFileSync(join(app, "pubspec.yaml"), "version: 1.0.0\n");
       writeFileSync(join(app, ".dart_tool", "package_config.json"), "{}\n");
@@ -206,7 +125,6 @@ describe("CI acceptance orchestration", () => {
         "ditto",
         "security",
         "codesign",
-        "PlistBuddy",
       ]) {
         const script =
           command === "uname"
@@ -219,10 +137,8 @@ describe("CI acceptance orchestration", () => {
                   ? 'while [ "$1" != "-o" ] && [ "$#" -gt 0 ]; do shift; done; if [ "$1" = "-o" ]; then shift; mkdir -p "$(dirname "$1")"; touch "$1"; fi'
                   : command === "codesign"
                     ? 'if [ "$1" = "-dv" ] || [ "$1" = "-d" ]; then exit 1; fi; exit 0'
-                    : command === "PlistBuddy"
-                      ? 'if [ "$1" = "-c" ] && [ "$2" = "Print :CFBundleExecutable" ]; then echo Syntila; elif [ "$1" = "-c" ] && [ "$2" = "Print :CFBundleIdentifier" ]; then echo com.syntila.workspace; elif [ "$1" = "-c" ] && [ "$2" = "Print :Label" ]; then echo com.syntila.workspace.service; elif [ "$1" = "-c" ] && [ "$2" = "Print :AssociatedBundleIdentifiers:0" ]; then echo com.syntila.workspace; elif [ "$1" = "-c" ] && [ "$2" = "Print :BundleProgram" ]; then echo Contents/Helpers/workspace; elif [ "$1" = "-c" ] && [ "$2" = "Print :ProgramArguments:0" ]; then echo Contents/Helpers/workspace; elif [ "$1" = "-c" ] && [ "$2" = "Print :RunAtLoad" ]; then echo false; else exit 1; fi'
-                      : command === "flutter"
-                        ? `echo "flutter $*" >> "$CI_TEST_LOG"\nif [ "$1" = build ]; then app='build/macos/Build/Products/Release/Syntila ${name === "workspace" ? "Workspace" : "Profile Lab"}.app'; mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks"; printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Syntila</string></dict></plist>' > "$app/Contents/Info.plist"; touch "$app/Contents/MacOS/Syntila"; chmod 755 "$app/Contents/MacOS/Syntila"; fi`
+                    : command === "flutter"
+                        ? `echo "flutter $*" >> "$CI_TEST_LOG"\nif [ "$1" = build ]; then app='build/macos/Build/Products/Release/Syntila Profile Lab.app'; mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks"; printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Syntila</string></dict></plist>' > "$app/Contents/Info.plist"; touch "$app/Contents/MacOS/Syntila"; chmod 755 "$app/Contents/MacOS/Syntila"; fi`
                         : "exit 0";
         writeFileSync(join(bin, command), `#!/bin/sh\n${script}\n`);
         chmodSync(join(bin, command), 0o755);
@@ -231,15 +147,6 @@ describe("CI acceptance orchestration", () => {
         join(root, "scripts", "internal", "build-cli-worker-engine.sh"),
         'echo engine >> "$CI_TEST_LOG"\n',
       );
-      if (name === "workspace") {
-        copyFileSync(
-          new URL(
-            "../scripts/verify-workspace-service-bundle.sh",
-            import.meta.url,
-          ),
-          join(root, "scripts", "verify-workspace-service-bundle.sh"),
-        );
-      }
       const script = join(root, "scripts", `build-${name}-macos.sh`);
       copyFileSync(
         new URL(`../scripts/build-${name}-macos.sh`, import.meta.url),
@@ -258,9 +165,7 @@ describe("CI acceptance orchestration", () => {
         expect(prepared.status, prepared.stderr.toString()).toBe(0);
         expect(readFileSync(log, "utf8")).toBe(
           "flutter build macos --release --dart-define=" +
-            (name === "workspace"
-              ? "SYNTILA_WORKSPACE_VERSION=1.0.0 --dart-define=SYNTILA_WORKSPACE_ENVIRONMENT=production --dart-define=SYNTILA_RELEASE_TRUST_KEYS_JSON={}"
-              : "SYNTILA_PROFILE_LAB_VERSION=1.0.0 --dart-define=SYNTILA_PROFILE_LAB_ENVIRONMENT=production") +
+            "SYNTILA_PROFILE_LAB_VERSION=1.0.0 --dart-define=SYNTILA_PROFILE_LAB_ENVIRONMENT=production" +
             "\n",
         );
         writeFileSync(log, "");
@@ -275,81 +180,6 @@ describe("CI acceptance orchestration", () => {
       }
     },
   );
-
-  it("workspace macOS build includes the GUI; prepared reuses preparation", () => {
-    const root = mkdtempSync(join(tmpdir(), "syntila-ci-"));
-    const app = join(root, "apps", "workspace");
-    const bin = join(root, "bin");
-    const log = join(root, "commands");
-    mkdirSync(join(root, "scripts", "internal"), { recursive: true });
-    mkdirSync(join(app, ".dart_tool"), { recursive: true });
-    mkdirSync(join(app, "assets", "engines"), { recursive: true });
-    mkdirSync(bin);
-    writeFileSync(join(app, "pubspec.yaml"), "version: 1.0.0\n");
-    writeFileSync(join(app, ".dart_tool", "package_config.json"), "{}\n");
-    const engine = join(app, "assets", "engines", "syntila-agent");
-    writeFileSync(engine, "#!/bin/sh\nexit 0\n");
-    chmodSync(engine, 0o755);
-    const mocks = {
-      uname: "echo Darwin",
-      node: "echo '{}'",
-      security:
-        'echo "1) ABC Apple Development: vitalii@nohainc.com (7X62W6499P)"',
-      codesign:
-        'if [ "$1" = "-dv" ] || [ "$1" = "-d" ]; then exit 1; fi; exit 0',
-      ditto:
-        'if [ "$1" = "-c" ]; then for last; do :; done; touch "$last"; else mkdir -p "$2" && cp -R "$1/." "$2"; fi',
-      dart: `echo "dart $1 $2" >> "$CI_TEST_LOG"\nwhile [ "$1" != "-o" ] && [ "$#" -gt 0 ]; do shift; done; if [ "$1" = "-o" ]; then shift; mkdir -p "$(dirname "$1")"; touch "$1"; chmod 755 "$1"; fi`,
-    };
-    for (const [command, script] of Object.entries(mocks)) {
-      writeFileSync(join(bin, command), `#!/bin/sh\n${script}\n`);
-      chmodSync(join(bin, command), 0o755);
-    }
-    writeFileSync(
-      join(root, "scripts", "internal", "build-cli-worker-engine.sh"),
-      'echo engine >> "$CI_TEST_LOG"\n',
-    );
-    writeFileSync(
-      join(root, "scripts", "internal", "build-workspace-gui-macos.sh"),
-      'echo gui >> "$CI_TEST_LOG"\n',
-    );
-    for (const name of [
-      "build-workspace-macos.sh",
-      "verify-workspace-service-bundle.sh",
-    ]) {
-      copyFileSync(
-        new URL(`../scripts/${name}`, import.meta.url),
-        join(root, "scripts", name),
-      );
-    }
-    const script = join(root, "scripts", "build-workspace-macos.sh");
-    const run = (args) =>
-      spawnSync("bash", [script, ...args], {
-        env: {
-          ...process.env,
-          PATH: `${bin}:${process.env.PATH}`,
-          CI_TEST_LOG: log,
-        },
-      });
-    try {
-      const prepared = run(["--prepared"]);
-      expect(prepared.status, prepared.stderr.toString()).toBe(0);
-      expect(readFileSync(log, "utf8")).toBe("dart compile exe\ngui\n");
-      const bundle = join(root, "dist", "syntila", "macos", "syntila");
-      for (const file of ["syntila", "assets/engines/syntila-agent"]) {
-        expect(readFileSync(join(bundle, file)) !== undefined).toBe(true);
-      }
-      writeFileSync(log, "");
-      expect(run([]).status).toBe(0);
-      expect(readFileSync(log, "utf8")).toBe(
-        "dart pub get\nengine\ndart compile exe\ngui\n",
-      );
-      rmSync(engine);
-      expect(run(["--prepared"]).status).toBe(1);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
 
   it("public site production deployment is manual-only with self-contained validation", () => {
     const workflow = source(".github/workflows/deploy-site.yml");

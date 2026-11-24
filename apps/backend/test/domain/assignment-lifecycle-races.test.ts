@@ -322,21 +322,6 @@ describe("assignment identity fencing", () => {
     expect(a2.status).toBe("running");
   });
 
-  it("rejects a previous runtime identity and another Workspace", async () => {
-    const f = await seed("dispatched");
-    const oldRuntime = await transitionAssignment(f.read, {
-      to: "acknowledged",
-      fence: { ...f.fence, runtimeIdentityId: "RT-OLD" },
-    });
-    const otherWorkspace = await transitionAssignment(f.read, {
-      to: "acknowledged",
-      fence: { ...f.fence, executionWorkspaceId: "WS-OTHER" },
-    });
-    expect(oldRuntime.outcome).toBe("stale");
-    expect(otherWorkspace.outcome).toBe("stale");
-    expect((await f.row()).status).toBe("dispatched");
-  });
-
   it("reports an unknown assignment without writing", async () => {
     const f = await seed("dispatched");
     const missing = await transitionAssignment(f.read, {

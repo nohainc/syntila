@@ -1,5 +1,4 @@
 import { describe, expect, it } from "./helpers/vitest-compat";
-import { Data } from "../../src/platform/data.js";
 import { workerOutputImages } from "../../src/domain/routes/worker-output-images.js";
 
 const fileId = "wrf-12345678-1234-1234-1234-123456789abc";
@@ -66,66 +65,5 @@ describe("workerOutputImages", () => {
     expect(kept?.previewImage).toBe("/9j/AAAA");
     expect(script).not.toHaveProperty("previewImage");
     expect(huge).not.toHaveProperty("previewImage");
-  });
-});
-
-describe("generated output upload", () => {
-  it("stores the file under the Space owner and rejects finished assignments", async () => {
-    const { vi } = await import("vitest");
-    const { handleUploadWorkerOutputImage } =
-      await import("../../src/domain/routes/worker-output-images.js");
-    const runtime = await import("../../src/domain/routes/work-request-inputs.js");
-    const plans = await import("../../src/domain/account-plan.js");
-    const files = await import("../../src/domain/routes/work-request-files.js");
-    const runtimeSpy = vi
-      .spyOn(runtime, "requireRuntime")
-      .mockResolvedValue("workspace-1");
-    const limitsSpy = vi
-      .spyOn(plans, "getAttachmentLimits")
-      .mockResolvedValue({ fileBytes: 100, storageBytes: 1000 } as never);
-    const storeSpy = vi
-      .spyOn(files, "storeWorkRequestFile")
-      .mockResolvedValue({ digest: "sha256:test", sizeBytes: 4 });
-    let status = "running";
-    const env = {
-      SYNTILA_DATA: new Data((async () => [{
-        threadId: "thread-1",
-        spaceId: "space-1",
-        ownerUserId: "space-owner",
-        status,
-      }]) as never),
-    } as never;
-    const request = () =>
-      new Request(
-        "https://example.com/api/workspace-runtime/outputs?assignmentId=asg-1&name=report.txt",
-        {
-          method: "POST",
-          headers: { "content-type": "text/plain", "content-length": "4" },
-          body: "test",
-        },
-      );
-    try {
-      expect((await handleUploadWorkerOutputImage(request(), env)).status).toBe(
-        201,
-      );
-      expect(limitsSpy).toHaveBeenCalledWith(env, "space-owner");
-      expect(storeSpy).toHaveBeenCalledWith(
-        env,
-        expect.objectContaining({
-          userId: "space-owner",
-          spaceId: "space-1",
-          threadId: "thread-1",
-          assignmentId: "asg-1",
-          name: "report.txt",
-        }),
-      );
-      status = "completed";
-      await expect(handleUploadWorkerOutputImage(request(), env),).rejects.toThrow("already finished");
-      expect(storeSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      runtimeSpy.mockRestore();
-      limitsSpy.mockRestore();
-      storeSpy.mockRestore();
-    }
   });
 });

@@ -63,5 +63,5 @@ Profile JSON, evidence, logs, or source control. The Profile Lab must not
 automatically publish local edits.
 
 See [WORKER_PROFILE_V9.md](../specifications/WORKER_PROFILE_V9.md) for the
-canonical contract and [RELEASE_TRUST_AND_ROTATION.md](../security/RELEASE_TRUST_AND_ROTATION.md)
+canonical contract and RELEASE_TRUST_AND_ROTATION.md
 for the separate Workspace application-release trust model.

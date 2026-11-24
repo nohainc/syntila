@@ -20,17 +20,17 @@ describe("Input Delivery gate", () => {
     expect(inputGateDecision([], false, now)).toEqual({ outcome: "none" });
   });
 
-  it("dispatches only when every file is delivered", () => {
+  it("dispatches when every file is uploaded or delivered", () => {
     expect(
       inputGateDecision(
-        [row("a", "delivered"), row("b", "uploaded")],
+        [row("a", "uploaded"), row("b", "awaiting_upload")],
         false,
         now,
       ),
     ).toEqual({ outcome: "waiting" });
     expect(
       inputGateDecision(
-        [row("a", "delivered"), row("b", "delivered")],
+        [row("a", "delivered"), row("b", "uploaded")],
         false,
         now,
       ),
@@ -51,7 +51,7 @@ describe("Input Delivery gate", () => {
   });
 
   it("stops for cancellation", () => {
-    expect(inputGateDecision([row("a", "uploaded")], true, now)).toMatchObject({
+    expect(inputGateDecision([row("a", "awaiting_upload")], true, now)).toMatchObject({
       outcome: "cancelled",
     });
   });
@@ -66,7 +66,7 @@ describe("Input Delivery gate", () => {
       ),
     ).toEqual({
       outcome: "failed",
-      message: "Files were not delivered to the Workspace in time: b",
+      message: "Files were not uploaded in time: b",
     });
     // Any recent change keeps the request waiting.
     expect(

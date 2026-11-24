@@ -2,8 +2,8 @@
 
 **Status:** Implemented in phases; platform and deployed acceptance remain gated
 **Decision record:** [ADR-027](../decisions/ADR-027-custom-worker-plugins.md)
-**Companion contracts:** [Plugin protocol v1](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md), [Management IPC v1](../specifications/WORKER_PLUGIN_MANAGEMENT_IPC_V1.md)
-**Plan, SDK and open decisions:** [Custom Worker plugins plan](../roadmaps/CUSTOM_WORKER_PLUGINS_PLAN.md)
+**Companion contracts:** [Plugin protocol v1](../specifications/WORKER_PLUGIN_PROTOCOL_V1.md), Management IPC v1
+**Plan, SDK and open decisions:** Custom Worker plugins plan
 
 Code references below were checked against the repository on 2026-11-03.
 

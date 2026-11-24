@@ -1,68 +1,25 @@
 import { conversationFixture } from "./helpers/conversation";
-import { expect, it, vi } from "./helpers/vitest-compat";
+import { expect, it } from "./helpers/vitest-compat";
 import { dispatchTaskAssignment } from "../../src/domain/assignment-dispatcher.js";
 import {
   parseWorkspaceRuntimeMessage,
   WORKSPACE_RUNTIME_PROTOCOL_NAME,
   WORKSPACE_RUNTIME_PROTOCOL_VERSION,
 } from "@syntila/workspace-runtime-protocol";
-const scheduler = vi.hoisted(() => ({ selectSpaceExecutionTarget: vi.fn() }));
-vi.mock("../../src/domain/scheduler.js", () => scheduler);
 
 it.each([null, "low"])(
   "dispatch uses the frozen effort %s even if the task has a later override",
   async (effort) => {
-    const selection = {
-      schemaVersion: 1,
-      workerTypeId: "gemini",
-      workerDisplayName: "Original Worker",
-      profileReleaseVersion: 2,
-      catalogSource: "profile_catalog",
-      modelId: "family",
-      modelName: "Original Family",
-      effort,
-      catalogRevision: "a".repeat(64),
-      modelSource: "explicit",
-      effortSource: effort === null ? "provider_default" : "explicit",
-    };
-    scheduler.selectSpaceExecutionTarget.mockResolvedValue({
-      spaceId: "P",
-      workspaceId: "WS",
-      workspaceRuntimeIdentityId: "RT",
-      workspaceSpaceGrantId: "G",
-      workerId: "worker-a",
-      workerTypeId: "gemini",
-      engineVersion: "1.3.0",
-      profileDefinitionId: "profile",
-      profileReleaseVersion: 2,
-      providerToolName: "Provider",
-      providerToolVersion: "1.0.0",
-      model: "family",
-      reasoningEffort: effort,
-      effectivePermissions: ["repository:read"],
-      permissionSnapshot: {
-        profileDefinitionId: "profile",
-        profileReleaseVersion: 2,
-        workerDisplayName: "Original Worker",
-        executionSelection: selection,
-        permissions: ["repository:read"],
-      },
-      selectionExplanation: {},
-      executionClass: "stateless_read",
-      readOnly: true,
-    });
     const f = await conversationFixture();
     await f.sqlite.exec(`
       INSERT INTO runs(id,space_id,status,created_at,updated_at) VALUES('RUN','P','running','now','now');
-      INSERT INTO workspace_space_grants(id,space_id,workspace_id,granted_by_user_id,created_at,updated_at) VALUES('G','P','WS','U','now','now');
-      INSERT INTO workspace_worker_inventory (
-        worker_id, workspace_id, owner_user_id, worker_type_id, activation_state, readiness_state,
-        local_concurrency_limit, revision, created_at, updated_at, last_seen_at
-      ) VALUES ('worker-a', 'WS', 'U', 'gemini', 'enabled', 'ready', 1, 1, now(), now(), now());`);
+      INSERT INTO worker_credentials(id,worker_instance_id,public_key,key_fingerprint) VALUES('cred-a','worker-a','${"a".repeat(43)}','${"a".repeat(64)}');
+      INSERT INTO worker_agent_sessions(worker_instance_id,session_id,session_epoch,credential_id,token_digest,lease_expires_at) VALUES('worker-a','sess-a',1,'cred-a','digest',now() + interval '5 minutes');
+      INSERT INTO worker_profiles(worker_type_id,schema_version,profile_json,revision,digest,updated_at) VALUES('chatgpt',1,'{"schemaVersion":1,"profileDefinitionId":"profile"}',2,'${"a".repeat(64)}',now()) ON CONFLICT (worker_type_id) DO NOTHING;`);
     let sent: Record<string, unknown> | undefined;
     const namespace = {
       idFromName() {
-        return "workspace";
+        return "worker-a";
       },
       get() {
         return {
@@ -72,15 +29,31 @@ it.each([null, "low"])(
           },
         };
       },
+      getByName() {
+        return this.get();
+      },
+    };
+    const workerTarget = {
+      workerId: "worker-a",
+      workerTypeId: "chatgpt",
+      workerName: "ChatGPT",
+      spaceId: "P",
+      threadId: "W",
+      model: "family",
+      reasoningEffort: effort,
+      readOnly: true,
+      permissions: ["repository:read"],
+      profile: { definitionId: "profile", revision: 2, digest: "a".repeat(64) },
+      mcpWorker: null,
     };
     const result = await dispatchTaskAssignment(
       {
         SYNTILA_DB: f.db,
-        SYNTILA_WORKSPACE_GATEWAY:
+        SYNTILA_WORKER_GATEWAY:
           namespace as unknown as DurableObjectNamespace,
       },
       {
-        workspaceId: "WS",
+        workspaceId: null,
         runId: "RUN",
         taskId: "T",
         task: {
@@ -88,36 +61,22 @@ it.each([null, "low"])(
           role: "collaborator",
           objective: "Prompt",
           spaceId: "P",
+          threadId: "W",
           requestedByUserId: "U",
+          workBindingId: "chat",
           model: "changed-later",
           reasoningEffort: "high",
+          workerTarget,
         },
-      },
+      } as any,
     );
     expect(result.accepted).toBe(true);
-    const message = parseWorkspaceRuntimeMessage({
-      ...sent,
-      protocol: WORKSPACE_RUNTIME_PROTOCOL_NAME,
-      protocolVersion: WORKSPACE_RUNTIME_PROTOCOL_VERSION,
-      messageId: "message",
-      timestamp: "2026-10-11T00:00:00Z",
-      type: "assignment.start",
-    });
     expect(
-      (message.payload as { snapshot: Record<string, unknown> }).snapshot,
+      (sent as { payload: { snapshot: Record<string, unknown> } }).payload.snapshot,
     ).toMatchObject({
       model: "family",
       reasoningEffort: effort,
-      executionSelection: selection,
     });
-    const stored = await f.sqlite
-      .prepare(
-        "SELECT permission_snapshot_json AS snapshot FROM worker_assignments WHERE task_id = 'T' AND run_id = 'RUN'",
-      )
-      .get() as { snapshot: string };
-    expect(JSON.parse(stored.snapshot).executionSelection).toEqual(selection);
-    // The command exists in the Worker's inbox, addressed to the Worker
-    // Instance adopted from the Workspace inventory, and follows the dispatch.
     const command = await f.sqlite
       .prepare(
         `SELECT c.type, c.status, c.worker_instance_id AS instance, c.payload_ref AS ref, c.assignment_id AS assignment

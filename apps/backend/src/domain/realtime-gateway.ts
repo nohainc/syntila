@@ -359,26 +359,7 @@ export async function authorizeRealtimeScope(
       ? { allowed: true }
       : { allowed: false, reason: `${scope.kind}_access_denied` };
   }
-  const owner = await selectExecutionWorkspacesByIdOwnerUserId<{ owner: number }>(queryOf(db), scope.workspaceId, userId);
-  if (!owner)
-    return { allowed: false, reason: "execution_workspace_access_denied" };
-
-  if (scope.spaceId) {
-    const space = await queryOf(db).row<{ granted: number }>`SELECT 1 AS granted FROM workspace_space_grants
-                  WHERE space_id = ${scope.spaceId} AND workspace_id = ${scope.workspaceId} AND status = 'active'`;
-    if (!space) {
-      return { allowed: false, reason: "space_access_denied" };
-    }
-  }
-  if (scope.runId) {
-    const run = await queryOf(db).row<{ granted: number }>`SELECT 1 AS granted FROM runs r
-                  JOIN workspace_space_grants g ON g.space_id = r.space_id
-                  WHERE r.id = ${scope.runId} AND g.workspace_id = ${scope.workspaceId} AND g.status = 'active'`;
-    if (!run) {
-      return { allowed: false, reason: "run_access_denied" };
-    }
-  }
-  return { allowed: true };
+  return { allowed: false, reason: "execution_workspace_access_denied" };
 }
 
 export async function isRealtimeIdentityAuthorized(
@@ -798,10 +779,6 @@ export class RealtimeGateway implements DurableObject {
   }
 
   private async handleUnified(connectionId: string, connected: ConnectedClient, input: unknown): Promise<void> {
-    if (!isFeatureEnabled("unified_gateway")) {
-      this.sendRaw(connected.socket, buildEnvelope({ type: "error", stream: { kind: "user", id: connected.identity.userId }, payload: { code: "unsupported_protocol", message: "The unified gateway is not enabled" } }));
-      return;
-    }
     connected.unified ??= this.newSession(connectionId, connected.identity.userId);
     for (const envelope of await connected.unified.handle(input)) this.sendRaw(connected.socket, envelope);
     connected.unifiedStreams = this.registry.streamsOf(connectionId);
@@ -930,13 +907,7 @@ export class RealtimeGateway implements DurableObject {
         connected.identity.userId,
         { kind: "space", spaceId: stream.id },
       );
-      if (!member.allowed) {
-        const owner =
-          event.type === "workspace_space_grant.updated"
-            ? await dataOf(this.env).read.row`SELECT 1 AS owner FROM workspace_space_grants WHERE id = ${event.payload.entityId} AND space_id = ${stream.id} AND granted_by_user_id = ${connected.identity.userId}`
-            : null;
-        if (!owner) return;
-      }
+      if (!member.allowed) return;
     }
     const matchingScopes = [...connected.subscriptions.values()].filter(
       (scope) => eventMatchesScope(event, scope),
@@ -1245,9 +1216,8 @@ export class RealtimeGateway implements DurableObject {
     }
     if (scope.kind === "user") {
       return {
-        join: q.raw(" LEFT JOIN execution_workspaces w ON w.id = e.workspace_id"),
+        join: none,
         where: q.frag`(e.stream_kind = 'user' AND e.stream_id = ${userId}) OR
-         (e.stream_kind = 'execution_workspace' AND w.owner_user_id = ${userId}) OR
          (e.stream_kind = 'space' AND EXISTS (
            SELECT 1 FROM space_memberships m
            WHERE m.space_id = e.stream_id AND m.user_id = ${userId}

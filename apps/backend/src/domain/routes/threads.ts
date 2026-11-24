@@ -562,7 +562,7 @@ export async function handleListDiscussionMessages(
   timeline = false,
 ): Promise<Response> {
   await authorizeThreadAccess(request, env, threadId, "view", accessContext);
-  if (timeline && isFeatureEnabled("canonical_timeline")) {
+  if (timeline) {
     // Historical Work gets its items on first read; replay-safe.
     await dataOf(env).tx("thread.timeline.backfill", async (tx) => {
       await tx.row`SELECT backfill_ai_timeline(${threadId})`;

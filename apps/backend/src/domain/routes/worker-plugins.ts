@@ -265,12 +265,12 @@ async function removeFromLibrary(
   const owned = await selectAccountWorkerPluginsByPluginRef(queryOf(db), pluginRef, userId);
   if (!owned)
     throw new PluginRouteError(404, "plugin_not_found", "Plugin not found");
-  const enabled = await queryOf(db).row`SELECT 1 AS ok FROM workspace_worker_plugin_enablements WHERE plugin_ref = ${pluginRef} AND intent = 'enabled'`;
+  const enabled = await queryOf(db).row`SELECT 1 AS ok FROM worker_instances WHERE worker_type_id = ${pluginRef} AND revoked_at IS NULL AND enabled LIMIT 1`;
   if (enabled)
     throw new PluginRouteError(
       409,
       "plugin_in_use",
-      "Disable this plugin on every Workspace first",
+      "Disable or remove active Workers using this plugin first",
     );
   const active = await queryOf(db).row`SELECT 1 AS ok FROM worker_assignments
         WHERE worker_type_id = ${pluginRef} AND status IN ('created','queued','sent','accepted','running','cancel_requested') LIMIT 1`.catch(() => null);
@@ -282,85 +282,9 @@ async function removeFromLibrary(
     );
   const now = new Date().toISOString();
   await atomically(db, "worker-plugins.batch312", async (q) => {
-    await q.run`DELETE FROM workspace_worker_inventory WHERE worker_type_id = ${pluginRef}`;
     await q.run`UPDATE worker_catalog SET lifecycle_state = 'retired', visibility_state = 'hidden', updated_at = ${now} WHERE worker_type_id = ${pluginRef}`;
     await q.run`DELETE FROM account_worker_plugins WHERE plugin_ref = ${pluginRef}`;
   });
   return json({ removed: true });
 }
 
-/**
- * `PUT|DELETE /api/workspaces/:workspaceId/external-workers/:pluginRef`
- * (also `/worker-plugins/`).
- * Pins one library version on one Workspace the caller owns.
- */
-export async function handleWorkspacePluginPin(
-  request: Request,
-  env: SecurityEnv,
-  workspaceId: string,
-  pluginRef: string,
-  ctx?: ExecutionContext,
-): Promise<Response> {
-  const context = await securityContext(request, env, ctx);
-  const userId = context.userId;
-  const db = env.SYNTILA_DB;
-  const ref = requireRef(pluginRef);
-  const workspace = await ownsActiveWorkspace(dataOf(env).read, workspaceId, userId);
-  if (!workspace) throw new HttpError(404, "Workspace not found");
-  const owned = await selectAccountWorkerPluginsByPluginRef(queryOf(db), ref, userId);
-  if (!owned)
-    throw new PluginRouteError(404, "plugin_not_found", "Plugin not found");
-
-  if (request.method === "DELETE") {
-    await queryOf(db).run`DELETE FROM workspace_worker_plugin_enablements WHERE workspace_id = ${workspaceId} AND plugin_ref = ${ref}`;
-    return json({ removed: true });
-  }
-  if (request.method !== "PUT") throw new HttpError(405, "Unsupported method");
-
-  const body = await readPluginBody(request, PluginPinSchema);
-  onlyKeys(body, [
-    "version",
-    "manifestDigest",
-    "consentHash",
-    "enabled",
-    "shareable",
-  ]);
-  if (
-    typeof body.version !== "string" ||
-    typeof body.manifestDigest !== "string" ||
-    !DIGEST_PATTERN.test(body.manifestDigest) ||
-    typeof body.consentHash !== "string" ||
-    !DIGEST_PATTERN.test(body.consentHash) ||
-    typeof body.enabled !== "boolean" ||
-    typeof body.shareable !== "boolean"
-  )
-    throw new PluginRouteError(400, "invalid_request", "Invalid enablement");
-  const version = await selectAccountWorkerPluginVersionsByPlugin<{ digest: string }>(queryOf(db), ref, body.version);
-  if (!version)
-    throw new PluginRouteError(
-      404,
-      "plugin_not_found",
-      "That version is not in your library",
-    );
-  if (version.digest !== body.manifestDigest)
-    throw new PluginRouteError(
-      409,
-      "plugin_digest_mismatch",
-      "The digest differs from the library version",
-    );
-  await queryOf(db).run`INSERT INTO workspace_worker_plugin_enablements
-         (workspace_id, plugin_ref, version, manifest_digest, consent_hash, intent, shareable, updated_at)
-       VALUES (${workspaceId}, ${ref}, ${body.version}, ${body.manifestDigest}, ${body.consentHash}, ${body.enabled ? "enabled" : "disabled"}, ${body.shareable ? 1 : 0}::int::boolean, ${new Date().toISOString()})
-       ON CONFLICT(workspace_id, plugin_ref) DO UPDATE SET
-         version = excluded.version,
-         manifest_digest = excluded.manifest_digest,
-         consent_hash = excluded.consent_hash,
-         intent = excluded.intent,
-         shareable = excluded.shareable,
-         updated_at = excluded.updated_at`;
-  return json({
-    pluginRef: ref,
-    version: body.version,
-    intent: body.enabled ? "enabled" : "disabled",
-  });
-}

@@ -14,7 +14,7 @@ import {
   resolveUserWorkflowConfiguration,
 } from "@syntila/core";
 import { loadSpaceWorkflowConfigurations } from "./space-workflow-configurations.js";
-import { parseWorkflowExecutionSelection } from "./workflow-execution-configuration.js";
+import { parseWorkflowExecutionSelection } from "./worker-selection.js";
 
 export type VerificationMode = "none" | "per_phase" | "final";
 
@@ -200,9 +200,7 @@ function executionFields(
   selection: { workerId?: string; model?: string; reasoningEffort?: string } | undefined,
 ): Record<string, unknown> {
   if (!selection) return {};
-  return isFeatureEnabled("worker_target_dispatch")
-    ? { ...selection }
-    : { executionSelection: selection };
+  return { ...selection };
 }
 
 export async function handleApprovePlan(

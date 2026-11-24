@@ -1,6 +1,6 @@
 # Input Delivery v1
 
-> **Superseded in part (P10).** Workspaces are replaced by Worker Agents ([ADR-034](../decisions/ADR-034-standalone-worker-agent-and-session-fencing.md), [ADR-035](../decisions/ADR-035-worker-targeted-execution-and-workspace-removal.md)). This document describes the legacy Workspace path, which is closed in stages and then removed ([LEGACY_CUTOVER.md](../operations/LEGACY_CUTOVER.md)). Do not build new features on it.
+> **Superseded in part (P10).** Workspaces are replaced by Worker Agents ([ADR-034](../decisions/ADR-034-connect-pairing-and-session-fencing.md), [ADR-035](../decisions/ADR-035-worker-targeted-execution.md)). This document describes the legacy Workspace path, which is closed in stages and then removed ([LEGACY_CUTOVER.md](../operations/LEGACY_CUTOVER.md)). Do not build new features on it.
 
 Status: implemented. Owners: Cloud (`routes/work-request-inputs.ts`,
 `workflow.ts` gate), Workspace Service (`input_delivery.dart`,
@@ -45,8 +45,10 @@ Cloud-generated `fileId` (`wrf-<uuid>`, also the R2 key
 | `failed`          | gave up uploading or delivering; fails the request        |
 
 `upload_attempts` / `delivery_attempts` count whole-file attempts;
-`error_message` is shown to the user. `workspace_id` is the request's
-`primary_workspace_id`. `work_requests.input_json` stays immutable (the
+`error_message` is shown to the user. Each row has exactly one receiver
+(migration `0047`, CHECK): `workspace_id` is the request's
+`primary_workspace_id` on the Workspace path, and `worker_instance_id` is the
+one Worker every Step is bound to on the Worker path. `work_requests.input_json` stays immutable (the
 existing trigger); the verified digest and display previews live on the row
 and are merged into dispatch (`withInputFacts`) and history reads.
 
@@ -107,12 +109,28 @@ Delivering files to the Workspace (1/3 ready)…
 ↑ photo.jpg — uploading
 ```
 
+## Worker path
+
+A Worker-targeted request with files is accepted only when every Step is
+bound to the same Worker (`files_need_one_worker` otherwise): the files go to
+one computer. That Worker's Agent (Syntila Connect) uses the same endpoints
+under `/api/worker-agent/inputs` (list, `/:fileId/content`, `/:fileId/delivered`,
+`/:fileId/attempt`), authenticated with its session headers (`x-worker-id`,
+`x-worker-session-id`, bearer session token) instead of a runtime credential.
+There is no `input.available` wake-up; the Agent polls every 5 seconds while
+connected (`inputs.dart`), keeps verified copies in its private `inputs/`
+directory, and, right before the Engine starts, copies them to
+`.syntila/inputs/<work-request-id>/file-NNN` in the working directory (the
+assignment scratch folder or the Space folder). A copy the store lost is
+downloaded again. After three failed downloads the input fails the request.
+
 ## Security
 
 - Upload: authenticated user with execute access to the Thread who is the
   request's requester.
 - Runtime endpoints: Workspace runtime credential; an input is visible only
-  to the runtime of its `workspace_id`. Bytes are served only in `uploaded` or
+  to the runtime of its `workspace_id`. Agent endpoints: a live Agent
+  session; an input is visible only to the Agent of its `worker_instance_id`. Bytes are served only in `uploaded` or
   `delivered` state, and only if the R2 object's size and digest match the
   row.
 - The Service accepts only `wrf-` identities and `sha256:` digests, never

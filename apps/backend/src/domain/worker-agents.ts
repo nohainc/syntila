@@ -585,20 +585,17 @@ export async function authenticateAgentSession(
 ): Promise<AgentPrincipal | null> {
   const digest = await hashToken(input.sessionToken);
   const row = await dataOf(env).read.row<Row>`
-    SELECT s.session_epoch::text AS epoch, s.token_digest, w.actor_id, w.owner_user_id,
-           inv.workspace_id AS execution_workspace_id
+    SELECT s.session_epoch::text AS epoch, s.token_digest, w.actor_id, w.owner_user_id
       FROM worker_agent_sessions s
       JOIN worker_credentials c ON c.id = s.credential_id AND c.revoked_at IS NULL
       JOIN worker_instances w ON w.id = s.worker_instance_id AND w.revoked_at IS NULL AND w.enabled
-      LEFT JOIN legacy_worker_mapping m ON m.worker_instance_id = w.id
-      LEFT JOIN workspace_worker_inventory inv ON inv.worker_id = m.legacy_worker_id
      WHERE s.worker_instance_id = ${input.workerId} AND s.session_id = ${input.sessionId}
        AND s.disconnected_at IS NULL AND s.lease_expires_at > now()`;
   if (!row || !timingSafeEqual(String(row.token_digest), digest)) return null;
   return {
     workerInstanceId: input.workerId, sessionId: input.sessionId, epoch: Number(row.epoch),
     actorId: String(row.actor_id), ownerUserId: String(row.owner_user_id),
-    executionWorkspaceId: row.execution_workspace_id == null ? null : String(row.execution_workspace_id),
+    executionWorkspaceId: null,
   };
 }
 

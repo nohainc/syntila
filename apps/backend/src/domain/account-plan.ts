@@ -46,7 +46,7 @@ export async function countOwnedWorkspaces(
   userId: string,
 ): Promise<number> {
   const row = await dataOf(env).read.row<{ count: number }>`
-    SELECT COUNT(*) AS count FROM execution_workspaces WHERE owner_user_id = ${userId} AND status != 'revoked'`;
+    SELECT COUNT(*) AS count FROM worker_instances WHERE owner_user_id = ${userId} AND revoked_at IS NULL`;
   return row?.count ?? 0;
 }
 
@@ -370,18 +370,18 @@ export function executionSlotAdmission(q: Query, userId: string, taskId: string,
                       AND w.task_id < ${taskId})))))`;
 }
 
-export function pluginAssignmentAdmission(q: Query, workerTypeId: string, workspaceId: string): unknown {
+export function pluginAssignmentAdmission(q: Query, workerTypeId: string, workerInstanceId: string): unknown {
   return q.frag`(NOT EXISTS (SELECT 1 FROM worker_catalog wc
                         WHERE wc.worker_type_id = ${workerTypeId}
                           AND wc.origin = 'plugin')
-    OR ${paidOwner(q, q.frag`(SELECT pw.owner_user_id FROM execution_workspaces pw WHERE pw.id = ${workspaceId})`)})`;
+    OR ${paidOwner(q, q.frag`(SELECT pw.owner_user_id FROM worker_instances pw WHERE pw.id = ${workerInstanceId})`)})`;
 }
 
 export function personalWorkspaceAdmission(q: Query, userId: string): unknown {
   const limit = q.raw(String(FREE_PERSONAL_WORKSPACE_LIMIT));
   return q.frag`(${paidOwner(q, userId)}
-    OR (SELECT COUNT(*) FROM execution_workspaces ow
-         WHERE ow.owner_user_id = ${userId} AND ow.status != 'revoked')
+    OR (SELECT COUNT(*) FROM worker_instances ow
+         WHERE ow.owner_user_id = ${userId} AND ow.revoked_at IS NULL)
        < ${limit})`;
 }
 

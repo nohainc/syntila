@@ -23,7 +23,7 @@ const router = readFileSync(
   "utf8",
 );
 const gateway = readFileSync(
-  fileURLToPath(new URL("../../src/domain/workspace-gateway.ts", import.meta.url)),
+  fileURLToPath(new URL("../../src/domain/worker-gateway.ts", import.meta.url)),
   "utf8",
 );
 
@@ -37,7 +37,7 @@ describe("Thread Discuss / Work boundary", () => {
     expect(router).toMatch(/threads.*discussion-messages/);
     expect(router).toMatch(/threads.*work-requests/);
     expect(`${work}\n${threadPolicy}`).toContain('"run.start"');
-    expect(work).toContain("validateWorkRequest(workRequest, policy)");
+    expect(work).toMatch(/validateWorkRequest\(workRequest, policy[,)]/);
     expect(work).toContain("thread.work_requested");
   });
 

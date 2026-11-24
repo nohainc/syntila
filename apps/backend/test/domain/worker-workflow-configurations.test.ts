@@ -8,8 +8,7 @@ async function fixture() {
   const f = await pgD1();
   await f.sqlite.exec(`${user("alice")} ${user("bob")}
     INSERT INTO worker_instances(id,actor_id,owner_user_id,worker_type_id,name) VALUES
-      ('worker-alice','','alice','chatgpt','Writer'), ('worker-bob','','bob','chatgpt','Writer');
-    INSERT INTO legacy_worker_mapping(legacy_worker_id, worker_instance_id) VALUES ('legacy-alice','worker-alice')`);
+      ('worker-alice','','alice','chatgpt','Writer'), ('worker-bob','','bob','chatgpt','Writer')`);
   const env = { SYNTILA_DB: f.db, SYNTILA_ENVIRONMENT: "development", TEST_AUTHENTICATION: async () => ({
     userId: "alice", user: { id: "alice", email: "alice@test", displayName: "alice", status: "active" },
     spaceRoles: {}, sessionId: "test", clientType: "web",
@@ -42,10 +41,10 @@ describe("Workspace-free Workflow configuration", () => {
     }
   });
 
-  it("translates legacy Workspace Worker IDs and reports the ones that no longer exist", async () => {
+  it("keeps owned Workers and reports Workers that no longer exist", async () => {
     const f = await fixture();
-    const legacy = { schemaVersion: 1, workflowId: "chat", enabled: true, defaults: { worker: "legacy-alice", model: "m" }, stepOverrides: { chat: { worker: "gone" } } } as never;
-    const result = await translateConfiguration(f.env, "alice", legacy);
+    const saved = { schemaVersion: 1, workflowId: "chat", enabled: true, defaults: { worker: "worker-alice", model: "m" }, stepOverrides: { chat: { worker: "gone" } } } as never;
+    const result = await translateConfiguration(f.env, "alice", saved);
     expect(result.configuration.defaults).toEqual({ worker: "worker-alice", model: "m" });
     expect(result.configuration.stepOverrides.chat).toEqual({});
     expect(result.issues).toMatchObject([{ stepId: "chat", code: "worker_unavailable" }]);

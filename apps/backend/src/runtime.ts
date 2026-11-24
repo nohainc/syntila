@@ -17,7 +17,7 @@ import {
 import { Data, type Db } from "./platform/data";
 import { WorkflowHost } from "./platform/workflows";
 import { OutboxDispatcher } from "./domain/outbox-dispatcher";
-import worker, { RealtimeGateway, SyntilaRunWorkflow, ThreadExecutionCoordinator, WorkspaceGateway, WorkerGateway } from "./domain/index";
+import worker, { RealtimeGateway, SyntilaRunWorkflow, ThreadExecutionCoordinator, WorkerGateway } from "./domain/index";
 
 type Sql = ConstructorParameters<typeof WorkflowHost>[1] & { begin(fn: (tx: any) => Promise<unknown>): Promise<unknown> };
 
@@ -26,13 +26,11 @@ export function createRuntime(sql: Sql, db: Db, bindings: Record<string, unknown
   // SYNTILA_DATA: the data layer that replaces the adapter module by module.
   const env: Record<string, unknown> = { SYNTILA_DB: db, SYNTILA_DATA: new Data(db.sql as any), ...bindings };
   const getEnv = () => env;
-  const workspaceGateway = new DurableObjectNamespaceHost("WorkspaceGateway", sql, (s, e) => new WorkspaceGateway(s as any, e as any) as any, getEnv);
   const workerGateway = new DurableObjectNamespaceHost("WorkerGateway", sql, (s, e) => new WorkerGateway(s as any, e as any) as any, getEnv);
   const realtimeGateway = new DurableObjectNamespaceHost("RealtimeGateway", sql, (s, e) => new RealtimeGateway(s as any, e as any) as any, getEnv);
   const threadCoordinator = new DurableObjectNamespaceHost("ThreadExecutionCoordinator", sql, (s, e) => new ThreadExecutionCoordinator(s as any, e as any) as any, getEnv);
   const runWorkflow = new WorkflowHost("syntila-run", sql, (e) => new SyntilaRunWorkflow({} as any, e as any) as any, getEnv);
   Object.assign(env, {
-    SYNTILA_WORKSPACE_GATEWAY: workspaceGateway,
     SYNTILA_WORKER_GATEWAY: workerGateway,
     SYNTILA_REALTIME_GATEWAY: realtimeGateway,
     SYNTILA_THREAD_COORDINATOR: threadCoordinator,
@@ -67,17 +65,17 @@ export function createRuntime(sql: Sql, db: Db, bindings: Record<string, unknown
       backpressureLimit: 8 * 1024 * 1024,
       sendPings: true,
     },
-    hosts: { workspaceGateway, realtimeGateway, threadCoordinator, runWorkflow },
+    hosts: { workerGateway, realtimeGateway, threadCoordinator, runWorkflow },
     outbox,
     async start() {
-      await Promise.all([workspaceGateway.restoreAlarms(), realtimeGateway.restoreAlarms(), threadCoordinator.restoreAlarms()]);
+      await Promise.all([workerGateway.restoreAlarms(), realtimeGateway.restoreAlarms(), threadCoordinator.restoreAlarms()]);
       runWorkflow.start();
       outbox.start();
     },
     async stop() {
       await outbox.stop();
       await runWorkflow.stop(2_000);
-      for (const h of [workspaceGateway, realtimeGateway, threadCoordinator]) { await h.flush(); h.stop(); }
+      for (const h of [workerGateway, realtimeGateway, threadCoordinator]) { await h.flush(); h.stop(); }
     },
   };
 }

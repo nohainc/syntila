@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "./helpers/vitest-compat";
 import { pgD1, recordStatements } from "./helpers/pg-d1";
-import { basicThread, T0, workspace } from "./helpers/seed";
+import { basicThread, T0 } from "./helpers/seed";
 vi.mock("../../src/domain/routes/thread-policy.js", () => ({
   authorizeThreadAccess: vi.fn(async () => ({
     context: { userId: "U", user: { displayName: "Member" } },
@@ -32,16 +32,17 @@ async function database(options: {
 }) {
   const f = await pgD1();
   const q = (text: string) => `'${text.replace(/'/g, "''")}'`;
-  await f.sqlite.exec(`${basicThread({ user: "U", space: "S", thread: "T" })}${workspace("WS", "U")}
-    INSERT INTO workspace_runtime_identities(id, workspace_id, credential_token_hash, installation_id, created_at)
-      VALUES ('RT', 'WS', 'hash', 'installation', '${T0}');
-    INSERT INTO work_requests(id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, status, primary_workspace_id, created_at, updated_at)
-      VALUES ('R', 'T', 'U', 'stateless', 'direct', 1, ${q(JSON.stringify({ steps: [{ kind: "implement" }] }))}, 'failed', 'WS', '${T0}', '${T0}');
+  await f.sqlite.exec(`${basicThread({ user: "U", space: "S", thread: "T" })}
+    INSERT INTO worker_catalog(worker_type_id, display_name, created_at, updated_at) VALUES ('claude', 'Claude', '${T0}', '${T0}') ON CONFLICT DO NOTHING;
+    INSERT INTO worker_instances(id, actor_id, owner_user_id, worker_type_id, name) VALUES ('worker-a', '', 'U', 'claude', 'Claude');
+    INSERT INTO worker_credentials(id, worker_instance_id, public_key, key_fingerprint) VALUES ('cred-a', 'worker-a', '${"a".repeat(43)}', '${"a".repeat(64)}');
+    INSERT INTO worker_agent_sessions(worker_instance_id, session_id, session_epoch, credential_id, token_digest, lease_expires_at) VALUES ('worker-a', 'sess-a', 1, 'cred-a', 'digest', now() + interval '5 minutes');
+    INSERT INTO work_requests(id, thread_id, requested_by_user_id, mode, workflow_id, workflow_version, workflow_snapshot_json, snapshot_json, status, created_at, updated_at)
+      VALUES ('R', 'T', 'U', 'stateless', 'direct', 1, ${q(JSON.stringify({ steps: [{ kind: "implement" }] }))}, ${q(JSON.stringify({ resolvedBindings: { implement: { workerId: "worker-a", workerTypeId: "claude" } } }))}, 'failed', '${T0}', '${T0}');
     INSERT INTO workflow_tasks(id, work_request_id, step_kind, execution_mode, timeout_ms, prompt_profile_version, status, error, created_at, updated_at)
       VALUES ('task-1', 'R', 'implement', 'stateful_thread', 60000, 'v1', 'failed', 'context_limit_exceeded', '${T0}', '${T0}');
-    INSERT INTO worker_catalog(worker_type_id, display_name, created_at, updated_at) VALUES ('claude', 'Claude', '${T0}', '${T0}') ON CONFLICT DO NOTHING;
-    INSERT INTO worker_assignments(id, space_id, execution_workspace_id, runtime_identity_id, worker_type_id, workspace_worker_id, task_id, status, created_at, updated_at)
-      VALUES ('A1', 'S', 'WS', 'RT', 'claude', 'worker-a', 'task-1', 'failed', '${T0}', '${T0}');`);
+    INSERT INTO worker_assignments(id, space_id, worker_instance_id, worker_snapshot_json, worker_type_id, task_id, status, created_at, updated_at)
+      VALUES ('A1', 'S', 'worker-a', '{}', 'claude', 'task-1', 'failed', '${T0}', '${T0}');`);
   if (options.profileJson)
     (await f.sqlite.exec(`INSERT INTO worker_profiles(worker_type_id, schema_version, profile_json, digest) VALUES ('claude', 1, ${q(options.profileJson)}, '${"a".repeat(64)}')
       ON CONFLICT (worker_type_id) DO UPDATE SET profile_json = EXCLUDED.profile_json`));

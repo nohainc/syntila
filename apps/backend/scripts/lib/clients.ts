@@ -207,7 +207,7 @@ export function completeWith(text: string, hold?: () => Promise<void>): Assignme
     ws.send("assignment.ack", { accepted: true }, ids);
     ws.send("assignment.start.permit.request", {}, ids);
     await ws.waitFor("start permit", (f) => f.type === "assignment.start.permit.grant" && f.assignmentId === start.assignmentId);
-    ws.send("assignment.start.ack", {}, ids);
+    ws.send("assignment.start.ack", { started: true, engineStarted: true, providerStarted: true }, ids);
     if (hold) await hold();
     // After a reconnect the Service re-sends its terminal outcome until acked.
     for (let attempt = 0; attempt < 40; attempt++) {

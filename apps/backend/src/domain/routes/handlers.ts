@@ -1,6 +1,5 @@
 export { handleListConversationHistory } from "./conversation-history.js";
 export { SyntilaRunWorkflow } from "../workflow.js";
-export { WorkspaceGateway } from "../workspace-gateway.js";
 export {
   dispatchTaskAssignment,
   recordAssignmentResult,
@@ -12,7 +11,6 @@ export {
 
 export * from "./http-security.js";
 export * from "./thread-policy.js";
-export * from "./workspace-access.js";
 export * from "./profile-admin.js";
 export { handleGetAvatar, handleUploadAvatar } from "./profile.js";
 
@@ -37,24 +35,6 @@ export {
   handleDeclineSpaceInvitation,
   handleListCurrentUserInvitations,
 } from "./spaces.js";
-export {
-  handleListWorkspaces,
-  handleCheckWorkspaceOwnership,
-  handleReconcileWorkspaceOwnership,
-  handleDisconnectDesktopWorkspace,
-  handleReleaseDesktopWorkspace,
-  handleRegisterWorkspaceFromDesktop,
-  handleGetWorkspace,
-  handleUpdateWorkspace,
-  handleWorkspaceDeliveryProbe,
-  handleWorkerUsage,
-  handleRevokeWorkspace,
-  handleExportWorkspaceAudit,
-  handleListWorkspaceSpaceGrants,
-  handleCreateWorkspaceSpaceGrant,
-  handleUpdateWorkspaceSpaceGrant,
-  handleRevokeWorkspaceSpaceGrant,
-} from "./workspaces.js";
 export { handleSetPin, handleSetPinOrder } from "./pins.js";
 export {
   handleListUserFiles,
@@ -121,36 +101,15 @@ export {
   handleDownloadThreadFile,
   handleUploadWorkRequestInput,
   handleFailWorkRequestInputUpload,
-  handleListRuntimeInputs,
-  handleDownloadRuntimeInput,
-  handleConfirmRuntimeInput,
-  handleReportRuntimeInputAttempt,
-  handleUploadWorkerOutputImage,
+  handleDownloadAgentInput,
   handleAgentUploadWorkerOutputImage,
 } from "./work.js";
 export { handleCreateThreadMediaLink, handleGetMediaFile } from "./media-links.js";
-export {
-  handleListWorkerCatalog,
-  handleListWorkspaceWorkerCatalog,
-  handleListWorkspaceWorkerInventory,
-} from "./profiles.js";
-export {
-  handleGetLatestWorkspaceRelease,
-  handleGetWorkspaceRelease,
-  handleDownloadWorkspaceRelease,
-  handlePublishWorkspaceRelease,
-  handleRevokeWorkspaceRelease,
-  handleGetReleaseTrustState,
-  handleRevokeReleaseSigningKey,
-} from "./releases.js";
+export { handleListWorkerCatalog } from "./profiles.js";
 
 export { handleWorkerGatewayConnect } from "./worker-agent-gateway.js";
 export { handleUploadArtifact, handleDownloadArtifact } from "../artifacts.js";
 
-export {
-  handleWorkspaceGatewayConnect,
-  handleWorkspaceRuntimeTransport,
-} from "./workspaces.js";
 export {
   handleListPeople,
   handleCreatePersonInvitation,

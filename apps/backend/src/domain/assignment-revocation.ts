@@ -44,9 +44,7 @@ export type RevocationSource =
   | "execution_deadline"
   | "work_cancelled"
   | "manual_cancel"
-  | "workspace_disconnected"
-  | "grant_expired"
-  | "grant_revoked"
+  | "worker_disconnected"
   | "dispatch_failed"
   | "worker_process_lost";
 
@@ -360,58 +358,13 @@ export async function escalateUnconfirmedRevocations(
   });
 }
 
-/**
- * Finalizes revocations whose owning Workspace runtime identity has been
- * revoked (for example by `workspace.recovered` re-registering the Workspace).
- *
- * The Service only acts on commands addressed to its own runtime identity, so
- * a cancel for an assignment owned by a replaced identity can never be
- * acknowledged. Waiting for that acknowledgement would hold the capacity slot,
- * the Thread lease and the Work Request forever and make Stop appear broken.
- * The replaced runtime can no longer authenticate or report results, and the
- * new Service reclaims orphaned engine processes on start, so the intended
- * terminal outcome is written without Service confirmation.
- * Returns the IDs finalized.
- */
-export async function finalizeRevocationsOfRevokedRuntimes(
-  db: Db,
-  executionWorkspaceId?: string,
-): Promise<string[]> {
-  const results = await queryOf(db).rows<{ id: string; attemptId: string | null }>`SELECT wa.id AS id, wa.attempt_id AS "attemptId"
-         FROM worker_assignments wa
-         JOIN workspace_runtime_identities ri ON ri.id = wa.runtime_identity_id
-        WHERE wa.status IN ('revocation_pending', 'reconciling')
-          AND ri.revoked_at IS NOT NULL
-          AND (${executionWorkspaceId ?? null}::text IS NULL OR wa.execution_workspace_id = ${executionWorkspaceId ?? null})
-        LIMIT 100`;
-  const finalized: string[] = [];
-  for (const row of results ?? []) {
-    try {
-      const outcome = await finalizeAssignmentRevocation(
-        db,
-        row.id,
-        row.attemptId ?? undefined,
-      );
-      if (outcome === "finalized") finalized.push(row.id);
-    } catch {
-      // Best effort: the next recovery pass retries.
-    }
-  }
-  return finalized;
-}
-
 export interface RevocationEnv {
   readonly SYNTILA_DB: Db;
-  readonly SYNTILA_WORKSPACE_GATEWAY?: DurableObjectNamespace;
   readonly SYNTILA_WORKER_GATEWAY?: DurableObjectNamespace;
 }
 
 interface RevokingAssignment {
-  execution_workspace_id: string | null;
-  runtime_identity_id: string | null;
-  workspace_worker_id: string | null;
-  execution_path: string;
-  worker_instance_id: string | null;
+  worker_instance_id: string;
   run_id: string;
   task_id: string;
   attempt_id: string;
@@ -419,32 +372,22 @@ interface RevokingAssignment {
   error_json: string | null;
 }
 
-/** The gateway object and wire ids that reach the assignment's executor. */
+/** The gateway object and wire ids that reach the assignment's Worker. */
 function cancelTarget(env: RevocationEnv, row: RevokingAssignment) {
-  if (row.execution_path === "worker") {
-    const gateways = env.SYNTILA_WORKER_GATEWAY;
-    const workerId = row.worker_instance_id;
-    if (!gateways || !workerId) return null;
-    return {
-      stub: gateways.get(gateways.idFromName(`worker:${workerId}`)),
-      workspaceId: `worker:${workerId}`,
-      runtimeId: `worker:${workerId}`,
-      workerId,
-    };
-  }
-  const gateways = env.SYNTILA_WORKSPACE_GATEWAY;
-  if (!gateways || !row.execution_workspace_id) return null;
+  const gateways = env.SYNTILA_WORKER_GATEWAY;
+  const workerId = row.worker_instance_id;
+  if (!gateways || !workerId) return null;
   return {
-    stub: gateways.get(gateways.idFromName(row.execution_workspace_id)),
-    workspaceId: row.execution_workspace_id,
-    runtimeId: row.runtime_identity_id ?? "",
-    workerId: row.workspace_worker_id ?? "",
+    stub: gateways.get(gateways.idFromName(`worker:${workerId}`)),
+    workspaceId: `worker:${workerId}`,
+    runtimeId: `worker:${workerId}`,
+    workerId,
   };
 }
 
 /**
- * Sends `assignment.cancel` for a revoking assignment through the Workspace
- * Gateway's existing connection and finalizes it if the Service confirms.
+ * Sends `assignment.cancel` for a revoking assignment through its Worker's
+ * gateway connection and finalizes it if the Agent confirms.
  * Returns whether the stop was confirmed. Never throws.
  */
 export async function deliverRevocation(
@@ -453,23 +396,13 @@ export async function deliverRevocation(
   reason?: string,
 ): Promise<boolean> {
   try {
-    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id, execution_path, worker_instance_id,
+    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT worker_instance_id,
               run_id, task_id, attempt_id, idempotency_key, error_json::text AS error_json
          FROM worker_assignments
         WHERE id = ${assignmentId} AND status IN ('revocation_pending', 'reconciling')`;
     if (!row) return false;
     const target = cancelTarget(env, row);
     if (!target) return false;
-    // A replaced runtime identity can never acknowledge: finalize instead of
-    // sending a command that the current Service ignores. A Worker-path
-    // assignment has no runtime identity; its fence is the Agent session.
-    if (row.execution_path !== "worker" && row.execution_workspace_id) {
-      const finalizedIds = await finalizeRevocationsOfRevokedRuntimes(
-        env.SYNTILA_DB,
-        row.execution_workspace_id,
-      );
-      if (finalizedIds.includes(assignmentId)) return true;
-    }
     const stored = parseStored(row.error_json);
     const payload: AssignmentCancelPayload = {
       assignmentId,
@@ -519,7 +452,7 @@ async function notifyServiceOfFence(
   reason: string,
 ): Promise<void> {
   try {
-    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT execution_workspace_id, runtime_identity_id, workspace_worker_id, execution_path, worker_instance_id,
+    const row = await dataOf(env).read.row<RevokingAssignment>`SELECT worker_instance_id,
               run_id, task_id, attempt_id, idempotency_key
          FROM worker_assignments WHERE id = ${assignmentId}`;
     if (!row) return;
