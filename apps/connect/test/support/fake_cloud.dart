@@ -235,7 +235,7 @@ class FakeCloud {
       return;
     }
     try {
-      if (request.uri.path == '/api/workspace-gateway/connect') {
+      if (request.uri.path == '/api/worker-agent/gateway') {
         await _connect(request);
         return;
       }

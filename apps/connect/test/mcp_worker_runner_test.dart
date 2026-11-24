@@ -20,9 +20,15 @@ void main() {
     'requires exact approval and inspected pins, then executes the fake MCP Worker through the Engine',
     () async {
       final root = await Directory.systemTemp.createTemp('mcp-agent-test-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() async {
+        if (!Platform.isWindows && root.existsSync()) {
+          await Process.run('chmod', ['-R', 'u+w', root.path]);
+        }
+        if (root.existsSync()) await root.delete(recursive: true);
+      });
       final repo = Directory.current.parent.parent.path;
       final engine = '$repo/engines/cli_worker/bin/syntila_cli_worker.dart';
+      final engineBinary = await _ensureEngineBinary(repo);
       final worker = '$repo/examples/mcp/echo_worker/echo_worker.dart';
       final source = writeExternalWorkerPackage(
         root,
@@ -91,11 +97,10 @@ void main() {
       );
       final launcher = CliEngineLauncher(
         supervisor: CliWorkerEngineSupervisor(
-          engineExecutable: Platform.resolvedExecutable,
-          engineArgumentsPrefix: ['-DENGINE_VERSION=1.4.0', engine],
+          engineExecutable: engineBinary,
           processRegistryDirectory: Directory('${root.path}/processes'),
         ),
-        engineExecutable: Platform.resolvedExecutable,
+        engineExecutable: engineBinary,
         resolveProfile: (_) async => null,
         workerId: 'worker-1',
         stateDirectory: Directory('${root.path}/state'),
@@ -123,6 +128,9 @@ void main() {
         reason: '${outcome.payload}',
       );
       expect('${outcome.payload}', contains('echo: hello'));
+      if (!Platform.isWindows) {
+        await Process.run('chmod', ['u+w', installed.executablePath]);
+      }
       await File(installed.executablePath).writeAsString('tampered');
       await expectLater(
         runner.prepare(pin),
@@ -130,6 +138,50 @@ void main() {
       );
     },
   );
+}
+
+Future<String> _ensureEngineBinary(String repo) async {
+  final cache = Directory('${Directory.current.path}/.dart_tool/mcp-test-bin')
+    ..createSync(recursive: true);
+  final suffix = Platform.isWindows ? '.exe' : '';
+  final output = '${cache.path}/engine$suffix';
+  final engineDir = '$repo/engines/cli_worker';
+  var newest = DateTime.fromMillisecondsSinceEpoch(0);
+  for (final dir in [
+    '$engineDir/bin',
+    '$engineDir/lib',
+    '$repo/packages/syntila_cli_worker_runtime/lib',
+    '$repo/packages/syntila_external_worker_conformance/lib',
+    '$repo/packages/syntila_external_worker_protocol/lib',
+    '$repo/packages/syntila_mcp_protocol/lib',
+    '$repo/packages/syntila_worker_protocol/lib',
+  ]) {
+    final d = Directory(dir);
+    if (!d.existsSync()) continue;
+    for (final entity in d.listSync(recursive: true)) {
+      if (entity is File && entity.path.endsWith('.dart')) {
+        final modified = entity.lastModifiedSync();
+        if (modified.isAfter(newest)) newest = modified;
+      }
+    }
+  }
+  final file = File(output);
+  if (!file.existsSync() || !file.lastModifiedSync().isAfter(newest)) {
+    final result = await Process.run(Platform.resolvedExecutable, [
+      'compile',
+      'exe',
+      '-DENGINE_VERSION=1.4.0',
+      'bin/syntila_cli_worker.dart',
+      '-o',
+      output,
+    ], workingDirectory: engineDir);
+    if (result.exitCode != 0) {
+      throw StateError(
+        'compile syntila_cli_worker.dart failed: ${result.stdout}${result.stderr}',
+      );
+    }
+  }
+  return output;
 }
 
 void pinTests() {
