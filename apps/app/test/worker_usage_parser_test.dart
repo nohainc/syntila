@@ -254,6 +254,21 @@ void main() {
     ]);
   });
 
+  test('Gemini parses report ending with a disabled row and trailing tab', () {
+    const report =
+        'Gemini Models\tWeekly Limit Remaining\t100%\t2026-11-30T20:39:21Z\n'
+        'Gemini Models\tFive Hour Limit Remaining\t100%\t2026-11-24T15:33:17Z\n'
+        'Claude and GPT models\tWeekly Limit Remaining\t0%\t2026-11-25T00:42:39Z\n'
+        'Claude and GPT models\tFive Hour Limit Remaining\tdisabled\t';
+    final usage = parseWorkerUsage(report)!;
+    expect(usage.windows.map((w) => w.label), ['Week', '5 hours', 'Week']);
+    expect(usage.windows.map((w) => w.usedPercent), [0, 0, 100]);
+    expect(usage.windows[2].group, 'Claude and GPT models');
+    expect(usage.notes, [
+      'Claude and GPT models: Five Hour Limit Remaining disabled',
+    ]);
+  });
+
   test('countdowns use hours for sessions and days for weeks', () {
     final now = DateTime.utc(2026, 10, 17);
     expect(

@@ -256,12 +256,14 @@ AxParsedUsage? _parseGemini(String text) {
   for (final line in const LineSplitter().convert(text)) {
     if (line.trim().isEmpty) continue;
     final cells = line.split('\t').map((cell) => cell.trim()).toList();
-    if (cells.length != 4) return null;
+    if (cells.length < 3 || cells.length > 4) return null;
     if (cells[2].toLowerCase() == 'disabled') {
-      if (cells[3].isNotEmpty) return null;
+      if (cells.length == 4 && cells[3].isNotEmpty) return null;
+      if (cells[0].isEmpty || cells[1].isEmpty) return null;
       notes.add('${cells[0]}: ${cells[1]} disabled');
       continue;
     }
+    if (cells.length != 4) return null;
     final percent = RegExp(r'^(\d+(?:\.\d+)?)%$').firstMatch(cells[2]);
     final resets = DateTime.tryParse(cells[3]);
     if (percent == null || resets == null) return null;
